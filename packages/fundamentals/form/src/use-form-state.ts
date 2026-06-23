@@ -119,18 +119,31 @@ export function useFormState<TValues extends Record<string, unknown>, R>(
   return computed(() => {
     if (process.env.NODE_ENV !== 'production')
       _countSink.__pyreon_count__?.('form.formStateScan')
+    // `isValid` / `isDirty` are derived from the field-level atoms
+    // (errors / dirtyFields) we already materialize here — NOT from the
+    // count-based `summary.isValid` / `summary.isDirty` getters. Those counts
+    // (`_invalidCount` / `_dirtyCount`) are updated by a DEFERRED field-signal
+    // subscriber, so a no-selector summary — which ALSO depends on the field
+    // signals via these atoms — would re-derive on the field-signal change
+    // BEFORE the count caught up, rendering a stale value (the FormDemo
+    // "Dirty"/"Invalid" badge never flipping). Deriving from the atoms keeps
+    // every dependency field-signal-based → consistent, no stale read. The
+    // SELECTOR path keeps the O(1) count-based getters (it doesn't read the
+    // atoms, so it isn't subject to the race — it's triggered by the count).
+    const errors = summary.errors
+    const dirtyFields = summary.dirtyFields
     return {
       isSubmitting: summary.isSubmitting,
       isValidating: summary.isValidating,
-      isValid: summary.isValid,
-      isDirty: summary.isDirty,
+      isValid: Object.keys(errors).length === 0,
+      isDirty: Object.keys(dirtyFields).length > 0,
       submitCount: summary.submitCount,
       isSubmitted: summary.isSubmitted,
       isSubmitSuccessful: summary.isSubmitSuccessful,
       submitError: summary.submitError,
       touchedFields: summary.touchedFields,
-      dirtyFields: summary.dirtyFields,
-      errors: summary.errors,
+      dirtyFields,
+      errors,
     }
   })
 }
