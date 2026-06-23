@@ -1,9 +1,11 @@
-import { onUnmount } from '@pyreon/core'
+import { createUniqueId, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { batch, computed, effect, signal } from '@pyreon/reactivity'
 import type { FieldDefinition, InferFieldValues } from './field'
 import { isFieldDefinition } from './field'
 import type {
+  FieldErrorProps,
+  FieldLabelProps,
   FieldRegisterCheckboxProps,
   FieldRegisterProps,
   FieldState,
@@ -730,6 +732,25 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     }
   }
 
+  // ── Accessibility id wiring ───────────────────────────────────────────
+  // Each field gets ONE stable input id (lazily generated). The error
+  // element's id is derived from it, so `register()` (input) and
+  // `errorProps()` / `labelProps()` (error + label elements) agree without
+  // the consumer threading ids by hand. This is what makes the ARIA
+  // association automatic — solving the label↔control / input↔error wiring
+  // that a lint rule structurally can't (the deferred `control-needs-label`
+  // cliff) at the layer where the ids ARE knowable.
+  const _fieldIds = new Map<string, string>()
+  const baseId = (field: string): string => {
+    let id = _fieldIds.get(field)
+    if (id === undefined) {
+      id = createUniqueId()
+      _fieldIds.set(field, id)
+    }
+    return id
+  }
+  const errorIdOf = (field: string): string => `${baseId(field)}-error`
+
   // Memoized register props per field+type combo. Cache value type is
   // the union of both shapes since checkbox returns `FieldRegisterCheckboxProps`
   // and the rest return `FieldRegisterProps<unknown>`.
@@ -775,32 +796,71 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const disabled = computed(() => formDisabled() || fieldState.disabled())
     const readOnly = computed(() => formReadOnly() || fieldState.readOnly())
 
+    // Accessibility (auto-wired, reactive). `aria-invalid` reflects the
+    // field's error signal; `aria-describedby` points at the error element
+    // (see `errorProps`) ONLY while errored, so the attribute is removed when
+    // valid (no dangling reference). Both are accessors → `applyProp` wraps
+    // them in a renderEffect, so they update in place exactly like the
+    // `disabled`/`readOnly` accessors above. `'true' | undefined` (not a
+    // boolean) so a valid field has NO `aria-invalid` attribute rather than
+    // the ambiguous `aria-invalid=""`.
+    const id = baseId(field)
+    const errorId = errorIdOf(field)
+    const ariaInvalid = computed<'true' | undefined>(() =>
+      fieldState.error() != null ? 'true' : undefined,
+    )
+    const ariaDescribedby = computed<string | undefined>(() =>
+      fieldState.error() != null ? errorId : undefined,
+    )
+
     if (fieldOpts?.type === 'checkbox') {
       // Omit `value` for checkbox — HTML's checkbox `value` attribute is
       // arbitrary metadata, not the form-level value. The `<input
       // type="checkbox" {...register(field, { type: 'checkbox' })}>` spread
       // type-checks cleanly without a cast because `value` is gone.
       const checkboxProps: FieldRegisterCheckboxProps = {
+        id,
         checked: computed(() => Boolean(fieldState.value())),
         onInput,
         onBlur,
         disabled,
         readOnly,
+        'aria-invalid': ariaInvalid,
+        'aria-describedby': ariaDescribedby,
       }
       registerCache.set(cacheKey, checkboxProps)
       return checkboxProps
     }
 
     const props: FieldRegisterProps<TValues[K]> = {
+      id,
       value: fieldState.value,
       onInput,
       onBlur,
       disabled,
       readOnly,
+      'aria-invalid': ariaInvalid,
+      'aria-describedby': ariaDescribedby,
     }
     registerCache.set(cacheKey, props as FieldRegisterProps<unknown>)
     return props
   }
+
+  // Props for a field's ERROR element. Its `id` matches the input's
+  // `aria-describedby` target, so spreading both auto-associates them; `role`
+  // defaults to `'alert'` so the message is announced when it appears. Render
+  // the error element only while errored (the common pattern) — when there's
+  // no error the input's `aria-describedby` is absent, so nothing dangles.
+  const errorProps = (field: keyof TValues & string): FieldErrorProps => ({
+    id: errorIdOf(field),
+    role: 'alert',
+  })
+
+  // Props for a field's LABEL element — `for` matches the input's auto `id`,
+  // giving a programmatic label↔control association for free.
+  const labelProps = (field: keyof TValues & string): FieldLabelProps => ({
+    for: baseId(field),
+  })
 
   // ── setInitialValues: update initials + reset fields ──────────────────
   const setInitialValues = (newValues: Partial<TValues>) => {
@@ -861,6 +921,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     clearErrors,
     resetField,
     register,
+    errorProps,
+    labelProps,
     handleSubmit,
     reset,
     validate,

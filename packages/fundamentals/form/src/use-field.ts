@@ -2,6 +2,8 @@ import type { Computed, Signal } from '@pyreon/reactivity'
 import { computed } from '@pyreon/reactivity'
 import { useFormContext } from './context'
 import type {
+  FieldErrorProps,
+  FieldLabelProps,
   FieldRegisterCheckboxProps,
   FieldRegisterProps,
   FieldState,
@@ -42,6 +44,12 @@ export interface UseFieldResult<T> {
   hasError: Computed<boolean>
   /** Whether the field should show its error (touched + has error). */
   showError: Computed<boolean>
+  /** Props for this field's error element — `id` matches the input's
+   * `aria-describedby`, `role="alert"`. Spread: `<span {...field.errorProps()}>`. */
+  errorProps: () => FieldErrorProps
+  /** Props for this field's label element — `for` matches the input id.
+   * Spread: `<label {...field.labelProps()}>`. */
+  labelProps: () => FieldLabelProps
 }
 
 /**
@@ -123,5 +131,7 @@ export function useField(
       (form.register as (f: string, o?: unknown) => unknown)(name, opts)) as UseFieldResult<unknown>['register'],
     hasError,
     showError,
+    errorProps: () => form.errorProps(name),
+    labelProps: () => form.labelProps(name),
   }
 }

@@ -186,11 +186,16 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   'aria-atomic'?: Booleanish | undefined
   'aria-busy'?: Booleanish | undefined
   'aria-controls'?: string | undefined
-  'aria-describedby'?: string | undefined
+  'aria-describedby'?: string | (() => string | undefined) | undefined
   'aria-labelledby'?: string | undefined
   'aria-placeholder'?: string | undefined
   'aria-required'?: Booleanish | (() => Booleanish) | undefined
-  'aria-invalid'?: Booleanish | 'grammar' | 'spelling' | undefined
+  'aria-invalid'?:
+    | Booleanish
+    | 'grammar'
+    | 'spelling'
+    | (() => Booleanish | 'grammar' | 'spelling' | undefined)
+    | undefined
   'aria-valuemin'?: number | undefined
   'aria-valuemax'?: number | undefined
   'aria-valuenow'?: number | undefined

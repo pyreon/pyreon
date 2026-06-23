@@ -48,6 +48,9 @@ export interface FieldState<T = unknown> {
 
 /** Props returned by `register(field)` for binding a text / number input. */
 export interface FieldRegisterProps<T> {
+  /** Stable input id (auto-generated). Pairs with `labelProps().for` and the
+   * error element's id (`errorProps().id`) for automatic ARIA association. */
+  id: string
   value: Signal<T>
   onInput: (e: Event) => void
   onBlur: () => void
@@ -55,6 +58,12 @@ export interface FieldRegisterProps<T> {
   disabled?: Accessor<boolean>
   /** Reactive readOnly state — true when form OR field is read-only. */
   readOnly?: Accessor<boolean>
+  /** Reactive `aria-invalid` — `'true'` while the field has an error, else the
+   * attribute is removed (a valid field carries no `aria-invalid`). */
+  'aria-invalid'?: Accessor<'true' | undefined>
+  /** Reactive `aria-describedby` — points at the error element (`errorProps`)
+   * while errored, removed when valid, so nothing dangles. */
+  'aria-describedby'?: Accessor<string | undefined>
 }
 
 /**
@@ -65,11 +74,31 @@ export interface FieldRegisterProps<T> {
  * without losing reactivity or needing a cast.
  */
 export interface FieldRegisterCheckboxProps {
+  /** Stable input id (auto-generated). See `FieldRegisterProps.id`. */
+  id: string
   checked: Accessor<boolean>
   onInput: (e: Event) => void
   onBlur: () => void
   disabled?: Accessor<boolean>
   readOnly?: Accessor<boolean>
+  /** Reactive `aria-invalid` — see `FieldRegisterProps`. */
+  'aria-invalid'?: Accessor<'true' | undefined>
+  /** Reactive `aria-describedby` — see `FieldRegisterProps`. */
+  'aria-describedby'?: Accessor<string | undefined>
+}
+
+/** Props for a field's ERROR element (`errorProps(field)`) — spread onto the
+ * element that displays the field's error message. Its `id` matches the
+ * input's `aria-describedby`, and `role="alert"` announces the message. */
+export interface FieldErrorProps {
+  id: string
+  role: 'alert'
+}
+
+/** Props for a field's LABEL element (`labelProps(field)`) — `for` matches the
+ * input's auto-generated `id`. */
+export interface FieldLabelProps {
+  for: string
 }
 
 export interface FormState<TValues extends Record<string, unknown>> {
@@ -150,6 +179,19 @@ export interface FormState<TValues extends Record<string, unknown>> {
       options?: { type?: 'number' },
     ): FieldRegisterProps<TValues[K]>
   }
+  /**
+   * Props for a field's ERROR element. Spread onto the element that renders
+   * the field's error message: `<span {...form.errorProps('email')}>{err}</span>`.
+   * Its `id` matches the input's reactive `aria-describedby`, so the
+   * input↔error association is automatic; `role="alert"` announces it.
+   */
+  errorProps: (field: keyof TValues & string) => FieldErrorProps
+  /**
+   * Props for a field's LABEL element — `for` matches the input's auto `id`:
+   * `<label {...form.labelProps('email')}>Email</label>`. Programmatic
+   * label↔control association without hand-threading ids.
+   */
+  labelProps: (field: keyof TValues & string) => FieldLabelProps
   /**
    * Submit handler — runs validation, then calls onSubmit if valid.
    * Can be called directly or as a form event handler (calls preventDefault).
