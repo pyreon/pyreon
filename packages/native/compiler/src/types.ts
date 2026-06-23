@@ -618,7 +618,15 @@ export type ExprIR =
    * (the broken shape the original tasks scaffold shipped).
    */
   | { kind: 'index'; object: ExprIR; index: ExprIR }
-  | { kind: 'binary'; op: '+' | '-' | '*' | '/' | '%'; left: ExprIR; right: ExprIR }
+  | {
+      kind: 'binary'
+      // Arithmetic + bitwise. Bitwise ops (`& | ^ << >>`) emit verbatim on
+      // Swift (native Int operators) and as infix functions on Kotlin
+      // (`and`/`or`/`xor`/`shl`/`shr` — Kotlin has no bitwise symbols).
+      op: '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<<' | '>>'
+      left: ExprIR
+      right: ExprIR
+    }
   /**
    * Template literal — `` `Hello ${name}!` ``. String interpolation is the
    * single most common out-of-subset expression (labels, formatted values).

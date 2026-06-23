@@ -4094,7 +4094,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // (Parser-A slice). Pyreon source uses `===` / `!==` which evaluate
       // the same as `==` / `!=` for the value types signals carry; the
       // emitter coalesces to the native target's `==` / `!=`.
-      const arith = ['+', '-', '*', '/', '%'] as const
+      // Arithmetic + bitwise — both lower to a `binary` IR node. Bitwise
+      // ops are well-defined on both targets (Swift: same symbols; Kotlin:
+      // `and`/`or`/`xor`/`shl`/`shr` infix functions, mapped at emit). NOTE
+      // `>>>` (JS unsigned-right-shift, uint32 semantics) is deliberately
+      // NOT included — it has no faithful signed-Int lowering and keeps the
+      // warn-fallback below.
+      const arith = ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>'] as const
       const compMap: Record<string, '==' | '!=' | '<' | '>' | '<=' | '>='> = {
         '===': '==',
         '!==': '!=',
