@@ -4,6 +4,8 @@ import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { query } from '@pyreon/test-utils'
 import {
   CheckboxBase,
+  ColorPickerBase,
+  type ColorPickerState,
   ComboboxBase,
   type ComboboxState,
   ModalBase,
@@ -234,5 +236,52 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
 
     unmount()
     expect(document.getElementById('smoke-cbx')).toBeNull()
+  })
+
+  it('mounts ColorPickerBase render-prop: groupProps/hueSliderProps/saturationSliderProps/alphaSliderProps → role=group + role=slider with aria-value*', () => {
+    const { container, unmount } = mountInBrowser(
+      h(ColorPickerBase as never, {
+        defaultValue: '#ff0000', // pure red → hue 0, saturation 100, brightness 100
+        alpha: true,
+        children: (state: ColorPickerState) =>
+          h(
+            'div',
+            { ...state.groupProps(), id: 'smoke-cp' },
+            h('div', { ...state.hueSliderProps(), 'data-cp': 'hue' }),
+            h('div', { ...state.saturationSliderProps(), 'data-cp': 'sat' }),
+            h('div', { ...state.alphaSliderProps(), 'data-cp': 'alpha' }),
+          ),
+      }),
+    )
+
+    const group = query<HTMLElement>(container, '#smoke-cp')
+    expect(group.getAttribute('role')).toBe('group')
+    expect(group.getAttribute('aria-label')).toBe('Color picker')
+
+    // hue slider — full 0–360° range, value 0 for pure red, numeric aria-value* render as strings
+    const hue = container.querySelector<HTMLElement>('[data-cp="hue"]')!
+    expect(hue.getAttribute('role')).toBe('slider')
+    expect(hue.getAttribute('aria-valuemin')).toBe('0')
+    expect(hue.getAttribute('aria-valuemax')).toBe('360')
+    expect(hue.getAttribute('aria-valuenow')).toBe('0')
+    expect(hue.getAttribute('aria-valuetext')).toBe('0 degrees')
+    expect(hue.getAttribute('tabindex')).toBe('0')
+
+    // 2-D saturation/brightness — single slider, both axes in aria-valuetext
+    const sat = container.querySelector<HTMLElement>('[data-cp="sat"]')!
+    expect(sat.getAttribute('role')).toBe('slider')
+    expect(sat.getAttribute('aria-valuemax')).toBe('100')
+    expect(sat.getAttribute('aria-valuenow')).toBe('100')
+    expect(sat.getAttribute('aria-valuetext')).toContain('Saturation 100%')
+    expect(sat.getAttribute('aria-valuetext')).toContain('brightness 100%')
+
+    // alpha slider — default opacity 1 → 100%
+    const alpha = container.querySelector<HTMLElement>('[data-cp="alpha"]')!
+    expect(alpha.getAttribute('role')).toBe('slider')
+    expect(alpha.getAttribute('aria-valuenow')).toBe('100')
+    expect(alpha.getAttribute('aria-valuetext')).toBe('100%')
+
+    unmount()
+    expect(document.getElementById('smoke-cp')).toBeNull()
   })
 })
