@@ -9,6 +9,45 @@ export const MODEL_BRAND = '__pyreonMod' as const
 
 export type StateShape = Record<string, unknown>
 
+// ─── Schema → state-type inference ─────────────────────────────────────────────
+
+/**
+ * Resolve a schema-mode model's state type from the `schema` config field —
+ * the spine of "the model is strictly typed from its schema." Three arms, in
+ * order:
+ *
+ * 1. `_infer` — the `@pyreon/validation` `TypedSchemaAdapter` (`zodSchema(...)`).
+ * 2. The output type extracted directly from a [Standard Schema](https://standardschema.dev)
+ *    `~standard.validate` return — so ANY spec-compliant schema strictly types
+ *    `model({ schema })` WITHOUT an adapter wrapper: `@pyreon/validate`'s
+ *    `s.object`, a raw `z.object`, valibot, arktype. We read `O` out of the
+ *    success branch (`{ value: O }`) of `validate`'s (possibly-`Promise`)
+ *    return rather than the optional `~standard.types` slot — `@pyreon/validate`
+ *    omits that slot, so a `types`-based match would silently fall through.
+ *    The loose `(value: any) => infer R` shape matches every validator's
+ *    `~standard` regardless of its issue-array / version-literal specifics
+ *    (a stricter local interface did NOT structurally match — proven by probe).
+ * 3. Fallback to `StateShape` (untyped) — strictly no worse than not matching.
+ */
+export type InferSchemaState<S> = S extends {
+  readonly _infer: infer T extends StateShape
+}
+  ? T
+  : S extends {
+        readonly '~standard': {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          readonly validate: (value: any) => infer R
+        }
+      }
+    ? Extract<Awaited<R>, { readonly value: unknown }> extends {
+        readonly value: infer O
+      }
+      ? O extends StateShape
+        ? O
+        : StateShape
+      : StateShape
+    : StateShape
+
 /**
  * Resolve a state field type:
  * - ModelDefinition → the instance type it produces
@@ -118,7 +157,9 @@ export type ModelSelf<
   TViews extends Record<string, unknown>,
   TActions extends Record<string, (...args: any[]) => any>,
   HasSchema extends boolean,
+  TVolatile extends StateShape = Record<never, never>,
 > = StateSignals<TState> &
+  StateSignals<TVolatile> &
   TViews &
   TActions &
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -127,15 +168,17 @@ export type ModelSelf<
 
 /**
  * The public instance type returned by `.create()` and hooks. Includes
- * state signals + every chained `.views()` + every chained `.actions()` +
- * schema mutation helpers (when applicable).
+ * state signals + volatile signals + every chained `.views()` + every chained
+ * `.actions()` + schema mutation helpers (when applicable).
  */
 export type ModelInstance<
   TState extends StateShape,
   TViews extends Record<string, unknown> = Record<never, never>,
   TActions extends Record<string, (...args: any[]) => any> = Record<never, never>,
   HasSchema extends boolean = false,
+  TVolatile extends StateShape = Record<never, never>,
 > = StateSignals<TState> &
+  StateSignals<TVolatile> &
   TViews &
   TActions &
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -179,6 +222,13 @@ export interface Patch {
 
 export type PatchListener = (patch: Patch) => void
 
+// ─── Snapshot subscription ─────────────────────────────────────────────────────
+
+/** Fired (microtask-coalesced) with the new snapshot after any STATE change. */
+export type SnapshotListener<TState extends StateShape = StateShape> = (
+  snapshot: Snapshot<TState>,
+) => void
+
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 export interface ActionCall {
@@ -192,11 +242,78 @@ export interface ActionCall {
 
 export type MiddlewareFn = (call: ActionCall, next: (nextCall: ActionCall) => unknown) => unknown
 
+// ─── Lifecycle ─────────────────────────────────────────────────────────────────
+
+/**
+ * Lifecycle handlers returned by a `.lifecycle(self => ({ … }))` factory.
+ *
+ * - `afterCreate` runs ONCE at the end of `.create()`, after every `.views()` /
+ *   `.actions()` layer is merged — so `self` is the fully-built instance.
+ *   (Nested field-models run their own `afterCreate` when their subtree
+ *   finishes building, i.e. before the parent's — bottom-up, MST-style.)
+ * - `beforeDestroy` runs when `destroy(instance)` is called, before the
+ *   instance is marked dead.
+ *
+ * Only these two keys are honored — `.lifecycle()` throws on any other key
+ * (typo guard).
+ */
+export interface LifecycleHandlers {
+  readonly afterCreate?: () => void
+  readonly beforeDestroy?: () => void
+}
+
 // ─── Instance metadata ────────────────────────────────────────────────────────
 
 export interface InstanceMeta {
   stateKeys: string[]
+  /**
+   * Volatile field keys — signal-backed transient state added via `.volatile()`.
+   * Reactive (read `self.x()` / write `self.x.set()`) but EXCLUDED from
+   * snapshots, patches, and `onSnapshot` (not serialized; a volatile-only change
+   * produces the same snapshot, so it never fires snapshot listeners).
+   */
+  volatileKeys?: string[]
   patchListeners: Set<PatchListener>
+  /** `onSnapshot` listeners — fired microtask-coalesced after any state change. */
+  snapshotListeners: Set<SnapshotListener>
+  /** Schedules a coalesced snapshot notify (set in `createInstance`). */
+  scheduleSnapshotNotify?: () => void
   middlewares: MiddlewareFn[]
   emitPatch(patch: Patch): void
+  /**
+   * Whether this instance was built in schema mode (`model({ schema })`).
+   * Drives `applySnapshot`'s validated path — in schema mode a snapshot is
+   * routed through the schema-validated `patch` helper so an invalid shape is
+   * rejected (the schema is the source of truth), rather than written raw.
+   */
+  isSchema: boolean
+  /**
+   * Liveness flag. `true` from creation until `destroy(instance)` runs. Actions
+   * + schema-mutation helpers dev-warn (and no-op) when invoked on a dead
+   * instance; direct signal writes (`self.field.set`) are NOT guarded (the
+   * documented escape hatch).
+   */
+  alive: boolean
+  /** Collected from `.lifecycle()` factories; invoked by `destroy()`. */
+  beforeDestroy?: () => void
+  /**
+   * Field-nested child model instances (plain-mode only). `destroy()` recurses
+   * into these so a whole subtree tears down with the root.
+   */
+  children: Set<object>
+  /**
+   * The model instance this node is attached UNDER (its tree parent), set by the
+   * parent-tracking scan when a model instance is written into another model's
+   * state — as a field value, an array element, or a plain-object value.
+   * `undefined` for a root node. Read by `getParent` / `getRoot` / `getPath`.
+   */
+  parent?: object
+  /** The parent's state key this node is attached under (the `getPath` segment). */
+  parentKey?: string
+  /**
+   * Back-reference to the `ModelDefinition` that produced this instance —
+   * powers `clone(instance)` (= `def.create(getSnapshot(instance))`) and
+   * `getType(instance)`. Untyped here to avoid a `model.ts` ↔ `types.ts` cycle.
+   */
+  definition?: unknown
 }

@@ -40,6 +40,19 @@ export function runAction(
   fn: (...fnArgs: unknown[]) => unknown,
   args: unknown[],
 ): unknown {
+  // Guard: an action invoked on a destroyed instance is almost always a bug
+  // (a stale handler firing after teardown). Dev-warn + no-op; direct signal
+  // writes stay unguarded (the documented escape hatch). Tree-shaken in prod.
+  if (!meta.alive) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[Pyreon] state-tree: action "${name}" called on a destroyed model instance — ignored. ` +
+          'Stop calling actions after destroy(instance).',
+      )
+    }
+    return undefined
+  }
+
   const call: ActionCall = { name, args, path: `/${name}` }
 
   const dispatch = (idx: number, c: ActionCall): unknown => {
@@ -76,4 +89,25 @@ export function addMiddleware(instance: object, middleware: MiddlewareFn): () =>
     const idx = meta.middlewares.indexOf(middleware)
     if (idx !== -1) meta.middlewares.splice(idx, 1)
   }
+}
+
+// ─── onAction ──────────────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to every action call on `instance` — a read-only observer (logging,
+ * analytics, devtools). The listener receives the {@link ActionCall} descriptor
+ * (`name`, `args`, `path`) BEFORE the action runs; it cannot block or alter the
+ * call (use `addMiddleware` for interception). Returns an unsubscribe function.
+ *
+ * Sugar over `addMiddleware` — a middleware that observes then unconditionally
+ * proceeds.
+ *
+ * @example
+ * const unsub = onAction(store, (call) => analytics.track(call.name, call.args))
+ */
+export function onAction(instance: object, listener: (call: ActionCall) => void): () => void {
+  return addMiddleware(instance, (call, next) => {
+    listener(call)
+    return next(call)
+  })
 }

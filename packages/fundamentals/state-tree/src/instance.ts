@@ -4,7 +4,9 @@ import type { NormalizedConfig } from './model'
 import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta } from './registry'
-import type { InstanceMeta, StateShape } from './types'
+import { getSnapshot } from './snapshot'
+import { scanForChildren } from './tree'
+import type { InstanceMeta, LifecycleHandlers, StateShape } from './types'
 import { MODEL_BRAND, RESERVED_SCHEMA_HELPER_KEYS } from './types'
 
 // ─── Model definition detection ───────────────────────────────────────────────
@@ -81,6 +83,7 @@ function deepMerge(target: unknown, source: unknown): unknown {
 export function createInstance(
   config: NormalizedConfig<StateShape>,
   initial: Partial<StateShape>,
+  definition?: unknown,
 ): Record<string, unknown> {
   // Raw object that will become the instance.
   const instance: Record<string, unknown> = {}
@@ -89,14 +92,43 @@ export function createInstance(
   const meta: InstanceMeta = {
     stateKeys: [],
     patchListeners: new Set(),
+    snapshotListeners: new Set(),
     middlewares: [],
     emitPatch(patch) {
-      // Guard avoids iterating an empty Set on the hot signal-write path.
-      if (this.patchListeners.size === 0) return
+      // Fired by `trackedSignal` ONLY when there is at least one patch or
+      // snapshot listener (the `hasListeners` predicate below gates it), so the
+      // empty-Set iteration here is already avoided on the hot path.
       for (const listener of this.patchListeners) listener(patch)
+      // A state write may also need to notify `onSnapshot` subscribers
+      // (coalesced to one emit per microtask).
+      this.scheduleSnapshotNotify?.()
     },
+    alive: true,
+    children: new Set(),
+    isSchema: config._parseFn !== undefined,
   }
+  // Back-ref to the definition (powers clone/getType). Set conditionally to
+  // respect exactOptionalPropertyTypes.
+  if (definition !== undefined) meta.definition = definition
   instanceMeta.set(instance, meta)
+
+  // onSnapshot coalescing: every state write that reaches `emitPatch` schedules
+  // a notify, but all writes in one synchronous burst (e.g. a multi-field
+  // `set`/`patch`, or several signal writes inside one action) collapse into a
+  // SINGLE snapshot emit on the next microtask — MST-like async semantics, and
+  // (unlike an `effect()`) it never fires on subscribe and never tracks the
+  // untracked `.peek()` reads `getSnapshot` performs.
+  let snapPending = false
+  meta.scheduleSnapshotNotify = (): void => {
+    if (meta.snapshotListeners.size === 0 || snapPending) return
+    snapPending = true
+    queueMicrotask(() => {
+      snapPending = false
+      if (meta.snapshotListeners.size === 0) return
+      const snap = getSnapshot(instance)
+      for (const listener of [...meta.snapshotListeners]) listener(snap)
+    })
+  }
 
   // `self` is a live proxy so that actions/views always see the final
   // (fully-populated) instance — including methods added by later chain
@@ -211,7 +243,9 @@ export function createInstance(
         hasCallerOverride && typeof callerOverride === 'object'
           ? (callerOverride as Record<string, unknown>)
           : {}
-      const nestedInstance = createInstance(defaultValue._config, nestedInitial)
+      const nestedInstance = createInstance(defaultValue._config, nestedInitial, defaultValue)
+      // Track the child so `destroy(parent)` tears down the whole subtree.
+      meta.children.add(nestedInstance)
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(nestedInstance)
 
@@ -234,9 +268,20 @@ export function createInstance(
       rawSig,
       path,
       (p) => meta.emitPatch(p),
-      () => meta.patchListeners.size > 0,
+      // Skip patch/snapshot machinery on a write unless SOMEONE is listening
+      // (patch listener OR onSnapshot subscriber).
+      () => meta.patchListeners.size > 0 || meta.snapshotListeners.size > 0,
+      // Parent tracking (always-on): attach model-instance children written into
+      // this field — as a value, an array element, or a plain-object value — so
+      // getParent / getRoot / getPath work for array children, not just
+      // field-nested ones.
+      (v) => scanForChildren(v, instance, key),
     )
     instance[key] = tracked
+    // Initial-value scan (the rawSig value never went through tracked.set, so
+    // afterSet didn't fire) — attaches field-nested children + any model
+    // instances in an initial array/object.
+    scanForChildren(rawSig.peek(), instance, key)
   }
 
   // ── 3. Schema-mode helpers ────────────────────────────────────────────────
@@ -292,13 +337,28 @@ export function createInstance(
       })
     }
 
+    // Guard: a validated mutation helper invoked on a destroyed instance is a
+    // bug (stale handler post-teardown). Dev-warn + no-op; direct signal writes
+    // stay unguarded (the documented escape hatch). Tree-shaken in prod.
+    const guardAlive = (op: string): boolean => {
+      if (meta.alive) return true
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] state-tree: ${op}() called on a destroyed model instance — ignored.`,
+        )
+      }
+      return false
+    }
+
     instance.set = (next: Record<string, unknown>) => {
+      if (!guardAlive('set')) return
       const valid = validateOrFail(next, 'set')
       if (valid === undefined) return // suppressed via onValidationError
       writeAll(valid)
     }
 
     instance.patch = (partial: Record<string, unknown>) => {
+      if (!guardAlive('patch')) return
       const merged = { ...readCurrent(), ...partial }
       const valid = validateOrFail(merged, 'patch')
       if (valid === undefined) return
@@ -306,6 +366,7 @@ export function createInstance(
     }
 
     instance.deepPatch = (partial: Record<string, unknown>) => {
+      if (!guardAlive('deepPatch')) return
       // Recursive plain-object merge. Arrays / class instances REPLACE.
       // Parallel to @pyreon/store's `deepPatch`.
       const merged = deepMerge(readCurrent(), partial) as Record<string, unknown>
@@ -315,6 +376,7 @@ export function createInstance(
     }
 
     instance.update = (key: string, transformer: (current: unknown) => unknown) => {
+      if (!guardAlive('update')) return
       // Transform a single top-level field. Read → transform → validate
       // merged state → write only that key. Parallel to @pyreon/store's
       // `update<K extends keyof T & string>(...)`.
@@ -331,6 +393,7 @@ export function createInstance(
     }
 
     instance.reset = () => {
+      if (!guardAlive('reset')) return
       // initialSnapshotForReset is the PARSED value captured at .create()
       // time. Re-parse to apply any defaults that depend on call time.
       const result = parseFn(initialSnapshotForReset)
@@ -346,12 +409,50 @@ export function createInstance(
     }
   }
 
-  // Helper: forbid a view/action from shadowing state OR a schema-installed
-  // mutation helper. Plain mode skips the helper check (no helpers installed).
+  // ── 3.5 Volatile state (signal-backed, NOT tracked) ────────────────────────
+  // Runs after schema helpers (so reserved-helper names are known) and before
+  // views/actions (so they can read volatile via `self`). Volatile fields are
+  // PLAIN signals — reactive read/write, but never go through `trackedSignal`,
+  // so they emit no patches and are absent from `meta.stateKeys` (hence
+  // excluded from `getSnapshot` / `applySnapshot` / `onPatch` / `onSnapshot`).
+  if (config.volatileFactories.length > 0) {
+    const volatileKeys: string[] = []
+    const failVolatile = (key: string, reason: string): never => {
+      throw new Error(
+        `[Pyreon] model.volatile(): "${key}" ${reason}. Pick a different name — ` +
+          'volatile fields share the instance namespace with state, schema ' +
+          'helpers, views, and actions.',
+      )
+    }
+    for (const factory of config.volatileFactories) {
+      const fields = factory(self) as Record<string, unknown>
+      for (const [key, initialValue] of Object.entries(fields)) {
+        if (meta.stateKeys.includes(key)) failVolatile(key, 'collides with a state/schema field')
+        if (isSchemaMode && RESERVED_SCHEMA_HELPER_KEYS.includes(key as never)) {
+          failVolatile(key, 'collides with a reserved schema-mode mutation helper')
+        }
+        if (volatileKeys.includes(key)) failVolatile(key, 'is a duplicate volatile field')
+        // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+        instance[key] = signal(initialValue)
+        volatileKeys.push(key)
+      }
+    }
+    meta.volatileKeys = volatileKeys
+  }
+
+  // Helper: forbid a view/action from shadowing state, a schema-installed
+  // mutation helper, OR a volatile field. Plain mode skips the helper check
+  // (no helpers installed).
   const checkReserved = (key: string, factoryKind: 'views' | 'actions'): void => {
     if (meta.stateKeys.includes(key)) {
       throw new Error(
         `[Pyreon] model.${factoryKind}(): "${key}" collides with a schema/state field. ` +
+          'Pick a different name.',
+      )
+    }
+    if (meta.volatileKeys?.includes(key)) {
+      throw new Error(
+        `[Pyreon] model.${factoryKind}(): "${key}" collides with a volatile field. ` +
           'Pick a different name.',
       )
     }
@@ -385,6 +486,36 @@ export function createInstance(
     for (const [key, actionFn] of Object.entries(rawActions)) {
       checkReserved(key, 'actions')
       instance[key] = (...args: unknown[]) => runAction(meta, key, actionFn, args)
+    }
+  }
+
+  // ── 6. Lifecycle (afterCreate runs now; beforeDestroy stored for destroy) ──
+  // Runs LAST so `afterCreate` sees the fully-built instance (state + all
+  // views + all actions). Nested field-models already ran their own
+  // `afterCreate` when their subtree finished building (during step 2), so
+  // `afterCreate` fires bottom-up (children before parents), MST-style.
+  if (config.lifecycleFactories.length > 0) {
+    const beforeDestroyFns: Array<() => void> = []
+    for (const factory of config.lifecycleFactories) {
+      const handlers = factory(self) as LifecycleHandlers
+      for (const key of Object.keys(handlers)) {
+        if (key !== 'afterCreate' && key !== 'beforeDestroy') {
+          throw new Error(
+            `[Pyreon] model.lifecycle(): unknown handler "${key}". Only ` +
+              '`afterCreate` and `beforeDestroy` are supported.',
+          )
+        }
+      }
+      // Collect beforeDestroy BEFORE running afterCreate, so a throwing
+      // afterCreate still leaves teardown registered.
+      if (handlers.beforeDestroy) beforeDestroyFns.push(handlers.beforeDestroy)
+      if (handlers.afterCreate) handlers.afterCreate()
+    }
+    if (beforeDestroyFns.length > 0) {
+      // Teardown runs in REVERSE registration order (LIFO — mirrors setup).
+      meta.beforeDestroy = () => {
+        for (let i = beforeDestroyFns.length - 1; i >= 0; i--) beforeDestroyFns[i]!()
+      }
     }
   }
 

@@ -20,6 +20,7 @@ export function trackedSignal<T>(
   path: string,
   emitPatch: (patch: Patch) => void,
   hasListeners?: () => boolean,
+  afterSet?: (newValue: T) => void,
 ): Signal<T> {
   // `wrapSignal` delegates reads (incl. `.direct` + `_v` for the compiler's
   // `_bindText` fast path) to `inner` and routes writes through our patch
@@ -31,13 +32,20 @@ export function trackedSignal<T>(
     set: (newValue: T): void => {
       const prev = inner.peek()
       inner.set(newValue)
-      // Skip patch emission entirely when no one is listening — avoids object
-      // allocation and (for nested instances) a full recursive snapshot.
-      if (!Object.is(prev, newValue) && (!hasListeners || hasListeners())) {
-        // For model instances, emit the snapshot rather than the live object
-        // so patches are always plain JSON-serializable values.
-        const patchValue = isModelInstance(newValue) ? snapshotValue(newValue as object) : newValue
-        emitPatch({ op: 'replace', path, value: patchValue })
+      if (!Object.is(prev, newValue)) {
+        // Parent tracking runs on EVERY change (always-on, not listener-gated)
+        // so tree helpers see array/field children written after creation.
+        afterSet?.(newValue)
+        // Skip patch emission when no one is listening — avoids object
+        // allocation and (for nested instances) a full recursive snapshot.
+        if (!hasListeners || hasListeners()) {
+          // For model instances, emit the snapshot rather than the live object
+          // so patches are always plain JSON-serializable values.
+          const patchValue = isModelInstance(newValue)
+            ? snapshotValue(newValue as object)
+            : newValue
+          emitPatch({ op: 'replace', path, value: patchValue })
+        }
       }
     },
   })

@@ -1,5 +1,5 @@
 {
-  "_doc": "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree — this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review.",
+  "_doc": "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree \u2014 this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review.",
   "_units": "bytes (gzipped)",
   "@pyreon/a11y": 1024,
   "@pyreon/attrs": 1280,
@@ -43,7 +43,7 @@
   "@pyreon/server": 3328,
   "@pyreon/sized-map": 512,
   "@pyreon/solid-compat": 4864,
-  "@pyreon/state-tree": 3840,
+  "@pyreon/state-tree": 5632,
   "@pyreon/storage": 3072,
   "@pyreon/store": 3072,
   "@pyreon/storybook": 256,

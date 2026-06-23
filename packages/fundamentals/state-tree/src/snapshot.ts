@@ -1,7 +1,7 @@
 import type { Signal } from '@pyreon/reactivity'
 import { batch } from '@pyreon/reactivity'
 import { instanceMeta, isModelInstance } from './registry'
-import type { Snapshot, StateShape } from './types'
+import type { SnapshotListener, Snapshot, StateShape } from './types'
 
 // ─── getSnapshot ──────────────────────────────────────────────────────────────
 
@@ -44,6 +44,20 @@ export function applySnapshot<TState extends StateShape>(
   const meta = instanceMeta.get(instance)
   if (!meta) throw new Error('[@pyreon/state-tree] applySnapshot: not a model instance')
 
+  // Schema mode: route through the schema-validated `patch` helper so an
+  // invalid snapshot is REJECTED (the schema is the source of truth) rather
+  // than written raw to signals. `patch` shallow-merges the partial onto the
+  // current state and validates the result — preserving the "keys absent from
+  // the snapshot are left unchanged" contract while closing the integrity hole
+  // where a malformed snapshot could bypass validation. (Schema mode is flat —
+  // no nested field-models — so no recursion is needed.)
+  if (meta.isSchema) {
+    ;(instance as { patch: (p: Record<string, unknown>) => void }).patch(
+      snapshot as Record<string, unknown>,
+    )
+    return
+  }
+
   batch(() => {
     for (const key of meta.stateKeys) {
       if (!(key in snapshot)) continue
@@ -59,4 +73,32 @@ export function applySnapshot<TState extends StateShape>(
       }
     }
   })
+}
+
+// ─── onSnapshot ────────────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to snapshot changes. The listener fires (microtask-coalesced) with
+ * the new snapshot after any STATE change — all writes in one synchronous burst
+ * (a multi-field `set`/`patch`, several signal writes in one action) collapse
+ * into a SINGLE emit on the next microtask (MST-like async semantics). Does NOT
+ * fire on subscribe. Volatile-field changes do NOT fire it (volatile is excluded
+ * from snapshots). Returns an unsubscribe function; `destroy(instance)` also
+ * clears all snapshot listeners.
+ *
+ * @example
+ * const dispose = onSnapshot(counter, (snap) => {
+ *   localStorage.setItem('counter', JSON.stringify(snap))
+ * })
+ */
+export function onSnapshot<TState extends StateShape>(
+  instance: object,
+  listener: SnapshotListener<TState>,
+): () => void {
+  const meta = instanceMeta.get(instance)
+  if (!meta) throw new Error('[Pyreon] state-tree onSnapshot: not a model instance')
+  meta.snapshotListeners.add(listener as SnapshotListener)
+  return () => {
+    meta.snapshotListeners.delete(listener as SnapshotListener)
+  }
 }

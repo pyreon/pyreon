@@ -60,7 +60,7 @@ getSnapshot(counter) // { count: 6 }
 `model()` carries one piece of state declaration — `state` (plain mode) OR `schema` (schema mode). Both modes return the same chainable `ModelDefinition`; `views` and `actions` are added exclusively via `.views(...)` / `.actions(...)`.
 
 - **state** -- Plain JS object. Each key becomes a `Signal<T>` on the instance. Plain mode.
-- **schema** -- A `TypedSchemaAdapter` (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`) or a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Schema mode — adds runtime validation and `set` / `patch` / `reset` helpers.
+- **schema** -- A schema passed directly — `@pyreon/validate`'s `s.object(...)`, a raw `z.object(...)` / valibot / arktype (Standard Schema, auto-detected via `~standard`), or a `TypedSchemaAdapter` (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`). Schema mode adds runtime validation, **strictly types the instance from the schema**, and installs five validated mutation helpers (`set` / `patch` / `deepPatch` / `update` / `reset`).
 - **`.views(self => ...)`** -- Chainable. Each call adds a layer of derived values; subsequent layers see prior ones via `self`.
 - **`.actions(self => ...)`** -- Chainable. Each call adds a layer of methods; can be `async` out of the box.
 
@@ -188,14 +188,35 @@ u.name.set('')   // direct signal write — bypasses validation (escape hatch)
 u.reset()       // restore parsed initial
 ```
 
-**Standard Schema (Tier A.2)** — pass the raw schema, no adapter wrap needed:
+**Standard Schema (Tier A.2)** — pass the raw schema, no adapter wrap needed. The
+instance is **strictly typed from the schema** either way: `u.name()` is `string`,
+`u.age()` is `number` — the field types flow through whether you use `@pyreon/validate`'s
+native `s` ("our one"), a raw `z.object`, valibot, or arktype.
 
 ```ts
+import { s } from '@pyreon/validate'
+
+// @pyreon/validate — the native validator, passed directly:
 const User = model({
-  schema: z.object({ name: z.string(), age: z.number() }),  // raw zod (~standard)
+  schema: s.object({ name: s.string(), age: s.number() }),
+  initial: { name: 'Alice', age: 30 },
+})
+const u = User.create()
+u.name()  // string  (strictly typed — not `unknown`)
+u.age()   // number
+
+// …or a raw zod schema (auto-detected via `~standard`), no zodSchema() wrapper:
+const User2 = model({
+  schema: z.object({ name: z.string(), age: z.number() }),
   initial: { name: 'Alice', age: 30 },
 })
 ```
+
+> The strict typing comes from reading the schema's `~standard.validate` output type
+> (`InferSchemaState`), so it works even for validators (like `@pyreon/validate`) that
+> don't populate the optional `~standard.types` slot. The `zodSchema(...)` /
+> `valibotSchema(...)` / `arktypeSchema(...)` adapters still work (the `_infer` path)
+> and are only needed when you want the adapter's async-validator interop.
 
 ### Mutation method comparison
 
@@ -610,6 +631,131 @@ Resetting a non-existent hook ID is a silent no-op:
 resetHook('no-such-hook') // no error
 ```
 
+## Lifecycle & Cleanup
+
+### `.lifecycle(self => ({ afterCreate, beforeDestroy }))`
+
+Register instance lifecycle hooks. Chainable — the factory sees the fully-typed `self`.
+
+- **`afterCreate`** runs once at the END of `.create()`, after every `.views()` / `.actions()` layer is merged, so `self` is the fully-built instance. For nested field-models it fires bottom-up (children before parents), like MST.
+- **`beforeDestroy`** runs when you call `destroy(instance)`, before the instance is marked dead.
+
+Only `afterCreate` / `beforeDestroy` are honored — any other key throws at `.create()` time (a typo guard).
+
+```ts
+const Clock = model({ state: { ms: 0 } })
+  .actions((self) => ({ tick: () => self.ms.update((n) => n + 1) }))
+  .lifecycle((self) => {
+    // The factory runs once per instance, so a closure variable is a clean
+    // home for transient handles like a timer id.
+    let timer: ReturnType<typeof setInterval> | undefined
+    return {
+      afterCreate: () => {
+        timer = setInterval(() => self.tick(), 1000)
+      },
+      beforeDestroy: () => clearInterval(timer),
+    }
+  })
+
+const clock = Clock.create()
+// ...later
+destroy(clock) // runs beforeDestroy → clearInterval
+```
+
+### `destroy(instance)` / `isAlive(instance)`
+
+`destroy` tears an instance down: runs its `beforeDestroy` handlers, **recursively destroys field-nested child models**, drops all subscriptions (patch listeners + middleware), and marks it dead. Idempotent. `isAlive` reports liveness.
+
+```ts
+import { destroy, isAlive } from '@pyreon/state-tree'
+
+isAlive(clock) // true
+destroy(clock)
+isAlive(clock) // false
+```
+
+After `destroy`, **actions and the schema mutation helpers (`set` / `patch` / …) dev-warn and no-op** — a stale handler firing post-teardown is almost always a bug, so it's caught rather than silently mutating dead state. Use `isAlive` to guard deferred work that might land after teardown:
+
+```ts
+fetchUpdate().then((data) => {
+  if (isAlive(model)) model.applyUpdate(data) // skip if torn down meanwhile
+})
+```
+
+> **`destroy` is not `free()`.** Pyreon signals have no explicit per-signal dispose. `destroy` tears down *subscriptions* and runs your `beforeDestroy` cleanup (timers, listeners) and flips the liveness flag — the instance's signals are reclaimed by the garbage collector once you drop your references to it. Direct signal writes (`self.field.set(v)`) on a destroyed instance are **not** guarded (the same escape hatch as bypassing validation) — don't.
+
+### `clone(instance)` / `getType(instance)`
+
+`clone` makes an independent structural copy: it snapshots the instance's current state and creates a fresh instance from the same definition (own signals, listeners, middleware, lifecycle). In schema mode the snapshot is re-validated. `getType` returns the producing `ModelDefinition`.
+
+```ts
+import { clone, getType } from '@pyreon/state-tree'
+
+const draft = clone(original) // edit draft freely; original is untouched
+const Def = getType(original) // the ModelDefinition — create siblings from it
+const sibling = Def?.create()
+```
+
+### Tree Traversal
+
+A model instance gets a **tree parent** when it's written into another model's state — as a field value, an **array element**, or a plain-object value. Parent tracking runs on the initial value *and* every subsequent write, so array-held children (the headline `todos: Todo[]` shape) are tracked the same way field-nested children are.
+
+```ts
+import { getParent, getRoot, getPath, isRoot, hasParent } from '@pyreon/state-tree'
+
+const Todo = model({ state: { title: '', done: false } })
+const TodoList = model({ state: { todos: [] as ReturnType<typeof Todo.create>[] } })
+  .actions((self) => ({
+    add: (title: string) => self.todos.update((l) => [...l, Todo.create({ title, done: false })]),
+  }))
+
+const list = TodoList.create({ todos: [] })
+list.add('write tests')
+const todo = list.todos()[0]
+
+getParent(todo) // → list   (array children get a parent, not just field-nested ones)
+getRoot(todo)   // → list   (walks to the top of the tree)
+getPath(todo)   // "/todos" (JSON-pointer path from the root)
+isRoot(list)    // true
+hasParent(todo) // true
+```
+
+- `getParent(node)` — the instance `node` is attached under, or `undefined` for a root.
+- `getRoot(node)` — walk parents to the top (returns `node` itself if it's a root).
+- `getPath(node)` — path from the root built from each ancestor's parent-key (`""` for a root).
+- `isRoot(node)` / `hasParent(node)` — booleans.
+
+All throw on a non-model-instance. **v1 notes:** `getPath` carries the field key (`/todos`), not the array index (`/todos/0`); a node removed from an array keeps its last parent until GC (parent is set on write, not diffed on removal); auto-attachment is one container level deep.
+
+> **References & identifiers** (`reference(Type)` / `identifier()` / `resolveIdentifier`) — normalized by-id references that auto-resolve — build on these tree helpers and land as the follow-up.
+
+## Volatile State
+
+`.volatile(self => ({ ... }))` adds **signal-backed transient fields** — reactive (read `self.x()`, write `self.x.set(v)`), but **excluded from snapshots, patches, and `onSnapshot`**. Use it for state that should not be persisted or replayed: in-flight flags, drag/hover UI state, live object references (websockets, timers, promises).
+
+```ts
+const Search = model({ state: { results: [] as string[] } })
+  .volatile(() => ({ loading: false, lastError: null as Error | null }))
+  .actions((self) => ({
+    async run(q: string) {
+      self.loading.set(true) // reactive — drives a spinner; never persisted
+      try {
+        self.results.set(await search(q))
+        self.lastError.set(null)
+      } catch (err) {
+        self.lastError.set(err as Error)
+      } finally {
+        self.loading.set(false)
+      }
+    },
+  }))
+
+const s = Search.create()
+getSnapshot(s) // { results: [] } — loading / lastError are NOT in the snapshot
+```
+
+Volatile fields are strictly typed (`s.loading()` is `boolean`). They cannot collide with state, schema-helper, view, action, or other-volatile names (throws at `.create()`). A volatile-only change never fires `onSnapshot` and never emits a patch — it produces the same snapshot.
+
 ## Snapshots
 
 Serialize and restore model instances as plain JS objects (no signals, no functions).
@@ -753,6 +899,22 @@ Both `getSnapshot` and `applySnapshot` throw if called on a non-model-instance:
 getSnapshot({}) // throws: "[@pyreon/state-tree] getSnapshot: not a model instance"
 applySnapshot({}, {}) // throws: "[@pyreon/state-tree] applySnapshot: not a model instance"
 ```
+
+> **Schema mode re-validates.** In schema mode, `applySnapshot` routes the snapshot through the schema-validated `patch` helper — a malformed snapshot is **rejected** (the schema is the source of truth), not written raw to signals. Plain mode writes directly.
+
+### `onSnapshot(instance, cb)`
+
+Subscribe to snapshot changes. The listener fires **microtask-coalesced** with the new snapshot after any state change — all writes in one synchronous burst (a multi-field `set`/`patch`, several signal writes in one action) collapse into a **single** emit on the next microtask (MST-like async semantics). It does **not** fire on subscribe, and volatile-field changes do not fire it. Returns an unsubscribe function; `destroy(instance)` also clears all snapshot listeners.
+
+```ts
+import { onSnapshot } from '@pyreon/state-tree'
+
+const dispose = onSnapshot(store, (snap) => {
+  localStorage.setItem('store', JSON.stringify(snap)) // persist on every change
+})
+```
+
+It's implemented via the patch-write hook — not a reactive `effect()` — so it never fires on creation and never depends on the untracked `.peek()` reads `getSnapshot` performs. If you need the starting value, take an initial `getSnapshot(instance)` yourself.
 
 ## Patches
 
@@ -1106,6 +1268,20 @@ interface ActionCall {
 ```ts
 type MiddlewareFn = (call: ActionCall, next: (call: ActionCall) => unknown) => unknown
 ```
+
+### `onAction(instance, cb)` — observe-only
+
+When you only want to *watch* actions (logging, analytics, devtools) — not intercept them — `onAction` is the read-only sugar over `addMiddleware`. The listener receives the `ActionCall` (`name`, `args`, `path`) before the action runs; it cannot block or alter the call. Returns an unsubscribe function.
+
+```ts
+import { onAction } from '@pyreon/state-tree'
+
+const unsub = onAction(store, (call) => {
+  analytics.track(call.name, call.args)
+})
+```
+
+Use `addMiddleware` (above) when you need to short-circuit, transform arguments, or observe async completion via `await next(call)`.
 
 ## Testing Models
 

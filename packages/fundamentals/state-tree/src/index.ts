@@ -14,7 +14,15 @@ export { model, resetAllHooks, resetHook } from './model'
 
 // ─── Snapshot ─────────────────────────────────────────────────────────────────
 
-export { applySnapshot, getSnapshot } from './snapshot'
+export { applySnapshot, getSnapshot, onSnapshot } from './snapshot'
+
+// ─── Lifecycle ─────────────────────────────────────────────────────────────────
+
+export { clone, destroy, getType, isAlive } from './lifecycle'
+
+// ─── Tree traversal ─────────────────────────────────────────────────────────────
+
+export { getParent, getPath, getRoot, hasParent, isRoot } from './tree'
 
 // ─── Patches ─────────────────────────────────────────────────────────────────
 
@@ -22,13 +30,14 @@ export { applyPatch, onPatch } from './patch'
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-export { addMiddleware } from './middleware'
+export { addMiddleware, onAction } from './middleware'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type {
   ActionCall,
   DeepPartial,
+  LifecycleHandlers,
   MiddlewareFn,
   ModelInstance,
   ModelSelf,
@@ -36,5 +45,6 @@ export type {
   PatchListener,
   SchemaModelHelpers,
   Snapshot,
+  SnapshotListener,
   StateShape,
 } from './types'
