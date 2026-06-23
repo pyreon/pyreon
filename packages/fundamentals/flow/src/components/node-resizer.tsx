@@ -27,15 +27,31 @@ const directionCursors: Record<ResizeDirection, string> = {
   w: 'w-resize',
 }
 
-const directionPositions: Record<ResizeDirection, string> = {
-  nw: 'top: -4px; left: -4px;',
-  ne: 'top: -4px; right: -4px;',
-  sw: 'bottom: -4px; left: -4px;',
-  se: 'bottom: -4px; right: -4px;',
-  n: 'top: -4px; left: 50%; transform: translateX(-50%);',
-  s: 'bottom: -4px; left: 50%; transform: translateX(-50%);',
-  e: 'right: -4px; top: 50%; transform: translateY(-50%);',
-  w: 'left: -4px; top: 50%; transform: translateY(-50%);',
+/**
+ * Position each handle so its CENTER sits on the node edge/corner. The
+ * negative offset is half the handle size — hardcoding `-4px` (half of the
+ * default 8) left handles off-center for any custom `handleSize`.
+ */
+function directionPosition(dir: ResizeDirection, handleSize: number): string {
+  const off = `-${handleSize / 2}px`
+  switch (dir) {
+    case 'nw':
+      return `top: ${off}; left: ${off};`
+    case 'ne':
+      return `top: ${off}; right: ${off};`
+    case 'sw':
+      return `bottom: ${off}; left: ${off};`
+    case 'se':
+      return `bottom: ${off}; right: ${off};`
+    case 'n':
+      return `top: ${off}; left: 50%; transform: translateX(-50%);`
+    case 's':
+      return `bottom: ${off}; left: 50%; transform: translateX(-50%);`
+    case 'e':
+      return `right: ${off}; top: 50%; transform: translateY(-50%);`
+    case 'w':
+      return `left: ${off}; top: 50%; transform: translateY(-50%);`
+  }
 }
 
 /**
@@ -153,7 +169,7 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
           <div
             key={dir}
             class={`pyreon-flow-resizer pyreon-flow-resizer-${dir}`}
-            style={`${baseStyle} ${directionPositions[dir]} cursor: ${directionCursors[dir]};`}
+            style={`${baseStyle} ${directionPosition(dir, handleSize)} cursor: ${directionCursors[dir]};`}
             onPointerDown={handler.onPointerDown}
             onPointerMove={handler.onPointerMove}
             onPointerUp={handler.onPointerUp}

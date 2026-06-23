@@ -729,12 +729,19 @@ export function createFlow<TData = Record<string, unknown>>(
     return nodes.peek().filter((n) => n.parentId === parentId)
   }
 
-  function getAbsolutePosition(nodeId: string): XYPosition {
+  function getAbsolutePosition(nodeId: string, _seen?: Set<string>): XYPosition {
     const node = getNode(nodeId)
     if (!node) return { x: 0, y: 0 }
 
-    if (node.parentId) {
-      const parentPos = getAbsolutePosition(node.parentId)
+    // Walk parentId chain, guarding against a cyclic / self parent link in
+    // malformed graph data (A→B→A or A→A) which would otherwise recurse to a
+    // stack overflow. On a cycle we stop and treat this node's position as
+    // absolute.
+    if (node.parentId && node.parentId !== nodeId) {
+      const seen = _seen ?? new Set<string>()
+      if (seen.has(nodeId)) return node.position
+      seen.add(nodeId)
+      const parentPos = getAbsolutePosition(node.parentId, seen)
       return {
         x: parentPos.x + node.position.x,
         y: parentPos.y + node.position.y,

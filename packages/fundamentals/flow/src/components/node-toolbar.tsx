@@ -7,8 +7,13 @@ export interface NodeToolbarProps {
   offset?: number
   /** Only show when node is selected — default: true */
   showOnSelect?: boolean
-  /** Whether the node is currently selected */
-  selected?: boolean
+  /**
+   * Whether the node is currently selected. Accepts a boolean OR a reactive
+   * accessor — `NodeComponentProps.selected` is `() => boolean`, so pass it
+   * directly (`selected={props.selected}`) and the toolbar shows / hides
+   * reactively as selection changes.
+   */
+  selected?: boolean | (() => boolean)
   style?: string
   class?: string
   children?: VNodeChild
@@ -44,9 +49,6 @@ export function NodeToolbar(props: NodeToolbarProps): VNodeChild {
   const position = props.position ?? 'top'
   const offset = props.offset ?? 8
   const showOnSelect = props.showOnSelect ?? true
-  const selected = props.selected ?? false
-
-  if (showOnSelect && !selected) return null
 
   const posStyle = positionStyles[position] ?? positionStyles.top
   const marginProp =
@@ -60,9 +62,18 @@ export function NodeToolbar(props: NodeToolbarProps): VNodeChild {
 
   const baseStyle = `position: absolute; ${posStyle} ${marginProp} z-index: 10; display: flex; gap: 4px; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); ${props.style ?? ''}`
 
-  return (
-    <div class={`pyreon-flow-node-toolbar ${props.class ?? ''}`} style={baseStyle}>
-      {props.children}
-    </div>
-  )
+  // Reactive accessor — components run ONCE, so a top-level `return null`
+  // could never react to selection changes. Reading `props.selected` (a
+  // value OR an accessor) inside the returned thunk makes the show / hide
+  // track the live selection state and mount / unmount accordingly.
+  return () => {
+    const isSelected =
+      typeof props.selected === 'function' ? props.selected() : (props.selected ?? false)
+    if (showOnSelect && !isSelected) return null
+    return (
+      <div class={`pyreon-flow-node-toolbar ${props.class ?? ''}`} style={baseStyle}>
+        {props.children}
+      </div>
+    )
+  }
 }

@@ -14,7 +14,11 @@ import { definePlaywrightConfig, viteDevServer } from '@pyreon/playwright-config
 export default definePlaywrightConfig({
   testDir: '../e2e',
   projects: [
-    { name: 'app-showcase', testMatch: /\/app-showcase-(flow|dnd|charts)\.spec\.ts$/, port: 5181 },
+    {
+      name: 'app-showcase',
+      testMatch: /\/app-showcase-(flow|flow-features|dnd|charts)\.spec\.ts$/,
+      port: 5181,
+    },
   ],
   webServer: [viteDevServer('@pyreon/example-app-showcase', 5181)],
 })

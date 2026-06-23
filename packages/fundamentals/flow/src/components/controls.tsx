@@ -1,5 +1,6 @@
-import type { VNodeChild } from '@pyreon/core'
+import { useContext, type VNodeChild } from '@pyreon/core'
 import type { ControlsProps, FlowInstance } from '../types'
+import { FlowContext } from './flow-context'
 
 const positionStyles: Record<string, string> = {
   'top-left': 'top: 10px; left: 10px;',
@@ -87,9 +88,10 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
     showFitView = true,
     showLock = false,
     position = 'bottom-left',
-    instance,
   } = props
 
+  // Resolve the instance from an explicit prop, else the <Flow> context.
+  const instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
 
   const baseStyle = `position: absolute; ${positionStyles[position] ?? positionStyles['bottom-left']} display: flex; flex-direction: column; gap: 2px; z-index: 5; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 2px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);`
@@ -101,6 +103,12 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
 
     return (
       <div class="pyreon-flow-controls" style={baseStyle}>
+        {/* Static `display: contents` wrapper isolates the dynamic conditional
+            buttons so their mount (which removes their placeholders) can't
+            shift the element-ref walk the compiler uses for the trailing
+            reactive zoom-% <div>. contents keeps them flex items of the
+            controls column. */}
+        <div style="display: contents;">
         {showZoomIn && (
           <button type="button" style={btnStyle} title="Zoom in" onClick={() => instance.zoomIn()}>
             <ZoomInIcon />
@@ -139,11 +147,12 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
             <LockIcon />
           </button>
         )}
+        </div>
         <div
           style="font-size: 10px; text-align: center; color: #999; padding: 2px 0; user-select: none;"
           title="Current zoom level"
         >
-          {zoomPercent}%
+          {() => `${zoomPercent}%`}
         </div>
       </div>
     )
