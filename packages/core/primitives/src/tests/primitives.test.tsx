@@ -1428,3 +1428,44 @@ describe('<WebView> happy-dom unit (web = iframe host)', () => {
     unmount()
   })
 })
+
+describe('Cross-platform a11y vocabulary (AccessibilityProps → web aria-*)', () => {
+  it('accessibilityLabel lowers to aria-label on the rendered element', () => {
+    const { container, unmount } = mountTest(h(Stack, { accessibilityLabel: 'Close menu' }))
+    const el = container.firstElementChild as HTMLElement
+    expect(el.getAttribute('aria-label')).toBe('Close menu')
+    unmount()
+  })
+
+  it('accessibilityHidden lowers to aria-hidden="true" (string value, not presence-only)', () => {
+    const { container, unmount } = mountTest(h(Stack, { accessibilityHidden: true }))
+    const el = container.firstElementChild as HTMLElement
+    expect(el.getAttribute('aria-hidden')).toBe('true')
+    unmount()
+  })
+
+  it('accessibilityHidden={false} omits aria-hidden (absent = not hidden)', () => {
+    const { container, unmount } = mountTest(h(Stack, { accessibilityHidden: false }))
+    const el = container.firstElementChild as HTMLElement
+    expect(el.hasAttribute('aria-hidden')).toBe(false)
+    unmount()
+  })
+
+  it('a raw aria-label wins over accessibilityLabel (explicit web override)', () => {
+    const { container, unmount } = mountTest(
+      h(Stack, { accessibilityLabel: 'neutral', 'aria-label': 'explicit' }),
+    )
+    const el = container.firstElementChild as HTMLElement
+    expect(el.getAttribute('aria-label')).toBe('explicit')
+    unmount()
+  })
+
+  it('works on an interaction primitive too (Button)', () => {
+    const { container, unmount } = mountTest(
+      h(Button, { onPress: () => {}, accessibilityLabel: 'Add to cart' }, 'cart'),
+    )
+    const btn = container.querySelector('button')!
+    expect(btn.getAttribute('aria-label')).toBe('Add to cart')
+    unmount()
+  })
+})
