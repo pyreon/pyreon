@@ -1,9 +1,9 @@
-import type { VNodeChild } from '@pyreon/core'
-import { For, nativeCompat, Portal } from '@pyreon/core'
+import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
+import { For, nativeCompat, Portal, Show } from '@pyreon/core'
 import { computed, effect, onCleanup } from '@pyreon/reactivity'
 import { setupDelegation } from '@pyreon/runtime-dom'
 import { toastStyles } from './styles'
-import { _pauseAll, _resumeAll, _toastMap, _toasts, toast } from './toast'
+import { _pauseAll, _resumeAll, _setDefaultDuration, _toastMap, _toasts, toast } from './toast'
 import type { Toast, ToasterProps, ToastPosition } from './types'
 
 // ─── Style injection ─────────────────────────────────────────────────────────
@@ -68,6 +68,11 @@ export function Toaster(props?: ToasterProps): VNodeChild {
   const gap = props?.gap ?? 8
   const offset = props?.offset ?? 16
 
+  // App-wide default auto-dismiss duration. The store is module-level (toasts
+  // can be created before the Toaster mounts), so the Toaster writes the
+  // default that `addToast` reads for toasts without their own `duration`.
+  if (props?.duration !== undefined) _setDefaultDuration(props.duration)
+
   injectStyles()
 
   // Portal HOST + event delegation.
@@ -126,9 +131,11 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
   return (
     <Portal target={host}>
-      {/* A labeled `aria-live` region, not a clickable control — the live
-          region IS the accessibility mechanism (toasts are announced +
-          individually dismissable). Auto-dismiss pauses on hover (mouse) AND
+      {/* A labeled landmark region (a `<section>` with an accessible name IS a
+          `region`). The live announcement is per-TOAST (each carries `role`
+          alert/status by urgency, which implies its own aria-live) — so the
+          container deliberately does NOT set `aria-live`, which would
+          double-announce every toast. Auto-dismiss pauses on hover (mouse) AND
           on focus (keyboard): `onFocusIn`/`onFocusOut` are the BUBBLING focus
           events, so tabbing into any toast (e.g. its close button) pauses the
           timers the same way hovering does. Both affordances are accessible,
@@ -138,7 +145,6 @@ export function Toaster(props?: ToasterProps): VNodeChild {
         class="pyreon-toast-container"
         style={containerStyle}
         aria-label="Notifications"
-        aria-live="polite"
         onMouseEnter={_pauseAll}
         onMouseLeave={_resumeAll}
         onFocusIn={_pauseAll}
@@ -157,20 +163,29 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 function ToastItem(props: { id: string }): VNodeChild {
   const id = props.id
 
-  // `action` / `dismissible` are IMMUTABLE per toast — `toast.update` only
-  // touches message/type/duration. Read them ONCE (the `<For>` child callback
-  // runs untracked, so this snapshot read leaks no subscription) so the
-  // action / close buttons mount exactly once instead of re-mounting on every
-  // unrelated store change.
+  // `action` / `dismissible` / `icon` are IMMUTABLE per toast — `toast.update`
+  // only touches message/type/duration/description. Read them ONCE (the `<For>`
+  // child callback runs untracked, so this snapshot read leaks no subscription)
+  // so the icon + action / close buttons mount exactly once instead of
+  // re-mounting on every unrelated store change.
   const initial = _toastMap().get(id)
   const action = initial?.action
   const dismissible = initial?.dismissible ?? true
+  const icon = initial?.icon
+  const hasDescription = initial?.description != null
 
-  // `message` / `type` / `state` DO change (update, promise transition,
-  // entering→visible). Read them LIVE via the map inside reactive thunks so a
-  // single update patches only this row's text node / className in place — no
-  // component re-render, no row remount. See the `_toastMap` docstring.
+  // `message` / `type` / `state` / `description` DO change (update, promise
+  // transition, entering→visible). Read them LIVE via the map inside reactive
+  // thunks so a single update patches only this row's text node / className in
+  // place — no component re-render, no row remount. See the `_toastMap` docstring.
   const live = (): Toast | undefined => _toastMap().get(id)
+
+  // `message`/`description` are `string | VNodeChild` — VNodeChild includes an
+  // accessor arm, which a reactive child callback may not RETURN (it must yield
+  // an atom). Resolve a function value so a `() => …` message/description still
+  // renders and the type stays honest.
+  const resolve = (v: string | VNodeChild | undefined): VNodeChildAtom | VNodeChildAtom[] =>
+    typeof v === 'function' ? v() : (v ?? '')
 
   return (
     <div
@@ -184,19 +199,28 @@ function ToastItem(props: { id: string }): VNodeChild {
               : ''
         return `pyreon-toast pyreon-toast--${t?.type ?? 'info'}${stateClass}`
       }}
-      role="alert"
+      // Type-aware live-region urgency: errors/warnings interrupt (assertive
+      // `alert`), info/success are polite (`status`). The role IMPLIES aria-live
+      // — so the toast itself is the announced live region and the container is
+      // a plain labeled region (no double-announce). Reactive so an info→error
+      // `update` upgrades urgency.
+      role={() => {
+        const ty = live()?.type
+        return ty === 'error' || ty === 'warning' ? 'alert' : 'status'
+      }}
       aria-atomic="true"
       data-toast-id={id}
     >
-      <div class="pyreon-toast__message">
-        {() => {
-          // `message` is `string | VNodeChild` — VNodeChild includes an
-          // accessor arm, which a reactive child callback may not RETURN
-          // (it must yield an atom). Resolve a function message here so the
-          // type stays honest and a `() => …` message still renders.
-          const m = live()?.message
-          return typeof m === 'function' ? m() : (m ?? '')
-        }}
+      <Show when={icon}>
+        <span class="pyreon-toast__icon" aria-hidden="true">
+          {icon}
+        </span>
+      </Show>
+      <div class="pyreon-toast__content">
+        <div class="pyreon-toast__message">{() => resolve(live()?.message)}</div>
+        <Show when={hasDescription}>
+          <div class="pyreon-toast__description">{() => resolve(live()?.description)}</div>
+        </Show>
       </div>
       {action && (
         <button type="button" class="pyreon-toast__action" onClick={action.onClick}>

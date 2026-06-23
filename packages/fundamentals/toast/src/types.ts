@@ -15,10 +15,12 @@ export type ToastType = 'info' | 'success' | 'warning' | 'error'
 export interface ToastOptions {
   /** Toast variant — controls styling. */
   type?: ToastType
-  /** Auto-dismiss delay in ms. Default: 4000. Set 0 for persistent. */
+  /** Auto-dismiss delay in ms. Default: the Toaster's `duration` (4000). Set 0 for persistent. */
   duration?: number
-  /** Screen position. Default: inherited from Toaster. */
-  position?: ToastPosition
+  /** Optional secondary line rendered under the message. */
+  description?: string | VNodeChild
+  /** Optional leading icon (any VNode — e.g. an SVG or `<Icon>`). */
+  icon?: VNodeChild
   /** Whether the toast shows a dismiss button. Default: true. */
   dismissible?: boolean
   /** Optional action button. */
@@ -36,6 +38,8 @@ export interface ToasterProps {
   gap?: number
   /** Offset from viewport edge in px. Default: 16. */
   offset?: number
+  /** Default auto-dismiss duration in ms for toasts that don't set their own. Default: 4000. Set 0 for persistent-by-default. */
+  duration?: number
 }
 
 export interface ToastPromiseOptions<T> {
@@ -53,6 +57,8 @@ export interface Toast {
   message: string | VNodeChild
   type: ToastType
   duration: number
+  description: string | VNodeChild | undefined
+  icon: VNodeChild | undefined
   dismissible: boolean
   action: { label: string; onClick: () => void } | undefined
   onDismiss: (() => void) | undefined
