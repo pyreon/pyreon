@@ -102,6 +102,14 @@ const $sameResult = parseReactive(sameSchema, $email)
 | [`registerServerCheck`](#registerservercheck) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle |
 | [`catch`](#catch) | function | On parse FAILURE, discard the issues this schema produced and return a fallback instead of erroring — resilient parsing  |
 | [`readonly`](#readonly) | function | Freeze the parsed output and mark it `Readonly<T>` at the type level (Zod's `.readonly`). |
+| [`array`](#array) | function | Wrap this schema in an array — `s.string().array()` ≡ `s.array(s.string())` (Zod's `.array`). |
+| [`or`](#or) | function | Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`). |
+| [`and`](#and) | function | Intersect this schema with another — `a.and(b)` ≡ `s.intersection(a, b)` (Zod's `.and`). |
+| [`pipe`](#pipe) | function | Validate with this schema, then feed the (validated, transformed) output into `target` (Zod's `.pipe`). |
+| [`superRefine`](#superrefine) | function | Like `.refine`, but the callback may add ANY number of issues (or none) via `ctx.addIssue({ message, path? })` — for cro |
+| [`preprocess`](#preprocess) | function | Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen |
+| [`nonoptional`](#nonoptional) | function | Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g. |
+| [`stringbool`](#stringbool) | function | Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). |
 
 ## API
 
@@ -412,6 +420,153 @@ const r = cfg.parse({ port: 80 })
 ```
 
 **See also:** `catch`
+
+---
+
+### array `function`
+
+```ts
+() => ArraySchema<T>
+```
+
+Wrap this schema in an array — `s.string().array()` ≡ `s.array(s.string())` (Zod's `.array`). Chains and nests (`s.number().array().array()`). Late-bound via a tree-shake-safe factory registry so the base class never imports the composition modules (no load-order cycle).
+
+**Example**
+
+```tsx
+s.string().array().parse(['a', 'b']) // → { ok: true, value: ['a', 'b'] }
+```
+
+**See also:** `or` · `and`
+
+---
+
+### or `function`
+
+```ts
+<U>(other: Schema<U>) => UnionSchema<readonly [Schema<T>, Schema<U>]>
+```
+
+Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`). Output type is `T | U`.
+
+**Example**
+
+```tsx
+s.string().or(s.number()) // Schema<string | number>
+```
+
+**See also:** `and` · `array`
+
+---
+
+### and `function`
+
+```ts
+<U>(other: Schema<U>) => IntersectionSchema<T, U>
+```
+
+Intersect this schema with another — `a.and(b)` ≡ `s.intersection(a, b)` (Zod's `.and`). Output type is `T & U`.
+
+**Example**
+
+```tsx
+s.object({ a: s.string() }).and(s.object({ b: s.number() })) // { a } & { b }
+```
+
+**See also:** `or` · `array`
+
+---
+
+### pipe `function`
+
+```ts
+<U>(target: Schema<U>) => Schema<U>
+```
+
+Validate with this schema, then feed the (validated, transformed) output into `target` (Zod's `.pipe`). Ideal for coerce→validate chains. Short-circuits if this schema fails; async-aware. Output type is `target`'s.
+
+**Example**
+
+```tsx
+s.string().transform(Number).pipe(s.number().positive())
+```
+
+**See also:** `preprocess` · `transform`
+
+---
+
+### superRefine `function`
+
+```ts
+(fn: (value: T, ctx: SuperRefineCtx) => void) => Schema<T>
+```
+
+Like `.refine`, but the callback may add ANY number of issues (or none) via `ctx.addIssue({ message, path? })` — for cross-field validation that reports multiple problems at once. `path` is appended to the field's current path. Runs only if this schema passed.
+
+**Example**
+
+```tsx
+s.object({ pw: s.string(), confirm: s.string() }).superRefine((v, ctx) => {
+  if (v.pw !== v.confirm) ctx.addIssue({ message: 'Mismatch', path: ['confirm'] })
+})
+```
+
+**See also:** `refine` · `pipe`
+
+---
+
+### preprocess `function`
+
+```ts
+<TOut>(fn: (input: unknown) => unknown, schema: Schema<TOut>) => Schema<TOut>
+```
+
+Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — for trim/coerce/normalize that must happen before the type-check. A standalone function (also on the `s` namespace), not a method.
+
+**Example**
+
+```tsx
+s.preprocess((v) => String(v).trim(), s.string().min(1))
+```
+
+**See also:** `pipe` · `transform`
+
+---
+
+### nonoptional `function`
+
+```ts
+(message?: string) => Schema<Exclude<T, undefined>>
+```
+
+Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g. after an `.optional()` in a reused base schema.
+
+**Example**
+
+```tsx
+s.string().optional().nonoptional() // rejects undefined again
+```
+
+**See also:** `optional`
+
+---
+
+### stringbool `function`
+
+```ts
+(opts?: { truthy?: string[]; falsy?: string[]; message?: string }) => StringBoolSchema
+```
+
+Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). Type-checks a string, then maps configured truthy/falsy tokens (case-insensitive, trimmed; defaults `true`/`1`/`yes`/`on`/`y`/`enabled` ↔ `false`/`0`/`no`/`off`/`n`/`disabled`) to `true`/`false`; anything else errors. Stricter than `s.coerce.boolean()` (which uses JS truthiness on any input).
+
+**Example**
+
+```tsx
+s.stringbool().parse('yes') // → { ok: true, value: true }
+s.stringbool({ truthy: ['si'], falsy: ['no'] })
+```
+
+**See also:** `coerce`
 
 ---
 
