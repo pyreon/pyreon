@@ -62,6 +62,19 @@ export function validateEmail(value: string, precision: EmailPrecision = 'standa
 
 export const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+// Modern ID / encoding formats (match Zod 4 / Valibot leniency).
+// cuid2: lowercase alphanumeric, must start with a letter (the cuid2 spec).
+export const CUID2_RE = /^[a-z][0-9a-z]+$/
+// ulid: Crockford base32, exactly 26 chars (case-insensitive).
+export const ULID_RE = /^[0-9A-HJKMNP-TV-Z]{26}$/i
+// nanoid: URL-safe alphabet (A-Za-z0-9_-), any length (matches Zod 4).
+export const NANOID_RE = /^[A-Za-z0-9_-]+$/
+// emoji: one-or-more emoji code points (Unicode property escapes).
+export const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Emoji_Component})+$/u
+// base64: standard alphabet with optional `=` padding, length a multiple of 4.
+export const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+// jwt: three base64url segments separated by dots (header.payload.signature).
+export const JWT_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 export const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/
 export const ISO_TIME_RE = /^\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
@@ -328,6 +341,96 @@ export class StringSchema extends SchemaBase<string> {
             ctx,
             opts,
           ),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate a CUID2 (lowercase alphanumeric, starts with a letter). */
+  cuid2(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:cuid2', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('cuid2', (v: string) => CUID2_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid CUID2', 'validate.string.cuid2', {}, 'Invalid CUID2', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate a ULID (Crockford base32, 26 chars). */
+  ulid(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:ulid', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('ulid', (v: string) => ULID_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid ULID', 'validate.string.ulid', {}, 'Invalid ULID', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate a Nano ID (URL-safe alphabet `A-Za-z0-9_-`). */
+  nanoid(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:nanoid', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('nanoid', (v: string) => NANOID_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid Nano ID', 'validate.string.nanoid', {}, 'Invalid Nano ID', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate an emoji string (one or more emoji code points). */
+  emoji(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:emoji', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('emoji', (v: string) => EMOJI_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid emoji', 'validate.string.emoji', {}, 'Invalid emoji', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate standard base64 (alphabet `A-Za-z0-9+/`, optional `=` padding). */
+  base64(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:base64', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('base64', (v: string) => BASE64_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid base64', 'validate.string.base64', {}, 'Invalid base64', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate a JWT shape (three base64url segments: header.payload.signature). */
+  jwt(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:jwt', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('jwt', (v: string) => JWT_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid JWT', 'validate.string.jwt', {}, 'Invalid JWT', ctx, opts),
         )
       }),
     )
