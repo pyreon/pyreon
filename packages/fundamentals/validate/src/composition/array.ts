@@ -6,7 +6,7 @@
  * item; issues are accumulated with `[index, ...path]` paths.
  */
 
-import { Schema as SchemaBase, attachCheck, makeCheckIssue } from '../core/schema'
+import { Schema as SchemaBase, attachCheck, makeCheckIssue, registerArrayFactory } from '../core/schema'
 import type { Schema } from '../core/schema'
 import { typeIssue } from '../core/issue'
 import type { CheckOpts, ParseCtx } from '../core/ops'
@@ -125,6 +125,7 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
   }
 }
 
-export function array<T>(element: Schema<T>): ArraySchema<T> {
-  return new ArraySchema(element)
-}
+// The factory registers itself with the base class from this initializer (so
+// `s.string().array()` works), tree-shake-safe: the call only runs when the
+// `array` export is actually included in a consumer's bundle.
+export const array = registerArrayFactory(<T>(element: Schema<T>): ArraySchema<T> => new ArraySchema(element))

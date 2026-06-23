@@ -23,6 +23,61 @@ import { tryCompileJit } from './jit'
 import type { CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
 import { makeCtx } from './ops'
 import { getServerCheck } from './registry'
+// Type-only imports for the composition shorthand return types (`.array` /
+// `.or` / `.and`). Erased at build time, so they create NO runtime dependency
+// on the composition modules — the base class never imports them as values, so
+// the schema↔composition load-order cycle is structurally impossible. The
+// runtime factories are late-bound via the registry below.
+import type { ArraySchema } from '../composition/array'
+import type { IntersectionSchema } from '../composition/intersection'
+import type { UnionSchema } from '../composition/union'
+
+/**
+ * Late-bound composition factories — populated by the composition modules
+ * (`array` / `union` / `intersection`) at the moment their exports are first
+ * evaluated (the factory is registered from each export's INITIALIZER via
+ * `registerCompositionFactory`, so it is tree-shake-safe: rollup must run the
+ * initializer to produce the used export, yet drops it entirely for consumers
+ * that never import composition — e.g. the DX-helpers-only path). The base
+ * class only ever READS these, so it never imports the composition modules as
+ * values → no schema↔composition load-order cycle.
+ */
+type ArrayFactory = (element: Schema<unknown>) => unknown
+type UnionFactory = (a: Schema<unknown>, b: Schema<unknown>) => unknown
+type IntersectionFactory = (a: Schema<unknown>, b: Schema<unknown>) => unknown
+
+let _arrayFactory: ArrayFactory | undefined
+let _unionFactory: UnionFactory | undefined
+let _intersectionFactory: IntersectionFactory | undefined
+
+/**
+ * Per-factory registrars. Each composition module calls its own from the
+ * export's INITIALIZER (`export const array = registerArrayFactory(fn)`), which
+ * makes registration tree-shake-safe — rollup must evaluate the initializer to
+ * produce the used export, but drops it (and the whole module) for consumers
+ * that never reference composition. `fn` is returned unchanged so the export is
+ * still the bare factory function.
+ */
+export function registerArrayFactory<F extends ArrayFactory>(fn: F): F {
+  _arrayFactory = fn
+  return fn
+}
+export function registerUnionFactory<F extends UnionFactory>(fn: F): F {
+  _unionFactory = fn
+  return fn
+}
+export function registerIntersectionFactory<F extends IntersectionFactory>(fn: F): F {
+  _intersectionFactory = fn
+  return fn
+}
+
+const COMPOSITION_UNREGISTERED =
+  "[Pyreon] .array()/.or()/.and() require the composition factories — import `s` (or `array`/`union`/`intersection`) from '@pyreon/validate' so they register. (A bare `import { string }` that never references composition skips registration.)"
+
+function requireFactory<F>(fn: F | undefined): F {
+  if (!fn) throw new Error(COMPOSITION_UNREGISTERED)
+  return fn
+}
 
 /**
  * Result discriminated union. `parse()` returns this. On success, the
@@ -258,6 +313,36 @@ export abstract class Schema<T> {
     this._ops.push({ kind: 'refine', fn: fn as (v: unknown) => boolean | Promise<boolean>, opts })
     this._invalidateCompile()
     return this
+  }
+
+  /**
+   * Wrap this schema in an array — `s.string().array()` ≡ `s.array(s.string())`
+   * (Zod's `.array()`). Sugar for the common "list of X" shape.
+   *
+   * @example s.string().array().parse(['a', 'b']) // → { ok: true, value: ['a','b'] }
+   */
+  array(): ArraySchema<T> {
+    return requireFactory(_arrayFactory)(this) as ArraySchema<T>
+  }
+
+  /**
+   * Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`).
+   * Output type is `T | U`.
+   *
+   * @example s.string().or(s.number()) // Schema<string | number>
+   */
+  or<U>(other: Schema<U>): UnionSchema<readonly [Schema<T>, Schema<U>]> {
+    return requireFactory(_unionFactory)(this, other) as UnionSchema<readonly [Schema<T>, Schema<U>]>
+  }
+
+  /**
+   * Intersect this schema with another — `a.and(b)` ≡ `s.intersection(a, b)`
+   * (Zod's `.and`). Output type is `T & U`.
+   *
+   * @example s.object({ a: s.string() }).and(s.object({ b: s.number() }))
+   */
+  and<U>(other: Schema<U>): IntersectionSchema<T, U> {
+    return requireFactory(_intersectionFactory)(this, other) as IntersectionSchema<T, U>
   }
 
   /**
