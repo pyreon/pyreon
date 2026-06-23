@@ -109,8 +109,8 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
       {...(rest as Record<string, unknown>)}
       ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       role="radio"
-      aria-checked={checked()}
-      aria-disabled={isDisabled() || undefined}
+      aria-checked={checked() ? 'true' : 'false'}
+      aria-disabled={isDisabled() ? 'true' : undefined}
       data-checked={checked() || undefined}
       data-disabled={isDisabled() || undefined}
       data-value={own.value}

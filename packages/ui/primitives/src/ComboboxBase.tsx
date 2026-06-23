@@ -181,7 +181,7 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     isSelected: isSelectedFn,
     inputProps: () => ({
       role: 'combobox',
-      'aria-expanded': isOpen(),
+      'aria-expanded': isOpen() ? 'true' : 'false',
       'aria-controls': listboxId,
       'aria-activedescendant': getActiveDescendantId(),
       'aria-autocomplete': 'list' as const,
@@ -193,8 +193,8 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     getOptionProps: (value: string, index: number) => ({
       role: 'option',
       id: `${baseId}-option-${index}`,
-      'aria-selected': isSelectedFn(value),
-      'aria-disabled': own.options.find((o) => o.value === value)?.disabled || undefined,
+      'aria-selected': isSelectedFn(value) ? 'true' : 'false',
+      'aria-disabled': own.options.find((o) => o.value === value)?.disabled ? 'true' : undefined,
     }),
   }
 

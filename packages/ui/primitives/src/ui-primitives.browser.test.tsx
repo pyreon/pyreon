@@ -55,10 +55,10 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
     expect(sw).not.toBeNull()
     expect(sw.tagName).toBe('BUTTON')
     expect(sw.getAttribute('role')).toBe('switch')
-    // `defaultChecked: true` → aria-checked attribute is present in DOM
-    // (Pyreon renders boolean-true as empty-string attr). Testing the
-    // toggle interaction belongs in unit tests, not the browser smoke.
-    expect(sw.hasAttribute('aria-checked')).toBe(true)
+    // `defaultChecked: true` → aria-checked="true" (the STRING value — not
+    // presence-only "", which assistive tech does NOT read as checked). The
+    // toggle interaction is covered by unit tests, not this smoke.
+    expect(sw.getAttribute('aria-checked')).toBe('true')
 
     unmount()
     expect(document.getElementById('smoke-switch')).toBeNull()
@@ -75,7 +75,7 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
     const cb = query<HTMLElement>(container, '#smoke-cb')
     expect(cb).not.toBeNull()
     expect(cb.getAttribute('role')).toBe('checkbox')
-    expect(cb.hasAttribute('aria-checked')).toBe(true)
+    expect(cb.getAttribute('aria-checked')).toBe('true')
 
     unmount()
     expect(document.getElementById('smoke-cb')).toBeNull()
@@ -101,7 +101,10 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
     const selected = container.querySelector<HTMLElement>('[data-value="a"]')!
     const unselected = container.querySelector<HTMLElement>('[data-value="b"]')!
     expect(selected.getAttribute('role')).toBe('radio')
-    expect(selected.hasAttribute('aria-checked')).toBe(true)
+    expect(selected.getAttribute('aria-checked')).toBe('true')
+    // the unselected radio reports aria-checked="false" explicitly (string),
+    // not an absent/empty attr — so its state is announced correctly.
+    expect(unselected.getAttribute('aria-checked')).toBe('false')
     expect(unselected.hasAttribute('data-checked')).toBe(false)
 
     unmount()
@@ -128,7 +131,7 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
     const activeTab = container.querySelector<HTMLElement>('[data-value="a"]')!
     expect(activeTab.getAttribute('role')).toBe('tab')
     expect(activeTab.hasAttribute('data-active')).toBe(true)
-    expect(activeTab.hasAttribute('aria-selected')).toBe(true)
+    expect(activeTab.getAttribute('aria-selected')).toBe('true')
 
     // TabPanelBase conditional-renders on isActive → only the active panel is in the DOM.
     const panels = container.querySelectorAll('[role="tabpanel"]')
@@ -196,9 +199,9 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
     // Root + its expanded child both visible.
     expect(items.length).toBe(2)
     expect(items[0]!.getAttribute('aria-level')).toBe('1')
-    // Root has children + is expanded → aria-expanded present (Pyreon renders
-    // boolean-true as an empty-string attr, same as aria-checked above).
-    expect(items[0]!.hasAttribute('aria-expanded')).toBe(true)
+    // Root has children + is expanded → aria-expanded="true" (the STRING
+    // value, not presence-only "").
+    expect(items[0]!.getAttribute('aria-expanded')).toBe('true')
 
     unmount()
     expect(document.getElementById('smoke-tree')).toBeNull()
@@ -228,6 +231,8 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
     const input = query<HTMLElement>(container, '#smoke-cbx')
     expect(input.getAttribute('role')).toBe('combobox')
     expect(input.getAttribute('aria-autocomplete')).toBe('list')
+    // closed combobox → aria-expanded="false" (STRING value, not absent/"")
+    expect(input.getAttribute('aria-expanded')).toBe('false')
 
     expect(container.querySelector('[role="listbox"]')).not.toBeNull()
     expect(container.querySelectorAll('[role="option"]').length).toBe(2)
