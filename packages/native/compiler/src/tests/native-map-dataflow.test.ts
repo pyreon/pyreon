@@ -10,9 +10,13 @@
 //   computed(() => nums().map(n => n * 2))  -> Swift  var x: [Int]  { … }
 //   computed(() => nums().map(n => n > 0))  -> Swift  var x: [Bool] { … }
 //
-// Shared `inferType` → both targets benefit. Falls back to `Array<unknown>`
-// when the body can't be inferred (e.g. member access on a typeRef element
-// whose struct fields aren't in the inference ctx).
+// Shared `inferType` → both targets benefit. Member access on a typeRef
+// element (`todos().map(t => t.id)` where `t: Todo`) now ALSO resolves —
+// the declared `type Todo = { ... }` is threaded into the inference ctx's
+// struct registry, so `t.id` infers `Int` and the computed is `[Int]`, not
+// the `[Any]` it degraded to before. Falls back to `Array<unknown>` only
+// when the element's struct genuinely isn't declared (inline anonymous
+// shapes the parser didn't capture as a named struct).
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -44,8 +48,10 @@ describe('.map element-type dataflow', () => {
     expect(out).toContain('private var same: [Int]')
   })
 
-  it('an un-inferable .map body falls back to no precise type (no regression)', () => {
-    // member access on a typeRef element (no struct fields in ctx) → unknown
+  it('member access on a typeRef element resolves the field type via the struct registry', () => {
+    // `rows().map(r => r.label)` where `r: Row` (a declared module type) —
+    // the struct registry resolves `r.label` to String, so the computed is
+    // `[String]`, NOT the `[Any]` it degraded to before this fix.
     const out = transform(
       `import { Stack, Text } from '@pyreon/primitives'
 type Row = { label: string }
@@ -56,9 +62,72 @@ function App() {
 }`,
       { target: 'swift' },
     ).code
-    // doesn't crash; the computed emits (type may be Any — the fallback)
-    expect(out).toContain('var labels')
+    expect(out).toContain('private var labels: [String]')
+    expect(out).not.toContain('[Any]')
   })
+
+  it('resolves every scalar field type of a multi-field struct element', () => {
+    // The dominant real-app shape: a typed object-array signal + multiple
+    // computeds projecting different fields. Each `.map(t => t.FIELD)` infers
+    // the field's concrete type — `id`→[Int], `text`→[String], `done`→[Bool].
+    const src = `import { Stack, Text } from '@pyreon/primitives'
+type Todo = { id: number; text: string; done: boolean }
+function App() {
+  const todos = signal<Todo[]>([])
+  const ids = computed(() => todos().map(t => t.id))
+  const texts = computed(() => todos().map(t => t.text))
+  const flags = computed(() => todos().map(t => t.done))
+  return (<Stack><Text>x</Text></Stack>)
+}`
+    const swift = transform(src, { target: 'swift' }).code
+    expect(swift).toContain('private var ids: [Int]')
+    expect(swift).toContain('private var texts: [String]')
+    expect(swift).toContain('private var flags: [Bool]')
+    expect(swift).not.toContain('[Any]')
+    // Kotlin emits no explicit annotation on `by remember { derivedStateOf {…} }`
+    // (the type flows from the body), but the element types must not collapse
+    // to `Any` anywhere in the projected expressions.
+    const kotlin = transform(src, { target: 'kotlin' }).code
+    expect(kotlin).not.toContain('List<Any>')
+  })
+
+  it.skipIf(!isSwiftcAvailable())(
+    'Swift: typeRef-element .map computeds typecheck via swiftc',
+    () => {
+      const out = transform(
+        `import { Stack, Text } from '@pyreon/primitives'
+type Todo = { id: number; text: string; done: boolean }
+function App() {
+  const todos = signal<Todo[]>([])
+  const ids = computed(() => todos().map(t => t.id))
+  const texts = computed(() => todos().map(t => t.text))
+  return (<Stack><Text>x</Text></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      const res = validateSwift(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
+
+  it.skipIf(!isKotlincAvailable())(
+    'Kotlin: typeRef-element .map computeds typecheck via kotlinc',
+    () => {
+      const out = transform(
+        `import { Stack, Text } from '@pyreon/primitives'
+type Todo = { id: number; text: string; done: boolean }
+function App() {
+  const todos = signal<Todo[]>([])
+  const ids = computed(() => todos().map(t => t.id))
+  const texts = computed(() => todos().map(t => t.text))
+  return (<Stack><Text>x</Text></Stack>)
+}`,
+        { target: 'kotlin' },
+      ).code
+      const res = validateKotlin(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
 
   it.skipIf(!isSwiftcAvailable())('Swift: scalar .map computeds typecheck via swiftc', () => {
     const out = transform(
