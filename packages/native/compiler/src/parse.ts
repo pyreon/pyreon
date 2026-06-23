@@ -3744,6 +3744,18 @@ function tryFunctionDecl(
 function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
   const out: StatementIR[] = []
   for (const stmt of (block.body as AnyNode[] | undefined) ?? []) {
+    // Multi-declarator (`const a = 1, b = 2`) → split into N single-decl
+    // statements (Swift + Kotlin both emit one `let`/`val` per binding;
+    // there is no combined-declarator form on either target). Re-parse each
+    // declarator through the single-decl path so every binding shape it
+    // already supports (incl. value inference) carries over verbatim.
+    if (stmt.type === 'VariableDeclaration' && ((stmt.declarations as AnyNode[])?.length ?? 0) > 1) {
+      for (const d of stmt.declarations as AnyNode[]) {
+        const single = parseStatement({ ...stmt, declarations: [d] }, ctx)
+        if (single) out.push(single)
+      }
+      continue
+    }
     const parsed = parseStatement(stmt, ctx)
     if (parsed) out.push(parsed)
   }
