@@ -23,6 +23,18 @@ export interface StorageOptions<T> {
   deserializer?: (raw: string) => T
   /** Called when deserialization fails — returns fallback or void for default */
   onError?: (error: Error) => T | undefined
+  /**
+   * Debounce the persistence WRITE by this many ms (localStorage /
+   * sessionStorage only). The signal still updates SYNCHRONOUSLY on every
+   * `.set` (the UI stays reactive); only the synchronous `JSON.stringify` +
+   * `setItem` is coalesced, so a high-frequency setter (e.g. a draft persisted
+   * on every keystroke) doesn't block the main thread per write. The latest
+   * value wins, and a pending write is flushed on `pagehide`/`beforeunload`
+   * so the last value is never lost on tab close. Omit (or `0`) for the
+   * default synchronous write. Has no effect on cookie / IndexedDB / memory
+   * backends.
+   */
+  writeDebounceMs?: number
 }
 
 // ─── Cookie Options ──────────────────────────────────────────────────────────

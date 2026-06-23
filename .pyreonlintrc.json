@@ -28,7 +28,8 @@
       {
         "exemptPaths": [
           "packages/core/runtime-dom/",
-          "packages/fundamentals/hooks/"
+          "packages/fundamentals/hooks/",
+          "packages/fundamentals/storage/"
         ]
       }
     ],
