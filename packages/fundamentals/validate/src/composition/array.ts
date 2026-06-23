@@ -26,16 +26,20 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
       return input
     }
     const out: unknown[] = []
+    // An element validator that returns a Promise (an async `.serverCheck` /
+    // `.refine` under `parseAsync`) reserves its output slot now and is filled
+    // after the await; if any element is async the whole array resolves to a
+    // Promise. The all-sync path is unchanged — no Promise allocation.
+    let pending: Array<{ slot: number; promise: Promise<unknown> }> | null = null
     for (let i = 0; i < input.length; i++) {
       ctx.path.push(i)
       try {
         const before = ctx.issues.length
         const v = this.element._runInto(input[i], ctx)
         if (v instanceof Promise) {
-          ctx.issues.push({
-            message: '[Pyreon] async element schema used in sync parse — use parseAsync',
-            path: ctx.path,
-          })
+          const slot = out.length
+          out.push(undefined)
+          ;(pending ??= []).push({ slot, promise: v })
         } else if (ctx.issues.length === before) {
           out.push(v)
         }
@@ -43,7 +47,12 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
         ctx.path.pop()
       }
     }
-    return out
+    if (!pending) return out
+    const pend = pending
+    return Promise.all(pend.map((p) => p.promise)).then((resolved) => {
+      for (let i = 0; i < pend.length; i++) out[pend[i]!.slot] = resolved[i]
+      return out
+    })
   }
 
   // ─── Length checks ─────────────────────────────────────────────────

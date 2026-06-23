@@ -55,3 +55,39 @@ export function uninstallFormatValidator(name: string): void {
 export function resolveFormat(name: string, light: FormatValidator): FormatValidator {
   return installed.get(name) ?? light
 }
+
+// ─── Server-only check registry (`.serverCheck`) ────────────────────────────
+//
+// Unlike the format registry (sync boolean, swaps a default), a server check
+// has NO client default: it is the heavy/async/privileged half of the split
+// (uniqueness, breach-check, MX, DB cross-field). The shared schema carries
+// only the KEY; the validator is installed behind `@pyreon/validate/server`,
+// so the implementation never reaches the client bundle. On the client the
+// key is absent → the check no-ops and records a `pending` entry. On the
+// server the registered fn runs with the parse context (DB handle, request).
+
+/**
+ * A server-only check: returns `true` if valid. May be async (DB / network)
+ * and receives the opaque parse `context` threaded by `parseAsync`.
+ */
+export type ServerCheckFn = (value: unknown, context?: unknown) => boolean | Promise<boolean>
+
+const serverChecks = new Map<string, ServerCheckFn>()
+
+/**
+ * Install a server-only check under `key` (called from
+ * `@pyreon/validate/server` via `registerServerCheck`). Idempotent.
+ */
+export function installServerCheck(key: string, fn: ServerCheckFn): void {
+  serverChecks.set(key, fn)
+}
+
+/** The installed server check for `key`, or `undefined` (→ client no-op + pending). */
+export function getServerCheck(key: string): ServerCheckFn | undefined {
+  return serverChecks.get(key)
+}
+
+/** Remove an installed server check (test isolation / opt-out). */
+export function uninstallServerCheck(key: string): void {
+  serverChecks.delete(key)
+}

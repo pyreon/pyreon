@@ -23,8 +23,31 @@
  * ```
  */
 
-import { installFormatValidator } from './core/registry'
+import {
+  installFormatValidator,
+  installServerCheck,
+  type ServerCheckFn,
+  uninstallServerCheck,
+} from './core/registry'
 import { validateEmail } from './primitives/string'
+
+/**
+ * Register the heavy/async/privileged half of a `.serverCheck(key)` — the
+ * implementation that must NEVER reach the client bundle (DB lookups,
+ * breach-checks, MX, cross-field). Call from a server-only module; the
+ * matching `s.…serverCheck(key)` in the shared schema then validates here.
+ *
+ * @example
+ * registerServerCheck('email-unique', async (value, ctx) => {
+ *   const db = (ctx as { db: Db }).db
+ *   return !(await db.user.existsByEmail(value as string))
+ * })
+ */
+export function registerServerCheck(key: string, fn: ServerCheckFn): void {
+  installServerCheck(key, fn)
+}
+
+export { uninstallServerCheck, type ServerCheckFn }
 
 /**
  * A small representative disposable / throwaway-email domain blocklist.
