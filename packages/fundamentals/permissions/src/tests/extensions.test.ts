@@ -97,6 +97,16 @@ describe('can.assert', () => {
     const can = createPermissions()
     expect(() => can.assert('anything')).toThrow('[Pyreon] permission denied')
   })
+
+  it('uses a custom message when provided', () => {
+    const can = createPermissions({ 'billing.export': false })
+    expect(() => can.assert('billing.export', undefined, 'Upgrade your plan to export')).toThrow(
+      '[Pyreon] Upgrade your plan to export',
+    )
+    // still no-throw when granted, message ignored
+    can.set({ 'billing.export': true })
+    expect(() => can.assert('billing.export', undefined, 'Upgrade your plan to export')).not.toThrow()
+  })
 })
 
 // ─── can.clear ──────────────────────────────────────────────────────────────────

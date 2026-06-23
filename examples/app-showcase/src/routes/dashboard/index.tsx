@@ -61,7 +61,7 @@ const activeTab = signal<Tab>('orders')
 export default function DashboardPageRoute() {
   return (
     <QueryClientProvider client={queryClient}>
-      <PermissionsProvider instance={dashboardPermissions}>
+      <PermissionsProvider value={dashboardPermissions}>
         <DashboardPage>
           <Header>
             <HeaderText>

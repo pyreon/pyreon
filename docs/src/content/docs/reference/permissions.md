@@ -130,16 +130,17 @@ can.patch({ 'posts.delete': true })  // merge
 ### can.assert `function`
 
 ```ts
-can.assert(key: string, context?: unknown) => void
+can.assert(key: string, context?: unknown, message?: string) => void
 ```
 
-Throw if a permission is NOT granted — the imperative companion to the reactive `can()` check, for route loaders, navigation guards, and server actions where a denial must halt execution. Throws a `[Pyreon]`-prefixed error (`permission denied: '<key>'`); returns void when granted. Evaluates predicates + wildcards exactly like `can()`.
+Throw if a permission is NOT granted — the imperative companion to the reactive `can()` check, for route loaders, navigation guards, and server actions where a denial must halt execution. Throws a `[Pyreon]`-prefixed error — a custom `message`, or `permission denied: '<key>'` by default; returns void when granted. Evaluates predicates + wildcards exactly like `can()`.
 
 **Example**
 
 ```tsx
 // in a route loader / server action:
-can.assert('posts.delete', post) // throws if denied
+can.assert('posts.delete', post) // throws "[Pyreon] permission denied: 'posts.delete'"
+can.assert('billing.export', undefined, 'Upgrade your plan to export') // custom message
 await deletePost(post)
 ```
 

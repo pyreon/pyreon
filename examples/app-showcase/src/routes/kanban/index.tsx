@@ -154,7 +154,7 @@ export default function KanbanRoute() {
   }
 
   return (
-    <PermissionsProvider instance={kanbanPermissions}>
+    <PermissionsProvider value={kanbanPermissions}>
       <KanbanPage>
         <Header>
           <HeaderText>
