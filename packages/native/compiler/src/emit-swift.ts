@@ -1622,6 +1622,43 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
         .join('\n')
       return `${head} else {\n${elseLines}\n${pad}}`
     }
+    case 'while': {
+      const pad = ' '.repeat(indent)
+      const cond = emitSwiftExpr(s.cond, indent)
+      const lines = s.body
+        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
+        .join('\n')
+      return `while ${cond} {\n${lines}\n${pad}}`
+    }
+    case 'for-of': {
+      const pad = ' '.repeat(indent)
+      const iter = emitSwiftExpr(s.iterable, indent)
+      const lines = s.body
+        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
+        .join('\n')
+      return `for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
+    }
+    case 'switch': {
+      const pad = ' '.repeat(indent)
+      const disc = emitSwiftExpr(s.discriminant, indent)
+      const caseLines = s.cases
+        .map((c) => {
+          const bodyLines = c.body
+            .map((t) => `${pad}    ${emitSwiftStatement(t, indent + 4)}`)
+            .join('\n')
+          // A Swift `case` body cannot be empty — emit `break` as a no-op.
+          const body = bodyLines.length > 0 ? bodyLines : `${pad}    break`
+          if (c.tests.length === 0) return `${pad}  default:\n${body}`
+          const labels = c.tests.map((t) => emitSwiftExpr(t, indent)).join(', ')
+          return `${pad}  case ${labels}:\n${body}`
+        })
+        .join('\n')
+      // Swift `switch` must be EXHAUSTIVE — a String/Int discriminant needs
+      // a `default`. Append one (no-op) when the source omitted it.
+      const hasDefault = s.cases.some((c) => c.tests.length === 0)
+      const defaultClause = hasDefault ? '' : `\n${pad}  default:\n${pad}    break`
+      return `switch ${disc} {\n${caseLines}${defaultClause}\n${pad}}`
+    }
   }
 }
 

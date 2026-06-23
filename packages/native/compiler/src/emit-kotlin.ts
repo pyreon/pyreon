@@ -1532,6 +1532,39 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
         .join('\n')
       return `${head} else {\n${elseLines}\n${pad}}`
     }
+    case 'while': {
+      const pad = ' '.repeat(indent)
+      const cond = emitKotlinExpr(s.cond, indent)
+      const lines = s.body
+        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
+        .join('\n')
+      return `while (${cond}) {\n${lines}\n${pad}}`
+    }
+    case 'for-of': {
+      const pad = ' '.repeat(indent)
+      const iter = emitKotlinExpr(s.iterable, indent)
+      const lines = s.body
+        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
+        .join('\n')
+      return `for (${kotlinIdent(s.item)} in ${iter}) {\n${lines}\n${pad}}`
+    }
+    case 'switch': {
+      const pad = ' '.repeat(indent)
+      const disc = emitKotlinExpr(s.discriminant, indent)
+      const caseLines = s.cases
+        .map((c) => {
+          const bodyLines = c.body
+            .map((t) => `${pad}    ${emitKotlinStatement(t, indent + 4, ctx)}`)
+            .join('\n')
+          const body = bodyLines.length > 0 ? `{\n${bodyLines}\n${pad}  }` : '{}'
+          if (c.tests.length === 0) return `${pad}  else -> ${body}`
+          const labels = c.tests.map((t) => emitKotlinExpr(t, indent)).join(', ')
+          return `${pad}  ${labels} -> ${body}`
+        })
+        .join('\n')
+      // Kotlin `when` as a STATEMENT need not be exhaustive — no forced else.
+      return `when (${disc}) {\n${caseLines}\n${pad}}`
+    }
   }
 }
 
