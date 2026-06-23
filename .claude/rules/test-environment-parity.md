@@ -26,6 +26,7 @@ The canonical machine-readable list lives at [`.claude/rules/browser-packages.js
 - `@pyreon/elements`, `@pyreon/styler`, `@pyreon/unistyle`, `@pyreon/rocketstyle`, `@pyreon/coolgrid`, `@pyreon/kinetic`
 - `@pyreon/connector-document`
 - `@pyreon/dnd`
+- `@pyreon/toast`
 - All `compat` packages (`react-compat`, `preact-compat`, `vue-compat`, `solid-compat`)
 
 The smoke test imports the public API, mounts a minimal example, exercises 1-2 key flows, and asserts observable behavior in a real browser. Not exhaustive — just enough to catch environment divergence.

@@ -1,5 +1,5 @@
 import type { VNodeChild } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
 import type { Toast, ToastOptions, ToastPromiseOptions, ToastType } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -24,6 +24,25 @@ export const MAX_TOASTS = 50
  * Consumed by the `Toaster` component.
  */
 export const _toasts = signal<Toast[]>([])
+
+/**
+ * `id → Toast` lookup, derived once per `_toasts` change.
+ *
+ * Load-bearing for the Toaster's per-row reactivity. `<For by={id}>` rows mount
+ * ONCE per key (W22 contract) — the `item` passed to the render callback is a
+ * snapshot, so reading `toast.message`/`type`/`state` off it goes stale when an
+ * update/promise-transition/entering→visible promotion REPLACES the toast
+ * object under the same id. Each `ToastItem` instead reads its live fields via
+ * `_toastMap().get(id)` inside reactive thunks, so a single update patches only
+ * that toast's text node / className in place — 0 component re-renders. Same
+ * pattern as `@pyreon/flow`'s `nodeMap` (O(N) rebuild once + O(1) per-row get,
+ * never the O(N²) of a per-row `_toasts().find()`).
+ */
+export const _toastMap = computed(() => {
+  const m = new Map<string, Toast>()
+  for (const t of _toasts()) m.set(t.id, t)
+  return m
+})
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 

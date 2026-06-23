@@ -11,6 +11,7 @@
     "@pyreon/document-primitives",
     "@pyreon/connector-document",
     "@pyreon/dnd",
+    "@pyreon/toast",
     "@pyreon/elements",
     "@pyreon/styler",
     "@pyreon/unistyle",
