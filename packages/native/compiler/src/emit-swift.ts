@@ -2363,6 +2363,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       }
       return `${bl} ${e.op} ${br}`
     }
+    case 'template': {
+      // Template literal → native Swift string interpolation
+      // `"<quasi>\(expr)<quasi>…"`. Interpolation (not `+`-concat) coerces
+      // any interpoland to String — `"n=\(count)"` works for an Int where
+      // `"n=" + count` is a Swift type error. Quasis are COOKED, so they
+      // re-escape with the control-char additions (cooked may carry real
+      // newlines/tabs that a single-line string literal can't hold raw).
+      let s = '"'
+      for (let i = 0; i < e.quasis.length; i++) {
+        s += escapeSwiftStringSegment(e.quasis[i] ?? '')
+        if (i < e.exprs.length) s += `\\(${emitSwiftExpr(e.exprs[i]!, indent)})`
+      }
+      return s + '"'
+    }
     case 'comparison': {
       // Pyreon `===` / `!==` already coalesced to `==` / `!=` at parse;
       // Swift takes them verbatim.
@@ -2767,8 +2781,21 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   }
   const parts: string[] = []
   for (const c of e.children) {
-    if (c.kind === 'text') parts.push(escapeSwiftInterp(c.value))
-    else parts.push(`\\(${emitSwiftExpr(c.expr, indent)})`)
+    if (c.kind === 'text') {
+      parts.push(escapeSwiftInterp(c.value))
+    } else if (c.expr.kind === 'template') {
+      // Splice a template child's segments directly into the Text's own
+      // interpolation so `<Text>{`Hi ${n}`}</Text>` emits `Text("Hi \(n)")`
+      // — not the redundant `Text("\("Hi \(n)")")` (a string interpolated
+      // into a string).
+      const t = c.expr
+      for (let i = 0; i < t.quasis.length; i++) {
+        parts.push(escapeSwiftStringSegment(t.quasis[i] ?? ''))
+        if (i < t.exprs.length) parts.push(`\\(${emitSwiftExpr(t.exprs[i]!, indent)})`)
+      }
+    } else {
+      parts.push(`\\(${emitSwiftExpr(c.expr, indent)})`)
+    }
   }
   return `Text("${parts.join('')}")`
 }
@@ -4803,6 +4830,11 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     // Value expression child of a container (`<Button>{t.done ? 'done'
     // : 'todo'}</Button>`, `<Stack>{count}</Stack>`) — wrap in Text
     // string-interpolation, the same shape `<Text>{expr}</Text>` emits.
+    // A template child already emits a Swift String literal, so use it as
+    // the Text content directly (no redundant `Text("\("…")")` wrap).
+    if (c.expr.kind === 'template') {
+      return `Text(${emitSwiftExpr(c.expr, indent)})`
+    }
     return `Text("\\(${emitSwiftExpr(c.expr, indent)})")`
   }
   // `{cond && <View/>}` — the dominant React/Solid conditional-render
@@ -4861,6 +4893,21 @@ function extractMemberPath(expr: ExprIR): string {
 function escapeSwiftInterp(s: string): string {
   // Escape backslashes + double-quotes + the `\(` interpolation marker.
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\\\(/g, '\\\\(')
+}
+
+/**
+ * Escape a COOKED string segment for a Swift interpolated string literal.
+ * Builds on `escapeSwiftInterp` (\, ", `\(`) and additionally escapes real
+ * control characters — a cooked template quasi can carry an actual newline /
+ * CR / tab (e.g. a multiline `` `a\nb` ``) that a single-line Swift string
+ * literal cannot hold raw. The added escapes run AFTER escapeSwiftInterp so
+ * their backslashes aren't double-escaped.
+ */
+function escapeSwiftStringSegment(s: string): string {
+  return escapeSwiftInterp(s)
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
 }
 
 /**

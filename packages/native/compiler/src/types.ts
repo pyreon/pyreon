@@ -595,6 +595,18 @@ export type ExprIR =
   | { kind: 'index'; object: ExprIR; index: ExprIR }
   | { kind: 'binary'; op: '+' | '-' | '*' | '/' | '%'; left: ExprIR; right: ExprIR }
   /**
+   * Template literal — `` `Hello ${name}!` ``. String interpolation is the
+   * single most common out-of-subset expression (labels, formatted values).
+   * Lowered to NATIVE string interpolation (Swift `"Hello \(name)!"`, Kotlin
+   * `"Hello ${name}!"`) — NOT `+`-concat, because Swift's `+` does not coerce
+   * a non-String interpoland (`"n=" + count` is a Swift type error), while
+   * interpolation coerces any type on both targets. `quasis` are the COOKED
+   * literal segments (escaped per-target at emit); `exprs` interleave between
+   * them (`quasis.length === exprs.length + 1`). Tagged templates stay
+   * warn-dropped (no native equivalent).
+   */
+  | { kind: 'template'; quasis: string[]; exprs: ExprIR[] }
+  /**
    * Comparison + equality operators emit as-is on both Swift and Kotlin
    * (`==` / `!=` / `<` / `>` / `<=` / `>=`). Added in the Parser-A slice
    * because TodoMVC's filter conditionals (`t.id === id`, `filter() === 'active'`)

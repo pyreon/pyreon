@@ -4167,17 +4167,21 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         .filter((c): c is ChildIR => c !== null)
       return { kind: 'jsx-fragment', children }
     }
-    case 'TemplateLiteral':
-      // The single most common out-of-subset construct (string interpolation).
-      // Lowering it to native string concatenation is a tracked follow-up;
-      // until then, name it loudly with the exact rewrite instead of silently
-      // emitting "" (which produced empty labels with no signal).
-      return unsupportedExpr(
-        ctx,
-        node,
-        'A template literal',
-        "use string concatenation — `'Hi ' + name` (template-literal lowering is a tracked follow-up).",
+    case 'TemplateLiteral': {
+      // The single most common out-of-subset expression (string
+      // interpolation). LOWERED to native interpolation (Swift `"\(…)"`,
+      // Kotlin `"${…}"`) — see the `template` ExprIR in types.ts for why
+      // interpolation, not `+`-concat (Swift's `+` doesn't coerce a
+      // non-String interpoland). `quasis` are the COOKED segments (resolved
+      // escapes — re-escaped per-target at emit); `expressions` interleave.
+      const quasis = ((node.quasis as AnyNode[] | undefined) ?? []).map(
+        (q) => (q?.value?.cooked ?? q?.value?.raw ?? '') as string,
       )
+      const exprs = ((node.expressions as AnyNode[] | undefined) ?? []).map((ex) =>
+        parseExpr(ex, ctx),
+      )
+      return { kind: 'template', quasis, exprs }
+    }
     case 'TaggedTemplateExpression':
       return unsupportedExpr(
         ctx,

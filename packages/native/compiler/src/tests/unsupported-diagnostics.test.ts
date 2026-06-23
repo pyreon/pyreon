@@ -34,12 +34,13 @@ const warningsFor = (expr: string): string[] =>
   transform(wrapJsx(expr), { target: 'swift' }).warnings ?? []
 
 describe('unsupported-construct diagnostics — located + actionable', () => {
-  it('template literal: names the site + the string-concat rewrite', () => {
-    const w = warningsFor('`hi ${name}`')
-    const hit = w.find((m) => m.includes('template literal'))
-    expect(hit).toBeDefined()
-    expect(hit!).toMatch(/^\[\d+:\d+\]/) // located
-    expect(hit!).toContain('string concatenation')
+  it('template literal: now LOWERS to native interpolation (no unsupported warning)', () => {
+    // Previously warn-dropped to ""; now lowers to native string
+    // interpolation, so it no longer produces an unsupported-construct
+    // warning. (See native-template-literal.test.ts for the emit contract.)
+    const result = transform(wrapJsx('`hi ${name}`'), { target: 'swift' })
+    expect(result.warnings.some((m) => m.includes('template literal'))).toBe(false)
+    expect(result.code).toContain('Text("hi \\(name)")')
   })
 
   it('optional chaining: names the site + the explicit-guard rewrite', () => {
@@ -60,8 +61,10 @@ describe('unsupported-construct diagnostics — located + actionable', () => {
   it('the location line number is ACCURATE (points at the real line, not 1)', () => {
     // The <Text> sits on line 7 of wrapJsx — a construct there must report a
     // line > 1, proving locOf reads the real byte offset, not a constant.
-    const w = warningsFor('`t ${name}`')
-    const hit = w.find((m) => m.includes('template literal'))!
+    // (Template literals now lower, so use a still-unsupported construct —
+    // optional chaining — to exercise the located-warning contract.)
+    const w = warningsFor('obj?.field')
+    const hit = w.find((m) => m.includes('Optional chaining'))!
     const line = Number(hit.match(/^\[(\d+):/)![1])
     expect(line).toBeGreaterThan(1)
   })
