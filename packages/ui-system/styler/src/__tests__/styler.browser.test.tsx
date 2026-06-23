@@ -191,4 +191,76 @@ describe('@pyreon/styler in real browser', () => {
     expect(found).toBe(true)
     unmount()
   })
+
+  // ── innerRef → ref alias ────────────────────────────────────────────
+  // `@pyreon/elements` Element supports `innerRef`; `styled()` historically
+  // only honored `ref`, so `<Styled innerRef={fn}>` silently dropped the ref
+  // (the callback never fired → e.g. a virtualizer's scroll element was never
+  // captured → empty list). styled() now aliases innerRef→ref.
+
+  it('innerRef on a STATIC styled component delivers the DOM node', () => {
+    const Box = styled('div')`
+      color: rgb(0, 0, 0);
+    `
+    let captured: Element | null = null
+    const { container, unmount } = mountInBrowser(
+      h(Box, { id: 'sref', innerRef: (el: Element | null) => (captured = el) }),
+    )
+    const el = container.querySelector<HTMLDivElement>('#sref')
+    expect(el).not.toBeNull()
+    // The callback fired with the real mounted DOM node — not dropped.
+    expect(captured).toBe(el)
+    unmount()
+  })
+
+  it('innerRef on a DYNAMIC styled component delivers the DOM node', () => {
+    const Box = styled('div')<{ $tone: string }>`
+      color: ${(p) => p.$tone};
+    `
+    let captured: Element | null = null
+    const { container, unmount } = mountInBrowser(
+      h(Box, {
+        id: 'dref',
+        $tone: 'rgb(0, 128, 0)',
+        innerRef: (el: Element | null) => (captured = el),
+      }),
+    )
+    const el = container.querySelector<HTMLDivElement>('#dref')
+    expect(captured).toBe(el)
+    // The dynamic class path still applies — alias doesn't disturb resolution.
+    expect(el?.className).toMatch(/^pyr-/)
+    unmount()
+  })
+
+  it('explicit ref wins over innerRef (ref fires, innerRef ignored)', () => {
+    const Box = styled('div')`
+      color: rgb(0, 0, 0);
+    `
+    let refEl: Element | null = null
+    let innerEl: Element | null = null
+    const { container, unmount } = mountInBrowser(
+      h(Box, {
+        id: 'both',
+        ref: (el: Element | null) => (refEl = el),
+        innerRef: (el: Element | null) => (innerEl = el),
+      }),
+    )
+    const el = container.querySelector<HTMLDivElement>('#both')
+    expect(refEl).toBe(el)
+    expect(innerEl).toBeNull()
+    unmount()
+  })
+
+  it('innerRef is NOT forwarded to the DOM as an attribute', () => {
+    const Box = styled('div')`
+      color: rgb(0, 0, 0);
+    `
+    const { container, unmount } = mountInBrowser(
+      h(Box, { id: 'noattr', innerRef: () => {} }),
+    )
+    const el = container.querySelector<HTMLDivElement>('#noattr')!
+    expect(el.hasAttribute('innerref')).toBe(false)
+    expect(el.hasAttribute('innerRef')).toBe(false)
+    unmount()
+  })
 })

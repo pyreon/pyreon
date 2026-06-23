@@ -27,6 +27,27 @@ import { useThemeAccessor } from './ThemeProvider'
 // Dev-time counter sink — see packages/internals/perf-harness/COUNTERS.md.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
+// `innerRef` → `ref` alias. `@pyreon/elements` Element treats `innerRef` as a
+// first-class prop (it's a multi-layer component where a plain `ref` might land
+// on a wrapper, not the inner DOM node). A `styled()` component renders a SINGLE
+// DOM node, so plain `ref` already targets it — but users coming from Element
+// reasonably reach for `innerRef`, and a bare styled() would otherwise SILENTLY
+// drop it (it's not a forwarded DOM prop), so the ref callback never fires.
+// Accepting it as a `ref` alias makes the convention uniform across Element +
+// styled and turns a silent-no-op footgun into working code. An explicit `ref`
+// always wins. Returns `rawProps` UNCHANGED (zero alloc) when there's nothing to
+// alias — the dominant path. `getOwnPropertyDescriptors` preserves getter-shaped
+// reactive props + symbol-keyed brands; the new object drops `innerRef` so it
+// never reaches the DOM as an invalid `innerref=` attribute.
+function aliasInnerRef(rawProps: Record<string, any>): Record<string, any> {
+  if (rawProps.innerRef == null || rawProps.ref != null) return rawProps
+  const descs: Record<string, PropertyDescriptor> = Object.getOwnPropertyDescriptors(rawProps)
+  // Guarded above (rawProps.innerRef != null) ⇒ the own descriptor exists.
+  descs.ref = descs.innerRef!
+  delete descs.innerRef
+  return Object.defineProperties({}, descs)
+}
+
 // ── Custom-Property Style Extraction (CPSE) — opt-in default-pipeline hook ──
 // `@pyreon/ui-core`'s `init({ styleExtraction: true })` calls `setStyleExtraction`
 // to enable + inject `cpseRewrite` (it lives in `@pyreon/unistyle`, which styler
@@ -189,7 +210,10 @@ const createStyledComponent = (
     // invalidation needed.
     const cachedEmptyVNode = h(tag as string, staticClassName ? { class: staticClassName } : {})
 
-    const StaticStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
+    const StaticStyled: ComponentFn = (rawPropsIn: Record<string, any>): VNode | null => {
+      // Normalize `innerRef` → `ref` before the ref-aware fast path below
+      // (otherwise an innerRef-only call would hit the cached ref-less VNode).
+      const rawProps = aliasInnerRef(rawPropsIn)
       // Hot path: no extra props beyond what's empty AND no `ref` / `as`.
       // `for ... in` over an empty object is O(0); the `break` exits on the
       // first key. Skipping the cache when `ref` is present is necessary
@@ -269,7 +293,9 @@ const createStyledComponent = (
   //   when the computed value changes.
   //
   // This gives reactive mode/dimension switching WITHOUT per-component effect().
-  const DynamicStyled: ComponentFn = (rawProps: Record<string, any>): VNode | null => {
+  const DynamicStyled: ComponentFn = (rawPropsIn: Record<string, any>): VNode | null => {
+    // `innerRef` → `ref` alias (uniform with @pyreon/elements Element).
+    const rawProps = aliasInnerRef(rawPropsIn)
     const themeAccessor = useThemeAccessor()
     const theme = themeAccessor() // snapshot for initial + static path
     const $rs = rawProps.$rocketstyle
