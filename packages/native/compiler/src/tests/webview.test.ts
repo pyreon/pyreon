@@ -50,13 +50,29 @@ describe('<WebView> primitive emit', () => {
     // reloads reactively when it changes (full coverage in
     // webview-dynamic.test.ts). Only a WebView with NO html/src still
     // warns + empties.
+    //
+    // A genuinely-dynamic src is a SIGNAL read — a `const u = "x"` literal
+    // is now STATIC-resolved (next test), so the dynamic path uses a signal.
+    const r = transform(
+      `import { WebView } from '@pyreon/primitives'
+       export function App() { const u = signal("x"); return <WebView src={u()} /> }`,
+      { target: 'swift' },
+    )
+    expect(r.code).toContain('PyreonWebView(src: u)')
+    expect(r.code).not.toContain('PyreonWebView()')
+    expect(r.warnings.length).toBe(0)
+  })
+
+  it('a component-scope const literal src is STATIC-resolved (component-const widening)', () => {
+    // `const u = "x"; <WebView src={u} />` — `u` is a compile-time constant,
+    // so the static-attr resolver bakes it (consistent with a module-level
+    // const + an inline literal) instead of the runtime reference.
     const r = transform(
       `import { WebView } from '@pyreon/primitives'
        export function App() { const u = "x"; return <WebView src={u} /> }`,
       { target: 'swift' },
     )
-    expect(r.code).toContain('PyreonWebView(src: u)')
-    expect(r.code).not.toContain('PyreonWebView()')
+    expect(r.code).toContain('PyreonWebView(src: "x")')
     expect(r.warnings.length).toBe(0)
   })
 })
