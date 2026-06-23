@@ -14,7 +14,12 @@ MobX-State-Tree-inspired structured state management built on Pyreon signals. Mo
 - model(&#123; state &#125;) or model(&#123; schema &#125;) — chainable builder
 - .views(self =&gt; ...) — chainable derived values; each layer sees prior ones
 - .actions(self =&gt; ...) — chainable mutators; async out of the box
-- Schema mode validates state via zod / valibot / arktype / Standard Schema
+- .lifecycle(self =&gt; (&#123; afterCreate, beforeDestroy &#125;)) — instance lifecycle hooks
+- .volatile(self =&gt; (&#123;...&#125;)) — signal-backed transient state; reactive but excluded from snapshots/patches
+- destroy(instance) / isAlive(instance) — tear down (recurses field-nested children) + liveness; actions no-op after destroy
+- clone(instance) / getType(instance) — independent structural copy + definition back-ref
+- onSnapshot(instance, cb) — microtask-coalesced snapshot subscription; onAction(instance, cb) — observe action calls
+- Schema mode validates + STRICTLY TYPES state from a schema passed directly — @pyreon/validate, raw zod / valibot / arktype, any Standard Schema (no adapter wrapper)
 - Nested model composition for tree-shaped state
 - getSnapshot / applySnapshot — typed recursive serialization
 - onPatch / applyPatch — JSON patch record and replay
@@ -83,9 +88,16 @@ const { store } = useTodoList() // same instance on every call
 | [`ModelDefinition`](#modeldefinition) | type | The chainable builder returned by `model()`. |
 | [`getSnapshot`](#getsnapshot) | function | Recursively serialize a model instance into a plain JSON-safe snapshot. |
 | [`applySnapshot`](#applysnapshot) | function | Replace a model instance's state wholesale from a snapshot. |
-| [`onPatch`](#onpatch) | function | Subscribe to JSON patches emitted by actions on a model instance. |
+| [`onPatch`](#onpatch) | function | Subscribe to JSON patches emitted by state mutations on a model instance. |
 | [`applyPatch`](#applypatch) | function | Apply one or more JSON patches to a model instance. |
 | [`addMiddleware`](#addmiddleware) | function | Add an action interception middleware to a model instance. |
+| [`destroy`](#destroy) | function | Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested chi |
+| [`isAlive`](#isalive) | function | Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). |
+| [`clone`](#clone) | function | Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from th |
+| [`getType`](#gettype) | function | Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` f |
+| [`volatile`](#volatile) | function | Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but EXCLU |
+| [`onSnapshot`](#onsnapshot) | function | Subscribe to snapshot changes. |
+| [`onAction`](#onaction) | function | Observe every action call on an instance (logging, analytics, devtools). |
 
 ## API
 
@@ -95,7 +107,7 @@ const { store } = useTodoList() // same instance on every call
 model({ state }) | model({ schema, initial?, onValidationError? }) → ModelDefinition; chain .views(f).actions(f) then .create(initial?) or .asHook(id)
 ```
 
-Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a TypedSchemaAdapter (`zodSchema` / `valibotSchema` / `arktypeSchema`) or a Standard Schema-compliant instance (zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema, etc.) — types are inferred end-to-end. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `set` / `patch` / `reset` helpers on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton.
+Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a schema and STRICTLY TYPES the instance from it. The schema can be passed DIRECTLY — `@pyreon/validate`'s `s.object(...)`, a raw `z.object(...)`, valibot, arktype, or any [Standard Schema](https://standardschema.dev)-compliant validator — and the field types flow through end-to-end (`self.name()` is `string`, not `unknown`), no adapter wrapper required. The `@pyreon/validation` `zodSchema` / `valibotSchema` / `arktypeSchema` adapters still work (the `_infer` path) and are only needed for async-validator interop. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `set` / `patch` / `deepPatch` / `update` / `reset` helpers (bare names) on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton.
 
 **Example**
 
@@ -105,14 +117,15 @@ const Counter = model({ state: { count: 0 } })
   .views((self) => ({ doubled: () => self.count() * 2 }))
   .actions((self) => ({ inc: () => self.count.update(n => n + 1) }))
 
-// Schema mode (zod / valibot / arktype / Standard Schema)
-import { zodSchema } from '@pyreon/validation'
+// Schema mode — pass the schema DIRECTLY (no wrapper); types flow through.
+// Works with @pyreon/validate (`s`), raw zod, valibot, arktype, any Standard Schema.
 import { z } from 'zod'
 
 const User = model({
-  schema: zodSchema(z.object({ name: z.string().min(1), age: z.number() })),
+  schema: z.object({ name: z.string().min(1), age: z.number() }),
   initial: { name: '', age: 0 },
 })
+// u.name() is string, u.age() is number — strictly typed from the schema.
   .views((self) => ({ greet: () => `Hi, ${self.name()}` }))
   .actions((self) => ({
     rename: (next: string) => self.patch({ name: next }),
@@ -148,7 +161,7 @@ u.reset()                // back to initial
 interface SchemaModelHelpers<TState> { set, patch, deepPatch, update<K>, reset }
 ```
 
-The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. `$`-prefixed so they never collide with user schema field names (`name`, `set`, `patch`, etc.). All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`'s `SchemaStoreApi`.
+The five schema-validated mutation helpers exposed on every schema-mode model instance AND on `self` inside schema-mode action/view factories. They are BARE names (`set`, `patch`, `deepPatch`, `update`, `reset`) — a schema field that collides with one of them throws at `.create()` time (the reserved-name guard names the offending field), so pick a different field name rather than relying on a prefix. All five validate the merged result through the schema before writing to signals (or invoke `onValidationError` if configured). Direct signal writes (`self.field.set(v)`) bypass validation — the documented escape hatch. Parallel to `@pyreon/store`'s `SchemaStoreApi`.
 
 **Example**
 
@@ -203,7 +216,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
 ### ModelDefinition `type`
 
 ```ts
-class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), create(initial?), asHook(id) }
+class ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile> { views(f), actions(f), volatile(f), lifecycle(f), create(initial?), asHook(id) }
 ```
 
 The chainable builder returned by `model()`. Each `.views(f)` / `.actions(f)` returns a NEW `ModelDefinition` with the accumulated layer — immutable builder, safe to share across call sites. `f` receives `self` typed as the model AS IT IS SO FAR (state signals + prior views + prior actions + schema helpers when applicable). Type parameters: `TState` is the underlying value shape; `TViews` / `TActions` accumulate across chain steps; `HasSchema` flips to `true` in schema mode (adds `set`/`patch`/`reset` to instance type).
@@ -269,7 +282,7 @@ applySnapshot(counter, { count: 0 }) // reset to zero
 (instance: ModelInstance, listener: PatchListener) => () => void
 ```
 
-Subscribe to JSON patches emitted by actions on a model instance. Each patch records the path, operation (add/replace/remove), and value. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization.
+Subscribe to JSON patches emitted by state mutations on a model instance. Each patch is a `replace` op carrying the JSON-pointer path (`/count`, `/profile/name` for nested) and the new value — Pyreon state is one signal per field, so a field holding an array/object emits a whole-value `replace`, not granular add/remove ops. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization.
 
 **Example**
 
@@ -319,6 +332,171 @@ addMiddleware(counter, (call, next) => {
 ```
 
 **See also:** `model`
+
+---
+
+### destroy `function`
+
+```ts
+(instance: ModelInstance) => void
+```
+
+Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested child models, drop all subscriptions (patch listeners + middleware), and mark it dead (`isAlive` → false). Idempotent. NOTE: this tears down SUBSCRIPTIONS + runs cleanup — it does NOT free memory. Pyreon signals have no per-signal dispose; the instance is reclaimed by GC once you drop your references. After `destroy`, actions + schema mutation helpers dev-warn and no-op; direct signal writes (`self.field.set`) stay unguarded.
+
+**Example**
+
+```tsx
+const clock = Clock.create()  // .lifecycle(() => ({ afterCreate: start, beforeDestroy: stop }))
+destroy(clock)   // runs stop(), tears down subscriptions, marks dead
+isAlive(clock)   // false
+```
+
+**Common mistakes**
+
+- Expecting `destroy` to free memory immediately — it clears subscriptions + runs `beforeDestroy`; GC reclaims the signals once you drop your references
+- Writing state via `self.field.set(v)` after destroy — direct signal writes are NOT guarded (only actions + schema helpers warn). Stop mutating a destroyed instance
+- Calling actions on a destroyed instance — they no-op + dev-warn; this usually means a stale event handler outlived the instance
+
+**See also:** `isAlive` · `model` · `clone`
+
+---
+
+### isAlive `function`
+
+```ts
+(instance: ModelInstance) => boolean
+```
+
+Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). Use to guard deferred work (a queued callback, a fetch resolution) that might land after the instance was torn down.
+
+**Example**
+
+```tsx
+if (isAlive(model)) model.applyServerUpdate(data)
+```
+
+**See also:** `destroy` · `model`
+
+---
+
+### clone `function`
+
+```ts
+<T>(instance: T) => T
+```
+
+Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from the SAME definition. The clone has its own signals, listeners, middleware, and lifecycle — mutating one never affects the other. In schema mode the snapshot is re-validated by `.create()`. Throws if the instance carries no definition back-reference (i.e. was not produced by `ModelDefinition.create()`).
+
+**Example**
+
+```tsx
+const draft = clone(original)   // independent copy of original's current state
+draft.title.set('edited')        // does not touch original
+```
+
+**Common mistakes**
+
+- Expecting `clone` to be a shallow reference copy — it is a deep structural copy via `getSnapshot` + `.create()`; nested field-models are re-created
+- Cloning an instance built without `ModelDefinition.create()` — `clone` needs the definition back-reference and throws otherwise
+
+**See also:** `getType` · `getSnapshot` · `model`
+
+---
+
+### getType `function`
+
+```ts
+(instance: ModelInstance) => ModelDefinition | undefined
+```
+
+Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed.
+
+**Example**
+
+```tsx
+const Def = getType(instance)
+const sibling = Def?.create()
+```
+
+**See also:** `clone` · `model`
+
+---
+
+### volatile `function`
+
+```ts
+.volatile(self => ({ ...initialValues })) → ModelDefinition (chainable)
+```
+
+Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but EXCLUDED from snapshots, patches, and `onSnapshot`. For state that should not be persisted or replayed: in-flight flags, drag/hover UI state, live object references (websockets, timers, promises). The factory returns initial VALUES; each becomes a `Signal<T>` on `self` + the instance, strictly typed. Volatile keys cannot collide with state / schema-helper / view / action / other-volatile names (throws at `.create()`). A volatile-only change never fires `onSnapshot` (it produces the same snapshot).
+
+**Example**
+
+```tsx
+model({ state: { items: [] as string[] } })
+  .volatile(() => ({ loading: false, lastError: null as Error | null }))
+  .actions((self) => ({
+    async load() {
+      self.loading.set(true)               // reactive, not persisted
+      try { self.items.set(await fetchItems()) }
+      finally { self.loading.set(false) }
+    },
+  }))
+```
+
+**Common mistakes**
+
+- Putting persistent state in `.volatile()` — it is dropped from snapshots, so it will not survive serialize/restore or replay. Use `state` / `schema` for durable data
+- Expecting a volatile change to fire `onSnapshot` / emit a patch — volatile is excluded from both by design
+
+**See also:** `model` · `onSnapshot` · `getSnapshot`
+
+---
+
+### onSnapshot `function`
+
+```ts
+(instance: ModelInstance, listener: (snapshot) => void) => () => void
+```
+
+Subscribe to snapshot changes. The listener fires MICROTASK-COALESCED with the new snapshot after any STATE change — all writes in one synchronous burst (a multi-field `set`/`patch`, several signal writes in one action) collapse into a SINGLE emit on the next microtask (MST-like async semantics). Does NOT fire on subscribe. Volatile-field changes do not fire it. Returns an unsubscribe function; `destroy(instance)` also clears all snapshot listeners. (Implemented via the patch-write hook, NOT an `effect()` — so it never fires on creation and never depends on the untracked `.peek()` reads `getSnapshot` performs.)
+
+**Example**
+
+```tsx
+const dispose = onSnapshot(store, (snap) => {
+  localStorage.setItem('store', JSON.stringify(snap))
+})
+```
+
+**Common mistakes**
+
+- Expecting a synchronous / per-write callback — `onSnapshot` is coalesced onto a microtask; read the snapshot you are handed, not a value you `getSnapshot` synchronously after a write
+- Expecting it to fire immediately on subscribe — it does not (unlike a reactive `effect`); take an initial `getSnapshot(instance)` yourself if you need the starting value
+
+**See also:** `getSnapshot` · `onPatch` · `model`
+
+---
+
+### onAction `function`
+
+```ts
+(instance: ModelInstance, listener: (call: ActionCall) => void) => () => void
+```
+
+Observe every action call on an instance (logging, analytics, devtools). The listener receives the `ActionCall` descriptor (`name`, `args`, `path`) BEFORE the action runs; it is read-only — it cannot block or alter the call (use `addMiddleware` for interception). Sugar over `addMiddleware` (a middleware that observes then unconditionally proceeds). Returns an unsubscribe function.
+
+**Example**
+
+```tsx
+const unsub = onAction(store, (call) => analytics.track(call.name, call.args))
+```
+
+**Common mistakes**
+
+- Trying to block / mutate a call from `onAction` — it is observe-only; use `addMiddleware` to intercept
+
+**See also:** `addMiddleware` · `model`
 
 ---
 
