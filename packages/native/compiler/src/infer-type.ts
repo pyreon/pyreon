@@ -162,6 +162,39 @@ function findFirstReturnExpr(
 }
 
 /**
+ * Infer a FUNCTION's return type from its params + body, for functions
+ * declared WITHOUT an explicit `: T` return annotation (where the IR
+ * returnType is `unknown`). Builds a scratch ctx with the params bound as
+ * locals (so `(x: number) => x * 2` infers `number`), walks the body for the
+ * first `return <expr>` (also binding body-`let`s along the way), and infers
+ * that expr's type. Returns `unknown` when it can't determine the type — the
+ * caller then emits NO annotation (the existing behavior), so a wrong guess
+ * is never possible.
+ *
+ * Note: a destructured param (`({ x, y }: Point) => x + y`) binds the
+ * synthetic `__pN: Point` param, but the body's `x`/`y` come from prepended
+ * `let x = __pN.x` member reads that this ctx can't resolve to Point's fields
+ * → returns `unknown` → no annotation (the documented annotate-the-return
+ * workaround still applies for that shape).
+ */
+export function inferReturnType(
+  params: { name: string; type: TypeIR }[],
+  body: StatementIR[],
+  ctx: InferenceCtx,
+): TypeIR {
+  const scratch: InferenceCtx = {
+    signals: ctx.signals,
+    computeds: ctx.computeds,
+    locals: new Map(ctx.locals),
+    fetches: ctx.fetches,
+    stores: ctx.stores,
+  }
+  for (const p of params) scratch.locals.set(p.name, p.type)
+  const ret = findFirstReturnExpr(body, scratch)
+  return ret ? inferType(ret, scratch) : { kind: 'unknown' }
+}
+
+/**
  * Match the store-read chain shape `useX().store.FIELD()` (zero args at
  * both call sites) against the ctx's store registry. Returns the
  * field's declared type, or undefined when the expression isn't a
