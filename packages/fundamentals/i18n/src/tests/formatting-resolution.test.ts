@@ -154,6 +154,12 @@ describe('inline {{val, format}} specifiers', () => {
     expect(interpolate('{{a, number}}', { a: 5 })).toBe('5')
     expect(interpolate('{{a, up}}', { a: 'x' }, { format: (v) => String(v).toUpperCase() })).toBe('X')
   })
+
+  it('leaves non-{{word}} braces literal (not a placeholder)', () => {
+    // Key part is not a single \w+ token → left untouched.
+    expect(interpolate('{{not a key}}', { x: 1 })).toBe('{{not a key}}')
+    expect(interpolate('a {{b.c}} z', { 'b.c': 'X' })).toBe('a {{b.c}} z')
+  })
 })
 
 // ─── context (gender / variant) ───────────────────────────────────────────────

@@ -1,10 +1,13 @@
 import type { InterpolationValues } from './types'
 
-// `{{ key }}` or `{{ key, format spec }}` — group 1 is the key, group 2 is the
-// optional inline format spec (everything after the first comma, e.g.
-// `currency` or `relativetime, day`). `[^}]+?` keeps the spec from swallowing
-// the closing braces.
-const INTERPOLATION_RE = /\{\{\s*(\w+)\s*(?:,\s*([^}]+?)\s*)?\}\}/g
+// Linear, ReDoS-safe: capture the inner text of `{{ … }}` with a single
+// non-`{`/`}` character class (no ambiguous `\s*`/lazy backtracking on
+// untrusted translation strings — see the CDN-sourced-messages threat model
+// in create-i18n.ts), then parse key + optional format spec in code.
+const INTERPOLATION_RE = /\{\{([^{}]+)\}\}/g
+// A placeholder key is a single `\w+` token; anything else (`{{not a key}}`)
+// is left literal. Anchored + single class → linear, not a ReDoS risk.
+const KEY_RE = /^\w+$/
 
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -35,10 +38,16 @@ export function interpolate(
   // only fires when interpolation work happens (template has `{{` and values
   // were provided).
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.interpolate')
-  return template.replace(INTERPOLATION_RE, (_, key: string, spec: string | undefined) => {
-    const placeholder = spec ? `{{${key}, ${spec}}}` : `{{${key}}}`
+  return template.replace(INTERPOLATION_RE, (whole, inner: string) => {
+    const commaIdx = inner.indexOf(',')
+    const key = (commaIdx === -1 ? inner : inner.slice(0, commaIdx)).trim()
+    const spec = commaIdx === -1 ? undefined : inner.slice(commaIdx + 1).trim()
+
+    // Not a `{{word}}` placeholder (e.g. `{{not a key}}`) — leave it literal.
+    if (!KEY_RE.test(key)) return whole
+
     const value = values[key]
-    if (value === undefined) return placeholder
+    if (value === undefined) return whole
 
     // Inline format spec → delegate to the instance formatter.
     if (spec && options?.format) {
@@ -52,7 +61,7 @@ export function interpolate(
             err,
           )
         }
-        return placeholder
+        return whole
       }
     }
 
@@ -71,7 +80,7 @@ export function interpolate(
           err,
         )
       }
-      return placeholder
+      return whole
     }
   })
 }

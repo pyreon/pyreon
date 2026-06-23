@@ -68,7 +68,10 @@ function buildKeyCandidates(
 }
 
 // `$t(key)` / `$t(key, {"count": 2})` — inline reference to another key.
-const NESTING_RE = /\$t\(\s*([^(),]+?)\s*(?:,\s*(\{[^}]*\}))?\s*\)/g
+// Linear, ReDoS-safe: capture the inner text with a single non-paren class,
+// then split key from optional JSON options in code (no lazy/`\s*` backtracking
+// on untrusted translation strings).
+const NESTING_RE = /\$t\(([^()]*)\)/g
 const MAX_NESTING_DEPTH = 4
 
 /**
@@ -271,7 +274,11 @@ export function createI18n(options: I18nOptions): I18nInstance {
   ): string {
     let resolved = template
     if (depth < MAX_NESTING_DEPTH && template.includes('$t(')) {
-      resolved = template.replace(NESTING_RE, (_whole, innerKey: string, jsonOpts?: string) => {
+      resolved = template.replace(NESTING_RE, (_whole, inner: string) => {
+        // inner = "key" or "key, {json}" — split on the first comma.
+        const commaIdx = inner.indexOf(',')
+        const innerKey = (commaIdx === -1 ? inner : inner.slice(0, commaIdx)).trim()
+        const jsonOpts = commaIdx === -1 ? undefined : inner.slice(commaIdx + 1).trim()
         let innerValues = values
         if (jsonOpts) {
           try {
@@ -280,7 +287,7 @@ export function createI18n(options: I18nOptions): I18nInstance {
             // Malformed inline options — fall back to the parent's values.
           }
         }
-        return resolveTranslation(innerKey.trim(), innerValues, depth + 1)
+        return resolveTranslation(innerKey, innerValues, depth + 1)
       })
     }
     return interpolate(resolved, values, {
