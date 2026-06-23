@@ -148,7 +148,7 @@ export function layout() {
   const sidebar = useToggle(false)
 
   return (
-    <I18nProvider instance={i18n}>
+    <I18nProvider value={i18n}>
      <PermissionsProvider value={can}>
       <QueryClientProvider client={queryClient}>
         <SkipToContent />

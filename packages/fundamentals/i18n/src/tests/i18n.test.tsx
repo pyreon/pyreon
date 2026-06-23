@@ -588,7 +588,7 @@ describe('I18nProvider / useI18n', () => {
       return null
     }
     const unmount = mount(
-      <I18nProvider instance={i18n}>
+      <I18nProvider value={i18n}>
         <Child />
       </I18nProvider>,
       el,
@@ -613,7 +613,7 @@ describe('I18nProvider / useI18n', () => {
       received = useI18n()
       return null
     }
-    const unmount = mount(<I18nProvider instance={i18n}>{() => <Child />}</I18nProvider>, el)
+    const unmount = mount(<I18nProvider value={i18n}>{() => <Child />}</I18nProvider>, el)
 
     expect(received).toBeDefined()
     expect(received!.t('key')).toBe('Value')
@@ -656,7 +656,7 @@ describe('I18nProvider / useI18n', () => {
       return null
     }
     const unmount = mount(
-      <I18nProvider instance={i18n}>
+      <I18nProvider value={i18n}>
         <Child />
       </I18nProvider>,
       el,

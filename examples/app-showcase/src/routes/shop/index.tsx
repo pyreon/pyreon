@@ -38,7 +38,7 @@ import { CurrencySwitcher, LocaleSwitcher } from '../../sections/shop/Switchers'
  */
 export default function ShopRoute() {
   return (
-    <I18nProvider instance={shopI18n}>
+    <I18nProvider value={shopI18n}>
       <ShopBody />
     </I18nProvider>
   )

@@ -15,11 +15,16 @@ export { resolvePluralCategory } from './pluralization'
 export type { TransProps } from './trans'
 export { parseRichText, Trans } from './trans'
 export type {
+  DateFormats,
   I18nInstance,
   I18nOptions,
+  InterpolationValue,
   InterpolationValues,
+  NamedFormatters,
   NamespaceLoader,
+  NumberFormats,
   PluralRules,
+  RelativeTimeFormats,
   TranslationDictionary,
   TranslationMessages,
 } from './types'

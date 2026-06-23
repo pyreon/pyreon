@@ -17,8 +17,42 @@ export type NamespaceLoader = (
   namespace: string,
 ) => Promise<TranslationDictionary | undefined>
 
-/** Interpolation values for translation strings. */
-export type InterpolationValues = Record<string, string | number>
+/**
+ * A single interpolation value. Strings/numbers render directly; `Date` is
+ * formatted when an inline `{{when, date}}` spec is present; objects/arrays are
+ * JSON-stringified by the interpolator.
+ */
+export type InterpolationValue =
+  | string
+  | number
+  | bigint
+  | boolean
+  | Date
+  | null
+  | undefined
+  | readonly InterpolationValue[]
+  | { readonly [key: string]: InterpolationValue }
+
+/**
+ * Interpolation values for translation strings. May also carry the reserved
+ * option keys read by `t()`:
+ * - `count` — drives pluralization (`key_one` / `key_other` / `key_zero`).
+ * - `context` — gender/variant selector (`key_male`, combined with plural).
+ * - `defaultValue` — returned (interpolated) when the key is missing.
+ */
+export type InterpolationValues = Record<string, InterpolationValue>
+
+/** Per-locale named `Intl.NumberFormat` options: `{ en: { currency: {...} } }`. */
+export type NumberFormats = Record<string, Record<string, Intl.NumberFormatOptions>>
+
+/** Per-locale named `Intl.DateTimeFormat` options: `{ en: { short: {...} } }`. */
+export type DateFormats = Record<string, Record<string, Intl.DateTimeFormatOptions>>
+
+/** Per-locale named `Intl.RelativeTimeFormat` options. */
+export type RelativeTimeFormats = Record<string, Record<string, Intl.RelativeTimeFormatOptions>>
+
+/** Custom named formatters usable inline (`{{val, myFormat}}`) and standalone. */
+export type NamedFormatters = Record<string, (value: unknown, locale: string) => string>
 
 /** Pluralization rules map — locale → function that picks the plural form. */
 export type PluralRules = Record<string, (count: number) => string>
@@ -49,8 +83,24 @@ export interface I18nOptions {
   /**
    * Missing key handler — called when a translation key is not found.
    * Useful for logging, reporting, or returning a custom fallback.
+   * Note: a `defaultValue` passed to `t()` takes priority over this.
    */
   onMissingKey?: (locale: string, key: string, namespace?: string) => string | undefined
+  /**
+   * Per-locale named `Intl.NumberFormat` options. Use the name in `n()` or
+   * inline: `numberFormats: { en: { currency: { style: 'currency', currency: 'USD' } } }`
+   * → `i18n.n(9.99, 'currency')` / `"{{price, currency}}"`.
+   */
+  numberFormats?: NumberFormats
+  /** Per-locale named `Intl.DateTimeFormat` options — see {@link numberFormats}. */
+  dateFormats?: DateFormats
+  /** Per-locale named `Intl.RelativeTimeFormat` options — see {@link numberFormats}. */
+  relativeTimeFormats?: RelativeTimeFormats
+  /**
+   * Custom named formatters. Usable inline (`"{{val, myFormat}}"`) — receive the
+   * raw value + current locale and return a string. Take priority over builtins.
+   */
+  formats?: NamedFormatters
 }
 
 /** The public i18n instance returned by `createI18n()`. */
@@ -63,9 +113,49 @@ export interface I18nInstance {
    * Nested keys use dots: "user.greeting" or "auth:errors.invalid".
    *
    * Interpolation: "Hello {{name}}" + { name: "Alice" } → "Hello Alice"
-   * Pluralization: key with "_one", "_other" etc. suffixes + { count: N }
+   * Inline formats: "Total {{amount, currency}}" / "{{when, date}}" / "{{n, relativetime, day}}"
+   * Pluralization: key with "_one", "_other", "_zero" suffixes + { count: N }
+   * Context/gender: { context: 'male' } → tries "key_male" (combined with plural)
+   * Default value: { defaultValue: 'Fallback' } returned (interpolated) if missing
+   * Nesting: "Hello $t(common:appName)" resolves the referenced key inline
    */
   t: (key: string, values?: InterpolationValues) => string
+
+  /**
+   * Format a number for the current locale via `Intl.NumberFormat`.
+   * Reactive — re-runs on locale change. `options` is an
+   * `Intl.NumberFormatOptions` object OR the name of a configured
+   * `numberFormats` entry. Formatters are memoized per (locale, options).
+   *
+   * @example i18n.n(1234.5)            // "1,234.5"
+   * @example i18n.n(9.99, 'currency')  // "$9.99"  (named format)
+   * @example i18n.n(0.42, { style: 'percent' }) // "42%"
+   */
+  n: (value: number | bigint, options?: Intl.NumberFormatOptions | string) => string
+
+  /**
+   * Format a date for the current locale via `Intl.DateTimeFormat`.
+   * Accepts a `Date`, epoch ms number, or parseable string. Reactive +
+   * memoized. `options` is an `Intl.DateTimeFormatOptions` object or a
+   * configured `dateFormats` name.
+   *
+   * @example i18n.d(Date.now(), { dateStyle: 'medium' })
+   * @example i18n.d(post.publishedAt, 'short') // named format
+   */
+  d: (value: Date | number | string, options?: Intl.DateTimeFormatOptions | string) => string
+
+  /**
+   * Format a relative time for the current locale via `Intl.RelativeTimeFormat`.
+   * Reactive + memoized.
+   *
+   * @example i18n.rt(-3, 'day')  // "3 days ago"
+   * @example i18n.rt(2, 'hour', { numeric: 'auto' }) // "in 2 hours"
+   */
+  rt: (
+    value: number,
+    unit: Intl.RelativeTimeFormatUnit,
+    options?: Intl.RelativeTimeFormatOptions | string,
+  ) => string
 
   /** Current locale (reactive signal). */
   locale: Signal<string>

@@ -12,11 +12,16 @@ export { createI18n } from './create-i18n'
 export { interpolate } from './interpolation'
 export { resolvePluralCategory } from './pluralization'
 export type {
+  DateFormats,
   I18nInstance,
   I18nOptions,
+  InterpolationValue,
   InterpolationValues,
+  NamedFormatters,
   NamespaceLoader,
+  NumberFormats,
   PluralRules,
+  RelativeTimeFormats,
   TranslationDictionary,
   TranslationMessages,
 } from './types'

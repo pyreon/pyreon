@@ -1,4 +1,5 @@
 import { computed, signal } from '@pyreon/reactivity'
+import { createFormatters } from './formatters'
 import { interpolate } from './interpolation'
 import { resolvePluralCategory } from './pluralization'
 import type { I18nInstance, I18nOptions, InterpolationValues, TranslationDictionary } from './types'
@@ -25,6 +26,50 @@ function resolveKey(dict: TranslationDictionary, keyPath: string): string | unde
 function isUnsafeI18nKey(key: string): boolean {
   return key === '__proto__' || key === 'constructor' || key === 'prototype'
 }
+
+/**
+ * Build the ordered list of key candidates to try, most-specific first,
+ * combining `context` (gender/variant) and pluralization (i18next semantics).
+ *
+ * - count === 0 tries an explicit `_zero` form before the CLDR category, so
+ *   English can say "No items" even though CLDR has no `zero` category for `en`.
+ * - context combines with plural: `key_male_one`, `key_male`, `key_one`, `key`.
+ *
+ * Returns `[keyPath]` unchanged when neither context nor count is present.
+ */
+function buildKeyCandidates(
+  keyPath: string,
+  locale: string,
+  context: string | undefined,
+  hasCount: boolean,
+  count: number | undefined,
+  pluralRules: I18nOptions['pluralRules'],
+): string[] {
+  if (!context && !hasCount) return [keyPath]
+
+  const suffixes: string[] = []
+  if (hasCount) {
+    if (count === 0) suffixes.push('zero')
+    const category = resolvePluralCategory(locale, count as number, pluralRules)
+    if (category !== 'zero') suffixes.push(category)
+  }
+
+  const cands: string[] = []
+  if (context) {
+    for (const s of suffixes) cands.push(`${keyPath}_${context}_${s}`)
+    cands.push(`${keyPath}_${context}`)
+  }
+  for (const s of suffixes) cands.push(`${keyPath}_${s}`)
+  cands.push(keyPath)
+
+  // At this point context||count held, so there are always ≥2 candidates;
+  // dedupe (a CLDR category that equals an explicit suffix, etc.).
+  return [...new Set(cands)]
+}
+
+// `$t(key)` / `$t(key, {"count": 2})` — inline reference to another key.
+const NESTING_RE = /\$t\(\s*([^(),]+?)\s*(?:,\s*(\{[^}]*\}))?\s*\)/g
+const MAX_NESTING_DEPTH = 4
 
 /**
  * Convert flat dotted keys into nested objects.
@@ -119,7 +164,26 @@ function deepMerge(target: TranslationDictionary, source: TranslationDictionary)
  * i18n.t('auth:errors.invalid') // looks up "errors.invalid" in "auth" namespace
  */
 export function createI18n(options: I18nOptions): I18nInstance {
-  const { fallbackLocale, loader, defaultNamespace = 'common', pluralRules, onMissingKey } = options
+  const {
+    fallbackLocale,
+    loader,
+    defaultNamespace = 'common',
+    pluralRules,
+    onMissingKey,
+    numberFormats,
+    dateFormats,
+    relativeTimeFormats,
+    formats,
+  } = options
+
+  // Memoized Intl formatter registry (number/date/relative-time + inline specs).
+  const formatters = createFormatters({
+    fallbackLocale,
+    numberFormats,
+    dateFormats,
+    relativeTimeFormats,
+    formats,
+  })
 
   // ── Reactive state ──────────────────────────────────────────────────
 
@@ -195,7 +259,40 @@ export function createI18n(options: I18nOptions): I18nInstance {
     return resolveKey(dict, keyPath)
   }
 
-  function resolveTranslation(key: string, values?: InterpolationValues): string {
+  /**
+   * Apply nesting (`$t(key)`) then interpolation (with inline format specs) to
+   * a resolved template. Depth-capped to break `a → $t(b) → $t(a)` cycles.
+   */
+  function finalize(
+    template: string,
+    values: InterpolationValues | undefined,
+    currentLocale: string,
+    depth: number,
+  ): string {
+    let resolved = template
+    if (depth < MAX_NESTING_DEPTH && template.includes('$t(')) {
+      resolved = template.replace(NESTING_RE, (_whole, innerKey: string, jsonOpts?: string) => {
+        let innerValues = values
+        if (jsonOpts) {
+          try {
+            innerValues = { ...values, ...(JSON.parse(jsonOpts) as InterpolationValues) }
+          } catch {
+            // Malformed inline options — fall back to the parent's values.
+          }
+        }
+        return resolveTranslation(innerKey.trim(), innerValues, depth + 1)
+      })
+    }
+    return interpolate(resolved, values, {
+      format: (value, spec) => formatters.format(value, spec, currentLocale),
+    })
+  }
+
+  function resolveTranslation(
+    key: string,
+    values?: InterpolationValues,
+    depth = 0,
+  ): string {
     // Subscribe to reactive dependencies
     const currentLocale = locale()
     storeVersion()
@@ -210,35 +307,30 @@ export function createI18n(options: I18nOptions): I18nInstance {
       keyPath = key.slice(colonIndex + 1)
     }
 
-    // Handle pluralization: if values contain `count`, try plural suffixes
-    if (values && 'count' in values) {
-      const count = Number(values.count)
-      const category = resolvePluralCategory(currentLocale, count, pluralRules)
+    // Reserved option keys (i18next-style): context (gender/variant) + count.
+    const context =
+      values && typeof values.context === 'string' && values.context ? values.context : undefined
+    const hasCount = !!values && 'count' in values
+    const count = hasCount ? Number(values!.count) : undefined
 
-      // Try exact form first (e.g. "items_one"), then fall back to base key
-      const pluralKey = `${keyPath}_${category}`
-      let pluralResult = lookupKey(currentLocale, namespace, pluralKey)
-      if (pluralResult === undefined && fallbackLocale) {
+    // Try candidates most-specific first (context × plural × _zero), each
+    // against current locale then the fallback locale.
+    const candidates = buildKeyCandidates(keyPath, currentLocale, context, hasCount, count, pluralRules)
+    for (const candidate of candidates) {
+      let result = lookupKey(currentLocale, namespace, candidate)
+      if (result === undefined && fallbackLocale && fallbackLocale !== currentLocale) {
         // Fires when the user-locale missed AND we're consulting fallbackLocale.
         // Should be ~0 in well-translated apps; growing = missing translations.
         if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
-        pluralResult = lookupKey(fallbackLocale, namespace, pluralKey)
+        result = lookupKey(fallbackLocale, namespace, candidate)
       }
-
-      if (pluralResult) {
-        return interpolate(pluralResult, values)
-      }
+      if (result !== undefined) return finalize(result, values, currentLocale, depth)
     }
 
-    // Standard lookup: current locale → fallback locale
-    let result = lookupKey(currentLocale, namespace, keyPath)
-    if (result === undefined && fallbackLocale) {
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.lookupKey.fallback')
-      result = lookupKey(fallbackLocale, namespace, keyPath)
-    }
-
-    if (result !== undefined) {
-      return interpolate(result, values)
+    // Explicit default value (interpolated) before the key-as-fallback.
+    const defaultValue = values?.defaultValue
+    if (typeof defaultValue === 'string') {
+      return finalize(defaultValue, values, currentLocale, depth)
     }
 
     // Missing key handler
@@ -262,6 +354,20 @@ export function createI18n(options: I18nOptions): I18nInstance {
     return resolveTranslation(key, values)
   }
 
+  // Intl formatters — read locale() so they re-run reactively on locale change;
+  // the underlying Intl.*Format instances are memoized per (locale, options).
+  const n = (value: number | bigint, opts?: Intl.NumberFormatOptions | string): string =>
+    formatters.n(locale(), value, opts)
+
+  const d = (value: Date | number | string, opts?: Intl.DateTimeFormatOptions | string): string =>
+    formatters.d(locale(), value, opts)
+
+  const rt = (
+    value: number,
+    unit: Intl.RelativeTimeFormatUnit,
+    opts?: Intl.RelativeTimeFormatOptions | string,
+  ): string => formatters.rt(locale(), value, unit, opts)
+
   const loadNamespace = async (namespace: string, loc?: string): Promise<void> => {
     if (!loader) return
 
@@ -283,19 +389,19 @@ export function createI18n(options: I18nOptions): I18nInstance {
     // the loaded set between navigations).
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('i18n.namespaceLoad')
 
-    pendingLoads.update((n) => n + 1)
+    pendingLoads.update((c) => c + 1)
 
     const promise = loader(targetLocale, namespace)
       .then((dict) => {
         if (dict) {
           nsMap.set(namespace, dict)
-          storeVersion.update((n) => n + 1)
-          loadedNsVersion.update((n) => n + 1)
+          storeVersion.update((c) => c + 1)
+          loadedNsVersion.update((c) => c + 1)
         }
       })
       .finally(() => {
         pendingPromises.delete(cacheKey)
-        pendingLoads.update((n) => n - 1)
+        pendingLoads.update((c) => c - 1)
       })
 
     pendingPromises.set(cacheKey, promise)
@@ -334,12 +440,15 @@ export function createI18n(options: I18nOptions): I18nInstance {
       nsMap.set(ns, cloned)
     }
 
-    storeVersion.update((n) => n + 1)
-    loadedNsVersion.update((n) => n + 1)
+    storeVersion.update((c) => c + 1)
+    loadedNsVersion.update((c) => c + 1)
   }
 
   return {
     t,
+    n,
+    d,
+    rt,
     locale,
     loadNamespace,
     isLoading,

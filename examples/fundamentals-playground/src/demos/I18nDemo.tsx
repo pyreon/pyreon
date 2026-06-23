@@ -114,7 +114,7 @@ export function I18nDemo() {
       <p class="desc">
         Reactive internationalization with interpolation, pluralization, and rich text.
       </p>
-      <I18nProvider instance={i18n}>
+      <I18nProvider value={i18n}>
         <I18nContent />
       </I18nProvider>
     </div>
