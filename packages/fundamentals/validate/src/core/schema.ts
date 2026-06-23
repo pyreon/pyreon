@@ -145,6 +145,17 @@ export abstract class Schema<T> {
   /** Cached parse closure — built on first parse, reused thereafter. */
   private _compiled?: SyncValidator | undefined
 
+  /**
+   * Build-attached specialized VERDICT function (`@pyreon/compiler`'s
+   * `emitValidator` via `@pyreon/vite-plugin`). When present, {@link is} uses it
+   * directly — a monomorphic, fully-inlined boolean check with no op-array
+   * traversal. Only EMITTABLE schemas (primitives + checks + object/array +
+   * optional, no transform/default/coercion) get one, and the cross-runtime
+   * equivalence gate proves its verdict matches the interpreter's. Cleared by
+   * `_invalidateCompile` so a post-attach chain can never use a stale verdict.
+   */
+  private _compiledVerdict?: ((input: unknown) => boolean) | undefined
+
   // ─── Public parse API ─────────────────────────────────────────────────
 
   /**
@@ -227,6 +238,36 @@ export abstract class Schema<T> {
   /** Zod-compat alias for {@link parse}. */
   safeParse(input: unknown): Result<T> {
     return this.parse(input)
+  }
+
+  /**
+   * Pure boolean validity check (typia's `is<T>` analogue) — `true` iff `input`
+   * is valid. Cheaper than `.parse(...).ok` when you only need the verdict, and
+   * the target of the compile-time fast path: when `@pyreon/vite-plugin` has
+   * attached a specialized verdict (emittable schemas only), this skips the
+   * runtime op-array entirely. Falls back to `.parse(input).ok` otherwise.
+   *
+   * SYNC only — an async schema (`.refine`/`.transform` returning a Promise)
+   * can't be decided synchronously, so `.is()` returns `false` for it; use
+   * `parseAsync` there.
+   *
+   * @example
+   * if (Login.is(req.body)) handle(req.body)
+   */
+  is(input: unknown): boolean {
+    if (this._compiledVerdict) return this._compiledVerdict(input)
+    return this.parse(input).ok
+  }
+
+  /**
+   * Attach a build-emitted specialized verdict function (see
+   * {@link _compiledVerdict}). Used by `@pyreon/vite-plugin`; not part of the
+   * authoring surface. Returns `this` for chaining at the emit call site.
+   * @internal
+   */
+  _attachCompiledVerdict(fn: (input: unknown) => boolean): this {
+    this._compiledVerdict = fn
+    return this
   }
 
   // ─── Standard Schema v1 contract ──────────────────────────────────────
@@ -515,6 +556,9 @@ export abstract class Schema<T> {
   /** Invalidate the cached closure (called when ops change). */
   _invalidateCompile(): void {
     this._compiled = undefined
+    // A build-attached verdict reflects the op-list AT ATTACH TIME; any later
+    // chained method invalidates it, so drop it and fall back to `.parse().ok`.
+    this._compiledVerdict = undefined
   }
 
   /** Build (or fetch cached) compiled validator. */
