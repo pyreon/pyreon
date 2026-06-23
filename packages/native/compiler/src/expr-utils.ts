@@ -64,18 +64,41 @@ export function scalarLiteralType(e: ExprIR): TypeIR | null {
  * line up across targets: identical algorithm + identical source traversal
  * order → identical name assignment. Shape key = sorted `name:typekind`
  * pairs (so same-shape literals share one struct; same-names-different-scalar-
- * types get distinct structs). FLAT scalar literals only — a nested object
- * or array field returns null (kept as a tuple).
+ * types get distinct structs).
+ *
+ * Field types come from `scalarLiteralType` (a literal value) OR, when the
+ * optional `inferField` callback is supplied, from inferring a NON-literal
+ * field's expression — so `{ id: count(), name: label() }` (signal reads)
+ * synthesizes a struct too, not just `{ id: 1, name: 'a' }`. Only SCALAR
+ * inferred kinds (number / string / boolean) are accepted: the shapeKey
+ * distinguishes those precisely, whereas array / typeRef / nested-object
+ * kinds collide on the lossy key, so an inferred non-scalar bails (→ the
+ * caller keeps its tuple emit, unchanged). A field that is neither a scalar
+ * literal nor a scalar-inferred expression returns null (no regression).
+ * `inferField` is a callback (not an `InferenceCtx` import) so this module
+ * stays dependency-free of `infer-type` — the caller, which already imports
+ * `inferType`, passes `(e) => inferType(e, ctx)`.
  */
 export function synthLiteralStructName(
   fields: { name: string; value: ExprIR }[],
   structs: StructIR[],
   keys: Map<string, string>,
+  inferField?: (e: ExprIR) => TypeIR,
 ): string | null {
   if (fields.length === 0) return null
   const typed: { name: string; type: TypeIR }[] = []
   for (const f of fields) {
-    const t = scalarLiteralType(f.value)
+    let t = scalarLiteralType(f.value)
+    if (t === null && inferField !== undefined) {
+      const inferred = inferField(f.value)
+      if (
+        inferred.kind === 'string' ||
+        inferred.kind === 'boolean' ||
+        inferred.kind === 'number'
+      ) {
+        t = inferred
+      }
+    }
     if (t === null) return null
     typed.push({ name: f.name, type: t })
   }

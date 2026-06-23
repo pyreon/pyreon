@@ -84,9 +84,27 @@ describe('anonymous object-literal → synthesized struct', () => {
     expect(kt).toContain('val c = __Obj1(')
   })
 
-  it('a NON-literal field value keeps the tuple emit (no synthesis, no regression)', () => {
+  it('a non-literal SCALAR field now synthesizes a struct (inferred field type)', () => {
+    // Widened: `count()` is a non-literal whose type INFERS to a scalar
+    // (number) → a struct is synthesized (was: kept as an Any-tuple). See
+    // native-objlit-nonliteral-fields.test.ts for the full both-target +
+    // kotlinc-typecheck coverage.
     const sw = transform(app(`  const x = { id: count() }`), { target: 'swift' }).code
-    // count() is not a literal → no synthesized struct; tuple emit unchanged
+    expect(sw).toContain('__Obj0(id: count)')
+  })
+
+  it('a non-SCALAR-inferred field still keeps the tuple emit (no over-reach)', () => {
+    // An array-typed field can't be distinguished on the lossy shapeKey, so
+    // it bails to the tuple — only scalar-inferred fields synthesize.
+    const sw = transform(
+      `import { Stack, Text } from '@pyreon/primitives'
+function App() {
+  const arr = signal<number[]>([1, 2])
+  const x = { tags: arr() }
+  return (<Stack><Text>x</Text></Stack>)
+}`,
+      { target: 'swift' },
+    ).code
     expect(sw).not.toContain('__Obj')
   })
 
