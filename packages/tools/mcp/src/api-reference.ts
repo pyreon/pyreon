@@ -2154,7 +2154,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
   },
 
   'state-tree/ModelDefinition': {
-    signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), create(initial?), asHook(id) }',
+    signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), lifecycle(f), create(initial?), asHook(id) }',
     example: `const M = model({ schema })
   .views((self) => ({ a: () => self.x() }))     // self has state
   .views((self) => ({ b: () => self.a() + 1 })) // self also has a
@@ -2198,6 +2198,39 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
   return next(call)
 })`,
     notes: 'Add an action interception middleware to a model instance. The middleware receives the action call context and a `next` function — call `next(call)` to proceed or return early to block the action. Returns an unsubscribe function. See also: model.',
+  },
+
+  'state-tree/destroy': {
+    signature: '(instance: ModelInstance) => void',
+    example: `const clock = Clock.create()  // .lifecycle(() => ({ afterCreate: start, beforeDestroy: stop }))
+destroy(clock)   // runs stop(), tears down subscriptions, marks dead
+isAlive(clock)   // false`,
+    notes: 'Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested child models, drop all subscriptions (patch listeners + middleware), and mark it dead (`isAlive` → false). Idempotent. NOTE: this tears down SUBSCRIPTIONS + runs cleanup — it does NOT free memory. Pyreon signals have no per-signal dispose; the instance is reclaimed by GC once you drop your references. After `destroy`, actions + schema mutation helpers dev-warn and no-op; direct signal writes (`self.field.set`) stay unguarded. See also: isAlive, model, clone.',
+    mistakes: `- Expecting \`destroy\` to free memory immediately — it clears subscriptions + runs \`beforeDestroy\`; GC reclaims the signals once you drop your references
+- Writing state via \`self.field.set(v)\` after destroy — direct signal writes are NOT guarded (only actions + schema helpers warn). Stop mutating a destroyed instance
+- Calling actions on a destroyed instance — they no-op + dev-warn; this usually means a stale event handler outlived the instance`,
+  },
+
+  'state-tree/isAlive': {
+    signature: '(instance: ModelInstance) => boolean',
+    example: 'if (isAlive(model)) model.applyServerUpdate(data)',
+    notes: 'Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). Use to guard deferred work (a queued callback, a fetch resolution) that might land after the instance was torn down. See also: destroy, model.',
+  },
+
+  'state-tree/clone': {
+    signature: '<T>(instance: T) => T',
+    example: `const draft = clone(original)   // independent copy of original's current state
+draft.title.set('edited')        // does not touch original`,
+    notes: 'Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from the SAME definition. The clone has its own signals, listeners, middleware, and lifecycle — mutating one never affects the other. In schema mode the snapshot is re-validated by `.create()`. Throws if the instance carries no definition back-reference (i.e. was not produced by `ModelDefinition.create()`). See also: getType, getSnapshot, model.',
+    mistakes: `- Expecting \`clone\` to be a shallow reference copy — it is a deep structural copy via \`getSnapshot\` + \`.create()\`; nested field-models are re-created
+- Cloning an instance built without \`ModelDefinition.create()\` — \`clone\` needs the definition back-reference and throws otherwise`,
+  },
+
+  'state-tree/getType': {
+    signature: '(instance: ModelInstance) => ModelDefinition | undefined',
+    example: `const Def = getType(instance)
+const sibling = Def?.create()`,
+    notes: 'Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed. See also: clone, model.',
   },
   // <gen-docs:api-reference:end @pyreon/state-tree>
 

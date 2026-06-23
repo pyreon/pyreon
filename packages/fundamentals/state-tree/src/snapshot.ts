@@ -44,6 +44,20 @@ export function applySnapshot<TState extends StateShape>(
   const meta = instanceMeta.get(instance)
   if (!meta) throw new Error('[@pyreon/state-tree] applySnapshot: not a model instance')
 
+  // Schema mode: route through the schema-validated `patch` helper so an
+  // invalid snapshot is REJECTED (the schema is the source of truth) rather
+  // than written raw to signals. `patch` shallow-merges the partial onto the
+  // current state and validates the result — preserving the "keys absent from
+  // the snapshot are left unchanged" contract while closing the integrity hole
+  // where a malformed snapshot could bypass validation. (Schema mode is flat —
+  // no nested field-models — so no recursion is needed.)
+  if (meta.isSchema) {
+    ;(instance as { patch: (p: Record<string, unknown>) => void }).patch(
+      snapshot as Record<string, unknown>,
+    )
+    return
+  }
+
   batch(() => {
     for (const key of meta.stateKeys) {
       if (!(key in snapshot)) continue

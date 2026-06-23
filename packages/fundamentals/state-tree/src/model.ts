@@ -3,6 +3,7 @@ import { extractParseFn, formatIssues } from '@pyreon/validation'
 import { createInstance } from './instance'
 import type {
   InferSchemaState,
+  LifecycleHandlers,
   ModelInstance,
   ModelSelf,
   Snapshot,
@@ -70,6 +71,8 @@ export interface NormalizedConfig<TState extends StateShape> {
   readonly actionFactories: ReadonlyArray<
     (self: any) => Record<string, (...args: any[]) => any>
   >
+  /** Ordered list of lifecycle factories (always an array, possibly empty). */
+  readonly lifecycleFactories: ReadonlyArray<(self: any) => LifecycleHandlers>
 }
 
 // ─── ModelDefinition ──────────────────────────────────────────────────────────
@@ -158,6 +161,33 @@ export class ModelDefinition<
   }
 
   /**
+   * Register lifecycle handlers. Chainable (the factory sees the fully-typed
+   * `self`). `afterCreate` runs once at the end of `.create()` (after all
+   * views/actions are merged); `beforeDestroy` runs on `destroy(instance)`.
+   * Only `afterCreate` / `beforeDestroy` keys are honored — any other key
+   * throws at `.create()` time (typo guard).
+   *
+   * @example
+   * ```ts
+   * model({ state: { ms: 0 } })
+   *   .actions((self) => ({ tick: () => self.ms.update(n => n + 1) }))
+   *   .volatile(() => ({ timer: 0 as ReturnType<typeof setInterval> | 0 }))
+   *   .lifecycle((self) => ({
+   *     afterCreate: () => { self.timer = setInterval(() => self.tick(), 1000) },
+   *     beforeDestroy: () => clearInterval(self.timer),
+   *   }))
+   * ```
+   */
+  lifecycle(
+    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema>) => LifecycleHandlers,
+  ): ModelDefinition<TState, TViews, TActions, HasSchema> {
+    return new ModelDefinition<TState, TViews, TActions, HasSchema>({
+      ...this._config,
+      lifecycleFactories: [...this._config.lifecycleFactories, factory as never],
+    })
+  }
+
+  /**
    * Create a new independent model instance. Pass a partial snapshot to
    * override defaults (plain mode) or to provide / override the initial
    * value (schema mode).
@@ -170,7 +200,9 @@ export class ModelDefinition<
   create(
     initial?: Partial<Snapshot<TState>>,
   ): ModelInstance<TState, TViews, TActions, HasSchema> {
-    return createInstance(this._config, initial ?? {}) as never
+    // Pass `this` so the instance's meta carries a back-reference to the
+    // definition (powers `clone` / `getType`).
+    return createInstance(this._config, initial ?? {}, this) as never
   }
 
   /**
@@ -287,6 +319,7 @@ export function model(
       _parseFn: parseFn,
       viewFactories: [],
       actionFactories: [],
+      lifecycleFactories: [],
       ...(parsedInitial !== undefined ? { _parsedInitial: parsedInitial } : {}),
       ...(config.onValidationError
         ? { _onValidationError: config.onValidationError }
@@ -307,5 +340,6 @@ export function model(
     state: (config as { state: StateShape }).state,
     viewFactories: [],
     actionFactories: [],
+    lifecycleFactories: [],
   })
 }

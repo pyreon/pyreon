@@ -56,6 +56,9 @@ const { store } = useTodoList() // same instance on every call`,
     'model({ state }) or model({ schema }) — chainable builder',
     '.views(self => ...) — chainable derived values; each layer sees prior ones',
     '.actions(self => ...) — chainable mutators; async out of the box',
+    '.lifecycle(self => ({ afterCreate, beforeDestroy })) — instance lifecycle hooks',
+    'destroy(instance) / isAlive(instance) — tear down (recurses field-nested children) + liveness; actions no-op after destroy',
+    'clone(instance) / getType(instance) — independent structural copy + definition back-ref',
     'Schema mode validates + STRICTLY TYPES state from a schema passed directly — @pyreon/validate, raw zod / valibot / arktype, any Standard Schema (no adapter wrapper)',
     'Nested model composition for tree-shaped state',
     'getSnapshot / applySnapshot — typed recursive serialization',
@@ -153,7 +156,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
     {
       name: 'ModelDefinition',
       kind: 'type',
-      signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), create(initial?), asHook(id) }',
+      signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), lifecycle(f), create(initial?), asHook(id) }',
       summary:
         'The chainable builder returned by `model()`. Each `.views(f)` / `.actions(f)` returns a NEW `ModelDefinition` with the accumulated layer — immutable builder, safe to share across call sites. `f` receives `self` typed as the model AS IT IS SO FAR (state signals + prior views + prior actions + schema helpers when applicable). Type parameters: `TState` is the underlying value shape; `TViews` / `TActions` accumulate across chain steps; `HasSchema` flips to `true` in schema mode (adds `set`/`patch`/`reset` to instance type).',
       example: `const M = model({ schema })
@@ -216,6 +219,55 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
   return next(call)
 })`,
       seeAlso: ['model'],
+    },
+    {
+      name: 'destroy',
+      kind: 'function',
+      signature: '(instance: ModelInstance) => void',
+      summary:
+        'Tear down a model instance: run its `beforeDestroy` handlers (from `.lifecycle()`), recursively destroy field-nested child models, drop all subscriptions (patch listeners + middleware), and mark it dead (`isAlive` → false). Idempotent. NOTE: this tears down SUBSCRIPTIONS + runs cleanup — it does NOT free memory. Pyreon signals have no per-signal dispose; the instance is reclaimed by GC once you drop your references. After `destroy`, actions + schema mutation helpers dev-warn and no-op; direct signal writes (`self.field.set`) stay unguarded.',
+      example: `const clock = Clock.create()  // .lifecycle(() => ({ afterCreate: start, beforeDestroy: stop }))
+destroy(clock)   // runs stop(), tears down subscriptions, marks dead
+isAlive(clock)   // false`,
+      mistakes: [
+        'Expecting `destroy` to free memory immediately — it clears subscriptions + runs `beforeDestroy`; GC reclaims the signals once you drop your references',
+        'Writing state via `self.field.set(v)` after destroy — direct signal writes are NOT guarded (only actions + schema helpers warn). Stop mutating a destroyed instance',
+        'Calling actions on a destroyed instance — they no-op + dev-warn; this usually means a stale event handler outlived the instance',
+      ],
+      seeAlso: ['isAlive', 'model', 'clone'],
+    },
+    {
+      name: 'isAlive',
+      kind: 'function',
+      signature: '(instance: ModelInstance) => boolean',
+      summary:
+        'Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). Use to guard deferred work (a queued callback, a fetch resolution) that might land after the instance was torn down.',
+      example: `if (isAlive(model)) model.applyServerUpdate(data)`,
+      seeAlso: ['destroy', 'model'],
+    },
+    {
+      name: 'clone',
+      kind: 'function',
+      signature: '<T>(instance: T) => T',
+      summary:
+        'Structurally clone a model instance: snapshot its current state, then create a fresh, fully-independent instance from the SAME definition. The clone has its own signals, listeners, middleware, and lifecycle — mutating one never affects the other. In schema mode the snapshot is re-validated by `.create()`. Throws if the instance carries no definition back-reference (i.e. was not produced by `ModelDefinition.create()`).',
+      example: `const draft = clone(original)   // independent copy of original's current state
+draft.title.set('edited')        // does not touch original`,
+      mistakes: [
+        'Expecting `clone` to be a shallow reference copy — it is a deep structural copy via `getSnapshot` + `.create()`; nested field-models are re-created',
+        'Cloning an instance built without `ModelDefinition.create()` — `clone` needs the definition back-reference and throws otherwise',
+      ],
+      seeAlso: ['getType', 'getSnapshot', 'model'],
+    },
+    {
+      name: 'getType',
+      kind: 'function',
+      signature: '(instance: ModelInstance) => ModelDefinition | undefined',
+      summary:
+        'Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed.',
+      example: `const Def = getType(instance)
+const sibling = Def?.create()`,
+      seeAlso: ['clone', 'model'],
     },
   ],
   gotchas: [

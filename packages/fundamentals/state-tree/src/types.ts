@@ -231,6 +231,26 @@ export interface ActionCall {
 
 export type MiddlewareFn = (call: ActionCall, next: (nextCall: ActionCall) => unknown) => unknown
 
+// ─── Lifecycle ─────────────────────────────────────────────────────────────────
+
+/**
+ * Lifecycle handlers returned by a `.lifecycle(self => ({ … }))` factory.
+ *
+ * - `afterCreate` runs ONCE at the end of `.create()`, after every `.views()` /
+ *   `.actions()` layer is merged — so `self` is the fully-built instance.
+ *   (Nested field-models run their own `afterCreate` when their subtree
+ *   finishes building, i.e. before the parent's — bottom-up, MST-style.)
+ * - `beforeDestroy` runs when `destroy(instance)` is called, before the
+ *   instance is marked dead.
+ *
+ * Only these two keys are honored — `.lifecycle()` throws on any other key
+ * (typo guard).
+ */
+export interface LifecycleHandlers {
+  readonly afterCreate?: () => void
+  readonly beforeDestroy?: () => void
+}
+
 // ─── Instance metadata ────────────────────────────────────────────────────────
 
 export interface InstanceMeta {
@@ -238,4 +258,31 @@ export interface InstanceMeta {
   patchListeners: Set<PatchListener>
   middlewares: MiddlewareFn[]
   emitPatch(patch: Patch): void
+  /**
+   * Whether this instance was built in schema mode (`model({ schema })`).
+   * Drives `applySnapshot`'s validated path — in schema mode a snapshot is
+   * routed through the schema-validated `patch` helper so an invalid shape is
+   * rejected (the schema is the source of truth), rather than written raw.
+   */
+  isSchema: boolean
+  /**
+   * Liveness flag. `true` from creation until `destroy(instance)` runs. Actions
+   * + schema-mutation helpers dev-warn (and no-op) when invoked on a dead
+   * instance; direct signal writes (`self.field.set`) are NOT guarded (the
+   * documented escape hatch).
+   */
+  alive: boolean
+  /** Collected from `.lifecycle()` factories; invoked by `destroy()`. */
+  beforeDestroy?: () => void
+  /**
+   * Field-nested child model instances (plain-mode only). `destroy()` recurses
+   * into these so a whole subtree tears down with the root.
+   */
+  children: Set<object>
+  /**
+   * Back-reference to the `ModelDefinition` that produced this instance —
+   * powers `clone(instance)` (= `def.create(getSnapshot(instance))`) and
+   * `getType(instance)`. Untyped here to avoid a `model.ts` ↔ `types.ts` cycle.
+   */
+  definition?: unknown
 }

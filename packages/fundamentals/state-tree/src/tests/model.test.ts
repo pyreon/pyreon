@@ -462,6 +462,9 @@ describe('patch snapshotValue', () => {
       emitPatch: () => {
         /* noop */
       },
+      alive: true,
+      children: new Set(),
+      isSchema: false,
     })
 
     outer.replaceChild(fakeInstance)

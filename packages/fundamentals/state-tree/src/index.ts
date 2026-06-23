@@ -16,6 +16,10 @@ export { model, resetAllHooks, resetHook } from './model'
 
 export { applySnapshot, getSnapshot } from './snapshot'
 
+// ─── Lifecycle ─────────────────────────────────────────────────────────────────
+
+export { clone, destroy, getType, isAlive } from './lifecycle'
+
 // ─── Patches ─────────────────────────────────────────────────────────────────
 
 export { applyPatch, onPatch } from './patch'
@@ -29,6 +33,7 @@ export { addMiddleware } from './middleware'
 export type {
   ActionCall,
   DeepPartial,
+  LifecycleHandlers,
   MiddlewareFn,
   ModelInstance,
   ModelSelf,
