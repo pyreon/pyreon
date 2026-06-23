@@ -76,8 +76,9 @@ describe('gen-docs — state-tree snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     // model + SchemaModelHelpers + DeepPartial + ModelDefinition + getSnapshot
     // + applySnapshot + onPatch + applyPatch + addMiddleware
-    // + destroy + isAlive + clone + getType = 13
-    expect(Object.keys(record).length).toBe(13)
+    // + destroy + isAlive + clone + getType (PR 2)
+    // + volatile + onSnapshot + onAction (PR 3) = 16
+    expect(Object.keys(record).length).toBe(16)
     expect(record['state-tree/model']!.notes).toContain('chainable builder')
     expect(record['state-tree/model']!.notes).toContain('schema')
     expect(record['state-tree/model']!.notes).toContain('async')
@@ -95,5 +96,9 @@ describe('gen-docs — state-tree snapshot', () => {
     expect(record['state-tree/isAlive']).toBeDefined()
     expect(record['state-tree/clone']!.notes).toContain('independent')
     expect(record['state-tree/getType']).toBeDefined()
+    // Volatile + subscriptions (PR 3)
+    expect(record['state-tree/volatile']!.notes).toContain('EXCLUDED from snapshots')
+    expect(record['state-tree/onSnapshot']!.notes).toContain('COALESCED')
+    expect(record['state-tree/onAction']!.notes).toContain('observe')
   })
 })

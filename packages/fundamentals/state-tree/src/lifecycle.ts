@@ -53,6 +53,7 @@ export function destroy(instance: object): void {
 
   // Drop subscriptions.
   meta.patchListeners.clear()
+  meta.snapshotListeners.clear()
   meta.middlewares.length = 0
 
   meta.alive = false

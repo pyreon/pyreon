@@ -698,6 +698,33 @@ const sibling = Def?.create()
 
 > Tree-traversal helpers (`getParent` / `getRoot` / `getPath`) and references / identifiers are a planned follow-up — field-nested-only tree helpers would silently fail on array/map-held children (the common composition shape), so they're deferred to a design that tracks assignment.
 
+## Volatile State
+
+`.volatile(self => ({ ... }))` adds **signal-backed transient fields** — reactive (read `self.x()`, write `self.x.set(v)`), but **excluded from snapshots, patches, and `onSnapshot`**. Use it for state that should not be persisted or replayed: in-flight flags, drag/hover UI state, live object references (websockets, timers, promises).
+
+```ts
+const Search = model({ state: { results: [] as string[] } })
+  .volatile(() => ({ loading: false, lastError: null as Error | null }))
+  .actions((self) => ({
+    async run(q: string) {
+      self.loading.set(true) // reactive — drives a spinner; never persisted
+      try {
+        self.results.set(await search(q))
+        self.lastError.set(null)
+      } catch (err) {
+        self.lastError.set(err as Error)
+      } finally {
+        self.loading.set(false)
+      }
+    },
+  }))
+
+const s = Search.create()
+getSnapshot(s) // { results: [] } — loading / lastError are NOT in the snapshot
+```
+
+Volatile fields are strictly typed (`s.loading()` is `boolean`). They cannot collide with state, schema-helper, view, action, or other-volatile names (throws at `.create()`). A volatile-only change never fires `onSnapshot` and never emits a patch — it produces the same snapshot.
+
 ## Snapshots
 
 Serialize and restore model instances as plain JS objects (no signals, no functions).
@@ -841,6 +868,22 @@ Both `getSnapshot` and `applySnapshot` throw if called on a non-model-instance:
 getSnapshot({}) // throws: "[@pyreon/state-tree] getSnapshot: not a model instance"
 applySnapshot({}, {}) // throws: "[@pyreon/state-tree] applySnapshot: not a model instance"
 ```
+
+> **Schema mode re-validates.** In schema mode, `applySnapshot` routes the snapshot through the schema-validated `patch` helper — a malformed snapshot is **rejected** (the schema is the source of truth), not written raw to signals. Plain mode writes directly.
+
+### `onSnapshot(instance, cb)`
+
+Subscribe to snapshot changes. The listener fires **microtask-coalesced** with the new snapshot after any state change — all writes in one synchronous burst (a multi-field `set`/`patch`, several signal writes in one action) collapse into a **single** emit on the next microtask (MST-like async semantics). It does **not** fire on subscribe, and volatile-field changes do not fire it. Returns an unsubscribe function; `destroy(instance)` also clears all snapshot listeners.
+
+```ts
+import { onSnapshot } from '@pyreon/state-tree'
+
+const dispose = onSnapshot(store, (snap) => {
+  localStorage.setItem('store', JSON.stringify(snap)) // persist on every change
+})
+```
+
+It's implemented via the patch-write hook — not a reactive `effect()` — so it never fires on creation and never depends on the untracked `.peek()` reads `getSnapshot` performs. If you need the starting value, take an initial `getSnapshot(instance)` yourself.
 
 ## Patches
 
@@ -1194,6 +1237,20 @@ interface ActionCall {
 ```ts
 type MiddlewareFn = (call: ActionCall, next: (call: ActionCall) => unknown) => unknown
 ```
+
+### `onAction(instance, cb)` — observe-only
+
+When you only want to *watch* actions (logging, analytics, devtools) — not intercept them — `onAction` is the read-only sugar over `addMiddleware`. The listener receives the `ActionCall` (`name`, `args`, `path`) before the action runs; it cannot block or alter the call. Returns an unsubscribe function.
+
+```ts
+import { onAction } from '@pyreon/state-tree'
+
+const unsub = onAction(store, (call) => {
+  analytics.track(call.name, call.args)
+})
+```
+
+Use `addMiddleware` (above) when you need to short-circuit, transform arguments, or observe async completion via `await next(call)`.
 
 ## Testing Models
 

@@ -14,7 +14,7 @@ export { model, resetAllHooks, resetHook } from './model'
 
 // ─── Snapshot ─────────────────────────────────────────────────────────────────
 
-export { applySnapshot, getSnapshot } from './snapshot'
+export { applySnapshot, getSnapshot, onSnapshot } from './snapshot'
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -26,7 +26,7 @@ export { applyPatch, onPatch } from './patch'
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-export { addMiddleware } from './middleware'
+export { addMiddleware, onAction } from './middleware'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,5 +41,6 @@ export type {
   PatchListener,
   SchemaModelHelpers,
   Snapshot,
+  SnapshotListener,
   StateShape,
 } from './types'

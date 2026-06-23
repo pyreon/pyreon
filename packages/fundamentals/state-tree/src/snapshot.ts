@@ -1,7 +1,7 @@
 import type { Signal } from '@pyreon/reactivity'
 import { batch } from '@pyreon/reactivity'
 import { instanceMeta, isModelInstance } from './registry'
-import type { Snapshot, StateShape } from './types'
+import type { SnapshotListener, Snapshot, StateShape } from './types'
 
 // ─── getSnapshot ──────────────────────────────────────────────────────────────
 
@@ -73,4 +73,32 @@ export function applySnapshot<TState extends StateShape>(
       }
     }
   })
+}
+
+// ─── onSnapshot ────────────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to snapshot changes. The listener fires (microtask-coalesced) with
+ * the new snapshot after any STATE change — all writes in one synchronous burst
+ * (a multi-field `set`/`patch`, several signal writes in one action) collapse
+ * into a SINGLE emit on the next microtask (MST-like async semantics). Does NOT
+ * fire on subscribe. Volatile-field changes do NOT fire it (volatile is excluded
+ * from snapshots). Returns an unsubscribe function; `destroy(instance)` also
+ * clears all snapshot listeners.
+ *
+ * @example
+ * const dispose = onSnapshot(counter, (snap) => {
+ *   localStorage.setItem('counter', JSON.stringify(snap))
+ * })
+ */
+export function onSnapshot<TState extends StateShape>(
+  instance: object,
+  listener: SnapshotListener<TState>,
+): () => void {
+  const meta = instanceMeta.get(instance)
+  if (!meta) throw new Error('[Pyreon] state-tree onSnapshot: not a model instance')
+  meta.snapshotListeners.add(listener as SnapshotListener)
+  return () => {
+    meta.snapshotListeners.delete(listener as SnapshotListener)
+  }
 }
