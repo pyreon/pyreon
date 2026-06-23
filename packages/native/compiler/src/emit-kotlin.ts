@@ -12,7 +12,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { substituteIdentifier } from './expr-utils'
+import { substituteIdentifier, synthLiteralStructName } from './expr-utils'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import {
   type FlatRouteEntry,
@@ -51,6 +51,14 @@ let _enumNames: Set<string> = new Set()
  * `_structFieldsToName`. See that file for the structural rationale.
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/**
+ * Synthesized data classes for ANONYMOUS all-scalar-literal object
+ * EXPRESSIONS (`{ id: 1, name: 'a' }`). Mirror of emit-swift's
+ * `_synthExprStructs` — same shared `synthLiteralStructName` helper so the
+ * `__Obj0`/`__Obj1`/… names line up across targets. Reset per emitKotlin run.
+ */
+let _synthExprStructs: StructIR[] = []
+let _synthExprStructKeys: Map<string, string> = new Map()
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
 let _signalEnumTypes: Map<string, string> = new Map()
@@ -200,6 +208,8 @@ export function emitKotlin(
   _enumNames = new Set(enums.map((e) => e.name))
   // Build the struct-fields key map — mirror of emit-swift's logic.
   _structFieldsToName = new Map()
+  _synthExprStructs = []
+  _synthExprStructKeys = new Map()
   for (const s of structs) {
     const key = s.fields.map((f) => f.name).sort().join(',')
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
@@ -285,11 +295,16 @@ export function emitKotlin(
   // if any of those elements is encountered.
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitKotlinComponent(c))
+  // Emit synthesized anonymous-object data classes (collected during
+  // component emit) at module scope — Kotlin allows top-level forward refs.
+  for (const s of _synthExprStructs) parts.push(emitKotlinStruct(s))
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper composables if needed.
   if (_needsKotlinKeepAliveWrapper) parts.push(KOTLIN_KEEP_ALIVE_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
+  _synthExprStructs = []
+  _synthExprStructKeys = new Map()
   _componentNames = new Set()
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
@@ -2298,6 +2313,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
           return `${kotlinIdent(structName)}(${args})`
+        }
+        // No declared data class matches — SYNTHESIZE one for an all-scalar-
+        // literal object (`{ id: 1, name: 'a' }`) instead of the broken
+        // `(field = value)` tuple emit (tuple key-paths break `items.map { it.id }`
+        // / can't go through a Saver). Non-literal / nested fields keep the
+        // tuple emit below (unchanged). Shared helper → names match Swift.
+        const synthName = synthLiteralStructName(e.fields, _synthExprStructs, _synthExprStructKeys)
+        if (synthName !== null) {
+          const args = e.fields
+            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .join(', ')
+          return `${kotlinIdent(synthName)}(${args})`
         }
       }
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')

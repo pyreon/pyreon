@@ -16,7 +16,7 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { substituteIdentifier } from './expr-utils'
+import { substituteIdentifier, synthLiteralStructName } from './expr-utils'
 import { buildInferenceCtx, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -89,6 +89,21 @@ let _componentNames: Set<string> = new Set()
  * we keep the first-seen struct (alphabetical via Map insertion).
  */
 let _structFieldsToName: Map<string, string> = new Map()
+/**
+ * Synthesized structs for ANONYMOUS all-scalar-literal object EXPRESSIONS
+ * (`{ id: 1, name: 'a' }`) that match no declared struct. Without this they
+ * degrade to a labelled tuple — and a single-field labelled tuple `(id: 1)`
+ * is illegal Swift, while tuple key-paths break `ForEach(items, id: \.id)`
+ * and Codable bridges. Each synthesized struct is emitted at module scope
+ * (after components). Keyed by the field name:type SHAPE so two literals with
+ * the same shape share one struct AND two with the same names but different
+ * scalar types don't collide. Reset per emitSwift run. (Scope: FLAT scalar
+ * literals — string / number / boolean — only; a non-literal or nested-object
+ * field keeps the tuple emit, unchanged.)
+ */
+let _synthExprStructs: StructIR[] = []
+let _synthExprStructKeys: Map<string, string> = new Map()
+
 /**
  * Per-emit-run: component name → typed-`params`-prop info for router
  * dispatcher construction. Populated by a PRE-PASS in `emitSwift` (the
@@ -295,6 +310,8 @@ export function emitSwift(
   }
   _enumNames = new Set(enums.map((e) => e.name))
   _structFieldsToName = new Map()
+  _synthExprStructs = []
+  _synthExprStructKeys = new Map()
   for (const s of structs) {
     const key = s.fields.map((f) => f.name).sort().join(',')
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
@@ -377,11 +394,17 @@ export function emitSwift(
   // if any of those elements is encountered.
   const componentParts: string[] = []
   for (const c of components) componentParts.push(emitSwiftComponent(c))
+  // Emit synthesized anonymous-object structs (collected during component
+  // emit) at module scope. Swift allows top-level type forward refs, so
+  // ordering vs the components is irrelevant.
+  for (const s of _synthExprStructs) parts.push(emitSwiftStruct(s))
   // Gap 3 PR-3.2/3.3/3.4 — prepend wrapper helper structs if needed.
   if (_needsSwiftKeepAliveWrapper) parts.push(SWIFT_KEEP_ALIVE_WRAPPER)
   for (const cp of componentParts) parts.push(cp)
   _enumNames = new Set()
   _structFieldsToName = new Map()
+  _synthExprStructs = []
+  _synthExprStructKeys = new Map()
   _componentNames = new Set()
   _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
@@ -2536,6 +2559,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
             .join(', ')
           return `${swiftIdent(structName)}(${args})`
+        }
+        // No declared struct matches — SYNTHESIZE one for an all-scalar-
+        // literal object (`{ id: 1, name: 'a' }`) instead of the broken
+        // labelled-tuple emit (single-field tuple is illegal Swift; tuple
+        // key-paths break `ForEach(id:)`). Non-literal / nested-object
+        // fields fall through to the tuple emit below (unchanged).
+        const synthName = synthLiteralStructName(e.fields, _synthExprStructs, _synthExprStructKeys)
+        if (synthName !== null) {
+          const args = e.fields
+            .map((f) => `${swiftIdent(f.name)}: ${emitSwiftExpr(f.value, indent)}`)
+            .join(', ')
+          return `${swiftIdent(synthName)}(${args})`
         }
       }
       const fields = e.fields.map((f) => `${f.name}: ${emitSwiftExpr(f.value, indent)}`).join(', ')

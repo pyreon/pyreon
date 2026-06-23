@@ -6,7 +6,59 @@
 // SAME idiomatic native emit the hand-written `.set(x().map(...))`
 // form produces (no IIFE, no closure-invocation noise).
 
-import type { AttrIR, ChildIR, ExprIR } from './types'
+import type { AttrIR, ChildIR, ExprIR, StructIR, TypeIR } from './types'
+
+/** TypeIR for a SCALAR literal value (string / number / boolean), else null. */
+export function scalarLiteralType(e: ExprIR): TypeIR | null {
+  if (e.kind !== 'literal') return null
+  if (typeof e.value === 'string') return { kind: 'string' }
+  if (typeof e.value === 'number') {
+    return { kind: 'number', float: !Number.isInteger(e.value) }
+  }
+  if (typeof e.value === 'boolean') return { kind: 'boolean' }
+  return null // null literal — can't type a field from it
+}
+
+/**
+ * Anonymous all-scalar-literal object EXPRESSION (`{ id: 1, name: 'a' }`) →
+ * the name of a SYNTHESIZED struct/data-class for that shape, creating +
+ * registering it on first sight (in the caller-owned `structs` / `keys`
+ * state). Returns null when ANY field value is not a scalar literal — the
+ * caller keeps its existing tuple emit (no regression). Without this, an
+ * anonymous object degrades to a labelled tuple, which is illegal Swift for
+ * a single field and breaks tuple key-paths (`ForEach(id:)`) + Codable.
+ *
+ * SHARED by both emitters so the synthesized names (`__Obj0`, `__Obj1`, …)
+ * line up across targets: identical algorithm + identical source traversal
+ * order → identical name assignment. Shape key = sorted `name:typekind`
+ * pairs (so same-shape literals share one struct; same-names-different-scalar-
+ * types get distinct structs). FLAT scalar literals only — a nested object
+ * or array field returns null (kept as a tuple).
+ */
+export function synthLiteralStructName(
+  fields: { name: string; value: ExprIR }[],
+  structs: StructIR[],
+  keys: Map<string, string>,
+): string | null {
+  if (fields.length === 0) return null
+  const typed: { name: string; type: TypeIR }[] = []
+  for (const f of fields) {
+    const t = scalarLiteralType(f.value)
+    if (t === null) return null
+    typed.push({ name: f.name, type: t })
+  }
+  const shapeKey = typed
+    .map((f) => `${f.name}:${f.type.kind}${f.type.kind === 'number' && f.type.float ? '.f' : ''}`)
+    .slice()
+    .sort()
+    .join(',')
+  const existing = keys.get(shapeKey)
+  if (existing !== undefined) return existing
+  const name = `__Obj${structs.length}`
+  structs.push({ name, fields: typed })
+  keys.set(shapeKey, name)
+  return name
+}
 
 /**
  * Replace every free occurrence of identifier `name` in `expr` with
