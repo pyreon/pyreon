@@ -4156,7 +4156,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // `>>>` (JS unsigned-right-shift, uint32 semantics) is deliberately
       // NOT included — it has no faithful signed-Int lowering and keeps the
       // warn-fallback below.
-      const arith = ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>'] as const
+      const arith = ['+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>', '**'] as const
       const compMap: Record<string, '==' | '!=' | '<' | '>' | '<=' | '>='> = {
         '===': '==',
         '!==': '!=',

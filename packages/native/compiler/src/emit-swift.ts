@@ -2484,6 +2484,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.op === '/') {
         return `Double(${bl}) / Double(${br})`
       }
+      // Exponent (`a ** b`) — Swift has no `**` operator; `pow(_:_:)` is
+      // Double-domain (Foundation, re-exported by SwiftUI). Coerce both
+      // operands so an Int base/exponent works; the result is Double (which
+      // matches JS, where `**` yields a Number).
+      if (e.op === '**') {
+        return `pow(Double(${bl}), Double(${br}))`
+      }
       // Mixed Int×Double — Swift has no implicit Int→Double conversion, so
       // `count() * 0.5` (Int signal × fractional literal) is a type error.
       // Coerce the INT side to Double when EXACTLY one operand is Double.
