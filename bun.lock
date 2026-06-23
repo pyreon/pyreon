@@ -1669,7 +1669,9 @@
         "@happy-dom/global-registrator": "^20.9.0",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
+        "@vitest/browser-playwright": "^4.1.8",
       },
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
