@@ -455,9 +455,11 @@ Pyreon's validator + DX layer on [Standard Schema](https://standardschema.dev). 
 
 - `createPermissions(initial?)` — reactive permissions instance, callable as `can(key, context?)`
 - `can.not(key)` / `can.all(...keys)` / `can.any(...keys)` — inverse and multi-checks
-- `can.set(map)` / `can.patch(map)` — replace or merge permissions reactively
-- Wildcard matching: `'posts.*'` matches any `posts.X`
+- `can.assert(key, context?)` — throw-on-deny (`[Pyreon] permission denied: '<key>'`) for loaders / route guards / server actions; evaluates predicates + wildcards exactly like `can()`
+- `can.set(map)` / `can.patch(map)` / `can.clear()` — replace / merge / wipe permissions reactively
+- **Wildcard matching (most-specific-first):** `'posts.*'` matches exactly ONE segment (`posts.read`, NOT `posts.read.title`); `'posts.**'` matches any depth strictly below `posts` (covers `posts.read` AND `posts.a.b.c`, but NOT the bare `posts` node); `'*'` matches everything. Resolution order: exact → `parent.*` → nearest-ancestor `**` (longest prefix first) → global `*` → denied. Because resolution is most-specific-first, an exact or `**` deny overrides a broader subtree grant (`'posts.**': true` + `'posts.admin.**': false` grants posts but denies the admin subtree) — the CASL `cannot`-over-`can` shape, in the flat-key idiom. (`*` global stays recursive-everything; `prefix.*` stays one-segment — both unchanged, `**` is the new recursive-subtree primitive.)
 - `PermissionsProvider` / `usePermissions()` — context pattern for SSR/testing
+- **Deliberately out of scope vs CASL** (the predicate model replaces the DSL): MongoDB-style condition matching → predicates `(context) => boolean` (arbitrary code, more flexible); rule packing/serialization + subject-type detection → not applicable to the flat-string-key model. Async permission checks → resolve into a signal the predicate reads (async offloaded to Pyreon primitives).
 
 ### @pyreon/machine
 
