@@ -30,6 +30,10 @@ title.set('Roadmap') // local edit relays to peers
 - **Collaborative text + lists** (`syncedText` / `syncedList`) with true positional merge — concurrent edits keep *both*.
 - **A relay server** (`createSyncServer`) for Node/Bun with a per-room/per-doc **authorization gate**.
 
+A `syncedList` is a `Signal<T[]>` backed by a Y.Array CRDT — read it reactively, mutate it with positional ops, and the render stays fine-grained (adding one item patches one `<li>`):
+
+<Example file="./examples/sync/synced-list-crdt" title="Synced list (CRDT) — a synced value is a signal" />
+
 ## Installation
 
 :::code-group

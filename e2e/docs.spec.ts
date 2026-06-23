@@ -316,4 +316,76 @@ test.describe('docs rendering', () => {
     await expect.poll(async () => rows.count(), { timeout: 10_000 }).toBeGreaterThan(0)
     expect(await rows.count()).toBeLessThan(200)
   })
+
+  test('storage docs page <Example> persists across reload (real @pyreon/storage)', async ({
+    page,
+  }) => {
+    // The reactive-storage Example is backed by real localStorage via
+    // useStorage. Locks the package's signature feature: a value written by
+    // the UI survives a full page reload (restored from localStorage on a
+    // fresh mount) — not just in-memory signal state.
+    await page.goto('/docs/storage')
+    await page.waitForLoadState('networkidle')
+    // Clear any prior run's persisted state, then reload to a clean default.
+    await page.evaluate(() => {
+      localStorage.removeItem('docs-rs-theme')
+      localStorage.removeItem('docs-rs-count')
+    })
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    const example = page.locator('[data-testid=reactive-storage]')
+    await expect(example).toBeVisible({ timeout: 15_000 })
+    await expect(example.getByTestId('rs-theme')).toHaveText('light')
+
+    // Drive the UI: toggle theme + increment the stored counter twice.
+    await example.getByRole('button', { name: 'Toggle theme' }).click()
+    await example.getByRole('button', { name: 'Increment' }).click()
+    await example.getByRole('button', { name: 'Increment' }).click()
+    await expect(example.getByTestId('rs-theme')).toHaveText('dark')
+    await expect(example.getByTestId('rs-count')).toHaveText('2')
+
+    // Full reload — the values must come back from localStorage, not reset.
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    const after = page.locator('[data-testid=reactive-storage]')
+    await expect(after.getByTestId('rs-theme')).toHaveText('dark')
+    await expect(after.getByTestId('rs-count')).toHaveText('2')
+
+    // Reset clears storage → defaults; and the reset survives reload too.
+    await after.getByRole('button', { name: 'Reset' }).click()
+    await expect(after.getByTestId('rs-theme')).toHaveText('light')
+    await expect(after.getByTestId('rs-count')).toHaveText('0')
+  })
+
+  test('sync docs page <Example> is a reactive CRDT list (real @pyreon/sync)', async ({
+    page,
+  }) => {
+    // The synced-list Example binds a Y.Array CRDT as a Signal<T[]> and renders
+    // it via <For>. Locks the signal-native binding: a push/delete reactively
+    // updates the rendered list (the "a synced value IS a signal" contract).
+    await page.goto('/docs/sync')
+    await page.waitForLoadState('networkidle')
+    const example = page.locator('[data-testid=synced-list]')
+    await expect(example).toBeVisible({ timeout: 15_000 })
+    const items = example.locator('.sl-item')
+    await expect(items).toHaveCount(0)
+
+    // Add two items via the input + Add button — each push patches the list.
+    await example.getByTestId('sl-input').fill('write code')
+    await example.getByTestId('sl-add').click()
+    await example.getByTestId('sl-input').fill('ship it')
+    await example.getByTestId('sl-add').click()
+    await expect(items).toHaveCount(2)
+    await expect(example).toContainText('write code')
+    await expect(example).toContainText('ship it')
+
+    // Remove the first item (CRDT delete) → reactive update to one item.
+    await items.first().locator('.sl-remove').click()
+    await expect(items).toHaveCount(1)
+    await expect(example).toContainText('ship it')
+
+    // Clear removes the rest.
+    await example.getByTestId('sl-clear').click()
+    await expect(items).toHaveCount(0)
+  })
 })
