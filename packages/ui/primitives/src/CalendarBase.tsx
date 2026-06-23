@@ -66,6 +66,33 @@ export interface CalendarState {
   isToday: (date: CalendarDate) => boolean
   /** Check if a date is in the current view month. */
   isCurrentMonth: (date: CalendarDate) => boolean
+  /**
+   * ARIA props for the date-grid container — `role="grid"` plus the current
+   * month as `aria-label`. Reactive (the label changes on navigation): call
+   * it. Spread onto the element wrapping the weekday headers + week rows.
+   */
+  gridProps: () => { role: 'grid'; 'aria-label': string }
+  /** ARIA props for each week row — `role="row"`. Spread onto the row element. */
+  rowProps: { role: 'row' }
+  /** ARIA props for each weekday column header — `role="columnheader"`. */
+  columnHeaderProps: { role: 'columnheader' }
+  /**
+   * ARIA + roving-tabindex props for a single day cell. Spread onto the day
+   * element. Provides `role="gridcell"`, a full human-readable date
+   * `aria-label` (e.g. "Thursday, January 15, 2026"), `aria-selected`,
+   * `aria-disabled`, `aria-current="date"` for today, and a `tabIndex` where
+   * exactly one current-month cell is `0` and the rest `-1` (WAI-ARIA grid
+   * roving-focus pattern). Pair with `onClick={() => select(day.date)}` — a
+   * `<button>` then activates on Enter/Space natively.
+   */
+  getDayProps: (day: CalendarDay) => {
+    role: 'gridcell'
+    tabIndex: 0 | -1
+    'aria-selected': 'true' | 'false'
+    'aria-disabled': 'true' | undefined
+    'aria-current': 'date' | undefined
+    'aria-label': string
+  }
 }
 
 export interface CalendarDay {
@@ -139,6 +166,12 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
 
   const weekdayFormatter = new Intl.DateTimeFormat(locale, { weekday: 'short' })
   const monthFormatter = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' })
+  const fullDateFormatter = new Intl.DateTimeFormat(locale, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
 
   const weekdays = computed(() => {
     const labels: string[] = []
@@ -256,6 +289,38 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     _viewYear.set(year)
   }
 
+  // ─── ARIA (WAI-ARIA date-grid pattern) ─────────────────────────────
+
+  // The single roving-tabindex stop: the selected date if it's in the view
+  // month, else today if in view, else the 1st of the view month. Exactly one
+  // current-month cell ever matches, so only one gridcell is in the tab order.
+  function focusDate(): CalendarDate {
+    const sel = selected()
+    if (sel && sel.month === _viewMonth() && sel.year === _viewYear()) return sel
+    if (today.month === _viewMonth() && today.year === _viewYear()) return today
+    return { year: _viewYear(), month: _viewMonth(), day: 1 }
+  }
+
+  const gridProps = () => ({ role: 'grid' as const, 'aria-label': monthLabel() })
+  const rowProps = { role: 'row' as const }
+  const columnHeaderProps = { role: 'columnheader' as const }
+  function getDayProps(day: CalendarDay) {
+    // ARIA state values are STRINGS, not booleans: the DOM renderer treats a
+    // boolean attr as presence (`aria-selected=""`), but assistive tech needs
+    // the literal "true"/"false". Disabled/current are omitted (undefined →
+    // attribute absent) when not applicable.
+    return {
+      role: 'gridcell' as const,
+      tabIndex: (dateEquals(day.date, focusDate()) ? 0 : -1) as 0 | -1,
+      'aria-selected': (day.isSelected ? 'true' : 'false') as 'true' | 'false',
+      'aria-disabled': day.isDisabled ? ('true' as const) : undefined,
+      'aria-current': day.isToday ? ('date' as const) : undefined,
+      'aria-label': fullDateFormatter.format(
+        new Date(day.date.year, day.date.month, day.date.day),
+      ),
+    }
+  }
+
   // ─── State object ──────────────────────────────────────────────────
 
   const state: CalendarState = {
@@ -275,6 +340,10 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     isDisabled: isDateDisabled,
     isToday: (d) => dateEquals(d, today),
     isCurrentMonth: (d) => d.month === _viewMonth() && d.year === _viewYear(),
+    gridProps,
+    rowProps,
+    columnHeaderProps,
+    getDayProps,
   }
 
   // Render via children function
