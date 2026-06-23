@@ -10,7 +10,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
 import {
@@ -41,12 +41,24 @@ async function settleMtime(
   path: string,
   quietMs: number,
 ): Promise<number> {
-  let last = (await fs.stat(path)).mtimeMs
+  // `last === null` until the file first appears. Under parallel-load CI the
+  // async polling write (`await _writeToPath`) may not have landed when
+  // settleMtime is called, so a bare `fs.stat` would throw ENOENT and fail
+  // the test. Treat "not written yet" as "keep waiting" (reset the quiet
+  // window) — the file's first appearance starts the settle, and the overall
+  // vitest test timeout bounds a genuine never-written bug.
+  let last: number | null = null
   let quietSince = Date.now()
   for (;;) {
     await new Promise((r) => setTimeout(r, 25))
-    const cur = (await fs.stat(path)).mtimeMs
-    if (cur !== last) {
+    let cur: number
+    try {
+      cur = (await fs.stat(path)).mtimeMs
+    } catch {
+      quietSince = Date.now()
+      continue
+    }
+    if (last === null || cur !== last) {
       last = cur
       quietSince = Date.now()
     } else if (Date.now() - quietSince >= quietMs) {
@@ -349,16 +361,24 @@ describe('writeLpihCache / startLpihPolling — default path resolution', () => 
     activateReactiveDevtools()
     const s = signal(0)
     s.set(1)
+    const target = join(TMP_DIR, LPIH_DEFAULT_FILENAME)
+    const dispose = startLpihPolling(undefined, 50)
     try {
-      const dispose = startLpihPolling(undefined, 50)
-      await new Promise((r) => setTimeout(r, 150))
-      dispose()
-      const stat = await fs.stat(join(TMP_DIR, LPIH_DEFAULT_FILENAME))
-      expect(stat.isFile()).toBe(true)
+      // Poll until the default-path write lands. A fixed `setTimeout(150)`
+      // then `fs.stat` raced the async polling write under parallel-load CI
+      // (ENOENT). vi.waitFor retries until the file exists, robust to load.
+      await vi.waitFor(
+        async () => {
+          const stat = await fs.stat(target)
+          expect(stat.isFile()).toBe(true)
+        },
+        { timeout: 2000, interval: 25 },
+      )
     } finally {
+      dispose()
       proc.chdir(originalCwd)
       try {
-        await fs.unlink(join(TMP_DIR, LPIH_DEFAULT_FILENAME))
+        await fs.unlink(target)
       } catch {
         /* */
       }
