@@ -28,6 +28,7 @@
     "bench:ssr": "bun scripts/bench/core/runtime-server.ts",
     "bench:head": "bun scripts/bench/core/head.ts",
     "bench:server": "bun scripts/bench/core/server.ts",
+    "bench:validate": "bun scripts/bench/core/validate.ts",
     "bench:dom": "bun scripts/bench/dom.ts",
     "bench:all": "bun scripts/bench/run-all.ts",
     "bench:compare": "bun scripts/bench/compare.ts",
@@ -104,6 +105,7 @@
     "@vitus-labs/tools-rolldown": "^2.5.0",
     "@vitus-labs/tools-typescript": "^2.5.0",
     "@vitus-labs/tools-vitest": "^2.5.0",
+    "arktype": "^2.2.0",
     "esbuild": "^0.28.1",
     "find-my-way": "^9.6.0",
     "happy-dom": "^20.10.6",
@@ -119,9 +121,11 @@
     "solid-js": "^1.9.13",
     "typescript": "^6.0.3",
     "unhead": "^3.1.4",
+    "valibot": "^1.4.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.9",
-    "vue-router": "^5.1.0"
+    "vue-router": "^5.1.0",
+    "zod": "^4.4.3"
   },
   "overrides": {
     "@codemirror/view": "6.43.0",

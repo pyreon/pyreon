@@ -44,6 +44,7 @@ interface FieldLike {
   element?: FieldLike // array element schema
   shape?: Record<string, FieldLike> // object shape
   _unknownKeys?: string
+  _catchall?: unknown // object catchall schema — disqualifies inline (unknown-key validation)
   _coerce?: boolean // overridden _compileType (coercion) → never inline
   _runInto(input: unknown, ctx: ParseCtx): unknown
 }
@@ -122,9 +123,17 @@ function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
   }
 }
 
-/** A plain object we can recurse into (no own checks/transforms, strip policy). */
+/**
+ * A plain object we can recurse into (no own checks/transforms, strip policy,
+ * NO catchall — a catchall validates unknown keys, which the inline shape-only
+ * loop would silently skip).
+ */
 const isPlainObject = (s: FieldLike): boolean =>
-  s._kind === 'object' && Array.isArray(s._ops) && s._ops.length === 0 && s._unknownKeys === 'strip'
+  s._kind === 'object' &&
+  Array.isArray(s._ops) &&
+  s._ops.length === 0 &&
+  s._unknownKeys === 'strip' &&
+  !s._catchall
 /**
  * An array we can recurse into: has an element schema AND its OWN ops are
  * all checks (min/max/length). An array carrying a modifier/transform/refine
