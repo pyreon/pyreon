@@ -4,7 +4,7 @@ import type { NormalizedConfig } from './model'
 import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta } from './registry'
-import type { InstanceMeta, StateShape } from './types'
+import type { InstanceMeta, LifecycleHandlers, StateShape } from './types'
 import { MODEL_BRAND, RESERVED_SCHEMA_HELPER_KEYS } from './types'
 
 // ─── Model definition detection ───────────────────────────────────────────────
@@ -81,6 +81,7 @@ function deepMerge(target: unknown, source: unknown): unknown {
 export function createInstance(
   config: NormalizedConfig<StateShape>,
   initial: Partial<StateShape>,
+  definition?: unknown,
 ): Record<string, unknown> {
   // Raw object that will become the instance.
   const instance: Record<string, unknown> = {}
@@ -95,7 +96,13 @@ export function createInstance(
       if (this.patchListeners.size === 0) return
       for (const listener of this.patchListeners) listener(patch)
     },
+    alive: true,
+    children: new Set(),
+    isSchema: config._parseFn !== undefined,
   }
+  // Back-ref to the definition (powers clone/getType). Set conditionally to
+  // respect exactOptionalPropertyTypes.
+  if (definition !== undefined) meta.definition = definition
   instanceMeta.set(instance, meta)
 
   // `self` is a live proxy so that actions/views always see the final
@@ -211,7 +218,9 @@ export function createInstance(
         hasCallerOverride && typeof callerOverride === 'object'
           ? (callerOverride as Record<string, unknown>)
           : {}
-      const nestedInstance = createInstance(defaultValue._config, nestedInitial)
+      const nestedInstance = createInstance(defaultValue._config, nestedInitial, defaultValue)
+      // Track the child so `destroy(parent)` tears down the whole subtree.
+      meta.children.add(nestedInstance)
       // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
       rawSig = signal(nestedInstance)
 
@@ -292,13 +301,28 @@ export function createInstance(
       })
     }
 
+    // Guard: a validated mutation helper invoked on a destroyed instance is a
+    // bug (stale handler post-teardown). Dev-warn + no-op; direct signal writes
+    // stay unguarded (the documented escape hatch). Tree-shaken in prod.
+    const guardAlive = (op: string): boolean => {
+      if (meta.alive) return true
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          `[Pyreon] state-tree: ${op}() called on a destroyed model instance — ignored.`,
+        )
+      }
+      return false
+    }
+
     instance.set = (next: Record<string, unknown>) => {
+      if (!guardAlive('set')) return
       const valid = validateOrFail(next, 'set')
       if (valid === undefined) return // suppressed via onValidationError
       writeAll(valid)
     }
 
     instance.patch = (partial: Record<string, unknown>) => {
+      if (!guardAlive('patch')) return
       const merged = { ...readCurrent(), ...partial }
       const valid = validateOrFail(merged, 'patch')
       if (valid === undefined) return
@@ -306,6 +330,7 @@ export function createInstance(
     }
 
     instance.deepPatch = (partial: Record<string, unknown>) => {
+      if (!guardAlive('deepPatch')) return
       // Recursive plain-object merge. Arrays / class instances REPLACE.
       // Parallel to @pyreon/store's `deepPatch`.
       const merged = deepMerge(readCurrent(), partial) as Record<string, unknown>
@@ -315,6 +340,7 @@ export function createInstance(
     }
 
     instance.update = (key: string, transformer: (current: unknown) => unknown) => {
+      if (!guardAlive('update')) return
       // Transform a single top-level field. Read → transform → validate
       // merged state → write only that key. Parallel to @pyreon/store's
       // `update<K extends keyof T & string>(...)`.
@@ -331,6 +357,7 @@ export function createInstance(
     }
 
     instance.reset = () => {
+      if (!guardAlive('reset')) return
       // initialSnapshotForReset is the PARSED value captured at .create()
       // time. Re-parse to apply any defaults that depend on call time.
       const result = parseFn(initialSnapshotForReset)
@@ -385,6 +412,36 @@ export function createInstance(
     for (const [key, actionFn] of Object.entries(rawActions)) {
       checkReserved(key, 'actions')
       instance[key] = (...args: unknown[]) => runAction(meta, key, actionFn, args)
+    }
+  }
+
+  // ── 6. Lifecycle (afterCreate runs now; beforeDestroy stored for destroy) ──
+  // Runs LAST so `afterCreate` sees the fully-built instance (state + all
+  // views + all actions). Nested field-models already ran their own
+  // `afterCreate` when their subtree finished building (during step 2), so
+  // `afterCreate` fires bottom-up (children before parents), MST-style.
+  if (config.lifecycleFactories.length > 0) {
+    const beforeDestroyFns: Array<() => void> = []
+    for (const factory of config.lifecycleFactories) {
+      const handlers = factory(self) as LifecycleHandlers
+      for (const key of Object.keys(handlers)) {
+        if (key !== 'afterCreate' && key !== 'beforeDestroy') {
+          throw new Error(
+            `[Pyreon] model.lifecycle(): unknown handler "${key}". Only ` +
+              '`afterCreate` and `beforeDestroy` are supported.',
+          )
+        }
+      }
+      // Collect beforeDestroy BEFORE running afterCreate, so a throwing
+      // afterCreate still leaves teardown registered.
+      if (handlers.beforeDestroy) beforeDestroyFns.push(handlers.beforeDestroy)
+      if (handlers.afterCreate) handlers.afterCreate()
+    }
+    if (beforeDestroyFns.length > 0) {
+      // Teardown runs in REVERSE registration order (LIFO — mirrors setup).
+      meta.beforeDestroy = () => {
+        for (let i = beforeDestroyFns.length - 1; i >= 0; i--) beforeDestroyFns[i]!()
+      }
     }
   }
 

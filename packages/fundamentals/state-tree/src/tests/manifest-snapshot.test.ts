@@ -75,8 +75,9 @@ describe('gen-docs — state-tree snapshot', () => {
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
     // model + SchemaModelHelpers + DeepPartial + ModelDefinition + getSnapshot
-    // + applySnapshot + onPatch + applyPatch + addMiddleware = 9
-    expect(Object.keys(record).length).toBe(9)
+    // + applySnapshot + onPatch + applyPatch + addMiddleware
+    // + destroy + isAlive + clone + getType = 13
+    expect(Object.keys(record).length).toBe(13)
     expect(record['state-tree/model']!.notes).toContain('chainable builder')
     expect(record['state-tree/model']!.notes).toContain('schema')
     expect(record['state-tree/model']!.notes).toContain('async')
@@ -89,5 +90,10 @@ describe('gen-docs — state-tree snapshot', () => {
     expect(record['state-tree/SchemaModelHelpers']!.example).toContain('update')
     expect(record['state-tree/DeepPartial']).toBeDefined()
     expect(record['state-tree/DeepPartial']!.notes).toContain('Recursive partial')
+    // Lifecycle surface (PR 2)
+    expect(record['state-tree/destroy']!.notes).toContain('does NOT free memory')
+    expect(record['state-tree/isAlive']).toBeDefined()
+    expect(record['state-tree/clone']!.notes).toContain('independent')
+    expect(record['state-tree/getType']).toBeDefined()
   })
 })

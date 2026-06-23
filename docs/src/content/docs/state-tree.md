@@ -631,6 +631,73 @@ Resetting a non-existent hook ID is a silent no-op:
 resetHook('no-such-hook') // no error
 ```
 
+## Lifecycle & Cleanup
+
+### `.lifecycle(self => ({ afterCreate, beforeDestroy }))`
+
+Register instance lifecycle hooks. Chainable — the factory sees the fully-typed `self`.
+
+- **`afterCreate`** runs once at the END of `.create()`, after every `.views()` / `.actions()` layer is merged, so `self` is the fully-built instance. For nested field-models it fires bottom-up (children before parents), like MST.
+- **`beforeDestroy`** runs when you call `destroy(instance)`, before the instance is marked dead.
+
+Only `afterCreate` / `beforeDestroy` are honored — any other key throws at `.create()` time (a typo guard).
+
+```ts
+const Clock = model({ state: { ms: 0 } })
+  .actions((self) => ({ tick: () => self.ms.update((n) => n + 1) }))
+  .lifecycle((self) => {
+    // The factory runs once per instance, so a closure variable is a clean
+    // home for transient handles like a timer id.
+    let timer: ReturnType<typeof setInterval> | undefined
+    return {
+      afterCreate: () => {
+        timer = setInterval(() => self.tick(), 1000)
+      },
+      beforeDestroy: () => clearInterval(timer),
+    }
+  })
+
+const clock = Clock.create()
+// ...later
+destroy(clock) // runs beforeDestroy → clearInterval
+```
+
+### `destroy(instance)` / `isAlive(instance)`
+
+`destroy` tears an instance down: runs its `beforeDestroy` handlers, **recursively destroys field-nested child models**, drops all subscriptions (patch listeners + middleware), and marks it dead. Idempotent. `isAlive` reports liveness.
+
+```ts
+import { destroy, isAlive } from '@pyreon/state-tree'
+
+isAlive(clock) // true
+destroy(clock)
+isAlive(clock) // false
+```
+
+After `destroy`, **actions and the schema mutation helpers (`set` / `patch` / …) dev-warn and no-op** — a stale handler firing post-teardown is almost always a bug, so it's caught rather than silently mutating dead state. Use `isAlive` to guard deferred work that might land after teardown:
+
+```ts
+fetchUpdate().then((data) => {
+  if (isAlive(model)) model.applyUpdate(data) // skip if torn down meanwhile
+})
+```
+
+> **`destroy` is not `free()`.** Pyreon signals have no explicit per-signal dispose. `destroy` tears down *subscriptions* and runs your `beforeDestroy` cleanup (timers, listeners) and flips the liveness flag — the instance's signals are reclaimed by the garbage collector once you drop your references to it. Direct signal writes (`self.field.set(v)`) on a destroyed instance are **not** guarded (the same escape hatch as bypassing validation) — don't.
+
+### `clone(instance)` / `getType(instance)`
+
+`clone` makes an independent structural copy: it snapshots the instance's current state and creates a fresh instance from the same definition (own signals, listeners, middleware, lifecycle). In schema mode the snapshot is re-validated. `getType` returns the producing `ModelDefinition`.
+
+```ts
+import { clone, getType } from '@pyreon/state-tree'
+
+const draft = clone(original) // edit draft freely; original is untouched
+const Def = getType(original) // the ModelDefinition — create siblings from it
+const sibling = Def?.create()
+```
+
+> Tree-traversal helpers (`getParent` / `getRoot` / `getPath`) and references / identifiers are a planned follow-up — field-nested-only tree helpers would silently fail on array/map-held children (the common composition shape), so they're deferred to a design that tracks assignment.
+
 ## Snapshots
 
 Serialize and restore model instances as plain JS objects (no signals, no functions).
