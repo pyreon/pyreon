@@ -90,6 +90,8 @@ describe('gen-docs — machine snapshot', () => {
       > **Signal compatibility**: The machine reads like a signal (\`machine()\`) and subscribes like one — it works in \`effect()\`, \`computed()\`, and JSX expression thunks without special handling.
       >
       > **Eventless transitions resolve synchronously**: \`always\` transitions fire during the SAME \`send()\` call (and at creation / \`reset()\`), cascading until none apply — a transient state is never observed by \`machine()\` or by reactive readers. Guards receive no payload; read external signals. A self-looping \`always\` throws after 1000 steps.
+      >
+      > **send returns state; can predicts it; guards are throw-safe**: \`send(event, payload?)\` returns the SETTLED state (after the \`always\` cascade), or the unchanged state for an unhandled event / rejected guard. \`can(event, payload?)\` predicts \`send\` exactly — it evaluates the guard. Guards are throw-safe: a guard that throws (e.g. reading a property of a missing payload) DENIES the transition rather than crashing \`send\`/\`can\`.
       "
     `)
   })

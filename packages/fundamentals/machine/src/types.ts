@@ -62,17 +62,21 @@ export interface Machine<TState extends string, TEvent extends string> {
   /** Read current state — reactive in effects/computeds/JSX */
   (): TState
 
-  /** Send an event to trigger a transition */
-  send: (event: TEvent, payload?: unknown) => void
+  /**
+   * Send an event to trigger a transition. Returns the SETTLED state after the
+   * transition + any eventless (`always`) cascade — or the unchanged current
+   * state when the event isn't handled (or a guard rejects).
+   */
+  send: (event: TEvent, payload?: unknown) => TState
 
   /** Check if the machine is in one of the given states — reactive */
   matches: (...states: TState[]) => boolean
 
   /**
-   * Check if an event would trigger a valid transition from the current state.
-   * Pass `payload` to evaluate a guarded transition precisely (predicts
-   * `send` exactly); without a payload, a guarded transition reports `true`
-   * if the event exists (the guard may still reject at send time).
+   * Check whether an event would trigger a transition from the current state —
+   * predicts `send(event, payload)` EXACTLY. Evaluates the guard (throw-safe →
+   * denied) with the given `payload`, or `undefined` if none is passed.
+   * Reactive.
    */
   can: (event: TEvent, payload?: unknown) => boolean
 
