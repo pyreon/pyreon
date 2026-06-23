@@ -36,6 +36,52 @@ export interface ColorPickerState {
   setAlpha: (a: number) => void
   /** RGB values. */
   rgb: () => { r: number; g: number; b: number }
+  /**
+   * ARIA props for the picker container — `role="group"` + a label so
+   * assistive tech announces the grouped sliders as one color picker.
+   */
+  groupProps: () => { role: 'group'; 'aria-label': string }
+  /**
+   * ARIA slider props for the HUE control (0–360°). Spread onto the hue
+   * track/thumb element; wire arrow keys to `setHSB(next, saturation(),
+   * brightness())`. ARIA value attrs are numbers (rendered as their string).
+   */
+  hueSliderProps: () => {
+    role: 'slider'
+    'aria-label': string
+    'aria-valuemin': number
+    'aria-valuemax': number
+    'aria-valuenow': number
+    'aria-valuetext': string
+    tabIndex: 0
+  }
+  /**
+   * ARIA slider props for the 2-D saturation/brightness area. A single
+   * `aria-valuetext` conveys BOTH axes (one slider can't expose two numeric
+   * values); `aria-valuenow` tracks saturation.
+   */
+  saturationSliderProps: () => {
+    role: 'slider'
+    'aria-label': string
+    'aria-valuemin': number
+    'aria-valuemax': number
+    'aria-valuenow': number
+    'aria-valuetext': string
+    tabIndex: 0
+  }
+  /**
+   * ARIA slider props for the ALPHA / opacity control (0–100%). Only
+   * meaningful when the `alpha` prop is enabled.
+   */
+  alphaSliderProps: () => {
+    role: 'slider'
+    'aria-label': string
+    'aria-valuemin': number
+    'aria-valuemax': number
+    'aria-valuenow': number
+    'aria-valuetext': string
+    tabIndex: 0
+  }
 }
 
 // ─── Color conversion utilities ──────────────────────────────────────────────
@@ -151,6 +197,44 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
     setHSB: updateFromHSB,
     setAlpha: (a) => _alpha.set(Math.max(0, Math.min(1, a))),
     rgb,
+    groupProps: () => ({ role: 'group' as const, 'aria-label': 'Color picker' }),
+    hueSliderProps: () => {
+      const h = Math.round(_hue())
+      return {
+        role: 'slider' as const,
+        'aria-label': 'Hue',
+        'aria-valuemin': 0,
+        'aria-valuemax': 360,
+        'aria-valuenow': h,
+        'aria-valuetext': `${h} degrees`,
+        tabIndex: 0 as const,
+      }
+    },
+    saturationSliderProps: () => {
+      const s = Math.round(_saturation())
+      const b = Math.round(_brightness())
+      return {
+        role: 'slider' as const,
+        'aria-label': 'Saturation and brightness',
+        'aria-valuemin': 0,
+        'aria-valuemax': 100,
+        'aria-valuenow': s,
+        'aria-valuetext': `Saturation ${s}%, brightness ${b}%`,
+        tabIndex: 0 as const,
+      }
+    },
+    alphaSliderProps: () => {
+      const a = Math.round(_alpha() * 100)
+      return {
+        role: 'slider' as const,
+        'aria-label': 'Opacity',
+        'aria-valuemin': 0,
+        'aria-valuemax': 100,
+        'aria-valuenow': a,
+        'aria-valuetext': `${a}%`,
+        tabIndex: 0 as const,
+      }
+    },
   }
 
   if (typeof own.children === 'function') {
