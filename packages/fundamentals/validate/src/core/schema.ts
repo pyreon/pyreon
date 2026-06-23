@@ -566,9 +566,12 @@ function makeRefineIssue(opts: RefineSpec['opts'], path: ParseCtx['path']): Pyre
  */
 export class OptionalSchema<T> extends Schema<T | undefined> {
   readonly _kind = 'optional' as const
+  /** The wrapped schema — exposed so `ObjectSchema.required()` can unwrap it. */
+  readonly inner: Schema<T>
 
   constructor(inner: Schema<T>) {
     super()
+    this.inner = inner
     this._ops = [{ kind: 'optional' }, ...inner._ops]
     // Hoist the inner's type-check.
     ;(this as unknown as { _compileType: typeof inner._compileType })._compileType = (
@@ -591,9 +594,12 @@ export class NullableSchema<T> extends Schema<T | null> {
 
 export class NullishSchema<T> extends Schema<T | null | undefined> {
   readonly _kind = 'nullish' as const
+  /** The wrapped schema — exposed so `ObjectSchema.required()` can unwrap it. */
+  readonly inner: Schema<T>
 
   constructor(inner: Schema<T>) {
     super()
+    this.inner = inner
     this._ops = [{ kind: 'nullish' }, ...inner._ops]
     ;(this as unknown as { _compileType: typeof inner._compileType })._compileType = (
       inner as unknown as { _compileType: typeof inner._compileType }

@@ -96,3 +96,53 @@ describe('unknown-key policy', () => {
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
   })
 })
+
+describe('required (inverse of partial)', () => {
+  const withOpt = s.object({ id: s.number(), nick: s.string().optional(), bio: s.string().nullish() })
+  const req = withOpt.required()
+
+  it('unwraps optional / nullish fields back to required', () => {
+    expect(req.parse({ id: 1 }).ok).toBe(false) // nick + bio now required
+    expect(req.parse({ id: 1, nick: 'x', bio: 'y' }).ok).toBe(true)
+    // optional() round-trips: partial().required() === all required
+    expect(base.partial().required().parse({ id: 1, name: 'Ab', email: 'a@b.co' }).ok).toBe(true)
+    expect(base.partial().required().parse({}).ok).toBe(false)
+  })
+
+  it('leaves already-required fields untouched + infers required keys', () => {
+    expect(req.parse({ id: 1, nick: 'x', bio: 'y' }).ok).toBe(true)
+    const _t: { id: number; nick: string; bio: string } = {} as Infer<typeof req>
+    expect(_t).toBeDefined()
+  })
+})
+
+describe('catchall', () => {
+  const c = s.object({ id: s.number() }).catchall(s.string())
+
+  it('validates unknown keys against the catchall schema + keeps them', () => {
+    const ok = c.parse({ id: 1, a: 'x', b: 'y' })
+    expect(ok.ok).toBe(true)
+    expect(ok.ok && (ok.value as Record<string, unknown>).a === 'x' && (ok.value as Record<string, unknown>).b === 'y').toBe(true)
+    // an unknown key that fails the catchall schema fails the whole parse
+    expect(c.parse({ id: 1, bad: 123 }).ok).toBe(false)
+    // known keys still validated by their own schema
+    expect(c.parse({ id: 'nope', a: 'x' }).ok).toBe(false)
+  })
+
+  it('takes precedence over the strip default (unknown keys are kept, not dropped)', () => {
+    const r = c.parse({ id: 1, extra: 'kept' })
+    expect(r.ok && 'extra' in (r.value as object)).toBe(true)
+  })
+
+  it('JIT-correct: a catchall object nested under a plain object is NOT inlined-and-skipped', () => {
+    // The OUTER object is plain → JIT-compiled. The inner catchall field MUST
+    // fall back to the interpreter (else the inline shape-only loop would strip
+    // unknown keys without validating them). Bisect: remove `!s._catchall` from
+    // jit.ts isPlainObject → `x: 'bad'` is silently stripped → this flips to ok.
+    const nested = s.object({ outer: s.object({ id: s.number() }).catchall(s.number()) })
+    // warm the JIT path
+    for (let i = 0; i < 2100; i++) nested.parse({ outer: { id: 1, x: 5 } })
+    expect(nested.parse({ outer: { id: 1, x: 5 } }).ok).toBe(true)
+    expect(nested.parse({ outer: { id: 1, x: 'bad' } }).ok).toBe(false)
+  })
+})

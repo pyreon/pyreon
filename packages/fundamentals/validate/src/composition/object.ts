@@ -61,15 +61,27 @@ type PartialShape<TShape extends Shape> = {
   [K in keyof TShape]: TShape[K] extends Schema<infer T> ? OptionalSchema<T> : never
 }
 
+/** Unwrap `.optional()` / `.nullish()` fields back to required (for `.required()`). */
+type RequiredShape<TShape extends Shape> = {
+  [K in keyof TShape]: TShape[K] extends OptionalSchema<infer U>
+    ? Schema<U>
+    : TShape[K] extends NullishSchema<infer U>
+      ? Schema<U>
+      : TShape[K]
+}
+
 export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TShape>> {
   readonly _kind = 'object' as const
   readonly shape: TShape
   readonly _unknownKeys: UnknownKeys
+  /** When set, unknown keys are validated against this schema (Zod `.catchall`). */
+  readonly _catchall?: Schema<unknown> | undefined
 
-  constructor(shape: TShape, unknownKeys: UnknownKeys = 'strip') {
+  constructor(shape: TShape, unknownKeys: UnknownKeys = 'strip', catchall?: Schema<unknown>) {
     super()
     this.shape = shape
     this._unknownKeys = unknownKeys
+    this._catchall = catchall
   }
 
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
@@ -91,8 +103,21 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
         ctx.path.pop()
       }
     }
-    // Unknown-key policy.
-    if (this._unknownKeys !== 'strip') {
+    // Unknown-key policy. `.catchall(schema)` (if set) validates each unknown
+    // key against its schema and keeps the result; otherwise strip / strict /
+    // passthrough.
+    if (this._catchall) {
+      const catchall = this._catchall
+      for (const key of Object.keys(source)) {
+        if (key in known) continue
+        ctx.path.push(key)
+        try {
+          assignSafe(result, key, runFieldValidator(catchall, source[key], ctx))
+        } finally {
+          ctx.path.pop()
+        }
+      }
+    } else if (this._unknownKeys !== 'strip') {
       for (const key of Object.keys(source)) {
         if (key in known) continue
         if (this._unknownKeys === 'strict') {
@@ -131,13 +156,21 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
     return new ObjectSchema(this.shape, 'passthrough')
   }
 
+  /**
+   * Validate every unknown key against `schema` and keep the result
+   * (Zod's `.catchall`). Takes precedence over strip/strict/passthrough.
+   */
+  catchall(schema: Schema<unknown>): ObjectSchema<TShape> {
+    return new ObjectSchema(this.shape, this._unknownKeys, schema)
+  }
+
   // ─── Object algebra (each returns a new schema) ────────────────────
 
   /** Keep only the named keys. */
   pick<K extends keyof TShape>(keys: readonly K[]): ObjectSchema<Pick<TShape, K>> {
     const next = {} as Pick<TShape, K>
     for (const k of keys) next[k] = this.shape[k]
-    return new ObjectSchema(next, this._unknownKeys)
+    return new ObjectSchema(next, this._unknownKeys, this._catchall)
   }
 
   /** Drop the named keys. */
@@ -147,7 +180,7 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
     for (const k of Object.keys(this.shape)) {
       if (!drop.has(k)) next[k] = this.shape[k]!
     }
-    return new ObjectSchema(next as Omit<TShape, K>, this._unknownKeys)
+    return new ObjectSchema(next as Omit<TShape, K>, this._unknownKeys, this._catchall)
   }
 
   /** Make every field optional. */
@@ -157,12 +190,29 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
       const field = this.shape[k]!
       next[k] = field instanceof OptionalSchema ? field : field.optional()
     }
-    return new ObjectSchema(next as PartialShape<TShape>, this._unknownKeys)
+    return new ObjectSchema(next as PartialShape<TShape>, this._unknownKeys, this._catchall)
+  }
+
+  /**
+   * Inverse of {@link partial} — unwrap `.optional()` / `.nullish()` fields
+   * back to required.
+   */
+  required(): ObjectSchema<RequiredShape<TShape>> {
+    const next: Record<string, Schema<unknown>> = {}
+    for (const k of Object.keys(this.shape)) {
+      const field = this.shape[k]!
+      next[k] = field instanceof OptionalSchema || field instanceof NullishSchema ? field.inner : field
+    }
+    return new ObjectSchema(next as RequiredShape<TShape>, this._unknownKeys, this._catchall)
   }
 
   /** Add / override fields. */
   extend<TExt extends Shape>(ext: TExt): ObjectSchema<Omit<TShape, keyof TExt> & TExt> {
-    return new ObjectSchema({ ...this.shape, ...ext } as Omit<TShape, keyof TExt> & TExt, this._unknownKeys)
+    return new ObjectSchema(
+      { ...this.shape, ...ext } as Omit<TShape, keyof TExt> & TExt,
+      this._unknownKeys,
+      this._catchall,
+    )
   }
 
   /** Merge another object schema's shape into this one (other wins on conflict). */
