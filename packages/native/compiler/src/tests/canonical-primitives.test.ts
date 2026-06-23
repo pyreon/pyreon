@@ -431,10 +431,12 @@ describe('Phase P2.1 — <Modal> emit (.sheet(isPresented:))', () => {
 })
 
 describe('Phase B — <Press> emit (un-styled clickable wrapper)', () => {
-  it('Swift: <Press onPress={fn}> → Button { ... } action: { fn() }.buttonStyle(.plain)', () => {
+  it('Swift: <Press onPress={fn}> → Button(action: { fn() }) { ... }.buttonStyle(.plain)', () => {
     const out = tx(`<Press onPress={fn}><Text>tap</Text></Press>`, 'swift')
-    expect(out).toMatch(/Button \{[\s\S]+Text\("tap"\)/)
-    expect(out).toContain('action: { fn() }')
+    // Explicit-`action:` initializer (NOT the label-first
+    // `Button { content } action: {…}` form, which crashed swiftc's
+    // argument-label diagnoser — see emit-swift.ts emitSwiftPress).
+    expect(out).toMatch(/Button\(action: \{ fn\(\) \}\) \{[\s\S]+Text\("tap"\)/)
     expect(out).toContain('.buttonStyle(.plain)')
   })
 
@@ -477,6 +479,20 @@ describe('Phase B — <Field> emit', () => {
       'swift',
     )
     expect(out).toMatch(/\.onSubmit \{ fn\(\) \}/)
+  })
+
+  it('Swift: controlled <Field value={sig()} onChange={(v)=>…}> → TextField with custom Binding', () => {
+    // Regression for the silent corruption the `-typecheck` gate surfaced:
+    // the controlled (parent-owns-state) shape — a non-bare value
+    // expression + onChange — previously fell to GENERIC emit →
+    // `Field(value: …)`, an invalid SwiftUI symbol (`cannot find 'Field'
+    // in scope`) that `-parse` accepted. Now emits a custom Binding
+    // (mirrors Toggle's Shape 2), with the arrow param bound in the setter.
+    const out = tx(`<Field value={draft()} onChange={(v) => draft.set(v)} placeholder="N" />`, 'swift')
+    expect(out).toContain('TextField("N", text: Binding(')
+    expect(out).toContain('get: { draft }')
+    expect(out).toContain('set: { v in draft = v }')
+    expect(out).not.toContain('Field(value:') // NOT the generic fallback
   })
 
   it('Kotlin: <Field value={draft} onChangeText={...}> → TextField(value = draft, onValueChange = ...)', () => {
@@ -602,8 +618,21 @@ describe('Phase B — <Toggle> emit (canonical binary toggle; Compose Switch vs 
     )
     expect(out).toContain('Toggle("", isOn: Binding(')
     expect(out).toContain('get: { todo.done }')
+    // A bare function-ref handler (`props.onToggle`) takes no value, so
+    // the set-closure discards it with `_` and calls `onToggle()`.
     expect(out).toContain('set: { _ in')
     expect(out).toContain('onToggle()')
+  })
+
+  it('Swift: <Toggle onChange={(v) => sig.set(v)}> BINDS the arrow param in the setter', () => {
+    // Regression for the silent type bug the `-typecheck` gate surfaced:
+    // an arrow handler's body references its param (`v`), but the
+    // set-closure emitted `{ _ in on = v }` — `v` unbound (`-parse`
+    // passed, real `-typecheck` failed with `cannot find 'v'`). The
+    // setter must bind the arrow's param as the closure parameter.
+    const out = tx(`<Toggle value={done()} onChange={(v) => done.set(v)} />`, 'swift')
+    expect(out).toContain('set: { v in done = v }')
+    expect(out).not.toContain('set: { _ in done = v }')
   })
 
   it('Kotlin: <Toggle value={props.todo.done} onChange={props.onToggle}> → Switch(checked = expr)', () => {

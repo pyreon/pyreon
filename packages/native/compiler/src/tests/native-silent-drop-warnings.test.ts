@@ -142,6 +142,6 @@ describe('Round-2 follow-up — silent-drop diagnostic warnings', () => {
       `export function App() { return <Press>x</Press> }`,
       { target: 'swift' },
     ).code
-    expect(out).toContain('Button {') // existing Press → Button emit
+    expect(out).toContain('Button(action:') // existing Press → Button emit
   })
 })

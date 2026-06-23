@@ -115,4 +115,61 @@ struct V: View {
       expect(validateSwiftTypecheck(withImport).ok).toBe(true)
     },
   )
+
+  it.skipIf(!isSwiftUIAvailable())(
+    '<Press onPress> emit typechecks (regression: was a swiftc argument-label crash)',
+    () => {
+      // The label-first `Button { content } action: {…}` form crashed
+      // swiftc's diagnoser while passing `-parse`. The explicit
+      // `Button(action:){…}` emit must typecheck clean.
+      const out = transform(
+        `import { Stack, Text, Press } from '@pyreon/primitives'
+function App() {
+  const c = signal(0)
+  return (<Stack><Press onPress={() => c.set(c() + 1)}><Text>tap</Text></Press></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      const res = validateSwiftTypecheck(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
+
+  it.skipIf(!isSwiftUIAvailable())(
+    '<Toggle onChange={(v) => …}> emit typechecks (regression: unbound `v` in setter)',
+    () => {
+      // The set-closure emitted `{ _ in on = v }` — `v` unbound, a real
+      // `-typecheck` failure (`cannot find 'v'`) that `-parse` waved
+      // through. The bound-param emit must typecheck clean.
+      const out = transform(
+        `import { Stack, Toggle } from '@pyreon/primitives'
+function App() {
+  const on = signal(false)
+  return (<Stack><Toggle value={on()} onChange={(v) => on.set(v)} /></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      const res = validateSwiftTypecheck(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
+
+  it.skipIf(!isSwiftUIAvailable())(
+    'controlled <Field value onChange> emit typechecks (regression: generic-fallback `Field(…)`)',
+    () => {
+      // The controlled Field shape fell to generic emit → invalid
+      // `Field(value: …)` (`cannot find 'Field' in scope`). The custom-
+      // Binding emit must typecheck clean.
+      const out = transform(
+        `import { Stack, Field } from '@pyreon/primitives'
+function App() {
+  const name = signal("")
+  return (<Stack><Field value={name()} onChange={(v) => name.set(v)} placeholder="Name" /></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      const res = validateSwiftTypecheck(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
 })
