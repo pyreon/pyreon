@@ -104,6 +104,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
     "collapsed": true,
     "items": [
       {
+        "text": "a11y",
+        "slug": "reference/a11y"
+      },
+      {
         "text": "charts",
         "slug": "reference/charts"
       },
