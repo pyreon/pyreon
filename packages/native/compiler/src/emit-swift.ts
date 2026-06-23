@@ -17,7 +17,7 @@ import {
   resolveSpace,
 } from './canonical-primitives'
 import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
-import { buildInferenceCtx, inferType } from './infer-type'
+import { buildInferenceCtx, inferReturnType, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
   type FlatRouteEntry,
@@ -1337,7 +1337,7 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     return `@State private var ${swiftIdent(d.name)}: ${type} = ${initial}`
   }
   if (d.kind === 'function') {
-    return emitSwiftFunction(d)
+    return emitSwiftFunction(d, 'private', inferCtx)
   }
   // C4: router instance — `const router = createRouter({...})` →
   // `@State private var router = PyreonRouter()`. SwiftUI's `@State`
@@ -1609,6 +1609,7 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
 function emitSwiftFunction(
   d: Extract<DeclIR, { kind: 'function' }>,
   visibility: 'private' | 'internal' = 'private',
+  inferCtx?: ReturnType<typeof buildInferenceCtx>,
 ): string {
   // Use `_` (no external label) so call sites match the JS-style
   // unnamed-arg shape `toggle(t.id)` instead of requiring Swift's
@@ -1619,9 +1620,16 @@ function emitSwiftFunction(
   const params = d.params
     .map((p) => `_ ${swiftIdent(p.name)}: ${swiftType(p.type)}`)
     .join(', ')
-  // Render return-type clause. If the type is `unknown`, omit the
-  // arrow entirely (= Swift function returning Void).
-  const retType = d.returnType.kind === 'unknown' ? '' : ` -> ${swiftType(d.returnType)}`
+  // Render return-type clause. If the declared type is `unknown`, INFER it
+  // from the body's return expr (`(x: number) => x * 2` → `-> Int`) so a
+  // value-returning function isn't emitted as a Void func (which drops the
+  // result — a real-build error when the call is used as a value). Inference
+  // returns `unknown` when unsure → still no annotation (current behavior).
+  let returnType = d.returnType
+  if (returnType.kind === 'unknown' && inferCtx !== undefined) {
+    returnType = inferReturnType(d.params, d.body, inferCtx)
+  }
+  const retType = returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`
   // Single-statement single-return concise form.
   if (
     d.body.length === 1 &&

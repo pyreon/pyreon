@@ -44,7 +44,9 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     expect(out.warnings).toEqual([])
     // Phase 2 JSX-attr forwarding PR adds `_` external label to function
     // params so call sites match JS-style unnamed-arg shape.
-    expect(out.code).toContain('private func double(_ n: Int) { n * 2 }')
+    // Return-inference PR: an unannotated value-returning fn now gets its
+    // inferred `-> Int` (was a Void func that dropped the result).
+    expect(out.code).toContain('private func double(_ n: Int) -> Int { n * 2 }')
   })
 
   it('parses if-with-early-return in multi-statement body', () => {
