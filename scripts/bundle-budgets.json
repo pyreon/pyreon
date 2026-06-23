@@ -55,7 +55,7 @@
   "@pyreon/ui-core": 3584,
   "@pyreon/unistyle": 9472,
   "@pyreon/url-state": 1536,
-  "@pyreon/validate": 10240,
+  "@pyreon/validate": 12288,
   "@pyreon/validation": 1792,
   "@pyreon/virtual": 1024,
   "@pyreon/vite-plugin": 11264,
