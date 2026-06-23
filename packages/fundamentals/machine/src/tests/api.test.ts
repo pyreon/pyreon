@@ -135,7 +135,7 @@ describe('createMachine — can()', () => {
     expect(m.can('START' as any)).toBe(false)
   })
 
-  it('returns true for guarded transitions (guard not evaluated by can())', () => {
+  it('evaluates the guard — predicts send() exactly', () => {
     const m = createMachine({
       initial: 'editing',
       states: {
@@ -145,8 +145,10 @@ describe('createMachine — can()', () => {
         submitting: {},
       },
     })
-    // can() checks existence only, not guard
-    expect(m.can('SUBMIT')).toBe(true)
+    // can() evaluates the guard: this transition can never fire, so can() is false.
+    expect(m.can('SUBMIT')).toBe(false)
+    m.send('SUBMIT')
+    expect(m()).toBe('editing') // matches can() === false
   })
 
   it('is reactive — updates when state changes', () => {

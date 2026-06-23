@@ -67,6 +67,18 @@ export function createMachine<const TConfig extends MachineConfig<string, string
   // always-loop (a config error) instead of hanging.
   const MAX_ALWAYS_STEPS = 1000
 
+  // Guards are pure predicates — a guard that throws is treated as "denied"
+  // (no transition) rather than crashing send()/can(). Lets `can(event)` be
+  // called without a payload against a payload-reading guard, and keeps a
+  // buggy guard from taking down an event dispatch.
+  function safeGuard(guard: (payload?: unknown) => boolean, payload?: unknown): boolean {
+    try {
+      return guard(payload)
+    } catch {
+      return false
+    }
+  }
+
   function resolveTransition(event: TEvent, payload?: unknown): TState | null {
     const stateConfig = states[current.peek()]
     if (!stateConfig?.on) return null
@@ -79,7 +91,7 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     }
 
     // Guarded transition
-    if (transition.guard && !transition.guard(payload)) {
+    if (transition.guard && !safeGuard(transition.guard, payload)) {
       return null
     }
 
@@ -95,7 +107,7 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     const list = Array.isArray(always) ? always : [always]
     for (const t of list) {
       if (typeof t === 'string') return t
-      if (!t.guard || t.guard(undefined)) return t.target
+      if (!t.guard || safeGuard(t.guard, undefined)) return t.target
     }
     return null
   }
@@ -139,13 +151,16 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     return current()
   }
 
-  machine.send = (event: TEvent, payload?: unknown): void => {
+  machine.send = (event: TEvent, payload?: unknown): TState => {
     const target = resolveTransition(event, payload)
-    if (target === null) return
+    // Unhandled event (or guard rejected) — no transition; report current state.
+    if (target === null) return current.peek()
 
     const machineEvent: MachineEvent<TEvent> = { type: event, payload }
     doTransition(current.peek(), target, machineEvent)
     runAlways(machineEvent)
+    // The settled state after the event + any eventless ('always') cascade.
+    return current.peek()
   }
 
   machine.matches = (...matchStates: TState[]): boolean => {
@@ -153,20 +168,13 @@ export function createMachine<const TConfig extends MachineConfig<string, string
     return matchStates.includes(state)
   }
 
-  const NO_PAYLOAD = Symbol('no-payload')
-  machine.can = (event: TEvent, payload: unknown = NO_PAYLOAD): boolean => {
-    const stateConfig = states[current()]
-    const transition = stateConfig?.on?.[event] as TransitionConfig<TState> | undefined
-    if (!transition) return false
-
-    // Unguarded transition — always available.
-    if (typeof transition === 'string' || !transition.guard) return true
-
-    // Guarded: evaluate precisely when a payload is given (predicts `send`
-    // exactly); without one, report true — the event exists, but the guard may
-    // still reject at send time (backward-compatible behaviour).
-    if (payload === NO_PAYLOAD) return true
-    return transition.guard(payload)
+  // `can(event, payload?)` predicts `send(event, payload)` exactly: it evaluates
+  // the guard (throw-safe → denied) with the given payload, or `undefined` if
+  // none is passed. Reactive — `current()` subscribes the calling scope; the
+  // resolution then reads the same (current) state.
+  machine.can = (event: TEvent, payload?: unknown): boolean => {
+    current() // reactive subscription
+    return resolveTransition(event, payload) !== null
   }
 
   machine.nextEvents = (): TEvent[] => {

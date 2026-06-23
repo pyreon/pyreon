@@ -75,10 +75,10 @@ const Status = () => (
   features: [
     'createMachine({ initial, states }) — constrained signal with typed transitions',
     'machine() reads state reactively like a signal',
-    'machine.send(event, payload?) — trigger transitions',
+    'machine.send(event, payload?) — trigger a transition; returns the settled state',
     'machine.matches(...states) — check current state against one or more values',
-    'machine.can(event, payload?) — check (and, with a payload, precisely predict) a transition',
-    'Guards with optional payload for conditional transitions',
+    'machine.can(event, payload?) — predicts send() exactly (evaluates the guard, throw-safe)',
+    'Guards with optional payload for conditional transitions (throw → denied)',
     'Eventless (always) transitions — transient/condition states that resolve synchronously',
     'Final states — isFinal() + onDone() for terminal states',
     'Lifecycle listeners — onEnter / onExit / onTransition / onDone',
@@ -89,7 +89,7 @@ const Status = () => (
       kind: 'function',
       signature: '<S extends string, E extends string>(config: MachineConfig<S, E>) => Machine<S, E>',
       summary:
-        'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. Beyond named events, states support eventless `always` transitions (transient/condition states that resolve synchronously), `final: true` terminal states (`isFinal()` + `onDone()`), and full lifecycle listeners (`onEnter` / `onExit` / `onTransition` / `onDone`). No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects.',
+        'Create a reactive state machine. The returned machine reads like a signal (`machine()` returns the current state string) and transitions via `machine.send(event, payload?)`. States and events are type-safe — TypeScript infers the union from the config object. Guards enable conditional transitions with typed payloads. Beyond named events, states support eventless `always` transitions (transient/condition states that resolve synchronously), `final: true` terminal states (`isFinal()` + `onDone()`), and full lifecycle listeners (`onEnter` / `onExit` / `onTransition` / `onDone`). `send(event, payload?)` returns the settled state (after any `always` cascade), and `can(event, payload?)` predicts `send` exactly — both evaluate guards throw-safely (a guard that throws denies the transition rather than crashing). No built-in context or effects — use Pyreon signals and `effect()` alongside the machine for data and side effects.',
       example: `const traffic = createMachine({
   initial: 'red',
   states: {
@@ -104,7 +104,7 @@ traffic.send('NEXT') // 'green'
 traffic.matches('green') // true
 traffic.can('NEXT')  // true`,
       mistakes: [
-        'Expecting `machine.send()` to return the new state — it returns void; read the state with `machine()` after sending',
+        'Treating `machine.can(event)` (no payload) as "is this event declared?" — it now PREDICTS `send` exactly by evaluating the guard (throw-safe → denied), so a guarded event with no/invalid payload reports `false`',
         'Calling `machine.set()` — machines are constrained signals, they do not expose `.set()`. State changes only happen through `machine.send(event)`',
         'Using a machine for data storage — machines only hold the current state string. Use regular signals alongside the machine for associated data',
         'Forgetting guard payloads — `machine.send("LOGIN")` without the required payload silently fails the guard',
@@ -189,6 +189,10 @@ m.isFinal()      // true → onDone fired`,
     {
       label: 'Eventless transitions resolve synchronously',
       note: '`always` transitions fire during the SAME `send()` call (and at creation / `reset()`), cascading until none apply — a transient state is never observed by `machine()` or by reactive readers. Guards receive no payload; read external signals. A self-looping `always` throws after 1000 steps.',
+    },
+    {
+      label: 'send returns state; can predicts it; guards are throw-safe',
+      note: '`send(event, payload?)` returns the SETTLED state (after the `always` cascade), or the unchanged state for an unhandled event / rejected guard. `can(event, payload?)` predicts `send` exactly — it evaluates the guard. Guards are throw-safe: a guard that throws (e.g. reading a property of a missing payload) DENIES the transition rather than crashing `send`/`can`.',
     },
   ],
 })

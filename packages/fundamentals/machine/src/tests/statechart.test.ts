@@ -251,9 +251,11 @@ describe('createMachine — can(event, payload?)', () => {
     expect(m.can('LOGIN', { ok: false })).toBe(false)
   })
 
-  it('reports true for a guarded event with no payload (backward-compatible)', () => {
+  it('evaluates the guard even with no payload (throw-safe → denied)', () => {
     const m = make()
-    expect(m.can('LOGIN')).toBe(true)
+    // No payload → guard reads undefined.ok → throws → treated as denied.
+    expect(() => m.can('LOGIN')).not.toThrow()
+    expect(m.can('LOGIN')).toBe(false)
   })
 
   it('returns true for an unguarded available event', () => {
@@ -274,6 +276,63 @@ describe('createMachine — can(event, payload?)', () => {
     expect(m.can('LOGIN', { ok: true })).toBe(true)
     m.send('LOGIN', { ok: true })
     expect(m()).toBe('loggedIn') // matches can() === true
+  })
+})
+
+// ─── send() return value + throw-safe guards ──────────────────────────────────
+
+describe('createMachine — send() returns the settled state', () => {
+  it('returns the new state after a transition', () => {
+    const m = createMachine({
+      initial: 'idle',
+      states: { idle: { on: { GO: 'busy' } }, busy: {} },
+    })
+    expect(m.send('GO')).toBe('busy')
+  })
+
+  it('returns the settled state after an always cascade', () => {
+    const m = createMachine({
+      initial: 'idle',
+      states: {
+        idle: { on: { GO: 'mid' } },
+        mid: { always: 'done' },
+        done: {},
+      },
+    })
+    expect(m.send('GO')).toBe('done') // idle → mid → (always) → done
+  })
+
+  it('returns the unchanged current state for an unhandled event', () => {
+    const m = createMachine({
+      initial: 'idle',
+      states: { idle: { on: { GO: 'busy' } }, busy: {} },
+    })
+    expect(m.send('NOPE' as 'GO')).toBe('idle')
+  })
+
+  it('returns the unchanged current state when a guard rejects', () => {
+    const m = createMachine({
+      initial: 'idle',
+      states: {
+        idle: { on: { GO: { target: 'busy', guard: (p) => (p as { ok: boolean }).ok } } },
+        busy: {},
+      },
+    })
+    expect(m.send('GO', { ok: false })).toBe('idle')
+    expect(m.send('GO', { ok: true })).toBe('busy')
+  })
+
+  it('is throw-safe — a guard that throws denies the transition without crashing send', () => {
+    const m = createMachine({
+      initial: 'idle',
+      states: {
+        idle: { on: { GO: { target: 'busy', guard: (p) => (p as { ok: boolean }).ok } } },
+        busy: {},
+      },
+    })
+    // No payload → guard reads undefined.ok → throws → treated as denied.
+    expect(() => m.send('GO')).not.toThrow()
+    expect(m.send('GO')).toBe('idle')
   })
 })
 

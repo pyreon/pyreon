@@ -266,7 +266,7 @@ describe('createMachine', () => {
       expect(results).toEqual([false, true])
     })
 
-    it('returns true for guarded transitions (guard not evaluated)', () => {
+    it('evaluates the guard (predicts send) — false when the guard rejects', () => {
       const m = createMachine({
         initial: 'editing',
         states: {
@@ -278,8 +278,37 @@ describe('createMachine', () => {
           submitting: {},
         },
       })
-      // can() returns true because the event exists, even though guard would fail
-      expect(m.can('SUBMIT')).toBe(true)
+      // can() evaluates the guard — this guard always rejects, so can() is false.
+      expect(m.can('SUBMIT')).toBe(false)
+    })
+
+    it('passes the payload to the guard', () => {
+      const m = createMachine({
+        initial: 'editing',
+        states: {
+          editing: {
+            on: { SUBMIT: { target: 'done', guard: (p) => (p as { valid: boolean }).valid } },
+          },
+          done: {},
+        },
+      })
+      expect(m.can('SUBMIT', { valid: true })).toBe(true)
+      expect(m.can('SUBMIT', { valid: false })).toBe(false)
+    })
+
+    it('is throw-safe — a guard that throws on the payload reports false (not throw)', () => {
+      const m = createMachine({
+        initial: 'editing',
+        states: {
+          editing: {
+            on: { SUBMIT: { target: 'done', guard: (p) => (p as { valid: boolean }).valid } },
+          },
+          done: {},
+        },
+      })
+      // No payload → guard reads undefined.valid → throws → treated as denied.
+      expect(() => m.can('SUBMIT')).not.toThrow()
+      expect(m.can('SUBMIT')).toBe(false)
     })
   })
 
