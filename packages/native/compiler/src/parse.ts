@@ -3747,7 +3747,44 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
     const parsed = parseStatement(stmt, ctx)
     if (parsed) out.push(parsed)
   }
+  markReassignedLocalsMutable(out)
   return out
+}
+
+/**
+ * A `let`/`val` local that is later REASSIGNED (an `assign` statement with a
+ * bare-identifier target) must emit as `var` so the reassignment typechecks
+ * on Swift + Kotlin. Collect every identifier reassigned anywhere in the
+ * block (incl. nested loop/if bodies — a loop accumulator is declared in the
+ * outer scope and mutated inside the loop) and flip the matching `let`'s
+ * `mutable` flag. Conservative: only bare-identifier targets promote a local;
+ * member/index reassignment doesn't declare a local.
+ */
+function markReassignedLocalsMutable(stmts: StatementIR[]): void {
+  const reassigned = new Set<string>()
+  const collect = (list: StatementIR[]): void => {
+    for (const s of list) {
+      if (s.kind === 'assign' && s.target.kind === 'identifier') reassigned.add(s.target.name)
+      else if (s.kind === 'if') {
+        collect(s.then)
+        if (s.elseBody) collect(s.elseBody)
+      } else if (s.kind === 'while' || s.kind === 'for-of') collect(s.body)
+      else if (s.kind === 'switch') for (const c of s.cases) collect(c.body)
+    }
+  }
+  collect(stmts)
+  if (reassigned.size === 0) return
+  const mark = (list: StatementIR[]): void => {
+    for (const s of list) {
+      if (s.kind === 'let' && reassigned.has(s.name)) s.mutable = true
+      else if (s.kind === 'if') {
+        mark(s.then)
+        if (s.elseBody) mark(s.elseBody)
+      } else if (s.kind === 'while' || s.kind === 'for-of') mark(s.body)
+      else if (s.kind === 'switch') for (const c of s.cases) mark(c.body)
+    }
+  }
+  mark(stmts)
 }
 
 function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
@@ -3795,6 +3832,25 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       return arg ? { kind: 'return', expr: parseExpr(arg, ctx) } : { kind: 'return' }
     }
     case 'ExpressionStatement': {
+      const inner = node.expression as AnyNode
+      // Reassignment (`t = t + x`, `acc += 1`) → an `assign` statement.
+      // Signals reassign via `.set()` (a CallExpression, handled by parseExpr
+      // below), so a raw AssignmentExpression is always a plain local /
+      // member / index reassignment. Only `=` + arithmetic compound ops lower
+      // cleanly to BOTH targets; exotic ops (`**= &&= ||= ??=` / bitwise)
+      // fall through to the warn path.
+      if (inner.type === 'AssignmentExpression') {
+        const op = inner.operator as string
+        const SUPPORTED = ['=', '+=', '-=', '*=', '/=', '%=']
+        if (SUPPORTED.includes(op)) {
+          return {
+            kind: 'assign',
+            target: parseExpr(inner.left, ctx),
+            op,
+            value: parseExpr(inner.right, ctx),
+          }
+        }
+      }
       return { kind: 'expr', expr: parseExpr(node.expression, ctx) }
     }
     case 'WhileStatement': {

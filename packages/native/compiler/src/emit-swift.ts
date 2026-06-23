@@ -1688,7 +1688,11 @@ function emitSwiftFunction(
 function emitSwiftStatement(s: StatementIR, indent: number): string {
   switch (s.kind) {
     case 'let':
-      return `let ${swiftIdent(s.name)} = ${emitSwiftExpr(s.expr, indent)}`
+      // `var` when a later `assign` reassigns this local (markReassigned-
+      // LocalsMutable), else immutable `let`.
+      return `${s.mutable ? 'var' : 'let'} ${swiftIdent(s.name)} = ${emitSwiftExpr(s.expr, indent)}`
+    case 'assign':
+      return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
     case 'return':
       return s.expr ? `return ${emitSwiftExpr(s.expr, indent)}` : 'return'
     case 'expr':

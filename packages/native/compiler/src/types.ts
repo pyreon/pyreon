@@ -524,8 +524,22 @@ export interface RouteIR {
  * (`for`, `while`, `try`) deliberately deferred.
  */
 export type StatementIR =
-  /** `const text = draft().trim()` — local const binding inside fn body. */
-  | { kind: 'let'; name: string; expr: ExprIR }
+  /**
+   * `const text = draft().trim()` — local binding inside a fn body.
+   * `mutable` is set by `parseStatementBlock` when a later `assign`
+   * statement in the SAME block reassigns this name — the emit then uses
+   * `var` (Swift + Kotlin) instead of `let`/`val` so the reassignment
+   * typechecks.
+   */
+  | { kind: 'let'; name: string; expr: ExprIR; mutable?: boolean }
+  /**
+   * Reassignment of a plain local / member / index target:
+   * `t = t + x`, `acc += 1`. Signals reassign via `.set()` (a call, the
+   * `expr` kind), so a raw `AssignmentExpression` is ALWAYS a plain
+   * (non-signal) reassignment. `op` is `=` or a compound (`+= -= *= /= %=`);
+   * both Swift and Kotlin take these verbatim.
+   */
+  | { kind: 'assign'; target: ExprIR; op: string; value: ExprIR }
   /** `if (cond) { then } [else { else }]`. */
   | { kind: 'if'; cond: ExprIR; then: StatementIR[]; elseBody?: StatementIR[] }
   /** `return [expr]` — bare early-return uses `expr: undefined`. */
