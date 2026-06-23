@@ -770,12 +770,16 @@ in-body data work.
 `<Link>`. `data-testid` flows to `accessibilityIdentifier` / `testTag`
 (containers gain the queryability semantic automatically). The
 cross-platform a11y vocabulary on `@pyreon/primitives` lowers the same
-way: `accessibilityLabel="…"` → SwiftUI `.accessibilityLabel(…)` (the
-VoiceOver name; Android `semantics { contentDescription }` follows) and
-`accessibilityHidden` → `.accessibilityHidden(true)` — write the neutral
-prop once, each target emits its native a11y model (the web half lowers
-to `aria-label` / `aria-hidden`). Component children must be JSX or
-value expressions (auto-wrapped in `Text`).
+way on every target — write the neutral prop once:
+`accessibilityLabel="…"` → web `aria-label` / SwiftUI
+`.accessibilityLabel(…)` (the VoiceOver name) / Compose
+`.semantics { contentDescription = … }` (the TalkBack name); and
+`accessibilityHidden` → web `aria-hidden="true"` / SwiftUI
+`.accessibilityHidden(true)` / Compose `.clearAndSetSemantics { }`
+(clears the node + subtree from the a11y tree — `clearAndSetSemantics` is
+stable in the targeted Compose 1.7 BOM, vs the experimental
+`invisibleToUser()`). Component children must be JSX or value
+expressions (auto-wrapped in `Text`).
 
 **Module scope**: `let`/`const` primitives (non-reactive on native),
 type aliases, the recognized factory calls. Module-scope `signal()` is
