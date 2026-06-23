@@ -481,6 +481,20 @@ describe('Phase B — <Field> emit', () => {
     expect(out).toMatch(/\.onSubmit \{ fn\(\) \}/)
   })
 
+  it('Swift: controlled <Field value={sig()} onChange={(v)=>…}> → TextField with custom Binding', () => {
+    // Regression for the silent corruption the `-typecheck` gate surfaced:
+    // the controlled (parent-owns-state) shape — a non-bare value
+    // expression + onChange — previously fell to GENERIC emit →
+    // `Field(value: …)`, an invalid SwiftUI symbol (`cannot find 'Field'
+    // in scope`) that `-parse` accepted. Now emits a custom Binding
+    // (mirrors Toggle's Shape 2), with the arrow param bound in the setter.
+    const out = tx(`<Field value={draft()} onChange={(v) => draft.set(v)} placeholder="N" />`, 'swift')
+    expect(out).toContain('TextField("N", text: Binding(')
+    expect(out).toContain('get: { draft }')
+    expect(out).toContain('set: { v in draft = v }')
+    expect(out).not.toContain('Field(value:') // NOT the generic fallback
+  })
+
   it('Kotlin: <Field value={draft} onChangeText={...}> → TextField(value = draft, onValueChange = ...)', () => {
     const out = tx(
       `<Field value={draft} onChangeText={(t) => draft.set(t)} placeholder="hi" />`,

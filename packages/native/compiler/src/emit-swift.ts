@@ -4337,16 +4337,43 @@ function emitSwiftField(
   // dict field (above). Anything else falls through to the generic emit
   // to preserve current behaviour and avoid silently producing broken
   // Swift.
-  if (
-    bindingExpr === undefined &&
-    (!valueAttr ||
-      valueAttr.value.kind !== 'identifier' ||
-      !_signalNames.has(valueAttr.value.name))
-  ) {
+  // Three supported shapes set `textArg`; anything else falls through to
+  // generic emit (avoid silently producing broken Swift):
+  //   1. form binding (`bindingExpr`, above)
+  //   2. bare-signal value (`value={signal}` → `$signal`)
+  //   3. controlled value + onChange (`value={expr()} onChange={(v)=>…}`)
+  //      → a custom `Binding(get:set:)`, mirroring Toggle's Shape 2.
+  // Shape 3 closes a real silent-corruption hole the `-typecheck` gate
+  // surfaced: the controlled shape previously fell to generic emit →
+  // invalid `Field(value: …)` (`-parse` accepted it; `-typecheck`
+  // rejected with `cannot find 'Field' in scope`).
+  const onChangeAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'change',
+  )
+  const isBareSignal =
+    valueAttr !== undefined &&
+    valueAttr.value.kind === 'identifier' &&
+    _signalNames.has(valueAttr.value.name)
+  let textArg: string
+  if (bindingExpr !== undefined) {
+    textArg = bindingExpr
+  } else if (isBareSignal) {
+    textArg = `$${swiftIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)}`
+  } else if (valueAttr !== undefined && onChangeAttr !== undefined) {
+    const getExpr = emitSwiftExpr(valueAttr.value, indent + 4)
+    const writeBody = stripSwiftClosureBody(emitSwiftAction(onChangeAttr.handler, indent + 4))
+    const handlerParam =
+      onChangeAttr.handler.kind === 'arrow' && onChangeAttr.handler.params.length > 0
+        ? swiftIdent(onChangeAttr.handler.params[0]!)
+        : '_'
+    const inner = ' '.repeat(indent + 4)
+    const pad = ' '.repeat(indent + 2)
+    textArg =
+      `Binding(\n${inner}get: { ${getExpr} },\n${inner}set: { ${handlerParam} in ${writeBody} }\n${pad})`
+  } else {
     return emitSwiftGeneric(e, indent)
   }
-  const textArg =
-    bindingExpr ?? `$${swiftIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)}`
 
   let result = `${viewName}(${JSON.stringify(placeholder)}, text: ${textArg})`
 

@@ -153,4 +153,23 @@ function App() {
       expect(res.ok, res.error ?? '').toBe(true)
     },
   )
+
+  it.skipIf(!isSwiftUIAvailable())(
+    'controlled <Field value onChange> emit typechecks (regression: generic-fallback `Field(…)`)',
+    () => {
+      // The controlled Field shape fell to generic emit → invalid
+      // `Field(value: …)` (`cannot find 'Field' in scope`). The custom-
+      // Binding emit must typecheck clean.
+      const out = transform(
+        `import { Stack, Field } from '@pyreon/primitives'
+function App() {
+  const name = signal("")
+  return (<Stack><Field value={name()} onChange={(v) => name.set(v)} placeholder="Name" /></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      const res = validateSwiftTypecheck(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
 })
