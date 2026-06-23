@@ -106,6 +106,12 @@ function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
       return `${ve} < ${op.n}`
     case 'check:number:max':
       return `${ve} > ${op.n}`
+    case 'check:number:gt':
+      return `!(${ve} > ${op.n})`
+    case 'check:number:lt':
+      return `!(${ve} < ${op.n})`
+    case 'check:number:safe':
+      return `!(${ve} >= -9007199254740991 && ${ve} <= 9007199254740991)`
     case 'check:number:int':
       return `!Number.isInteger(${ve})`
     case 'check:number:finite':
