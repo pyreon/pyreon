@@ -135,6 +135,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Validation version per field — used to discard stale async results
   const validationVersions: Partial<Record<keyof TValues, number>> = {}
 
+  // Per-field NON-debounced validator (the `runValidation` closure built in
+  // the field loop). Stored so `trigger(name)` can validate a field/subset
+  // immediately, reusing the exact same validation path as auto-validation.
+  const fieldRunValidation: Partial<Record<keyof TValues, (v: unknown) => Promise<ValidationError>>> = {}
+
   // Helper to get all current values (used by cross-field validators)
   const getValues = (): TValues => {
     const values = {} as TValues
@@ -210,6 +215,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   const isValidating = signal(false)
   const submitError = signal<unknown>(undefined)
+  // Whether the most recent submit completed successfully (onSubmit ran
+  // without a validation failure / throw). false at each submit start + reset.
+  const isSubmitSuccessful = signal(false)
   const formDisabled = signal(false)
   const formReadOnly = signal(false)
   // Declared up-front so per-field auto-revalidation effects (set up in the
@@ -310,6 +318,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       errorSig.set(undefined)
       return undefined
     }
+    // Expose the non-debounced validator for `trigger(name)`.
+    fieldRunValidation[name] = runValidation as (v: unknown) => Promise<ValidationError>
 
     const validateField = debounceMs
       ? (value: TValues[typeof name]) => {
@@ -455,6 +465,31 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // pure scalar reads. See `_invalidCount` / `_dirtyCount` setup above.
   const isValid = computed(() => _invalidCount() === 0)
   const isDirty = computed(() => _dirtyCount() > 0)
+  const isSubmitted = computed(() => submitCount() > 0)
+
+  // Read all values, or a single field's value (react-hook-form parity).
+  function getValuesPublic(): TValues
+  function getValuesPublic<K extends keyof TValues>(field: K): TValues[K]
+  function getValuesPublic<K extends keyof TValues>(field?: K): TValues | TValues[K] {
+    if (field === undefined) return getValues()
+    return fields[field].value.peek()
+  }
+
+  // Aggregate dirty/touched records (only the dirty/touched fields present).
+  // Reactive: reads each field's signal, so calling inside a reactive scope
+  // tracks the set (matching react-hook-form's reactive dirtyFields/touchedFields).
+  const dirtyFields = (): Partial<Record<keyof TValues, boolean>> => {
+    const out = {} as Partial<Record<keyof TValues, boolean>>
+    for (const [name] of fieldEntries) if (fields[name].dirty()) out[name] = true
+    return out
+  }
+  const touchedFields = (): Partial<Record<keyof TValues, boolean>> => {
+    const out = {} as Partial<Record<keyof TValues, boolean>>
+    for (const [name] of fieldEntries) if (fields[name].touched()) out[name] = true
+    return out
+  }
+
+  const getFieldState = <K extends keyof TValues>(field: K): FieldState<TValues[K]> => fields[field]
 
   const getErrors = (): Partial<Record<keyof TValues, ValidationError>> => {
     const errors = {} as Partial<Record<keyof TValues, ValidationError>>
@@ -557,6 +592,33 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     }
   }
 
+  // ── trigger: validate a field / subset / (no arg) the whole form ────────
+  const trigger = async (field?: keyof TValues | ReadonlyArray<keyof TValues>): Promise<boolean> => {
+    if (field === undefined) return validate()
+    const names = (Array.isArray(field) ? field : [field]) as (keyof TValues & string)[]
+    isValidating.set(true)
+    try {
+      await Promise.all(
+        names.map(async (name) => {
+          if (!fields[name]) return
+          // Cancel a pending debounce so a stale result can't clobber this.
+          clearTimeout(debounceTimers[name])
+          const rv = fieldRunValidation[name]
+          // runValidation sets the field error (validator result, or undefined
+          // when there's no validator) — the exact auto-validation path.
+          if (rv) await rv(fields[name].value.peek())
+          else fields[name].error.set(undefined)
+          // Schema-only fields (no per-field validator) get their schema error
+          // applied here too, mirroring blur-time `runSchemaForField`.
+          if (schema && !validators?.[name]) await runSchemaForField(name).catch(() => {})
+        }),
+      )
+      return names.every((name) => !fields[name] || fields[name].error.peek() === undefined)
+    } finally {
+      isValidating.set(false)
+    }
+  }
+
   const handleSubmit = async (e?: Event) => {
     if (e && typeof e.preventDefault === 'function') {
       e.preventDefault()
@@ -569,6 +631,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // effect flush after every signal has been updated.
     batch(() => {
       submitError.set(undefined)
+      isSubmitSuccessful.set(false)
       submitCount.update((n) => n + 1)
       for (const [name] of fieldEntries) {
         fields[name].touched.set(true)
@@ -581,6 +644,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     isSubmitting.set(true)
     try {
       await onSubmit(getSubmitValues())
+      isSubmitSuccessful.set(true)
     } catch (err) {
       submitError.set(err)
       throw err
@@ -600,6 +664,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       }
       submitCount.set(0)
       submitError.set(undefined)
+      isSubmitSuccessful.set(false)
     })
   }
 
@@ -755,9 +820,14 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     isValid,
     isDirty,
     submitCount,
+    isSubmitted,
+    isSubmitSuccessful,
     submitError,
     values: getValues,
+    getValues: getValuesPublic,
     errors: getErrors,
+    dirtyFields,
+    touchedFields,
     setFieldValue,
     setFieldError,
     setErrors,
@@ -767,6 +837,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     handleSubmit,
     reset,
     validate,
+    trigger,
+    getFieldState,
     setInitialValues,
     disabled: formDisabled,
     readOnly: formReadOnly,

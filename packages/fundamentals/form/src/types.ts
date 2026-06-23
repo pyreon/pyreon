@@ -85,12 +85,43 @@ export interface FormState<TValues extends Record<string, unknown>> {
   isDirty: Accessor<boolean>
   /** Number of times the form has been submitted. */
   submitCount: Signal<number>
+  /** Whether the form has been submitted at least once (computed: `submitCount > 0`). */
+  isSubmitted: Accessor<boolean>
+  /**
+   * Whether the MOST RECENT submit completed successfully — `onSubmit` ran
+   * without a validation failure and without throwing. Reset to `false` at
+   * the start of each submit attempt and on `reset()`. (react-hook-form
+   * parity: `formState.isSubmitSuccessful`.)
+   */
+  isSubmitSuccessful: Signal<boolean>
   /** Error thrown by onSubmit (undefined if no error). */
   submitError: Signal<unknown>
   /** All current form values as a plain object. */
   values: () => TValues
+  /**
+   * Read all current values, or a single field's value (react-hook-form
+   * parity: `getValues()` / `getValues(name)`). The no-arg form is
+   * equivalent to `values()`.
+   */
+  getValues: {
+    (): TValues
+    <K extends keyof TValues>(field: K): TValues[K]
+  }
   /** All current errors as a record. */
   errors: () => Partial<Record<keyof TValues, ValidationError>>
+  /**
+   * The dirty fields as a record — only fields whose value differs from
+   * their initial value are present, each mapped to `true`. Reactive: reads
+   * each field's `dirty` signal, so calling this inside a reactive scope
+   * tracks the set. (react-hook-form parity: `formState.dirtyFields`.)
+   */
+  dirtyFields: () => Partial<Record<keyof TValues, boolean>>
+  /**
+   * The touched fields as a record — only fields that have been blurred at
+   * least once are present, each mapped to `true`. Reactive. (react-hook-form
+   * parity: `formState.touchedFields`.)
+   */
+  touchedFields: () => Partial<Record<keyof TValues, boolean>>
   /** Set a single field's value. */
   setFieldValue: <K extends keyof TValues>(field: K, value: TValues[K]) => void
   /** Set a single field's error (e.g. from server-side validation). */
@@ -128,6 +159,20 @@ export interface FormState<TValues extends Record<string, unknown>> {
   reset: () => void
   /** Validate all fields and return whether the form is valid. */
   validate: () => Promise<boolean>
+  /**
+   * Validate a single field, a subset of fields, or — with no argument —
+   * the whole form (equivalent to `validate()`). Runs the field validators
+   * (immediately, bypassing `debounceMs`) + the schema for the named fields
+   * and returns whether that set is valid. (react-hook-form parity:
+   * `trigger(name?)`.)
+   */
+  trigger: (field?: keyof TValues | ReadonlyArray<keyof TValues>) => Promise<boolean>
+  /**
+   * Get a single field's reactive state — the SAME object as
+   * `form.fields[field]`. (react-hook-form parity: `getFieldState(name)`,
+   * but returns the live `FieldState` signals rather than a snapshot.)
+   */
+  getFieldState: <K extends keyof TValues>(field: K) => FieldState<TValues[K]>
   /**
    * Update initial values and reset all fields to the new values.
    * Useful when async data (e.g. from a query) arrives after form creation.
