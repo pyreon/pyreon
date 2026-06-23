@@ -2154,7 +2154,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
   },
 
   'state-tree/ModelDefinition': {
-    signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), lifecycle(f), create(initial?), asHook(id) }',
+    signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile> { views(f), actions(f), volatile(f), lifecycle(f), create(initial?), asHook(id) }',
     example: `const M = model({ schema })
   .views((self) => ({ a: () => self.x() }))     // self has state
   .views((self) => ({ b: () => self.a() + 1 })) // self also has a
@@ -2231,6 +2231,39 @@ draft.title.set('edited')        // does not touch original`,
     example: `const Def = getType(instance)
 const sibling = Def?.create()`,
     notes: 'Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed. See also: clone, model.',
+  },
+
+  'state-tree/volatile': {
+    signature: '.volatile(self => ({ ...initialValues })) → ModelDefinition (chainable)',
+    example: `model({ state: { items: [] as string[] } })
+  .volatile(() => ({ loading: false, lastError: null as Error | null }))
+  .actions((self) => ({
+    async load() {
+      self.loading.set(true)               // reactive, not persisted
+      try { self.items.set(await fetchItems()) }
+      finally { self.loading.set(false) }
+    },
+  }))`,
+    notes: 'Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but EXCLUDED from snapshots, patches, and `onSnapshot`. For state that should not be persisted or replayed: in-flight flags, drag/hover UI state, live object references (websockets, timers, promises). The factory returns initial VALUES; each becomes a `Signal<T>` on `self` + the instance, strictly typed. Volatile keys cannot collide with state / schema-helper / view / action / other-volatile names (throws at `.create()`). A volatile-only change never fires `onSnapshot` (it produces the same snapshot). See also: model, onSnapshot, getSnapshot.',
+    mistakes: `- Putting persistent state in \`.volatile()\` — it is dropped from snapshots, so it will not survive serialize/restore or replay. Use \`state\` / \`schema\` for durable data
+- Expecting a volatile change to fire \`onSnapshot\` / emit a patch — volatile is excluded from both by design`,
+  },
+
+  'state-tree/onSnapshot': {
+    signature: '(instance: ModelInstance, listener: (snapshot) => void) => () => void',
+    example: `const dispose = onSnapshot(store, (snap) => {
+  localStorage.setItem('store', JSON.stringify(snap))
+})`,
+    notes: 'Subscribe to snapshot changes. The listener fires MICROTASK-COALESCED with the new snapshot after any STATE change — all writes in one synchronous burst (a multi-field `set`/`patch`, several signal writes in one action) collapse into a SINGLE emit on the next microtask (MST-like async semantics). Does NOT fire on subscribe. Volatile-field changes do not fire it. Returns an unsubscribe function; `destroy(instance)` also clears all snapshot listeners. (Implemented via the patch-write hook, NOT an `effect()` — so it never fires on creation and never depends on the untracked `.peek()` reads `getSnapshot` performs.) See also: getSnapshot, onPatch, model.',
+    mistakes: `- Expecting a synchronous / per-write callback — \`onSnapshot\` is coalesced onto a microtask; read the snapshot you are handed, not a value you \`getSnapshot\` synchronously after a write
+- Expecting it to fire immediately on subscribe — it does not (unlike a reactive \`effect\`); take an initial \`getSnapshot(instance)\` yourself if you need the starting value`,
+  },
+
+  'state-tree/onAction': {
+    signature: '(instance: ModelInstance, listener: (call: ActionCall) => void) => () => void',
+    example: 'const unsub = onAction(store, (call) => analytics.track(call.name, call.args))',
+    notes: 'Observe every action call on an instance (logging, analytics, devtools). The listener receives the `ActionCall` descriptor (`name`, `args`, `path`) BEFORE the action runs; it is read-only — it cannot block or alter the call (use `addMiddleware` for interception). Sugar over `addMiddleware` (a middleware that observes then unconditionally proceeds). Returns an unsubscribe function. See also: addMiddleware, model.',
+    mistakes: '- Trying to block / mutate a call from `onAction` — it is observe-only; use `addMiddleware` to intercept',
   },
   // <gen-docs:api-reference:end @pyreon/state-tree>
 

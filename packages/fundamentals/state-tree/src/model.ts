@@ -73,6 +73,8 @@ export interface NormalizedConfig<TState extends StateShape> {
   >
   /** Ordered list of lifecycle factories (always an array, possibly empty). */
   readonly lifecycleFactories: ReadonlyArray<(self: any) => LifecycleHandlers>
+  /** Ordered list of volatile-state factories (always an array, possibly empty). */
+  readonly volatileFactories: ReadonlyArray<(self: any) => Record<string, unknown>>
 }
 
 // ─── ModelDefinition ──────────────────────────────────────────────────────────
@@ -93,6 +95,7 @@ export class ModelDefinition<
   TViews extends Record<string, unknown> = Record<never, never>,
   TActions extends Record<string, (...args: any[]) => any> = Record<never, never>,
   HasSchema extends boolean = false,
+  TVolatile extends StateShape = Record<never, never>,
 > {
   /** Brand used to identify ModelDefinition objects at runtime (without instanceof). */
   readonly [MODEL_BRAND] = true as const
@@ -129,9 +132,9 @@ export class ModelDefinition<
    * ```
    */
   views<V extends Record<string, unknown>>(
-    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema>) => V,
-  ): ModelDefinition<TState, TViews & V, TActions, HasSchema> {
-    return new ModelDefinition<TState, TViews & V, TActions, HasSchema>({
+    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema, TVolatile>) => V,
+  ): ModelDefinition<TState, TViews & V, TActions, HasSchema, TVolatile> {
+    return new ModelDefinition<TState, TViews & V, TActions, HasSchema, TVolatile>({
       ...this._config,
       viewFactories: [...this._config.viewFactories, factory as never],
     })
@@ -152,11 +155,43 @@ export class ModelDefinition<
    * ```
    */
   actions<A extends Record<string, (...args: any[]) => any>>(
-    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema>) => A,
-  ): ModelDefinition<TState, TViews, TActions & A, HasSchema> {
-    return new ModelDefinition<TState, TViews, TActions & A, HasSchema>({
+    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema, TVolatile>) => A,
+  ): ModelDefinition<TState, TViews, TActions & A, HasSchema, TVolatile> {
+    return new ModelDefinition<TState, TViews, TActions & A, HasSchema, TVolatile>({
       ...this._config,
       actionFactories: [...this._config.actionFactories, factory as never],
+    })
+  }
+
+  /**
+   * Add a layer of VOLATILE state — signal-backed transient fields that are
+   * reactive (read `self.x()`, write `self.x.set(v)`) but EXCLUDED from
+   * snapshots, patches, and `onSnapshot`. Use for state that should not be
+   * persisted or replayed: in-flight flags, drag/hover UI state, live object
+   * references (websockets, timers, promises). Chainable; the factory returns
+   * an object of INITIAL VALUES (each becomes a `Signal<T>` on `self` + the
+   * instance). Volatile keys cannot collide with state / schema-helper / view /
+   * action / other-volatile names (throws at `.create()`).
+   *
+   * @example
+   * ```ts
+   * model({ state: { items: [] as string[] } })
+   *   .volatile(() => ({ loading: false, lastError: null as Error | null }))
+   *   .actions((self) => ({
+   *     async load() {
+   *       self.loading.set(true)              // reactive, not persisted
+   *       try { self.items.set(await fetchItems()) }
+   *       finally { self.loading.set(false) }
+   *     },
+   *   }))
+   * ```
+   */
+  volatile<V extends StateShape>(
+    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema, TVolatile>) => V,
+  ): ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile & V> {
+    return new ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile & V>({
+      ...this._config,
+      volatileFactories: [...this._config.volatileFactories, factory as never],
     })
   }
 
@@ -179,9 +214,9 @@ export class ModelDefinition<
    * ```
    */
   lifecycle(
-    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema>) => LifecycleHandlers,
-  ): ModelDefinition<TState, TViews, TActions, HasSchema> {
-    return new ModelDefinition<TState, TViews, TActions, HasSchema>({
+    factory: (self: ModelSelf<TState, TViews, TActions, HasSchema, TVolatile>) => LifecycleHandlers,
+  ): ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile> {
+    return new ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile>({
       ...this._config,
       lifecycleFactories: [...this._config.lifecycleFactories, factory as never],
     })
@@ -199,7 +234,7 @@ export class ModelDefinition<
    */
   create(
     initial?: Partial<Snapshot<TState>>,
-  ): ModelInstance<TState, TViews, TActions, HasSchema> {
+  ): ModelInstance<TState, TViews, TActions, HasSchema, TVolatile> {
     // Pass `this` so the instance's meta carries a back-reference to the
     // definition (powers `clone` / `getType`).
     return createInstance(this._config, initial ?? {}, this) as never
@@ -215,7 +250,7 @@ export class ModelDefinition<
    * const store = useCounter()
    * ```
    */
-  asHook(id: string): () => ModelInstance<TState, TViews, TActions, HasSchema> {
+  asHook(id: string): () => ModelInstance<TState, TViews, TActions, HasSchema, TVolatile> {
     return () => {
       if (!_hookRegistry.has(id)) {
         _hookRegistry.set(id, this.create())
@@ -224,7 +259,8 @@ export class ModelDefinition<
         TState,
         TViews,
         TActions,
-        HasSchema
+        HasSchema,
+        TVolatile
       >
     }
   }
@@ -320,6 +356,7 @@ export function model(
       viewFactories: [],
       actionFactories: [],
       lifecycleFactories: [],
+      volatileFactories: [],
       ...(parsedInitial !== undefined ? { _parsedInitial: parsedInitial } : {}),
       ...(config.onValidationError
         ? { _onValidationError: config.onValidationError }
@@ -341,5 +378,6 @@ export function model(
     viewFactories: [],
     actionFactories: [],
     lifecycleFactories: [],
+    volatileFactories: [],
   })
 }

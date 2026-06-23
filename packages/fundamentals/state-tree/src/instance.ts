@@ -4,6 +4,7 @@ import type { NormalizedConfig } from './model'
 import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta } from './registry'
+import { getSnapshot } from './snapshot'
 import type { InstanceMeta, LifecycleHandlers, StateShape } from './types'
 import { MODEL_BRAND, RESERVED_SCHEMA_HELPER_KEYS } from './types'
 
@@ -90,11 +91,16 @@ export function createInstance(
   const meta: InstanceMeta = {
     stateKeys: [],
     patchListeners: new Set(),
+    snapshotListeners: new Set(),
     middlewares: [],
     emitPatch(patch) {
-      // Guard avoids iterating an empty Set on the hot signal-write path.
-      if (this.patchListeners.size === 0) return
+      // Fired by `trackedSignal` ONLY when there is at least one patch or
+      // snapshot listener (the `hasListeners` predicate below gates it), so the
+      // empty-Set iteration here is already avoided on the hot path.
       for (const listener of this.patchListeners) listener(patch)
+      // A state write may also need to notify `onSnapshot` subscribers
+      // (coalesced to one emit per microtask).
+      this.scheduleSnapshotNotify?.()
     },
     alive: true,
     children: new Set(),
@@ -104,6 +110,24 @@ export function createInstance(
   // respect exactOptionalPropertyTypes.
   if (definition !== undefined) meta.definition = definition
   instanceMeta.set(instance, meta)
+
+  // onSnapshot coalescing: every state write that reaches `emitPatch` schedules
+  // a notify, but all writes in one synchronous burst (e.g. a multi-field
+  // `set`/`patch`, or several signal writes inside one action) collapse into a
+  // SINGLE snapshot emit on the next microtask — MST-like async semantics, and
+  // (unlike an `effect()`) it never fires on subscribe and never tracks the
+  // untracked `.peek()` reads `getSnapshot` performs.
+  let snapPending = false
+  meta.scheduleSnapshotNotify = (): void => {
+    if (meta.snapshotListeners.size === 0 || snapPending) return
+    snapPending = true
+    queueMicrotask(() => {
+      snapPending = false
+      if (meta.snapshotListeners.size === 0) return
+      const snap = getSnapshot(instance)
+      for (const listener of [...meta.snapshotListeners]) listener(snap)
+    })
+  }
 
   // `self` is a live proxy so that actions/views always see the final
   // (fully-populated) instance — including methods added by later chain
@@ -243,7 +267,9 @@ export function createInstance(
       rawSig,
       path,
       (p) => meta.emitPatch(p),
-      () => meta.patchListeners.size > 0,
+      // Skip patch/snapshot machinery on a write unless SOMEONE is listening
+      // (patch listener OR onSnapshot subscriber).
+      () => meta.patchListeners.size > 0 || meta.snapshotListeners.size > 0,
     )
     instance[key] = tracked
   }
@@ -373,12 +399,50 @@ export function createInstance(
     }
   }
 
-  // Helper: forbid a view/action from shadowing state OR a schema-installed
-  // mutation helper. Plain mode skips the helper check (no helpers installed).
+  // ── 3.5 Volatile state (signal-backed, NOT tracked) ────────────────────────
+  // Runs after schema helpers (so reserved-helper names are known) and before
+  // views/actions (so they can read volatile via `self`). Volatile fields are
+  // PLAIN signals — reactive read/write, but never go through `trackedSignal`,
+  // so they emit no patches and are absent from `meta.stateKeys` (hence
+  // excluded from `getSnapshot` / `applySnapshot` / `onPatch` / `onSnapshot`).
+  if (config.volatileFactories.length > 0) {
+    const volatileKeys: string[] = []
+    const failVolatile = (key: string, reason: string): never => {
+      throw new Error(
+        `[Pyreon] model.volatile(): "${key}" ${reason}. Pick a different name — ` +
+          'volatile fields share the instance namespace with state, schema ' +
+          'helpers, views, and actions.',
+      )
+    }
+    for (const factory of config.volatileFactories) {
+      const fields = factory(self) as Record<string, unknown>
+      for (const [key, initialValue] of Object.entries(fields)) {
+        if (meta.stateKeys.includes(key)) failVolatile(key, 'collides with a state/schema field')
+        if (isSchemaMode && RESERVED_SCHEMA_HELPER_KEYS.includes(key as never)) {
+          failVolatile(key, 'collides with a reserved schema-mode mutation helper')
+        }
+        if (volatileKeys.includes(key)) failVolatile(key, 'is a duplicate volatile field')
+        // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+        instance[key] = signal(initialValue)
+        volatileKeys.push(key)
+      }
+    }
+    meta.volatileKeys = volatileKeys
+  }
+
+  // Helper: forbid a view/action from shadowing state, a schema-installed
+  // mutation helper, OR a volatile field. Plain mode skips the helper check
+  // (no helpers installed).
   const checkReserved = (key: string, factoryKind: 'views' | 'actions'): void => {
     if (meta.stateKeys.includes(key)) {
       throw new Error(
         `[Pyreon] model.${factoryKind}(): "${key}" collides with a schema/state field. ` +
+          'Pick a different name.',
+      )
+    }
+    if (meta.volatileKeys?.includes(key)) {
+      throw new Error(
+        `[Pyreon] model.${factoryKind}(): "${key}" collides with a volatile field. ` +
           'Pick a different name.',
       )
     }

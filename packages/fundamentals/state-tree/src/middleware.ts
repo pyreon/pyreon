@@ -90,3 +90,24 @@ export function addMiddleware(instance: object, middleware: MiddlewareFn): () =>
     if (idx !== -1) meta.middlewares.splice(idx, 1)
   }
 }
+
+// ─── onAction ──────────────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to every action call on `instance` — a read-only observer (logging,
+ * analytics, devtools). The listener receives the {@link ActionCall} descriptor
+ * (`name`, `args`, `path`) BEFORE the action runs; it cannot block or alter the
+ * call (use `addMiddleware` for interception). Returns an unsubscribe function.
+ *
+ * Sugar over `addMiddleware` — a middleware that observes then unconditionally
+ * proceeds.
+ *
+ * @example
+ * const unsub = onAction(store, (call) => analytics.track(call.name, call.args))
+ */
+export function onAction(instance: object, listener: (call: ActionCall) => void): () => void {
+  return addMiddleware(instance, (call, next) => {
+    listener(call)
+    return next(call)
+  })
+}

@@ -57,8 +57,10 @@ const { store } = useTodoList() // same instance on every call`,
     '.views(self => ...) — chainable derived values; each layer sees prior ones',
     '.actions(self => ...) — chainable mutators; async out of the box',
     '.lifecycle(self => ({ afterCreate, beforeDestroy })) — instance lifecycle hooks',
+    '.volatile(self => ({...})) — signal-backed transient state; reactive but excluded from snapshots/patches',
     'destroy(instance) / isAlive(instance) — tear down (recurses field-nested children) + liveness; actions no-op after destroy',
     'clone(instance) / getType(instance) — independent structural copy + definition back-ref',
+    'onSnapshot(instance, cb) — microtask-coalesced snapshot subscription; onAction(instance, cb) — observe action calls',
     'Schema mode validates + STRICTLY TYPES state from a schema passed directly — @pyreon/validate, raw zod / valibot / arktype, any Standard Schema (no adapter wrapper)',
     'Nested model composition for tree-shaped state',
     'getSnapshot / applySnapshot — typed recursive serialization',
@@ -156,7 +158,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
     {
       name: 'ModelDefinition',
       kind: 'type',
-      signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema> { views(f), actions(f), lifecycle(f), create(initial?), asHook(id) }',
+      signature: 'class ModelDefinition<TState, TViews, TActions, HasSchema, TVolatile> { views(f), actions(f), volatile(f), lifecycle(f), create(initial?), asHook(id) }',
       summary:
         'The chainable builder returned by `model()`. Each `.views(f)` / `.actions(f)` returns a NEW `ModelDefinition` with the accumulated layer — immutable builder, safe to share across call sites. `f` receives `self` typed as the model AS IT IS SO FAR (state signals + prior views + prior actions + schema helpers when applicable). Type parameters: `TState` is the underlying value shape; `TViews` / `TActions` accumulate across chain steps; `HasSchema` flips to `true` in schema mode (adds `set`/`patch`/`reset` to instance type).',
       example: `const M = model({ schema })
@@ -268,6 +270,54 @@ draft.title.set('edited')        // does not touch original`,
       example: `const Def = getType(instance)
 const sibling = Def?.create()`,
       seeAlso: ['clone', 'model'],
+    },
+    {
+      name: 'volatile',
+      kind: 'function',
+      signature: '.volatile(self => ({ ...initialValues })) → ModelDefinition (chainable)',
+      summary:
+        'Add VOLATILE state — signal-backed transient fields that are reactive (read `self.x()`, write `self.x.set(v)`) but EXCLUDED from snapshots, patches, and `onSnapshot`. For state that should not be persisted or replayed: in-flight flags, drag/hover UI state, live object references (websockets, timers, promises). The factory returns initial VALUES; each becomes a `Signal<T>` on `self` + the instance, strictly typed. Volatile keys cannot collide with state / schema-helper / view / action / other-volatile names (throws at `.create()`). A volatile-only change never fires `onSnapshot` (it produces the same snapshot).',
+      example: `model({ state: { items: [] as string[] } })
+  .volatile(() => ({ loading: false, lastError: null as Error | null }))
+  .actions((self) => ({
+    async load() {
+      self.loading.set(true)               // reactive, not persisted
+      try { self.items.set(await fetchItems()) }
+      finally { self.loading.set(false) }
+    },
+  }))`,
+      mistakes: [
+        'Putting persistent state in `.volatile()` — it is dropped from snapshots, so it will not survive serialize/restore or replay. Use `state` / `schema` for durable data',
+        'Expecting a volatile change to fire `onSnapshot` / emit a patch — volatile is excluded from both by design',
+      ],
+      seeAlso: ['model', 'onSnapshot', 'getSnapshot'],
+    },
+    {
+      name: 'onSnapshot',
+      kind: 'function',
+      signature: '(instance: ModelInstance, listener: (snapshot) => void) => () => void',
+      summary:
+        'Subscribe to snapshot changes. The listener fires MICROTASK-COALESCED with the new snapshot after any STATE change — all writes in one synchronous burst (a multi-field `set`/`patch`, several signal writes in one action) collapse into a SINGLE emit on the next microtask (MST-like async semantics). Does NOT fire on subscribe. Volatile-field changes do not fire it. Returns an unsubscribe function; `destroy(instance)` also clears all snapshot listeners. (Implemented via the patch-write hook, NOT an `effect()` — so it never fires on creation and never depends on the untracked `.peek()` reads `getSnapshot` performs.)',
+      example: `const dispose = onSnapshot(store, (snap) => {
+  localStorage.setItem('store', JSON.stringify(snap))
+})`,
+      mistakes: [
+        'Expecting a synchronous / per-write callback — `onSnapshot` is coalesced onto a microtask; read the snapshot you are handed, not a value you `getSnapshot` synchronously after a write',
+        'Expecting it to fire immediately on subscribe — it does not (unlike a reactive `effect`); take an initial `getSnapshot(instance)` yourself if you need the starting value',
+      ],
+      seeAlso: ['getSnapshot', 'onPatch', 'model'],
+    },
+    {
+      name: 'onAction',
+      kind: 'function',
+      signature: '(instance: ModelInstance, listener: (call: ActionCall) => void) => () => void',
+      summary:
+        'Observe every action call on an instance (logging, analytics, devtools). The listener receives the `ActionCall` descriptor (`name`, `args`, `path`) BEFORE the action runs; it is read-only — it cannot block or alter the call (use `addMiddleware` for interception). Sugar over `addMiddleware` (a middleware that observes then unconditionally proceeds). Returns an unsubscribe function.',
+      example: `const unsub = onAction(store, (call) => analytics.track(call.name, call.args))`,
+      mistakes: [
+        'Trying to block / mutate a call from `onAction` — it is observe-only; use `addMiddleware` to intercept',
+      ],
+      seeAlso: ['addMiddleware', 'model'],
     },
   ],
   gotchas: [

@@ -458,6 +458,7 @@ describe('patch snapshotValue', () => {
     instanceMeta.set(fakeInstance, {
       stateKeys: ['missing'],
       patchListeners: new Set(),
+      snapshotListeners: new Set(),
       middlewares: [],
       emitPatch: () => {
         /* noop */

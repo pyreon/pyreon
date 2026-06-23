@@ -157,7 +157,9 @@ export type ModelSelf<
   TViews extends Record<string, unknown>,
   TActions extends Record<string, (...args: any[]) => any>,
   HasSchema extends boolean,
+  TVolatile extends StateShape = Record<never, never>,
 > = StateSignals<TState> &
+  StateSignals<TVolatile> &
   TViews &
   TActions &
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -166,15 +168,17 @@ export type ModelSelf<
 
 /**
  * The public instance type returned by `.create()` and hooks. Includes
- * state signals + every chained `.views()` + every chained `.actions()` +
- * schema mutation helpers (when applicable).
+ * state signals + volatile signals + every chained `.views()` + every chained
+ * `.actions()` + schema mutation helpers (when applicable).
  */
 export type ModelInstance<
   TState extends StateShape,
   TViews extends Record<string, unknown> = Record<never, never>,
   TActions extends Record<string, (...args: any[]) => any> = Record<never, never>,
   HasSchema extends boolean = false,
+  TVolatile extends StateShape = Record<never, never>,
 > = StateSignals<TState> &
+  StateSignals<TVolatile> &
   TViews &
   TActions &
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -218,6 +222,13 @@ export interface Patch {
 
 export type PatchListener = (patch: Patch) => void
 
+// ─── Snapshot subscription ─────────────────────────────────────────────────────
+
+/** Fired (microtask-coalesced) with the new snapshot after any STATE change. */
+export type SnapshotListener<TState extends StateShape = StateShape> = (
+  snapshot: Snapshot<TState>,
+) => void
+
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 export interface ActionCall {
@@ -255,7 +266,18 @@ export interface LifecycleHandlers {
 
 export interface InstanceMeta {
   stateKeys: string[]
+  /**
+   * Volatile field keys — signal-backed transient state added via `.volatile()`.
+   * Reactive (read `self.x()` / write `self.x.set()`) but EXCLUDED from
+   * snapshots, patches, and `onSnapshot` (not serialized; a volatile-only change
+   * produces the same snapshot, so it never fires snapshot listeners).
+   */
+  volatileKeys?: string[]
   patchListeners: Set<PatchListener>
+  /** `onSnapshot` listeners — fired microtask-coalesced after any state change. */
+  snapshotListeners: Set<SnapshotListener>
+  /** Schedules a coalesced snapshot notify (set in `createInstance`). */
+  scheduleSnapshotNotify?: () => void
   middlewares: MiddlewareFn[]
   emitPatch(patch: Patch): void
   /**
