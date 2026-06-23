@@ -735,7 +735,7 @@ every warning; treat any warning as "this construct is outside v1."
 | `{cond && <View/>}` conditional render | lowers to `if cond { view }` (SwiftUI) / `if (cond) { view }` (Compose) — the same form `<Show>` emits; parens are seen through so `{cond && (a ? <X/> : <Y/>)}` lowers too. (A value-only `a && b` with no view RHS stays a value expression.) |
 | `x++` / `x--` | value-position degrades to `x + 1` (side effect dropped — warning); statement-position composes via `.update` |
 | `sig.set(v)` / `sig.update(fn)` | lower to native assignment; `.update` needs a single-param expression-body arrow whose param isn't shadowed |
-| object literals | construct declared structs / synthesized types; `{ ...t, field: v }` single-spread becomes Swift IIFE-copy / Kotlin `.copy(...)` |
+| object literals | construct declared structs / synthesized types; an **anonymous all-scalar-literal** object (`{ id: 1, name: 'a' }`) matching no declared struct **synthesizes** a module-scope struct (Swift `Codable`) / data class (Kotlin), deduped by field name:type shape (`__Obj0`, …; cross-target names align) — replaces the old labelled-tuple emit (illegal single-field Swift tuple; tuple key-paths break `ForEach(id:)`). A non-literal / nested-object field keeps the tuple emit. `{ ...t, field: v }` single-spread becomes Swift IIFE-copy / Kotlin `.copy(...)` |
 | array literals + spreads | `[...xs, item]` → concatenation |
 | zero-param accessor arrows in condition positions | unwrap to their body (`when={() => cond()}`) |
 
