@@ -53,6 +53,9 @@ let _enumNames: Set<string> = new Set()
 let _structFieldsToName: Map<string, string> = new Map()
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
+/** Component name → declared props, for `<Comp {...src} />` spread expansion.
+ * Mirror of emit-swift's `_componentPropsMap`. */
+let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
 let _signalEnumTypes: Map<string, string> = new Map()
 let _activeEnumType: string | undefined
 /** G1: every signal name in scope — see emit-swift.ts for the rationale. */
@@ -206,6 +209,7 @@ export function emitKotlin(
   }
   // Build the user-component name set — mirror of emit-swift's logic.
   _componentNames = new Set(components.map((c) => c.name))
+  _componentPropsMapKotlin = new Map(components.map((c) => [c.name, c.props]))
   // Phase 3 — pre-pass: which components are layout parents (nested routes)?
   _layoutComponentNames = collectLayoutComponentNamesKotlin(components)
   // Pre-pass: register each component's `params` prop shape so router
@@ -4159,11 +4163,56 @@ function emitKotlinRouterView(
 // the matching comment in emit-swift.ts.
 void isCanonicalPrimitive
 
+/** Expand a `<Comp {...src} />` spread into per-prop named args (Kotlin).
+ * Mirror of emit-swift's `expandSwiftSpread`. */
+function expandKotlinSpread(
+  spreadArg: ExprIR,
+  targetTag: string,
+  explicitNames: Set<string>,
+  indent: number,
+): string[] {
+  const out: string[] = []
+  if (
+    spreadArg.kind === 'object' &&
+    (spreadArg.spreads === undefined || spreadArg.spreads.length === 0)
+  ) {
+    for (const f of spreadArg.fields) {
+      if (explicitNames.has(f.name)) continue
+      out.push(`${kotlinIdent(safeIdent(f.name))} = ${emitKotlinExpr(f.value, indent)}`)
+    }
+    return out
+  }
+  if (spreadArg.kind === 'identifier' || spreadArg.kind === 'member') {
+    const targetProps = _componentPropsMapKotlin.get(targetTag)
+    if (targetProps !== undefined) {
+      for (const p of targetProps) {
+        if (explicitNames.has(p.name)) continue
+        out.push(
+          `${kotlinIdent(safeIdent(p.name))} = ${emitKotlinExpr({ kind: 'member', object: spreadArg, property: p.name }, indent)}`,
+        )
+      }
+      return out
+    }
+  }
+  _emitWarnings.push(
+    `<${targetTag} {...}> spread could not be expanded — the target's props are unknown (or the source isn't an object literal / known binding). Pass props explicitly.`,
+  )
+  return out
+}
+
 function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const pad = ' '.repeat(indent + 2)
   const isUserComponent = _componentNames.has(e.tag)
   // Phase 2 follow-up: include event handlers as constructor args for
   // user-defined Composables. Mirror of emit-swift.ts:emitSwiftGeneric.
+  // Explicit attrs win over a spread's props (React override rule).
+  const explicitNames = new Set<string>()
+  for (const a of e.attrs) {
+    if (a.kind === 'attr') explicitNames.add(a.name)
+    else if (a.kind === 'event') {
+      explicitNames.add(`on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`)
+    }
+  }
   const argParts: string[] = []
   for (const a of e.attrs) {
     if (a.kind === 'attr') {
@@ -4177,6 +4226,12 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
       argParts.push(
         `${kotlinIdent(propName)} = ${emitKotlinAction(a.handler, indent)}`,
+      )
+    } else if (a.kind === 'spread' && isUserComponent) {
+      argParts.push(...expandKotlinSpread(a.argument, e.tag, explicitNames, indent))
+    } else if (a.kind === 'spread') {
+      _emitWarnings.push(
+        `<${e.tag} {...}> spread is not supported on a native primitive — pass layout props explicitly.`,
       )
     }
   }

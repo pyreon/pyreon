@@ -74,6 +74,9 @@ let _enumNames: Set<string> = new Set()
  * (the `onToggle`/`onRemove` event handlers were silently dropped).
  */
 let _componentNames: Set<string> = new Set()
+/** Component name → its declared props, for expanding `<Comp {...src} />`
+ * spread attrs into per-prop constructor args. Built in the emitSwift pre-pass. */
+let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map()
 /**
  * Struct name → sorted-field-names key. Phase 2 follow-up to the
  * struct-emit PR. Used by the object-expression emit to detect when
@@ -300,6 +303,7 @@ export function emitSwift(
     if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, s.name)
   }
   _componentNames = new Set(components.map((c) => c.name))
+  _componentPropsMap = new Map(components.map((c) => [c.name, c.props]))
   _layoutComponentNames = collectLayoutComponentNames(components)
   // Pre-pass: register each component's `params` prop shape so router
   // dispatchers (which may emit in a DIFFERENT component) can construct
@@ -4792,6 +4796,49 @@ function emitSwiftRouterView(
 // chain mirrors the existing `For`/`Show`/`Text`/`Button` style.
 void isCanonicalPrimitive
 
+/**
+ * Expand a `<Comp {...src} />` spread into per-prop constructor args (Swift).
+ * An object-literal source expands its own fields; an identifier/member source
+ * expands the TARGET component's declared props, each sourced as `src.<prop>`
+ * (a `props` source's member read rewrites to the bare prop on the target).
+ * Props already set explicitly on the call are skipped. Unresolvable spread
+ * (unknown target props, non-literal/non-binding source) → warn, no args.
+ */
+function expandSwiftSpread(
+  spreadArg: ExprIR,
+  targetTag: string,
+  explicitNames: Set<string>,
+  indent: number,
+): string[] {
+  const out: string[] = []
+  if (
+    spreadArg.kind === 'object' &&
+    (spreadArg.spreads === undefined || spreadArg.spreads.length === 0)
+  ) {
+    for (const f of spreadArg.fields) {
+      if (explicitNames.has(f.name)) continue
+      out.push(`${swiftIdent(safeIdent(f.name))}: ${emitSwiftExpr(f.value, indent)}`)
+    }
+    return out
+  }
+  if (spreadArg.kind === 'identifier' || spreadArg.kind === 'member') {
+    const targetProps = _componentPropsMap.get(targetTag)
+    if (targetProps !== undefined) {
+      for (const p of targetProps) {
+        if (explicitNames.has(p.name)) continue
+        out.push(
+          `${swiftIdent(safeIdent(p.name))}: ${emitSwiftExpr({ kind: 'member', object: spreadArg, property: p.name }, indent)}`,
+        )
+      }
+      return out
+    }
+  }
+  _emitWarnings.push(
+    `<${targetTag} {...}> spread could not be expanded — the target's props are unknown (or the source isn't an object literal / known binding). Pass props explicitly.`,
+  )
+  return out
+}
+
 function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const pad = ' '.repeat(indent + 2)
   const isUserComponent = _componentNames.has(e.tag)
@@ -4800,6 +4847,15 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
   // typecheck blocker; `onToggle`/`onRemove` are now forwarded as
   // closure-valued props). For SwiftUI primitives, events stay
   // dropped — HStack / VStack don't accept onClick: parameters.
+  // Explicit attr names take precedence over a spread's props (a spread
+  // prop the call also sets explicitly is skipped — the React override rule).
+  const explicitNames = new Set<string>()
+  for (const a of e.attrs) {
+    if (a.kind === 'attr') explicitNames.add(a.name)
+    else if (a.kind === 'event') {
+      explicitNames.add(`on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`)
+    }
+  }
   const argParts: string[] = []
   for (const a of e.attrs) {
     if (a.kind === 'attr') {
@@ -4821,6 +4877,14 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // upper-casing the first letter.
       const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
       argParts.push(`${swiftIdent(propName)}: ${emitSwiftAction(a.handler, indent)}`)
+    } else if (a.kind === 'spread' && isUserComponent) {
+      argParts.push(...expandSwiftSpread(a.argument, e.tag, explicitNames, indent))
+    } else if (a.kind === 'spread') {
+      // Spread onto a primitive (Stack/Text/…) has no native equivalent —
+      // its props are fixed layout args, not an arbitrary forwarded bag.
+      _emitWarnings.push(
+        `<${e.tag} {...}> spread is not supported on a native primitive — pass layout props explicitly.`,
+      )
     }
   }
   const attrPairs = argParts.join(', ')
