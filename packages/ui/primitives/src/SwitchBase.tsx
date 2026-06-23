@@ -46,8 +46,8 @@ export const SwitchBase: ComponentFn<SwitchBaseProps> = (props) => {
       ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       type="button"
       role="switch"
-      aria-checked={checked()}
-      aria-disabled={own.disabled || undefined}
+      aria-checked={checked() ? 'true' : 'false'}
+      aria-disabled={own.disabled ? 'true' : undefined}
       aria-invalid={own['aria-invalid'] || undefined}
       data-checked={checked() || undefined}
       data-disabled={own.disabled || undefined}

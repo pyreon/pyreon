@@ -194,9 +194,9 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
         role: 'treeitem',
         id: `${baseId}-item-${id}`,
         'aria-level': depth + 1,
-        'aria-expanded': hasChildren ? isExpanded(id) : undefined,
-        'aria-selected': isSelectedFn(id),
-        'aria-disabled': node?.disabled || undefined,
+        'aria-expanded': hasChildren ? (isExpanded(id) ? 'true' : 'false') : undefined,
+        'aria-selected': isSelectedFn(id) ? 'true' : 'false',
+        'aria-disabled': node?.disabled ? 'true' : undefined,
         tabIndex: focused() === id ? 0 : -1,
       }
     },

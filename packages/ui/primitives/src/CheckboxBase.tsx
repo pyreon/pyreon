@@ -50,8 +50,8 @@ export const CheckboxBase: ComponentFn<CheckboxBaseProps> = (props) => {
       {...(rest as Record<string, unknown>)}
       ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       role="checkbox"
-      aria-checked={own.indeterminate ? 'mixed' : checked()}
-      aria-disabled={own.disabled || undefined}
+      aria-checked={own.indeterminate ? 'mixed' : checked() ? 'true' : 'false'}
+      aria-disabled={own.disabled ? 'true' : undefined}
       aria-invalid={own['aria-invalid'] || undefined}
       data-checked={checked() || undefined}
       data-disabled={own.disabled || undefined}

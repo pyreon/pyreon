@@ -80,8 +80,8 @@ export const TabBase: ComponentFn<TabBaseProps> = (props) => {
       ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       type="button"
       role="tab"
-      aria-selected={isActive()}
-      aria-disabled={own.disabled || undefined}
+      aria-selected={isActive() ? 'true' : 'false'}
+      aria-disabled={own.disabled ? 'true' : undefined}
       data-active={isActive() || undefined}
       data-value={own.value}
       tabIndex={isActive() ? 0 : -1}
