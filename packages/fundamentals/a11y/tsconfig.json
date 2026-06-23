@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./lib",
+    "rootDir": "./src",
+    "jsx": "react-jsx",
+    "jsxImportSource": "@pyreon/core",
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["src"]
+}

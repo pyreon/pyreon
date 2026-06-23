@@ -1,0 +1,57 @@
+{
+  "name": "@pyreon/a11y",
+  "version": "0.0.0",
+  "description": "Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/a11y#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/a11y"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.9.0",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/test-utils": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^4.1.8",
+    "@vitus-labs/tools-lint": "^2.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

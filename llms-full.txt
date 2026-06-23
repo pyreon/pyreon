@@ -1832,6 +1832,40 @@ interpolate('Hello, {{name}}!', { name: 'Server' })  // 'Hello, Server!'
 >
 > **Devtools**: Import `@pyreon/i18n/devtools` for a WeakRef-based registry of live i18n instances. Tree-shakeable — zero cost unless imported.
 
+## @pyreon/a11y — Accessibility Primitives
+
+Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.
+
+```typescript
+import { announce, VisuallyHidden, createA11yId } from '@pyreon/a11y'
+
+// Speak a message to screen-reader users — no provider, no setup:
+announce('Settings saved')
+announce('Connection lost', { politeness: 'assertive' }) // interrupts
+announce('Copied', { clearAfter: 1000 })
+
+// Visually-hidden but screen-reader-accessible content:
+function IconButton() {
+  return (
+    <button>
+      <SearchIcon />
+      <VisuallyHidden>Search</VisuallyHidden>
+    </button>
+  )
+}
+
+// Stable SSR-safe id to wire ARIA relationships:
+function Field() {
+  const hintId = createA11yId('hint')
+  return (
+    <>
+      <input aria-describedby={hintId} />
+      <span id={hintId}>Must be at least 8 characters</span>
+    </>
+  )
+}
+```
+
 ## @pyreon/charts — Reactive ECharts
 
 Reactive ECharts bridge for Pyreon. Zero ECharts bytes in your bundle until a chart actually renders — chart types and components are auto-detected from your options and dynamically imported on demand. Signal-driven options reactively update the chart when tracked signals change. `useChart` is the low-level hook with full control; `<Chart />` is the declarative component with event binding. Both auto-resize via ResizeObserver and clean up on unmount.

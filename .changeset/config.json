@@ -24,6 +24,7 @@
       "@pyreon/runtime-dom",
       "@pyreon/runtime-server",
       "@pyreon/server",
+      "@pyreon/a11y",
       "@pyreon/charts",
       "@pyreon/code",
       "@pyreon/dnd",

@@ -1225,6 +1225,23 @@
         "vitest": "^4.1.8",
       },
     },
+    "packages/fundamentals/a11y": {
+      "name": "@pyreon/a11y",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@happy-dom/global-registrator": "^20.9.0",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/test-utils": "workspace:^",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitest/browser-playwright": "^4.1.8",
+        "@vitus-labs/tools-lint": "^2.5.0",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+      },
+    },
     "packages/fundamentals/charts": {
       "name": "@pyreon/charts",
       "version": "0.34.0",
@@ -3010,6 +3027,8 @@
     "@polka/url": ["@polka/url@1.0.0-next.29", "", {}, "sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww=="],
 
     "@preact/signals-core": ["@preact/signals-core@1.14.3", "", {}, "sha512-m0K3vnbSLC5rHs2ZVfeAMvBtT1zIyq4mxx5OlNncSgMj5Iz6W5Rn3kPrDxAC+iIKmiVe0lSl6U37t5ZkEWoVAw=="],
+
+    "@pyreon/a11y": ["@pyreon/a11y@workspace:packages/fundamentals/a11y"],
 
     "@pyreon/ai-reference": ["@pyreon/ai-reference@workspace:examples/ai-reference"],
 
