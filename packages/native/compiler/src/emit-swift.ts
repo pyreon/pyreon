@@ -2012,6 +2012,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (args.length === 2) return `pow(${args[0]!}, ${args[1]!})`
             break
         }
+        // Additional Double-domain Foundation free functions NOT in the
+        // switch above. Without this they fall through to the generic emit
+        // as `Math.hypot(...)` etc. — INVALID Swift ("cannot find 'Math' in
+        // scope", confirmed via swiftc -typecheck). Map to the Swift free
+        // function with each arg coerced to Double (Swift has no implicit
+        // Int→Double, so a bare Int arg would mistype; `Double(x)` is
+        // identity on a Double, so coercion is safe for any arg type).
+        const SWIFT_MATH_DOUBLE: Record<string, number> = {
+          cbrt: 1, hypot: 2, sin: 1, cos: 1, tan: 1, asin: 1, acos: 1,
+          atan: 1, atan2: 2, sinh: 1, cosh: 1, tanh: 1, log: 1, log10: 1,
+          log2: 1, exp: 1, trunc: 1,
+        }
+        const arity = SWIFT_MATH_DOUBLE[e.callee.property]
+        if (arity !== undefined && args.length === arity) {
+          return `${e.callee.property}(${args.map((a) => `Double(${a})`).join(', ')})`
+        }
       }
       // `parseInt(s)` / `parseFloat(s)` → Swift `Int(s) ?? 0` /
       // `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
