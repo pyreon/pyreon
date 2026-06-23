@@ -690,6 +690,17 @@ every warning; treat any warning as "this construct is outside v1."
   (`const { user: { id } } = …`) — v1 lowers all-simple destructures only;
   and `useLoaderData`'s destructure (its read returns an opaque `T` with no
   field shape to alias).
+- **Destructured function/arrow params → lowered.** A helper with a
+  destructured param — `const dist = ({ x, y }: Point): number => x + y`,
+  `const apply = ({ id }: T) => { remove(id) }` — synthesizes a positional
+  param `__pN` (typed from the pattern's annotation — a named type resolves
+  to the declared struct) + prepends `let x = __pN.x` per key, so the body
+  references `x`/`y` as written. Works for **void handlers** and functions
+  with an **explicit return-type annotation**. A value-returning destructured
+  function WITHOUT a return annotation should annotate it
+  (`({ x }: P): number => x`) — an unannotated value return infers `Unit` on
+  Kotlin (a separate, pre-existing return-inference limit, not specific to
+  destructuring). Rest / nested patterns warn + stay un-destructured.
 - **Store reads → inline OR aliased (both work).** Read store state
   inline through the hook (`useApp().store.tasks()`) OR bind the hook to a
   local first (`const app = useApp(); app.store.tasks()`) — the alias
