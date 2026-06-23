@@ -70,6 +70,9 @@ export type StringCheckOp =
 export type NumberCheckOp =
   | { kind: 'check:number:min'; n: number; opts?: CheckOpts | undefined }
   | { kind: 'check:number:max'; n: number; opts?: CheckOpts | undefined }
+  | { kind: 'check:number:gt'; n: number; opts?: CheckOpts | undefined }
+  | { kind: 'check:number:lt'; n: number; opts?: CheckOpts | undefined }
+  | { kind: 'check:number:safe'; opts?: CheckOpts | undefined }
   | { kind: 'check:number:int'; opts?: CheckOpts | undefined }
   | { kind: 'check:number:finite'; opts?: CheckOpts | undefined }
   | { kind: 'check:number:positive'; opts?: CheckOpts | undefined }
