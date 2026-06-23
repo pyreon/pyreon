@@ -70,6 +70,25 @@ theme.remove()
 
 Cross-tab sync is automatic — change a value in one tab, all tabs update instantly.
 
+#### Write coalescing — `writeDebounceMs`
+
+`localStorage.setItem` is synchronous main-thread I/O. For a value persisted on
+every keystroke (a draft), that's a `JSON.stringify` + `setItem` per character.
+Pass `writeDebounceMs` to coalesce the WRITE — the signal still updates
+synchronously (the UI stays reactive), only the persist is debounced. The
+latest value wins, and a pending write is flushed on `pagehide` / `beforeunload`
+so the last value is never lost on tab close.
+
+```ts
+// Signal is reactive immediately; the localStorage write is debounced 300ms.
+const draft = useSessionStorage('contact-draft', '', { writeDebounceMs: 300 })
+draft.set(e.target.value) // sync signal update, coalesced write
+```
+
+Opt-in: omit it (or `0`) for the default synchronous write. Applies to
+`useStorage` / `useSessionStorage`; cookies / IndexedDB (already debounced) /
+memory backends ignore it.
+
 ### sessionStorage — `useSessionStorage()`
 
 Tab-scoped. Cleared when the tab closes.

@@ -44,6 +44,7 @@ export function _resetStorageListener(): void {
   }
   storageHandler = null
   activeCount = 0
+  _resetUnloadFlush()
 }
 
 /**
@@ -59,6 +60,40 @@ export function releaseStorageListener(): void {
     window.removeEventListener('storage', storageHandler)
     storageHandler = null
   }
+}
+
+// ─── Debounced-write flush-on-unload ─────────────────────────────────────────
+//
+// When `writeDebounceMs` is set, a `.set` schedules the persist write instead
+// of doing it synchronously. To guarantee the last value isn't lost on an
+// abrupt tab close, every signal with a PENDING write registers its flush here
+// and ONE shared `pagehide`/`beforeunload` listener flushes them all. A single
+// idempotent listener (not one per signal) avoids the event-listener pile-up
+// leak class — `pagehide` covers the mobile bfcache case `beforeunload` misses.
+const pendingFlushes = new Set<() => void>()
+let unloadListenerAttached = false
+
+function flushAllPending(): void {
+  // Copy first — each flush deletes itself from the set.
+  for (const flush of [...pendingFlushes]) flush()
+}
+
+function ensureUnloadFlush(): void {
+  /* v8 ignore next — SSR guard */
+  if (unloadListenerAttached || !isBrowser()) return
+  unloadListenerAttached = true
+  window.addEventListener('pagehide', flushAllPending)
+  window.addEventListener('beforeunload', flushAllPending)
+}
+
+/** Test-only: detach the unload-flush listeners + drop pending writes. */
+export function _resetUnloadFlush(): void {
+  if (unloadListenerAttached && isBrowser()) {
+    window.removeEventListener('pagehide', flushAllPending)
+    window.removeEventListener('beforeunload', flushAllPending)
+  }
+  pendingFlushes.clear()
+  unloadListenerAttached = false
 }
 
 // ─── useStorage ──────────────────────────────────────────────────────────────
@@ -131,6 +166,57 @@ export function createStorageSignal<T>(
 ): StorageSignal<T> {
   const storage = getWebStorage(backend)
 
+  // Persist the value NOW (synchronous serialize + setItem).
+  const writeNow = (value: T): void => {
+    /* v8 ignore next — defensive null storage guard */
+    if (!storage) return
+    try {
+      storage.setItem(key, serialize(value, options?.serializer))
+    } catch {
+      // Storage full or blocked — signal still updates
+    }
+  }
+
+  // Opt-in write coalescing (localStorage/sessionStorage). The signal updates
+  // synchronously regardless; only the persist write is debounced so a
+  // high-frequency setter doesn't pay synchronous main-thread I/O per `.set`.
+  const debounceMs = options?.writeDebounceMs ?? 0
+  let writeTimer: ReturnType<typeof setTimeout> | null = null
+  let pendingValue: T = defaultValue
+  let hasPending = false
+
+  // Flush a pending debounced write immediately (timer fire, unload, or remove).
+  const flush = (): void => {
+    if (writeTimer !== null) {
+      clearTimeout(writeTimer)
+      writeTimer = null
+    }
+    if (!hasPending) return
+    hasPending = false
+    pendingFlushes.delete(flush)
+    writeNow(pendingValue)
+  }
+
+  const scheduleWrite = (value: T): void => {
+    pendingValue = value
+    hasPending = true
+    pendingFlushes.add(flush)
+    ensureUnloadFlush()
+    if (writeTimer !== null) clearTimeout(writeTimer)
+    writeTimer = setTimeout(flush, debounceMs)
+  }
+
+  // Cancel a pending debounced write WITHOUT persisting (used by `.remove()`,
+  // which clears storage anyway — flushing first would re-create the entry).
+  const cancelPending = (): void => {
+    if (writeTimer !== null) {
+      clearTimeout(writeTimer)
+      writeTimer = null
+    }
+    hasPending = false
+    pendingFlushes.delete(flush)
+  }
+
   // `wrapSignal` (from @pyreon/reactivity) delegates reads (incl. `.direct` +
   // `_v` for the compiler's `_bindText` fast path) to the SHARED base `sig` and
   // routes writes through our persist function; `.update` defaults to
@@ -139,14 +225,8 @@ export function createStorageSignal<T>(
   const storageSig = wrapSignal(sig, {
     set: (value: T) => {
       sig.set(value)
-      /* v8 ignore next — defensive null storage guard */
-      if (storage) {
-        try {
-          storage.setItem(key, serialize(value, options?.serializer))
-        } catch {
-          // Storage full or blocked — signal still updates
-        }
-      }
+      if (debounceMs > 0) scheduleWrite(value)
+      else writeNow(value)
     },
   }) as unknown as StorageSignal<T>
 
@@ -165,6 +245,7 @@ export function createStorageSignal<T>(
   // listener detach via `releaseStorageListener`) is gated on the LAST
   // consumer's release.
   storageSig.remove = () => {
+    cancelPending()
     sig.set(defaultValue)
     /* v8 ignore next — defensive null storage guard */
     if (storage) {
