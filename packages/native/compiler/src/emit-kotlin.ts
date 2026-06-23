@@ -2272,6 +2272,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.op === '/') {
         return `(${bl}).toDouble() / (${br}).toDouble()`
       }
+      // Exponent (`a ** b`) — Kotlin has no `**` operator; `Math.pow`
+      // (java.lang.Math, always on the classpath) is Double-domain. Coerce
+      // both operands so an Int base/exponent works; the result is Double
+      // (matches JS, where `**` yields a Number).
+      if (e.op === '**') {
+        return `Math.pow((${bl}).toDouble(), (${br}).toDouble())`
+      }
       // Bitwise ops — Kotlin has NO bitwise symbols; they're INFIX
       // FUNCTIONS on Int (`a and b`, `a shl 1`, …). Infix functions bind
       // looser than arithmetic, so a compound operand is parenthesized to

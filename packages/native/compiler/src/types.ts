@@ -620,10 +620,10 @@ export type ExprIR =
   | { kind: 'index'; object: ExprIR; index: ExprIR }
   | {
       kind: 'binary'
-      // Arithmetic + bitwise. Bitwise ops (`& | ^ << >>`) emit verbatim on
-      // Swift (native Int operators) and as infix functions on Kotlin
-      // (`and`/`or`/`xor`/`shl`/`shr` — Kotlin has no bitwise symbols).
-      op: '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<<' | '>>'
+      // Arithmetic + bitwise + exponent. Bitwise ops (`& | ^ << >>`) emit
+      // verbatim on Swift / as infix functions on Kotlin. Exponent (`**`) has
+      // no operator on either target → `pow(...)` (Double-domain) on both.
+      op: '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<<' | '>>' | '**'
       left: ExprIR
       right: ExprIR
     }

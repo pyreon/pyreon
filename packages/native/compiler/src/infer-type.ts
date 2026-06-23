@@ -429,6 +429,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (expr.op === '/' && (left.kind === 'number' || right.kind === 'number')) {
         return { kind: 'number', float: true }
       }
+      // Exponent is Double-domain too — `pow(...)` / `Math.pow(...)` return
+      // Double on both targets (and JS `**` yields a Number). So the result
+      // type MUST be `{ float: true }` or a `var x: Int { pow(...) }` Swift
+      // computed mismatches its Double body.
+      if (expr.op === '**' && (left.kind === 'number' || right.kind === 'number')) {
+        return { kind: 'number', float: true }
+      }
       // Numeric arithmetic: both sides numeric ⇒ number. Float is
       // contagious — Int + Double is Double on both targets, so if EITHER
       // side is fractional the result is fractional. (Drives the
