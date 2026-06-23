@@ -40,6 +40,7 @@ export { EMPTY_PROPS, Fragment, h } from './h'
 export type {
   AnchorAttributes,
   ButtonAttributes,
+  AriaRole,
   ChangeEvent,
   ClipboardEvent,
   CSSProperties,

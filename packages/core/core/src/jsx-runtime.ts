@@ -84,6 +84,87 @@ export const jsxs = jsx
 // ─── JSX types ────────────────────────────────────────────────────────────────
 
 type Booleanish = boolean | 'true' | 'false'
+
+/**
+ * Known WAI-ARIA 1.2 `role` tokens — gives `role="…"` autocomplete and
+ * catches typos (`role="buton"`). The `(string & {})` member keeps the type
+ * OPEN: any string is still accepted (custom/abstract roles, future tokens,
+ * `role={dynamicString}`), so this is a non-breaking DX refinement, not a
+ * restriction.
+ */
+export type AriaRole =
+  | 'alert'
+  | 'alertdialog'
+  | 'application'
+  | 'article'
+  | 'banner'
+  | 'button'
+  | 'cell'
+  | 'checkbox'
+  | 'columnheader'
+  | 'combobox'
+  | 'complementary'
+  | 'contentinfo'
+  | 'definition'
+  | 'dialog'
+  | 'directory'
+  | 'document'
+  | 'feed'
+  | 'figure'
+  | 'form'
+  | 'grid'
+  | 'gridcell'
+  | 'group'
+  | 'heading'
+  | 'img'
+  | 'link'
+  | 'list'
+  | 'listbox'
+  | 'listitem'
+  | 'log'
+  | 'main'
+  | 'marquee'
+  | 'math'
+  | 'menu'
+  | 'menubar'
+  | 'menuitem'
+  | 'menuitemcheckbox'
+  | 'menuitemradio'
+  | 'meter'
+  | 'navigation'
+  | 'none'
+  | 'note'
+  | 'option'
+  | 'presentation'
+  | 'progressbar'
+  | 'radio'
+  | 'radiogroup'
+  | 'region'
+  | 'row'
+  | 'rowgroup'
+  | 'rowheader'
+  | 'scrollbar'
+  | 'search'
+  | 'searchbox'
+  | 'separator'
+  | 'slider'
+  | 'spinbutton'
+  | 'status'
+  | 'switch'
+  | 'tab'
+  | 'table'
+  | 'tablist'
+  | 'tabpanel'
+  | 'term'
+  | 'textbox'
+  | 'timer'
+  | 'toolbar'
+  | 'tooltip'
+  | 'tree'
+  | 'treegrid'
+  | 'treeitem'
+  // oxlint-disable-next-line typescript/no-empty-object-type -- `(string & {})` keeps the union OPEN (any string) while preserving literal autocomplete; the standard "string-literal-union with autocomplete" idiom.
+  | (string & {})
 export type CSSProperties = { [K in keyof CSSStyleDeclaration]?: string | number }
 export type StyleValue = string | CSSProperties
 
@@ -137,7 +218,7 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   className?: ClassValue | (() => ClassValue) | undefined
   style?: StyleValue | (() => StyleValue) | undefined
   // Accessible
-  role?: string | (() => string) | undefined
+  role?: AriaRole | (() => AriaRole | undefined) | undefined
   tabIndex?: number | (() => number) | undefined
   title?: string | (() => string) | undefined
   lang?: string | undefined
