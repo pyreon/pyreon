@@ -60,6 +60,7 @@ import { date, DateSchema } from './primitives/date'
 import { enum_, EnumSchema, literal, LiteralSchema } from './primitives/literal'
 import { number, NumberSchema } from './primitives/number'
 import { string, StringSchema } from './primitives/string'
+import { stringbool, StringBoolSchema } from './primitives/stringbool'
 
 // ─── Chainable namespace ───────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ import { string, StringSchema } from './primitives/string'
  */
 export const s = {
   string,
+  stringbool,
   number,
   boolean,
   bigint,
@@ -107,7 +109,8 @@ export const s = {
 
 // ─── Named function-comp exports ───────────────────────────────────────
 
-export { coerce, preprocess }
+export { coerce, preprocess, stringbool }
+export { type StringBoolOptions } from './primitives/stringbool'
 export { any, array, bigint, boolean, date, discriminatedUnion, enum_, intersection, lazy, literal, map, nan, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
 export {
   AnySchema,
@@ -127,6 +130,7 @@ export {
   ObjectSchema,
   RecordSchema,
   SetSchema,
+  StringBoolSchema,
   StringSchema,
   SymbolSchema,
   TupleSchema,
