@@ -13,6 +13,7 @@ export default defineManifest({
     'polite (default, queued) and assertive (interrupts) politeness; clearAfter to auto-empty stale text; identical repeats re-announced via clear-then-set',
     '<VisuallyHidden> — content invisible on screen but kept in the accessibility tree (unlike display:none)',
     'createA11yId(prefix?) — stable SSR-safe ids for aria-labelledby / aria-describedby / for relationships',
+    '<RouteAnnouncer> / useRouteAnnouncer() (@pyreon/a11y/router) — announce client-side route changes to screen readers (the SPA navigation gap); one router afterEach hook → polite live region',
   ],
   longExample: `import { announce, VisuallyHidden, createA11yId } from '@pyreon/a11y'
 
@@ -77,6 +78,34 @@ function Field() {
       mistakes: [
         'Calling it at module scope and sharing one id across many instances — call it inside the component so each instance gets its own id, or two elements will collide.',
         'Hardcoding ids instead — duplicate ids across a page break aria-labelledby/describedby resolution. createA11yId guarantees uniqueness.',
+      ],
+    },
+    {
+      name: 'RouteAnnouncer',
+      kind: 'component',
+      signature:
+        "import { RouteAnnouncer } from '@pyreon/a11y/router'\nfunction RouteAnnouncer(props?: { format?: (to, from) => string | null; politeness?: 'polite' | 'assertive'; clearAfter?: number; announceInitial?: boolean }): null",
+      summary:
+        "Announce client-side route changes to screen-reader users — the canonical SPA accessibility gap (single-page navigations change the URL + DOM but fire no page-load event, so assistive tech never says \"you are now on <page>\"). Renders nothing; registers ONE router afterEach hook that pushes the destination route's meta.title (or \"Navigated to <path>\") to a polite aria-live region via announce(). Drop one near the router root. Imported from the @pyreon/a11y/router subpath so the base @pyreon/a11y entry stays router-free.",
+      example: `<RouterProvider router={router}>\n  <RouteAnnouncer />\n  <RouterView />\n</RouterProvider>`,
+      mistakes: [
+        'Importing it from `@pyreon/a11y` instead of `@pyreon/a11y/router` — the router integration lives in the subpath so the base entry never pulls @pyreon/router into bundles that only use announce()/VisuallyHidden.',
+        'Mounting more than one — each registers its own afterEach hook, so the route gets announced N times. Mount exactly one, in a component that lives for the app\'s lifetime (the root layout).',
+        'Expecting it to announce the initial page load — it does not by default (the screen reader already reads a freshly-loaded page; a redundant announcement is noise). Set `announceInitial` only when the announcer mounts after the first navigation already committed.',
+        'Relying on it for `<head>`-driven dynamic titles — the default reads `route.meta.title`; if you set titles via @pyreon/head at runtime, pass a `format` callback that returns the live title.',
+      ],
+    },
+    {
+      name: 'useRouteAnnouncer',
+      kind: 'function',
+      signature:
+        "import { useRouteAnnouncer } from '@pyreon/a11y/router'\nuseRouteAnnouncer(options?: RouteAnnouncerOptions): void",
+      summary:
+        'Hook form of <RouteAnnouncer>. Call once from a long-lived component to announce route changes. Registers a single router afterEach hook (auto-removed on unmount) and announces via the zero-setup announce() polite live region. SSR-safe — the hook only registers in onMount and announce() no-ops on the server.',
+      example: `useRouteAnnouncer({ format: (to) => \`\${to.meta.title ?? to.path} page\` })`,
+      mistakes: [
+        'Calling it in a component that mounts/unmounts per navigation — the hook would re-register each time. Call it in the persistent root layout, not a per-route page.',
+        'Using it without a <RouterProvider> in scope — it calls useRouter(), which throws if no router is installed.',
       ],
     },
   ],
