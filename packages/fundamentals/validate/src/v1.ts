@@ -40,8 +40,14 @@ import { preprocess, Schema } from './core/schema'
 import {
   any,
   AnySchema,
+  custom,
+  CustomSchema,
+  instanceof_,
+  InstanceofSchema,
   nan,
   NanSchema,
+  never,
+  NeverSchema,
   null_,
   NullSchema,
   symbol,
@@ -93,6 +99,9 @@ export const s = {
   void: void_,
   any,
   unknown,
+  never,
+  custom,
+  instanceof: instanceof_,
   object,
   array,
   union,
@@ -111,20 +120,23 @@ export const s = {
 
 export { coerce, preprocess, stringbool }
 export { type StringBoolOptions } from './primitives/stringbool'
-export { any, array, bigint, boolean, date, discriminatedUnion, enum_, intersection, lazy, literal, map, nan, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
+export { any, array, bigint, boolean, custom, date, discriminatedUnion, enum_, instanceof_, intersection, lazy, literal, map, nan, never, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
 export {
   AnySchema,
   ArraySchema,
   BigIntSchema,
   BooleanSchema,
+  CustomSchema,
   DateSchema,
   DiscriminatedUnionSchema,
   EnumSchema,
+  InstanceofSchema,
   IntersectionSchema,
   LazySchema,
   LiteralSchema,
   MapSchema,
   NanSchema,
+  NeverSchema,
   NullSchema,
   NumberSchema,
   ObjectSchema,
