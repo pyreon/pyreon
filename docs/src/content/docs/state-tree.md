@@ -60,7 +60,7 @@ getSnapshot(counter) // { count: 6 }
 `model()` carries one piece of state declaration — `state` (plain mode) OR `schema` (schema mode). Both modes return the same chainable `ModelDefinition`; `views` and `actions` are added exclusively via `.views(...)` / `.actions(...)`.
 
 - **state** -- Plain JS object. Each key becomes a `Signal<T>` on the instance. Plain mode.
-- **schema** -- A `TypedSchemaAdapter` (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`) or a Standard Schema-compliant instance (zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, ...). Schema mode — adds runtime validation and `set` / `patch` / `reset` helpers.
+- **schema** -- A schema passed directly — `@pyreon/validate`'s `s.object(...)`, a raw `z.object(...)` / valibot / arktype (Standard Schema, auto-detected via `~standard`), or a `TypedSchemaAdapter` (`zodSchema(...)`, `valibotSchema(...)`, `arktypeSchema(...)`). Schema mode adds runtime validation, **strictly types the instance from the schema**, and installs five validated mutation helpers (`set` / `patch` / `deepPatch` / `update` / `reset`).
 - **`.views(self => ...)`** -- Chainable. Each call adds a layer of derived values; subsequent layers see prior ones via `self`.
 - **`.actions(self => ...)`** -- Chainable. Each call adds a layer of methods; can be `async` out of the box.
 
@@ -188,14 +188,35 @@ u.name.set('')   // direct signal write — bypasses validation (escape hatch)
 u.reset()       // restore parsed initial
 ```
 
-**Standard Schema (Tier A.2)** — pass the raw schema, no adapter wrap needed:
+**Standard Schema (Tier A.2)** — pass the raw schema, no adapter wrap needed. The
+instance is **strictly typed from the schema** either way: `u.name()` is `string`,
+`u.age()` is `number` — the field types flow through whether you use `@pyreon/validate`'s
+native `s` ("our one"), a raw `z.object`, valibot, or arktype.
 
 ```ts
+import { s } from '@pyreon/validate'
+
+// @pyreon/validate — the native validator, passed directly:
 const User = model({
-  schema: z.object({ name: z.string(), age: z.number() }),  // raw zod (~standard)
+  schema: s.object({ name: s.string(), age: s.number() }),
+  initial: { name: 'Alice', age: 30 },
+})
+const u = User.create()
+u.name()  // string  (strictly typed — not `unknown`)
+u.age()   // number
+
+// …or a raw zod schema (auto-detected via `~standard`), no zodSchema() wrapper:
+const User2 = model({
+  schema: z.object({ name: z.string(), age: z.number() }),
   initial: { name: 'Alice', age: 30 },
 })
 ```
+
+> The strict typing comes from reading the schema's `~standard.validate` output type
+> (`InferSchemaState`), so it works even for validators (like `@pyreon/validate`) that
+> don't populate the optional `~standard.types` slot. The `zodSchema(...)` /
+> `valibotSchema(...)` / `arktypeSchema(...)` adapters still work (the `_infer` path)
+> and are only needed when you want the adapter's async-validator interop.
 
 ### Mutation method comparison
 

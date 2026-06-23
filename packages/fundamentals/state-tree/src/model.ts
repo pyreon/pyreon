@@ -2,6 +2,7 @@ import type { SchemaIssue, SchemaParseResult } from '@pyreon/validation'
 import { extractParseFn, formatIssues } from '@pyreon/validation'
 import { createInstance } from './instance'
 import type {
+  InferSchemaState,
   ModelInstance,
   ModelSelf,
   Snapshot,
@@ -236,17 +237,7 @@ export function model<TState extends StateShape>(
 export function model<S>(
   config: SchemaConfig<S>,
 ): ModelDefinition<
-  S extends { readonly _infer: infer T extends StateShape }
-    ? T
-    : S extends {
-          readonly '~standard': {
-            readonly types: {
-              readonly output: infer O extends StateShape
-            }
-          }
-        }
-      ? O
-      : StateShape,
+  InferSchemaState<S>,
   Record<never, never>,
   Record<never, never>,
   true

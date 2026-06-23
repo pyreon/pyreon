@@ -2093,14 +2093,15 @@ const Counter = model({ state: { count: 0 } })
   .views((self) => ({ doubled: () => self.count() * 2 }))
   .actions((self) => ({ inc: () => self.count.update(n => n + 1) }))
 
-// Schema mode (zod / valibot / arktype / Standard Schema)
-import { zodSchema } from '@pyreon/validation'
+// Schema mode — pass the schema DIRECTLY (no wrapper); types flow through.
+// Works with @pyreon/validate (\`s\`), raw zod, valibot, arktype, any Standard Schema.
 import { z } from 'zod'
 
 const User = model({
-  schema: zodSchema(z.object({ name: z.string().min(1), age: z.number() })),
+  schema: z.object({ name: z.string().min(1), age: z.number() }),
   initial: { name: '', age: 0 },
 })
+// u.name() is string, u.age() is number — strictly typed from the schema.
   .views((self) => ({ greet: () => \`Hi, \${self.name()}\` }))
   .actions((self) => ({
     rename: (next: string) => self.patch({ name: next }),
@@ -2115,7 +2116,7 @@ const u = User.create({ name: 'Alice', age: 30 })
 u.greet()                 // "Hi, Alice"
 await u.fetchProfile()    // async action, awaitable
 u.reset()                // back to initial`,
-    notes: 'Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** `model({ state })` declares signal-backed fields with their initial values; **schema mode** `model({ schema, initial? })` validates state via a TypedSchemaAdapter (`zodSchema` / `valibotSchema` / `arktypeSchema`) or a Standard Schema-compliant instance (zod 3.24+ / valibot 1.0+ / arktype 2.0+ / Effect Schema, etc.) — types are inferred end-to-end. Chain `.views(f)` for derived values and `.actions(f)` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via `self`. Schema mode adds `set` / `patch` / `reset` helpers on `self` and on the instance, each validated through the schema. Actions can be `async`; `await u.fetchPosts()` works end-to-end and middleware sees completion via `await next(call)`. Returns a `ModelDefinition` — call `.create(initial?)` for an independent instance or `.asHook(id)` for a singleton. See also: ModelDefinition, SchemaModelHelpers, getSnapshot, applySnapshot, onPatch, addMiddleware.',
+    notes: `Define a reactive model via a chainable builder. Two modes (mutually exclusive): **plain mode** \`model({ state })\` declares signal-backed fields with their initial values; **schema mode** \`model({ schema, initial? })\` validates state via a schema and STRICTLY TYPES the instance from it. The schema can be passed DIRECTLY — \`@pyreon/validate\`'s \`s.object(...)\`, a raw \`z.object(...)\`, valibot, arktype, or any [Standard Schema](https://standardschema.dev)-compliant validator — and the field types flow through end-to-end (\`self.name()\` is \`string\`, not \`unknown\`), no adapter wrapper required. The \`@pyreon/validation\` \`zodSchema\` / \`valibotSchema\` / \`arktypeSchema\` adapters still work (the \`_infer\` path) and are only needed for async-validator interop. Chain \`.views(f)\` for derived values and \`.actions(f)\` for mutators; both are CHAINABLE — every subsequent layer sees prior views + actions via \`self\`. Schema mode adds \`set\` / \`patch\` / \`deepPatch\` / \`update\` / \`reset\` helpers (bare names) on \`self\` and on the instance, each validated through the schema. Actions can be \`async\`; \`await u.fetchPosts()\` works end-to-end and middleware sees completion via \`await next(call)\`. Returns a \`ModelDefinition\` — call \`.create(initial?)\` for an independent instance or \`.asHook(id)\` for a singleton. See also: ModelDefinition, SchemaModelHelpers, getSnapshot, applySnapshot, onPatch, addMiddleware.`,
     mistakes: `- Mutating state outside of actions — bypasses middleware and patch recording, breaks the structured contract
 - Forgetting that \`self.count\` is a signal — read with \`self.count()\`, write with \`self.count.set(v)\` or \`.update(fn)\` inside actions
 - Nesting plain objects in state instead of child models — plain objects are not signal-backed, changes to their properties are not reactive
@@ -2132,7 +2133,7 @@ u.patch({ name: 'Bob' })                                                       /
 u.deepPatch({ prefs: { theme: 'dark' } })                                      // recursive merge — density survives
 u.update('items', items => items.filter(x => x.id !== 1))                      // transform one field
 u.reset()                                                                       // restore parsed initial`,
-    notes: `The five schema-validated mutation helpers exposed on every schema-mode model instance AND on \`self\` inside schema-mode action/view factories. \`$\`-prefixed so they never collide with user schema field names (\`name\`, \`set\`, \`patch\`, etc.). All five validate the merged result through the schema before writing to signals (or invoke \`onValidationError\` if configured). Direct signal writes (\`self.field.set(v)\`) bypass validation — the documented escape hatch. Parallel to \`@pyreon/store\`'s \`SchemaStoreApi\`. See also: model, DeepPartial.`,
+    notes: `The five schema-validated mutation helpers exposed on every schema-mode model instance AND on \`self\` inside schema-mode action/view factories. They are BARE names (\`set\`, \`patch\`, \`deepPatch\`, \`update\`, \`reset\`) — a schema field that collides with one of them throws at \`.create()\` time (the reserved-name guard names the offending field), so pick a different field name rather than relying on a prefix. All five validate the merged result through the schema before writing to signals (or invoke \`onValidationError\` if configured). Direct signal writes (\`self.field.set(v)\`) bypass validation — the documented escape hatch. Parallel to \`@pyreon/store\`'s \`SchemaStoreApi\`. See also: model, DeepPartial.`,
     mistakes: `- \`patch({ prefs: { theme } })\` REPLACES the whole \`prefs\` object (shallow merge); use \`deepPatch\` to keep \`density\` intact
 - \`deepPatch\` REPLACES arrays / class instances (Date, Map, Set) — only plain objects recurse
 - \`update\`'s transformer is \`(unknown) => unknown\` — cast at the call site for typed inference (key is constrained to \`keyof TState & string\`)
@@ -2181,7 +2182,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
     example: `const dispose = onPatch(counter, (patch) => {
   console.log(patch) // { op: 'replace', path: '/count', value: 11 }
 })`,
-    notes: 'Subscribe to JSON patches emitted by actions on a model instance. Each patch records the path, operation (add/replace/remove), and value. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization. See also: applyPatch, model.',
+    notes: 'Subscribe to JSON patches emitted by state mutations on a model instance. Each patch is a `replace` op carrying the JSON-pointer path (`/count`, `/profile/name` for nested) and the new value — Pyreon state is one signal per field, so a field holding an array/object emits a whole-value `replace`, not granular add/remove ops. Returns an unsubscribe function. Pairs with `applyPatch` for undo/redo and state synchronization. See also: applyPatch, model.',
   },
 
   'state-tree/applyPatch': {

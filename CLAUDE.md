@@ -346,11 +346,13 @@ Layer 0: signal() / computed() / effect() — runs identically; PMTC maps to @St
 
 ### @pyreon/state-tree
 
-- `model({ state, views, actions })` — structured reactive models with nested composition
+- `model({ state })` (plain) or `model({ schema, initial?, onValidationError? })` (schema-driven) — chainable builder; `.views(f)` / `.actions(f)` accumulate onto a live `self` proxy (each layer sees prior ones); then `.create(initial?)` for an instance or `.asHook(id)` for a singleton. The single-config `model({ state, views, actions })` form was REMOVED — chain instead.
+- **Schema mode is validation-driven AND strictly typed from the schema.** Pass the schema DIRECTLY — `@pyreon/validate`'s `s.object(...)`, a raw `z.object(...)`, valibot, arktype, or any [Standard Schema](https://standardschema.dev) validator — and the field types flow through end-to-end (`self.name()` is `string`, not `unknown`); no `@pyreon/validation` adapter wrapper needed. The inference reads the output type out of the schema's `~standard.validate` return (`types.ts:InferSchemaState`), so it works even when the optional `~standard.types` slot is absent (which it is on `@pyreon/validate`); the `@pyreon/validation` `zodSchema()` adapter's `_infer` path still matches first. `@pyreon/validation`'s `extractParseFn` drives runtime validation for raw schemas (via `isStandardSchema` → `wrapStandardSchema`). Schema mode installs five BARE-name mutation helpers on the instance + `self` — `set` / `patch` / `deepPatch` / `update` / `reset` — each validating the merged result through the schema before writing signals (a schema field colliding with a helper name throws at `.create()`); direct signal writes (`self.field.set(v)`) bypass validation (documented escape hatch).
 - `ModelDefinition.create(initial?)` / `.asHook(id)` — instances or singleton hooks
-- `getSnapshot(instance)` / `applySnapshot(instance, snapshot)` — typed recursive serialization
-- `onPatch(instance, listener)` / `applyPatch(instance, patch|patches)` — JSON patch record/replay
-- `addMiddleware(instance, fn)` — action interception chain
+- `getSnapshot(instance)` / `applySnapshot(instance, snapshot)` — typed recursive serialization (reads via `.peek()`; nested field-models recurse)
+- `onPatch(instance, listener)` / `applyPatch(instance, patch|patches)` — JSON patch record/replay. Patches are `replace`-only (one signal per field; an array/object field emits a whole-value `replace`, not granular add/remove). Nested patches are prefixed (`/profile/name`).
+- `addMiddleware(instance, fn)` — action interception chain (sync + async; `await next(call)`)
+- Nested models compose for tree-shaped state in PLAIN mode (a `state` field whose value is another `ModelDefinition`); schema mode is flat (a schema can't carry a `ModelDefinition`). `/devtools` subpath export = WeakRef registry of live instances.
 
 ### @pyreon/form
 
