@@ -90,6 +90,34 @@ describe('renderToString — props', () => {
     expect(html).toContain('color: red')
     expect(html).toContain('font-size: 16px')
   })
+
+  test('renders boolean aria-* state as the string "true"/"false" (not presence-only)', async () => {
+    // ARIA state attrs are string enums — a boolean must serialize to its
+    // literal value so assistive tech reads the state, and so SSR matches the
+    // client's applyStaticProp (no hydration mismatch).
+    expect(await renderToString(h('button', { 'aria-checked': true }))).toBe(
+      `<button aria-checked="true"></button>`,
+    )
+    expect(await renderToString(h('button', { 'aria-checked': false }))).toBe(
+      `<button aria-checked="false"></button>`,
+    )
+    const html = await renderToString(h('div', { 'aria-expanded': true, 'aria-selected': false }))
+    expect(html).toContain('aria-expanded="true"')
+    expect(html).toContain('aria-selected="false"')
+  })
+
+  test('keeps HTML boolean attrs presence-based (disabled, NOT disabled="true")', async () => {
+    const html = await renderToString(h('input', { disabled: true, hidden: true }))
+    expect(html).not.toContain('disabled="true"')
+    expect(html).toContain('disabled')
+    expect(html).toContain('hidden')
+  })
+
+  test('keeps data-* booleans presence-based (NOT data-active="true")', async () => {
+    const html = await renderToString(h('div', { 'data-active': true }))
+    expect(html).not.toContain('data-active="true"')
+    expect(html).toContain('data-active')
+  })
 })
 
 describe('renderToString — reactive props (signal snapshots)', () => {

@@ -446,6 +446,19 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
+  // ARIA state/property attributes are STRING enums ("true"/"false"/"mixed"),
+  // NOT presence-based like HTML boolean attrs. A boolean must render as its
+  // literal string — `aria-checked={true}` → aria-checked="true", never the
+  // presence-only `aria-checked=""` that assistive tech can't read as checked
+  // (it falls back to the default → effectively unchecked). Runs BEFORE the
+  // generic boolean branch (which keeps presence semantics for HTML boolean
+  // attrs like `disabled`/`hidden`; `data-*` is author-defined, also presence).
+  // Mirrors runtime-server's SSR serialization so hydration sees identical markup.
+  if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
+    el.setAttribute(key, value ? 'true' : 'false')
+    return
+  }
+
   if (typeof value === 'boolean') {
     if (value) el.setAttribute(key, '')
     else el.removeAttribute(key)

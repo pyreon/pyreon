@@ -630,3 +630,50 @@ describe('delegate', () => {
     container.remove()
   })
 })
+
+describe('applyProp — boolean ARIA state attributes render as strings', () => {
+  // ARIA state/property attrs are string enums; a boolean must become the
+  // literal "true"/"false", NOT presence-only "" (which assistive tech does
+  // not read as the state). See anti-patterns.md "Boolean ARIA-STATE …".
+  it('renders boolean aria-checked as "true"/"false" (not presence-only "")', () => {
+    const el = document.createElement('button')
+    applyProp(el, 'aria-checked', true)
+    expect(el.getAttribute('aria-checked')).toBe('true')
+    applyProp(el, 'aria-checked', false)
+    expect(el.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('applies to the other aria-* state attrs', () => {
+    const el = document.createElement('div')
+    applyProp(el, 'aria-expanded', true)
+    expect(el.getAttribute('aria-expanded')).toBe('true')
+    applyProp(el, 'aria-selected', false)
+    expect(el.getAttribute('aria-selected')).toBe('false')
+    applyProp(el, 'aria-disabled', true)
+    expect(el.getAttribute('aria-disabled')).toBe('true')
+    applyProp(el, 'aria-hidden', true)
+    expect(el.getAttribute('aria-hidden')).toBe('true')
+    applyProp(el, 'aria-pressed', false)
+    expect(el.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('leaves HTML boolean attributes presence-based (disabled)', () => {
+    const el = document.createElement('button')
+    applyProp(el, 'disabled', true)
+    expect(el.getAttribute('disabled')).toBe('') // presence, not "true"
+    applyProp(el, 'disabled', false)
+    expect(el.hasAttribute('disabled')).toBe(false) // absent
+  })
+
+  it('leaves data-* booleans presence-based (author-defined)', () => {
+    const el = document.createElement('div')
+    applyProp(el, 'data-active', true)
+    expect(el.getAttribute('data-active')).toBe('') // presence
+  })
+
+  it('passes string aria values through unchanged (e.g. "mixed")', () => {
+    const el = document.createElement('div')
+    applyProp(el, 'aria-checked', 'mixed')
+    expect(el.getAttribute('aria-checked')).toBe('mixed')
+  })
+})

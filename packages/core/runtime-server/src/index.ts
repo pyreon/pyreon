@@ -908,6 +908,15 @@ function renderPropSkipped(key: string): boolean {
 }
 
 function renderPropValue(key: string, value: unknown): string | null {
+  // ARIA state/property attributes are STRING enums ("true"/"false"/"mixed"),
+  // not presence-based like HTML boolean attrs — a boolean must serialize to
+  // its literal string so assistive tech reads the state (a bare `aria-checked`
+  // / presence-only attr is NOT read as "true"). Mirrors runtime-dom's client
+  // `applyStaticProp` so hydration sees identical markup. HTML boolean attrs +
+  // data-* keep presence semantics in the branches below.
+  if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
+    return `${toAttrName(key)}="${value ? 'true' : 'false'}"`
+  }
   if (value === null || value === undefined || value === false) return null
   if (value === true) return toAttrName(key) // pre-escaped by the memo
 
