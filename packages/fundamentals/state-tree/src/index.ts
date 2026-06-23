@@ -20,6 +20,10 @@ export { applySnapshot, getSnapshot, onSnapshot } from './snapshot'
 
 export { clone, destroy, getType, isAlive } from './lifecycle'
 
+// ─── Tree traversal ─────────────────────────────────────────────────────────────
+
+export { getParent, getPath, getRoot, hasParent, isRoot } from './tree'
+
 // ─── Patches ─────────────────────────────────────────────────────────────────
 
 export { applyPatch, onPatch } from './patch'

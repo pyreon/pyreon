@@ -5,6 +5,7 @@ import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta } from './registry'
 import { getSnapshot } from './snapshot'
+import { scanForChildren } from './tree'
 import type { InstanceMeta, LifecycleHandlers, StateShape } from './types'
 import { MODEL_BRAND, RESERVED_SCHEMA_HELPER_KEYS } from './types'
 
@@ -270,8 +271,17 @@ export function createInstance(
       // Skip patch/snapshot machinery on a write unless SOMEONE is listening
       // (patch listener OR onSnapshot subscriber).
       () => meta.patchListeners.size > 0 || meta.snapshotListeners.size > 0,
+      // Parent tracking (always-on): attach model-instance children written into
+      // this field — as a value, an array element, or a plain-object value — so
+      // getParent / getRoot / getPath work for array children, not just
+      // field-nested ones.
+      (v) => scanForChildren(v, instance, key),
     )
     instance[key] = tracked
+    // Initial-value scan (the rawSig value never went through tracked.set, so
+    // afterSet didn't fire) — attaches field-nested children + any model
+    // instances in an initial array/object.
+    scanForChildren(rawSig.peek(), instance, key)
   }
 
   // ── 3. Schema-mode helpers ────────────────────────────────────────────────

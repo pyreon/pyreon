@@ -2265,6 +2265,21 @@ const sibling = Def?.create()`,
     notes: 'Observe every action call on an instance (logging, analytics, devtools). The listener receives the `ActionCall` descriptor (`name`, `args`, `path`) BEFORE the action runs; it is read-only — it cannot block or alter the call (use `addMiddleware` for interception). Sugar over `addMiddleware` (a middleware that observes then unconditionally proceeds). Returns an unsubscribe function. See also: addMiddleware, model.',
     mistakes: '- Trying to block / mutate a call from `onAction` — it is observe-only; use `addMiddleware` to intercept',
   },
+
+  'state-tree/getParent': {
+    signature: '<T>(node) => T | undefined; also getRoot / getPath / isRoot / hasParent',
+    example: `const list = TodoList.create({ todos: [] })
+list.add('write tests')               // pushes a Todo into the array
+const todo = list.todos()[0]
+getParent(todo)   // → list   (array children get a parent, not just field-nested)
+getRoot(todo)     // → list
+getPath(todo)     // "/todos"
+isRoot(list)      // true`,
+    notes: `Tree-traversal helpers. A model instance gets a tree PARENT when it is written into another model's state — as a field value, an ARRAY element, or a plain-object value (parent tracking runs on the initial value AND every subsequent write, so array-held children — the headline \`todos: Todo[]\` shape — are tracked, not just field-nested ones). \`getParent(node)\` → the instance \`node\` is attached under (or \`undefined\` for a root); \`getRoot(node)\` → walks to the top; \`getPath(node)\` → JSON-pointer path from the root built from each ancestor's parent-key (e.g. \`"/todos"\`, \`""\` for a root); \`isRoot(node)\` / \`hasParent(node)\` → booleans. All throw on a non-model-instance. See also: model, getSnapshot.`,
+    mistakes: `- Expecting a parent for a child removed from an array — parent tracking sets the parent on write; a detached node keeps its last parent until GC (v1). getParent reflects the last attachment, not live membership
+- Expecting array INDICES in \`getPath\` — v1 paths carry the field key (\`/todos\`), not the element index (\`/todos/0\`)
+- Auto-attachment is one container level deep — a model nested inside an array inside an array is not auto-parented; use field or single-array nesting`,
+  },
   // <gen-docs:api-reference:end @pyreon/state-tree>
 
   // ═══════════════════════════════════════════════════════════════════════════

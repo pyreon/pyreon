@@ -61,6 +61,7 @@ const { store } = useTodoList() // same instance on every call`,
     'destroy(instance) / isAlive(instance) — tear down (recurses field-nested children) + liveness; actions no-op after destroy',
     'clone(instance) / getType(instance) — independent structural copy + definition back-ref',
     'onSnapshot(instance, cb) — microtask-coalesced snapshot subscription; onAction(instance, cb) — observe action calls',
+    'getParent / getRoot / getPath / isRoot / hasParent — tree traversal (parent tracked for field AND array/map children)',
     'Schema mode validates + STRICTLY TYPES state from a schema passed directly — @pyreon/validate, raw zod / valibot / arktype, any Standard Schema (no adapter wrapper)',
     'Nested model composition for tree-shaped state',
     'getSnapshot / applySnapshot — typed recursive serialization',
@@ -318,6 +319,26 @@ const sibling = Def?.create()`,
         'Trying to block / mutate a call from `onAction` — it is observe-only; use `addMiddleware` to intercept',
       ],
       seeAlso: ['addMiddleware', 'model'],
+    },
+    {
+      name: 'getParent',
+      kind: 'function',
+      signature: '<T>(node) => T | undefined; also getRoot / getPath / isRoot / hasParent',
+      summary:
+        'Tree-traversal helpers. A model instance gets a tree PARENT when it is written into another model\'s state — as a field value, an ARRAY element, or a plain-object value (parent tracking runs on the initial value AND every subsequent write, so array-held children — the headline `todos: Todo[]` shape — are tracked, not just field-nested ones). `getParent(node)` → the instance `node` is attached under (or `undefined` for a root); `getRoot(node)` → walks to the top; `getPath(node)` → JSON-pointer path from the root built from each ancestor\'s parent-key (e.g. `"/todos"`, `""` for a root); `isRoot(node)` / `hasParent(node)` → booleans. All throw on a non-model-instance.',
+      example: `const list = TodoList.create({ todos: [] })
+list.add('write tests')               // pushes a Todo into the array
+const todo = list.todos()[0]
+getParent(todo)   // → list   (array children get a parent, not just field-nested)
+getRoot(todo)     // → list
+getPath(todo)     // "/todos"
+isRoot(list)      // true`,
+      mistakes: [
+        'Expecting a parent for a child removed from an array — parent tracking sets the parent on write; a detached node keeps its last parent until GC (v1). getParent reflects the last attachment, not live membership',
+        'Expecting array INDICES in `getPath` — v1 paths carry the field key (`/todos`), not the element index (`/todos/0`)',
+        'Auto-attachment is one container level deep — a model nested inside an array inside an array is not auto-parented; use field or single-array nesting',
+      ],
+      seeAlso: ['model', 'getSnapshot'],
     },
   ],
   gotchas: [
