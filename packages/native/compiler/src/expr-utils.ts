@@ -40,6 +40,24 @@ export function buildComponentConstMap(decls: DeclIR[]): Map<string, string | nu
   return map
 }
 
+/**
+ * True for an ExprIR whose surface form is a multi-operand operator
+ * expression (binary / comparison / logical / ternary). Used by the
+ * bitwise-op emit to decide whether an operand needs wrapping parens so
+ * the JS-parsed grouping survives a target whose operator precedence
+ * differs (Swift binds `&` tighter than `+`, the reverse of JS; Kotlin
+ * infix functions bind looser than arithmetic). A simple atom (identifier /
+ * literal / call / member / index / paren) never needs extra parens.
+ */
+export function isCompoundExpr(e: ExprIR): boolean {
+  return (
+    e.kind === 'binary' ||
+    e.kind === 'comparison' ||
+    e.kind === 'logical' ||
+    e.kind === 'ternary'
+  )
+}
+
 /** TypeIR for a SCALAR literal value (string / number / boolean), else null. */
 export function scalarLiteralType(e: ExprIR): TypeIR | null {
   if (e.kind !== 'literal') return null

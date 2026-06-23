@@ -12,7 +12,12 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
+import {
+  buildComponentConstMap,
+  isCompoundExpr,
+  substituteIdentifier,
+  synthLiteralStructName,
+} from './expr-utils'
 import { buildInferenceCtx, inferReturnType, inferType } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -2255,6 +2260,23 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // (`+ - * %`) match JS for integers and are emitted verbatim.
       if (e.op === '/') {
         return `(${bl}).toDouble() / (${br}).toDouble()`
+      }
+      // Bitwise ops — Kotlin has NO bitwise symbols; they're INFIX
+      // FUNCTIONS on Int (`a and b`, `a shl 1`, …). Infix functions bind
+      // looser than arithmetic, so a compound operand is parenthesized to
+      // preserve the JS-parsed grouping (`a & b + c` is `a & (b + c)`).
+      const kotlinBitwise: Record<string, string> = {
+        '&': 'and',
+        '|': 'or',
+        '^': 'xor',
+        '<<': 'shl',
+        '>>': 'shr',
+      }
+      const infix = kotlinBitwise[e.op]
+      if (infix !== undefined) {
+        const L = isCompoundExpr(e.left) ? `(${bl})` : bl
+        const R = isCompoundExpr(e.right) ? `(${br})` : br
+        return `${L} ${infix} ${R}`
       }
       return `${bl} ${e.op} ${br}`
     }

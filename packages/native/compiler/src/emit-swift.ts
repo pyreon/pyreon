@@ -16,7 +16,12 @@ import {
   resolveRadius,
   resolveSpace,
 } from './canonical-primitives'
-import { buildComponentConstMap, substituteIdentifier, synthLiteralStructName } from './expr-utils'
+import {
+  buildComponentConstMap,
+  isCompoundExpr,
+  substituteIdentifier,
+  synthLiteralStructName,
+} from './expr-utils'
 import { buildInferenceCtx, emptyInferenceCtx, inferReturnType, inferType } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -2485,6 +2490,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const rf = numericFloatness(e.right)
         if (lf === 'double' && rf === 'int') return `${bl} ${e.op} Double(${br})`
         if (lf === 'int' && rf === 'double') return `Double(${bl}) ${e.op} ${br}`
+      }
+      // Bitwise ops (`& | ^ << >>`) — Swift uses the SAME symbols, but its
+      // operator precedence differs from JS (e.g. Swift `&` binds tighter
+      // than `+`, the reverse of JS), so a compound operand must be
+      // parenthesized to preserve the JS-parsed grouping
+      // (`a & b + c` is `a & (b + c)` in JS). Over-parenthesizing a
+      // compound operand is always sound.
+      if (e.op === '&' || e.op === '|' || e.op === '^' || e.op === '<<' || e.op === '>>') {
+        const L = isCompoundExpr(e.left) ? `(${bl})` : bl
+        const R = isCompoundExpr(e.right) ? `(${br})` : br
+        return `${L} ${e.op} ${R}`
       }
       return `${bl} ${e.op} ${br}`
     }
