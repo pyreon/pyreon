@@ -696,7 +696,38 @@ const Def = getType(original) // the ModelDefinition — create siblings from it
 const sibling = Def?.create()
 ```
 
-> Tree-traversal helpers (`getParent` / `getRoot` / `getPath`) and references / identifiers are a planned follow-up — field-nested-only tree helpers would silently fail on array/map-held children (the common composition shape), so they're deferred to a design that tracks assignment.
+### Tree Traversal
+
+A model instance gets a **tree parent** when it's written into another model's state — as a field value, an **array element**, or a plain-object value. Parent tracking runs on the initial value *and* every subsequent write, so array-held children (the headline `todos: Todo[]` shape) are tracked the same way field-nested children are.
+
+```ts
+import { getParent, getRoot, getPath, isRoot, hasParent } from '@pyreon/state-tree'
+
+const Todo = model({ state: { title: '', done: false } })
+const TodoList = model({ state: { todos: [] as ReturnType<typeof Todo.create>[] } })
+  .actions((self) => ({
+    add: (title: string) => self.todos.update((l) => [...l, Todo.create({ title, done: false })]),
+  }))
+
+const list = TodoList.create({ todos: [] })
+list.add('write tests')
+const todo = list.todos()[0]
+
+getParent(todo) // → list   (array children get a parent, not just field-nested ones)
+getRoot(todo)   // → list   (walks to the top of the tree)
+getPath(todo)   // "/todos" (JSON-pointer path from the root)
+isRoot(list)    // true
+hasParent(todo) // true
+```
+
+- `getParent(node)` — the instance `node` is attached under, or `undefined` for a root.
+- `getRoot(node)` — walk parents to the top (returns `node` itself if it's a root).
+- `getPath(node)` — path from the root built from each ancestor's parent-key (`""` for a root).
+- `isRoot(node)` / `hasParent(node)` — booleans.
+
+All throw on a non-model-instance. **v1 notes:** `getPath` carries the field key (`/todos`), not the array index (`/todos/0`); a node removed from an array keeps its last parent until GC (parent is set on write, not diffed on removal); auto-attachment is one container level deep.
+
+> **References & identifiers** (`reference(Type)` / `identifier()` / `resolveIdentifier`) — normalized by-id references that auto-resolve — build on these tree helpers and land as the follow-up.
 
 ## Volatile State
 

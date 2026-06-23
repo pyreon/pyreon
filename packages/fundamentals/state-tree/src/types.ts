@@ -302,6 +302,15 @@ export interface InstanceMeta {
    */
   children: Set<object>
   /**
+   * The model instance this node is attached UNDER (its tree parent), set by the
+   * parent-tracking scan when a model instance is written into another model's
+   * state — as a field value, an array element, or a plain-object value.
+   * `undefined` for a root node. Read by `getParent` / `getRoot` / `getPath`.
+   */
+  parent?: object
+  /** The parent's state key this node is attached under (the `getPath` segment). */
+  parentKey?: string
+  /**
    * Back-reference to the `ModelDefinition` that produced this instance —
    * powers `clone(instance)` (= `def.create(getSnapshot(instance))`) and
    * `getType(instance)`. Untyped here to avoid a `model.ts` ↔ `types.ts` cycle.
