@@ -14,6 +14,7 @@ import {
 } from './canonical-primitives'
 import {
   buildComponentConstMap,
+  chainHasOptional,
   isCompoundExpr,
   substituteIdentifier,
   synthLiteralStructName,
@@ -2248,7 +2249,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `${kotlinIdent(obj)}.${kotlinIdent(p)}.value`
         }
       }
-      return `${emitKotlinExpr(e.object, indent)}.${kotlinIdent(e.property)}`
+      // Optional chaining: `?.` when this link is optional OR its object
+      // chain already carried one. Kotlin REQUIRES `?.` on every access
+      // after the first optional one (`a?.b.c` → `a?.b?.c`; a plain `.c` on
+      // a nullable is a type error) — `chainHasOptional` propagates it.
+      const dot = e.optional === true || chainHasOptional(e.object) ? '?.' : '.'
+      return `${emitKotlinExpr(e.object, indent)}${dot}${kotlinIdent(e.property)}`
     }
     case 'binary': {
       const bl = emitKotlinExpr(e.left, indent)

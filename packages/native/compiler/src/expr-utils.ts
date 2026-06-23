@@ -58,6 +58,20 @@ export function isCompoundExpr(e: ExprIR): boolean {
   )
 }
 
+/**
+ * True if the access CHAIN rooted at `e` contains an optional member link
+ * (`a?.b`) anywhere along its object/callee spine. Drives `?.` PROPAGATION
+ * in the emitters: once an optional link appears, every subsequent access
+ * must also be `?.` — required for Kotlin (a plain `.c` on a nullable is a
+ * type error) and valid for Swift. So `a?.b.c` emits `a?.b?.c` on both.
+ */
+export function chainHasOptional(e: ExprIR): boolean {
+  if (e.kind === 'member') return e.optional === true || chainHasOptional(e.object)
+  if (e.kind === 'index') return chainHasOptional(e.object)
+  if (e.kind === 'call') return chainHasOptional(e.callee)
+  return false
+}
+
 /** TypeIR for a SCALAR literal value (string / number / boolean), else null. */
 export function scalarLiteralType(e: ExprIR): TypeIR | null {
   if (e.kind !== 'literal') return null

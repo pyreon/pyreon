@@ -43,12 +43,16 @@ describe('unsupported-construct diagnostics — located + actionable', () => {
     expect(result.code).toContain('Text("hi \\(name)")')
   })
 
-  it('optional chaining: names the site + the explicit-guard rewrite', () => {
-    const w = warningsFor('obj?.field')
+  it('optional chaining on an index/call: names the site + the explicit-guard rewrite', () => {
+    // Plain optional MEMBER access (`obj?.field`) now LOWERS to native `?.`
+    // (see native-optional-chaining.test.ts). Optional INDEX (`obj?.[i]`) and
+    // optional CALL still warn — they diverge per target — so they exercise
+    // the located-diagnostic contract here.
+    const w = warningsFor('obj?.[0]')
     const hit = w.find((m) => m.includes('Optional chaining'))
     expect(hit).toBeDefined()
     expect(hit!).toMatch(/^\[\d+:\d+\]/)
-    expect(hit!).toContain('a && a.b')
+    expect(hit!).toContain('a && a[i]')
   })
 
   it('unsupported unary operator is located + actionable (not a silent "")', () => {
@@ -61,9 +65,10 @@ describe('unsupported-construct diagnostics — located + actionable', () => {
   it('the location line number is ACCURATE (points at the real line, not 1)', () => {
     // The <Text> sits on line 7 of wrapJsx — a construct there must report a
     // line > 1, proving locOf reads the real byte offset, not a constant.
-    // (Template literals now lower, so use a still-unsupported construct —
-    // optional chaining — to exercise the located-warning contract.)
-    const w = warningsFor('obj?.field')
+    // (Template literals AND plain optional member access now lower, so use a
+    // still-unsupported construct — optional INDEX — to exercise the
+    // located-warning contract.)
+    const w = warningsFor('obj?.[0]')
     const hit = w.find((m) => m.includes('Optional chaining'))!
     const line = Number(hit.match(/^\[(\d+):/)![1])
     expect(line).toBeGreaterThan(1)

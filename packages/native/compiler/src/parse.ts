@@ -4026,6 +4026,27 @@ function unsupportedExpr(
   return fallback
 }
 
+/**
+ * Walk a ChainExpression's inner AST for optional links that DON'T lower
+ * cleanly: an optional CALL (`fn?.()`) or an optional COMPUTED member
+ * (`a?.[i]`). Both diverge per target (Swift `fn?()`/`a?[i]` vs Kotlin
+ * `fn?.invoke()`/`a?.get(i)`), so the parser keeps the explicit-guard
+ * warning for them. Optional plain-member access (`a?.b`) lowers cleanly and
+ * is NOT flagged here. Walks only the access chain (object / callee spine).
+ */
+function chainHasUnsupportedOptional(node: AnyNode): boolean {
+  if (node === null || node === undefined || typeof node !== 'object') return false
+  if (node.type === 'CallExpression') {
+    if (node.optional === true) return true
+    return chainHasUnsupportedOptional(node.callee)
+  }
+  if (node.type === 'MemberExpression') {
+    if (node.optional === true && node.computed === true) return true
+    return chainHasUnsupportedOptional(node.object)
+  }
+  return false
+}
+
 function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
   switch (node.type) {
     case 'Literal':
@@ -4087,7 +4108,12 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         return { kind: 'index', object, index: parseExpr(node.property, ctx) }
       }
       const property = node.property?.name as string
-      return { kind: 'member', object, property }
+      // `node.optional` is set for the `a?.b` link of an optional chain
+      // (oxc wraps the whole chain in a ChainExpression, but each member
+      // carries its own optional flag). Plain `a.b` has it false/undefined.
+      return node.optional === true
+        ? { kind: 'member', object, property, optional: true }
+        : { kind: 'member', object, property }
     }
     case 'BinaryExpression': {
       // Arithmetic operators (existing) + comparison/equality operators
@@ -4322,16 +4348,25 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
         'A tagged template literal',
         'it has no native equivalent — call a plain function with the values instead.',
       )
-    case 'ChainExpression':
-      // Optional chaining `a?.b` — oxc wraps the optional member in a
-      // ChainExpression. Swift/Kotlin optional semantics differ from JS, so
-      // an explicit guard is the portable shape.
-      return unsupportedExpr(
-        ctx,
-        node,
-        'Optional chaining (`?.`)',
-        'use an explicit guard — `a && a.b`.',
-      )
+    case 'ChainExpression': {
+      // Optional chaining `a?.b` — oxc wraps the chain in a ChainExpression.
+      // Optional MEMBER access lowers cleanly: Swift & Kotlin both spell it
+      // `?.`, with identical short-circuit semantics, and the member emit
+      // PROPAGATES `?.` down the chain (`a?.b.c` → `a?.b?.c`) so Kotlin's
+      // nullable-access requirement is met (and Swift accepts the redundant
+      // `?.`). Optional INDEX (`a?.[i]`) and optional CALL (`fn?.()`) diverge
+      // per target (Swift `a?[i]`/`fn?()` vs Kotlin `a?.get(i)`/`fn?.invoke()`)
+      // — keep the explicit-guard warning for those rarer shapes.
+      if (chainHasUnsupportedOptional(node.expression)) {
+        return unsupportedExpr(
+          ctx,
+          node,
+          'Optional chaining on an index/call (`a?.[i]` / `fn?.()`)',
+          'use an explicit guard — `a && a[i]`.',
+        )
+      }
+      return parseExpr(node.expression, ctx)
+    }
     case 'AwaitExpression':
       return unsupportedExpr(
         ctx,
