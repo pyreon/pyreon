@@ -281,4 +281,20 @@ test.describe('docs rendering', () => {
       .locator('.example-card')
     await expect(readoutCard).toContainText('shared value: 0')
   })
+
+  test('flow docs page mounts the live <Example> (real @pyreon/flow graph)', async ({
+    page,
+  }) => {
+    // The node-graph Example loads @pyreon/flow client-side via the
+    // <Example> dynamic-import path (onMount → import() → mount). Locks
+    // that a REAL flow graph renders — nodes, MiniMap, AND Controls (the
+    // overlay-order regression: Controls must render, not just resolve).
+    await page.goto('/docs/flow')
+    await page.waitForLoadState('networkidle')
+    const canvas = page.locator('.pyreon-example .pyreon-flow').first()
+    await expect(canvas).toBeVisible({ timeout: 15_000 })
+    await expect(canvas.locator('[data-nodeid]')).toHaveCount(3)
+    await expect(canvas.locator('.pyreon-flow-minimap')).toBeVisible()
+    await expect(canvas.locator('.pyreon-flow-controls')).toBeVisible()
+  })
 })

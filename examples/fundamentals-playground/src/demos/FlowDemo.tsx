@@ -58,8 +58,8 @@ export function FlowDemo() {
         >
           <Flow instance={flow}>
             <Background variant="dots" gap={20} size={1} color="#e2e8f0" />
-            <Controls position="bottom-left" />
             <MiniMap width={160} height={100} />
+            <Controls position="bottom-left" />
           </Flow>
         </div>
       </div>

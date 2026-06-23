@@ -35,6 +35,7 @@ yarn add @pyreon/flow
 import { createFlow, Flow, Background, MiniMap, Controls } from '@pyreon/flow'
 
 const flow = createFlow({
+  fitView: true,
   nodes: [
     { id: '1', type: 'input', position: { x: 0, y: 0 }, data: { label: 'Start' } },
     { id: '2', position: { x: 200, y: 100 }, data: { label: 'Process' } },
@@ -48,7 +49,8 @@ const flow = createFlow({
 
 function WorkflowBuilder() {
   return (
-    <Flow instance={flow} fitView>
+    // MiniMap is placed before Controls — see "Overlay child order" below.
+    <Flow instance={flow}>
       <Background />
       <MiniMap />
       <Controls />
@@ -445,10 +447,14 @@ flow.batch(() => {
 
 ### `<Flow>`
 
-The main container component:
+The main container component. `fitView` is a `createFlow` config option, not
+a `<Flow>` prop. Place `<MiniMap>` before `<Controls>` — see [Overlay child
+order](#overlay-child-order).
 
 ```tsx
-<Flow instance={flow} fitView style="width: 100%; height: 600px;">
+const flow = createFlow({ fitView: true, nodes, edges })
+
+<Flow instance={flow} style="width: 100%; height: 600px;">
   <Background />
   <MiniMap />
   <Controls />
@@ -483,6 +489,25 @@ Zoom and fit controls:
 ```tsx
 <Controls showFitView showZoomIn showZoomOut showLock />
 ```
+
+### Overlay child order
+
+Place `<MiniMap>` **before** `<Controls>` in the `<Flow>` children:
+
+```tsx
+<Flow instance={flow}>
+  <Background />
+  <MiniMap />     {/* before Controls */}
+  <Controls />
+</Flow>
+```
+
+A `<Controls>` mounted as a sibling **before** a `<MiniMap>` currently fails to
+render (it resolves the flow instance fine, but its DOM is never mounted). This
+is a known framework slot-ordering limitation — the same class the dynamic-slot
+mount path hits when an earlier reactive sibling shifts the element-ref walk.
+Ordering MiniMap first sidesteps it. (`<Background>`, `<Panel>`, `<NodeResizer>`,
+and `<NodeToolbar>` are unaffected and can sit in any position.)
 
 ### `<Handle>`
 

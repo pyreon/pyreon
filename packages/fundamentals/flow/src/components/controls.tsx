@@ -74,9 +74,18 @@ const LockIcon = () => (
  * Zoom and viewport controls for the flow canvas.
  * Shows zoom in, zoom out, fit view, and optional lock button.
  *
+ * @remarks
+ * Place `<Controls>` AFTER `<MiniMap>` in the `<Flow>` children. A
+ * `<Controls>` mounted as a sibling *before* a `<MiniMap>` currently
+ * fails to render (it resolves the flow instance fine, but its DOM is
+ * never mounted) — a known framework slot-ordering limitation where an
+ * earlier reactive sibling shifts the dynamic-slot element-ref walk.
+ * See `.claude/rules/anti-patterns.md` → "Flow overlay child order".
+ *
  * @example
  * ```tsx
  * <Flow instance={flow}>
+ *   <MiniMap />
  *   <Controls />
  * </Flow>
  * ```

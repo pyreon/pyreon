@@ -6,10 +6,17 @@ import { FlowContext } from './flow-context'
  * Miniature overview of the flow diagram showing all nodes
  * and the current viewport position. Click to navigate.
  *
+ * @remarks
+ * When using both `<MiniMap>` and `<Controls>`, place `<MiniMap>`
+ * FIRST — a `<Controls>` mounted before a sibling `<MiniMap>` fails to
+ * render (a known framework slot-ordering limitation). See `<Controls>`
+ * and `.claude/rules/anti-patterns.md` → "Flow overlay child order".
+ *
  * @example
  * ```tsx
  * <Flow instance={flow}>
  *   <MiniMap nodeColor={(n) => n.type === 'error' ? 'red' : '#ddd'} />
+ *   <Controls />
  * </Flow>
  * ```
  */

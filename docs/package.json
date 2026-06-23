@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@pyreon/core": "workspace:*",
+    "@pyreon/flow": "workspace:*",
     "@pyreon/head": "workspace:*",
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/router": "workspace:*",

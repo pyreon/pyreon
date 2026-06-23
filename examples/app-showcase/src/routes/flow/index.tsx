@@ -54,7 +54,9 @@ export default function FlowRoute() {
         <CanvasFrame>
           <Flow instance={flow.instance} nodeTypes={{ workflow: WorkflowNode }}>
             <Background variant="dots" gap={20} size={1} color="#e2e8f0" />
-            <Controls position="bottom-left" />
+            {/* MiniMap is placed before Controls deliberately — see the flow
+                "overlay child order" note: a <Controls> mounted before a
+                <MiniMap> as sibling <Flow> children currently fails to render. */}
             <MiniMap
               width={180}
               height={120}
@@ -75,6 +77,7 @@ export default function FlowRoute() {
                 }
               }}
             />
+            <Controls position="bottom-left" />
             <Panel position="top-right" style="font-size: 11px; color: #64748b; padding: 6px 10px; background: rgba(255,255,255,0.85); border-radius: 6px; border: 1px solid #e2e8f0">
               {() => `zoom ${(flow.instance.zoom() * 100).toFixed(0)}%`}
             </Panel>
