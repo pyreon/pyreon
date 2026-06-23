@@ -88,7 +88,7 @@ describe('createMachine', () => {
             idle: {},
           },
         }),
-      ).toThrow('[@pyreon/machine] Initial state')
+      ).toThrow('[Pyreon] machine: initial state')
     })
   })
 

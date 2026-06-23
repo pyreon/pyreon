@@ -10,6 +10,19 @@ export type TransitionConfig<TState extends string> =
  */
 export interface StateConfig<TState extends string, TEvent extends string> {
   on?: Partial<Record<TEvent, TransitionConfig<TState>>>
+  /**
+   * Eventless ("always") transitions — evaluated immediately on entering this
+   * state (and for the initial state at creation). The first whose guard passes
+   * (or the first unguarded one) fires synchronously, then the new state's
+   * `always` is re-evaluated. Guards receive no payload — read external signals.
+   * Use for transient/condition states (e.g. branch on a computed value).
+   */
+  always?: TransitionConfig<TState> | TransitionConfig<TState>[]
+  /**
+   * Marks a terminal state. `machine.isFinal()` reads true and
+   * `machine.onDone(cb)` listeners fire when this state is entered.
+   */
+  final?: boolean
 }
 
 /**
@@ -55,20 +68,34 @@ export interface Machine<TState extends string, TEvent extends string> {
   /** Check if the machine is in one of the given states — reactive */
   matches: (...states: TState[]) => boolean
 
-  /** Check if an event would trigger a valid transition from current state */
-  can: (event: TEvent) => boolean
+  /**
+   * Check if an event would trigger a valid transition from the current state.
+   * Pass `payload` to evaluate a guarded transition precisely (predicts
+   * `send` exactly); without a payload, a guarded transition reports `true`
+   * if the event exists (the guard may still reject at send time).
+   */
+  can: (event: TEvent, payload?: unknown) => boolean
 
   /** Get all valid events from the current state — reactive */
   nextEvents: () => TEvent[]
 
-  /** Reset to initial state */
+  /** Reactive — true when the current state is marked `final` */
+  isFinal: () => boolean
+
+  /** Reset to initial state (re-runs initial `always` transitions) */
   reset: () => void
 
   /** Register a callback for when the machine enters a specific state */
   onEnter: (state: TState, callback: EnterCallback<TEvent>) => () => void
 
+  /** Register a callback for when the machine leaves a specific state (fires before the new state's onEnter) */
+  onExit: (state: TState, callback: EnterCallback<TEvent>) => () => void
+
   /** Register a callback for any state transition */
   onTransition: (callback: TransitionCallback<TState, TEvent>) => () => void
+
+  /** Register a callback for when the machine enters any `final` state */
+  onDone: (callback: EnterCallback<TEvent>) => () => void
 
   /** Remove all listeners and clean up */
   dispose: () => void
@@ -79,9 +106,16 @@ export interface Machine<TState extends string, TEvent extends string> {
 /** Extract state names from a machine config */
 export type InferStates<T> = T extends { states: Record<infer S, unknown> } ? S & string : never
 
-/** Extract event names from a machine config */
-export type InferEvents<T> = T extends {
-  states: Record<string, { on?: Partial<Record<infer E, unknown>> }>
-}
-  ? E & string
+/**
+ * Extract event names from a machine config — the union of every state's `on`
+ * keys. Mapped-type form (vs a single `Record<…infer E…>`) so it robustly
+ * unions across heterogeneous state shapes: states with only `always` / `final`
+ * and no `on` contribute `never` (which drops out of the union) instead of
+ * collapsing the whole inference to `never`.
+ */
+export type InferEvents<T> = T extends { states: infer S }
+  ? {
+      [K in keyof S]: S[K] extends { on: infer O } ? keyof O : never
+    }[keyof S] &
+      string
   : never
