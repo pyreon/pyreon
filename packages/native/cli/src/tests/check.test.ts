@@ -5,12 +5,19 @@
 // dir modes, skip web entries, and (macOS-only) run the `swiftc
 // -typecheck` gate with the runtime-module-miss → skip heuristic.
 
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isSwiftUIAvailable } from '@pyreon/native-compiler'
-import { check, resolveCheckInputs } from '../check'
+import {
+  check,
+  resolveCheckInputs,
+  collectMtimes,
+  mtimesChanged,
+  watchCheck,
+  type CheckResult,
+} from '../check'
 
 let dir: string
 beforeEach(() => {
@@ -131,4 +138,47 @@ describe('check — in-memory native compile-check', () => {
       expect(res.findings.some((f) => f.kind === 'typecheck-skipped')).toBe(true)
     },
   )
+})
+
+describe('watch helpers', () => {
+  it('mtimesChanged: stable → false; add / remove / mtime-move → true', () => {
+    expect(mtimesChanged({ a: 1, b: 2 }, { a: 1, b: 2 })).toBe(false)
+    expect(mtimesChanged({ a: 1 }, { a: 1, b: 2 })).toBe(true) // added
+    expect(mtimesChanged({ a: 1, b: 2 }, { a: 1 })).toBe(true) // removed
+    expect(mtimesChanged({ a: 1 }, { a: 2 })).toBe(true) // mtime moved
+  })
+
+  it('collectMtimes: snapshots existing files, omits missing', () => {
+    const f = write('App.tsx', CLEAN)
+    const snap = collectMtimes([f, join(dir, 'ghost.tsx')])
+    expect(typeof snap[f]).toBe('number')
+    expect(snap[join(dir, 'ghost.tsx')]).toBeUndefined()
+  })
+
+  it('watchCheck (maxTicks 0): runs the initial check exactly once', async () => {
+    write('App.tsx', CLEAN)
+    const results: CheckResult[] = []
+    await watchCheck(
+      { source: dir, targets: ['swift'] },
+      { onResult: (r) => results.push(r), maxTicks: 0 },
+    )
+    expect(results).toHaveLength(1)
+    expect(results[0]!.filesChecked).toBe(1)
+  })
+
+  it('watchCheck: re-checks when a source mtime moves', async () => {
+    const file = write('App.tsx', CLEAN)
+    const results: CheckResult[] = []
+    const p = watchCheck(
+      { source: dir, targets: ['swift'] },
+      { onResult: (r) => results.push(r), intervalMs: 50, maxTicks: 1 },
+    )
+    // Initial snapshot is taken synchronously before the first poll;
+    // bump the mtime during the poll interval so the tick detects it.
+    await new Promise((r) => setTimeout(r, 10))
+    const future = new Date(Date.now() + 10_000)
+    utimesSync(file, future, future)
+    await p
+    expect(results).toHaveLength(2) // initial + post-change re-check
+  })
 })
