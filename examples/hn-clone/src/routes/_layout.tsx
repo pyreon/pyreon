@@ -149,7 +149,7 @@ export function layout() {
 
   return (
     <I18nProvider instance={i18n}>
-     <PermissionsProvider instance={can}>
+     <PermissionsProvider value={can}>
       <QueryClientProvider client={queryClient}>
         <SkipToContent />
         <OfflineBanner />

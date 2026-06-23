@@ -12,16 +12,16 @@ const PermissionsContext = createContext<Permissions | null>(null)
  * ```tsx
  * const can = createPermissions({ ... })
  *
- * <PermissionsProvider instance={can}>
+ * <PermissionsProvider value={can}>
  *   <App />
  * </PermissionsProvider>
  * ```
  */
 export function PermissionsProvider(props: {
-  instance: Permissions
+  value: Permissions
   children?: VNodeChild
 }): VNodeChild {
-  provide(PermissionsContext, props.instance)
+  provide(PermissionsContext, props.value)
 
   return props.children ?? null
 }
@@ -44,7 +44,7 @@ export function usePermissions(): Permissions {
   const instance = useContext(PermissionsContext)
   if (!instance) {
     throw new Error(
-      '[@pyreon/permissions] usePermissions() must be used within <PermissionsProvider>.',
+      '[Pyreon] usePermissions() must be used within <PermissionsProvider>.',
     )
   }
   return instance

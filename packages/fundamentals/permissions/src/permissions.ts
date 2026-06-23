@@ -148,9 +148,9 @@ export function createPermissions(initial?: PermissionMap): Permissions {
     })
   }
 
-  can.assert = (key: string, context?: unknown): void => {
+  can.assert = (key: string, context?: unknown, message?: string): void => {
     if (!can(key, context)) {
-      throw new Error(`[Pyreon] permission denied: '${key}'`)
+      throw new Error(message ? `[Pyreon] ${message}` : `[Pyreon] permission denied: '${key}'`)
     }
   }
 

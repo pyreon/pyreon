@@ -115,15 +115,17 @@ export interface Permissions {
   /**
    * Throw if a permission is NOT granted — for loaders, route guards, and
    * server actions where a denial should halt execution. Throws a
-   * `[Pyreon]`-prefixed error; otherwise returns void.
+   * `[Pyreon]`-prefixed error (a custom `message`, or `permission denied:
+   * '<key>'` by default); otherwise returns void.
    *
    * @example
    * ```tsx
-   * can.assert('posts.delete', post) // throws if denied
+   * can.assert('posts.delete', post) // "[Pyreon] permission denied: 'posts.delete'"
+   * can.assert('billing.export', undefined, 'Upgrade to export') // custom message
    * await deletePost(post)
    * ```
    */
-  assert: (key: string, context?: unknown) => void
+  assert: (key: string, context?: unknown, message?: string) => void
 
   /**
    * All currently granted permission keys (static true + predicates that exist).

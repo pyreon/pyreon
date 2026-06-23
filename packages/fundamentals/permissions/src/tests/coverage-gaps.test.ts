@@ -19,7 +19,7 @@ describe('PermissionsProvider — direct invocation', () => {
     const can = createPermissions({ 'posts.read': true, 'posts.update': false })
 
     // Pushes `can` onto the context stack + returns the children value.
-    PermissionsProvider({ instance: can })
+    PermissionsProvider({ value: can })
 
     const resolved = usePermissions()
     expect(resolved).toBe(can)
@@ -31,7 +31,7 @@ describe('PermissionsProvider — direct invocation', () => {
     const can = createPermissions({ feature: true })
     const child = 'rendered-child'
 
-    const out = PermissionsProvider({ instance: can, children: child })
+    const out = PermissionsProvider({ value: can, children: child })
 
     expect(out).toBe(child)
   })
@@ -40,7 +40,7 @@ describe('PermissionsProvider — direct invocation', () => {
     const can = createPermissions({ feature: true })
 
     // `children` is undefined → nullish-coalesces to null.
-    const out = PermissionsProvider({ instance: can })
+    const out = PermissionsProvider({ value: can })
 
     expect(out).toBeNull()
   })

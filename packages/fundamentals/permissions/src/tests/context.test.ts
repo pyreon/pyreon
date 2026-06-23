@@ -4,7 +4,7 @@ import { createPermissions, usePermissions } from '../index'
 describe('usePermissions', () => {
   it('throws when called outside PermissionsProvider', () => {
     expect(() => usePermissions()).toThrow(
-      '[@pyreon/permissions] usePermissions() must be used within <PermissionsProvider>.',
+      '[Pyreon] usePermissions() must be used within <PermissionsProvider>.',
     )
   })
 })
