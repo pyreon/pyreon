@@ -1,8 +1,9 @@
 import type { VNodeChild } from '@pyreon/core'
 import { For, nativeCompat, Portal } from '@pyreon/core'
 import { computed, effect, onCleanup } from '@pyreon/reactivity'
+import { setupDelegation } from '@pyreon/runtime-dom'
 import { toastStyles } from './styles'
-import { _pauseAll, _resumeAll, _toasts, toast } from './toast'
+import { _pauseAll, _resumeAll, _toastMap, _toasts, toast } from './toast'
 import type { Toast, ToasterProps, ToastPosition } from './types'
 
 // ─── Style injection ─────────────────────────────────────────────────────────
@@ -69,6 +70,24 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
   injectStyles()
 
+  // Portal HOST + event delegation.
+  //
+  // Toasts render OUTSIDE the app's mount container (a Portal into the body
+  // region). Pyreon delegates common bubbling events (`click`, `submit`,
+  // `focusin`/`focusout`, …) through a SINGLE listener on the mount container
+  // — but a click on a Portal'd dismiss/action button bubbles `button → body`,
+  // never through that container, so the delegated handler never fires (the
+  // dismiss `×`, the action button, and pause-on-FOCUS were all silently
+  // dead). We mount into a per-Toaster host element and install delegation on
+  // IT: clicks inside the host are caught, while the app's own delegated
+  // handlers (outside the host) are NOT — so there's no double-firing that a
+  // listener on `document.body` (an ancestor of the mount root) would cause.
+  // Mirrors @pyreon/elements' per-instance Portal wrapper.
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  setupDelegation(host)
+  onCleanup(() => host.remove())
+
   // Promote "entering" toasts to "visible" on next frame.
   // Only runs when there are actually entering toasts (early return guard).
   // Reason for the suppression below: rAF is scheduling reactive state
@@ -96,13 +115,17 @@ export function Toaster(props?: ToasterProps): VNodeChild {
     onCleanup(() => cancelAnimationFrame(raf))
   })
 
-  // Computed visible toasts — only the most recent `max` items
-  const visibleToasts = computed(() => _toasts().slice(-max))
+  // The IDs of the most-recent `max` toasts. The `<For>` keys on this — it is
+  // STRUCTURE only (which rows exist + their order). Each row reads its own
+  // live fields (message/type/state) via `_toastMap().get(id)`; see ToastItem
+  // and the `_toastMap` docstring for why the row can't read the snapshot the
+  // For callback receives.
+  const visibleIds = computed(() => _toasts().slice(-max).map((t) => t.id))
 
   const containerStyle = getContainerStyle(position, gap, offset)
 
   return (
-    <Portal target={document.body}>
+    <Portal target={host}>
       {/* A labeled `aria-live` region, not a clickable control — the live
           region IS the accessibility mechanism (toasts are announced +
           individually dismissable). Auto-dismiss pauses on hover (mouse) AND
@@ -121,8 +144,8 @@ export function Toaster(props?: ToasterProps): VNodeChild {
         onFocusIn={_pauseAll}
         onFocusOut={_resumeAll}
       >
-        <For each={visibleToasts} by={(t: Toast) => t.id}>
-          {(t: Toast) => <ToastItem toast={t} />}
+        <For each={visibleIds} by={(id: string) => id}>
+          {(id: string) => <ToastItem id={id} />}
         </For>
       </section>
     </Portal>
@@ -131,35 +154,60 @@ export function Toaster(props?: ToasterProps): VNodeChild {
 
 // ─── Toast item ─────────────────────────────────────────────────────────────
 
-function ToastItem(props: { toast: Toast }): VNodeChild {
-  const t = props.toast
-  const stateClass =
-    t.state === 'entering'
-      ? ' pyreon-toast--entering'
-      : t.state === 'exiting'
-        ? ' pyreon-toast--exiting'
-        : ''
+function ToastItem(props: { id: string }): VNodeChild {
+  const id = props.id
+
+  // `action` / `dismissible` are IMMUTABLE per toast — `toast.update` only
+  // touches message/type/duration. Read them ONCE (the `<For>` child callback
+  // runs untracked, so this snapshot read leaks no subscription) so the
+  // action / close buttons mount exactly once instead of re-mounting on every
+  // unrelated store change.
+  const initial = _toastMap().get(id)
+  const action = initial?.action
+  const dismissible = initial?.dismissible ?? true
+
+  // `message` / `type` / `state` DO change (update, promise transition,
+  // entering→visible). Read them LIVE via the map inside reactive thunks so a
+  // single update patches only this row's text node / className in place — no
+  // component re-render, no row remount. See the `_toastMap` docstring.
+  const live = (): Toast | undefined => _toastMap().get(id)
 
   return (
     <div
-      class={`pyreon-toast pyreon-toast--${t.type}${stateClass}`}
+      class={() => {
+        const t = live()
+        const stateClass =
+          t?.state === 'entering'
+            ? ' pyreon-toast--entering'
+            : t?.state === 'exiting'
+              ? ' pyreon-toast--exiting'
+              : ''
+        return `pyreon-toast pyreon-toast--${t?.type ?? 'info'}${stateClass}`
+      }}
       role="alert"
       aria-atomic="true"
-      data-toast-id={t.id}
+      data-toast-id={id}
     >
       <div class="pyreon-toast__message">
-        {typeof t.message === 'string' ? t.message : t.message}
+        {() => {
+          // `message` is `string | VNodeChild` — VNodeChild includes an
+          // accessor arm, which a reactive child callback may not RETURN
+          // (it must yield an atom). Resolve a function message here so the
+          // type stays honest and a `() => …` message still renders.
+          const m = live()?.message
+          return typeof m === 'function' ? m() : (m ?? '')
+        }}
       </div>
-      {t.action && (
-        <button type="button" class="pyreon-toast__action" onClick={t.action.onClick}>
-          {t.action.label}
+      {action && (
+        <button type="button" class="pyreon-toast__action" onClick={action.onClick}>
+          {action.label}
         </button>
       )}
-      {t.dismissible && (
+      {dismissible && (
         <button
           type="button"
           class="pyreon-toast__dismiss"
-          onClick={() => toast.dismiss(t.id)}
+          onClick={() => toast.dismiss(id)}
           aria-label="Dismiss"
         >
           ×
