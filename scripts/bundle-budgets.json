@@ -1,6 +1,7 @@
 {
   "_doc": "Per-package main-entry budgets in BYTES (minified + gzipped). Externalizes @pyreon/*, node:*, and every bare-module import auto-collected from each package's lib/ tree — this is the unique code each package adds to a consumer bundle. Set at 25% headroom over current size at PR-time. When a package legitimately needs to grow past its budget, bump the value in the same PR for explicit review.",
   "_units": "bytes (gzipped)",
+  "@pyreon/a11y": 1024,
   "@pyreon/attrs": 1280,
   "@pyreon/charts": 256,
   "@pyreon/cli": 13312,
