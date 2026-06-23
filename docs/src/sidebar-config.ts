@@ -97,6 +97,8 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Event listeners', slug: 'patterns/event-listeners' },
       { text: 'Imperative toasts', slug: 'patterns/imperative-toasts' },
       { text: 'Multi-platform shared code', slug: 'patterns/multiplatform' },
+      // accessibility
+      { text: 'Accessibility', slug: 'accessibility' },
     ],
   },
   {

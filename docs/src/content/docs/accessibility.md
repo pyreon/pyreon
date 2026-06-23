@@ -1,0 +1,162 @@
+---
+title: Accessibility
+---
+
+# Accessibility
+
+Pyreon is built so that **accessible UI is the default, not an afterthought**. Most of the work — label/error wiring, focus management, keyboard navigation, correct ARIA serialization — happens automatically when you use the framework's primitives. Where it can't be automatic, it's a one-line opt-in.
+
+This page is the map: what you get for free, and how to reach for the rest.
+
+## What you get out of the box
+
+| Concern | How it's covered | Where |
+| --- | --- | --- |
+| Form labels / errors / `aria-describedby` | Auto-wired by `useField` / `<Form>` | `@pyreon/form` |
+| Modal focus trap + restore | Automatic for modal overlays | `@pyreon/elements`, `@pyreon/ui-primitives` |
+| Keyboard navigation | Built into every interactive headless primitive | `@pyreon/ui-primitives` |
+| Reduced motion | Animations auto-respect `prefers-reduced-motion` | `@pyreon/kinetic` |
+| Correct ARIA serialization | Boolean `aria-*` render as `"true"`/`"false"`, not presence-only | `@pyreon/runtime-dom`, `@pyreon/runtime-server` |
+| Typed `role` | `AriaRole` autocomplete on every element | `@pyreon/core` |
+| Live-region announcements | `announce()` — zero setup | `@pyreon/a11y` |
+| SPA route announcements | `<RouteAnnouncer>` — one line | `@pyreon/a11y/router` |
+| Multi-platform a11y | `accessibilityLabel` / `accessibilityHidden` → web + iOS + Android | `@pyreon/primitives` |
+
+## Forms — automatic label, error, and description wiring
+
+`@pyreon/form`'s `useField` / `<Form>` generate the ARIA relationships every accessible form needs — you don't hand-wire `id` / `for` / `aria-describedby` / `aria-invalid`:
+
+```tsx
+import { Form, useField } from '@pyreon/form'
+
+function EmailField() {
+  // register() returns a stable id + reactive aria-invalid / aria-describedby
+  const { inputProps, labelProps, errorProps, showError } = useField('email')
+  return (
+    <div>
+      <label {...labelProps}>Email</label>
+      <input {...inputProps} />
+      {() => showError() && <span {...errorProps()}>Enter a valid email</span>}
+    </div>
+  )
+}
+```
+
+The label is associated with the input, the error is linked via `aria-describedby`, and `aria-invalid` flips reactively — all from `useField('email')`.
+
+## Screen-reader announcements
+
+### `announce()` — status & errors, zero setup
+
+`announce(message)` speaks to screen-reader users through an `aria-live` region that's created lazily on first call. No provider, no component to mount, SSR-safe (a no-op on the server):
+
+```ts
+import { announce } from '@pyreon/a11y'
+
+announce('Settings saved')                          // polite (default)
+announce('Connection lost', { politeness: 'assertive' }) // interrupts
+announce('Copied to clipboard', { clearAfter: 1000 })
+```
+
+Use it for things sighted users perceive visually but assistive-tech users need spoken: a saved toast, a validation error, a "5 results" count.
+
+### `<RouteAnnouncer>` — single-page navigations
+
+Client-side navigations change the URL and DOM but fire no page-load event, so screen readers never announce the new page. Drop one `<RouteAnnouncer>` near your router root to close that gap:
+
+```tsx
+import { RouteAnnouncer } from '@pyreon/a11y/router'
+
+<RouterProvider router={router}>
+  <RouteAnnouncer />
+  <RouterView />
+</RouterProvider>
+```
+
+It announces each route's `meta.title` (or `"Navigated to <path>"`) to a polite live region. Customise with `format`, or use the `useRouteAnnouncer()` hook form. The router dependency lives only in the `@pyreon/a11y/router` subpath, so importing just `announce` / `VisuallyHidden` from the main entry stays router-free.
+
+## Visually-hidden content & stable IDs
+
+```tsx
+import { VisuallyHidden, createA11yId } from '@pyreon/a11y'
+
+// Off-screen but in the accessibility tree (unlike display:none):
+<button><SearchIcon /><VisuallyHidden>Search</VisuallyHidden></button>
+
+// Stable, SSR-safe ids for ARIA relationships (no hydration mismatch):
+const hintId = createA11yId('hint')
+<input aria-describedby={hintId} />
+<span id={hintId}>Must be at least 8 characters</span>
+```
+
+## Focus management — modals trap & restore automatically
+
+A modal that doesn't trap focus lets keyboard and screen-reader users tab out to the inert background. Pyreon's modal surfaces handle the full WAI-ARIA dialog focus lifecycle for you:
+
+- **`<Overlay type="modal">`** (`@pyreon/elements`) and the headless **`ModalBase`** (`@pyreon/ui-primitives`) move focus **into** the dialog on open, **trap** Tab / Shift+Tab within it while open, and **restore** focus to the opener on close.
+- The canonical multi-platform **`<Modal>`** (`@pyreon/primitives`) renders a native `<dialog>` on web, getting the trap + inert background from the platform.
+
+No wiring required — open a modal and focus is managed correctly.
+
+## Keyboard navigation — built into the primitives
+
+Every interactive headless primitive in `@pyreon/ui-primitives` ships full keyboard support, so a keyboard user can operate it the moment you render it:
+
+- **Calendar** — Arrow keys move by day / week, Home/End to week edges, PageUp/PageDown by month (Shift = year), with WAI-ARIA grid roving focus.
+- **Color picker** — Arrow keys step the hue / saturation-brightness / alpha sliders, PageUp/Down for large steps, Home/End to min/max.
+- **Tabs**, **Radio group**, **Combobox**, **Tree** — arrow-key navigation between items per their ARIA roles.
+
+Pair the primitive's `getDayProps` / slider props / item props (which already carry `onKeyDown` + roving `tabIndex`) onto your elements and the keyboard model comes with them.
+
+## Multi-platform accessibility
+
+The canonical primitives in `@pyreon/primitives` carry a **platform-neutral** a11y vocabulary — write it once, each target emits its native model:
+
+| Prop | Web | iOS (SwiftUI) | Android (Compose) |
+| --- | --- | --- | --- |
+| `accessibilityLabel="…"` | `aria-label` | `.accessibilityLabel(…)` | `.semantics { contentDescription = … }` |
+| `accessibilityHidden` | `aria-hidden="true"` | `.accessibilityHidden(true)` | `.clearAndSetSemantics { }` |
+
+```tsx
+import { Button } from '@pyreon/primitives'
+
+<Button onPress={addToCart} accessibilityLabel="Add to cart">
+  <CartIcon />
+</Button>
+```
+
+Prefer these over raw `aria-*` (which is web-only) so the same component is accessible on every target.
+
+## Reduced motion
+
+`@pyreon/kinetic` animations (`<Transition>`, `<Collapse>`, the `kinetic()` wrapper) automatically respect the user's `prefers-reduced-motion` setting — when reduced motion is requested, transitions resolve instantly instead of animating. No configuration needed.
+
+## Correct ARIA by construction
+
+- **Boolean ARIA attributes serialize correctly.** `aria-checked={true}` renders as `aria-checked="true"`, not the presence-only `aria-checked=""` that assistive tech ignores — on both the client renderer and SSR.
+- **`role` is typed.** The `role` attribute is `AriaRole`, so you get autocomplete for the ~70 valid roles and a type error on a typo, while still accepting any string for forward-compatibility.
+
+## Linting for the rest
+
+Some accessibility checks are project conventions rather than framework behaviour — `@pyreon/lint` ships them as **opt-in** best-practice rules (off by default, no noise):
+
+- `pyreon/require-img-alt` — every `<img>` needs `alt`
+- `pyreon/img-requires-dimensions` — intrinsic `width`/`height` to avoid layout shift
+- `pyreon/no-positive-tabindex`, `pyreon/no-autofocus`, `pyreon/no-redundant-role`, `pyreon/anchor-is-valid`, `pyreon/heading-order`, `pyreon/color-contrast`, …
+
+Enable the whole set with the `best-practices` preset, or per-rule in `.pyreonlintrc.json`:
+
+```json
+{
+  "rules": {
+    "pyreon/require-img-alt": "error",
+    "pyreon/no-positive-tabindex": "error"
+  }
+}
+```
+
+Several are auto-fixable (`pyreon-lint --fix`), and each carries a prescriptive message so AI assistants and humans alike get the fix, not just the flag.
+
+## Summary
+
+Reach for the framework primitives — `@pyreon/form`, `@pyreon/elements` / `@pyreon/ui-primitives`, `@pyreon/primitives`, `@pyreon/kinetic` — and accessibility comes with them. Add `announce()` and a `<RouteAnnouncer>` for the dynamic bits, turn on the opt-in lint rules to guard the conventions, and you have an accessible app by default.
