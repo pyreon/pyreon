@@ -111,6 +111,114 @@ export function validateSwift(source: string): ValidationResult {
 }
 
 /**
+ * Detect whether the SwiftUI SDK is resolvable for `swiftc -typecheck`.
+ * SwiftUI is an Apple framework — present on macOS, ABSENT on Linux even
+ * when `swiftc` itself is installed (the open-source Linux toolchain has
+ * Foundation but no SwiftUI). So the type-check gate can only run on
+ * macOS (local dev + macOS CI runners), and must skip — not fail — on a
+ * Linux box. Probed by type-checking a trivial `import SwiftUI` file.
+ * Cached for the lifetime of the process.
+ */
+let _swiftUIAvailable: boolean | undefined
+export function isSwiftUIAvailable(): boolean {
+  if (_swiftUIAvailable !== undefined) return _swiftUIAvailable
+  if (!isSwiftcAvailable()) {
+    _swiftUIAvailable = false
+    return false
+  }
+  const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-swiftui-probe-'))
+  const filename = join(tempDir, 'probe.swift')
+  writeFileSync(filename, 'import SwiftUI\nlet _pyreonSwiftUIProbe = 0\n', 'utf8')
+  try {
+    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore' })
+    _swiftUIAvailable = true
+  } catch {
+    _swiftUIAvailable = false
+  } finally {
+    try {
+      rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // best-effort
+    }
+  }
+  return _swiftUIAvailable
+}
+
+/** For testing: reset the cached SwiftUI-availability result. */
+export function _resetSwiftUICache(): void {
+  _swiftUIAvailable = undefined
+}
+
+/**
+ * Validate Swift source via `swiftc -typecheck` against the REAL SwiftUI
+ * SDK — full semantic analysis, no stubs, no masking. This is the
+ * type-level gate that `validateSwift` (parse-only) deliberately can't
+ * provide: it catches the silent type-corruption class (a String where
+ * an Int is expected, a `var x: Int { <Double body> }` mismatch, a
+ * method call that doesn't exist on the inferred type) that produces
+ * syntactically-valid-but-type-invalid Swift.
+ *
+ * `import SwiftUI` + `import Foundation` are prepended when absent (the
+ * per-component emit references `View` / `@State` / `VStack` / `Codable`
+ * without emitting the imports — the app-assembly path adds them).
+ *
+ * SCOPE: this validates emit that references ONLY SwiftUI + stdlib +
+ * Foundation symbols. Emit that references the `PyreonRuntime` package
+ * (storage / fetch / store / router components) needs that module on the
+ * search path — a follow-up that builds the runtime module and passes
+ * `-I`. For now, callers pass SwiftUI-only emit (the dominant shape).
+ *
+ * Skips (does NOT fail) when SwiftUI is unavailable (Linux / no macOS
+ * SDK), honoring PYREON_REQUIRE_NATIVE_VALIDATE for the swiftc-absent
+ * case only — a Linux CI box legitimately can't run this gate.
+ */
+export function validateSwiftTypecheck(source: string): ValidationResult {
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
+    return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
+  }
+  if (!isSwiftcAvailable()) {
+    if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {
+      return {
+        ok: false,
+        error: 'swiftc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
+      }
+    }
+    return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
+  }
+  if (!isSwiftUIAvailable()) {
+    // SwiftUI SDK absent (non-macOS). The cheap ubuntu PR gate falls
+    // here — it can't type-check against an Apple framework. NOT an
+    // error: the macOS device workflow + local macOS dev run this gate.
+    return { ok: true, skipped: true, skipReason: 'SwiftUI SDK not available (non-macOS)' }
+  }
+
+  const preamble = source.includes('import SwiftUI') ? '' : 'import SwiftUI\nimport Foundation\n\n'
+  const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-typecheck-'))
+  const filename = join(tempDir, 'input.swift')
+  writeFileSync(filename, preamble + source, 'utf8')
+
+  try {
+    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'pipe', encoding: 'utf8' })
+    return { ok: true }
+  } catch (err) {
+    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
+    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
+    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
+    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
+    return {
+      ok: false,
+      error: output || e.message || 'swiftc -typecheck failed with no output',
+    }
+  } finally {
+    try {
+      rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // Cleanup best-effort.
+    }
+  }
+}
+
+/**
  * Detect whether `kotlinc` is on PATH. Cheap probe via `kotlinc -version`.
  * Cached for the lifetime of the process.
  */
