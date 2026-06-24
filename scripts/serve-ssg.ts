@@ -50,7 +50,7 @@
  *   bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199
  */
 
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 // Minimal ambient declaration for `Bun.serve` — the script is a Bun
@@ -183,6 +183,32 @@ export function createServeHandler(
     // `bun scripts/serve-ssg.ts` reflect production deployment shape.
     const hasExt = /\.[a-z0-9]+$/i.test(pathname)
     if (!hasExt) {
+      // Prefer the FILE-form sibling (`/resume` → `dist/resume.html`) when it
+      // exists, served directly with NO redirect — this models GitHub Pages /
+      // S3 / nginx `try_files`, the hosts that 301 slash-less URLs under a
+      // directory-only build. It's what `ssg.format: 'file' | 'both'` emits.
+      // Absent (the default 'directory' build) → fall through to the
+      // directory rewrite below, unchanged.
+      //
+      // ONLY for the slash-less form: an explicit trailing slash (`/resume/`)
+      // asks for the directory index, so it must NOT match the `.html`
+      // sibling — that keeps trailing-slash links / sitemap URLs serving the
+      // directory form under `'both'`.
+      if (pathname !== '/' && !pathname.endsWith('/')) {
+        const resolvedFile = resolve(join(root, `${pathname}.html`))
+        if (resolvedFile.startsWith(root)) {
+          // Race-free read (no check-then-use TOCTOU): readFileSync throws
+          // ENOENT when the sibling is absent / EISDIR on a directory —
+          // both caught → fall through to the directory rewrite below.
+          try {
+            return new Response(readFileSync(resolvedFile), {
+              headers: { 'content-type': getMime(resolvedFile) },
+            })
+          } catch {
+            // no `.html` sibling here — fall through to directory rewrite
+          }
+        }
+      }
       if (!pathname.endsWith('/')) pathname = `${pathname}/`
       pathname = `${pathname}index.html`
     }
@@ -194,10 +220,15 @@ export function createServeHandler(
       return new Response('Forbidden', { status: 403 })
     }
 
-    if (existsSync(resolved) && statSync(resolved).isFile()) {
+    // Race-free read (no check-then-use TOCTOU): readFileSync throws
+    // ENOENT/EISDIR for an absent file / directory — caught → fall through
+    // to the 404 path below.
+    try {
       return new Response(readFileSync(resolved), {
         headers: { 'content-type': getMime(resolved) },
       })
+    } catch {
+      // not a readable file — fall through to 404
     }
 
     // 404 fallback. Static hosts serve `404.html` for unmatched URLs;
