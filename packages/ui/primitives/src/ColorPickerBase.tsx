@@ -54,6 +54,7 @@ export interface ColorPickerState {
     'aria-valuenow': number
     'aria-valuetext': string
     tabIndex: 0
+    onKeyDown: (e: KeyboardEvent) => void
   }
   /**
    * ARIA slider props for the 2-D saturation/brightness area. A single
@@ -68,6 +69,7 @@ export interface ColorPickerState {
     'aria-valuenow': number
     'aria-valuetext': string
     tabIndex: 0
+    onKeyDown: (e: KeyboardEvent) => void
   }
   /**
    * ARIA slider props for the ALPHA / opacity control (0–100%). Only
@@ -81,6 +83,7 @@ export interface ColorPickerState {
     'aria-valuenow': number
     'aria-valuetext': string
     tabIndex: 0
+    onKeyDown: (e: KeyboardEvent) => void
   }
 }
 
@@ -178,6 +181,111 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
     setHex(newHex)
   }
 
+  // ─── Keyboard (ARIA slider model) ──────────────────────────────────
+  //
+  // Standard slider keys: Arrow Up/Right increment, Down/Left decrement (the
+  // 2-D saturation/brightness area maps Left/Right → saturation, Up/Down →
+  // brightness); PageUp/PageDown step by 10×; Home/End jump to min/max. The
+  // value-set goes through updateFromHSB / setAlpha (so hex + RGB stay in sync).
+  const clampN = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+
+  function handleHueKey(e: KeyboardEvent): void {
+    const h = _hue()
+    let next: number
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        next = clampN(h + 1, 0, 360)
+        break
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        next = clampN(h - 1, 0, 360)
+        break
+      case 'PageUp':
+        next = clampN(h + 10, 0, 360)
+        break
+      case 'PageDown':
+        next = clampN(h - 10, 0, 360)
+        break
+      case 'Home':
+        next = 0
+        break
+      case 'End':
+        next = 360
+        break
+      default:
+        return
+    }
+    e.preventDefault()
+    updateFromHSB(next, _saturation(), _brightness())
+  }
+
+  function handleSaturationKey(e: KeyboardEvent): void {
+    let s = _saturation()
+    let b = _brightness()
+    switch (e.key) {
+      case 'ArrowRight':
+        s = clampN(s + 1, 0, 100)
+        break
+      case 'ArrowLeft':
+        s = clampN(s - 1, 0, 100)
+        break
+      case 'ArrowUp':
+        b = clampN(b + 1, 0, 100)
+        break
+      case 'ArrowDown':
+        b = clampN(b - 1, 0, 100)
+        break
+      case 'PageUp':
+        b = clampN(b + 10, 0, 100)
+        break
+      case 'PageDown':
+        b = clampN(b - 10, 0, 100)
+        break
+      case 'Home':
+        s = 0
+        break
+      case 'End':
+        s = 100
+        break
+      default:
+        return
+    }
+    e.preventDefault()
+    updateFromHSB(_hue(), s, b)
+  }
+
+  function handleAlphaKey(e: KeyboardEvent): void {
+    const a = _alpha()
+    let next: number
+    switch (e.key) {
+      case 'ArrowUp':
+      case 'ArrowRight':
+        next = clampN(a + 0.01, 0, 1)
+        break
+      case 'ArrowDown':
+      case 'ArrowLeft':
+        next = clampN(a - 0.01, 0, 1)
+        break
+      case 'PageUp':
+        next = clampN(a + 0.1, 0, 1)
+        break
+      case 'PageDown':
+        next = clampN(a - 0.1, 0, 1)
+        break
+      case 'Home':
+        next = 0
+        break
+      case 'End':
+        next = 1
+        break
+      default:
+        return
+    }
+    e.preventDefault()
+    _alpha.set(next)
+  }
+
   const rgb = computed(() => hexToRgb(hex()))
 
   const state: ColorPickerState = {
@@ -208,6 +316,7 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
         'aria-valuenow': h,
         'aria-valuetext': `${h} degrees`,
         tabIndex: 0 as const,
+        onKeyDown: handleHueKey,
       }
     },
     saturationSliderProps: () => {
@@ -221,6 +330,7 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
         'aria-valuenow': s,
         'aria-valuetext': `Saturation ${s}%, brightness ${b}%`,
         tabIndex: 0 as const,
+        onKeyDown: handleSaturationKey,
       }
     },
     alphaSliderProps: () => {
@@ -233,6 +343,7 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
         'aria-valuenow': a,
         'aria-valuetext': `${a}%`,
         tabIndex: 0 as const,
+        onKeyDown: handleAlphaKey,
       }
     },
   }
