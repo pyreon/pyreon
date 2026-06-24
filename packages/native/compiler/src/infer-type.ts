@@ -317,6 +317,18 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const cmp = ctx.computeds.get(expr.callee.name)
         if (cmp) return cmp
       }
+      // Numeric-cast globals: `parseInt(x)` → Int, `parseFloat(x)` /
+      // `Number(x)` → Double. Without this they degraded to `Any` (the emit
+      // — `(Int(x) ?? 0)` etc. — typechecks, but the computed annotation was
+      // `Any` instead of the precise number type, losing it for downstream
+      // arithmetic / typed positions). `Number` coerces to a float-capable
+      // number, so it maps to the Double (float) shape like parseFloat.
+      if (expr.callee.kind === 'identifier' && expr.args.length >= 1) {
+        if (expr.callee.name === 'parseInt') return { kind: 'number' }
+        if (expr.callee.name === 'parseFloat' || expr.callee.name === 'Number') {
+          return { kind: 'number', float: true }
+        }
+      }
       // Fetch-field read: `quotes.data()` (CALL form — web reads the
       // signal). data → T; isPending → boolean; error → unknown.
       if (

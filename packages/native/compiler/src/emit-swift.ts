@@ -2155,13 +2155,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           return `${e.callee.property}(${args.map((a) => `Double(${a})`).join(', ')})`
         }
       }
-      // `parseInt(s)` / `parseFloat(s)` → Swift `Int(s) ?? 0` /
-      // `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
+      // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
+      // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
       // keeps the result a non-optional Int/Double (NaN has no native
-      // analog). A radix 2nd arg (rare) is ignored.
+      // analog). `Number(x)` coerces to a float-capable number → `Double`.
+      // A radix 2nd arg (rare) is ignored.
       if (
         e.callee.kind === 'identifier' &&
-        (e.callee.name === 'parseInt' || e.callee.name === 'parseFloat') &&
+        (e.callee.name === 'parseInt' ||
+          e.callee.name === 'parseFloat' ||
+          e.callee.name === 'Number') &&
         e.args.length >= 1
       ) {
         const arg = emitSwiftExpr(e.args[0]!, indent)

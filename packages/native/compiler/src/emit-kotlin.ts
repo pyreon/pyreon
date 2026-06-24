@@ -1889,12 +1889,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           return `${callee}(${args})`
         }
       }
-      // `parseInt(s)` / `parseFloat(s)` → Kotlin `(s).toIntOrNull() ?: 0`
-      // / `(s).toDoubleOrNull() ?: 0.0`. JS returns NaN on failure; the
-      // `?:` default keeps a non-null Int/Double. A radix arg is ignored.
+      // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
+      // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
+      // NaN on failure; the `?:` default keeps a non-null Int/Double.
+      // `Number(x)` coerces to a float-capable number → Double. A radix arg
+      // is ignored.
       if (
         e.callee.kind === 'identifier' &&
-        (e.callee.name === 'parseInt' || e.callee.name === 'parseFloat') &&
+        (e.callee.name === 'parseInt' ||
+          e.callee.name === 'parseFloat' ||
+          e.callee.name === 'Number') &&
         e.args.length >= 1
       ) {
         const arg = emitKotlinExpr(e.args[0]!, indent)
