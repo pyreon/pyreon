@@ -383,6 +383,34 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               return { kind: 'number' }
             case 'join':
               return { kind: 'string' }
+            case 'reduce': {
+              // `arr.reduce((acc, x) => body, seed)` → the accumulator type.
+              // Infer the reducer body with `acc` bound to the seed's type
+              // and the element param bound to the array element type;
+              // fall back to the seed's own type. Without this, a computed
+              // over a reduce degraded to `unknown` → `Any` → `String(<Any>)`
+              // fails swiftc (`no exact matches in call to initializer`).
+              const reducer = expr.args[0]
+              const seed = expr.args[1]
+              const seedType: TypeIR =
+                seed !== undefined ? inferType(seed, ctx) : { kind: 'unknown' }
+              if (reducer !== undefined && reducer.kind === 'arrow' && reducer.params.length >= 1) {
+                const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+                scratch.locals.set(reducer.params[0]!, seedType)
+                if (reducer.params.length >= 2) {
+                  scratch.locals.set(reducer.params[1]!, objType.element)
+                }
+                let bodyType: TypeIR = { kind: 'unknown' }
+                if (reducer.stmts !== undefined) {
+                  const ret = findFirstReturnExpr(reducer.stmts, scratch)
+                  if (ret) bodyType = inferType(ret, scratch)
+                } else {
+                  bodyType = inferType(reducer.body, scratch)
+                }
+                if (bodyType.kind !== 'unknown') return bodyType
+              }
+              return seedType
+            }
           }
         }
         if (objType.kind === 'string') {
