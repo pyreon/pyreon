@@ -31,7 +31,7 @@ export default function LiveBreakpointDetection() {
       ...Object.entries(breakpoints).map(([name, _min]) =>
         h('span', {
           style: () => ({ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', background: current() === name ? '#2196f3' : '#e0e0e0', color: current() === name ? 'white' : '#666' }),
-        }, `\${name} ≥\${_min}`),
+        }, `${name} ≥${_min}`),
       ),
     ),
   )

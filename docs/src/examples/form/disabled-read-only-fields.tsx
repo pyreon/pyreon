@@ -30,14 +30,14 @@ export default function DisabledReadOnlyFields() {
       h('input', {
         value: () => name(),
         onInput: (e: any) => name.set(e.target.value),
-        disabled: () => disabled() ? '' : null,
-        readonly: () => readOnly() ? '' : null,
+        disabled: () => disabled(),
+        readonly: () => readOnly(),
       }),
       h('input', {
         value: () => role(),
         onInput: (e: any) => role.set(e.target.value),
-        disabled: () => disabled() ? '' : null,
-        readonly: () => readOnly() ? '' : null,
+        disabled: () => disabled(),
+        readonly: () => readOnly(),
       }),
     ),
     h('div', { class: 'card' },

@@ -38,7 +38,7 @@ export default function StateMachineOnlyValidTransitionsFire() {
         h('button', {
           onClick: () => send(ev),
           disabled: () => allowed().includes(ev) ? null : '',
-          style: { opacity: () => allowed().includes(ev) ? 1 : 0.4 },
+          style: () => ({ opacity: allowed().includes(ev) ? 1 : 0.4 }),
         }, ev),
       ),
     ),

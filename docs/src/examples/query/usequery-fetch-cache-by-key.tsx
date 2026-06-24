@@ -47,11 +47,11 @@ export default function UseQueryFetchCacheByKey() {
       ...[1, 2, 3, 4, 5].map(id =>
         h('button', {
           onClick: () => userId.set(id),
-          style: {
-            fontWeight: () => userId() === id ? '700' : '400',
-            background: () => userId() === id ? 'var(--accent)' : null,
-            color: () => userId() === id ? 'var(--bg)' : null,
-          },
+          style: () => ({
+            fontWeight: userId() === id ? '700' : '400',
+            background: userId() === id ? 'var(--accent)' : null,
+            color: userId() === id ? 'var(--bg)' : null,
+          }),
         }, '#' + id),
       ),
     ),

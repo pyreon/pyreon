@@ -33,14 +33,14 @@ export default function RouterSignalBackedPathMatching() {
       href: '#' + r.path,
       onClick: (e: any) => { e.preventDefault(); route.set(r.path) },
       'aria-current': () => route() === r.path ? 'page' : null,
-      style: {
+      style: () => ({
         padding: '4px 10px',
         borderRadius: '6px',
         textDecoration: 'none',
-        color: () => route() === r.path ? 'var(--accent)' : 'inherit',
-        fontWeight: () => route() === r.path ? '600' : '400',
-        background: () => route() === r.path ? 'var(--surface)' : 'transparent',
-      },
+        color: route() === r.path ? 'var(--accent)' : 'inherit',
+        fontWeight: route() === r.path ? '600' : '400',
+        background: route() === r.path ? 'var(--surface)' : 'transparent',
+      }),
     }, r.label)
 
   return h('div', { class: 'col' },

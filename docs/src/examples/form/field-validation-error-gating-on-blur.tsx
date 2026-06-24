@@ -44,9 +44,9 @@ export default function FieldValidationErrorGatingOnBlur() {
     ),
     h('div', {
       class: 'muted',
-      style: { color: () => showError() ? '#FF1F8C' : null, minHeight: '18px' },
+      style: () => ({ color: showError() ? '#FF1F8C' : null, minHeight: '18px' }),
     }, () => showError() || ' '),
-    h('div', { class: 'badge', style: { display: () => submitted() ? 'inline-flex' : 'none' } },
+    h('div', { class: 'badge', style: () => ({ display: submitted() ? 'inline-flex' : 'none' }) },
       () => submitted(),
     ),
   )
