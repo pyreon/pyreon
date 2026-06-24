@@ -116,6 +116,15 @@ export interface ChartProps<TOption extends EChartsOption = EChartsOption> exten
   style?: string
   /** CSS class for the container div */
   class?: string
+  /**
+   * Accessible name for the chart. A chart renders to canvas/SVG, which is
+   * opaque to screen readers — without a text alternative it's invisible. When
+   * set, the container becomes `role="img"` with this as its `aria-label`
+   * (the WAI pattern for presenting a complex graphic as one labeled image).
+   * Provide a concise description of what the chart conveys, e.g.
+   * "Bar chart: monthly revenue, trending up from January to June".
+   */
+  ariaLabel?: string
   /** Click event handler */
   onClick?: (params: ChartEventParams) => void
   /** Mouseover event handler */

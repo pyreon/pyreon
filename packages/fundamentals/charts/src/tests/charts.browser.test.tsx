@@ -53,6 +53,26 @@ describe('charts in real browser', () => {
     expect(div).not.toBeNull()
     expect(div?.style.width).toBe('400px')
     expect(div?.style.height).toBe('300px')
+    // no ariaLabel → no role (a nameless role="img" would be worse than none)
+    expect(div?.getAttribute('role')).toBeNull()
+    expect(div?.getAttribute('aria-label')).toBeNull()
+    unmount()
+  })
+
+  it('ariaLabel presents the chart as a labeled role="img"', async () => {
+    const options = () => ({ series: [{ type: 'bar' as const, data: [1, 2, 3] }] })
+    const { container, unmount } = mountInBrowser(
+      h(Chart, {
+        options,
+        class: 'a11y-chart',
+        ariaLabel: 'Bar chart: monthly revenue trending up',
+      }),
+    )
+    const div = container.querySelector<HTMLDivElement>('div.a11y-chart')
+    expect(div).not.toBeNull()
+    // canvas/SVG is opaque to AT → the container is a single labeled image
+    expect(div?.getAttribute('role')).toBe('img')
+    expect(div?.getAttribute('aria-label')).toBe('Bar chart: monthly revenue trending up')
     unmount()
   })
 

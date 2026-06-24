@@ -104,6 +104,18 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
         </div>
       )
     }
-    return <div ref={chart.ref} style={props.style} class={props.class} />
+    // A chart is canvas/SVG — opaque to assistive tech. When the consumer
+    // supplies `ariaLabel`, present the container as a single labeled image
+    // (the WAI pattern for a complex graphic); without it, leave the div bare
+    // (a nameless role="img" is worse than none), so there's no regression.
+    return (
+      <div
+        ref={chart.ref}
+        style={props.style}
+        class={props.class}
+        role={props.ariaLabel ? 'img' : undefined}
+        aria-label={props.ariaLabel}
+      />
+    )
   }
 }
