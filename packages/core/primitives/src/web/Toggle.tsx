@@ -9,16 +9,18 @@ import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
  * `<Toggle>` — boolean toggle.
  *
  * Compiles to:
- * - Web (this impl): `<input type="checkbox">` with checked + onChange
+ * - Web (this impl): `<input type="checkbox" role="switch">` (checked + onChange)
  * - iOS (via PMTC): `Toggle("", isOn: $signal)` — two-way binding via $
  * - Android (via PMTC): `Switch(checked = signal, onCheckedChange = ...)`
  *
- * Web renders as a native checkbox (universal a11y, keyboard support,
- * styleable via CSS). The canonical-vocab choice — Toggle vs Checkbox —
- * matches the semantic split native platforms make (Compose `Switch` /
- * SwiftUI `Toggle`). Apps that want toggle-switch chrome on web can
- * style the input via the passthrough `class` / `style` props OR wrap
- * with a custom rendering layer.
+ * Web renders a native checkbox with `role="switch"`: it keeps the
+ * checkbox's universal keyboard + form behavior (Space toggles, `checked`
+ * drives `aria-checked`) while assistive tech announces it as a SWITCH
+ * (on/off) — matching the iOS `Toggle` / Android `Switch` so the same
+ * `<Toggle>` is announced consistently on every target. The W3C Switch
+ * pattern explicitly endorses `input[type=checkbox][role=switch]`. Apps
+ * that want toggle-switch chrome style the input via the passthrough
+ * `class` / `style` props OR wrap with a custom rendering layer.
  */
 export const Toggle = (props: ToggleProps): VNode => {
   // Same reactive-prop-read pattern as Field — defer the `props.value`
@@ -44,6 +46,10 @@ export const Toggle = (props: ToggleProps): VNode => {
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     type: 'checkbox',
+    // W3C Switch pattern: a checkbox with role="switch" is announced as an
+    // on/off switch (the native `checked` maps to aria-checked) — matching
+    // the iOS Toggle / Android Switch this lowers to on native targets.
+    role: 'switch',
     checked: getValue,
     onChange,
     style: mergePassthroughStyle(style, props.style),
