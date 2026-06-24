@@ -35,14 +35,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
 import {
-  analyzeValidate,
   type CollapsibleSite,
-  emitValidator,
   generateContext,
   scanCollapsibleSites,
   transformDeferInline,
   transformJSX,
 } from '@pyreon/compiler'
+import { buildCompiledVerdicts } from './compiled-verdicts'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import type { Plugin, ViteDevServer } from 'vite'
 
@@ -2170,75 +2169,6 @@ function getExt(id: string): string {
   return dot >= 0 ? clean.slice(dot) : ''
 }
 
-/**
- * Build the module-end tail that attaches inlined compiled verdicts to every
- * MODULE-LEVEL, fully-emittable `const X = s.<schema>` in `code`. Each becomes
- *
- *   ;X._attachCompiledVerdict((v) => { try { return (<emit>)(v).length === 0 }
- *                                      catch { return false } });
- *
- * — a monomorphic boolean fast path the runtime `.is()` uses instead of
- * `parse().ok`. The emitted validator is byte-equivalent to the runtime
- * (locked by the compiler's emit-equivalence gate), so this only changes
- * SPEED, never the verdict. The `try/catch → false` wrap matches the runtime
- * contract that `.is()` never throws on malformed input (returns false), so a
- * node the emitter handles less defensively than the runtime can only return
- * `false` for an already-invalid input, never diverge on a valid one.
- *
- * Returns `''` when nothing is emittable (the common case: a file that imports
- * `@pyreon/validate` only for types, the DX helpers, or non-`s` schemas).
- * Skips: anonymous schema expressions (`name === null`), schemas containing an
- * `unsupported` IR node (`!emittable`), and function/block-scoped declarations
- * (`!topLevel` — a module-end attach to those would be a ReferenceError).
- */
-/**
- * A strict JS identifier. `info.name` is the ONE user-derived value that flows
- * UNQUOTED into the emitted `name._attachCompiledVerdict(…)`, so it's the only
- * code-injection surface. `analyzeValidate` only ever returns a TS identifier
- * here (`ts.isIdentifier(n.name)`), which the grammar already restricts to this
- * charset — but validating it EXPLICITLY before interpolation makes the safety
- * provable (closes the static code-injection taint path) rather than implied.
- */
-const JS_IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/
-
-// Internal (NOT exported): `code` is the consuming app's OWN source being
-// compiled, never untrusted runtime input — but an EXPORTED function taking a
-// string and constructing code reads to CodeQL as a library code-injection
-// entry point. Keeping it module-local (driven only by the `transform` hook)
-// reflects the real trust boundary; the test exercises it through the real
-// plugin transform, not a direct call.
-function buildCompiledVerdicts(code: string, id: string): string {
-  let infos: ReturnType<typeof analyzeValidate>
-  try {
-    infos = analyzeValidate(code, id)
-  } catch {
-    return ''
-  }
-  const tails: string[] = []
-  for (const info of infos) {
-    if (!info.name || !info.emittable || !info.topLevel) continue
-    // Guard the one unquoted interpolation site. Belt-and-suspenders vs
-    // `analyzeValidate`'s identifier-only guarantee; a non-identifier is
-    // skipped (falls back to the runtime `.is()`), never emitted.
-    if (!JS_IDENTIFIER_RE.test(info.name)) continue
-    let fn: string
-    try {
-      // `emitValidator` is the trusted, equivalence-gated emitter: every user
-      // string in the IR (check messages, regex sources, literal values) is
-      // emitted via `JSON.stringify` / `new RegExp(JSON.stringify(...))` /
-      // numeric literals, so `fn` is a self-contained, injection-safe function
-      // source by construction — no user value reaches an unquoted position.
-      fn = emitValidator(info.node)
-    } catch {
-      continue // defensive: a node the analyzer marked emittable but emit rejects
-    }
-    tails.push(
-      `;${info.name}._attachCompiledVerdict((__v) => { try { return (${fn})(__v).length === 0 } catch { return false } });`,
-    )
-  }
-  if (tails.length === 0) return ''
-  return `\n/* @pyreon/vite-plugin: compiled validator verdicts (build-only) */\n${tails.join('\n')}\n`
-}
 
 /** Skip Vite-handled asset requests (CSS, images, HMR, etc.) */
 function isAssetRequest(url: string): boolean {
