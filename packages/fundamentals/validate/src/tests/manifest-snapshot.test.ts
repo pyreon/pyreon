@@ -18,8 +18,8 @@ describe('gen-docs — validate snapshot', () => {
     )
   })
 
-  it('has all 24 v1 API entries', () => {
-    expect(manifest.api).toHaveLength(24)
+  it('has all 25 v1 API entries', () => {
+    expect(manifest.api).toHaveLength(25)
     const names = manifest.api.map((a) => a.name)
     expect(names).toEqual([
       'withField',
@@ -46,6 +46,7 @@ describe('gen-docs — validate snapshot', () => {
       'never',
       'custom',
       'instanceof',
+      'nativeEnum',
     ])
   })
 

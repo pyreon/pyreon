@@ -63,7 +63,7 @@ import { bigint, BigIntSchema } from './primitives/bigint'
 import { boolean, BooleanSchema } from './primitives/boolean'
 import { coerce } from './primitives/coerce'
 import { date, DateSchema } from './primitives/date'
-import { enum_, EnumSchema, literal, LiteralSchema } from './primitives/literal'
+import { enum_, EnumSchema, literal, LiteralSchema, nativeEnum, NativeEnumSchema } from './primitives/literal'
 import { number, NumberSchema } from './primitives/number'
 import { string, StringSchema } from './primitives/string'
 import { stringbool, StringBoolSchema } from './primitives/stringbool'
@@ -92,6 +92,7 @@ export const s = {
   date,
   literal,
   enum: enum_,
+  nativeEnum,
   symbol,
   nan,
   null: null_,
@@ -120,7 +121,7 @@ export const s = {
 
 export { coerce, preprocess, stringbool }
 export { type StringBoolOptions } from './primitives/stringbool'
-export { any, array, bigint, boolean, custom, date, discriminatedUnion, enum_, instanceof_, intersection, lazy, literal, map, nan, never, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
+export { any, array, bigint, boolean, custom, date, discriminatedUnion, enum_, instanceof_, intersection, lazy, literal, map, nan, nativeEnum, never, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
 export {
   AnySchema,
   ArraySchema,
@@ -136,6 +137,7 @@ export {
   LiteralSchema,
   MapSchema,
   NanSchema,
+  NativeEnumSchema,
   NeverSchema,
   NullSchema,
   NumberSchema,

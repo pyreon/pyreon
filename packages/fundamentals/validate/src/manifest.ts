@@ -375,6 +375,16 @@ s.custom<MyType>() // accept anything as MyType`,
 s.instanceof(Date, 'need a Date')`,
       seeAlso: ['custom'],
     },
+    {
+      name: 'nativeEnum',
+      kind: 'function',
+      signature: '<E extends Record<string, string | number>>(enumObject: E) => Schema<E[keyof E]>',
+      summary:
+        "Validate a VALUE of a TS native `enum` (or a `const` value-object) — Zod's `z.nativeEnum`. Output type is the enum's value union (`E[keyof E]`). Correctly filters out the numeric reverse-mappings TS auto-generates (a numeric `enum { A }` compiles to `{ A: 0, 0: 'A' }`, so `'A'` is NOT accepted as input — only `0` is). Use `s.enum([...])` instead for a plain literal array.",
+      example: `enum Role { Admin = 'admin', User = 'user' }
+s.nativeEnum(Role).parse('admin') // → { ok: true, value: 'admin' }`,
+      seeAlso: ['enum', 'literal'],
+    },
   ],
   gotchas: [
     {
