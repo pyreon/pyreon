@@ -149,6 +149,25 @@ test.describe('navigation', () => {
     await expect(page.getByTestId('nav-home')).toBeVisible()
     await expect(page.getByTestId('nav-about')).toBeVisible()
   })
+
+  test('RouteAnnouncer announces route changes to a polite live region (a11y)', async ({
+    page,
+  }) => {
+    // The <RouteAnnouncer> in the layout closes the SPA accessibility gap:
+    // client-side navigations change the URL + DOM but fire no page-load event,
+    // so screen readers never say "you are now on <page>". It pushes the
+    // destination route's meta.title to a polite aria-live region.
+    await page.goto('/')
+    await expect(page.locator('[data-testid="home-page"]')).toBeVisible()
+
+    await page.locator('[data-testid="nav-about"]').click()
+    await expect(page.locator('[data-testid="about-page"]')).toBeVisible()
+
+    // The lazily-created polite announcer region carries the new route's title
+    // (about.ts sets `meta.title = 'About — SSR Showcase'`).
+    const region = page.locator('[data-pyreon-announcer="polite"]')
+    await expect(region).toHaveText(/About/, { timeout: 5000 })
+  })
 })
 
 // ─── Route Loaders ────────────────────────────────────────────────────────────

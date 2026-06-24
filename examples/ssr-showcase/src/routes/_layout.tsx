@@ -9,6 +9,7 @@
  */
 
 import type { Props } from '@pyreon/core'
+import { RouteAnnouncer } from '@pyreon/a11y/router'
 import { RouterLink, RouterView } from '@pyreon/router'
 import { PyreonUI } from '@pyreon/ui-core'
 import { initTheme } from '@pyreon/zero'
@@ -23,6 +24,8 @@ export function layout(_props: Props) {
 
   return (
     <PyreonUI theme={theme} mode={() => modeSignal()}>
+      {/* Announce client-side route changes to screen readers (SPA a11y gap). */}
+      <RouteAnnouncer />
       <div id="layout">
         <nav style="display: flex; gap: 16px; padding: 16px; border-bottom: 1px solid #eee; align-items: center; font-family: system-ui, sans-serif;">
           <RouterLink to="/" data-testid="nav-home">Home</RouterLink>
