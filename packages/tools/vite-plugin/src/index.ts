@@ -219,7 +219,7 @@ export interface PyreonPluginOptions {
    *
    * @example pyreon({ jsxAutoImport: true })
    * @example pyreon({ jsxAutoImport: false })
-   * @example pyreon({ jsxAutoImport: { source: '@my/primitives', names: ['Box', 'Row'] } })
+   * @example pyreon({ jsxAutoImport: { mappings: [{ source: '@my/primitives', names: ['Box', 'Row'] }] } })
    */
   jsxAutoImport?: boolean | PyreonJsxAutoImportOptions
 }
@@ -244,10 +244,6 @@ export interface PyreonJsxAutoImportOptions {
    * a used name wins.
    */
   mappings?: Array<{ source: string; names: string[] }>
-  /** @deprecated use `mappings` instead. Kept for back-compat. */
-  source?: string
-  /** @deprecated use `mappings` instead. Kept for back-compat. */
-  names?: string[]
 }
 
 export interface PyreonCollapseOptions {
@@ -565,14 +561,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
     },
     { source: '@pyreon/core', names: ['For', 'Show'] },
   ]
-  // Back-compat: the old single-source shape (`{ source, names }`)
-  // collapses to a single mapping entry. Users on the new shape pass
-  // `mappings: [...]` directly.
-  const jsxAutoImportMappings =
-    jsxAutoImportUserCfg.mappings ??
-    (jsxAutoImportUserCfg.source && jsxAutoImportUserCfg.names
-      ? [{ source: jsxAutoImportUserCfg.source, names: jsxAutoImportUserCfg.names }]
-      : defaultMappings)
+  const jsxAutoImportMappings = jsxAutoImportUserCfg.mappings ?? defaultMappings
   const collapseComponentFilter = collapseUserCfg.components
     ? (n: string) => collapseUserCfg.components!.includes(n)
     : null

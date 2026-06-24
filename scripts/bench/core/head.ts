@@ -8,12 +8,12 @@
  * Tests at 5, 20, and 50 meta tag counts:
  *   - resolve()           — context resolution (Pyreon only, shows cache benefit)
  *   - renderWithHead()    — full SSR pipeline including renderToString
- *   - renderSSRHead()     — head-only serialization (both frameworks)
+ *   - head.render()       — head-only serialization (both frameworks)
  *
  * Usage: bun scripts/bench/core/head.ts
  */
 
-import { createHead, renderSSRHead } from 'unhead/server'
+import { createHead } from 'unhead/server'
 import type { VNode } from '../../../packages/core/core/src/index'
 import { h } from '../../../packages/core/core/src/index'
 import type { HeadEntry, HeadTag } from '../../../packages/core/head/src/context'
@@ -142,10 +142,10 @@ async function benchPyreonSSR(tagCount: number): Promise<BenchResult> {
 
 async function benchUnheadSSR(tagCount: number): Promise<BenchResult> {
   const input = makeUnheadInput(tagCount)
-  return benchAsync(`Unhead renderSSRHead (${tagCount})`, async () => {
+  return benchAsync(`Unhead head.render() (${tagCount})`, async () => {
     const head = createHead({ disableDefaults: true })
     head.push(input)
-    await renderSSRHead(head)
+    await head.render()
   })
 }
 
