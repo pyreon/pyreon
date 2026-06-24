@@ -1,47 +1,76 @@
 ---
-title: 'Validate — Standard Schema DX overlay'
+title: 'Validate — validator + Standard Schema DX'
+description: Pyreon's own validator runtime plus a DX layer (field metadata, reactive parse, i18n errors) that works on any Standard Schema validator.
 ---
 
-# `@pyreon/validate`
+`@pyreon/validate` is **two things in one package**, layered on [Standard Schema](https://standardschema.dev) — the cross-library protocol implemented natively by **Zod 3.24+**, **Valibot 1.0+**, **ArkType 2.0+**, and any future spec-compliant validator:
 
-Pyreon's validator + DX layer on top of [Standard Schema](https://standardschema.dev) — the cross-library protocol implemented natively by **Zod 3.24+**, **Valibot 1.0+**, **ArkType 2.0+**, and any future spec-compliant validator.
+1. **DX helpers on top of _your_ validator** — `withField`, `parseReactive`, `watchValid`, `formatErrors` work on **any** Standard Schema. They add the three things the protocol deliberately leaves out: field metadata, reactive parse, and i18n-aware error formatting. Bring Zod / Valibot / ArkType, or anything spec-compliant.
+2. **Pyreon's own `s` validator** — a chainable + function-composition hybrid (`s.string().email()` _or_ `pipe(string(), email())`), Standard Schema-native, with primitives, composition, object algebra, coercion, and 30+ built-in checks. No third-party dependency required.
 
-**Two ways to use it:**
+The two halves share one package but tree-shake independently: import only the DX helpers and the `s` runtime is dropped entirely (a DX-only import measures ~0.5 KB gz). Use either, or mix them freely.
 
-1. **DX helpers on top of your validator of choice** — `withField`, `parseReactive`, `formatErrors` work on ANY Standard Schema. Pyreon's own validator runtime tree-shakes away entirely when you don't import it (a DX-helpers-only import is ~0.5KB gz, measured).
-2. **Pyreon's own `s` validator** (since v1) — chainable + function-comp hybrid (`s.string().email()` / `pipe(string(), email())`), Standard Schema-native, ~3.5KB gz. No third-party validator needed.
+<PackageBadge name="@pyreon/validate" href="/docs/validate" />
+
+## Installation
+
+:::code-group
+
+```bash [npm]
+npm install @pyreon/validate
+```
+
+```bash [bun]
+bun add @pyreon/validate
+```
+
+```bash [pnpm]
+pnpm add @pyreon/validate
+```
+
+```bash [yarn]
+yarn add @pyreon/validate
+```
+
+:::
+
+If you only want the **DX helpers** on top of an existing validator, add that validator too:
 
 ```bash
-bun add @pyreon/validate
-
-# Option 1 — pair the DX helpers with a validator of choice:
-bun add zod        # or
-bun add valibot    # or
-bun add arktype
-
-# Option 2 — use Pyreon's own validator (no extra dep):
-#   import { s } from '@pyreon/validate'
+bun add zod        # or valibot, or arktype — any Standard Schema validator
 ```
+
+If you want **Pyreon's own `s` validator**, no extra dependency is needed — `import { s } from '@pyreon/validate'`.
+
+:::note Bundle contract
+The package is tree-shakeable in two layers. A **DX-helpers-only** import (`withField` / `parseReactive` / `formatErrors`) is ~**0.5 KB gz** — Pyreon's `s` runtime is never pulled in. The **`s` validator runtime** is included only when you import `s` (or its standalone primitives like `string`, `object`), adding the runtime for a combined ~**3.9 KB gz**. So pairing the helpers with Zod / Valibot / ArkType stays as light as before.
+:::
 
 ## Why this exists
 
-Standard Schema is parse-only — the protocol authors deliberately excluded a metadata channel. Pyreon's `@pyreon/form` and `@pyreon/feature` need:
+Standard Schema is **parse-only** — its authors deliberately omitted a metadata channel and an i18n channel. But `@pyreon/form` and `@pyreon/feature` need:
 
 1. **Field metadata** (label, hint, placeholder, i18n keys) bound to the schema, not duplicated in form props.
 2. **Reactive parse** — re-validate as the user types, with the result usable in JSX and effects.
-3. **i18n-aware errors** — error messages as translation keys, resolved via the project's `useI18n()` `t` function.
+3. **i18n-aware errors** — error messages as translation keys, resolved through the project's `useI18n()` `t` function.
 
-`@pyreon/validate` is the layer that adds those three things on any Standard Schema validator.
+`@pyreon/validate` adds those three things on any Standard Schema validator — and, since v1, also ships the `s` validator so you can stay in one dependency end-to-end.
+
+---
+
+## Part 1 — DX helpers (works with any validator)
+
+These helpers work on **any** Standard Schema validator. The `s` runtime below is optional.
 
 ## Quick start
 
 ```ts
 import { z } from 'zod'
-import { signal } from '@pyreon/reactivity'
+import { signal, effect } from '@pyreon/reactivity'
 import { useI18n } from '@pyreon/i18n'
 import { withField, parseReactive, formatErrors, watchValid } from '@pyreon/validate'
 
-// 1. Attach field metadata.
+// 1. Attach field metadata to any Standard Schema (here: a Zod schema).
 const emailSchema = withField(z.string().email(), {
   label: 'Email address',
   placeholder: 'you@example.com',
@@ -51,9 +80,9 @@ const emailSchema = withField(z.string().email(), {
   autoComplete: 'email',
 })
 
-// emailSchema is still a Zod schema — `.parse()`, `.optional()`, etc. all work.
+// emailSchema is STILL a Zod schema — `.parse()`, `.optional()`, etc. all work.
 
-// 2. Reactively validate.
+// 2. Reactively validate a signal-backed input.
 const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
@@ -68,29 +97,50 @@ $email.set('foo@bar.com') // → $result re-derives, .value populated
 // 3. i18n-aware error formatting.
 const { t } = useI18n()
 const messages = formatErrors($result().issues ?? [], t)
-// → strings resolved via t('auth.email.required', { ... }), falling back to issue.fallback or issue.message
+// → strings resolved via t('auth.email.required', …), falling back to issue.fallback or issue.message
 
-// 4. Watch validity flips (no fire on every error change).
+// 4. Watch validity flips (does NOT fire on every error change).
 const stop = watchValid(emailSchema, $email, (valid) => {
   submitButton.disabled = !valid
 })
 ```
 
+Everything above works identically with Valibot or ArkType — swap the schema constructor, the helpers don't change:
+
+```ts
+import * as v from 'valibot'
+const sameSchema = withField(v.pipe(v.string(), v.email()), { label: 'Email' })
+const $sameResult = parseReactive(sameSchema, $email)
+```
+
 ## Field metadata
 
-`withField(schema, meta)` attaches Pyreon metadata to any Standard Schema validator. The returned schema is the **same reference** — Pyreon mutates a Symbol-keyed non-enumerable slot.
+`withField(schema, meta)` attaches Pyreon metadata to any Standard Schema validator.
+
+```ts
+import { withField } from '@pyreon/validate'
+
+const emailSchema = withField(z.string().email(), {
+  label: 'Email address',
+  placeholder: 'you@example.com',
+  i18nLabel: 'auth.email.label',
+  autoComplete: 'email',
+})
+```
 
 ### Available metadata
 
+Every `FieldMeta` field is optional — consumers (`@pyreon/form`'s `useField`, `@pyreon/feature`'s `defineFeature`) read whichever ones they need.
+
 | Field | Type | Use |
 | --- | --- | --- |
-| `label` | `string` | Human-readable form label. |
+| `label` | `string` | Human-readable form label (for `<label>` elements). |
 | `hint` | `string` | Short helper text under the input. |
 | `placeholder` | `string` | Input placeholder. |
-| `defaultValue` | `unknown` | Initial value for `useForm`. |
+| `defaultValue` | `unknown` | Initial value used by `useForm` when the user provides none. |
 | `autoFocus` | `boolean` | Whether the input should auto-focus on mount. |
 | `autoComplete` | `string` | HTML autocomplete token (`'email'`, `'new-password'`, `'off'`, …). |
-| `i18nLabel` | `string` | i18n key — wins over `label` when `t` resolves. |
+| `i18nLabel` | `string` | i18n key — overrides `label` when `t` resolves it. |
 | `i18nHint` | `string` | i18n key for `hint`. |
 | `i18nPlaceholder` | `string` | i18n key for `placeholder`. |
 
@@ -98,50 +148,70 @@ const stop = watchValid(emailSchema, $email, (valid) => {
 
 ```ts
 import { getMeta, resolveMetaField } from '@pyreon/validate'
+import { useI18n } from '@pyreon/i18n'
 
-// Direct read — returns FieldMeta | undefined.
+// Direct read — returns FieldMeta | undefined. Be defensive.
 const meta = getMeta(emailSchema)
 const label = meta?.label ?? 'Email'
 
-// i18n-aware read — prefers t() resolution.
+// i18n-aware read — prefers t() resolution, falls back to the literal.
 const { t } = useI18n()
 const i18nLabel = resolveMetaField(emailSchema, 'label', t)
 // → t('auth.email.label') when set + resolved, else meta.label, else undefined
 ```
 
+`resolveMetaField` accepts only `'label' | 'hint' | 'placeholder'` and consults the matching `i18n<Field>` key when a `t` is supplied. It echoes back to the literal when `t` returns the key unchanged (no translation registered).
+
 ### Why mutation, not cloning?
 
-`withField` mutates the original schema rather than cloning it. **This is intentional**:
+`withField` mutates the **original schema** rather than cloning it — the returned schema is the **same reference**. This is intentional:
 
-- ArkType's `Type` instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. A shallow `Object.create()` clone is not callable and breaks that contract.
-- Symbol-keyed non-enumerable mutation is invisible to `JSON.stringify`, `for…in`, `Object.keys`, structured clone, and library-internal schema comparators.
-- Re-wrapping is the natural extension: `withField(base, { a })` then `withField(base, { b })` produces a schema with both `a` and `b` automatically.
+- **Callable schemas can't be naively cloned.** ArkType's `Type` instances are callable functions whose `~standard.validate` does `this(input)` — `this` must be the callable schema itself. A shallow `Object.create()` clone is not callable and would break ArkType.
+- **The slot is invisible.** The metadata rides on a `Symbol.for('pyreon.validate.fieldMeta')` non-enumerable property, so it's skipped by `JSON.stringify`, `for…in`, `Object.keys`, structured clone, and library-internal schema comparators.
+- **Re-wrapping merges.** `withField(base, { a })` then `withField(base, { b })` produces a schema carrying both — later keys win on collision.
 
-If you need isolated copies of the same shape, construct two separate schemas (`z.string().email()` twice) and wrap each.
+:::warning withField returns the SAME reference
+Don't expect `withField` to return a fresh object. The metadata mutation is **in place**. If you need an isolated copy of the same shape, construct two separate schemas (`z.string().email()` twice) and wrap each.
+:::
+
+:::warning Metadata doesn't survive serialization
+The slot is Symbol-keyed, so it won't round-trip through `JSON.stringify` / `JSON.parse`. If you store schemas with metadata in serialized state, re-attach the metadata on load.
+:::
+
+:::warning Set `label` alongside `i18nLabel`
+Adding `i18nLabel` without a corresponding `label` leaves no fallback — without a translation provider (or when `t` echoes the key), there's nothing to render. Always set both.
+:::
 
 ## Reactive parse
 
-`parseReactive(schema, source)` returns a `Computed<ParseResult>` that re-validates on every source change. The source can be a `Signal<T>` or a plain `() => T` accessor.
+`parseReactive(schema, source)` returns a `Computed<ParseResult>` that re-validates on every source change. The source can be a `Signal<T>` or a plain `() => T` accessor (both are callable, so no `typeof` branching is needed).
 
 ```ts
+import { signal, effect } from '@pyreon/reactivity'
+
 const $email = signal('')
 const $result = parseReactive(emailSchema, $email)
 
 effect(() => {
   const r = $result()
-  if (r.issues) {
-    showErrors(r.issues)
-  } else {
-    submitForm(r.value)
-  }
+  if (r.issues) showErrors(r.issues)
+  else submitForm(r.value)
 })
 ```
 
+`ParseResult` mirrors Standard Schema's result shape exactly — `{ value }` on success, `{ issues }` on failure — so downstream code that already handles StdSchema results just works.
+
+:::warning Cache the Computed, don't re-create it
+`parseReactive` allocates a `Computed`. Call it **once per (schema, source) pair** at component setup time — not inside a render that runs every frame.
+:::
+
 ### Async validators
 
-For schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use `parseReactiveAsync`:
+For schemas with async refinements (Zod `.refine(async)`, Valibot async pipe), use `parseReactiveAsync` — it returns a `Computed<Promise<ParseResult>>`:
 
 ```ts
+import { watch } from '@pyreon/reactivity'
+
 const schema = z.string().refine(async (s) => await checkUnique(s))
 const $result = parseReactiveAsync(schema, $username)
 
@@ -151,13 +221,19 @@ watch($result, async (current) => {
 })
 ```
 
-`watch` naturally drops stale frames — rapid input changes won't deliver out-of-order results.
+The outer `Computed` re-evaluates synchronously on source change; the inner `Promise` resolves when the validator finishes. Rapid input changes produce overlapping in-flight promises — `watch` naturally drops stale frames, so the latest input wins.
+
+:::warning Use the async variant for async schemas
+Calling `parseReactive` on an async schema doesn't silently produce a Promise as the "value". It surfaces a clear `issues` entry directing you to `parseReactiveAsync`.
+:::
 
 ### Validity watcher
 
-`watchValid(schema, source, callback)` fires only on **validity transitions** (true→false or false→true), not on every error-message change. Use for form-state hooks that care about "is this OK?" rather than rendering the specific error.
+`watchValid(schema, source, callback)` fires only on **validity transitions** (true→false or false→true), **not** on every error-message change. Use it for form-state hooks that care about "is this OK?" without re-rendering on every keystroke. It returns an unsubscribe function.
 
 ```ts
+import { onUnmount } from '@pyreon/core'
+
 const stop = watchValid(emailSchema, $email, (valid) => {
   submitButton.disabled = !valid
 })
@@ -167,7 +243,7 @@ onUnmount(stop)
 
 ## i18n bridge
 
-`@pyreon/validate` extends Standard Schema's `Issue` with optional `{ key, params, fallback }` fields. The `formatError` / `formatErrors` / `formatErrorsByPath` helpers resolve issues through your `t` function:
+`@pyreon/validate` extends Standard Schema's `Issue` with optional `{ code, key, params, fallback }` fields. The `formatError` / `formatErrors` / `formatErrorsByPath` helpers resolve issues through your `t` function:
 
 ```ts
 import { useI18n } from '@pyreon/i18n'
@@ -179,11 +255,11 @@ const messages = formatErrors(result.issues ?? [], t)
 
 Resolution order per issue:
 
-1. `issue.key` + `t` provided AND `t` returns a non-key string (i.e. the i18n provider actually has a translation) → use the resolved string.
+1. `issue.key` is set **and** `t` is provided **and** `t` returns a non-key string (i.e. the provider actually has a translation) → use the resolved string.
 2. `issue.fallback` if set.
-3. `issue.message` (always present per Standard Schema spec).
+3. `issue.message` (always present per the Standard Schema spec).
 
-Native Standard Schema issues from raw Zod / Valibot / ArkType don't carry `key`/`fallback` — they fall through to `message` immediately, no overhead.
+Native Standard Schema issues from raw Zod / Valibot / ArkType don't carry `key` / `fallback` — they fall through to `message` immediately, with no overhead. So `formatErrors` works on third-party validators too; passing `t` only changes behavior for Pyreon-emitted issues.
 
 ### Per-field error map
 
@@ -195,24 +271,186 @@ import { formatErrorsByPath } from '@pyreon/validate'
 const errorMap = formatErrorsByPath(result.issues ?? [], t)
 // → { email: 'Invalid email', password: 'Too short', ... }
 
-// Concatenate colliding paths:
+// Concatenate colliding paths instead of "first wins":
 formatErrorsByPath(issues, t, { joinWith: '; ' })
 // → { email: 'invalid; required' }
 ```
 
-## String formats
+The path is the issue's path segments joined with `.`. Path-less issues land under the empty-string key (a form-level error). On collision the **first** issue wins, unless you pass `joinWith`.
 
-`s.string()` ships the formats every app reaches for, plus the modern ID / encoding set:
+## Binding to a form
+
+`toFormValidator(schema, t?)` adapts any `@pyreon/validate` schema into the `(values) => Record<field, errorMessage>` function `@pyreon/form` expects as its `schema` option. It runs `schema.safeParse`, maps each issue's path to a per-field error via `formatErrorsByPath` (so i18n keys resolve through `t`), and returns `{}` on success.
+
+```ts
+import { useForm, field } from '@pyreon/form'
+import { s } from '@pyreon/validate'
+import { toFormValidator } from '@pyreon/validate'
+import { useI18n } from '@pyreon/i18n'
+
+const { t } = useI18n()
+
+const schema = s.object({
+  email: s.string().email(),
+  age: s.number().int().min(18),
+})
+
+const form = useForm({
+  fields: [field('email', ''), field('age', 0)],
+  schema: toFormValidator(schema, t),
+  onSubmit: (values) => save(values),
+})
+```
+
+`toFormValidator` is designed for a **flat** object schema whose field names match the form's fields — each issue path is a single segment that becomes the field key. Nested schemas produce dotted keys (`user.email`) which won't match a flat form field; use a flat schema (or `@pyreon/form` field arrays) for form binding.
+
+### Coexisting with `@pyreon/validation` adapters
+
+If you're already using `@pyreon/validation`'s per-library adapters, nothing changes — they stay supported:
+
+```ts
+import { useForm } from '@pyreon/form'
+import { zodSchema } from '@pyreon/validation'
+import { z } from 'zod'
+
+const form = useForm({
+  initialValues: { email: '' },
+  schema: zodSchema(z.object({ email: z.string().email() })),
+  onSubmit: (v) => save(v),
+})
+```
+
+`@pyreon/validation` ships `zodSchema` / `valibotSchema` / `arktypeSchema` (plus the per-field `zodField` / `valibotField` / `arktypeField`). `@pyreon/validate`'s `withField` works on top of any of them — wrap individual fields with metadata before composing into the form schema. See [`@pyreon/validation`](/docs/validation) for the per-library adapter details.
+
+---
+
+## Part 2 — the `s` validator
+
+Pyreon's own validator runtime is opt-in by import. It implements Standard Schema natively, so the DX helpers above work on `s` schemas with no adapter.
+
+## Defining a schema
+
+```ts
+import { s } from '@pyreon/validate'
+
+const userSchema = s.object({
+  name: s.string().min(2),
+  email: s.string().email(),
+  age: s.number().int().between(0, 150),
+  role: s.enum(['admin', 'user']),
+  tags: s.array(s.string()).max(10),
+})
+
+const result = userSchema.parse(input)
+if (result.ok) {
+  console.log(result.value) // fully typed { name, email, age, role, tags }
+} else {
+  console.log(result.issues) // ordered list of parse problems
+}
+```
+
+`s.object({ … })` infers its output type from the field schemas — `result.value` is `{ name: string; email: string; age: number; role: 'admin' | 'user'; tags: string[] }` with no manual annotations. `.optional()` / `.nullish()` fields become optional keys.
+
+### Chainable _or_ function-composition
+
+The same schemas, two ergonomic surfaces. Use whichever reads better:
+
+```ts
+import { s, pipe, string } from '@pyreon/validate'
+
+// Chainable (the `s.` namespace, mirrors Zod's `z.`):
+const a = s.string().email().min(3)
+
+// Function composition via pipe():
+const b = pipe(
+  string(),
+  (s) => s.email(),
+  (s) => s.min(3),
+)
+```
+
+The chainable path is cheap: each schema's ops compile to **one closure on first parse**, so chaining doesn't pay method-dispatch cost per parse.
+
+## Primitives
+
+Every primitive is available both as a `s.` member and as a standalone named export.
+
+| Constructor | Output type | Notes |
+| --- | --- | --- |
+| `s.string()` | `string` | Length + format + substring + transform checks (see below). |
+| `s.number()` | `number` | Rejects `NaN`. Bounds + integer + multiple-of checks. |
+| `s.boolean()` | `boolean` | Atomic — type guard only. |
+| `s.bigint()` | `bigint` | `typeof === 'bigint'` (no coercion). Bounds + multiple-of. |
+| `s.date()` | `Date` | Real `Date` instances only; rejects `new Date('nonsense')`. `.min`/`.max`. |
+| `s.literal(value)` | the literal | Matches one `string \| number \| boolean` literal via `===`. |
+| `s.enum([...])` | union of values | A small set of `string \| number` literals. |
+| `s.nativeEnum(Enum)` | `E[keyof E]` | A VALUE of a TS native `enum` / const value-object (filters reverse-mappings). |
+| `s.symbol()` | `symbol` | `typeof === 'symbol'`. |
+| `s.nan()` | `number` | Accepts only `NaN`. |
+| `s.null()` | `null` | Accepts only `null`. |
+| `s.undefined()` | `undefined` | Accepts only `undefined`. |
+| `s.void()` | `void` | Accepts only `undefined`. |
+| `s.any()` | `any` | Escape hatch — no validation. |
+| `s.unknown()` | `unknown` | Like `any` but keeps the output opaque. |
+| `s.never()` | `never` | Accepts NO value — every input errors. |
+| `s.custom<T>(check?, msg?)` | `T` | Validated by a user predicate; with no predicate, a pure type assertion. |
+| `s.instanceof(Ctor, msg?)` | instance type | Asserts `input instanceof Ctor` — `s.instanceof(File)`, `s.instanceof(URL)`, … |
+| `s.stringbool(opts?)` | `boolean` | Coerce a boolean-ish **string** to a real boolean. |
+
+```ts
+import { s } from '@pyreon/validate'
+
+s.literal('active').parse('active')        // → { ok: true, value: 'active' }
+s.enum(['red', 'green', 'blue'])           // Schema<'red' | 'green' | 'blue'>
+
+enum Role { Admin = 'admin', User = 'user' }
+s.nativeEnum(Role).parse('admin')          // → { ok: true, value: 'admin' }
+
+s.instanceof(File)                          // validate an uploaded File
+s.custom<`${number}px`>((v) => typeof v === 'string' && v.endsWith('px'))
+
+s.stringbool().parse('yes')                 // → { ok: true, value: true }
+s.stringbool({ truthy: ['si'], falsy: ['no'] })
+```
+
+`s.stringbool()` accepts only strings and only the configured tokens (defaults: `true`/`1`/`yes`/`on`/`y`/`enabled` ↔ `false`/`0`/`no`/`off`/`n`/`disabled`, case-insensitive + trimmed). It's stricter than `s.coerce.boolean()`, which applies JS truthiness to any input.
+
+:::warning `s.nativeEnum` only accepts member VALUES
+A numeric TS `enum { A }` compiles to `{ A: 0, 0: 'A' }`. `s.nativeEnum` filters out the auto-generated reverse-mapping, so `'A'` is **not** accepted — only `0` is. For a plain literal array, use `s.enum([...])` instead.
+:::
+
+## String checks
+
+`s.string()` ships a deep set of checks. Each appends an op and returns `this`, so they chain.
+
+### Length & substring
 
 | Method | Validates |
 | --- | --- |
-| `.email()` / `.url()` / `.uuid()` / `.ip()` / `.phone()` / `.creditCard()` | the classics (email precision tiers; phone is client/server-split) |
-| `.cuid2()` | CUID2 — lowercase alphanumeric, starts with a letter |
-| `.ulid()` | ULID — Crockford base32, 26 chars |
-| `.nanoid()` | Nano ID — URL-safe alphabet (`A-Za-z0-9_-`) |
+| `.min(n)` / `.max(n)` / `.length(n)` | string length ≥ / ≤ / exactly `n` |
+| `.nonEmpty()` | length ≥ 1 (alias for `.min(1)`) |
+| `.startsWith(s)` / `.endsWith(s)` / `.includes(s)` | substring constraints |
+| `.regex(re)` | matches a custom `RegExp` |
+
+### Format checks
+
+| Method | Validates |
+| --- | --- |
+| `.email(opts?)` | email; precision tiers `'html5'` / `'standard'` (default) / `'rfc5322'` |
+| `.url()` | `http(s)://…` |
+| `.uuid()` | UUID v1–v5 |
+| `.ip()` | IPv4 or IPv6 |
+| `.cidr()` | CIDR notation (`x.x.x.x/0-32` or `…/0-128`) |
+| `.phone()` | normalized E.164 shape (client/server-split — see below) |
+| `.e164()` | strict E.164 (`+` then 1–15 digits, first non-zero) |
+| `.creditCard()` | 12–19 digits + Luhn checksum |
+| `.cuid()` / `.cuid2()` | CUID v1 / CUID2 |
+| `.ulid()` | ULID (Crockford base32, 26 chars) |
+| `.nanoid()` | Nano ID (`A-Za-z0-9_-`) |
 | `.emoji()` | one or more emoji code points |
-| `.base64()` | standard base64 (optional `=` padding) |
+| `.base64()` / `.base64url()` | standard / URL-safe base64 |
 | `.jwt()` | three base64url segments (`header.payload.signature`) |
+| `.duration()` | ISO 8601 duration (`P3Y6M4DT12H30M5S`, `PT1H`, …) |
 | `.iso.date()` / `.iso.dateTime()` / `.iso.time()` | ISO 8601 date / date-time / time |
 
 ```ts
@@ -221,21 +459,191 @@ import { s } from '@pyreon/validate'
 s.string().cuid2().parse('tz4a98xxat96iws9zmbrgj3a') // ok
 s.string().ulid()                                     // 01ARZ3NDEKTSV4RRFFQ69G5FAV
 s.string().base64().min(4)                            // composes with length checks
+s.string().email({ precision: 'rfc5322' })            // server-grade strictness
 ```
 
-**Every format routes through the client/server registry seam.** A server can swap in a stricter validator for any format in place — the same mechanism `@pyreon/validate/server` uses to upgrade `email` (RFC 5322 + disposable blocklist) and `phone` (full E.164):
+### String transforms
+
+These run after the type-check, before further checks:
 
 ```ts
-import { installFormatValidator } from '@pyreon/validate'
-
-// e.g. upgrade ULID validation to also check the timestamp range, server-side:
-installFormatValidator('ulid', (value) => myStrictUlidCheck(value))
-// every s.string().ulid() now uses it — the shared schema is untouched.
+s.string().trim().min(2)        // trim first, then enforce length
+s.string().toLowerCase()
+s.string().toUpperCase()
 ```
 
-## Resilient parsing & readonly
+### Custom messages & i18n keys
 
-Two terminal schema methods from the `s` runtime, matching Zod's surface.
+Every check accepts an optional `CheckOpts` carrying `{ message, code, key, params, fallback }` — the i18n routing the `format*` helpers resolve:
+
+```ts
+s.string().min(8, {
+  message: 'Password too short',
+  key: 'auth.password.too-short',
+  params: { min: 8 },
+})
+```
+
+## Number, bigint & date checks
+
+`s.number()` checks (rejects `NaN` at the type level):
+
+| Method | Validates |
+| --- | --- |
+| `.min(n)` / `.gte(n)` | ≥ `n` (inclusive) |
+| `.max(n)` / `.lte(n)` | ≤ `n` (inclusive) |
+| `.gt(n)` / `.lt(n)` | strictly > / < `n` (exclusive) |
+| `.between(lo, hi)` | inclusive range |
+| `.int()` | integer |
+| `.finite()` | finite (rejects `±Infinity`) |
+| `.positive()` / `.negative()` | > 0 / < 0 |
+| `.nonNegative()` / `.nonPositive()` | ≥ 0 / ≤ 0 |
+| `.multipleOf(n)` / `.step(n)` | divisible by `n` |
+| `.safe()` | within the IEEE-754 safe-integer **range** (a bounds check, not integer-ness) |
+
+`s.bigint()` has the parallel surface: `.min` / `.max` / `.gt` / `.gte` / `.lt` / `.lte` / `.between` / `.positive` / `.negative` / `.multipleOf` / `.step` (all `bigint` arguments).
+
+`s.date()` accepts only valid `Date` instances and bounds the instant with `.min(date)` / `.max(date)` (inclusive).
+
+```ts
+s.number().int().between(0, 150)
+s.number().multipleOf(0.5)
+s.bigint().positive().max(1_000_000n)
+s.date().min(new Date('2020-01-01'))
+```
+
+## Composition
+
+| Constructor | Output | Element checks |
+| --- | --- | --- |
+| `s.object({ … })` | inferred object | unknown-key policy + object algebra (below) |
+| `s.array(el)` | `T[]` | `.min` / `.max` / `.length` / `.nonEmpty` |
+| `s.tuple([a, b])` | `[A, B]` | `.rest(schema)` for a variadic tail |
+| `s.record(value)` / `s.record(key, value)` | `Record<K, V>` | validates each own key's value (and key, if given) |
+| `s.map(key, value)` | `Map<K, V>` | `.min` / `.max` / `.size` |
+| `s.set(value)` | `Set<V>` | `.min` / `.max` / `.size` / `.nonEmpty` |
+| `s.union(a, b, …)` | `A \| B \| …` | first matching member wins |
+| `s.discriminatedUnion('kind', [...])` | object union | O(1) dispatch on a shared literal discriminant |
+| `s.intersection(a, b)` | `A & B` | both must pass; object outputs shallow-merged |
+| `s.lazy(() => schema)` | `T` | recursive / self-referential schemas |
+
+```ts
+import { s } from '@pyreon/validate'
+
+// Discriminated union — fast, precise errors.
+const event = s.discriminatedUnion('type', [
+  s.object({ type: s.literal('click'), x: s.number(), y: s.number() }),
+  s.object({ type: s.literal('key'), code: s.string() }),
+])
+
+// Recursive type via lazy() — annotate the type explicitly.
+type Tree = { value: number; children: Tree[] }
+const tree: import('@pyreon/validate').Schema<Tree> = s.lazy(() =>
+  s.object({ value: s.number(), children: s.array(tree) }),
+)
+```
+
+Schemas also carry composition shortcuts as chainable methods:
+
+```ts
+s.string().array()           // ≡ s.array(s.string())
+s.string().or(s.number())    // ≡ s.union(s.string(), s.number())  → string | number
+objA.and(objB)               // ≡ s.intersection(objA, objB)        → A & B
+s.string().transform(Number).pipe(s.number().positive())  // coerce → validate
+```
+
+:::warning Composition methods need the constructors imported
+`.array()` / `.or()` / `.and()` rely on the composition factories registering themselves. Import `s` (or `array` / `union` / `intersection`) from `@pyreon/validate` so they register — a bare `import { string }` that never references composition will throw a clear `[Pyreon]` error when you call `.array()`.
+:::
+
+## Object algebra
+
+`s.object(...)` exposes the full Zod-style algebra. Each returns a **new** schema (immutable):
+
+| Method | Effect |
+| --- | --- |
+| `.pick([keys])` | keep only the named keys |
+| `.omit([keys])` | drop the named keys |
+| `.partial()` | make every field optional |
+| `.required()` | inverse of `.partial()` — unwrap `.optional()`/`.nullish()` back to required |
+| `.extend({ … })` | add / override fields |
+| `.merge(other)` | merge another object schema's shape (other wins on conflict) |
+| `.keyof()` | an `enum` schema over this object's keys |
+
+Plus the unknown-key policy:
+
+| Method | Behavior |
+| --- | --- |
+| `.strip()` | **default** — unknown keys are dropped from the output |
+| `.strict()` | unknown keys are a validation error |
+| `.passthrough()` | unknown keys are kept verbatim |
+| `.catchall(schema)` | validate every unknown key against `schema` and keep it (takes precedence) |
+
+```ts
+const base = s.object({ id: s.string(), name: s.string(), secret: s.string() })
+
+base.pick(['id', 'name'])              // { id, name }
+base.omit(['secret'])                  // { id, name }
+base.partial()                         // { id?, name?, secret? }
+base.extend({ active: s.boolean() })   // adds `active`
+base.strict()                          // reject unknown keys
+base.catchall(s.string())              // unknown keys must be strings
+```
+
+## Coercion
+
+`s.coerce.*` coerces the input via the JS constructor **before** the type-check, then runs the normal primitive validation on the coerced value. Each coerced schema inherits its base primitive's full check surface.
+
+```ts
+import { s } from '@pyreon/validate'
+
+s.coerce.number().int().min(0).parse('42')  // '42' → 42 → ok
+s.coerce.string().parse(123)                 // 123 → '123'
+s.coerce.boolean().parse(1)                   // 1 → true (JS truthiness)
+s.coerce.date().parse('2024-01-01')          // → a Date
+s.coerce.bigint().parse('100')               // → 100n
+```
+
+For string-to-boolean with explicit token mapping (stricter than JS truthiness), prefer `s.stringbool()`.
+
+`s.preprocess(fn, schema)` is the general form — transform the raw input before `schema` validates it:
+
+```ts
+s.preprocess((v) => String(v).trim(), s.string().min(1))
+```
+
+## Modifiers
+
+| Modifier | Effect |
+| --- | --- |
+| `.optional()` | input may be `undefined`; output `T \| undefined` |
+| `.nullable()` | input may be `null`; output `T \| null` |
+| `.nullish()` | input may be `null` or `undefined` |
+| `.nonoptional(msg?)` | re-require a present value (rejects `undefined` again) |
+| `.default(value)` | fill `undefined` input with a value (or `() => value`) |
+| `.transform(fn)` | map the parsed value to a new shape (sync or async) |
+| `.refine(fn, opts)` | add a custom constraint after type + checks |
+| `.superRefine(fn)` | add **any number** of issues via `ctx.addIssue` (cross-field) |
+| `.brand<'T'>()` | phantom type brand — prevent mixing structurally-identical values |
+| `.describe(text)` / `.field(meta)` | attach description / full `FieldMeta` (read via `getMeta`) |
+
+```ts
+s.string().optional().default('anon')
+s.string().transform((s) => s.trim())
+s.string().refine((s) => s.length > 0, { message: 'Required', key: 'common.required' })
+
+// Cross-field validation that reports multiple problems:
+s.object({ pw: s.string(), confirm: s.string() }).superRefine((v, ctx) => {
+  if (v.pw !== v.confirm) ctx.addIssue({ message: 'Mismatch', path: ['confirm'] })
+})
+
+// Phantom brand — UserId and PostId are both `string` but not interchangeable:
+const UserId = s.string().brand<'UserId'>()
+```
+
+`.field(meta)` is the chainable equivalent of the standalone `withField` — both write the same Symbol-keyed slot, so `getMeta` reads either.
+
+## Resilient parsing & readonly
 
 ### `.catch(fallback)`
 
@@ -247,7 +655,7 @@ import { s } from '@pyreon/validate'
 s.number().catch(0).parse('nope')          // → { ok: true, value: 0 }
 s.string().min(3).catch('x').parse('ab')   // → { ok: true, value: 'x' }
 
-// the fallback can be derived from the raw input:
+// The fallback can be derived from the raw input:
 s.string().catch((input) => String(input)).parse(42) // → { ok: true, value: '42' }
 ```
 
@@ -256,8 +664,8 @@ s.string().catch((input) => String(input)).parse(42) // → { ok: true, value: '
 
 ```ts
 const schema = s.object({
-  name: s.string(),          // no catch
-  age: s.number().catch(0),  // caught
+  name: s.string(),         // no catch
+  age: s.number().catch(0), // caught
 })
 schema.parse({ name: 'Ada', age: 'x' })  // → { ok: true, value: { name: 'Ada', age: 0 } }
 schema.parse({ name: 123,   age: 'x' })  // → { ok: false } (name failed; age was caught)
@@ -267,56 +675,62 @@ schema.parse({ name: 123,   age: 'x' })  // → { ok: false } (name failed; age 
 
 ### `.readonly()`
 
-Freeze the parsed output (`Object.freeze`, shallow) and mark it `Readonly<T>` at the type level. Apply last.
+Freeze the parsed output (`Object.freeze`, shallow) and mark it `Readonly<T>` at the type level. Apply last in a chain.
 
 ```ts
 const cfg = s.object({ port: s.number() }).readonly()
 const r = cfg.parse({ port: 80 })
-// r.value is Readonly<{ port: number }>; Object.isFrozen(r.value) === true
+// r.value is Readonly<{ port: number }> and Object.isFrozen(r.value) === true
 // (r.value as { port: number }).port = 1  // throws in strict mode
 ```
 
-## Coexists with existing adapters
+## Parse API
 
-`@pyreon/validation`'s `zodSchema()` / `valibotSchema()` / `arktypeSchema()` adapters are unchanged. New code can write:
+Every `s` schema exposes the same parse surface:
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `.parse(input)` | `Result<T>` | Never throws — a discriminated union (`{ ok: true, value }` \| `{ ok: false, issues }`). |
+| `.safeParse(input)` | `Result<T>` | Zod-compat alias for `.parse`. |
+| `.parseOrThrow(input)` | `T` | Returns the value, or throws a `ValidationError` with the issues attached. |
+| `.parseAsync(input, { context? })` | `Promise<Result<T>>` | For schemas with async `.refine` / `.transform` / `.serverCheck`. Threads `context` to server checks. |
+| `.is(input)` | `boolean` | Pure validity check (sync only — async schemas return `false`). |
+| `['~standard']` | StdSchema contract | Drops into any Standard Schema consumer with no adapter. |
 
 ```ts
-// Old way (still works):
-import { useForm } from '@pyreon/form'
-import { zodSchema } from '@pyreon/validation'
-import { z } from 'zod'
+const r = userSchema.parse(input)
+if (r.ok) use(r.value)
+else show(r.issues)
 
-const form = useForm({
-  initialValues: { email: '' },
-  schema: zodSchema(z.object({ email: z.string().email() })),
-  onSubmit: (v) => save(v),
-})
-
-// New way (any Standard Schema validator, no per-lib adapter):
-import { bindSchema } from '@pyreon/validation'
-
-const form = useForm({
-  initialValues: { email: '' },
-  schema: bindSchema(z.object({ email: z.string().email() })),  // or valibot, or arktype
-  onSubmit: (v) => save(v),
-})
+if (userSchema.is(req.body)) handle(req.body) // boolean fast path
 ```
 
-`@pyreon/validate`'s `withField` works on top of either — wrap individual fields with metadata before composing into the form schema.
+A successful `Result` may also carry `pending` — the deferred server checks recorded on the client (see below).
 
 ## Client / server validation
 
-One shared schema, a thin client and a heavy server — without shipping the heavy code to the browser. This is the part of the design that no other validator gives you out of the box.
+One shared schema, a thin client and a heavy server — without shipping the heavy code to the browser. This is the part of the design no other validator gives you out of the box.
 
 ### Format upgrade (automatic)
 
-The lightweight in-bundle validators (`s.string().email()`, `.phone()`) are upgraded to strict server validators the instant the server imports `@pyreon/validate/server` — strict RFC-5322 email + disposable-domain blocklist, full E.164 phone. The heavy code is unreachable from the main entry, so it tree-shakes out of the client bundle.
+The lightweight in-bundle format validators (`s.string().email()`, `.phone()`) are upgraded to strict server validators the instant the server imports `@pyreon/validate/server` — strict RFC-5322 email + a disposable-domain blocklist, full E.164 phone. The heavy code is unreachable from the main entry, so it tree-shakes out of the client bundle.
 
 ```ts
 // server entry only (side-effect import):
 import '@pyreon/validate/server'
 // …now every s.string().email() / .phone() validates strictly here,
 // while the client keeps the small, fast in-bundle defaults.
+```
+
+`@pyreon/validate/server` also exports `addDisposableDomains(domains)`, `isDisposableEmail(email)`, `strictEmail(value)`, `strictPhone(value)`, and `installServerValidators()` for explicit / test-controlled setup.
+
+Any format routes through a registry seam, so you can swap in a stricter validator for **any** format in place:
+
+```ts
+import { installFormatValidator } from '@pyreon/validate'
+
+// e.g. tighten ULID validation server-side — every s.string().ulid() now uses it:
+installFormatValidator('ulid', (value) => myStrictUlidCheck(value))
 ```
 
 ### `.serverCheck(key)` — the async / privileged tier
@@ -347,22 +761,76 @@ registerServerCheck('email-unique', async (value, ctx) => {
 const verdict = await signup.parseAsync(formData, { context: { db } })
 ```
 
-- The **server is authoritative** — never treat a client `ok: true` with `pending` entries as fully verified.
-- An async registered check promotes the parse to a Promise, so `parse()` returns a parseAsync-directing issue — use `parseAsync(input, { context })` server-side.
-- Object fields and array elements are validated async-aware, so the issue `path` is correct even though an async check resolves after the path unwinds.
+:::danger The server is authoritative
+On the client, `.serverCheck` ALWAYS passes — the entry is recorded on `Result.pending`, not validated. Never treat a client `{ ok: true, pending: [...] }` as fully verified; the server's `parseAsync` is the real verdict.
+:::
+
+- A registered **async** check promotes the parse to a Promise, so `parse()` returns a `parseAsync`-directing issue — use `parseAsync(input, { context })` server-side.
+- The issue `path` is snapshotted at the check site, so a field / array-element check reports the correct path even though it resolves after the path unwinds.
 - A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
 
 ## Performance
 
-v1 ships Pyreon's own `s` validator runtime. On the `bun bench:validate` suite (vs Zod 4 / Valibot 1 / ArkType 2):
+The `s` runtime is benchmarked against Zod 4 / Valibot 1 / ArkType 2 (`bun bench:validation`):
 
-- **Fastest on the error / invalid path** across every shape (≈2.5–50× — early-exit issue accumulation vs the others' rich error allocation).
-- **Runner-up on valid-parse** — behind only ArkType's JIT, ahead of Zod and Valibot. The chainable API doesn't pay class-overhead per parse: each schema's ops compile to one closure on first call, then a flat monomorphic `new Function` validator for pure object/array/primitive trees.
-- A **follow-up PR** adds `@pyreon/compiler:analyzeValidate()` — compile-time specialized validators to close the valid-parse gap to ArkType (works against any Standard Schema validator). You can also keep using Zod / Valibot / ArkType through the DX helpers — `@pyreon/validate` never locks you in.
+- **Fastest on the error / invalid path** across every shape — roughly **2.5–50× faster**, because it early-exits on the first failing op while Zod and ArkType allocate rich structured error objects.
+- **Runner-up on the valid-parse path** — behind only ArkType's JIT, but **faster than Zod and Valibot**. The chainable API doesn't pay class-overhead per parse: each schema's ops compile to one closure on first call, and pure object/array/primitive trees get a flat monomorphic JIT validator.
+
+The valid-parse gap to ArkType is the documented frontier — a follow-up adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators at build time (works against any Standard Schema validator). Until then you can keep using Zod / Valibot / ArkType through the DX helpers — `@pyreon/validate` never locks you in.
 
 ## See also
 
-- [Standard Schema spec](https://standardschema.dev)
-- [`@pyreon/validation`](/docs/validation) — per-library adapters
-- [`@pyreon/form`](/docs/form) — signal-based forms
-- [`@pyreon/i18n`](/docs/i18n) — translation provider
+- [Standard Schema spec](https://standardschema.dev) — the cross-library protocol this package builds on.
+- [`@pyreon/validation`](/docs/validation) — per-library adapters (`zodSchema` / `valibotSchema` / `arktypeSchema`).
+- [`@pyreon/form`](/docs/form) — signal-based forms (consumes `toFormValidator` output).
+- [`@pyreon/i18n`](/docs/i18n) — the translation provider behind `formatErrors`.
+
+## API reference
+
+### DX helpers (any Standard Schema validator)
+
+| Export | Signature | Description |
+| --- | --- | --- |
+| `withField` | `(schema: S, meta: FieldMeta) => S` | Attach field metadata to any Standard Schema. Returns the **same reference** (mutates a Symbol slot); re-wrapping merges. |
+| `getMeta` | `(schema: S) => FieldMeta \| undefined` | Read the attached metadata (or `undefined`). Accepts objects **and** callable schemas (ArkType). |
+| `resolveMetaField` | `(schema, field: 'label' \| 'hint' \| 'placeholder', t?) => string \| undefined` | Read one field through optional i18n; falls back to the literal. |
+| `parseReactive` | `(schema, source) => Computed<ParseResult>` | Re-validate on every source (`Signal` or accessor) change. Sync only. |
+| `parseReactiveAsync` | `(schema, source) => Computed<Promise<ParseResult>>` | Async variant; caller handles staleness (e.g. via `watch`). |
+| `watchValid` | `(schema, source, cb) => () => void` | Fire `cb(valid)` only on validity flips; returns an unsubscribe. |
+| `formatError` | `(issue, t?) => string` | Resolve one issue: `key`+`t` → `fallback` → `message`. |
+| `formatErrors` | `(issues, t?) => string[]` | Resolve an array of issues (original order preserved). |
+| `formatErrorsByPath` | `(issues, t?, { joinWith? }?) => Record<string, string>` | Per-field error map keyed by dotted path (for `@pyreon/form`). |
+| `toFormValidator` | `(schema, t?) => (values) => Record<string, string>` | Adapt an `s` schema into a `@pyreon/form` `schema` validator. |
+| `installFormatValidator` | `(name, fn) => void` | Swap a superior validator for a named format (the client/server seam). |
+
+Types: `FieldMeta`, `Input<S>`, `Output<S>`, `ParseResult`, `ReactiveSource`, `PyreonIssue`, `StandardSchemaIssue`, `StandardSchemaResult`, `StandardSchemaV1`, `TFn`, `WithFieldMeta`.
+
+### `s` validator runtime
+
+| Group | Surface |
+| --- | --- |
+| **Namespace** | `s.{string, number, boolean, bigint, date, literal, enum, nativeEnum, symbol, nan, null, undefined, void, any, unknown, never, custom, instanceof, object, array, union, discriminatedUnion, record, tuple, map, set, intersection, lazy, coerce, preprocess, stringbool}` |
+| **Standalone** | every constructor above is also a named export (`string`, `object`, …); reserved words use a `_` suffix (`null_`, `undefined_`, `void_`, `enum_`, `instanceof_`) |
+| **Function comp** | `pipe(schema, ...actions)` — apply chain-method steps as functions |
+| **Coercion** | `s.coerce.{string, number, boolean, date, bigint}` |
+| **Parse API** | `.parse` · `.safeParse` · `.parseOrThrow` · `.parseAsync(input, { context? })` · `.is` · `['~standard']` |
+| **Modifiers** | `.optional` · `.nullable` · `.nullish` · `.nonoptional` · `.default` · `.transform` · `.refine` · `.superRefine` · `.brand` · `.describe` · `.field` · `.catch` · `.readonly` · `.serverCheck` |
+| **Composition methods** | `.array` · `.or` · `.and` · `.pipe` |
+| **String checks** | `.min` · `.max` · `.length` · `.nonEmpty` · `.regex` · `.startsWith` · `.endsWith` · `.includes` · `.email` · `.url` · `.uuid` · `.ip` · `.cidr` · `.phone` · `.e164` · `.creditCard` · `.cuid` · `.cuid2` · `.ulid` · `.nanoid` · `.emoji` · `.base64` · `.base64url` · `.jwt` · `.duration` · `.iso.date` · `.iso.dateTime` · `.iso.time` · `.trim` · `.toLowerCase` · `.toUpperCase` |
+| **Number checks** | `.min` · `.max` · `.gt` · `.gte` · `.lt` · `.lte` · `.between` · `.int` · `.finite` · `.positive` · `.negative` · `.nonNegative` · `.nonPositive` · `.multipleOf` · `.step` · `.safe` |
+| **BigInt checks** | `.min` · `.max` · `.gt` · `.gte` · `.lt` · `.lte` · `.between` · `.positive` · `.negative` · `.multipleOf` · `.step` |
+| **Date checks** | `.min(date)` · `.max(date)` |
+| **Array checks** | `.min` · `.max` · `.length` · `.nonEmpty` |
+| **Map/Set checks** | `.min` · `.max` · `.size` (Set also `.nonEmpty`) |
+| **Object algebra** | `.pick` · `.omit` · `.partial` · `.required` · `.extend` · `.merge` · `.keyof` · `.strip` · `.strict` · `.passthrough` · `.catchall` |
+| **Tuple** | `.rest(schema)` for a variadic tail |
+| **Types** | `Infer<S>` · `Input<S>` · `Output<S>` · `Result<T>` · `Schema<T>` · `SuperRefineCtx` · `PyreonIssue` · `ValidationError` · `PendingCheck` |
+
+### Server entry (`@pyreon/validate/server`)
+
+| Export | Description |
+| --- | --- |
+| `registerServerCheck(key, fn)` | Register the heavy/privileged half of a `.serverCheck(key)` (never ships to the client). |
+| `addDisposableDomains(domains)` | Extend the disposable-email blocklist. |
+| `isDisposableEmail(email)` / `strictEmail(value)` / `strictPhone(value)` | The strict server validators. |
+| `installServerValidators()` | Explicitly install the strict email + phone validators (runs automatically on import). |

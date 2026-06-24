@@ -157,6 +157,58 @@ transfer.send('SEND', { amount: 100 }) // guard passes → confirming
 transfer.send('SEND', { amount: 0 }) // guard fails → stays idle
 ```
 
+Guards are **throw-safe**: a guard that throws is treated as "denied" (no transition) rather than crashing `send()` / `can()`. That lets `can(event)` be called without a payload against a payload-reading guard, and keeps a buggy guard from taking down a dispatch.
+
+## Eventless (`always`) Transitions
+
+An `always` transition is evaluated **immediately on entering a state** (and for the initial state at creation) — no event required. The first one whose guard passes (or the first unguarded one) fires synchronously, then the new state's `always` is re-evaluated. Use it for **transient / branch states** that immediately route based on a condition:
+
+```tsx
+const checkout = createMachine({
+  initial: 'validating',
+  states: {
+    // Transient: routes the moment it's entered, based on external signals.
+    validating: {
+      always: [
+        { target: 'empty', guard: () => cart().length === 0 },
+        { target: 'needsLogin', guard: () => !user() },
+        'ready', // first unguarded → the fallback branch
+      ],
+    },
+    empty: { on: { ADD: 'validating' } },
+    needsLogin: { on: { LOGIN: 'validating' } },
+    ready: { on: { PAY: 'paying' } },
+    paying: { on: { DONE: 'done' } },
+    done: {},
+  },
+})
+
+// `send` returns the SETTLED state after the cascade — not the intermediate.
+checkout.send('ADD') // empty → validating → (cascade) → 'ready' (or 'needsLogin')
+```
+
+`always` guards receive **no payload** — branch on external signals (`cart()`, `user()`), not event data. The cascade is bounded (an infinite `always` loop is capped and throws in dev rather than hanging).
+
+## Final States
+
+Mark a terminal state with `final: true`. `isFinal()` reads `true` while there, and `onDone` listeners fire on entry:
+
+```tsx
+const job = createMachine({
+  initial: 'running',
+  states: {
+    running: { on: { FINISH: 'complete', FAIL: 'failed' } },
+    complete: { final: true },
+    failed: { final: true, on: { RETRY: 'running' } },
+  },
+})
+
+job.isFinal() // false (in 'running')
+job.onDone((event) => console.log('reached a final state via', event.type))
+job.send('FINISH')
+job.isFinal() // true
+```
+
 ## Checking State
 
 ### `matches()`
@@ -251,6 +303,30 @@ machine.onTransition((from, to, event) => {
   analytics.track('state_change', { from, to, event: event.type })
 })
 ```
+
+## Leaving a State with `onExit`
+
+The mirror of `onEnter` — fires when the machine LEAVES a state, **before** the next state's `onEnter`. Use it to tear down what `onEnter` set up (timers, subscriptions):
+
+```tsx
+const room = createMachine({
+  initial: 'lobby',
+  states: {
+    lobby: { on: { JOIN: 'connected' } },
+    connected: { on: { LEAVE: 'lobby' } },
+  },
+})
+
+let socket: WebSocket | undefined
+room.onEnter('connected', () => {
+  socket = new WebSocket('wss://chat.example')
+})
+room.onExit('connected', () => {
+  socket?.close() // cleaned up before re-entering 'lobby'
+})
+```
+
+Both `onEnter` and `onExit` return an unsubscribe function.
 
 ## Reset
 
@@ -410,27 +486,39 @@ machine.onEnter('idle', (event) => {
 
 ### `Machine` instance
 
-| Method                             | Returns      | Description                                       |
-| ---------------------------------- | ------------ | ------------------------------------------------- |
-| `machine()`                        | `TState`     | Read current state (reactive)                     |
-| `machine.send(event, payload?)`    | `void`       | Send event to trigger transition                  |
-| `machine.matches(...states)`       | `boolean`    | Check if in any of the given states (reactive)    |
-| `machine.can(event)`               | `boolean`    | Check if event would trigger a transition         |
-| `machine.nextEvents()`             | `TEvent[]`   | Available events from current state               |
-| `machine.reset()`                  | `void`       | Return to initial state                           |
-| `machine.onEnter(state, callback)` | `() => void` | Fire callback on state entry, returns unsubscribe |
-| `machine.onTransition(callback)`   | `() => void` | Fire on any transition, returns unsubscribe       |
-| `machine.dispose()`                | `void`       | Remove all listeners                              |
+| Method                              | Returns      | Description                                                                                          |
+| ----------------------------------- | ------------ | --------------------------------------------------------------------------------------------------- |
+| `machine()`                         | `TState`     | Read the current state (reactive in effects / computeds / JSX)                                      |
+| `machine.send(event, payload?)`     | `TState`     | Trigger a transition; **returns the SETTLED state** after the transition + any `always` cascade — or the unchanged state if the event isn't handled or a guard rejects |
+| `machine.matches(...states)`        | `boolean`    | Whether the current state is one of the given states (reactive)                                     |
+| `machine.can(event, payload?)`      | `boolean`    | Whether `send(event, payload)` would transition — evaluates the guard with `payload` (reactive)     |
+| `machine.nextEvents()`              | `TEvent[]`   | All events with a transition defined from the current state (reactive)                              |
+| `machine.isFinal()`                 | `boolean`    | Whether the current state is marked `final` (reactive)                                              |
+| `machine.reset()`                   | `void`       | Return to the initial state (re-runs the initial `always` cascade)                                  |
+| `machine.onEnter(state, callback)`  | `() => void` | Fire on entering `state`; returns an unsubscribe                                                    |
+| `machine.onExit(state, callback)`   | `() => void` | Fire on LEAVING `state` (before the next state's `onEnter`); returns an unsubscribe                 |
+| `machine.onTransition(callback)`    | `() => void` | Fire on any transition with `(from, to, event)`; returns an unsubscribe                             |
+| `machine.onDone(callback)`          | `() => void` | Fire on entering any `final` state; returns an unsubscribe                                          |
+| `machine.dispose()`                 | `void`       | Remove all listeners                                                                                |
 
 ### `StateConfig`
 
 ```ts
 interface StateConfig<TState, TEvent> {
-  on?: Record<TEvent, TState | TransitionConfig<TState>>
+  /** Event-name → transition. A bare string is an unguarded target. */
+  on?: Partial<Record<TEvent, TState | TransitionConfig<TState>>>
+  /**
+   * Eventless ("always") transitions — evaluated immediately on ENTERING this
+   * state (and for the initial state at creation). The first whose guard passes
+   * (or the first unguarded one) fires synchronously; then the new state's
+   * `always` is re-evaluated (the cascade). Guards receive NO payload — read
+   * external signals. Use for transient / branch states.
+   */
+  always?: TransitionConfig<TState> | TransitionConfig<TState>[]
+  /** Marks a terminal state — `isFinal()` reads true and `onDone` fires on entry. */
+  final?: boolean
 }
 
-interface TransitionConfig<TState> {
-  target: TState
-  guard?: (payload?: unknown) => boolean
-}
+// A transition target: a bare state name (unguarded), or an object with a guard.
+type TransitionConfig<TState> = TState | { target: TState; guard: (payload?: unknown) => boolean }
 ```
