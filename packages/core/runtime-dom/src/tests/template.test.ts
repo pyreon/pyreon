@@ -342,17 +342,29 @@ describe('_mountSlot', async () => {
     const placeholder = document.createComment('')
     parent.appendChild(placeholder)
 
-    _mountSlot(null, parent, placeholder)
+    const dispose = _mountSlot(null, parent, placeholder)
     expect(parent.childNodes.length).toBe(0)
+    // REGRESSION: the compiler emits a slot's cleanup call UNCONDITIONALLY
+    // (`() => { __d0(); __d1(); … }`), so _mountSlot must ALWAYS return a
+    // callable disposer — never null. Returning null made the cleanup throw
+    // `TypeError: <slot> is not a function` on re-render / unmount (the live
+    // flow Controls `g is not a function` crash — `{showLock && <button>}` →
+    // false → _mountSlot(false) → null → null() in the cleanup).
+    expect(typeof dispose).toBe('function')
+    expect(() => dispose()).not.toThrow()
   })
 
-  test('handles false/true children', () => {
-    const parent = document.createElement('div')
-    const placeholder = document.createComment('')
-    parent.appendChild(placeholder)
+  test('handles false/true children — returns a callable disposer (not null)', () => {
+    for (const falsy of [false, true] as const) {
+      const parent = document.createElement('div')
+      const placeholder = document.createComment('')
+      parent.appendChild(placeholder)
 
-    _mountSlot(false, parent, placeholder)
-    expect(parent.childNodes.length).toBe(0)
+      const dispose = _mountSlot(falsy, parent, placeholder)
+      expect(parent.childNodes.length).toBe(0)
+      expect(typeof dispose).toBe('function')
+      expect(() => dispose()).not.toThrow()
+    }
   })
 })
 

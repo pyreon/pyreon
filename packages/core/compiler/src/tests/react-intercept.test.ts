@@ -653,6 +653,22 @@ describe('diagnoseError', () => {
     expect(result!.fixCode).toContain('count()')
   })
 
+  test("diagnoses a slot-cleanup 'is not a function' crash as the _mountSlot null-disposer bug, NOT signal advice", () => {
+    // The live @pyreon/flow Controls crash: a falsy conditional slot made
+    // `_mountSlot` return null, and the compiler's UNCONDITIONAL cleanup call
+    // (`g()`) threw on re-render/unmount. This specific shape must NOT get the
+    // generic "call your signal" advice — it must point at the runtime-dom fix.
+    const result = diagnoseError(
+      '[pyreon] Unhandled effect error: TypeError: g is not a function at Object.cleanup',
+    )
+    expect(result).not.toBeNull()
+    expect(result!.cause).toContain('_mountSlot')
+    expect(result!.cause).toContain('disposer')
+    expect(result!.fix).toContain('@pyreon/runtime-dom')
+    // It must NOT have fallen through to the signal-access advice:
+    expect(result!.fix).not.toContain('Pyreon signals are callable')
+  })
+
   test("diagnoses Cannot read properties of undefined (reading 'set')", () => {
     const result = diagnoseError("Cannot read properties of undefined (reading 'set')")
     expect(result).not.toBeNull()
