@@ -19,6 +19,13 @@ export function getSnapshot<TState extends StateShape>(instance: object): Snapsh
 
   const out: Record<string, unknown> = {}
   for (const key of meta.stateKeys) {
+    // Reference field: serialize the raw stored id, NOT the resolved node
+    // (the node lives elsewhere in the tree and serializes under its own owner).
+    const refIdSig = meta.referenceKeys?.get(key)
+    if (refIdSig) {
+      out[key] = refIdSig.peek()
+      continue
+    }
     const sig = (instance as Record<string, Signal<unknown>>)[key]
     if (!sig) continue
     const val = sig.peek()
@@ -61,9 +68,16 @@ export function applySnapshot<TState extends StateShape>(
   batch(() => {
     for (const key of meta.stateKeys) {
       if (!(key in snapshot)) continue
+      const val = (snapshot as Record<string, unknown>)[key]
+      // Reference field: restore the raw stored id via the backing id-signal
+      // (the snapshot value IS the id).
+      const refIdSig = meta.referenceKeys?.get(key)
+      if (refIdSig) {
+        refIdSig.set(val)
+        continue
+      }
       const sig = (instance as Record<string, Signal<unknown>>)[key]
       if (!sig) continue
-      const val = (snapshot as Record<string, unknown>)[key]
       const current = sig.peek()
       if (isModelInstance(current)) {
         // Recurse into nested model instance

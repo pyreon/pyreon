@@ -62,6 +62,7 @@ const { store } = useTodoList() // same instance on every call`,
     'clone(instance) / getType(instance) — independent structural copy + definition back-ref',
     'onSnapshot(instance, cb) — microtask-coalesced snapshot subscription; onAction(instance, cb) — observe action calls',
     'getParent / getRoot / getPath / isRoot / hasParent — tree traversal (parent tracked for field AND array/map children)',
+    'identifier() / reference(Type) / resolveIdentifier — normalized references that resolve by id to the live node',
     'Schema mode validates + STRICTLY TYPES state from a schema passed directly — @pyreon/validate, raw zod / valibot / arktype, any Standard Schema (no adapter wrapper)',
     'Nested model composition for tree-shaped state',
     'getSnapshot / applySnapshot — typed recursive serialization',
@@ -339,6 +340,44 @@ isRoot(list)      // true`,
         'Auto-attachment is one container level deep — a model nested inside an array inside an array is not auto-parented; use field or single-array nesting',
       ],
       seeAlso: ['model', 'getSnapshot'],
+    },
+    {
+      name: 'identifier',
+      kind: 'function',
+      signature: 'identifier<T extends string | number>(default?: T) => T',
+      summary:
+        'Declare a state field as a model\'s IDENTIFIER — the field a `reference()` resolves against. Plain mode: use as a field value, `model({ state: { id: identifier(), name: \'\' } })` — it is a normal signal at runtime (initialized to the default, or `\'\'`); the marker just records WHICH field is the id on the definition. Schema mode names it via config instead: `model({ schema, identifier: \'id\' })`. A model needs an identifier only to be the TARGET of a reference.',
+      example: `const User = model({ state: { id: identifier(), name: '' } })
+// schema mode:
+const User2 = model({ schema: s.object({ id: s.string(), name: s.string() }), identifier: 'id' })`,
+      seeAlso: ['reference', 'resolveIdentifier', 'model'],
+    },
+    {
+      name: 'reference',
+      kind: 'function',
+      signature: 'reference(TargetModel) => ReferenceField<TargetInstance>',
+      summary:
+        'Declare a state field as a normalized REFERENCE to another model by its identifier. The field STORES the target\'s id (so it serializes + round-trips cleanly) but RESOLVES to the live node on read. `post.author()` → the target node (or `undefined` if unresolved); `post.author.set(node | id)` stores the id; `post.author.id()` reads the raw id; `getSnapshot`/`applySnapshot` serialize/restore the id. Resolution walks the tree from `getRoot(node)` for a node of the target type whose identifier equals the stored id (O(n) per read in v1 — a root id-index is a future optimization). The target type must declare an `identifier()`.',
+      example: `const Post = model({ state: { id: identifier(), title: '', author: reference(User) } })
+// inside a store holding both users and posts:
+post.author()      // → the live User node (resolves via getRoot(post))
+post.author.set(user)  // stores user's id
+post.author.id()   // 'u-42'`,
+      mistakes: [
+        'Reading `reference` resolution OUTSIDE the tree — the field resolves via `getRoot(node)`, so the referencing node and the target must share a root; an unrooted node resolves to `undefined`',
+        'Expecting array-held nodes to deep-serialize in `getSnapshot` — references serialize as the id; the TARGET node serializes under its own owner in the tree (and getSnapshot v1 does not recurse arrays-of-instances)',
+        'Referencing a model with no `identifier()` — `reference()`/`resolveIdentifier` throw without a declared identifier on the target type',
+      ],
+      seeAlso: ['identifier', 'resolveIdentifier', 'getRoot', 'model'],
+    },
+    {
+      name: 'resolveIdentifier',
+      kind: 'function',
+      signature: '<T>(root, Type, id) => T | undefined',
+      summary:
+        'Find the model instance of `Type` whose identifier equals `id`, searching `root`\'s subtree (depth-first, cycle-safe; reads each node\'s owned state — fields, array elements, plain-object values — but does not follow references). Returns `undefined` if no match. Throws if `Type` has no `identifier()` declared. The resolver `reference()` fields use under the hood; also useful directly for ad-hoc lookups.',
+      example: `const user = resolveIdentifier(store, User, 'u-42')`,
+      seeAlso: ['reference', 'identifier', 'getRoot'],
     },
   ],
   gotchas: [

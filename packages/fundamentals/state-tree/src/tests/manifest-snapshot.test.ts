@@ -79,7 +79,7 @@ describe('gen-docs — state-tree snapshot', () => {
     // + destroy + isAlive + clone + getType (PR 2)
     // + volatile + onSnapshot + onAction (PR 3)
     // + getParent (tree helpers) = 17
-    expect(Object.keys(record).length).toBe(17)
+    expect(Object.keys(record).length).toBe(20)
     expect(record['state-tree/model']!.notes).toContain('chainable builder')
     expect(record['state-tree/model']!.notes).toContain('schema')
     expect(record['state-tree/model']!.notes).toContain('async')
@@ -103,5 +103,9 @@ describe('gen-docs — state-tree snapshot', () => {
     expect(record['state-tree/onAction']!.notes).toContain('observe')
     // Tree traversal
     expect(record['state-tree/getParent']!.notes).toContain('tree PARENT')
+    // References & identifiers
+    expect(record['state-tree/identifier']!.notes).toContain('IDENTIFIER')
+    expect(record['state-tree/reference']!.notes).toContain('RESOLVES to the live node')
+    expect(record['state-tree/resolveIdentifier']).toBeDefined()
   })
 })

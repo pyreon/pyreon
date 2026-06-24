@@ -4,6 +4,7 @@ import type { NormalizedConfig } from './model'
 import { runAction } from './middleware'
 import { onPatch, trackedSignal } from './patch'
 import { instanceMeta } from './registry'
+import { buildReferenceField, isReferenceMarker } from './references'
 import { getSnapshot } from './snapshot'
 import { scanForChildren } from './tree'
 import type { InstanceMeta, LifecycleHandlers, StateShape } from './types'
@@ -233,6 +234,23 @@ export function createInstance(
     // were already merged into `candidate` before parsing.
     const callerOverride = (initial as Record<string, unknown>)[key]
     const hasCallerOverride = key in initial && callerOverride !== undefined
+
+    // Reference field (plain mode): stores the target's id, resolves to the
+    // live node on read. Build a resolving accessor instead of a tracked signal
+    // and record the id-signal so snapshot serializes/restores the raw id.
+    if (!isSchemaMode && isReferenceMarker(defaultValue)) {
+      // Seed the initial id (a node or raw id) inside buildReferenceField — no
+      // construction-time `.set` call.
+      const { accessor, idSig } = buildReferenceField(
+        instance,
+        defaultValue.type,
+        hasCallerOverride ? callerOverride : null,
+      )
+      instance[key] = accessor
+      ;(meta.referenceKeys ??= new Map()).set(key, idSig)
+      initialSnapshotForReset[key] = idSig.peek()
+      continue
+    }
 
     let rawSig: Signal<unknown>
 

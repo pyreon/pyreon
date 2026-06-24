@@ -1,6 +1,7 @@
 import type { SchemaIssue, SchemaParseResult } from '@pyreon/validation'
 import { extractParseFn, formatIssues } from '@pyreon/validation'
 import { createInstance } from './instance'
+import { isIdentifierMarker } from './references'
 import type {
   InferSchemaState,
   LifecycleHandlers,
@@ -47,6 +48,12 @@ export interface SchemaConfig<S> {
   readonly schema: S
   readonly initial?: unknown
   readonly onValidationError?: (issues: SchemaIssue[], op: string) => void
+  /**
+   * Name the schema field that is this model's IDENTIFIER, so it can be the
+   * target of a `reference()`. Plain mode uses the `identifier()` field marker
+   * instead; schema mode names it here (a schema can't carry the marker).
+   */
+  readonly identifier?: string
 }
 
 // ─── Internal config carried on `_config` ────────────────────────────────────
@@ -75,6 +82,8 @@ export interface NormalizedConfig<TState extends StateShape> {
   readonly lifecycleFactories: ReadonlyArray<(self: any) => LifecycleHandlers>
   /** Ordered list of volatile-state factories (always an array, possibly empty). */
   readonly volatileFactories: ReadonlyArray<(self: any) => Record<string, unknown>>
+  /** Field name declared as the model's identifier (plain `identifier()` or schema `identifier`). */
+  readonly _identifierKey?: string
 }
 
 // ─── ModelDefinition ──────────────────────────────────────────────────────────
@@ -112,9 +121,18 @@ export class ModelDefinition<
   /** @internal — exposed so nested instance creation can read it. */
   readonly _config: NormalizedConfig<TState>
 
+  /**
+   * @internal — the field name declared as this model's identifier (via
+   * `identifier()` in plain mode or `model({ schema, identifier })` in schema
+   * mode), or `undefined`. Read by `resolveIdentifier` / `reference()` to know
+   * which field carries a node's id.
+   */
+  readonly _identifierKey?: string
+
   /** @internal — only used by the static `model()` factory + chain methods. */
   constructor(config: NormalizedConfig<TState>) {
     this._config = config
+    if (config._identifierKey !== undefined) this._identifierKey = config._identifierKey
   }
 
   /**
@@ -317,6 +335,7 @@ export function model(
         schema: unknown
         initial?: unknown
         onValidationError?: (issues: SchemaIssue[], op: string) => void
+        identifier?: string
       },
 ): ModelDefinition<StateShape, Record<never, never>, Record<never, never>, boolean> {
   if ('schema' in config && config.schema !== undefined) {
@@ -361,6 +380,7 @@ export function model(
       ...(config.onValidationError
         ? { _onValidationError: config.onValidationError }
         : {}),
+      ...(config.identifier !== undefined ? { _identifierKey: config.identifier } : {}),
     }
     return new ModelDefinition(cfg)
   }
@@ -373,11 +393,27 @@ export function model(
     )
   }
 
+  // Detect an `identifier()` field marker: record which field is the id and
+  // replace the marker with its plain default value so the rest of the
+  // pipeline treats it as an ordinary signal-backed field. Last marker wins
+  // (a model has one identifier).
+  const rawState = (config as { state: StateShape }).state
+  let identifierKey: string | undefined
+  let state = rawState
+  for (const [key, value] of Object.entries(rawState)) {
+    if (isIdentifierMarker(value)) {
+      if (state === rawState) state = { ...rawState }
+      ;(state as Record<string, unknown>)[key] = value.default
+      identifierKey = key
+    }
+  }
+
   return new ModelDefinition({
-    state: (config as { state: StateShape }).state,
+    state,
     viewFactories: [],
     actionFactories: [],
     lifecycleFactories: [],
     volatileFactories: [],
+    ...(identifierKey !== undefined ? { _identifierKey: identifierKey } : {}),
   })
 }

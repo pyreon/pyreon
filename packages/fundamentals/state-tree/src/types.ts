@@ -1,4 +1,5 @@
 import type { Signal } from '@pyreon/reactivity'
+import type { ReferenceField } from './references'
 
 // ─── Model brand ──────────────────────────────────────────────────────────────
 
@@ -60,9 +61,15 @@ export type ResolveField<T> = T extends {
   ? I
   : T
 
-/** Map state shape to per-field signals. */
+/**
+ * Map state shape to per-field instance members. Most fields become a
+ * `Signal<T>`; a `reference()` field stays a `ReferenceField` accessor (it
+ * resolves to the target node on read — NOT a signal-of-reference).
+ */
 export type StateSignals<TState extends StateShape> = {
-  readonly [K in keyof TState]: Signal<ResolveField<TState[K]>>
+  readonly [K in keyof TState]: TState[K] extends ReferenceField<infer R>
+    ? ReferenceField<R>
+    : Signal<ResolveField<TState[K]>>
 }
 
 // ─── Schema-mode mutation helpers ────────────────────────────────────────────
@@ -204,12 +211,15 @@ type ExtractModelState<T> = T extends {
 
 /**
  * Snapshot type: plain JS values (no signals, no model instances).
- * Nested model fields recursively produce their own typed snapshot.
+ * Nested model fields recursively produce their own typed snapshot; a
+ * `reference()` field serializes as its identifier (`string | number`).
  */
 export type Snapshot<TState extends StateShape> = {
-  [K in keyof TState]: TState[K] extends { readonly __pyreonMod: true }
-    ? Snapshot<ExtractModelState<TState[K]>>
-    : TState[K]
+  [K in keyof TState]: TState[K] extends ReferenceField<unknown>
+    ? string | number
+    : TState[K] extends { readonly __pyreonMod: true }
+      ? Snapshot<ExtractModelState<TState[K]>>
+      : TState[K]
 }
 
 // ─── Patch ────────────────────────────────────────────────────────────────────
@@ -310,6 +320,14 @@ export interface InstanceMeta {
   parent?: object
   /** The parent's state key this node is attached under (the `getPath` segment). */
   parentKey?: string
+  /**
+   * Reference fields (from `reference()`) → their backing id-signal. A reference
+   * field stores the target's identifier and resolves to the live node on read;
+   * `getSnapshot` / `applySnapshot` use this to serialize / restore the raw id
+   * rather than the resolved node, and the tree-walk skips these keys (a
+   * reference points at a node it does not own).
+   */
+  referenceKeys?: Map<string, Signal<unknown>>
   /**
    * Back-reference to the `ModelDefinition` that produced this instance —
    * powers `clone(instance)` (= `def.create(getSnapshot(instance))`) and
