@@ -55,9 +55,9 @@ const temp = useMemoryStorage('temp-data', { count: 0 })
 
 // Custom backend — encrypted, remote, etc.:
 const encryptedBackend = {
-  getItem: (key: string) => decrypt(localStorage.getItem(key)),
-  setItem: (key: string, value: string) => localStorage.setItem(key, encrypt(value)),
-  removeItem: (key: string) => localStorage.removeItem(key),
+  get: (key: string) => decrypt(localStorage.getItem(key)),
+  set: (key: string, value: string) => localStorage.setItem(key, encrypt(value)),
+  remove: (key: string) => localStorage.removeItem(key),
 }
 const useEncrypted = createStorage(encryptedBackend)
 const secret = useEncrypted('api-key', '')
@@ -83,7 +83,7 @@ const secret = useEncrypted('api-key', '')
 <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>
 ```
 
-Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serialize`/`deserialize` in options for non-JSON types.
+Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serializer`/`deserializer` in options for non-JSON types.
 
 **Example**
 
@@ -97,7 +97,7 @@ theme.remove()    // delete from storage, reset to default
 **Common mistakes**
 
 - Expecting cross-tab sync with `useSessionStorage` — only `useStorage` (localStorage) fires storage events across tabs
-- Storing non-serializable values (functions, class instances) without custom `serialize`/`deserialize` — JSON.stringify drops them silently
+- Storing non-serializable values (functions, class instances) without custom `serializer`/`deserializer` — JSON.stringify drops them silently
 - Reading `.remove()` return value — it returns void, not the removed value
 
 **See also:** `useSessionStorage` · `useCookie` · `useIndexedDB` · `createStorage`
@@ -240,24 +240,24 @@ draft.set({ title: 'New Article', body: 'Content...' })
 (backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>
 ```
 
-Factory for custom storage backends. Pass an object with `getItem`, `setItem`, `removeItem` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer.
+Factory for custom storage backends. Pass an object with `get`, `set`, `remove` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer.
 
 **Example**
 
 ```tsx
 const useEncrypted = createStorage({
-  getItem: (key) => decrypt(localStorage.getItem(key)),
-  setItem: (key, value) => localStorage.setItem(key, encrypt(value)),
-  removeItem: (key) => localStorage.removeItem(key),
+  get: (key) => decrypt(localStorage.getItem(key)),
+  set: (key, value) => localStorage.setItem(key, encrypt(value)),
+  remove: (key) => localStorage.removeItem(key),
 })
 const secret = useEncrypted('api-key', '')
 ```
 
 **Common mistakes**
 
-- Returning `undefined` from getItem when the key is absent — return `null` (matches the localStorage / sessionStorage contract). `undefined` may be JSON-serialized as the literal string `"undefined"` by some serialize-deserialize pipelines.
+- Returning `undefined` from the backend `get` when the key is absent — return `null` (matches the localStorage / sessionStorage contract). `undefined` may be JSON-serialized as the literal string `"undefined"` by some serialize-deserialize pipelines.
 - Throwing synchronously from setItem — backend errors should be either logged + swallowed (graceful degradation, the signal still updates) OR propagated via a rejected Promise for async backends. A thrown error breaks the calling `.set()` and leaves the in-memory signal in a state inconsistent with the backend.
-- Forgetting that the backend must implement ALL three (`getItem`, `setItem`, `removeItem`) — `.remove()` calls removeItem, and omitting it makes the hook crash on cleanup paths.
+- Forgetting that the backend must implement ALL three (`get`, `set`, `remove`) — `.remove()` calls the backend `remove`, and omitting it makes the hook crash on cleanup paths.
 
 **See also:** `useStorage`
 

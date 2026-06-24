@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'URL-synced state — useUrlState(key, default) or schema mode, auto type coercion, SSR-safe',
   description:
-    'Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (`useUrlState("page", 1)`) and schema mode (`useUrlState({ page: 1, sort: "name" })`). Auto-coerces types (numbers, booleans, arrays), uses `replaceState` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (reads from request URL on server).',
+    'Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (`useUrlState("page", 1)`) and schema mode (`useUrlState({ page: 1, sort: "name" })`). Auto-coerces types (numbers, booleans, arrays), uses `replaceState` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (signals initialize to the default value on the server — it does NOT read the request URL; reads `window.location` on the client).',
   category: 'universal',
   longExample: `import { useUrlState, setUrlRouter } from '@pyreon/url-state'
 import { signal } from '@pyreon/reactivity'
@@ -29,7 +29,7 @@ const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
 tags.set(['typescript', 'pyreon'])  // ?tags=typescript&tags=pyreon
 
 // Debounce for high-frequency updates (e.g. search input)
-const search = useUrlState('q', '', { debounceMs: 300 })
+const search = useUrlState('q', '', { debounce: 300 })
 // typing "hello" fires one URL update after 300ms pause, not 5
 
 // Router integration — uses router.replace() when available
@@ -37,7 +37,7 @@ import { useRouter } from '@pyreon/router'
 const router = useRouter()
 setUrlRouter(router)  // now useUrlState uses router.replace() internally
 
-// SSR-safe — reads from request URL on server, window.location on client
+// SSR-safe — initializes to the default on the server, reads window.location on the client
 // No typeof window checks needed in your components`,
   features: [
     'useUrlState(key, default) — single-param signal synced to URL',
@@ -45,7 +45,7 @@ setUrlRouter(router)  // now useUrlState uses router.replace() internally
     'Auto type coercion for numbers, booleans, arrays',
     'replaceState by default (no history spam)',
     'Configurable debounce for high-frequency updates',
-    'SSR-safe — reads request URL on server',
+    'SSR-safe — initializes to the default on the server (reads the URL on the client)',
     'setUrlRouter() for @pyreon/router integration',
   ],
   api: [
@@ -55,7 +55,7 @@ setUrlRouter(router)  // now useUrlState uses router.replace() internally
       signature:
         '<T>(key: string, defaultValue: T, options?: UrlStateOptions) => UrlStateSignal<T>',
       summary:
-        'Create a reactive signal synced to a URL search parameter. Type is inferred from the default value — numbers, booleans, strings, and arrays are auto-coerced. Uses `replaceState` by default (no history entries). Returns a `UrlStateSignal<T>` with `.set()`, `.reset()`, and `.remove()`. Schema mode overload: `useUrlState({ page: 1, sort: "name" })` creates multiple synced signals from a single call. SSR-safe — reads from the request URL on server.',
+        'Create a reactive signal synced to a URL search parameter. Type is inferred from the default value — numbers, booleans, strings, and arrays are auto-coerced. Uses `replaceState` by default (no history entries). Returns a `UrlStateSignal<T>` with `.set()`, `.reset()`, and `.remove()`. Schema mode overload: `useUrlState({ page: 1, sort: "name" })` creates multiple synced signals from a single call. SSR-safe — initializes to the default value on the server (does NOT read the request URL).',
       example: `// Single param:
 const page = useUrlState('page', 1)
 page()        // 1
@@ -69,7 +69,7 @@ q.set('hello')  // ?q=hello&sort=name
 const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
 tags.set(['a', 'b'])  // ?tags=a&tags=b`,
       mistakes: [
-        'Using pushState behavior (adds history entries per keystroke) — useUrlState defaults to replaceState; if you pass `{ replaceState: false }` on a high-frequency input, the browser back button breaks',
+        'Using pushState behavior (adds history entries per keystroke) — useUrlState defaults to replaceState; if you pass `{ replace: false }` on a high-frequency input, the browser back button breaks',
         'Forgetting the default value — the type is inferred from it and determines the auto-coercion strategy (number default = coerce to number, boolean default = coerce to boolean)',
         'Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes',
         'Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet',

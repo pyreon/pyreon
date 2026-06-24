@@ -136,7 +136,7 @@ download(pdf, 'report.pdf')`,
     'Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total `lib/`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.',
     {
       label: 'Format return types',
-      note: 'Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, gchat, svg) return string.',
+      note: 'Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, google-chat, svg) return string.',
     },
     {
       label: 'JSX vs Builder',

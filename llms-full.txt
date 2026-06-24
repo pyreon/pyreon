@@ -1537,7 +1537,7 @@ await doc.toNotion()    // Notion blocks
 
 > **Note**: Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total `lib/`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.
 >
-> **Format return types**: Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, gchat, svg) return string.
+> **Format return types**: Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, google-chat, svg) return string.
 >
 > **JSX vs Builder**: Both APIs produce the same DocNode tree. JSX primitives are better for complex layouts with conditional sections. The builder API is better for programmatic generation (e.g. loop over data to build rows).
 >
@@ -1659,9 +1659,9 @@ const temp = useMemoryStorage('temp-data', { count: 0 })
 
 // Custom backend — encrypted, remote, etc.:
 const encryptedBackend = {
-  getItem: (key: string) => decrypt(localStorage.getItem(key)),
-  setItem: (key: string, value: string) => localStorage.setItem(key, encrypt(value)),
-  removeItem: (key: string) => localStorage.removeItem(key),
+  get: (key: string) => decrypt(localStorage.getItem(key)),
+  set: (key: string, value: string) => localStorage.setItem(key, encrypt(value)),
+  remove: (key: string) => localStorage.removeItem(key),
 }
 const useEncrypted = createStorage(encryptedBackend)
 const secret = useEncrypted('api-key', '')
@@ -2045,10 +2045,10 @@ disableScope('editor')                   // programmatically disable a scope
 // Shortcuts can filter input elements — by default, shortcuts
 // don't fire when focused on <input>, <textarea>, <select>.
 // Override with:
-useHotkey('escape', () => closeModal(), { enableOnFormElements: true })
+useHotkey('escape', () => closeModal(), { enableOnInputs: true })
 ```
 
-> **Note**: By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass `enableOnFormElements: true` in options to override. Escape is a common candidate for this override.
+> **Note**: By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass `enableOnInputs: true` in options to override. Escape is a common candidate for this override.
 >
 > **mod alias**: `mod` maps to Command on macOS, Ctrl on Windows/Linux. Write `mod+s` instead of platform-specific `ctrl+s` / `cmd+s` for cross-platform shortcuts.
 >
@@ -2087,12 +2087,14 @@ const count = rx.count(activeUsers)                       // Computed<number>
 // Grouping:
 const byDept = rx.groupBy(users, u => u.department)      // Computed<Record<string, User[]>>
 
-// Pipe — compose left-to-right:
+// Pipe — thread the value through plain transform functions, left-to-right.
+// Each fn receives the resolved value; the rx helpers are 2-arg (source, ...),
+// so wrap them: us => filter(us, pred). There is NO curried filter(pred) form.
 const result = pipe(
   users,
-  filter(u => u.active),
-  sortBy('name'),
-  map(u => u.name),
+  us => filter(us, u => u.active),
+  us => sortBy(us, 'name'),
+  us => map(us, u => u.name),
 )  // Computed<string[]> → ["Alice", "Charlie"]
 
 // Search — case-insensitive substring match across STRING fields.
@@ -2113,7 +2115,7 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 >
 > **Computed lifecycle**: Computed outputs from signal inputs auto-dispose when they have no subscribers. In component bodies, the reactive scope from JSX keeps them alive; in standalone code, subscribe or read within an `effect()` to keep them active.
 >
-> **Curried vs uncurried**: Every function has both a direct form `filter(source, pred)` and a curried form `filter(pred)` for use with `pipe()`. The curried form is detected by argument count.
+> **No curried operators — pipe takes plain transforms**: rx functions are NOT curried — every collection/aggregation helper is `(source, …args)` only. `pipe(source, ...fns)` threads the value through plain `(value) => value` functions, so to use a helper inside a pipe you wrap it: `pipe(users, us => filter(us, pred), us => map(us, fn))`. A lone `filter(pred)` is not a valid call.
 >
 > **Tree-shaking**: The `rx` namespace object is a `const` — bundlers can tree-shake unused properties. For maximum control, import individual functions: `import { filter, map } from "@pyreon/rx"`.
 
@@ -2288,7 +2290,7 @@ toast.dismiss()         // dismiss all
 
 ## @pyreon/url-state — URL State
 
-Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (`useUrlState("page", 1)`) and schema mode (`useUrlState({ page: 1, sort: "name" })`). Auto-coerces types (numbers, booleans, arrays), uses `replaceState` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (reads from request URL on server).
+Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (`useUrlState("page", 1)`) and schema mode (`useUrlState({ page: 1, sort: "name" })`). Auto-coerces types (numbers, booleans, arrays), uses `replaceState` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (signals initialize to the default value on the server — it does NOT read the request URL; reads `window.location` on the client).
 
 ```typescript
 import { useUrlState, setUrlRouter } from '@pyreon/url-state'
@@ -2312,7 +2314,7 @@ const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
 tags.set(['typescript', 'pyreon'])  // ?tags=typescript&tags=pyreon
 
 // Debounce for high-frequency updates (e.g. search input)
-const search = useUrlState('q', '', { debounceMs: 300 })
+const search = useUrlState('q', '', { debounce: 300 })
 // typing "hello" fires one URL update after 300ms pause, not 5
 
 // Router integration — uses router.replace() when available
@@ -2320,7 +2322,7 @@ import { useRouter } from '@pyreon/router'
 const router = useRouter()
 setUrlRouter(router)  // now useUrlState uses router.replace() internally
 
-// SSR-safe — reads from request URL on server, window.location on client
+// SSR-safe — initializes to the default on the server, reads window.location on the client
 // No typeof window checks needed in your components
 ```
 

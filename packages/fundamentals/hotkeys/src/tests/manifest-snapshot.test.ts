@@ -7,7 +7,7 @@ import manifest from '../manifest'
 
 describe('gen-docs — hotkeys snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/hotkeys — Keyboard shortcut management — scope-aware, modifier keys, conflict detection. By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnFormElements: true\` in options to override. Escape is a common candidate for this override."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/hotkeys — Keyboard shortcut management — scope-aware, modifier keys, conflict detection. By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnInputs: true\` in options to override. Escape is a common candidate for this override."`)
   })
 
   it('renders to llms-full.txt section', () => {
@@ -50,10 +50,10 @@ describe('gen-docs — hotkeys snapshot', () => {
       // Shortcuts can filter input elements — by default, shortcuts
       // don't fire when focused on <input>, <textarea>, <select>.
       // Override with:
-      useHotkey('escape', () => closeModal(), { enableOnFormElements: true })
+      useHotkey('escape', () => closeModal(), { enableOnInputs: true })
       \`\`\`
 
-      > **Note**: By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnFormElements: true\` in options to override. Escape is a common candidate for this override.
+      > **Note**: By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnInputs: true\` in options to override. Escape is a common candidate for this override.
       >
       > **mod alias**: \`mod\` maps to Command on macOS, Ctrl on Windows/Linux. Write \`mod+s\` instead of platform-specific \`ctrl+s\` / \`cmd+s\` for cross-platform shortcuts.
       >

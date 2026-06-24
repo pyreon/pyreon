@@ -48,9 +48,9 @@ describe('gen-docs — storage snapshot', () => {
 
       // Custom backend — encrypted, remote, etc.:
       const encryptedBackend = {
-        getItem: (key: string) => decrypt(localStorage.getItem(key)),
-        setItem: (key: string, value: string) => localStorage.setItem(key, encrypt(value)),
-        removeItem: (key: string) => localStorage.removeItem(key),
+        get: (key: string) => decrypt(localStorage.getItem(key)),
+        set: (key: string, value: string) => localStorage.setItem(key, encrypt(value)),
+        remove: (key: string) => localStorage.removeItem(key),
       }
       const useEncrypted = createStorage(encryptedBackend)
       const secret = useEncrypted('api-key', '')
