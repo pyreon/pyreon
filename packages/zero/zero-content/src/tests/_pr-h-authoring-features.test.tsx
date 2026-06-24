@@ -88,14 +88,23 @@ describe('PR-H — M2 — line numbers', () => {
     cleanup()
   })
 
-  it('omits the gutter when showLineNumbers is unset', () => {
+  it('renders an empty, --empty-tagged gutter (no spans) when showLineNumbers is unset', () => {
     const { container, cleanup } = mountReactive(
       <CodeBlock
         lang="ts"
         dangerouslySetInnerHTML={{ __html: '<pre><code>a</code></pre>' }}
       />,
     )
-    expect(container.querySelector('.code-block__gutter')).toBeNull()
+    // The gutter wrapper is now ALWAYS in the DOM so the compiled template
+    // keeps stable static-element refs (see CodeBlock's STRUCTURE NOTE — a
+    // conditional wrapper compiled to a `_mountSlot` that, on a fresh SPA
+    // mount, corrupted the sibling ref walk → HierarchyRequestError). When
+    // line numbers are off it's tagged `--empty` (hidden via CSS) with no
+    // line-number spans.
+    const gutter = container.querySelector('.code-block__gutter')
+    expect(gutter).not.toBeNull()
+    expect(gutter!.classList.contains('code-block__gutter--empty')).toBe(true)
+    expect(gutter!.querySelectorAll('.code-block__line-number').length).toBe(0)
     cleanup()
   })
 })
@@ -188,6 +197,31 @@ describe('PR-H — M3+M1 — filename header', () => {
     expect(filename).not.toBeNull()
     expect(filename!.textContent).toBe('hello.ts')
     expect(filename!.getAttribute('aria-hidden')).toBe('true')
+    // The header wrapper is present and NOT --empty when a filename is set.
+    const header = container.querySelector('.code-block__header')
+    expect(header).not.toBeNull()
+    expect(header!.classList.contains('code-block__header--empty')).toBe(false)
+    cleanup()
+  })
+
+  it('always renders the header wrapper, tagged --empty, when no filename', () => {
+    // Structural contract (see CodeBlock STRUCTURE NOTE): the header wrapper
+    // is ALWAYS in the DOM so the compiled `_tpl` keeps stable static-element
+    // refs for the body/pre/copy-button. A conditional `{filename && <header>}`
+    // compiled to a `_mountSlot` whose empty-mount corrupted the sibling ref
+    // walk on a fresh client mount → `HierarchyRequestError`. When there's no
+    // filename the wrapper is tagged `--empty` (hidden via CSS) and holds no
+    // filename label.
+    const { container, cleanup } = mountReactive(
+      <CodeBlock
+        lang="ts"
+        dangerouslySetInnerHTML={{ __html: '<pre></pre>' }}
+      />,
+    )
+    const header = container.querySelector('.code-block__header')
+    expect(header).not.toBeNull()
+    expect(header!.classList.contains('code-block__header--empty')).toBe(true)
+    expect(container.querySelector('.code-block__filename')).toBeNull()
     cleanup()
   })
 })
