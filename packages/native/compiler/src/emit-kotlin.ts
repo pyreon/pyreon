@@ -2111,6 +2111,30 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // binds to the whole concatenation. (Swift mirror: `arr + other`.)
             if (e.args.length === 1) return `(${obj} + ${argExprs[0]!})`
             break
+          case 'slice': {
+            // JS `arr.slice(start, end?)` / `str.slice(start, end?)`. Kotlin
+            // has NO `slice(start, end)` (its `slice` takes a range/indices),
+            // so the bare emit is invalid. `drop`/`take` lower uniformly —
+            // both `List.drop(n).take(m)` → List and `String.drop(n).take(m)`
+            // → String, and both CLAMP like JS (no out-of-range crash):
+            //   slice(s, e) → drop(s).take(maxOf(0, e - s))
+            //   slice(s)    → drop(s)
+            //   slice()     → a copy (toList() for List; the String itself)
+            // Negative indices (rare in JS) fall through to the generic emit.
+            const sliceObjType = inferType(e.callee.object, _kotlinExprInferCtx)
+            const noNegative = e.args.every((a) => a.kind !== 'unary')
+            if (noNegative) {
+              if (e.args.length === 1) return `${obj}.drop(${argExprs[0]!})`
+              if (e.args.length === 2) {
+                return `${obj}.drop(${argExprs[0]!}).take(maxOf(0, (${argExprs[1]!}) - (${argExprs[0]!})))`
+              }
+              if (e.args.length === 0) {
+                if (sliceObjType.kind === 'string') return obj
+                if (sliceObjType.kind === 'array') return `${obj}.toList()`
+              }
+            }
+            break
+          }
           case 'findIndex':
             // JS `arr.findIndex(pred)` → Kotlin `indexOfFirst(pred)`
             // (Swift: `firstIndex(where:)`). Kotlin's `String.repeat(n)`
