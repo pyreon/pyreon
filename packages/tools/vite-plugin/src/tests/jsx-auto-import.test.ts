@@ -162,9 +162,9 @@ describe('Phase D2 — JSX auto-import for canonical primitives', () => {
     expect(out).not.toContain('@pyreon/primitives')
   })
 
-  it('supports custom source via deprecated source+names option', async () => {
+  it('supports a custom source via a single-entry mappings option', async () => {
     const plugin = pyreonPlugin({
-      jsxAutoImport: { source: '@my/primitives', names: ['Box', 'Row'] },
+      jsxAutoImport: { mappings: [{ source: '@my/primitives', names: ['Box', 'Row'] }] },
     })
     const input = `
       export function App() {
