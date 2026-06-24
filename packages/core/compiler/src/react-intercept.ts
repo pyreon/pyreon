@@ -1241,6 +1241,32 @@ const { nonce } = useRequestLocals()`,
     }),
   },
   {
+    // `_mountSlot` returned `null` for a falsy/boolean conditional slot
+    // (`{showLock && <button>}` → false, `{cond ? <x/> : null}` → null), but
+    // the compiler emits a template's cleanup as an UNCONDITIONAL call of every
+    // slot disposer (`() => { __d0(); __d1(); … }`). So the disposer was `null`
+    // and `__dN()` threw `<slot> is not a function` (minified: `g is not a
+    // function`) the moment the reactive boundary re-ran or the component
+    // unmounted. Surfaced as the @pyreon/flow Controls crash on drag/zoom/nav
+    // (`showLock` defaults false → the lock-button slot is `_mountSlot(false)`
+    // → null). Matched BEFORE the generic "X is not a function" entry below so
+    // the slot-cleanup shape (Unhandled effect error / Object.cleanup) gets the
+    // correct explanation instead of the "call your signal" advice.
+    pattern:
+      /(?:Unhandled effect error|Object\.cleanup|at cleanup|effect.*cleanup).*\bis not a function\b|\bis not a function\b.*\bcleanup\b/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/runtime-dom` versions before the `_mountSlot` callable-cleanup fix, a conditional JSX slot that evaluated FALSY/BOOLEAN (`{cond && <x/>}` → false, `{cond ? <x/> : null}` → null) made `_mountSlot` return `null` instead of a disposer. The compiler emits a template\'s cleanup as an UNCONDITIONAL call of every slot disposer (`() => { __d0(); __d1(); … }`), so the `null` slot threw `<slot> is not a function` (minified: e.g. `g is not a function` at `Object.cleanup`) the instant the reactive boundary re-ran or the component unmounted. The `@pyreon/flow` Controls crash on drag/zoom/navigate-away was exactly this (`showLock` defaults false → the lock-button slot is `_mountSlot(false)` → null).',
+      fix: 'Upgrade `@pyreon/runtime-dom` to the release where `_mountSlot` ALWAYS returns a callable cleanup (a shared no-op for the falsy case), so the compiler-emitted unconditional disposer call is always safe. No app code change needed. If you cannot upgrade, avoid bare falsy conditional slots inside a templatized element — wrap the conditional in a `<Show>` (`<Show when={cond}>{<x/>}</Show>`) so the slot always mounts a real reactive child.',
+      fixCode: `// Crashes on re-render/unmount pre-upgrade (falsy slot → null disposer):
+<div class="controls">{showLock && <button>Lock</button>}</div>
+
+// Works after the upgrade (slot returns a callable no-op when falsy).
+// Pre-upgrade workaround — route through <Show>:
+<div class="controls"><Show when={showLock}><button>Lock</button></Show></div>`,
+    }),
+  },
+  {
     pattern: /(\w+) is not a function/,
     diagnose: (m) => ({
       cause: `'${m[1]}' is not callable. If this is a signal, you need to call it: ${m[1]}()`,
