@@ -89,6 +89,22 @@ const hintId = createA11yId('hint')
 <span id={hintId}>Must be at least 8 characters</span>
 ```
 
+## Skip to content (WCAG 2.4.1)
+
+Render `<SkipLink>` as the first focusable element on the page. It's clipped out of view until a keyboard user presses Tab, then appears at the top-left; activating it moves **both scroll and keyboard focus** to your main landmark, so the next Tab continues from the content — past the repeated nav.
+
+```tsx
+import { SkipLink } from '@pyreon/a11y'
+
+<body>
+  <SkipLink href="#main">Skip to content</SkipLink>
+  <nav>…</nav>
+  <main id="main">…</main>
+</body>
+```
+
+It adds a programmatic-focus `tabindex` to the target automatically when it isn't natively focusable, so a plain `<main id="main">` just works. Restyle the focused appearance by passing a `style` object (it merges over the built-in reveal styles); the hide-until-focus behavior stays intact.
+
 ## Focus management — modals trap & restore automatically
 
 A modal that doesn't trap focus lets keyboard and screen-reader users tab out to the inert background. Pyreon's modal surfaces handle the full WAI-ARIA dialog focus lifecycle for you:

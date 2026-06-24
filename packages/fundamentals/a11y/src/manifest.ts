@@ -12,6 +12,7 @@ export default defineManifest({
     'announce(message) — speak status/errors to screen readers via a lazily-created aria-live region; zero setup, no provider, SSR-safe no-op',
     'polite (default, queued) and assertive (interrupts) politeness; clearAfter to auto-empty stale text; identical repeats re-announced via clear-then-set',
     '<VisuallyHidden> — content invisible on screen but kept in the accessibility tree (unlike display:none)',
+    '<SkipLink> — keyboard "skip to content" link, hidden until focused; moves scroll AND focus to the main landmark past repeated nav (WCAG 2.4.1 Bypass Blocks)',
     'createA11yId(prefix?) — stable SSR-safe ids for aria-labelledby / aria-describedby / for relationships',
     '<RouteAnnouncer> / useRouteAnnouncer() (@pyreon/a11y/router) — announce client-side route changes to screen readers (the SPA navigation gap); one router afterEach hook → polite live region',
   ],
@@ -66,6 +67,20 @@ function Field() {
       mistakes: [
         'Using `display:none` or the `hidden` attribute instead — those remove the content from the accessibility tree, so screen readers never see it. VisuallyHidden clips it but keeps it readable.',
         'Putting interactive controls inside it — a visually-hidden focusable element is a keyboard trap for sighted keyboard users (focus jumps to invisible content). Keep it to non-interactive text.',
+      ],
+    },
+    {
+      name: 'SkipLink',
+      kind: 'component',
+      signature:
+        "function SkipLink(props: { href?: string; children?: VNodeChild; [key: string]: unknown }): VNodeChild",
+      summary:
+        'A keyboard "skip to content" link (WCAG 2.4.1 Bypass Blocks): render it as the first focusable element on the page. It is clipped out of view until it receives focus (first Tab), then appears at the top-left; activating it moves BOTH scroll and keyboard focus to the target landmark (default `#main`), so the next Tab continues from the main content. Adds a programmatic-focus tabindex to a non-focusable target automatically. A `style` object merges over the built-in reveal styles to restyle the focused appearance without losing the hide-until-focus behavior.',
+      example: `<SkipLink href="#main">Skip to content</SkipLink>\n<nav>…</nav>\n<main id="main">…</main>`,
+      mistakes: [
+        'Not rendering it FIRST — a skip link only works if it is the first focusable element, so the very first Tab reveals it. Put it at the top of <body> / the app root, before nav.',
+        'Pointing href at a non-existent id — if `#main` has no matching element nothing moves. Ensure the target landmark carries the id (e.g. <main id="main">).',
+        "Hiding it with display:none / the hidden attribute to keep it off-screen — that removes it from the tab order so it can never be focused. SkipLink clips it (stays focusable) and reveals it on focus; don't override that with display:none.",
       ],
     },
     {
