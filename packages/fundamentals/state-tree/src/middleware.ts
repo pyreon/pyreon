@@ -44,12 +44,14 @@ export function runAction(
   // (a stale handler firing after teardown). Dev-warn + no-op; direct signal
   // writes stay unguarded (the documented escape hatch). Tree-shaken in prod.
   if (!meta.alive) {
+    /* v8 ignore start -- dev-only warning; the production branch is tree-shaken and never taken under test */
     if (process.env.NODE_ENV !== 'production') {
       console.warn(
         `[Pyreon] state-tree: action "${name}" called on a destroyed model instance — ignored. ` +
           'Stop calling actions after destroy(instance).',
       )
     }
+    /* v8 ignore stop */
     return undefined
   }
 

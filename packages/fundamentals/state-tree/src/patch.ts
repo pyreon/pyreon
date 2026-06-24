@@ -159,6 +159,7 @@ export function applyPatch(instance: object, patch: Patch | Patch[]): void {
       }
 
       const sig = (target as Record<string, Signal<unknown>>)[lastKey]
+      /* v8 ignore next -- defensive: a validated state key always resolves to a settable signal (unknown keys throw above) */
       if (sig && typeof sig.set === 'function') {
         sig.set(p.value)
       }

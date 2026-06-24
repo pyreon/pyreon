@@ -110,6 +110,7 @@ export function createInstance(
   }
   // Back-ref to the definition (powers clone/getType). Set conditionally to
   // respect exactOptionalPropertyTypes.
+  /* v8 ignore next -- defensive: every public create() path passes a definition */
   if (definition !== undefined) meta.definition = definition
   instanceMeta.set(instance, meta)
 
@@ -360,11 +361,13 @@ export function createInstance(
     // stay unguarded (the documented escape hatch). Tree-shaken in prod.
     const guardAlive = (op: string): boolean => {
       if (meta.alive) return true
+      /* v8 ignore start -- dev-only warning; the production branch is tree-shaken and never taken under test */
       if (process.env.NODE_ENV !== 'production') {
         console.warn(
           `[Pyreon] state-tree: ${op}() called on a destroyed model instance — ignored.`,
         )
       }
+      /* v8 ignore stop */
       return false
     }
 

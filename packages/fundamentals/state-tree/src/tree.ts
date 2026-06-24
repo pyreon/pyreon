@@ -115,6 +115,7 @@ export function getPath(node: object): string {
     const meta = instanceMeta.get(current)
     if (!meta) {
       if (current === node) throw new Error('[Pyreon] state-tree getPath: not a model instance')
+      /* v8 ignore next -- defensive: a parent reached via parentKey always has meta; only the start node can lack it */
       break
     }
     if (meta.parentKey !== undefined) segments.unshift(meta.parentKey)
