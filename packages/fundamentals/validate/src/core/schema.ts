@@ -128,6 +128,19 @@ export type SyncValidator = (input: unknown, ctx: ParseCtx) => unknown
 export type AsyncValidator = (input: unknown, ctx: ParseCtx) => Promise<unknown>
 
 /**
+ * A standalone, tree-shakeable check/transform ACTION — applies an op to a
+ * schema in place and returns it. Composed via `schema.check(...actions)` or
+ * `pipe(schema, ...actions)`. The generic `S` is preserved so chaining after
+ * a `.check()` (`.optional()`, `.default()`, …) still infers the concrete type.
+ *
+ * @example
+ * import { string, email, minLength, type Action } from '@pyreon/validate/mini'
+ * const trimmedEmail: Action<string> = email()
+ * const schema = string().check(minLength(2), email())
+ */
+export type Action<T> = <S extends Schema<T>>(schema: S) => S
+
+/**
  * Base class for every primitive / composition / modifier schema.
  *
  * Subclasses set `_kind` and provide a `_compileType` hook that
@@ -423,6 +436,24 @@ export abstract class Schema<T> {
    */
   superRefine(fn: (value: T, ctx: SuperRefineCtx) => void): Schema<T> {
     return new SuperRefineSchema(this, fn)
+  }
+
+  /**
+   * Apply standalone check/transform ACTIONS to this schema — the
+   * tree-shakeable, function-composition counterpart to the per-type
+   * chainable methods. `s.string().email()` pulls EVERY string-format
+   * validator (they all live on the class prototype); `string().check(email())`
+   * from `@pyreon/validate/mini` pulls ONLY the actions you import. Actions are
+   * applied in order, mutating this schema; returns `this`, so it still chains.
+   *
+   * @example
+   * import { string, email, minLength } from '@pyreon/validate/mini'
+   * const name = string().check(minLength(2))
+   * const mail = string().check(email())
+   */
+  check(...actions: ReadonlyArray<(schema: Schema<T>) => Schema<T>>): this {
+    for (const action of actions) action(this)
+    return this
   }
 
   /**

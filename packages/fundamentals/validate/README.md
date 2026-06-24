@@ -140,6 +140,25 @@ const cfg = s.object({ port: s.number() }).readonly().parse({ port: 80 })
 // cfg.value is Readonly<{ port: number }> and frozen
 ```
 
+## Tree-shaking — `@pyreon/validate/mini`
+
+The chainable `s.` API is the most ergonomic, but it can't tree-shake its checks: `s.string()` carries every format method on its prototype, so any schema pulls all 17 string-format regexes. When bundle size matters, import from **`@pyreon/validate/mini`** — lean base constructors + standalone check **actions** that prune to exactly what you import (Zod-mini / Valibot shape):
+
+```ts
+import { object, string, number, email, minLength, minValue, integer } from '@pyreon/validate/mini'
+
+const User = object({
+  name: string().check(minLength(2)),        // .check() reads like chaining…
+  email: string().check(email()),
+  age: number().check(integer(), minValue(0)),
+})
+
+import { pipe } from '@pyreon/validate/mini' // …or point-free:
+const name = pipe(string(), minLength(2))
+```
+
+Mini schemas are Standard Schema-native (same DX helpers) and produce **byte-identical** verdicts + issues to the chainable form (parity-locked). Measured win (Vite/Rollup, published bundle): a typical 3-field schema drops **~11 KB → ~6.5 KB gz (−41%)**.
+
 ## Why mutate-in-place?
 
 `withField()` mutates the original schema with a Symbol-keyed non-enumerable property. It does NOT clone.

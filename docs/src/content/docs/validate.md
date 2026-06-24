@@ -371,6 +371,31 @@ const b = pipe(
 
 The chainable path is cheap: each schema's ops compile to **one closure on first parse**, so chaining doesn't pay method-dispatch cost per parse.
 
+### Tree-shaking — `@pyreon/validate/mini`
+
+The chainable `s.` API is the most ergonomic, but it **can't tree-shake its checks**: `s.string()` returns a class whose prototype carries every string-format method (`.email()`, `.url()`, `.uuid()`, …), so the bundle pulls all 17 format regexes whether you use them or not. (Chaining fundamentally requires the methods to exist on the object — the same trade-off Zod makes vs `zod/mini`.)
+
+When bundle size matters (libraries, edge, mobile), import from **`@pyreon/validate/mini`** — lean base constructors plus standalone check **actions** that prune to exactly what you import:
+
+```ts
+import { object, string, number, email, minLength, minValue, integer } from '@pyreon/validate/mini'
+
+// `.check()` — reads like chaining, but only the actions you import ship:
+const User = object({
+  name: string().check(minLength(2)),
+  email: string().check(email()),
+  age: number().check(integer(), minValue(0)),
+})
+
+// …or point-free with pipe():
+import { pipe } from '@pyreon/validate/mini'
+const name = pipe(string(), minLength(2))
+```
+
+Mini schemas are **Standard Schema-native** (the same `withField` / `parseReactive` / `formatErrors` helpers work on them) and produce **byte-identical** verdicts + issues to the chainable equivalent — so you can mix freely and choose per-schema. Measured against the published bundle with Vite/Rollup, a typical 3-field schema drops **~11 KB → ~6.5 KB gzipped (−41%)**, and a minimal `string().check(minLength(2))` prunes the unused format regexes (~7.8 KB → ~6.1 KB). The irreducible validator core is ~5.9 KB, so `mini` pays only ~0.6 KB for a typical schema on top of it.
+
+Action names follow the Valibot convention so they're unambiguous as named imports: string length is `minLength` / `maxLength`, number bounds are `minValue` / `maxValue` (aliases `gte` / `lte`); `gt` / `lt` / `between` / `integer` / `positive` / `multipleOf` / `email` / `url` / `uuid` / `regex` / `startsWith` / `endsWith` / `includes` / `trim` round out the common set.
+
 ## Primitives
 
 Every primitive is available both as a `s.` member and as a standalone named export.
