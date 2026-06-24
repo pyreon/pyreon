@@ -2168,7 +2168,18 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.args.length >= 1
       ) {
         const arg = emitSwiftExpr(e.args[0]!, indent)
-        return e.callee.name === 'parseInt' ? `(Int(${arg}) ?? 0)` : `(Double(${arg}) ?? 0)`
+        if (e.callee.name === 'parseInt') return `(Int(${arg}) ?? 0)`
+        // `Number(boolean)` — Swift has NO `Double(Bool)` initializer
+        // (`cannot convert value of type 'Bool'`). JS `Number(true) === 1`,
+        // `Number(false) === 0`; the integer literals coerce to Double or Int
+        // in whatever the consuming computed annotates.
+        if (
+          e.callee.name === 'Number' &&
+          inferType(e.args[0]!, _activeInferCtx).kind === 'boolean'
+        ) {
+          return `(${arg} ? 1 : 0)`
+        }
+        return `(Double(${arg}) ?? 0)`
       }
       // Fetch-arc: zero-arg call on a fetch FIELD — `quotes.data()` /
       // `quotes.isPending()` (the web signal-read shape) → plain
@@ -2563,7 +2574,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // (dropFirst/prefix yield ArraySlice / Substring). Negative
             // indices (a rare JS shape) are NOT lowered — a unary-minus arg
             // falls through to the generic emit.
-            const sliceObjType = inferType(e.callee.object, _activeInferCtx)
+            const sliceObjTypeRaw = inferType(e.callee.object, _activeInferCtx)
+            // Unwrap an optional receiver (`T | undefined`, e.g. from
+            // `.find()`/`.findLast()`) to its inner type for the wrap decision —
+            // a `xs.find(...)?.slice(...)` receiver is still a string/array.
+            const sliceObjType =
+              sliceObjTypeRaw.kind === 'union'
+                ? (sliceObjTypeRaw.branches.find((b) => b.kind !== 'undefined') ?? sliceObjTypeRaw)
+                : sliceObjTypeRaw
             const wrap =
               sliceObjType.kind === 'string'
                 ? 'String'
@@ -2572,13 +2590,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                   : null
             const noNegative = e.args.every((a) => a.kind !== 'unary')
             if (wrap !== null && noNegative) {
-              if (e.args.length === 0) return `${wrap}(${obj})`
-              if (e.args.length === 1) {
-                return `${wrap}(${obj}.dropFirst(${argExprs[0]!}))`
-              }
-              if (e.args.length === 2) {
-                return `${wrap}(${obj}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
-              }
+              // For an OPTIONAL-chained receiver (`f?.slice(...)`), apply the
+              // slice INSIDE Swift's optional `.map { }` operating on the
+              // unwrapped `$0`, so the result stays `WRAP?` (matches the `?.`
+              // chain). Pre-fix `inferType` returned a `union` for the receiver,
+              // `wrap` was null, the lowering was skipped, and the raw `.slice`
+              // survived → `value of type 'String' has no member 'slice'`.
+              const optional = e.callee.optional === true
+              const recv = optional ? '$0' : obj
+              let body: string | null = null
+              if (e.args.length === 0) body = `${wrap}(${recv})`
+              else if (e.args.length === 1) body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}))`
+              else if (e.args.length === 2)
+                body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
+              if (body !== null) return optional ? `${obj}.map { ${body} }` : body
             }
             break
           }
