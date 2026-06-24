@@ -919,6 +919,7 @@
       "name": "@pyreon/ssr-showcase",
       "version": "0.0.1",
       "dependencies": {
+        "@pyreon/a11y": "workspace:*",
         "@pyreon/coolgrid": "workspace:*",
         "@pyreon/core": "workspace:*",
         "@pyreon/elements": "workspace:*",
