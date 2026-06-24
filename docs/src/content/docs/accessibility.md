@@ -75,6 +75,20 @@ import { RouteAnnouncer } from '@pyreon/a11y/router'
 
 It announces each route's `meta.title` (or `"Navigated to <path>"`) to a polite live region. Customise with `format`, or use the `useRouteAnnouncer()` hook form. The router dependency lives only in the `@pyreon/a11y/router` subpath, so importing just `announce` / `VisuallyHidden` from the main entry stays router-free.
 
+### `<LiveRegion>` — declarative status
+
+`announce()` is fire-and-forget; `<LiveRegion>` is the declarative complement for status that lives somewhere specific in your layout — a form's validation summary, a "Saving…" → "Saved" indicator, an async result count. Place it once and drive its children with a signal; the browser announces every change automatically — no `announce()` call, no effect:
+
+```tsx
+import { LiveRegion } from '@pyreon/a11y'
+
+<LiveRegion>{() => status()}</LiveRegion>                    // polite (default → role="status")
+<LiveRegion politeness="assertive">{() => error()}</LiveRegion> // interrupts (→ role="alert")
+<LiveRegion visible>{() => saveState()}</LiveRegion>         // also shown on screen
+```
+
+Screen-reader-only by default (it reuses `VisuallyHidden`'s clipping), `visible` opts into on-screen text, and `politeness="off"` silences it without unmounting. It renders on the server too, so the region exists at hydration and the very first reactive update is announced. Read it inside the accessor (`{() => status()}`) so the region tracks the signal.
+
 ## Visually-hidden content & stable IDs
 
 ```tsx
@@ -160,6 +174,7 @@ Prefer these over raw `aria-*` (which is web-only) so the same component is acce
 Some accessibility checks are project conventions rather than framework behaviour — `@pyreon/lint` ships them as **opt-in** best-practice rules (off by default, no noise):
 
 - `pyreon/require-img-alt` — every `<img>` needs `alt`
+- `pyreon/primitive-media-needs-label` — the multi-platform analog: a canonical `<Image>` / `<Icon>` from `@pyreon/primitives` needs an `accessibilityLabel` (or `alt`/`aria-label`), or `accessibilityHidden` if decorative — so a label-less media primitive is caught on web, iOS, and Android alike (auto-gated on the `@pyreon/primitives` dependency)
 - `pyreon/img-requires-dimensions` — intrinsic `width`/`height` to avoid layout shift
 - `pyreon/no-positive-tabindex`, `pyreon/no-autofocus`, `pyreon/no-redundant-role`, `pyreon/anchor-is-valid`, `pyreon/heading-order`, `pyreon/color-contrast`, …
 
@@ -178,4 +193,4 @@ Several are auto-fixable (`pyreon-lint --fix`), and each carries a prescriptive 
 
 ## Summary
 
-Reach for the framework primitives — `@pyreon/form`, `@pyreon/elements` / `@pyreon/ui-primitives`, `@pyreon/primitives`, `@pyreon/kinetic` — and accessibility comes with them. Add `announce()` and a `<RouteAnnouncer>` for the dynamic bits, turn on the opt-in lint rules to guard the conventions, and you have an accessible app by default.
+Reach for the framework primitives — `@pyreon/form`, `@pyreon/elements` / `@pyreon/ui-primitives`, `@pyreon/primitives`, `@pyreon/kinetic` — and accessibility comes with them. Add `announce()`, `<LiveRegion>`, and a `<RouteAnnouncer>` for the dynamic bits, turn on the opt-in lint rules to guard the conventions, and you have an accessible app by default.
