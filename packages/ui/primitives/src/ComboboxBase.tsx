@@ -194,6 +194,10 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     listboxProps: () => ({
       role: 'listbox',
       id: listboxId,
+      // WAI-ARIA Listbox/Combobox pattern: a multi-select listbox MUST
+      // advertise it so assistive tech announces that more than one option
+      // can be chosen. Mirrors TreeBase's aria-multiselectable wiring.
+      'aria-multiselectable': own.multiple ? 'true' : undefined,
     }),
     getOptionProps: (value: string, index: number) => ({
       role: 'option',
