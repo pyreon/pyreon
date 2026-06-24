@@ -434,6 +434,7 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             case 'slice':
             case 'replace':
             case 'concat':
+            case 'charAt': // 1-char string
               return { kind: 'string' }
             case 'split':
               return { kind: 'array', element: { kind: 'string' } }

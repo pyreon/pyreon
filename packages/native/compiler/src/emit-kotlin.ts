@@ -2096,6 +2096,13 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}.contains(${argExprs[0]!})`
             }
             break
+          case 'charAt':
+            // JS `str.charAt(i)` returns a 1-char STRING. Kotlin `str[i]` is
+            // a Char, so `.toString()` to match JS's String result (Swift:
+            // `String(Array(str)[i])`). Out-of-range crashes (JS returns "")
+            // — bounds are the caller's concern; documented v1 limitation.
+            if (e.args.length === 1) return `${obj}[${argExprs[0]!}].toString()`
+            break
           case 'join':
             // JS `arr.join(sep?)` → Kotlin `joinToString(sep)`. JS's
             // default separator is "," — emit it explicitly when omitted
