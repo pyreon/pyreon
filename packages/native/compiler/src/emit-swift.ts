@@ -297,6 +297,19 @@ let _constStringMap: Map<string, string | number | boolean> = new Map()
  * after `_constStringMap`.
  */
 let _componentConstMap: Map<string, string | number | boolean> = new Map()
+/**
+ * Per-component: value-const name → its full ExprIR. Component-body value
+ * consts (`const base = 10`) emit as body-local `let`s in the ViewBuilder
+ * (a stored property can't reference @State at init), so a STRUCT-LEVEL
+ * computed property that references one (`computed(() => base + 5)` →
+ * `private var n: Int { base + 5 }`) can't see it → `swiftc -typecheck`
+ * fails with `cannot find 'base' in scope`. We fix that by INLINING the
+ * value-const's expression into the computed's emitted body (`{ 10 + 5 }`),
+ * via `substituteIdentifier`. Kotlin has no such bug — there the const
+ * `val` and the `derivedStateOf` computed live in the same Composable
+ * body (in scope), so this is a Swift-only inline.
+ */
+let _componentValueConstExprs: Map<string, ExprIR> = new Map()
 
 /**
  * The current component's inference ctx, exposed to `emitSwiftExpr` (which
@@ -1107,6 +1120,13 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (`<Image
   // src={logo}>` where `logo` is a component-body const).
   _componentConstMap = buildComponentConstMap(c.decls)
+  // value-const name → ExprIR, for inlining into struct-level computeds
+  // (which can't reference the body-local `let`s — see the field's doc).
+  _componentValueConstExprs = new Map(
+    c.decls
+      .filter((d): d is Extract<DeclIR, { kind: 'value' }> => d.kind === 'value')
+      .map((d) => [d.name, d.expr]),
+  )
   // Expose the inference ctx to the expr-emit (which doesn't receive it as a
   // param) so the binary case can detect a mixed Int×Double operand pair and
   // coerce. Reset to empty after the component so non-component expr emits
@@ -1333,6 +1353,76 @@ function emitSwiftComponent(c: ComponentIR): string {
   _usesRouter = false
   _routerRoutes = new Map()
   return lines.join('\n')
+}
+
+/**
+ * Inline component-body value-consts into an expression by substituting
+ * each value-const identifier with its defining expression (recursively,
+ * to a fixpoint — so a const referencing another const fully resolves).
+ * Used when emitting struct-level computeds, which can't reference the
+ * body-local `let`s the value-consts emit as. Bounded passes guard
+ * against a (malformed) cyclic const chain. Returns the expr unchanged
+ * when there are no value-consts (zero cost for the common case).
+ */
+function inlineValueConsts(expr: ExprIR): ExprIR {
+  if (_componentValueConstExprs.size === 0) return expr
+  let cur = expr
+  for (let pass = 0; pass <= _componentValueConstExprs.size; pass++) {
+    const before = JSON.stringify(cur)
+    for (const [name, def] of _componentValueConstExprs) {
+      // Wrap the inlined definition in parens so precedence is preserved:
+      // `b * 10` with `b = a + 1` must inline to `(a + 1) * 10`, NOT
+      // `a + 1 * 10`. Redundant parens on a bare literal/identifier are
+      // harmless and compile fine.
+      const next = substituteIdentifier(cur, name, { kind: 'paren', inner: def })
+      if (next !== null) cur = next
+    }
+    if (JSON.stringify(cur) === before) break
+  }
+  return cur
+}
+
+/**
+ * Apply `inlineValueConsts` to every expression inside a statement tree
+ * (multi-statement computed bodies). Recurses into nested blocks. Same
+ * rationale as the single-expression path — a struct-level computed
+ * getter can't see body-local value-const `let`s.
+ */
+function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
+  if (_componentValueConstExprs.size === 0) return stmts
+  const mapStmt = (s: StatementIR): StatementIR => {
+    switch (s.kind) {
+      case 'let':
+        return { ...s, expr: inlineValueConsts(s.expr) }
+      case 'assign':
+        return { ...s, target: inlineValueConsts(s.target), value: inlineValueConsts(s.value) }
+      case 'if':
+        return {
+          ...s,
+          cond: inlineValueConsts(s.cond),
+          then: s.then.map(mapStmt),
+          ...(s.elseBody ? { elseBody: s.elseBody.map(mapStmt) } : {}),
+        }
+      case 'return':
+        return s.expr ? { ...s, expr: inlineValueConsts(s.expr) } : s
+      case 'expr':
+        return { ...s, expr: inlineValueConsts(s.expr) }
+      case 'while':
+        return { ...s, cond: inlineValueConsts(s.cond), body: s.body.map(mapStmt) }
+      case 'for-of':
+        return { ...s, iterable: inlineValueConsts(s.iterable), body: s.body.map(mapStmt) }
+      case 'switch':
+        return {
+          ...s,
+          discriminant: inlineValueConsts(s.discriminant),
+          cases: s.cases.map((c) => ({
+            tests: c.tests.map(inlineValueConsts),
+            body: c.body.map(mapStmt),
+          })),
+        }
+    }
+  }
+  return stmts.map(mapStmt)
 }
 
 function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>): string {
@@ -1633,17 +1723,21 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     // if the computed wasn't pre-inferred for some reason — defensive.
     const inferred = inferCtx.computeds.get(d.name) ?? { kind: 'unknown' as const }
     const swiftReturnType = swiftType(inferred)
-    const bodyLines = d.body.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+    const bodyLines = inlineValueConstsInStmts(d.body)
+      .map((s) => `    ${emitSwiftStatement(s, 4)}`)
+      .join('\n')
     return [
       `private var ${swiftIdent(d.name)}: ${swiftReturnType} {`,
       bodyLines,
       `  }`,
     ].join('\n')
   }
-  // Legacy single-expression shape — same pre-computed lookup.
+  // Legacy single-expression shape — same pre-computed lookup. Inline any
+  // referenced value-consts (body-local `let`s the struct-level computed
+  // can't see) so the emitted getter compiles.
   const inferred = inferCtx.computeds.get(d.name) ?? inferType(d.expr!, inferCtx)
   const swiftReturnType = swiftType(inferred)
-  return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(d.expr!, 0)} }`
+  return `private var ${swiftIdent(d.name)}: ${swiftReturnType} { ${emitSwiftExpr(inlineValueConsts(d.expr!), 0)} }`
 }
 
 /**
