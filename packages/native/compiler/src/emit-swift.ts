@@ -2439,6 +2439,37 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // binds to the whole concatenation, not just `other`.
             if (e.args.length === 1) return `(${obj} + ${argExprs[0]!})`
             break
+          case 'slice': {
+            // JS `arr.slice(start, end?)` / `str.slice(start, end?)`. Swift
+            // arrays AND Strings have NO `.slice` method, so the bare emit
+            // fails ("[T] has no member 'slice'"). Lower to dropFirst/prefix,
+            // which CLAMP (like JS) instead of crashing on out-of-range:
+            //   slice(s, e) → dropFirst(s).prefix(max(0, e - s))
+            //   slice(s)    → dropFirst(s)
+            //   slice()     → a copy
+            // Array<T> rewraps via `Array(...)`, String via `String(...)`
+            // (dropFirst/prefix yield ArraySlice / Substring). Negative
+            // indices (a rare JS shape) are NOT lowered — a unary-minus arg
+            // falls through to the generic emit.
+            const sliceObjType = inferType(e.callee.object, _activeInferCtx)
+            const wrap =
+              sliceObjType.kind === 'string'
+                ? 'String'
+                : sliceObjType.kind === 'array'
+                  ? 'Array'
+                  : null
+            const noNegative = e.args.every((a) => a.kind !== 'unary')
+            if (wrap !== null && noNegative) {
+              if (e.args.length === 0) return `${wrap}(${obj})`
+              if (e.args.length === 1) {
+                return `${wrap}(${obj}.dropFirst(${argExprs[0]!}))`
+              }
+              if (e.args.length === 2) {
+                return `${wrap}(${obj}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
+              }
+            }
+            break
+          }
           case 'findIndex':
             // JS `arr.findIndex(pred)` → Swift `firstIndex(where:)`, but JS
             // returns the SENTINEL `-1` (an Int) when not found while Swift
