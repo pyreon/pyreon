@@ -38,6 +38,24 @@ describe('pyreon/no-error-without-prefix (architecture)', () => {
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
+  it('does NOT flag the scoped [@pyreon/<pkg>] convention (string)', () => {
+    const code = `function f() { throw new Error("[@pyreon/state-tree] not a model instance") }`
+    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
+  })
+
+  it('does NOT flag the scoped [@pyreon/<pkg>] convention (template)', () => {
+    const code = `function f(x) { throw new Error(\`[@pyreon/hotkeys] invalid shortcut: \${x}\`) }`
+    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
+  })
+
+  it('still flags an unrelated bracket prefix (e.g. [Vue])', () => {
+    const code = `function f() { throw new Error("[Vue] oops") }`
+    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-error-without-prefix').length).toBeGreaterThan(0)
+  })
+
   it('does NOT fire on throws of non-Error values', () => {
     const code = `function f() { throw "string" }`
     const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
