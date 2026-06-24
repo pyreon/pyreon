@@ -8,6 +8,7 @@ import {
   findOwningPackage,
   isChangesetFile,
   isConsumerAffectingFile,
+  isTestRunnerConfigPath,
   readChangesetIgnore,
   type GateInputs,
   type PackageInfo,
@@ -308,6 +309,55 @@ describe('isConsumerAffectingFile', () => {
           REPO,
         ),
       ).toBe(true)
+    })
+  })
+
+  describe('Vitest test-runner config in a published package — NOT consumer-affecting', () => {
+    // `vitest.config.ts` (and variants) are dev tooling — never in a package's
+    // published `files`, so a flaky-test / parallelism fix there ships nothing.
+    // Previously forced a `skip-changeset` label on test-infra PRs (e.g. the
+    // @pyreon/sync WS-test serialization fix).
+    it('rejects vitest.config.ts in a published package', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/vitest.config.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
+    })
+
+    it('rejects vitest.browser.config.ts (named variant)', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/ui-system/elements/vitest.browser.config.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
+    })
+
+    it('does NOT over-match a real source file (e.g. src/vitest-helpers.ts)', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/src/vitest-helpers.ts',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(true)
+    })
+
+    it('isTestRunnerConfigPath matches vitest configs only', () => {
+      expect(isTestRunnerConfigPath('packages/x/vitest.config.ts')).toBe(true)
+      expect(isTestRunnerConfigPath('vitest.node.config.mts')).toBe(true)
+      expect(isTestRunnerConfigPath('vitest.config.js')).toBe(true)
+      // tsconfig is NOT excluded — @pyreon/typescript ships its presets.
+      expect(isTestRunnerConfigPath('packages/x/tsconfig.json')).toBe(false)
+      expect(isTestRunnerConfigPath('packages/x/src/vitest-helpers.ts')).toBe(false)
+      expect(isTestRunnerConfigPath('packages/x/vite.config.ts')).toBe(false)
     })
   })
 
