@@ -14,7 +14,7 @@ describe('gen-docs — url-state snapshot', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/url-state — URL State
 
-      Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (\`useUrlState("page", 1)\`) and schema mode (\`useUrlState({ page: 1, sort: "name" })\`). Auto-coerces types (numbers, booleans, arrays), uses \`replaceState\` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (reads from request URL on server).
+      Reactive URL search-param state for Pyreon. Each search parameter is a signal synced with the browser URL. Supports single-param mode (\`useUrlState("page", 1)\`) and schema mode (\`useUrlState({ page: 1, sort: "name" })\`). Auto-coerces types (numbers, booleans, arrays), uses \`replaceState\` to avoid history spam, supports configurable debounce for high-frequency updates, and is SSR-safe (signals initialize to the default value on the server — it does NOT read the request URL; reads \`window.location\` on the client).
 
       \`\`\`typescript
       import { useUrlState, setUrlRouter } from '@pyreon/url-state'
@@ -38,7 +38,7 @@ describe('gen-docs — url-state snapshot', () => {
       tags.set(['typescript', 'pyreon'])  // ?tags=typescript&tags=pyreon
 
       // Debounce for high-frequency updates (e.g. search input)
-      const search = useUrlState('q', '', { debounceMs: 300 })
+      const search = useUrlState('q', '', { debounce: 300 })
       // typing "hello" fires one URL update after 300ms pause, not 5
 
       // Router integration — uses router.replace() when available
@@ -46,7 +46,7 @@ describe('gen-docs — url-state snapshot', () => {
       const router = useRouter()
       setUrlRouter(router)  // now useUrlState uses router.replace() internally
 
-      // SSR-safe — reads from request URL on server, window.location on client
+      // SSR-safe — initializes to the default on the server, reads window.location on the client
       // No typeof window checks needed in your components
       \`\`\`
 

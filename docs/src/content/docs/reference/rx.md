@@ -13,7 +13,7 @@ Signal-aware reactive data transforms for Pyreon. Every collection/aggregation f
 
 - Every function overloaded: Signal&lt;T[]&gt; → Computed, T[] → plain
 - 37 functions across 6 categories: collections (21), aggregation (8), operators (5), timing (2), search (1), pipe (1)
-- pipe(source, ...ops) composes transforms left-to-right
+- pipe(source, ...fns) threads the value through plain (value)=&gt;value transforms left-to-right (NOT curried operators)
 - Namespaced rx object for dot-notation usage (rx.filter, rx.map, etc.)
 - Individual named exports for tree-shaking
 - Timing operators: debounce and throttle for signal emissions
@@ -52,12 +52,14 @@ const count = rx.count(activeUsers)                       // Computed<number>
 // Grouping:
 const byDept = rx.groupBy(users, u => u.department)      // Computed<Record<string, User[]>>
 
-// Pipe — compose left-to-right:
+// Pipe — thread the value through plain transform functions, left-to-right.
+// Each fn receives the resolved value; the rx helpers are 2-arg (source, ...),
+// so wrap them: us => filter(us, pred). There is NO curried filter(pred) form.
 const result = pipe(
   users,
-  filter(u => u.active),
-  sortBy('name'),
-  map(u => u.name),
+  us => filter(us, u => u.active),
+  us => sortBy(us, 'name'),
+  us => map(us, u => u.name),
 )  // Computed<string[]> → ["Alice", "Charlie"]
 
 // Search — case-insensitive substring match across STRING fields.
@@ -79,7 +81,7 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 | Symbol | Kind | Summary |
 | --- | --- | --- |
 | [`rx`](#rx) | constant | Namespaced object exposing all 37 reactive transform functions plus `pipe`. |
-| [`pipe`](#pipe) | function | Compose transforms left-to-right. |
+| [`pipe`](#pipe) | function | Thread a value through plain transform functions left-to-right. |
 | [`filter`](#filter) | function | Filter items by predicate. |
 | [`map`](#map) | function | Transform each item. |
 | [`sortBy`](#sortby) | function | Sort by a key or key-selector. |
@@ -121,27 +123,27 @@ const grouped = rx.groupBy(users, u => u.department) // Computed<Record<string, 
 ### pipe `function`
 
 ```ts
-<T>(source: Signal<T[]> | T[], ...operators: Operator[]) => Computed<T[]> | T[]
+<A, B>(source: ReadableSignal<A> | A, ...fns: Array<(value: any) => any>) => Computed<B> | B
 ```
 
-Compose transforms left-to-right. Each operator receives the output of the previous one. Signal source produces a reactive `Computed` that re-derives when the source changes. Use curried forms of individual functions as operators: `filter(pred)`, `sortBy(key)`, `map(fn)`, etc.
+Thread a value through plain transform functions left-to-right. Each function receives the resolved output of the previous step and returns the next value. A signal source produces a reactive `Computed` that re-derives when the source changes; a plain value gives a one-shot result. The rx helpers are 2-arg `(source, …)`, so wrap them inside each transform — `v => filter(v, pred)`. There is NO curried 1-arg form (`filter(pred)` is not valid).
 
 **Example**
 
 ```tsx
 const result = pipe(
   users,
-  filter(u => u.active),
-  sortBy('name'),
-  map(u => u.name),
-  take(10),
+  us => filter(us, u => u.active),
+  us => sortBy(us, 'name'),
+  us => map(us, u => u.name),
+  us => take(us, 10),
 )
 // Computed<string[]> when users is a signal
 ```
 
 **Common mistakes**
 
-- Calling the non-curried form inside pipe — `pipe(users, filter(users, pred))` is wrong; use the curried form: `pipe(users, filter(pred))`
+- Expecting a curried operator form — there is NO 1-arg `filter(pred)` / `sortBy(key)` / `map(fn)`; every helper is 2-arg `(source, …)`. Wrap it in a transform: `pipe(users, us => filter(us, pred))`
 - Expecting `pipe(arr, ...)` (plain array source) to be reactive — only a signal source produces a `Computed`; a plain array gives a one-shot plain result
 - Reading the pipe result as an array when the source is a signal — it is a `Computed`; call it: `result()`
 - Putting a timing operator (`debounce`/`throttle`) in a `pipe` chain — those take a single `Signal<T>` and return a signal, they are not curried collection operators and do not compose in `pipe`
@@ -153,22 +155,22 @@ const result = pipe(
 ### filter `function`
 
 ```ts
-<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean) => Computed<T[]> | T[]  // curried: filter(pred)
+<T>(source: Signal<T[]> | T[], predicate: (item: T, index: number) => boolean) => Computed<T[]> | T[]
 ```
 
-Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes; plain array input returns a plain array. Curried form `filter(pred)` is for `pipe()`. Curry vs direct is detected by argument count, so a single-argument call is always the curried operator.
+Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes; plain array input returns a plain array. ALWAYS 2-arg `(source, predicate)` — there is no curried 1-arg form; inside `pipe()` wrap it as `arr => filter(arr, pred)`.
 
 **Example**
 
 ```tsx
 const evens = filter(items, n => n % 2 === 0)  // Computed<number[]> (items is a signal)
 const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5] (plain)
-pipe(items, filter(n => n > 3))                      // curried form in a pipe
+pipe(items, ns => filter(ns, n => n > 3))            // wrap the 2-arg call in a pipe transform
 ```
 
 **Common mistakes**
 
-- Calling `filter(pred)` directly expecting a result — a single function arg is the CURRIED operator (returns a function), not a filtered array. Use `filter(source, pred)` for the direct form
+- Calling `filter(pred)` with a single function arg — `filter` is 2-arg `(source, predicate)`; a lone function is treated as a reactive SOURCE (typeof === "function") and the missing predicate yields garbage. Always pass the source first
 - Passing `items()` instead of `items` — the resolved array takes the static path; the result never updates
 
 **See also:** `rx` · `pipe` · `map`
@@ -178,16 +180,16 @@ pipe(items, filter(n => n > 3))                      // curried form in a pipe
 ### map `function`
 
 ```ts
-<T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U) => Computed<U[]> | U[]  // curried: map(fn)
+<T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U) => Computed<U[]> | U[]
 ```
 
-Transform each item. Signal input → reactive `Computed<U[]>`; plain array → plain array. The mapper receives `(item, index)`. Curried form `map(fn)` composes in `pipe()`.
+Transform each item. Signal input → reactive `Computed<U[]>`; plain array → plain array. The mapper receives `(item, index)`. ALWAYS 2-arg `(source, fn)` — no curried form; inside `pipe()` wrap it as `arr => map(arr, fn)`.
 
 **Example**
 
 ```tsx
 const names = map(users, u => u.name)            // Computed<string[]>
-pipe(users, filter(u => u.active), map(u => u.name)) // curried in pipe
+pipe(users, us => filter(us, u => u.active), us => map(us, u => u.name)) // wrap each in a pipe transform
 ```
 
 **Common mistakes**
@@ -339,6 +341,6 @@ onCleanup(() => throttled.dispose())   // REQUIRED — not auto-cleaned
 
 > **Computed lifecycle:** Computed outputs from signal inputs auto-dispose when they have no subscribers. In component bodies, the reactive scope from JSX keeps them alive; in standalone code, subscribe or read within an `effect()` to keep them active.
 
-> **Curried vs uncurried:** Every function has both a direct form `filter(source, pred)` and a curried form `filter(pred)` for use with `pipe()`. The curried form is detected by argument count.
+> **No curried operators — pipe takes plain transforms:** rx functions are NOT curried — every collection/aggregation helper is `(source, …args)` only. `pipe(source, ...fns)` threads the value through plain `(value) => value` functions, so to use a helper inside a pipe you wrap it: `pipe(users, us => filter(us, pred), us => map(us, fn))`. A lone `filter(pred)` is not a valid call.
 
 > **Tree-shaking:** The `rx` namespace object is a `const` — bundlers can tree-shake unused properties. For maximum control, import individual functions: `import { filter, map } from "@pyreon/rx"`.

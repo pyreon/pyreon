@@ -41,7 +41,7 @@ disableScope('editor')                   // programmatically disable a scope
 // Shortcuts can filter input elements — by default, shortcuts
 // don't fire when focused on <input>, <textarea>, <select>.
 // Override with:
-useHotkey('escape', () => closeModal(), { enableOnFormElements: true })`,
+useHotkey('escape', () => closeModal(), { enableOnInputs: true })`,
   features: [
     'useHotkey(shortcut, handler, options?) — component-scoped, auto-unregisters on unmount',
     'useHotkeyScope(scope) — activate a scope for a component\'s lifetime',
@@ -57,14 +57,14 @@ useHotkey('escape', () => closeModal(), { enableOnFormElements: true })`,
       signature:
         '(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void',
       summary:
-        'Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: `mod+s`, `ctrl+shift+p`, `escape`, etc. `mod` is Command on Mac, Ctrl elsewhere. By default, shortcuts don\'t fire when focused on form elements (input, textarea, select) — override with `enableOnFormElements: true`. Supports `scope` option for context-aware activation and `description` for introspection.',
+        'Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: `mod+s`, `ctrl+shift+p`, `escape`, etc. `mod` is Command on Mac, Ctrl elsewhere. By default, shortcuts don\'t fire when focused on form elements (input, textarea, select) — override with `enableOnInputs: true`. Supports `scope` option for context-aware activation and `description` for introspection.',
       example: `useHotkey('mod+s', (e) => {
   e.preventDefault()
   save()
 }, { description: 'Save' })
 
 useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
-useHotkey('escape', () => close(), { enableOnFormElements: true })`,
+useHotkey('escape', () => close(), { enableOnInputs: true })`,
       mistakes: [
         'Forgetting e.preventDefault() for browser-reserved shortcuts (mod+s, mod+p) — the browser dialog fires alongside your handler',
         'Registering the same shortcut in overlapping scopes without priority — both handlers fire; use scope isolation to prevent conflicts',
@@ -78,7 +78,7 @@ useHotkey('escape', () => close(), { enableOnFormElements: true })`,
       kind: 'hook',
       signature: '(scope: string) => void',
       summary:
-        'Activate a hotkey scope for the lifetime of the current component. When the component mounts, the scope is enabled; when it unmounts, the scope is disabled. Shortcuts registered with a matching `scope` option only fire when the scope is active. Multiple components can activate the same scope — it stays active until the last one unmounts.',
+        'Activate a hotkey scope for the lifetime of the current component. When the component mounts, the scope is enabled; when it unmounts, the scope is disabled. Shortcuts registered with a matching `scope` option only fire when the scope is active. NOTE: scopes are NOT reference-counted — `disableScope` runs on every unmount, so if two components activate the same scope, the FIRST to unmount disables it for both.',
       example: `// In an editor component:
 useHotkeyScope('editor')
 useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
@@ -88,7 +88,7 @@ useHotkeyScope('modal')
 useHotkey('escape', () => close(), { scope: 'modal' })`,
       mistakes: [
         'Using useHotkeyScope outside a component body — the lifecycle hooks require an active setup context',
-        'Assuming scope deactivation is immediate on unmount — if another component also activated the scope, it stays active',
+        'Activating the same scope from two components — scopes are NOT reference-counted, so the first component to unmount calls disableScope and the second component\'s matching hotkeys silently stop firing',
       ],
       seeAlso: ['useHotkey', 'enableScope', 'disableScope'],
     },
@@ -106,7 +106,7 @@ unregister()`,
     },
   ],
   gotchas: [
-    'By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass `enableOnFormElements: true` in options to override. Escape is a common candidate for this override.',
+    'By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass `enableOnInputs: true` in options to override. Escape is a common candidate for this override.',
     {
       label: 'mod alias',
       note: '`mod` maps to Command on macOS, Ctrl on Windows/Linux. Write `mod+s` instead of platform-specific `ctrl+s` / `cmd+s` for cross-platform shortcuts.',

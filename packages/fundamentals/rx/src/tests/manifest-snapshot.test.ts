@@ -45,12 +45,14 @@ describe('gen-docs — rx snapshot', () => {
       // Grouping:
       const byDept = rx.groupBy(users, u => u.department)      // Computed<Record<string, User[]>>
 
-      // Pipe — compose left-to-right:
+      // Pipe — thread the value through plain transform functions, left-to-right.
+      // Each fn receives the resolved value; the rx helpers are 2-arg (source, ...),
+      // so wrap them: us => filter(us, pred). There is NO curried filter(pred) form.
       const result = pipe(
         users,
-        filter(u => u.active),
-        sortBy('name'),
-        map(u => u.name),
+        us => filter(us, u => u.active),
+        us => sortBy(us, 'name'),
+        us => map(us, u => u.name),
       )  // Computed<string[]> → ["Alice", "Charlie"]
 
       // Search — case-insensitive substring match across STRING fields.
@@ -71,7 +73,7 @@ describe('gen-docs — rx snapshot', () => {
       >
       > **Computed lifecycle**: Computed outputs from signal inputs auto-dispose when they have no subscribers. In component bodies, the reactive scope from JSX keeps them alive; in standalone code, subscribe or read within an \`effect()\` to keep them active.
       >
-      > **Curried vs uncurried**: Every function has both a direct form \`filter(source, pred)\` and a curried form \`filter(pred)\` for use with \`pipe()\`. The curried form is detected by argument count.
+      > **No curried operators — pipe takes plain transforms**: rx functions are NOT curried — every collection/aggregation helper is \`(source, …args)\` only. \`pipe(source, ...fns)\` threads the value through plain \`(value) => value\` functions, so to use a helper inside a pipe you wrap it: \`pipe(users, us => filter(us, pred), us => map(us, fn))\`. A lone \`filter(pred)\` is not a valid call.
       >
       > **Tree-shaking**: The \`rx\` namespace object is a \`const\` — bundlers can tree-shake unused properties. For maximum control, import individual functions: \`import { filter, map } from "@pyreon/rx"\`.
       "

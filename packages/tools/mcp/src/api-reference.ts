@@ -3117,9 +3117,9 @@ m.isFinal()      // true → onDone fired`,
 theme()           // 'light'
 theme.set('dark') // persists + cross-tab sync
 theme.remove()    // delete from storage, reset to default`,
-    notes: 'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serialize`/`deserialize` in options for non-JSON types. See also: useSessionStorage, useCookie, useIndexedDB, createStorage.',
+    notes: 'Create a reactive signal backed by localStorage. Reads the stored value on creation (falling back to `defaultValue` if absent or on SSR), writes on every `.set()`, and syncs across browser tabs via `storage` events. Returns `StorageSignal<T>` which extends `Signal<T>` with `.remove()` to delete the key and reset to default. Serialization defaults to JSON; provide custom `serializer`/`deserializer` in options for non-JSON types. See also: useSessionStorage, useCookie, useIndexedDB, createStorage.',
     mistakes: `- Expecting cross-tab sync with \`useSessionStorage\` — only \`useStorage\` (localStorage) fires storage events across tabs
-- Storing non-serializable values (functions, class instances) without custom \`serialize\`/\`deserialize\` — JSON.stringify drops them silently
+- Storing non-serializable values (functions, class instances) without custom \`serializer\`/\`deserializer\` — JSON.stringify drops them silently
 - Reading \`.remove()\` return value — it returns void, not the removed value`,
   },
 
@@ -3181,15 +3181,15 @@ draft.set({ title: 'New Article', body: 'Content...' })`,
   'storage/createStorage': {
     signature: '(backend: StorageBackend | AsyncStorageBackend) => <T>(key: string, defaultValue: T, options?: StorageOptions<T>) => StorageSignal<T>',
     example: `const useEncrypted = createStorage({
-  getItem: (key) => decrypt(localStorage.getItem(key)),
-  setItem: (key, value) => localStorage.setItem(key, encrypt(value)),
-  removeItem: (key) => localStorage.removeItem(key),
+  get: (key) => decrypt(localStorage.getItem(key)),
+  set: (key, value) => localStorage.setItem(key, encrypt(value)),
+  remove: (key) => localStorage.removeItem(key),
 })
 const secret = useEncrypted('api-key', '')`,
-    notes: 'Factory for custom storage backends. Pass an object with `getItem`, `setItem`, `removeItem` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer. See also: useStorage.',
-    mistakes: `- Returning \`undefined\` from getItem when the key is absent — return \`null\` (matches the localStorage / sessionStorage contract). \`undefined\` may be JSON-serialized as the literal string \`"undefined"\` by some serialize-deserialize pipelines.
+    notes: 'Factory for custom storage backends. Pass an object with `get`, `set`, `remove` methods (sync or async) and receive a hook function with the same signature as `useStorage`. Use for encrypted storage, remote backends, or any custom persistence layer. See also: useStorage.',
+    mistakes: `- Returning \`undefined\` from the backend \`get\` when the key is absent — return \`null\` (matches the localStorage / sessionStorage contract). \`undefined\` may be JSON-serialized as the literal string \`"undefined"\` by some serialize-deserialize pipelines.
 - Throwing synchronously from setItem — backend errors should be either logged + swallowed (graceful degradation, the signal still updates) OR propagated via a rejected Promise for async backends. A thrown error breaks the calling \`.set()\` and leaves the in-memory signal in a state inconsistent with the backend.
-- Forgetting that the backend must implement ALL three (\`getItem\`, \`setItem\`, \`removeItem\`) — \`.remove()\` calls removeItem, and omitting it makes the hook crash on cleanup paths.`,
+- Forgetting that the backend must implement ALL three (\`get\`, \`set\`, \`remove\`) — \`.remove()\` calls the backend \`remove\`, and omitting it makes the hook crash on cleanup paths.`,
   },
   // <gen-docs:api-reference:end @pyreon/storage>
 
@@ -3614,8 +3614,8 @@ const binding = bindEditorToSignal({
 }, { description: 'Save' })
 
 useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
-useHotkey('escape', () => close(), { enableOnFormElements: true })`,
-    notes: `Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: \`mod+s\`, \`ctrl+shift+p\`, \`escape\`, etc. \`mod\` is Command on Mac, Ctrl elsewhere. By default, shortcuts don't fire when focused on form elements (input, textarea, select) — override with \`enableOnFormElements: true\`. Supports \`scope\` option for context-aware activation and \`description\` for introspection. See also: useHotkeyScope, registerHotkey.`,
+useHotkey('escape', () => close(), { enableOnInputs: true })`,
+    notes: `Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: \`mod+s\`, \`ctrl+shift+p\`, \`escape\`, etc. \`mod\` is Command on Mac, Ctrl elsewhere. By default, shortcuts don't fire when focused on form elements (input, textarea, select) — override with \`enableOnInputs: true\`. Supports \`scope\` option for context-aware activation and \`description\` for introspection. See also: useHotkeyScope, registerHotkey.`,
     mistakes: `- Forgetting e.preventDefault() for browser-reserved shortcuts (mod+s, mod+p) — the browser dialog fires alongside your handler
 - Registering the same shortcut in overlapping scopes without priority — both handlers fire; use scope isolation to prevent conflicts
 - Using useHotkey outside a component body — the onUnmount cleanup requires an active component setup context
@@ -3631,9 +3631,9 @@ useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
 // In a modal component:
 useHotkeyScope('modal')
 useHotkey('escape', () => close(), { scope: 'modal' })`,
-    notes: 'Activate a hotkey scope for the lifetime of the current component. When the component mounts, the scope is enabled; when it unmounts, the scope is disabled. Shortcuts registered with a matching `scope` option only fire when the scope is active. Multiple components can activate the same scope — it stays active until the last one unmounts. See also: useHotkey, enableScope, disableScope.',
+    notes: 'Activate a hotkey scope for the lifetime of the current component. When the component mounts, the scope is enabled; when it unmounts, the scope is disabled. Shortcuts registered with a matching `scope` option only fire when the scope is active. NOTE: scopes are NOT reference-counted — `disableScope` runs on every unmount, so if two components activate the same scope, the FIRST to unmount disables it for both. See also: useHotkey, enableScope, disableScope.',
     mistakes: `- Using useHotkeyScope outside a component body — the lifecycle hooks require an active setup context
-- Assuming scope deactivation is immediate on unmount — if another component also activated the scope, it stays active`,
+- Activating the same scope from two components — scopes are NOT reference-counted, so the first component to unmount calls disableScope and the second component's matching hotkeys silently stop firing`,
   },
 
   'hotkeys/registerHotkey': {
@@ -4648,37 +4648,37 @@ const grouped = rx.groupBy(users, u => u.department) // Computed<Record<string, 
   },
 
   'rx/pipe': {
-    signature: '<T>(source: Signal<T[]> | T[], ...operators: Operator[]) => Computed<T[]> | T[]',
+    signature: '<A, B>(source: ReadableSignal<A> | A, ...fns: Array<(value: any) => any>) => Computed<B> | B',
     example: `const result = pipe(
   users,
-  filter(u => u.active),
-  sortBy('name'),
-  map(u => u.name),
-  take(10),
+  us => filter(us, u => u.active),
+  us => sortBy(us, 'name'),
+  us => map(us, u => u.name),
+  us => take(us, 10),
 )
 // Computed<string[]> when users is a signal`,
-    notes: 'Compose transforms left-to-right. Each operator receives the output of the previous one. Signal source produces a reactive `Computed` that re-derives when the source changes. Use curried forms of individual functions as operators: `filter(pred)`, `sortBy(key)`, `map(fn)`, etc. See also: rx, filter, map, sortBy.',
-    mistakes: `- Calling the non-curried form inside pipe — \`pipe(users, filter(users, pred))\` is wrong; use the curried form: \`pipe(users, filter(pred))\`
+    notes: 'Thread a value through plain transform functions left-to-right. Each function receives the resolved output of the previous step and returns the next value. A signal source produces a reactive `Computed` that re-derives when the source changes; a plain value gives a one-shot result. The rx helpers are 2-arg `(source, …)`, so wrap them inside each transform — `v => filter(v, pred)`. There is NO curried 1-arg form (`filter(pred)` is not valid). See also: rx, filter, map, sortBy.',
+    mistakes: `- Expecting a curried operator form — there is NO 1-arg \`filter(pred)\` / \`sortBy(key)\` / \`map(fn)\`; every helper is 2-arg \`(source, …)\`. Wrap it in a transform: \`pipe(users, us => filter(us, pred))\`
 - Expecting \`pipe(arr, ...)\` (plain array source) to be reactive — only a signal source produces a \`Computed\`; a plain array gives a one-shot plain result
 - Reading the pipe result as an array when the source is a signal — it is a \`Computed\`; call it: \`result()\`
 - Putting a timing operator (\`debounce\`/\`throttle\`) in a \`pipe\` chain — those take a single \`Signal<T>\` and return a signal, they are not curried collection operators and do not compose in \`pipe\``,
   },
 
   'rx/filter': {
-    signature: '<T>(source: Signal<T[]> | T[], predicate: (item: T) => boolean) => Computed<T[]> | T[]  // curried: filter(pred)',
+    signature: '<T>(source: Signal<T[]> | T[], predicate: (item: T, index: number) => boolean) => Computed<T[]> | T[]',
     example: `const evens = filter(items, n => n % 2 === 0)  // Computed<number[]> (items is a signal)
 const result = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5] (plain)
-pipe(items, filter(n => n > 3))                      // curried form in a pipe`,
-    notes: 'Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes; plain array input returns a plain array. Curried form `filter(pred)` is for `pipe()`. Curry vs direct is detected by argument count, so a single-argument call is always the curried operator. See also: rx, pipe, map.',
-    mistakes: `- Calling \`filter(pred)\` directly expecting a result — a single function arg is the CURRIED operator (returns a function), not a filtered array. Use \`filter(source, pred)\` for the direct form
+pipe(items, ns => filter(ns, n => n > 3))            // wrap the 2-arg call in a pipe transform`,
+    notes: 'Filter items by predicate. Signal input produces a reactive `Computed<T[]>` that re-evaluates when the source signal changes; plain array input returns a plain array. ALWAYS 2-arg `(source, predicate)` — there is no curried 1-arg form; inside `pipe()` wrap it as `arr => filter(arr, pred)`. See also: rx, pipe, map.',
+    mistakes: `- Calling \`filter(pred)\` with a single function arg — \`filter\` is 2-arg \`(source, predicate)\`; a lone function is treated as a reactive SOURCE (typeof === "function") and the missing predicate yields garbage. Always pass the source first
 - Passing \`items()\` instead of \`items\` — the resolved array takes the static path; the result never updates`,
   },
 
   'rx/map': {
-    signature: '<T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U) => Computed<U[]> | U[]  // curried: map(fn)',
+    signature: '<T, U>(source: Signal<T[]> | T[], fn: (item: T, index: number) => U) => Computed<U[]> | U[]',
     example: `const names = map(users, u => u.name)            // Computed<string[]>
-pipe(users, filter(u => u.active), map(u => u.name)) // curried in pipe`,
-    notes: 'Transform each item. Signal input → reactive `Computed<U[]>`; plain array → plain array. The mapper receives `(item, index)`. Curried form `map(fn)` composes in `pipe()`. See also: rx, filter, pipe.',
+pipe(users, us => filter(us, u => u.active), us => map(us, u => u.name)) // wrap each in a pipe transform`,
+    notes: 'Transform each item. Signal input → reactive `Computed<U[]>`; plain array → plain array. The mapper receives `(item, index)`. ALWAYS 2-arg `(source, fn)` — no curried form; inside `pipe()` wrap it as `arr => map(arr, fn)`. See also: rx, filter, pipe.',
     mistakes: `- Expecting this to be the JSX list renderer — \`rx.map\` derives a reactive array; to render a keyed list use \`<For each={…} by={…}>\`, not \`rx.map\` output spread into JSX
 - Relying on referential stability of mapped objects — every re-derive produces fresh objects; key lists by a stable id, not object identity`,
   },
@@ -4808,8 +4808,8 @@ q.set('hello')  // ?q=hello&sort=name
 // Array with repeated keys:
 const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
 tags.set(['a', 'b'])  // ?tags=a&tags=b`,
-    notes: 'Create a reactive signal synced to a URL search parameter. Type is inferred from the default value — numbers, booleans, strings, and arrays are auto-coerced. Uses `replaceState` by default (no history entries). Returns a `UrlStateSignal<T>` with `.set()`, `.reset()`, and `.remove()`. Schema mode overload: `useUrlState({ page: 1, sort: "name" })` creates multiple synced signals from a single call. SSR-safe — reads from the request URL on server. See also: setUrlRouter.',
-    mistakes: `- Using pushState behavior (adds history entries per keystroke) — useUrlState defaults to replaceState; if you pass \`{ replaceState: false }\` on a high-frequency input, the browser back button breaks
+    notes: 'Create a reactive signal synced to a URL search parameter. Type is inferred from the default value — numbers, booleans, strings, and arrays are auto-coerced. Uses `replaceState` by default (no history entries). Returns a `UrlStateSignal<T>` with `.set()`, `.reset()`, and `.remove()`. Schema mode overload: `useUrlState({ page: 1, sort: "name" })` creates multiple synced signals from a single call. SSR-safe — initializes to the default value on the server (does NOT read the request URL). See also: setUrlRouter.',
+    mistakes: `- Using pushState behavior (adds history entries per keystroke) — useUrlState defaults to replaceState; if you pass \`{ replace: false }\` on a high-frequency input, the browser back button breaks
 - Forgetting the default value — the type is inferred from it and determines the auto-coercion strategy (number default = coerce to number, boolean default = coerce to boolean)
 - Reading useUrlState in a non-reactive scope at component setup — the signal reads the URL once; wrap in a reactive scope to track URL changes
 - Calling setUrlRouter before the router is available — SSR renders may not have a router instance yet`,
