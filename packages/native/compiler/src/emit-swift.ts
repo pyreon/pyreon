@@ -1241,6 +1241,19 @@ function emitSwiftComponent(c: ComponentIR): string {
   const propLines = c.props.map(
     (p) => `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`,
   )
+  // Pre-walk signal decl types through the synth ctx so INLINE anonymous
+  // object types in signal generics (`signal<{ price: number }[]>`)
+  // synthesize a struct — collected here so they emit BEFORE the View
+  // struct opens (the decl loop runs later). Without this, the signal
+  // type emit (emitSwiftDecl → swiftType, no synth) degrades: a
+  // single-field inline object can't form a 1-element labeled tuple →
+  // falls back to the bare field type (`[Int]`), so member access
+  // (`item.price`) fails `swiftc -typecheck`. Side-effect only — the
+  // returned string is discarded; emitSwiftDecl re-resolves to the same
+  // (deterministic) synthesized name below.
+  for (const d of c.decls) {
+    if (d.kind === 'signal') swiftType(d.type, synth, d.name)
+  }
   for (const s of synth.structs) {
     lines.push(emitSwiftStruct(s))
     lines.push('')
@@ -1280,7 +1293,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 5b: value consts are body-local `let`s (a stored `let` property
     // can't reference @State at init), emitted just below — skip here.
     if (d.kind === 'value') continue
-    lines.push(`  ${emitSwiftDecl(d, inferCtx)}`)
+    lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
   lines.push(`  var body: some View {`)
   // Phase 5b: plain value consts as body-local `let`s at the top of the
@@ -1425,7 +1438,11 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
   return stmts.map(mapStmt)
 }
 
-function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>): string {
+function emitSwiftDecl(
+  d: DeclIR,
+  inferCtx: ReturnType<typeof buildInferenceCtx>,
+  synth?: SwiftSynthCtx,
+): string {
   // Phase 5b: a plain value const. Normally emitted as a body-local `let` by
   // emitSwiftComponent (a stored property can't reference @State at init);
   // this defensive case keeps the emit total if reached elsewhere.
@@ -1433,7 +1450,12 @@ function emitSwiftDecl(d: DeclIR, inferCtx: ReturnType<typeof buildInferenceCtx>
     return `let ${swiftIdent(d.name)} = ${emitSwiftExpr(d.expr, 2)}`
   }
   if (d.kind === 'signal') {
-    const type = swiftType(d.type)
+    // Pass the synth ctx so an inline anonymous object type in the
+    // signal generic synthesizes (or reuses) a struct instead of
+    // degrading — the structs were pre-collected + emitted by
+    // emitSwiftComponent; `synthesizeSwiftTypeName` is deterministic so
+    // this resolves to the same name. `d.name` drives the struct name.
+    const type = swiftType(d.type, synth, d.name)
     // If the signal's declared type is a known enum, set the active-enum
     // context so the initial-value emit knows to rewrite a string literal
     // (`"all"`) as an enum case (`.all`).
