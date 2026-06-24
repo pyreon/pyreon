@@ -35,7 +35,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
 import {
+  analyzeValidate,
   type CollapsibleSite,
+  emitValidator,
   generateContext,
   scanCollapsibleSites,
   transformDeferInline,
@@ -170,6 +172,22 @@ export interface PyreonPluginOptions {
    * @example pyreon({ collapse: { components: ['Button', 'Badge'] } })
    */
   collapse?: boolean | PyreonCollapseOptions
+
+  /**
+   * Opt-in compile-time validator emission for `@pyreon/validate`. When `true`,
+   * production builds append `X._attachCompiledVerdict(…)` to every module-level
+   * `const X = s.<schema>` whose IR is fully emittable, so the runtime `X.is(v)`
+   * runs an inlined monomorphic validator instead of `X.parse(v).ok`. The emitted
+   * verdict is byte-equivalent to the runtime (locked by the compiler's
+   * emit-equivalence gate), so this only changes SPEED, never the result.
+   *
+   * OFF by default (zero behaviour change). Build-only — dev keeps the runtime
+   * path (which is already correct and HMR-reactive). Composed/aliased/unsupported
+   * schemas are skipped silently and fall back to the runtime `.is()`.
+   *
+   * @example pyreon({ compileValidators: true })
+   */
+  compileValidators?: boolean
 
   /**
    * **JSX auto-import for canonical primitives** — closes the Phase D2
@@ -514,6 +532,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   const lpihEnabled = lpihOpt !== false
   const lpihUserCfg: PyreonLpihOptions = lpihOpt && lpihOpt !== true ? lpihOpt : {}
   const lpihIntervalMs = lpihUserCfg.intervalMs ?? 250
+
+  // ── Compiled-validator emission config (opt-in, build-only) ───────────────
+  const compileValidatorsEnabled = options?.compileValidators === true
 
   // ── P0 rocketstyle-collapse config (opt-in) ───────────────────────────────
   const collapseOpt = options?.collapse
@@ -875,6 +896,25 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
     },
 
     async transform(code, id, transformOptions) {
+      // ── Compiled validator verdicts (opt-in, build-only) ───────────────
+      // Runs for BOTH `.ts` (no JSX — esbuild compiles after us) and `.tsx`
+      // (we stash the tail and append it AFTER the JSX compile below, so the
+      // `X._attachCompiledVerdict(…)` references survive). Append-at-module-end
+      // keeps every original line position intact → the source map stays exact.
+      let verdictTail = ''
+      if (compileValidatorsEnabled && isBuild) {
+        const e0 = getExt(id)
+        if ((e0 === '.ts' || e0 === '.tsx') && code.includes('@pyreon/validate')) {
+          const v = buildCompiledVerdicts(code, id)
+          if (v) {
+            // `.ts` isn't JSX-compiled by this plugin — inject + hand back to
+            // esbuild. `.tsx` falls through to the JSX compile, then appends.
+            if (e0 === '.ts') return { code: code + v, map: null }
+            verdictTail = v
+          }
+        }
+      }
+
       const ext = getExt(id)
       if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.pyreon') return
 
@@ -1049,6 +1089,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       }
 
       let output = result.code
+
+      // ── Build-only: append compiled validator verdicts (.tsx path) ──────
+      // `verdictTail` is only non-empty when compileValidators is on AND
+      // isBuild — so this is implicitly build-only. Appended after the JSX
+      // compile so the top-level `const X` it references is already emitted.
+      if (verdictTail) output += verdictTail
 
       // ── Dev-only transforms ────────────────────────────────────────────
       if (!isBuild) {
@@ -2122,6 +2168,51 @@ function getExt(id: string): string {
   const clean = id.split('?')[0] ?? id
   const dot = clean.lastIndexOf('.')
   return dot >= 0 ? clean.slice(dot) : ''
+}
+
+/**
+ * Build the module-end tail that attaches inlined compiled verdicts to every
+ * MODULE-LEVEL, fully-emittable `const X = s.<schema>` in `code`. Each becomes
+ *
+ *   ;X._attachCompiledVerdict((v) => { try { return (<emit>)(v).length === 0 }
+ *                                      catch { return false } });
+ *
+ * — a monomorphic boolean fast path the runtime `.is()` uses instead of
+ * `parse().ok`. The emitted validator is byte-equivalent to the runtime
+ * (locked by the compiler's emit-equivalence gate), so this only changes
+ * SPEED, never the verdict. The `try/catch → false` wrap matches the runtime
+ * contract that `.is()` never throws on malformed input (returns false), so a
+ * node the emitter handles less defensively than the runtime can only return
+ * `false` for an already-invalid input, never diverge on a valid one.
+ *
+ * Returns `''` when nothing is emittable (the common case: a file that imports
+ * `@pyreon/validate` only for types, the DX helpers, or non-`s` schemas).
+ * Skips: anonymous schema expressions (`name === null`), schemas containing an
+ * `unsupported` IR node (`!emittable`), and function/block-scoped declarations
+ * (`!topLevel` — a module-end attach to those would be a ReferenceError).
+ */
+export function buildCompiledVerdicts(code: string, id: string): string {
+  let infos: ReturnType<typeof analyzeValidate>
+  try {
+    infos = analyzeValidate(code, id)
+  } catch {
+    return ''
+  }
+  const tails: string[] = []
+  for (const info of infos) {
+    if (!info.name || !info.emittable || !info.topLevel) continue
+    let fn: string
+    try {
+      fn = emitValidator(info.node)
+    } catch {
+      continue // defensive: a node the analyzer marked emittable but emit rejects
+    }
+    tails.push(
+      `;${info.name}._attachCompiledVerdict((__v) => { try { return (${fn})(__v).length === 0 } catch { return false } });`,
+    )
+  }
+  if (tails.length === 0) return ''
+  return `\n/* @pyreon/vite-plugin: compiled validator verdicts (build-only) */\n${tails.join('\n')}\n`
 }
 
 /** Skip Vite-handled asset requests (CSS, images, HMR, etc.) */
