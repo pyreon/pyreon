@@ -1,5 +1,25 @@
 # cpa-pw-app-vue
 
+## 0.0.21
+
+### Patch Changes
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`368a609`](https://github.com/pyreon/pyreon/commit/368a6090c867e2dd6c37413e0656fe57a7e1e63c), [`62f1191`](https://github.com/pyreon/pyreon/commit/62f119168078711ad4056c576805c71cff127c12), [`06971cc`](https://github.com/pyreon/pyreon/commit/06971cc33850a70dbf5ab335e491a535823dd576), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`ce49268`](https://github.com/pyreon/pyreon/commit/ce49268f21615478fe5544ce5ab385b74704c75d), [`bf6865c`](https://github.com/pyreon/pyreon/commit/bf6865c815e2ee4499995f9aba91591fa26a86f3), [`ac75935`](https://github.com/pyreon/pyreon/commit/ac7593520f4467cd7ba362178ee00ca7029794da), [`9967eb8`](https://github.com/pyreon/pyreon/commit/9967eb8f3396c6b1caf818f590e1ef9fe42d7387), [`2042ae5`](https://github.com/pyreon/pyreon/commit/2042ae59d1e3347db146ee7bbdf1b2229eabb812), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`b96f66e`](https://github.com/pyreon/pyreon/commit/b96f66e8ed85a14353b7e203a6e4ae5f438f977e), [`86424f9`](https://github.com/pyreon/pyreon/commit/86424f9ce9f52dfa978da28c8d16322fd302e977), [`87e8f97`](https://github.com/pyreon/pyreon/commit/87e8f97143c03a83add6bc6db3e23fbbac5aaab1), [`af85ce3`](https://github.com/pyreon/pyreon/commit/af85ce3dfc590db06838834c32d88f434e7f2769), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/zero@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/meta@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/vue-compat@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/store@1.0.0
+
 ## 0.0.20
 
 ### Patch Changes

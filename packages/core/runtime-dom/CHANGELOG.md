@@ -1,5 +1,53 @@
 # @pyreon/runtime-dom
 
+## 0.35.0
+
+### Patch Changes
+
+- [#1754](https://github.com/pyreon/pyreon/pull/1754) [`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: boolean `aria-*` state attributes now render as the string
+  `"true"`/`"false"`, not presence-only `""` (a11y bug, framework-wide).
+
+  ARIA state/property attributes (`aria-checked`, `aria-selected`,
+  `aria-expanded`, `aria-disabled`, `aria-pressed`, `aria-hidden`, …) are
+  string enums — assistive tech does NOT read `aria-checked=""` (the
+  presence-only output of a boolean) as "true"; it falls back to the
+  default, so a checked/selected/expanded element was announced as its
+  opposite. Both renderers (`applyStaticProp` client + `renderPropValue`
+  SSR) now coerce a boolean `aria-*` value to its literal string, BEFORE
+  the generic boolean→presence branch, and do so identically so SSR
+  markup matches client hydration. HTML boolean attrs (`disabled`,
+  `hidden`, …) keep presence semantics; `data-*` (author-defined) keeps
+  presence — only `aria-*` booleans coerce.
+
+  This is the root-cause fix: `aria-checked={signal()}` (boolean) now
+  renders correctly everywhere, with no per-call-site changes.
+
+- [#1648](https://github.com/pyreon/pyreon/pull/1648) [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three allocation fast paths in the template/mount hot paths (per-instance closure & array reductions)
+
+  - **`@pyreon/compiler`** — a single-binding template returns its disposer
+    directly (`return __d0`) instead of a per-instance wrapper closure
+    (`return () => { __d0() }`). For the dominant `<For>`-row shape (a sole
+    reactive-text child): ~97 B/row → ~948 KB + 10,000 fewer closure allocations
+    on a 10k-row list. Both JS + Rust backends, byte-identical.
+  - **`@pyreon/runtime-dom`** — `_rsCollapseH` uses an inline-first handler-disposer
+    slot (no array for the common 0/1-handler collapsed shape): ~57 B/row +
+    10,000 fewer array allocations on a 10k single-handler-collapse list.
+  - **`@pyreon/runtime-dom`** — `mountChildren`'s 3+-child path collects only real
+    (non-`noop`) cleanups inline-first instead of `children.map(...)`: no array /
+    wrapper closure for child sets yielding ≤1 real cleanup. ~169 B/call → ~1.6 MB
+    on 10k mixed 3-child elements (the `h()`/component path).
+
+  All behaviour-identical (proven by the existing compiler + runtime-dom suites)
+  with added bisect-verified regression tests. A fourth candidate (reusing the
+  batch flush's per-pass `_visitedThisPass` Set) was implemented, measured as a
+  wash (`Set.clear()` is marginally slower than `new Set()` in V8; the GC benefit
+  was unmeasurable), and reverted.
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+  - @pyreon/sized-map@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

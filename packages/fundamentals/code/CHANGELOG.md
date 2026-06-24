@@ -1,5 +1,23 @@
 # @pyreon/code
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1834](https://github.com/pyreon/pyreon/pull/1834) [`a134b7b`](https://github.com/pyreon/pyreon/commit/a134b7b044db7d3749e7b831f260c5f7696cc4e9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `createEditor` now accepts an `ariaLabel` option. CodeMirror's content area is a `role="textbox"` but has no accessible name unless one is supplied — a screen reader otherwise announces just "edit text, multiline" with no indication it's a code editor. The editor now sets `aria-label` on its content DOM (via `EditorView.contentAttributes`), defaulting to `"Code editor"` and overridable (e.g. `ariaLabel: "TypeScript source"`). A consumer-supplied `contentAttributes` via `extensions` still wins (it's applied after). No behavior change beyond the added accessible name.
+
+- [#1676](https://github.com/pyreon/pyreon/pull/1676) [`dd98e9f`](https://github.com/pyreon/pyreon/commit/dd98e9ff0e2d7da70f7b7a6a79721b2553da945d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(code): honor the `lint` config flag + drop the dead duplicate `indentGuides` field.
+
+  - `EditorConfig.lint` (documented "Enable lint/diagnostics", default false) was declared but never read — `lintKeymap` was added unconditionally and there was no lint gutter. Now `lint: true` installs `lintGutter()` so diagnostics set via `setDiagnostics()` render gutter markers, and the lint navigation keymap is gated on the same flag. (The diagnostic underlines already self-install through `cmSetDiagnostics` regardless; the flag controls the gutter affordance + keymap.)
+  - `EditorConfig.indentGuides` was a dead duplicate of `highlightIndentGuides` (the implemented field, which draws guides via a theme) — never destructured, never read. Removed so the type stops promising a no-op. Use `highlightIndentGuides`.
+
+### Patch Changes
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0)]:
+  - @pyreon/runtime-dom@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

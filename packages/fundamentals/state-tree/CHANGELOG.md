@@ -1,5 +1,51 @@
 # @pyreon/state-tree
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1744](https://github.com/pyreon/pyreon/pull/1744) [`e51e8f5`](https://github.com/pyreon/pyreon/commit/e51e8f5190a4118d9403f09c7e5ace6c38922606) Thanks [@vitbokisch](https://github.com/vitbokisch)! - state-tree: instance lifecycle + integrity (MST parity).
+
+  - `.lifecycle(self => ({ afterCreate?, beforeDestroy? }))` — chainable instance lifecycle hooks. `afterCreate` runs once at the end of `.create()` (after all view/action layers; bottom-up for nested field-models); `beforeDestroy` runs on `destroy`. Unknown handler keys throw (typo guard).
+  - `destroy(instance)` / `isAlive(instance)` — tear down (run `beforeDestroy`, recurse into field-nested children, clear patch listeners + middleware, mark dead; idempotent) and liveness. After `destroy`, actions + schema mutation helpers dev-warn and no-op (a stale handler post-teardown is caught, not silently applied); direct signal writes stay unguarded. `destroy` tears down subscriptions + runs cleanup — it does NOT free memory (signals are GC-reclaimed once unreferenced).
+  - `clone(instance)` / `getType(instance)` — independent structural copy (snapshot → `def.create()`; re-validated in schema mode) and the producing `ModelDefinition` back-ref.
+  - `applySnapshot` now RE-VALIDATES in schema mode — a malformed snapshot is rejected through the schema `patch` helper instead of written raw to signals (the schema is the source of truth). Plain mode is unchanged.
+
+- [#1790](https://github.com/pyreon/pyreon/pull/1790) [`adafac0`](https://github.com/pyreon/pyreon/commit/adafac073c0a158759e064eeacd864437202f757) Thanks [@vitbokisch](https://github.com/vitbokisch)! - state-tree: normalized references & identifiers (closes [#1751](https://github.com/pyreon/pyreon/issues/1751)) — `identifier()` / `reference()` / `resolveIdentifier`.
+
+  - `identifier(default?)` — declare which field is a model's id. Plain mode uses it as a field marker (`model({ state: { id: identifier(), name: '' } })`); schema mode names it via config (`model({ schema, identifier: 'id' })`).
+  - `reference(TargetModel)` — a field that STORES the target's id but RESOLVES to the live node on read. Accessor: `()` resolves, `.set(node | id)`, `.id()`, `.setId(id)`, `.peek()`. Serializes/restores as the id (`getSnapshot`/`applySnapshot`). `ReferenceField` is exported.
+  - `resolveIdentifier(root, Type, id)` — find a node of `Type` by id in `root`'s subtree (depth-first, cycle-safe; reads owned state, never follows references). The resolver `reference()` uses; useful directly too.
+
+  Resolution goes through `getRoot(node)`, so the referencing node + target must share a root. The target type must declare an `identifier()`. O(n) per resolve in v1 (a root id-index is a planned optimization). `reference()` fields are plain-mode (the marker lives in `state`); the target can be schema-mode.
+
+- [#1744](https://github.com/pyreon/pyreon/pull/1744) [`e51e8f5`](https://github.com/pyreon/pyreon/commit/e51e8f5190a4118d9403f09c7e5ace6c38922606) Thanks [@vitbokisch](https://github.com/vitbokisch)! - state-tree: `model({ schema })` now strictly types the instance from ANY schema passed directly — `@pyreon/validate`'s `s.object(...)`, a raw `z.object(...)`, valibot, arktype, or any Standard Schema — no `@pyreon/validation` adapter wrapper required. The state type is inferred from the schema's `~standard.validate` output (`InferSchemaState`), so `self.name()` is `string` (not `unknown`) even for validators like `@pyreon/validate` that omit the optional `~standard.types` slot. The `zodSchema()` adapter `_infer` path is unchanged.
+
+  This tightens the inferred instance type for schema-mode models that previously fell back to the untyped `StateShape` (raw Standard-Schema instances passed without the adapter). Code relying on the old loose typing (e.g. casting `model({ schema: z.object(...) }).create()` to a record) no longer needs the cast.
+
+- [#1744](https://github.com/pyreon/pyreon/pull/1744) [`e51e8f5`](https://github.com/pyreon/pyreon/commit/e51e8f5190a4118d9403f09c7e5ace6c38922606) Thanks [@vitbokisch](https://github.com/vitbokisch)! - state-tree: tree-traversal helpers — `getParent` / `getRoot` / `getPath` / `isRoot` / `hasParent`.
+
+  A model instance gets a tree **parent** when it's written into another model's state — as a field value, an **array element**, or a plain-object value. Parent tracking runs on the initial value AND every subsequent tracked-signal write (an always-on `afterSet` hook, not listener-gated), so array-held children (the headline `todos: Todo[]` shape) are tracked the same way field-nested children are — not field-nested-only.
+
+  - `getParent(node)` → the instance `node` is attached under, or `undefined` for a root.
+  - `getRoot(node)` → walk to the top of the tree.
+  - `getPath(node)` → JSON-pointer path from the root (field keys; `""` for a root).
+  - `isRoot(node)` / `hasParent(node)` → booleans.
+
+  All throw on a non-model-instance. v1: `getPath` carries field keys not array indices; a node removed from an array keeps its last parent until GC; auto-attachment is one container level deep. (References / identifiers build on these and land next — [#1751](https://github.com/pyreon/pyreon/issues/1751).)
+
+- [#1744](https://github.com/pyreon/pyreon/pull/1744) [`e51e8f5`](https://github.com/pyreon/pyreon/commit/e51e8f5190a4118d9403f09c7e5ace6c38922606) Thanks [@vitbokisch](https://github.com/vitbokisch)! - state-tree: volatile state + `onSnapshot` + `onAction` (MST parity).
+
+  - `.volatile(self => ({ ... }))` — signal-backed TRANSIENT state: reactive (`self.x()` / `self.x.set()`, strictly typed via a new `TVolatile` generic on `ModelDefinition`/`ModelInstance`) but EXCLUDED from snapshots, patches, and `onSnapshot`. For in-flight flags, drag/hover UI state, live refs (websockets/timers/promises). Reserved-name-checked against state / schema helpers / views / actions / other volatile.
+  - `onSnapshot(instance, cb)` — MICROTASK-COALESCED snapshot subscription. All writes in one synchronous burst collapse into a single emit on the next microtask (MST-like async); does NOT fire on subscribe; volatile changes don't fire it. Implemented via the patch-write hook (not an `effect()`), so it never fires-on-create and never depends on `getSnapshot`'s untracked `.peek()` reads. Cleared by `destroy`.
+  - `onAction(instance, cb)` — observe-only action subscription (name/args/path before the call); sugar over `addMiddleware`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/validation@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

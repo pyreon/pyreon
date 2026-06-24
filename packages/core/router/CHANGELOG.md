@@ -1,5 +1,43 @@
 # @pyreon/router
 
+## 0.35.0
+
+### Patch Changes
+
+- [#1841](https://github.com/pyreon/pyreon/pull/1841) [`06971cc`](https://github.com/pyreon/pyreon/commit/06971cc33850a70dbf5ab335e491a535823dd576) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a parameterised parent layout's `useLoaderData()` going stale across a child navigation.
+
+  PR [#1833](https://github.com/pyreon/pyreon/issues/1833) made parent layouts persist (mount once) across child navigations so their chrome/scroll/state survives — but a NON-leaf depth never re-emitted, and `useLoaderData()` reads a plain (non-reactive) context snapshot. So a parameterised parent layout with its OWN loader (e.g. `/users/:id` whose loader fetches the user) kept showing the first user after navigating `/users/42/profile → /users/99/profile`: the parent record stays the same, the id changed 42→99, its loader re-ran and `_loaderData` updated, but the persisting layout's `useLoaderData()` stayed on user-42. (The leaf was always fine — it re-mounts. `useParams()` was also fine — it keys off the `currentRoute` signal; but loader data is depth-specific and can't fall back to a signal the same way.)
+
+  Fix: a non-leaf depth now re-emits (re-mounts, re-reading `useLoaderData()` in its body) when THIS depth's own loader data changes. Loader-LESS layouts (the common chrome/sidebar case — and the exact case [#1833](https://github.com/pyreon/pyreon/issues/1833) fixed) keep `loaderData === undefined` on both sides, so they still mount once. A same-param child navigation (e.g. switching tabs under the same `/users/42/…`) leaves the parent data unchanged → still no re-mount.
+
+- [#1833](https://github.com/pyreon/pyreon/pull/1833) [`af85ce3`](https://github.com/pyreon/pyreon/commit/af85ce3dfc590db06838834c32d88f434e7f2769) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(router): parent layouts persist across child navigation (restore "layouts mount once")
+
+  `RouterView`'s per-depth `depthEntry` computed dedup included `a.route === b.route`
+  in its `equals`. Because `router.currentRoute()` returns a fresh `ResolvedRoute`
+  object on every navigation, that comparison was _always_ false on any nav — so the
+  component at **every** matched depth re-mounted on every page change, including the
+  **parent layout**. That defeated the documented "layouts mount once" contract: a
+  layout re-mount tears down its persistent chrome (sidebar/header), resetting things
+  like scroll position and flashing the UI on each navigation.
+
+  Now `route` only forces a re-emit at the **leaf** depth (the page that actually
+  consumes `params` / `query` / loader data via `renderWithLoader`). Parent layouts
+  re-emit only when their own `rec` / `comp` / `errored` changes, so they persist
+  across child navigations while the leaf still re-renders with fresh route data.
+  Components needing parent-level route data read it reactively (`useParams` /
+  `useLoaderData`), which update without a re-mount.
+
+  Verified: a new `integration.test.tsx` contract test (a parent layout's live DOM
+  node survives navigation between its children — bisect-verified to fail against the
+  old equals), the full 612-test router suite (incl. all loader tests), and the
+  `ssr-showcase` e2e (loaders + nested layouts + back/forward + 404 all still pass).
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0)]:
+  - @pyreon/runtime-dom@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+  - @pyreon/sized-map@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

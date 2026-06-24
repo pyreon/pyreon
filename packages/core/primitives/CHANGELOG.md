@@ -1,5 +1,39 @@
 # @pyreon/primitives
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1809](https://github.com/pyreon/pyreon/pull/1809) [`4ae20c2`](https://github.com/pyreon/pyreon/commit/4ae20c27a7da9d39395b54f05c8f4fce983cf3b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `accessibilityRole` to the cross-platform `AccessibilityProps` vocabulary — a constrained, cleanly-mapping semantic-role enum (`'button' | 'image' | 'header'`) that lowers to the native a11y model on every target: web `role` (`button`/`img`/`heading`), iOS accessibility traits (`.isButton`/`.isImage`/`.isHeader`), and Android Compose `Role.Button`/`Role.Image` / `heading()`. Write the role once; each platform emits its idiom. (The PMTC Swift/Kotlin emit + stubs are in the private `@pyreon/native-compiler`.)
+
+- [#1758](https://github.com/pyreon/pyreon/pull/1758) [`901dd41`](https://github.com/pyreon/pyreon/commit/901dd41924b1ba768fadc794dab63514da84ce24) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add a cross-platform accessibility vocabulary (`AccessibilityProps`) to every
+  canonical primitive: `accessibilityLabel` and `accessibilityHidden`. These are
+  platform-NEUTRAL a11y props — write them once and each target lowers them to
+  its native a11y model (`accessibilityLabel` → web `aria-label` / iOS
+  `.accessibilityLabel` / Android `semantics { contentDescription }`;
+  `accessibilityHidden` → web `aria-hidden="true"` / iOS `.accessibilityHidden` /
+  Android `semantics { invisibleToUser }`).
+
+  **Web lowering ships now** (via `collectPassthroughAttrs`): a raw
+  `aria-label`/`aria-hidden` still wins as the explicit web override, and
+  `accessibilityHidden` emits the string `"true"` (never presence-only `""`,
+  which assistive tech ignores). The iOS/Android PMTC emit is a tracked
+  follow-up — until it lands, native targets render without the a11y attribute
+  (graceful, no crash). Prefer these over raw `aria-*` (web-only) so the same
+  component is accessible on every target.
+
+- [#1824](https://github.com/pyreon/pyreon/pull/1824) [`e58e897`](https://github.com/pyreon/pyreon/commit/e58e89735a5700796048b918628e546b347d99a7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The web `<Toggle>` now renders `<input type="checkbox" role="switch">` instead of a bare checkbox. It keeps the checkbox's universal keyboard + form behavior (Space toggles, `checked` drives `aria-checked`) but assistive tech now announces it as an on/off **switch** — matching the iOS `Toggle` / Android `Switch` it lowers to on native targets, so the same `<Toggle>` is announced consistently on every platform. The W3C Switch pattern explicitly endorses `input[type=checkbox][role=switch]`. No interaction or API change; web-only (the native PMTC emit is unaffected).
+
+### Patch Changes
+
+- [#1664](https://github.com/pyreon/pyreon/pull/1664) [`c7c27e8`](https://github.com/pyreon/pyreon/commit/c7c27e8b14aae2852ffcb3ab513b560b06a2ce3a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the missing MIT `LICENSE` file. `@pyreon/primitives` is published with `LICENSE` in its `files` array but the file itself was absent from the package, so the published tarball shipped without a license. Adds the standard MIT license (identical to its sibling `@pyreon/core` packages) — no code change.
+
+- [#1634](https://github.com/pyreon/pyreon/pull/1634) [`243ed9a`](https://github.com/pyreon/pyreon/commit/243ed9a1876867dbf67d61c0879a6738c81808a8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/primitives` now has a manifest, so the 15 canonical multiplatform primitives (Stack/Inline/Layer/Scroll/Spacer/Text/Heading/Image/Icon/Button/Press/Link/Field/Toggle/Modal) plus `<WebView>` and the `<Web>`/`<NativeIOS>`/`<NativeAndroid>` escape hatches are queryable via the MCP `get_api` tool (and appear in `llms.txt` / `llms-full.txt`). Each entry documents the real props, the per-target mapping (DOM / SwiftUI / Compose), and the native gotchas (e.g. `<Inline>` is a non-wrapping `Row` on Android, `onPress`/`onChangeText` canonical handlers). This is the AI-facing primitive reference for building multiplatform apps one-shot; pair it with `get_pattern({ name: "multiplatform" })`.
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Minor Changes

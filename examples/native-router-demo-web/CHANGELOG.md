@@ -1,5 +1,16 @@
 # @pyreon/example-native-router-demo-web
 
+## 0.0.15
+
+### Patch Changes
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`06971cc`](https://github.com/pyreon/pyreon/commit/06971cc33850a70dbf5ab335e491a535823dd576), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`4ae20c2`](https://github.com/pyreon/pyreon/commit/4ae20c27a7da9d39395b54f05c8f4fce983cf3b6), [`901dd41`](https://github.com/pyreon/pyreon/commit/901dd41924b1ba768fadc794dab63514da84ce24), [`c7c27e8`](https://github.com/pyreon/pyreon/commit/c7c27e8b14aae2852ffcb3ab513b560b06a2ce3a), [`243ed9a`](https://github.com/pyreon/pyreon/commit/243ed9a1876867dbf67d61c0879a6738c81808a8), [`af85ce3`](https://github.com/pyreon/pyreon/commit/af85ce3dfc590db06838834c32d88f434e7f2769), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0), [`e58e897`](https://github.com/pyreon/pyreon/commit/e58e89735a5700796048b918628e546b347d99a7)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/primitives@1.0.0
+  - @pyreon/reactivity@1.0.0
+
 ## 0.0.14
 
 ### Patch Changes

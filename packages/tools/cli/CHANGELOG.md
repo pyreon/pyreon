@@ -1,5 +1,27 @@
 # @pyreon/cli
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1636](https://github.com/pyreon/pyreon/pull/1636) [`8a4e195`](https://github.com/pyreon/pyreon/commit/8a4e19519bcf3dfebb203c97f69d08e3f7ac6b50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native (multiplatform / PMTC) build-hazard detection across the doctor + MCP surfaces, so an AI/dev catches code that compiles for web but silently breaks the iOS/Android build.
+
+  - **`pyreon doctor --check-native`** (new `native-audit` gate, also in the default fast set) scans `.tsx` files importing `@pyreon/primitives` for two hazards the `swiftc -parse` / `kotlinc`-stub gate can't catch: **web-only-package imports** (`@pyreon/charts`/`flow`/`code`/`dnd`/`document`/`query`/`table`/`virtual` + the CSS-in-JS UI stack — fix: host in `<WebView>` or use `@pyreon/primitives`) and **native-dropped top-level `interface`/`enum`/`class`** (fix: `type X = {…}` / string-literal union / functions). Scoped to multiplatform projects (skips gracefully otherwise); warnings only.
+  - **MCP `validate`** now runs the same native detector per-snippet (the AI's per-keystroke feedback loop), firing only when the snippet imports `@pyreon/primitives`.
+  - **`@pyreon/compiler`** exports `auditNative(cwd)` (project scan) + `detectNativePatterns(code, filename)` (snippet) + their types.
+
+  Pairs with `get_pattern({ name: "multiplatform" })` and the `@pyreon/primitives` `get_api` entries so an AI has both the reference and the feedback to build a correct multiplatform app one-shot.
+
+### Patch Changes
+
+- [#1667](https://github.com/pyreon/pyreon/pull/1667) [`36fc915`](https://github.com/pyreon/pyreon/commit/36fc915ae8dcd85e5e50e2c41e43b56285991665) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor` doc-claims gate: add two new drift counters — **document output-format count** (source of truth: `@pyreon/document`'s `OutputFormat` union) and **published-package count** (non-private `package.json` under `packages/<category>/`) — and wire the root `README.md` in as a claim site for the existing hook-count and lint-rule/category counters. These are the three numbers that had silently drifted in the README ("55+ packages", "33+ hooks", "14+ output formats", "55 lint rules") because nothing gated them. The gate now scans 31 claim sites (was 19); any future drift in these counts fails CI.
+
+- [#1632](https://github.com/pyreon/pyreon/pull/1632) [`d3945ea`](https://github.com/pyreon/pyreon/commit/d3945ea93e4aaf6362a01e1ff4cd4ee168b34f15) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor` no longer surfaces a scary `Module not found` error when run in a user project. The three monorepo-internal gates — `audit-leak-classes` (default run), `audit-types` and `bundle-budgets` (`--full`) — shell out to scripts that only exist in the Pyreon framework repo; they now **skip gracefully with a clear reason** when those scripts aren't present (any project that isn't the Pyreon monorepo), matching how the `doc-claims` gate already handles its monorepo-only claim sites. Previously every `pyreon doctor` run on a user app reported a spurious `audit-leak-classes/gate-failed` ERROR with a raw `Module not found` message.
+
+- Updated dependencies [[`b3957fa`](https://github.com/pyreon/pyreon/commit/b3957fa6f913410e90f917ebce560a1bf85c2dd8), [`f1e46fb`](https://github.com/pyreon/pyreon/commit/f1e46fb08da6a0fdf03f1eab8abc95ad0643def1), [`62f1191`](https://github.com/pyreon/pyreon/commit/62f119168078711ad4056c576805c71cff127c12), [`8a4e195`](https://github.com/pyreon/pyreon/commit/8a4e19519bcf3dfebb203c97f69d08e3f7ac6b50), [`d2d3cb4`](https://github.com/pyreon/pyreon/commit/d2d3cb4a6f585a59333ef5c28c1ba4eefa10e4ea), [`7209861`](https://github.com/pyreon/pyreon/commit/7209861f602d3bdef6bc0ab9de1ea58c4acaa970), [`7209861`](https://github.com/pyreon/pyreon/commit/7209861f602d3bdef6bc0ab9de1ea58c4acaa970), [`0a23659`](https://github.com/pyreon/pyreon/commit/0a23659f71a57a043390936bc88acd249bbdfbe4), [`544c425`](https://github.com/pyreon/pyreon/commit/544c425b6bcf95f772ea04a5e740fb27fa6938d1), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0), [`e8d945f`](https://github.com/pyreon/pyreon/commit/e8d945fe7a7c23307b0b7d88eeb4cc060224b3a5), [`ee9b328`](https://github.com/pyreon/pyreon/commit/ee9b32875104b8759c2aa180cb6d00d62fa681de), [`a8a8b41`](https://github.com/pyreon/pyreon/commit/a8a8b41ae001883710cd6cd4e4c367987dd6312d)]:
+  - @pyreon/compiler@0.35.0
+  - @pyreon/lint@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

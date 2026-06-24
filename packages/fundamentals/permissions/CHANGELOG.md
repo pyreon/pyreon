@@ -1,5 +1,33 @@
 # @pyreon/permissions
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1701](https://github.com/pyreon/pyreon/pull/1701) [`41bd706`](https://github.com/pyreon/pyreon/commit/41bd706fe1ca57eb6b59682661e50a7c69fa386f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - API polish pass (breaking, pre-1.0 — clean over backward-compatible):
+
+  - **`PermissionsProvider` prop renamed `instance` → `value`** — fixes a real code/docs mismatch: the component took `instance`, but the generated docs / llms / MCP always documented `value` (and it's the conventional context-provider prop). Anyone following the docs (`<PermissionsProvider value={can}>`) was silently getting `undefined` → `usePermissions()` threw. The code now matches the documented, conventional name. **Breaking** for any code that passed `instance`.
+  - **`can.assert(key, context?, message?)`** — optional custom denial message: `can.assert('billing.export', undefined, 'Upgrade your plan to export')` throws `[Pyreon] Upgrade your plan to export` instead of the default `[Pyreon] permission denied: 'billing.export'`.
+  - Drive-by: the `usePermissions()` out-of-provider error now uses the enforced `[Pyreon]` prefix (was `[@pyreon/permissions]`, a baselined `no-error-without-prefix` violation) — burns the pyreon-lint advisory baseline down 283 → 282.
+
+  Tests: the provider-prop tests + the error-message assertion were updated to the new names; +1 `can.assert` custom-message test. 153 tests pass; coverage above the 98% floor.
+
+- [#1695](https://github.com/pyreon/pyreon/pull/1695) [`25363e7`](https://github.com/pyreon/pyreon/commit/25363e7ac6e7424c1c43d1414e8c455173c5ac05) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fill the genuine gaps in the flat-key reactive permissions model vs CASL (staying in the predicate idiom — not adopting CASL's action/subject/condition DSL):
+
+  - **Recursive subtree wildcard `prefix.**`** — `'posts.**'`matches any key at any depth below`posts` (`posts.read`, `posts.a.b.c`), where `'posts._'`matches only ONE segment. Resolution is now most-specific-first (exact →`parent._`→ nearest-ancestor`**`→ global`_`), so an exact or `**` deny overrides a broader subtree grant (`'posts.**': true`+`'posts.admin.\*\*': false`grants posts but denies the admin subtree — the CASL`cannot`-over-`can`shape). Non-breaking:`'_'`stays recursive-everything and`'prefix.\*'`stays one-segment;`\*\*` is the new primitive.
+  - **`can.assert(key, context?)`** — throw-on-deny (`[Pyreon] permission denied: '<key>'`) for route loaders, navigation guards, and server actions; evaluates predicates + wildcards exactly like `can()`. The imperative companion to the reactive `can()` (CASL `ForbiddenError` parity).
+  - **`can.clear()`** — wipe all permissions reactively (e.g. on logout); equivalent to `can.set({})`.
+
+  Out of scope (the predicate model deliberately replaces): MongoDB-style condition matching → predicates; rule packing/serialization + subject-type detection → N/A for the flat-string-key model; async checks → resolve into a signal the predicate reads.
+
+  Backward-compatible: all pre-existing tests pass unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @pyreon/sync
 
+## 0.35.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

@@ -1,5 +1,20 @@
 # @pyreon/feature
 
+## 0.35.0
+
+### Patch Changes
+
+- [#1670](https://github.com/pyreon/pyreon/pull/1670) [`80b404b`](https://github.com/pyreon/pyreon/commit/80b404b956c698510dccfaddf4afe1266672f5bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(feature): guard edit-mode auto-fetch against write-after-unmount. `useForm({ mode: 'edit', id })` could resolve its `getById` fetch after the component unmounted and write the server data into a disposed form (the stale-promise class). An `onUnmount` cancellation flag now skips both settle branches after unmount.
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`ce49268`](https://github.com/pyreon/pyreon/commit/ce49268f21615478fe5544ce5ab385b74704c75d), [`bf6865c`](https://github.com/pyreon/pyreon/commit/bf6865c815e2ee4499995f9aba91591fa26a86f3), [`ac75935`](https://github.com/pyreon/pyreon/commit/ac7593520f4467cd7ba362178ee00ca7029794da), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`86424f9`](https://github.com/pyreon/pyreon/commit/86424f9ce9f52dfa978da28c8d16322fd302e977), [`87e8f97`](https://github.com/pyreon/pyreon/commit/87e8f97143c03a83add6bc6db3e23fbbac5aaab1)]:
+  - @pyreon/form@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/query@0.35.0
+  - @pyreon/validation@0.35.0
+  - @pyreon/table@0.35.0
+  - @pyreon/reactivity@0.35.0
+  - @pyreon/store@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

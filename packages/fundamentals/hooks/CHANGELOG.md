@@ -1,5 +1,19 @@
 # @pyreon/hooks
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1801](https://github.com/pyreon/pyreon/pull/1801) [`bb024a2`](https://github.com/pyreon/pyreon/commit/bb024a277b488b915cb982d99b76e7853e62c7b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useFocusReturn(isOpen, options?)` — the companion to `useFocusTrap`. It captures the focused element (the trigger) when `isOpen()` flips true and restores focus to it when `isOpen()` flips false, so keyboard and screen-reader users return to where they were when an overlay closes instead of the top of the page. Pass `options.returnTo` to override the restore target (useful when the trigger may have unmounted). SSR-safe (no-op on the server) and self-cleaning.
+
+### Patch Changes
+
+- Updated dependencies [[`97fa631`](https://github.com/pyreon/pyreon/commit/97fa6312304951e8cfd24fb8f0f405f94dc609db), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`3d47b98`](https://github.com/pyreon/pyreon/commit/3d47b987d244be4ad6b5453cd07ed39be85427bf)]:
+  - @pyreon/styler@0.35.0
+  - @pyreon/ui-core@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

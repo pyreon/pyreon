@@ -1,5 +1,76 @@
 # @pyreon/toast
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1728](https://github.com/pyreon/pyreon/pull/1728) [`14feb2e`](https://github.com/pyreon/pyreon/commit/14feb2e04b9f3b8867a474f9674c6f4ad6747bc4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(toast): description + icon, `<Toaster duration>`, type-aware a11y; drop dead per-toast `position`
+
+  Feature-completeness + strict-typing pass:
+
+  - **`description`** — an optional secondary line under the message (`toast('Uploaded', { description: '3 files · 1.2 MB' })`), updatable via `toast.update`.
+  - **`icon`** — an optional leading icon (any VNode): `toast.success('Done', { icon: <CheckIcon /> })`.
+  - **`<Toaster duration={…}>`** — the app-wide default auto-dismiss duration for toasts that don't set their own. This makes the previously-documented-but-unimplemented `duration` prop real (the manifest examples referenced it but it didn't exist — they now compile).
+  - **Type-aware accessibility** — toasts now carry `role="alert"` (assertive) for `error`/`warning` and `role="status"` (polite) for `info`/`success`, instead of `role="alert"` on everything. The role implies its own `aria-live`, so the container no longer sets `aria-live="polite"` (which double-announced every toast).
+
+  **Breaking:** `ToastOptions.position` is removed. It was typed but never honored (per-toast position did nothing); the container-level `<Toaster position>` is unchanged. Per-toast position would require a multi-stack Toaster and is deferred.
+
+### Patch Changes
+
+- [#1645](https://github.com/pyreon/pyreon/pull/1645) [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `onFocusIn` / `onFocusOut` JSX event types; Toaster pauses on keyboard focus
+
+  - **`@pyreon/core`**: the JSX event surface now types `onFocusIn` / `onFocusOut`
+    — the **bubbling** focus events (unlike the non-bubbling `onFocus` / `onBlur`),
+    so a handler on a container fires when focus moves to/from any descendant.
+    The runtime already delegated these events (`onFocusIn` → `focusin` via the
+    generic `on*` lowercasing + `DELEGATED_EVENTS`); only the types were missing.
+  - **`@pyreon/toast`**: the Toaster now mirrors its pause-on-hover with
+    **pause-on-focus** (`onFocusIn` / `onFocusOut`), so a keyboard user tabbing
+    into a toast (e.g. its close button) pauses auto-dismiss the same way a mouse
+    user does on hover.
+
+- [#1642](https://github.com/pyreon/pyreon/pull/1642) [`544c425`](https://github.com/pyreon/pyreon/commit/544c425b6bcf95f772ea04a5e740fb27fa6938d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh + Toaster lint annotation
+
+  - **`@pyreon/toast`**: annotated the Toaster's `aria-live` region with a rule
+    suppression + rationale for oxlint 1.70's new
+    `jsx-a11y/no-noninteractive-element-interactions` rule. The labeled live
+    region is the accessibility mechanism (toasts are announced + dismissable);
+    pause-on-hover is an intentional mouse-only enhancement on top of it, not a
+    clickable control. No behavior change.
+  - **`@pyreon/compiler` / `@pyreon/lint`**: bump the `oxc-parser` (+ `oxc-transform`)
+    runtime dependency range to `^0.137.0` (was `^0.133.0`). No API change in the
+    affected surface — the full compiler (1603) + lint (993) test suites pass.
+
+  Dev-tooling was also refreshed to latest in-range (vitest 4.1.9, playwright
+  1.61, esbuild 0.28.1, oxlint 1.70, oxfmt 0.55, happy-dom, etc.) — not
+  consumer-affecting.
+
+- [#1719](https://github.com/pyreon/pyreon/pull/1719) [`ee7f09d`](https://github.com/pyreon/pyreon/commit/ee7f09d60f13b0ca6f25d81385ba3f21a6afb25a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(toast): toasts now actually render, update, and respond to clicks
+
+  The `<Toaster>` render layer had two correctness bugs that were invisible to the
+  (node-only) store tests because `toaster.tsx` was coverage-excluded with no
+  browser test:
+
+  - **Stale rows** — `ToastItem` read `message`/`type`/`state` statically off the
+    snapshot the keyed `<For>` callback receives, so `toast.update`,
+    `toast.promise` transitions, and the `entering→visible` promotion never
+    reflected: toasts rendered stuck in the entering state (`opacity:0` =
+    invisible) and updates never changed the text. Rows now read their live fields
+    via a `_toastMap` lookup inside reactive thunks — a single update patches only
+    that row in place (0 component re-renders).
+  - **Dead buttons** — `click` is a delegated event handled at the mount root, but
+    the Toaster portals outside it, so the dismiss `×`, the action button, and
+    pause-on-focus never fired. The Toaster now renders into a per-instance host
+    element and scopes event delegation to it.
+
+  Adds the package's first real-Chromium browser test (8 specs) covering the
+  render + a11y + interaction path.
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0)]:
+  - @pyreon/runtime-dom@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

@@ -1,5 +1,33 @@
 # @pyreon/storage
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1738](https://github.com/pyreon/pyreon/pull/1738) [`59ba154`](https://github.com/pyreon/pyreon/commit/59ba154f6bb070a1a5b86ca83c39d243dfbed8c2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useStorage` / `useSessionStorage` accept an opt-in `writeDebounceMs` option that coalesces the persistence write. `localStorage.setItem` is synchronous main-thread I/O, so a value persisted on every keystroke (a draft) pays a `JSON.stringify` + `setItem` per character; `writeDebounceMs` debounces only the WRITE — the signal still updates synchronously (the UI stays reactive), the latest value wins, and a pending write is flushed on `pagehide`/`beforeunload` (via one shared idempotent listener) so the last value is never lost on tab close. `.remove()` cancels any pending write. Default (omit or `0`) keeps the synchronous write — byte-identical to prior behavior. No effect on cookie / IndexedDB (already debounced) / memory backends.
+
+### Patch Changes
+
+- [#1828](https://github.com/pyreon/pyreon/pull/1828) [`f107ee9`](https://github.com/pyreon/pyreon/commit/f107ee9951cc6e17fe8e4f41b4f3e19606a887fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(manifests): correct API inaccuracies that feed llms.txt / llms-full.txt / MCP `get_api`
+
+  Several package manifests carried inaccuracies that would break copied code. Corrected
+  against source + regenerated the AI-facing doc surfaces (`@pyreon/mcp`'s `api-reference.ts`
+  ships the corrected `get_api` data):
+
+  - **rx**: removed the fabricated "curried operators" model — `pipe(source, ...fns)` threads
+    the value through plain `(value) => value` transforms; `filter`/`map`/`sortBy` are always
+    2-arg `(source, …)` (no 1-arg curried form).
+  - **hotkeys**: the real option is `enableOnInputs` (not the fabricated `enableOnFormElements`);
+    scopes are not reference-counted.
+  - **url-state**: options are `debounce` / `replace` (not `debounceMs` / `replaceState`); SSR
+    initializes to the default value (it does not read the request URL).
+  - **storage**: custom-backend methods are `get` / `set` / `remove`; serializer options are
+    `serializer` / `deserializer`.
+  - **document**: the format string is `google-chat` (not `gchat`).
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

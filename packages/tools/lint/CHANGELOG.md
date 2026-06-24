@@ -1,5 +1,42 @@
 # @pyreon/lint
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1811](https://github.com/pyreon/pyreon/pull/1811) [`0a23659`](https://github.com/pyreon/pyreon/commit/0a23659f71a57a043390936bc88acd249bbdfbe4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `pyreon/primitive-media-needs-label` — an opt-in, `@pyreon/primitives`-dependency-gated frontend a11y rule (the multiplatform analog of `pyreon/require-img-alt`). It flags a canonical `<Image>` / `<Icon>` that carries no accessible name — neither a text alternative (`accessibilityLabel` / `alt` / `aria-label` / `aria-labelledby`) nor a decorative marker (`accessibilityHidden` / `aria-hidden`). Because those media primitives have no text content, a missing label is inaccessible on every target (web screen readers, iOS VoiceOver, Android TalkBack); the rule surfaces it at author time so the canonical `accessibilityLabel` (which lowers to each platform's idiom) is written once. Accepting `alt`/`aria-*` as satisfying means a project also using `@pyreon/zero`'s web-optimized `<Image alt>` is never false-flagged. Off in `recommended`/`strict`/`app`/`lib`; enabled by the `best-practices` preset or per-rule config; silent in projects without `@pyreon/primitives`. Brings the rule set to 91 rules across 18 categories (frontend → 11).
+
+### Patch Changes
+
+- [#1657](https://github.com/pyreon/pyreon/pull/1657) [`62f1191`](https://github.com/pyreon/pyreon/commit/62f119168078711ad4056c576805c71cff127c12) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh.
+
+  - `@pyreon/lint`: bump the `@oxc-project/types` dependency `^0.133.0 → ^0.137.0` (aligns with the `oxc-parser`/`oxc-transform` 0.137 line).
+  - `@pyreon/zero`: widen the `sharp` peer-dependency range to `^0.33.0 || ^0.34.0 || ^0.35.0` (sharp's image API is stable across these minors) and refresh the dev dependency to `0.35.2` — keeps the dev-tested and consumer-supported sharp versions in sync.
+
+- [#1784](https://github.com/pyreon/pyreon/pull/1784) [`7209861`](https://github.com/pyreon/pyreon/commit/7209861f602d3bdef6bc0ab9de1ea58c4acaa970) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon/no-error-without-prefix` now supports the standard `exemptPaths` rule option (like `no-window-in-ssr` etc.). Lets a project scope the rule off packages whose throws are NOT framework runtime errors — e.g. CLI scaffolders (`create-zero` / `create-multiplatform`), whose `Error`s are user-facing CLI usage/argument messages shown to someone running `npm create`, not runtime errors a Pyreon app developer debugs (and which have their own CLI-tool error voice).
+
+- [#1784](https://github.com/pyreon/pyreon/pull/1784) [`7209861`](https://github.com/pyreon/pyreon/commit/7209861f602d3bdef6bc0ab9de1ea58c4acaa970) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon/no-error-without-prefix` now also accepts the more-specific `[@pyreon/<pkg>]` convention (e.g. `throw new Error('[@pyreon/state-tree] …')`), not just the generic `[Pyreon]` token. Both satisfy the rule's purpose — the error is identifiable as coming from the framework, and the scoped form additionally names the package — so flagging `[@pyreon/<pkg>]` was a false-positive against the rule's own intent. Unrelated bracket prefixes (`[Vue]`, etc.) are still flagged.
+
+- [#1642](https://github.com/pyreon/pyreon/pull/1642) [`544c425`](https://github.com/pyreon/pyreon/commit/544c425b6bcf95f772ea04a5e740fb27fa6938d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh + Toaster lint annotation
+
+  - **`@pyreon/toast`**: annotated the Toaster's `aria-live` region with a rule
+    suppression + rationale for oxlint 1.70's new
+    `jsx-a11y/no-noninteractive-element-interactions` rule. The labeled live
+    region is the accessibility mechanism (toasts are announced + dismissable);
+    pause-on-hover is an intentional mouse-only enhancement on top of it, not a
+    clickable control. No behavior change.
+  - **`@pyreon/compiler` / `@pyreon/lint`**: bump the `oxc-parser` (+ `oxc-transform`)
+    runtime dependency range to `^0.137.0` (was `^0.133.0`). No API change in the
+    affected surface — the full compiler (1603) + lint (993) test suites pass.
+
+  Dev-tooling was also refreshed to latest in-range (vitest 4.1.9, playwright
+  1.61, esbuild 0.28.1, oxlint 1.70, oxfmt 0.55, happy-dom, etc.) — not
+  consumer-affecting.
+
+- Updated dependencies [[`b3957fa`](https://github.com/pyreon/pyreon/commit/b3957fa6f913410e90f917ebce560a1bf85c2dd8), [`f1e46fb`](https://github.com/pyreon/pyreon/commit/f1e46fb08da6a0fdf03f1eab8abc95ad0643def1), [`8a4e195`](https://github.com/pyreon/pyreon/commit/8a4e19519bcf3dfebb203c97f69d08e3f7ac6b50), [`d2d3cb4`](https://github.com/pyreon/pyreon/commit/d2d3cb4a6f585a59333ef5c28c1ba4eefa10e4ea), [`544c425`](https://github.com/pyreon/pyreon/commit/544c425b6bcf95f772ea04a5e740fb27fa6938d1), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0), [`e8d945f`](https://github.com/pyreon/pyreon/commit/e8d945fe7a7c23307b0b7d88eeb4cc060224b3a5), [`ee9b328`](https://github.com/pyreon/pyreon/commit/ee9b32875104b8759c2aa180cb6d00d62fa681de), [`a8a8b41`](https://github.com/pyreon/pyreon/commit/a8a8b41ae001883710cd6cd4e4c367987dd6312d)]:
+  - @pyreon/compiler@0.35.0
+  - @pyreon/sized-map@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes
