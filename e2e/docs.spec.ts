@@ -57,6 +57,61 @@ test.describe('docs rendering', () => {
     ).toBeVisible()
   })
 
+  test('sidebar persists across docs→docs navigation (no remount → scroll kept, no flash)', async ({
+    page,
+  }) => {
+    // Short viewport so the (tall) sidebar overflows and is scrollable.
+    // Width stays desktop (>768px) so the sidebar is the sticky rail, not
+    // the mobile drawer.
+    await page.setViewportSize({ width: 1280, height: 500 })
+    await page.goto('/docs/getting-started')
+    await page.waitForLoadState('networkidle')
+    await expect(page.locator('.pyreon-sidebar')).toBeVisible()
+
+    // Tag the live sidebar element with an expando + scroll it to the bottom.
+    // BOTH are wiped if the layout re-mounts the sidebar on navigation (a new
+    // <nav> has no expando and scrollTop 0) — the exact double-bug reported:
+    // the menu flashing out/in AND its scroll resetting to the top.
+    const before = await page.evaluate(() => {
+      const el = document.querySelector('.pyreon-sidebar') as HTMLElement
+      ;(el as unknown as { __remountProbe?: string }).__remountProbe = 'persisted'
+      el.scrollTop = 99999 // clamp to max scroll
+      return el.scrollTop
+    })
+    // Sanity: the sidebar is actually scrollable in this viewport.
+    expect(before).toBeGreaterThan(0)
+
+    // Navigate docs→docs via a sidebar link. Programmatic click (not Playwright's
+    // auto-scroll-into-view click) so the manual scrollTop above is undisturbed.
+    await page.evaluate(() => {
+      ;(
+        document.querySelector(
+          'a.pyreon-sidebar__link[href="/docs/router"]',
+        ) as HTMLElement
+      ).click()
+    })
+    await page.waitForURL('**/docs/router')
+    await page.waitForLoadState('networkidle')
+    await expect(
+      page.locator('article.docs-content h1, article.docs-content h2').first(),
+    ).toBeVisible({ timeout: 15_000 })
+
+    // The sidebar never disappears.
+    await expect(page.locator('.pyreon-sidebar')).toBeVisible()
+
+    const after = await page.evaluate(() => {
+      const el = document.querySelector('.pyreon-sidebar') as HTMLElement
+      return {
+        probe: (el as unknown as { __remountProbe?: string }).__remountProbe,
+        scrollTop: el.scrollTop,
+      }
+    })
+    // Root cause: the SAME element survived (no unmount/remount of the sidebar)…
+    expect(after.probe).toBe('persisted')
+    // …so its scroll position is preserved (the bug reset it to 0).
+    expect(after.scrollTop).toBe(before)
+  })
+
   test('Toc scroll-spy activates as headings enter the viewport', async ({
     page,
   }) => {
