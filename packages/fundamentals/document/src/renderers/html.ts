@@ -121,7 +121,10 @@ function renderNode(node: DocNode): string {
           : p.align === 'right'
             ? 'display:block;margin-left:auto'
             : ''
-      const img = `<img src="${escapeHtml(sanitizeImageSrc(p.src as string))}"${p.width ? ` width="${p.width}"` : ''}${p.height ? ` height="${p.height}"` : ''}${p.alt ? ` alt="${escapeHtml(p.alt as string)}"` : ''}${alignStyle ? ` style="${sanitizeStyle(alignStyle)}"` : ''} />`
+      // Always emit `alt` (default "") — an <img> with no alt attribute is
+      // WCAG-nonconformant (screen readers fall back to the filename); alt=""
+      // correctly marks a decorative image. Matches the email renderer.
+      const img = `<img src="${escapeHtml(sanitizeImageSrc(p.src as string))}"${p.width ? ` width="${p.width}"` : ''}${p.height ? ` height="${p.height}"` : ''} alt="${escapeHtml((p.alt as string) ?? '')}"${alignStyle ? ` style="${sanitizeStyle(alignStyle)}"` : ''} />`
       if (p.caption) {
         return `<figure${p.align === 'center' ? ' style="text-align:center"' : ''}>${img}<figcaption>${escapeHtml(p.caption as string)}</figcaption></figure>`
       }
