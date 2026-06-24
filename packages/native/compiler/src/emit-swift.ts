@@ -2394,6 +2394,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               return `${obj}.first(where: ${argExprs[0]!})`
             }
             break
+          case 'findLast':
+            // JS `arr.findLast(pred)` → Swift `last(where:)` (Swift has no
+            // `.findLast`). Both return Optional (`T?`) — the inference side
+            // mirrors `.find` (`T | undefined`). Kotlin's `findLast` matches
+            // JS as-is, so no Kotlin mapping.
+            if (e.args.length === 1) {
+              return `${obj}.last(where: ${argExprs[0]!})`
+            }
+            break
           case 'includes':
             if (e.args.length === 1) {
               return `${obj}.contains(${argExprs[0]!})`
@@ -2428,6 +2437,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // as-is, so it needs no mapping there.
             if (e.args.length === 1) return `${obj}.components(separatedBy: ${argExprs[0]!})`
             break
+          case 'substring': {
+            // JS `str.substring(start, end?)` — Swift String has NO
+            // `.substring`. Lower like the String branch of `.slice` (clamp
+            // via dropFirst/prefix; rewrap to String). Faithful for the
+            // common forward, non-negative case — JS substring's arg-SWAP
+            // (start>end) and negative→0 quirks are not modeled; a unary-
+            // minus arg falls through to the generic emit. Kotlin's
+            // `String.substring(start, end?)` matches JS, so no Kotlin map.
+            const noNegative = e.args.every((a) => a.kind !== 'unary')
+            if (noNegative) {
+              if (e.args.length === 1) return `String(${obj}.dropFirst(${argExprs[0]!}))`
+              if (e.args.length === 2) {
+                return `String(${obj}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
+              }
+            }
+            break
+          }
           case 'repeat':
             // JS `str.repeat(n)` → Swift `String(repeating:count:)`.
             // Kotlin's `String.repeat(n)` matches JS as-is.

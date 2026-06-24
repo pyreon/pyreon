@@ -384,6 +384,12 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               // 'Item'". The nullable union maps to `Item?` / `Item?` via
               // swiftUnionType / kotlinUnionType, matching the real return.
               return { kind: 'union', branches: [objType.element, { kind: 'undefined' }] }
+            case 'findLast':
+              // JS `.findLast` returns `T | undefined` — Swift `last(where:)`
+              // and Kotlin `findLast` BOTH return Optional. Mirror the `.find`
+              // Optional shape so the computed is annotated `T?` (not the
+              // `Any` it degraded to with no case), matching the real return.
+              return { kind: 'union', branches: [objType.element, { kind: 'undefined' }] }
             case 'indexOf':
             case 'findIndex':
               return { kind: 'number' }
