@@ -1,5 +1,68 @@
 # @pyreon/runtime-server
 
+## 0.35.0
+
+### Patch Changes
+
+- [#1754](https://github.com/pyreon/pyreon/pull/1754) [`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix: boolean `aria-*` state attributes now render as the string
+  `"true"`/`"false"`, not presence-only `""` (a11y bug, framework-wide).
+
+  ARIA state/property attributes (`aria-checked`, `aria-selected`,
+  `aria-expanded`, `aria-disabled`, `aria-pressed`, `aria-hidden`, …) are
+  string enums — assistive tech does NOT read `aria-checked=""` (the
+  presence-only output of a boolean) as "true"; it falls back to the
+  default, so a checked/selected/expanded element was announced as its
+  opposite. Both renderers (`applyStaticProp` client + `renderPropValue`
+  SSR) now coerce a boolean `aria-*` value to its literal string, BEFORE
+  the generic boolean→presence branch, and do so identically so SSR
+  markup matches client hydration. HTML boolean attrs (`disabled`,
+  `hidden`, …) keep presence semantics; `data-*` (author-defined) keeps
+  presence — only `aria-*` booleans coerce.
+
+  This is the root-cause fix: `aria-checked={signal()}` (boolean) now
+  renders correctly everywhere, with no per-call-site changes.
+
+- [#1650](https://github.com/pyreon/pyreon/pull/1650) [`368a609`](https://github.com/pyreon/pyreon/commit/368a6090c867e2dd6c37413e0656fe57a7e1e63c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Custom-Property Style Extraction (CPSE) — engine + opt-in `cpseStyled` integration
+
+  The fundamental fix for the rocketstyle styling-runtime cost: **decouple a style
+  prop's CSS-rule identity from its value identity** so styling cost is flat in
+  style-value cardinality (and dynamic values are free), instead of O(distinct
+  value tuples). See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+
+  **`@pyreon/unistyle` (new, additive):**
+
+  - `styles()` gains an `extractVars` mode — every flat `prop: value` declaration
+    becomes a value-agnostic `prop: var(--u-<hash>)` and the value is collected
+    into a sink (reuses all of `processDescriptor`'s resolution; structural
+    fragments pass through). Absent ⇒ byte-identical to today.
+  - `extractStyleVar`, `cpseVarName`, `cpseRewrite` — the extraction primitives.
+  - `cpseStyled(tag)` — a styled primitive that applies CPSE: a value-agnostic
+    class cached by property-set (N distinct values → ONE class, ONE
+    `styler.resolve`) + per-instance inline custom properties; dynamic
+    (signal-driven) values patch the inline property with no re-resolve. Opt-in,
+    zero blast radius on the existing `styled`/`Element`/`rocketstyle` paths.
+
+  **`@pyreon/runtime-server` (fix):** `normalizeStyle` now preserves CSS
+  custom-property names (`--x`) verbatim instead of kebab-casing them — parity
+  with the client `applyStyleProp` guard. Closes a latent SSR/client divergence
+  for any `--Custom`-cased property (the inline custom properties CPSE emits).
+
+  **Proven:** counter harness asserts O(N)→O(1) (100 distinct values: 100
+  resolves + 100 rules classic vs 1 + 1 under CPSE); real-Chromium proves a real
+  `cpseStyled` component renders N distinct values from ONE class + ONE resolve,
+  with computed-style parity, nesting-safety, and dynamic updates at zero extra
+  resolve; SSR parity proven by composition (cpseStyled VNode shape +
+  normalizeStyle `--` serialization), each bisect-verified.
+
+  **Staged (not in this release):** the `init({ styleExtraction })` flag +
+  auto-migrating the default `styled`/`Element`/`rocketstyle` pipeline (broad
+  blast radius — the regression-gated rollout), and responsive-array assembly in
+  `cpseStyled` (the engine supports per-breakpoint var naming today).
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

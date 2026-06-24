@@ -1,5 +1,70 @@
 # @pyreon/zero
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1637](https://github.com/pyreon/pyreon/pull/1637) [`2042ae5`](https://github.com/pyreon/pyreon/commit/2042ae59d1e3347db146ee7bbdf1b2229eabb812) Thanks [@vitbokisch](https://github.com/vitbokisch)! - iconsPlugin: emit tree-shakeable per-icon named exports (inline mode)
+
+  The generated `icons.gen.tsx` now exports a per-icon PascalCase component
+  for every svg — `export const CheckCircle = /*#__PURE__*/ createIcon(...)`
+  (multi-set: set-namespaced, e.g. `UiArrowLeft`). Import only what you use
+  (`import { CheckCircle } from './icons.gen'`) and every unused icon — plus
+  the runtime registry — is dropped from the bundle by standard ESM
+  dead-code elimination. A typical app declares far more icons than it
+  renders, so this 100% elimination of unused glyphs is the dominant
+  bundle-size win.
+
+  Additive: the existing `<Icon name="…" />` registry is unchanged and kept
+  as the deliberate escape hatch for dynamic / data-driven names
+  (`<Icon name={cmsKey} />`), which can't tree-shake a runtime key. Image-mode
+  sets are unchanged (registry-only) and their generated output is
+  byte-identical. New exported helper `componentNameFromIconName`.
+
+### Patch Changes
+
+- [#1657](https://github.com/pyreon/pyreon/pull/1657) [`62f1191`](https://github.com/pyreon/pyreon/commit/62f119168078711ad4056c576805c71cff127c12) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh.
+
+  - `@pyreon/lint`: bump the `@oxc-project/types` dependency `^0.133.0 → ^0.137.0` (aligns with the `oxc-parser`/`oxc-transform` 0.137 line).
+  - `@pyreon/zero`: widen the `sharp` peer-dependency range to `^0.33.0 || ^0.34.0 || ^0.35.0` (sharp's image API is stable across these minors) and refresh the dev dependency to `0.35.2` — keeps the dev-tested and consumer-supported sharp versions in sync.
+
+- [#1639](https://github.com/pyreon/pyreon/pull/1639) [`9967eb8`](https://github.com/pyreon/pyreon/commit/9967eb8f3396c6b1caf818f590e1ef9fe42d7387) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `node:async_hooks` "externalized for browser compatibility" warning in consumer client builds
+
+  `i18nRouting()` (a server-only Vite plugin) held the dynamic
+  `await import('./i18n-routing-als')` (the ALS module statically imports
+  `node:async_hooks`), and it lived in `i18n-routing.ts` — which is
+  client-safe and reachable from the main entry via `useLocale` / `setLocale`.
+  A dynamic import always produces a code-split chunk, so Vite/Rolldown emitted
+  the `i18n-routing-als` chunk in a consumer's CLIENT build and warned about
+  `node:async_hooks` (runtime-safe — the browser never loads the server-only
+  chunk — but noise + a dead chunk).
+
+  Moved `i18nRouting()` and its `parseCookies` helper into a new server-only
+  `i18n-routing-plugin.ts`, exported only from `@pyreon/zero/server` (where the
+  plugin was already documented to live). `i18n-routing.ts` stays client-safe
+  with no `node:async_hooks` reference, so the client graph never reaches the
+  dynamic-import site and the warning is gone. No public API change —
+  `i18nRouting` is still imported from `@pyreon/zero/server`.
+
+- [#1625](https://github.com/pyreon/pyreon/pull/1625) [`b96f66e`](https://github.com/pyreon/pyreon/commit/b96f66e8ed85a14353b7e203a6e4ae5f438f977e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The node + bun deploy adapters' emitted server entry now honors `$PORT` at
+  runtime, falling back to the build-time configured port (default 3000).
+  Previously the port was baked into `server.listen(3000, …)` / `Bun.serve({
+port: 3000 })` and `process.env.PORT` was ignored — breaking the standard
+  convention every Node/Bun PaaS relies on (Vercel, Heroku, Cloud Run, Render,
+  Fly, CI runners all inject `$PORT`). A set-but-empty `PORT` falls back to the
+  configured port; `PORT=0` binds an ephemeral port.
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`368a609`](https://github.com/pyreon/pyreon/commit/368a6090c867e2dd6c37413e0656fe57a7e1e63c), [`06971cc`](https://github.com/pyreon/pyreon/commit/06971cc33850a70dbf5ab335e491a535823dd576), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`242777c`](https://github.com/pyreon/pyreon/commit/242777c871ddd54273d2e528fe1cc8eb6b45f1de), [`af85ce3`](https://github.com/pyreon/pyreon/commit/af85ce3dfc590db06838834c32d88f434e7f2769), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0), [`ee9b328`](https://github.com/pyreon/pyreon/commit/ee9b32875104b8759c2aa180cb6d00d62fa681de)]:
+  - @pyreon/runtime-dom@0.35.0
+  - @pyreon/runtime-server@0.35.0
+  - @pyreon/router@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/vite-plugin@0.35.0
+  - @pyreon/meta@0.35.0
+  - @pyreon/head@0.35.0
+  - @pyreon/server@0.35.0
+  - @pyreon/reactivity@0.35.0
+  - @pyreon/sized-map@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

@@ -1,5 +1,36 @@
 # @pyreon/document
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1678](https://github.com/pyreon/pyreon/pull/1678) [`30f6eab`](https://github.com/pyreon/pyreon/commit/30f6eabbade33fe2cb51d86912a38faec7746563) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(document): implement `RenderOptions.baseUrl` — relative image `src` values are now resolved against it before rendering. The field was declared but read by no renderer (a typed-but-unimplemented option). Resolution runs once in `render()`, so every output format (HTML / Markdown / PDF / DOCX / email / …) gets absolute URLs. Already-absolute sources (http/https/`data:`/`blob:`/protocol-relative) pass through unchanged; the pass is immutable and a no-op (same node reference) when no relative image exists.
+
+### Patch Changes
+
+- [#1835](https://github.com/pyreon/pyreon/pull/1835) [`ae6eb27`](https://github.com/pyreon/pyreon/commit/ae6eb27409c9c59be53d53f166be400fd9e59db5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The HTML renderer now always emits an `alt` attribute on `<img>`. Previously `alt` was only included when an image node supplied one, so an image without `alt` produced a bare `<img src=…>` — WCAG-nonconformant (screen readers fall back to announcing the filename). It now defaults to `alt=""`, which correctly marks the image as decorative so assistive tech skips it (matching the email renderer's existing behavior). Images that supply `alt` are unchanged.
+
+- [#1828](https://github.com/pyreon/pyreon/pull/1828) [`f107ee9`](https://github.com/pyreon/pyreon/commit/f107ee9951cc6e17fe8e4f41b4f3e19606a887fb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(manifests): correct API inaccuracies that feed llms.txt / llms-full.txt / MCP `get_api`
+
+  Several package manifests carried inaccuracies that would break copied code. Corrected
+  against source + regenerated the AI-facing doc surfaces (`@pyreon/mcp`'s `api-reference.ts`
+  ships the corrected `get_api` data):
+
+  - **rx**: removed the fabricated "curried operators" model — `pipe(source, ...fns)` threads
+    the value through plain `(value) => value` transforms; `filter`/`map`/`sortBy` are always
+    2-arg `(source, …)` (no 1-arg curried form).
+  - **hotkeys**: the real option is `enableOnInputs` (not the fabricated `enableOnFormElements`);
+    scopes are not reference-counted.
+  - **url-state**: options are `debounce` / `replace` (not `debounceMs` / `replaceState`); SSR
+    initializes to the default value (it does not read the request URL).
+  - **storage**: custom-backend methods are `get` / `set` / `remove`; serializer options are
+    `serializer` / `deserializer`.
+  - **document**: the format string is `google-chat` (not `gchat`).
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

@@ -1,5 +1,56 @@
 # @pyreon/zero-content
 
+## 0.35.0
+
+### Patch Changes
+
+- [#1840](https://github.com/pyreon/pyreon/pull/1840) [`384aeea`](https://github.com/pyreon/pyreon/commit/384aeea4d6fd052a9c18103e8fb116e6e3a211ec) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero-content): `<CodeBlock>` no longer crashes on a fresh client mount (broken docs code samples)
+
+  Navigating into the docs (e.g. clicking "Docs" from the landing page) threw
+  `[Pyreon] <CodeBlock> threw during setup: HierarchyRequestError: Failed to
+execute 'insertBefore' …` — once per code block — leaving the code samples
+  rendered broken on first navigation.
+
+  Root cause: `<CodeBlock>` conditionally rendered its filename header and
+  line-number gutter (`{filename && <div…>}`). The compiler lowers a conditional
+  wrapper child to a `_mountSlot` placeholder, and the static-element refs for the
+  later siblings (`code-block__body` / `code-block__pre`) are computed by
+  `.firstElementChild.nextElementSibling` walks emitted AFTER those slots. On a
+  fresh client mount (the SPA-navigation path) an empty slot removes its `<!>`
+  placeholder, the walk lands on the wrong node, and the copy-button slot's parent
+  ends up a Comment node → `insertBefore` throws.
+
+  Fix (backend-agnostic, single-`_tpl` preserving): the header + gutter wrappers
+  are now ALWAYS rendered (a static, prop-derived `--empty` modifier class hides
+  them when they have no content), so no `_mountSlot` precedes a ref'd element and
+  the refs stay valid. The line-number gutter is rendered via
+  `dangerouslySetInnerHTML` (mirroring how the Shiki output reaches
+  `code-block__pre`) so it stays a static template element AND renders the numbers
+  as real spans — a bare `{gutter}` array child was being baked to `textContent`
+  (stringifying the span VNodes to `[object Object]`), and a `<For>` would have
+  de-optimised every code block off the single-cloneNode fast path.
+
+  The empty-state is a static class rather than a dynamic `hidden` attribute: the
+  compiled template path emits a raw `el.setAttribute("hidden", value)` with no
+  boolean-attr guard, so `hidden={false}` would set `hidden="false"` (attribute
+  present → still hidden). `filename` / `showLineNumbers` are fixed per instance,
+  so a className is both correct and sufficient.
+
+  Bisect-verified end-to-end: reverting to the conditional header reproduces the
+  `<CodeBlock> threw during setup` crash on a real-Chromium landing→docs
+  navigation; the fix renders zero setup errors. New regression coverage: a docs
+  e2e spec (`e2e/docs.spec.ts`) asserting no setup crash + code blocks render on
+  the landing→docs path, plus zero-content unit specs for the always-rendered
+  `--empty` header/gutter contract.
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`62f1191`](https://github.com/pyreon/pyreon/commit/62f119168078711ad4056c576805c71cff127c12), [`06971cc`](https://github.com/pyreon/pyreon/commit/06971cc33850a70dbf5ab335e491a535823dd576), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`9967eb8`](https://github.com/pyreon/pyreon/commit/9967eb8f3396c6b1caf818f590e1ef9fe42d7387), [`2042ae5`](https://github.com/pyreon/pyreon/commit/2042ae59d1e3347db146ee7bbdf1b2229eabb812), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`b96f66e`](https://github.com/pyreon/pyreon/commit/b96f66e8ed85a14353b7e203a6e4ae5f438f977e), [`af85ce3`](https://github.com/pyreon/pyreon/commit/af85ce3dfc590db06838834c32d88f434e7f2769), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0)]:
+  - @pyreon/runtime-dom@0.35.0
+  - @pyreon/zero@0.35.0
+  - @pyreon/router@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/head@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Minor Changes

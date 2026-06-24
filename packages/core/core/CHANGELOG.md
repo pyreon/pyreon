@@ -1,5 +1,64 @@
 # @pyreon/core
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1645](https://github.com/pyreon/pyreon/pull/1645) [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `onFocusIn` / `onFocusOut` JSX event types; Toaster pauses on keyboard focus
+
+  - **`@pyreon/core`**: the JSX event surface now types `onFocusIn` / `onFocusOut`
+    — the **bubbling** focus events (unlike the non-bubbling `onFocus` / `onBlur`),
+    so a handler on a container fires when focus moves to/from any descendant.
+    The runtime already delegated these events (`onFocusIn` → `focusin` via the
+    generic `on*` lowercasing + `DELEGATED_EVENTS`); only the types were missing.
+  - **`@pyreon/toast`**: the Toaster now mirrors its pause-on-hover with
+    **pause-on-focus** (`onFocusIn` / `onFocusOut`), so a keyboard user tabbing
+    into a toast (e.g. its close button) pauses auto-dismiss the same way a mouse
+    user does on hover.
+
+- [#1755](https://github.com/pyreon/pyreon/pull/1755) [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Type the `role` HTML attribute as a `AriaRole` union (new exported type)
+  instead of bare `string`. Gives `role="…"` literal autocomplete +
+  discoverability of the WAI-ARIA 1.2 role tokens, while the `(string & {})`
+  member keeps the union OPEN — any string still assigns (custom/abstract
+  roles, `role={dynamicString}`, future tokens), so this is a non-breaking
+  DX refinement, not a restriction (it does not type-error on typos). The
+  accessor form is `role={() => cond() ? 'tab' : undefined}`. Mirrors
+  React's `AriaRole`.
+
+### Patch Changes
+
+- [#1736](https://github.com/pyreon/pyreon/pull/1736) [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(form): auto-wire field accessibility (zero-config ARIA)
+
+  `register(field)` now returns, in addition to value/onInput/onBlur, an
+  auto-generated stable `id` plus reactive `aria-invalid` (`'true'` while the
+  field has an error, attribute removed when valid) and `aria-describedby`
+  (points at the field's error element while errored). New `errorProps(field)`
+  and `labelProps(field)` helpers (on both `useForm` and `useField`) return
+  ids that AGREE with the input, so:
+
+  ```tsx
+  <label {...form.labelProps('email')}>Email</label>
+  <input {...form.register('email')} />
+  {() => form.fields.email.error()
+    ? <span {...form.errorProps('email')}>{form.fields.email.error()}</span>
+    : null}
+  ```
+
+  gives full label↔control and input↔error association + an announced error
+  (`role="alert"`) with no hand-threaded ids — all derived from existing field
+  state, reactive in place (0 re-renders). This makes the most common form a11y
+  mistake the zero-effort path, and resolves the label↔control association an
+  AST lint rule structurally can't (the deferred `control-needs-label` cliff) at
+  the runtime layer where the ids are knowable.
+
+  `@pyreon/core` (patch): the JSX `aria-invalid` and `aria-describedby`
+  attributes now also accept the reactive accessor form (`() => …`), matching
+  `aria-required`/`aria-readonly`. Additive — existing static usage is
+  unchanged.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

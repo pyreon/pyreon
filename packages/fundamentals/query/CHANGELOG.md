@@ -1,5 +1,33 @@
 # @pyreon/query
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1690](https://github.com/pyreon/pyreon/pull/1690) [`86424f9`](https://github.com/pyreon/pyreon/commit/86424f9ce9f52dfa978da28c8d16322fd302e977) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the two remaining TanStack Query ecosystem surfaces — **devtools** and **offline persistence** — as subpath entry points of `@pyreon/query` (no new packages). Both are faithful adapters over TanStack's framework-agnostic engines, not from-scratch builds.
+
+  **`@pyreon/query/devtools`** — `QueryDevtools`, a thin `onMount` shim over `@tanstack/query-devtools`'s `TanstackQueryDevtools` engine (the SAME panel React/Solid/Vue ship). Resolves the client from context or a `client` prop, mounts the engine into a host element, tears down on unmount. Dev-only subpath so the engine tree-shakes out of production; gate render on `import.meta.env.DEV`.
+
+  **`@pyreon/query/persist`** — `PersistQueryClientProvider` (drop-in for `QueryClientProvider` that restores the cache from a persister on mount + persists on change), plus identity re-exports of TanStack's framework-agnostic persist engine (`persistQueryClient` / `persistQueryClientRestore` / `persistQueryClientSave` / `persistQueryClientSubscribe` / `removeOldestQuery`) and the storage persisters (`createSyncStoragePersister`, `createAsyncStoragePersister`).
+
+  **`useIsRestoring()` + `IsRestoringProvider`** (new, exported from the main entry) — reactive restore-flag surface. All six query-reading hooks (`useQuery` / `useInfiniteQuery` / `useQueries` / the three suspense variants) now **defer their first fetch until restoration completes**, so a restored cache is never clobbered by a redundant network request. With no `<PersistQueryClientProvider>` mounted, `isRestoring` is always false and the hooks subscribe synchronously — byte-equivalent to the previous behavior (SSR unaffected).
+
+  The persist/devtools deps are subpath-only (tree-shaken from the main bundle). A single `@tanstack/query-core@5.101.0` is pinned tree-wide via root `overrides` so persist (which pins 5.101.0), devtools, and the adapter share one query-core type.
+
+- [#1686](https://github.com/pyreon/pyreon/pull/1686) [`87e8f97`](https://github.com/pyreon/pyreon/commit/87e8f97143c03a83add6bc6db3e23fbbac5aaab1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Close the TanStack Query v5 core API parity gaps. `@pyreon/query` now mirrors the full `@tanstack/query-core` surface plus the TanStack hook/component set:
+
+  - **New hooks**: `useMutationState` (reactive read of the MutationCache for global in-flight-mutation UI), `usePrefetchQuery` / `usePrefetchInfiniteQuery` (cache-guarded warm-up in component setup), `useSuspenseQueries` (aggregate query-like + a `data` array, passable straight to `QuerySuspense`).
+  - **New component**: `HydrationBoundary` — hydrates a server-dehydrated cache into the nearest `QueryClient` synchronously before children render (the SSR companion to the `dehydrate`/`hydrate` function re-exports; `nativeCompat`-marked).
+  - **Expanded core re-exports** (identity-equal to query-core): `skipToken`, all four observers (`QueryObserver`, `InfiniteQueryObserver`, `MutationObserver`, `QueriesObserver`), `focusManager` / `onlineManager` / `notifyManager`, `matchQuery` / `matchMutation`, `replaceEqualDeep`, `isServer`, plus the `Mutation` / `MutationState` / `QueryState` / `HydrateOptions` / `InfiniteData` / `DefaultError` / `FetchInfiniteQueryOptions` types.
+
+  Out of scope (separate TanStack ecosystem packages, not part of query-core): persistence (`@tanstack/query-persist-client-core`) and devtools (`@tanstack/react-query-devtools`). `streamedQuery` is not re-exported (absent from the pinned query-core@5.101 surface).
+
+### Patch Changes
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

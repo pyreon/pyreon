@@ -1,5 +1,33 @@
 # @pyreon/machine
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1699](https://github.com/pyreon/pyreon/pull/1699) [`fb82997`](https://github.com/pyreon/pyreon/commit/fb82997ddc322b8d72cdb8914cba28fa8e8d6526) Thanks [@vitbokisch](https://github.com/vitbokisch)! - API polish pass (breaking, pre-1.0 — clean over backward-compatible):
+
+  - **`send(event, payload?)` now returns the settled `TState`** (after any `always` cascade) instead of `void` — so `const next = machine.send('GO')` works, matching what users expect. Returns the unchanged current state for an unhandled event or a rejected guard. (Type-level breaking; existing callers that ignore the return are unaffected at runtime.)
+  - **`can(event, payload?)` now predicts `send` EXACTLY** — it always evaluates the guard with the given payload (or `undefined` if none). Previously a guarded event with no payload reported `true`; now it evaluates the guard, so `can('LOGIN')` with no/invalid payload against a payload-reading guard reports `false`. (Behavioral breaking — the precise, correct semantic.)
+  - **Guards are now throw-safe** — a guard that throws (e.g. reading a property of a missing payload) DENIES the transition rather than crashing `send` / `can` / the `always` cascade. Consistent with `@pyreon/permissions` predicate evaluation. This is what makes the precise `can(event)` (no-payload) safe.
+
+  Tests: +7 (send return value across transition / always-cascade / unhandled / guard-reject / throw-safe; can throw-safety + payload). The 3 tests that codified the old `can`-without-evaluating-guard behavior were updated to the new precise contract. Bisect-verified `safeGuard` (3 throw-safe tests fail when neutered) and the `send` return (5 fail when reverted to void). Coverage holds above the package's 98% floor.
+
+- [#1693](https://github.com/pyreon/pyreon/pull/1693) [`446f5a6`](https://github.com/pyreon/pyreon/commit/446f5a654b956d66199e0d1cf2077827a8c07d0c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Complete the core statechart semantics that fit `@pyreon/machine`'s constrained-signal philosophy (the synchronous transition-logic features XState has — not the data/async features Pyreon deliberately offloads to signals/effects):
+
+  - **Eventless (`always`) transitions** — `states.X.always: target | { target, guard } | [...]` fire synchronously on entering a state (and for the initial state at creation / on `reset()`), cascading until none apply; first unguarded entry or first passing guard wins. Guards receive no payload (read external signals). Models transient/condition states (`check → pass | fail`) that are never observed by `machine()`. A self-looping `always` throws after 1000 steps.
+  - **Final states** — `states.X.final: true` + reactive `machine.isFinal()` + `machine.onDone(cb)` (fires with the triggering event when a final state is entered, including via an `always` cascade).
+  - **`onExit(state, cb)`** — exit listeners, completing the lifecycle set (`onEnter` / `onExit` / `onTransition` / `onDone`). On each transition they fire in state-chart order: `onExit(from)` (machine still reads `from`) → `onTransition` → `onEnter(to)` → `onDone` if final. Pairs with `onEnter` for per-state setup/teardown (the idiomatic delayed-transition pattern — no built-in `after`, by design).
+  - **`can(event, payload?)`** — now precise when given a payload (evaluates the guard, predicting `send` exactly). Without a payload a guarded event still reports `true` (backward-compatible).
+
+  Also fixes `InferEvents` to robustly union event names across heterogeneous state shapes (states with only `always`/`final` and no `on` no longer collapse the inference to `never`).
+
+  Deliberately out of scope (offloaded to Pyreon primitives, per the package's stated philosophy): extended-state/context → signals; invoked actors/services → effects+signals; hierarchical/parallel states → compose machines; delayed `after` → `onEnter`+timer+`onExit`. The package remains "a constrained signal with statechart transition semantics," not an XState clone. Backward-compatible: all pre-existing tests pass unchanged.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

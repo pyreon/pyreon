@@ -1,5 +1,52 @@
 # @pyreon/ui-core
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1662](https://github.com/pyreon/pyreon/pull/1662) [`97fa631`](https://github.com/pyreon/pyreon/commit/97fa6312304951e8cfd24fb8f0f405f94dc609db) Thanks [@vitbokisch](https://github.com/vitbokisch)! - CPSE: opt-in default-pipeline integration (`init({ styleExtraction: true })`)
+
+  The `styled` / `Element` default pipeline can now route through Custom-Property
+  Style Extraction, behind an opt-in flag. With `init({ styleExtraction: true })`,
+  `PyreonUI` wires `@pyreon/styler`'s new `setStyleExtraction` (injecting
+  unistyle's `cpseRewrite`) so a **non-reactive** styled component's resolved
+  declarations become a value-agnostic rule (`prop: var(--u-…)`) + per-instance
+  inline custom properties. Distinct values then share **ONE** CSS rule (O(1)
+  rules — the rule-bloat win for high-cardinality apps); the value rides inline.
+
+  - **Off (default) = byte-identical** classic path. Every CPSE branch is gated on
+    the flag; the full styler + ui-core + elements + rocketstyle + coolgrid +
+    ui-components suites (node + real-Chromium) pass unchanged.
+  - **Scope:** the non-reactive (static + SSR) resolve — plain `styled` + `Element`
+    (the `$element` path; a `cpseVarsCache` keyed by `$element` makes the value
+    survive `elClassCache` hits). The **reactive** (rocketstyle accessor) path
+    stays classic.
+  - **Honest limits:** it is **O(1) rules, NOT O(1) resolve** — the styler still
+    resolves per distinct `$element` (it caches by value-bearing identity); the
+    win is rule/bundle, not resolve-CPU. It also currently extracts **every** flat
+    declaration including constants (`position: relative`, `display: …`), which
+    inflates inline-style bytes — a future refinement can skip non-value-varying
+    declarations. Measure per app (the win-matrix test) before enabling.
+
+  `setStyleExtraction(enabled, rewrite?)` is exported from `@pyreon/styler`
+  (`@internal` — wired by ui-core). New `init` option `styleExtraction: boolean`.
+
+  Proven: a dedicated real-Chromium suite — flag-on a function-interpolated
+  `styled` → value-agnostic class + inline var + N distinct values share ONE
+  class; flag-off → classic (N classes, no var, the self-discriminating contrast);
+  a **real `<Element>`** fires CPSE (renders correctly via var-indirection,
+  distinct gaps share one class, cache-hit keeps vars); a pre-existing inline
+  style is preserved. The `doResolve` CPSE branch is bisect-verified (neutering it
+  fails the flag-on specs).
+
+### Patch Changes
+
+- Updated dependencies [[`97fa631`](https://github.com/pyreon/pyreon/commit/97fa6312304951e8cfd24fb8f0f405f94dc609db), [`368a609`](https://github.com/pyreon/pyreon/commit/368a6090c867e2dd6c37413e0656fe57a7e1e63c), [`ce5a10a`](https://github.com/pyreon/pyreon/commit/ce5a10ab91dcbf1252897426a965dcc3a65a50f2), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`3d47b98`](https://github.com/pyreon/pyreon/commit/3d47b987d244be4ad6b5453cd07ed39be85427bf)]:
+  - @pyreon/styler@0.35.0
+  - @pyreon/unistyle@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # zero-cli
 
+## 0.35.0
+
+### Patch Changes
+
+- Updated dependencies [[`62f1191`](https://github.com/pyreon/pyreon/commit/62f119168078711ad4056c576805c71cff127c12), [`36fc915`](https://github.com/pyreon/pyreon/commit/36fc915ae8dcd85e5e50e2c41e43b56285991665), [`8a4e195`](https://github.com/pyreon/pyreon/commit/8a4e19519bcf3dfebb203c97f69d08e3f7ac6b50), [`d3945ea`](https://github.com/pyreon/pyreon/commit/d3945ea93e4aaf6362a01e1ff4cd4ee168b34f15), [`9967eb8`](https://github.com/pyreon/pyreon/commit/9967eb8f3396c6b1caf818f590e1ef9fe42d7387), [`2042ae5`](https://github.com/pyreon/pyreon/commit/2042ae59d1e3347db146ee7bbdf1b2229eabb812), [`b96f66e`](https://github.com/pyreon/pyreon/commit/b96f66e8ed85a14353b7e203a6e4ae5f438f977e)]:
+  - @pyreon/zero@0.35.0
+  - @pyreon/cli@0.35.0
+  - @pyreon/server@0.35.0
+  - @pyreon/create-zero@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

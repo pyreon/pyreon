@@ -1,5 +1,22 @@
 # @pyreon/example-cssvars-bench
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`97fa631`](https://github.com/pyreon/pyreon/commit/97fa6312304951e8cfd24fb8f0f405f94dc609db), [`368a609`](https://github.com/pyreon/pyreon/commit/368a6090c867e2dd6c37413e0656fe57a7e1e63c), [`ce5a10a`](https://github.com/pyreon/pyreon/commit/ce5a10ab91dcbf1252897426a965dcc3a65a50f2), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`44ec423`](https://github.com/pyreon/pyreon/commit/44ec423509b481b3a90570274e0ca05e88c5c558), [`e334879`](https://github.com/pyreon/pyreon/commit/e334879f17acfff59251740d4dadaa8928515c76), [`5435c76`](https://github.com/pyreon/pyreon/commit/5435c76442d1577061b4be3f054287992d973118), [`3d47b98`](https://github.com/pyreon/pyreon/commit/3d47b987d244be4ad6b5453cd07ed39be85427bf), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0), [`43290cd`](https://github.com/pyreon/pyreon/commit/43290cda0461999818ff2a4316018cbe1ca24bc9)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/styler@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/unistyle@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/elements@1.0.0
+  - @pyreon/perf-harness@0.13.2
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/ui-components@1.0.0
+  - @pyreon/ui-theme@0.13.22
+  - @pyreon/reactivity@1.0.0
+
 ## 0.0.3
 
 ### Patch Changes

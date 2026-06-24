@@ -1,5 +1,118 @@
 # @pyreon/flow
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1832](https://github.com/pyreon/pyreon/pull/1832) [`ea637d3`](https://github.com/pyreon/pyreon/commit/ea637d3e3347a77a9b8ffac3a1334eb77d5d1032) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The `<Flow>` canvas is now an accessibly-labeled region. Its container is focusable (`tabindex=0`) and keyboard-interactive, but had no `role` and no accessible name — a screen reader tabbing in hit an unlabeled, unexplained focus stop. It now renders as `role="group"` with an `aria-label` (default `"Flow diagram"`), and a new `ariaLabel` prop overrides it (e.g. `ariaLabel="Pipeline editor"`). No behavior change beyond the added ARIA; the SVG layers already carried their own `role="img"` labels.
+
+- [#1845](https://github.com/pyreon/pyreon/pull/1845) [`a4ffcbf`](https://github.com/pyreon/pyreon/commit/a4ffcbfeba4ce2298b92f4f2f97bb0e84e34e98c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(flow): theme-aware default colors + fix off-screen initial fitView
+
+  Two issues made `@pyreon/flow` graphs unreadable on a dark page (e.g. the docs
+  flow example — nodes invisible, no visible edges):
+
+  1. **Default colors were light-mode hardcoded** — nodes were `background: white`
+     with NO explicit text color (so on a dark page the label inherited the light
+     page text → light-on-white → invisible); edges/labels/minimap/controls were
+     likewise fixed light colors. The node/edge/panel colors now read from
+     `--pyreon-flow-*` CSS custom properties with the original values as fallbacks,
+     so existing (light) consumers are unchanged and a dark app/theme can restyle
+     the graph by setting those vars. New vars: `--pyreon-flow-node-bg` /
+     `-node-color` / `-node-border` / `-node-selected` / `-accent` / `-edge` /
+     `-edge-label` / `-panel-bg` / `-panel-border` / `-panel-shadow` /
+     `-control-color` / `-control-muted` / `-minimap-node` / `-minimap-mask`.
+
+     NOTE the edge `stroke` is applied via the path's `style` (CSS), not the
+     `stroke` presentation attribute: `var()` is invalid in an SVG presentation
+     attribute (`stroke="var(...)"` → value dropped → `stroke:none` → invisible
+     line), but resolves in `style`.
+
+  2. **`fitView: true` positioned nodes off-screen** in small/short containers.
+     The initial fit ran at `createFlow` time against the 800×600 default
+     container size (the ResizeObserver hadn't measured the real element yet), so
+     in e.g. a 260px-tall container the nodes landed outside the viewport. The
+     `<Flow>` component now re-runs `fitView()` once on the first REAL container
+     measurement (gated on a new internal `_fitViewConfigured` flag, so a flow the
+     consumer didn't ask to auto-fit is never re-fitted).
+
+  Verified in real Chromium (docs flow example, both themes): node bg/text themed
+  (dark `rgb(17,17,24)` bg + cream text; light white + near-black), edge line
+  visible (dark `rgb(138,134,150)`), and all 3 nodes in-view after the re-fit
+  (was 0/3). 367 flow tests pass.
+
+- [#1687](https://github.com/pyreon/pyreon/pull/1687) [`63f6c0e`](https://github.com/pyreon/pyreon/commit/63f6c0e0dec0b3eea0bf5d51e401b7ce2e68281c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Edge markers, render virtualization, and opt-out object-snapping (React Flow parity + drag perf).
+
+  - **Edge markers**: per-edge `markerStart` / `markerEnd` accept a bare `MarkerType`
+    (`Arrow` open V / `ArrowClosed` filled triangle), a full `EdgeMarker`
+    (`{ type, color?, width?, height?, strokeWidth? }`), or `null` for an explicit
+    no-marker. Graph-wide default via `FlowConfig.defaultMarkerEnd` (`null` →
+    arrowless by default). Identical configs are deduped into one shared `<defs>`
+    entry; one `<marker orient="auto-start-reverse">` def serves both ends; the def
+    set rebuilds reactively as edges change. New exports: `MarkerType`,
+    `EdgeMarker`, `EdgeMarkerSpec`, and the pure helpers `resolveMarker` /
+    `markerId` / `resolveEdgeMarkers` / `collectEdgeMarkers`. The previous single
+    fixed arrowhead remains the default, so existing graphs render identically.
+  - **Render virtualization**: `FlowConfig.onlyRenderVisibleElements` (default off)
+    culls nodes whose screen rect (± margin) is outside the viewport and edges with
+    no visible endpoint, re-filtering reactively on pan/zoom.
+  - **Opt-out object-snapping**: `FlowConfig.snapToObjects` (default `true` — no
+    behavior change) gates the helper-line align-to-other-nodes scan, an O(N) pass
+    over every node on every drag frame. `snapToObjects: false` skips it for
+    ≈3-4× faster drags on large graphs (measured 60-frame drag: N=1000
+    1.34ms→0.31ms, N=3000 3.36ms→0.78ms).
+
+- [#1673](https://github.com/pyreon/pyreon/pull/1673) [`14ca065`](https://github.com/pyreon/pyreon/commit/14ca065aa320f8d9f76f702b7c49ca652fb36719) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(flow): honor the `selectable` / `nodesSelectable` / `connectable` / `nodesConnectable` interaction flags + the `node.group` marker. These were declared in `FlowNode` / `FlowConfig` but never read — `nodesSelectable: false` / `node.selectable: false` now gate user click-selection (programmatic `selectNode` is unaffected), `nodesConnectable: false` / `node.connectable: false` gate connection drawing, and `node.group: true` adds a `group` class to the node element for styling. All mirror the existing `draggable` / `nodesDraggable` guard pattern.
+
+### Patch Changes
+
+- [#1708](https://github.com/pyreon/pyreon/pull/1708) [`3d602db`](https://github.com/pyreon/pyreon/commit/3d602db9b92f95d786b3b82f0521c714fc8f9050) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Document the overlay child-order requirement on `<Controls>` and `<MiniMap>`: place `<MiniMap>` before `<Controls>` in `<Flow>` children. A `<Controls>` mounted as a sibling before a `<MiniMap>` currently fails to render (a known framework slot-ordering limitation — the instance resolves but the DOM is never mounted). Added `@remarks` JSDoc to both components and an "Overlay child order" section to the docs. No runtime change.
+
+- [#1696](https://github.com/pyreon/pyreon/pull/1696) [`56adc81`](https://github.com/pyreon/pyreon/commit/56adc81a15cce35bdc9bfabe1210808d95f3db53) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a cluster of `@pyreon/flow` component bugs surfaced by a round-2 review +
+  a new real-app feature-matrix example. Several were dormant because the
+  affected components never actually rendered in real Pyreon-compiled apps.
+
+  - **MiniMap / Controls never rendered without an explicit `instance` prop.**
+    `<Flow>` now injects its instance via a `FlowContext`, so the documented
+    `<Flow instance={flow}><MiniMap /></Flow>` shape works (children resolve
+    `props.instance ?? useContext(FlowContext)`; an explicit prop still wins).
+  - **MiniMap threw `setAttribute is not a function`** — the dynamic
+    `{nodes.map()}` array between two static `<rect>`s broke the compiler's
+    element-ref walk for the trailing reactive `<rect>`. Wrapped the nodes in a
+    static `<g>`.
+  - **Controls threw `replaceChild of null`** — same class: the trailing
+    reactive zoom-% `<div>` after the dynamic conditional buttons. Isolated the
+    conditionals in a `display:contents` wrapper.
+  - **Edge markers rendered as `[object Object]`** in real apps — a bare
+    `{MarkerGlyph(...)}` call under the `<marker>` parent. Now a real component
+    element `<MarkerGlyph/>`.
+  - **NodeToolbar show-on-select was a static `return null`** — never reacted to
+    selection. Now `selected` accepts an accessor and the toolbar mounts /
+    unmounts reactively.
+  - **NodeResizer handle offsets** were hardcoded `-4px` (half the default size)
+    — now scale with `handleSize`.
+  - **Clicking a NodeToolbar button (or any control inside a node) started a node
+    drag** and swallowed the click — the node drag now bails on
+    `.pyreon-flow-node-toolbar` / `.nodrag` / `button,input,…` targets (React
+    Flow `.nodrag` convention).
+  - **`drag-to-connect` released over a handle never created an edge** — pointer
+    capture made `pointerup`'s `e.target` the container; now hit-tests the cursor
+    via `document.elementFromPoint`.
+  - **`getAbsolutePosition` stack-overflowed** on a cyclic / self `parentId`
+    (malformed data) — added a visited-set guard.
+
+- [#1703](https://github.com/pyreon/pyreon/pull/1703) [`526dec9`](https://github.com/pyreon/pyreon/commit/526dec9b4f5170e74283e9c2350c5d55b5f47807) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `<Flow>` keyboard shortcuts hijacking editable node fields. Only the
+  Delete/Backspace branch guarded against `INPUT`/`TEXTAREA` focus — so while
+  typing in an `<input>`/`<textarea>`/`<select>`/contenteditable element inside a
+  custom node, `Cmd/Ctrl+A` selected all NODES (not the text), `Cmd/Ctrl+C`
+  copied nodes, `Cmd/Ctrl+V` pasted nodes, and `Cmd/Ctrl+Z` undid the FLOW instead
+  of the field. `handleKeyDown` now bails for any editable target (covering
+  contentEditable too) before processing any shortcut; non-editable targets keep
+  all shortcuts. Real-Chromium regression test + bisect-verified.
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0)]:
+  - @pyreon/runtime-dom@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

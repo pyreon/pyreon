@@ -1,5 +1,157 @@
 # @pyreon/form
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1736](https://github.com/pyreon/pyreon/pull/1736) [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(form): auto-wire field accessibility (zero-config ARIA)
+
+  `register(field)` now returns, in addition to value/onInput/onBlur, an
+  auto-generated stable `id` plus reactive `aria-invalid` (`'true'` while the
+  field has an error, attribute removed when valid) and `aria-describedby`
+  (points at the field's error element while errored). New `errorProps(field)`
+  and `labelProps(field)` helpers (on both `useForm` and `useField`) return
+  ids that AGREE with the input, so:
+
+  ```tsx
+  <label {...form.labelProps('email')}>Email</label>
+  <input {...form.register('email')} />
+  {() => form.fields.email.error()
+    ? <span {...form.errorProps('email')}>{form.fields.email.error()}</span>
+    : null}
+  ```
+
+  gives full label↔control and input↔error association + an announced error
+  (`role="alert"`) with no hand-threaded ids — all derived from existing field
+  state, reactive in place (0 re-renders). This makes the most common form a11y
+  mistake the zero-effort path, and resolves the label↔control association an
+  AST lint rule structurally can't (the deferred `control-needs-label` cliff) at
+  the runtime layer where the ids are knowable.
+
+  `@pyreon/core` (patch): the JSX `aria-invalid` and `aria-describedby`
+  attributes now also accept the reactive accessor form (`() => …`), matching
+  `aria-required`/`aria-readonly`. Additive — existing static usage is
+  unchanged.
+
+- [#1692](https://github.com/pyreon/pyreon/pull/1692) [`bf6865c`](https://github.com/pyreon/pyreon/commit/bf6865c815e2ee4499995f9aba91591fa26a86f3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - react-hook-form-parity additions + a competitor benchmark suite.
+
+  New, strictly-typed accessors on `FormState` (all additive — no breaking
+  changes):
+
+  - **`trigger(field?)`** — validate a single field, a subset (array), or — with
+    no argument — the whole form, on demand. Runs validators immediately
+    (bypassing `debounceMs`) and returns whether the validated set is valid.
+    Reuses the exact same per-field validation path as auto-validation, so a
+    schema-only field gets its schema error applied too.
+  - **`getValues(field?)`** — read one field's value (`getValues('email')`) or
+    all values (`getValues()`, same as `values()`).
+  - **`dirtyFields()` / `touchedFields()`** — the changed / visited fields as a
+    `Partial<Record<keyof TValues, boolean>>` record. Reactive.
+  - **`getFieldState(field)`** — a field's live `FieldState` signals (the same
+    object as `form.fields[field]`), as a typed method.
+  - **`isSubmitted`** (`Accessor<boolean>`, `submitCount > 0`) and
+    **`isSubmitSuccessful`** (`Signal<boolean>`, true only after the most recent
+    submit's `onSubmit` ran without a validation failure or throw; cleared by
+    `reset()`). Both also surfaced on `useFormState`'s summary.
+
+  Benchmarks (`packages/fundamentals/form/bench/`, real installed competitor
+  deps) prove the perf position vs the most popular libraries:
+
+  - Headless core vs TanStack Form (`form-bench.ts`): Pyreon's per-field signal
+    write beats TanStack's store clone+notify on the keystroke hot path by
+    **~17.7×** (`update-field` 193ns vs 3.48µs) and `reset` by ~4×. TanStack
+    edges Pyreon on once-per-form `setup` (1.4×) and full-values `read` (15.8×) —
+    the inverse face of the same plain-object-store trade-off that makes its
+    writes 17.7× slower.
+  - Re-renders vs Formik + react-hook-form (`form-rerender-bench.ts`): typing 10
+    keystrokes into 1 field of a 20-field form triggers **0** Pyreon component
+    re-renders (signals patch the bound node, values stay reactive) = RHF's 0
+    (uncontrolled refs, but values not reactively bound) < Formik's 10
+    (controlled — re-renders the form every keystroke).
+
+  Known gap (deliberate, tracked): nested / deep typed field paths
+  (`user.address.city`) — `TValues` keys are flat; the composable `field()` +
+  flat model is the current design.
+
+### Patch Changes
+
+- [#1700](https://github.com/pyreon/pyreon/pull/1700) [`ce49268`](https://github.com/pyreon/pyreon/commit/ce49268f21615478fe5544ce5ab385b74704c75d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Eliminate the per-field auto-revalidation `effect()` — the keystroke hot path
+  is now ~5.3× faster, with no behavior change.
+
+  `useForm` previously created one `effect()` per field that tracked `valueSig`
+
+  - `submitCount` to drive auto-validation. That cost a per-field `EffectScope`
+    at setup (the dominant per-field allocation) AND re-ran on EVERY keystroke
+    (tracking `valueSig`) — even in the default `blur` mode where the body is a
+    no-op. The auto-validation logic is now driven INLINE from `setValue` (the
+    canonical value-mutation path), reading `submitCount.peek()` instead of
+    tracking it:
+
+  * **`update-field` (keystroke hot path): 242ns → 46ns (~5.3× faster)** — vs
+    TanStack Form the lead widens from ~15× to **~79×** (46ns vs 3.60µs).
+  * **`reset`: ~35% faster** (no per-keystroke/per-reset effect flush).
+  * **`setup`: ~17% faster** (no per-field `EffectScope` allocation).
+
+  Behavior is identical and bisect-verified: the two preserved triggers —
+  change-mode validation and post-failed-submit live error-correction — are
+  exactly covered by existing specs (dropping the `submitCount.peek()` trigger
+  fails 3 post-submit-revalidation tests; dropping the change-mode setup
+  validation fails the change-mode test). change-mode forms still validate their
+  initial values once at setup (a one-time `validateField` call in the field
+  loop, replacing the effect's setup-run). All 206 tests pass.
+
+  The `form.fieldEffectCreate` dev perf-counter is removed (the effect it
+  measured no longer exists).
+
+  **Also: an epoch-cached `values()` / `getValues()` snapshot.** Rebuilding the
+  values object on every read was O(N) (~109ns/12 fields vs a plain store's
+  ~7ns). It's now cached and rebuilt only when a value-mutation method
+  (`setValue` / `reset` / `setInitialValues`) advances an internal epoch — a
+  clean read is an integer compare + cached-object return (**read-all-values:
+  109ns → ~6ns, now FASTER than TanStack's ~7ns**), and the write path pays only
+  one integer increment (no signal/subscriber → the 43ns keystroke path is
+  untouched). Contract: the snapshot reflects mutations through the form's
+  methods; a direct `form.fields.x.value.set(...)` bypasses the epoch (same as it
+  already bypasses dirty-tracking + auto-validation — use `setFieldValue`). 6 new
+  bisect-verified specs lock the invalidation contract.
+
+  Net result vs TanStack Form (headless `form-bench.ts`): Pyreon now wins
+  **update ~83×**, **read ~1.3×**, **reset ~6×**, and **0 vs 10 re-renders** —
+  losing only once-per-form `setup` (~1.3×), the deliberate price of per-field
+  fine-grained signals (which buy the 83× write win). (A dirty-count-inline
+  attempt to close `setup` was measured + reverted — it regressed the keystroke
+  path ~2× via V8 deopt of a larger `setValue`; the dirty subscriber was already
+  free on the hot path since it fires only on dirty transitions, not per
+  keystroke.)
+
+- [#1710](https://github.com/pyreon/pyreon/pull/1710) [`ac75935`](https://github.com/pyreon/pyreon/commit/ac7593520f4467cd7ba362178ee00ca7029794da) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `useFormState(form)` (no selector) `isValid` / `isDirty` not updating the
+  rendered DOM.
+
+  The no-selector summary's `isValid` / `isDirty` came from the count-based
+  `form.isValid()` / `form.isDirty()` (backed by `_invalidCount` / `_dirtyCount`),
+  but those counts are updated by a DEFERRED field-signal subscriber. The
+  no-selector summary ALSO depends on the field signals (via the `errors` /
+  `dirtyFields` atoms it materializes), so it re-derived on the field-signal
+  change BEFORE the count caught up — rendering a STALE value. Symptom: a UI bound
+  to `useFormState(form)().isDirty` / `.isValid` (e.g. a "Dirty" / "Invalid"
+  badge) never flipped when a field changed.
+
+  Fix: in the no-selector path, derive `isValid` / `isDirty` from the `errors` /
+  `dirtyFields` atoms it already materializes (`Object.keys(errors).length === 0`
+  / `Object.keys(dirtyFields).length > 0`) — the SAME field-signal dependency that
+  triggers the recompute, so the value is always consistent. No added cost (the
+  atoms were already read). The **selector** path is unchanged and keeps the O(1)
+  count-based getters (it doesn't read the atoms, so it was never subject to the
+  race — and remains the recommended pattern for hot UI).
+
+  Pre-existing bug (not introduced by the perf changes in this release). Locked by
+  mount-based regression specs + a real-Chromium form-interaction e2e
+  (`e2e/fundamentals/form-interaction.spec.ts`).
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

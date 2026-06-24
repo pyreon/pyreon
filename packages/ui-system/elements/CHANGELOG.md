@@ -1,5 +1,36 @@
 # @pyreon/elements
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1768](https://github.com/pyreon/pyreon/pull/1768) [`e334879`](https://github.com/pyreon/pyreon/commit/e334879f17acfff59251740d4dadaa8928515c76) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Overlay type="modal">` (via `useOverlay`) now traps focus — the WAI-ARIA dialog pattern, out of the box. On open, focus moves into the modal content (first focusable, falling back to the content container); while open, Tab / Shift+Tab cycle WITHIN the content instead of escaping to the inert background behind it; on close, focus restores to the opener (the existing behavior). All gated on `type === 'modal'` — non-modal overlays (dropdown / tooltip / popover) are unchanged (Tab moves through them naturally). SSR-safe (the trap registers only client-side; the focus-in is rAF-deferred and bails on the server).
+
+  Closes a real accessibility gap: a modal that doesn't trap focus lets keyboard and screen-reader users Tab straight out to the background, losing the dialog. No new API — existing `<Overlay type="modal">` / `useOverlay({ type: 'modal' })` consumers get it automatically.
+
+- [#1818](https://github.com/pyreon/pyreon/pull/1818) [`5435c76`](https://github.com/pyreon/pyreon/commit/5435c76442d1577061b4be3f054287992d973118) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Overlay type="tooltip">` now wires the WAI-ARIA Tooltip pattern out of the box: the tooltip content carries `role="tooltip"` and a generated `id`, and the trigger gets `aria-describedby` pointing at it — so a screen reader reads the tip when the trigger is focused. Previously tooltip content had no role and there was no trigger↔content association (only `type: 'modal'` received a role), so the tip was invisible to assistive tech. Modal (`role="dialog"` + `aria-modal`) and dropdown/popover behavior is unchanged; the id is `createUniqueId()`-generated (SSR-safe, collision-free across instances).
+
+### Patch Changes
+
+- [#1741](https://github.com/pyreon/pyreon/pull/1741) [`44ec423`](https://github.com/pyreon/pyreon/commit/44ec423509b481b3a90570274e0ca05e88c5c558) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useOverlay` now restores keyboard focus to the opener when an overlay
+  closes. Non-modal overlays (dropdown / popover / tooltip) previously
+  dropped focus at the top of the document on dismiss — `_prevFocusEl` was
+  declared but never used. `showContent` now captures the active element
+  (typically the trigger) and `hideContent` returns focus to it **only**
+  when focus is still inside the closing overlay (or was lost to
+  `<body>`/null); if the user deliberately moved focus to another control,
+  it is left there. Modal overlays already got this from native
+  `<dialog>.showModal()`. Real-Chromium regression-locked.
+
+- [#1825](https://github.com/pyreon/pyreon/pull/1825) [`43290cd`](https://github.com/pyreon/pyreon/commit/43290cda0461999818ff2a4316018cbe1ca24bc9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Overlay type="tooltip">` no longer emits `aria-haspopup="true"` on the trigger. A tooltip is a description, not an interactive popup — the trigger associates with it via `aria-describedby` (added previously), and `aria-haspopup` is reserved for menu/listbox/tree/grid/dialog popups. Emitting both was contradictory; the trigger now correctly carries only `aria-describedby` per the WAI-ARIA Tooltip pattern. Modal (`aria-haspopup="dialog"`) and dropdown/popover (`aria-haspopup="menu"`) are unchanged.
+
+- Updated dependencies [[`97fa631`](https://github.com/pyreon/pyreon/commit/97fa6312304951e8cfd24fb8f0f405f94dc609db), [`368a609`](https://github.com/pyreon/pyreon/commit/368a6090c867e2dd6c37413e0656fe57a7e1e63c), [`ce5a10a`](https://github.com/pyreon/pyreon/commit/ce5a10ab91dcbf1252897426a965dcc3a65a50f2), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/ui-core@0.35.0
+  - @pyreon/unistyle@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+  - @pyreon/sized-map@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

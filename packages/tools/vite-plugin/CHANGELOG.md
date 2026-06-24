@@ -1,5 +1,20 @@
 # @pyreon/vite-plugin
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1839](https://github.com/pyreon/pyreon/pull/1839) [`242777c`](https://github.com/pyreon/pyreon/commit/242777c871ddd54273d2e528fe1cc8eb6b45f1de) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Remove the deprecated flat `{ source, names }` shape from `jsxAutoImport` options. Use the `mappings` array instead: `pyreon({ jsxAutoImport: { mappings: [{ source, names }] } })`. The flat form was a back-compat shim with no real consumers (only its own test exercised it); a single-source config is `mappings: [{ source, names }]`. Pre-1.0 cleanup — no behavior change for `jsxAutoImport: true` (the default) or the `mappings` form.
+
+- [#1792](https://github.com/pyreon/pyreon/pull/1792) [`ee9b328`](https://github.com/pyreon/pyreon/commit/ee9b32875104b8759c2aa180cb6d00d62fa681de) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add opt-in `pyreon({ compileValidators: true })`. Production builds append `X._attachCompiledVerdict((v) => …)` to every module-level, fully-emittable `const X = s.<schema>` from `@pyreon/validate`, so the runtime `X.is(v)` runs an inlined monomorphic validator instead of `X.parse(v).ok`. The emitted verdict is byte-equivalent to the runtime (locked by the compiler's emit-equivalence gate) — speed only, never a different result. Runs for both `.ts` and `.tsx`; build-only (dev keeps the runtime path); composed/aliased/unsupported schemas are skipped silently and fall back to the runtime `.is()`. OFF by default. Exports `buildCompiledVerdicts(code, id)` for the same effect outside the plugin.
+
+### Patch Changes
+
+- Updated dependencies [[`8a1345d`](https://github.com/pyreon/pyreon/commit/8a1345d9b14f56130f38823b58745207c7bdf7ef), [`b3957fa`](https://github.com/pyreon/pyreon/commit/b3957fa6f913410e90f917ebce560a1bf85c2dd8), [`f1e46fb`](https://github.com/pyreon/pyreon/commit/f1e46fb08da6a0fdf03f1eab8abc95ad0643def1), [`8a4e195`](https://github.com/pyreon/pyreon/commit/8a4e19519bcf3dfebb203c97f69d08e3f7ac6b50), [`d2d3cb4`](https://github.com/pyreon/pyreon/commit/d2d3cb4a6f585a59333ef5c28c1ba4eefa10e4ea), [`544c425`](https://github.com/pyreon/pyreon/commit/544c425b6bcf95f772ea04a5e740fb27fa6938d1), [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0), [`e8d945f`](https://github.com/pyreon/pyreon/commit/e8d945fe7a7c23307b0b7d88eeb4cc060224b3a5), [`ee9b328`](https://github.com/pyreon/pyreon/commit/ee9b32875104b8759c2aa180cb6d00d62fa681de), [`a8a8b41`](https://github.com/pyreon/pyreon/commit/a8a8b41ae001883710cd6cd4e4c367987dd6312d)]:
+  - @pyreon/runtime-dom@0.35.0
+  - @pyreon/compiler@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

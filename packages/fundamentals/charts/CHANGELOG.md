@@ -1,5 +1,19 @@
 # @pyreon/charts
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1680](https://github.com/pyreon/pyreon/pull/1680) [`611694e`](https://github.com/pyreon/pyreon/commit/611694e815dcb454b2d82128315af69eb1649d40) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(charts): `<Chart>` now forwards `onInit` / `locale` / `notMerge` / `lazyUpdate` to `useChart`. These were documented as `<Chart>` props in the README but were neither declared on `ChartProps` nor passed through — only `theme` and `renderer` reached `useChart` (which already supported all four). Setting them on `<Chart>` now works end-to-end.
+
+- [#1830](https://github.com/pyreon/pyreon/pull/1830) [`1ed4ff7`](https://github.com/pyreon/pyreon/commit/1ed4ff734f7535e42e910ed4fceafcf5d46a3974) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Chart>` now accepts an `ariaLabel` prop. A chart renders to canvas/SVG, which is opaque to screen readers — without a text alternative it's entirely invisible. When `ariaLabel` is set, the container becomes `role="img"` with that `aria-label` (the WAI pattern for presenting a complex graphic as a single labeled image); without it the container stays bare (a nameless `role="img"` would be worse than none), so there's no change for existing charts. Pass a concise description of what the chart conveys, e.g. `ariaLabel="Bar chart: monthly revenue trending up"`.
+
+### Patch Changes
+
+- Updated dependencies [[`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165)]:
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

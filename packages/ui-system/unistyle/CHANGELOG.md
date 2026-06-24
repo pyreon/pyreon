@@ -1,5 +1,76 @@
 # @pyreon/unistyle
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1650](https://github.com/pyreon/pyreon/pull/1650) [`368a609`](https://github.com/pyreon/pyreon/commit/368a6090c867e2dd6c37413e0656fe57a7e1e63c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Custom-Property Style Extraction (CPSE) — engine + opt-in `cpseStyled` integration
+
+  The fundamental fix for the rocketstyle styling-runtime cost: **decouple a style
+  prop's CSS-rule identity from its value identity** so styling cost is flat in
+  style-value cardinality (and dynamic values are free), instead of O(distinct
+  value tuples). See `.claude/audits/custom-property-style-extraction-2026-06-22.md`.
+
+  **`@pyreon/unistyle` (new, additive):**
+
+  - `styles()` gains an `extractVars` mode — every flat `prop: value` declaration
+    becomes a value-agnostic `prop: var(--u-<hash>)` and the value is collected
+    into a sink (reuses all of `processDescriptor`'s resolution; structural
+    fragments pass through). Absent ⇒ byte-identical to today.
+  - `extractStyleVar`, `cpseVarName`, `cpseRewrite` — the extraction primitives.
+  - `cpseStyled(tag)` — a styled primitive that applies CPSE: a value-agnostic
+    class cached by property-set (N distinct values → ONE class, ONE
+    `styler.resolve`) + per-instance inline custom properties; dynamic
+    (signal-driven) values patch the inline property with no re-resolve. Opt-in,
+    zero blast radius on the existing `styled`/`Element`/`rocketstyle` paths.
+
+  **`@pyreon/runtime-server` (fix):** `normalizeStyle` now preserves CSS
+  custom-property names (`--x`) verbatim instead of kebab-casing them — parity
+  with the client `applyStyleProp` guard. Closes a latent SSR/client divergence
+  for any `--Custom`-cased property (the inline custom properties CPSE emits).
+
+  **Proven:** counter harness asserts O(N)→O(1) (100 distinct values: 100
+  resolves + 100 rules classic vs 1 + 1 under CPSE); real-Chromium proves a real
+  `cpseStyled` component renders N distinct values from ONE class + ONE resolve,
+  with computed-style parity, nesting-safety, and dynamic updates at zero extra
+  resolve; SSR parity proven by composition (cpseStyled VNode shape +
+  normalizeStyle `--` serialization), each bisect-verified.
+
+  **Staged (not in this release):** the `init({ styleExtraction })` flag +
+  auto-migrating the default `styled`/`Element`/`rocketstyle` pipeline (broad
+  blast radius — the regression-gated rollout), and responsive-array assembly in
+  `cpseStyled` (the engine supports per-breakpoint var naming today).
+
+- [#1656](https://github.com/pyreon/pyreon/pull/1656) [`ce5a10a`](https://github.com/pyreon/pyreon/commit/ce5a10ab91dcbf1252897426a965dcc3a65a50f2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - CPSE: responsive values in `cpseStyled`
+
+  `cpseStyled`'s `styles` prop now accepts responsive values — mobile-first
+  arrays (`padding={[8, 16]}`) and breakpoint objects (`padding={{ sm: 16 }}`).
+  Each breakpoint emits a suffixed value-agnostic rule (`padding:
+var(--u-<hash>-sm)`) wrapped in its `@media` query (via `createMediaQueries`;
+  the styler's `splitAtRules` hoists the nesting), and the instance sets every
+  breakpoint's value inline. The class stays value-agnostic (shared across
+  instances of the same shape); the browser's `@media` cascade selects the active
+  var — so responsive styling keeps CPSE's O(1)-rules property AND its
+  zero-`styler.resolve`-on-value-change dynamic behaviour. Breakpoints come from
+  `theme.breakpoints` (via the styler theme context), falling back to a default
+  xs/sm/md/lg/xl set, or an explicit `breakpoints` prop.
+
+  New exported types: `ResponsiveValue<T>`, `ResponsiveStyleTheme`.
+
+  Proven: unit tests (array/object expansion → per-breakpoint inline vars, shared
+  class across distinct values, custom breakpoints) + a real-Chromium e2e
+  (`ssr-showcase /cpse-probe`) that resizes the viewport and asserts the computed
+  padding flips across the breakpoint (400px→8px, 900px→48px) — bisect-verified
+  (removing the `@media` wrap makes the larger value win at all viewports).
+
+### Patch Changes
+
+- Updated dependencies [[`97fa631`](https://github.com/pyreon/pyreon/commit/97fa6312304951e8cfd24fb8f0f405f94dc609db), [`1f29c4b`](https://github.com/pyreon/pyreon/commit/1f29c4b9791e6ad96901ca0e2b90e5335b803895), [`02b77ae`](https://github.com/pyreon/pyreon/commit/02b77aed6b4383554b3458e408b462098fc3e708), [`35d440a`](https://github.com/pyreon/pyreon/commit/35d440a44d92ac913cf19f3f8e21b4603458a165), [`3d47b98`](https://github.com/pyreon/pyreon/commit/3d47b987d244be4ad6b5453cd07ed39be85427bf)]:
+  - @pyreon/styler@0.35.0
+  - @pyreon/ui-core@0.35.0
+  - @pyreon/core@0.35.0
+  - @pyreon/reactivity@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

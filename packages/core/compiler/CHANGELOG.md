@@ -1,5 +1,88 @@
 # @pyreon/compiler
 
+## 0.35.0
+
+### Minor Changes
+
+- [#1636](https://github.com/pyreon/pyreon/pull/1636) [`8a4e195`](https://github.com/pyreon/pyreon/commit/8a4e19519bcf3dfebb203c97f69d08e3f7ac6b50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Native (multiplatform / PMTC) build-hazard detection across the doctor + MCP surfaces, so an AI/dev catches code that compiles for web but silently breaks the iOS/Android build.
+
+  - **`pyreon doctor --check-native`** (new `native-audit` gate, also in the default fast set) scans `.tsx` files importing `@pyreon/primitives` for two hazards the `swiftc -parse` / `kotlinc`-stub gate can't catch: **web-only-package imports** (`@pyreon/charts`/`flow`/`code`/`dnd`/`document`/`query`/`table`/`virtual` + the CSS-in-JS UI stack — fix: host in `<WebView>` or use `@pyreon/primitives`) and **native-dropped top-level `interface`/`enum`/`class`** (fix: `type X = {…}` / string-literal union / functions). Scoped to multiplatform projects (skips gracefully otherwise); warnings only.
+  - **MCP `validate`** now runs the same native detector per-snippet (the AI's per-keystroke feedback loop), firing only when the snippet imports `@pyreon/primitives`.
+  - **`@pyreon/compiler`** exports `auditNative(cwd)` (project scan) + `detectNativePatterns(code, filename)` (snippet) + their types.
+
+  Pairs with `get_pattern({ name: "multiplatform" })` and the `@pyreon/primitives` `get_api` entries so an AI has both the reference and the feedback to build a correct multiplatform app one-shot.
+
+- [#1776](https://github.com/pyreon/pyreon/pull/1776) [`e8d945f`](https://github.com/pyreon/pyreon/commit/e8d945fe7a7c23307b0b7d88eeb4cc060224b3a5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `analyzeValidate()` + `emitValidator()` — compile-time specialized validators for `@pyreon/validate` (the build-time analogue of the runtime JIT). `analyzeValidate(code)` reads `s.*` schema definitions from source and parses each into a typed IR (`ValidateSchemaInfo` — `string`/`number`/`boolean`/`literal` primitives with their common checks, plus `object`/`array` composition and `.optional()`); it's conservative — any unrecognized shape becomes an `unsupported` node and the schema's `emittable` flag is false, so a partial understanding never yields a wrong validator. `emitValidator(node)` emits a monomorphic, fully-inlined validator function source for an emittable IR (typia-class straight-line `typeof`/regex/comparison checks — no op-array traversal). Pure, deterministic, TS-compiler-API based; mirrors the `analyzeReactivity` sidecar. Wiring the emit into `@pyreon/vite-plugin` is a follow-up.
+
+- [#1792](https://github.com/pyreon/pyreon/pull/1792) [`ee9b328`](https://github.com/pyreon/pyreon/commit/ee9b32875104b8759c2aa180cb6d00d62fa681de) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `analyzeValidate` now reports `topLevel: boolean` on each `ValidateSchemaInfo` — true iff the schema is a module-level declaration (`VariableDeclarationList → VariableStatement → SourceFile`). Consumers that emit a module-end `name._attachCompiledVerdict(…)` (the `@pyreon/vite-plugin` verdict pass) use this to skip function/block-scoped schemas, which would otherwise be a ReferenceError at module load. Additive, non-breaking.
+
+### Patch Changes
+
+- [#1826](https://github.com/pyreon/pyreon/pull/1826) [`b3957fa`](https://github.com/pyreon/pyreon/commit/b3957fa6f913410e90f917ebce560a1bf85c2dd8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix Rust-backend JSX-compiler divergences from the JS oracle, found via a 644-file real-corpus dual-backend byte-diff sweep:
+
+  - **Text-vs-vnode child classifier made generic (whole-class fix).** The JS oracle classifies a JSX child as a vnode (`_mountSlot`) vs text (`_bind .data`) via a generic walk over every descendant node; the Rust `contains_jsx_in_expr` was a hand-rolled partial mirror that missed nested-JSX shapes and rendered `[object Object]` — `obj?.map(x => <jsx/>)` (JSX in an optional-chained call's args) and IIFEs `(() => { … return <jsx/> })()` (JSX in the call callee). Both were the same class, so rather than patch shapes one at a time the classifier now uses an `oxc_ast_visit::Visit` walker that matches the JS oracle by construction (both visit every node), eliminating the entire class including shapes not in the corpus.
+  - **`.map`/any-CallExpression-argument callback params** were over-bound as reactive props: a bare item read like `{item.label}` in a compiled element emitted a wasteful per-row `_bind()` renderEffect instead of static `textContent`, because the item-param carve-out only covered direct JSX-child render callbacks, not nested `.map`-arg callbacks.
+
+  Both backends are now byte-identical for these shapes, locked by `corpus-sweep regressions` fixtures in `native-equivalence.test.ts` (bisect-verified).
+
+- [#1629](https://github.com/pyreon/pyreon/pull/1629) [`f1e46fb`](https://github.com/pyreon/pyreon/commit/f1e46fb08da6a0fdf03f1eab8abc95ad0643def1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `dangerouslySetInnerHTML` in the compiled template fast path. When an
+  element carrying a reactive/forwarded `dangerouslySetInnerHTML` (e.g.
+  `<div dangerouslySetInnerHTML={props.html} />`) was template-ized into a
+  `_tpl()` (any multi-element static tree), the binding was emitted as a generic
+  `el.setAttribute("dangerouslySetInnerHTML", value)` — stringifying the
+  `{ __html }` object to `dangerouslysetinnerhtml="[object Object]"` and leaving
+  the element EMPTY. SSR rendered the content correctly, so it "blinked" then
+  vanished the instant the client rendered the template (visible on any SSG/SSR
+  page with a Shiki code block, `@pyreon/zero-content` docs, etc.). Both the JS
+  and Rust backends now mirror the runtime `applyStaticProp`:
+  `el.innerHTML = value.__html`. (`class`/`style` were already special-cased; this
+  extends the same fix to `dangerouslySetInnerHTML`.)
+
+- [#1838](https://github.com/pyreon/pyreon/pull/1838) [`d2d3cb4`](https://github.com/pyreon/pyreon/commit/d2d3cb4a6f585a59333ef5c28c1ba4eefa10e4ea) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `emitValidator` crashing on nested arrays — under `pyreon({ compileValidators: true })` this silently false-rejected every input.
+
+  A schema with two `array` nodes on one root-to-leaf path (`s.array(s.array(...))`, `s.object({ rows: s.array(s.array(...)) })`, etc.) emitted colliding loop variables: every array level used `__i`/`__e`, so the inner `const __e = __e[__i]` self-referenced the outer `__e` in the inner block scope → `ReferenceError: Cannot access '__e' before initialization` (TDZ) thrown for **every** input. Under the vite-plugin's compiled-verdict wiring the throw is swallowed by the verdict try/catch, so `Schema.is(validInput)` returned `false` while `Schema.parse(validInput).ok` returned `true` — a silent, total false-reject.
+
+  Fix: thread an enclosing-array `depth` through `emitNode` so each nesting level names its loop vars `__i<depth>` / `__e<depth>`. Sibling arrays at the same depth keep the same name (they live in separate `for` block scopes — correct); only nested arrays now get distinct names. Locked by new nested-array cases in the emit⟷runtime equivalence corpus.
+
+- [#1642](https://github.com/pyreon/pyreon/pull/1642) [`544c425`](https://github.com/pyreon/pyreon/commit/544c425b6bcf95f772ea04a5e740fb27fa6938d1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh + Toaster lint annotation
+
+  - **`@pyreon/toast`**: annotated the Toaster's `aria-live` region with a rule
+    suppression + rationale for oxlint 1.70's new
+    `jsx-a11y/no-noninteractive-element-interactions` rule. The labeled live
+    region is the accessibility mechanism (toasts are announced + dismissable);
+    pause-on-hover is an intentional mouse-only enhancement on top of it, not a
+    clickable control. No behavior change.
+  - **`@pyreon/compiler` / `@pyreon/lint`**: bump the `oxc-parser` (+ `oxc-transform`)
+    runtime dependency range to `^0.137.0` (was `^0.133.0`). No API change in the
+    affected surface — the full compiler (1603) + lint (993) test suites pass.
+
+  Dev-tooling was also refreshed to latest in-range (vitest 4.1.9, playwright
+  1.61, esbuild 0.28.1, oxlint 1.70, oxfmt 0.55, happy-dom, etc.) — not
+  consumer-affecting.
+
+- [#1648](https://github.com/pyreon/pyreon/pull/1648) [`1c98f38`](https://github.com/pyreon/pyreon/commit/1c98f3863ccd2fd16a4ad6e20e82fb778725bca0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Three allocation fast paths in the template/mount hot paths (per-instance closure & array reductions)
+
+  - **`@pyreon/compiler`** — a single-binding template returns its disposer
+    directly (`return __d0`) instead of a per-instance wrapper closure
+    (`return () => { __d0() }`). For the dominant `<For>`-row shape (a sole
+    reactive-text child): ~97 B/row → ~948 KB + 10,000 fewer closure allocations
+    on a 10k-row list. Both JS + Rust backends, byte-identical.
+  - **`@pyreon/runtime-dom`** — `_rsCollapseH` uses an inline-first handler-disposer
+    slot (no array for the common 0/1-handler collapsed shape): ~57 B/row +
+    10,000 fewer array allocations on a 10k single-handler-collapse list.
+  - **`@pyreon/runtime-dom`** — `mountChildren`'s 3+-child path collects only real
+    (non-`noop`) cleanups inline-first instead of `children.map(...)`: no array /
+    wrapper closure for child sets yielding ≤1 real cleanup. ~169 B/call → ~1.6 MB
+    on 10k mixed 3-child elements (the `h()`/component path).
+
+  All behaviour-identical (proven by the existing compiler + runtime-dom suites)
+  with added bisect-verified regression tests. A fourth candidate (reusing the
+  batch flush's per-pass `_visitedThisPass` Set) was implemented, measured as a
+  wash (`Set.clear()` is marginally slower than `new Set()` in V8; the GC benefit
+  was unmeasurable), and reverted.
+
+- [#1779](https://github.com/pyreon/pyreon/pull/1779) [`a8a8b41`](https://github.com/pyreon/pyreon/commit/a8a8b41ae001883710cd6cd4e4c367987dd6312d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `emitValidator` correctness fixes surfaced by the new cross-runtime equivalence gate (a corpus test in `@pyreon/validate` that builds each schema both as the real runtime `s` and via `analyzeValidate`→`emitValidator`, then asserts the accept/reject verdict matches for every input): the emitted `email` check now uses `@pyreon/validate`'s strict standard `EMAIL_RE` (2+ char TLD, no leading/consecutive dots) instead of a loose `^…@…\.…$`, and the `.nonEmpty()` string check is recognized under its real camelCase method name (was `nonempty`). Email/url/uuid regexes are now emitted from verbatim `RegExp` literals via `re.source`/`re.flags` so they can't drift from the runtime in transcription.
+
 ## 0.34.0
 
 ### Patch Changes
