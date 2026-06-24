@@ -20,7 +20,14 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
+import {
+  isSwiftcAvailable,
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateSwift,
+  validateSwiftTypecheck,
+  validateKotlin,
+} from '../validate'
 
 const app = (body: string) =>
   `import { Stack, Text } from '@pyreon/primitives'
@@ -147,4 +154,56 @@ function App() {
     const res = validateKotlin(out)
     expect(res.ok, res.error ?? '').toBe(true)
   })
+})
+
+// `.reduce((acc, x) => body, seed)` inference. Without a `reduce` case in
+// the array-method switch it degraded to `Any` → a computed over a reduce
+// annotated `Any` → `String(<that>)` failed swiftc (`no exact matches in
+// call to initializer 'String'`). Now it infers the accumulator type
+// (reducer body, with acc=seed-type + element bound), falling back to the
+// seed's type.
+describe('.reduce element-type inference', () => {
+  it('Swift: reduce over numbers infers the accumulator type (Int, not Any)', () => {
+    const out = transform(
+      app(`  const sum = computed(() => nums().reduce((a, b) => a + b, 0))`),
+      { target: 'swift' },
+    ).code
+    expect(out).toContain('private var sum: Int')
+    expect(out).not.toContain('private var sum: Any')
+  })
+
+  it('Swift: reduce over a typed-struct array (field sum) infers Int, not Any', () => {
+    const out = transform(
+      `import { Stack, Text } from '@pyreon/primitives'
+type Item = { price: number }
+function App() {
+  const items = signal<Item[]>([])
+  const total = computed(() => items().reduce((s, i) => s + i.price, 0))
+  return (<Stack><Text>{String(total())}</Text></Stack>)
+}`,
+      { target: 'swift' },
+    ).code
+    expect(out).toContain('private var total: Int')
+    expect(out).not.toContain('private var total: Any')
+  })
+
+  it.skipIf(!isSwiftUIAvailable())(
+    'Swift: a reduce-result fed to String() typechecks against real SwiftUI',
+    () => {
+      // The exact failing shape: String(<reduce result>) — Int now, so
+      // `String(Int)` resolves (was `String(Any)` → no matching initializer).
+      const out = transform(
+        `import { Stack, Text } from '@pyreon/primitives'
+type Item = { price: number }
+function App() {
+  const items = signal<Item[]>([])
+  const total = computed(() => items().reduce((s, i) => s + i.price, 0))
+  return (<Stack><Text>{String(total())}</Text></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      const res = validateSwiftTypecheck(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
 })
