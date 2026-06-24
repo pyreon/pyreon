@@ -243,6 +243,18 @@ import { analyzeReactivity, formatReactivityLens } from "@pyreon/compiler"
 const r = analyzeReactivity(src, "App.tsx")
 process.stdout.write(formatReactivityLens(src, r))
 
+import { analyzeValidate } from "@pyreon/compiler"
+
+const [info] = analyzeValidate("const L = s.object({ e: s.string().email() })")
+info.emittable // true
+
+import { analyzeValidate, emitValidator } from "@pyreon/compiler"
+
+const [info] = analyzeValidate("const S = s.string().email()")
+const src = emitValidator(info.node)
+const validate = new Function("return " + src)()
+validate("a@b.co").length // 0
+
 import { detectReactPatterns } from "@pyreon/compiler"
 
 const diags = detectReactPatterns("const [n,setN] = useState(0)", "x.tsx")
