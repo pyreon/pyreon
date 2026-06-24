@@ -540,14 +540,22 @@ export function _tplCacheSize(): number {
  * @param placeholder - The comment placeholder node to replace
  * @returns Cleanup function
  */
+/** Shared no-op disposer for slots with no teardown work. MUST be a function:
+ *  the compiler emits a slot's cleanup call UNCONDITIONALLY (`() => { __d0();
+ *  __d1(); … }`), so returning `null`/`undefined` here makes that call throw
+ *  `TypeError: <slot> is not a function` when the reactive boundary re-runs or
+ *  unmounts. A falsy/boolean conditional slot (`{showLock && <button>}` → false)
+ *  is exactly that case. */
+const SLOT_NOOP = (): void => {}
+
 export function _mountSlot(
   children: VNodeChild | VNodeChild[],
   parent: Node,
   placeholder: Node,
-): (() => void) | null {
+): () => void {
   if (children == null || children === false || children === true) {
     parent.removeChild(placeholder)
-    return null
+    return SLOT_NOOP
   }
   const cleanup = mountChild(children, parent, placeholder)
   parent.removeChild(placeholder)
