@@ -1,4 +1,4 @@
-import { isClient, onCleanup, signal, type Signal } from '@pyreon/reactivity'
+import { batch, isClient, onCleanup, signal, type Signal } from '@pyreon/reactivity'
 
 export interface UseFetchResult<T> {
   /** Decoded JSON result — `undefined` until the first successful fetch. */
@@ -57,14 +57,20 @@ export function useFetch<T>(url: string): UseFetchResult<T> {
       })
       .then((json) => {
         if (current.signal.aborted) return
-        data.set(json)
-        error.set(undefined)
-        isPending.set(false)
+        // Atomic settle: data + cleared error + isPending=false in one notify
+        // cycle (avoids an intermediate render with data set but still pending).
+        batch(() => {
+          data.set(json)
+          error.set(undefined)
+          isPending.set(false)
+        })
       })
       .catch((err: unknown) => {
         if (current.signal.aborted) return
-        error.set(err)
-        isPending.set(false)
+        batch(() => {
+          error.set(err)
+          isPending.set(false)
+        })
       })
   }
 
