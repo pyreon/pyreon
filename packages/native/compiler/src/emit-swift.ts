@@ -2478,6 +2478,31 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             break
           }
+          case 'padStart':
+          case 'padEnd': {
+            // JS `str.padStart(len, pad?)` / `padEnd` — Swift has no native.
+            // Build the pad run manually: repeat the pad to fill the gap
+            // `max(0, len - str.count)`, then prepend (start) / append (end).
+            // ONLY the common cases map exactly: pad OMITTED → " " (JS
+            // default), or a SINGLE-char string literal (`"0"`). A multi-char
+            // pad would over-pad (Swift `String(repeating:count:)` repeats
+            // the WHOLE string, JS truncates to fit) and a dynamic pad can't
+            // be length-checked — both fall through to the generic emit.
+            const padArg = e.args[1]
+            const okPad =
+              e.args.length === 1 ||
+              (padArg !== undefined &&
+                padArg.kind === 'literal' &&
+                typeof padArg.value === 'string' &&
+                padArg.value.length === 1)
+            if (e.args.length >= 1 && okPad) {
+              const len = argExprs[0]!
+              const pad = e.args.length >= 2 ? argExprs[1]! : '" "'
+              const fill = `String(repeating: ${pad}, count: max(0, (${len}) - ${obj}.count))`
+              return prop === 'padStart' ? `(${fill} + ${obj})` : `(${obj} + ${fill})`
+            }
+            break
+          }
           case 'repeat':
             // JS `str.repeat(n)` → Swift `String(repeating:count:)`.
             // Kotlin's `String.repeat(n)` matches JS as-is.

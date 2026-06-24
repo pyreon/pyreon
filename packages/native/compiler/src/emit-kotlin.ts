@@ -2107,6 +2107,30 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // — bounds are the caller's concern; documented v1 limitation.
             if (e.args.length === 1) return `${obj}[${argExprs[0]!}].toString()`
             break
+          case 'padStart':
+          case 'padEnd': {
+            // Kotlin `String.padStart(len, padChar)` / `padEnd` ARE native —
+            // but the pad arg is a Char, not a String. JS passes a String, so
+            // a single-char string literal (`"0"`) becomes a Char (`'0'`);
+            // omitted → native `padStart(len)` (Kotlin's default pad is a
+            // space, matching JS). A multi-char/dynamic pad can't map to a
+            // Char → falls through to the generic emit (mirrors the Swift
+            // single-char-pad restriction).
+            const padArg = e.args[1]
+            if (e.args.length === 1) return `${obj}.${prop}(${argExprs[0]!})`
+            if (
+              e.args.length >= 2 &&
+              padArg !== undefined &&
+              padArg.kind === 'literal' &&
+              typeof padArg.value === 'string' &&
+              padArg.value.length === 1 &&
+              padArg.value !== "'" &&
+              padArg.value !== '\\'
+            ) {
+              return `${obj}.${prop}(${argExprs[0]!}, '${padArg.value}')`
+            }
+            break
+          }
           case 'join':
             // JS `arr.join(sep?)` → Kotlin `joinToString(sep)`. JS's
             // default separator is "," — emit it explicitly when omitted
