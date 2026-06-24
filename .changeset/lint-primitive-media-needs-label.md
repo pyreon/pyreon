@@ -1,0 +1,5 @@
+---
+"@pyreon/lint": minor
+---
+
+Add `pyreon/primitive-media-needs-label` — an opt-in, `@pyreon/primitives`-dependency-gated frontend a11y rule (the multiplatform analog of `pyreon/require-img-alt`). It flags a canonical `<Image>` / `<Icon>` that carries no accessible name — neither a text alternative (`accessibilityLabel` / `alt` / `aria-label` / `aria-labelledby`) nor a decorative marker (`accessibilityHidden` / `aria-hidden`). Because those media primitives have no text content, a missing label is inaccessible on every target (web screen readers, iOS VoiceOver, Android TalkBack); the rule surfaces it at author time so the canonical `accessibilityLabel` (which lowers to each platform's idiom) is written once. Accepting `alt`/`aria-*` as satisfying means a project also using `@pyreon/zero`'s web-optimized `<Image alt>` is never false-flagged. Off in `recommended`/`strict`/`app`/`lib`; enabled by the `best-practices` preset or per-rule config; silent in projects without `@pyreon/primitives`. Brings the rule set to 91 rules across 18 categories (frontend → 11).
