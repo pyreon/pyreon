@@ -24,6 +24,11 @@ export { clone, destroy, getType, isAlive } from './lifecycle'
 
 export { getParent, getPath, getRoot, hasParent, isRoot } from './tree'
 
+// ─── References & identifiers ───────────────────────────────────────────────────
+
+export { identifier, reference, resolveIdentifier } from './references'
+export type { ReferenceField } from './references'
+
 // ─── Patches ─────────────────────────────────────────────────────────────────
 
 export { applyPatch, onPatch } from './patch'

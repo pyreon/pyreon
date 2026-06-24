@@ -727,7 +727,46 @@ hasParent(todo) // true
 
 All throw on a non-model-instance. **v1 notes:** `getPath` carries the field key (`/todos`), not the array index (`/todos/0`); a node removed from an array keeps its last parent until GC (parent is set on write, not diffed on removal); auto-attachment is one container level deep.
 
-> **References & identifiers** (`reference(Type)` / `identifier()` / `resolveIdentifier`) — normalized by-id references that auto-resolve — build on these tree helpers and land as the follow-up.
+### References & Identifiers
+
+Normalized, by-id references — store a model's id, resolve to the live node on read. Built on the tree helpers above.
+
+Declare a model's **identifier** with `identifier()` (the field a reference resolves against), then `reference(TargetModel)` for a field that points at it:
+
+```ts
+import { model, identifier, reference, resolveIdentifier, getSnapshot } from '@pyreon/state-tree'
+
+const User = model({ state: { id: identifier(), name: '' } })
+const Post = model({ state: { id: identifier(), title: '', author: reference(User) } })
+
+const Store = model({
+  state: {
+    users: [] as ReturnType<typeof User.create>[],
+    posts: [] as ReturnType<typeof Post.create>[],
+  },
+}).actions((self) => ({
+  addUser: (id: string, name: string) => self.users.update((l) => [...l, User.create({ id, name })]),
+  addPost: (id: string, title: string, authorId: string) =>
+    self.posts.update((l) => [...l, Post.create({ id, title, author: authorId })]),
+}))
+
+const store = Store.create({ users: [], posts: [] })
+store.addUser('u1', 'Ada')
+store.addPost('p1', 'Hello', 'u1')
+
+const post = store.posts()[0]!
+post.author()            // → the live User node (resolved through the shared tree)
+post.author()!.name()    // "Ada"
+post.author.id()         // the raw stored id ("u1")
+
+getSnapshot(post).author // "u1" — references serialize as the id, not the node
+```
+
+- **`identifier(default?)`** — plain-mode field marker declaring the id field. Schema mode names it instead: `model({ schema, identifier: 'id' })`.
+- **`reference(Type)`** — a field storing the target's id, resolving to the node on read. Accessor: `()` resolves, `.set(node | id)`, `.id()`, `.setId(id)`, `.peek()`. Serializes/restores as the id.
+- **`resolveIdentifier(root, Type, id)`** — find a node of `Type` with the given id in `root`'s subtree (also useful directly).
+
+Resolution goes through `getRoot(node)`, so the referencing node and its target must share a root (typically both held by a store). An unresolved reference returns `undefined`. The target type must declare an `identifier()`. Resolution is O(n) over the tree per read in v1 (a root-scoped id-index is a planned optimization).
 
 ## Volatile State
 
