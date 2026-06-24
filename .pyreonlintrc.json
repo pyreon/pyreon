@@ -23,6 +23,15 @@
         "exemptPaths": ["__tests__/", ".test."]
       }
     ],
+    "pyreon/no-error-without-prefix": [
+      "warn",
+      {
+        "exemptPaths": [
+          "packages/zero/create-zero/",
+          "packages/zero/create-multiplatform/"
+        ]
+      }
+    ],
     "pyreon/no-raw-addeventlistener": [
       "info",
       {
