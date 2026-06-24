@@ -84,26 +84,45 @@ describe('Overlay component — active modal render (mount)', () => {
     cleanup()
   })
 
-  it('non-modal (tooltip) active render omits the dialog role arm', () => {
+  it('tooltip active render wires the WAI-ARIA tooltip pattern (role=tooltip + aria-describedby↔id)', () => {
     const { cleanup } = mountOverlay({
       type: 'tooltip',
       openOn: 'manual',
       closeOn: 'manual',
       isOpen: true,
-      trigger: (p: { ref?: unknown }) =>
-        h('button', { ref: p.ref, 'data-testid': 'trigger-3' }, 'open'),
-      children: (p: { ref?: unknown; role?: unknown }) =>
+      trigger: (p: { ref?: unknown; 'aria-describedby'?: unknown }) =>
+        h(
+          'button',
+          {
+            ref: p.ref,
+            'data-testid': 'trigger-3',
+            'aria-describedby': p['aria-describedby'] as string | undefined,
+          },
+          'open',
+        ),
+      children: (p: { ref?: unknown; role?: unknown; id?: unknown }) =>
         h(
           'div',
-          { ref: p.ref, 'data-testid': 'content-3', role: p.role as string | undefined },
+          {
+            ref: p.ref,
+            'data-testid': 'content-3',
+            role: p.role as string | undefined,
+            id: p.id as string | undefined,
+          },
           'tip',
         ),
     })
 
+    const trigger = document.querySelector('[data-testid="trigger-3"]')
     const content = document.querySelector('[data-testid="content-3"]')
     expect(content).not.toBeNull()
-    // type !== 'modal' → role is undefined (the false arm of the modal ternary).
-    expect(content!.getAttribute('role')).toBeNull()
+    // tooltip content carries role="tooltip" (NOT the modal "dialog" arm).
+    expect(content!.getAttribute('role')).toBe('tooltip')
+    // and an id the trigger's aria-describedby points at — the linkage that
+    // makes a screen reader read the tip when the trigger is focused.
+    const tipId = content!.getAttribute('id')
+    expect(tipId).toBeTruthy()
+    expect(trigger!.getAttribute('aria-describedby')).toBe(tipId)
 
     cleanup()
   })
