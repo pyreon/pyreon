@@ -35,6 +35,18 @@ async function transformTs(src: string, plugin: Plugin = buildPlugin()): Promise
   return out?.code
 }
 
+/** Run a `.tsx` source through the transform (exercises the post-JSX-compile append path). */
+async function transformTsx(src: string, plugin: Plugin = buildPlugin()): Promise<string | undefined> {
+  const hook = plugin.transform as unknown as (
+    this: Ctx,
+    c: string,
+    i: string,
+    o?: { ssr?: boolean },
+  ) => Promise<{ code: string } | undefined>
+  const out = await hook.call(ctx, src, '/app/schema.tsx', { ssr: false })
+  return out?.code
+}
+
 const IMPORT = `import { s } from '@pyreon/validate'\n`
 
 describe('pyreon({ compileValidators }) — verdict emission via the transform', () => {
@@ -62,6 +74,23 @@ describe('pyreon({ compileValidators }) — verdict emission via the transform',
 
   it('does nothing without the @pyreon/validate import (cheap gate)', async () => {
     expect(await transformTs(`const Email = s.string().email()`)).toBeUndefined()
+  })
+
+  it('appends the verdict AFTER the JSX compile on a .tsx file (post-compile path)', async () => {
+    const out = await transformTsx(
+      `${IMPORT}const Email = s.string().email()\nexport const C = () => <div>{Email.is('a@b.co') ? 'ok' : 'no'}</div>`,
+    )
+    // JSX was compiled (template/hyperscript emitted) AND the verdict appended.
+    expect(out).toMatch(/_tpl\(|h\(/) // the component JSX got compiled
+    expect(out).toContain('Email._attachCompiledVerdict(')
+    // the verdict tail must sit AFTER the compiled component (append-at-module-end)
+    const compiledAt = Math.max(out!.lastIndexOf('_tpl('), out!.lastIndexOf('export const C'))
+    expect(out!.indexOf('_attachCompiledVerdict(')).toBeGreaterThan(compiledAt)
+  })
+
+  it('.tsx without an emittable schema is left to the normal JSX transform (no tail)', async () => {
+    const out = await transformTsx(`${IMPORT}export const C = () => <div>hi</div>`)
+    expect(out).not.toContain('_attachCompiledVerdict(')
   })
 
   it('emits one attach-call per top-level schema', async () => {
