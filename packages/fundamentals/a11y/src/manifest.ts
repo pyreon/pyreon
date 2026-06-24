@@ -6,12 +6,13 @@ export default defineManifest({
   tagline:
     'Accessibility primitives — announce() screen-reader live regions, <VisuallyHidden>, createA11yId, zero setup',
   description:
-    'Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.',
+    'Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `<LiveRegion>` is the declarative complement to `announce()` — a persistent `aria-live` region you place in your tree and drive with a signal, so screen readers announce every content change with zero wiring. `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.',
   category: 'browser',
   features: [
     'announce(message) — speak status/errors to screen readers via a lazily-created aria-live region; zero setup, no provider, SSR-safe no-op',
     'polite (default, queued) and assertive (interrupts) politeness; clearAfter to auto-empty stale text; identical repeats re-announced via clear-then-set',
     '<VisuallyHidden> — content invisible on screen but kept in the accessibility tree (unlike display:none)',
+    '<LiveRegion> — declarative aria-live region; drive its children with a signal and screen readers announce every change (the persistent, reactive complement to imperative announce())',
     '<SkipLink> — keyboard "skip to content" link, hidden until focused; moves scroll AND focus to the main landmark past repeated nav (WCAG 2.4.1 Bypass Blocks)',
     'createA11yId(prefix?) — stable SSR-safe ids for aria-labelledby / aria-describedby / for relationships',
     '<RouteAnnouncer> / useRouteAnnouncer() (@pyreon/a11y/router) — announce client-side route changes to screen readers (the SPA navigation gap); one router afterEach hook → polite live region',
@@ -67,6 +68,21 @@ function Field() {
       mistakes: [
         'Using `display:none` or the `hidden` attribute instead — those remove the content from the accessibility tree, so screen readers never see it. VisuallyHidden clips it but keeps it readable.',
         'Putting interactive controls inside it — a visually-hidden focusable element is a keyboard trap for sighted keyboard users (focus jumps to invisible content). Keep it to non-interactive text.',
+      ],
+    },
+    {
+      name: 'LiveRegion',
+      kind: 'component',
+      signature:
+        'function LiveRegion(props: { politeness?: "polite" | "assertive" | "off"; atomic?: boolean; role?: "status" | "alert" | "log"; visible?: boolean; children?: VNodeChild; [key: string]: unknown }): VNodeChild',
+      summary:
+        'A declarative aria-live region — the persistent, reactive complement to imperative announce(). Place it once in your tree and drive its children with a signal; the browser announces every content change automatically (no announce() call, no effect). Screen-reader-only by default (reuses VisuallyHidden clipping); pass `visible` for status text that should also be seen. Defaults: politeness "polite" → role "status", "assertive" → role "alert", "off" silences without a contradictory implicit role. Renders on the server too, so the region exists at hydration and the first reactive update is announced.',
+      example: `<LiveRegion>{() => status()}</LiveRegion>\n<LiveRegion politeness="assertive">{() => error()}</LiveRegion>\n<LiveRegion visible>{() => saveState()}</LiveRegion>`,
+      mistakes: [
+        'Reaching for announce() in an effect when the status already lives in your tree — <LiveRegion>{() => status()}</LiveRegion> announces on change with zero wiring. Use announce() for fire-and-forget events with no home in the layout.',
+        'Using `assertive` for routine status — it interrupts the screen reader. Reserve it for errors; default `polite` queues politely.',
+        'Mounting/unmounting the region to "turn it off" — toggle `politeness="off"` instead so the element (and its announce history) stays stable.',
+        'Reading the children eagerly (e.g. `{status()}` without the accessor) — pass `{() => status()}` so the region tracks the signal and re-announces on change.',
       ],
     },
     {
