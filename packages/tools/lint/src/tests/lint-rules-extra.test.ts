@@ -56,6 +56,18 @@ describe('pyreon/no-error-without-prefix (architecture)', () => {
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBeGreaterThan(0)
   })
 
+  it('does NOT fire under an exemptPaths entry (e.g. CLI scaffolders)', () => {
+    const config: LintConfig = {
+      rules: {
+        ...defaultConfig().rules,
+        'pyreon/no-error-without-prefix': ['warn', { exemptPaths: ['packages/zero/create-zero/'] }],
+      },
+    }
+    const code = `function f() { throw new Error("Project name cannot be empty.") }`
+    const result = lintFile('/abs/packages/zero/create-zero/src/args.ts', code, allRules, config)
+    expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
+  })
+
   it('does NOT fire on throws of non-Error values', () => {
     const code = `function f() { throw "string" }`
     const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())

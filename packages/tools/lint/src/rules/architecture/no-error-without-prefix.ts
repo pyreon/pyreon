@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
 
 /**
  * A framework error is "identified" if it starts with `[Pyreon]` OR the
@@ -20,8 +21,13 @@ export const noErrorWithoutPrefix: Rule = {
     description: 'Require error messages to be prefixed with [Pyreon] or [@pyreon/<pkg>].',
     severity: 'warn',
     fixable: true,
+    schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    // Path-based exemptions (e.g. CLI-scaffolder packages whose throws are
+    // user-facing CLI usage/argument errors, not framework runtime errors).
+    if (isPathExempt(context)) return {}
+
     const filePath = context.getFilePath()
     // Skip test files
     if (
