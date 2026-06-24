@@ -85,6 +85,13 @@ export interface StandardSchemaIssue {
  * format helpers handle both shapes.
  */
 export interface PyreonIssue extends StandardSchemaIssue {
+  /**
+   * Machine-readable issue code (`'wrong_type'` / `'invalid_enum'` /
+   * `'custom'` / …). Set by `makeIssue` / `makeCheckIssue` on every
+   * Pyreon-emitted issue; lets consumers branch on the failure kind without
+   * parsing `message`.
+   */
+  readonly code?: string
   /** Translation key for the message — resolved by `formatErrors(issues, t)`. */
   readonly key?: string
   /** Interpolation params for the i18n key (e.g. `{ min: 2 }`). */

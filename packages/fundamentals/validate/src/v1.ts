@@ -36,12 +36,18 @@ import {
   union,
   UnionSchema,
 } from './composition/union'
-import { Schema } from './core/schema'
+import { preprocess, Schema } from './core/schema'
 import {
   any,
   AnySchema,
+  custom,
+  CustomSchema,
+  instanceof_,
+  InstanceofSchema,
   nan,
   NanSchema,
+  never,
+  NeverSchema,
   null_,
   NullSchema,
   symbol,
@@ -57,9 +63,10 @@ import { bigint, BigIntSchema } from './primitives/bigint'
 import { boolean, BooleanSchema } from './primitives/boolean'
 import { coerce } from './primitives/coerce'
 import { date, DateSchema } from './primitives/date'
-import { enum_, EnumSchema, literal, LiteralSchema } from './primitives/literal'
+import { enum_, EnumSchema, literal, LiteralSchema, nativeEnum, NativeEnumSchema } from './primitives/literal'
 import { number, NumberSchema } from './primitives/number'
 import { string, StringSchema } from './primitives/string'
+import { stringbool, StringBoolSchema } from './primitives/stringbool'
 
 // ─── Chainable namespace ───────────────────────────────────────────────
 
@@ -78,12 +85,14 @@ import { string, StringSchema } from './primitives/string'
  */
 export const s = {
   string,
+  stringbool,
   number,
   boolean,
   bigint,
   date,
   literal,
   enum: enum_,
+  nativeEnum,
   symbol,
   nan,
   null: null_,
@@ -91,6 +100,9 @@ export const s = {
   void: void_,
   any,
   unknown,
+  never,
+  custom,
+  instanceof: instanceof_,
   object,
   array,
   union,
@@ -102,30 +114,37 @@ export const s = {
   intersection,
   lazy,
   coerce,
+  preprocess,
 } as const
 
 // ─── Named function-comp exports ───────────────────────────────────────
 
-export { coerce }
-export { any, array, bigint, boolean, date, discriminatedUnion, enum_, intersection, lazy, literal, map, nan, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
+export { coerce, preprocess, stringbool }
+export { type StringBoolOptions } from './primitives/stringbool'
+export { any, array, bigint, boolean, custom, date, discriminatedUnion, enum_, instanceof_, intersection, lazy, literal, map, nan, nativeEnum, never, null_, number, object, record, set, string, symbol, tuple, undefined_, union, unknown, void_ }
 export {
   AnySchema,
   ArraySchema,
   BigIntSchema,
   BooleanSchema,
+  CustomSchema,
   DateSchema,
   DiscriminatedUnionSchema,
   EnumSchema,
+  InstanceofSchema,
   IntersectionSchema,
   LazySchema,
   LiteralSchema,
   MapSchema,
   NanSchema,
+  NativeEnumSchema,
+  NeverSchema,
   NullSchema,
   NumberSchema,
   ObjectSchema,
   RecordSchema,
   SetSchema,
+  StringBoolSchema,
   StringSchema,
   SymbolSchema,
   TupleSchema,
@@ -162,7 +181,7 @@ export function pipe<S extends Schema<unknown>>(schema: S, ...actions: ReadonlyA
 // ─── Type helpers ──────────────────────────────────────────────────────
 
 export { type Infer, type Input, type Output } from './core/infer'
-export { type Result, Schema } from './core/schema'
+export { type Result, Schema, type SuperRefineCtx } from './core/schema'
 export { type PyreonIssue, type StandardSchemaIssue, ValidationError } from './core/issue'
 export { type PendingCheck } from './core/ops'
 

@@ -401,6 +401,41 @@ export abstract class Schema<T> {
   }
 
   /**
+   * Validate with this schema, then feed the (validated, transformed) output
+   * into `target` (Zod's `.pipe`). Useful for `coerce → validate` chains:
+   * `s.coerce.number().pipe(s.number().int())`. Output type is `target`'s.
+   *
+   * @example s.string().transform(Number).pipe(s.number().positive())
+   */
+  pipe<U>(target: Schema<U>): Schema<U> {
+    return new PipeSchema(this, target)
+  }
+
+  /**
+   * Like {@link refine}, but the callback may add ANY number of issues via
+   * `ctx.addIssue` (or none) — for cross-field validation that reports multiple
+   * problems at once (Zod's `.superRefine`). Runs only if this schema passed.
+   *
+   * @example
+   * s.object({ pw: s.string(), confirm: s.string() }).superRefine((v, ctx) => {
+   *   if (v.pw !== v.confirm) ctx.addIssue({ message: 'Mismatch', path: ['confirm'] })
+   * })
+   */
+  superRefine(fn: (value: T, ctx: SuperRefineCtx) => void): Schema<T> {
+    return new SuperRefineSchema(this, fn)
+  }
+
+  /**
+   * Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value,
+   * e.g. after an `.optional()` in a reused base schema.
+   *
+   * @example s.string().optional().nonoptional() // rejects undefined again
+   */
+  nonoptional(message?: string): Schema<Exclude<T, undefined>> {
+    return new NonOptionalSchema(this, message) as unknown as Schema<Exclude<T, undefined>>
+  }
+
+  /**
    * A server-only check, resolved against a registry `key` installed behind
    * `@pyreon/validate/server` (via `registerServerCheck`). The shared schema
    * carries ONLY the `key` + the issue `opts` — never the (heavy / async /
@@ -1021,6 +1056,142 @@ export class TransformSchema<TIn, TOut> extends Schema<TOut> {
       inner as unknown as { _compileType: typeof inner._compileType }
     )._compileType.bind(inner)
   }
+}
+
+/** The `ctx` passed to a `.superRefine` callback — lets it add 0+ issues. */
+export interface SuperRefineCtx {
+  /**
+   * Add an issue. `path` (if given) is appended to the field's current path,
+   * so nested issues land on the right sub-field.
+   */
+  addIssue(issue: {
+    message: string
+    path?: ReadonlyArray<string | number>
+    code?: string
+    key?: string
+    params?: Readonly<Record<string, unknown>>
+    fallback?: string
+  }): void
+}
+
+/**
+ * `.pipe(target)` — validate with `this`, then feed the (validated, transformed)
+ * output into `target`. A wrapper schema: it runs `this` first, short-circuits if
+ * `this` failed, otherwise runs `target`. Async-aware (an async `this` chains into
+ * `target`). No changes to the shared compile pipeline.
+ */
+export class PipeSchema<TOut> extends Schema<TOut> {
+  readonly _kind = 'pipe' as const
+  private readonly source: Schema<unknown>
+  private readonly target: Schema<unknown>
+
+  constructor(source: Schema<unknown>, target: Schema<TOut>) {
+    super()
+    this.source = source
+    this.target = target
+  }
+
+  override _compileType(input: unknown, ctx: ParseCtx): unknown {
+    const before = ctx.issues.length
+    const out = this.source._runInto(input, ctx)
+    const cont = (v: unknown): unknown => (ctx.issues.length > before ? v : this.target._runInto(v, ctx))
+    return out instanceof Promise ? out.then(cont) : cont(out)
+  }
+}
+
+/**
+ * `.superRefine(fn)` — like `.refine`, but the callback receives a ctx and may
+ * push ANY number of issues (or none). Runs only if `this` produced no issues.
+ * Wrapper schema; async-aware.
+ */
+export class SuperRefineSchema<T> extends Schema<T> {
+  readonly _kind = 'super-refine' as const
+  private readonly source: Schema<T>
+  private readonly fn: (value: T, ctx: SuperRefineCtx) => void
+
+  constructor(source: Schema<T>, fn: (value: T, ctx: SuperRefineCtx) => void) {
+    super()
+    this.source = source
+    this.fn = fn
+  }
+
+  override _compileType(input: unknown, ctx: ParseCtx): unknown {
+    const before = ctx.issues.length
+    const out = this.source._runInto(input, ctx)
+    const cont = (v: unknown): unknown => {
+      if (ctx.issues.length === before) {
+        const refineCtx: SuperRefineCtx = {
+          addIssue: (issue) => {
+            const path = issue.path ? [...ctx.path, ...issue.path] : ctx.path.slice()
+            const out2: PyreonIssue = { message: issue.message, path }
+            if (issue.code !== undefined) (out2 as { code?: string }).code = issue.code
+            if (issue.key !== undefined) (out2 as { key?: string }).key = issue.key
+            if (issue.params !== undefined)
+              (out2 as { params?: Readonly<Record<string, unknown>> }).params = issue.params
+            if (issue.fallback !== undefined) (out2 as { fallback?: string }).fallback = issue.fallback
+            ctx.issues.push(out2)
+          },
+        }
+        this.fn(v as T, refineCtx)
+      }
+      return v
+    }
+    return out instanceof Promise ? out.then(cont) : cont(out)
+  }
+}
+
+/**
+ * `s.preprocess(fn, schema)` — transform the raw input BEFORE `schema` validates
+ * it (Zod's `z.preprocess`). For coercion/normalization that must happen before
+ * the type-check. Wrapper schema.
+ */
+export class PreprocessSchema<TOut> extends Schema<TOut> {
+  readonly _kind = 'preprocess' as const
+  private readonly fn: (input: unknown) => unknown
+  private readonly target: Schema<TOut>
+
+  constructor(fn: (input: unknown) => unknown, target: Schema<TOut>) {
+    super()
+    this.fn = fn
+    this.target = target
+  }
+
+  override _compileType(input: unknown, ctx: ParseCtx): unknown {
+    return this.target._runInto(this.fn(input), ctx)
+  }
+}
+
+/**
+ * `.nonoptional(message?)` — reject `undefined` (Zod 4's `.nonoptional`). Wraps a
+ * schema (e.g. an `.optional()` one) and re-requires a present value.
+ */
+export class NonOptionalSchema<T> extends Schema<T> {
+  readonly _kind = 'nonoptional' as const
+  private readonly source: Schema<T>
+  private readonly message: string
+
+  constructor(source: Schema<T>, message?: string) {
+    super()
+    this.source = source
+    this.message = message ?? 'Required'
+  }
+
+  override _compileType(input: unknown, ctx: ParseCtx): unknown {
+    if (input === undefined) {
+      ctx.issues.push({ message: this.message, path: ctx.path.slice() })
+      return input
+    }
+    return this.source._runInto(input, ctx)
+  }
+}
+
+/**
+ * Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`).
+ *
+ * @example s.preprocess((v) => String(v).trim(), s.string().min(1))
+ */
+export function preprocess<TOut>(fn: (input: unknown) => unknown, schema: Schema<TOut>): Schema<TOut> {
+  return new PreprocessSchema(fn, schema)
 }
 
 /**
