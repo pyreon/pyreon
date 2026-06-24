@@ -1,19 +1,19 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "35 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useEle"
+description: "36 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFoc"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 35 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 36 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 35 signal-based hooks across 7 categories
+- 36 signal-based hooks across 7 categories
 - State: useToggle, usePrevious, useLatest, useControllableState
-- DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useElementSize, useWindowResize, useScrollLock, useIntersection, useInfiniteScroll
+- DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useReducedMotion, useThemeValue, useSpacing, useRootSize
 - Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo
 - Interaction: useClipboard, useDialog, useKeyboard, useOnline
@@ -102,6 +102,7 @@ useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client
 | [`useClickOutside`](#useclickoutside) | hook | Fire a callback when the user clicks outside the referenced element. |
 | [`useElementSize`](#useelementsize) | hook | Reactive element size via `ResizeObserver`. |
 | [`useFocusTrap`](#usefocustrap) | hook | Trap Tab/Shift+Tab focus inside the referenced element while `active()` is true. |
+| [`useFocusReturn`](#usefocusreturn) | hook | The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus  |
 | [`useBreakpoint`](#usebreakpoint) | hook | Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes  |
 | [`useDebouncedValue`](#usedebouncedvalue) | hook | Returns a debounced signal that only updates after `delayMs` of source-signal idle. |
 | [`useFetch`](#usefetch) | hook | Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compi |
@@ -234,6 +235,31 @@ useScrollLock(() => isOpen())
 - Using on an element that isn't rendered yet — the ref getter must return the element at the time `active` becomes true; pair with a `<Show>` or reactive accessor that mounts the element first
 
 **See also:** `useScrollLock` · `useDialog` · `useClickOutside`
+
+---
+
+### useFocusReturn `hook`
+
+```ts
+(isOpen: () => boolean, options?: { returnTo?: () => HTMLElement | null }) => void
+```
+
+The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus to it when `isOpen()` flips false — so keyboard / screen-reader users return to where they were when an overlay closes, instead of the top of the page. Pass `returnTo` when the trigger may have unmounted by close time. SSR-safe (no-op on the server), self-cleaning (the watcher is removed on unmount).
+
+**Example**
+
+```tsx
+const open = signal(false)
+useFocusReturn(() => open())               // focus returns to the opener on close
+useFocusTrap(() => dialogRef(), () => open()) // focus is trapped while open
+```
+
+**Common mistakes**
+
+- Passing the open state as a plain boolean instead of a getter — `useFocusReturn(open())` reads it once and never tracks the transition; pass `() => open()`.
+- Expecting it to move focus INTO the overlay on open — that is useFocusTrap / autofocus. useFocusReturn only handles the RETURN on close.
+
+**See also:** `useFocusTrap` · `useScrollLock` · `useDialog`
 
 ---
 

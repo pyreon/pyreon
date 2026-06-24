@@ -2877,6 +2877,16 @@ useScrollLock(() => isOpen())`,
 - Using on an element that isn't rendered yet — the ref getter must return the element at the time \`active\` becomes true; pair with a \`<Show>\` or reactive accessor that mounts the element first`,
   },
 
+  'hooks/useFocusReturn': {
+    signature: '(isOpen: () => boolean, options?: { returnTo?: () => HTMLElement | null }) => void',
+    example: `const open = signal(false)
+useFocusReturn(() => open())               // focus returns to the opener on close
+useFocusTrap(() => dialogRef(), () => open()) // focus is trapped while open`,
+    notes: 'The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus to it when `isOpen()` flips false — so keyboard / screen-reader users return to where they were when an overlay closes, instead of the top of the page. Pass `returnTo` when the trigger may have unmounted by close time. SSR-safe (no-op on the server), self-cleaning (the watcher is removed on unmount). See also: useFocusTrap, useScrollLock, useDialog.',
+    mistakes: `- Passing the open state as a plain boolean instead of a getter — \`useFocusReturn(open())\` reads it once and never tracks the transition; pass \`() => open()\`.
+- Expecting it to move focus INTO the overlay on open — that is useFocusTrap / autofocus. useFocusReturn only handles the RETURN on close.`,
+  },
+
   'hooks/useBreakpoint': {
     signature: '() => Signal<{ xs: boolean; sm: boolean; md: boolean; lg: boolean; xl: boolean }>',
     example: `const bp = useBreakpoint()

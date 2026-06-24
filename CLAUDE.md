@@ -250,7 +250,7 @@ Bun-run cross-library micro-benchmarks, separate from the browser DOM suite abov
 | `@pyreon/feature`     | Schema-driven CRUD primitives — auto-generated queries, forms, tables, stores                                                                        |
 | `@pyreon/charts`      | Reactive ECharts bridge with lazy loading, auto-detection, typed options                                                                             |
 | `@pyreon/storage`     | Reactive client-side storage — localStorage, sessionStorage, cookies, IndexedDB                                                                      |
-| `@pyreon/hooks`       | 35 signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
+| `@pyreon/hooks`       | 36 signal-based hooks (useHover, useFocus, useBreakpoint, useClipboard, useDialog, useTimeAgo, useOnline, useEventListener, useInfiniteScroll, etc.) |
 | `@pyreon/hotkeys`     | Keyboard shortcut management — scope-aware, modifier keys, conflict detection                                                                        |
 | `@pyreon/permissions` | Reactive permissions — RBAC, ABAC, feature flags, subscription tiers                                                                                 |
 | `@pyreon/machine`     | Reactive state machines — constrained signals with type-safe transitions                                                                             |
@@ -685,7 +685,7 @@ Local-first / collaborative sync built on reactivity — a synced value IS a `Si
 
 ### @pyreon/hooks
 
-- 35 signal-based hooks across 7 categories. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: returns `Signal<T>` / `Computed<T>` / accessor objects, never plain values
+- 36 signal-based hooks across 7 categories. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: returns `Signal<T>` / `Computed<T>` / accessor objects, never plain values
 - **State**: `useToggle`, `usePrevious`, `useLatest`, `useControllableState`
 - **DOM**: `useEventListener`, `useClickOutside`, `useFocus`, `useHover`, `useFocusTrap`, `useElementSize`, `useWindowResize`, `useScrollLock`, `useIntersection`, `useInfiniteScroll`
 - **Responsive**: `useBreakpoint` (theme-driven), `useMediaQuery` (raw escape hatch), `useColorScheme`, `useReducedMotion`, `useThemeValue`, `useSpacing`, `useRootSize`
