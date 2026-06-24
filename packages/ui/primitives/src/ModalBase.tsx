@@ -20,6 +20,14 @@ export interface ModalBaseProps {
    * open). Leave it off for general-purpose dialogs.
    */
   alert?: boolean
+  /**
+   * Element to focus when the dialog opens, instead of the first focusable
+   * descendant. Return the element from the getter (e.g. a ref). The canonical
+   * use is an `alert` dialog for a destructive action: focus the SAFE choice
+   * (Cancel) so an accidental Enter doesn't confirm. Falls back to the first
+   * focusable, then the dialog itself, if the getter returns null.
+   */
+  initialFocus?: () => HTMLElement | null
   'aria-labelledby'?: string
   'aria-describedby'?: string
   children?: VNodeChild
@@ -40,6 +48,7 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
     'closeOnEscape',
     'closeOnOverlay',
     'alert',
+    'initialFocus',
     'children',
     'ref',
   ])
@@ -94,8 +103,9 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
           prevFocusEl = document.activeElement as HTMLElement | null
           requestAnimationFrame(() => {
             if (!own.open || !dialogEl) return
+            const requested = own.initialFocus?.() ?? null
             const first = dialogEl.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
-            ;(first ?? dialogEl).focus?.()
+            ;(requested ?? first ?? dialogEl).focus?.()
           })
         }
       } else {

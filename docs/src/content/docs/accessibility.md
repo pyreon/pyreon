@@ -114,7 +114,7 @@ A modal that doesn't trap focus lets keyboard and screen-reader users tab out to
 
 No wiring required — open a modal and focus is managed correctly.
 
-For a modal that interrupts with an urgent, response-requiring message (a confirmation, a destructive-action warning, an error), pass `alert` to `ModalBase` — it switches `role="dialog"` to `role="alertdialog"`, which screen readers announce more assertively. General dialogs leave it off.
+For a modal that interrupts with an urgent, response-requiring message (a confirmation, a destructive-action warning, an error), pass `alert` to `ModalBase` — it switches `role="dialog"` to `role="alertdialog"`, which screen readers announce more assertively. General dialogs leave it off. Pair it with `initialFocus={() => cancelRef()}` so focus lands on the **safe** choice (Cancel) on open — an accidental Enter then can't confirm the destructive action. By default the dialog focuses its first focusable descendant.
 
 ## Keyboard navigation — built into the primitives
 
