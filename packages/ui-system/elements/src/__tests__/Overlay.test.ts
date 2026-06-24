@@ -429,7 +429,7 @@ describe('Overlay component', () => {
       expect(triggerVNode.props['aria-haspopup']).toBe('dialog')
     })
 
-    it('passes aria-haspopup=true for tooltip type', () => {
+    it('omits aria-haspopup for tooltip type, associating via aria-describedby instead', () => {
       const TriggerComp: ComponentFn = (_props: any) => h('button', null, 'T')
 
       const result = asVNode(
@@ -440,7 +440,11 @@ describe('Overlay component', () => {
         }),
       )
       const triggerVNode = asVNode(result.children[0])
-      expect(triggerVNode.props['aria-haspopup']).toBe('true')
+      // WAI-ARIA Tooltip pattern: a tooltip is a description, not an
+      // interactive popup — the trigger uses aria-describedby (the correct
+      // mechanism), NOT aria-haspopup (menu/listbox/dialog popups only).
+      expect(triggerVNode.props['aria-haspopup']).toBeUndefined()
+      expect(triggerVNode.props['aria-describedby']).toBeTruthy()
     })
 
     it('passes ref via triggerRefName prop', () => {
