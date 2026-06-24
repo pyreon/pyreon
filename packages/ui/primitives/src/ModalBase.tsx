@@ -12,6 +12,14 @@ export interface ModalBaseProps {
   onClose?: () => void
   closeOnEscape?: boolean
   closeOnOverlay?: boolean
+  /**
+   * Use `role="alertdialog"` instead of `role="dialog"`. Set this for modals
+   * that interrupt the user with an urgent message requiring a response —
+   * confirmations, destructive-action warnings, errors. Screen readers treat an
+   * alertdialog more assertively (its content/label is announced immediately on
+   * open). Leave it off for general-purpose dialogs.
+   */
+  alert?: boolean
   'aria-labelledby'?: string
   'aria-describedby'?: string
   children?: VNodeChild
@@ -31,6 +39,7 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
     'onClose',
     'closeOnEscape',
     'closeOnOverlay',
+    'alert',
     'children',
     'ref',
   ])
@@ -113,7 +122,7 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
           tabIndex={-1}
           {...(rest as Record<string, unknown>)}
           ref={dialogRef}
-          role="dialog"
+          role={own.alert ? 'alertdialog' : 'dialog'}
           aria-modal="true"
           onClick={handleOverlayClick}
         >
