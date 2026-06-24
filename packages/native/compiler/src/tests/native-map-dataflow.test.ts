@@ -207,3 +207,74 @@ function App() {
     },
   )
 })
+
+// `.find(pred)` returns `T | undefined` in JS, and BOTH targets' equivalents
+// (`Array.first(where:)` in Swift, `List.find` in Kotlin) return Optional.
+// `inferType` annotated the result the bare element type `T`, so a computed
+// bound to a `.find` got `private var x: Todo` while the emitted value
+// (`todos.first(where:)`) is `Todo?` → swiftc "cannot convert 'Todo?' to
+// 'Todo'". Now it infers `T | undefined` → `Todo?` / `Todo?` per target,
+// matching the real return. The swiftc-typecheck case below is the
+// bisect-load-bearing one — the old bare-`T` annotation FAILS swiftc.
+describe('.find returns Optional (element | undefined)', () => {
+  const todoApp = (body: string) =>
+    `import { Stack, Text } from '@pyreon/primitives'
+type Todo = { id: number; text: string }
+function App() {
+  const todos = signal<Todo[]>([])
+${body}
+  return (<Stack><Text>x</Text></Stack>)
+}`
+
+  it('Swift: a .find result is annotated Optional (Todo?), not bare Todo', () => {
+    const out = transform(
+      todoApp(`  const found = computed(() => todos().find(t => t.id === 1))`),
+      { target: 'swift' },
+    ).code
+    expect(out).toContain('private var found: Todo?')
+    expect(out).not.toContain('private var found: Todo {')
+    expect(out).not.toContain('[Any]')
+  })
+
+  it('Kotlin: a .find result does not collapse to Any (type flows from List.find)', () => {
+    const out = transform(
+      todoApp(`  const found = computed(() => todos().find(t => t.id === 1))`),
+      { target: 'kotlin' },
+    ).code
+    expect(out).toContain('todos.find(')
+    expect(out).not.toContain(': Any')
+  })
+
+  it.skipIf(!isSwiftcAvailable())('Swift: a .find computed parses via swiftc', () => {
+    const out = transform(
+      todoApp(`  const found = computed(() => todos().find(t => t.id === 1))`),
+      { target: 'swift' },
+    ).code
+    const res = validateSwift(out)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isSwiftUIAvailable())(
+    'Swift: a .find computed TYPECHECKS against real SwiftUI (was: Todo?-vs-Todo mismatch)',
+    () => {
+      // The exact failing shape: `var found: Todo` annotated over a
+      // `todos.first(where:)` value of type `Todo?`. With the Optional
+      // inference the annotation is `Todo?` and swiftc accepts it.
+      const out = transform(
+        todoApp(`  const found = computed(() => todos().find(t => t.id === 1))`),
+        { target: 'swift' },
+      ).code
+      const res = validateSwiftTypecheck(out)
+      expect(res.ok, res.error ?? '').toBe(true)
+    },
+  )
+
+  it.skipIf(!isKotlincAvailable())('Kotlin: a .find computed typechecks via kotlinc', () => {
+    const out = transform(
+      todoApp(`  const found = computed(() => todos().find(t => t.id === 1))`),
+      { target: 'kotlin' },
+    ).code
+    const res = validateKotlin(out)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+})

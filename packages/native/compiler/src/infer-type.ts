@@ -377,7 +377,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             case 'includes':
               return { kind: 'boolean' }
             case 'find':
-              return objType.element
+              // JS `.find` returns `T | undefined` — Swift `.first(where:)`
+              // and Kotlin `.find` BOTH return Optional. Annotating the
+              // result `T` (non-optional) made `private var x: Item` while
+              // the value is `Item?` → swiftc "cannot convert 'Item?' to
+              // 'Item'". The nullable union maps to `Item?` / `Item?` via
+              // swiftUnionType / kotlinUnionType, matching the real return.
+              return { kind: 'union', branches: [objType.element, { kind: 'undefined' }] }
             case 'indexOf':
             case 'findIndex':
               return { kind: 'number' }
