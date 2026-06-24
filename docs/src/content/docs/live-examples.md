@@ -3,8 +3,6 @@ title: Live Examples
 description: Mount real .tsx files inline in your docs as live Pyreon components, with optional shared signal state across examples on the same page.
 ---
 
-# Live Examples
-
 The `<Example>` primitive (from `@pyreon/zero-content`) mounts **real `.tsx` files inline as live Pyreon components** — and two examples on the same page can share signal state. Any Pyreon-powered docs site can use it.
 
 ## A single example
