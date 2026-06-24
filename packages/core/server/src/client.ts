@@ -325,16 +325,35 @@ export interface AutoIslandRegistry {
  * import * as registry from 'virtual:pyreon/islands-registry'
  * hydrateIslandsAuto(registry)
  */
-export function hydrateIslandsAuto(registry: AutoIslandRegistry): () => void {
+export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
   /* v8 ignore next */
   if (isServer) return () => {}
-  if (!registry.__pyreonIslandsEnabled) {
-    throw new Error(
-      `[Pyreon] hydrateIslandsAuto() requires \`pyreon({ islands: true })\` ` +
-        `in vite.config.ts (the default). The plugin emitted a stub registry ` +
-        `because islands support was explicitly disabled. Either re-enable ` +
-        `islands in the plugin, or use the manual hydrateIslands({ ... }) form.`,
-    )
+  // When there is nothing to auto-hydrate — a missing / malformed registry
+  // (the usual culprit: `hydrateIslandsAuto()` called with no argument, or a
+  // DEFAULT import of the virtual module which has no default export → its
+  // value is `undefined`), OR a registry from `pyreon({ islands: false })` —
+  // warn in DEV and no-op. We deliberately do NOT throw: an uncaught exception
+  // at page boot pollutes the console + error-tracking (Sentry, etc.) on every
+  // view, even though hydration is not actually blocked. Reading
+  // `.__pyreonIslandsEnabled` off `undefined`/`null` is also what produced the
+  // cryptic "Cannot read properties of undefined" crash this guards against.
+  const missing = registry == null || typeof registry !== 'object'
+  if (missing || !registry.__pyreonIslandsEnabled) {
+    if (process.env.NODE_ENV !== 'production') {
+      const why = missing
+        ? `was called without the islands registry (received ${registry === undefined ? 'undefined' : registry === null ? 'null' : typeof registry})`
+        : 'received a stub registry from `pyreon({ islands: false })`'
+      console.warn(
+        `[Pyreon] hydrateIslandsAuto() ${why}, so it did nothing. ` +
+          `In a @pyreon/zero app you do NOT need to call it — islands declared ` +
+          `via \`import { island } from '@pyreon/zero'\` self-hydrate on mount, ` +
+          `so \`startClient({ routes })\` alone is enough; remove the ` +
+          `hydrateIslandsAuto() call. In a bare @pyreon/vite-plugin app, enable ` +
+          `\`pyreon({ islands: true })\` and pass the registry as a NAMESPACE: ` +
+          `\`import * as registry from 'virtual:pyreon/islands-registry'; hydrateIslandsAuto(registry)\`.`,
+      )
+    }
+    return () => {}
   }
   return hydrateIslands(registry.__pyreonIslandRegistry)
 }
