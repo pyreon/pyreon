@@ -80,7 +80,11 @@ const Component: PyreonComponent<Props> = (props) => {
       case 'modal':
         return 'dialog' as const
       case 'tooltip':
-        return 'true' as const
+        // A tooltip is a DESCRIPTION, not an interactive popup — the trigger
+        // associates with it via aria-describedby (below), NOT aria-haspopup
+        // (which is for menu/listbox/tree/grid/dialog popups). Omit it per the
+        // WAI-ARIA Tooltip pattern; emitting both would be contradictory.
+        return undefined
       default:
         return 'menu' as const
     }
