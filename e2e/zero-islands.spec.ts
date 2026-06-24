@@ -29,6 +29,42 @@ test.describe('islands in @pyreon/zero (self-hydrating)', () => {
     }).toPass({ timeout: 15_000 })
   })
 
+  test('each click increments the island signal by exactly 1 (no +2 double-fire)', async ({
+    page,
+  }) => {
+    // Regression for the v0.35.0 islands "+2 per click" bug: the island
+    // self-hydrates via hydrateRoot(islandMarker), installing a delegation root
+    // INSIDE the app's mount root, so a click on the island's button was walked
+    // by BOTH roots → the handler fired twice. The specs above assert only
+    // `[1-9]` (any non-zero), which a +2 double-fire passes; this asserts the
+    // per-click DELTA is exactly 1.
+    await page.goto('/island-demo')
+    const probe = page.getByTestId('island-probe')
+    await expect(probe).toBeVisible()
+    await probe.scrollIntoViewIfNeeded()
+
+    const read = async (): Promise<number> => {
+      const t = (await probe.textContent()) ?? ''
+      const m = t.match(/island clicks: (\d+)/)
+      return m ? Number(m[1]) : Number.NaN
+    }
+
+    // Warm up past the hydration race: retry-click until the count moves off 0,
+    // confirming the handler is attached (pre-hydration clicks are no-ops).
+    await expect(async () => {
+      await probe.click()
+      expect(await read()).toBeGreaterThan(0)
+    }).toPass({ timeout: 15_000 })
+
+    // Hydrated now. Three DETERMINISTIC clicks must add exactly 3 — a +2
+    // double-fire (overlapping app-root + island delegation roots) adds 6.
+    const before = await read()
+    await probe.click()
+    await probe.click()
+    await probe.click()
+    expect(await read()).toBe(before + 3)
+  })
+
   test('hydration produces no console / page errors', async ({ page }) => {
     const errors: string[] = []
     page.on('console', (m) => {
