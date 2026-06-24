@@ -2,6 +2,8 @@
   "$schema": "./packages/tools/lint/schema/pyreonlintrc.schema.json",
   "preset": "recommended",
   "rules": {
+    "pyreon/no-and-conditional": "off",
+    "pyreon/no-map-in-jsx": "off",
     "pyreon/no-window-in-ssr": [
       "error",
       {
