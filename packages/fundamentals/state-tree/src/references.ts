@@ -102,6 +102,7 @@ export interface ReferenceField<T> {
 /** Read a node's identifier value (via its definition's `_identifierKey`). */
 function readIdentifierOf(node: object, idKey: string): unknown {
   const sig = (node as Record<string, { peek?: () => unknown }>)[idKey]
+  /* v8 ignore next -- defensive: an identifier field is always a peek-able signal */
   return typeof sig?.peek === 'function' ? sig.peek() : undefined
 }
 
@@ -137,11 +138,13 @@ function walkInstances(root: object, visit: (node: object) => boolean | void): v
     seen.add(node)
     if (visit(node) === true) return // visitor signalled "found — stop"
     const meta = instanceMeta.get(node)
+    /* v8 ignore next -- defensive: collectInstances only pushes isModelInstance nodes, which always have meta */
     if (!meta) continue
     const refKeys = meta.referenceKeys
     for (const key of meta.stateKeys) {
       if (refKeys?.has(key)) continue // don't walk into references (they don't own the target)
       const sig = (node as Record<string, { peek?: () => unknown }>)[key]
+      /* v8 ignore next -- defensive: a state field is always a peek-able signal */
       collectInstances(typeof sig?.peek === 'function' ? sig.peek() : undefined, stack)
     }
   }
@@ -194,6 +197,7 @@ export function buildReferenceField(
   // Normalize the initial value (a target node OR a raw id) to an id at
   // construction — so `createInstance` never calls the public `.set` to seed it.
   const initialId =
+    /* v8 ignore next 2 -- the public create-input type for a reference is id-only, so a node-valued initial is type-unreachable; the .set(node) normalization path is covered separately */
     isModelInstance(initialValue) && idKey
       ? readIdentifierOf(initialValue as object, idKey)
       : (initialValue ?? null)

@@ -84,11 +84,13 @@ export function clone<T extends object>(instance: T): T {
   const meta = instanceMeta.get(instance)
   if (!meta) throw new Error('[Pyreon] state-tree clone: not a model instance')
   const def = meta.definition as { create(initial?: unknown): unknown } | undefined
+  /* v8 ignore start -- defensive: instances created via ModelDefinition.create() always carry a definition back-ref */
   if (!def || typeof def.create !== 'function') {
     throw new Error(
       '[Pyreon] state-tree clone: instance has no definition back-reference. ' +
         'clone works on instances created via ModelDefinition.create().',
     )
   }
+  /* v8 ignore stop */
   return def.create(getSnapshot(instance)) as T
 }
