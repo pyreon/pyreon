@@ -509,6 +509,14 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         // `.length` and `.at()` etc. — minimal coverage for now.
         if (expr.property === 'length') return { kind: 'number' }
       }
+      // `s.length` on a string → number (Swift `.count`). Without this,
+      // `words().map(w => w.length)` over a `string[]` inferred the element as
+      // `unknown` → the map result became `[Any]`, which `swiftc -typecheck`
+      // rejects the moment it's consumed (`.reduce`, indexing, …). The `array`
+      // case above already covered array `.length`; strings were the gap.
+      if (objType.kind === 'string' && expr.property === 'length') {
+        return { kind: 'number' }
+      }
       return { kind: 'unknown' }
     }
     case 'template':
