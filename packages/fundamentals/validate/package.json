@@ -48,7 +48,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "bench:validation": "bun bench/validation.ts",
-    "bench:behavior": "bun bench/behavior.ts"
+    "bench:behavior": "bun bench/behavior.ts",
+    "bench:compiled-verdict": "NODE_ENV=production bun bench/compiled-verdict.ts"
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",
