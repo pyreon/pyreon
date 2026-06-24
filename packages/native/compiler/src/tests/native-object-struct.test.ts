@@ -14,7 +14,14 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { isSwiftcAvailable, isKotlincAvailable, validateSwift, validateKotlin } from '../validate'
+import {
+  isSwiftcAvailable,
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateSwift,
+  validateSwiftTypecheck,
+  validateKotlin,
+} from '../validate'
 
 const app = (decls: string) =>
   `import { Stack, Text } from '@pyreon/primitives'
@@ -129,4 +136,60 @@ function App() {
     const res = validateKotlin(out)
     expect(res.ok, res.error ?? '').toBe(true)
   })
+})
+
+// An INLINE anonymous object TYPE in a signal generic — `signal<{ price:
+// number }[]>` — must synthesize a struct, same as a named `type Item`.
+// Without synth, swiftType degraded: a single-field object can't form a
+// 1-element labeled tuple, so it fell back to the bare field type
+// (`@State var items: [Int]`) → `item.price` failed `swiftc -typecheck`
+// (`Int has no member 'price'`). Now signal-decl types are pre-walked
+// through the synth ctx (like props already were), so both single- AND
+// multi-field inline object arrays synthesize a struct.
+describe('inline object-array TYPE annotation → synthesized struct (Swift)', () => {
+  it('single-field signal<{ price }[]> synthesizes a struct, NOT [Int]', () => {
+    const out = transform(
+      app(`  const items = signal<{ price: number }[]>([])`),
+      { target: 'swift' },
+    ).code
+    expect(out).toMatch(/struct \w+: Codable \{[\s\S]*var price: Int/)
+    expect(out).toMatch(/@State private var items: \[\w+\] =/)
+    expect(out).not.toContain('var items: [Int]')
+  })
+
+  it('multi-field signal<{ id; label }[]> synthesizes a struct, NOT a labeled tuple', () => {
+    const out = transform(
+      app(`  const rows = signal<{ id: number; label: string }[]>([])`),
+      { target: 'swift' },
+    ).code
+    expect(out).toMatch(/@State private var rows: \[\w+\] =/)
+    expect(out).not.toContain('(id: Int, label: String)')
+  })
+
+  it.skipIf(!isSwiftUIAvailable())(
+    'Swift: inline-object-array signal types typecheck against real SwiftUI',
+    () => {
+      // Single-field via a `.length` read + multi-field via a `<For>` keyed
+      // on its `id` — both consume the synthesized struct cleanly.
+      const single = transform(
+        `import { Stack, Text } from '@pyreon/primitives'
+function App() {
+  const items = signal<{ price: number }[]>([])
+  return (<Stack><Text>{String(items().length)}</Text></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      expect(validateSwiftTypecheck(single).ok, validateSwiftTypecheck(single).error ?? '').toBe(true)
+
+      const multi = transform(
+        `import { Stack, Text, For } from '@pyreon/primitives'
+function App() {
+  const rows = signal<{ id: number; label: string }[]>([])
+  return (<Stack><For each={rows()}>{(r) => <Text>{r.label}</Text>}</For></Stack>)
+}`,
+        { target: 'swift' },
+      ).code
+      expect(validateSwiftTypecheck(multi).ok, validateSwiftTypecheck(multi).error ?? '').toBe(true)
+    },
+  )
 })

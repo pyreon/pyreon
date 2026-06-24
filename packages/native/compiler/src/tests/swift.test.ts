@@ -86,8 +86,13 @@ describe('Pyreon → Swift emit', () => {
 
   it('06 — <For> keyed list', () => {
     expect(emit('06-for.tsx')).toMatchInlineSnapshot(`
-      "struct TodoList: View {
-        @State private var items: [(id: Int, label: String)] = []
+      "struct TodoListItem: Codable {
+        var id: Int
+        var label: String
+      }
+
+      struct TodoList: View {
+        @State private var items: [TodoListItem] = []
         var body: some View {
           ForEach(items, id: \\.id) { item in
             Text("\\(item.label)")
