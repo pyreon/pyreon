@@ -29,7 +29,10 @@
         "exemptPaths": [
           "packages/core/runtime-dom/",
           "packages/fundamentals/hooks/",
-          "packages/fundamentals/storage/"
+          "packages/fundamentals/storage/",
+          "packages/core/router/",
+          "packages/tools/devtools/",
+          "packages/internals/perf-harness/"
         ]
       }
     ],
@@ -38,7 +41,8 @@
       {
         "exemptPaths": [
           "packages/core/runtime-dom/",
-          "packages/fundamentals/hooks/"
+          "packages/fundamentals/hooks/",
+          "packages/core/router/"
         ]
       }
     ],
