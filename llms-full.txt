@@ -1846,7 +1846,7 @@ interpolate('Hello, {{name}}!', { name: 'Server' })  // 'Hello, Server!'
 
 ## @pyreon/a11y — Accessibility Primitives
 
-Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.
+Zero-setup accessibility building blocks for Pyreon. `announce(message)` speaks status updates and errors to screen readers via an `aria-live` region that is created lazily on first call — no provider, no component to mount, SSR-safe (no-op on the server). `<VisuallyHidden>` renders content that is invisible on screen but kept in the accessibility tree (unlike `display:none`). `<LiveRegion>` is the declarative complement to `announce()` — a persistent `aria-live` region you place in your tree and drive with a signal, so screen readers announce every content change with zero wiring. `createA11yId(prefix?)` produces stable, SSR-safe ids for ARIA relationship attributes (`aria-labelledby` / `aria-describedby` / `for`). The shared foundation other Pyreon packages build on for out-of-the-box accessibility.
 
 ```typescript
 import { announce, VisuallyHidden, createA11yId } from '@pyreon/a11y'
