@@ -105,8 +105,9 @@ Every interactive headless primitive in `@pyreon/ui-primitives` ships full keybo
 - **Calendar** — Arrow keys move by day / week, Home/End to week edges, PageUp/PageDown by month (Shift = year), with WAI-ARIA grid roving focus.
 - **Color picker** — Arrow keys step the hue / saturation-brightness / alpha sliders, PageUp/Down for large steps, Home/End to min/max.
 - **Tabs**, **Radio group**, **Combobox**, **Tree** — arrow-key navigation between items per their ARIA roles.
+- **File upload** — the drop zone is a real `role="button"` tab stop: Enter/Space (or a click) opens the native file picker, with `aria-label`, `aria-disabled`, and `aria-busy` carried automatically.
 
-Pair the primitive's `getDayProps` / slider props / item props (which already carry `onKeyDown` + roving `tabIndex`) onto your elements and the keyboard model comes with them.
+Pair the primitive's `getDayProps` / slider props / item props / `dropZoneProps` (which already carry `onKeyDown` + `tabIndex` + the right ARIA) onto your elements and the keyboard model comes with them.
 
 ## Multi-platform accessibility
 
