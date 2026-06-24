@@ -364,6 +364,12 @@ object Modifier {
     mergeDescendants: Boolean = false,
     properties: SemanticsPropertyReceiver.() -> Unit,
   ): Modifier = this
+  // P5 a11y — clearAndSetSemantics { } for the accessibilityHidden vocabulary.
+  // Real Compose ships it from androidx.compose.ui.semantics with a single
+  // SemanticsPropertyReceiver.() -> Unit block (no mergeDescendants param).
+  // Mirrors the real signature EXACTLY (not a superset).
+  @Suppress("UNUSED_PARAMETER")
+  fun clearAndSetSemantics(properties: SemanticsPropertyReceiver.() -> Unit): Modifier = this
   // PR-3.4 — alpha for KeepAlive visibility-preservation. Real
   // Compose ships it from androidx.compose.ui.draw; same call shape.
   @Suppress("UNUSED_PARAMETER")

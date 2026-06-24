@@ -3262,20 +3262,26 @@ function emitKotlinLayoutModifier(
     parts.push(`.testTag(${JSON.stringify(testid)})`)
   }
   // Cross-platform a11y vocabulary (`@pyreon/primitives` AccessibilityProps)
-  // → Compose semantics — the Android lowering of the same neutral prop the
-  // web lowers to `aria-label` (`collectPassthroughAttrs`) and iOS to
-  // `.accessibilityLabel`. Sets the TalkBack content description (icon-only
-  // buttons, images). `.semantics { contentDescription = … }` is stable in
-  // the targeted Compose 1.7 BOM.
+  // → Compose semantics — the Android lowering of the same neutral props the
+  // web lowers to `aria-label` / `aria-hidden` (`collectPassthroughAttrs`) and
+  // iOS to `.accessibilityLabel` / `.accessibilityHidden`.
   //
-  // Only `accessibilityLabel` lowers here. `accessibilityHidden` is a tracked
-  // follow-up: its Compose API is version-sensitive — `invisibleToUser()` is
-  // `@ExperimentalComposeUiApi` in 1.7 (would need a file `@OptIn`) and
-  // `hideFromAccessibility()` only lands in 1.8 — so emitting it cleanly needs
-  // a deliberate opt-in / BOM-bump decision, not a silent default.
+  // `accessibilityLabel` → `.semantics { contentDescription = … }` (TalkBack
+  // content description — icon-only buttons, images).
   const a11yLabel = readStaticAttrKotlin(e, 'accessibilityLabel')
   if (typeof a11yLabel === 'string') {
     parts.push(`.semantics { contentDescription = ${JSON.stringify(a11yLabel)} }`)
+  }
+  // `accessibilityHidden` → `.clearAndSetSemantics { }` — clears this node + its
+  // descendants from the semantics (accessibility) tree, so TalkBack skips the
+  // decorative element + its subtree (matching `aria-hidden` / iOS
+  // `.accessibilityHidden`). `clearAndSetSemantics` is STABLE in the targeted
+  // Compose 1.7 BOM — chosen deliberately over `invisibleToUser()`
+  // (`@ExperimentalComposeUiApi` in 1.7, would need a file `@OptIn`) and
+  // `hideFromAccessibility()` (only lands in 1.8). Emitted LAST so a
+  // contradictory label+hidden combo resolves to hidden (parity with web/iOS).
+  if (readStaticAttrKotlin(e, 'accessibilityHidden') === true) {
+    parts.push('.clearAndSetSemantics { }')
   }
   if (parts.length === 0) return ''
   return `Modifier${parts.join('')}`

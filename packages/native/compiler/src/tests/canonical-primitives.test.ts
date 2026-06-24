@@ -1997,21 +1997,30 @@ describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Andro
     expect(out).toContain('.semantics { contentDescription = "Add to cart" }')
   })
 
-  it('Kotlin: accessibilityHidden is NOT yet lowered (version-sensitive, deferred)', () => {
+  it('Kotlin: accessibilityHidden → .clearAndSetSemantics { } (stable in Compose 1.7; not the experimental invisibleToUser)', () => {
     const out = tx(`<Stack accessibilityHidden><Text>deco</Text></Stack>`, 'kotlin')
-    expect(out).not.toContain('.semantics')
+    expect(out).toContain('.clearAndSetSemantics { }')
     expect(out).not.toContain('invisibleToUser')
     expect(out).not.toContain('hideFromAccessibility')
   })
 
-  it('Kotlin: accessibilityLabel emits semantics even alongside accessibilityHidden (label half ships)', () => {
+  it('Kotlin: accessibilityLabel + accessibilityHidden → both emit, clearAndSetSemantics LAST (hidden wins)', () => {
     const out = tx(`<Stack accessibilityLabel="Cart" accessibilityHidden><Text>x</Text></Stack>`, 'kotlin')
     expect(out).toContain('.semantics { contentDescription = "Cart" }')
+    expect(out).toContain('.clearAndSetSemantics { }')
+    // clearAndSetSemantics is emitted AFTER semantics so it clears the label (hidden wins, parity with web/iOS)
+    expect(out.indexOf('.clearAndSetSemantics { }')).toBeGreaterThan(out.indexOf('.semantics { contentDescription'))
   })
 
-  it('Kotlin: no a11y props → no .semantics modifier (unchanged emit)', () => {
+  it('Kotlin: accessibilityHidden={false} emits no .clearAndSetSemantics', () => {
+    const out = tx(`<Stack accessibilityHidden={false}><Text>x</Text></Stack>`, 'kotlin')
+    expect(out).not.toContain('.clearAndSetSemantics')
+  })
+
+  it('Kotlin: no a11y props → no .semantics / .clearAndSetSemantics (unchanged emit)', () => {
     const out = tx(`<Stack><Text>x</Text></Stack>`, 'kotlin')
     expect(out).not.toContain('.semantics')
+    expect(out).not.toContain('.clearAndSetSemantics')
   })
 })
 
@@ -2026,6 +2035,16 @@ describe.skipIf(skipKotlincCondition)(
       }
       expect(result.ok).toBe(true)
       expect(out).toContain('contentDescription = "Close menu"')
+    })
+
+    it('clearAndSetSemantics { } compiles (stub mirrors real Compose surface)', () => {
+      const out = tx(`<Stack accessibilityHidden><Text>hi</Text></Stack>`, 'kotlin')
+      const result = validateKotlin(out)
+      if (!result.ok) {
+        throw new Error(`a11y clearAndSetSemantics failed kotlinc:\n${result.error}\n\n--- emit ---\n${out}\n--- end ---`)
+      }
+      expect(result.ok).toBe(true)
+      expect(out).toContain('.clearAndSetSemantics { }')
     })
   },
 )

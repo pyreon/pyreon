@@ -174,6 +174,13 @@ function conditionalKotlinImports(emitted: string): string {
     imports.push('import androidx.compose.ui.semantics.semantics')
     imports.push('import androidx.compose.ui.semantics.contentDescription')
   }
+  // A11y emit (<… accessibilityHidden>): clearAndSetSemantics also lives in the
+  // androidx.compose.ui.semantics sub-package (single-package star import
+  // doesn't cover it). Same stub-masked class — the conditional import keeps
+  // the real gradle build resolvable.
+  if (emitted.includes('.clearAndSetSemantics {')) {
+    imports.push('import androidx.compose.ui.semantics.clearAndSetSemantics')
+  }
   // Scroll emit (<Scroll>): verticalScroll/horizontalScroll/
   // rememberScrollState live in the ROOT androidx.compose.foundation
   // package — NOT covered by the star-imported foundation.layout/.lazy/
