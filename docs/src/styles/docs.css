@@ -414,6 +414,14 @@ html { scroll-behavior: smooth; }
   border-radius: 3px;
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
+/* The badge is ALWAYS rendered so the compiled template keeps a stable ref
+   for the sibling `.api-name` (see APICard.tsx STRUCTURE NOTE — a conditional
+   badge compiled to a `_mountSlot` that corrupted the name's text-node ref on
+   fresh mount → every API card threw during setup). When there's no `type`
+   it carries `--empty`; hide it so a typeless card shows no empty badge box. */
+.api-badge--empty {
+  display: none;
+}
 .api-name {
   font-size: 0.875rem;
   font-weight: 600;
