@@ -98,6 +98,8 @@ A modal that doesn't trap focus lets keyboard and screen-reader users tab out to
 
 No wiring required — open a modal and focus is managed correctly.
 
+For a modal that interrupts with an urgent, response-requiring message (a confirmation, a destructive-action warning, an error), pass `alert` to `ModalBase` — it switches `role="dialog"` to `role="alertdialog"`, which screen readers announce more assertively. General dialogs leave it off.
+
 ## Keyboard navigation — built into the primitives
 
 Every interactive headless primitive in `@pyreon/ui-primitives` ships full keyboard support, so a keyboard user can operate it the moment you render it:
