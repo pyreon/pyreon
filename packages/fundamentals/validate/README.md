@@ -140,24 +140,35 @@ const cfg = s.object({ port: s.number() }).readonly().parse({ port: 80 })
 // cfg.value is Readonly<{ port: number }> and frozen
 ```
 
-## Tree-shaking — `@pyreon/validate/mini`
+## Tree-shaking — keep chaining, let the compiler do it
 
-The chainable `s.` API is the most ergonomic, but it can't tree-shake its checks: `s.string()` carries every format method on its prototype, so any schema pulls all 17 string-format regexes. When bundle size matters, import from **`@pyreon/validate/mini`** — lean base constructors + standalone check **actions** that prune to exactly what you import (Zod-mini / Valibot shape):
+The chainable `s.` API can't tree-shake its checks (`s.string()` carries every format method on its prototype, so any schema pulls all 17 string-format regexes — chaining fundamentally requires the methods to exist). So the win comes from a **build-time rewrite, not a second API to learn**: opt into
 
 ```ts
-import { object, string, number, email, minLength, minValue, integer } from '@pyreon/validate/mini'
-
-const User = object({
-  name: string().check(minLength(2)),        // .check() reads like chaining…
-  email: string().check(email()),
-  age: number().check(integer(), minValue(0)),
-})
-
-import { pipe } from '@pyreon/validate/mini' // …or point-free:
-const name = pipe(string(), minLength(2))
+// vite.config.ts
+pyreon({ optimizeValidators: true })
 ```
 
-Mini schemas are Standard Schema-native (same DX helpers) and produce **byte-identical** verdicts + issues to the chainable form (parity-locked). Measured win (Vite/Rollup, published bundle): a typical 3-field schema drops **~11 KB → ~6.5 KB gz (−41%)**.
+and **keep writing the beautiful chainable API**:
+
+```ts
+import { s } from '@pyreon/validate'
+
+export const User = s.object({
+  name: s.string().min(2),
+  email: s.string().email(),
+  age: s.number().int().min(0),
+})
+```
+
+At build time the compiler rewrites each statically-analyzable `const X = s.<chain>` into a lean, tree-shakeable form that imports only the checks it uses — so the bundle prunes the rest. **Verdict-for-verdict identical** to the runtime (parity-locked end to end). Measured (Vite/Rollup, published bundle): a 3-field schema drops **~11 KB → ~6.5 KB gz (−41%)**. Conservative: a dynamically-built schema (in a function, conditionally, non-literal arg) or a `.tsx` schema gracefully stays full-runtime.
+
+Under the hood the rewrite lowers to **`@pyreon/validate/mini`** — lean constructors + standalone `.check()` actions. That's the compiler's emit target, not the headline API, but it's importable directly as an escape hatch for dynamic schemas / non-Vite bundlers:
+
+```ts
+import { object, string, minLength, email, pipe } from '@pyreon/validate/mini'
+const Login = object({ name: string().check(minLength(2)), email: string().check(email()) })
+```
 
 ## Why mutate-in-place?
 
