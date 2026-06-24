@@ -433,7 +433,17 @@ function emitNumberChecks(checks: NumberCheck[], v: string, path: string): strin
 }
 
 /** Emit the issue-collecting statements for `node` over `v` (an expr) at `path` (an array expr). */
-function emitNode(node: ValidateNode, v: string, path: string): string {
+// `depth` = the number of ENCLOSING array loops. Each `array` node names its
+// loop vars `__i<depth>` / `__e<depth>` so a NESTED array never shadows its
+// ancestor's loop var. Without this, two arrays on one root-to-leaf path both
+// emitted `__i`/`__e`, and the inner `const __e = __e[__i]` self-referenced the
+// outer `__e` in the inner block scope → `Cannot access '__e' before
+// initialization` (TDZ) thrown for EVERY input. Under `compileValidators`
+// (vite-plugin) that throw is swallowed by the verdict try/catch → `.is()`
+// silently returned `false` for valid data. Sibling arrays at the same depth
+// (`s.object({ a: s.array(…), b: s.array(…) })`) live in separate `for` block
+// scopes, so reusing the same name there is correct — only nesting collides.
+function emitNode(node: ValidateNode, v: string, path: string, depth = 0): string {
   switch (node.kind) {
     case 'string': {
       const checks = emitStringChecks(node.checks, v, path)
@@ -448,17 +458,19 @@ function emitNode(node: ValidateNode, v: string, path: string): string {
     case 'literal':
       return `if (${v} !== ${JSON.stringify(node.value)}) issues.push({ path: ${path}, message: ${JSON.stringify(`Expected ${JSON.stringify(node.value)}`)} })`
     case 'optional':
-      return `if (${v} !== undefined) {\n${emitNode(node.inner, v, path)}\n}`
+      return `if (${v} !== undefined) {\n${emitNode(node.inner, v, path, depth)}\n}`
     case 'array': {
-      const elemPath = `[...${path}, __i]`
-      return `if (!Array.isArray(${v})) { issues.push({ path: ${path}, message: "Expected array" }) } else { for (let __i = 0; __i < ${v}.length; __i++) { const __e = ${v}[__i];\n${emitNode(node.element, '__e', elemPath)}\n} }`
+      const i = `__i${depth}`
+      const e = `__e${depth}`
+      const elemPath = `[...${path}, ${i}]`
+      return `if (!Array.isArray(${v})) { issues.push({ path: ${path}, message: "Expected array" }) } else { for (let ${i} = 0; ${i} < ${v}.length; ${i}++) { const ${e} = ${v}[${i}];\n${emitNode(node.element, e, elemPath, depth + 1)}\n} }`
     }
     case 'object': {
       const fieldStmts = node.fields
         .map((f) => {
           const fv = `${v}[${JSON.stringify(f.key)}]`
           const fpath = `[...${path}, ${JSON.stringify(f.key)}]`
-          return emitNode(f.value, fv, fpath)
+          return emitNode(f.value, fv, fpath, depth)
         })
         .join('\n')
       return `if (typeof ${v} !== "object" || ${v} === null || Array.isArray(${v})) { issues.push({ path: ${path}, message: "Expected object" }) } else {\n${fieldStmts}\n}`

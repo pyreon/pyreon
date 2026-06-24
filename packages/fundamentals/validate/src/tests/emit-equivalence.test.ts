@@ -89,6 +89,26 @@ const CORPUS: Array<{ src: string; inputs: unknown[] }> = [
     src: `s.array(s.number().int())`,
     inputs: [[], [1, 2, 3], [1, 2.5], [1, 'x'], 'nope', null, [0, -3, 7]],
   },
+  // Nested arrays — two `array` nodes on one root-to-leaf path. Regression lock
+  // for the emit loop-var collision (`__i`/`__e` reused at every depth → TDZ
+  // `Cannot access '__e' before initialization` → silent false-reject under
+  // `compileValidators`). The pre-fix emit THREW on every input here.
+  {
+    src: `s.array(s.array(s.number().int()))`,
+    inputs: [[[1, 2], [3]], [[1, 2.5]], [], [[]], [[1], 'x'], [1, 2], null],
+  },
+  {
+    src: `s.array(s.array(s.array(s.string())))`,
+    inputs: [[[['a']], [['b', 'c']]], [[['a'], [1]]], [], [[[]]]],
+  },
+  {
+    src: `s.object({ rows: s.array(s.array(s.number())) })`,
+    inputs: [{ rows: [[1], [2, 3]] }, { rows: [[1, 'x']] }, { rows: 5 }, {}],
+  },
+  {
+    src: `s.array(s.object({ inner: s.array(s.number()) }))`,
+    inputs: [[{ inner: [1] }, { inner: [2, 3] }], [{ inner: 'x' }], [{}], []],
+  },
   {
     src: `s.object({ email: s.string().email(), age: s.number().int().min(18) })`,
     inputs: [
