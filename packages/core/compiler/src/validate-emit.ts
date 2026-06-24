@@ -82,11 +82,19 @@ export interface ValidateSchemaInfo {
   emittable: boolean
 }
 
-// Regexes mirror `@pyreon/validate`'s `string.ts` so the emitted verdict matches
-// the runtime. Kept as source strings so they inline cleanly into emitted code.
-const EMAIL_SRC = "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
-const URL_SRC = '^https?:\\/\\/[^\\s/$.?#].[^\\s]*$'
-const UUID_SRC = '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+// Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted
+// verdict is byte-identical to the runtime (`email` is the strict standard
+// default — 2+ char TLD, no leading/consecutive dots). Emitted via `reExpr`
+// (`new RegExp(re.source, re.flags)`) so a literal can't drift in transcription.
+const EMAIL_RE =
+  /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
+const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+/** Emit a faithful `new RegExp(...)` call source from a real RegExp. */
+function reExpr(re: RegExp): string {
+  return `new RegExp(${JSON.stringify(re.source)}, ${JSON.stringify(re.flags)})`
+}
 
 // ─── Analysis ────────────────────────────────────────────────────────────────
 
@@ -169,7 +177,7 @@ function applyStringMethod(checks: StringCheck[], seg: ChainSegment): ValidateNo
     case 'uuid':
       checks.push({ kind: 'uuid' })
       return null
-    case 'nonempty':
+    case 'nonEmpty': // runtime method is camelCase `.nonEmpty()`
       checks.push({ kind: 'nonempty' })
       return null
     case 'regex': {
@@ -360,13 +368,13 @@ function emitStringChecks(checks: StringCheck[], v: string, path: string): strin
         lines.push(`if (${v}.length === 0) issues.push({ path: ${path}, message: "Must not be empty" })`)
         break
       case 'email':
-        lines.push(`if (!(${JSON.stringify(EMAIL_SRC)} && new RegExp(${JSON.stringify(EMAIL_SRC)}).test(${v}))) issues.push({ path: ${path}, message: "Invalid email" })`)
+        lines.push(`if (!${reExpr(EMAIL_RE)}.test(${v})) issues.push({ path: ${path}, message: "Invalid email" })`)
         break
       case 'url':
-        lines.push(`if (!new RegExp(${JSON.stringify(URL_SRC)}, "i").test(${v})) issues.push({ path: ${path}, message: "Invalid URL" })`)
+        lines.push(`if (!${reExpr(URL_RE)}.test(${v})) issues.push({ path: ${path}, message: "Invalid URL" })`)
         break
       case 'uuid':
-        lines.push(`if (!new RegExp(${JSON.stringify(UUID_SRC)}, "i").test(${v})) issues.push({ path: ${path}, message: "Invalid UUID" })`)
+        lines.push(`if (!${reExpr(UUID_RE)}.test(${v})) issues.push({ path: ${path}, message: "Invalid UUID" })`)
         break
       case 'regex':
         lines.push(`if (!new RegExp(${JSON.stringify(c.source)}, ${JSON.stringify(c.flags)}).test(${v})) issues.push({ path: ${path}, message: "Invalid format" })`)

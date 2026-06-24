@@ -71,7 +71,8 @@ describe('emitValidator — eval\'d verdicts', () => {
   it('string with email + min', () => {
     const v = compile(ir('s.string().min(3).email()'))
     expect(v('a@b.co')).toHaveLength(0)
-    expect(v('x@y.z').some((i) => i.message === 'Invalid email')).toBe(false) // valid email
+    expect(v('x@y.io').some((i) => i.message === 'Invalid email')).toBe(false) // valid (2+ char TLD)
+    expect(v('x@y.z').some((i) => i.message === 'Invalid email')).toBe(true) // 1-char TLD rejected (strict standard)
     expect(v(42)[0]?.message).toBe('Expected string')
     expect(v('no-at-sign').some((i) => i.message === 'Invalid email')).toBe(true)
     expect(v('a@').some((i) => i.message === 'Invalid email')).toBe(true)
@@ -128,7 +129,7 @@ describe('emitValidator — eval\'d verdicts', () => {
 
   it('nested object + array + optional compose end-to-end', () => {
     const v = compile(
-      ir('s.object({ tags: s.array(s.string().nonempty()), meta: s.object({ n: s.number() }).optional() })'),
+      ir('s.object({ tags: s.array(s.string().nonEmpty()), meta: s.object({ n: s.number() }).optional() })'),
     )
     expect(v({ tags: ['a', 'b'] })).toHaveLength(0)
     expect(v({ tags: ['a', ''], meta: { n: 1 } }).find((i) => i.message === 'Must not be empty')?.path).toEqual([
