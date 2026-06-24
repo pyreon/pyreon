@@ -356,8 +356,20 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (expr.callee.kind === 'member') {
         const objType = inferType(expr.callee.object, ctx)
         const method = expr.callee.property
+        // `.fill(v)` → Array<typeof v>. Handled BEFORE the array-type gate
+        // because the canonical `Array(n).fill(v)` shape has `Array(n)` as
+        // the object, which does NOT infer as an array — so gating on
+        // `objType.kind === 'array'` would miss it (→ `Any`). A generic
+        // `arr.fill(v)` on a real array also lands here with the same result.
+        if (method === 'fill' && expr.args.length === 1) {
+          return { kind: 'array', element: inferType(expr.args[0]!, ctx) }
+        }
         if (objType.kind === 'array') {
           switch (method) {
+            case 'at':
+              // JS `.at(i)` → `T | undefined` (Optional). Mirror find/findLast
+              // so the computed is annotated `T?`, not `Any`.
+              return { kind: 'union', branches: [objType.element, { kind: 'undefined' }] }
             case 'filter':
             case 'concat':
             case 'slice':

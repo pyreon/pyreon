@@ -2146,6 +2146,36 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // binds to the whole concatenation. (Swift mirror: `arr + other`.)
             if (e.args.length === 1) return `(${obj} + ${argExprs[0]!})`
             break
+          case 'fill': {
+            // JS `arr.fill(v)` → Kotlin `List(<n>) { v }` (immutable). The
+            // canonical `Array(n).fill(v)` create-and-fill → count is the
+            // `Array(n)` arg; a generic `arr.fill(v)` fills `arr.size` slots.
+            // (Swift mirror: Array(repeating:count:).)
+            if (e.args.length === 1) {
+              const objExpr = e.callee.object
+              if (
+                objExpr.kind === 'call' &&
+                objExpr.callee.kind === 'identifier' &&
+                objExpr.callee.name === 'Array' &&
+                objExpr.args.length === 1
+              ) {
+                const count = emitKotlinExpr(objExpr.args[0]!, indent)
+                return `List(${count}) { ${argExprs[0]!} }`
+              }
+              return `List(${obj}.size) { ${argExprs[0]!} }`
+            }
+            break
+          }
+          case 'at': {
+            // JS `arr.at(i)` → Optional element with NEGATIVE indices from the
+            // end. Kotlin `getOrNull` is null-safe but not negative-aware, so
+            // resolve the index first. (Swift mirror: indices.contains check.)
+            if (e.args.length === 1) {
+              const i = argExprs[0]!
+              return `${obj}.getOrNull(if ((${i}) < 0) ${obj}.size + (${i}) else (${i}))`
+            }
+            break
+          }
           case 'slice': {
             // JS `arr.slice(start, end?)` / `str.slice(start, end?)`. Kotlin
             // has NO `slice(start, end)` (its `slice` takes a range/indices),
