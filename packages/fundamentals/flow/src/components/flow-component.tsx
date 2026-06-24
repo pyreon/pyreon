@@ -653,6 +653,14 @@ export interface FlowComponentProps {
   edgeTypes?: EdgeTypeMap
   style?: string
   class?: string
+  /**
+   * Accessible name for the flow canvas. The container is a focusable
+   * (`tabindex=0`), keyboard-interactive region, so a screen reader needs a
+   * name to announce on focus — without one it's an unlabeled focus stop.
+   * Rendered as `aria-label` on the `role="group"` container; defaults to
+   * `"Flow diagram"`.
+   */
+  ariaLabel?: string
   children?: VNodeChild
 }
 
@@ -1137,6 +1145,8 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       class={`pyreon-flow ${props.class ?? ''}`}
       style={containerStyle}
       tabIndex={0}
+      role="group"
+      aria-label={props.ariaLabel ?? 'Flow diagram'}
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

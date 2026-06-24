@@ -525,6 +525,15 @@ export interface FlowProps {
   style?: string
   class?: string
   children?: VNodeChild
+  /**
+   * Accessible name for the flow canvas. The container is a focusable
+   * (`tabindex=0`), keyboard-interactive region, so a screen reader needs a
+   * name to announce when it receives focus — without one it's an unlabeled
+   * focus stop. Rendered as `aria-label` on the `role="group"` container.
+   * Defaults to `"Flow diagram"`; override with something specific like
+   * `"Pipeline editor"`.
+   */
+  ariaLabel?: string
 }
 
 export interface BackgroundProps {

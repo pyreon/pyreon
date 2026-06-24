@@ -48,6 +48,31 @@ describe('flow node components (round-2 bug fixes)', () => {
     unmount()
   })
 
+  it('the flow canvas is a labeled focusable region (role=group + default aria-label)', async () => {
+    const flow = createFlow({ nodes: [], edges: [] })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+    const canvas = container.querySelector<HTMLElement>('.pyreon-flow')
+    expect(canvas).toBeTruthy()
+    // focusable region needs a name + role so a screen reader announces it
+    expect(canvas?.getAttribute('tabindex')).toBe('0')
+    expect(canvas?.getAttribute('role')).toBe('group')
+    expect(canvas?.getAttribute('aria-label')).toBe('Flow diagram')
+    unmount()
+  })
+
+  it('ariaLabel overrides the default canvas label', async () => {
+    const flow = createFlow({ nodes: [], edges: [] })
+    const { container, unmount } = mountInBrowser(
+      h(Flow, { instance: flow, ariaLabel: 'Pipeline editor' }),
+    )
+    await flush()
+    expect(container.querySelector<HTMLElement>('.pyreon-flow')?.getAttribute('aria-label')).toBe(
+      'Pipeline editor',
+    )
+    unmount()
+  })
+
   it('NodeToolbar shows/hides reactively as the selected accessor flips', async () => {
     const selected = signal(false)
     const { container, unmount } = mountInBrowser(
