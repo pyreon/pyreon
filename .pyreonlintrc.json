@@ -4,6 +4,7 @@
   "rules": {
     "pyreon/no-and-conditional": "off",
     "pyreon/no-map-in-jsx": "off",
+    "pyreon/no-children-access": "off",
     "pyreon/no-window-in-ssr": [
       "error",
       {
