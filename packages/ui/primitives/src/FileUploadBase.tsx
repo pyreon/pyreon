@@ -13,6 +13,18 @@ export interface FileUploadBaseProps {
   maxSize?: number
   /** Whether upload is disabled. */
   disabled?: boolean
+  /**
+   * Whether an upload is in progress — surfaced as `aria-busy` on the drop zone
+   * so assistive tech announces the busy state. Toggle it around the async
+   * upload the consumer runs in `onChange`.
+   */
+  busy?: boolean
+  /**
+   * Accessible name for the drop zone (→ `aria-label`). Defaults to a generic
+   * upload instruction; override to describe the specific upload, or provide
+   * visible instructions and spread `aria-labelledby` after `dropZoneProps`.
+   */
+  label?: string
   /** Allow multiple files. */
   multiple?: boolean
   /** Render function. */
@@ -31,11 +43,23 @@ export interface FileUploadState {
   clear: () => void
   /** Remove a file by index. */
   removeFile: (index: number) => void
-  /** Props to spread on the drop zone element. */
+  /**
+   * Props to spread on the drop zone element. Carries the WAI-ARIA button
+   * pattern: `role="button"`, a keyboard-focusable `tabIndex`, `aria-label`,
+   * and reactive `aria-disabled` / `aria-busy`, plus click + Enter/Space
+   * activation that opens the native file picker.
+   */
   dropZoneProps: {
+    role: 'button'
+    tabIndex: number
+    'aria-label': string
+    'aria-disabled': 'true' | undefined
+    'aria-busy': 'true' | undefined
     onDragOver: (e: DragEvent) => void
     onDragLeave: (e: DragEvent) => void
     onDrop: (e: DragEvent) => void
+    onClick: () => void
+    onKeyDown: (e: KeyboardEvent) => void
   }
   /** Ref for the hidden file input. */
   inputRef: (el: HTMLInputElement | null) => void
@@ -51,8 +75,14 @@ export interface FileUploadState {
 
 export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
   const [own] = splitProps(props, [
-    'onChange', 'accept', 'maxFiles', 'maxSize', 'disabled', 'multiple', 'children',
+    'onChange', 'accept', 'maxFiles', 'maxSize', 'disabled', 'busy', 'label', 'multiple', 'children',
   ])
+
+  const DEFAULT_LABEL = 'Upload files. Activate to browse, or drag and drop files here.'
+
+  function openPicker() {
+    if (!own.disabled) inputEl?.click()
+  }
 
   const isDragging = signal(false)
   const files = signal<File[]>([])
@@ -92,7 +122,7 @@ export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
   const state: FileUploadState = {
     isDragging,
     files,
-    openPicker: () => inputEl?.click(),
+    openPicker,
     clear: () => { files.set([]); own.onChange?.([]) },
     removeFile: (index) => {
       const next = files().filter((_, i) => i !== index)
@@ -100,12 +130,32 @@ export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
       own.onChange?.(next)
     },
     dropZoneProps: {
-      onDragOver: (e: DragEvent) => { e.preventDefault(); isDragging.set(true) },
+      // The drop zone is an activatable control: click or Enter/Space opens the
+      // native picker (the WAI-ARIA button pattern), and it's the keyboard tab
+      // stop. ARIA state that can change at runtime is exposed via getters so a
+      // compiled `{...dropZoneProps}` spread stays reactive.
+      role: 'button' as const,
+      get tabIndex() { return own.disabled ? -1 : 0 },
+      get 'aria-label'() { return own.label ?? DEFAULT_LABEL },
+      get 'aria-disabled'() { return own.disabled ? 'true' : undefined },
+      get 'aria-busy'() { return own.busy ? 'true' : undefined },
+      onDragOver: (e: DragEvent) => {
+        e.preventDefault()
+        if (!own.disabled) isDragging.set(true)
+      },
       onDragLeave: () => isDragging.set(false),
       onDrop: (e: DragEvent) => {
         e.preventDefault()
         isDragging.set(false)
         if (e.dataTransfer?.files) handleFiles(Array.from(e.dataTransfer.files))
+      },
+      onClick: openPicker,
+      onKeyDown: (e: KeyboardEvent) => {
+        if (own.disabled) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault() // Space would otherwise scroll the page
+          openPicker()
+        }
       },
     },
     inputRef: (el) => { inputEl = el },
