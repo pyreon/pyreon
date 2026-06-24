@@ -11,7 +11,7 @@
 //   2 — build error (compiler threw on a source file)
 
 import { build } from './build'
-import { check, type CheckFinding } from './check'
+import { check, watchCheck, type CheckFinding, type CheckResult } from './check'
 import { materializeAssets, type AssetTarget } from './assets'
 import { scanFontDir } from './fonts'
 import { existsSync } from 'node:fs'
@@ -30,6 +30,10 @@ interface ParsedArgs {
   fonts?: string
   /** `check` only: also run `swiftc -typecheck` on the Swift emit. */
   typecheck?: boolean
+  /** `check` only: re-run on source change (mtime poll). */
+  watch?: boolean
+  /** `check` only: emit machine-readable JSON instead of text. */
+  json?: boolean
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -42,6 +46,14 @@ function parseArgs(argv: string[]): ParsedArgs {
     // Boolean flags (no value, don't consume the next arg).
     if (a === '--typecheck') {
       out.typecheck = true
+      continue
+    }
+    if (a === '--watch') {
+      out.watch = true
+      continue
+    }
+    if (a === '--json') {
+      out.json = true
       continue
     }
     let key: string
@@ -75,7 +87,7 @@ function printUsage(): void {
 
 Usage:
   pyreon-native build  --target=<ios|android|all> --source=<dir> --out=<dir>
-  pyreon-native check  [--target=<ios|android>] [--typecheck] --source=<file|dir>
+  pyreon-native check  [--target=<ios|android>] [--typecheck] [--watch] [--json] --source=<file|dir>
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
 
 check is the fast authoring-loop command: it runs the PMTC compiler for
@@ -84,7 +96,9 @@ reports per file — transform errors + unsupported-TS-subset warnings.
 --source accepts a single .tsx (edit-loop) or a directory (walk). Add
 --typecheck to ALSO run 'swiftc -typecheck' against the real SwiftUI SDK
 (macOS-only; skips elsewhere), catching type-corruption that the subset
-warnings + a -parse check miss. Exit 0 on clean-or-warnings, 2 on errors.
+warnings + a -parse check miss. --watch re-checks on every source change
+(mtime poll). --json emits machine-readable findings (editor/CI). Exit 0
+on clean-or-warnings, 2 on errors.
 
 assets materializes a shared assets/ directory of images
 (name.png, name@2x.png, name@3x.png) into the platform's bundled
@@ -267,6 +281,39 @@ function printFinding(f: CheckFinding): void {
   else console.warn(line)
 }
 
+/** Render a check result — JSON (machine) or text (human). */
+function reportCheck(
+  result: CheckResult,
+  targets: TargetLanguage[],
+  parsed: ParsedArgs,
+): void {
+  if (parsed.json) {
+    console.log(
+      JSON.stringify({
+        filesChecked: result.filesChecked,
+        targets,
+        errorCount: result.errorCount,
+        warningCount: result.warningCount,
+        findings: result.findings,
+        skippedWebEntries: result.skippedWebEntries,
+      }),
+    )
+    return
+  }
+  for (const f of result.findings) printFinding(f)
+  const skipped = result.findings.filter((f) => f.kind === 'typecheck-skipped').length
+  console.log(
+    `[pyreon-native] checked ${result.filesChecked} file(s) [${targets.join(', ')}] — ` +
+      `${result.errorCount} error(s), ${result.warningCount} warning(s)` +
+      (parsed.typecheck ? `, ${skipped} type-check skipped` : ''),
+  )
+  if (result.skippedWebEntries.length > 0) {
+    console.log(
+      `[pyreon-native] skipped ${result.skippedWebEntries.length} web-only entry file(s)`,
+    )
+  }
+}
+
 function runCheck(parsed: ParsedArgs): number {
   if (!parsed.source) {
     console.error('error: check requires --source (a .tsx file or a directory)')
@@ -276,24 +323,23 @@ function runCheck(parsed: ParsedArgs): number {
   // `--target` narrows to one platform; default checks BOTH (the DX
   // default — you want to know if your component works everywhere).
   const targets: TargetLanguage[] = parsed.target ? [parsed.target] : ['swift', 'kotlin']
+  const checkOpts = {
+    source: parsed.source,
+    targets,
+    ...(parsed.typecheck ? { typecheck: true } : {}),
+  }
   try {
-    const result = check({
-      source: parsed.source,
-      targets,
-      ...(parsed.typecheck ? { typecheck: true } : {}),
-    })
-    for (const f of result.findings) printFinding(f)
-    const skipped = result.findings.filter((f) => f.kind === 'typecheck-skipped').length
-    console.log(
-      `[pyreon-native] checked ${result.filesChecked} file(s) [${targets.join(', ')}] — ` +
-        `${result.errorCount} error(s), ${result.warningCount} warning(s)` +
-        (parsed.typecheck ? `, ${skipped} type-check skipped` : ''),
-    )
-    if (result.skippedWebEntries.length > 0) {
-      console.log(
-        `[pyreon-native] skipped ${result.skippedWebEntries.length} web-only entry file(s)`,
-      )
+    if (parsed.watch) {
+      // Long-running: re-check on every source change until Ctrl-C.
+      // Returns 0 — the watcher's job is feedback, not a pass/fail gate.
+      if (!parsed.json) {
+        console.log('[pyreon-native] watching for changes (Ctrl-C to stop)…')
+      }
+      void watchCheck(checkOpts, { onResult: (r) => reportCheck(r, targets, parsed) })
+      return 0
     }
+    const result = check(checkOpts)
+    reportCheck(result, targets, parsed)
     return result.errorCount > 0 ? 2 : 0
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

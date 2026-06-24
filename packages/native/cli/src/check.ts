@@ -155,3 +155,86 @@ export function check(options: CheckOptions): CheckResult {
   const warningCount = findings.filter((f) => f.kind === 'warning').length
   return { filesChecked, skippedWebEntries, findings, errorCount, warningCount }
 }
+
+// --- watch mode -----------------------------------------------------------
+// mtime-polling (NOT fs.watch): deterministic + cross-platform reliable.
+// `fs.watch` recursive support is inconsistent across Node/OS and its
+// event timing makes CI tests flaky — a poll over the resolved input
+// set + an mtime diff is the robust choice for an authoring-loop watcher.
+
+/** Snapshot each input file's mtime (ms). Missing files are omitted. */
+export function collectMtimes(files: string[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const f of files) {
+    try {
+      out[f] = statSync(f).mtimeMs
+    } catch {
+      // file vanished between resolve + stat — treat as absent.
+    }
+  }
+  return out
+}
+
+/** True iff any file was added, removed, or its mtime moved. */
+export function mtimesChanged(
+  prev: Record<string, number>,
+  cur: Record<string, number>,
+): boolean {
+  const prevKeys = Object.keys(prev)
+  const curKeys = Object.keys(cur)
+  if (prevKeys.length !== curKeys.length) return true
+  for (const k of curKeys) {
+    if (prev[k] !== cur[k]) return true
+  }
+  return false
+}
+
+// Plain timeout. Abort is handled by the loop's `aborted` checks before
+// + after each delay — so an abort during a delay exits within one
+// interval (fine for a feedback watcher), and we avoid an
+// AbortSignal.addEventListener (which the lint layer flags as a raw
+// listener) + a `resolve` name that would shadow node:path's import.
+function delay(ms: number): Promise<void> {
+  return new Promise((done) => setTimeout(done, ms))
+}
+
+export interface WatchHandlers {
+  /** Called with the result of the initial check + every re-check. */
+  onResult: (result: CheckResult) => void
+  /** Poll interval; default 400ms. */
+  intervalMs?: number
+  /** Stop the watch loop. */
+  signal?: AbortSignal
+  /**
+   * Test-only: stop after N poll iterations (default Infinity). Keeps the
+   * loop's glue covered without a long-running / timing-flaky test.
+   */
+  maxTicks?: number
+}
+
+/**
+ * Run `check` once, then re-run it whenever a source `.tsx` mtime moves
+ * (or a file is added/removed). Resolves when `signal` aborts or
+ * `maxTicks` is reached. The pure diff (`mtimesChanged`) + the already-
+ * tested `check()` carry the logic; this is thin polling glue.
+ */
+export async function watchCheck(
+  options: CheckOptions,
+  handlers: WatchHandlers,
+): Promise<void> {
+  const intervalMs = handlers.intervalMs ?? 400
+  const maxTicks = handlers.maxTicks ?? Infinity
+  let prev = collectMtimes(resolveCheckInputs(options.source))
+  handlers.onResult(check(options))
+  let ticks = 0
+  while (!handlers.signal?.aborted && ticks < maxTicks) {
+    await delay(intervalMs)
+    if (handlers.signal?.aborted) break
+    const cur = collectMtimes(resolveCheckInputs(options.source))
+    if (mtimesChanged(prev, cur)) {
+      prev = cur
+      handlers.onResult(check(options))
+    }
+    ticks++
+  }
+}
