@@ -5,6 +5,7 @@
 use napi_derive::napi;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
+use oxc_ast_visit::Visit;
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType, Span};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -468,6 +469,20 @@ struct Ctx<'a> {
     /// and are NOT affected — they can be real inline components.
     in_jsx_child_callback: bool,
 
+    /// Whether the expression currently being walked is a DIRECT
+    /// argument-position arrow/function of a CallExpression
+    /// (`items.map((item) => …)`, `arr.filter((x) => …)`, any callback).
+    /// Set by the CallExpression arm only when the argument is directly an
+    /// arrow/function, and consumed+cleared by that arrow/function's
+    /// `walk_expression` branch so the callback's parameter is NOT registered
+    /// as reactive component props. Mirrors the JS backend's
+    /// `maybeRegisterComponentProps` skip for
+    /// `parent === CallExpression && parent.arguments.includes(node)`
+    /// (`packages/core/compiler/src/jsx.ts:1801`). Without this, a
+    /// `.map`-callback item read like `{item.label}` in a compiled element
+    /// gets a wasteful per-row `_bind()` instead of a static `textContent`.
+    in_callback_argument: bool,
+
     /// Signal variables: `const x = signal(...)` or `const x = computed(...)`
     signal_vars: FxHashSet<String>,
     /// Shadowed signal names in current scope (for scope-aware auto-call)
@@ -565,6 +580,7 @@ impl<'a> Ctx<'a> {
             parent_is_jsx: false,
             parent_is_component_jsx_element: false,
             in_jsx_child_callback: false,
+            in_callback_argument: false,
             signal_vars: FxHashSet::default(),
             shadowed_signals: FxHashSet::default(),
             selector_vars: FxHashSet::default(),
@@ -1691,29 +1707,36 @@ fn is_self_closing(el: &JSXElement) -> bool {
 }
 
 /// Does expr contain JSX (element or fragment)?
+/// Does this expression subtree contain a JSX element/fragment anywhere?
+///
+/// This is the text-vs-vnode CHILD classifier: a JSX child that "contains JSX"
+/// mounts as a VNODE (`_mountSlot`); one that doesn't binds as TEXT
+/// (`_bind .data` / `textContent`). It MUST mirror the JS oracle
+/// (`jsx.ts:containsJSXInExpr`), which is a GENERIC recursive walk over every
+/// child node (`forEachChild`). The previous hand-rolled arm-by-arm version
+/// drifted from that oracle and mis-classified nested-JSX shapes as TEXT —
+/// `obj?.map(x => <jsx/>)` (ChainExpression) and IIFEs `(() => <jsx/>)()`
+/// (CallExpression callee) each rendered `[object Object]`. A generic
+/// `oxc_ast_visit::Visit` walk produces classification IDENTICAL to the JS
+/// backend BY CONSTRUCTION (both visit every node), which kills the entire
+/// "RS misses a nested-JSX shape" class instead of patching shapes one at a
+/// time. Finding ANY JSX is sufficient, so the visitor short-circuits descent
+/// into a matched element's own children.
 fn contains_jsx_in_expr(expr: &Expression) -> bool {
-    match expr {
-        Expression::JSXElement(_) | Expression::JSXFragment(_) => true,
-        Expression::ParenthesizedExpression(p) => contains_jsx_in_expr(&p.expression),
-        Expression::ConditionalExpression(c) => {
-            contains_jsx_in_expr(&c.consequent) || contains_jsx_in_expr(&c.alternate)
-        }
-        Expression::LogicalExpression(l) => {
-            contains_jsx_in_expr(&l.left) || contains_jsx_in_expr(&l.right)
-        }
-        Expression::ArrowFunctionExpression(a) => {
-            if let Some(expr) = a.get_expression() {
-                return contains_jsx_in_expr(expr);
-            }
-            body_contains_jsx(&a.body)
-        }
-        Expression::CallExpression(call) => {
-            call.arguments.iter().any(|a| {
-                a.as_expression().map_or(false, |e| contains_jsx_in_expr(e))
-            })
-        }
-        _ => false,
+    struct JsxFinder {
+        found: bool,
     }
+    impl<'a> Visit<'a> for JsxFinder {
+        fn visit_jsx_element(&mut self, _it: &JSXElement<'a>) {
+            self.found = true;
+        }
+        fn visit_jsx_fragment(&mut self, _it: &JSXFragment<'a>) {
+            self.found = true;
+        }
+    }
+    let mut finder = JsxFinder { found: false };
+    finder.visit_expression(expr);
+    finder.found
 }
 
 fn is_children_expression(expr: &Expression, expr_text: &str) -> bool {
@@ -3100,11 +3123,16 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
         Expression::ArrowFunctionExpression(arrow) => {
             // Consume the JSX-child-callback flag: a `<For>{(row) => …}</For>`
             // render callback's parameter is a runtime item, NOT reactive
-            // props. Clear immediately so nested arrows inside the body still
-            // register their own props.
+            // props. Also consume the call-argument flag: a `.map`/`.filter`/
+            // any-callback argument arrow's param is likewise a runtime item.
+            // Clear both immediately so nested arrows inside the body still
+            // register their own props (mirrors JS `maybeRegisterComponentProps`
+            // skips for JSX-child render callbacks AND CallExpression args).
             let is_jsx_child_cb = ctx.in_jsx_child_callback;
+            let is_callback_arg = ctx.in_callback_argument;
             ctx.in_jsx_child_callback = false;
-            if !is_jsx_child_cb {
+            ctx.in_callback_argument = false;
+            if !is_jsx_child_cb && !is_callback_arg {
                 maybe_register_component_props_arrow(arrow, ctx);
             }
             let old = ctx.parent_is_jsx;
@@ -3125,10 +3153,13 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
             // treats them as components, so Rust must too (parity; pre-fix their
             // props were baked STATIC). Honour the JSX-child-callback guard so a
             // `<For>{function (row) { … }}</For>` render callback's param is NOT
-            // mistaken for reactive props.
+            // mistaken for reactive props. Also honour the call-argument guard
+            // (`arr.map(function (item) { … })`) for the same reason.
             let is_jsx_child_cb = ctx.in_jsx_child_callback;
+            let is_callback_arg = ctx.in_callback_argument;
             ctx.in_jsx_child_callback = false;
-            if !is_jsx_child_cb {
+            ctx.in_callback_argument = false;
+            if !is_jsx_child_cb && !is_callback_arg {
                 maybe_register_component_props_fn(func, ctx);
             }
             let old = ctx.parent_is_jsx;
@@ -3159,13 +3190,22 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
                                 Expression::ArrowFunctionExpression(_)
                                     | Expression::FunctionExpression(_)
                             );
+                            // A DIRECT argument-position arrow/function is a
+                            // callback whose param is a runtime value, NOT
+                            // reactive props (`.map`/`.filter`/any callback).
+                            // The arrow/function arm consumes+clears this flag,
+                            // so nested arrows inside the body still register
+                            // their own props. Mirrors JS jsx.ts:1801.
+                            let old_cb_arg = ctx.in_callback_argument;
                             if is_fn {
                                 ctx.callback_depth += 1;
+                                ctx.in_callback_argument = true;
                             }
                             walk_expression(e, ctx);
                             if is_fn {
                                 ctx.callback_depth -= 1;
                             }
+                            ctx.in_callback_argument = old_cb_arg;
                         }
                     }
                 }

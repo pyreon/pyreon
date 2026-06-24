@@ -1853,3 +1853,52 @@ describeNative('Native vs JS equivalence — rocketstyle collapse (element-child
       ['Button', { state: 'primary' }, [T('span', { class: 'ico' }, ['Save'])], SITE],
     ]))
 })
+
+// ── Corpus-sweep regression locks (2026-06 dual-backend deep validation) ──────
+// A 644-file real-corpus byte-diff sweep surfaced three Rust-only divergences
+// the curated fixtures missed. Each fix mirrors a JS-backend rule the Rust
+// `contains_jsx_in_expr` / component-prop registration had not implemented.
+// `compare()` asserts byte-identical output — these would FAIL against the
+// pre-fix binary (verified via minimal repros: each flipped EQUAL false→true).
+describeNative('Native vs JS equivalence — corpus-sweep regressions', () => {
+  // (1) Optional-chained `.map` returning JSX is a VNODE child (`_mountSlot`),
+  // NOT text (`_bind .data` → renders `[object Object]`). Rust
+  // `contains_jsx_in_expr` lacked a ChainExpression arm. Hit `image.tsx`
+  // (`img.formats?.map(f => <source/>)`).
+  test('optional-chained .map returning JSX (ChainExpression)', () =>
+    compare('<picture>{() => formats()?.map((f) => <source srcset={f} />)}</picture>'))
+  test('optional-chained .map in keyed list', () =>
+    compare('<ul>{() => rows()?.map((r) => <li key={r.id}>{r.label}</li>)}</ul>'))
+
+  // (2) A `.map`/`.filter`/any CallExpression-argument callback's param is a
+  // RUNTIME item, NOT reactive props — a bare property read (`item.label`)
+  // bakes STATIC (`textContent`), not a per-row `_bind()` renderEffect. Rust
+  // registered the callback param as a component prop because the
+  // `in_jsx_child_callback` flag only covered DIRECT JSX-child callbacks, not
+  // nested CallExpression-arg callbacks. Hit `AnimationsGroupDemo.tsx`
+  // (`items().map((item) => <div key={item.id}><span>{item.label}</span></div>)`).
+  test('.map item-param read in a compiled element bakes static', () =>
+    compare(
+      '<List>{() => items().map((item) => (<div key={item.id} style="p:8"><span>{item.label}</span></div>))}</List>',
+    ))
+  test('.map item-param text child (single)', () =>
+    compare('<List>{() => items().map((t) => (<div key={t.id}>{t.message}</div>))}</List>'))
+  test('function-expression .map callback param bakes static', () =>
+    compare(
+      '<List>{() => items().map(function (item) { return (<div key={item.id}><span>{item.x}</span></div>) })}</List>',
+    ))
+  test('attribute-value render fn param STAYS reactive props (not a call arg)', () =>
+    compare('<Grid renderItem={(p) => <span>{p.label}</span>} />'))
+
+  // (3) An IIFE `(() => { … return <jsx/> })()` carries its JSX in the CALLEE
+  // (an inline arrow), not the arguments — a VNODE child (`_mountSlot`), not
+  // text. Rust `contains_jsx_in_expr`'s CallExpression arm only checked
+  // arguments. Hit `@pyreon/zero-content`'s `Playground.tsx`
+  // (`{(() => { … return <iframe/> })()}`).
+  test('IIFE returning JSX is a vnode child (CallExpression callee)', () =>
+    compare('<div>{(() => { const x = 1; return <iframe src="x" /> })()}</div>'))
+  test('IIFE returning JSX after statements', () =>
+    compare('<section>{(() => { if (a) return null; return <article>{b()}</article> })()}</section>'))
+  test('plain call (non-inline callee) returning JSX stays text-classified', () =>
+    compare('<div>{renderThing()}</div>'))
+})
