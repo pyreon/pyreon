@@ -2107,6 +2107,30 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // — bounds are the caller's concern; documented v1 limitation.
             if (e.args.length === 1) return `${obj}[${argExprs[0]!}].toString()`
             break
+          case 'padStart':
+          case 'padEnd': {
+            // Kotlin `String.padStart(len, padChar)` / `padEnd` ARE native —
+            // but the pad arg is a Char, not a String. JS passes a String, so
+            // a single-char string literal (`"0"`) becomes a Char (`'0'`);
+            // omitted → native `padStart(len)` (Kotlin's default pad is a
+            // space, matching JS). A multi-char/dynamic pad can't map to a
+            // Char → falls through to the generic emit (mirrors the Swift
+            // single-char-pad restriction).
+            const padArg = e.args[1]
+            if (e.args.length === 1) return `${obj}.${prop}(${argExprs[0]!})`
+            if (
+              e.args.length >= 2 &&
+              padArg !== undefined &&
+              padArg.kind === 'literal' &&
+              typeof padArg.value === 'string' &&
+              padArg.value.length === 1 &&
+              padArg.value !== "'" &&
+              padArg.value !== '\\'
+            ) {
+              return `${obj}.${prop}(${argExprs[0]!}, '${padArg.value}')`
+            }
+            break
+          }
           case 'join':
             // JS `arr.join(sep?)` → Kotlin `joinToString(sep)`. JS's
             // default separator is "," — emit it explicitly when omitted
@@ -2122,6 +2146,36 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // binds to the whole concatenation. (Swift mirror: `arr + other`.)
             if (e.args.length === 1) return `(${obj} + ${argExprs[0]!})`
             break
+          case 'fill': {
+            // JS `arr.fill(v)` → Kotlin `List(<n>) { v }` (immutable). The
+            // canonical `Array(n).fill(v)` create-and-fill → count is the
+            // `Array(n)` arg; a generic `arr.fill(v)` fills `arr.size` slots.
+            // (Swift mirror: Array(repeating:count:).)
+            if (e.args.length === 1) {
+              const objExpr = e.callee.object
+              if (
+                objExpr.kind === 'call' &&
+                objExpr.callee.kind === 'identifier' &&
+                objExpr.callee.name === 'Array' &&
+                objExpr.args.length === 1
+              ) {
+                const count = emitKotlinExpr(objExpr.args[0]!, indent)
+                return `List(${count}) { ${argExprs[0]!} }`
+              }
+              return `List(${obj}.size) { ${argExprs[0]!} }`
+            }
+            break
+          }
+          case 'at': {
+            // JS `arr.at(i)` → Optional element with NEGATIVE indices from the
+            // end. Kotlin `getOrNull` is null-safe but not negative-aware, so
+            // resolve the index first. (Swift mirror: indices.contains check.)
+            if (e.args.length === 1) {
+              const i = argExprs[0]!
+              return `${obj}.getOrNull(if ((${i}) < 0) ${obj}.size + (${i}) else (${i}))`
+            }
+            break
+          }
           case 'slice': {
             // JS `arr.slice(start, end?)` / `str.slice(start, end?)`. Kotlin
             // has NO `slice(start, end)` (its `slice` takes a range/indices),

@@ -2478,6 +2478,31 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             break
           }
+          case 'padStart':
+          case 'padEnd': {
+            // JS `str.padStart(len, pad?)` / `padEnd` — Swift has no native.
+            // Build the pad run manually: repeat the pad to fill the gap
+            // `max(0, len - str.count)`, then prepend (start) / append (end).
+            // ONLY the common cases map exactly: pad OMITTED → " " (JS
+            // default), or a SINGLE-char string literal (`"0"`). A multi-char
+            // pad would over-pad (Swift `String(repeating:count:)` repeats
+            // the WHOLE string, JS truncates to fit) and a dynamic pad can't
+            // be length-checked — both fall through to the generic emit.
+            const padArg = e.args[1]
+            const okPad =
+              e.args.length === 1 ||
+              (padArg !== undefined &&
+                padArg.kind === 'literal' &&
+                typeof padArg.value === 'string' &&
+                padArg.value.length === 1)
+            if (e.args.length >= 1 && okPad) {
+              const len = argExprs[0]!
+              const pad = e.args.length >= 2 ? argExprs[1]! : '" "'
+              const fill = `String(repeating: ${pad}, count: max(0, (${len}) - ${obj}.count))`
+              return prop === 'padStart' ? `(${fill} + ${obj})` : `(${obj} + ${fill})`
+            }
+            break
+          }
           case 'repeat':
             // JS `str.repeat(n)` → Swift `String(repeating:count:)`.
             // Kotlin's `String.repeat(n)` matches JS as-is.
@@ -2489,6 +2514,43 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // binds to the whole concatenation, not just `other`.
             if (e.args.length === 1) return `(${obj} + ${argExprs[0]!})`
             break
+          case 'fill': {
+            // JS `arr.fill(v)` → Swift `Array(repeating: v, count: <n>)`
+            // (immutable, render-safe; Swift has no `.fill`). The canonical
+            // shape is `Array(n).fill(v)` (create-and-fill) → count is the
+            // `Array(n)` arg; a generic `arr.fill(v)` on an existing array
+            // fills `arr.count` slots. (A range-limited `fill(v, start, end)`
+            // is rare → falls through to the generic emit.)
+            if (e.args.length === 1) {
+              const objExpr = e.callee.object
+              if (
+                objExpr.kind === 'call' &&
+                objExpr.callee.kind === 'identifier' &&
+                objExpr.callee.name === 'Array' &&
+                objExpr.args.length === 1
+              ) {
+                const count = emitSwiftExpr(objExpr.args[0]!, indent)
+                return `Array(repeating: ${argExprs[0]!}, count: ${count})`
+              }
+              return `Array(repeating: ${argExprs[0]!}, count: ${obj}.count)`
+            }
+            break
+          }
+          case 'at': {
+            // JS `arr.at(i)` → Optional element, with NEGATIVE indices
+            // counting from the end (`arr.at(-1)` = last). Swift has no `.at`;
+            // resolve the index (count + i when negative) and bounds-check
+            // via `indices.contains` → `nil` when out of range (matching JS's
+            // `undefined`). Inferred as `T?` (see infer-type). `obj` + the
+            // index expr are pure (signal reads / literals), so repeating
+            // them is safe.
+            if (e.args.length === 1) {
+              const i = argExprs[0]!
+              const resolved = `(${i} < 0 ? ${obj}.count + (${i}) : (${i}))`
+              return `(${obj}.indices.contains(${resolved}) ? ${obj}[${resolved}] : nil)`
+            }
+            break
+          }
           case 'slice': {
             // JS `arr.slice(start, end?)` / `str.slice(start, end?)`. Swift
             // arrays AND Strings have NO `.slice` method, so the bare emit
