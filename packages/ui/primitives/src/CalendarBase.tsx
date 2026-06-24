@@ -1,7 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
-import { computed, signal } from '@pyreon/reactivity'
+import { batch, computed, signal } from '@pyreon/reactivity'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -77,13 +77,19 @@ export interface CalendarState {
   /** ARIA props for each weekday column header — `role="columnheader"`. */
   columnHeaderProps: { role: 'columnheader' }
   /**
-   * ARIA + roving-tabindex props for a single day cell. Spread onto the day
-   * element. Provides `role="gridcell"`, a full human-readable date
+   * ARIA + roving-tabindex + keyboard props for a single day cell. Spread onto
+   * the day element. Provides `role="gridcell"`, a full human-readable date
    * `aria-label` (e.g. "Thursday, January 15, 2026"), `aria-selected`,
    * `aria-disabled`, `aria-current="date"` for today, and a `tabIndex` where
-   * exactly one current-month cell is `0` and the rest `-1` (WAI-ARIA grid
-   * roving-focus pattern). Pair with `onClick={() => select(day.date)}` — a
-   * `<button>` then activates on Enter/Space natively.
+   * exactly one cell (the roving-focus target) is `0` and the rest `-1`
+   * (WAI-ARIA grid roving-focus pattern).
+   *
+   * `onKeyDown` implements the full date-grid keyboard model: Arrow Left/Right
+   * (±1 day), Up/Down (±1 week), Home/End (week start/end), PageUp/PageDown
+   * (±1 month; with Shift, ±1 year). Crossing the view month auto-navigates the
+   * grid; focus then moves to the destination cell. `ref` registers the cell so
+   * focus can be moved by date. Pair with `onClick={() => select(day.date)}` —
+   * a `<button>` then activates on Enter/Space natively.
    */
   getDayProps: (day: CalendarDay) => {
     role: 'gridcell'
@@ -92,6 +98,8 @@ export interface CalendarState {
     'aria-disabled': 'true' | undefined
     'aria-current': 'date' | undefined
     'aria-label': string
+    onKeyDown: (e: KeyboardEvent) => void
+    ref: (el: HTMLElement | null) => void
   }
 }
 
@@ -131,6 +139,27 @@ function getDayOfWeek(year: number, month: number, day: number): number {
 function getToday(): CalendarDate {
   const now = new Date()
   return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() }
+}
+
+/** Stable string key for a date — used to map cells ↔ DOM elements for roving focus. */
+function dateKey(d: CalendarDate): string {
+  return `${d.year}-${d.month}-${d.day}`
+}
+
+/** Add `delta` days, letting JS Date normalize across month / year boundaries. */
+function addDays(date: CalendarDate, delta: number): CalendarDate {
+  const d = new Date(date.year, date.month, date.day + delta)
+  return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() }
+}
+
+/** Add `delta` months, clamping the day to the target month's length (Jan 31 +1mo → Feb 28/29). */
+function addMonths(date: CalendarDate, delta: number): CalendarDate {
+  const targetMonthLen = getDaysInMonth(
+    date.year + Math.floor((date.month + delta) / 12),
+    ((date.month + delta) % 12 + 12) % 12,
+  )
+  const d = new Date(date.year, date.month + delta, Math.min(date.day, targetMonthLen))
+  return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() }
 }
 
 // ─── CalendarBase ────────────────────────────────────────────────────────────
@@ -289,16 +318,85 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     _viewYear.set(year)
   }
 
-  // ─── ARIA (WAI-ARIA date-grid pattern) ─────────────────────────────
+  // ─── ARIA + keyboard (WAI-ARIA date-grid pattern) ──────────────────
 
-  // The single roving-tabindex stop: the selected date if it's in the view
-  // month, else today if in view, else the 1st of the view month. Exactly one
-  // current-month cell ever matches, so only one gridcell is in the tab order.
+  // Roving-tabindex baseline: the selected date if it's in the view month, else
+  // today if in view, else the 1st of the view month. Exactly one current-month
+  // cell ever matches — the initial tab-in target before any arrow move.
   function focusDate(): CalendarDate {
     const sel = selected()
     if (sel && sel.month === _viewMonth() && sel.year === _viewYear()) return sel
     if (today.month === _viewMonth() && today.year === _viewYear()) return today
     return { year: _viewYear(), month: _viewMonth(), day: 1 }
+  }
+
+  // The interactive roving target, moved by the arrow keys. Null until the first
+  // keyboard move — so the initial tab-in lands on selected/today/1st, then the
+  // arrows take over.
+  const _focusedDate = signal<CalendarDate | null>(null)
+  function rovingDate(): CalendarDate {
+    return _focusedDate() ?? focusDate()
+  }
+
+  // date-key → cell element, so a keyboard move can focus the destination cell
+  // (including after a month-crossing re-render). Registered via getDayProps.ref.
+  const _cellEls = new Map<string, HTMLElement>()
+
+  function moveFocus(to: CalendarDate): void {
+    // batch() so a month-crossing move (view month + year + focus target) fires
+    // ONE notification, not three — the grid re-renders once.
+    batch(() => {
+      // Navigate the view if the destination is in another month — the grid
+      // re-renders and the destination becomes a current-month cell.
+      if (to.month !== _viewMonth() || to.year !== _viewYear()) {
+        _viewMonth.set(to.month)
+        _viewYear.set(to.year)
+      }
+      _focusedDate.set(to)
+    })
+    // Defer so a month-crossing re-render has mounted (and re-registered) the
+    // destination cell before we focus it.
+    const focusNow = () => _cellEls.get(dateKey(to))?.focus?.()
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusNow)
+    else focusNow()
+  }
+
+  // The full date-grid keyboard model. Focus moves freely (including onto
+  // disabled dates — they stay focusable + aria-disabled; SELECTION is what's
+  // gated, in `select()`), matching the WAI-ARIA grid pattern.
+  function handleDayKeyDown(e: KeyboardEvent, day: CalendarDay): void {
+    const cur = day.date
+    let next: CalendarDate
+    switch (e.key) {
+      case 'ArrowLeft':
+        next = addDays(cur, -1)
+        break
+      case 'ArrowRight':
+        next = addDays(cur, 1)
+        break
+      case 'ArrowUp':
+        next = addDays(cur, -7)
+        break
+      case 'ArrowDown':
+        next = addDays(cur, 7)
+        break
+      case 'Home':
+        next = addDays(cur, -((getDayOfWeek(cur.year, cur.month, cur.day) - firstDay + 7) % 7))
+        break
+      case 'End':
+        next = addDays(cur, 6 - ((getDayOfWeek(cur.year, cur.month, cur.day) - firstDay + 7) % 7))
+        break
+      case 'PageUp':
+        next = addMonths(cur, e.shiftKey ? -12 : -1)
+        break
+      case 'PageDown':
+        next = addMonths(cur, e.shiftKey ? 12 : 1)
+        break
+      default:
+        return
+    }
+    e.preventDefault()
+    moveFocus(next)
   }
 
   const gridProps = () => ({ role: 'grid' as const, 'aria-label': monthLabel() })
@@ -311,13 +409,19 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     // attribute absent) when not applicable.
     return {
       role: 'gridcell' as const,
-      tabIndex: (dateEquals(day.date, focusDate()) ? 0 : -1) as 0 | -1,
+      tabIndex: (dateEquals(day.date, rovingDate()) ? 0 : -1) as 0 | -1,
       'aria-selected': (day.isSelected ? 'true' : 'false') as 'true' | 'false',
       'aria-disabled': day.isDisabled ? ('true' as const) : undefined,
       'aria-current': day.isToday ? ('date' as const) : undefined,
       'aria-label': fullDateFormatter.format(
         new Date(day.date.year, day.date.month, day.date.day),
       ),
+      onKeyDown: (e: KeyboardEvent) => handleDayKeyDown(e, day),
+      ref: (el: HTMLElement | null) => {
+        const k = dateKey(day.date)
+        if (el) _cellEls.set(k, el)
+        else _cellEls.delete(k)
+      },
     }
   }
 
