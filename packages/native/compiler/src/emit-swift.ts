@@ -2411,10 +2411,31 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               return `${obj}.contains(${argExprs[0]!})`
             }
             break
-          case 'indexOf':
+          case 'indexOf': {
+            // JS `.indexOf(x)` returns an Int index, or -1 when not found.
+            // ARRAY: Swift `firstIndex(of:)` returns `Int?` — wrap `?? -1` to
+            // match the JS sentinel AND the inferred `Int` annotation (the
+            // bare emit was `Int?`-vs-`Int` mismatch). STRING: `firstIndex`
+            // wants a Character + returns `String.Index?` (NOT a JS Int
+            // offset), so use `range(of:)` + `distance(from:startIndex,
+            // to:lowerBound) ?? -1` (Foundation — in the CLI Swift header).
+            // Kotlin's `indexOf` already returns Int (-1) for both → no map.
             if (e.args.length === 1) {
-              return `${obj}.firstIndex(of: ${argExprs[0]!})`
+              const idxType = inferType(e.callee.object, _activeInferCtx)
+              if (idxType.kind === 'string') {
+                return `(${obj}.range(of: ${argExprs[0]!}).map { ${obj}.distance(from: ${obj}.startIndex, to: $0.lowerBound) } ?? -1)`
+              }
+              return `(${obj}.firstIndex(of: ${argExprs[0]!}) ?? -1)`
             }
+            break
+          }
+          case 'charAt':
+            // JS `str.charAt(i)` returns a 1-char STRING. Swift has no
+            // `.charAt`; index the Character array + rewrap to String
+            // (`String(Array(str)[i])`). NOTE: out-of-range crashes (JS
+            // returns "") — bounds are the caller's concern; documented v1
+            // limitation. Kotlin maps separately (`str[i].toString()`).
+            if (e.args.length === 1) return `String(Array(${obj})[${argExprs[0]!}])`
             break
           case 'startsWith':
             // JS String.startsWith → Swift `hasPrefix` (Kotlin's
