@@ -112,6 +112,51 @@ test.describe('docs rendering', () => {
     expect(after.scrollTop).toBe(before)
   })
 
+  test('navigating landing → docs renders code blocks without a setup crash', async ({
+    page,
+  }) => {
+    // Regression: clicking "Docs" from the landing page used to throw
+    // `[Pyreon] <CodeBlock> threw during setup: HierarchyRequestError`
+    // (repeated, one per code block) — the docs code samples rendered
+    // broken on first navigation. Root cause: <CodeBlock> conditionally
+    // rendered its filename header + line-number gutter, which the
+    // compiler lowered to `_mountSlot` placeholders INTERLEAVED with the
+    // static-element ref walks for the body/pre/copy-button. On a fresh
+    // client mount the empty slots removed their `<!>` markers, the walks
+    // landed on the wrong node, and a later `insertBefore` hit a Comment
+    // parent. Fix: the header + gutter wrappers are always-rendered (an
+    // `--empty` class hides them) so no slot precedes a ref'd element.
+    const setupErrors: string[] = []
+    page.on('console', (m) => {
+      if (m.type() === 'error' && /threw during setup|HierarchyRequestError/.test(m.text())) {
+        setupErrors.push(m.text())
+      }
+    })
+    page.on('pageerror', (e) => {
+      if (/HierarchyRequestError|nextSibling/.test(e.message)) {
+        setupErrors.push('PAGEERROR: ' + e.message)
+      }
+    })
+
+    await page.goto('/')
+    await page.waitForLoadState('networkidle')
+    // The landing "Docs" CTA points at the getting-started page.
+    await page.locator('a[href="/docs/getting-started"]').first().click()
+    await page.waitForURL('**/docs/getting-started')
+    await page.waitForLoadState('networkidle')
+    await expect(
+      page.locator('article.docs-content h1, article.docs-content h2').first(),
+    ).toBeVisible({ timeout: 15_000 })
+
+    // No <CodeBlock> setup crash on the navigation.
+    expect(setupErrors).toEqual([])
+    // …and the code blocks actually rendered their Shiki content (the
+    // crash left them empty / unmounted).
+    const codeBlocks = page.locator('.code-block')
+    expect(await codeBlocks.count()).toBeGreaterThan(0)
+    await expect(codeBlocks.first().locator('pre').first()).toBeVisible()
+  })
+
   test('Toc scroll-spy activates as headings enter the viewport', async ({
     page,
   }) => {

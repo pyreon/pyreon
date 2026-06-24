@@ -2998,10 +2998,21 @@ a.px-footer-item:hover {
      reads as a label, not just dim text. */
   font-weight: 500;
 }
-/* When a header is present, the body's top corners shouldn't be
-   rounded (they'd peek out above the tab). Round only the bottom. */
-.code-block__header + .code-block__body .code-block__pre,
-.code-block__header + .code-block__body .code-block__pre > pre {
+/* The header + gutter wrappers are ALWAYS rendered (so the compiled
+   template keeps stable static-element refs — see CodeBlock.tsx's
+   STRUCTURE NOTE). When they carry no content the component tags them
+   with an `--empty` modifier; hide those so an empty filename bar /
+   gutter never shows. */
+.code-block__header--empty,
+.code-block__gutter--empty {
+  display: none;
+}
+/* When a NON-EMPTY header is present, the body's top corners shouldn't be
+   rounded (they'd peek out above the tab). Round only the bottom. The
+   `:not(--empty)` guard keeps this from firing on the always-rendered but
+   filename-less (hidden) header. */
+.code-block:has(.code-block__header:not(.code-block__header--empty)) .code-block__pre,
+.code-block:has(.code-block__header:not(.code-block__header--empty)) .code-block__pre > pre {
   border-radius: 0 0 6px 6px;
 }
 .code-block__body {
@@ -3017,9 +3028,10 @@ a.px-footer-item:hover {
 }
 /* Language indicator in the top-right corner — matches VitePress's
    convention. Reads from the `data-lang` attribute the CodeBlock
-   sets on its wrapper. Hidden when a `.code-block__header` (filename
-   label) is present so the two don't compete. */
-.code-block:not(:has(.code-block__header))::before {
+   sets on its wrapper. Hidden when a NON-EMPTY `.code-block__header`
+   (filename label) is present so the two don't compete (the header is
+   always in the DOM now, so gate on `:not(--empty)`). */
+.code-block:not(:has(.code-block__header:not(.code-block__header--empty)))::before {
   content: attr(data-lang);
   position: absolute;
   top: 0.5rem;

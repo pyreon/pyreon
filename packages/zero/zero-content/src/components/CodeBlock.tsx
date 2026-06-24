@@ -92,20 +92,60 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
       })
   }
 
-  // Gutter line numbers: render 1..N spans so CSS counter is
-  // structural — no need to re-flow the Shiki HTML.
-  const gutter: VNodeChild[] = []
-  if (showLineNumbers && lineCount > 0) {
-    for (let i = 1; i <= lineCount; i++) {
-      gutter.push(<span class="code-block__line-number">{i}</span>)
-    }
-  }
+  // Gutter line numbers (1..N). Built as an HTML STRING and set via
+  // `dangerouslySetInnerHTML` — mirroring how `code-block__pre` carries the
+  // Shiki output. This is deliberate, not lazy:
+  //   - A bare array-typed VNode child (`{gutter}` / `{() => gutter}`) is baked
+  //     to `textContent` by the compiler's sole-dynamic-child heuristic, which
+  //     stringifies the span VNodes to `[object Object]`.
+  //   - A `<For>` (component child) renders correctly BUT forces the compiler to
+  //     drop the whole-tree `_tpl` fusion in favour of `h()` composition — that
+  //     would de-optimise EVERY code block (the overwhelmingly common no-line-
+  //     numbers case) to fix the rare one.
+  // An innerHTML string keeps the gutter a static template element (single
+  // cloneNode preserved) and renders the numbers as real spans. The content is
+  // a fixed template over integers we generate, so there is no XSS surface.
+  const gutterHtml =
+    showLineNumbers && lineCount > 0
+      ? Array.from(
+          { length: lineCount },
+          (_, i) => `<span class="code-block__line-number">${i + 1}</span>`,
+        ).join('')
+      : ''
 
   // Highlight lines are emitted as a data-* so CSS can target them
   // without the component knowing about the rendered DOM structure.
   // Stable JSON encoding so the attribute stays comparable for HMR.
   const highlightAttr =
     highlightLines.length > 0 ? highlightLines.join(',') : undefined
+
+  // STRUCTURE NOTE — the header + gutter wrappers are ALWAYS rendered (an
+  // `--empty` modifier class hides them via CSS when they have no content)
+  // rather than `{cond && <wrapper>}`. This is load-bearing, not cosmetic: a
+  // conditional wrapper child compiles to a `_mountSlot` placeholder, and the
+  // compiler's static-element refs for the later siblings (`code-block__body`,
+  // `code-block__pre`) are computed by `.firstElementChild.nextElementSibling`
+  // walks emitted AFTER those slots. On a fresh client mount (e.g. SPA navigation)
+  // an empty slot removes its `<!>` placeholder, the walk lands on the wrong node,
+  // and the copy-button slot's parent becomes a Comment node →
+  // `HierarchyRequestError: insertBefore … node type does not support this method`
+  // (the docs code blocks render broken after navigating in). Keeping the wrappers
+  // static means no `_mountSlot` precedes a ref'd element, so the refs stay valid.
+  // (Underlying compiler bug — interleaved `__eN` refs + `_mountSlot` — tracked in
+  // .claude/rules/anti-patterns.md; this is the local, backend-agnostic fix.)
+  //
+  // The empty-state is expressed as a STATIC, prop-derived class (not a dynamic
+  // `hidden` attribute): `filename` / `showLineNumbers` are fixed per instance,
+  // and the compiled template path emits a raw `el.setAttribute("hidden", value)`
+  // with no boolean-attr guard — so `hidden={false}` would set `hidden="false"`
+  // (attribute PRESENT → still hidden). A className is normalized correctly.
+  const headerClass = props.filename
+    ? 'code-block__header'
+    : 'code-block__header code-block__header--empty'
+  const gutterClass =
+    showLineNumbers && lineCount > 0
+      ? 'code-block__gutter'
+      : 'code-block__gutter code-block__gutter--empty'
 
   return (
     <div
@@ -114,19 +154,19 @@ export function CodeBlock(props: CodeBlockProps): VNodeChild {
       data-pyreon-copyable={copyable ? 'true' : undefined}
       data-pyreon-highlight-lines={highlightAttr}
     >
-      {props.filename && (
-        <div class="code-block__header">
+      <div class={headerClass}>
+        {props.filename && (
           <span class="code-block__filename" aria-hidden="true">
             {props.filename}
           </span>
-        </div>
-      )}
-      <div class="code-block__body">
-        {showLineNumbers && (
-          <div class="code-block__gutter" aria-hidden="true">
-            {gutter}
-          </div>
         )}
+      </div>
+      <div class="code-block__body">
+        <div
+          class={gutterClass}
+          aria-hidden="true"
+          dangerouslySetInnerHTML={{ __html: gutterHtml }}
+        />
         <div
           class="code-block__pre"
           dangerouslySetInnerHTML={props.dangerouslySetInnerHTML}
