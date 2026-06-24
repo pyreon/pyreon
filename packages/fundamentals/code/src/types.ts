@@ -59,6 +59,14 @@ export interface EditorConfig {
   tabSize?: number
   /** Enable line wrapping — default: false */
   lineWrapping?: boolean
+  /**
+   * Accessible name for the editor. CodeMirror's content area is a
+   * `role="textbox"` but has no name unless one is supplied — a screen reader
+   * otherwise announces just "edit text, multiline". Set on the content DOM via
+   * `aria-label`. Defaults to `"Code editor"`; override with something specific
+   * like `"TypeScript source"` or the field's purpose.
+   */
+  ariaLabel?: string
   /** Placeholder text when empty */
   placeholder?: string
   /** Enable minimap — default: false */

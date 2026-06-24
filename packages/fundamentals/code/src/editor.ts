@@ -91,6 +91,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     lineWrapping: enableLineWrapping = false,
     placeholder: placeholderText,
     minimap: enableMinimap = false,
+    ariaLabel: configAriaLabel = 'Code editor',
     extensions: userExtensions = [],
     onChange,
   } = config
@@ -241,6 +242,12 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       indentOnInput(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       indentUnit.of(' '.repeat(configTabSize)),
+
+      // Accessible name for the content textbox — CM sets role="textbox" +
+      // aria-multiline but no name, so a screen reader announces just
+      // "edit text, multiline" without it. User `extensions` are pushed AFTER
+      // this, so a consumer-supplied contentAttributes aria-label still wins.
+      EditorView.contentAttributes.of({ 'aria-label': configAriaLabel }),
 
       // Keymaps
       keymap.of([

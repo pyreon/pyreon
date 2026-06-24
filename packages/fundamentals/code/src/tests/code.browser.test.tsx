@@ -32,6 +32,21 @@ describe('code editor in real browser', () => {
     expect(editor.value()).toBe('const x = 1')
     // Content reaches the rendered DOM.
     expect(container.textContent).toContain('const x = 1')
+    // The content textbox carries a default accessible name.
+    expect(container.querySelector('.cm-content')?.getAttribute('aria-label')).toBe('Code editor')
+    unmount()
+  })
+
+  it('ariaLabel sets the content textbox accessible name', async () => {
+    const editor = createEditor({ value: 'x', ariaLabel: 'TypeScript source' })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+    const content = container.querySelector('.cm-content')
+    expect(content).not.toBeNull()
+    // CM's content area is role="textbox"; aria-label gives it a name.
+    expect(content?.getAttribute('aria-label')).toBe('TypeScript source')
     unmount()
   })
 
