@@ -143,12 +143,24 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
      * within-navigation signal tick.
      */
     route: ResolvedRoute
+    /**
+     * This depth's record's OWN loader data (only when the record carries a
+     * loader; `undefined` otherwise). Compared in `equals` for non-leaf depths
+     * so a parameterised parent LAYOUT with its own loader re-emits — and thus
+     * re-mounts, re-reading `useLoaderData()` in its body — when its data
+     * changes across a child navigation (`/users/42/… → /users/99/…`). A
+     * loader-LESS layout (the common chrome/sidebar case) keeps `loaderData`
+     * `undefined` on both sides → still mounts once (preserves the layout-
+     * persistence win). Read inside the computed so it tracks the `currentRoute`
+     * / `_loadingSignal` deps already subscribed above.
+     */
+    loaderData: unknown
   }
   const depthEntry = computed<DepthEntry>(
     () => {
       const route = router.currentRoute()
       const rec = route.matched[depth] ?? null
-      if (!rec) return { rec: null, comp: null, errored: false, route }
+      if (!rec) return { rec: null, comp: null, errored: false, route, loaderData: undefined }
       // Subscribe to `_loadingSignal` so lazy resolution wakes this
       // computed up — when the cache fills, we re-emit with comp set.
       router._loadingSignal()
@@ -160,19 +172,28 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
       // counter stays clean. The `?.()` optional-call gracefully no-ops
       // in prod where `_hmrTick` is undefined (no HMR there).
       router._hmrTick?.()
+      // This depth's OWN loader data (undefined for a loader-less layout).
+      // `_loaderData` is written by `runBlockingLoaders` BEFORE `commitNavigation`
+      // flips `currentRoute`, and bumps `_loadingSignal` on async settle — both
+      // subscribed above — so this read reflects the latest data and `equals`
+      // re-emits a loader-bearing parent layout when its data changes.
+      const loaderData =
+        rec.loader || rec.serverLoader || rec.hasServerLoader
+          ? router._loaderData.get(rec)
+          : undefined
       const errored = router._erroredChunks.has(rec)
-      if (errored) return { rec, comp: null, errored: true, route }
+      if (errored) return { rec, comp: null, errored: true, route, loaderData }
       const cached = router._componentCache.get(rec)
-      if (cached) return { rec, comp: cached, errored: false, route }
+      if (cached) return { rec, comp: cached, errored: false, route, loaderData }
       const raw = rec.component
       if (!isLazy(raw)) {
         cacheSet(router, rec, raw)
-        return { rec, comp: raw, errored: false, route }
+        return { rec, comp: raw, errored: false, route, loaderData }
       }
       // Lazy and not yet cached — `child()` below renders the lazy
       // fallback and triggers the load; once the load completes,
       // `_loadingSignal` ticks and this computed re-emits with `comp` set.
-      return { rec, comp: null, errored: false, route }
+      return { rec, comp: null, errored: false, route, loaderData }
     },
     {
       // Re-emit (→ re-mount the subtree at this depth) when this depth's
@@ -186,15 +207,26 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
       // leaf's params/query/loader, so it must persist across child
       // navigations. Only the LEAF (the param/loader-consuming page) re-emits
       // on a route change, so its `renderWithLoader` re-renders with fresh
-      // params/query/meta + loader data. Components that need parent-level
-      // route data read it reactively (useParams/useLoaderData), which update
-      // without a re-mount.
+      // params/query/meta + loader data. A parent layout that reads the leaf's
+      // params/query reads them reactively via `useParams()` (keyed off the
+      // `currentRoute` signal), which updates without a re-mount.
+      //
+      // EXCEPTION: a parameterised parent layout with its OWN loader (e.g.
+      // `/users/:id` whose loader fetches the user) must reflect NEW data when
+      // its param changes across a child navigation (`/users/42/profile →
+      // /users/99/profile`). `useLoaderData()` reads a plain (non-reactive)
+      // context snapshot — depth-specific, so it can't fall back to a signal the
+      // way `useParams()` does — so a never-re-mounting parent would stay STALE.
+      // We re-emit (re-mount, re-reading `useLoaderData()` in the body) only when
+      // THIS depth's own loader data changed. Loader-less layouts keep
+      // `loaderData === undefined` on both sides → still mount once.
       equals: (a, b) => {
         if (a.rec !== b.rec || a.comp !== b.comp || a.errored !== b.errored) {
           return false
         }
         const isLeaf = depth >= b.route.matched.length - 1
-        return isLeaf ? a.route === b.route : true
+        if (isLeaf) return a.route === b.route
+        return a.loaderData === b.loaderData
       },
     },
   )

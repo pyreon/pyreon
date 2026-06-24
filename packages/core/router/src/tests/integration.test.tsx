@@ -341,4 +341,65 @@ describe('router integration — layouts persist across child navigation', () =>
     expect(layoutAfter).toBe(layoutEl)
     expect(layoutAfter!.__layoutProbe).toBe('persisted')
   })
+
+  test('a parameterised parent layout with its OWN loader: persists on same-param nav, refreshes data on param change', async () => {
+    // Parent layout `/users/:id` carries its own loader keyed on the id, with
+    // two children. It reads `useLoaderData()` in its body (the canonical
+    // pattern). Two navigation shapes:
+    //   • /users/42/profile → /users/42/settings  : SAME id → parent loader
+    //     data unchanged → parent MUST NOT re-mount (layout-persistence kept).
+    //   • /users/42/settings → /users/99/settings : id 42→99 → parent loader
+    //     re-runs, data changes → parent re-mounts + `useLoaderData()` shows the
+    //     NEW user. Pre-fix the never-re-mounting parent stayed STALE on user-42.
+    const Layout = () => {
+      const data = useLoaderData()
+      return h(
+        'div',
+        { 'data-testid': 'ulayout' },
+        h('span', { 'data-testid': 'ulayout-data' }, String(data ?? '')),
+        h(RouterView, {}),
+      )
+    }
+    const Profile = () => h('p', { 'data-testid': 'upage' }, 'profile')
+    const Settings = () => h('p', { 'data-testid': 'upage' }, 'settings')
+    const routes: RouteRecord[] = [
+      { path: '/', component: Home },
+      {
+        path: '/users/:id',
+        component: Layout,
+        loader: async ({ params }: { params: Record<string, string> }) => `user-${params.id}`,
+        children: [
+          { path: '/users/:id/profile', component: Profile },
+          { path: '/users/:id/settings', component: Settings },
+        ],
+      },
+    ]
+
+    const el = container()
+    const router = createRouter({ routes, url: '/' })
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
+    await router.push('/users/42/profile')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(el.querySelector('[data-testid="ulayout-data"]')?.textContent).toBe('user-42')
+
+    // (1) Same-param child nav: parent data unchanged → mount once preserved.
+    const layoutEl = el.querySelector('[data-testid="ulayout"]') as
+      | (HTMLElement & { __probe?: string })
+      | null
+    layoutEl!.__probe = 'persisted'
+    await router.push('/users/42/settings')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(el.querySelector('[data-testid="upage"]')?.textContent).toBe('settings')
+    const sameParam = el.querySelector('[data-testid="ulayout"]') as
+      | (HTMLElement & { __probe?: string })
+      | null
+    expect(sameParam).toBe(layoutEl) // NOT re-mounted
+    expect(sameParam!.__probe).toBe('persisted')
+    expect(el.querySelector('[data-testid="ulayout-data"]')?.textContent).toBe('user-42')
+
+    // (2) Param-change nav: parent loader re-runs → FRESH data shown.
+    await router.push('/users/99/settings')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(el.querySelector('[data-testid="ulayout-data"]')?.textContent).toBe('user-99')
+  })
 })
