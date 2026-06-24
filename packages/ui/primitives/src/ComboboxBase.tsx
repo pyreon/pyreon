@@ -1,7 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createUniqueId, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
-import { computed, signal } from '@pyreon/reactivity'
+import { batch, computed, signal } from '@pyreon/reactivity'
 
 export interface ComboboxOption {
   value: string
@@ -165,7 +165,12 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
 
   const state: ComboboxState = {
     query,
-    setQuery: (q) => { query.set(q); highlightedIndex.set(0); if (!isOpen()) isOpen.set(true) },
+    setQuery: (q) =>
+      batch(() => {
+        query.set(q)
+        highlightedIndex.set(0)
+        if (!isOpen()) isOpen.set(true)
+      }),
     isOpen,
     open: () => isOpen.set(true),
     close: () => { isOpen.set(false); query.set('') },

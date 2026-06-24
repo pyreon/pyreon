@@ -1,7 +1,7 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
-import { computed, signal } from '@pyreon/reactivity'
+import { batch, computed, signal } from '@pyreon/reactivity'
 
 export interface ColorPickerBaseProps {
   /** Current color as hex string. */
@@ -175,10 +175,13 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
   function updateFromHSB(h: number, s: number, b: number) {
     const c = hsbToRgb(h, s, b)
     const newHex = rgbToHex(c.r, c.g, c.b)
-    _hue.set(h)
-    _saturation.set(s)
-    _brightness.set(b)
-    setHex(newHex)
+    // Atomic: 4 dependent state writes → one notify cycle.
+    batch(() => {
+      _hue.set(h)
+      _saturation.set(s)
+      _brightness.set(b)
+      setHex(newHex)
+    })
   }
 
   // ─── Keyboard (ARIA slider model) ──────────────────────────────────
@@ -291,12 +294,14 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
   const state: ColorPickerState = {
     hex,
     setHex: (h) => {
-      setHex(h)
       const c = hexToRgb(h)
       const hsb = rgbToHsb(c.r, c.g, c.b)
-      _hue.set(hsb.h)
-      _saturation.set(hsb.s)
-      _brightness.set(hsb.b)
+      batch(() => {
+        setHex(h)
+        _hue.set(hsb.h)
+        _saturation.set(hsb.s)
+        _brightness.set(hsb.b)
+      })
     },
     hue: _hue,
     saturation: _saturation,
