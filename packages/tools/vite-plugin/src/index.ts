@@ -122,12 +122,19 @@ export interface PyreonPluginOptions {
    * so registering a loader (which would pull the component module into the
    * client bundle graph) defeats it.
    *
+   * `hydrateIslandsAuto()` requires the generated registry — import the
+   * virtual module as a NAMESPACE and pass it. (A `@pyreon/zero` app does NOT
+   * need this at all: islands declared via `import { island } from
+   * '@pyreon/zero'` self-hydrate on mount, so `startClient({ routes })` is
+   * enough.)
+   *
    * @example
    * pyreon({ islands: true })
    *
-   * // src/entry-client.ts
+   * // src/entry-client.ts (bare @pyreon/vite-plugin app)
    * import { hydrateIslandsAuto } from '@pyreon/server/client'
-   * hydrateIslandsAuto()
+   * import * as islands from 'virtual:pyreon/islands-registry'
+   * hydrateIslandsAuto(islands)
    */
   islands?: boolean
 

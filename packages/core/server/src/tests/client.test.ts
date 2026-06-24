@@ -986,13 +986,54 @@ describe('hydrateIslands', () => {
 
   // ─── hydrateIslandsAuto tests ────────────────────────────────────────────
 
-  test('hydrateIslandsAuto: throws on disabled stub registry with actionable message', () => {
-    expect(() =>
-      hydrateIslandsAuto({
+  test('hydrateIslandsAuto: no-arg / undefined registry does NOT throw — warns + no-ops (clean boot)', () => {
+    // Regression for the v0.35.0 boot crash: `hydrateIslandsAuto()` (no arg, a
+    // zero-app misuse where islands already self-hydrate) read
+    // `.__pyreonIslandsEnabled` off `undefined` → an UNCAUGHT TypeError at page
+    // boot ("Cannot read properties of undefined (reading
+    // '__pyreonIslandsEnabled')") that pollutes the console + error-tracking on
+    // every view. There is nothing to auto-hydrate, so it must NOT throw — warn
+    // in dev + no-op, so the page boots cleanly.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cleanup: (() => void) | undefined
+    expect(() => {
+      cleanup = hydrateIslandsAuto(undefined)
+    }).not.toThrow()
+    expect(typeof cleanup).toBe('function')
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('was called without the islands registry (received undefined)'),
+    )
+    // Names the zero fix (remove the call) + the bare-vite fix (pass the registry).
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("import { island } from '@pyreon/zero'"))
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('virtual:pyreon/islands-registry'),
+    )
+    warnSpy.mockRestore()
+  })
+
+  test('hydrateIslandsAuto: null / non-object registry warns + no-ops (never derefs)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() => hydrateIslandsAuto(null as never)).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('received null'))
+    expect(() => hydrateIslandsAuto(42 as never)).not.toThrow()
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('received number'))
+    warnSpy.mockRestore()
+  })
+
+  test('hydrateIslandsAuto: disabled stub registry warns + no-ops (no uncaught boot throw)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let cleanup: (() => void) | undefined
+    expect(() => {
+      cleanup = hydrateIslandsAuto({
         __pyreonIslandsEnabled: false,
         __pyreonIslandRegistry: {},
-      }),
-    ).toThrow(/pyreon\({ islands: true }\)/)
+      })
+    }).not.toThrow()
+    expect(typeof cleanup).toBe('function')
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('pyreon({ islands: false })'),
+    )
+    warnSpy.mockRestore()
   })
 
   test('hydrateIslandsAuto: forwards enabled registry to hydrateIslands', async () => {
