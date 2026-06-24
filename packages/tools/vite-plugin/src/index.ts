@@ -2201,7 +2201,13 @@ function getExt(id: string): string {
  */
 const JS_IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/
 
-export function buildCompiledVerdicts(code: string, id: string): string {
+// Internal (NOT exported): `code` is the consuming app's OWN source being
+// compiled, never untrusted runtime input — but an EXPORTED function taking a
+// string and constructing code reads to CodeQL as a library code-injection
+// entry point. Keeping it module-local (driven only by the `transform` hook)
+// reflects the real trust boundary; the test exercises it through the real
+// plugin transform, not a direct call.
+function buildCompiledVerdicts(code: string, id: string): string {
   let infos: ReturnType<typeof analyzeValidate>
   try {
     infos = analyzeValidate(code, id)
