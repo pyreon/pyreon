@@ -14,7 +14,7 @@ describe('stringbool — default tokens', () => {
     expect(r.ok && r.value).toBe(false)
   })
   it('is case-insensitive and trims', () => {
-    expect(s.stringbool().parse('  TRUE  ').ok && s.stringbool().parse('  TRUE  ').ok).toBe(true)
+    expect(s.stringbool().parse('  TRUE  ').ok).toBe(true)
     const r = s.stringbool().parse('  Off ')
     expect(r.ok && r.value).toBe(false)
   })

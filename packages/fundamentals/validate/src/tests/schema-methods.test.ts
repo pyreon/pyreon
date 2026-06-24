@@ -6,7 +6,7 @@ import { preprocess, s } from '../v1'
 describe('.pipe(target)', () => {
   it('feeds the transformed output into the target schema', () => {
     const schema = s.string().transform((v) => v.length).pipe(s.number().gte(2))
-    expect(schema.parse('ab').ok && schema.parse('ab').ok).toBe(true)
+    expect(schema.parse('ab').ok).toBe(true)
     const ok = schema.parse('abc')
     expect(ok.ok && ok.value).toBe(3)
     expect(schema.parse('a').ok).toBe(false) // length 1 < 2
@@ -75,7 +75,7 @@ describe('s.preprocess(fn, schema)', () => {
   })
   it('is also on the s namespace', () => {
     const schema = s.preprocess((v) => Number(v), s.number())
-    expect(schema.parse('7').ok && schema.parse('7').ok).toBe(true)
+    expect(schema.parse('7').ok).toBe(true)
   })
 })
 
