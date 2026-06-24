@@ -50,7 +50,7 @@
  *   bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199
  */
 
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 // Minimal ambient declaration for `Bun.serve` — the script is a Bun
@@ -195,16 +195,18 @@ export function createServeHandler(
       // sibling — that keeps trailing-slash links / sitemap URLs serving the
       // directory form under `'both'`.
       if (pathname !== '/' && !pathname.endsWith('/')) {
-        const fileForm = join(root, `${pathname}.html`)
-        const resolvedFile = resolve(fileForm)
-        if (
-          resolvedFile.startsWith(root) &&
-          existsSync(resolvedFile) &&
-          statSync(resolvedFile).isFile()
-        ) {
-          return new Response(readFileSync(resolvedFile), {
-            headers: { 'content-type': getMime(resolvedFile) },
-          })
+        const resolvedFile = resolve(join(root, `${pathname}.html`))
+        if (resolvedFile.startsWith(root)) {
+          // Race-free read (no check-then-use TOCTOU): readFileSync throws
+          // ENOENT when the sibling is absent / EISDIR on a directory —
+          // both caught → fall through to the directory rewrite below.
+          try {
+            return new Response(readFileSync(resolvedFile), {
+              headers: { 'content-type': getMime(resolvedFile) },
+            })
+          } catch {
+            // no `.html` sibling here — fall through to directory rewrite
+          }
         }
       }
       if (!pathname.endsWith('/')) pathname = `${pathname}/`
@@ -218,10 +220,15 @@ export function createServeHandler(
       return new Response('Forbidden', { status: 403 })
     }
 
-    if (existsSync(resolved) && statSync(resolved).isFile()) {
+    // Race-free read (no check-then-use TOCTOU): readFileSync throws
+    // ENOENT/EISDIR for an absent file / directory — caught → fall through
+    // to the 404 path below.
+    try {
       return new Response(readFileSync(resolved), {
         headers: { 'content-type': getMime(resolved) },
       })
+    } catch {
+      // not a readable file — fall through to 404
     }
 
     // 404 fallback. Static hosts serve `404.html` for unmatched URLs;
