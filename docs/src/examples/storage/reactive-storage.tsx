@@ -28,11 +28,23 @@ export default function ReactiveStorage(_props: { shared?: Signal<unknown> }) {
           }; color: ${theme() === 'dark' ? '#e2e8f0' : '#1a1a2e'};`
         }
       >
+        {/* `color: inherit` keeps the value text on the box's OWN themed
+            color. Without it the docs-page rule `strong { color: var(--text) }`
+            paints the value in the DOCS-PAGE text color, which desyncs from
+            this box's independent light/dark state — e.g. a dark docs page
+            (light --text) over this box's light state (#f8f9fa) renders the
+            value light-on-light, unreadable. */}
         <div>
-          Theme: <strong data-testid="rs-theme">{() => theme()}</strong>
+          Theme:{' '}
+          <strong data-testid="rs-theme" style="color: inherit">
+            {() => theme()}
+          </strong>
         </div>
         <div>
-          Visits stored: <strong data-testid="rs-count">{() => count()}</strong>
+          Visits stored:{' '}
+          <strong data-testid="rs-count" style="color: inherit">
+            {() => count()}
+          </strong>
         </div>
         <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
           <button
