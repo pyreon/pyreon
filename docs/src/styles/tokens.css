@@ -102,6 +102,18 @@
   --link:         var(--ember-warm);
   --link-bg:      rgba(255, 200, 61, .08);
 
+  /* Example-component aliases. Live `<Example>` components author against
+     these friendly names (`var(--accent)` fills, `var(--surface)` panels,
+     `var(--muted)` labels). They map to the mode-aware semantic tokens, so
+     every example reads correctly in BOTH themes. Defined ONCE here (the
+     dark :root): each alias resolves at USE time through its target token,
+     which the light / `prefers-color-scheme` blocks redefine — so a single
+     definition cascades to every theme. Without these, `var(--accent)`
+     resolved to nothing → transparent grid cells + invisible active buttons. */
+  --accent:       var(--ember);
+  --surface:      var(--bg-elevated);
+  --muted:        var(--text-muted);
+
   /* Syntax theme — dark */
   --syn-bg:        var(--ink-1);
   --syn-fg:        var(--paper-2);
