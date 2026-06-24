@@ -24,15 +24,15 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
   const {
     width = 200,
     height = 150,
-    nodeColor = '#e2e8f0',
-    maskColor = 'rgba(0, 0, 0, 0.08)',
+    nodeColor = 'var(--pyreon-flow-minimap-node, #e2e8f0)',
+    maskColor = 'var(--pyreon-flow-minimap-mask, rgba(0, 0, 0, 0.08))',
   } = props
 
   // Resolve the instance from an explicit prop, else the <Flow> context.
   const instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
 
-  const containerStyle = `position: absolute; bottom: 10px; right: 10px; width: ${width}px; height: ${height}px; border: 1px solid #ddd; background: white; border-radius: 4px; overflow: hidden; z-index: 5; cursor: pointer;`
+  const containerStyle = `position: absolute; bottom: 10px; right: 10px; width: ${width}px; height: ${height}px; border: 1px solid var(--pyreon-flow-panel-border, #ddd); background: var(--pyreon-flow-panel-bg, #fff); border-radius: 4px; overflow: hidden; z-index: 5; cursor: pointer;`
 
   return () => {
     const nodes = instance.nodes()

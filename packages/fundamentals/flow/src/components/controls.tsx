@@ -103,9 +103,9 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
   const instance = props.instance ?? useContext(FlowContext)
   if (!instance) return null
 
-  const baseStyle = `position: absolute; ${positionStyles[position] ?? positionStyles['bottom-left']} display: flex; flex-direction: column; gap: 2px; z-index: 5; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 2px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);`
+  const baseStyle = `position: absolute; ${positionStyles[position] ?? positionStyles['bottom-left']} display: flex; flex-direction: column; gap: 2px; z-index: 5; background: var(--pyreon-flow-panel-bg, #fff); border: 1px solid var(--pyreon-flow-panel-border, #ddd); border-radius: 6px; padding: 2px; box-shadow: 0 1px 4px var(--pyreon-flow-panel-shadow, rgba(0,0,0,0.08));`
   const btnStyle =
-    'width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: #555; padding: 0;'
+    'width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; border-radius: 4px; cursor: pointer; color: var(--pyreon-flow-control-color, #555); padding: 0;'
 
   return () => {
     const zoomPercent = Math.round(instance.zoom() * 100)
@@ -158,7 +158,7 @@ export function Controls(props: ControlsProps & { instance?: FlowInstance }): VN
         )}
         </div>
         <div
-          style="font-size: 10px; text-align: center; color: #999; padding: 2px 0; user-select: none;"
+          style="font-size: 10px; text-align: center; color: var(--pyreon-flow-control-muted, #999); padding: 2px 0; user-select: none;"
           title="Current zoom level"
         >
           {() => `${zoomPercent}%`}

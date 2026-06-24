@@ -1142,6 +1142,8 @@ export function createFlow<TData = Record<string, unknown>>(
     onNodeDragStart,
     onNodeDragEnd,
     onNodeDoubleClick,
+    /** @internal — drives the Flow component's re-fit after first measure */
+    _fitViewConfigured: !!config.fitView,
     /** @internal — used by Flow component to emit events */
     _emit: {
       nodeDragStart: (node: FlowNode<TData>) => {
