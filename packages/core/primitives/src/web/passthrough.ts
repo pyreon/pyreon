@@ -14,6 +14,15 @@
 const OWN_KEYS_PREFIX_DATA = 'data-'
 const OWN_KEYS_PREFIX_ARIA = 'aria-'
 
+// accessibilityRole → the ARIA `role` token. Keyed by the constrained
+// AccessibilityRole enum (button / image / header) so it maps 1:1 with the
+// iOS trait + Android Compose Role the PMTC emit produces.
+const ARIA_ROLE: Record<string, string> = {
+  button: 'button',
+  image: 'img',
+  header: 'heading',
+}
+
 /**
  * Extract `data-*`, `aria-*`, `id`, `class`, and `style` from `props`,
  * returning them as a flat record suitable for spreading into the
@@ -53,6 +62,11 @@ export function collectPassthroughAttrs(
   // when false/unset — an absent aria-hidden means "not hidden".
   if (props.accessibilityHidden === true && out['aria-hidden'] === undefined) {
     out['aria-hidden'] = 'true'
+  }
+  // accessibilityRole → ARIA `role` (a raw `role`, if passed, wins).
+  if (typeof props.accessibilityRole === 'string' && out['role'] === undefined) {
+    const ariaRole = ARIA_ROLE[props.accessibilityRole]
+    if (ariaRole !== undefined) out['role'] = ariaRole
   }
   return out
 }

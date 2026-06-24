@@ -172,7 +172,22 @@ function conditionalKotlinImports(emitted: string): string {
   // real gradle build resolvable.
   if (emitted.includes('.semantics {')) {
     imports.push('import androidx.compose.ui.semantics.semantics')
+  }
+  // `contentDescription` (accessibilityLabel) — gated precisely so a role-only
+  // `.semantics { role = … }` emit doesn't pull an unused import.
+  if (emitted.includes('contentDescription =')) {
     imports.push('import androidx.compose.ui.semantics.contentDescription')
+  }
+  // A11y emit (<… accessibilityRole>): button/image emit `role = Role.X` (needs
+  // both the `role` extension property + the `Role` class), header emits
+  // `heading()` — all in the androidx.compose.ui.semantics sub-package, same
+  // stub-masked-on-validate / needs-real-import-on-gradle shape as the above.
+  if (emitted.includes('Role.')) {
+    imports.push('import androidx.compose.ui.semantics.Role')
+    imports.push('import androidx.compose.ui.semantics.role')
+  }
+  if (emitted.includes('heading()')) {
+    imports.push('import androidx.compose.ui.semantics.heading')
   }
   // A11y emit (<… accessibilityHidden>): clearAndSetSemantics also lives in the
   // androidx.compose.ui.semantics sub-package (single-package star import

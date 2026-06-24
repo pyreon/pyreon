@@ -1985,6 +1985,21 @@ describe('Cross-platform a11y vocabulary → SwiftUI a11y modifiers (P5 native, 
     expect(out).not.toContain('.accessibilityLabel')
     expect(out).not.toContain('.accessibilityHidden')
   })
+
+  it('Swift: accessibilityRole="button" → .accessibilityAddTraits(.isButton)', () => {
+    const out = tx(`<Stack accessibilityRole="button"><Text>x</Text></Stack>`, 'swift')
+    expect(out).toContain('.accessibilityAddTraits(.isButton)')
+  })
+
+  it('Swift: accessibilityRole="image" → .accessibilityAddTraits(.isImage)', () => {
+    const out = tx(`<Stack accessibilityRole="image"><Text>x</Text></Stack>`, 'swift')
+    expect(out).toContain('.accessibilityAddTraits(.isImage)')
+  })
+
+  it('Swift: accessibilityRole="header" → .accessibilityAddTraits(.isHeader)', () => {
+    const out = tx(`<Stack accessibilityRole="header"><Text>x</Text></Stack>`, 'swift')
+    expect(out).toContain('.accessibilityAddTraits(.isHeader)')
+  })
 })
 describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Android)', () => {
   it('Kotlin: accessibilityLabel → .semantics { contentDescription = "..." }', () => {
@@ -2021,6 +2036,26 @@ describe('Cross-platform a11y vocabulary → Compose semantics (P5 native, Andro
     const out = tx(`<Stack><Text>x</Text></Stack>`, 'kotlin')
     expect(out).not.toContain('.semantics')
     expect(out).not.toContain('.clearAndSetSemantics')
+  })
+
+  it('Kotlin: accessibilityRole="button" → .semantics { role = Role.Button }', () => {
+    const out = tx(`<Stack accessibilityRole="button"><Text>x</Text></Stack>`, 'kotlin')
+    expect(out).toContain('.semantics { role = Role.Button }')
+  })
+
+  it('Kotlin: accessibilityRole="image" → .semantics { role = Role.Image }', () => {
+    const out = tx(`<Stack accessibilityRole="image"><Text>x</Text></Stack>`, 'kotlin')
+    expect(out).toContain('.semantics { role = Role.Image }')
+  })
+
+  it('Kotlin: accessibilityRole="header" → .semantics { heading() } (Compose has no Role.Header)', () => {
+    const out = tx(`<Stack accessibilityRole="header"><Text>x</Text></Stack>`, 'kotlin')
+    expect(out).toContain('.semantics { heading() }')
+  })
+
+  it('Kotlin: accessibilityRole + accessibilityHidden → role before clearAndSetSemantics (hidden wins)', () => {
+    const out = tx(`<Stack accessibilityRole="button" accessibilityHidden><Text>x</Text></Stack>`, 'kotlin')
+    expect(out.indexOf('.clearAndSetSemantics { }')).toBeGreaterThan(out.indexOf('.semantics { role'))
   })
 })
 

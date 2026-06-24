@@ -319,13 +319,33 @@ val Int.dp: Dp get() = Dp(this.toFloat())
 val Float.dp: Dp get() = Dp(this)
 val Double.dp: Dp get() = Dp(this.toFloat())
 
+// Role — androidx.compose.ui.semantics.Role. Real Compose models it as a
+// JvmInline value class with companion vals; the stub uses a class + companion
+// of the SAME members so role = Role.Button type-checks. Mirrors the real
+// Compose 1.7 surface (Button/Checkbox/Switch/RadioButton/Tab/Image/DropdownList)
+// — NOT a superset (the stub-masking trap).
+class Role {
+  companion object {
+    val Button = Role()
+    val Checkbox = Role()
+    val Switch = Role()
+    val RadioButton = Role()
+    val Tab = Role()
+    val Image = Role()
+    val DropdownList = Role()
+  }
+}
+
 // SemanticsPropertyReceiver — the lambda receiver for Modifier.semantics {}.
 // Real Compose exposes contentDescription as a var extension property on this
 // receiver (androidx.compose.ui.semantics); the stub models it as a member
 // var so semantics { contentDescription = ... } type-checks with the same
-// call shape. Mirrors the real surface, not a superset.
+// call shape. Mirrors the real surface, not a superset. role (var extension
+// property) + heading() (extension fn) back the accessibilityRole vocabulary.
 class SemanticsPropertyReceiver {
   var contentDescription: String = ""
+  var role: Role = Role.Button
+  fun heading() {}
 }
 
 // Modifier — Compose's chainable layout/decorator API. Real Modifier

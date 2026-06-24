@@ -93,17 +93,19 @@ export interface ChildrenProp {
  * every canonical primitive accepts. Write them ONCE; each platform lowers
  * them to its native a11y model:
  *
- * | prop                  | web                   | iOS (PMTC)             | Android (PMTC)                    |
- * | --------------------- | --------------------- | ---------------------- | --------------------------------- |
- * | `accessibilityLabel`  | `aria-label`          | `.accessibilityLabel`  | `semantics { contentDescription }`|
- * | `accessibilityHidden` | `aria-hidden="true"`  | `.accessibilityHidden` | `semantics { invisibleToUser }`   |
+ * | prop                  | web                   | iOS (PMTC)                 | Android (PMTC)                       |
+ * | --------------------- | --------------------- | -------------------------- | ------------------------------------ |
+ * | `accessibilityLabel`  | `aria-label`          | `.accessibilityLabel`      | `semantics { contentDescription }`   |
+ * | `accessibilityHidden` | `aria-hidden="true"`  | `.accessibilityHidden`     | `clearAndSetSemantics { }`           |
+ * | `accessibilityRole`   | `role="…"`            | `.accessibilityAddTraits`  | `semantics { role / heading() }`     |
  *
- * Web lowering ships today (via `collectPassthroughAttrs`); the iOS/Android
- * PMTC emit is a tracked follow-up — until it lands, native targets render
- * without the a11y attribute (graceful degradation, no crash). Prefer these
- * over raw `aria-*` (web-only) so the same component is accessible on every
- * target. Raw `aria-label` / `aria-hidden`, if also passed, win on web.
+ * Lowering ships on ALL THREE targets today: web via `collectPassthroughAttrs`,
+ * iOS/Android via the PMTC emit. Prefer these over raw `aria-*` (web-only) so
+ * the same component is accessible on every target. Raw `aria-label` /
+ * `aria-hidden` / `role`, if also passed, win on web.
  */
+export type AccessibilityRole = 'button' | 'image' | 'header'
+
 export interface AccessibilityProps {
   /**
    * Accessible name announced by assistive tech when no visible text conveys
@@ -117,6 +119,15 @@ export interface AccessibilityProps {
    * to web `aria-hidden="true"` (omitted when `false`/unset).
    */
   accessibilityHidden?: boolean
+  /**
+   * Semantic role for assistive tech when the element's tag doesn't already
+   * convey it — e.g. a tappable `<Stack>` acting as a button, or a heading
+   * rendered with a non-heading tag. Lowers to web `role`, iOS accessibility
+   * traits (`.isButton`/`.isImage`/`.isHeader`), and Android Compose
+   * `Role.Button`/`Role.Image` / `heading()`. Constrained to the roles that map
+   * 1:1 on every target.
+   */
+  accessibilityRole?: AccessibilityRole
 }
 
 /**

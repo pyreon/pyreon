@@ -3892,6 +3892,22 @@ function emitSwiftLayoutModifiers(
   if (readStaticAttr(e, 'accessibilityHidden') === true) {
     parts.push('.accessibilityHidden(true)')
   }
+  // `accessibilityRole` → SwiftUI accessibility traits. Constrained to the
+  // roles that map 1:1 across targets (button/image/header → web `role`,
+  // Android Compose `Role`/`heading()`). `.isHeader` marks a heading for the
+  // VoiceOver rotor.
+  const a11yRole = readStaticAttr(e, 'accessibilityRole')
+  const swiftTrait =
+    a11yRole === 'button'
+      ? '.isButton'
+      : a11yRole === 'image'
+        ? '.isImage'
+        : a11yRole === 'header'
+          ? '.isHeader'
+          : null
+  if (swiftTrait !== null) {
+    parts.push(`.accessibilityAddTraits(${swiftTrait})`)
+  }
   return parts.join('')
 }
 

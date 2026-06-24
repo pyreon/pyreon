@@ -1451,6 +1451,21 @@ describe('Cross-platform a11y vocabulary (AccessibilityProps → web aria-*)', (
     unmount()
   })
 
+  it('accessibilityRole lowers to the ARIA role (button → role="button")', () => {
+    const { container, unmount } = mountTest(h(Stack, { accessibilityRole: 'button' }))
+    expect((container.firstElementChild as HTMLElement).getAttribute('role')).toBe('button')
+    unmount()
+  })
+
+  it('accessibilityRole maps image→img and header→heading (ARIA spellings)', () => {
+    const img = mountTest(h(Stack, { accessibilityRole: 'image' }))
+    expect((img.container.firstElementChild as HTMLElement).getAttribute('role')).toBe('img')
+    img.unmount()
+    const hdr = mountTest(h(Stack, { accessibilityRole: 'header' }))
+    expect((hdr.container.firstElementChild as HTMLElement).getAttribute('role')).toBe('heading')
+    hdr.unmount()
+  })
+
   it('a raw aria-label wins over accessibilityLabel (explicit web override)', () => {
     const { container, unmount } = mountTest(
       h(Stack, { accessibilityLabel: 'neutral', 'aria-label': 'explicit' }),
