@@ -1,5 +1,5 @@
 import { onMount, onUnmount } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
 import { RouterView, useRoute } from '@pyreon/router'
 import { Search } from '@pyreon/zero-content'
 import { Header } from '../components/Header'
@@ -26,11 +26,24 @@ export function layout() {
   const drawerOpen = signal(false)
   const route = useRoute()
 
-  const isDocsPath = () => {
-    const path = route().path
-    if (typeof path !== 'string') return false
-    return /\/docs(\/|$)/.test(path)
-  }
+  // A DEDUPING computed (not a plain accessor): the sidebar `<aside>` is
+  // rendered inside a reactive conditional `{() => isDocsPath() ? … : null}`,
+  // and `mountReactive` UNMOUNTS + REMOUNTS that subtree on every effect
+  // re-run. A plain `() => …route().path…` reads `route()`, so it would re-run
+  // on EVERY navigation — re-mounting the whole sidebar even on docs→docs nav,
+  // which (a) resets `.pyreon-sidebar`'s scroll position to the top and (b)
+  // flashes the sidebar out/in (worsened by its `view-transition-name`).
+  // The `equals` computed recomputes on each route change but only NOTIFIES
+  // the conditional when the boolean actually FLIPS (landing↔docs), so the
+  // sidebar mounts once on entering docs and persists across docs→docs nav.
+  const isDocsPath = computed(
+    () => {
+      const path = route().path
+      if (typeof path !== 'string') return false
+      return /\/docs(\/|$)/.test(path)
+    },
+    { equals: (a, b) => a === b },
+  )
 
   // The header's search button can't directly call `useSearch()` to
   // toggle open, because `useSearch` is hook-shaped and creates a new

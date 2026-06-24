@@ -296,3 +296,49 @@ describe('router integration — cleanup', () => {
     expect(effectRunCount).toBe(runsAfterNav)
   })
 })
+
+// ─── Layouts mount once across child navigation ───────────────────────────────
+
+describe('router integration — layouts persist across child navigation', () => {
+  test('a parent layout is NOT re-mounted when navigating between its child pages', async () => {
+    // Layout renders persistent chrome + an inner <RouterView> for the child.
+    const Layout = () => h('div', { 'data-testid': 'layout' }, h(RouterView, {}))
+    const PageA = () => h('p', { 'data-testid': 'page' }, 'A')
+    const PageB = () => h('p', { 'data-testid': 'page' }, 'B')
+    const routes: RouteRecord[] = [
+      {
+        path: '/app',
+        component: Layout,
+        children: [
+          { path: '/app/a', component: PageA },
+          { path: '/app/b', component: PageB },
+        ],
+      },
+    ]
+
+    const el = container()
+    const router = createRouter({ routes, url: '/app/a' })
+    mount(h(RouterProvider, { router }, h(RouterView, {})), el)
+    expect(el.querySelector('[data-testid="page"]')?.textContent).toBe('A')
+
+    // Tag the LIVE layout DOM node. A layout re-mount replaces this element
+    // with a fresh one (losing the expando) — that re-mount is what resets a
+    // sidebar's scroll position and flashes the chrome on every navigation.
+    const layoutEl = el.querySelector('[data-testid="layout"]') as
+      | (HTMLElement & { __layoutProbe?: string })
+      | null
+    expect(layoutEl).toBeTruthy()
+    layoutEl!.__layoutProbe = 'persisted'
+
+    await router.push('/app/b')
+
+    // The leaf page swapped (A → B) — the param/loader-consuming depth re-mounts…
+    expect(el.querySelector('[data-testid="page"]')?.textContent).toBe('B')
+    // …but the PARENT layout (same record) is the SAME element — mounted once.
+    const layoutAfter = el.querySelector('[data-testid="layout"]') as
+      | (HTMLElement & { __layoutProbe?: string })
+      | null
+    expect(layoutAfter).toBe(layoutEl)
+    expect(layoutAfter!.__layoutProbe).toBe('persisted')
+  })
+})

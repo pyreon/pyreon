@@ -175,11 +175,27 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
       return { rec, comp: null, errored: false, route }
     },
     {
-      equals: (a, b) =>
-        a.rec === b.rec &&
-        a.comp === b.comp &&
-        a.errored === b.errored &&
-        a.route === b.route,
+      // Re-emit (→ re-mount the subtree at this depth) when this depth's
+      // record / resolved component / error-state changes. The `route`
+      // object is fresh on EVERY navigation, so comparing it at every depth
+      // would re-mount the WHOLE matched chain — including PARENT LAYOUTS —
+      // on every page change, defeating the "layouts mount once" contract
+      // (a parent layout re-mount tears down its sidebar/header state, e.g.
+      // resetting scroll position and flashing the chrome). A parent layout
+      // renders chrome + an inner <RouterView>; it does NOT consume the
+      // leaf's params/query/loader, so it must persist across child
+      // navigations. Only the LEAF (the param/loader-consuming page) re-emits
+      // on a route change, so its `renderWithLoader` re-renders with fresh
+      // params/query/meta + loader data. Components that need parent-level
+      // route data read it reactively (useParams/useLoaderData), which update
+      // without a re-mount.
+      equals: (a, b) => {
+        if (a.rec !== b.rec || a.comp !== b.comp || a.errored !== b.errored) {
+          return false
+        }
+        const isLeaf = depth >= b.route.matched.length - 1
+        return isLeaf ? a.route === b.route : true
+      },
     },
   )
 
