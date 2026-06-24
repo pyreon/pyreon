@@ -3272,6 +3272,22 @@ function emitKotlinLayoutModifier(
   if (typeof a11yLabel === 'string') {
     parts.push(`.semantics { contentDescription = ${JSON.stringify(a11yLabel)} }`)
   }
+  // `accessibilityRole` → Compose semantics. button/image map to the `Role`
+  // enum; header to `heading()` (Compose has no `Role.Header`). Constrained to
+  // the roles that map 1:1 across targets. Emitted BEFORE clearAndSetSemantics
+  // so a contradictory role+hidden combo still resolves to hidden.
+  const a11yRole = readStaticAttrKotlin(e, 'accessibilityRole')
+  const kotlinSemanticsBody =
+    a11yRole === 'button'
+      ? 'role = Role.Button'
+      : a11yRole === 'image'
+        ? 'role = Role.Image'
+        : a11yRole === 'header'
+          ? 'heading()'
+          : null
+  if (kotlinSemanticsBody !== null) {
+    parts.push(`.semantics { ${kotlinSemanticsBody} }`)
+  }
   // `accessibilityHidden` → `.clearAndSetSemantics { }` — clears this node + its
   // descendants from the semantics (accessibility) tree, so TalkBack skips the
   // decorative element + its subtree (matching `aria-hidden` / iOS
