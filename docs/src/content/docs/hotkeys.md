@@ -1,11 +1,42 @@
 ---
 title: Hotkeys
-description: Reactive keyboard shortcut management for Pyreon — scope-aware, modifier keys, lifecycle-managed
+description: Reactive keyboard shortcut management for Pyreon — scope-aware, modifier keys, sequential combos, lifecycle-managed
 ---
 
 # @pyreon/hotkeys
 
-Keyboard shortcut management with automatic lifecycle cleanup, scope-based activation, and modifier key support.
+<PackageBadge name="@pyreon/hotkeys" />
+
+Keyboard shortcut management for Pyreon — register global or scoped shortcuts, get
+automatic cleanup on unmount, and write platform-aware combos with the `mod` alias
+(⌘ on macOS, Ctrl everywhere else). Built on a single shared `keydown` listener so a
+hundred registered shortcuts cost one event handler, not a hundred.
+
+## Why a hotkey package?
+
+Wiring `keydown` handlers by hand is deceptively fiddly. You end up re-solving the
+same problems in every app:
+
+- **Lifecycle.** A listener added in a component must be removed when that component
+  unmounts — forget it and a stale handler keeps firing against a torn-down view.
+- **Cross-platform modifiers.** `Cmd+S` on a Mac is `Ctrl+S` on Windows/Linux. Hard-coding
+  either one breaks half your users.
+- **Context.** A modal's `Escape` should close the modal, not whatever the editor
+  underneath wanted `Escape` for. You need shortcuts that only fire in the right context.
+- **Typing-vs-commanding.** A shortcut like `e` (edit) must not fire while the user is
+  typing `e` into a text field.
+- **Help screens.** Power users expect a "keyboard shortcuts" panel. That means the set
+  of registered shortcuts has to be *introspectable*.
+
+`@pyreon/hotkeys` handles all of it. `useHotkey()` registers a shortcut and tears it down
+on unmount automatically. `mod` collapses the platform split. Scopes give you
+context-aware activation. Input filtering is on by default. And `getRegisteredHotkeys()`
+hands you the live registry for building help dialogs.
+
+Everything is built on a **single module-level registry and one shared `keydown`
+listener**. The listener attaches lazily on the first registration and detaches when the
+last shortcut unregisters — so a page with no hotkeys pays nothing, and the cost scales
+with one listener regardless of how many shortcuts you register.
 
 ## Installation
 
@@ -29,7 +60,7 @@ yarn add @pyreon/hotkeys
 
 :::
 
-Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`
+Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`.
 
 ## Quick Start
 
@@ -37,20 +68,133 @@ Peer dependencies: `@pyreon/core`, `@pyreon/reactivity`
 import { useHotkey } from '@pyreon/hotkeys'
 
 function Editor() {
-  useHotkey('mod+s', () => save(), { description: 'Save document' })
+  useHotkey('mod+s', (e) => {
+    e.preventDefault() // stop the browser's Save dialog
+    save()
+  }, { description: 'Save document' })
+
   useHotkey('mod+z', () => undo(), { description: 'Undo' })
   useHotkey('mod+shift+z', () => redo(), { description: 'Redo' })
-  // Automatically unregistered when Editor unmounts
+
+  return <textarea />
+  // All three shortcuts auto-unregister when Editor unmounts.
 }
 ```
 
-`mod` = ⌘ on Mac, Ctrl on Windows/Linux.
+`mod` resolves to ⌘ on macOS and Ctrl on Windows/Linux, so you write one shortcut and it
+works everywhere.
 
 <Example file="./examples/hotkeys/hotkeys-keypress-recorder" title="Hotkeys — keypress recorder" />
 
-## Component Hook — `useHotkey()`
+## Core concepts
 
-Registers a shortcut scoped to the component's lifecycle. Auto-unregisters on unmount.
+| Concept | What it does |
+| ------- | ------------ |
+| **`useHotkey()`** | Register a shortcut bound to the component's lifecycle — auto-unregisters on unmount. |
+| **`useHotkeyScope()`** | Mark a scope active for the component's lifetime. |
+| **`registerHotkey()`** | Imperative registration for non-component code; returns a manual unregister fn. |
+| **Scopes** | A string label. A scoped shortcut only fires while its scope is active. `'global'` is always active. |
+| **`mod` alias** | ⌘ on macOS, Ctrl elsewhere. |
+| **Input filtering** | Shortcuts are suppressed while a form element / contentEditable is focused (opt out per-shortcut). |
+
+## Shortcut syntax
+
+A shortcut string is a sequence of `+`-joined tokens. Tokens are **case-insensitive**
+and surrounding whitespace within each `+`-segment is trimmed.
+
+```
+modifier+modifier+...+key
+```
+
+The last non-modifier token is the **key**; everything else is a modifier.
+
+```tsx
+useHotkey('a', ...)              // the "a" key, no modifiers
+useHotkey('mod+s', ...)          // ⌘S / Ctrl+S
+useHotkey('ctrl+shift+p', ...)   // Ctrl+Shift+P
+useHotkey('alt+enter', ...)      // Alt+Enter
+useHotkey('escape', ...)         // the Escape key
+```
+
+### Modifiers
+
+| Token | Maps to |
+| ----- | ------- |
+| `ctrl`, `control` | Control key |
+| `shift` | Shift key |
+| `alt` | Alt / Option key |
+| `meta`, `cmd`, `command` | Meta / ⌘ key |
+| `mod` | ⌘ on macOS, Ctrl on Windows/Linux |
+
+Prefer `mod` over `ctrl`/`cmd` for any cross-platform shortcut — it's the whole reason
+the alias exists.
+
+### Key aliases
+
+For keys whose `KeyboardEvent.key` name is awkward to type, these aliases are accepted.
+You can always use the underlying name directly instead.
+
+| Alias | Resolves to |
+| ----- | ----------- |
+| `esc` | `escape` |
+| `return` | `enter` |
+| `del` | `delete` |
+| `ins` | `insert` |
+| `space`, `spacebar` | `" "` (space) |
+| `up` | `arrowup` |
+| `down` | `arrowdown` |
+| `left` | `arrowleft` |
+| `right` | `arrowright` |
+| `plus` | `+` |
+
+```tsx
+useHotkey('esc', () => close())      // same as 'escape'
+useHotkey('mod+up', () => moveUp())  // ⌘ + ArrowUp
+useHotkey('shift+space', () => pageUp())
+```
+
+### Exact-match semantics
+
+A shortcut fires only when the held modifiers match **exactly**. `mod+s` matches ⌘S, but
+*not* ⌘⇧S — that extra Shift makes it a different combo. This means combos can't
+accidentally collide by being a "subset" of a larger one: register `mod+s` and `mod+shift+s`
+and each fires only for its precise modifier set.
+
+```tsx
+useHotkey('mod+s', () => save())            // fires on ⌘S only
+useHotkey('mod+shift+s', () => saveAs())    // fires on ⌘⇧S only
+```
+
+### Sequential combos
+
+Separate combos with a **space** to require them to be pressed in order. Each step must
+arrive within **1 second** of the previous one, or the sequence resets.
+
+```tsx
+// Press "g", then "t" (Gmail-style navigation)
+useHotkey('g t', () => goToTasks())
+useHotkey('g i', () => goToInbox())
+
+// Steps can carry their own modifiers
+useHotkey('ctrl+k p', () => openPalette())  // Ctrl+K, then P
+```
+
+Each step is parsed with the same syntax as a single shortcut, so modifiers and aliases
+work at every position. While a sequence is mid-flight, the matched first keystroke is
+consumed (its default is prevented if `preventDefault` is on) but the handler does not
+fire until the full sequence completes.
+
+:::note
+`formatCombo(parseShortcut(...))` only understands single combos — it parses on `+`, not
+spaces. For a sequential shortcut like `'g t'`, render the raw `shortcut` string instead
+of round-tripping it through `parseShortcut`.
+:::
+
+## Component hook — `useHotkey()`
+
+`useHotkey(shortcut, handler, options?)` registers a shortcut and ties it to the calling
+component. When the component unmounts, the shortcut is automatically unregistered — you
+never write cleanup code.
 
 ```tsx
 import { useHotkey } from '@pyreon/hotkeys'
@@ -60,120 +204,191 @@ function App() {
   useHotkey('escape', () => closeModal())
   useHotkey('ctrl+shift+p', () => openSettings(), {
     description: 'Open settings',
-    preventDefault: true,
   })
 }
 ```
 
+The handler receives the raw `KeyboardEvent`, so you can inspect `e.key`, call
+`e.preventDefault()`, etc.
+
+:::warning
+`useHotkey()` (and `useHotkeyScope()`) must be called **inside a component body**. The
+auto-cleanup relies on `onUnmount`, which needs an active component setup context. For
+stores, middleware, or app-init code, use the imperative [`registerHotkey()`](#imperative-api--registerhotkey) instead.
+:::
+
 ### Options
 
-| Option            | Type                       | Default    | Description                          |
-| ----------------- | -------------------------- | ---------- | ------------------------------------ |
-| `scope`           | `string`                   | `'global'` | Only fires when this scope is active |
-| `preventDefault`  | `boolean`                  | `true`     | Prevent default browser behavior     |
-| `stopPropagation` | `boolean`                  | `false`    | Stop event propagation               |
-| `enableOnInputs`  | `boolean`                  | `false`    | Fire when input/textarea is focused  |
-| `description`     | `string`                   | —          | For help dialogs                     |
-| `enabled`         | `boolean \| () => boolean` | `true`     | Dynamic enable/disable               |
+`useHotkey` and `registerHotkey` both accept a `HotkeyOptions` object:
+
+| Option | Type | Default | Description |
+| ------ | ---- | ------- | ----------- |
+| `scope` | `string` | `'global'` | Shortcut only fires while this scope is active. |
+| `preventDefault` | `boolean` | `true` | Call `e.preventDefault()` before the handler runs. |
+| `stopPropagation` | `boolean` | `false` | Call `e.stopPropagation()` before the handler runs. |
+| `enableOnInputs` | `boolean` | `false` | Fire even when an input / textarea / select / contentEditable is focused. |
+| `description` | `string` | — | Human-readable label, surfaced by `getRegisteredHotkeys()` for help dialogs. |
+| `enabled` | `boolean \| (() => boolean)` | `true` | Whether the shortcut is active. A function is re-evaluated on every keystroke. |
+
+:::warning
+`preventDefault` defaults to **`true`**. That's usually what you want — but it means a
+shortcut like `mod+a` will block the browser's "select all" *even if your handler doesn't
+need to*. For shortcuts where you want the native behavior to coexist, pass
+`{ preventDefault: false }`.
+:::
+
+:::warning
+**Don't forget `e.preventDefault()` for browser-reserved combos.** Although
+`preventDefault` defaults to `true`, if you explicitly set `{ preventDefault: false }` on
+a combo the browser also owns (`mod+s`, `mod+p`, `mod+d`), the native dialog fires
+*alongside* your handler. Either leave the default on, or call `e.preventDefault()`
+yourself inside the handler.
+:::
+
+### Dynamic enable / disable
+
+`enabled` accepts a function, re-evaluated on each matching keystroke — wire it to a
+signal or computed for reactive gating without re-registering.
+
+```tsx
+import { computed } from '@pyreon/reactivity'
+
+const canSave = computed(() => hasChanges() && !isSaving())
+
+useHotkey('mod+s', () => save(), {
+  enabled: () => canSave(),
+  description: 'Save (only when there are unsaved changes)',
+})
+```
+
+When `enabled` returns false, the shortcut is skipped during dispatch as if it weren't
+registered — no cleanup, no re-register.
+
+## Input filtering
+
+By default, shortcuts are **suppressed** while the user is focused on a text-entry
+surface, so a single-key shortcut like `e` doesn't fire while someone types "e" into a
+field. The suppressed surfaces are:
+
+- `<input>` elements
+- `<textarea>` elements
+- `<select>` elements
+- any element with `contentEditable`
+
+Opt out per-shortcut with `enableOnInputs: true`. `escape` is the classic candidate — you
+usually want it to dismiss a dialog even while a field inside it has focus.
+
+```tsx
+// Fires even when an input is focused
+useHotkey('escape', () => closeModal(), { enableOnInputs: true })
+
+// Stays suppressed while typing (the default)
+useHotkey('e', () => startEditing())
+```
 
 ## Scopes — `useHotkeyScope()`
 
-Scopes let you activate/deactivate groups of hotkeys based on UI context.
+Scopes turn shortcuts on and off based on UI context. A shortcut registered with a
+`scope` option only fires while that scope is **active**; `useHotkeyScope(scope)` marks a
+scope active for the calling component's lifetime.
 
 ```tsx
 import { useHotkey, useHotkeyScope } from '@pyreon/hotkeys'
 
 function Modal() {
-  // Activate 'modal' scope while this component is mounted
-  useHotkeyScope('modal')
+  useHotkeyScope('modal') // 'modal' is active while Modal is mounted
 
-  // This only fires when the modal scope is active
-  useHotkey('escape', () => closeModal(), { scope: 'modal' })
+  useHotkey('escape', () => close(), { scope: 'modal' })
   useHotkey('enter', () => confirm(), { scope: 'modal' })
 }
 
 function Editor() {
   useHotkeyScope('editor')
 
-  useHotkey('ctrl+s', () => save(), { scope: 'editor' })
   useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
+  useHotkey('ctrl+shift+z', () => redo(), { scope: 'editor' })
 }
 ```
 
-The `global` scope is always active. Custom scopes activate when `useHotkeyScope()` mounts and deactivate when it unmounts.
+The `'global'` scope is **always active** and is the default for any shortcut that
+doesn't set a `scope`. Custom scopes are inactive until something activates them.
+
+:::warning
+A scoped shortcut is **silently dormant** until its scope is active. If `useHotkey('ctrl+z',
+…, { scope: 'editor' })` does nothing, the most common cause is that no component called
+`useHotkeyScope('editor')` (or `enableScope('editor')`) — the handler is registered but
+its scope is off, so dispatch skips it.
+:::
+
+:::warning
+**Scope activation is not reference-counted.** `useHotkeyScope` enables the scope on mount
+and disables it on unmount. If two components both activate `'editor'`, the *first* one to
+unmount disables the scope for both — it does **not** wait for the last component to leave.
+Activate a given scope from a single owning component (or manage it imperatively with
+`enableScope` / `disableScope`) rather than from several siblings at once.
+:::
+
+### Avoiding scope conflicts
+
+If you register the same combo in two scopes that are active at the same time, **both**
+handlers fire, in registration order. To make `Escape` mean different things in different
+contexts, keep the scopes mutually exclusive — e.g. don't leave the `editor` scope active
+while a `modal` scope is up, if both bind `escape`.
+
+```tsx
+// Both fire if 'editor' and 'modal' are active simultaneously:
+useHotkey('escape', () => clearSelection(), { scope: 'editor' })
+useHotkey('escape', () => closeModal(), { scope: 'modal' })
+```
 
 ## Imperative API — `registerHotkey()`
 
-For use outside components (e.g., in stores or at app init):
+For code that runs **outside a component** — stores, middleware, plugins, one-time app
+setup — use `registerHotkey()`. It takes the same arguments as `useHotkey` but returns an
+**unregister function** instead of auto-cleaning-up.
 
 ```tsx
-import { registerHotkey, enableScope, disableScope } from '@pyreon/hotkeys'
+import { registerHotkey } from '@pyreon/hotkeys'
 
-// Returns an unregister function
-const unregister = registerHotkey('ctrl+s', () => save(), {
-  description: 'Save',
+const unregister = registerHotkey('ctrl+q', () => quit(), {
+  scope: 'global',
+  description: 'Quit',
 })
 
-// Manual scope management
-enableScope('editor')
-disableScope('editor')
-
-// Later: cleanup
+// You own the cleanup:
 unregister()
 ```
 
-## Modifier Keys
+:::danger
+`registerHotkey()` does **not** auto-clean up. If you never call the returned function,
+the shortcut lives for the lifetime of the page. `useHotkey()` is the right choice
+anywhere you have a component lifecycle.
+:::
 
-| Modifier | Keys                     |
-| -------- | ------------------------ |
-| `ctrl`   | `ctrl`, `control`        |
-| `shift`  | `shift`                  |
-| `alt`    | `alt`                    |
-| `meta`   | `meta`, `cmd`, `command` |
-| `mod`    | ⌘ on Mac, Ctrl elsewhere |
+### Imperative scope control
 
-## Key Aliases
-
-| Alias                | Key         |
-| -------------------- | ----------- |
-| `esc`                | `Escape`    |
-| `return`             | `Enter`     |
-| `del`                | `Delete`    |
-| `ins`                | `Insert`    |
-| `space`              | ` ` (space) |
-| `up/down/left/right` | Arrow keys  |
-| `plus`               | `+`         |
-
-## Input Filtering
-
-By default, hotkeys are **ignored** when the user is typing in:
-
-- `<input>` elements
-- `<textarea>` elements
-- `<select>` elements
-- `contentEditable` elements
-
-Override with `enableOnInputs: true`:
+Outside a component, manage scopes with `enableScope` / `disableScope`:
 
 ```tsx
-// This fires even when typing in an input
-useHotkey('escape', () => blur(), { enableOnInputs: true })
+import { enableScope, disableScope, getActiveScopes } from '@pyreon/hotkeys'
+
+enableScope('editor')   // turn a scope on
+disableScope('editor')  // turn it off — 'global' can't be disabled
+
+// Inspect the active set reactively
+const scopes = getActiveScopes() // Signal<Set<string>>
+console.log([...scopes()])        // e.g. ['global', 'editor']
 ```
 
-## Dynamic Enable/Disable
+`getActiveScopes()` returns the underlying reactive `Signal<Set<string>>`, so you can read
+it inside an effect or computed to react to scope changes. `disableScope('global')` is a
+no-op — the global scope can never be turned off.
 
-```tsx
-const canSave = computed(() => hasChanges() && !isSaving())
+## Introspection & help dialogs
 
-useHotkey('mod+s', () => save(), {
-  enabled: () => canSave(),
-  description: 'Save (only when changes exist)',
-})
-```
-
-## Help Dialogs
-
-Build keyboard shortcut help screens with `getRegisteredHotkeys()`:
+`getRegisteredHotkeys()` returns a read-only snapshot of every registered shortcut. Each
+entry has `{ shortcut, scope, description? }` — enough to render a "keyboard shortcuts"
+panel.
 
 ```tsx
 import { getRegisteredHotkeys, formatCombo, parseShortcut } from '@pyreon/hotkeys'
@@ -206,18 +421,114 @@ function ShortcutHelp() {
 }
 ```
 
+:::note
+`getRegisteredHotkeys()` returns a one-time array, not a reactive signal — call it again
+to get a fresh snapshot. For a panel that updates live as shortcuts mount and unmount,
+re-read it on open, or recompute when `getActiveScopes()` changes.
+:::
+
 ## Utilities
+
+Three pure functions back the matching and formatting machinery. They're exported so you
+can use them directly — e.g. for custom rendering or testing.
 
 ```tsx
 import { parseShortcut, formatCombo, matchesCombo } from '@pyreon/hotkeys'
 
-// Parse a shortcut string into a KeyCombo
+// Parse a single combo string into a KeyCombo
 const combo = parseShortcut('ctrl+shift+s')
-// { ctrl: true, shift: true, alt: false, meta: false, key: 's' }
+// → { ctrl: true, shift: true, alt: false, meta: false, key: 's' }
 
-// Format back to human-readable
+// Format a KeyCombo back to a human-readable label.
+// Meta renders as ⌘ on Mac, "Meta" elsewhere.
 formatCombo(combo) // 'Ctrl+Shift+S'
 
-// Check if a KeyboardEvent matches
-matchesCombo(event, combo) // true/false
+// Check whether a KeyboardEvent matches a combo (exact modifiers)
+window.addEventListener('keydown', (e) => {
+  if (matchesCombo(e, combo)) {
+    /* matched */
+  }
+})
 ```
+
+`parseShortcut` understands a **single** combo (modifiers joined with `+`) — it does not
+split on spaces, so pass it one combo at a time, not a sequential shortcut like `'g t'`.
+
+## Server-side rendering
+
+The shared `keydown` listener is attached against `window`, guarded by `isServer`. On the
+server, registration is a no-op for event dispatch — the entry is recorded but no listener
+is attached. Shortcuts come alive on the client when the registry attaches its listener
+on the first registration during hydration. You don't need to wrap `useHotkey` in any
+browser guard.
+
+## Common mistakes
+
+:::warning
+**Calling `useHotkey` / `useHotkeyScope` outside a component.** Both rely on `onUnmount`,
+which requires an active component setup context. Use `registerHotkey` + `enableScope` /
+`disableScope` for non-component code.
+:::
+
+:::warning
+**A scoped shortcut that never fires.** Its scope isn't active. Add `useHotkeyScope(scope)`
+in the owning component (or `enableScope(scope)` imperatively). The `'global'` scope is
+always on, so global shortcuts never hit this.
+:::
+
+:::warning
+**Expecting scope deactivation to be reference-counted.** It isn't — the first unmount of
+*any* component that activated a scope disables it. Own each scope from one component.
+:::
+
+:::warning
+**The browser dialog fires alongside your handler.** You disabled `preventDefault` for a
+browser-reserved combo (`mod+s`, `mod+p`). Leave the default `preventDefault: true` on, or
+call `e.preventDefault()` in the handler.
+:::
+
+## API Reference
+
+### Hooks
+
+| Export | Signature | Description |
+| ------ | --------- | ----------- |
+| `useHotkey` | `(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void` | Register a shortcut bound to the component's lifecycle. Auto-unregisters on unmount. |
+| `useHotkeyScope` | `(scope: string) => void` | Activate a scope for the component's lifetime; deactivates on unmount (not reference-counted). |
+
+### Imperative API
+
+| Export | Signature | Description |
+| ------ | --------- | ----------- |
+| `registerHotkey` | `(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => () => void` | Register a shortcut imperatively. Returns an unregister function; **no** auto-cleanup. |
+| `enableScope` | `(scope: string) => void` | Mark a scope active. |
+| `disableScope` | `(scope: string) => void` | Deactivate a scope. No-op for `'global'`. |
+| `getActiveScopes` | `() => Signal<Set<string>>` | The reactive set of currently-active scopes. |
+| `getRegisteredHotkeys` | `() => ReadonlyArray<{ shortcut: string; scope: string; description?: string }>` | Snapshot of every registered shortcut, for help dialogs. |
+
+### Utilities
+
+| Export | Signature | Description |
+| ------ | --------- | ----------- |
+| `parseShortcut` | `(shortcut: string) => KeyCombo` | Parse a single combo string into a `KeyCombo`. Supports aliases and `mod`. |
+| `matchesCombo` | `(event: KeyboardEvent, combo: KeyCombo) => boolean` | Whether the event's modifiers + key match the combo exactly. |
+| `formatCombo` | `(combo: KeyCombo) => string` | Human-readable label (`⌘` for Meta on Mac, `Meta` elsewhere). |
+
+### Options — `HotkeyOptions`
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `scope` | `string` | `'global'` | Scope the shortcut belongs to. |
+| `preventDefault` | `boolean` | `true` | Call `e.preventDefault()` before the handler. |
+| `stopPropagation` | `boolean` | `false` | Call `e.stopPropagation()` before the handler. |
+| `enableOnInputs` | `boolean` | `false` | Fire even when a form element / contentEditable is focused. |
+| `description` | `string` | — | Human-readable label for help dialogs. |
+| `enabled` | `boolean \| (() => boolean)` | `true` | Whether the shortcut is active; a function is re-evaluated per keystroke. |
+
+### Types
+
+| Type | Shape | Description |
+| ---- | ----- | ----------- |
+| `KeyCombo` | `{ ctrl: boolean; shift: boolean; alt: boolean; meta: boolean; key: string }` | A parsed single key combination. |
+| `HotkeyOptions` | see table above | Registration options for `useHotkey` / `registerHotkey`. |
+| `HotkeyEntry` | `{ shortcut: string; combo: KeyCombo; sequence: KeyCombo[]; handler; options }` | A fully-resolved registry entry (internal shape). For sequential combos, `combo` is the first step and `sequence` holds the rest. |
