@@ -778,7 +778,12 @@ way on every target — write the neutral prop once:
 `.accessibilityHidden(true)` / Compose `.clearAndSetSemantics { }`
 (clears the node + subtree from the a11y tree — `clearAndSetSemantics` is
 stable in the targeted Compose 1.7 BOM, vs the experimental
-`invisibleToUser()`). Component children must be JSX or value
+`invisibleToUser()`); and `accessibilityRole` (`"button"` / `"image"` /
+`"header"` — the values that map 1:1 to every target's role model) → web
+`role="button"`/`"img"`/`"heading"` / SwiftUI
+`.accessibilityAddTraits(.isButton / .isImage / .isHeader)` / Compose
+`.semantics { role = Role.Button / Role.Image }` (and `heading()` for
+headers). Component children must be JSX or value
 expressions (auto-wrapped in `Text`).
 
 **Module scope**: `let`/`const` primitives (non-reactive on native),

@@ -20,7 +20,7 @@ This page is the map: what you get for free, and how to reach for the rest.
 | Typed `role` | `AriaRole` autocomplete on every element | `@pyreon/core` |
 | Live-region announcements | `announce()` — zero setup | `@pyreon/a11y` |
 | SPA route announcements | `<RouteAnnouncer>` — one line | `@pyreon/a11y/router` |
-| Multi-platform a11y | `accessibilityLabel` / `accessibilityHidden` → web + iOS + Android | `@pyreon/primitives` |
+| Multi-platform a11y | `accessibilityLabel` / `accessibilityHidden` / `accessibilityRole` → web + iOS + Android | `@pyreon/primitives` |
 
 ## Forms — automatic label, error, and description wiring
 
@@ -149,6 +149,7 @@ The canonical primitives in `@pyreon/primitives` carry a **platform-neutral** a1
 | --- | --- | --- | --- |
 | `accessibilityLabel="…"` | `aria-label` | `.accessibilityLabel(…)` | `.semantics { contentDescription = … }` |
 | `accessibilityHidden` | `aria-hidden="true"` | `.accessibilityHidden(true)` | `.clearAndSetSemantics { }` |
+| `accessibilityRole` (`"button"` / `"image"` / `"header"`) | `role="button"` / `"img"` / `"heading"` | `.accessibilityAddTraits(.isButton / .isImage / .isHeader)` | `.semantics { role = Role.Button / Role.Image }` / `heading()` |
 
 ```tsx
 import { Button } from '@pyreon/primitives'
