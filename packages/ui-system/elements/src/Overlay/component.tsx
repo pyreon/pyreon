@@ -7,7 +7,7 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { isClient, nativeCompat, onMount, Portal, splitProps } from '@pyreon/core'
+import { createUniqueId, isClient, nativeCompat, onMount, Portal, splitProps } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { Content, PyreonComponent } from '../types'
@@ -86,6 +86,11 @@ const Component: PyreonComponent<Props> = (props) => {
     }
   })()
 
+  // WAI-ARIA Tooltip pattern: the tooltip container has role="tooltip" and the
+  // trigger references it via aria-describedby, so a screen reader reads the
+  // tip when the trigger is focused. One stable id shared by both (SSR-safe).
+  const tooltipId = createUniqueId()
+
   // Set up event listeners on mount
   onMount(() => {
     const cleanup = setupListeners()
@@ -99,6 +104,7 @@ const Component: PyreonComponent<Props> = (props) => {
         active: active(),
         'aria-expanded': active(),
         'aria-haspopup': ariaHasPopup,
+        'aria-describedby': type === 'tooltip' ? tooltipId : undefined,
         ...(passHandlers ? { showContent, hideContent } : {}),
       })}
 
@@ -108,7 +114,8 @@ const Component: PyreonComponent<Props> = (props) => {
             <Provider {...ctx}>
               {render(own.children, {
                 [contentRefName]: contentRef,
-                role: type === 'modal' ? 'dialog' : undefined,
+                role: type === 'modal' ? 'dialog' : type === 'tooltip' ? 'tooltip' : undefined,
+                id: type === 'tooltip' ? tooltipId : undefined,
                 'aria-modal': type === 'modal' ? true : undefined,
                 active: active(),
                 align,
