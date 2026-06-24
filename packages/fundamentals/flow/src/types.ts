@@ -437,6 +437,16 @@ export interface FlowInstance<TData = Record<string, unknown>> {
 
   // ── Internal emitters (used by Flow component) ──────────────────────────
 
+  /**
+   * Whether the flow was created with `fitView: true`. The `<Flow>` component
+   * re-runs `fitView()` once after the container is first MEASURED — the
+   * createFlow-time fit ran against the 800×600 default (the ResizeObserver
+   * hasn't measured yet), so in a smaller/shorter container the initial fit
+   * lands the nodes off-screen.
+   * @internal
+   */
+  _fitViewConfigured: boolean
+
   /** @internal */
   _emit: {
     nodeDragStart: (node: FlowNode<TData>) => void

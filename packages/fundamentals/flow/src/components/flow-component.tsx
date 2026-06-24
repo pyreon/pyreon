@@ -148,9 +148,17 @@ function DefaultNode(props: NodeComponentProps) {
   return (
     <div
       style={() => {
-        const borderColor = props.selected() ? '#3b82f6' : '#ddd'
+        // Theme-aware via CSS vars with the original light-mode values as
+        // fallbacks → zero change for existing (light) consumers, and a dark
+        // app / the docs can set `--pyreon-flow-*` to theme the graph. The
+        // explicit `color` is load-bearing: the node previously had none and
+        // inherited the page text color, so on a dark page the label was
+        // light-on-white → invisible.
+        const borderColor = props.selected()
+          ? 'var(--pyreon-flow-node-selected, #3b82f6)'
+          : 'var(--pyreon-flow-node-border, #ddd)'
         const cursor = props.dragging() ? 'grabbing' : 'grab'
-        return `padding: 8px 16px; background: white; border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`
+        return `padding: 8px 16px; background: var(--pyreon-flow-node-bg, #fff); color: var(--pyreon-flow-node-color, #1a192b); border: 2px solid ${borderColor}; border-radius: 6px; font-size: 13px; min-width: 80px; text-align: center; cursor: ${cursor}; user-select: none;`
       }}
     >
       {() =>
@@ -393,13 +401,17 @@ function EdgeLayer(props: {
             )
           }
 
+          // The edge `stroke` + `stroke-width` live in the `style` (CSS), NOT in
+          // SVG presentation attributes: `var()` is INVALID in a presentation attr
+          // (`stroke="var(...)"` → value dropped → `stroke:none` → the edge line
+          // renders INVISIBLE). In `style` (CSS) `var()` resolves, so the line is
+          // themeable (the docs set `--pyreon-flow-edge` for dark) with the
+          // original `#999` / `#3b82f6` as fallbacks for existing consumers.
           return (
             <g>
               <path
                 d={() => geometry()?.path ?? ''}
                 fill="none"
-                stroke={() => (isSelected() ? '#3b82f6' : '#999')}
-                stroke-width={() => (isSelected() ? '2' : '1.5')}
                 marker-start={() => {
                   const m = resolveEdgeMarkers(liveEdge(), defaultEndMarker(instance)).start
                   return m ? `url(#${markerId(m)})` : undefined
@@ -409,7 +421,9 @@ function EdgeLayer(props: {
                   return m ? `url(#${markerId(m)})` : undefined
                 }}
                 class={() => (liveEdge().animated ? 'pyreon-flow-edge-animated' : '')}
-                style={() => `pointer-events: stroke; cursor: pointer; ${liveEdge().style ?? ''}`}
+                style={() =>
+                  `stroke: ${isSelected() ? 'var(--pyreon-flow-accent, #3b82f6)' : 'var(--pyreon-flow-edge, #999)'}; stroke-width: ${isSelected() ? 2 : 1.5}px; pointer-events: stroke; cursor: pointer; ${liveEdge().style ?? ''}`
+                }
                 onClick={() => {
                   if (edgeId) instance.selectEdge(edgeId)
                   instance._emit.edgeClick(liveEdge())
@@ -425,7 +439,7 @@ function EdgeLayer(props: {
                     y={String(g.labelY)}
                     text-anchor="middle"
                     dominant-baseline="central"
-                    style="font-size: 11px; fill: #666; pointer-events: none;"
+                    style="font-size: 11px; fill: var(--pyreon-flow-edge-label, #666); pointer-events: none;"
                   >
                     {e.label}
                   </text>
@@ -1114,6 +1128,13 @@ export function Flow(props: FlowComponentProps): VNodeChild {
   // ── Container size tracking ─────────────────────────────────────────────
 
   let resizeObserver: ResizeObserver | null = null
+  // `fitView: true` runs at createFlow time against the 800×600 default
+  // container size (the ResizeObserver hasn't measured the real element yet),
+  // so in a smaller / shorter container the nodes are positioned off-screen.
+  // Re-run fitView ONCE on the first REAL measurement so it fits the actual
+  // viewport. Gated on `_fitViewConfigured` so we never override the viewport
+  // of a flow the consumer didn't ask to auto-fit.
+  let didInitialFit = false
 
   const containerRef = (el: Element | null) => {
     if (resizeObserver) {
@@ -1128,6 +1149,15 @@ export function Flow(props: FlowComponentProps): VNodeChild {
         width: rect.width,
         height: rect.height,
       })
+      if (
+        !didInitialFit &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        instance._fitViewConfigured
+      ) {
+        didInitialFit = true
+        instance.fitView()
+      }
     }
 
     updateSize()
@@ -1178,7 +1208,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
               return (
                 <div
                   class="pyreon-flow-selection-box"
-                  style={`position: absolute; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; border: 1px dashed #3b82f6; background: rgba(59, 130, 246, 0.08); pointer-events: none; z-index: 10;`}
+                  style={`position: absolute; left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px; border: 1px dashed var(--pyreon-flow-accent, #3b82f6); background: var(--pyreon-flow-accent-bg, rgba(59, 130, 246, 0.08)); pointer-events: none; z-index: 10;`}
                 />
               )
             }}

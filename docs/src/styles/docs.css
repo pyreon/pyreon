@@ -3471,6 +3471,28 @@ a.px-footer-item:hover {
   background: var(--bg-elevated, var(--bg));
   font-size: 0.75rem;
 }
+/* Theme the live <Example> @pyreon/flow graph to the docs palette. The flow
+   defaults are light-mode (white nodes / faint #999 edges) — invisible on the
+   dark docs page. @pyreon/flow exposes `--pyreon-flow-*` (CSS vars with those
+   defaults as fallbacks); we map them to the mode-aware docs tokens so the
+   graph reads correctly in BOTH themes. Scoped to the example surface so it
+   never leaks to a consumer's own flow. */
+.pyreon-example__surface {
+  --pyreon-flow-node-bg: var(--bg-elevated);
+  --pyreon-flow-node-color: var(--text);
+  --pyreon-flow-node-border: var(--border);
+  --pyreon-flow-node-selected: var(--link);
+  --pyreon-flow-accent: var(--link);
+  --pyreon-flow-edge: var(--text-dim);
+  --pyreon-flow-edge-label: var(--text-muted);
+  --pyreon-flow-panel-bg: var(--bg-elevated);
+  --pyreon-flow-panel-border: var(--border);
+  --pyreon-flow-panel-shadow: rgba(0, 0, 0, 0.25);
+  --pyreon-flow-control-color: var(--text);
+  --pyreon-flow-control-muted: var(--text-muted);
+  --pyreon-flow-minimap-node: var(--text-hint);
+  --pyreon-flow-minimap-mask: rgba(127, 127, 127, 0.12);
+}
 
 /* ─── View Transitions API — hold persistent chrome stable ──────────────
  *
