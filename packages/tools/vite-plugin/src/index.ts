@@ -2191,6 +2191,16 @@ function getExt(id: string): string {
  * `unsupported` IR node (`!emittable`), and function/block-scoped declarations
  * (`!topLevel` — a module-end attach to those would be a ReferenceError).
  */
+/**
+ * A strict JS identifier. `info.name` is the ONE user-derived value that flows
+ * UNQUOTED into the emitted `name._attachCompiledVerdict(…)`, so it's the only
+ * code-injection surface. `analyzeValidate` only ever returns a TS identifier
+ * here (`ts.isIdentifier(n.name)`), which the grammar already restricts to this
+ * charset — but validating it EXPLICITLY before interpolation makes the safety
+ * provable (closes the static code-injection taint path) rather than implied.
+ */
+const JS_IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/
+
 export function buildCompiledVerdicts(code: string, id: string): string {
   let infos: ReturnType<typeof analyzeValidate>
   try {
@@ -2201,8 +2211,17 @@ export function buildCompiledVerdicts(code: string, id: string): string {
   const tails: string[] = []
   for (const info of infos) {
     if (!info.name || !info.emittable || !info.topLevel) continue
+    // Guard the one unquoted interpolation site. Belt-and-suspenders vs
+    // `analyzeValidate`'s identifier-only guarantee; a non-identifier is
+    // skipped (falls back to the runtime `.is()`), never emitted.
+    if (!JS_IDENTIFIER_RE.test(info.name)) continue
     let fn: string
     try {
+      // `emitValidator` is the trusted, equivalence-gated emitter: every user
+      // string in the IR (check messages, regex sources, literal values) is
+      // emitted via `JSON.stringify` / `new RegExp(JSON.stringify(...))` /
+      // numeric literals, so `fn` is a self-contained, injection-safe function
+      // source by construction — no user value reaches an unquoted position.
       fn = emitValidator(info.node)
     } catch {
       continue // defensive: a node the analyzer marked emittable but emit rejects
