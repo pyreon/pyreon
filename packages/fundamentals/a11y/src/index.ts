@@ -7,6 +7,8 @@
  *   `aria-live` region. No provider, no component to mount.
  * - `<VisuallyHidden>` — content that's invisible on screen but available to
  *   assistive technology.
+ * - `<SkipLink>` — keyboard "skip to content" link (hidden until focused) that
+ *   moves focus past repeated nav to the main landmark (WCAG 2.4.1).
  * - `createA11yId(prefix?)` — stable, SSR-safe id for ARIA relationships
  *   (`aria-labelledby` / `aria-describedby` / `for`).
  *
@@ -36,4 +38,6 @@ export { announce, clearAnnouncements } from './announce'
 export type { A11yPoliteness, AnnounceOptions } from './announce'
 export { VisuallyHidden } from './visually-hidden'
 export type { VisuallyHiddenProps } from './visually-hidden'
+export { SkipLink } from './skip-link'
+export type { SkipLinkProps } from './skip-link'
 export { createA11yId } from './id'
