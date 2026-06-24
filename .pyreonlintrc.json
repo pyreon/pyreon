@@ -32,7 +32,8 @@
           "packages/fundamentals/storage/",
           "packages/core/router/",
           "packages/tools/devtools/",
-          "packages/internals/perf-harness/"
+          "packages/internals/perf-harness/",
+          "packages/ui-system/elements/src/Overlay/"
         ]
       }
     ],

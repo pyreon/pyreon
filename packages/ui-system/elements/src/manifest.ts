@@ -12,7 +12,7 @@ export default defineManifest({
     'Element — responsive flexbox block: direction / alignX / alignY / gap / block, beforeContent / afterContent slots, equalBeforeAfter (ResizeObserver-tracked)',
     'Text — inline typography primitive',
     'List — flowing-children container; data via the four-overload Iterator API',
-    'Overlay + useOverlay — positioned layer (dropdown/modal/tooltip) with viewport flip, ESC, click-outside, scroll tracking, hover delay',
+    'Overlay + useOverlay — positioned layer (dropdown/modal/tooltip) with viewport flip, ESC, click-outside, scroll tracking, hover delay, and focus management (restore-to-opener on close; for type:"modal" a focus-in on open + Tab/Shift+Tab focus trap — the WAI-ARIA dialog pattern, out of the box)',
     'Portal — renders children into a per-instance wrapper inside a DOMLocation (default document.body)',
     'Iterator — Simple / Object / Children / Loose overloads keep primitive-vs-object iteration modes type-safe',
     'Util — bare utility primitive; Provider re-exported from @pyreon/unistyle',
@@ -90,7 +90,7 @@ export default defineManifest({
       signature:
         'useOverlay(props?: Partial<UseOverlayProps>): { isOpen, open, close, toggle, triggerProps, overlayProps, /* … */ }',
       summary:
-        'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Options: `openOn` / `closeOn` (`click` | `hover` | …), `type` (`dropdown` | `modal` | …), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. SSR-safe: the internal positioning helpers early-return under no-`window` so the contract is documented at the call site rather than crashing on the server.',
+        'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Options: `openOn` / `closeOn` (`click` | `hover` | …), `type` (`dropdown` | `modal` | …), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. Focus management is built in: focus returns to the opener on close (all types), and `type: "modal"` additionally moves focus into the content on open and traps Tab / Shift+Tab within it (the WAI-ARIA dialog pattern — no extra wiring). SSR-safe: the internal positioning + focus helpers early-return under no-`window` so the contract is documented at the call site rather than crashing on the server.',
       example: `import { useOverlay } from "@pyreon/elements"
 
 const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
