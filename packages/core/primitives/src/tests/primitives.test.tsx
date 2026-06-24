@@ -840,6 +840,9 @@ describe('<Toggle> happy-dom unit', () => {
     const input = container.firstElementChild as HTMLInputElement
     expect(input.tagName).toBe('INPUT')
     expect(input.type).toBe('checkbox')
+    // W3C Switch pattern: checkbox + role="switch" → announced as a switch,
+    // matching the iOS Toggle / Android Switch this lowers to natively.
+    expect(input.getAttribute('role')).toBe('switch')
     expect(input.checked).toBe(false)
     unmount()
   })
