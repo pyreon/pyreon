@@ -240,9 +240,44 @@ describe('@pyreon/ui-primitives — browser smoke', () => {
 
     expect(container.querySelector('[role="listbox"]')).not.toBeNull()
     expect(container.querySelectorAll('[role="option"]').length).toBe(2)
+    // single-select listbox must NOT advertise multi-select
+    expect(
+      container.querySelector('[role="listbox"]')!.getAttribute('aria-multiselectable'),
+    ).toBeNull()
 
     unmount()
     expect(document.getElementById('smoke-cbx')).toBeNull()
+  })
+
+  it('mounts ComboboxBase with multiple → listbox advertises aria-multiselectable="true"', () => {
+    const options = [
+      { value: 'a', label: 'Apple' },
+      { value: 'b', label: 'Banana' },
+    ]
+    const { container, unmount } = mountInBrowser(
+      h(ComboboxBase as never, {
+        options,
+        multiple: true,
+        children: (state: ComboboxState) =>
+          h(
+            'div',
+            null,
+            h('input', { ...state.inputProps(), id: 'smoke-cbx-multi' }),
+            h(
+              'ul',
+              state.listboxProps(),
+              ...options.map((o, i) => h('li', state.getOptionProps(o.value, i), o.label)),
+            ),
+          ),
+      }),
+    )
+    const listbox = query<HTMLElement>(container, '[role="listbox"]')
+    // WAI-ARIA: a multi-select listbox MUST carry aria-multiselectable so AT
+    // announces that more than one option can be chosen.
+    expect(listbox.getAttribute('aria-multiselectable')).toBe('true')
+
+    unmount()
+    expect(document.getElementById('smoke-cbx-multi')).toBeNull()
   })
 
   it('mounts ColorPickerBase render-prop: groupProps/hueSliderProps/saturationSliderProps/alphaSliderProps → role=group + role=slider with aria-value*', () => {
