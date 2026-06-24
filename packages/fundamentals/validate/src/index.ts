@@ -67,7 +67,7 @@ export * from './v1'
 
 // ─── DX layer (works with Pyreon's own validator + any other StdSchema lib) ──
 
-export { formatError, formatErrors, formatErrorsByPath } from './format'
+export { formatError, formatErrors, formatErrorsByPath, toFormValidator } from './format'
 export { getMeta, resolveMetaField, withField } from './meta'
 export {
   parseReactive,

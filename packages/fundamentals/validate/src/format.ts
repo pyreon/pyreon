@@ -9,6 +9,7 @@
  * fallback → message).
  */
 
+import type { Schema } from './core/schema'
 import type { PyreonIssue, StandardSchemaIssue, TFn } from './types'
 
 /**
@@ -88,6 +89,33 @@ export function formatErrorsByPath(
     }
   }
   return out
+}
+
+/**
+ * Adapt a `@pyreon/validate` schema into a `@pyreon/form` `schema` validator —
+ * a `(values) => Record<field, errorMessage>` function. Runs `schema.safeParse`
+ * and maps each issue's path to a per-field error via {@link formatErrorsByPath}
+ * (so i18n keys resolve through `t` exactly like every other error). Valid input
+ * → `{}` (no errors).
+ *
+ * Designed for a FLAT object schema (`s.object({ email, age })`) whose field
+ * names match the form's fields — each issue path is a single segment that
+ * becomes the field key. Nested schemas produce dotted keys (`user.email`)
+ * which won't match a flat form field; use a flat schema (or `@pyreon/form`
+ * field arrays) for form binding.
+ *
+ * @example
+ * const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
+ * const form = useForm({ fields: [emailField, ageField], schema: toFormValidator(schema), onSubmit })
+ */
+export function toFormValidator<TValues>(
+  schema: Schema<TValues>,
+  t?: TFn,
+): (values: TValues) => Record<string, string> {
+  return (values: TValues): Record<string, string> => {
+    const r = schema.safeParse(values)
+    return r.ok ? {} : formatErrorsByPath(r.issues, t)
+  }
 }
 
 /**
