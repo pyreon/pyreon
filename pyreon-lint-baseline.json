@@ -1,12 +1,12 @@
 {
   "description": "Pyreon-lint ratchet — @pyreon/lint advisory (warning + info) findings over framework `packages/*/src` may only DECREASE. A change pushing any rule above its baseline fails `bun scripts/check-pyreon-lint-ratchet.ts`. After fixing findings (or scoping a rule off for a package with rationale), tighten with `--update`. Never raise the baseline to absorb new findings. See .claude/rules/code-style.md (three-state model).",
-  "total": 246,
+  "total": 210,
   "rules": {
-    "lint/pyreon/no-error-without-prefix": 86,
+    "lint/pyreon/no-error-without-prefix": 41,
     "lint/pyreon/no-and-conditional": 36,
+    "lint/pyreon/no-raw-addeventlistener": 25,
     "lint/pyreon/no-map-in-jsx": 19,
     "lint/pyreon/no-unbatched-updates": 19,
-    "lint/pyreon/no-raw-addeventlistener": 16,
     "lint/pyreon/no-children-access": 14,
     "lint/pyreon/prefer-cx": 12,
     "lint/pyreon/no-dom-in-setup": 9,
