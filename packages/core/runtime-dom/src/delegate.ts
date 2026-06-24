@@ -55,6 +55,11 @@ export function delegatedPropName(eventName: string): string {
 // Track which containers already have delegation installed
 const _delegated = new WeakSet<Element>()
 
+// Per-dispatch tag for cross-root dedup (see the listener below). Keyed on the
+// (single, shared) event object so every delegation root on the propagation
+// path reads the same set.
+const DELEGATED_ELEMENTS = Symbol('pyreonDelegatedElements')
+
 /**
  * Install delegation listeners on a container element.
  * Called once from mount(). Idempotent — safe to call multiple times.
@@ -66,30 +71,53 @@ export function setupDelegation(container: Element): void {
   for (const eventName of DELEGATED_EVENTS) {
     const prop = delegatedPropName(eventName)
     container.addEventListener(eventName, (e: Event) => {
+      // Dedup across NESTED delegation roots. A single mount has ONE root, but
+      // an island hydrates via `hydrateRoot(islandMarker)` — installing a
+      // SECOND delegation root INSIDE the app's mount root. A click on the
+      // island's button then bubbles through BOTH roots' listeners, and each
+      // walks `target → its container`, so without this guard every element's
+      // handler fires once per overlapping root (the islands "+2 per click"
+      // double-fire bug). `dispatchEvent` reuses one Event object across the
+      // whole propagation path, so we tag it with the set of elements already
+      // invoked for THIS dispatch; an outer root skips any element an inner
+      // root already handled. Allocated lazily — the common no-handler walk
+      // (and the single-root case until the first match) stays zero-alloc.
+      const ev = e as Event & { [DELEGATED_ELEMENTS]?: Set<Element> }
       let el = e.target as (HTMLElement & Record<string, unknown>) | null
       while (el && el !== container) {
         const handler = el[prop]
         if (typeof handler === 'function') {
-          // Per-handler `currentTarget` patch: native event delegation leaves
-          // `e.currentTarget` as the container (the listener root). Without
-          // this override, `ev.currentTarget.value` in user code reads from
-          // the container — silently `undefined` for inputs, the wrong tag
-          // type, etc. Pyreon's `TargetedEvent<E>` type *promises* the
-          // matched element; this override makes the runtime keep that
-          // promise, matching what React, Vue, and Solid all do for
-          // delegated events.
-          //
-          // `currentTarget` is a read-only accessor on native Event types,
-          // so direct assignment is silently ignored — `Object.defineProperty`
-          // with `configurable: true` is the only portable override.
-          Object.defineProperty(e, 'currentTarget', {
-            value: el,
-            configurable: true,
-          })
-          batch(() => handler(e))
-          // Don't break — allow ancestor handlers too (consistent with addEventListener)
-          // But if stopPropagation was called, stop walking
-          if (e.cancelBubble) break
+          let invoked = ev[DELEGATED_ELEMENTS]
+          if (invoked === undefined) {
+            invoked = new Set<Element>()
+            Object.defineProperty(e, DELEGATED_ELEMENTS, {
+              value: invoked,
+              configurable: true,
+            })
+          }
+          if (!invoked.has(el)) {
+            invoked.add(el)
+            // Per-handler `currentTarget` patch: native event delegation leaves
+            // `e.currentTarget` as the container (the listener root). Without
+            // this override, `ev.currentTarget.value` in user code reads from
+            // the container — silently `undefined` for inputs, the wrong tag
+            // type, etc. Pyreon's `TargetedEvent<E>` type *promises* the
+            // matched element; this override makes the runtime keep that
+            // promise, matching what React, Vue, and Solid all do for
+            // delegated events.
+            //
+            // `currentTarget` is a read-only accessor on native Event types,
+            // so direct assignment is silently ignored — `Object.defineProperty`
+            // with `configurable: true` is the only portable override.
+            Object.defineProperty(e, 'currentTarget', {
+              value: el,
+              configurable: true,
+            })
+            batch(() => handler(e))
+            // Don't break — allow ancestor handlers too (consistent with addEventListener)
+            // But if stopPropagation was called, stop walking
+            if (e.cancelBubble) break
+          }
         }
         el = el.parentElement as (HTMLElement & Record<string, unknown>) | null
       }
