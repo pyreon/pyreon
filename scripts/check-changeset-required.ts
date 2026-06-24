@@ -222,6 +222,9 @@ export function findOwningPackage(
  *   `lib/` (never imported by the package's runtime entry), so it does not
  *   change shipped code. Same non-shipping rationale as test files: a
  *   manifest-only edit needs a docs regen, not a changeset.
+ * - File must NOT be a vitest test-runner config (`vitest*.config.ts`) —
+ *   dev tooling, never in a package's published `files`. A flaky-test or
+ *   parallelism fix in a vitest config has zero consumer impact.
  */
 export function isConsumerAffectingFile(
   file: string,
@@ -235,7 +238,26 @@ export function isConsumerAffectingFile(
   if (ignoredNames.has(owner.name)) return false
   if (isTestPath(file)) return false
   if (isManifestPath(file)) return false
+  if (isTestRunnerConfigPath(file)) return false
   return true
+}
+
+/**
+ * A package's vitest test-runner config (`vitest.config.ts`,
+ * `vitest.browser.config.ts`, `vitest.node.config.ts`, …). These are dev
+ * tooling — no package ships a vitest config as its product, so they are never
+ * in a package's published `files` and a change to one never reaches npm
+ * consumers (same non-shipping rationale as test files + the gen-docs manifest).
+ * Deliberately NARROW to vitest configs: `tsconfig*.json` is NOT excluded
+ * because `@pyreon/typescript` ships its tsconfig presets AS its published
+ * product, so a change there IS consumer-affecting.
+ *
+ * @internal exported for unit testing
+ */
+export function isTestRunnerConfigPath(file: string): boolean {
+  const norm = file.split('\\').join('/')
+  const base = norm.slice(norm.lastIndexOf('/') + 1)
+  return /^vitest(\.[\w-]+)?\.config\.(c|m)?[jt]s$/.test(base)
 }
 
 /**
