@@ -23,7 +23,7 @@ export default function UseToggleDisclosurePattern() {
     }, () => isOpen() ? '▼ Hide details' : '▶ Show details'),
     h('div', {
       class: 'card',
-      style: { display: () => isOpen() ? 'block' : 'none' },
+      style: () => ({ display: isOpen() ? 'block' : 'none' }),
     },
       h('div', null, 'Once expanded, this panel survives across toggles.'),
       h('div', { class: 'muted', style: { marginTop: '6px' } },

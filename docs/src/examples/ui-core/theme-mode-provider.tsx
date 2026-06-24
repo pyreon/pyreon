@@ -17,7 +17,16 @@ export default function ThemeModeProvider() {
   const inversed = signal(false)
 
   const resolved = computed(() => {
-    const m = mode()
+    // 'system' resolves to the OS preference (so themes[resolved()] is always
+    // a concrete light/dark key — never undefined).
+    let m = mode()
+    if (m === 'system') {
+      m =
+        typeof window !== 'undefined' &&
+        window.matchMedia?.('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+    }
     return inversed() ? (m === 'light' ? 'dark' : 'light') : m
   })
 
@@ -27,7 +36,7 @@ export default function ThemeModeProvider() {
   }
 
   return h('div', {
-    style: () => ({ background: (themes as Record<string, any>)[resolved()].bg, color: (themes as Record<string, any>)[resolved()].fg, border: `1px solid \${themes[resolved()].border}`, borderRadius: '8px', padding: '16px', transition: 'all 200ms' }),
+    style: () => ({ background: (themes as Record<string, any>)[resolved()].bg, color: (themes as Record<string, any>)[resolved()].fg, border: `1px solid ${themes[resolved()].border}`, borderRadius: '8px', padding: '16px', transition: 'all 200ms' }),
   },
     h('div', { style: { marginBottom: '12px', fontSize: '15px', fontWeight: 'bold' } }, () => 'Resolved mode: ' + resolved()),
     h('div', { style: { display: 'flex', gap: '8px', marginBottom: '8px' } },

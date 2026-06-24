@@ -18,12 +18,12 @@ export default function AnimatedTransitionOpacityTransform() {
 
   return h('div', { class: 'col' },
     h('button', { onClick: toggle }, () => visible() ? '▼ Hide' : '▶ Show'),
-    h('div', { class: 'card', style: {
+    h('div', { class: 'card', style: () => ({
       transition: 'opacity 260ms ease, transform 260ms ease',
-      opacity: () => visible() ? 1 : 0,
-      transform: () => visible() ? 'translateY(0)' : 'translateY(-8px)',
-      pointerEvents: () => visible() ? 'auto' : 'none',
-    } },
+      opacity: visible() ? 1 : 0,
+      transform: visible() ? 'translateY(0)' : 'translateY(-8px)',
+      pointerEvents: visible() ? 'auto' : 'none',
+    }) },
       h('div', { style: { fontWeight: '600' } }, 'Animated panel'),
       h('div', { class: 'muted', style: { marginTop: '4px' } },
         'opacity + transform driven by a signal — kinetic generalises this.',

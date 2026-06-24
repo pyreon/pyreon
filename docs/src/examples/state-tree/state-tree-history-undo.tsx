@@ -46,8 +46,8 @@ export default function StateTreeHistoryUndo() {
       h('button', { onClick: () => apply(value() + 1) }, '＋1'),
       h('button', { onClick: () => apply(value() - 1) }, '−1'),
       h('button', { onClick: () => apply(0) }, 'set 0'),
-      h('button', { onClick: undo, disabled: () => cursor() === 0 ? '' : null }, '↶ undo'),
-      h('button', { onClick: redo, disabled: () => cursor() >= history().length - 1 ? '' : null }, '↷ redo'),
+      h('button', { onClick: undo, disabled: () => cursor() === 0 }, '↶ undo'),
+      h('button', { onClick: redo, disabled: () => cursor() >= history().length - 1 }, '↷ redo'),
     ),
     h('div', { class: 'muted' }, () =>
       'history: [' + history().map((v, i) => i === cursor() ? '⟨' + v + '⟩' : v).join(' · ') + ']',

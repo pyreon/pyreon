@@ -22,7 +22,7 @@ export default function PermissionsReactiveCan() {
   const Row = (key: any) =>
     h('div', { class: 'row', style: { justifyContent: 'space-between' } },
       h('span', null, key),
-      h('span', { class: 'badge', style: { background: () => can(key) ? null : 'transparent', color: () => can(key) ? null : 'var(--muted)' } },
+      h('span', { class: 'badge', style: () => ({ background: can(key) ? null : 'transparent', color: can(key) ? null : 'var(--muted)' }) },
         () => can(key) ? '✓ granted' : '✕ denied',
       ),
     )

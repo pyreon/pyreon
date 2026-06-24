@@ -33,11 +33,11 @@ export default function Ex12ColumnResponsiveGrid() {
       ...Object.keys(presets).map((name) =>
         h('button', {
           onClick: () => cols.set((presets as Record<string, any>)[name]),
-          style: {
-            fontWeight: () => JSON.stringify(cols()) === JSON.stringify((presets as Record<string, any>)[name]) ? '700' : '400',
-            background: () => JSON.stringify(cols()) === JSON.stringify((presets as Record<string, any>)[name]) ? 'var(--accent)' : null,
-            color: () => JSON.stringify(cols()) === JSON.stringify((presets as Record<string, any>)[name]) ? 'var(--bg)' : null,
-          },
+          style: () => ({
+            fontWeight: JSON.stringify(cols()) === JSON.stringify((presets as Record<string, any>)[name]) ? '700' : '400',
+            background: JSON.stringify(cols()) === JSON.stringify((presets as Record<string, any>)[name]) ? 'var(--accent)' : null,
+            color: JSON.stringify(cols()) === JSON.stringify((presets as Record<string, any>)[name]) ? 'var(--bg)' : null,
+          }),
         }, name),
       ),
     ),
