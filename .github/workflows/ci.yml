@@ -455,7 +455,13 @@ jobs:
     # other lib-needing expensive job below.
     needs: [bootstrap, lint, typecheck]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The `native` cell runs the heaviest tests in the repo (swiftc / kotlinc /
+    # cargo compiles in the native-compiler + runtime gates) and consistently
+    # ran right up against the flat 10-minute cap, getting timeout-CANCELLED —
+    # which failed the `Test` aggregator on every native-touching PR AND main.
+    # Give `native` real headroom; the other (vitest-only) cells keep the tight
+    # 10-minute cap so a genuine hang there still fails fast.
+    timeout-minutes: ${{ matrix.category == 'native' && 25 || 10 }}
     strategy:
       fail-fast: false
       matrix:
