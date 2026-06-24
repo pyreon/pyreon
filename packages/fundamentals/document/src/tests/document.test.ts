@@ -308,6 +308,19 @@ describe('HTML renderer', () => {
     expect(html).toContain('src="/img.png"')
     expect(html).toContain('<figcaption>')
     expect(html).toContain('A photo')
+    // alt provided → emitted verbatim
+    expect(html).toContain('alt="Photo"')
+  })
+
+  it('always emits an alt attribute on <img> — alt="" when none is given (WCAG)', async () => {
+    const doc = Document({ children: Image({ src: '/logo.png' }) })
+    const html = (await render(doc, 'html')) as string
+    expect(html).toContain('<img')
+    // an <img> with no alt attribute is WCAG-nonconformant; alt="" marks it
+    // decorative so screen readers skip it instead of reading the filename.
+    expect(html).toContain('alt=""')
+    // never an alt-less <img>
+    expect(/<img(?:(?!\balt=)[^>])*\/>/.test(html)).toBe(false)
   })
 
   it('renders a link', async () => {
