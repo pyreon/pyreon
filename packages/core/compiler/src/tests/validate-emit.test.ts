@@ -65,6 +65,16 @@ describe('analyzeValidate — IR extraction', () => {
   it('ignores non-s expressions', () => {
     expect(analyzeValidate(`const x = foo.bar(); const y = 42`)).toHaveLength(0)
   })
+
+  it('flags module-level vs nested scope via topLevel', () => {
+    // Module-level const → safe to attach a module-end verdict.
+    expect(analyzeValidate(`const X = s.string()`)[0]!.topLevel).toBe(true)
+    expect(analyzeValidate(`export const X = s.string()`)[0]!.topLevel).toBe(true)
+    // Function/block-scoped → NOT top-level (a module-end attach would ReferenceError).
+    expect(analyzeValidate(`function f() { const X = s.string(); return X }`)[0]!.topLevel).toBe(false)
+    expect(analyzeValidate(`const f = () => { const X = s.string() }`)[0]!.topLevel).toBe(false)
+    expect(analyzeValidate(`{ const X = s.string() }`)[0]!.topLevel).toBe(false)
+  })
 })
 
 describe('emitValidator — eval\'d verdicts', () => {

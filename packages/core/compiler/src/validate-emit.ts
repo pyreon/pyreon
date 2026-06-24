@@ -80,6 +80,14 @@ export interface ValidateSchemaInfo {
   node: ValidateNode
   /** True iff the IR contains no `unsupported` node — i.e. `emitValidator` is safe. */
   emittable: boolean
+  /**
+   * True iff the schema is a MODULE-LEVEL `const`/`let`/`var` declaration
+   * (`VariableDeclarationList → VariableStatement → SourceFile`). The
+   * `@pyreon/vite-plugin` verdict-emit appends `name._attachCompiledVerdict(…)`
+   * at module end, which is only sound when `name` is in module scope — a
+   * function-scoped schema would be a ReferenceError at module load.
+   */
+  topLevel: boolean
 }
 
 // Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted
@@ -334,12 +342,22 @@ export function analyzeValidate(code: string, filename = 'input.ts'): ValidateSc
     if (ts.isVariableDeclaration(n) && n.initializer && unwindChain(n.initializer)) {
       const node = parseExpr(n.initializer)
       const pos = sf.getLineAndCharacterOfPosition(n.initializer.getStart(sf))
+      // MODULE-LEVEL iff: VariableDeclaration → VariableDeclarationList →
+      // VariableStatement → SourceFile. Anything nested (function body, block,
+      // arrow) is NOT safe to attach a module-end verdict to.
+      const list = n.parent
+      const stmt = list?.parent
+      const topLevel =
+        !!list && ts.isVariableDeclarationList(list) &&
+        !!stmt && ts.isVariableStatement(stmt) &&
+        ts.isSourceFile(stmt.parent)
       out.push({
         name: ts.isIdentifier(n.name) ? n.name.text : null,
         line: pos.line + 1,
         column: pos.character,
         node,
         emittable: isEmittable(node),
+        topLevel,
       })
       return // don't descend into a recognized schema's internals as separate top-level schemas
     }

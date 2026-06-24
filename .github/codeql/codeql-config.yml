@@ -27,3 +27,14 @@ paths-ignore:
   - 'docs/**'
   - '**/lib/**'
   - '**/dist/**'
+  # Build-time CODE GENERATOR. `buildCompiledVerdicts` emits an inlined
+  # validator from the consuming app's OWN `@pyreon/validate` schema source
+  # (never untrusted runtime input) — the same accepted pattern as the validate
+  # runtime JIT (`jit.ts`). CodeQL's `js/bad-code-sanitization` /
+  # `js/unsafe-code-construction` are false positives for a build-time emitter
+  # (emitValidator JSON-escapes every user string; the schema name is
+  # identifier-guarded), but those queries can't be path-scoped via
+  # query-filters — so the codegen is isolated in this one file and excluded
+  # here, while the rest of the plugin stays fully scanned. Correctness is
+  # locked by the compiler's emit-equivalence gate + the transform-driven tests.
+  - '**/vite-plugin/src/compiled-verdicts.ts'
