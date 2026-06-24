@@ -71,6 +71,47 @@ defineConfig({
 
 If no static routes exist (only dynamic routes, no `getStaticPaths`), a single `/` fallback is always produced so the static host has an `index.html`.
 
+## Output format (directory vs file URLs)
+
+`ssg.format` controls which file(s) each route writes — mirroring Astro's `build.format`:
+
+```ts
+defineConfig({
+  mode: 'ssg',
+  adapter: 'static',
+  ssg: {
+    paths: ['/', '/resume'],
+    format: 'both', // 'file' | 'directory' | 'both' — default 'directory'
+  },
+})
+```
+
+| `format`            | `/resume` writes                              |
+| ------------------- | --------------------------------------------- |
+| `'directory'` (default) | `dist/resume/index.html`                  |
+| `'file'`            | `dist/resume.html`                            |
+| `'both'`            | `dist/resume/index.html` **and** `dist/resume.html` (byte-identical) |
+
+The root route always writes `dist/index.html` (there is no `dist/.html`), and a path that already ends in `.html` is written verbatim — both regardless of `format`.
+
+### Why this exists — the slash-less-URL 301
+
+With `'directory'` only, a host that does **not** auto-rewrite slash-less URLs to the trailing-slash form — **GitHub Pages, raw Cloudflare R2 / S3 without an index-document config, plain nginx without `try_files`** — answers a direct hit to `/resume` (the canonical share/link form) with a redirect:
+
+```
+GET /resume   → 301 → /resume/   → 200
+```
+
+That single redirect is a measurable mobile-performance cost — Lighthouse / PageSpeed flags it under **"Avoid multiple page redirects"** (hundreds of ms on a cold mobile connection). Emitting `dist/resume.html` lets those hosts serve `/resume` directly with no redirect.
+
+### Choosing a value
+
+- **`'both'`** is the safe recommendation when redirects matter. It keeps the **directory form** working for trailing-slash links (`<RouterLink to="/resume/">`, the trailing-slash URLs [`seoPlugin`'s sitemap](#trailing-slashes) advertises) *and* serves slash-less share URLs with **no redirect** via the file form. Cost: one extra HTML file per route.
+- **`'file'`** is leanest, but a page is then reachable **only** at its slash-less URL — a host that maps `/resume/` → `/resume/index.html` will 404 the trailing-slash form. Avoid `'file'` if your app emits trailing-slash internal links or sitemap URLs.
+- When a route is reachable at two URL forms (`'both'`), set a **canonical** ([`<Meta canonical>`](/docs/zero#meta)) so search engines dedupe `/resume` and `/resume/`.
+
+> This is the *output* side of the same concern [`sitemap.trailingSlash`](#trailing-slashes) addresses on the *advertised-URL* side. `format: 'both'` removes the redirect for **both** forms instead of choosing one canonical form for the sitemap to match.
+
 ## Dynamic routes — `getStaticPaths`
 
 Dynamic routes (`/posts/[id].tsx`) are skipped by auto-detect unless they `export const getStaticPaths` (sync or async). The SSG plugin enumerates the params and expands the URL pattern, rendering one HTML file per entry. Mirrors Astro's per-route convention.

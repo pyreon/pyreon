@@ -282,6 +282,45 @@ export interface ZeroConfig {
     /** Paths to prerender (or function returning paths). */
     paths?: string[] | (() => string[] | Promise<string[]>)
     /**
+     * On-disk output format for prerendered routes — controls which file(s)
+     * each route writes, mirroring Astro's `build.format`:
+     *
+     * - `'directory'` (**default**): `dist/<route>/index.html` (root →
+     *   `dist/index.html`). The historical behavior.
+     * - `'file'`: `dist/<route>.html` (Next.js `output: 'export'` style;
+     *   root → `dist/index.html`).
+     * - `'both'`: emit BOTH forms with byte-identical content — one extra
+     *   HTML file per route, zero redirect risk on any host or link form.
+     *
+     * **Why this matters — the slash-less-URL 301.** With `'directory'`
+     * only, a host that does NOT auto-rewrite slash-less URLs to the
+     * trailing-slash form (GitHub Pages, raw Cloudflare R2 / S3 without an
+     * index-document config, plain nginx without `try_files`) answers a
+     * direct hit to `/resume` (the canonical share/link form) with a
+     * **301 → `/resume/` → 200** round-trip. That single redirect is a
+     * measurable mobile-performance cost (PageSpeed "Avoid multiple page
+     * redirects"). Emitting `dist/resume.html` lets those hosts serve
+     * `/resume` directly with no redirect.
+     *
+     * **Choosing a value:**
+     * - `'both'` is the safe recommendation when redirects matter. It keeps
+     *   trailing-slash links working (`<Link to="/resume/">`, the
+     *   trailing-slash URLs `seoPlugin`'s sitemap advertises → served by the
+     *   directory form) AND serves slash-less share URLs with no redirect
+     *   (the file form). Cost: one extra HTML file per route.
+     * - `'file'` is leanest but a page is then reachable ONLY at its
+     *   slash-less URL — a host that maps `/resume/` → `/resume/index.html`
+     *   will 404 the trailing-slash form, so avoid it if your app emits
+     *   trailing-slash internal links or sitemap URLs.
+     * - When a route is reachable at two URL forms (`'both'`), set a
+     *   canonical (`@pyreon/zero`'s `<Meta canonical>`) so search engines
+     *   dedupe `/resume` and `/resume/`.
+     *
+     * The root route always writes `dist/index.html` (there is no
+     * `dist/.html`), regardless of format. Default: `'directory'`.
+     */
+    format?: 'file' | 'directory' | 'both'
+    /**
      * Inject `<link rel="modulepreload">` into each prerendered page's
      * `<head>` for the route component's chunk + its STATIC import closure,
      * so the browser fetches the whole route graph in parallel instead of

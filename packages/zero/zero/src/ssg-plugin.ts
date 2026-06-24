@@ -642,6 +642,81 @@ function resolveOutputPath(distDir: string, path: string): string {
 }
 
 /**
+ * The file-form output target for a NORMAL route — `/resume` →
+ * `dist/resume.html`, `/blog/post` → `dist/blog/post.html`. Callers
+ * (`selectSsgTargets`) exclude `/` (no `dist/.html`) and already-`.html`
+ * paths (those ARE the file form already), so this only ever sees a
+ * leading-slash route with ≥1 segment.
+ */
+function resolveFileOutputPath(distDir: string, path: string): string {
+  return join(distDir, `${path.replace(/^\/+/, '')}.html`)
+}
+
+export type SsgFormat = 'file' | 'directory' | 'both'
+
+/**
+ * Resolve the on-disk file target(s) a route writes under `ssg.format`.
+ * Pure — exposed via `_internal.selectSsgTargets` for unit tests.
+ *
+ * - The root route (`/`) and any path that already ends in `.html` have
+ *   exactly ONE canonical target regardless of format: there is no
+ *   `dist/.html`, and a `.html` path IS the file form. (`'file'` on root
+ *   therefore still writes `dist/index.html`, never a sibling.)
+ * - A normal route resolves to the directory form (`dist/<route>/index.html`),
+ *   the file form (`dist/<route>.html`), or both — per `format`.
+ *
+ * @internal
+ */
+export function selectSsgTargets(
+  distDir: string,
+  path: string,
+  format: SsgFormat,
+): string[] {
+  if (path === '/' || path.endsWith('.html')) {
+    return [resolveOutputPath(distDir, path)]
+  }
+  const dir = resolveOutputPath(distDir, path)
+  const file = resolveFileOutputPath(distDir, path)
+  switch (format) {
+    case 'file':
+      return [file]
+    case 'both':
+      return [dir, file]
+    default:
+      return [dir]
+  }
+}
+
+/**
+ * Write a route's HTML to every on-disk form selected by `ssg.format`,
+ * byte-identical across forms. Each target is path-traversal-guarded
+ * (same `isInsideDist` check as the single-write path) and its parent dir
+ * `mkdir`'d. Returns `false` (and records the escape in `errors`) if ANY
+ * selected target would escape `distDir` — nothing is written in that case,
+ * matching the pre-format single-write early-return.
+ */
+async function writeRouteOutputs(
+  distDir: string,
+  path: string,
+  html: string,
+  format: SsgFormat,
+  errors: { path: string; error: unknown }[],
+): Promise<boolean> {
+  const targets = selectSsgTargets(distDir, path, format)
+  for (const target of targets) {
+    if (!isInsideDist(distDir, target)) {
+      errors.push({ path, error: new Error(`Path traversal detected: "${path}"`) })
+      return false
+    }
+  }
+  for (const target of targets) {
+    await mkdirOnce(dirname(target))
+    await writeFile(target, html, 'utf-8')
+  }
+  return true
+}
+
+/**
  * Path-containment check that is SEPARATOR-TERMINATED. A bare
  * `resolve(filePath).startsWith(resolve(distDir))` is a string-prefix
  * test, not a path test: with distDir `/app/dist`, a traversed filePath
@@ -1299,6 +1374,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // HTML to link to, and redirect sources go to `_redirects`, not
       // sitemap.xml (linking to a redirect source confuses crawlers).
       const writtenPaths: string[] = []
+      // ssg.format — which on-disk form(s) each route writes. Default
+      // 'directory' (back-compat: `dist/<route>/index.html` only).
+      const ssgFormat: SsgFormat = config.ssg?.format ?? 'directory'
       const start = Date.now()
 
       // PR D — render a single path. Extracted from the inline loop body
@@ -1372,13 +1450,16 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             redirects.push({ from: result.from, to: result.to, status: result.status })
 
             if (config.ssg?.redirectsAsHtml === 'meta-refresh') {
-              const filePath = resolveOutputPath(distDir, p)
-              if (!isInsideDist(distDir, filePath)) {
-                errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
-                return
-              }
-              await mkdirOnce(dirname(filePath))
-              await writeFile(filePath, renderMetaRefreshHtml(result.to), 'utf-8')
+              // Emit the meta-refresh stub in the same form(s) as a real
+              // route, so a redirect source is reachable slash-less too
+              // under `'file'`/`'both'`.
+              await writeRouteOutputs(
+                distDir,
+                p,
+                renderMetaRefreshHtml(result.to),
+                ssgFormat,
+                errors,
+              )
             }
             return
           }
@@ -1426,16 +1507,12 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             html = injectViewTransitions(html)
           }
 
-          const filePath = resolveOutputPath(distDir, p)
-
-          // Path-traversal guard — same as @pyreon's server's prerender.
-          if (!isInsideDist(distDir, filePath)) {
-            errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
+          // Write the directory and/or file form per `ssg.format`. The
+          // helper path-traversal-guards every target (same `isInsideDist`
+          // check as before) and records + bails on any escape.
+          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors))) {
             return
           }
-
-          await mkdirOnce(dirname(filePath))
-          await writeFile(filePath, html, 'utf-8')
           pages++
           writtenPaths.push(p)
           // M2.3 — track successful HTML emits. `ssg.pathRender - ssg.pathWrite
@@ -1457,14 +1534,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             try {
               const fallbackHtml = await config.ssg.onPathError(p, error)
               if (typeof fallbackHtml === 'string') {
-                const filePath = resolveOutputPath(distDir, p)
-                if (!isInsideDist(distDir, filePath)) {
-                  errors.push({ path: p, error: new Error(`Path traversal detected: "${p}"`) })
-                  return
+                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors)) {
+                  pages++
                 }
-                await mkdirOnce(dirname(filePath))
-                await writeFile(filePath, fallbackHtml, 'utf-8')
-                pages++
               }
             } catch (callbackError) {
               errors.push({ path: `${p} (onPathError)`, error: callbackError })
@@ -1879,6 +1951,7 @@ export const _internal = {
   resolvePaths,
   autoDetectStaticPaths,
   resolveOutputPath,
+  selectSsgTargets,
   isInsideDist,
   expandUrlPattern,
   injectIntoTemplate,

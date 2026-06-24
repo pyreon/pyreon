@@ -183,6 +183,30 @@ export function createServeHandler(
     // `bun scripts/serve-ssg.ts` reflect production deployment shape.
     const hasExt = /\.[a-z0-9]+$/i.test(pathname)
     if (!hasExt) {
+      // Prefer the FILE-form sibling (`/resume` → `dist/resume.html`) when it
+      // exists, served directly with NO redirect — this models GitHub Pages /
+      // S3 / nginx `try_files`, the hosts that 301 slash-less URLs under a
+      // directory-only build. It's what `ssg.format: 'file' | 'both'` emits.
+      // Absent (the default 'directory' build) → fall through to the
+      // directory rewrite below, unchanged.
+      //
+      // ONLY for the slash-less form: an explicit trailing slash (`/resume/`)
+      // asks for the directory index, so it must NOT match the `.html`
+      // sibling — that keeps trailing-slash links / sitemap URLs serving the
+      // directory form under `'both'`.
+      if (pathname !== '/' && !pathname.endsWith('/')) {
+        const fileForm = join(root, `${pathname}.html`)
+        const resolvedFile = resolve(fileForm)
+        if (
+          resolvedFile.startsWith(root) &&
+          existsSync(resolvedFile) &&
+          statSync(resolvedFile).isFile()
+        ) {
+          return new Response(readFileSync(resolvedFile), {
+            headers: { 'content-type': getMime(resolvedFile) },
+          })
+        }
+      }
       if (!pathname.endsWith('/')) pathname = `${pathname}/`
       pathname = `${pathname}index.html`
     }

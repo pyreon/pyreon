@@ -104,6 +104,61 @@ describe('ssgPlugin', () => {
     })
   })
 
+  // ssg.format — which on-disk file(s) a route writes. The pure target
+  // selector is the load-bearing decision; `writeRouteOutputs` just writes
+  // every returned target byte-identically.
+  describe('selectSsgTargets (ssg.format)', () => {
+    const D = '/dist'
+
+    it("'directory' (default) → only <route>/index.html", () => {
+      expect(_internal.selectSsgTargets(D, '/resume', 'directory')).toEqual([
+        '/dist/resume/index.html',
+      ])
+      expect(_internal.selectSsgTargets(D, '/blog/post', 'directory')).toEqual([
+        '/dist/blog/post/index.html',
+      ])
+    })
+
+    it("'file' → only <route>.html (Next.js export style)", () => {
+      expect(_internal.selectSsgTargets(D, '/resume', 'file')).toEqual(['/dist/resume.html'])
+      expect(_internal.selectSsgTargets(D, '/blog/post', 'file')).toEqual([
+        '/dist/blog/post.html',
+      ])
+    })
+
+    it("'both' → directory form AND file form (the no-301 opt-in)", () => {
+      expect(_internal.selectSsgTargets(D, '/resume', 'both')).toEqual([
+        '/dist/resume/index.html',
+        '/dist/resume.html',
+      ])
+      expect(_internal.selectSsgTargets(D, '/blog/post', 'both')).toEqual([
+        '/dist/blog/post/index.html',
+        '/dist/blog/post.html',
+      ])
+    })
+
+    it('root (/) is ALWAYS dist/index.html — no dist/.html for any format', () => {
+      for (const fmt of ['directory', 'file', 'both'] as const) {
+        expect(_internal.selectSsgTargets(D, '/', fmt)).toEqual(['/dist/index.html'])
+      }
+    })
+
+    it('an already-.html path is its own single canonical target for any format', () => {
+      for (const fmt of ['directory', 'file', 'both'] as const) {
+        expect(_internal.selectSsgTargets(D, '/feed.html', fmt)).toEqual(['/dist/feed.html'])
+      }
+    })
+
+    it("'both' emits each route's two forms at sibling paths (no nesting collision)", () => {
+      // /blog (a page) coexisting with /blog/post (a child) under 'both':
+      // dist/blog.html + dist/blog/index.html, and dist/blog/post.html +
+      // dist/blog/post/index.html — all distinct files, no overwrite.
+      const blog = _internal.selectSsgTargets(D, '/blog', 'both')
+      const post = _internal.selectSsgTargets(D, '/blog/post', 'both')
+      expect(new Set([...blog, ...post]).size).toBe(4)
+    })
+  })
+
   describe('expandUrlPattern', () => {
     it('substitutes a single :param', () => {
       expect(_internal.expandUrlPattern('/posts/:id', { id: 'a' })).toBe('/posts/a')

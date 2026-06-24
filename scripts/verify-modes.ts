@@ -45,6 +45,13 @@ interface Cell {
   /** SSG-only: paths to prerender. Falls back to autodetect when omitted. */
   ssgPaths?: string[]
   /**
+   * SSG-only: on-disk output format (`ssg.format`). `'both'` emits both
+   * `dist/<route>/index.html` AND `dist/<route>.html` (byte-identical) so
+   * slash-less URLs serve with no 301 on hosts that don't auto-rewrite.
+   * Omitted → `'directory'` (default; index.html only).
+   */
+  ssgFormat?: 'file' | 'directory' | 'both'
+  /**
    * Subpath / base-path setting (PR E). Forwarded to `zero({ base })` —
    * which propagates to Vite's `base` (asset URL rewriting) AND to
    * `createRouter({ base })` (RouterLink href prefixing). Verifies the
@@ -150,6 +157,17 @@ function assertFileContains(path: string, needle: string): void {
   if (!content.includes(needle)) {
     const preview = content.length > 400 ? `${content.slice(0, 400)}…` : content
     throw new Error(`expected ${path} to contain "${needle}". Got:\n${preview}`)
+  }
+}
+
+/** Both files must exist and be byte-for-byte identical (ssg.format 'both'). */
+function assertFilesByteIdentical(a: string, b: string): void {
+  assertFileExists(a)
+  assertFileExists(b)
+  const ba = readFileSync(a)
+  const bb = readFileSync(b)
+  if (!ba.equals(bb)) {
+    throw new Error(`expected ${a} and ${b} to be byte-identical (lengths ${ba.length} vs ${bb.length})`)
   }
 }
 
@@ -856,6 +874,30 @@ const MATRIX: Cell[] = [
         join(dist, '404.html'),
         '<meta name="robots" content="noindex, nofollow">',
       )
+    },
+  },
+  {
+    // ssg.format: 'both' — emit BOTH dist/<route>/index.html AND
+    // dist/<route>.html (byte-identical) so slash-less URLs serve with no
+    // 301 on hosts that don't auto-rewrite (GitHub Pages, raw S3/R2, plain
+    // nginx). Build-artifact gate for the format feature.
+    example: 'ssr-showcase',
+    mode: 'ssg',
+    ssgPaths: ['/', '/about'],
+    ssgFormat: 'both',
+    smoke: (dist) => {
+      // Directory form still emitted + route-correct.
+      const aboutDir = join(dist, 'about', 'index.html')
+      assertFileContains(aboutDir, 'about-page')
+      // File-form sibling emitted AND byte-identical (the acceptance
+      // criterion). Bisect-verifiable: force `selectSsgTargets` to
+      // `[dir]` and dist/about.html disappears.
+      const aboutFile = join(dist, 'about.html')
+      assertFilesByteIdentical(aboutFile, aboutDir)
+      // Root is ALWAYS index.html — there is no dist/.html sibling.
+      assertFileExists(join(dist, 'index.html'))
+      assertFileAbsent(join(dist, '.html'))
+      assertFileDoesNotExist(join(dist, '.zero-ssg-server'))
     },
   },
   {
@@ -1840,7 +1882,13 @@ function cellId(c: Cell): string {
 }
 
 function configSourceFor(cell: Cell): string {
-  const ssgConfig = cell.ssgPaths ? `, ssg: { paths: ${JSON.stringify(cell.ssgPaths)} }` : ''
+  const ssgInner = [
+    cell.ssgPaths ? `paths: ${JSON.stringify(cell.ssgPaths)}` : '',
+    cell.ssgFormat ? `format: ${JSON.stringify(cell.ssgFormat)}` : '',
+  ]
+    .filter(Boolean)
+    .join(', ')
+  const ssgConfig = ssgInner ? `, ssg: { ${ssgInner} }` : ''
   const baseConfig = cell.base ? `, base: ${JSON.stringify(cell.base)}` : ''
   const adapterConfig = cell.adapter ? `, adapter: ${JSON.stringify(cell.adapter)}` : ''
   const i18nConfig = cell.i18n ? `, i18n: ${JSON.stringify(cell.i18n)}` : ''

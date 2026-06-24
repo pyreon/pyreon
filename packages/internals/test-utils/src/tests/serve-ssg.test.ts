@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -199,6 +199,72 @@ describe('createServeHandler — redirect short-circuit', () => {
       const res = await handler(new Request('http://localhost/'))
       // Confirms file path serves and we never hit 3xx.
       expect(res.status).toBe(200)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+// `ssg.format: 'file' | 'both'` writes a `dist/<route>.html` sibling so
+// hosts that don't auto-rewrite slash-less URLs serve `/resume` directly
+// (no 301 → `/resume/`). serve-ssg models that host: prefer the `.html`
+// sibling over the directory rewrite. This block locks that preference so
+// the SSG e2e gates exercise the real no-redirect behaviour.
+describe('createServeHandler — file-form (.html) sibling preference', () => {
+  it('serves <route>.html directly for a slash-less URL (no redirect, no rewrite)', async () => {
+    const root = makeRoot()
+    writeFileSync(join(root, 'resume.html'), '<!doctype html><title>FILE-FORM</title>')
+    try {
+      const handler = createServeHandler(root, [])
+      const res = await handler(new Request('http://localhost/resume'))
+      expect(res.status).toBe(200)
+      expect(await res.text()).toContain('FILE-FORM')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it("prefers <route>.html over <route>/index.html when BOTH exist ('both' format)", async () => {
+    const root = makeRoot()
+    writeFileSync(join(root, 'resume.html'), '<!doctype html><title>FILE-FORM</title>')
+    mkdirSync(join(root, 'resume'))
+    writeFileSync(join(root, 'resume', 'index.html'), '<!doctype html><title>DIR-FORM</title>')
+    try {
+      const handler = createServeHandler(root, [])
+      // Slash-less → file form (the no-301 win).
+      const slashless = await handler(new Request('http://localhost/resume'))
+      expect(await slashless.text()).toContain('FILE-FORM')
+      // Trailing-slash → directory form still works (links/sitemap shape).
+      const slashed = await handler(new Request('http://localhost/resume/'))
+      expect(await slashed.text()).toContain('DIR-FORM')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it("'directory'-only build (no sibling) → directory rewrite, unchanged", async () => {
+    const root = makeRoot()
+    mkdirSync(join(root, 'resume'))
+    writeFileSync(join(root, 'resume', 'index.html'), '<!doctype html><title>DIR-FORM</title>')
+    try {
+      const handler = createServeHandler(root, [])
+      const res = await handler(new Request('http://localhost/resume'))
+      expect(res.status).toBe(200)
+      expect(await res.text()).toContain('DIR-FORM')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('nested route file form (/blog/post → blog/post.html)', async () => {
+    const root = makeRoot()
+    mkdirSync(join(root, 'blog'))
+    writeFileSync(join(root, 'blog', 'post.html'), '<!doctype html><title>NESTED-FILE</title>')
+    try {
+      const handler = createServeHandler(root, [])
+      const res = await handler(new Request('http://localhost/blog/post'))
+      expect(res.status).toBe(200)
+      expect(await res.text()).toContain('NESTED-FILE')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
