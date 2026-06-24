@@ -75,6 +75,16 @@ export const EMOJI_RE = /^(?:\p{Extended_Pictographic}|\p{Emoji_Component})+$/u
 export const BASE64_RE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 // jwt: three base64url segments separated by dots (header.payload.signature).
 export const JWT_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/
+// cuid (v1, distinct from cuid2): starts with `c`, then 8+ non-space/non-dash.
+export const CUID_RE = /^c[^\s-]{8,}$/i
+// base64url: URL-safe alphabet (`A-Za-z0-9_-`) with optional `=` padding.
+export const BASE64URL_RE = /^[A-Za-z0-9_-]+={0,2}$/
+// ISO 8601 duration (`P…`). Forbids bare `P` / trailing `T`; linear (no
+// catastrophic backtracking — every group is `\d+` + a fixed unit letter).
+export const DURATION_RE =
+  /^P(?!$)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?(?:T(?!$)(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?$/
+// E.164 phone: `+` then 1–15 digits, first non-zero.
+export const E164_RE = /^\+[1-9]\d{1,14}$/
 export const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 export const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/
 export const ISO_TIME_RE = /^\d{2}:\d{2}:\d{2}(?:\.\d+)?$/
@@ -97,6 +107,24 @@ export function validatePhone(value: string): boolean {
 /** IPv4 or IPv6 (regex; sufficient on both client and server). */
 export function validateIp(value: string): boolean {
   return IPV4_RE.test(value) || IPV6_RE.test(value)
+}
+
+/**
+ * CIDR — split on the LAST `/`, validate the address half against the vetted
+ * `IPV4_RE`/`IPV6_RE` and the prefix half as an in-range integer (0–32 for v4,
+ * 0–128 for v6). Split-and-reuse avoids a new variable-quantifier IPv6 regex
+ * (the ReDoS-prone shape CodeQL flags).
+ */
+export function isCidr(value: string): boolean {
+  const slash = value.lastIndexOf('/')
+  if (slash < 0) return false
+  const addr = value.slice(0, slash)
+  const prefixStr = value.slice(slash + 1)
+  if (!/^\d{1,3}$/.test(prefixStr)) return false
+  const prefix = Number(prefixStr)
+  if (IPV4_RE.test(addr)) return prefix <= 32
+  if (IPV6_RE.test(addr)) return prefix <= 128
+  return false
 }
 
 /** Credit-card: 12–19 digits (separators stripped) + Luhn checksum. */
@@ -417,6 +445,81 @@ export class StringSchema extends SchemaBase<string> {
         if (resolveFormat('jwt', (v: string) => JWT_RE.test(v))(value)) return
         ctx.issues.push(
           makeCheckIssue('invalid_format', 'Invalid JWT', 'validate.string.jwt', {}, 'Invalid JWT', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate a cuid (v1) — starts with `c`, then 8+ non-space/non-dash chars. */
+  cuid(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:cuid', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('cuid', (v: string) => CUID_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid cuid', 'validate.string.cuid', {}, 'Invalid cuid', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate URL-safe base64 (alphabet `A-Za-z0-9_-`, optional `=` padding). */
+  base64url(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:base64url', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('base64url', (v: string) => BASE64URL_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid base64url', 'validate.string.base64url', {}, 'Invalid base64url', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate CIDR notation — IPv4 (`x.x.x.x/0-32`) or IPv6 (`…/0-128`). */
+  cidr(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:cidr', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('cidr', isCidr)(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid CIDR', 'validate.string.cidr', {}, 'Invalid CIDR', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate an ISO 8601 duration (`P3Y6M4DT12H30M5S`, `PT1H`, `P1W`, …). */
+  duration(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:duration', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('duration', (v: string) => DURATION_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid ISO 8601 duration', 'validate.string.duration', {}, 'Invalid ISO 8601 duration', ctx, opts),
+        )
+      }),
+    )
+    this._invalidateCompile()
+    return this
+  }
+
+  /** Validate an E.164 phone number (`+` then 1–15 digits, first non-zero). */
+  e164(opts?: CheckOpts): this {
+    this._ops.push(
+      attachCheck({ kind: 'check:string:e164', opts }, (value, ctx) => {
+        if (typeof value !== 'string') return
+        if (resolveFormat('e164', (v: string) => E164_RE.test(v))(value)) return
+        ctx.issues.push(
+          makeCheckIssue('invalid_format', 'Invalid E.164 phone number', 'validate.string.e164', {}, 'Invalid E.164 phone number', ctx, opts),
         )
       }),
     )
