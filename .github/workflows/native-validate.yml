@@ -132,34 +132,23 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install kotlinc via SDKMAN
-        # No first-party `setup-kotlin` action with a stable contract;
-        # SDKMAN is the documented Kotlin install path and works
-        # consistently on Linux. Add kotlinc to PATH for the rest of
-        # the job via `$GITHUB_PATH`.
-        #
-        # NOTE on `set` flags: SDKMAN's `sdkman-init.sh` references
-        # `SDKMAN_CANDIDATES_API` (and other internals) without
-        # pre-initializing them, so `set -u` (-u in `-euo pipefail`)
-        # makes sourcing the script fail with `unbound variable`. The
-        # tradeoff: lose strict-unbound checking inside this step.
-        # Acceptable here because the step is small + every command's
-        # exit code is still checked via `-e`/`pipefail`.
-        # SDKMAN installer: accepted-risk downloadThenRun (PinnedDependenciesID).
-        # Pinning to a GitHub raw URL is infeasible — SDKMAN moved the install
-        # script off `sdkman-cli/contrib/install.sh` and only serves it from
-        # their own CDN at `get.sdkman.io` (the canonical bootstrap URL).
-        # The previous pinning attempt to a specific sdkman-cli SHA returned
-        # 404 because the file has been removed from the repo. The right
-        # mitigation (if ever needed) is sha256-verifying the downloaded
-        # script before piping to bash — tracked separately, not blocking
-        # this CI gate.
+      - name: Install kotlinc (pinned release + sha256)
+        # Pinned, IMMUTABLE Kotlin compiler release + sha256 verification —
+        # satisfies Scorecard PinnedDependencies (no live `curl get.sdkman.io |
+        # bash` downloadThenRun). The release asset URL is versioned + immutable,
+        # so the hash is STABLE (no live-bootstrap-URL fragility that made the
+        # SDKMAN pin infeasible). `kotlin-compiler-<V>.zip` unzips to `kotlinc/`.
+        # Bump KOTLIN_SHA256 when bumping KOTLIN_VERSION — the `.sha256` is
+        # published next to the asset (…/kotlin-compiler-<V>.zip.sha256).
+        env:
+          KOTLIN_SHA256: '0352c0a45bd22f80f6b26e485cd04da8047baa5de54865281fb9f89a4a7bcf2a'
         run: |
-          set -eo pipefail
-          curl -s "https://get.sdkman.io" | bash > /dev/null
-          source "$HOME/.sdkman/bin/sdkman-init.sh"
-          sdk install kotlin "${{ env.KOTLIN_VERSION }}"
-          echo "$HOME/.sdkman/candidates/kotlin/current/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          ZIP="kotlin-compiler-${KOTLIN_VERSION}.zip"
+          curl -fsSL -o "$ZIP" "https://github.com/JetBrains/kotlin/releases/download/v${KOTLIN_VERSION}/${ZIP}"
+          echo "${KOTLIN_SHA256}  ${ZIP}" | sha256sum -c -
+          unzip -q "$ZIP" -d "$HOME/kotlin-dist"
+          echo "$HOME/kotlin-dist/kotlinc/bin" >> "$GITHUB_PATH"
 
       - name: Verify kotlinc availability
         run: kotlinc -version

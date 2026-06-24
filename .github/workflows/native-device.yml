@@ -298,27 +298,25 @@ jobs:
         # android-actions/setup-android@v3
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
 
-      - name: Install Gradle via SDKMAN
-        # The android example pins AGP 8.7.0 (needs Gradle 8.9+) but ships
-        # no `gradlew` wrapper, so install Gradle directly. SDKMAN is the
-        # repo's documented JVM-tool install path (see native-validate.yml's
-        # kotlinc step). `set -u` is dropped because sdkman-init.sh
-        # references unset internals.
-        # SDKMAN installer: accepted-risk downloadThenRun (PinnedDependenciesID).
-        # Pinning to a GitHub raw URL is infeasible — SDKMAN moved the install
-        # script off `sdkman-cli/contrib/install.sh` and only serves it from
-        # their own CDN at `get.sdkman.io` (the canonical bootstrap URL).
-        # The previous pinning attempt to a specific sdkman-cli SHA returned
-        # 404 because the file has been removed from the repo. The right
-        # mitigation (if ever needed) is sha256-verifying the downloaded
-        # script before piping to bash — tracked separately, not blocking
-        # this CI gate.
+      - name: Install Gradle (pinned distribution + sha256)
+        # The android example pins AGP 8.7.0 (needs Gradle 8.9+) but ships no
+        # `gradlew` wrapper, so install Gradle directly. Pinned, IMMUTABLE
+        # distribution + sha256 verification — satisfies Scorecard
+        # PinnedDependencies (no live `curl get.sdkman.io | bash`
+        # downloadThenRun). The distribution URL is versioned + immutable, so
+        # the hash is STABLE. `gradle-<V>-bin.zip` unzips to `gradle-<V>/`.
+        # Bump GRADLE_SHA256 when bumping GRADLE_VERSION — the official `.sha256`
+        # is at services.gradle.org/distributions/gradle-<V>-bin.zip.sha256.
+        env:
+          GRADLE_VERSION: '8.10.2'
+          GRADLE_SHA256: '31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26'
         run: |
-          set -eo pipefail
-          curl -s "https://get.sdkman.io" | bash > /dev/null
-          source "$HOME/.sdkman/bin/sdkman-init.sh"
-          sdk install gradle 8.10.2
-          echo "$HOME/.sdkman/candidates/gradle/current/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          ZIP="gradle-${GRADLE_VERSION}-bin.zip"
+          curl -fsSL -o "$ZIP" "https://services.gradle.org/distributions/${ZIP}"
+          echo "${GRADLE_SHA256}  ${ZIP}" | sha256sum -c -
+          unzip -q "$ZIP" -d "$HOME/gradle-dist"
+          echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
 
       - name: Verify gradle availability
         run: gradle --version
