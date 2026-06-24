@@ -142,7 +142,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | Package | Description |
 |---|---|
 | [`@pyreon/vite-plugin`](packages/tools/vite-plugin/) | JSX transform, signal-preserving HMR, SSR middleware, compat aliases |
-| [`@pyreon/lint`](packages/tools/lint/) | 90 Pyreon-specific lint rules across 18 categories — reactivity, JSX, SSR, performance |
+| [`@pyreon/lint`](packages/tools/lint/) | 91 Pyreon-specific lint rules across 18 categories — reactivity, JSX, SSR, performance |
 | [`@pyreon/storybook`](packages/tools/storybook/) | Storybook renderer for Pyreon components |
 | [`@pyreon/typescript`](packages/tools/typescript/) | TypeScript config presets |
 | [`@pyreon/react-compat`](packages/tools/react-compat/) | Drop-in React compatibility layer |

@@ -29,6 +29,7 @@ import { noDiscardedOptimizeFields } from './frontend/no-discarded-optimize-fiel
 import { noPositiveTabindex } from './frontend/no-positive-tabindex'
 import { noRedundantRole } from './frontend/no-redundant-role'
 import { preferZeroImage } from './frontend/prefer-zero-image'
+import { primitiveMediaNeedsLabel } from './frontend/primitive-media-needs-label'
 import { requireImgAlt } from './frontend/require-img-alt'
 // I18n (opt-in best-practice)
 import { i18nPreferTransForRichJsx } from './i18n/i18n-prefer-trans-for-rich-jsx'
@@ -198,7 +199,7 @@ export const allRules: Rule[] = [
   invalidLoaderExport,
   missingGetStaticPaths,
   revalidateNotPureLiteral,
-  // Frontend (7) — opt-in best-practice a11y/CLS (off in standard
+  // Frontend (11) — opt-in best-practice a11y/CLS (off in standard
   // presets; enabled via the `best-practices` preset or per-rule config)
   requireImgAlt,
   imgRequiresDimensions,
@@ -210,6 +211,7 @@ export const allRules: Rule[] = [
   anchorIsValid,
   headingOrder,
   colorContrast,
+  primitiveMediaNeedsLabel,
   // Query (1) — opt-in, auto-gated on @pyreon/query dependency
   queryOptionsAsFunction,
   // Rx (1) — opt-in, auto-gated on @pyreon/rx dependency

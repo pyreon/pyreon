@@ -274,7 +274,9 @@ const checks: ClaimCheck[] = [
       },
       {
         file: 'docs/src/content/docs/lint.md',
-        pattern: /Pyreon-specific linter — (\d+) rules for signals/,
+        // Matches both the original "N rules for signals" and the rewritten
+        // "N rules across 18 categories for signals" frontmatter phrasing.
+        pattern: /Pyreon-specific linter — (\d+) rules(?: across \d+ categories)? for signals/,
       },
       {
         // 5 occurrences (3 prose + 2 CLI-help comments) — all must agree.
