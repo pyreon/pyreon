@@ -1902,3 +1902,37 @@ describeNative('Native vs JS equivalence — corpus-sweep regressions', () => {
   test('plain call (non-inline callee) returning JSX stays text-classified', () =>
     compare('<div>{renderThing()}</div>'))
 })
+
+describeNative('Native vs JS equivalence — bare-signal attribute → _bindDirect', () => {
+  // The consistency fix: a bare signal attribute value (`class={active}`) binds
+  // directly, matching the accessor form. Both backends must emit identically.
+  test('class={sig} (bare)', () =>
+    compareWithSignals(
+      'function C(){ const active = signal(false); return <div class={active}><span/></div> }',
+      ['active'],
+    ))
+  test('class={() => sig()} (accessor) — unchanged, still equal', () =>
+    compareWithSignals(
+      'function C(){ const active = signal(false); return <div class={() => active()}><span/></div> }',
+      ['active'],
+    ))
+  test('style={sig} (bare)', () =>
+    compareWithSignals(
+      "function C(){ const color = signal('red'); return <div style={color}><span/></div> }",
+      ['color'],
+    ))
+  test('data-attr={sig} (bare)', () =>
+    compareWithSignals(
+      'function C(){ const count = signal(0); return <div data-n={count}><span/></div> }',
+      ['count'],
+    ))
+  test('selector identifier guard — class={sel} stays general (no bare-direct)', () =>
+    compare(
+      'function C(){ const sel = createSelector(signal(null)); return <div class={sel}><span/></div> }',
+    ))
+  test('bare signal in TEXT is unchanged (scope: attr-only)', () =>
+    compareWithSignals(
+      "function C(){ const name = signal(''); return <div>{name}</div> }",
+      ['name'],
+    ))
+})
