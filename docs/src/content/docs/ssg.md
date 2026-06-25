@@ -306,6 +306,35 @@ The closure follows the manifest's `imports` field exclusively, **never** `dynam
 
 `modulepreload` is a non-load-bearing hint, so every step degrades gracefully — a missing or malformed manifest just disables the feature for that build. Set `modulePreload: false` to opt out. See also [`earlyHints`](#delivery-polish) for the HTTP 103 variant.
 
+## Critical CSS (cssMode)
+
+Pyreon **inlines the styler / rocketstyle CSS into each prerendered page's `<head>` at build time** — first paint never waits for a JS roundtrip. During SSR the `@pyreon/styler` sheet collects exactly the rules the page's rendered components use, and the SSG render folds that `<style>` into the page HTML (`renderPage`'s `collectStyles` hook). The browser parses the HTML and paints styled content immediately; there is no "discover `index.js` → run JS → inject styles" hop.
+
+Because styler emits rules **per component used**, each page's inlined CSS is already minimal — it _is_ effectively the critical CSS, so there's no separate above-the-fold extraction step (nothing to defer, and no FOUC-prone heuristic to get wrong).
+
+What's configurable is **how the collected CSS ships** — `ssg.cssMode`:
+
+### `'inline'` (default)
+
+A per-page, self-contained `<style>` block. Zero extra requests; the page's rules travel in its HTML. Best for **small route counts** — the rules are tiny and duplicated bytes across a handful of pages compress well.
+
+### `'asset'`
+
+The full styler rule set is written **once** to a content-hashed `<assetsDir>/pyreon-ssg.<hash>.css` (respecting your `base` and `build.assetsDir`), and every page links it:
+
+```ts
+zero({
+  mode: 'ssg',
+  ssg: {
+    cssMode: 'asset', // one shared, browser-cached stylesheet
+  },
+})
+```
+
+Best for **many routes that share rules** (a large design-system-heavy site): a single browser-cache entry serves every page, the HTML shrinks by the full sheet per page, at the cost of **one extra request on first visit** (subsequent navigations hit the cache). The sheet is identical across pages (one module-eval sheet), so it's emitted exactly once regardless of route count.
+
+> Rule of thumb: stay on `'inline'` until you have enough routes that the duplicated-per-page bytes outweigh one cacheable request — then `'asset'` wins. There's no above-the-fold "critical subset" knob because styler's per-page sheet is already that subset.
+
 ## Per-route render modes (hybrid)
 
 The app-level `mode` is the **default**. Any route file (or a layout, which cascades to its descendants) may `export const renderMode` to opt a single route out:
@@ -629,7 +658,7 @@ See **[Zero → ZeroConfig Options](/docs/zero#zeroconfig-options)** for the ful
 | `modulePreload`   | `boolean`                                                   | `true`   | Per-route `<link rel="modulepreload">` delta (islands-safe) |
 | `speculationRules`| `'prefetch' \| 'prerender' \| false`                         | off      | Speculation Rules block per prerendered page             |
 | `viewTransitions` | `boolean`                                                   | off      | Cross-document View Transitions opt-in                   |
-| `cssMode`         | `'inline' \| 'asset'`                                        | `'inline'` | Styler CSS inlined per page or one shared hashed file  |
+| `cssMode`         | `'inline' \| 'asset'`                                        | `'inline'` | Styler CSS inlined per page vs one shared hashed file — see [Critical CSS](#critical-css-cssmode) |
 | `earlyHints`      | `boolean`                                                   | off      | Per-path `Link:` modulepreload entries in `_headers` (HTTP 103) |
 
 Top-level `i18n` (`I18nRoutingConfig`) drives per-locale route duplication; per-route `export const renderMode` overrides the app mode; per-route `export const revalidate` drives the build-time ISR manifest.
