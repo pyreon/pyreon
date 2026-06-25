@@ -4,8 +4,10 @@ import type { Plugin } from 'vite'
 import {
   type AutoFallback,
   computeAutoFallbacks,
+  renderApplyFontFamily,
   renderAutoFallbackFaces,
   renderFontFamilyVars,
+  resolveApplyToSelector,
 } from './font-fallback'
 
 // ─── Font optimization ──────────────────────────────────────────────────────
@@ -73,19 +75,56 @@ export interface FontConfig {
    *
    * To make the fallback actually reach the rendered text, the build also
    * emits a CSS variable per family: `--pyreon-font-<slug>` (e.g.
-   * `--pyreon-font-ubuntu: Ubuntu, "Ubuntu Fallback", Arial`). Use it as
-   * your `font-family` (one line, same shape as a hand-rolled
-   * `--font-sans`) and the size-adjusted fallback is used until the web
-   * font loads:
+   * `--pyreon-font-ubuntu: Ubuntu, "Ubuntu Fallback", Arial`). This ONE
+   * variable is the single integration point for BOTH ways a Pyreon app
+   * consumes a font:
    *
-   *   body { font-family: var(--pyreon-font-ubuntu); }
+   *   • plain CSS — `body { font-family: var(--pyreon-font-ubuntu) }`
+   *     (or let `{ applyTo }` write it for you, below)
+   *   • the @pyreon/ui-system theme — set your theme's font to the same
+   *     var: `fontFamily: { base: 'var(--pyreon-font-ubuntu)' }`. styler
+   *     passes `var()` through verbatim, so it reaches every rocketstyle
+   *     component.
    *
-   * A manual `fallbacks` entry for a family takes precedence (auto skips
-   * it). Default: `true`. Set `false` to opt out. Fonts whose metrics
-   * can't be resolved are skipped with a dev warning — never a build
-   * failure.
+   * Pass `true` (default) for metrics + the var. Pass `false` to opt out.
+   * Pass an object to ALSO auto-bind the stack to a selector (zero-touch
+   * for the plain-CSS path) — see `FallbackAdjustOptions.applyTo`. A
+   * manual `fallbacks` entry for a family takes precedence (auto skips
+   * it); fonts whose metrics can't be resolved are skipped with a dev
+   * warning, never a build failure.
    */
-  fallbackAdjust?: boolean
+  fallbackAdjust?: boolean | FallbackAdjustOptions
+}
+
+/** Object form of {@link FontConfig.fallbackAdjust} — turns auto-fallback ON and adds wiring. */
+export interface FallbackAdjustOptions {
+  /**
+   * Auto-bind the computed font stack to a CSS selector, so the plain-CSS
+   * path is truly zero-touch — you don't add `var(--pyreon-font-…)` to
+   * your own CSS at all. The build emits, for the FIRST configured Google
+   * family (the primary):
+   *
+   *   <selector> { font-family: var(--pyreon-font-<primary-slug>); }
+   *
+   * `true` → `'body'` (the common case). A string is used verbatim as the
+   * selector (`':root'`, `'html'`, `'.app'`, …). `false`/omitted → no
+   * binding (var-only; you wire it yourself).
+   *
+   * **Opt-in by design.** Auto-writing a global `font-family` is
+   * opinionated — it overrides whatever the page would otherwise inherit,
+   * and "which font is primary" is ambiguous with multiple families — so
+   * it's off unless you ask. If you opt in, DON'T also set the same
+   * selector's `font-family` in your own CSS (it would fight this rule on
+   * cascade source-order).
+   *
+   * **Scope.** This covers content that INHERITS `font-family` (the body
+   * and anything that doesn't set its own). `@pyreon/ui-system` /
+   * rocketstyle components set their font from the THEME, not the cascade
+   * — for those, point your theme's font at the same var instead:
+   * `fontFamily: { base: 'var(--pyreon-font-<slug>)' }`. The two are
+   * complementary; a fully-themed app typically does both.
+   */
+  applyTo?: string | boolean
 }
 
 /** Static Google Font config. */
@@ -554,6 +593,9 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
   const shouldPreload = config.preload !== false
   const shouldSelfHost = config.selfHost !== false
   const shouldAdjust = config.fallbackAdjust !== false
+  // Opt-in zero-touch binding: `fallbackAdjust: { applyTo: 'body' | … }`
+  // emits `<selector> { font-family: var(--pyreon-font-<primary>) }`.
+  const applyToSelector = resolveApplyToSelector(config.fallbackAdjust)
   const googleFamilies = (config.google ?? []).map(resolveGoogleFont)
 
   let isBuild = false
@@ -630,10 +672,15 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
 
       // Auto size-adjusted fallback @font-face blocks + the
       // `--pyreon-font-<slug>` vars that put the fallback INTO the cascade
-      // (the load-bearing half — without the var, the @font-face is inert).
+      // (the load-bearing half — without the var, the @font-face is inert),
+      // plus the optional `applyTo` binding that wires the var to a
+      // selector so the plain-CSS path is zero-touch.
       if (autoFallbacks.length > 0) {
+        const applyRule = renderApplyFontFamily(autoFallbacks, applyToSelector)
         tags.push(
-          `<style>${renderAutoFallbackFaces(autoFallbacks)}\n${renderFontFamilyVars(autoFallbacks)}</style>`,
+          `<style>${renderAutoFallbackFaces(autoFallbacks)}\n${renderFontFamilyVars(autoFallbacks)}${
+            applyRule ? `\n${applyRule}` : ''
+          }</style>`,
         )
       }
 

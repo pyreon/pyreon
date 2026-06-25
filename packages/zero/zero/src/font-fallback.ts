@@ -247,3 +247,35 @@ export function renderFontFamilyVars(fallbacks: AutoFallback[]): string {
 export function renderAutoFallbackFaces(fallbacks: AutoFallback[]): string {
   return fallbacks.map((f) => f.fontFaces).join('\n\n')
 }
+
+/**
+ * Resolve the `fallbackAdjust.applyTo` option to a selector (or null).
+ * `true` → `'body'`; a non-empty string → that selector verbatim;
+ * everything else (`false`, `''`, boolean form, missing) → null. Pure.
+ */
+export function resolveApplyToSelector(
+  fallbackAdjust: boolean | { applyTo?: string | boolean } | undefined,
+): string | null {
+  if (!fallbackAdjust || typeof fallbackAdjust !== 'object') return null
+  const at = fallbackAdjust.applyTo
+  if (at === true) return 'body'
+  if (typeof at === 'string' && at.trim().length > 0) return at.trim()
+  return null
+}
+
+/**
+ * Auto-bind rule for the plain-CSS path: point a selector's `font-family`
+ * at the PRIMARY family's var (the first configured family). Returns ''
+ * when there's no selector or no fallback to bind — zero-touch for an app
+ * that doesn't want to add the var to its own CSS. Inheriting content (the
+ * body and anything not setting its own font) then renders with the
+ * size-adjusted fallback until the web font loads.
+ */
+export function renderApplyFontFamily(
+  fallbacks: AutoFallback[],
+  selector: string | null,
+): string {
+  if (!selector || fallbacks.length === 0) return ''
+  const primary = fallbacks[0]!
+  return `${selector} { font-family: var(--pyreon-font-${primary.slug}); }`
+}

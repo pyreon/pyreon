@@ -5,8 +5,10 @@ import {
   defaultSystemFallback,
   type FontMetrics,
   isCompleteMetrics,
+  renderApplyFontFamily,
   renderAutoFallbackFaces,
   renderFontFamilyVars,
+  resolveApplyToSelector,
   slugifyFamily,
   systemFallbackMetrics,
 } from '../font-fallback'
@@ -90,6 +92,46 @@ describe('buildFallbackCss (the next/font override math via capsize)', () => {
   })
   it('returns null for an unresolvable system fallback (graceful)', async () => {
     expect(await buildFallbackCss(UBUNTU, 'Nonexistent Font')).toBeNull()
+  })
+})
+
+describe('resolveApplyToSelector (fallbackAdjust.applyTo)', () => {
+  it('boolean / undefined fallbackAdjust → no binding (var-only)', () => {
+    expect(resolveApplyToSelector(undefined)).toBeNull()
+    expect(resolveApplyToSelector(true)).toBeNull()
+    expect(resolveApplyToSelector(false)).toBeNull()
+  })
+  it('{ applyTo: true } → defaults to body', () => {
+    expect(resolveApplyToSelector({ applyTo: true })).toBe('body')
+  })
+  it('{ applyTo: "<selector>" } → that selector verbatim', () => {
+    expect(resolveApplyToSelector({ applyTo: ':root' })).toBe(':root')
+    expect(resolveApplyToSelector({ applyTo: '.app' })).toBe('.app')
+    expect(resolveApplyToSelector({ applyTo: '  body  ' })).toBe('body')
+  })
+  it('{ applyTo: false / "" } or no applyTo → null', () => {
+    expect(resolveApplyToSelector({ applyTo: false })).toBeNull()
+    expect(resolveApplyToSelector({ applyTo: '' })).toBeNull()
+    expect(resolveApplyToSelector({})).toBeNull()
+  })
+})
+
+describe('renderApplyFontFamily', () => {
+  const fb = (slug: string) => ({
+    family: slug,
+    slug,
+    fontFaces: '',
+    fontFamily: `X, "X Fallback", Arial`,
+  })
+  it('binds the selector to the PRIMARY (first) family’s var', () => {
+    const css = renderApplyFontFamily([fb('ubuntu'), fb('jetbrains-mono')], 'body')
+    expect(css).toBe('body { font-family: var(--pyreon-font-ubuntu); }')
+  })
+  it('no selector → no rule (var-only)', () => {
+    expect(renderApplyFontFamily([fb('ubuntu')], null)).toBe('')
+  })
+  it('no fallbacks → no rule', () => {
+    expect(renderApplyFontFamily([], 'body')).toBe('')
   })
 })
 
