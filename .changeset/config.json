@@ -38,6 +38,7 @@
       "@pyreon/machine",
       "@pyreon/permissions",
       "@pyreon/query",
+      "@pyreon/rich-text",
       "@pyreon/rx",
       "@pyreon/state-tree",
       "@pyreon/storage",

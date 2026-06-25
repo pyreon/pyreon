@@ -136,6 +136,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/primitives"
       },
       {
+        "text": "rich-text",
+        "slug": "reference/rich-text"
+      },
+      {
         "text": "router",
         "slug": "reference/router"
       },
