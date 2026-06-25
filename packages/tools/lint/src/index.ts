@@ -3,6 +3,8 @@ export { AstCache } from './cache'
 export { createIgnoreFilter } from './config/ignore'
 export { loadConfig, loadConfigFromPath } from './config/loader'
 export { getPreset } from './config/presets'
+// CLI entry — reusable by the `pyreon-lint` bin AND `@pyreon/cli`'s `pyreon lint`.
+export { runCli } from './cli'
 export { lint, listRules } from './lint'
 export { formatCompact, formatJSON, formatText } from './reporter'
 // LSP

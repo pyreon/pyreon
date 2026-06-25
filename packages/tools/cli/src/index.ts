@@ -6,11 +6,18 @@
  * Commands:
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
+ *   pyreon info      — environment + installed @pyreon versions + version-skew check
+ *   pyreon upgrade   — align all @pyreon/* dependencies to one version
+ *   pyreon lint      — run @pyreon/lint (thin shell over the pyreon-lint CLI)
  */
 
-import { generateContext } from './context'
-import { type DoctorOptions, doctor } from './doctor'
+import cliPkg from '../package.json' with { type: 'json' }
 import { FAST_GATES, type GateName, SLOW_GATES } from './doctor/orchestrator'
+// Command handlers are lazy-imported in `main()` (below) so each loads only
+// when its command runs — the bin stays a slim dispatcher and a new command
+// never grows the main-entry bundle. (FAST_GATES/SLOW_GATES are kept static:
+// tiny string arrays the synchronous usage/validation paths need.)
+import type { DoctorOptions } from './doctor'
 
 // Single-sourced from the orchestrator so the CLI's valid-gate set can
 // NEVER drift from the gates that actually run. (Previously a hand-kept
@@ -29,6 +36,9 @@ function printUsage(): void {
     doctor [options]                 Project-wide health audit with 0-100 score.
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
+    info [--json]                    Environment + installed @pyreon versions + skew check
+    upgrade [--to <v>] [--write]     Align all @pyreon/* deps to one version (--exact pins; dry-run default)
+    lint [paths] [--fix] [--watch]   Run @pyreon/lint (forwards all pyreon-lint flags: --preset/--format/--lsp/…)
 
   doctor options:
     --fix                            Auto-fix what we can (lint + react-patterns).
@@ -98,11 +108,42 @@ async function main(): Promise<void> {
   }
 
   if (command === '--version' || command === '-v') {
-    console.log('0.4.0')
+    console.log(cliPkg.version)
+    return
+  }
+
+  if (command === 'info') {
+    const { info } = await import('./info')
+    info({ cwd: process.cwd(), json: args.includes('--json') })
+    return
+  }
+
+  if (command === 'upgrade') {
+    const { upgrade } = await import('./upgrade')
+    const exitCode = upgrade({
+      cwd: process.cwd(),
+      to: getFlagValue('--to'),
+      exact: args.includes('--exact'),
+      write: args.includes('--write'),
+      json: args.includes('--json'),
+    })
+    if (exitCode > 0) process.exit(exitCode)
+    return
+  }
+
+  if (command === 'lint') {
+    // Thin shell over @pyreon/lint's CLI — ONE implementation, shared with the
+    // `pyreon-lint` bin. Forward every flag after `lint` verbatim (--fix,
+    // --preset, --format, --watch, --lsp, paths, …). `runCli` returns null for
+    // the long-running --watch/--lsp modes (keep the process alive).
+    const { runCli } = await import('@pyreon/lint')
+    const code = runCli(args.slice(1))
+    if (code !== null) process.exit(code)
     return
   }
 
   if (command === 'doctor') {
+    const { doctor } = await import('./doctor')
     const format = args.includes('--gha')
       ? ('gha' as const)
       : parseFormat(getFlagValue('--format'))
@@ -131,6 +172,7 @@ async function main(): Promise<void> {
   }
 
   if (command === 'context') {
+    const { generateContext } = await import('./context')
     const outIdx = args.indexOf('--out')
     const outPath = outIdx >= 0 ? args[outIdx + 1] : undefined
     await generateContext({ cwd: process.cwd(), outPath })
@@ -147,6 +189,13 @@ main().catch((err) => {
   process.exit(1)
 })
 
+// Library API — the programmatic surface (unchanged baseline). CLI-only
+// command handlers (info/upgrade/…) are intentionally NOT re-exported here:
+// keeping them out of the main entry's static graph means a new command is a
+// lazy-loaded chunk, never main-entry bundle weight. They're reachable via
+// their own module path for tests, and could get a `/info` subpath export if
+// programmatic access is ever needed.
 export type { ContextOptions, ProjectContext } from './context'
+export { generateContext } from './context'
 export type { DoctorOptions, DoctorReport, GateName } from './doctor'
-export { doctor, generateContext }
+export { doctor } from './doctor'

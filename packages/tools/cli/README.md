@@ -1,8 +1,8 @@
 # @pyreon/cli
 
-The `pyreon` developer-tool binary — project health audit, AI context generation.
+The `pyreon` developer-tool binary — project health audit, AI context generation, environment + version-skew check, dependency alignment, linting.
 
-`@pyreon/cli` ships the `pyreon` command-line tool. The flagship subcommand is `pyreon doctor` — a single entry point that runs every gate Pyreon enforces (lint rules, anti-pattern detection, distribution hygiene, doc-claim sync, three project audits, type-surface audit, bundle budgets) and produces a 0-100 health score with per-category breakdown. `pyreon context` writes a `.pyreon/context.json` snapshot of the project's routes, components, and islands for AI coding assistants. Output renders with brand-mapped ANSI colors on a TTY (NO_COLOR / FORCE_COLOR honored), JSON for tooling, and GitHub Actions annotations for inline PR review.
+`@pyreon/cli` ships the `pyreon` command-line tool. The flagship subcommand is `pyreon doctor` — a single entry point that runs every gate Pyreon enforces (lint rules, anti-pattern detection, distribution hygiene, doc-claim sync, three project audits, type-surface audit, bundle budgets) and produces a 0-100 health score with per-category breakdown. `pyreon context` writes a `.pyreon/context.json` snapshot of the project's routes, components, and islands for AI coding assistants. `pyreon info` reports the environment and every installed `@pyreon/*` version, flagging version skew before it trips the duplicate-instance guard. Output renders with brand-mapped ANSI colors on a TTY (NO_COLOR / FORCE_COLOR honored), JSON for tooling, and GitHub Actions annotations for inline PR review.
 
 ## Install
 
@@ -111,6 +111,69 @@ Generates a project snapshot AI coding assistants can read instead of crawling t
   "islands":    [{ "name": "SearchBar", "file": "src/islands/SearchBar.tsx", "hydrate": "idle" }]
 }
 ```
+
+## `pyreon info`
+
+```bash
+pyreon info          # environment + installed @pyreon versions + skew check
+pyreon info --json   # machine-readable report
+```
+
+Reports the Pyreon CLI version, runtime (node/bun/platform), the project name,
+and every `@pyreon/*` package installed in `node_modules` with its version.
+Pyreon ships its packages on one synced version trajectory, so when the
+installed set spans **more than one version** `info` flags the skew — the
+condition that can trip the `registerSingleton` duplicate-instance guard
+(`[Pyreon] Duplicate @pyreon/X detected`) and split context/reactivity across
+instances at runtime:
+
+```text
+  ! Version skew — 2 versions installed:
+      0.36.0: @pyreon/core, @pyreon/router
+      0.30.0: @pyreon/query
+```
+
+Self-contained — reads the project's `package.json` + `node_modules/@pyreon/*`
+only; no framework packages required.
+
+## `pyreon upgrade`
+
+```bash
+pyreon upgrade              # dry-run: show how to align @pyreon/* to one version
+pyreon upgrade --write      # rewrite package.json ranges (then install)
+pyreon upgrade --to 0.37.0  # target a specific version
+pyreon upgrade --exact      # pin without the caret (0.37.0, not ^0.37.0)
+```
+
+The fix for the skew `pyreon info` detects. It rewrites every `@pyreon/*`
+range in `package.json` to one target — by default the **highest** version
+present (aligning laggards up), or an explicit `--to`. **Dry-run by default**
+(prints the plan); `--write` applies, then run your package manager's install:
+
+```text
+  pyreon upgrade → align 1 package(s) to 0.37.0
+
+    @pyreon/core  ^0.30.0 → ^0.37.0
+```
+
+`workspace:` / `link:` / `file:` / git specifiers and non-`@pyreon` deps are
+left untouched.
+
+## `pyreon lint`
+
+```bash
+pyreon lint                  # lint . with the recommended preset
+pyreon lint src --fix        # fix what's fixable
+pyreon lint --preset strict  # any pyreon-lint flag works
+pyreon lint --watch          # re-lint on change
+pyreon lint --lsp            # language-server mode
+```
+
+A thin front door to `@pyreon/lint` — it forwards **every** `pyreon-lint`
+flag verbatim (`--preset` / `--fix` / `--format` / `--quiet` / `--rule` /
+`--config` / `--ignore` / `--watch` / `--lsp` / paths). Both `pyreon lint` and
+the standalone `pyreon-lint` bin call the same `runCli` entry, so there's one
+implementation, never drift. Exits non-zero when there are lint errors.
 
 ## Programmatic API
 
