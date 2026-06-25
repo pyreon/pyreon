@@ -7,6 +7,8 @@
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
  *   pyreon info      — environment + installed @pyreon versions + version-skew check
+ *   pyreon upgrade   — align all @pyreon/* dependencies to one version
+ *   pyreon lint      — run @pyreon/lint (thin shell over the pyreon-lint CLI)
  */
 
 import cliPkg from '../package.json' with { type: 'json' }
@@ -35,6 +37,8 @@ function printUsage(): void {
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
     info [--json]                    Environment + installed @pyreon versions + skew check
+    upgrade [--to <v>] [--write]     Align all @pyreon/* deps to one version (--exact pins; dry-run default)
+    lint [paths] [--fix] [--watch]   Run @pyreon/lint (forwards all pyreon-lint flags: --preset/--format/--lsp/…)
 
   doctor options:
     --fix                            Auto-fix what we can (lint + react-patterns).
@@ -111,6 +115,30 @@ async function main(): Promise<void> {
   if (command === 'info') {
     const { info } = await import('./info')
     info({ cwd: process.cwd(), json: args.includes('--json') })
+    return
+  }
+
+  if (command === 'upgrade') {
+    const { upgrade } = await import('./upgrade')
+    const exitCode = upgrade({
+      cwd: process.cwd(),
+      to: getFlagValue('--to'),
+      exact: args.includes('--exact'),
+      write: args.includes('--write'),
+      json: args.includes('--json'),
+    })
+    if (exitCode > 0) process.exit(exitCode)
+    return
+  }
+
+  if (command === 'lint') {
+    // Thin shell over @pyreon/lint's CLI — ONE implementation, shared with the
+    // `pyreon-lint` bin. Forward every flag after `lint` verbatim (--fix,
+    // --preset, --format, --watch, --lsp, paths, …). `runCli` returns null for
+    // the long-running --watch/--lsp modes (keep the process alive).
+    const { runCli } = await import('@pyreon/lint')
+    const code = runCli(args.slice(1))
+    if (code !== null) process.exit(code)
     return
   }
 

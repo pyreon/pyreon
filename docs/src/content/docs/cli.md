@@ -3,7 +3,7 @@ title: '@pyreon/cli'
 description: Command-line tools for Pyreon — the doctor health audit (14 gates, 0-100 score) and the context generator for AI tools.
 ---
 
-`@pyreon/cli` is the command-line companion for Pyreon projects. It ships three commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; and **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard.
+`@pyreon/cli` is the command-line companion for Pyreon projects. It ships five commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard; **`pyreon upgrade`** — the fix for that skew, aligning every `@pyreon/*` dependency to one version; and **`pyreon lint`** — a thin front door to `@pyreon/lint` that forwards every `pyreon-lint` flag.
 
 <PackageBadge name="@pyreon/cli" href="/docs/cli" />
 
@@ -395,6 +395,42 @@ When the installed set spans more than one version, `info` flags it — this is 
 ```
 
 `info` is **self-contained** — it reads only your `package.json` and `node_modules/@pyreon/*`, so it works in any project (or none) without requiring the framework packages to be installed.
+
+## `pyreon upgrade`
+
+The `upgrade` command is the **fix** for the skew `pyreon info` detects — it rewrites every `@pyreon/*` dependency range in `package.json` to a single version.
+
+```bash
+pyreon upgrade              # dry-run: print the alignment plan
+pyreon upgrade --write      # apply (rewrite package.json), then install
+pyreon upgrade --to 0.37.0  # target a specific version
+pyreon upgrade --exact      # pin without the caret (0.37.0, not ^0.37.0)
+```
+
+By default the target is the **highest** `@pyreon/*` version already present (aligning laggards up); pass `--to <version>` to choose. It is **dry-run by default** — it prints what would change and applies nothing until you pass `--write`:
+
+```text
+  pyreon upgrade → align 1 package(s) to 0.37.0
+
+    @pyreon/core  ^0.30.0 → ^0.37.0
+```
+
+After `--write`, run your package manager's install to pull the aligned versions. `workspace:` / `link:` / `file:` / git specifiers and non-`@pyreon` dependencies are left untouched.
+
+## `pyreon lint`
+
+`pyreon lint` is the unified front door to `@pyreon/lint` — it forwards **every** `pyreon-lint` flag verbatim.
+
+```bash
+pyreon lint                  # lint . with the recommended preset
+pyreon lint src --fix        # auto-fix fixable findings
+pyreon lint --preset strict  # any pyreon-lint flag works
+pyreon lint --format json    # text (default) | json | compact
+pyreon lint --watch          # re-lint on change
+pyreon lint --lsp            # language-server mode (inlay hints + diagnostics)
+```
+
+`pyreon lint` and the standalone `pyreon-lint` binary share **one** implementation (the exported `runCli` entry), so the two can never drift. It exits non-zero when there are lint errors — drop it into CI exactly like `pyreon-lint`.
 
 ## Programmatic API
 
