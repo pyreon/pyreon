@@ -6,11 +6,14 @@
  * Commands:
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
+ *   pyreon info      — environment + installed @pyreon versions + version-skew check
  */
 
+import cliPkg from '../package.json' with { type: 'json' }
 import { generateContext } from './context'
 import { type DoctorOptions, doctor } from './doctor'
 import { FAST_GATES, type GateName, SLOW_GATES } from './doctor/orchestrator'
+import { info } from './info'
 
 // Single-sourced from the orchestrator so the CLI's valid-gate set can
 // NEVER drift from the gates that actually run. (Previously a hand-kept
@@ -29,6 +32,7 @@ function printUsage(): void {
     doctor [options]                 Project-wide health audit with 0-100 score.
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
+    info [--json]                    Environment + installed @pyreon versions + skew check
 
   doctor options:
     --fix                            Auto-fix what we can (lint + react-patterns).
@@ -98,7 +102,12 @@ async function main(): Promise<void> {
   }
 
   if (command === '--version' || command === '-v') {
-    console.log('0.4.0')
+    console.log(cliPkg.version)
+    return
+  }
+
+  if (command === 'info') {
+    info({ cwd: process.cwd(), json: args.includes('--json') })
     return
   }
 
@@ -149,4 +158,6 @@ main().catch((err) => {
 
 export type { ContextOptions, ProjectContext } from './context'
 export type { DoctorOptions, DoctorReport, GateName } from './doctor'
+export type { InfoOptions, InfoReport, InstalledPyreonPkg, SkewReport } from './info'
+export { collectInfo, detectSkew, formatInfo, info, scanInstalledPyreon } from './info'
 export { doctor, generateContext }

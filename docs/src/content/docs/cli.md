@@ -3,7 +3,7 @@ title: '@pyreon/cli'
 description: Command-line tools for Pyreon — the doctor health audit (14 gates, 0-100 score) and the context generator for AI tools.
 ---
 
-`@pyreon/cli` is the command-line companion for Pyreon projects. It ships two commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart — and **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants.
+`@pyreon/cli` is the command-line companion for Pyreon projects. It ships three commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; and **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard.
 
 <PackageBadge name="@pyreon/cli" href="/docs/cli" />
 
@@ -370,6 +370,31 @@ It writes the JSON, prints a summary, and **ensures `.pyreon/` is in your `.giti
 ```
 
 The output JSON is stable and pipeable — drop it into an LLM prompt for project-aware assistance, or let `@pyreon/mcp` read it to answer questions about your codebase. Re-run it after structural changes (new routes, new islands) to refresh the snapshot.
+
+## `pyreon info`
+
+The `info` command reports your environment and every installed `@pyreon/*` package version — and flags **version skew** before it bites.
+
+```bash
+pyreon info          # environment + installed @pyreon versions + skew check
+pyreon info --json   # machine-readable report
+```
+
+It prints the CLI version, runtime (node / bun / platform), the project name (and whether it's a `@pyreon/zero` app), and the `@pyreon/*` packages in `node_modules` with their versions. Pyreon ships its packages on **one synced version trajectory**, so a healthy project has them all on the same version:
+
+```text
+  ✓ All @pyreon packages on 0.37.0
+```
+
+When the installed set spans more than one version, `info` flags it — this is the condition that can trip the `registerSingleton` duplicate-instance guard (`[Pyreon] Duplicate @pyreon/X detected`) and split context/reactivity across instances at runtime:
+
+```text
+  ! Version skew — 2 versions installed:
+      0.37.0: @pyreon/core, @pyreon/router
+      0.30.0: @pyreon/query
+```
+
+`info` is **self-contained** — it reads only your `package.json` and `node_modules/@pyreon/*`, so it works in any project (or none) without requiring the framework packages to be installed.
 
 ## Programmatic API
 
