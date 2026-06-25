@@ -147,7 +147,7 @@ At build time the plugin:
 - Generates `@font-face` declarations referencing the self-hosted files
 - Injects `<link rel="preload" as="font" type="font/woff2" crossorigin>` into `<head>` for the **primary subset** (`latin` by default, or the first `subsets` entry) — not whichever subset Google happens to return first
 - Adds `font-display: swap` to prevent Flash of Invisible Text (FOIT)
-- Optionally applies size-adjusted fallback metrics to reduce CLS during font swap
+- Auto-computes size-adjusted fallback `@font-face`s (default on) to **eliminate** font-swap CLS — see [`fallbackAdjust`](#eliminating-font-swap-cls-fallbackadjust)
 
 Local fonts:
 
@@ -181,6 +181,50 @@ On the config above this trims the self-hosted set to the Latin pair — roughly
 - **Opt-in.** Omitting `subsets` keeps every subset (no behavior change). A `['latin']` default would silently break Cyrillic / Greek / Vietnamese pages, so _you_ pick the allowlist.
 - **Self-host only.** No effect with `selfHost: false` or in dev — and it can't be done via the URL: Google's `css2` API **ignores** a `&subset=` query param, so the plugin filters the returned CSS by its per-subset comment labels instead.
 - **Fail-safe.** If the allowlist matches nothing (a typo), the plugin keeps every subset rather than ship a fontless build.
+
+### Eliminating font-swap CLS (`fallbackAdjust`)
+
+When a Google Font loads, the browser first paints text in a system font (Arial), then **swaps** to the web font. If the two fonts have different metrics (x-height, ascent, descent, line-gap, average glyph width), the swap **shifts layout** — a Cumulative Layout Shift (CLS) hit that Lighthouse flags and that's jarring on a slow connection. This is the single biggest font-related CLS source.
+
+`fallbackAdjust` (default **`true`**) eliminates it with the `next/font` technique: at build time the plugin unpacks the **actual downloaded `woff2`** for ground-truth metrics, then emits a paired size-adjusted `@font-face` whose `size-adjust` + `ascent/descent/line-gap-override` make the system fallback's box **match the web font** — so the swap moves nothing.
+
+```ts
+zero({
+  font: {
+    google: ['Ubuntu:wght@300;500'],
+    fallbackAdjust: true, // default — set false to opt out
+  },
+})
+```
+
+emits (computed from Ubuntu's real metrics):
+
+```css
+@font-face {
+  font-family: "Ubuntu Fallback";
+  src: local('Arial'), local('ArialMT');
+  ascent-override: 90.5199%;
+  descent-override: 18.3565%;
+  line-gap-override: 2.7195%;
+  size-adjust: 102.9608%;
+}
+:root {
+  --pyreon-font-ubuntu: Ubuntu, "Ubuntu Fallback", Arial;
+}
+```
+
+**Use the emitted CSS variable as your `font-family`** — this is the load-bearing step. The fallback `@font-face` does nothing unless the fallback family is actually in the cascade, so the plugin emits a `--pyreon-font-<slug>` variable (slug = the family lowercased + hyphenated, e.g. `--pyreon-font-jetbrains-mono`) with the full stack. Point your text at it (one line, same shape as a hand-rolled `--font-sans`):
+
+```css
+body { font-family: var(--pyreon-font-ubuntu); }
+```
+
+Now the size-adjusted "Ubuntu Fallback" renders until the real Ubuntu arrives, and the swap is shift-free. (If you instead use a bare `font-family: 'Ubuntu', sans-serif`, the fallback is never reached and you get no CLS benefit — the variable is how the fallback enters the cascade.)
+
+- **Ground truth, any font.** Metrics come from the bytes you ship (`@capsizecss/unpack`), so they're never a stale precomputed-table guess. In `selfHost: false` (CDN) mode, where there's no download, it falls back to `@capsizecss/metrics`' precomputed table (~1,900 popular Google fonts); a font absent from both is skipped with a build warning — never a build failure.
+- **System fallback by category.** Sans → Arial, serif → Times New Roman, monospace → Courier New (capsize reads the font's category).
+- **Manual `fallbacks` win.** A family with a hand-supplied `fallbacks` entry skips auto-computation — your explicit metrics take precedence.
+- **Build-time only.** `@capsizecss/*` runs during `vite build`; nothing is added to your client bundle.
 
 ## Opt-out
 
@@ -219,7 +263,8 @@ Use `image: false` when you handle image optimization via a third-party CDN prov
 | `preload` | `boolean` | `true` | Emit `<link rel="preload">` tags for critical fonts. |
 | `selfHost` | `boolean` | `true` | Self-host Google Fonts at build time. `false` keeps the Google CDN link. |
 | `subsets` | `string[]` | — (keep all) | Restrict self-hosted subsets, e.g. `['latin', 'latin-ext']`. Drops unused subsets (Cyrillic/Greek/…) from the build output. Opt-in; self-host only; **runtime is unchanged** (the browser already skips unused subsets via `unicode-range`). See [Trimming subsets](#trimming-subsets-latin-only-sites). |
-| `fallbacks` | `Record<string, FallbackMetrics>` | — | Size-adjusted fallback font metrics for CLS reduction. |
+| `fallbacks` | `Record<string, FallbackMetrics>` | — | **Manual** size-adjusted fallback metrics per family (takes precedence over `fallbackAdjust`). |
+| `fallbackAdjust` | `boolean` | `true` | **Auto-compute** size-adjusted fallback `@font-face`s (the `next/font` technique) to eliminate font-swap CLS, plus a `--pyreon-font-<slug>` cascade variable. See [Eliminating font-swap CLS](#eliminating-font-swap-cls-fallbackadjust). |
 
 ## Migration
 
