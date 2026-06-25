@@ -153,6 +153,22 @@ for (const cat of buildable) {
   const result = spawnSync('bun', ['run', '--filter', filter, 'build'], {
     stdio: 'inherit',
     cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      // Raise the V8 old-space ceiling for the per-package build subprocesses.
+      // The `@pyreon/zero` build's `rolldown-plugin-dts:generate` step (.d.ts
+      // emit across zero's many entry points) crossed Node's DEFAULT ~4 GB
+      // per-process heap between 0.36.0 and 0.37.0, dying with
+      // `FATAL ERROR: Ineffective mark-compacts near heap limit — JavaScript
+      // heap out of memory` (SIGABRT, exit 134) and failing the release
+      // publish (0.37.0 never reached npm). This is a single-process V8 limit,
+      // NOT runner OOM — GHA runners have 16 GB, so 8 GB leaves ample headroom.
+      // A user-set NODE_OPTIONS wins (appended last so its max-old-space-size
+      // takes precedence).
+      NODE_OPTIONS: `--max-old-space-size=8192${
+        process.env.NODE_OPTIONS ? ` ${process.env.NODE_OPTIONS}` : ''
+      }`,
+    },
   })
   const elapsed = ((Date.now() - start) / 1000).toFixed(1)
   if (result.status !== 0) {
