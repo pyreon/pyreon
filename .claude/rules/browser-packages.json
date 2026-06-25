@@ -7,6 +7,7 @@
     "@pyreon/server",
     "@pyreon/flow",
     "@pyreon/code",
+    "@pyreon/rich-text",
     "@pyreon/charts",
     "@pyreon/virtual",
     "@pyreon/document-primitives",

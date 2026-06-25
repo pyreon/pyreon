@@ -1,5 +1,13 @@
 # @pyreon/unistyle
 
+## 0.37.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/styler@0.37.1
+  - @pyreon/ui-core@0.37.1
+
 ## 0.37.0
 
 ### Patch Changes

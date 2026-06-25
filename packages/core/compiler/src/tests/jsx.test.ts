@@ -1,4 +1,4 @@
-import { transformJSX } from '../jsx'
+import { transformJSX, transformJSX_JS } from '../jsx'
 
 // Helper: transform and return the code string
 const t = (code: string) => transformJSX(code, 'input.tsx').code
@@ -3182,13 +3182,16 @@ describe('JSX transform — additional branch coverage paths', () => {
     expect(result).toContain('_bindText(b,')
   })
 
-  test('signal in JSX attribute expression container — auto-called in bind', () => {
+  test('bare signal in JSX attribute binds DIRECTLY (matches the accessor form)', () => {
     const result = t(
       'function C() { const x = signal(0); return <div data-val={x}><span /></div> }',
     )
-    // x is a signal identifier in an attribute — should be auto-called
-    expect(result).toContain('x()')
-    expect(result).toContain('_bind')
+    // A bare signal attribute value (`data-val={x}`) binds directly via
+    // `_bindDirect` — identical to the accessor form `data-val={() => x()}` —
+    // instead of falling through to a re-tracking `_bind(() => … x() …)`.
+    // (Consistency fix; see the "bare-signal attribute → _bindDirect" block.)
+    expect(result).toContain('_bindDirect(x,')
+    expect(result).not.toContain('x()')
   })
 
   test('namespace attribute in template element', () => {
@@ -3215,5 +3218,64 @@ describe('JSX transform — additional branch coverage paths', () => {
     `)
     expect(result).toContain('a()')
     expect(result).toContain('b()')
+  })
+})
+
+describe('bare-signal attribute → _bindDirect (consistency fix)', () => {
+  const KS = ['active', 'color', 'count', 'name']
+  // The reactive binding line(s) the transform emits for a given backend.
+  const bindLines = (fn: typeof transformJSX, src: string) =>
+    fn(
+      `import {signal} from '@pyreon/reactivity'\nconst active=signal(false),color=signal(''),count=signal(0),name=signal('')\nconst A=()=> ${src}`,
+      'a.tsx',
+      { knownSignals: KS },
+    )
+      .code.split('\n')
+      .filter((l) => /_bind/.test(l))
+      .map((l) => l.trim())
+
+  // A bare signal attribute value (`class={active}`) is semantically identical
+  // to the accessor form (`class={() => active()}`) — the compiler auto-calls
+  // bare signals. Before this fix the two forms compiled DIFFERENTLY (the bare
+  // form fell through to a re-tracking `_bind`; the accessor form took the
+  // direct `_bindDirect` path). These lock them to BYTE-IDENTICAL output.
+  for (const [attr, bare, acc] of [
+    ['class', '<div class={active}>x</div>', '<div class={() => active()}>x</div>'],
+    ['style', '<div style={color}>x</div>', '<div style={() => color()}>x</div>'],
+    ['data-attr', '<div data-n={count}>x</div>', '<div data-n={() => count()}>x</div>'],
+  ] as const) {
+    test(`${attr}: bare {sig} === accessor {() => sig()} — both backends, byte-identical`, () => {
+      const bareRs = bindLines(transformJSX, bare)
+      const accRs = bindLines(transformJSX, acc)
+      const bareJs = bindLines(transformJSX_JS, bare)
+      // bare form takes the direct path (no re-tracking _bind)
+      expect(bareRs.some((l) => l.includes('_bindDirect('))).toBe(true)
+      // bare === accessor (Rust)
+      expect(bareRs).toEqual(accRs)
+      // JS path agrees with Rust on the bare form (cross-backend parity)
+      expect(bareJs).toEqual(bareRs)
+    })
+  }
+
+  test('selector identifier is NOT direct-bound (guard) — class={sel} stays general', () => {
+    const code = transformJSX(
+      `import {createSelector,signal} from '@pyreon/reactivity'\nconst sel=createSelector(signal(null))\nconst A=()=> <div class={sel}>x</div>`,
+      'a.tsx',
+    ).code
+    // A createSelector result is not a directly-subscribable value — it must
+    // NOT take the bare-signal _bindDirect path (it would mis-bind).
+    expect(code).not.toContain('_bindDirect(sel,')
+  })
+
+  test('SCOPE: bare signal in TEXT child is unchanged (still re-tracking _bind, NOT _bindText)', () => {
+    // The fix is scoped to ATTRIBUTES. Bare-signal text (`<div>{name}</div>` —
+    // the dominant text shape) keeps its existing emission; promoting it to
+    // `_bindText` is a separate, larger change. This locks the scope.
+    const code = transformJSX(
+      `import {signal} from '@pyreon/reactivity'\nconst name=signal('')\nconst A=()=> <div>{name}</div>`,
+      'a.tsx',
+    ).code
+    expect(code).toContain('name()')
+    expect(code).not.toContain('_bindText(name')
   })
 })

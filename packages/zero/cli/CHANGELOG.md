@@ -1,5 +1,15 @@
 # zero-cli
 
+## 0.37.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/server@0.37.1
+  - @pyreon/cli@0.37.1
+  - @pyreon/create-zero@0.37.1
+  - @pyreon/zero@0.37.1
+
 ## 0.37.0
 
 ### Patch Changes

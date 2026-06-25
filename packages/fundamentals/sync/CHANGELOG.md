@@ -1,5 +1,7 @@
 # @pyreon/sync
 
+## 0.37.1
+
 ## 0.37.0
 
 ### Patch Changes

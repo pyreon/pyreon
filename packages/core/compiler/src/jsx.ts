@@ -2473,10 +2473,33 @@ export function transformJSX_JS(
      *   - Non-computed MemberExpression chain: `row.label()`, `data.user.name()`.
      *     Computed access (`row[k]()`) bails — the key is dynamic.
      */
-    function tryDirectSignalRef(exprNode: N): { ref: string; isMember: boolean } | null {
+    function tryDirectSignalRef(
+      exprNode: N,
+      allowBareSignal = false,
+    ): { ref: string; isMember: boolean } | null {
       let inner = exprNode
       if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') {
         inner = inner.body
+      }
+      // Bare signal/computed identifier — the un-called form (e.g.
+      // `class={active}`, `style={styleSig}`). Semantically identical to the
+      // accessor form `class={() => active()}` (the compiler auto-calls bare
+      // signals), so bind directly to its value for byte-for-byte parity
+      // instead of falling through to a re-tracking `_bind`. Guarded by
+      // `isActiveSignal` so ONLY signals/computeds (which expose `.direct`)
+      // take this path; selectors (tracked in `selectorVars`) and arbitrary
+      // identifiers stay on the general path. `_bindDirect` also falls back to
+      // a `renderEffect` for any source lacking `.direct`, so this is safe at
+      // the edges. Caller emits the 2-arg form (no `this` to preserve).
+      // Use the raw identifier NAME, not `sliceExpr` — the signal-auto-call
+      // records a source replacement (`active` → `active()`), so slicing this
+      // node's range would yield `active()`; we want the bare `active`.
+      // SCOPED to the ATTRIBUTE path (`allowBareSignal`) — the text-child path
+      // keeps its existing emission for bare signals (the dominant
+      // `<div>{name}</div>` shape); promoting THAT to `_bindText` is a
+      // larger, separately-measured change, not this fix.
+      if (allowBareSignal && inner.type === 'Identifier' && isActiveSignal(inner.name)) {
+        return { ref: inner.name, isMember: false }
       }
       if (inner.type !== 'CallExpression') return null
       if ((inner.arguments?.length ?? 0) > 0) return null
@@ -2716,7 +2739,11 @@ export function transformJSX_JS(
         'reactive-attr',
         `live attribute — \`${htmlAttrName}\` re-applies whenever its signals change`,
       )
-      const directRef = tryDirectSignalRef(exprNode)
+      // `allowBareSignal` — an attribute value that is a bare signal
+      // (`class={active}`) binds directly, matching the accessor form
+      // `class={() => active()}` (byte-identical). The text-child call site
+      // below intentionally does NOT opt in (see tryDirectSignalRef).
+      const directRef = tryDirectSignalRef(exprNode, true)
       if (directRef) {
         needsBindDirectImport = true
         const d = nextDisp()

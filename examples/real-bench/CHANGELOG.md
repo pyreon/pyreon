@@ -1,5 +1,14 @@
 # @pyreon/real-bench
 
+## 0.0.11
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.37.1
+  - @pyreon/reactivity@0.37.1
+  - @pyreon/runtime-dom@0.37.1
+
 ## 0.0.10
 
 ### Patch Changes
