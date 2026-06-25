@@ -9,7 +9,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { collectInfo, detectSkew, formatInfo, scanInstalledPyreon } from '../info'
 
 // Construct the ESC (0x1b) at runtime — a raw ESC byte in source trips the
