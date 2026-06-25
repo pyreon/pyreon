@@ -19,7 +19,7 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
 - **Top-tier performance.** Fastest of the frameworks measured on the synthetic row-list benchmark — create 1,000 rows in ~9ms (Vue 10ms, Solid 10.4ms, React 11.6ms), and **2.4–3× faster than React, Svelte and Preact** at 10,000 rows. Leads or ties every op except single-row remove, where Solid edges it. (Real Chromium, published deps; mid-pack on retained memory.)
-- **63 packages.** Forms, routing, state management, charts, drag & drop, i18n, and more.
+- **64 packages.** Forms, routing, state management, charts, drag & drop, i18n, and more.
 - **Migration paths.** Drop-in compat layers for React, Vue, Solid, and Preact.
 
 ## Quick Start
@@ -195,7 +195,7 @@ bun run format             # format (oxfmt)
 bun run typecheck          # typecheck all packages
 ```
 
-The monorepo uses Bun workspaces with 63 packages across 5 categories (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`). Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
+The monorepo uses Bun workspaces with 64 packages across 5 categories (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`). Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
 
 ## License
 
