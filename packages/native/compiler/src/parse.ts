@@ -2261,6 +2261,37 @@ function parseProps(
 ): { props: import('./types').PropIR[]; propsParamName: string | undefined } {
   if (!params || params.length === 0) return { props: [], propsParamName: undefined }
   const firstParam = params[0]
+  // Destructured-props shape: `function Row({ label, count }: { label:
+  // string; count: number })` — the dominant real-component signature.
+  // The destructured keys ARE the prop names; the body references them BARE
+  // (`label`, not `props.label`), and the emit already creates one struct
+  // field (Swift) / param (Compose) per prop — so a bare `label` reference
+  // resolves to the field/param with NO rewrite. We just enumerate the props
+  // from the type annotation; propsParamName stays undefined (nothing to
+  // strip). Only the simple no-rename shape maps cleanly — a rename
+  // (`{ label: lbl }`) would need aliasing → bail to the empty/unsupported
+  // path (warns elsewhere), never half-binding.
+  if (firstParam?.type === 'ObjectPattern') {
+    const annot = firstParam.typeAnnotation?.typeAnnotation as AnyNode | undefined
+    if (!annot) return { props: [], propsParamName: undefined }
+    const t = parseTypeAnnotation(annot, ctx)
+    if (t.kind !== 'object') return { props: [], propsParamName: undefined }
+    const properties = (firstParam.properties as AnyNode[] | undefined) ?? []
+    const allSimpleNoRename =
+      properties.length > 0 &&
+      properties.every(
+        (p) =>
+          p?.type === 'Property' &&
+          p.key?.type === 'Identifier' &&
+          p.value?.type === 'Identifier' &&
+          (p.key.name as string) === (p.value.name as string),
+      )
+    if (!allSimpleNoRename) return { props: [], propsParamName: undefined }
+    return {
+      props: t.fields.map((f) => ({ name: f.name, type: f.type })),
+      propsParamName: undefined,
+    }
+  }
   // Identifier-with-annotation shape: `(props: { … })` — the annotation
   // is on `firstParam.typeAnnotation.typeAnnotation`.
   if (firstParam?.type !== 'Identifier') return { props: [], propsParamName: undefined }
@@ -2666,6 +2697,49 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return params.length > 0 ? { kind: 'params-destructure', params } : null
   }
+  // General local object destructure — `const { x, y } = <expr>` for any RHS
+  // NOT caught by the hook / store / useParams / useLoaderData lowerings
+  // above (e.g. `const { x } = o()` over a typed-object signal, or
+  // `const { a, b } = props`). Mirrors the hook-destructure approach:
+  // synthesize a single-binding container `const __pyDestrN = <expr>`
+  // (recurse — reaching the value-const / signal-read path) + alias each key
+  // → `__pyDestrN.<key>` (applied in parseExpr's Identifier case). The emit
+  // is then identical to the supported single-binding + member-access shape.
+  // Non-regressing by construction: a RHS whose single-binding form yields no
+  // decl recurses to `null` and FALLS THROUGH to the existing drop below; a
+  // rest element / nested pattern bails the whole lowering (allSimple guard)
+  // so we never half-bind. (The destructured object's field must resolve to a
+  // known struct for `.field` to typecheck — the anonymous-object-type case
+  // stays the separate struct-synthesis gap, no worse than the prior drop.)
+  if (node.id?.type === 'ObjectPattern' && init) {
+    const props = (node.id.properties as AnyNode[] | undefined) ?? []
+    const allSimple =
+      props.length > 0 &&
+      props.every(
+        (p) =>
+          p?.type === 'Property' &&
+          p.key?.type === 'Identifier' &&
+          p.value?.type === 'Identifier',
+      )
+    if (allSimple) {
+      const synthName = `__pyDestr${ctx.hookDestructureCounter}`
+      const synthNode = {
+        ...node,
+        id: { type: 'Identifier', name: synthName },
+      } as AnyNode
+      const containerDecl = tryDeclFromVarDeclarator(synthNode, ctx)
+      if (containerDecl) {
+        ctx.hookDestructureCounter += 1
+        for (const prop of props) {
+          const key = (prop as AnyNode).key?.name as string
+          const local = (prop as AnyNode).value?.name as string
+          ctx.hookFieldAliases.set(local, { object: synthName, field: key })
+        }
+        return containerDecl
+      }
+    }
+    // not lowerable → fall through to the drop below (unchanged behavior)
+  }
   const name = node.id?.name as string | undefined
   if (!name || !init) return null
 
@@ -3009,7 +3083,32 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     }
     return { kind: 'websocket', name, url: urlArg.value }
   }
-  return null
+  // EXCEPTION: an out-of-set `rx.<method>(...)` reached here because
+  // `tryRxNamespaceLowering` warned + returned null (the method needs a
+  // Strategy-B runtime port). `rx` is NOT a real native symbol, so binding it
+  // as a value-const would emit uncompilable `let r = rx.method(...)` — keep
+  // the deliberate warn-drop. (In-set rx methods become computeds earlier and
+  // never reach here; only the dropped out-of-set ones do.)
+  if (
+    init.type === 'CallExpression' &&
+    init.callee?.type === 'MemberExpression' &&
+    init.callee.object?.type === 'Identifier' &&
+    (init.callee.object.name as string | undefined) === 'rx'
+  ) {
+    return null
+  }
+  // Fallback — `const foo = <call>` binding an arbitrary call result that
+  // none of the factory/hook branches above claimed: a signal/computed READ
+  // (`const foo = o()`), a method-chain result (`const xs = arr.filter(p)`),
+  // or a helper call (`const v = compute(x)`). Treat it as a value-const
+  // (same shape as the non-CallExpression branch earlier): the emit binds it
+  // and use sites read it. Previously these silently dropped → the local
+  // became an unbound reference that broke the whole component, so binding is
+  // strictly better; a genuinely-unemittable inner expression still produces
+  // the same downstream failure it did when dropped. This also unblocks the
+  // general object-destructure lowering above, which recurses into exactly
+  // this single-binding shape.
+  return { kind: 'value', name, expr: parseExpr(init, ctx) }
 }
 
 /**
@@ -3755,6 +3854,51 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         if (single) out.push(single)
       }
       continue
+    }
+    // Body-local object destructure — `const { x, y } = <expr>` inside a
+    // computed / function body. `parseStatement` drops it (the ObjectPattern
+    // id has no `.name`). Expand here into block-scoped `let`s: a synthetic
+    // container `let __pyDestrN = <expr>` + one `let <local> = __pyDestrN.<key>`
+    // per key. These are real, properly-scoped block bindings (NOT the
+    // component-level `hookFieldAliases` map, which would leak across sibling
+    // computeds). Mirrors the component-level lowering in
+    // tryDeclFromVarDeclarator. Rest / nested patterns bail the whole
+    // expansion (allSimple guard) → fall through to the single-statement
+    // warn-drop, never half-binding.
+    if (
+      stmt.type === 'VariableDeclaration' &&
+      ((stmt.declarations as AnyNode[])?.length ?? 0) === 1 &&
+      (stmt.declarations as AnyNode[])[0]?.id?.type === 'ObjectPattern' &&
+      (stmt.declarations as AnyNode[])[0]?.init
+    ) {
+      const d = (stmt.declarations as AnyNode[])[0]!
+      const props = (d.id.properties as AnyNode[] | undefined) ?? []
+      const allSimple =
+        props.length > 0 &&
+        props.every(
+          (p) =>
+            p?.type === 'Property' &&
+            p.key?.type === 'Identifier' &&
+            p.value?.type === 'Identifier',
+        )
+      if (allSimple) {
+        const synthName = `__pyDestr${ctx.hookDestructureCounter++}`
+        out.push({ kind: 'let', name: synthName, expr: parseExpr(d.init as AnyNode, ctx) })
+        for (const p of props) {
+          const key = (p as AnyNode).key.name as string
+          const local = (p as AnyNode).value.name as string
+          out.push({
+            kind: 'let',
+            name: local,
+            expr: {
+              kind: 'member',
+              object: { kind: 'identifier', name: synthName },
+              property: key,
+            },
+          })
+        }
+        continue
+      }
     }
     const parsed = parseStatement(stmt, ctx)
     if (parsed) out.push(parsed)
