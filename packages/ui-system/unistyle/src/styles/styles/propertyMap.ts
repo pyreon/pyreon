@@ -77,6 +77,24 @@ const propertyMap: PropertyDescriptor[] = [
   { kind: 'simple', css: 'container-type', key: 'containerType' },
   { kind: 'simple', css: 'container-name', key: 'containerName' },
   { kind: 'simple', css: 'container', key: 'container' },
+  // contain-intrinsic-* — placeholder sizing for `content-visibility: auto` /
+  // `contain: size`. Without this an off-screen `content-visibility: auto`
+  // element collapses to 0 → scrollbar jank + in-view CLS when it renders.
+  // `simple` (passthrough) so the `auto <length>` / two-value forms survive
+  // verbatim (e.g. containIntrinsicSize="auto 800px").
+  { kind: 'simple', css: 'contain-intrinsic-size', key: 'containIntrinsicSize' },
+  { kind: 'simple', css: 'contain-intrinsic-width', key: 'containIntrinsicWidth' },
+  { kind: 'simple', css: 'contain-intrinsic-height', key: 'containIntrinsicHeight' },
+  {
+    kind: 'simple',
+    css: 'contain-intrinsic-block-size',
+    key: 'containIntrinsicBlockSize',
+  },
+  {
+    kind: 'simple',
+    css: 'contain-intrinsic-inline-size',
+    key: 'containIntrinsicInlineSize',
+  },
   { kind: 'convert', css: 'inline-size', key: 'inlineSize' },
   { kind: 'convert', css: 'block-size', key: 'blockSize' },
   { kind: 'convert', css: 'min-inline-size', key: 'minInlineSize' },

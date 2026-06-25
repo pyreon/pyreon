@@ -40,6 +40,11 @@ export interface ITheme {
   containerType?: string
   containerName?: string
   container?: string
+  containIntrinsicSize?: string
+  containIntrinsicWidth?: string
+  containIntrinsicHeight?: string
+  containIntrinsicBlockSize?: string
+  containIntrinsicInlineSize?: string
   inlineSize?: PropertyValue
   blockSize?: PropertyValue
   minInlineSize?: PropertyValue
