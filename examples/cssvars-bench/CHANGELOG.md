@@ -1,5 +1,19 @@
 # @pyreon/example-cssvars-bench
 
+## 0.0.7
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.37.1
+  - @pyreon/reactivity@0.37.1
+  - @pyreon/runtime-dom@0.37.1
+  - @pyreon/elements@0.37.1
+  - @pyreon/rocketstyle@0.37.1
+  - @pyreon/styler@0.37.1
+  - @pyreon/ui-core@0.37.1
+  - @pyreon/unistyle@0.37.1
+
 ## 0.0.6
 
 ### Patch Changes
