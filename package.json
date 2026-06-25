@@ -88,8 +88,8 @@
     "release": "bun scripts/build-batched.ts && bun run scripts/publish.ts"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/plugin-transform-react-jsx": "^7.29.7",
+    "@babel/core": "^8.0.1",
+    "@babel/plugin-transform-react-jsx": "^8.0.1",
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.61.1",
