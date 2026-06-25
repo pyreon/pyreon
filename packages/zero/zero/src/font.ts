@@ -1,6 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
+import {
+  type AutoFallback,
+  computeAutoFallbacks,
+  renderAutoFallbackFaces,
+  renderFontFamilyVars,
+} from './font-fallback'
 
 // ─── Font optimization ──────────────────────────────────────────────────────
 //
@@ -53,6 +59,33 @@ export interface FontConfig {
   subsets?: string[]
   /** Fallback font metrics for reducing CLS. */
   fallbacks?: Record<string, FallbackMetrics>
+  /**
+   * Auto-compute size-adjusted fallback fonts to ELIMINATE the layout
+   * shift (CLS) that happens when a Google Font swaps in over a system
+   * font with different metrics — the Next.js `next/font` technique.
+   *
+   * For each Google family, the build unpacks the actual downloaded
+   * `woff2` (ground-truth metrics; CDN mode falls back to capsize's
+   * precomputed table) and emits a paired `@font-face` for
+   * `"<Family> Fallback"` whose `size-adjust` + `ascent/descent/line-gap-
+   * override` make the system fallback's box MATCH the web font — so the
+   * swap moves nothing.
+   *
+   * To make the fallback actually reach the rendered text, the build also
+   * emits a CSS variable per family: `--pyreon-font-<slug>` (e.g.
+   * `--pyreon-font-ubuntu: Ubuntu, "Ubuntu Fallback", Arial`). Use it as
+   * your `font-family` (one line, same shape as a hand-rolled
+   * `--font-sans`) and the size-adjusted fallback is used until the web
+   * font loads:
+   *
+   *   body { font-family: var(--pyreon-font-ubuntu); }
+   *
+   * A manual `fallbacks` entry for a family takes precedence (auto skips
+   * it). Default: `true`. Set `false` to opt out. Fonts whose metrics
+   * can't be resolved are skipped with a dev warning — never a build
+   * failure.
+   */
+  fallbackAdjust?: boolean
 }
 
 /** Static Google Font config. */
@@ -520,12 +553,14 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
   const display = config.display ?? 'swap'
   const shouldPreload = config.preload !== false
   const shouldSelfHost = config.selfHost !== false
+  const shouldAdjust = config.fallbackAdjust !== false
   const googleFamilies = (config.google ?? []).map(resolveGoogleFont)
 
   let isBuild = false
   let root = ''
   let selfHostedCSS = ''
   let selfHostedFontFiles: Array<{ name: string; content: Buffer }> = []
+  let autoFallbacks: AutoFallback[] = []
 
   return {
     name: 'pyreon-zero-fonts',
@@ -544,6 +579,27 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
           selfHostedFontFiles = result.fontFiles
         } catch {
           // Self-hosting failed — fall back to CDN link
+        }
+      }
+
+      // Auto size-adjusted fallbacks (CLS elimination). Runs for builds
+      // even when selfHost is off (CDN mode → capsize precomputed metrics);
+      // when selfHost ran, uses the GROUND-TRUTH downloaded woff2 bytes.
+      // A manual `fallbacks` entry for a family wins (auto skips it). Never
+      // throws — a metric-resolution miss is a dev warning, not a build break.
+      if (isBuild && shouldAdjust && googleFamilies.length > 0) {
+        try {
+          autoFallbacks = await computeAutoFallbacks({
+            families: googleFamilies.map((f) => f.family),
+            fontBuffers: selfHostedFontFiles.map((f) => new Uint8Array(f.content)),
+            skipFamilies: new Set(
+              Object.keys(config.fallbacks ?? {}).map((k) => k.trim().toLowerCase()),
+            ),
+            warn: (m) => console.warn(m),
+          })
+        } catch {
+          // Defensive: auto-fallback must never break a build.
+          autoFallbacks = []
         }
       }
     },
@@ -571,6 +627,15 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
         subsets: config.subsets,
       })
       collectLocalFontTags(tags, config, shouldPreload, display)
+
+      // Auto size-adjusted fallback @font-face blocks + the
+      // `--pyreon-font-<slug>` vars that put the fallback INTO the cascade
+      // (the load-bearing half — without the var, the @font-face is inert).
+      if (autoFallbacks.length > 0) {
+        tags.push(
+          `<style>${renderAutoFallbackFaces(autoFallbacks)}\n${renderFontFamilyVars(autoFallbacks)}</style>`,
+        )
+      }
 
       if (tags.length === 0) return html
       return html.replace('</head>', `${tags.join('\n')}\n</head>`)
