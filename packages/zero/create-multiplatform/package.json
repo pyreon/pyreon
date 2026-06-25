@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/create-multiplatform",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "description": "Scaffold a multiplatform Pyreon app — one src/App.tsx → web + iOS (SwiftUI) + Android (Compose). Invoke as `create-multiplatform`.",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/create-multiplatform#readme",

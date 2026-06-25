@@ -1,5 +1,19 @@
 # @pyreon/vite-plugin
 
+## 0.36.0
+
+### Minor Changes
+
+- Add `pyreon({ optimizeValidators: true })` — opt-in, build-only compile-time tree-shaking for `@pyreon/validate` schemas. You keep writing the beautiful chainable API (`s.string().email().min(2)`); the plugin rewrites each statically-analyzable module-level `const X = s.<chain>` (in `.ts` modules) into the equivalent lean `@pyreon/validate/mini` form at build time, importing only the constructors + actions it uses — so the bundle prunes the format/range validators it doesn't. Measured: a 3-field schema drops ~11 KB → ~6.5 KB gz (−41%). Verdict-for-verdict identical to the runtime (parity-locked end to end by `@pyreon/validate`'s `compile-rewrite-equivalence.test.ts`). OFF by default; dev keeps the chainable runtime (HMR-reactive). Conservative — dynamic schemas (built in a function / conditionally / non-literal arg) and `.tsx` schemas gracefully stay full-runtime. (7852409)
+
+### Patch Changes
+
+- Correct the `islands` option's JSDoc `@example` for `hydrateIslandsAuto()`. It previously showed `hydrateIslandsAuto()` with no argument, which dereferences `undefined` at runtime; the example now imports the registry as a namespace (`import * as islands from 'virtual:pyreon/islands-registry'`) and passes it, and notes that a `@pyreon/zero` app doesn't need the call at all (islands self-hydrate). (29f135e)
+- Updated dependencies:
+  - @pyreon/compiler@0.36.0
+  - @pyreon/runtime-dom@0.36.0
+  - @pyreon/reactivity@0.36.0
+
 ## 0.35.0
 
 ### Minor Changes
