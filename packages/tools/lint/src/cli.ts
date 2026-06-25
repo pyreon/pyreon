@@ -176,27 +176,37 @@ export function parseRuleOptionsOverride(
   }
 }
 
-function main() {
-  const args = parseArgs(process.argv.slice(2))
+/**
+ * Run the pyreon-lint CLI for a given argv (no `process.exit` — returns an
+ * exit code so this is reusable as a library entry point: both the
+ * `pyreon-lint` bin AND `pyreon lint` (the unified CLI) call this, sharing ONE
+ * implementation instead of duplicating the arg-parsing + reporting.
+ *
+ * Returns `0` (ok) / `1` (errors), or `null` for the long-running modes
+ * (`--watch` / `--lsp`) that must keep the process alive — the caller leaves
+ * the process running rather than exiting.
+ */
+export function runCli(argv: string[]): number | null {
+  const args = parseArgs(argv)
 
   if (args.showHelp) {
     printUsage()
-    process.exit(0)
+    return 0
   }
 
   if (args.showVersion) {
     console.log(`pyreon-lint v${VERSION}`)
-    process.exit(0)
+    return 0
   }
 
   if (args.showList) {
     printList()
-    process.exit(0)
+    return 0
   }
 
   if (args.lspMode) {
     startLspServer()
-    return
+    return null // long-running — keep the process alive
   }
 
   if (args.paths.length === 0) {
@@ -215,7 +225,7 @@ function main() {
       ignore: args.ignorePath,
       format: args.format,
     })
-    return
+    return null // long-running — keep the process alive
   }
 
   const result = lint({
@@ -238,15 +248,18 @@ function main() {
     if (output) console.log(output)
   }
 
-  if (result.totalErrors > 0) {
-    process.exit(1)
-  }
+  return result.totalErrors > 0 ? 1 : 0
+}
+
+function main() {
+  const code = runCli(process.argv.slice(2))
+  if (code !== null) process.exit(code)
 }
 
 // Only invoke `main()` when this module is the entry point. Importing
-// CLI internals from tests must NOT trigger a real lint run +
-// `process.exit`. `import.meta.main === true` under Bun when the file
-// is the script; `undefined` / `false` under static imports.
+// CLI internals (incl. `runCli`) from tests or `@pyreon/cli` must NOT trigger
+// a real lint run + `process.exit`. `import.meta.main === true` under Bun when
+// the file is the script; `undefined` / `false` under static imports.
 if ((import.meta as { main?: boolean }).main === true) {
   main()
 }

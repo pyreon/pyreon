@@ -1,6 +1,6 @@
 # @pyreon/cli
 
-The `pyreon` developer-tool binary — project health audit, AI context generation, environment + version-skew check, dependency alignment.
+The `pyreon` developer-tool binary — project health audit, AI context generation, environment + version-skew check, dependency alignment, linting.
 
 `@pyreon/cli` ships the `pyreon` command-line tool. The flagship subcommand is `pyreon doctor` — a single entry point that runs every gate Pyreon enforces (lint rules, anti-pattern detection, distribution hygiene, doc-claim sync, three project audits, type-surface audit, bundle budgets) and produces a 0-100 health score with per-category breakdown. `pyreon context` writes a `.pyreon/context.json` snapshot of the project's routes, components, and islands for AI coding assistants. `pyreon info` reports the environment and every installed `@pyreon/*` version, flagging version skew before it trips the duplicate-instance guard. Output renders with brand-mapped ANSI colors on a TTY (NO_COLOR / FORCE_COLOR honored), JSON for tooling, and GitHub Actions annotations for inline PR review.
 
@@ -158,6 +158,22 @@ present (aligning laggards up), or an explicit `--to`. **Dry-run by default**
 
 `workspace:` / `link:` / `file:` / git specifiers and non-`@pyreon` deps are
 left untouched.
+
+## `pyreon lint`
+
+```bash
+pyreon lint                  # lint . with the recommended preset
+pyreon lint src --fix        # fix what's fixable
+pyreon lint --preset strict  # any pyreon-lint flag works
+pyreon lint --watch          # re-lint on change
+pyreon lint --lsp            # language-server mode
+```
+
+A thin front door to `@pyreon/lint` — it forwards **every** `pyreon-lint`
+flag verbatim (`--preset` / `--fix` / `--format` / `--quiet` / `--rule` /
+`--config` / `--ignore` / `--watch` / `--lsp` / paths). Both `pyreon lint` and
+the standalone `pyreon-lint` bin call the same `runCli` entry, so there's one
+implementation, never drift. Exits non-zero when there are lint errors.
 
 ## Programmatic API
 
