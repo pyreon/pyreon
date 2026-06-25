@@ -36,6 +36,11 @@
       "bun": "./src/server.ts",
       "import": "./lib/server.js",
       "types": "./lib/types/server.d.ts"
+    },
+    "./mini": {
+      "bun": "./src/mini.ts",
+      "import": "./lib/mini.js",
+      "types": "./lib/types/mini.d.ts"
     }
   },
   "publishConfig": {

@@ -157,20 +157,20 @@ export {
 // ─── pipe — function-comp variant of method chaining ───────────────────
 
 /**
- * Apply a sequence of chain-method invocations to a schema.
+ * Apply a sequence of chain-method callbacks to a schema (main-entry form).
  *
  * @example
  * ```ts
  * import { string, pipe } from '@pyreon/validate'
- * import { email, min } from '@pyreon/validate/checks/string'  // tree-shake-friendly path
  *
  * // Identical to: string().email().min(3)
  * const schema = pipe(string(), (s) => s.email(), (s) => s.min(3))
  * ```
  *
- * Note: v1's pipe takes function-step callbacks for simplicity. A
- * follow-up PR adds Valibot-style descriptor-object actions for
- * better tree-shaking.
+ * For a TREE-SHAKEABLE schema, import the lean constructors + standalone check
+ * ACTIONS from `@pyreon/validate/mini` instead — `pipe(string(), email(),
+ * minLength(3))` (or `string().check(email(), minLength(3))`) pulls only the
+ * checks you import, not every string-format validator. See {@link Action}.
  */
 export function pipe<S extends Schema<unknown>>(schema: S, ...actions: ReadonlyArray<(s: S) => S>): S {
   let current = schema

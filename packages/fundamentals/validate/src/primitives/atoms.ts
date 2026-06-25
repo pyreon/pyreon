@@ -100,17 +100,18 @@ export class NeverSchema extends SchemaBase<never> {
  */
 export class CustomSchema<T> extends SchemaBase<T> {
   readonly _kind = 'custom' as const
-  readonly check: ((value: unknown) => boolean) | undefined
+  /** The user predicate (named `_check` so the base `.check(...actions)` method doesn't collide). */
+  readonly _check: ((value: unknown) => boolean) | undefined
   readonly message: string
 
   constructor(check?: (value: unknown) => boolean, message = 'Invalid value') {
     super()
-    this.check = check
+    this._check = check
     this.message = message
   }
 
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
-    if (this.check && !this.check(input)) {
+    if (this._check && !this._check(input)) {
       ctx.issues.push(
         makeIssue({
           code: 'custom',

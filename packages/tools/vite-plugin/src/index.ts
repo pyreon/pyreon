@@ -42,6 +42,7 @@ import {
   transformJSX,
 } from '@pyreon/compiler'
 import { buildCompiledVerdicts } from './compiled-verdicts'
+import { optimizeValidators } from './optimize-validators'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import type { Plugin, ViteDevServer } from 'vite'
 
@@ -194,6 +195,28 @@ export interface PyreonPluginOptions {
    * @example pyreon({ compileValidators: true })
    */
   compileValidators?: boolean
+
+  /**
+   * Opt-in compile-time tree-shaking for `@pyreon/validate` schemas. When
+   * `true`, production builds rewrite each module-level chainable
+   * `const X = s.<chain>` schema into the equivalent lean `@pyreon/validate/mini`
+   * construction (`s.string().email().min(2)` → `string().check(email(),
+   * minLength(2))`), importing only the constructors + actions it uses — so the
+   * bundle prunes the format/range validators it doesn't. **You keep writing the
+   * beautiful chainable API; the compiler produces the tree-shakeable output —
+   * no second API to learn.** The rewrite is byte-equivalent (the mini actions
+   * are parity-locked; the end-to-end rewrite is verdict-for-verdict identical,
+   * locked by `@pyreon/validate`'s `compile-rewrite-equivalence.test.ts`).
+   *
+   * OFF by default (zero behaviour change). Build-only — dev keeps the chainable
+   * runtime (HMR-reactive). Conservative: only statically-analyzable
+   * `const X = s.<chain>` in `.ts` modules are rewritten; dynamic schemas (built
+   * in a function / conditionally / with a non-literal arg) and `.tsx` schemas
+   * are left as the full runtime (correct, just not pruned).
+   *
+   * @example pyreon({ optimizeValidators: true })
+   */
+  optimizeValidators?: boolean
 
   /**
    * **JSX auto-import for canonical primitives** — closes the Phase D2
@@ -537,6 +560,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
   // ── Compiled-validator emission config (opt-in, build-only) ───────────────
   const compileValidatorsEnabled = options?.compileValidators === true
+
+  // ── Validator tree-shake rewrite config (opt-in, build-only) ──────────────
+  const optimizeValidatorsEnabled = options?.optimizeValidators === true
 
   // ── P0 rocketstyle-collapse config (opt-in) ───────────────────────────────
   const collapseOpt = options?.collapse
@@ -891,6 +917,17 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
     },
 
     async transform(code, id, transformOptions) {
+      // ── Validator tree-shake rewrite (opt-in, build-only) ──────────────
+      // Rewrite chainable `const X = s.<chain>` schemas to the lean
+      // `@pyreon/validate/mini` form so the bundle prunes unused checks — the
+      // user keeps writing the chainable API. Scoped to `.ts` modules (where
+      // validation schemas overwhelmingly live), mirroring the compiled-verdict
+      // `.ts` early-return: esbuild compiles the rewritten source after us.
+      if (optimizeValidatorsEnabled && isBuild && getExt(id) === '.ts' && code.includes('@pyreon/validate')) {
+        const rewritten = optimizeValidators(code, id)
+        if (rewritten !== null) return { code: rewritten, map: null }
+      }
+
       // ── Compiled validator verdicts (opt-in, build-only) ───────────────
       // Runs for BOTH `.ts` (no JSX — esbuild compiles after us) and `.tsx`
       // (we stash the tail and append it AFTER the JSX compile below, so the

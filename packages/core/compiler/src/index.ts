@@ -14,9 +14,10 @@ export type {
   ReactivityFindingKind,
 } from './reactivity-lens'
 export { analyzeReactivity, formatReactivityLens } from './reactivity-lens'
-export { analyzeValidate, emitValidator, isEmittable } from './validate-emit'
+export { analyzeValidate, emitSchemaSource, emitValidator, isEmittable } from './validate-emit'
 export type {
   NumberCheck,
+  SchemaSourceResult,
   StringCheck,
   ValidateField,
   ValidateNode,

@@ -76,6 +76,10 @@ export interface ValidateSchemaInfo {
   line: number
   /** 0-based column. */
   column: number
+  /** Character offset where the schema initializer expression starts (for source rewrite). */
+  start: number
+  /** Character offset where the schema initializer expression ends (exclusive). */
+  end: number
   /** The parsed IR (may contain `unsupported` nodes). */
   node: ValidateNode
   /** True iff the IR contains no `unsupported` node — i.e. `emitValidator` is safe. */
@@ -355,6 +359,8 @@ export function analyzeValidate(code: string, filename = 'input.ts'): ValidateSc
         name: ts.isIdentifier(n.name) ? n.name.text : null,
         line: pos.line + 1,
         column: pos.character,
+        start: n.initializer.getStart(sf),
+        end: n.initializer.getEnd(),
         node,
         emittable: isEmittable(node),
         topLevel,
@@ -495,4 +501,138 @@ export function emitValidator(node: ValidateNode): string {
   if (!isEmittable(node)) throw new Error('[Pyreon] emitValidator: node is not emittable')
   const body = emitNode(node, 'input', '[]')
   return `(input) => {\nconst issues = []\n${body}\nreturn issues\n}`
+}
+
+// ─── Schema-source emit (tree-shakeable rewrite target) ──────────────────────
+//
+// The COUNTERPART to `emitValidator`: instead of lowering the IR to a verdict
+// function, lower it to a tree-shakeable `@pyreon/validate/mini` schema
+// CONSTRUCTION expression. The user keeps writing the beautiful chainable
+// `s.string().email().min(2)`; `@pyreon/vite-plugin` swaps the source for the
+// emitted lean form (`string().check(email(), minLength(2))`) so the bundle
+// pulls only the constructors + actions used — no second API to learn. Verdict
+// + issues stay byte-identical (the mini actions are parity-locked to the
+// chainable methods: `validate/tests/mini-parity.test.ts`).
+
+/** Result of {@link emitSchemaSource}. */
+export interface SchemaSourceResult {
+  /** The lean schema-construction expression (uses `<aliasPrefix><name>` identifiers). */
+  code: string
+  /** Original `@pyreon/validate/mini` export names referenced (constructors + actions). */
+  imports: Set<string>
+}
+
+function stringActionExpr(c: StringCheck): { call: string; name: string } {
+  switch (c.kind) {
+    case 'min':
+      return { call: `minLength(${c.n})`, name: 'minLength' }
+    case 'max':
+      return { call: `maxLength(${c.n})`, name: 'maxLength' }
+    case 'length':
+      return { call: `length(${c.n})`, name: 'length' }
+    case 'email':
+      return { call: 'email()', name: 'email' }
+    case 'url':
+      return { call: 'url()', name: 'url' }
+    case 'uuid':
+      return { call: 'uuid()', name: 'uuid' }
+    case 'nonempty':
+      return { call: 'nonEmpty()', name: 'nonEmpty' }
+    case 'regex':
+      return { call: `regex(${reExpr(new RegExp(c.source, c.flags))})`, name: 'regex' }
+  }
+}
+
+function numberActionExpr(c: NumberCheck): { call: string; name: string } {
+  switch (c.kind) {
+    case 'int':
+      return { call: 'integer()', name: 'integer' }
+    case 'min':
+      return { call: `minValue(${c.n})`, name: 'minValue' }
+    case 'max':
+      return { call: `maxValue(${c.n})`, name: 'maxValue' }
+    case 'gt':
+      return { call: `gt(${c.n})`, name: 'gt' }
+    case 'lt':
+      return { call: `lt(${c.n})`, name: 'lt' }
+    case 'positive':
+      return { call: 'positive()', name: 'positive' }
+    case 'negative':
+      return { call: 'negative()', name: 'negative' }
+  }
+}
+
+/** Bare identifier → emit unquoted; anything else → a quoted object key. */
+function objectKey(key: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key)
+}
+
+function emitSchemaExpr(node: ValidateNode, imports: Set<string>, prefix: string): string {
+  const ref = (name: string): string => {
+    imports.add(name)
+    return prefix + name
+  }
+  switch (node.kind) {
+    case 'string': {
+      const ctor = `${ref('string')}()`
+      if (node.checks.length === 0) return ctor
+      const actions = node.checks.map((c) => {
+        const a = stringActionExpr(c)
+        imports.add(a.name)
+        // `prefix + call` prefixes only the leading action identifier; any
+        // `new RegExp(...)` inside the call is a global, left untouched.
+        return prefix + a.call
+      })
+      return `${ctor}.check(${actions.join(', ')})`
+    }
+    case 'number': {
+      const ctor = `${ref('number')}()`
+      if (node.checks.length === 0) return ctor
+      const actions = node.checks.map((c) => {
+        const a = numberActionExpr(c)
+        imports.add(a.name)
+        return prefix + a.call
+      })
+      return `${ctor}.check(${actions.join(', ')})`
+    }
+    case 'boolean':
+      return `${ref('boolean')}()`
+    case 'literal':
+      return `${ref('literal')}(${JSON.stringify(node.value)})`
+    case 'object': {
+      const ctor = ref('object')
+      const fields = node.fields.map(
+        (f) => `${objectKey(f.key)}: ${emitSchemaExpr(f.value, imports, prefix)}`,
+      )
+      return `${ctor}({ ${fields.join(', ')} })`
+    }
+    case 'array':
+      return `${ref('array')}(${emitSchemaExpr(node.element, imports, prefix)})`
+    case 'optional':
+      return `${ref('optional')}(${emitSchemaExpr(node.inner, imports, prefix)})`
+    case 'unsupported':
+      throw new Error(`[Pyreon] emitSchemaSource: unsupported node (${node.reason})`)
+  }
+}
+
+/**
+ * Lower an EMITTABLE schema IR to a tree-shakeable `@pyreon/validate/mini`
+ * construction expression.
+ *
+ * @param node   An emittable IR node (no `unsupported`). Throws otherwise.
+ * @param aliasPrefix Prefix for the emitted identifiers (default `''`). The
+ *               vite-plugin passes a collision-proof prefix (e.g. `_pv_`) and
+ *               injects `import { name as _pv_name } from '@pyreon/validate/mini'`,
+ *               so the rewrite can never clash with a user binding named
+ *               `string` / `object` / `email` / …
+ *
+ * @example
+ * emitSchemaSource({ kind: 'string', checks: [{ kind: 'email' }, { kind: 'min', n: 2 }] })
+ * // → { code: 'string().check(email(), minLength(2))', imports: Set{string,email,minLength} }
+ */
+export function emitSchemaSource(node: ValidateNode, aliasPrefix = ''): SchemaSourceResult {
+  if (!isEmittable(node)) throw new Error('[Pyreon] emitSchemaSource: node is not emittable')
+  const imports = new Set<string>()
+  const code = emitSchemaExpr(node, imports, aliasPrefix)
+  return { code, imports }
 }

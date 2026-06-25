@@ -371,6 +371,40 @@ const b = pipe(
 
 The chainable path is cheap: each schema's ops compile to **one closure on first parse**, so chaining doesn't pay method-dispatch cost per parse.
 
+### Tree-shaking — keep chaining, let the compiler do it
+
+The chainable `s.` API is the most ergonomic, but it **can't tree-shake its checks**: `s.string()` returns a class whose prototype carries every string-format method (`.email()`, `.url()`, `.uuid()`, …), so the bundle pulls all 17 format regexes whether you use them or not. Chaining fundamentally requires the methods to exist on the object — so instead of making you switch to a second, more verbose API (the Zod-vs-`zod/mini` split), Pyreon makes **the compiler produce the tree-shakeable output**.
+
+Opt in once:
+
+```ts
+// vite.config.ts
+import { pyreon } from '@pyreon/vite-plugin'
+export default { plugins: [pyreon({ optimizeValidators: true })] }
+```
+
+…and **keep writing the beautiful chainable API**:
+
+```ts
+import { s } from '@pyreon/validate'
+
+export const User = s.object({
+  name: s.string().min(2),
+  email: s.string().email(),
+  age: s.number().int().min(0),
+})
+```
+
+At build time the compiler rewrites each statically-analyzable module-level `const X = s.<chain>` into a lean, function-composition form that imports only the constructors + actions it uses — so the bundler prunes everything else. The rewrite is **verdict-for-verdict identical** to the runtime (parity-locked end to end). Measured against the published bundle with Vite/Rollup, a 3-field schema drops **~11 KB → ~6.5 KB gzipped (−41%)** with no source change on your side. Conservative + safe: a dynamically-built schema (inside a function, conditionally, or with a non-literal argument) or a `.tsx` schema simply stays the full runtime — correct, just not pruned.
+
+Under the hood the rewrite targets **`@pyreon/validate/mini`** — lean base constructors plus standalone check **actions** (`minLength` / `email` / `minValue` / `integer` / …). That's the compiler's emit target rather than the headline API, but it's importable directly as an escape hatch for dynamically-built schemas or non-Vite bundlers. Both `.check()` (reads like chaining) and point-free `pipe()` are supported, and mini schemas are **Standard Schema-native** + byte-identical to the chainable form:
+
+```ts
+import { object, string, minLength, email, pipe } from '@pyreon/validate/mini'
+const User = object({ name: string().check(minLength(2)), email: string().check(email()) })
+const name = pipe(string(), minLength(2))
+```
+
 ## Primitives
 
 Every primitive is available both as a `s.` member and as a standalone named export.
