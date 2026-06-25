@@ -73,6 +73,7 @@
     "scaffold-smoke": "bun scripts/scaffold-smoke.ts",
     "scaffold-cpa-fixtures": "bun scripts/scaffold-cpa-fixtures.ts",
     "check-bundle-budgets": "bun scripts/check-bundle-budgets.ts",
+    "check-import-budgets": "bun scripts/check-import-budgets.ts",
     "check-changeset-required": "bun scripts/check-changeset-required.ts",
     "check-client-bundle-node-imports": "bun scripts/check-client-bundle-node-imports.ts",
     "check-distribution": "bun scripts/check-distribution.ts",

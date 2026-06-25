@@ -64,6 +64,7 @@ not a gate failure.
 | **Changeset** | Source change in a published `@pyreon/*` package without `.changeset/<slug>.md` | Run `bun changeset` BEFORE staging the source change |
 | **Check Doc Claims** | Adding/removing a docs page, or changing a count CLAUDE.md / README quotes (hook count, lint rule count, doc page count, etc.) | Run `bun run check-doc-claims` after touching `docs/` or any LOCKED count source |
 | **Check Bundle Budgets** | Adding a new publishable package, or runtime growth in an existing one | `bun run check-bundle-budgets`; if growth is intentional, `bun run check-bundle-budgets --update` and review the diff |
+| **Check Import Budgets** | A change made a canonical minimal import (`mount`-only, `signal/computed/effect`, basic router) bigger — usually an optional feature that stopped tree-shaking | `bun run check-import-budgets`; investigate WHY the minimal import grew (an eager import / lost `/*#__PURE__*/` / `sideEffects` regression) BEFORE relocking with `--update` |
 | **Check Distribution** | New published package, or `package.json` `files` edit that drops `lib/**/*.map` | `bun run check-distribution` |
 | **Check Release Readiness** | New published package missing `publishConfig.access: "public"` or absent from `.changeset/config.json` `fixed[0]` | `bun run check-release-readiness` |
 | **Check Manifest Depth** | LOCKED package (`store`/`rx`/`query`/`form`) manifest density dropped | `bun run check-manifest-depth` |

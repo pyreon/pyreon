@@ -1801,6 +1801,22 @@ The gate exists because the audit caught `@pyreon/flow` shipping 6.8MB unpacked 
 
 CI runs this as a required `Check Bundle Budgets` job. The gate covers all 54 published `@pyreon/*` packages today (vs 49 pre-fix that silently excluded `compiler`, `document`, `lint`, `mcp`, `zero-cli`).
 
+## Check Import Budgets — per-import (minimal-import) bundle gate
+
+`scripts/check-import-budgets.ts` is the SIBLING of `check-bundle-budgets`. That gate measures each package's FULL barrel (`export *`); this one locks the gzipped size of the **canonical minimal imports real apps actually write** — `signal`/`computed`/`effect` from `@pyreon/reactivity`, `mount`/`render` (and +`hydrateRoot`) from `@pyreon/runtime-dom`, `RouterProvider`+`RouterView`+`RouterLink` from `@pyreon/router`, `h`/`Fragment`/`createContext`/`useContext` from `@pyreon/core`. Budgets live in `scripts/import-budgets.json` (current size + 3% jitter headroom).
+
+**Why it exists**: the full-barrel budget catches a package getting fatter overall, but it CANNOT see the failure mode that matters most for app bundle size — **an optional feature silently stopping tree-shaking**, so a minimal `import { mount }` starts dragging in code it never used to (e.g. the animation runtime, the SSR loader helpers). A 2026 core-package size audit established the baseline this gate locks: per-import minimal sizes are **reactivity ~3.2 KB / runtime-dom mount ~8.0 KB / router basic ~2.9 KB / core jsx ~1.0 KB gzipped** — the core is already near the size frontier (most optional code — devtools, store, selector, View Transitions, scroll, loader serialization — tree-shakes out of a minimal import), so the lever is GUARDING that, not shrinking further.
+
+**Method mirrors `check-bundle-budgets` exactly** (so the two are comparable + the method is CI-proven): bundle the package's built `lib/index.js` re-exporting only the scenario's symbols via `Bun.build` (minify, `target:'bun'`, `splitting:true`, `define NODE_ENV=production`), externalizing `@pyreon/*` + `node:*` + every bare-module specifier the lib touches (AST-collected). **Documented caveat**: because workspace `@pyreon/*` deps are externalized (this monorepo doesn't symlink them into `node_modules`, so a true by-name / inline-deps build isn't available outside a full Vite app), the ABSOLUTE numbers can slightly OVER-count a separately-imported optional module vs a real app that bundles `@pyreon/core` inline and honors ITS `sideEffects:false`. The gate's job is **regression detection on a consistent method**, not byte-exact prediction of one consumer bundler. (This is exactly why the `@pyreon/runtime-dom` `transition-entry.js` ~1 KB residual shows in this gate's `mount` number but is NOT a confirmed real-app cost — it's a known, TRACKED line item, not an action item: the only fix would be risky rolldown-chunking surgery for an unconfirmed kilobyte, deliberately deferred.)
+
+```bash
+bun run check-import-budgets          # exit non-zero on regression
+bun run check-import-budgets --json   # machine-readable
+bun run check-import-budgets --update # relock budgets (after intentional growth)
+```
+
+CI runs this as a `Check Import Budgets` job (`needs: bootstrap` — measures built `lib/`). Pure logic (`buildEntrySource`, `compareToBudgets`, `SCENARIOS`) is exported + unit-tested in `packages/internals/test-utils/src/tests/check-import-budgets.test.ts` (10 specs); the gate itself is bisect-verified (lower a budget → exit 1, restore → exit 0). The script guards `await main()` behind `import.meta.main` so importing the pure helpers in tests doesn't run the measurement, and declares a local `Bun` ambient + lazy `import.meta.dir` access so it typechecks under `@pyreon/test-utils`' (Bun-types-free) tsconfig.
+
 ## @pyreon/table — public surface drift gate
 
 `packages/fundamentals/table/src/tests/public-surface.test.ts` snapshots the full set of names exported from `@pyreon/table` (50+ entries — most via `export * from '@tanstack/table-core'`, plus the 2 Pyreon adapter symbols). When TanStack adds, renames, or removes an export in a minor bump, the snapshot fails and the diff becomes the deliberate-decision moment that wildcard re-exports otherwise paper over.
