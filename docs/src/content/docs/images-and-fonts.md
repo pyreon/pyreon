@@ -226,6 +226,38 @@ Now the size-adjusted "Ubuntu Fallback" renders until the real Ubuntu arrives, a
 - **Manual `fallbacks` win.** A family with a hand-supplied `fallbacks` entry skips auto-computation — your explicit metrics take precedence.
 - **Build-time only.** `@capsizecss/*` runs during `vite build`; nothing is added to your client bundle.
 
+#### Zero-touch: `applyTo`
+
+Don't want to add the variable to your CSS at all? Pass an object and Pyreon writes the binding for you — for the **first configured family** (the primary):
+
+```ts
+zero({
+  font: {
+    google: ['Ubuntu:wght@300;500'],
+    fallbackAdjust: { applyTo: 'body' }, // → body { font-family: var(--pyreon-font-ubuntu) }
+  },
+})
+```
+
+`applyTo: true` is shorthand for `'body'`; any selector works (`':root'`, `'html'`, `'.app'`). It's **opt-in** (off by default) because auto-writing a global `font-family` is opinionated — so when you enable it, don't also set that selector's `font-family` in your own CSS (the two would fight on cascade order). This covers everything that **inherits** `font-family` (the body and any element that doesn't set its own).
+
+#### Using it in the `@pyreon/ui-system` theme
+
+Components styled with rocketstyle / styler take their font from the **theme**, not the cascade — so `applyTo` (a plain `body` rule) won't reach them. The **same variable** is the integration point: point your theme's font at it, and because styler passes `var()` through verbatim, it reaches every component.
+
+```ts
+<PyreonUI
+  theme={{
+    fontFamily: {
+      base: 'var(--pyreon-font-inter)',
+      mono: 'var(--pyreon-font-jetbrains-mono)',
+    },
+  }}
+>
+```
+
+The two surfaces are complementary — a fully-themed app typically does **both**: `applyTo` for inheriting/body content, and the theme `fontFamily` for component typography. One variable per family drives all of it.
+
 ## Opt-out
 
 Either plugin can be skipped entirely:
@@ -264,7 +296,7 @@ Use `image: false` when you handle image optimization via a third-party CDN prov
 | `selfHost` | `boolean` | `true` | Self-host Google Fonts at build time. `false` keeps the Google CDN link. |
 | `subsets` | `string[]` | — (keep all) | Restrict self-hosted subsets, e.g. `['latin', 'latin-ext']`. Drops unused subsets (Cyrillic/Greek/…) from the build output. Opt-in; self-host only; **runtime is unchanged** (the browser already skips unused subsets via `unicode-range`). See [Trimming subsets](#trimming-subsets-latin-only-sites). |
 | `fallbacks` | `Record<string, FallbackMetrics>` | — | **Manual** size-adjusted fallback metrics per family (takes precedence over `fallbackAdjust`). |
-| `fallbackAdjust` | `boolean` | `true` | **Auto-compute** size-adjusted fallback `@font-face`s (the `next/font` technique) to eliminate font-swap CLS, plus a `--pyreon-font-<slug>` cascade variable. See [Eliminating font-swap CLS](#eliminating-font-swap-cls-fallbackadjust). |
+| `fallbackAdjust` | `boolean \| { applyTo?: string \| boolean }` | `true` | **Auto-compute** size-adjusted fallback `@font-face`s (the `next/font` technique) to eliminate font-swap CLS, plus a `--pyreon-font-<slug>` cascade variable. `{ applyTo: 'body' }` also writes the `font-family` binding for you. See [Eliminating font-swap CLS](#eliminating-font-swap-cls-fallbackadjust). |
 
 ## Migration
 
