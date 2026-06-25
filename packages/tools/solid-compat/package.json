@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/solid-compat",
-  "version": "0.35.0",
+  "version": "0.36.0",
   "description": "SolidJS-compatible API shim for Pyreon — write Solid-style code that runs on Pyreon's reactive engine",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/solid-compat#readme",
