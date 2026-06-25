@@ -525,6 +525,7 @@
         "@pyreon/permissions": "workspace:*",
         "@pyreon/query": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rich-text": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/rx": "workspace:*",

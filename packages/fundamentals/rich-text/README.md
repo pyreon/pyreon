@@ -7,8 +7,11 @@ as `@pyreon/code` (CodeMirror) and `@pyreon/charts` (ECharts): a best-in-class
 engine, wrapped in Pyreon's fine-grained reactivity.
 
 - **Signal-backed document** — `editor.json` is a writable `Signal<JSONContent>`;
-  `html` / `text` / `isEmpty` / `characterCount` / `canUndo` / `canRedo` are
-  computed signals.
+  `html` / `text` / `isEmpty` / `characterCount` / `wordCount` / `canUndo` /
+  `canRedo` are computed signals; `editable` is a writable read-only toggle.
+- **Toolbar-ready** — `editor.isActive('bold')` is a reactive accessor for
+  active-state highlighting; commands run through `editor.chain()` plus
+  `undo` / `redo` / `focus` / `blur` helpers.
 - **Lazy engine** — `@tiptap/*` is dynamically imported on mount, so it stays
   out of the initial bundle.
 - **Accessible** — the content area is a labeled `role="textbox"` multiline
@@ -50,6 +53,25 @@ editor.chain()?.toggleBold().run()
 
 // Tear down (user-owned lifecycle):
 // onCleanup(() => editor.dispose())
+```
+
+### Toolbar
+
+```tsx
+// Command + reactive active-state (call isActive inside a reactive scope):
+<button
+  type="button"
+  class={() => (editor.isActive('bold') ? 'active' : '')}
+  onClick={() => editor.chain()?.toggleBold().run()}
+>
+  Bold
+</button>
+
+<button disabled={() => !editor.canUndo()} onClick={() => editor.undo()}>Undo</button>
+
+// Runtime read-only toggle:
+editor.editable.set(false)   // read-only
+editor.editable()            // reactive boolean
 ```
 
 ### Two-way binding

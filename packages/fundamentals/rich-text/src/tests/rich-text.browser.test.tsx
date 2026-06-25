@@ -113,6 +113,86 @@ describe('rich-text editor in real browser', () => {
     unmount()
   })
 
+  it('isActive reflects marks at the selection (toolbar primitive)', async () => {
+    const editor = createRichTextEditor({ content: '<p>plain</p>' })
+    const { unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    // Mark (bold) — the primary toolbar case.
+    expect(editor.isActive('bold')).toBe(false)
+    editor.chain()?.selectAll().toggleBold().run()
+    await flush()
+    expect(editor.isActive('bold')).toBe(true)
+
+    // Node with attrs (heading level 2). Convert the block, then place a
+    // collapsed cursor inside it so isActive resolves the enclosing node.
+    editor.chain()?.selectAll().setHeading({ level: 2 }).setTextSelection(2).run()
+    await flush()
+    expect(JSON.stringify(editor.json())).toContain('"level":2')
+    expect(editor.isActive('heading', { level: 2 })).toBe(true)
+    expect(editor.isActive('heading', { level: 3 })).toBe(false)
+    editor.dispose()
+    unmount()
+  })
+
+  it('editable signal toggles the live editor read-only state', async () => {
+    const editor = createRichTextEditor({ content: '<p>x</p>' })
+    const { container, unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    const ce = container.querySelector('[contenteditable]') as HTMLElement
+    expect(ce.getAttribute('contenteditable')).toBe('true')
+    expect(editor.editable()).toBe(true)
+
+    editor.editable.set(false)
+    await flush()
+    expect(ce.getAttribute('contenteditable')).toBe('false')
+    expect(editor.editable()).toBe(false)
+
+    editor.editable.set(true)
+    await flush()
+    expect(ce.getAttribute('contenteditable')).toBe('true')
+    editor.dispose()
+    unmount()
+  })
+
+  it('undo / redo round-trip a content change', async () => {
+    const editor = createRichTextEditor({ content: '<p>start</p>' })
+    const { container, unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    editor.chain()?.selectAll().insertContent('changed').run()
+    await flush()
+    expect(container.textContent).toContain('changed')
+    expect(editor.canUndo()).toBe(true)
+
+    editor.undo()
+    await flush()
+    expect(container.textContent).toContain('start')
+    expect(container.textContent).not.toContain('changed')
+
+    editor.redo()
+    await flush()
+    expect(container.textContent).toContain('changed')
+    editor.dispose()
+    unmount()
+  })
+
+  it('wordCount + characterCount reflect the live document', async () => {
+    const editor = createRichTextEditor({ content: '<p>one two three</p>' })
+    const { unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    expect(editor.wordCount()).toBe(3)
+    expect(editor.characterCount()).toBe('one two three'.length)
+    editor.dispose()
+    unmount()
+  })
+
   it('two-way binds an external signal (bindRichTextToSignal, json)', async () => {
     const editor = createRichTextEditor({ content: '<p>seed</p>' })
     const { container, unmount } = mountInBrowser(h(RichText, { instance: editor }))

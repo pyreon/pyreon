@@ -2101,6 +2101,8 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 >
 > **Accessibility**: The content area is a `role="textbox"` `aria-multiline` region; supply `ariaLabel` (defaults to "Rich text editor") so screen readers announce a name.
 >
+> **Toolbars**: Build a toolbar with `editor.chain()?.toggleBold().run()` for commands + `editor.isActive("bold")` for active state. `isActive` is reactive — call it inside a reactive scope (`class={() => editor.isActive("bold") ? "active" : ""}`), not at component-body top level, or the highlight won't update. Gate undo/redo buttons on `editor.canUndo()` / `editor.canRedo()`.
+>
 > **Collaboration**: For real-time collaboration, compose with `@pyreon/sync`: bind the editor to the same `Y.Doc` XML fragment (`createYjsDoc().yDoc.getXmlFragment(...)`) via TipTap's collaboration extension, and reuse `@pyreon/sync` transports + `syncedAwareness` for presence — no paid cloud required.
 >
 > **License**: TipTap + ProseMirror are MIT throughout. Avoid TipTap Pro modules (Cloud, Comments, Content AI, doc-conversion) which are paid/commercially-licensed.
