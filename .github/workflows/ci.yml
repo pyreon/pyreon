@@ -1041,6 +1041,25 @@ jobs:
       - name: Verify each package main-entry within budget
         run: bun run check-bundle-budgets
 
+  # ── Check import budgets: PER-IMPORT (minimal-import) bundle gate ─────
+  # Sibling of check-bundle-budgets. That gate measures each package's
+  # FULL barrel; this one locks the gzipped size of the CANONICAL MINIMAL
+  # IMPORTS real apps write (`mount`-only, `signal/computed/effect`, basic
+  # router). It catches the failure mode the full-barrel gate can't see:
+  # an optional feature silently STOPPING tree-shaking so a minimal import
+  # starts dragging in code it never used to. Needs Bootstrap (measures
+  # built lib/index.js). See scripts/check-import-budgets.ts.
+  check-import-budgets:
+    name: Check Import Budgets
+    needs: [bootstrap, lint, typecheck]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/setup-pyreon
+      - name: Verify canonical minimal imports within budget
+        run: bun run check-import-budgets
+
   # ── Check distribution: bundle/distribution hygiene gate ──────────────
   # Asserts every published @pyreon/* package declares `sideEffects` (so
   # bundlers can tree-shake) and excludes `!lib/**/*.map` from its `files`
