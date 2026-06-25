@@ -4,6 +4,7 @@ import {
   computeAutoFallbacks,
   defaultSystemFallback,
   type FontMetrics,
+  isCompleteMetrics,
   renderAutoFallbackFaces,
   renderFontFamilyVars,
   slugifyFamily,
@@ -32,6 +33,20 @@ describe('slugifyFamily', () => {
   it('trims + collapses non-alphanumerics, no leading/trailing dashes', () => {
     expect(slugifyFamily('  IBM Plex Sans  ')).toBe('ibm-plex-sans')
     expect(slugifyFamily('Source Code Pro!')).toBe('source-code-pro')
+  })
+})
+
+describe('isCompleteMetrics', () => {
+  it('accepts a metrics object carrying every field createFontStack needs', () => {
+    expect(isCompleteMetrics(UBUNTU)).toBe(true)
+  })
+  it('rejects partial / malformed metrics (missing the fields the override math reads)', () => {
+    expect(isCompleteMetrics(null)).toBe(false)
+    expect(isCompleteMetrics({})).toBe(false)
+    expect(isCompleteMetrics({ ...UBUNTU, lineGap: undefined })).toBe(false)
+    expect(isCompleteMetrics({ ...UBUNTU, xWidthAvg: undefined })).toBe(false)
+    expect(isCompleteMetrics({ ...UBUNTU, unitsPerEm: 0 })).toBe(false)
+    expect(isCompleteMetrics({ ...UBUNTU, familyName: '' })).toBe(false)
   })
 })
 

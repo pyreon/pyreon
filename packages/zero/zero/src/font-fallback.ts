@@ -96,11 +96,34 @@ export async function unpackMetrics(buffer: Uint8Array): Promise<FontMetrics | n
     const { fromBlob } = await import('@capsizecss/unpack')
     // fromBlob is the build-time path; it handles woff2 decompression.
     const m = (await fromBlob(new Blob([buffer as BlobPart]))) as FontMetrics
-    if (!m || typeof m.unitsPerEm !== 'number' || !m.familyName) return null
-    return m
+    return isCompleteMetrics(m) ? m : null
   } catch {
     return null
   }
+}
+
+/**
+ * A metrics object is usable only if it carries EVERY field
+ * `createFontStack` reads to compute the overrides — `familyName` +
+ * `unitsPerEm` + `ascent` + `descent` + `lineGap` + `xWidthAvg`. A corrupt
+ * or partial font (unpack returning gaps) is rejected here so we never
+ * feed an incomplete object into the override math (which would yield
+ * NaN%/Infinity% overrides). Exported for the tests + reused by every
+ * metrics-producing path (buffer unpack AND precomputed lookup).
+ */
+export function isCompleteMetrics(m: unknown): m is FontMetrics {
+  if (!m || typeof m !== 'object') return false
+  const x = m as Record<string, unknown>
+  return (
+    typeof x.familyName === 'string' &&
+    x.familyName.length > 0 &&
+    typeof x.unitsPerEm === 'number' &&
+    x.unitsPerEm > 0 &&
+    typeof x.ascent === 'number' &&
+    typeof x.descent === 'number' &&
+    typeof x.lineGap === 'number' &&
+    typeof x.xWidthAvg === 'number'
+  )
 }
 
 /** Look a family up in capsize's precomputed collection (CDN-mode fallback). null if absent. */
@@ -111,11 +134,13 @@ export async function precomputedMetrics(family: string): Promise<FontMetrics | 
     const collection = entireMetricsCollection as unknown as Record<string, FontMetrics>
     // Try exact familyName match first, then a normalized key match.
     for (const v of Object.values(collection)) {
-      if (v.familyName?.toLowerCase() === family.trim().toLowerCase()) return v
+      if (v.familyName?.toLowerCase() === family.trim().toLowerCase()) {
+        return isCompleteMetrics(v) ? v : null
+      }
     }
     const camel = slugifyFamily(family).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
     const direct = collection[key] ?? collection[camel]
-    return direct ?? null
+    return isCompleteMetrics(direct) ? direct : null
   } catch {
     return null
   }
