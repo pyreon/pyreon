@@ -10,10 +10,12 @@
  */
 
 import cliPkg from '../package.json' with { type: 'json' }
-import { generateContext } from './context'
-import { type DoctorOptions, doctor } from './doctor'
 import { FAST_GATES, type GateName, SLOW_GATES } from './doctor/orchestrator'
-import { info } from './info'
+// Command handlers are lazy-imported in `main()` (below) so each loads only
+// when its command runs — the bin stays a slim dispatcher and a new command
+// never grows the main-entry bundle. (FAST_GATES/SLOW_GATES are kept static:
+// tiny string arrays the synchronous usage/validation paths need.)
+import type { DoctorOptions } from './doctor'
 
 // Single-sourced from the orchestrator so the CLI's valid-gate set can
 // NEVER drift from the gates that actually run. (Previously a hand-kept
@@ -107,11 +109,13 @@ async function main(): Promise<void> {
   }
 
   if (command === 'info') {
+    const { info } = await import('./info')
     info({ cwd: process.cwd(), json: args.includes('--json') })
     return
   }
 
   if (command === 'doctor') {
+    const { doctor } = await import('./doctor')
     const format = args.includes('--gha')
       ? ('gha' as const)
       : parseFormat(getFlagValue('--format'))
@@ -140,6 +144,7 @@ async function main(): Promise<void> {
   }
 
   if (command === 'context') {
+    const { generateContext } = await import('./context')
     const outIdx = args.indexOf('--out')
     const outPath = outIdx >= 0 ? args[outIdx + 1] : undefined
     await generateContext({ cwd: process.cwd(), outPath })
@@ -156,8 +161,13 @@ main().catch((err) => {
   process.exit(1)
 })
 
+// Library API — the programmatic surface (unchanged baseline). CLI-only
+// command handlers (info/upgrade/…) are intentionally NOT re-exported here:
+// keeping them out of the main entry's static graph means a new command is a
+// lazy-loaded chunk, never main-entry bundle weight. They're reachable via
+// their own module path for tests, and could get a `/info` subpath export if
+// programmatic access is ever needed.
 export type { ContextOptions, ProjectContext } from './context'
+export { generateContext } from './context'
 export type { DoctorOptions, DoctorReport, GateName } from './doctor'
-export type { InfoOptions, InfoReport, InstalledPyreonPkg, SkewReport } from './info'
-export { collectInfo, detectSkew, formatInfo, info, scanInstalledPyreon } from './info'
-export { doctor, generateContext }
+export { doctor } from './doctor'

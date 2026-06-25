@@ -12,7 +12,10 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { collectInfo, detectSkew, formatInfo, scanInstalledPyreon } from '../info'
 
-const stripAnsi = (s: string): string => s.replace(/\[[0-9;]*m/g, '')
+// Construct the ESC (0x1b) at runtime — a raw ESC byte in source trips the
+// source-hygiene gate (no raw C0/DEL control bytes in tracked files).
+const ANSI_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g')
+const stripAnsi = (s: string): string => s.replace(ANSI_RE, '')
 
 /** Build a fixture project dir: package.json + node_modules/@pyreon/* installs. */
 function makeProject(opts: {
