@@ -1,5 +1,19 @@
 # @pyreon/unistyle
 
+## 0.37.0
+
+### Patch Changes
+
+- [#1858](https://github.com/pyreon/pyreon/pull/1858) [`19aa6a9`](https://github.com/pyreon/pyreon/commit/19aa6a9b6031b148e738fdd4ceb6d9048dfda99b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the `contain-intrinsic-*` responsive style-prop family — `containIntrinsicSize`, `containIntrinsicWidth`, `containIntrinsicHeight`, `containIntrinsicBlockSize`, `containIntrinsicInlineSize` (→ `contain-intrinsic-size` / `-width` / `-height` / `-block-size` / `-inline-size`).
+
+  Completes the CSS Containment surface: `contain` and `content-visibility` were already mapped, but `content-visibility: auto` is unusable without a placeholder size — an off-screen element collapses to 0, causing scrollbar jank and an in-view layout shift when it renders. These are the companion props that reserve that space. `simple` passthrough, so the `auto <length>` / two-value forms survive verbatim (e.g. `containIntrinsicSize="auto 800px"`). Additive — all keys optional.
+
+- Updated dependencies []:
+  - @pyreon/core@0.37.0
+  - @pyreon/reactivity@0.37.0
+  - @pyreon/styler@0.37.0
+  - @pyreon/ui-core@0.37.0
+
 ## 0.36.0
 
 ### Patch Changes

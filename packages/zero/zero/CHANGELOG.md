@@ -1,5 +1,85 @@
 # @pyreon/zero
 
+## 0.37.0
+
+### Minor Changes
+
+- [#1859](https://github.com/pyreon/pyreon/pull/1859) [`7ee9e76`](https://github.com/pyreon/pyreon/commit/7ee9e760a024cc650b5187da7818b0da71698360) Thanks [@vitbokisch](https://github.com/vitbokisch)! - font: `fallbackAdjust.applyTo` — zero-touch auto-binding of the size-adjusted font stack
+
+  `fallbackAdjust` now accepts an object form, `{ applyTo: 'body' | <selector> }`,
+  that writes the `font-family` binding for you so the plain-CSS path is
+  fully automatic — no need to add `var(--pyreon-font-<slug>)` to your own
+  CSS:
+
+  ```ts
+  zero({
+    font: {
+      google: ["Ubuntu:wght@300;500"],
+      fallbackAdjust: { applyTo: "body" }, // → body { font-family: var(--pyreon-font-ubuntu) }
+    },
+  });
+  ```
+
+  `applyTo: true` is shorthand for `'body'`; any selector works
+  (`':root'`, `'.app'`, …). It binds the **first configured family**
+  (primary). Opt-in by design (auto-writing a global `font-family` is
+  opinionated); `fallbackAdjust: true` / default is unchanged (metrics +
+  the `--pyreon-font-<slug>` var, no binding).
+
+  This covers content that **inherits** `font-family`. Components styled
+  via the `@pyreon/ui-system` theme take their font from the theme, not the
+  cascade — point the theme at the **same variable** for those
+  (`fontFamily: { base: 'var(--pyreon-font-inter)' }`); styler passes
+  `var()` through verbatim. The two are complementary; one variable per
+  family drives both surfaces. Documented in
+  `docs/src/content/docs/images-and-fonts.md`.
+
+- [#1855](https://github.com/pyreon/pyreon/pull/1855) [`7a4e9c1`](https://github.com/pyreon/pyreon/commit/7a4e9c133cab77e96c455cefda801623dafef525) Thanks [@vitbokisch](https://github.com/vitbokisch)! - font: auto-compute size-adjusted fallback fonts (`fallbackAdjust`) to eliminate font-swap CLS
+
+  `@pyreon/zero/font` now auto-computes size-adjusted fallback `@font-face`
+  declarations — the `next/font` technique — to eliminate the layout shift
+  (CLS) that occurs when a Google Font swaps in over a system font with
+  different metrics.
+
+  For each Google family, the build unpacks the actual downloaded `woff2`
+  for ground-truth metrics (`@capsizecss/unpack`; CDN mode falls back to
+  `@capsizecss/metrics`' precomputed table) and emits a paired
+  `@font-face` for `"<Family> Fallback"` whose `size-adjust` +
+  `ascent/descent/line-gap-override` (computed via `@capsizecss/core`'s
+  `createFontStack`) make the system fallback's box match the web font, so
+  the swap moves nothing.
+
+  Crucially — so the fallback actually reaches the rendered text — the
+  build also emits a `--pyreon-font-<slug>` CSS variable carrying the full
+  stack (e.g. `--pyreon-font-ubuntu: Ubuntu, "Ubuntu Fallback", Arial`).
+  Use it as your `font-family` (`body { font-family: var(--pyreon-font-ubuntu) }`)
+  and the size-adjusted fallback renders until the web font loads.
+
+  ```ts
+  zero({ font: { google: ["Ubuntu:wght@300;500"], fallbackAdjust: true } });
+  ```
+
+  - Default: `true`. Set `false` to opt out.
+  - A manual `fallbacks` entry for a family takes precedence (auto skips it).
+  - A font whose metrics can't be resolved is skipped with a build warning
+    — never a build failure.
+  - `@capsizecss/*` runs at build time only; nothing is added to the client
+    bundle.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.37.0
+  - @pyreon/head@0.37.0
+  - @pyreon/reactivity@0.37.0
+  - @pyreon/router@0.37.0
+  - @pyreon/runtime-dom@0.37.0
+  - @pyreon/runtime-server@0.37.0
+  - @pyreon/server@0.37.0
+  - @pyreon/vite-plugin@0.37.0
+  - @pyreon/meta@0.37.0
+  - @pyreon/sized-map@0.37.0
+
 ## 0.36.0
 
 ### Minor Changes
