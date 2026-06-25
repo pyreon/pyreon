@@ -67,6 +67,12 @@ No callbacks, no `applyNodeChanges`. The flow instance manages everything.
 
 <Example file="./examples/flow/node-graph-drag-select-connect" title="Node graph — drag, select, connect" />
 
+### Playground
+
+The kitchen-sink demo — every visible feature in one graph. Click an **auto-layout** button (`layered →`, `layered ↓`, `tree`, `force`) and the nodes animate to the elkjs-computed positions. The edges show the full **arrow** vocabulary: filled `ArrowClosed`, open `Arrow` chevrons, per-edge colours, and a both-ends marker. Drag any node, click to select, drag from a node edge to connect.
+
+<Example file="./examples/flow/flow-playground" title="Flow playground — arrows + auto-layout + every overlay" />
+
 ## Creating a Flow
 
 `createFlow()` accepts a config object and returns a reactive `FlowInstance`:
@@ -299,6 +305,8 @@ flow.removeEdgeWaypoint('e-1-2', 0)
 
 ### Edge Markers
 
+See the [playground](#playground) above for every marker shape rendered live.
+
 Configurable arrowheads on either end of an edge. Two shapes — `MarkerType.ArrowClosed` (filled triangle, the default) and `MarkerType.Arrow` (open chevron) — with optional `color` / `width` / `height` / `strokeWidth`. Identical marker configs are deduplicated into a single shared `<defs>` entry across the whole graph, and the `<defs>` set rebuilds reactively as edges are added/removed.
 
 ```tsx
@@ -397,6 +405,8 @@ const flow = createFlow({
 Measured (60-frame drag): N=1000 `1.34ms → 0.31ms`, N=3000 `3.36ms → 0.78ms`. Default stays `true` so existing apps keep helper-line snapping; set `false` when you don't need it (or use `snapToGrid` for grid quantization instead, which is a separate, cheap mechanism).
 
 ## Auto-Layout
+
+The [playground](#playground) above has live `layered`, `tree`, and `force` buttons — click them to watch the layout animate.
 
 Layout nodes automatically using elkjs (lazy-loaded — the elkjs chunk is only fetched when `flow.layout()` is first called):
 

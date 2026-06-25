@@ -1,4 +1,4 @@
-import { useFlow, Flow, Background, MiniMap, Controls } from '@pyreon/flow'
+import { useFlow, Flow, Background, MiniMap, Controls, MarkerType } from '@pyreon/flow'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
@@ -10,6 +10,14 @@ import type { Signal } from '@pyreon/reactivity'
  * callbacks, no manual state. `useFlow` auto-disposes the instance on
  * unmount, so this example is leak-safe across the docs page's mount /
  * unmount lifecycle.
+ *
+ * Arrows are made explicit + contrasty here (indigo, 18×14) so the
+ * edge direction reads at a glance — the framework default is the
+ * React-Flow-conventional light gray, which is correct in an app but
+ * easy to miss in a small docs demo. `a→b` is a filled `ArrowClosed`,
+ * `b→c` is an open `Arrow` chevron, so both marker shapes are visible
+ * side by side. (Auto-layout + the full marker vocabulary get their own
+ * interactive demo in the Flow playground further down the page.)
  *
  * Note the overlay order: `<MiniMap>` is placed BEFORE `<Controls>`.
  * See the "Overlay child order" note in docs/flow.md — a `<Controls>`
@@ -26,17 +34,35 @@ export default function NodeGraphDragSelectConnect(_props: {
     fitView: true,
     nodes: [
       { id: 'a', type: 'input', position: { x: 20, y: 30 }, data: { label: 'Start' } },
-      { id: 'b', position: { x: 200, y: 90 }, data: { label: 'Process' } },
+      { id: 'b', position: { x: 200, y: 110 }, data: { label: 'Process' } },
       { id: 'c', type: 'output', position: { x: 380, y: 30 }, data: { label: 'End' } },
     ],
     edges: [
-      { id: 'a-b', source: 'a', target: 'b' },
-      { id: 'b-c', source: 'b', target: 'c' },
+      {
+        id: 'a-b',
+        source: 'a',
+        target: 'b',
+        // Filled triangle (the default shape) — larger + indigo so it pops.
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1', width: 18, height: 14 },
+      },
+      {
+        id: 'b-c',
+        source: 'b',
+        target: 'c',
+        // Open chevron — the other marker shape, same colour for contrast.
+        markerEnd: {
+          type: MarkerType.Arrow,
+          color: '#6366f1',
+          width: 18,
+          height: 14,
+          strokeWidth: 2,
+        },
+      },
     ],
   })
 
   return (
-    <div style="height: 260px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+    <div style="height: 280px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
       <Flow instance={flow}>
         <Background variant="dots" gap={20} size={1} />
         <MiniMap width={140} height={90} />
