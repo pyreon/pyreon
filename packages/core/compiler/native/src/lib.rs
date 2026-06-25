@@ -4269,7 +4269,11 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str) -> Option<String
 /// `tryDirectSignalRef`. See that function's JSDoc for the accepted shapes
 /// and `is_member` semantics. `is_member: true` tells the emitter to pass an
 /// explicit `caller` 3rd arg so the runtime's slow path preserves `this`.
-fn try_direct_signal_ref(expr: &Expression, ctx: &mut Ctx) -> Option<(String, bool)> {
+fn try_direct_signal_ref(
+    expr: &Expression,
+    allow_bare_signal: bool,
+    ctx: &mut Ctx,
+) -> Option<(String, bool)> {
     let mut inner = expr;
     // Unwrap concise arrow: () => signal()
     if let Expression::ArrowFunctionExpression(arrow) = inner {
@@ -4277,6 +4281,23 @@ fn try_direct_signal_ref(expr: &Expression, ctx: &mut Ctx) -> Option<(String, bo
             inner = body_expr;
         } else {
             return None;
+        }
+    }
+    // Bare signal/computed identifier — the un-called form (e.g. class={active},
+    // style={styleSig}). Semantically identical to the accessor form
+    // `class={() => active()}` (the compiler auto-calls bare signals), so bind
+    // directly for byte-for-byte parity instead of falling to a re-tracking
+    // `_bind`. Guarded by is_active_signal: ONLY signals/computeds (which expose
+    // `.direct`) take this path; selectors and arbitrary identifiers stay
+    // general. Use id.name (NOT slice_expr — the auto-call rewrite would yield
+    // `active()`); the caller emits the 2-arg form (no `this` to preserve).
+    // SCOPED to the ATTRIBUTE path (`allow_bare_signal`) — the text-child path
+    // keeps its existing emission for bare signals; see the JS twin.
+    if allow_bare_signal {
+        if let Expression::Identifier(id) = inner {
+            if is_active_signal(id.name.as_str(), ctx) {
+                return Some((id.name.to_string(), false));
+            }
         }
     }
     if let Expression::CallExpression(call) = inner {
@@ -4432,7 +4453,9 @@ fn emit_dynamic_attr(
             html_attr_name
         ),
     );
-    let direct_ref = try_direct_signal_ref(expr_node, ctx);
+    // attr path opts into bare-signal direct binding (class={active}); the text
+    // call site below does NOT (allow_bare_signal=false).
+    let direct_ref = try_direct_signal_ref(expr_node, true, ctx);
     if let Some((signal_name, is_member)) = direct_ref {
         tb.needs_bind_direct = true;
         let d = tb.next_disp();
@@ -4630,7 +4653,8 @@ fn emit_reactive_text_child(
         tb.bind_lines
             .push(format!("const {} = {}.firstChild", t_var, var_name));
     }
-    let direct_ref = try_direct_signal_ref(expr_node, ctx);
+    // text-child path keeps existing bare-signal emission (allow_bare_signal=false).
+    let direct_ref = try_direct_signal_ref(expr_node, false, ctx);
     if let Some((signal_name, is_member)) = direct_ref {
         tb.needs_bind_text = true;
         let d = tb.next_disp();
