@@ -7,6 +7,7 @@
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
  *   pyreon info      — environment + installed @pyreon versions + version-skew check
+ *   pyreon upgrade   — align all @pyreon/* dependencies to one version
  */
 
 import cliPkg from '../package.json' with { type: 'json' }
@@ -35,6 +36,7 @@ function printUsage(): void {
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
     info [--json]                    Environment + installed @pyreon versions + skew check
+    upgrade [--to <v>] [--write]     Align all @pyreon/* deps to one version (--exact pins; dry-run default)
 
   doctor options:
     --fix                            Auto-fix what we can (lint + react-patterns).
@@ -111,6 +113,19 @@ async function main(): Promise<void> {
   if (command === 'info') {
     const { info } = await import('./info')
     info({ cwd: process.cwd(), json: args.includes('--json') })
+    return
+  }
+
+  if (command === 'upgrade') {
+    const { upgrade } = await import('./upgrade')
+    const exitCode = upgrade({
+      cwd: process.cwd(),
+      to: getFlagValue('--to'),
+      exact: args.includes('--exact'),
+      write: args.includes('--write'),
+      json: args.includes('--json'),
+    })
+    if (exitCode > 0) process.exit(exitCode)
     return
   }
 
