@@ -24,9 +24,9 @@
         "@unhead/vue": "^3.1.6",
         "@vitest/browser": "^4.1.9",
         "@vitest/coverage-v8": "^4.1.9",
-        "@vitus-labs/tools-rolldown": "^2.6.2",
-        "@vitus-labs/tools-typescript": "^2.6.2",
-        "@vitus-labs/tools-vitest": "^2.6.2",
+        "@vitus-labs/tools-rolldown": "^2.6.3",
+        "@vitus-labs/tools-typescript": "^2.6.3",
+        "@vitus-labs/tools-vitest": "^2.6.3",
         "arktype": "^2.2.1",
         "esbuild": "^0.28.1",
         "find-my-way": "^9.6.0",
@@ -3520,11 +3520,11 @@
 
     "@vitus-labs/tools-lint": ["@vitus-labs/tools-lint@2.5.0", "", { "dependencies": { "@biomejs/biome": "^2.4.15" } }, "sha512-P4uk3aZ9l4O38qbZ/tqrhn420R4RvWkM+1XIYfQ+FQy7w/70RU2f6bygDNlwszuJZuBAOXWBaoPmGP8347WxDg=="],
 
-    "@vitus-labs/tools-rolldown": ["@vitus-labs/tools-rolldown@2.6.2", "", { "dependencies": { "@vitus-labs/tools-core": "^2.5.0", "chalk": "^5.6.2", "rolldown": "^1.1.3", "rolldown-plugin-dts": "^0.26.0", "rollup-plugin-filesize": "^10.0.0", "rollup-plugin-visualizer": "^7.0.1" }, "bin": { "vl_rolldown_build": "lib/bin/run-build.js", "vl_rolldown_build-watch": "lib/bin/run-watch.js" } }, "sha512-JqMAFpBSImyjXdH6nEVOEqhbUYnqB3Y4Pwce1gACdMGT0R3dvgbbnToJBod5vFCFq6qQA+6cxH1X/K3JtZoQSQ=="],
+    "@vitus-labs/tools-rolldown": ["@vitus-labs/tools-rolldown@2.6.3", "", { "dependencies": { "@vitus-labs/tools-core": "^2.5.0", "chalk": "^5.6.2", "rolldown": "^1.1.3", "rolldown-plugin-dts": "^0.26.0", "rollup-plugin-filesize": "^10.0.0", "rollup-plugin-visualizer": "^7.0.1" }, "bin": { "vl_rolldown_build": "lib/bin/run-build.js", "vl_rolldown_build-watch": "lib/bin/run-watch.js" } }, "sha512-qNKe/vKO38Sg0+161bzFY7HqLXhVCzgTuDLXUGUOSP5Db/G0C9p9y4eFb1G4jLrNS26LDZLZr64tmgzY5HTUwg=="],
 
-    "@vitus-labs/tools-typescript": ["@vitus-labs/tools-typescript@2.6.2", "", { "peerDependencies": { "typescript": "^6.0.3" } }, "sha512-BJFT/IL5VoDa0uySZ9k8CLjwxPH8EAPDnI7OEKkUqlG0dsyuYLjhBcdYnVunUmNeuLw/ky+YzfVSUQwVQUtysQ=="],
+    "@vitus-labs/tools-typescript": ["@vitus-labs/tools-typescript@2.6.3", "", { "peerDependencies": { "typescript": "^6.0.3" } }, "sha512-r8NO+lI9ute42XuOlacLaoW/pDQyfn/CtaXY6Fv/LoMrTwwYe78f2kPSqSSfRXnRWkVhvMr2hjBtPyuyveSeqw=="],
 
-    "@vitus-labs/tools-vitest": ["@vitus-labs/tools-vitest@2.6.2", "", { "peerDependencies": { "vite": "^8.1.0", "vitest": ">=4" } }, "sha512-H4qdY85ZQbDgKMSskMnsfgPYxXEk9arZOHJh6cZhCmEfxV3zoHCJLsJJqZ9A/NDqwHmN8HHjvl1ZYmCt4a9mOg=="],
+    "@vitus-labs/tools-vitest": ["@vitus-labs/tools-vitest@2.6.3", "", { "peerDependencies": { "vite": "^8.1.0", "vitest": ">=4" } }, "sha512-Yd3RkuZh3crjRfvfKP8/ETnEhYO//TW1nc8izx8NjJmjD817or2DVQbo5yYxNbjIhqAF3WfxqUdAO2GZMFKTjQ=="],
 
     "@vue-macros/common": ["@vue-macros/common@3.1.2", "", { "dependencies": { "@vue/compiler-sfc": "^3.5.22", "ast-kit": "^2.1.2", "local-pkg": "^1.1.2", "magic-string-ast": "^1.0.2", "unplugin-utils": "^0.3.0" }, "peerDependencies": { "vue": "^2.7.0 || ^3.2.25" }, "optionalPeers": ["vue"] }, "sha512-h9t4ArDdniO9ekYHAD95t9AZcAbb19lEGK+26iAjUODOIJKmObDNBSe4+6ELQAA3vtYiFPPBtHh7+cQCKi3Dng=="],
 
