@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/query",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "description": "Pyreon adapter for TanStack Query",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/query#readme",

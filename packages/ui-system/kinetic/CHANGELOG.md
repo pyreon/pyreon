@@ -1,5 +1,15 @@
 # @pyreon/kinetic
 
+## 0.37.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.37.0
+  - @pyreon/reactivity@0.37.0
+  - @pyreon/runtime-dom@0.37.0
+  - @pyreon/sized-map@0.37.0
+
 ## 0.36.0
 
 ### Patch Changes

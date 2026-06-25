@@ -1,5 +1,13 @@
 # @pyreon/permissions
 
+## 0.37.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.37.0
+  - @pyreon/reactivity@0.37.0
+
 ## 0.36.0
 
 ### Patch Changes

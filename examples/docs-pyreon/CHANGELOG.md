@@ -1,5 +1,19 @@
 # @pyreon/docs-pyreon
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [[`7ee9e76`](https://github.com/pyreon/pyreon/commit/7ee9e760a024cc650b5187da7818b0da71698360), [`7a4e9c1`](https://github.com/pyreon/pyreon/commit/7a4e9c133cab77e96c455cefda801623dafef525)]:
+  - @pyreon/zero@1.0.0
+  - @pyreon/zero-content@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/vite-plugin@1.0.0
+
 ## 0.0.7
 
 ### Patch Changes
