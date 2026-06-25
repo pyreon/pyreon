@@ -30,6 +30,29 @@ describe('styles', () => {
     expect(result).toContain('display: flex;')
   })
 
+  it('contain-intrinsic-* family passes values through verbatim (companion to content-visibility)', () => {
+    // `simple` passthrough: the `auto <length>` / two-value forms must survive
+    // unmangled so `content-visibility: auto` has a usable placeholder size.
+    const result = styles({
+      theme: {
+        contentVisibility: 'auto',
+        containIntrinsicSize: 'auto 800px',
+        containIntrinsicWidth: 'auto 300px',
+        containIntrinsicHeight: 'auto 600px',
+        containIntrinsicBlockSize: '600px',
+        containIntrinsicInlineSize: '300px',
+      },
+      css: mockCss,
+      rootSize: 16,
+    })
+    expect(result).toContain('content-visibility: auto;')
+    expect(result).toContain('contain-intrinsic-size: auto 800px;')
+    expect(result).toContain('contain-intrinsic-width: auto 300px;')
+    expect(result).toContain('contain-intrinsic-height: auto 600px;')
+    expect(result).toContain('contain-intrinsic-block-size: 600px;')
+    expect(result).toContain('contain-intrinsic-inline-size: 300px;')
+  })
+
   it('convert property: width converts via value() with rootSize', () => {
     // width is a convert_fallback with keys ["width", "size"]
     // 160 / 16 = 10rem
