@@ -28,7 +28,7 @@ const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
 export function createRichTextEditor(config: RichTextConfig = {}): RichTextEditor {
   const {
     content = '',
-    editable = true,
+    editable: initialEditable = true,
     ariaLabel = 'Rich text editor',
     starterKit = true,
     extensions: userExtensions = [],
@@ -42,8 +42,19 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   )
   const focused = signal(false)
   const view = signal<Editor | null>(null)
+  const baseEditable = signal(initialEditable)
   // Bumped on every transaction so the read-through computeds re-derive.
   const docVersion = signal(0)
+
+  // `editable` is a writable facade: reads delegate to baseEditable; `.set`
+  // flips the live editor's editable state (when mounted) then commits to base
+  // — the runtime read-only toggle (mirrors `@pyreon/code`'s `readOnly`).
+  const editable = wrapSignal(baseEditable, {
+    set: (next) => {
+      view.peek()?.setEditable(next)
+      baseEditable.set(next)
+    },
+  })
 
   // Loop guard: when WE push content into the editor (`json.set`), the
   // editor's `onUpdate` fires — skip writing back to `baseJson` (we set it
@@ -79,12 +90,40 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   const text = computed(() => readEditor()?.getText() ?? '')
   const isEmpty = computed(() => readEditor()?.isEmpty ?? true)
   const characterCount = computed(() => readEditor()?.getText().length ?? 0)
+  const wordCount = computed(() => {
+    const t = readEditor()?.getText().trim() ?? ''
+    return t === '' ? 0 : t.split(/\s+/).length
+  })
   const canUndo = computed(() => readEditor()?.can().undo() ?? false)
   const canRedo = computed(() => readEditor()?.can().redo() ?? false)
+
+  /**
+   * Whether a mark/node is active at the current selection — reactive (reads
+   * the transaction counter, so it re-derives on every edit + selection
+   * move). The toolbar primitive: `editor.isActive('bold')`,
+   * `editor.isActive('heading', { level: 2 })`. Read it inside a reactive
+   * scope (a `() => …` thunk in JSX, an `effect`, a `computed`).
+   */
+  const isActive = (name: string | Record<string, unknown>, attrs?: Record<string, unknown>): boolean => {
+    docVersion() // subscribe — re-derive on each transaction / selection change
+    // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+    const e = view.peek()
+    if (!e) return false
+    return typeof name === 'string' ? e.isActive(name, attrs) : e.isActive(name)
+  }
 
   const chain = (): ReturnType<Editor['chain']> | null => view.peek()?.chain() ?? null
   const focus = (): void => {
     view.peek()?.commands.focus()
+  }
+  const blur = (): void => {
+    view.peek()?.commands.blur()
+  }
+  const undo = (): void => {
+    view.peek()?.chain().undo().run()
+  }
+  const redo = (): void => {
+    view.peek()?.chain().redo().run()
   }
   const dispose = (): void => {
     const e = view.peek()
@@ -109,7 +148,8 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
       element: parent,
       extensions: exts,
       content: pendingContent,
-      editable,
+      // honor a pre-mount `editable.set(false)` (config default otherwise).
+      editable: baseEditable.peek(),
       autofocus,
       // a11y: the contenteditable content area is a labeled multiline textbox.
       editorProps: {
@@ -144,12 +184,18 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
     text,
     isEmpty,
     characterCount,
+    wordCount,
     canUndo,
     canRedo,
     focused,
+    editable,
     view,
+    isActive,
     chain,
     focus,
+    blur,
+    undo,
+    redo,
     dispose,
     _mount,
   }

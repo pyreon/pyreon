@@ -11,6 +11,7 @@ export const tabs = [
   { id: 'virtual', path: '/virtual', label: 'Virtual' },
   { id: 'charts', path: '/charts', label: 'Charts' },
   { id: 'code', path: '/code', label: 'Code' },
+  { id: 'rich-text', path: '/rich-text', label: 'Rich Text' },
   { id: 'document', path: '/document', label: 'Document' },
   { id: 'flow', path: '/flow', label: 'Flow' },
   { id: 'storage', path: '/storage', label: 'Storage' },

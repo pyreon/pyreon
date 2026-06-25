@@ -56,11 +56,32 @@ describe('createRichTextEditor (pre-mount, no TipTap)', () => {
     expect(editor.html()).toBe('<p>Hi</p>')
   })
 
-  it('focus / dispose are no-ops before mount', () => {
+  it('focus / blur / undo / redo / dispose are no-ops before mount', () => {
     const editor = createRichTextEditor()
     expect(() => editor.focus()).not.toThrow()
+    expect(() => editor.blur()).not.toThrow()
+    expect(() => editor.undo()).not.toThrow()
+    expect(() => editor.redo()).not.toThrow()
     expect(() => editor.dispose()).not.toThrow()
     expect(editor.view()).toBeNull()
+  })
+
+  it('wordCount is 0 and isActive is false before mount', () => {
+    const editor = createRichTextEditor({ content: '<p>two words</p>' })
+    // Pre-mount the engine is not loaded — counts/active fall back.
+    expect(editor.wordCount()).toBe(0)
+    expect(editor.isActive('bold')).toBe(false)
+    expect(editor.isActive('heading', { level: 2 })).toBe(false)
+  })
+
+  it('editable defaults from config and is a writable signal before mount', () => {
+    const editor = createRichTextEditor()
+    expect(editor.editable()).toBe(true)
+    editor.editable.set(false)
+    expect(editor.editable()).toBe(false)
+
+    const ro = createRichTextEditor({ editable: false })
+    expect(ro.editable()).toBe(false)
   })
 })
 

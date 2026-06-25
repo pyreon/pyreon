@@ -16,8 +16,9 @@ Reactive WYSIWYG rich-text editor for Pyreon, built as a thin signal layer over 
 - createRichTextEditor — reactive instance with writable Signal&lt;JSONContent&gt; json
 - RichText JSX component — lazy-loads TipTap on mount; a11y-labeled role="textbox"
 - bindRichTextToSignal — two-way binding (json or html) with built-in loop prevention
-- Computed html / text / isEmpty / characterCount / canUndo / canRedo signals
-- TipTap command chain via editor.chain() (bold/italic/lists/headings/…)
+- Computed html / text / isEmpty / characterCount / wordCount / canUndo / canRedo signals
+- editor.isActive(name) — reactive toolbar primitive; editable — writable read-only signal
+- TipTap command chain via editor.chain() + undo/redo/focus/blur helpers
 - MIT throughout (TipTap + ProseMirror); collaboration composes with @pyreon/sync
 
 ## Complete example
@@ -73,7 +74,7 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 (config?: RichTextConfig) => RichTextEditor
 ```
 
-Create a reactive WYSIWYG editor instance. `editor.json` is a writable Signal&lt;JSONContent&gt; — `editor.json()` reads reactively, `editor.json.set(next)` replaces the editor content (loop-safe). `html`/`text`/`isEmpty`/`characterCount`/`canUndo`/`canRedo` are computed signals. The TipTap `Editor` (over ProseMirror) is created lazily when mounted via `<RichText>`, so `@tiptap/*` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, and onChange. The instance is framework-independent — mount it via `<RichText instance={editor} />`.
+Create a reactive WYSIWYG editor instance. `editor.json` is a writable Signal&lt;JSONContent&gt; — `editor.json()` reads reactively, `editor.json.set(next)` replaces the editor content (loop-safe). `html`/`text`/`isEmpty`/`characterCount`/`wordCount`/`canUndo`/`canRedo` are computed signals; `editable` is a writable Signal&lt;boolean&gt; (runtime read-only toggle); `editor.isActive('bold')` is the reactive toolbar primitive. Commands run through `editor.chain()` (toggleBold/toggleHeading/toggleBulletList/…) plus `undo`/`redo`/`focus`/`blur` helpers. The TipTap `Editor` (over ProseMirror) is created lazily when mounted via `<RichText>`, so `@tiptap/*` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, and onChange. The instance is framework-independent — mount it via `<RichText instance={editor} />`.
 
 **Example**
 
@@ -158,6 +159,8 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 > **Lazy engine:** TipTap (`@tiptap/core` + `@tiptap/starter-kit`) is dynamically imported on mount, so it stays out of the initial bundle (same shape as `@pyreon/charts` ECharts). `html`/`chain()` are inert until mount.
 
 > **Accessibility:** The content area is a `role="textbox"` `aria-multiline` region; supply `ariaLabel` (defaults to "Rich text editor") so screen readers announce a name.
+
+> **Toolbars:** Build a toolbar with `editor.chain()?.toggleBold().run()` for commands + `editor.isActive("bold")` for active state. `isActive` is reactive — call it inside a reactive scope (`class={() => editor.isActive("bold") ? "active" : ""}`), not at component-body top level, or the highlight won't update. Gate undo/redo buttons on `editor.canUndo()` / `editor.canRedo()`.
 
 > **Collaboration:** For real-time collaboration, compose with `@pyreon/sync`: bind the editor to the same `Y.Doc` XML fragment (`createYjsDoc().yDoc.getXmlFragment(...)`) via TipTap's collaboration extension, and reuse `@pyreon/sync` transports + `syncedAwareness` for presence — no paid cloud required.
 

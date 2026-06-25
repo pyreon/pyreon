@@ -50,21 +50,43 @@ export interface RichTextEditor {
   isEmpty: Computed<boolean>
   /** Plain-text character count (computed). */
   characterCount: Computed<number>
+  /** Whitespace-delimited word count (computed). */
+  wordCount: Computed<number>
   /** Whether an undo step is available (computed). */
   canUndo: Computed<boolean>
   /** Whether a redo step is available (computed). */
   canRedo: Computed<boolean>
   /** Focus state (reactive). */
   focused: Signal<boolean>
+  /**
+   * Whether the document is editable — a writable `Signal`. `editable()` reads
+   * reactively (e.g. to label a read-only toggle); `editable.set(false)` flips
+   * the live editor to read-only at runtime.
+   */
+  editable: Signal<boolean>
   /** The underlying TipTap `Editor`, or `null` until mounted. */
   view: Signal<Editor | null>
   /**
+   * Whether a mark/node is active at the current selection — reactive (reads
+   * the transaction counter, so it re-derives on edits + selection moves).
+   * The toolbar primitive: `editor.isActive('bold')`,
+   * `editor.isActive('heading', { level: 2 })`. Call inside a reactive scope.
+   */
+  isActive: (name: string | Record<string, unknown>, attrs?: Record<string, unknown>) => boolean
+  /**
    * The TipTap command chain for the mounted editor, or `null` before mount.
-   * `editor.chain()?.toggleBold().run()`.
+   * `editor.chain()?.toggleBold().run()`. The escape hatch for every command
+   * (toggleBold / toggleItalic / toggleHeading / toggleBulletList / …).
    */
   chain: () => ReturnType<Editor['chain']> | null
   /** Imperatively focus the editor (no-op before mount). */
   focus: () => void
+  /** Imperatively blur the editor (no-op before mount). */
+  blur: () => void
+  /** Undo the last change (no-op before mount). */
+  undo: () => void
+  /** Redo the last undone change (no-op before mount). */
+  redo: () => void
   /** Tear down the editor + its DOM. Call from `onCleanup` / `onUnmount`. */
   dispose: () => void
   /** @internal — mount the editor into a container element (called by `<RichText>`). */

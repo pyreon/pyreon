@@ -222,6 +222,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Document', slug: 'document' },
       { text: 'Charts', slug: 'charts' },
       { text: 'Code Editor', slug: 'code' },
+      { text: 'Rich Text', slug: 'rich-text' },
       { text: 'Flow', slug: 'flow' },
       { text: 'Feature', slug: 'feature' },
     ],
