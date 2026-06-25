@@ -3,7 +3,7 @@ title: '@pyreon/cli'
 description: Command-line tools for Pyreon — the doctor health audit (14 gates, 0-100 score) and the context generator for AI tools.
 ---
 
-`@pyreon/cli` is the command-line companion for Pyreon projects. It ships four commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard; and **`pyreon upgrade`** — the fix for that skew, aligning every `@pyreon/*` dependency to one version.
+`@pyreon/cli` is the command-line companion for Pyreon projects. It ships five commands: **`pyreon doctor`** — a project-wide health audit that runs a battery of independent **gates** in parallel, aggregates every finding into a unified report, and computes a **0-100 health score** with a letter grade and a per-category bar chart; **`pyreon context`** — a project-structure scanner that writes a machine-readable summary for AI coding assistants; **`pyreon info`** — an environment report that lists every installed `@pyreon/*` version and flags version skew before it trips the duplicate-instance guard; **`pyreon upgrade`** — the fix for that skew, aligning every `@pyreon/*` dependency to one version; and **`pyreon lint`** — a thin front door to `@pyreon/lint` that forwards every `pyreon-lint` flag.
 
 <PackageBadge name="@pyreon/cli" href="/docs/cli" />
 
@@ -416,6 +416,21 @@ By default the target is the **highest** `@pyreon/*` version already present (al
 ```
 
 After `--write`, run your package manager's install to pull the aligned versions. `workspace:` / `link:` / `file:` / git specifiers and non-`@pyreon` dependencies are left untouched.
+
+## `pyreon lint`
+
+`pyreon lint` is the unified front door to `@pyreon/lint` — it forwards **every** `pyreon-lint` flag verbatim.
+
+```bash
+pyreon lint                  # lint . with the recommended preset
+pyreon lint src --fix        # auto-fix fixable findings
+pyreon lint --preset strict  # any pyreon-lint flag works
+pyreon lint --format json    # text (default) | json | compact
+pyreon lint --watch          # re-lint on change
+pyreon lint --lsp            # language-server mode (inlay hints + diagnostics)
+```
+
+`pyreon lint` and the standalone `pyreon-lint` binary share **one** implementation (the exported `runCli` entry), so the two can never drift. It exits non-zero when there are lint errors — drop it into CI exactly like `pyreon-lint`.
 
 ## Programmatic API
 
