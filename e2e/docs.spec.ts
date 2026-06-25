@@ -396,6 +396,62 @@ test.describe('docs rendering', () => {
     await expect(canvas.locator('[data-nodeid]')).toHaveCount(3)
     await expect(canvas.locator('.pyreon-flow-minimap')).toBeVisible()
     await expect(canvas.locator('.pyreon-flow-controls')).toBeVisible()
+
+    // ARROWS reach the DOM (the historically-fragile marker path — see the
+    // `[object Object]` / overlay-order entries in anti-patterns.md). Lock
+    // that a <marker> def exists, BOTH edges carry a `marker-end` url() ref,
+    // and every ref resolves to a real def (no dangling reference).
+    const arrows = await canvas.evaluate((flow) => {
+      const markers = Array.from(flow.querySelectorAll('marker'))
+      const withEnd = Array.from(flow.querySelectorAll('path')).filter((p) =>
+        p.getAttribute('marker-end'),
+      )
+      const dangling = withEnd
+        .map((p) => (p.getAttribute('marker-end') || '').replace(/^url\(#|\)$/g, ''))
+        .filter((id) => id && !flow.querySelector(`marker#${CSS.escape(id)}`))
+      return { markerDefs: markers.length, edgesWithEnd: withEnd.length, dangling: dangling.length }
+    })
+    expect(arrows.markerDefs).toBeGreaterThan(0)
+    expect(arrows.edgesWithEnd).toBe(2)
+    expect(arrows.dangling).toBe(0)
+  })
+
+  test('flow playground: both arrow shapes render + auto-layout moves the nodes', async ({
+    page,
+  }) => {
+    // The second flow <Example> on /docs/flow is the kitchen-sink playground.
+    // It locks the two features the docs example previously under-showed:
+    //   (1) BOTH marker shapes paint — a filled <polygon> (ArrowClosed) AND
+    //       an open <polyline> (Arrow) — in the same real-compiler render.
+    //   (2) AUTO-LAYOUT is wired + visible: clicking a layout button runs a
+    //       real elkjs pass and the node's own `transform: translate(x,y)`
+    //       (its GRAPH position, independent of the viewport/fitView) changes.
+    await page.goto('/docs/flow')
+    await page.waitForLoadState('networkidle')
+    const pg = page.locator('.pyreon-example .pyreon-flow').nth(1)
+    await expect(pg).toBeVisible({ timeout: 15_000 })
+    await expect(pg.locator('[data-nodeid]')).toHaveCount(6)
+
+    // Both marker SHAPES present (closed filled + open chevron).
+    const shapes = await pg.evaluate((flow) => ({
+      polygons: flow.querySelectorAll('marker polygon').length,
+      polylines: flow.querySelectorAll('marker polyline').length,
+    }))
+    expect(shapes.polygons).toBeGreaterThan(0)
+    expect(shapes.polylines).toBeGreaterThan(0)
+
+    // Auto-layout: the node's own transform changes after a layered pass.
+    const node = pg.locator('[data-nodeid="source"]')
+    const before = await node.getAttribute('style')
+    await page.locator('[data-testid="flow-layout-layered-down"]').click()
+    // The readout updates synchronously on click (proves the handler fired).
+    await expect(page.locator('[data-testid="flow-layout-current"]')).toHaveText(
+      'layered-down',
+    )
+    // elkjs lazy-loads on first call + the move animates → poll until settled.
+    await expect
+      .poll(async () => await node.getAttribute('style'), { timeout: 15_000 })
+      .not.toBe(before)
   })
 
   test('virtual docs page mounts the live <Example> (real @pyreon/virtual list)', async ({
