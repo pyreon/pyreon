@@ -122,7 +122,7 @@ jobs:
       # Try to restore a previous lockfile-matched cache (fast path)
       - name: Restore node_modules
         id: nm-restore
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             node_modules
@@ -232,7 +232,7 @@ jobs:
       # `env:`. Keep inputs in sync between this restore and the saves below.
       - name: Restore source-hashed lib/ cache (+ incremental manifest)
         id: bootstrap-cache
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             packages/*/*/lib
@@ -1412,7 +1412,7 @@ jobs:
         if: steps.changes.outputs.should_run == 'true'
         with:
           bun-version-file: .bun-version
-      - uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: docs-sync-nm
         if: steps.changes.outputs.should_run == 'true'
         with:
