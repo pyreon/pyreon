@@ -148,7 +148,7 @@ jobs:
       # service degradation) plus ~317MB of quota churn per run.
       - name: Save node_modules (lockfile key)
         if: steps.nm-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             node_modules
@@ -258,7 +258,7 @@ jobs:
       # we just BUILT (no point re-saving identical bytes on cache-hit).
       - name: Save source-hashed lib/ cache for next runs
         if: steps.bootstrap-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # Save the manifest alongside lib/ so the next run's restore gets
           # the per-package hashes that describe exactly this lib/.
@@ -275,7 +275,7 @@ jobs:
       # jobs see the same lib/ they always have, no composite-action edits
       # needed.
       - name: Save lib/ under per-run-id key for downstream jobs
-        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/*/*/lib
           key: ${{ env.BOOTSTRAP_KEY }}
