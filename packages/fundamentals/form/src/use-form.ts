@@ -282,28 +282,70 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // ("value/error/touched/dirty are independent Signal<T>"), not the
   // signal-in-render-loop anti-pattern the rule targets. Disabled per-site.
   for (const [name, initial] of fieldEntries) {
+    // EAGER: value + dirty. Both are written by `setValue` on the keystroke hot
+    // path, so they're allocated up front and captured DIRECTLY in the closures
+    // below — no getter indirection on the hot path, so no V8 deopt risk (the
+    // trap that reverted the earlier dirty-count-inline attempt). The other four
+    // per-field signals (error/touched/disabled/readOnly) sit off every
+    // keystroke and are LAZY — materialized on first access — so a freshly
+    // created N-field form allocates 2N signals at setup instead of 6N.
     // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const valueSig = signal(initial) as Signal<TValues[typeof name]>
     // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-    const errorSig = signal<ValidationError>(undefined)
-    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-    const touchedSig = signal(false)
-    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
     const dirtySig = signal(false)
-    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-    const fieldDisabled = signal(false)
-    // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
-    const fieldReadOnly = signal(false)
-    if (process.env.NODE_ENV !== 'production')
-      // 6 signals per field — value/error/touched/dirty/disabled/readOnly.
-      // Surfaces the eager-allocation cost: scales 6×N at useForm({fields})
-      // init time. PR 2 candidate: lazy materialization on first read.
-      _countSink.__pyreon_count__?.('form.fieldSignalCreate', 6)
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 2)
+
+    // LAZY materializers. Each `??=`-allocates on first access; `getError` also
+    // attaches its `_invalidCount` subscriber THEN (until the error signal
+    // exists the field has no error and contributes 0, so the count stays
+    // correct). `getError`/`getTouched` are used directly by the in-loop
+    // closures (runValidation / setTouched) to skip the property-getter hop.
+    let _errorSig: Signal<ValidationError> | undefined
+    const getError = (): Signal<ValidationError> => {
+      if (_errorSig) return _errorSig
+      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+      const s = signal<ValidationError>(undefined)
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
+      let prevHasError = false
+      s.subscribe(() => {
+        const hasError = s.peek() !== undefined
+        if (hasError !== prevHasError) {
+          _invalidCount.update((n) => (hasError ? n + 1 : n - 1))
+          prevHasError = hasError
+        }
+      })
+      _errorSig = s
+      return s
+    }
+    let _touchedSig: Signal<boolean> | undefined
+    const getTouched = (): Signal<boolean> => {
+      if (_touchedSig) return _touchedSig
+      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+      _touchedSig = signal(false)
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
+      return _touchedSig
+    }
+    let _disabledSig: Signal<boolean> | undefined
+    const getDisabled = (): Signal<boolean> => {
+      if (_disabledSig) return _disabledSig
+      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+      _disabledSig = signal(false)
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
+      return _disabledSig
+    }
+    let _readOnlySig: Signal<boolean> | undefined
+    const getReadOnly = (): Signal<boolean> => {
+      if (_readOnlySig) return _readOnlySig
+      // pyreon-lint-disable-next-line pyreon/no-signal-in-loop
+      _readOnlySig = signal(false)
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('form.fieldSignalCreate', 1)
+      return _readOnlySig
+    }
 
     // Initialize validation version
     validationVersions[name] = 0
 
-    // The 3 `errorSig.set(...)` calls below are in MUTUALLY EXCLUSIVE
+    // The 3 `getError().set(...)` calls below are in MUTUALLY EXCLUSIVE
     // branches (validator success, validator threw, no validator
     // configured) — at most ONE fires per invocation. The lint rule
     // counts function-scope total writes, not per-branch fan-out, so
@@ -322,7 +364,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           const result = await fieldValidator(value, getValues(), abortController.signal)
           // Only apply result if this is still the latest validation and not disposed
           if (!disposed && validationVersions[name] === currentVersion) {
-            errorSig.set(result)
+            getError().set(result)
           }
           return result
         } catch (err) {
@@ -333,12 +375,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // Validator threw — treat as error string if possible
           if (!disposed && validationVersions[name] === currentVersion) {
             const message = err instanceof Error ? err.message : String(err)
-            errorSig.set(message)
+            getError().set(message)
           }
           return err instanceof Error ? err.message : String(err)
         }
       }
-      errorSig.set(undefined)
+      getError().set(undefined)
       return undefined
     }
     // Expose the non-debounced validator for `trigger(name)`.
@@ -386,17 +428,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // declarations above for the rationale. signal.subscribe is the
     // lightweight subscriber path: adds to the signal's `_s` Set with no
     // effect-framework overhead (no scope, no auto-track, no deps array).
-    // Each field gets 2 subscribers: one for error transitions, one for
-    // dirty. Total = 2N subscribers, light enough that 10k fields adds
-    // ~negligible overhead vs the existing N auto-revalidation effects.
-    let prevHasError = false
-    errorSig.subscribe(() => {
-      const hasError = errorSig.peek() !== undefined
-      if (hasError !== prevHasError) {
-        _invalidCount.update((n) => (hasError ? n + 1 : n - 1))
-        prevHasError = hasError
-      }
-    })
+    // The DIRTY subscriber is eager (dirty is allocated up front). The ERROR
+    // subscriber lives in `getError` and attaches when the error signal first
+    // materializes — until then the field has no error and contributes 0 to
+    // `_invalidCount`, so the count is correct without an eager subscriber.
     let prevIsDirty = false
     dirtySig.subscribe(() => {
       const isFieldDirty = dirtySig.peek()
@@ -410,11 +445,23 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
     fields[name] = {
       value: valueSig,
-      error: errorSig,
-      touched: touchedSig,
       dirty: dirtySig,
-      disabled: fieldDisabled,
-      readOnly: fieldReadOnly,
+      // Lazy: accessing any of these materializes its signal on first read and
+      // returns the SAME instance thereafter (identity stable — load-bearing for
+      // reactive tracking). Off the keystroke hot path, so the getter hop never
+      // touches per-keystroke work.
+      get error() {
+        return getError()
+      },
+      get touched() {
+        return getTouched()
+      },
+      get disabled() {
+        return getDisabled()
+      },
+      get readOnly() {
+        return getReadOnly()
+      },
       setValue: (value: TValues[typeof name]) => {
         valueSig.set(value)
         _valuesEpoch++ // invalidate the values() snapshot cache
@@ -430,7 +477,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         }
       },
       setTouched: () => {
-        touchedSig.set(true)
+        getTouched().set(true)
         if (validateOn === 'blur') {
           // Run the per-field validator (matches `validators[name]`).
           validateField(valueSig.peek())
@@ -461,9 +508,13 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         // Fires per-field on form.reset() and explicit reverts.
         batch(() => {
           valueSig.set(initial as TValues[typeof name])
-          errorSig.set(undefined)
-          touchedSig.set(false)
           dirtySig.set(false)
+          // Only reset the lazy signals if they were ever materialized — an
+          // un-materialized error/touched is already at its default, so there's
+          // nothing to reset (and materializing one just to write its default
+          // would defeat the lazy allocation).
+          _errorSig?.set(undefined)
+          _touchedSig?.set(false)
         })
         _valuesEpoch++ // value reverted to initial → invalidate snapshot cache
         clearTimeout(debounceTimers[name])
