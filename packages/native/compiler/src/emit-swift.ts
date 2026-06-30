@@ -1986,6 +1986,14 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
         if (!synth.structs.some((s) => s.name === name)) {
           synth.structs.push({ name, fields: t.fields })
         }
+        // Register THIS synthesized name under the field-shape key so the
+        // VALUE path (object-literal emit, which looks up `_structFieldsToName`
+        // by the same field-names key) reuses it instead of synthesizing a
+        // DIVERGENT `__ObjN`. @State emits the type annotation BEFORE the
+        // value, so this is populated in time — without it, an untyped
+        // `signal({ x: 1 })` emitted `var o: AppO = __Obj0(...)` (annotation
+        // ≠ value struct) and failed swiftc.
+        if (!_structFieldsToName.has(key)) _structFieldsToName.set(key, name)
         return name
       }
       // No synthesis context (legacy positions). A single-field labeled
