@@ -22,6 +22,7 @@ import {
 import {
   buildArraySpreadConcat,
   buildInferenceCtx,
+  classifyNegativeSlice,
   classifyOptionalCondition,
   indexedArrayCallback,
   inferReturnType,
@@ -2265,6 +2266,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // Negative indices (rare in JS) fall through to the generic emit.
             const sliceObjType = inferType(e.callee.object, _kotlinExprInferCtx)
             const noNegative = e.args.every((a) => a.kind !== 'unary')
+            // Negative-index idioms (Kotlin drop/take count from the front):
+            //   slice(-m)    → takeLast(m)   (last m)
+            //   slice(0, -n) → dropLast(n)   (drop last n)
+            const negSlice = classifyNegativeSlice(e.args, (a) => emitKotlinExpr(a, indent))
+            if (negSlice) {
+              return negSlice.kind === 'last'
+                ? `${obj}.takeLast(${negSlice.n})`
+                : `${obj}.dropLast(${negSlice.n})`
+            }
             if (noNegative) {
               if (e.args.length === 1) return `${obj}.drop(${argExprs[0]!})`
               if (e.args.length === 2) {
