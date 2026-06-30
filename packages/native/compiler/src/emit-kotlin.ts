@@ -25,6 +25,7 @@ import {
   inferReturnType,
   inferType,
   rewriteObjectKeys,
+  seedHandlerLocals,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -1603,9 +1604,15 @@ function emitKotlinFunction(
     blockRet = inferReturnType(d.params, d.body, ctx.inferCtx)
   }
   const blockRetType = blockRet.kind === 'unknown' ? '' : `: ${kotlinType(blockRet, ctx)}`
+  // Seed this function's LOCAL `const`/`let` types into the infer ctx so a later
+  // type-dependent emit in the body resolves them (named-handler analog of the
+  // inline seeding in emitKotlinAction). Restored after. Mirror of the Swift
+  // function-decl seeding.
+  const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
   const bodyLines = d.body
     .map((s) => `    ${emitKotlinStatement(s, 4, ctx)}`)
     .join('\n')
+  _kotlinExprInferCtx.locals = savedLocals
   return `fun ${kotlinIdent(d.name)}(${params})${blockRetType} {\n${bodyLines}\n  }`
 }
 
@@ -2971,9 +2978,15 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     if (handler.stmts !== undefined && handler.stmts.length > 0) {
       const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
       const pad = ' '.repeat(indent + 2)
+      // Seed handler-LOCAL `const`/`let` types into the infer ctx so a later
+      // type-dependent emit inside this body resolves them — e.g. `const t =
+      // todos.find(…); if (t) { … }` now lowers to `if (t != null)`. Restored
+      // after (scoped to this body, re-entrant-safe). Mirror of the Swift side.
+      const savedLocals = seedHandlerLocals(handler.stmts, _kotlinExprInferCtx)
       const lines = handler.stmts
         .map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx))
         .join('\n')
+      _kotlinExprInferCtx.locals = savedLocals
       const head =
         handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
       return `${head}\n${lines}\n${' '.repeat(indent)}}`
