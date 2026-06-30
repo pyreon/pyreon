@@ -130,6 +130,7 @@ const editor = createEditor({
   minimap: false, // canvas code-overview sidebar           (default: false)
   extensions: [], // extra raw CodeMirror extensions        (default: [])
   onChange: (value) => {}, // called on every content change         (default: none)
+  onError: (err) => {}, // mount failure → here, not unhandled    (default: none)
 })
 ```
 
@@ -138,6 +139,7 @@ A few options that behave non-obviously:
 - **`tabSize`** sets both the indent width _and_ the spacing of the indent guides. The editor indents with spaces (`indentUnit` is `' '.repeat(tabSize)`).
 - **`lint: true`** adds the lint gutter affordance and the lint-navigation keymap. Diagnostic underlines from [`setDiagnostics`](#diagnostics-lint-integration) render regardless of this flag — `lint` only controls the gutter + keymap.
 - **`extensions`** is an escape hatch: any array of raw CodeMirror 6 `Extension`s is appended to the built-in set, so you can drop in any third-party CM extension.
+- **`onError`** receives a mount failure (a throwing extension or a failed language-grammar import) instead of leaving it as an unhandled promise rejection. Disposing the editor while it is still mounting — a fast navigate-away during the async grammar load — is leak-safe (the in-flight mount is aborted).
 
 :::note `onChange` vs. the `value` signal
 `onChange` is called on every document change with the new text — handy for one-off side effects. But for most cases you don't need it: just read `editor.value()` reactively. The signal is the source of truth; `onChange` is a convenience hook layered on top of it.

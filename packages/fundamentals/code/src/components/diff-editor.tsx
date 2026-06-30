@@ -34,63 +34,83 @@ const isSignal = (value: string | Signal<string>): value is Signal<string> =>
  * ```
  */
 export function DiffEditor(props: DiffEditorProps): VNodeChild {
-  const { original, modified, language = 'plain', theme = 'light', readOnly = true } = props
+  const { original, modified, language = 'plain', theme = 'light', readOnly = true, onError } = props
 
   let mergeView: MergeView | null = null
+  // `containerRef` lazy-loads the language grammar (async), so the component
+  // can unmount WHILE that import is in flight. `onUnmount` sets this; the ref
+  // bails after the await so it never builds a MergeView that `onUnmount` has
+  // already (no-op) torn down — the dispose-during-pending-mount leak.
+  let unmounted = false
   const cleanups: (() => void)[] = []
 
   const containerRef = async (el: Element | null) => {
     if (!el) return
 
-    const langExt = await loadLanguage(language)
-    const themeExt = resolveTheme(theme)
+    try {
+      const langExt = await loadLanguage(language)
+      // Unmounted while the grammar loaded — abort before creating a leaked view.
+      if (unmounted) return
+      const themeExt = resolveTheme(theme)
 
-    const extensions: Extension[] = [
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      langExt,
-      themeExt,
-      EditorView.editable.of(!readOnly),
-      EditorState.readOnly.of(readOnly),
-    ]
+      const extensions: Extension[] = [
+        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        langExt,
+        themeExt,
+        EditorView.editable.of(!readOnly),
+        EditorState.readOnly.of(readOnly),
+      ]
 
-    const originalText = readText(original)
-    const modifiedText = readText(modified)
+      const originalText = readText(original)
+      const modifiedText = readText(modified)
 
-    // Clear previous content
-    ;(el as HTMLElement).innerHTML = ''
+      // Clear previous content
+      ;(el as HTMLElement).innerHTML = ''
 
-    mergeView = new MergeView({
-      a: { doc: originalText, extensions },
-      b: { doc: modifiedText, extensions },
-      parent: el as HTMLElement,
-      collapseUnchanged: { margin: 3, minSize: 4 },
-    })
-
-    // Track signal changes and update MergeView editors reactively
-    if (isSignal(original)) {
-      const stop = watch(original, (text) => {
-        if (!mergeView) return
-        const editor = mergeView.a
-        editor.dispatch({
-          changes: { from: 0, to: editor.state.doc.length, insert: text },
-        })
+      mergeView = new MergeView({
+        a: { doc: originalText, extensions },
+        b: { doc: modifiedText, extensions },
+        parent: el as HTMLElement,
+        collapseUnchanged: { margin: 3, minSize: 4 },
       })
-      cleanups.push(stop)
-    }
 
-    if (isSignal(modified)) {
-      const stop = watch(modified, (text) => {
-        if (!mergeView) return
-        const editor = mergeView.b
-        editor.dispatch({
-          changes: { from: 0, to: editor.state.doc.length, insert: text },
+      // Track signal changes and update MergeView editors reactively
+      if (isSignal(original)) {
+        const stop = watch(original, (text) => {
+          if (!mergeView) return
+          const editor = mergeView.a
+          editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: text },
+          })
         })
-      })
-      cleanups.push(stop)
+        cleanups.push(stop)
+      }
+
+      if (isSignal(modified)) {
+        const stop = watch(modified, (text) => {
+          if (!mergeView) return
+          const editor = mergeView.b
+          editor.dispatch({
+            changes: { from: 0, to: editor.state.doc.length, insert: text },
+          })
+        })
+        cleanups.push(stop)
+      }
+    } catch (err) {
+      // Build failed (failed grammar import, throwing extension). Surface it
+      // instead of leaving an unhandled promise rejection.
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (onError) {
+        onError(error)
+      } else if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] @pyreon/code DiffEditor failed to mount:', error)
+      }
     }
   }
 
   onUnmount(() => {
+    unmounted = true
     for (const cleanup of cleanups) cleanup()
     mergeView?.destroy()
     mergeView = null

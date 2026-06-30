@@ -4,6 +4,7 @@ import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { bindEditorToSignal } from '../bind-signal'
 import { CodeEditor } from '../components/code-editor'
+import { DiffEditor } from '../components/diff-editor'
 import { createEditor } from '../editor'
 
 // Real-Chromium smoke for @pyreon/code.
@@ -324,5 +325,64 @@ describe('code editor in real browser', () => {
     // self-installs via cmSetDiagnostics; the flag only gates the gutter.)
     expect(container.querySelector('.cm-lint-marker')).toBeNull()
     unmount()
+  })
+
+  // ── Async-mount lifecycle robustness ─────────────────────────────────────
+
+  it('disposing during a pending async mount does NOT leak a live editor', async () => {
+    // mount() lazy-loads the language grammar — a dispose() (e.g. a fast
+    // navigate-away while the grammar loads) must abort the in-flight mount,
+    // not create a CodeMirror view + DOM nothing will ever tear down.
+    const editor = createEditor({ value: 'const x = 1', language: 'typescript' })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    const pending = (editor as unknown as { _mount: (el: HTMLElement) => Promise<void> })._mount(host)
+    editor.dispose() // view is still null here → must invalidate the mount
+    await pending
+    await new Promise((r) => setTimeout(r, 30))
+
+    expect(editor.view()).toBeNull()
+    expect(host.querySelector('.cm-editor')).toBeNull()
+    host.remove()
+  })
+
+  it('a mount failure routes to onError instead of an unhandled rejection', async () => {
+    // An invalid extension value makes CodeMirror's EditorState.create throw.
+    // The failure must surface via onError, not leak as an unhandled rejection.
+    const errors: Error[] = []
+    const editor = createEditor({
+      value: 'x',
+      extensions: [42 as unknown as never],
+      onError: (e) => errors.push(e),
+    })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await (editor as unknown as { _mount: (el: HTMLElement) => Promise<void> })._mount(host)
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(errors.length).toBeGreaterThan(0)
+    expect(editor.view()).toBeNull() // editor never came up
+    expect(host.querySelector('.cm-editor')).toBeNull()
+    host.remove()
+  })
+
+  it('DiffEditor unmounted during its async load does NOT leak a MergeView', async () => {
+    // DiffEditor's containerRef lazy-loads the grammar — unmounting before the
+    // import resolves must abort, not build a MergeView into the detached node.
+    const { container, unmount } = mountInBrowser(
+      h(DiffEditor, { original: 'const a = 1', modified: 'const a = 2', language: 'typescript' }),
+    )
+    // Capture the ref target before the async load resolves; it survives as a
+    // detached node after unmount, so we can prove nothing mounted into it.
+    const el = container.querySelector('.pyreon-diff-editor')
+    expect(el).not.toBeNull()
+
+    unmount() // onUnmount sets unmounted = true; mergeView is still null
+    await new Promise((r) => setTimeout(r, 50)) // let loadLanguage resolve
+
+    // If the in-flight build leaked, the detached node would now hold a view.
+    expect(el?.querySelector('.cm-editor')).toBeNull()
   })
 })

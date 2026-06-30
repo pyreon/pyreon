@@ -178,7 +178,7 @@ createEditor({ theme: customCodeMirrorTheme }) // or pass a raw Extension
 - **`editor.value.set(...)` mutates the CodeMirror document**; subscribing to `editor.value()` re-fires on every keystroke. For derived state, layer `computed`/`useDebouncedValue` on top instead of reading raw `value` on every effect tick.
 - **`editor.view()` is `null` until the editor is mounted** — wait for `<CodeEditor>` to render before reaching for raw CodeMirror APIs, or use `effect(() => { if (editor.view()) { … } })`.
 - **`bindEditorToSignal` requires `parse` for non-string T** — otherwise parse failures crash silently. Always supply `onParseError` if `parse` can throw.
-- **Languages are lazy-loaded** — first switch to a new language triggers a chunk fetch. Pre-load via `await loadLanguage('typescript')` if you need synchronous availability.
+- **Languages are lazy-loaded** — first switch to a new language triggers a chunk fetch. Pre-load via `await loadLanguage('typescript')` if you need synchronous availability. A mount failure (a throwing extension or a failed grammar import) routes to the config `onError` instead of an unhandled rejection, and disposing while the grammar is still loading is leak-safe.
 - **`dispose()` on a `createEditor` instance is manual when NOT used via `<CodeEditor>`** — call it from `onUnmount` to release the CodeMirror view.
 - **Reading `.peek()` of `editor.value` inside an effect** bypasses tracking deliberately — used by `bindEditorToSignal`'s loop guard. Annotate with the `pyreon/no-peek-in-tracked` suppression where you genuinely need a non-tracking read.
 
