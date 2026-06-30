@@ -3109,6 +3109,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
 function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
 
+  // Spread attrs (`<Stack {...cfg()}>`) lower to native ONLY on a USER
+  // component, where they expand against the component's declared props
+  // at the constructor call (see expandSwiftSpread). On a canonical
+  // primitive / control-flow tag a SwiftUI view takes fixed layout args
+  // via modifier chains — there is no arbitrary runtime prop-bag — so a
+  // spread's props would be SILENTLY DROPPED (the dedicated emitters read
+  // attrs by name through readStaticAttr and never consult a spread,
+  // producing a clean-compiling but WRONG layout). Surface that loudly as
+  // a named build-failing warning. One guard here covers every dedicated
+  // emitter AND the emitSwiftGeneric fallthrough, since emitSwiftJsx is
+  // the single entry point for every jsx-element (top-level and nested).
+  if (!_componentNames.has(tag) && e.attrs.some((a) => a.kind === 'spread')) {
+    _emitWarnings.push(
+      `<${tag} {...}> spread is not lowered to native — its props are DROPPED (a runtime prop-bag can't apply to a static SwiftUI view). Pass props explicitly, e.g. <${tag} gap="md" padding={4}>.`,
+    )
+  }
+
   if (tag === 'For') return emitSwiftFor(e, indent)
   if (tag === 'Show') return emitSwiftShow(e, indent)
   if (tag === 'Transition') return emitSwiftTransition(e, indent)
@@ -5488,13 +5505,10 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       argParts.push(`${swiftIdent(propName)}: ${emitSwiftAction(a.handler, indent)}`)
     } else if (a.kind === 'spread' && isUserComponent) {
       argParts.push(...expandSwiftSpread(a.argument, e.tag, explicitNames, indent))
-    } else if (a.kind === 'spread') {
-      // Spread onto a primitive (Stack/Text/…) has no native equivalent —
-      // its props are fixed layout args, not an arbitrary forwarded bag.
-      _emitWarnings.push(
-        `<${e.tag} {...}> spread is not supported on a native primitive — pass layout props explicitly.`,
-      )
     }
+    // A spread on a non-user-component tag is warned once at the top of
+    // emitSwiftJsx (the single entry for every jsx-element) — no warning
+    // needed here.
   }
   const attrPairs = argParts.join(', ')
   // `swiftIdent`-escape the tag name — covers user-defined components
