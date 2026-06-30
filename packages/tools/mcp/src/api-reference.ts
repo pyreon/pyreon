@@ -2098,6 +2098,28 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
 - Calling it mid-render in a live app — every component holding a destructured store keeps its orphaned instance while new hook calls build fresh ones; you get a split-brain UI. This is a test/SSR-isolation tool, not runtime state management
 - Relying on it for SSR request isolation instead of \`setStoreRegistryProvider\` — calling \`resetAllStores()\` per request is racy under concurrency (one request wipes stores belonging to a concurrent request mid-flight); use an AsyncLocalStorage-backed registry provider`,
   },
+
+  'store/dehydrateStores': {
+    signature: '(filter?: (id: string) => boolean) => Record<string, Record<string, unknown>>',
+    example: `// server, after render:
+const stores = dehydrateStores(id => !id.startsWith('server:'))
+html = html.replace('</head>',
+  \`<script>window.__PYREON_STORE_STATE__=\${JSON.stringify(stores)}</script></head>\`)`,
+    notes: `SERVER side of the SSR store-hydration handshake (the \`@pyreon/store\` analogue of TanStack Query \`dehydrate\`). Call after \`renderToString\` completes — it walks the active per-request registry and snapshots each store's signal-backed \`.state\` into a plain, JSON-serializable object keyed by store id. Actions and computeds are excluded (they are not in \`.state\`). Pass a \`filter\` predicate to scope which stores ship to the client (e.g. exclude server-only / sensitive stores). The framework serializes the result into the HTML; \`hydrateStores\` reads it back on the client. This is what makes cross-island shared state production-complete: a store shared by multiple islands hydrates ONCE with server state instead of per-island. See also: hydrateStores, setStoreRegistryProvider.`,
+    mistakes: `- Storing non-JSON-serializable values (Date / Map / Set / class instances) in a dehydrated store — the framework \`JSON.stringify\`s the snapshot, so those silently degrade. Keep dehydrated state plain, or revive on read
+- Calling it BEFORE render completes — it snapshots current signal values; run it after \`renderToString\` so loaders/server mutations are reflected
+- Forgetting the \`filter\` for sensitive stores — by default EVERY active store is dehydrated and shipped to the client. Exclude server-only state with the predicate`,
+  },
+
+  'store/hydrateStores': {
+    signature: '(data: Record<string, Record<string, unknown>>) => void',
+    example: `// client entry, before mount:
+hydrateStores(window.__PYREON_STORE_STATE__ ?? {})`,
+    notes: `CLIENT side of the SSR store-hydration handshake. Call once at boot BEFORE the app mounts — it seeds stores from the server snapshot so components/islands read the hydrated values immediately (no flash of default state). Stores that already exist are patched in place; stores not yet created (the common lazy-island case) are seeded on their first use. Each store seeds exactly once (a boot-time one-shot) — a later \`resetStore\` + re-create falls back to the store's own \`setup()\` initial values, not stale boot state. Unknown keys in the snapshot are ignored (patch writes only the store's declared signal keys). See also: dehydrateStores, setStoreRegistryProvider.`,
+    mistakes: `- Calling it AFTER mount — components already read default state; hydrate before \`mount\`/\`hydrateRoot\` so the first render sees server values
+- Expecting it to create stores eagerly — it seeds lazily: a store only hydrates when first used. The snapshot is stashed until then
+- Trusting the snapshot blob as validated input for a schema store — hydration patches the inner per-field store directly, bypassing schema validation (the value was validated server-side when set). Treat the embedded JSON as the same trust boundary as loader data`,
+  },
   // <gen-docs:api-reference:end @pyreon/store>
 
   // ═══════════════════════════════════════════════════════════════════════════

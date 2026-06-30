@@ -76,9 +76,15 @@ import {
 } from '@pyreon/validation'
 
 export { setRegistryProvider as setStoreRegistryProvider } from './registry'
+export {
+  __clearStoreHydrationForTesting,
+  dehydrateStores,
+  hydrateStores,
+} from './hydration'
 
 import { _notifyChange } from './devtools'
 import { getRegistry } from './registry'
+import { consumeHydration } from './hydration'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -916,6 +922,10 @@ function defineSetupStore<T extends Record<string, unknown>>(
     }
 
     registry.set(id, api)
+    // Seed from server state if an SSR hydration snapshot is in flight (a single
+    // null check when it isn't — see hydration.ts). Runs before any subscriber
+    // can attach, so it hits the fast no-subscriber patch path.
+    consumeHydration(id, api as { state: Record<string, unknown>; patch(p: Record<string, unknown>): void })
     _notifyChange()
     return api
   }

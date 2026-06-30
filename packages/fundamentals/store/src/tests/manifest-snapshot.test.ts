@@ -85,13 +85,16 @@ describe('gen-docs — store snapshot', () => {
     // defineStore + defineStore (schema mode) + SchemaStoreApi +
     // SchemaStoreConfig + SchemaStoreContext + DeepPartial +
     // StoreApi + addStorePlugin + setStoreRegistryProvider +
-    // resetStore + resetAllStores = 11.
-    expect(Object.keys(record).length).toBe(11)
+    // resetStore + resetAllStores + dehydrateStores + hydrateStores = 13.
+    expect(Object.keys(record).length).toBe(13)
     expect(record['store/defineStore']!.notes).toContain('singleton')
     expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(7)
     // The previously-missing StoreApi entry now resolves (no 404).
     expect(record['store/StoreApi']).toBeDefined()
     expect(record['store/StoreApi']!.mistakes).toContain('SILENT no-op')
+    // SSR hydration handshake entries.
+    expect(record['store/dehydrateStores']).toBeDefined()
+    expect(record['store/hydrateStores']!.notes).toContain('boot-time one-shot')
     // Schema-mode entries
     expect(record['store/defineStore (schema mode)']).toBeDefined()
     expect(record['store/defineStore (schema mode)']!.notes).toContain('Schema-driven')
