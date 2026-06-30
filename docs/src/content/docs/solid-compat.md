@@ -3,7 +3,7 @@ title: '@pyreon/solid-compat'
 description: SolidJS-compatible reactive API that runs on Pyreon's reactive engine.
 ---
 
-`@pyreon/solid-compat` provides a SolidJS-compatible API -- `createSignal`, `createEffect`, `createMemo`, control flow components, and more -- all running on Pyreon's reactive engine. Since Pyreon and Solid share the same mental model (fine-grained reactivity, components run once, getter/setter signals), this compatibility layer is particularly thin.
+`@pyreon/solid-compat` provides a SolidJS-compatible API -- `createSignal`, `createEffect`, `createMemo`, control flow components, and more -- all running on Pyreon's reactive engine. The API names map closely to Solid's, but the **update model is coarser**: a Solid `createSignal` setter bumps an internal version signal that re-runs the whole component body (inside `runUntracked`), rather than updating only the exact DOM node Solid's compiler would. Output and lifecycle stay correct (child instances are preserved, effects and cleanups fire as expected) -- but reactivity is per-component re-run, not Solid's fine-grained per-node. Some SolidJS APIs are also not implemented -- see [Not supported](#not-supported).
 
 <PackageBadge name="@pyreon/solid-compat" href="/docs/solid-compat" status="stable" />
 
@@ -76,19 +76,18 @@ Since Pyreon and Solid share the same reactive paradigm, the API is nearly ident
 | `mergeProps` / `splitProps` | Preserves reactive getters               | Same behavior -- preserves property descriptors               |
 | Control flow                | `<Show>`, `<For>`, `<Switch>`, `<Match>` | Re-exported from `@pyreon/core` -- same API                   |
 | `createStore` / `produce`   | From `solid-js/store`                    | Use `@pyreon/reactivity`'s `createStore` and `reconcile`      |
-| Transitions                 | `useTransition`, `startTransition`       | Not available -- updates are synchronous                      |
-| `createResource`            | Built-in async primitive                 | Use `@pyreon/reactivity`'s `createResource`                   |
+| Transitions                 | `useTransition`, `startTransition`       | No-op stubs -- run synchronously, `isPending` is always `false` (see [Transitions](#transitions)) |
+| `createResource`            | Built-in async primitive                 | Provided -- `loading` / `error` / `latest` / `state` (see [createResource state](#createresource-state)) |
 
-### Why This Layer Is Thin
+### What Maps and What Differs
 
-Solid and Pyreon share the same fundamental design:
+The API names and shapes line up closely with Solid:
 
-1. **Components run once** -- the function body is setup, not a render function
-2. **Signals are getter/setter pairs** -- `const [value, setValue] = createSignal(0)`
-3. **Effects auto-track dependencies** -- no deps arrays needed
-4. **Control flow is component-based** -- `<Show>`, `<For>`, `<Switch>`, `<Match>`
+1. **Signals are getter/setter pairs** -- `const [value, setValue] = createSignal(0)`
+2. **Effects auto-track dependencies** -- no deps arrays needed
+3. **Control flow is component-based** -- `<Show>`, `<For>`, `<Switch>`, `<Match>`
 
-This means most Solid code works with Pyreon after a simple import swap. The compatibility layer is primarily mapping Solid's API names to Pyreon's underlying primitives.
+The key difference is the **update granularity**. In real Solid a signal setter updates only the precise DOM nodes the compiler bound to it. In this shim every `createSignal` setter bumps an internal version signal that re-runs the **entire component body** (inside `runUntracked` to avoid tracking signal reads in the reactive accessor). The rendered output and lifecycle are correct -- child component instances are preserved across re-runs, and effects / cleanups fire as expected -- but the model is coarse per-component re-render, not Solid's fine-grained per-node reactivity. Most Solid code still works after a simple import swap; just don't rely on Solid's exact update-granularity guarantees (and check [Not supported](#not-supported) for APIs this layer omits).
 
 ## API Reference
 
@@ -1202,6 +1201,87 @@ function mountApp(root: MountableElement) {
 }
 ```
 
+## Resources
+
+### `createResource`
+
+```ts
+function createResource<T>(
+  fetcher: (info: { value: T | undefined }) => Promise<T> | T,
+  options?: { initialValue?: T },
+): [Resource<T>, { mutate: Setter<T>; refetch: () => void }]
+
+function createResource<T, S>(
+  source: (() => S) | true,
+  fetcher: (source: S, info: { value: T | undefined }) => Promise<T> | T,
+  options?: { initialValue?: T },
+): [Resource<T>, { mutate: Setter<T>; refetch: () => void }]
+```
+
+Async data fetching with reactive source tracking. When a `source` accessor is supplied, the fetcher re-runs whenever the source changes; a falsy source (`false` / `null` / `undefined`) skips the fetch. While loading and read inside a `<Suspense>` boundary, the accessor throws the fetch promise so Suspense can catch it; on error it throws the error so an `<ErrorBoundary>` can catch it.
+
+```tsx
+const [data, { mutate, refetch }] = createResource(
+  userId,
+  async (id) => fetch(`/api/users/${id}`).then((r) => r.json()),
+)
+
+data() // the resolved value (or undefined while pending)
+data.loading // boolean
+data.error // Error | undefined
+data.latest // last resolved value (kept during a refresh)
+data.state // see below
+```
+
+### createResource state
+
+`resource.state` mirrors real SolidJS and is derived reactively from the resource's loading / error / value signals. It is one of five values:
+
+| State          | Meaning                                                        |
+| -------------- | ------------------------------------------------------------- |
+| `'unresolved'` | No value yet AND not loading (initial, before the first fetch) |
+| `'pending'`    | Loading AND no resolved value yet (first load)                |
+| `'ready'`      | Has a resolved value, not loading                             |
+| `'refreshing'` | Loading BUT a previous resolved value exists                  |
+| `'errored'`    | The fetch rejected                                            |
+
+```tsx
+const [data, { refetch }] = createResource(() => fetch('/api/x').then((r) => r.json()))
+
+data.state // 'pending'   (first load, no value yet)
+// ...after it resolves:
+data.state // 'ready'
+refetch()
+data.state // 'refreshing' (loading again, but data() still holds the prior value)
+```
+
+There is no `.pending` property -- it is not a real Solid `Resource` field. Use `.state === 'pending'` (or `.loading`) instead.
+
+## Transitions
+
+`startTransition` and `useTransition` are **no-op stubs** kept for source compatibility. Pyreon has no concurrent / time-slicing scheduler, so:
+
+- `startTransition(fn)` runs `fn` **synchronously** -- it does not defer or batch work into a low-priority transition.
+- `useTransition()` returns `[isPending, start]` where `isPending()` is **always `false`** and `start(fn)` runs `fn` synchronously.
+
+```tsx
+const [isPending, start] = useTransition()
+start(() => setTab('profile')) // runs synchronously
+isPending() // always false
+```
+
+If you depend on Solid's concurrent-rendering behavior (deferred updates, pending indicators driven by `isPending`), it is not available here.
+
+## Not supported
+
+Several real SolidJS APIs are not implemented. They are not exported, so importing them fails at build time rather than silently misbehaving:
+
+- **Mutable stores** -- `createMutable`, `modifyMutable`. Use `createStore` (this package) or `@pyreon/reactivity`'s `createStore`.
+- **`onError`** -- register error handling via `<ErrorBoundary>` instead.
+- **`isServer`** -- use `@pyreon/reactivity`'s `isServer` / `isClient`.
+- **SSR entry points** -- `renderToString`, `renderToStringAsync`, `renderToStream`, `HydrationScript`, `NoHydration`, `Assets`. Solid's canonical SSR pipeline is out of scope; use Pyreon's own SSR (`@pyreon/runtime-server` / `@pyreon/server`).
+- **`dom-expressions` codegen helpers** -- `template`, `insert`, `spread`, `classList`, `delegateEvents`, etc. This package uses Pyreon's own JSX compiler, not Solid's `babel-plugin-jsx-dom-expressions`.
+
 ## Real-World Patterns
 
 ### Reactive Todo App
@@ -1433,8 +1513,8 @@ Key differences:
 3. Replace `solid-js/store` imports with `@pyreon/reactivity`'s `createStore` and `reconcile`. Update store mutation patterns from path-based to direct mutation.
 4. Verify any `createRenderEffect` usage -- it behaves identically to `createEffect` in Pyreon.
 5. Control flow components (`Show`, `For`, `Switch`, `Match`, `Suspense`, `ErrorBoundary`) work the same way.
-6. Replace `useTransition` / `startTransition` with direct updates (no concurrent mode in Pyreon).
-7. Replace `solid-js`'s `createResource` with `@pyreon/reactivity`'s `createResource` (same API shape but imported differently).
+6. `useTransition` / `startTransition` are no-op stubs (run synchronously, `isPending` always `false`) -- don't rely on concurrent-mode behavior.
+7. `createResource` is provided by this package directly (`loading` / `error` / `latest` / `state`); there is no `.pending` field.
 8. Verify `on()` usage -- same API but backed by Pyreon's effect system.
 9. Test `mergeProps` and `splitProps` -- same behavior for property descriptors and reactive getters.
 10. Check `children()` helper usage -- same memoization and resolution behavior.

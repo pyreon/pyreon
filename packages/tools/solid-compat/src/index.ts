@@ -611,17 +611,32 @@ export function runWithOwner<T>(owner: EffectScope | null, fn: () => T): T {
 /**
  * Solid-compatible resource — async data fetching with reactive source tracking.
  * Returns `[resource, { mutate, refetch }]` where `resource()` is the data accessor
- * with `.loading`, `.error`, and `.latest` reactive properties.
+ * with `.loading`, `.error`, `.latest`, and `.state` reactive properties.
+ *
+ * `.state` mirrors real SolidJS's `Resource.state` and is one of:
+ * - `'unresolved'` — no value yet AND not loading (initial, before the first fetch)
+ * - `'pending'`    — loading AND no resolved value yet (first load)
+ * - `'ready'`      — has a resolved value, not loading
+ * - `'refreshing'` — loading BUT a previous resolved value exists
+ * - `'errored'`    — the fetch rejected
  *
  * When the resource is loading and read inside a Suspense boundary, the accessor
  * throws the fetch promise so Suspense can catch it. It also integrates with
  * Pyreon's `__loading` protocol so `<Suspense>` can detect it.
  */
+export type ResourceState =
+  | 'unresolved'
+  | 'pending'
+  | 'ready'
+  | 'refreshing'
+  | 'errored'
+
 export interface Resource<T> {
   (): T | undefined
   loading: boolean
   error: Error | undefined
   latest: T | undefined
+  state: ResourceState
 }
 
 export type ResourceReturn<T> = [
@@ -762,6 +777,22 @@ export function createResource<T, S = true>(
   })
   Object.defineProperty(resource, 'latest', {
     get: () => latestValue,
+    enumerable: true,
+  })
+  // `.state` — derived from the loading/error/value signals (read inside the
+  // getter so it is reactive). Precedence matches real SolidJS:
+  //   errored > (loading ? refreshing-if-prior-value : pending) > ready > unresolved
+  // A previously-resolved value is detected via `data()` (it is only set on
+  // resolution/mutate and is NOT cleared when a refetch starts), so it stays
+  // truthy during a refresh. An `initialValue` seeds `data()`, which correctly
+  // makes the resource start `ready` (and `refreshing` on the next fetch).
+  Object.defineProperty(resource, 'state', {
+    get: (): ResourceState => {
+      if (error() !== undefined) return 'errored'
+      const hasValue = data() !== undefined
+      if (loading()) return hasValue ? 'refreshing' : 'pending'
+      return hasValue ? 'ready' : 'unresolved'
+    },
     enumerable: true,
   })
 
