@@ -1619,6 +1619,12 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       return s.expr ? `${keyword} ${emitKotlinExpr(s.expr, indent)}` : keyword
     }
     case 'expr':
+      // A bare `i++` / `i--` STATEMENT is side-effect-only → `i += 1` /
+      // `i -= 1` (uniform with Swift). The general `update` expr emit returns
+      // the OLD value (value-position form) and mis-compiles as a statement.
+      if (s.expr.kind === 'update') {
+        return `${emitKotlinExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
+      }
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
@@ -2626,6 +2632,28 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
             .join(', ')
           return `${kotlinIdent(synthName)}(${args})`
+        }
+        // Last resort before the (INVALID-Kotlin) tuple: match an
+        // already-synthesized struct by field-NAME-set. `synthLiteralStructName`
+        // keys on field name:TYPE, so it bails when a field value is a
+        // body-local the emit-time inferCtx can't type — the dominant
+        // "add an item" shape `todos.set([...todos(), { id: 3, text, done:
+        // false }])` (where `text` is a `const` in the handler body). The field
+        // NAMES still uniquely identify the struct synthesized for the signal's
+        // initial value, so reuse it — otherwise Kotlin emitted the bogus
+        // `(id = 3, text = text, done = false)` (named-args with no constructor),
+        // while Swift's equivalent fallback is a VALID labelled tuple, so only
+        // Kotlin broke. Reuses the SAME `__ObjN` the initial value used → no
+        // struct-name mismatch.
+        const fieldNames = e.fields.map((f) => f.name).slice().sort().join(',')
+        const byNames = _synthExprStructs.find(
+          (s) => s.fields.map((f) => f.name).slice().sort().join(',') === fieldNames,
+        )
+        if (byNames !== undefined) {
+          const args = e.fields
+            .map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`)
+            .join(', ')
+          return `${kotlinIdent(byNames.name)}(${args})`
         }
       }
       const fields = e.fields.map((f) => `${f.name} = ${emitKotlinExpr(f.value, indent)}`).join(', ')
@@ -3983,24 +4011,31 @@ function emitKotlinField(
     }
   }
 
-  if (
-    formBinding === undefined &&
-    (!valueAttr ||
-      valueAttr.value.kind !== 'identifier' ||
-      !_signalNames.has(valueAttr.value.name))
-  ) {
+  const isBareSignal =
+    valueAttr !== undefined &&
+    valueAttr.value.kind === 'identifier' &&
+    _signalNames.has(valueAttr.value.name)
+  // Controlled shape — `value={expr()} onChangeText={(v) => …}` (parity with
+  // Swift's `emitSwiftField` shape 3): the value reads from any expression and
+  // writes route through the explicit handler. Without this the idiomatic
+  // call-form `value={draft()} onChangeText={…}` fell through to the invalid
+  // `Field(value = draft)` (no such Compose composable) — it worked on iOS
+  // (after the Swift fix) but not Android, a "one code, run everywhere" break.
+  const isControlled = valueAttr !== undefined && onChangeText !== undefined
+  if (formBinding === undefined && !isBareSignal && !isControlled) {
     return emitKotlinGeneric(e, indent)
   }
-  const sig =
-    formBinding !== undefined
-      ? ''
-      : kotlinIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)
+  const sig = isBareSignal
+    ? kotlinIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)
+    : ''
+  const valueExpr =
+    formBinding?.value ?? (isBareSignal ? sig : emitKotlinExpr(valueAttr!.value, indent))
   const onValueChange =
     formBinding?.onChange ??
     (onChangeText ? emitKotlinAction(onChangeText.handler, indent + 2) : `{ ${sig} = it }`)
 
   const args: string[] = [
-    `value = ${formBinding?.value ?? sig}`,
+    `value = ${valueExpr}`,
     `onValueChange = ${onValueChange}`,
   ]
 
