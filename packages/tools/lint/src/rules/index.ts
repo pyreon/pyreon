@@ -22,6 +22,7 @@ import { preferFieldArray } from './form/prefer-field-array'
 // Frontend (opt-in best-practice)
 import { anchorIsValid } from './frontend/anchor-is-valid'
 import { colorContrast } from './frontend/color-contrast'
+import { contentVisibilityNeedsIntrinsicSize } from './frontend/content-visibility-needs-intrinsic-size'
 import { headingOrder } from './frontend/heading-order'
 import { imgRequiresDimensions } from './frontend/img-requires-dimensions'
 import { noAutofocus } from './frontend/no-autofocus'
@@ -199,10 +200,11 @@ export const allRules: Rule[] = [
   invalidLoaderExport,
   missingGetStaticPaths,
   revalidateNotPureLiteral,
-  // Frontend (11) — opt-in best-practice a11y/CLS (off in standard
+  // Frontend (12) — opt-in best-practice a11y/CLS (off in standard
   // presets; enabled via the `best-practices` preset or per-rule config)
   requireImgAlt,
   imgRequiresDimensions,
+  contentVisibilityNeedsIntrinsicSize,
   noPositiveTabindex,
   preferZeroImage,
   noDiscardedOptimizeFields,

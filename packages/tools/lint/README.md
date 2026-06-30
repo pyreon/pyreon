@@ -1,6 +1,6 @@
 # @pyreon/lint
 
-Pyreon-specific linter — 91 rules across 18 categories, CLI + LSP + programmatic API.
+Pyreon-specific linter — 92 rules across 18 categories, CLI + LSP + programmatic API.
 
 `@pyreon/lint` is a custom linter focused on Pyreon-specific correctness (signals, JSX-as-reactivity, SSR safety, lifecycle, architecture) — complementary to oxlint, not a replacement. Powered by `oxc-parser` for fast AST traversal with an FNV-1a-hashed AST cache for repeat runs. Ships a `pyreon-lint` CLI, a `lint()` programmatic API, a `--lsp` LSP server for IDE inlay hints + diagnostics, and `.pyreonlintrc.json` config files with per-rule options. Opt-in best-practice rules (frontend a11y/CLS, library-scoped query/rx/i18n/storage/form/router) auto-gate on the project's `package.json` deps — a project that doesn't use `@pyreon/query` never sees query rules.
 
