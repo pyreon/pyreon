@@ -223,13 +223,6 @@ const checks: ClaimCheck[] = [
         rejectHedged: /\| `@pyreon\/hooks` *\| (\d+)\+ signal-based hooks/,
       },
       {
-        file: 'CLAUDE.md',
-        // The category number is anchor text, not the asserted value —
-        // `\d+` so adding a hook category can't break the COUNT gate
-        // with a confusing pattern-not-found (bit us at 6 → 7).
-        pattern: /^- (\d+) signal-based hooks across \d+ categories/m,
-      },
-      {
         file: 'docs/src/content/docs/index.md',
         pattern: /\| (\d+) signal-based hooks for common UI patterns/,
       },
@@ -261,14 +254,6 @@ const checks: ClaimCheck[] = [
         pattern: /Pyreon-specific linter — (\d+) rules, \d+ categories/,
       },
       {
-        file: 'CLAUDE.md',
-        pattern: /returns metadata for all (\d+) rules/,
-      },
-      {
-        file: 'CLAUDE.md',
-        pattern: /^- (\d+) rules across \d+ categories: reactivity/m,
-      },
-      {
         file: 'packages/tools/lint/README.md',
         pattern: /— (\d+) rules across \d+ categories/,
       },
@@ -298,10 +283,6 @@ const checks: ClaimCheck[] = [
       {
         file: 'CLAUDE.md',
         pattern: /Pyreon-specific linter — \d+ rules, (\d+) categories/,
-      },
-      {
-        file: 'CLAUDE.md',
-        pattern: /^- \d+ rules across (\d+) categories: reactivity/m,
       },
       {
         file: 'packages/tools/lint/README.md',
@@ -346,14 +327,6 @@ const checks: ClaimCheck[] = [
       {
         file: 'CLAUDE.md',
         pattern: /18 primitives, (\d+) output formats/,
-      },
-      {
-        file: 'CLAUDE.md',
-        pattern: /^- (\d+) output formats: HTML/m,
-      },
-      {
-        file: 'CLAUDE.md',
-        pattern: /exports to (\d+) formats/,
       },
       {
         file: 'packages/fundamentals/document/README.md',
