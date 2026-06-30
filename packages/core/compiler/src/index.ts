@@ -1,3 +1,10 @@
+export type {
+  DirectiveIsland,
+  DirectiveWarning,
+  HydrateStrategy,
+  TransformClientDirectivesResult,
+} from './client-directives'
+export { transformClientDirectives } from './client-directives'
 export type { DeferInlineResult, DeferInlineWarning } from './defer-inline'
 export { transformDeferInline } from './defer-inline'
 export type {
