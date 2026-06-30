@@ -308,6 +308,17 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'call': {
+      // `Object.keys(<object-typed expr>)` → static `[String]` of the
+      // struct field names. A synthesized struct's keys are statically
+      // known at compile time, so the rewrite lowers the call to a plain
+      // string-array literal and the result type is precisely
+      // `Array<String>`. Inferring the rewritten array (rather than
+      // hard-coding the type here) keeps ONE source of truth for the
+      // detection + lowering (the emitters call the same `rewriteObjectKeys`).
+      {
+        const rw = rewriteObjectKeys(expr, ctx)
+        if (rw !== null) return inferType(rw, ctx)
+      }
       // Zero-arg call on a bare identifier is the canonical signal /
       // computed read shape: `count()` reads signal `count`. Walk the
       // callee identifier and look up the type.
@@ -666,5 +677,63 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // These shouldn't appear inside a computed's expression in the
       // Phase 0 fixtures. Document and degrade.
       return { kind: 'unknown' }
+  }
+}
+
+/**
+ * `Object.keys(<object-literal-typed expr>)` → a static string-array ExprIR
+ * of the object's field names (declaration order).
+ *
+ * JS runtime key enumeration has no native analog — Swift structs and Kotlin
+ * data classes carry no runtime key reflection (you'd need `Mirror`). But a
+ * synthesized struct's field names ARE statically known at compile time, so
+ * the keys lower to a plain `["a","b"]` / `listOf("a","b")` literal, which
+ * both targets accept as a homogeneous `[String]` / `List<String>`.
+ *
+ * Returns `null` (→ generic path, which warns; see the emitters) when:
+ *   - the call isn't `Object.keys(...)` (covers `.values` / `.entries`,
+ *     whose value arrays are heterogeneous → `[Any]`, deliberately out of
+ *     scope), or
+ *   - the single arg's inferred type isn't a known object/struct shape
+ *     (a dictionary / unknown value can't enumerate keys at compile time).
+ *
+ * ONE source of truth for the detection + lowering: `inferType`'s `call`
+ * case calls it for the result TYPE, and both emitters call it to recurse
+ * into the array VALUE emit — so the type annotation and the emitted value
+ * can never disagree.
+ */
+export function rewriteObjectKeys(expr: ExprIR, ctx: InferenceCtx): ExprIR | null {
+  if (expr.kind !== 'call') return null
+  const callee = expr.callee
+  if (
+    callee.kind !== 'member' ||
+    callee.object.kind !== 'identifier' ||
+    callee.object.name !== 'Object' ||
+    callee.property !== 'keys'
+  ) {
+    return null
+  }
+  if (expr.args.length !== 1) return null
+  const arg = expr.args[0]!
+  // Inline object literal — `Object.keys({ a: 1, b: 2 })`. The field names
+  // are read straight off the ExprIR, no type resolution needed, so this
+  // works regardless of whether signal-of-object type inference has landed.
+  // A spread (`{ ...x }`) makes the key set non-static → bail (degrade-warn).
+  // The `schemaName` object variant carries no `fields` → also bails.
+  if (arg.kind === 'object' && 'fields' in arg && (arg.spreads?.length ?? 0) === 0) {
+    return {
+      kind: 'array',
+      elements: arg.fields.map((f) => ({ kind: 'literal', value: f.name })),
+    }
+  }
+  // Otherwise resolve the arg's type — a signal / computed / local of a
+  // known struct shape (`Object.keys(cfg())`). This path activates once
+  // object-literal *type* inference (signal → struct type) is in place;
+  // until then such a signal infers as `Any` and the call degrade-warns.
+  const argType = inferType(arg, ctx)
+  if (argType.kind !== 'object') return null
+  return {
+    kind: 'array',
+    elements: argType.fields.map((f) => ({ kind: 'literal', value: f.name })),
   }
 }
