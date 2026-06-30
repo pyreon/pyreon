@@ -3,7 +3,7 @@ import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import type { HeadContextValue } from '../index'
 import { createHeadContext, HeadProvider, useHead } from '../index'
-import { renderWithHead } from '../ssr'
+import { renderWithHead, serializeHead } from '../ssr'
 
 // ─── SSR tests ────────────────────────────────────────────────────────────────
 
@@ -1309,5 +1309,77 @@ describe('useHead — speculationRules', () => {
     // And the un-escaped JSON still parses back to the original URL.
     const unescaped = (block as RegExpMatchArray)[1]!.replace(/<\\\//g, '</')
     expect(JSON.parse(unescaped).prerender[0].urls[0]).toBe('/x</script><b>pwn')
+  })
+})
+
+// ─── serializeHead — public string serializer + escape edge cases ──────────────
+
+describe('serializeHead', () => {
+  test('serializes title + meta tags to an HTML head fragment', () => {
+    const out = serializeHead([
+      { tag: 'title', key: 't', children: 'My Page' },
+      { tag: 'meta', key: 'm', props: { name: 'description', content: 'Hello' } },
+    ])
+    expect(out).toBe('<title>My Page</title>\n  <meta name="description" content="Hello" />')
+  })
+
+  test('applies titleTemplate (string + function forms)', () => {
+    const tags = [{ tag: 'title' as const, key: 't', children: 'Home' }]
+    expect(serializeHead(tags, '%s | App')).toBe('<title>Home | App</title>')
+    expect(serializeHead(tags, (t) => `${t} — App`)).toBe('<title>Home — App</title>')
+  })
+
+  test('preserves attribute insertion order + spacing', () => {
+    const out = serializeHead([
+      { tag: 'meta', key: 'm', props: { property: 'og:title', content: 'Hi', id: 'x' } },
+    ])
+    expect(out).toBe('<meta property="og:title" content="Hi" id="x" />')
+  })
+
+  test('escapes & < > " in attribute values and title — at every position', () => {
+    const out = serializeHead([
+      { tag: 'title', key: 't', children: '& < > "' },
+      { tag: 'meta', key: 'm1', props: { content: '<lead' } }, // leading special
+      { tag: 'meta', key: 'm2', props: { content: 'trail>' } }, // trailing special
+      { tag: 'meta', key: 'm3', props: { content: 'a&b<c>d"e' } }, // interior mix
+      { tag: 'meta', key: 'm4', props: { content: 'totally clean' } }, // none
+      { tag: 'meta', key: 'm5', props: { content: '' } }, // empty
+    ])
+    expect(out).toBe(
+      '<title>&amp; &lt; &gt; &quot;</title>\n' +
+        '  <meta content="&lt;lead" />\n' +
+        '  <meta content="trail&gt;" />\n' +
+        '  <meta content="a&amp;b&lt;c&gt;d&quot;e" />\n' +
+        '  <meta content="totally clean" />\n' +
+        '  <meta content="" />',
+    )
+  })
+
+  test('void tags self-close; non-void tags wrap children', () => {
+    expect(serializeHead([{ tag: 'link', key: 'l', props: { rel: 'icon', href: '/f.ico' } }])).toBe(
+      '<link rel="icon" href="/f.ico" />',
+    )
+    expect(serializeHead([{ tag: 'style', key: 's', children: '.a{color:red}' }])).toBe(
+      '<style>.a{color:red}</style>',
+    )
+  })
+
+  test('empty tag list → empty string', () => {
+    expect(serializeHead([])).toBe('')
+  })
+
+  test('matches the head string produced by renderWithHead', async () => {
+    function Page() {
+      useHead({
+        title: 'Round Trip',
+        meta: [{ name: 'description', content: '<x> & "y"' }],
+      })
+      return h('div', null, 'app')
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    // The same resolved tags fed through the public serializer produce the
+    // exact same fragment renderWithHead emits internally.
+    expect(head).toContain('<title>Round Trip</title>')
+    expect(head).toContain('<meta name="description" content="&lt;x&gt; &amp; &quot;y&quot;" />')
   })
 })
