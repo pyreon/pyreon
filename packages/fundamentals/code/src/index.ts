@@ -29,6 +29,7 @@ export { DiffEditor } from './components/diff-editor'
 export { TabbedEditor } from './components/tabbed-editor'
 // Core
 export { createEditor } from './editor'
+export { createTabbedEditor } from './tabbed-editor'
 // Signal binding
 export type {
   BindEditorToSignalOptions,

@@ -14,6 +14,7 @@ Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB
 ## Features
 
 - createEditor — reactive instance with writable Signal&lt;string&gt; value
+- createTabbedEditor — reactive multi-file editor (reactive tabs + open/close/switch/move)
 - CodeEditor, DiffEditor, TabbedEditor JSX components
 - bindEditorToSignal — two-way binding with built-in loop prevention
 - 19 language grammars via loadLanguage (lazy-loaded)
@@ -25,7 +26,7 @@ Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB
 A full, end-to-end usage of the package:
 
 ```tsx
-import { createEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
+import { createEditor, createTabbedEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
 import { signal } from '@pyreon/reactivity'
 
 // Create a reactive editor instance
@@ -68,13 +69,16 @@ const binding = bindEditorToSignal({
 // Lazy-load a language grammar:
 await loadLanguage('python')
 
-// Tabbed editor — multiple files:
-<TabbedEditor
-  tabs={[
-    { id: 'main', label: 'main.ts', language: 'typescript', value: 'export {}' },
-    { id: 'styles', label: 'styles.css', language: 'css', value: 'body {}' },
-  ]}
-/>
+// Tabbed editor — build an instance with createTabbedEditor, then mount it
+// via the component's `instance` prop (each Tab uses `name`, not `label`):
+const tabbed = createTabbedEditor({
+  tabs: [
+    { id: 'main', name: 'main.ts', language: 'typescript', value: 'export {}' },
+    { id: 'styles', name: 'styles.css', language: 'css', value: 'body {}' },
+  ],
+})
+tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '# Hi' })
+<TabbedEditor instance={tabbed} style="height: 500px" />
 ```
 
 ## Exports
@@ -85,7 +89,9 @@ await loadLanguage('python')
 | [`bindEditorToSignal`](#bindeditortosignal) | function | Two-way binding between an editor instance and an external Signal&lt;T&gt; (or SignalLike&lt;T&gt;). |
 | [`CodeEditor`](#codeeditor) | component | Mount component for a `createEditor` instance. |
 | [`DiffEditor`](#diffeditor) | component | Side-by-side diff editor. |
-| [`loadLanguage`](#loadlanguage) | function | Lazy-load a language grammar. |
+| [`createTabbedEditor`](#createtabbededitor) | function | Create a reactive multi-file (tabbed) editor instance. |
+| [`TabbedEditor`](#tabbededitor) | component | Mount component for a `createTabbedEditor` instance. |
+| [`loadLanguage`](#loadlanguage) | function | Lazy-load a language grammar and return its CodeMirror `Extension`. |
 | [`minimapExtension`](#minimapextension) | function | CodeMirror extension that renders a canvas-based code overview minimap. |
 
 ## API
@@ -201,19 +207,76 @@ Side-by-side diff editor. Accepts `original` and `modified` strings plus optiona
 
 ---
 
-### loadLanguage `function`
+### createTabbedEditor `function`
 
 ```ts
-(lang: EditorLanguage) => Promise<void>
+(config?: TabbedEditorConfig) => TabbedEditorInstance
 ```
 
-Lazy-load a language grammar. Supports 19 languages: json, typescript, javascript, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php, and more. Grammars are declared as optional dependencies and loaded on demand.
+Create a reactive multi-file (tabbed) editor instance. `config` is `{ tabs?, theme?, editorConfig? }` — `tabs` is an array of `Tab` (`{ name, value, id?, language?, modified?, closable? }`), `editorConfig` applies to every tab. The instance wraps a single underlying `editor` and exposes reactive `tabs` (Signal&lt;Tab[]&gt;), `activeTab` (Computed&lt;Tab | null&gt;), and `activeTabId` (Signal&lt;string&gt;), plus imperative `openTab` / `closeTab` / `switchTab` / `renameTab` / `setModified` / `moveTab` / `getTab` / `closeAll` / `closeOthers` / `dispose`. Mount it via `<TabbedEditor instance={…} />`.
 
 **Example**
 
 ```tsx
-await loadLanguage('python')
-// Now 'python' is available in createEditor({ language: 'python' })
+const tabbed = createTabbedEditor({
+  tabs: [
+    { id: 'main', name: 'main.ts', language: 'typescript', value: 'export {}' },
+    { id: 'styles', name: 'styles.css', language: 'css', value: 'body {}' },
+  ],
+})
+tabbed.openTab({ name: 'README.md', language: 'markdown', value: '# Hi' })
+tabbed.switchTab('styles')
+tabbed.activeTab()   // Computed<Tab | null>
+
+<TabbedEditor instance={tabbed} style="height: 500px" />
+```
+
+**Common mistakes**
+
+- Passing `tabs` directly to &lt;TabbedEditor&gt; — the component takes an `instance` prop, not `tabs`. Build the instance with createTabbedEditor, then pass `instance={tabbed}`.
+- Using `label` for the tab title — a Tab uses `name` (the displayed file name); `id` is the optional unique key (defaults to `name`).
+- Forgetting to call instance.dispose() on unmount — it owns an underlying editor instance.
+
+**See also:** `TabbedEditor` · `createEditor`
+
+---
+
+### TabbedEditor `component`
+
+```ts
+(props: TabbedEditorProps) => VNodeChild
+```
+
+Mount component for a `createTabbedEditor` instance. Props are `instance` (REQUIRED — a TabbedEditorInstance), plus optional `style` and `class`. Renders a headless tab bar (plain div + button tabs) above the editor; switching tabs swaps the underlying document reactively.
+
+**Example**
+
+```tsx
+const tabbed = createTabbedEditor({ tabs: [{ name: 'a.ts', value: 'export {}' }] })
+<TabbedEditor instance={tabbed} style="height: 500px" />
+```
+
+**Common mistakes**
+
+- Passing `tabs={[…]}` — there is no `tabs` prop; pass a `createTabbedEditor` instance via `instance`.
+
+**See also:** `createTabbedEditor` · `CodeEditor` · `DiffEditor`
+
+---
+
+### loadLanguage `function`
+
+```ts
+(language: EditorLanguage) => Promise<Extension>
+```
+
+Lazy-load a language grammar and return its CodeMirror `Extension`. Supports 19 grammars (json, typescript, javascript, jsx, tsx, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php, ruby, shell). The result is cached per language; an uninstalled or unknown grammar resolves to an empty `[]` extension (never throws). `createEditor` loads the grammar for its `language` on mount, so calling `loadLanguage` ahead of time just warms the cache.
+
+**Example**
+
+```tsx
+const ext = await loadLanguage('python') // the CodeMirror Extension
+// createEditor({ language: 'python' }) now resolves instantly (cache warm)
 ```
 
 **See also:** `createEditor` · `getAvailableLanguages`
