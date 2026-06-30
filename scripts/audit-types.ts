@@ -91,21 +91,6 @@ const EXEMPT_FIELDS: Exemption[] = [
     field: 'isDynamicEntry',
     reason: 'external Vite-manifest-shape mirror — documented field Vite emits; the perf-advisor + resolver read it',
   },
-  // `ZeroConfig.perfAdvisor` IS implemented — read in `vite-plugin.ts`
-  // (`if (userConfig.perfAdvisor)` + `typeof userConfig.perfAdvisor === 'object'`,
-  // 3 raw matches). This is a FALSE POSITIVE from the audit's naive
-  // comment-stripper: `vite-plugin.ts` contains a `/*` inside a string/regex
-  // whose matching `*/` sits past these uses, so the non-string-aware
-  // block-comment strip (`/\/\*[\s\S]*?\*\//g`) deletes the region containing
-  // them → 0 post-strip matches → false HIGH. The field is genuinely wired;
-  // the stripper limitation is pre-existing + only ever over-reports (deflates
-  // real refs), never hides an unimplemented field.
-  {
-    package: '@pyreon/zero',
-    interface: 'ZeroConfig',
-    field: 'perfAdvisor',
-    reason: 'implemented (read in vite-plugin.ts zeroPlugin); audit comment-stripper false-positives on vite-plugin.ts strings/regexes containing /* */',
-  },
 ]
 
 // File-level exemptions — entire files whose interfaces are
@@ -280,6 +265,55 @@ function offsetToLine(code: string, offset: number): number {
   return line
 }
 
+// Per-file cache of comment-stripped source. Reference counting runs once
+// per field over every file in the package, so parse each file ONCE.
+const _strippedSourceCache = new Map<string, string>()
+
+/** Replace each `[start, end)` range with equal-length spaces (preserves
+ *  offsets AND prevents adjacent tokens from merging, e.g. `a/* *​/b`). */
+function blankRanges(code: string, ranges: ReadonlyArray<{ start: number; end: number }>): string {
+  if (ranges.length === 0) return code
+  const sorted = [...ranges].sort((a, b) => a.start - b.start)
+  let out = ''
+  let pos = 0
+  for (const r of sorted) {
+    if (r.start < pos) continue // skip overlaps defensively
+    out += code.slice(pos, r.start) + ' '.repeat(Math.max(0, r.end - r.start))
+    pos = r.end
+  }
+  return out + code.slice(pos)
+}
+
+/**
+ * Source with REAL comments blanked out, via oxc's exact comment ranges.
+ *
+ * The previous `/\/\*[\s\S]*?\*\//g` regex strip was NOT string/regex-aware:
+ * a `/*` inside a string or regex literal would pair with a later `*​/`, so
+ * the strip deleted real CODE between them — under-counting (and falsely
+ * 0-counting) any field referenced in that window. oxc already parses every
+ * file here; its `comments` array gives the precise ranges, so we blank
+ * exactly the comments and nothing else. Falls back to the old regex strip
+ * only if a file fails to parse (best-effort; over-strips at worst, which
+ * can only inflate refs, never hide an unimplemented field).
+ */
+function commentStrippedSource(file: string): string {
+  const cached = _strippedSourceCache.get(file)
+  if (cached !== undefined) return cached
+  const code = readFileSync(file, 'utf-8')
+  let stripped: string
+  try {
+    const { comments } = parseSync(file, code, {
+      sourceType: 'module',
+      lang: file.endsWith('.tsx') ? 'tsx' : 'ts',
+    }) as { comments?: ReadonlyArray<{ start: number; end: number }> }
+    stripped = blankRanges(code, comments ?? [])
+  } catch {
+    stripped = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  }
+  _strippedSourceCache.set(file, stripped)
+  return stripped
+}
+
 function countReferences(
   packageDir: string,
   fieldName: string,
@@ -305,9 +339,7 @@ function countReferences(
   const pattern = new RegExp(`\\b${escapeRegex(fieldName)}\\b`, 'g')
   let count = 0
   for (const file of walkSourceFiles(packageDir)) {
-    const code = readFileSync(file, 'utf-8')
-    // Strip block + line comments so doc references don't inflate counts
-    const stripped = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    const stripped = commentStrippedSource(file)
     const matches = stripped.match(pattern)
     count += matches?.length ?? 0
   }
