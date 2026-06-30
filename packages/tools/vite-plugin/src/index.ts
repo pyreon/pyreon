@@ -36,8 +36,10 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join as pathJoin } from 'node:path'
 import {
   type CollapsibleSite,
+  type DirectiveIsland,
   generateContext,
   scanCollapsibleSites,
+  transformClientDirectives,
   transformDeferInline,
   transformJSX,
 } from '@pyreon/compiler'
@@ -138,6 +140,24 @@ export interface PyreonPluginOptions {
    * hydrateIslandsAuto(islands)
    */
   islands?: boolean
+
+  /**
+   * Directive islands (opt-in) — lower a `hydrate="<strategy>"` attribute on an
+   * imported component into a self-hydrating `island()` wrapper, so you write
+   * `<Counter hydrate="visible" />` instead of the manual
+   * `island(() => import('./Counter'), { name, hydrate })` boilerplate. The
+   * generated name is file-derived (unique by construction), which removes the
+   * duplicate-name / registry-drift footgun. Strategy values are the same
+   * vocabulary as `island({ hydrate })`: `load`/`idle`/`visible`/`interaction`/
+   * `media(...)`/`never`, plus bare `hydrate` = eager. Directive islands also
+   * populate `virtual:pyreon/islands-registry` (for static-islands apps via
+   * `hydrateIslandsAuto`); zero apps self-hydrate on mount.
+   *
+   * Off by default (a new syntax is opt-in until proven).
+   *
+   * @example pyreon({ directiveIslands: true })
+   */
+  directiveIslands?: boolean
 
   /**
    * **LPIH auto-bridge** — zero-config Live Program Inlay Hints in dev.
@@ -564,6 +584,11 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // ── Validator tree-shake rewrite config (opt-in, build-only) ──────────────
   const optimizeValidatorsEnabled = options?.optimizeValidators === true
 
+  // ── Directive islands config (opt-in) ─────────────────────────────────────
+  const directiveIslandsEnabled = options?.directiveIslands === true
+  // Universal client-safe source — @pyreon/zero re-exports `island` from here.
+  const DIRECTIVE_ISLAND_SOURCE = '@pyreon/server/client'
+
   // ── P0 rocketstyle-collapse config (opt-in) ───────────────────────────────
   const collapseOpt = options?.collapse
   const collapseEnabled = collapseOpt === true || (collapseOpt != null && collapseOpt !== false)
@@ -655,6 +680,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // declaration site so HMR can invalidate per-file. Each entry's loader path
   // is resolved relative to the file where the call was written.
   const islandRegistry = new Map<string, IslandDecl[]>()
+
+  // Directive-island lowering (`<Counter hydrate="…">`) registers here, keyed
+  // by source-file path (same shape as islandRegistry). Kept separate so the
+  // two scanners never overwrite each other's per-file entry; both feed
+  // `renderIslandsRegistry` (merged + deduped by name).
+  const directiveRegistry = new Map<string, IslandDecl[]>()
 
   // PR-S12: dev-server reference captured in `configureServer`. Used by
   // the transform hook to invalidate the `virtual:pyreon/islands-registry`
@@ -793,8 +824,14 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // in `@pyreon/server/client`. Eliminates the manual sync between
       // `island()` source-of-truth and the client `hydrateIslands({ ... })`
       // call — the #1 author foot-gun for islands.
-      if (islandsEnabled) {
-        await prescanIslandDeclarations(projectRoot, islandRegistry)
+      if (islandsEnabled || directiveIslandsEnabled) {
+        await prescanIslandDeclarations(
+          projectRoot,
+          islandRegistry,
+          directiveIslandsEnabled
+            ? { registry: directiveRegistry, islandSource: DIRECTIVE_ISLAND_SOURCE }
+            : undefined,
+        )
       }
     },
 
@@ -807,6 +844,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       resolveCache,
       pyreonWorkspaceDirCache,
       islandRegistry,
+      directiveRegistry,
     },
 
     // ── Cache invalidation on file delete (long-running `vite dev`) ─────
@@ -845,6 +883,10 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // Also try the normalized form just in case the registry was
       // populated with a slightly different shape.
       if (normalized !== id) islandRegistry.delete(normalized)
+      // 2b) directiveRegistry — lowered `<Comp hydrate="…">` islands, same
+      //     per-file keying (normalized).
+      directiveRegistry.delete(id)
+      if (normalized !== id) directiveRegistry.delete(normalized)
 
       // 3) resolveCache — keyed by `${importer}::${source}` where
       //    `importer` is normalized AND values can be the deleted
@@ -912,7 +954,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         return HMR_RUNTIME_SOURCE
       }
       if (id === ISLANDS_REGISTRY_ID) {
-        return renderIslandsRegistry(islandRegistry, islandsEnabled)
+        return renderIslandsRegistry(islandRegistry, directiveRegistry, islandsEnabled)
       }
     },
 
@@ -998,6 +1040,31 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         if (changed && _devServer) {
           const mod = _devServer.moduleGraph.getModuleById(ISLANDS_REGISTRY_ID)
           if (mod) _devServer.moduleGraph.invalidateModule(mod)
+        }
+      }
+
+      // ── Directive islands: lower `<Comp hydrate="…">` to island() wrappers ──
+      // Placed AFTER the signal/island scans (which read the user's ORIGINAL
+      // source — scanning the rewritten output would pick up the injected
+      // `__pyIsland(...)` calls) and BEFORE the auto-import + JSX compile (which
+      // must see the lowered `<__pyIsland_…>` component). The lowered island()
+      // self-hydrates on mount (zero apps) and is registered for
+      // hydrateIslandsAuto (static-islands apps); HMR mirrors the island() scan.
+      if (directiveIslandsEnabled) {
+        const dir = transformClientDirectives(code, id, { islandSource: DIRECTIVE_ISLAND_SOURCE })
+        // Surface unsupported-shape diagnostics via Rollup's warn (guarded — a
+        // direct unit-level call may invoke transform without the plugin context).
+        const ctxWarn = (this as { warn?: (m: string) => void } | undefined)?.warn
+        for (const w of dir.warnings) {
+          ctxWarn?.call(this, `directive island: ${w.message} (${id}:${w.line}:${w.column})`)
+        }
+        if (dir.changed) {
+          code = dir.code
+          const regChanged = recordDirectiveIslands(dir.islands, id, directiveRegistry)
+          if (regChanged && _devServer) {
+            const mod = _devServer.moduleGraph.getModuleById(ISLANDS_REGISTRY_ID)
+            if (mod) _devServer.moduleGraph.invalidateModule(mod)
+          }
         }
       }
 
@@ -2263,6 +2330,7 @@ interface IslandDecl {
 async function prescanIslandDeclarations(
   root: string,
   registry: Map<string, IslandDecl[]>,
+  directive?: { registry: Map<string, IslandDecl[]>; islandSource: string },
 ): Promise<void> {
   const files: string[] = []
 
@@ -2297,6 +2365,7 @@ async function prescanIslandDeclarations(
     try {
       const code = readFileSync(file, 'utf-8')
       scanIslandDeclarations(code, file, registry)
+      if (directive) scanDirectiveDeclarations(code, file, directive.registry, directive.islandSource)
     } catch {
       /* read error */
     }
@@ -2387,6 +2456,51 @@ function islandDeclsEqual(a: IslandDecl[] | undefined, b: IslandDecl[] | undefin
 }
 
 /**
+ * Scan a file for directive islands (`<Comp hydrate="…">`) and record the
+ * lowered `island()` wrappers in `registry` — mirrors `scanIslandDeclarations`
+ * but driven by the compiler's `transformClientDirectives` detection. Each
+ * lowered island becomes an `IslandDecl { name, hydrate, loaderAbsPath }`; the
+ * loader path is resolved relative to the file (forward-slash normalized for
+ * Vite). Returns whether the per-file entry changed (HMR invalidation).
+ */
+function scanDirectiveDeclarations(
+  code: string,
+  filePath: string,
+  registry: Map<string, IslandDecl[]>,
+  islandSource: string,
+): boolean {
+  // Detection runs on the ORIGINAL source (the rewritten output has no
+  // `hydrate=` attrs left, so re-scanning it would wrongly find nothing).
+  const { islands } = transformClientDirectives(code, filePath, { islandSource })
+  return recordDirectiveIslands(islands, filePath, registry)
+}
+
+/**
+ * Record already-detected directive islands into the registry (the half of
+ * `scanDirectiveDeclarations` after detection — reused by the transform hook,
+ * which already parsed the original source for the rewrite, to avoid a second
+ * parse). Returns whether the per-file entry changed (HMR invalidation).
+ */
+function recordDirectiveIslands(
+  islands: DirectiveIsland[],
+  filePath: string,
+  registry: Map<string, IslandDecl[]>,
+): boolean {
+  const decls: IslandDecl[] = islands.map((i) => {
+    const rawAbsPath = i.importSource.startsWith('.')
+      ? resolveRelative(filePath, i.importSource)
+      : i.importSource
+    return { name: i.name, hydrate: i.hydrate, loaderAbsPath: normalizeModuleId(rawAbsPath) }
+  })
+  const key = normalizeModuleId(filePath)
+  const existing = registry.get(key)
+  const changed = !islandDeclsEqual(existing, decls.length > 0 ? decls : undefined)
+  if (decls.length > 0) registry.set(key, decls)
+  else registry.delete(key)
+  return changed
+}
+
+/**
  * Resolve a dynamic-import specifier to an absolute path, mirroring how Node
  * / Vite resolve `import('./X')` from the source file's directory.
  */
@@ -2412,7 +2526,11 @@ function resolveRelative(fromFile: string, relPath: string): string {
  * Duplicate `name` across declarations: the LAST one wins. Documented as
  * an anti-pattern (caught by the planned `pyreon doctor --check-islands`).
  */
-function renderIslandsRegistry(registry: Map<string, IslandDecl[]>, enabled: boolean): string {
+function renderIslandsRegistry(
+  registry: Map<string, IslandDecl[]>,
+  directiveRegistry: Map<string, IslandDecl[]>,
+  enabled: boolean,
+): string {
   if (!enabled) {
     return [
       `// pyreon plugin: islands feature is disabled (pyreon({ islands: false })).`,
@@ -2425,7 +2543,9 @@ function renderIslandsRegistry(registry: Map<string, IslandDecl[]>, enabled: boo
   const entries: string[] = []
   const seen = new Set<string>()
   // Deterministic order: sort by name for stable output / predictable HMR.
-  const all = Array.from(registry.values()).flat()
+  // Merge `island()` declarations + lowered directive islands (deduped by name
+  // below); both are IslandDecl[] keyed per source file.
+  const all = [...Array.from(registry.values()).flat(), ...Array.from(directiveRegistry.values()).flat()]
   all.sort((a, b) => a.name.localeCompare(b.name))
   for (const { name, hydrate, loaderAbsPath } of all) {
     if (hydrate === 'never') continue
