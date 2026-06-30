@@ -910,6 +910,10 @@ html { scroll-behavior: smooth; }
 .px-bench-foot a,
 .px-footer-meta a {
   color: var(--link);
+  /* Inline links inside running text must be distinguishable by more
+     than color (WCAG 1.4.1). These footnote links sit in muted body
+     text where the link/text contrast is < 3:1, so carry an underline. */
+  text-decoration: underline;
 }
 .px-claim-col {
   display: flex;
