@@ -4733,9 +4733,17 @@ function emitSwiftField(
   // surfaced: the controlled shape previously fell to generic emit →
   // invalid `Field(value: …)` (`-parse` accepted it; `-typecheck`
   // rejected with `cannot find 'Field' in scope`).
+  // The CANONICAL `<Field>` change event is `onChangeText` (event name
+  // `'changetext'`) — what native-tasks + the docs use, and what the Kotlin
+  // emit already detects. Swift previously checked only `'change'` (the web
+  // overload), so the idiomatic controlled field `value={s()}
+  // onChangeText={(v) => s.set(v)}` ran on Android but fell through to the
+  // broken generic `Field(value: …)` on iOS — a "one code, run everywhere"
+  // break. Accept both (canonical `changetext` first, web-style `change` for
+  // compat).
   const onChangeAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && a.name === 'change',
+      a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
   )
   const isBareSignal =
     valueAttr !== undefined &&
