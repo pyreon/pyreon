@@ -142,12 +142,14 @@ describe('runDocClaimsGate', () => {
     const result = await runDocClaimsGate({ cwd: REPO_ROOT })
     assertGateResultShape(result, 'doc-claims')
     expect(result.category).toBe('documentation')
-    // The real repo has 31 claim sites configured today (8 hook/doc +
-    // 7 lint-rule + 5 lint-category + 2 detector-code + 6 doc-format +
+    // The real repo has 25 claim sites configured today (7 hook/doc +
+    // 5 lint-rule + 4 lint-category + 2 detector-code + 4 doc-format +
     // 3 package-count); verify the scanner found them all (any missing
     // files would surface as file-missing findings, scanned count stays
-    // stable).
-    expect(result.meta.scanned).toBe(31)
+    // stable). CLAUDE.md was consolidated to ONE claim site per count
+    // (the package-overview table rows + summary line); the redundant
+    // per-category bullets / API-description claim sites were removed.
+    expect(result.meta.scanned).toBe(25)
     // The real repo must be drift-free — this gate runs in CI; if a
     // count claim drifts, EVERY PR's doctor run fails until it's fixed.
     const errs = result.findings.filter((f) => f.severity === 'error')
@@ -331,7 +333,7 @@ describe('runDocClaimsGate', () => {
     )
     fs.writeFileSync(
       path.join(tmp, 'CLAUDE.md'),
-      'See `listRules()` — returns metadata for all 99 rules in the set.\n',
+      '| `@pyreon/lint` | Pyreon-specific linter — 99 rules, 18 categories |\n',
     )
 
     const result = await runDocClaimsGate({ cwd: tmp })
