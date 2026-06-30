@@ -21,6 +21,15 @@
  *    i18next uses the locale default) — so the date op is not byte-identical;
  *    the gate asserts both format the SAME instant (both contain the year), and
  *    the op is flagged. `number` IS byte-identical (both `Intl.NumberFormat(en)`).
+ *  - DISCLOSURE (escaping): i18next HTML-escapes interpolated values BY DEFAULT
+ *    (an XSS-safety feature); Pyreon's `t` does NOT escape. The bench sets
+ *    i18next `escapeValue: false` so both produce the SAME (raw) output — an
+ *    apples-to-apples interpolation-SPEED comparison, not a security-posture one.
+ *    Note this is the CONSERVATIVE choice toward Pyreon: it gives i18next its
+ *    FASTER (non-escaping) path, so a realistic i18next app (escaping ON) would
+ *    be somewhat slower than measured here — Pyreon's interpolation win is if
+ *    anything understated, never inflated. (Verified empirically: Pyreon outputs
+ *    `<b>Ada</b>` raw, identical to i18next esc=off; i18next esc=on escapes it.)
  *  - Median ns/op over warmup + N runs; a `sink` defeats DCE.
  */
 process.env.NODE_ENV = 'production'
@@ -47,6 +56,10 @@ const i18 = i18next.createInstance()
 await i18.init({
   lng: 'en',
   resources: { en: { translation: MESSAGES } },
+  // escapeValue:false → both libraries output raw (symmetric work). i18next
+  // escapes by default (XSS-safety); Pyreon's t does not. Disabling it here is
+  // the conservative choice — it gives i18next its faster non-escaping path. See
+  // the escaping DISCLOSURE in the header.
   interpolation: { escapeValue: false },
 })
 
