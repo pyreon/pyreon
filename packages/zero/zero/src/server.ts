@@ -83,6 +83,15 @@ export type { SeoPluginConfig, SitemapConfig, RobotsConfig, RssConfig, RssItem }
 export { seoPlugin, generateSitemap, generateRobots, generateRssFeed, toRfc822, jsonLd, seoMiddleware } from "./seo";
 export type { OgImagePluginConfig, OgImageTemplate, OgImageLayer } from "./og-image";
 export { ogImagePlugin, ogImagePath } from "./og-image";
+export type { PerfAdvisorConfig } from "./perf-advisor-plugin";
+export { perfAdvisorPlugin } from "./perf-advisor-plugin";
+export type {
+	AdvisorCheckId,
+	AdvisorFinding,
+	AdvisorSeverity,
+	RouteAdvisorInput,
+	RouteAdvisorResult,
+} from "./perf-advisor/checks";
 export type { AiPluginConfig, InferJsonLdOptions } from "./ai";
 export { aiPlugin, inferJsonLd, generateLlmsTxt, generateLlmsFullTxt } from "./ai";
 
