@@ -21,10 +21,10 @@ import {
 } from './expr-utils'
 import {
   buildInferenceCtx,
+  classifyOptionalCondition,
   inferReturnType,
   inferType,
   rewriteObjectKeys,
-  typeIsOptional,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -1609,6 +1609,21 @@ function emitKotlinFunction(
   return `fun ${kotlinIdent(d.name)}(${params})${blockRetType} {\n${bodyLines}\n  }`
 }
 
+/**
+ * Emit a CONDITION expression with optional-truthiness lowering. Kotlin's `if`
+ * condition must be `Boolean`; JS coerces an optional to truthy-when-present
+ * (and `!optional` truthy-when-absent). So a bare nullable `t` → `t != null`, a
+ * `!t` → `t == null`, everything else verbatim. `emit` is the caller's expr
+ * emitter (`emitKotlinExpr` for ternary / `&&` / `if` / `while`; the accessor-
+ * aware `emitKotlinSignalRead` for `<Show when>`). Mirror of `swiftCondition`.
+ */
+function kotlinCondition(e: ExprIR, emit: (x: ExprIR) => string): string {
+  const c = classifyOptionalCondition(e, _kotlinExprInferCtx)
+  if (c?.form === 'absent') return `${emit(c.argument)} == null`
+  if (c?.form === 'present') return `${emit(e)} != null`
+  return emit(e)
+}
+
 function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): string {
   switch (s.kind) {
     case 'let':
@@ -1634,7 +1649,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
-      const cond = emitKotlinExpr(s.cond, indent)
+      const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
       const thenLines = s.then
         .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
         .join('\n')
@@ -1647,7 +1662,7 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     }
     case 'while': {
       const pad = ' '.repeat(indent)
-      const cond = emitKotlinExpr(s.cond, indent)
+      const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
       const lines = s.body
         .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
         .join('\n')
@@ -2545,17 +2560,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
     case 'ternary': {
       // Kotlin doesn't have a ternary operator; the idiomatic form is an
-      // if-expression. Same value semantics — EXCEPT the `if` condition must
-      // be `Boolean`. JS treats an OPTIONAL as truthy-when-present (`const t =
-      // todos.find(...); t ? a : b`), but Kotlin rejects a nullable as a
-      // condition ("condition type mismatch: inferred type is 'T?' but
-      // 'Boolean' was expected"). When the condition infers OPTIONAL, lower the
-      // implicit truthiness to an explicit `(<cond> != null)`. (Mirror of the
-      // Swift `!= nil` lowering; other JS coercions left as-is.)
-      const cond = emitKotlinExpr(e.cond, indent)
-      const condStr = typeIsOptional(inferType(e.cond, _kotlinExprInferCtx))
-        ? `(${cond} != null)`
-        : cond
+      // if-expression. The `if` condition must be `Boolean`; JS treats an
+      // OPTIONAL as truthy-when-present (`const t = todos.find(...); t ? a : b`)
+      // and `!optional` truthy-when-absent. `kotlinCondition` lowers an optional
+      // cond → `<cond> != null` and a `!optional` cond → `<inner> == null`.
+      const condStr = kotlinCondition(e.cond, (x) => emitKotlinExpr(x, indent))
       return `if (${condStr}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
     }
     case 'update':
@@ -3047,13 +3056,11 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
   // Same optional-truthiness lowering as the ternary / `&&`: `<Show when={t}>`
-  // where `t` is NULLABLE → `if (t != null) { … }`, not the bare `if (t)`.
+  // where `t` is NULLABLE → `if (t != null) { … }` (and `when={!t}` → `if (t ==
+  // null) { … }`), not the bare `if (t)`. Uses the accessor-aware
+  // `emitKotlinSignalRead` as the operand emitter.
   const whenExpr = when ? unwrapAccessorArrow(when.value) : undefined
-  const condRaw = whenExpr ? emitKotlinSignalRead(whenExpr) : 'true'
-  const cond =
-    whenExpr && typeIsOptional(inferType(whenExpr, _kotlinExprInferCtx))
-      ? `${condRaw} != null`
-      : condRaw
+  const cond = whenExpr ? kotlinCondition(whenExpr, emitKotlinSignalRead) : 'true'
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `if (${cond}) {\n${body}\n${' '.repeat(indent)}}`
@@ -4693,12 +4700,10 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
   // `emitKotlinChild` so a nested `a && b && <X/>` lowers correctly.
   if (c.expr.kind === 'logical' && c.expr.op === '&&' && kotlinExprProducesView(c.expr.right)) {
     // Same optional-truthiness lowering as the ternary: `{t && <X/>}` where
-    // `t` is NULLABLE (e.g. a `.find` result) → `if (t != null) { … }`, not the
-    // bare `if (t) { … }` kotlinc rejects as a non-Boolean condition.
-    const condRaw = emitKotlinExpr(c.expr.left, indent)
-    const cond = typeIsOptional(inferType(c.expr.left, _kotlinExprInferCtx))
-      ? `${condRaw} != null`
-      : condRaw
+    // `t` is NULLABLE (e.g. a `.find` result) → `if (t != null) { … }` (and `{!t
+    // && <X/>}` → `if (t == null) { … }`), not the bare `if (t) { … }` kotlinc
+    // rejects as a non-Boolean condition.
+    const cond = kotlinCondition(c.expr.left, (x) => emitKotlinExpr(x, indent))
     const pad = ' '.repeat(indent + 2)
     const inner = emitKotlinChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
     return `if (${cond}) {\n${pad}${inner}\n${' '.repeat(indent)}}`
