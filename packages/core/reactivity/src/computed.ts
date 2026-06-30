@@ -3,7 +3,6 @@ import { _errorHandler } from './effect'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import {
-  cleanupEffect,
   notifySubscribers,
   setDepsCollector,
   setSkipDepsCollection,
@@ -336,7 +335,6 @@ function computedWithEquals<T>(
   read.dispose = () => {
     read._disposed = true
     cleanupLocalDeps(deps, recompute)
-    cleanupEffect(recompute)
   }
 
   if (process.env.NODE_ENV !== 'production')

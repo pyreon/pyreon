@@ -2,17 +2,20 @@ import { enqueuePendingNotification, isBatching } from './batch'
 
 let activeEffect: (() => void) | null = null
 
-// Tracks which subscriber sets each effect is registered in, so we can
-// clean them up before a re-run (dynamic dependency tracking).
-const effectDeps = new WeakMap<() => void, Set<Set<() => void>>>()
-
-// Fast deps collector for renderEffect — avoids WeakMap overhead entirely.
-// When set, trackSubscriber pushes subscriber sets here instead of effectDeps.
+// The deps collector — every primitive that establishes a tracking scope
+// (`effect` / `renderEffect` / `_bind` / `computed`) sets this to its own
+// local `Set[]` BEFORE `activeEffect` goes live, so `trackSubscriber` always
+// records deps inline here (no per-effect WeakMap). This is an INVARIANT, not
+// a fast path: there is no fallback collector. A legacy `effectDeps` WeakMap
+// branch used to exist for a "tracking with activeEffect but no collector"
+// case that no code path ever produced (every `withTracking` call site sets a
+// collector or `_skipDepsCollection`); it was dead code + a phantom WeakMap in
+// the hottest module, removed in the perf-cleanup pass.
 let _depsCollector: Set<() => void>[] | null = null
 
 // Skip deps collection mode — for re-evaluating computeds/effects with static deps.
 // When true, trackSubscriber only does Set.add (no-op if already subscribed) and skips
-// the _depsCollector.push / WeakMap work entirely.
+// the _depsCollector.push work entirely.
 let _skipDepsCollection = false
 
 export function setDepsCollector(collector: Set<() => void>[] | null): void {
@@ -45,30 +48,9 @@ export function trackSubscriber(host: SubscriberHost) {
     // Skip collection mode: we're already subscribed (Set.add is no-op),
     // just need activeEffect set for nested computed reads to work.
     if (_skipDepsCollection) return
-    if (_depsCollector) {
-      // Fast path: renderEffect stores deps inline, no WeakMap
-      _depsCollector.push(host._s)
-    } else {
-      // Record this dep so we can remove it on cleanup
-      let deps = effectDeps.get(activeEffect)
-      if (!deps) {
-        deps = new Set()
-        effectDeps.set(activeEffect, deps)
-      }
-      deps.add(host._s)
-    }
-  }
-}
-
-/**
- * Remove an effect from every subscriber set it was registered in,
- * then clear its dep record. Call this before each re-run and on dispose.
- */
-export function cleanupEffect(fn: () => void): void {
-  const deps = effectDeps.get(fn)
-  if (deps) {
-    for (const sub of deps) sub.delete(fn)
-    deps.clear()
+    // INVARIANT (see _depsCollector docs): a collector is always set while
+    // activeEffect is live, so the dep is recorded inline for O(1) cleanup.
+    if (_depsCollector) _depsCollector.push(host._s)
   }
 }
 
