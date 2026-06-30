@@ -35,36 +35,24 @@
     </script>
 
     <!-- Brand fonts — Space Grotesk (sans) + JetBrains Mono (mono/accent),
-         from brand handoff §4. PageSpeed-optimized loading:
+         from brand handoff §4. Now self-hosted by @pyreon/zero's
+         `fontPlugin` (wired via `zero({ font })` in vite.config.ts):
 
-         1. `preconnect` primes DNS + TCP + TLS to fonts.googleapis.com
-            AND fonts.gstatic.com before the stylesheet request fires.
-         2. The fonts CSS itself is loaded NON-blockingly via the
-            `preload as=style` + `onload` swap pattern. A standard
-            `<link rel=stylesheet>` BLOCKS the first paint until the
-            CSS arrives — moving the load to `preload` removes that
-            critical-path dependency (~150-300ms saved on slow 4G).
-            On load the `onload` handler flips it back to `stylesheet`
-            so the rules actually apply.
-         3. `<noscript>` fallback keeps the fonts working for users
-            with JS disabled (the `onload` rel-flip needs JS).
-         4. `display=swap` in the URL ensures the system fallback
-            paints text immediately while the woff2 is fetched —
-            never invisible-until-loaded. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="preload"
-      as="style"
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      onload="this.onload=null;this.rel='stylesheet'"
-    />
-    <noscript>
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      />
-    </noscript>
+           • selfHost: woff2 emitted under /assets/fonts (same-origin,
+             immutable) — eliminates the fonts.googleapis.com +
+             fonts.gstatic.com cross-origin connection setup AND Google's
+             10-minute-cached CSS that Lighthouse flagged.
+           • subsets: ['latin'] — trims the unused subset woff2 files.
+           • fallbackAdjust: emits size-adjusted "<Family> Fallback"
+             @font-face declarations (the next/font technique) so the
+             system fallback's metrics MATCH the web font — zero
+             font-swap CLS — plus the `--pyreon-font-*` vars that
+             tokens.css points `--font-sans` / `--font-mono` at.
+
+         The plugin injects the self-host `<style>` + a primary-subset
+         `<link rel=preload as=font>` at build time. In `vite dev` it
+         falls back to the Google CDN `<link>` (build-only self-host),
+         so local dev keeps working with no extra wiring. -->
 
     <!-- Brand favicon — rounded ink tile + ember disc. Leading slash
          so Vite's index.html transform base-prefixes it to

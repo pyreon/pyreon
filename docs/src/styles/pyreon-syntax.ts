@@ -47,7 +47,7 @@ interface Palette {
 const DARK: Palette = {
   bg: '#0A0A0E',
   fg: '#E6E0D2',
-  comment: '#5C5867',
+  comment: '#807C8B', // 4.9:1 on #0A0A0E — WCAG AA (mirrors --syn-comment; was #5C5867 @ 2.86:1)
   punct: '#8A8696',
   keyword: '#FF5E1A', // ember-core
   string: '#FFC83D', // ember-warm

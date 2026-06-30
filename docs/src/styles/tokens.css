@@ -62,9 +62,14 @@
   --warn: #FACC15;
   --err:  #F87171;
 
-  /* Type */
-  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  /* Type — the `--pyreon-font-*` vars are emitted at build by zero's
+     fontPlugin (fallbackAdjust): each is the family followed by a
+     metric-matched `"<Family> Fallback"` and a system fallback, so the
+     web-font swap shifts nothing (zero CLS). The var() fallback after
+     the comma is what `vite dev` / any non-build render uses (the
+     pyreon-font var only exists in the production build). */
+  --font-sans: var(--pyreon-font-space-grotesk, 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif);
+  --font-mono: var(--pyreon-font-jetbrains-mono, 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace);
 
   /* Radius / spacing primitives */
   --radius-sm: 3px;
@@ -117,7 +122,11 @@
   /* Syntax theme — dark */
   --syn-bg:        var(--ink-1);
   --syn-fg:        var(--paper-2);
-  --syn-comment:   var(--gray-3);
+  /* Code-comment color. Must clear WCAG AA (4.5:1) against --syn-bg
+     (#0A0A0E) — the prior var(--gray-3) #5C5867 measured 2.86:1 and was
+     the sole color-contrast failure flagged on the home page. #807C8B is
+     4.9:1 and still reads as a dim, subordinate comment. */
+  --syn-comment:   #807C8B;
   --syn-punct:     var(--gray-2);
   --syn-keyword:   var(--ember-core);
   --syn-string:    var(--ember-warm);
