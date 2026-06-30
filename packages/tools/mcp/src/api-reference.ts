@@ -3739,39 +3739,39 @@ flexRender(cell.column.columnDef.cell, cell.getContext())`,
     signature: '<T>(config: FeatureConfig<T>) => Feature<T>',
     example: `const Posts = defineFeature({
   name: 'posts',
-  schema: {
-    title: 'string',
-    body: 'string',
-    author: reference('users'),
-  },
-  api: { baseUrl: '/api/posts' },
+  schema: z.object({
+    title: z.string().min(1),
+    body: z.string(),
+  }),
+  api: '/api/posts',
 })
 
-Posts.useList({ page: 1 })
+Posts.useList({ page: 1, pageSize: 20 }) // data() is Post[]
 Posts.useById('123')
-Posts.useCreate()
-Posts.useForm('123')
-Posts.useTable({ columns: ['title', 'author'] })`,
-    notes: 'Define a schema-driven CRUD feature. Accepts a name, field schema, and API config. Returns a Feature object with auto-generated hooks: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`. Composes @pyreon/query (data fetching), @pyreon/form (form state), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). Schema field types are inferred for TypeScript autocompletion across all generated hooks. See also: reference, extractFields, defaultInitialValues.',
+Posts.useCreate().mutate({ title: 'Hi', body: '…' })
+Posts.useForm({ mode: 'edit', id: '123' })   // returns a FormState
+Posts.useTable(() => items() ?? [], { columns: ['title'] })`,
+    notes: 'Define a schema-driven CRUD feature. `config` is `{ name, schema, api, validate?, initialValues?, fetcher? }` — `schema` is a real Zod / Valibot / ArkType validator (duck-typed via `safeParseAsync`; Zod carries `_output` so TValues is inferred), and `api` is the string base path (e.g. `/api/posts`). Returns a Feature object with auto-generated reactive members: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`, `queryKey`, plus `name` / `api` / `schema` / `fields`. Composes @pyreon/query (data fetching), @pyreon/form (FormState), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). REST endpoints are derived from `api`: `GET /` (list), `GET /:id` (item), `POST /` (create), `PUT /:id` (update), `DELETE /:id` (delete). See also: reference, extractFields, defaultInitialValues.',
     mistakes: `- Forgetting to install peer dependencies — defineFeature composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table internally
 - Using defineFeature without a QueryClient provider — useList/useById/useSearch/useCreate/useUpdate/useDelete all depend on @pyreon/query which requires a QueryClient in context
-- Passing schema field types as TypeScript types instead of string literals — schema values must be runtime strings like \`"string"\`, \`"number"\`, \`"boolean"\`, or \`reference("otherFeature")\`
-- Calling useForm without an id for edit mode — pass an id to load existing data, omit it for create mode`,
+- Passing a plain string-map (\`{ title: "string" }\`) as the schema — \`schema\` must be a real validator with \`safeParseAsync\` (a Zod / Valibot / ArkType object such as \`z.object({ title: z.string() })\`); a non-validator yields no fields and no validation
+- Passing \`api\` as an object (\`{ baseUrl: "…" }\`) — \`api\` is a plain string base path; there are no per-endpoint override fields (the REST routes are derived from it)
+- Passing a bare id to useForm — useForm takes an OPTIONS object: \`useForm({ mode: "edit", id })\` for edit, \`useForm()\` (or \`useForm({ initialValues })\`) for create
+- Passing options as useTable’s first argument — useTable takes the DATA first (\`useTable(data, { columns })\`), not \`useTable({ columns })\``,
   },
 
   'feature/reference': {
     signature: 'reference(target: { name: string }) => ReferenceSchema',
-    example: `const Users = defineFeature({ name: 'users', schema: { name: 'string' }, api: { baseUrl: '/api/users' } })
-const Posts = defineFeature({
-  name: 'posts',
-  schema: {
-    title: 'string',
-    author: reference(Users),    // FK to users feature
-    category: reference({ name: 'categories' }),
-  },
-  api: { baseUrl: '/api/posts' },
-})`,
-    notes: `Mark a schema field as a foreign key reference to another feature. Used inside defineFeature schema definitions to establish relationships between features. The generated form and table hooks understand reference fields and can render appropriate UI (select dropdowns, linked displays). The marker is a \`Symbol.for('pyreon:feature:reference')\` property — invisible to JSON.stringify but detected by extractFields() and the validation layer. See also: defineFeature, isReference.`,
+    example: `const Users = defineFeature({
+  name: 'users',
+  schema: z.object({ name: z.string() }),
+  api: '/api/users',
+})
+
+const authorRef = reference(Users)            // FK to the users feature
+authorRef.safeParse('user-42').success         // true (string id)
+reference({ name: 'categories' })             // or pass a plain { name }`,
+    notes: 'Mark a schema field as a foreign-key reference to another feature. Pass a Feature object (it has a `name`) or a plain `{ name: "…" }` — NOT a string. Returns a `ReferenceSchema`: a Zod-string-compatible marker (`safeParse` / `safeParseAsync` accept string or number ids, reject everything else) carrying a `Symbol.for(...)` tag invisible to `JSON.stringify` but detected by `isReference()` and `extractFields()`. Use it for the id-bearing field of a relationship; the generated form / table hooks can then render reference-aware UI. See also: defineFeature, isReference.',
     mistakes: `- Passing a plain string instead of a Feature ref — \`reference("users")\` will not typecheck; pass the Feature object or \`{ name: "users" }\`.
 - Forgetting that the referenced Feature must ALSO be defined via defineFeature — the FK only works end-to-end when both sides are real Features sharing the same QueryClient.
 - Expecting reference() to enforce schema validation at the foreign side — it only marks the field. Cascade behaviour (deleting a user → orphaning posts) is the consumer's concern.`,
@@ -3779,13 +3779,11 @@ const Posts = defineFeature({
 
   'feature/isReference': {
     signature: 'isReference(value: unknown) => value is ReferenceSchema',
-    example: `import { isReference } from '@pyreon/feature'
+    example: `import { isReference, reference } from '@pyreon/feature'
 
-for (const [key, value] of Object.entries(Posts.schema)) {
-  if (isReference(value)) {
-    console.log(\`\${key} is a foreign key to \${value._featureName}\`)
-  }
-}`,
+isReference(reference({ name: 'users' })) // true
+isReference(z.string())                    // false — a plain Zod schema
+isReference('users')                       // false — a bare string is not a reference`,
     notes: 'Type-guard that returns true if a value is a ReferenceSchema produced by `reference()`. Used internally by `extractFields` to recognise FK fields, and exposed for consumers building custom form/table renderers that need to special-case reference fields (e.g. render a select dropdown instead of a text input). See also: reference, extractFields.',
     mistakes: `- Trying to detect references via \`instanceof\` — references are symbol-tagged plain objects, not class instances. Always use isReference().
 - Confusing isReference() with Zod's own type guards — isReference checks ONLY for the Pyreon reference marker, not for arbitrary Zod schemas.`,
@@ -3809,7 +3807,7 @@ const fields = extractFields(schema)
 //   { name: 'status', type: 'enum',   optional: false, label: 'Status', enumValues: ['draft', 'published'] },
 // ]`,
     notes: 'Introspect a schema object and return an array of `FieldInfo` describing each field (name, type, optional, label, plus enumValues for enums and referenceTo for references). Duck-types both Zod v3 (`._def.shape` callable) and Zod v4 (`._zod.def.shape` direct) without importing Zod. Used internally by `defineFeature` to build the generated form/table; exposed for consumers building custom UI that needs to enumerate schema fields. See also: defaultInitialValues, defineFeature.',
-    mistakes: `- Calling extractFields on a Pyreon plain-string schema (\`{ title: "string" }\`) instead of a Zod schema — extractFields expects Zod shapes; the plain-string form is interpreted inside defineFeature, not here.
+    mistakes: `- Calling extractFields on a value that is not a real validator (e.g. a plain \`{ title: "string" }\` map) — it expects a Zod / Valibot / ArkType shape; a non-validator yields an empty field list.
 - Expecting field order to match declaration order in ALL JS engines — relies on Object.keys() insertion order, which V8 / SpiderMonkey / JSC all preserve for string keys but is technically engine-specific.
 - Assuming \`label\` is derived from a docs comment — labels are derived from the field name via humanize-case (\`firstName\` → \`First Name\`). Override by passing a label via your own \`FieldInfo\`.`,
   },
@@ -3823,7 +3821,7 @@ const initial = defaultInitialValues(fields)
 // { title: '', views: 0, status: 'draft' }
 
 const form = useForm({ initialValues: initial, ... })`,
-    notes: 'Generate sensible default initial values from extracted field info. Returns `{ stringField: "", numberField: 0, booleanField: false, enumField: <first enumValue>, dateField: "", arrayField: [], objectField: {}, referenceField: null }`. Used by `Posts.useForm()` to seed an empty form when no id is passed (create mode). Exposed for consumers building their own form initial-value seeding logic. See also: extractFields, defineFeature.',
+    notes: 'Generate sensible default initial values from extracted field info. Returns `{ stringField: "", numberField: 0, booleanField: false, enumField: <first enumValue>, dateField: "", arrayField: [], objectField: {}, referenceField: null }`. Used by `Posts.useForm()` to seed an empty form in create mode (no `id`). Exposed for consumers building their own form initial-value seeding logic. See also: extractFields, defineFeature.',
     mistakes: `- Expecting defaults to come from Zod's \`.default()\` modifier — defaultInitialValues uses the FIELD TYPE only. Zod-level defaults flow through Zod's own parse, not this helper.
 - Using these defaults for create-or-update forms — these are CREATE-mode seeds. For edit mode, fetch the existing record and use those values.`,
   },

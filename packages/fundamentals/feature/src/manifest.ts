@@ -5,31 +5,31 @@ export default defineManifest({
   title: 'Schema-Driven CRUD',
   tagline: 'Schema-driven CRUD primitives — define once, get queries, forms, tables, and stores',
   description:
-    'Schema-driven feature factory for Pyreon. Define a feature schema and API config once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.',
+    'Schema-driven feature factory for Pyreon. Define a validation schema (Zod / Valibot / ArkType) and an API base path once, and `defineFeature` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes `@pyreon/query`, `@pyreon/form`, `@pyreon/validation`, `@pyreon/store`, and `@pyreon/table` under the hood.',
   category: 'universal',
-  longExample: `import { defineFeature, reference } from '@pyreon/feature'
+  longExample: `import { defineFeature } from '@pyreon/feature'
+import { signal } from '@pyreon/reactivity'
+import { z } from 'zod'
 
-// 1. Define feature schema + API config
+// 1. Define a feature from a validation schema + an API base path.
+//    \`schema\` is a real Zod / Valibot / ArkType validator (TValues is
+//    inferred from it); \`api\` is the string base path.
 const Posts = defineFeature({
   name: 'posts',
-  schema: {
-    title: 'string',
-    body: 'string',
-    published: 'boolean',
-    author: reference('users'),     // foreign key reference
-  },
-  api: {
-    baseUrl: '/api/posts',
-    // Optional overrides: listUrl, getUrl, createUrl, updateUrl, deleteUrl, searchUrl
-  },
+  schema: z.object({
+    title: z.string().min(1),
+    body: z.string(),
+    published: z.boolean(),
+  }),
+  api: '/api/posts',
 })
 
 // 2. Use auto-generated hooks in components:
 
-// Paginated list query
+// Paginated list query — data() is a Post[] array.
 const ListPage = () => {
-  const { data, isLoading } = Posts.useList({ page: 1, limit: 20 })
-  return <For each={() => data()?.items ?? []} by={(p) => p.id}>
+  const { data, isLoading } = Posts.useList({ page: 1, pageSize: 20 })
+  return <For each={() => data() ?? []} by={(p) => p.id}>
     {(post) => <div>{post.title}</div>}
   </For>
 }
@@ -40,51 +40,57 @@ const DetailPage = (props: { id: string }) => {
   return <div>{data()?.title}</div>
 }
 
-// Search with debounce (via @pyreon/query)
+// Search with a reactive signal term (pass the Signal directly)
 const SearchPage = () => {
-  const query = signal('')
-  const { data } = Posts.useSearch(() => query())
-  // ...
+  const term = signal('')
+  const { data } = Posts.useSearch(term)
+  // term.set('hello') refetches automatically
 }
 
 // Create mutation
 const CreateForm = () => {
-  const { mutate, isLoading } = Posts.useCreate()
-  return <button onClick={() => mutate({ title: 'New', body: '...', published: false })}>
-    {isLoading() ? 'Creating...' : 'Create'}
+  const create = Posts.useCreate()
+  return <button onClick={() => create.mutate({ title: 'New', body: '...', published: false })}>
+    {create.isPending() ? 'Creating...' : 'Create'}
   </button>
 }
 
-// Edit form with schema validation (via @pyreon/form + @pyreon/validation)
+// Edit form — useForm takes an OPTIONS object; returns a @pyreon/form FormState
 const EditForm = (props: { id: string }) => {
-  const { form, field, submit, isSubmitting } = Posts.useForm(props.id)
+  const form = Posts.useForm({ mode: 'edit', id: props.id })
   return (
-    <form onSubmit={submit}>
-      <input {...field('title').register()} />
-      <textarea {...field('body').register()} />
-      <button disabled={isSubmitting}>Save</button>
+    <form onSubmit={form.handleSubmit}>
+      <input {...form.register('title')} />
+      <textarea {...form.register('body')} />
+      <button disabled={form.isSubmitting()}>Save</button>
     </form>
   )
 }
 
-// Table with sorting/filtering/pagination (via @pyreon/table)
+// Table — useTable takes DATA first (array or accessor), then options
 const TableView = () => {
-  const { table } = Posts.useTable({ columns: ['title', 'author', 'published'] })
+  const list = Posts.useList()
+  const { table } = Posts.useTable(() => list.data() ?? [], {
+    columns: ['title', 'published'],
+  })
   // table is a Computed<Table<Post>> — render with flexRender
 }
 
-// Global store access
-const store = Posts.useStore()
-store.items()   // cached items
-store.loading() // loading state`,
+// Global store access — the state lives on the StoreApi's \`.store\`
+const View = () => {
+  const { store } = Posts.useStore()
+  store.items()   // Signal<Post[]> — cached items
+  store.loading() // Signal<boolean>
+}`,
   features: [
-    'defineFeature({ name, schema, api }) — single declaration generates 10+ hooks',
+    'defineFeature({ name, schema, api }) — single declaration generates 11 reactive members',
+    'schema is a real Zod / Valibot / ArkType validator — TValues is inferred from it for end-to-end type safety',
     'Auto-generated useList, useById, useSearch with @pyreon/query',
     'Auto-generated useCreate, useUpdate, useDelete mutations',
-    'Auto-generated useForm with schema validation via @pyreon/validation',
+    'Auto-generated useForm (returns a @pyreon/form FormState) with schema validation',
     'Auto-generated useTable with column inference via @pyreon/table',
-    'Auto-generated useStore for global feature state via @pyreon/store',
-    'reference() helper for foreign key relationships in schemas',
+    'Auto-generated useStore (StoreApi<FeatureStore>) for cached items / selection / loading',
+    'reference({ name }) helper for foreign-key relationships in schemas',
   ],
   api: [
     {
@@ -92,27 +98,28 @@ store.loading() // loading state`,
       kind: 'function',
       signature: '<T>(config: FeatureConfig<T>) => Feature<T>',
       summary:
-        'Define a schema-driven CRUD feature. Accepts a name, field schema, and API config. Returns a Feature object with auto-generated hooks: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`. Composes @pyreon/query (data fetching), @pyreon/form (form state), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). Schema field types are inferred for TypeScript autocompletion across all generated hooks.',
+        'Define a schema-driven CRUD feature. `config` is `{ name, schema, api, validate?, initialValues?, fetcher? }` — `schema` is a real Zod / Valibot / ArkType validator (duck-typed via `safeParseAsync`; Zod carries `_output` so TValues is inferred), and `api` is the string base path (e.g. `/api/posts`). Returns a Feature object with auto-generated reactive members: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`, `queryKey`, plus `name` / `api` / `schema` / `fields`. Composes @pyreon/query (data fetching), @pyreon/form (FormState), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). REST endpoints are derived from `api`: `GET /` (list), `GET /:id` (item), `POST /` (create), `PUT /:id` (update), `DELETE /:id` (delete).',
       example: `const Posts = defineFeature({
   name: 'posts',
-  schema: {
-    title: 'string',
-    body: 'string',
-    author: reference('users'),
-  },
-  api: { baseUrl: '/api/posts' },
+  schema: z.object({
+    title: z.string().min(1),
+    body: z.string(),
+  }),
+  api: '/api/posts',
 })
 
-Posts.useList({ page: 1 })
+Posts.useList({ page: 1, pageSize: 20 }) // data() is Post[]
 Posts.useById('123')
-Posts.useCreate()
-Posts.useForm('123')
-Posts.useTable({ columns: ['title', 'author'] })`,
+Posts.useCreate().mutate({ title: 'Hi', body: '…' })
+Posts.useForm({ mode: 'edit', id: '123' })   // returns a FormState
+Posts.useTable(() => items() ?? [], { columns: ['title'] })`,
       mistakes: [
         'Forgetting to install peer dependencies — defineFeature composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table internally',
         'Using defineFeature without a QueryClient provider — useList/useById/useSearch/useCreate/useUpdate/useDelete all depend on @pyreon/query which requires a QueryClient in context',
-        'Passing schema field types as TypeScript types instead of string literals — schema values must be runtime strings like `"string"`, `"number"`, `"boolean"`, or `reference("otherFeature")`',
-        'Calling useForm without an id for edit mode — pass an id to load existing data, omit it for create mode',
+        'Passing a plain string-map (`{ title: "string" }`) as the schema — `schema` must be a real validator with `safeParseAsync` (a Zod / Valibot / ArkType object such as `z.object({ title: z.string() })`); a non-validator yields no fields and no validation',
+        'Passing `api` as an object (`{ baseUrl: "…" }`) — `api` is a plain string base path; there are no per-endpoint override fields (the REST routes are derived from it)',
+        'Passing a bare id to useForm — useForm takes an OPTIONS object: `useForm({ mode: "edit", id })` for edit, `useForm()` (or `useForm({ initialValues })`) for create',
+        'Passing options as useTable’s first argument — useTable takes the DATA first (`useTable(data, { columns })`), not `useTable({ columns })`',
       ],
       seeAlso: ['reference', 'extractFields', 'defaultInitialValues'],
     },
@@ -121,17 +128,16 @@ Posts.useTable({ columns: ['title', 'author'] })`,
       kind: 'function',
       signature: 'reference(target: { name: string }) => ReferenceSchema',
       summary:
-        "Mark a schema field as a foreign key reference to another feature. Used inside defineFeature schema definitions to establish relationships between features. The generated form and table hooks understand reference fields and can render appropriate UI (select dropdowns, linked displays). The marker is a `Symbol.for('pyreon:feature:reference')` property — invisible to JSON.stringify but detected by extractFields() and the validation layer.",
-      example: `const Users = defineFeature({ name: 'users', schema: { name: 'string' }, api: { baseUrl: '/api/users' } })
-const Posts = defineFeature({
-  name: 'posts',
-  schema: {
-    title: 'string',
-    author: reference(Users),    // FK to users feature
-    category: reference({ name: 'categories' }),
-  },
-  api: { baseUrl: '/api/posts' },
-})`,
+        'Mark a schema field as a foreign-key reference to another feature. Pass a Feature object (it has a `name`) or a plain `{ name: "…" }` — NOT a string. Returns a `ReferenceSchema`: a Zod-string-compatible marker (`safeParse` / `safeParseAsync` accept string or number ids, reject everything else) carrying a `Symbol.for(...)` tag invisible to `JSON.stringify` but detected by `isReference()` and `extractFields()`. Use it for the id-bearing field of a relationship; the generated form / table hooks can then render reference-aware UI.',
+      example: `const Users = defineFeature({
+  name: 'users',
+  schema: z.object({ name: z.string() }),
+  api: '/api/users',
+})
+
+const authorRef = reference(Users)            // FK to the users feature
+authorRef.safeParse('user-42').success         // true (string id)
+reference({ name: 'categories' })             // or pass a plain { name }`,
       mistakes: [
         'Passing a plain string instead of a Feature ref — `reference("users")` will not typecheck; pass the Feature object or `{ name: "users" }`.',
         'Forgetting that the referenced Feature must ALSO be defined via defineFeature — the FK only works end-to-end when both sides are real Features sharing the same QueryClient.',
@@ -145,13 +151,11 @@ const Posts = defineFeature({
       signature: 'isReference(value: unknown) => value is ReferenceSchema',
       summary:
         'Type-guard that returns true if a value is a ReferenceSchema produced by `reference()`. Used internally by `extractFields` to recognise FK fields, and exposed for consumers building custom form/table renderers that need to special-case reference fields (e.g. render a select dropdown instead of a text input).',
-      example: `import { isReference } from '@pyreon/feature'
+      example: `import { isReference, reference } from '@pyreon/feature'
 
-for (const [key, value] of Object.entries(Posts.schema)) {
-  if (isReference(value)) {
-    console.log(\`\${key} is a foreign key to \${value._featureName}\`)
-  }
-}`,
+isReference(reference({ name: 'users' })) // true
+isReference(z.string())                    // false — a plain Zod schema
+isReference('users')                       // false — a bare string is not a reference`,
       mistakes: [
         'Trying to detect references via `instanceof` — references are symbol-tagged plain objects, not class instances. Always use isReference().',
         "Confusing isReference() with Zod's own type guards — isReference checks ONLY for the Pyreon reference marker, not for arbitrary Zod schemas.",
@@ -180,7 +184,7 @@ const fields = extractFields(schema)
 //   { name: 'status', type: 'enum',   optional: false, label: 'Status', enumValues: ['draft', 'published'] },
 // ]`,
       mistakes: [
-        'Calling extractFields on a Pyreon plain-string schema (`{ title: "string" }`) instead of a Zod schema — extractFields expects Zod shapes; the plain-string form is interpreted inside defineFeature, not here.',
+        'Calling extractFields on a value that is not a real validator (e.g. a plain `{ title: "string" }` map) — it expects a Zod / Valibot / ArkType shape; a non-validator yields an empty field list.',
         'Expecting field order to match declaration order in ALL JS engines — relies on Object.keys() insertion order, which V8 / SpiderMonkey / JSC all preserve for string keys but is technically engine-specific.',
         'Assuming `label` is derived from a docs comment — labels are derived from the field name via humanize-case (`firstName` → `First Name`). Override by passing a label via your own `FieldInfo`.',
       ],
@@ -191,7 +195,7 @@ const fields = extractFields(schema)
       kind: 'function',
       signature: 'defaultInitialValues(fields: FieldInfo[]) => Record<string, unknown>',
       summary:
-        'Generate sensible default initial values from extracted field info. Returns `{ stringField: "", numberField: 0, booleanField: false, enumField: <first enumValue>, dateField: "", arrayField: [], objectField: {}, referenceField: null }`. Used by `Posts.useForm()` to seed an empty form when no id is passed (create mode). Exposed for consumers building their own form initial-value seeding logic.',
+        'Generate sensible default initial values from extracted field info. Returns `{ stringField: "", numberField: 0, booleanField: false, enumField: <first enumValue>, dateField: "", arrayField: [], objectField: {}, referenceField: null }`. Used by `Posts.useForm()` to seed an empty form in create mode (no `id`). Exposed for consumers building their own form initial-value seeding logic.',
       example: `import { extractFields, defaultInitialValues } from '@pyreon/feature'
 
 const fields = extractFields(zodSchema)
@@ -209,12 +213,16 @@ const form = useForm({ initialValues: initial, ... })`,
   gotchas: [
     'defineFeature composes 5 packages internally (@pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table). All must be installed, and a QueryClient provider must be mounted in the component tree for the query hooks to work.',
     {
-      label: 'Schema is runtime',
-      note: 'The schema object uses runtime string values (`"string"`, `"number"`, `"boolean"`) and `reference()` calls — not TypeScript types. TypeScript infers the value types from these runtime markers for end-to-end type safety.',
+      label: 'Schema is a validator',
+      note: 'The schema is a real Zod / Valibot / ArkType validator (duck-typed via `safeParseAsync`), not a string map. TValues — the row type flowing through every generated hook — is inferred from it (Zod via `_output`, ArkType via `infer`). Add a `reference({ name })` field for a foreign key.',
     },
     {
-      label: 'API config',
-      note: 'The `api.baseUrl` is the only required API field. Individual endpoint URLs default to RESTful conventions (`GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`, `GET /search`). Override with `listUrl`, `getUrl`, etc.',
+      label: 'API base path',
+      note: 'The `api` field is a plain string base path (e.g. `/api/posts`). REST endpoints are derived from it — `GET /` (list), `GET /:id` (item), `POST /` (create), `PUT /:id` (update), `DELETE /:id` (delete). There are no per-endpoint override fields; supply a custom `fetcher` for non-conventional transport.',
+    },
+    {
+      label: 'Hook return shapes',
+      note: '`useList` / `useById` / `useSearch` return @pyreon/query results (`data` is a Signal — `useList`’s is `T[]`). `useCreate` / `useUpdate` / `useDelete` return mutations (`mutate(vars)` + `isPending()`). `useForm(options?)` returns a @pyreon/form `FormState` (`register` / `handleSubmit` / `isSubmitting`). `useTable(data, options?)` returns `{ table, sorting, globalFilter, columns }`. `useStore()` returns a `StoreApi` whose state lives on `.store` (`store.items()` / `store.loading()`).',
     },
   ],
 })

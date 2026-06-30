@@ -14,32 +14,32 @@ describe('gen-docs — feature snapshot', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/feature — Schema-Driven CRUD
 
-      Schema-driven feature factory for Pyreon. Define a feature schema and API config once, and \`defineFeature\` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes \`@pyreon/query\`, \`@pyreon/form\`, \`@pyreon/validation\`, \`@pyreon/store\`, and \`@pyreon/table\` under the hood.
+      Schema-driven feature factory for Pyreon. Define a validation schema (Zod / Valibot / ArkType) and an API base path once, and \`defineFeature\` auto-generates reactive hooks for listing, fetching, searching, creating, updating, deleting, form management, table configuration, and store access. Composes \`@pyreon/query\`, \`@pyreon/form\`, \`@pyreon/validation\`, \`@pyreon/store\`, and \`@pyreon/table\` under the hood.
 
       \`\`\`typescript
-      import { defineFeature, reference } from '@pyreon/feature'
+      import { defineFeature } from '@pyreon/feature'
+      import { signal } from '@pyreon/reactivity'
+      import { z } from 'zod'
 
-      // 1. Define feature schema + API config
+      // 1. Define a feature from a validation schema + an API base path.
+      //    \`schema\` is a real Zod / Valibot / ArkType validator (TValues is
+      //    inferred from it); \`api\` is the string base path.
       const Posts = defineFeature({
         name: 'posts',
-        schema: {
-          title: 'string',
-          body: 'string',
-          published: 'boolean',
-          author: reference('users'),     // foreign key reference
-        },
-        api: {
-          baseUrl: '/api/posts',
-          // Optional overrides: listUrl, getUrl, createUrl, updateUrl, deleteUrl, searchUrl
-        },
+        schema: z.object({
+          title: z.string().min(1),
+          body: z.string(),
+          published: z.boolean(),
+        }),
+        api: '/api/posts',
       })
 
       // 2. Use auto-generated hooks in components:
 
-      // Paginated list query
+      // Paginated list query — data() is a Post[] array.
       const ListPage = () => {
-        const { data, isLoading } = Posts.useList({ page: 1, limit: 20 })
-        return <For each={() => data()?.items ?? []} by={(p) => p.id}>
+        const { data, isLoading } = Posts.useList({ page: 1, pageSize: 20 })
+        return <For each={() => data() ?? []} by={(p) => p.id}>
           {(post) => <div>{post.title}</div>}
         </For>
       }
@@ -50,50 +50,57 @@ describe('gen-docs — feature snapshot', () => {
         return <div>{data()?.title}</div>
       }
 
-      // Search with debounce (via @pyreon/query)
+      // Search with a reactive signal term (pass the Signal directly)
       const SearchPage = () => {
-        const query = signal('')
-        const { data } = Posts.useSearch(() => query())
-        // ...
+        const term = signal('')
+        const { data } = Posts.useSearch(term)
+        // term.set('hello') refetches automatically
       }
 
       // Create mutation
       const CreateForm = () => {
-        const { mutate, isLoading } = Posts.useCreate()
-        return <button onClick={() => mutate({ title: 'New', body: '...', published: false })}>
-          {isLoading() ? 'Creating...' : 'Create'}
+        const create = Posts.useCreate()
+        return <button onClick={() => create.mutate({ title: 'New', body: '...', published: false })}>
+          {create.isPending() ? 'Creating...' : 'Create'}
         </button>
       }
 
-      // Edit form with schema validation (via @pyreon/form + @pyreon/validation)
+      // Edit form — useForm takes an OPTIONS object; returns a @pyreon/form FormState
       const EditForm = (props: { id: string }) => {
-        const { form, field, submit, isSubmitting } = Posts.useForm(props.id)
+        const form = Posts.useForm({ mode: 'edit', id: props.id })
         return (
-          <form onSubmit={submit}>
-            <input {...field('title').register()} />
-            <textarea {...field('body').register()} />
-            <button disabled={isSubmitting}>Save</button>
+          <form onSubmit={form.handleSubmit}>
+            <input {...form.register('title')} />
+            <textarea {...form.register('body')} />
+            <button disabled={form.isSubmitting()}>Save</button>
           </form>
         )
       }
 
-      // Table with sorting/filtering/pagination (via @pyreon/table)
+      // Table — useTable takes DATA first (array or accessor), then options
       const TableView = () => {
-        const { table } = Posts.useTable({ columns: ['title', 'author', 'published'] })
+        const list = Posts.useList()
+        const { table } = Posts.useTable(() => list.data() ?? [], {
+          columns: ['title', 'published'],
+        })
         // table is a Computed<Table<Post>> — render with flexRender
       }
 
-      // Global store access
-      const store = Posts.useStore()
-      store.items()   // cached items
-      store.loading() // loading state
+      // Global store access — the state lives on the StoreApi's \`.store\`
+      const View = () => {
+        const { store } = Posts.useStore()
+        store.items()   // Signal<Post[]> — cached items
+        store.loading() // Signal<boolean>
+      }
       \`\`\`
 
       > **Note**: defineFeature composes 5 packages internally (@pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table). All must be installed, and a QueryClient provider must be mounted in the component tree for the query hooks to work.
       >
-      > **Schema is runtime**: The schema object uses runtime string values (\`"string"\`, \`"number"\`, \`"boolean"\`) and \`reference()\` calls — not TypeScript types. TypeScript infers the value types from these runtime markers for end-to-end type safety.
+      > **Schema is a validator**: The schema is a real Zod / Valibot / ArkType validator (duck-typed via \`safeParseAsync\`), not a string map. TValues — the row type flowing through every generated hook — is inferred from it (Zod via \`_output\`, ArkType via \`infer\`). Add a \`reference({ name })\` field for a foreign key.
       >
-      > **API config**: The \`api.baseUrl\` is the only required API field. Individual endpoint URLs default to RESTful conventions (\`GET /\`, \`GET /:id\`, \`POST /\`, \`PUT /:id\`, \`DELETE /:id\`, \`GET /search\`). Override with \`listUrl\`, \`getUrl\`, etc.
+      > **API base path**: The \`api\` field is a plain string base path (e.g. \`/api/posts\`). REST endpoints are derived from it — \`GET /\` (list), \`GET /:id\` (item), \`POST /\` (create), \`PUT /:id\` (update), \`DELETE /:id\` (delete). There are no per-endpoint override fields; supply a custom \`fetcher\` for non-conventional transport.
+      >
+      > **Hook return shapes**: \`useList\` / \`useById\` / \`useSearch\` return @pyreon/query results (\`data\` is a Signal — \`useList\`’s is \`T[]\`). \`useCreate\` / \`useUpdate\` / \`useDelete\` return mutations (\`mutate(vars)\` + \`isPending()\`). \`useForm(options?)\` returns a @pyreon/form \`FormState\` (\`register\` / \`handleSubmit\` / \`isSubmitting\`). \`useTable(data, options?)\` returns \`{ table, sorting, globalFilter, columns }\`. \`useStore()\` returns a \`StoreApi\` whose state lives on \`.store\` (\`store.items()\` / \`store.loading()\`).
       "
     `)
   })
