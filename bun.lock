@@ -505,6 +505,31 @@
         "vitest": "^4.1.8",
       },
     },
+    "examples/form-bench": {
+      "name": "@pyreon/form-bench",
+      "version": "0.0.1",
+      "dependencies": {
+        "@hookform/resolvers": "^5.2.2",
+        "@pyreon/core": "workspace:*",
+        "@pyreon/form": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/validation": "workspace:*",
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7",
+        "react-hook-form": "^7.80.0",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@pyreon/vite-plugin": "workspace:*",
+        "@types/node": "^25.9.1",
+        "@types/react": "^19.2.15",
+        "@types/react-dom": "^19.2.3",
+        "playwright": "^1.60.0",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.16",
+      },
+    },
     "examples/fundamentals-playground": {
       "name": "@pyreon/fundamentals-playground",
       "version": "0.0.8",
@@ -2709,6 +2734,8 @@
 
     "@hono/node-server": ["@hono/node-server@1.19.14", "", { "peerDependencies": { "hono": "^4" } }, "sha512-GwtvgtXxnWsucXvbQXkRgqksiH2Qed37H9xHZocE5sA3N8O8O8/8FA3uclQXxXVzc9XBZuEOMK7+r02FmSpHtw=="],
 
+    "@hookform/resolvers": ["@hookform/resolvers@5.4.0", "", { "dependencies": { "@standard-schema/utils": "^0.3.0" }, "peerDependencies": { "react-hook-form": "^7.55.0" } }, "sha512-EIsqr/t/qbinPIhGjMdtvutIN1Kk4uwbROE9/UQ93CAVGR7GkA7Y92+fX80OzXi/OB67jVFYwKGO1WzkxmkFZw=="],
+
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 
     "@img/sharp-darwin-arm64": ["@img/sharp-darwin-arm64@0.35.2", "", { "optionalDependencies": { "@img/sharp-libvips-darwin-arm64": "1.3.1" }, "os": "darwin", "cpu": "arm64" }, "sha512-eEieHsMksAW4IiO5NzauESRl2D2qz3J/kwUxUrSfV06A93eEaRfMpHXyUb1mAqrR7i8U9A0GRqE9pjn6u1Jjpg=="],
@@ -3181,6 +3208,8 @@
 
     "@pyreon/form": ["@pyreon/form@workspace:packages/fundamentals/form"],
 
+    "@pyreon/form-bench": ["@pyreon/form-bench@workspace:examples/form-bench"],
+
     "@pyreon/fundamentals-playground": ["@pyreon/fundamentals-playground@workspace:examples/fundamentals-playground"],
 
     "@pyreon/head": ["@pyreon/head@workspace:packages/core/head"],
@@ -3366,6 +3395,8 @@
     "@sigstore/tuf": ["@sigstore/tuf@1.0.3", "", { "dependencies": { "@sigstore/protobuf-specs": "^0.2.0", "tuf-js": "^1.1.7" } }, "sha512-2bRovzs0nJZFlCN3rXirE4gwxCn97JNjMmwpecqlbgV9WcxX7WRuIrgzx/X7Ib7MYRbyUTpBYE0s2x6AmZXnlg=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
+
+    "@standard-schema/utils": ["@standard-schema/utils@0.3.0", "", {}, "sha512-e7Mew686owMaPJVNNLs55PUvgz371nKgwsc4vxE49zsODpJEnxgxRo2y/OKrqueavXgZNMDVj3DdHFlaSAeU8g=="],
 
     "@storybook/global": ["@storybook/global@5.0.0", "", {}, "sha512-FcOqPAXACP0I3oJ/ws6/rrPT9WGhu915Cg8D02a9YxLo0DE9zI+a9A5gRGvmQ09fiWPukqI8ZAEoQEdWUKMQdQ=="],
 
@@ -5169,6 +5200,8 @@
 
     "@pyreon/experiments/oxc-parser": ["oxc-parser@0.133.0", "", { "dependencies": { "@oxc-project/types": "^0.133.0" }, "optionalDependencies": { "@oxc-parser/binding-android-arm-eabi": "0.133.0", "@oxc-parser/binding-android-arm64": "0.133.0", "@oxc-parser/binding-darwin-arm64": "0.133.0", "@oxc-parser/binding-darwin-x64": "0.133.0", "@oxc-parser/binding-freebsd-x64": "0.133.0", "@oxc-parser/binding-linux-arm-gnueabihf": "0.133.0", "@oxc-parser/binding-linux-arm-musleabihf": "0.133.0", "@oxc-parser/binding-linux-arm64-gnu": "0.133.0", "@oxc-parser/binding-linux-arm64-musl": "0.133.0", "@oxc-parser/binding-linux-ppc64-gnu": "0.133.0", "@oxc-parser/binding-linux-riscv64-gnu": "0.133.0", "@oxc-parser/binding-linux-riscv64-musl": "0.133.0", "@oxc-parser/binding-linux-s390x-gnu": "0.133.0", "@oxc-parser/binding-linux-x64-gnu": "0.133.0", "@oxc-parser/binding-linux-x64-musl": "0.133.0", "@oxc-parser/binding-openharmony-arm64": "0.133.0", "@oxc-parser/binding-wasm32-wasi": "0.133.0", "@oxc-parser/binding-win32-arm64-msvc": "0.133.0", "@oxc-parser/binding-win32-ia32-msvc": "0.133.0", "@oxc-parser/binding-win32-x64-msvc": "0.133.0" } }, "sha512-661RSx+ZcjBmjBYid+Fpp/2F5EbtildpeoZh5HdgnGs+jZ03nqQEQW8yGkt4BGyOC3OMPDQQRl8M5kqD2/g6jw=="],
 
+    "@pyreon/form-bench/@types/node": ["@types/node@25.9.4", "", { "dependencies": { "undici-types": ">=7.24.0 <7.24.7" } }, "sha512-dszCsrKb5U7ZsVZBWiHFklTloVl0mSEnWH/iZXfZUlI4rzCUnsvGmgqfuVRHL54ugE7/wRuxEIXRa2iMZ+BG6g=="],
+
     "@pyreon/hooks/@vitus-labs/tools-rolldown": ["@vitus-labs/tools-rolldown@2.5.0", "", { "dependencies": { "@vitus-labs/tools-core": "^2.3.0", "chalk": "^5.6.2", "rolldown": "^1.0.1", "rolldown-plugin-dts": "^0.25.1", "rollup-plugin-filesize": "^10.0.0", "rollup-plugin-visualizer": "^7.0.1" }, "bin": { "vl_rolldown_build": "lib/bin/run-build.js", "vl_rolldown_build-watch": "lib/bin/run-watch.js" } }, "sha512-F9RgiERNisvwNp/evfdUjvlY0UZC4In4XylpHCEyPY1uVv2cll8ZRlWzUnFy6JPfTcSTmXku2Wn/QSJfMnkqDw=="],
 
     "@pyreon/kinetic/@vitus-labs/tools-rolldown": ["@vitus-labs/tools-rolldown@2.5.0", "", { "dependencies": { "@vitus-labs/tools-core": "^2.3.0", "chalk": "^5.6.2", "rolldown": "^1.0.1", "rolldown-plugin-dts": "^0.25.1", "rollup-plugin-filesize": "^10.0.0", "rollup-plugin-visualizer": "^7.0.1" }, "bin": { "vl_rolldown_build": "lib/bin/run-build.js", "vl_rolldown_build-watch": "lib/bin/run-watch.js" } }, "sha512-F9RgiERNisvwNp/evfdUjvlY0UZC4In4XylpHCEyPY1uVv2cll8ZRlWzUnFy6JPfTcSTmXku2Wn/QSJfMnkqDw=="],
@@ -5444,6 +5477,8 @@
     "@pyreon/experiments/oxc-parser/@oxc-parser/binding-win32-x64-msvc": ["@oxc-parser/binding-win32-x64-msvc@0.133.0", "", { "os": "win32", "cpu": "x64" }, "sha512-kjBhCiOGSYTwDJQuuZa7a94JbP8htWu7J0X1KwH74kV2K5eYf6eyJRYmkpCDvr0XEL8tMxYI4WU1VekblFCLgg=="],
 
     "@pyreon/experiments/oxc-parser/@oxc-project/types": ["@oxc-project/types@0.133.0", "", {}, "sha512-KzkdCd6Uxqnf6l3HOw1xfatAlUURA0g14cvBYFyJ5SaNOQbOUvBr9PKArcPcrNIeRsBdgcUzOGrhKveVpvOIGA=="],
+
+    "@pyreon/form-bench/@types/node/undici-types": ["undici-types@7.24.6", "", {}, "sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg=="],
 
     "@pyreon/hooks/@vitus-labs/tools-rolldown/rolldown-plugin-dts": ["rolldown-plugin-dts@0.25.2", "", { "dependencies": { "@babel/generator": "8.0.0-rc.6", "@babel/helper-validator-identifier": "8.0.0-rc.6", "@babel/parser": "8.0.0-rc.6", "ast-kit": "^3.0.0-beta.1", "birpc": "^4.0.0", "dts-resolver": "^3.0.0", "get-tsconfig": "5.0.0-beta.5", "obug": "^2.1.1" }, "peerDependencies": { "@ts-macro/tsc": "^0.3.6", "@typescript/native-preview": ">=7.0.0-dev.20260325.1", "rolldown": "^1.0.0", "typescript": "^5.0.0 || ^6.0.0", "vue-tsc": "~3.2.0" }, "optionalPeers": ["@ts-macro/tsc", "@typescript/native-preview", "typescript", "vue-tsc"] }, "sha512-nMhN/R+vmR8GM45ZW1FWMSjRTSDDn/6w4GTf8RNrEFCBdl8B1kySWrU1ixPtbwzXoRlcO+R/S88VgXuJQwfdDg=="],
 
