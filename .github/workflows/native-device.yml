@@ -95,7 +95,25 @@ jobs:
           bun-version-file: .bun-version
 
       - name: Install workspace deps (bootstraps @pyreon/native-cli used by the preBuildScript)
-        run: bun install --frozen-lockfile
+        run: |
+          # Retry the install — a transient registry tarball-extract flake
+          # (`Fail extracting tarball for "@biomejs/cli-…"`) on the Android
+          # job broke the nightly green streak on 2026-06-27 (the run was
+          # otherwise green). Three attempts with linear backoff; any green
+          # attempt wins, all-three-fail still fails the step. This is the
+          # dominant transient flake resetting the device-gate green streak —
+          # the XCUITest attach flake already has `-retry-tests-on-failure`,
+          # this is the install half. Lockfile-frozen, so a retry can only
+          # re-download the SAME pinned versions (no resolution drift).
+          n=0
+          until [ "$n" -ge 3 ]; do
+            bun install --frozen-lockfile && exit 0
+            n=$((n + 1))
+            echo "::warning::bun install attempt $n failed — retrying in $((n * 10))s"
+            sleep $((n * 10))
+          done
+          echo "::error::bun install failed after 3 attempts"
+          exit 1
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -313,7 +331,10 @@ jobs:
         run: |
           set -euo pipefail
           ZIP="gradle-${GRADLE_VERSION}-bin.zip"
-          curl -fsSL -o "$ZIP" "https://services.gradle.org/distributions/${ZIP}"
+          # `--retry`/`--retry-all-errors` hardens the single network fetch
+          # against the same transient-download class that broke the streak
+          # (the sha256 check below still gates a corrupt/partial download).
+          curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors -o "$ZIP" "https://services.gradle.org/distributions/${ZIP}"
           echo "${GRADLE_SHA256}  ${ZIP}" | sha256sum -c -
           unzip -q "$ZIP" -d "$HOME/gradle-dist"
           echo "$HOME/gradle-dist/gradle-${GRADLE_VERSION}/bin" >> "$GITHUB_PATH"
@@ -322,7 +343,25 @@ jobs:
         run: gradle --version
 
       - name: Install workspace deps (bootstraps @pyreon/native-cli)
-        run: bun install --frozen-lockfile
+        run: |
+          # Retry the install — a transient registry tarball-extract flake
+          # (`Fail extracting tarball for "@biomejs/cli-…"`) on the Android
+          # job broke the nightly green streak on 2026-06-27 (the run was
+          # otherwise green). Three attempts with linear backoff; any green
+          # attempt wins, all-three-fail still fails the step. This is the
+          # dominant transient flake resetting the device-gate green streak —
+          # the XCUITest attach flake already has `-retry-tests-on-failure`,
+          # this is the install half. Lockfile-frozen, so a retry can only
+          # re-download the SAME pinned versions (no resolution drift).
+          n=0
+          until [ "$n" -ge 3 ]; do
+            bun install --frozen-lockfile && exit 0
+            n=$((n + 1))
+            echo "::warning::bun install attempt $n failed — retrying in $((n * 10))s"
+            sleep $((n * 10))
+          done
+          echo "::error::bun install failed after 3 attempts"
+          exit 1
 
       - name: Emit Kotlin (PMTC .tsx → generated/*.kt)
         working-directory: examples/native-todomvc-android
