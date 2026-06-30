@@ -59,6 +59,7 @@ import { render404Page } from "./not-found";
 import { fontPlugin } from "./font";
 import { fontImportPlugin } from "./font-import-plugin";
 import { imagePlugin } from "./image-plugin";
+import { perfAdvisorPlugin } from "./perf-advisor-plugin";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
 import type { ZeroConfig } from "./types";
@@ -685,6 +686,20 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	// the mode doesn't match (defense-in-depth) but we omit them from
 	// the chain entirely for clarity — one less closeBundle to call.
 	const plugins: Plugin[] = [mainPlugin];
+	// Opt-in build perf advisor. Pushed BEFORE ssgPlugin so its closeBundle
+	// reads `dist/.vite/manifest.json` before the SSG plugin deletes it; in
+	// any mode where ssgPlugin joins the chain (ssg/ssr/isr) it defers
+	// manifest cleanup to the SSG plugin (which owns it for modulepreload).
+	if (userConfig.perfAdvisor) {
+		const ssgInChain =
+			config.mode === "ssg" || config.mode === "ssr" || config.mode === "isr";
+		plugins.push(
+			perfAdvisorPlugin({
+				...(typeof userConfig.perfAdvisor === "object" ? userConfig.perfAdvisor : {}),
+				cleanupManifest: !ssgInChain,
+			}),
+		);
+	}
 	if (config.mode === "ssg") plugins.push(ssgPlugin(userConfig));
 	if (config.mode === "ssr" || config.mode === "isr") {
 		// Phase 2 — hybrid rendering: the SSG plugin ALSO joins server-mode
