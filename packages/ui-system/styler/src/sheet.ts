@@ -308,8 +308,12 @@ export class StyleSheet {
    * legacy JS arithmetic (`t.spacing.small * 2` → `NaN`) and string concat
    * (`t.color.x + '99'` → `var(--px-…)99`) produce silently-invalid CSS
    * that the browser drops. This scan names the offending declaration the
-   * moment it reaches the sheet. Tree-shaken from production (call site is
-   * gated on `process.env.NODE_ENV !== 'production'`).
+   * moment it reaches the sheet. It ALSO flags `content-visibility: auto`
+   * resolved without `contain-intrinsic-size` — a Cumulative Layout Shift
+   * footgun the static `pyreon/content-visibility-needs-intrinsic-size`
+   * lint rule can't see when the CSS is computed at runtime. Tree-shaken
+   * from production (call site is gated on
+   * `process.env.NODE_ENV !== 'production'`).
    */
   private validateDevCss(cssText: string): void {
     if (process.env.NODE_ENV === 'production') return
@@ -326,6 +330,18 @@ export class StyleSheet {
     if (malformed) {
       found.push(
         `a malformed var() concatenation ('${malformed[0]}…') — string-concat on a CSS-variable theme token? Use calc() for math or color-mix() for alpha`,
+      )
+    }
+    // CLS footgun: `content-visibility: auto` reserves NO box without
+    // `contain-intrinsic-size`, so the browser estimates the off-screen
+    // height then corrects it on render, shifting content below. Linear,
+    // ReDoS-safe scans (anchored on a literal property + `:`).
+    if (
+      /content-visibility\s*:\s*auto\b/i.test(cssText) &&
+      !/contain-intrinsic-(?:size|width|height|block-size|inline-size)\s*:/i.test(cssText)
+    ) {
+      found.push(
+        "'content-visibility: auto' without 'contain-intrinsic-size' — the browser estimates the off-screen box height then corrects it on render, shifting content below (CLS). Add 'contain-intrinsic-size: auto <height>'",
       )
     }
     if (found.length === 0) return
