@@ -53,12 +53,12 @@ const Counter = () => {
   const [count, setCount] = useState(0)
 
   useEffect(() => {
-    document.title = `Count: ${count()}`
-  })
+    document.title = `Count: ${count}`
+  }, [count])
 
   return (
     <div>
-      <p>Count: {count()}</p>
+      <p>Count: {count}</p>
       <button onClick={() => setCount((prev) => prev + 1)}>+1</button>
     </div>
   )
@@ -69,35 +69,34 @@ render(<Counter />, document.getElementById('app')!)
 
 ## Key Differences from Preact
 
-| Behavior            | Preact                               | @pyreon/preact-compat                                                 |
-| ------------------- | ------------------------------------ | --------------------------------------------------------------------- |
-| Component execution | Re-runs render on every state change | Runs **once** (setup phase)                                           |
-| `useState` getter   | Returns the value directly           | Returns a **getter function** -- call `count()` to read               |
-| `useEffect` deps    | Controls when the effect re-runs     | Deps array is **ignored** -- Pyreon tracks dependencies automatically |
-| `useCallback`       | Memoizes across renders              | **No-op** -- returns `fn` as-is                                       |
-| `useMemo`           | Returns the memoized value           | Returns a **getter function** -- call `value()` to read               |
-| `useLayoutEffect`   | Fires synchronously before paint     | Same as `useEffect`                                                   |
-| Signals `.value`    | Native Preact Signals API            | Wrapped Pyreon signals with the same `.value` interface               |
-| Class components    | Full lifecycle support               | `setState` and `forceUpdate` work; lifecycle methods are not called   |
-| Hooks rules         | Must be called at top level          | **No restrictions** -- call anywhere in component setup               |
+`@pyreon/preact-compat` runs the **value + re-render model**: `useState` returns the value directly (not a getter), the component body re-runs on state change, and `useEffect` / `useMemo` / `useCallback` honor their deps arrays. Most Preact code — including hooks-rules ordering and stale-closure semantics — behaves identically. The genuine differences:
+
+| Behavior                                              | Preact                                     | @pyreon/preact-compat                                                                                                                                                                                                                  |
+| ----------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reactive engine                                       | VDOM diff + reconciliation                 | Pyreon signals driving a per-component re-render                                                                                                                                                                                       |
+| **Nested child state across an _ancestor_ re-render** | Preserved (reconciliation by position/key) | **Reset** -- a parent re-render rebuilds the child subtree, so a nested component's `useState` / `useReducer` / `useRef` revert to initial and `useEffect([])` re-fires. Lift such state up, or avoid re-rendering the ancestor. (`memo` does not prevent this.) |
+| Class lifecycle                                       | Full lifecycle                             | `componentDidMount` / `componentDidUpdate` / `componentWillUnmount` / `shouldComponentUpdate` fire; `componentDidCatch` / `getDerivedStateFromError` / `getDerivedStateFromProps` / `getSnapshotBeforeUpdate` are **not** implemented (no class-based error boundaries) |
+| `useLayoutEffect`                                     | Fires synchronously before paint           | Same as `useEffect` -- Pyreon has no paint distinction                                                                                                                                                                               |
+| Signals `.value`                                      | Native Preact Signals API                  | Wrapped Pyreon signals with the same `.value` interface                                                                                                                                                                              |
+| `version`                                             | Real Preact version                        | Reports `10.0.0-pyreon`                                                                                                                                                                                                              |
 
 ### Reading State
 
-The most important change: `useState` returns a getter function, not a raw value.
+`useState` returns the value directly and the component re-runs on state change -- exactly like Preact.
 
 ```tsx
 // Preact
 const [count, setCount] = useState(0)
 console.log(count) // 0
 
-// Pyreon
+// @pyreon/preact-compat — identical
 const [count, setCount] = useState(0)
-console.log(count()) // 0 -- note the function call
+console.log(count) // 0
 ```
 
-### No Stale Closures
+### Closures follow Preact semantics
 
-In Preact, closures capture the value at render time. In Pyreon, signal reads always return the current value:
+`useState` returns a plain value captured at render time, so a long-lived callback created in `useEffect([])` sees the value from the render it was created in — exactly like Preact. Use the **updater form** to read the latest value, or include the value in the deps array to re-create the callback:
 
 ```tsx
 function Timer() {
@@ -105,17 +104,18 @@ function Timer() {
 
   useEffect(() => {
     const id = setInterval(() => {
-      // In Preact, this would capture the initial value without deps
-      // In Pyreon, count() always returns the current value
-      console.log('Count:', count())
+      // `count` here is the value from this render; use the updater form
+      // to read the latest:
       setCount((prev) => prev + 1)
     }, 1000)
     return () => clearInterval(id)
   }, [])
 
-  return <p>{count()}</p>
+  return <p>{count}</p>
 }
 ```
+
+> If you want reads that are always current regardless of closure age, use the [signals subpath](#signals-compatibility) — `signal.value` always returns the live value.
 
 ### Signals Compatibility
 
@@ -456,14 +456,14 @@ options.vnode = (vnode) => {
 ### `useState`
 
 ```ts
-function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T) => T)) => void]
+function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void]
 ```
 
-Returns `[getter, setter]`. The getter is a Pyreon signal -- call it as a function to read.
+Returns `[value, setter]` -- the value directly, exactly like Preact. The component re-runs on `setState`.
 
 ```tsx
 const [name, setName] = useState('Alice')
-console.log(name()) // 'Alice'
+console.log(name) // 'Alice'
 
 setName('Bob')
 setName((prev) => prev + '!')
@@ -510,15 +510,15 @@ function usePrevious<T>(getter: () => T) {
 function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void
 ```
 
-Runs a reactive side effect. The deps array is **ignored** -- Pyreon auto-tracks signal reads. Return a cleanup function for disposal.
+Runs a side effect after render. The deps array is **honored** (re-runs when a dep changes), exactly like Preact. Return a cleanup function for disposal.
 
-**Mount-only:** Pass `[]` to run once on mount (wrapped in `runUntracked`).
+**Mount-only:** Pass `[]` to run once on mount; the cleanup runs on unmount.
 
 ```tsx
-// Runs every time name() changes
+// Runs whenever `name` changes
 useEffect(() => {
-  document.title = name()
-})
+  document.title = name
+}, [name])
 
 // Runs once on mount
 useEffect(() => {
@@ -581,29 +581,29 @@ Alias for `useEffect`. No layout/passive distinction in Pyreon.
 ### `useMemo`
 
 ```ts
-function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T
+function useMemo<T>(fn: () => T, deps?: unknown[]): T
 ```
 
-Returns a computed getter. Deps are ignored.
+Returns the memoized value directly (recomputed when `deps` change) -- exactly like Preact.
 
 ```tsx
 const [items, setItems] = useState([1, 2, 3])
-const sum = useMemo(() => items().reduce((a, b) => a + b, 0))
-console.log(sum()) // 6
+const sum = useMemo(() => items.reduce((a, b) => a + b, 0), [items])
+console.log(sum) // 6
 
 // Filtered + sorted list
 const [filter, setFilter] = useState('')
-const filteredItems = useMemo(() => items().filter((item) => item.name.includes(filter())))
-const sortedItems = useMemo(() => [...filteredItems()].sort((a, b) => a.name.localeCompare(b.name)))
+const filteredItems = useMemo(() => items.filter((item) => item.name.includes(filter)), [items, filter])
+const sortedItems = useMemo(() => [...filteredItems].sort((a, b) => a.name.localeCompare(b.name)), [filteredItems])
 ```
 
 ### `useCallback`
 
 ```ts
-function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T
+function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, deps: unknown[]): T
 ```
 
-Returns `fn` as-is. Components run once, so callbacks never go stale.
+Memoizes `fn` across re-renders, returning the same reference until a dep changes -- exactly like Preact (`useCallback(fn, deps)` is `useMemo(() => fn, deps)`).
 
 ### `useRef`
 
@@ -629,10 +629,10 @@ renderCount.current!++
 function useReducer<S, A>(
   reducer: (state: S, action: A) => S,
   initial: S | (() => S),
-): [() => S, (action: A) => void]
+): [S, (action: A) => void]
 ```
 
-Returns `[getter, dispatch]`. Dispatch applies the reducer and updates the underlying signal.
+Returns `[state, dispatch]` -- the state value directly, exactly like Preact. Dispatch applies the reducer and re-renders the component.
 
 ```tsx
 type Action =
@@ -1032,9 +1032,9 @@ export default defineConfig({
 ## Migration Checklist
 
 1. Replace `preact` imports with `@pyreon/preact-compat`, `preact/hooks` with `@pyreon/preact-compat/hooks`, and `@preact/signals` with `@pyreon/preact-compat/signals`.
-2. Change state reads from `count` to `count()` for hook-based code. Signals-based code using `.value` works without changes.
-3. Remove dependency arrays from `useEffect` and `useMemo` (or leave them -- they are ignored).
-4. Replace class component lifecycle methods (`componentDidMount`, `componentWillUnmount`, etc.) with hooks (`useEffect` for mount/unmount logic).
+2. Hook state reads are unchanged -- `useState` returns the value directly (`count`, not `count()`), and deps arrays are honored, so most hook code ports as-is.
+3. Lift any state that must survive an **ancestor** re-render -- a parent re-render rebuilds the child subtree, resetting nested `useState` and re-firing `useEffect([])`.
+4. Replace class-based **error boundaries** (`componentDidCatch` / `getDerivedStateFromError`) with an `ErrorBoundary` component -- those class lifecycle methods are not implemented (the other four lifecycle methods do fire).
 5. Verify any `options` plugin code -- the `options` object is an empty stub.
 6. Check `toChildArray` usage -- should work identically.
 7. Test `cloneElement` usage -- props merging behavior is the same.
