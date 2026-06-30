@@ -21,39 +21,46 @@ export function C() { const n = signal(7); const m = signal(3); const out = comp
 
 describe('Math.* namespace emit (Swift mapping)', () => {
   const swift = (expr: string) => transform(SRC(expr), { target: 'swift' }).code
-  it('Math.round → (x).rounded()', () => {
-    expect(swift('Math.round(n())')).toContain('(n).rounded()')
+  // DOUBLE-DOMAIN functions (round/floor/ceil/sqrt/pow) coerce their args to
+  // Double — Swift has no implicit Int→Double, so a bare Int arg is rejected.
+  // `Double(x)` is identity on a Double, safe for any arg. abs/min/max stay
+  // GENERIC (Int-preserving) and are NOT coerced — see below.
+  it('Math.round → (Double(x)).rounded()', () => {
+    expect(swift('Math.round(n())')).toContain('(Double(n)).rounded()')
     expect(swift('Math.round(n())')).not.toContain('Math.round')
   })
-  // `not.toContain('Math.')` is the load-bearing assertion — a verbatim
-  // (unmapped) `Math.floor(n)` would still CONTAIN the substring
-  // `floor(n)`, so only the absence of the `Math.` prefix proves the
-  // mapping fired.
-  it('Math.floor → floor(x) (no Math. prefix)', () => {
+  // `not.toContain('Math.')` is the load-bearing assertion — only the absence
+  // of the `Math.` prefix proves the mapping fired.
+  it('Math.floor → floor(Double(x)) (no Math. prefix)', () => {
     const s = swift('Math.floor(n())')
-    expect(s).toContain('floor(n)')
+    expect(s).toContain('floor(Double(n))')
     expect(s).not.toContain('Math.')
   })
-  it('Math.ceil → ceil(x) (no Math. prefix)', () => {
+  it('Math.ceil → ceil(Double(x)) (no Math. prefix)', () => {
     const s = swift('Math.ceil(n())')
-    expect(s).toContain('ceil(n)')
+    expect(s).toContain('ceil(Double(n))')
     expect(s).not.toContain('Math.')
   })
-  it('Math.abs → abs(x) (no Math. prefix)', () => {
+  // abs is GENERIC over SignedNumeric — it accepts Int directly and must NOT
+  // be coerced (coercing would force a Double result; `Math.abs(intCount)`
+  // must stay Int).
+  it('Math.abs → abs(x), NOT coerced (no Math. prefix)', () => {
     const s = swift('Math.abs(n())')
     expect(s).toContain('abs(n)')
+    expect(s).not.toContain('abs(Double(')
     expect(s).not.toContain('Math.')
   })
-  it('Math.min / Math.max → min(a,b) / max(a,b) (no Math. prefix)', () => {
+  // min/max are GENERIC over Comparable — Int-preserving, NOT coerced.
+  it('Math.min / Math.max → min(a,b) / max(a,b), NOT coerced (no Math. prefix)', () => {
     expect(swift('Math.min(n(), m())')).toContain('min(n, m)')
     expect(swift('Math.min(n(), m())')).not.toContain('Math.')
     expect(swift('Math.max(n(), m())')).toContain('max(n, m)')
     expect(swift('Math.max(n(), m())')).not.toContain('Math.')
   })
-  it('Math.sqrt / Math.pow → sqrt(x) / pow(a,b) (no Math. prefix)', () => {
-    expect(swift('Math.sqrt(n())')).toContain('sqrt(n)')
+  it('Math.sqrt / Math.pow → sqrt(Double(x)) / pow(Double(a),Double(b)) (no Math. prefix)', () => {
+    expect(swift('Math.sqrt(n())')).toContain('sqrt(Double(n))')
     expect(swift('Math.sqrt(n())')).not.toContain('Math.')
-    expect(swift('Math.pow(n(), m())')).toContain('pow(n, m)')
+    expect(swift('Math.pow(n(), m())')).toContain('pow(Double(n), Double(m))')
     expect(swift('Math.pow(n(), m())')).not.toContain('Math.')
   })
   it('Kotlin: Math.* stays verbatim (valid java.lang.Math)', () => {

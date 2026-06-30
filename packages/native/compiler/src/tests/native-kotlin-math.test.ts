@@ -53,9 +53,12 @@ describe('Kotlin Math.* Double-domain coercion', () => {
     expect(kt('Math.floor(3.7)')).toContain('Math.floor(3.7)')
   })
 
-  it('Swift is unaffected (still emits its free-function form)', () => {
+  it('Swift coerces with its OWN Double() form (not Kotlin .toDouble())', () => {
+    // Swift also coerces Double-domain Math args (its own fix), but with
+    // `Double(x)` — NOT Kotlin's `(x).toDouble()`. This asserts the two
+    // targets use their respective idioms.
     const sw = transform(app('Math.sqrt(16)'), { target: 'swift' }).code
-    expect(sw).toContain('sqrt(16)')
+    expect(sw).toContain('sqrt(Double(16))')
     expect(sw).not.toContain('toDouble')
   })
 

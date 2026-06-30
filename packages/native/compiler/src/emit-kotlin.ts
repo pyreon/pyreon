@@ -1619,6 +1619,12 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       return s.expr ? `${keyword} ${emitKotlinExpr(s.expr, indent)}` : keyword
     }
     case 'expr':
+      // A bare `i++` / `i--` STATEMENT is side-effect-only → `i += 1` /
+      // `i -= 1` (uniform with Swift). The general `update` expr emit returns
+      // the OLD value (value-position form) and mis-compiles as a statement.
+      if (s.expr.kind === 'update') {
+        return `${emitKotlinExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
+      }
       return emitKotlinExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)

@@ -48,11 +48,15 @@ describe('Swift Math.* Double-domain mapping', () => {
     expect(sw('Math.hypot(3, 4)')).not.toContain('Math.hypot')
   })
 
-  it('leaves the existing mappings untouched (sqrt / abs / max / pow)', () => {
-    expect(sw('Math.sqrt(16)')).toContain('sqrt(16)')
+  it('Double-domain first-switch fns (sqrt/pow) coerce their args; generic abs/max stay Int', () => {
+    // sqrt/pow are Double-domain → args coerced (an Int arg would be rejected
+    // by Swift's lack of implicit Int→Double). abs/max are generic over
+    // SignedNumeric/Comparable → Int-preserving, NOT coerced.
+    expect(sw('Math.sqrt(16)')).toContain('sqrt(Double(16))')
+    expect(sw('Math.pow(2, 3)')).toContain('pow(Double(2), Double(3))')
     expect(sw('Math.abs(-5)')).toContain('abs(-5)')
+    expect(sw('Math.abs(-5)')).not.toContain('abs(Double(')
     expect(sw('Math.max(1, 2)')).toContain('max(1, 2)')
-    expect(sw('Math.pow(2, 3)')).toContain('pow(2, 3)')
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: the new mappings parse via swiftc -parse', () => {
