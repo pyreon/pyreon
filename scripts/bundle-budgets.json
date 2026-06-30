@@ -29,7 +29,7 @@
   "@pyreon/machine": 1150,
   "@pyreon/mcp": 232960,
   "@pyreon/meta": 1536,
-  "@pyreon/permissions": 1024,
+  "@pyreon/permissions": 1536,
   "@pyreon/preact-compat": 1280,
   "@pyreon/primitives": 4096,
   "@pyreon/query": 3840,
