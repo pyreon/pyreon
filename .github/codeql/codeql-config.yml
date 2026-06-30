@@ -38,3 +38,12 @@ paths-ignore:
   # here, while the rest of the plugin stays fully scanned. Correctness is
   # locked by the compiler's emit-equivalence gate + the transform-driven tests.
   - '**/vite-plugin/src/compiled-verdicts.ts'
+  # Build-time CODE GENERATOR (same accepted pattern as compiled-verdicts.ts).
+  # `transformClientDirectives` lowers a `hydrate="…"` attribute to an
+  # `island(() => import('…'), { name, hydrate })` wrapper by string-splicing the
+  # app's OWN source (every emitted specifier/name is JSON.stringify-escaped;
+  # the import source comes from the app's own import statement, never untrusted
+  # runtime input). CodeQL's `js/bad-code-sanitization` / `js/unsafe-code-construction`
+  # are false positives for a build-time emitter; correctness is locked by the
+  # transform's 16-spec suite incl. a pipeline-validity check.
+  - '**/compiler/src/client-directives.ts'

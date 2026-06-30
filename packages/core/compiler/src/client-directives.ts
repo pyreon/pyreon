@@ -230,7 +230,7 @@ export function transformClientDirectives(
   const islands: DirectiveIsland[] = []
   const wrapperByKey = new Map<string, DirectiveIsland>()
   for (const site of sites) {
-    const key = `${site.component} ${site.strategy}`
+    const key = `${site.component}::${site.strategy}`
     let island = wrapperByKey.get(key)
     if (!island) {
       const varName = `__pyIsland_${site.component}_${strategyFrag(site.strategy)}`
@@ -255,7 +255,7 @@ export function transformClientDirectives(
   }
   const edits: Edit[] = []
   for (const site of sites) {
-    const island = wrapperByKey.get(`${site.component} ${site.strategy}`) as DirectiveIsland
+    const island = wrapperByKey.get(`${site.component}::${site.strategy}`) as DirectiveIsland
     edits.push({ start: site.hydrateAttr.start, end: site.hydrateAttr.end, text: '' })
     edits.push({ start: site.openTag.start, end: site.openTag.end, text: island.varName })
     if (site.closeTag) {
