@@ -19,7 +19,13 @@ import {
   substituteIdentifier,
   synthLiteralStructName,
 } from './expr-utils'
-import { buildInferenceCtx, inferReturnType, inferType, rewriteObjectKeys } from './infer-type'
+import {
+  buildInferenceCtx,
+  inferReturnType,
+  inferType,
+  rewriteObjectKeys,
+  typeIsOptional,
+} from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import {
@@ -2537,10 +2543,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         return `(${emitKotlinExpr(e.left, indent)} ?: ${emitKotlinExpr(e.right, indent)})`
       }
       return `${emitKotlinExpr(e.left, indent)} ${e.op} ${emitKotlinExpr(e.right, indent)}`
-    case 'ternary':
-      // Kotlin doesn't have a ternary operator; the idiomatic form is
-      // an if-expression. Same value semantics.
-      return `if (${emitKotlinExpr(e.cond, indent)}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
+    case 'ternary': {
+      // Kotlin doesn't have a ternary operator; the idiomatic form is an
+      // if-expression. Same value semantics — EXCEPT the `if` condition must
+      // be `Boolean`. JS treats an OPTIONAL as truthy-when-present (`const t =
+      // todos.find(...); t ? a : b`), but Kotlin rejects a nullable as a
+      // condition ("condition type mismatch: inferred type is 'T?' but
+      // 'Boolean' was expected"). When the condition infers OPTIONAL, lower the
+      // implicit truthiness to an explicit `(<cond> != null)`. (Mirror of the
+      // Swift `!= nil` lowering; other JS coercions left as-is.)
+      const cond = emitKotlinExpr(e.cond, indent)
+      const condStr = typeIsOptional(inferType(e.cond, _kotlinExprInferCtx))
+        ? `(${cond} != null)`
+        : cond
+      return `if (${condStr}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
+    }
     case 'update':
       // `x++` / `x--` post-increment/decrement in expression position.
       // Returns the OLD value and mutates the variable (JS semantics).
@@ -3029,7 +3046,14 @@ function emitKotlinShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   const when = e.attrs.find((a) => a.kind === 'attr' && a.name === 'when') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
-  const cond = when ? emitKotlinSignalRead(unwrapAccessorArrow(when.value)) : 'true'
+  // Same optional-truthiness lowering as the ternary / `&&`: `<Show when={t}>`
+  // where `t` is NULLABLE → `if (t != null) { … }`, not the bare `if (t)`.
+  const whenExpr = when ? unwrapAccessorArrow(when.value) : undefined
+  const condRaw = whenExpr ? emitKotlinSignalRead(whenExpr) : 'true'
+  const cond =
+    whenExpr && typeIsOptional(inferType(whenExpr, _kotlinExprInferCtx))
+      ? `${condRaw} != null`
+      : condRaw
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitKotlinChild(c, indent + 2)).join('\n')
   return `if (${cond}) {\n${body}\n${' '.repeat(indent)}}`
@@ -4668,7 +4692,13 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
   // `if (cond) { view }` form `<Show>` emits. The RHS recurses through
   // `emitKotlinChild` so a nested `a && b && <X/>` lowers correctly.
   if (c.expr.kind === 'logical' && c.expr.op === '&&' && kotlinExprProducesView(c.expr.right)) {
-    const cond = emitKotlinExpr(c.expr.left, indent)
+    // Same optional-truthiness lowering as the ternary: `{t && <X/>}` where
+    // `t` is NULLABLE (e.g. a `.find` result) → `if (t != null) { … }`, not the
+    // bare `if (t) { … }` kotlinc rejects as a non-Boolean condition.
+    const condRaw = emitKotlinExpr(c.expr.left, indent)
+    const cond = typeIsOptional(inferType(c.expr.left, _kotlinExprInferCtx))
+      ? `${condRaw} != null`
+      : condRaw
     const pad = ' '.repeat(indent + 2)
     const inner = emitKotlinChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
     return `if (${cond}) {\n${pad}${inner}\n${' '.repeat(indent)}}`
