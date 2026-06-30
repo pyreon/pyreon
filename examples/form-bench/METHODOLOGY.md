@@ -112,5 +112,18 @@ Still to come, each a reviewable increment:
   React-peer set.
 - **More scenarios** — field-array append/remove/reorder, cross-field
   validation, bulk programmatic setValues, isolation/re-render-scope proof.
-- **Bundle-size dimension** — gzipped weight of the minimal "12-field validated
-  form" per library (forms range ~9 KB → 40 KB+).
+
+## Bundle size (shipped — `bun bundle-size.ts`)
+
+The second half of the real-world story, reported next to speed. Per framework
+we production-minify + gzip two entries: BASELINE (runtime only) and FULL
+(runtime + form lib + zod adapter + a 12-field validated form); the **DELTA** is
+the marginal cost of adding a validated form (zod is in every FULL, so it
+cancels across columns). The TOTAL is what the user downloads.
+
+Representative (Bun.build, gzipped): Pyreon baseline **11.9 KB** vs the React
+trio's react-dom **57.7 KB**; FULL form — Pyreon **77.7 KB** vs RHF 132 / Formik
+134 / TanStack 140 KB. The marginal form DELTA is closer (Pyreon 65.8 / RHF 74.4
+/ Formik 76.3 / TanStack 81.8 KB — zod dominates it). Honest read: Pyreon's
+**total** is ~1.7× lighter, driven by the lean runtime; the form-wiring DELTA
+itself is within ~1.2× across all four.

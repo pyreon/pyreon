@@ -6,5 +6,5 @@
     "noEmit": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src", "shared", "bench-form.ts"]
+  "include": ["src", "shared", "bench-form.ts", "bundle-size.ts"]
 }

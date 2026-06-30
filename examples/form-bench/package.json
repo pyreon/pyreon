@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "bench": "bun bench-form.ts",
+    "bundle-size": "bun bundle-size.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },

@@ -20,10 +20,14 @@ bun bench-form.ts
 bun bench-form.ts --repeat 5            # pool 5×20=100 samples/scenario for tighter CI
 bun bench-form.ts --json out.json       # also dump JSON
 
-# In-browser (click-to-run, both frameworks one page — convenience only):
+# Bundle-size dimension — gzipped weight of a minimal validated form per lib
+# (baseline runtime, full runtime+form, and the DELTA = marginal form cost):
+bun run bundle-size
+
+# In-browser (click-to-run, all frameworks one page — convenience only):
 bun run dev                             # open the page, click "Run"
-#   ?framework=Pyreon | ?framework=React%20Hook%20Form  — one framework
-#   ?auto=1                                              — both, on load
+#   ?framework=Pyreon | ?framework=Formik | ...          — one framework
+#   ?auto=1                                              — all, on load
 ```
 
 ## Layout
