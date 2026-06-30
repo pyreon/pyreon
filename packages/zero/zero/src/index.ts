@@ -51,6 +51,13 @@ export {
 } from "./use-resource-hints";
 export type { LinkProps, LinkRenderProps, UseLinkReturn } from "./link";
 export { createLink, Link, prefetchRoute, useLink } from "./link";
+export type {
+  RegisteredRoutes,
+  RouteHref,
+  RouteParams,
+  RoutePath,
+} from "./route-types";
+export { extractRouteParams, generateRouteTypes } from "./route-types";
 export type { ScriptProps, ScriptRenderProps, ScriptStrategy, UseScriptReturn } from "./script";
 export { createScript, Script, useScript } from "./script";
 export type { MetaProps } from "./meta";
