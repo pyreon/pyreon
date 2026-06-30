@@ -30,6 +30,7 @@ import {
   inferReturnType,
   inferType,
   rewriteObjectKeys,
+  seedHandlerLocals,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -1814,7 +1815,14 @@ function emitSwiftFunction(
     const vis = visibility === 'private' ? 'private ' : ''
     return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
   }
+  // Seed this function's LOCAL `const`/`let` types into the infer ctx so a
+  // later type-dependent emit in the body resolves them — the named-handler
+  // analog of the inline-handler seeding in emitSwiftAction (`const onTap = ()
+  // => { const t = todos.find(…); if (t) { … } }` → `if t != nil`). Restored
+  // after (scoped to this body).
+  const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
   const bodyLines = d.body.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+  _exprInferCtx.locals = savedLocals
   const vis2 = visibility === 'private' ? 'private ' : ''
   return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
 }
@@ -3508,7 +3516,14 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
     // silently dropped the rest (a HIGH "1 code, all platforms" bug).
     if (handler.stmts !== undefined && handler.stmts.length > 0) {
       const pad = ' '.repeat(indent + 2)
+      // Seed the handler-LOCAL `const`/`let` types into the infer ctx so a
+      // later type-dependent emit inside this body resolves them — e.g. `const
+      // t = todos.find(…); if (t) { … }` now sees `t` is optional and lowers
+      // the condition to `if t != nil`. Restored after, so the seeding is
+      // scoped to this body (re-entrant-safe for nested handlers).
+      const savedLocals = seedHandlerLocals(handler.stmts, _exprInferCtx)
       const lines = handler.stmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+      _exprInferCtx.locals = savedLocals
       return `{\n${lines}\n${' '.repeat(indent)}}`
     }
     // Round-1 audit fix: empty arrow body `() => {}` parses (see

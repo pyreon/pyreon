@@ -311,6 +311,31 @@ export function classifyOptionalCondition(
   return null
 }
 
+/**
+ * Seed a handler / action body's local `const`/`let` bindings into `ctx.locals`
+ * so type-dependent emit INSIDE that body resolves them. Component-level decls
+ * (signals / computeds / stores) are already in the ctx; handler-LOCAL vars
+ * (`const t = todos.find(…)` inside `onTap = () => { … }`) were not — so e.g. a
+ * later `if (t)` couldn't see `t`'s optional type and emitted the bare optional
+ * (a non-Bool condition swiftc/kotlinc reject). Walks the statements IN ORDER,
+ * inferring each `let` init against the locals seeded so far (so a chain `const
+ * a = …; const b = a` resolves), onto a COPY of the existing locals map.
+ * Returns the ORIGINAL map so the caller restores it after emitting the body
+ * (`ctx.locals = saved`) — keeping the seeding scoped to this one body and
+ * re-entrant-safe for nested handlers.
+ */
+export function seedHandlerLocals(
+  stmts: StatementIR[],
+  ctx: InferenceCtx,
+): Map<string, TypeIR> {
+  const saved = ctx.locals
+  ctx.locals = new Map(saved)
+  for (const s of stmts) {
+    if (s.kind === 'let') ctx.locals.set(s.name, inferType(s.expr, ctx))
+  }
+  return saved
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
