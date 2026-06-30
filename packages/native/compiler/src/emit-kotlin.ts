@@ -2666,6 +2666,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
 
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+
+  // Mirror of the Swift dispatcher's spread guard. A spread (`<Stack
+  // {...cfg()}>`) lowers to native ONLY on a USER component (expanded
+  // against its declared props at the call — see expandKotlinSpread). On
+  // a canonical primitive / control-flow tag a Compose composable takes
+  // fixed layout args, not a runtime prop-bag, so the spread's props
+  // would be SILENTLY DROPPED. Warn loudly. One guard here covers every
+  // dedicated emitter AND the emitKotlinGeneric fallthrough.
+  if (!_componentNames.has(tag) && e.attrs.some((a) => a.kind === 'spread')) {
+    _emitWarnings.push(
+      `<${tag} {...}> spread is not lowered to native — its props are DROPPED (a runtime prop-bag can't apply to a static Compose composable). Pass props explicitly, e.g. <${tag} gap="md" padding={4}>.`,
+    )
+  }
+
   if (tag === 'For') return emitKotlinFor(e, indent)
   if (tag === 'Show') return emitKotlinShow(e, indent)
   if (tag === 'Transition') return emitKotlinTransition(e, indent)
@@ -4596,11 +4610,9 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       )
     } else if (a.kind === 'spread' && isUserComponent) {
       argParts.push(...expandKotlinSpread(a.argument, e.tag, explicitNames, indent))
-    } else if (a.kind === 'spread') {
-      _emitWarnings.push(
-        `<${e.tag} {...}> spread is not supported on a native primitive — pass layout props explicitly.`,
-      )
     }
+    // A spread on a non-user-component tag is warned once at the top of
+    // emitKotlinJsx — no warning needed here.
   }
   const attrPairs = argParts.join(', ')
   // `kotlinIdent`-escape the tag too — covers user-defined components
