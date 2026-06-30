@@ -98,12 +98,16 @@ export interface ExampleProps {
  * The Example component. Renders a wrapper that mounts the resolved
  * example component once it's loaded.
  *
- * Loading is async (dynamic import); during the load window the
- * wrapper shows a thin loading placeholder. This is the same pattern
- * Vite uses for any code-split chunk — the consumer sees an empty
- * shape, then the real component appears once the chunk arrives.
- * Examples are usually small enough that the placeholder flash is
- * imperceptible in practice.
+ * Loading is async (dynamic import) AND lazy: the example's chunk is
+ * imported + mounted only when its wrapper nears the viewport
+ * (IntersectionObserver, 400px rootMargin), so a page with many
+ * `<Example>`s (the docs gallery has 40+) doesn't fire every chunk load
+ * + mount on hydration — which otherwise streams content in
+ * progressively and pushes LCP out. Above-the-fold examples (already
+ * intersecting) load immediately; the rest load just before they scroll
+ * into view, so there's no perceptible delay. During the load window the
+ * wrapper shows a thin (a11y-hidden) loading placeholder. Eager fallback
+ * when IntersectionObserver is unavailable.
  */
 export function Example(props: ExampleProps): VNodeChild {
   // Loaded component — null until the dynamic import resolves.
@@ -119,7 +123,14 @@ export function Example(props: ExampleProps): VNodeChild {
     sharedSig = getOrCreateSharedSignal(props.share, props.shareInitial ?? 0)
   }
 
-  onMount(() => {
+  // The wrapper element, captured via ref so onMount can observe it for
+  // viewport proximity (lazy-mount).
+  let rootEl: Element | null = null
+
+  // Resolve + dynamically import the example chunk, then mount it. Called
+  // once, either immediately (eager fallback) or when the wrapper nears
+  // the viewport (lazy path).
+  const beginLoad = (): void => {
     const loader = resolveExample(props.file)
     if (loader === null) {
       error.set(
@@ -139,11 +150,45 @@ export function Example(props: ExampleProps): VNodeChild {
       }
       Loaded.set(Comp)
     })
+  }
+
+  onMount(() => {
+    // Lazy-mount: defer each example's dynamic import until its wrapper is
+    // near the viewport. A docs page with many <Example>s (the gallery has
+    // 40+) otherwise fires every chunk load + component mount on hydration,
+    // streaming content in progressively and pushing LCP out. With a
+    // generous rootMargin the example is loaded just before it scrolls into
+    // view, so there's no perceptible loading delay, while above-the-fold
+    // examples (already intersecting at observe time) load immediately.
+    //
+    // Eager fallback when IntersectionObserver is unavailable (older
+    // runtimes / SSR-ish environments) or the wrapper wasn't captured —
+    // never leave an example unmounted.
+    if (typeof IntersectionObserver === 'undefined' || rootEl === null) {
+      beginLoad()
+      return undefined
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          io.disconnect()
+          beginLoad()
+        }
+      },
+      { rootMargin: '400px 0px' },
+    )
+    io.observe(rootEl)
+    return () => io.disconnect()
   })
 
   return h(
     'div',
-    { class: props.class ?? 'pyreon-example' },
+    {
+      class: props.class ?? 'pyreon-example',
+      ref: (el: Element | null) => {
+        rootEl = el
+      },
+    },
     props.title !== undefined
       ? h(
           'div',
@@ -165,12 +210,18 @@ export function Example(props: ExampleProps): VNodeChild {
         }
         const Comp = Loaded()
         if (Comp === null) {
+          // Decorative shimmer skeleton — hidden from the a11y tree.
+          // `aria-hidden` (a global state, valid on any element) keeps it
+          // out of the tree entirely; the real example replaces it once
+          // loaded. A bare `aria-label` on this roleless <div> would be a
+          // prohibited-ARIA violation, and with lazy-mount many skeletons
+          // coexist below the fold — `role=status` would spam screen
+          // readers with N "Loading example" announcements.
           return h(
             'div',
             {
               class: 'pyreon-example__loading',
-              'aria-busy': 'true',
-              'aria-label': 'Loading example',
+              'aria-hidden': 'true',
             },
           )
         }

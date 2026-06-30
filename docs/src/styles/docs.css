@@ -2467,13 +2467,25 @@ a.px-footer-item:hover {
   display: grid;
   grid-template-rows: 1fr;
   opacity: 1;
+  visibility: visible;
   transition:
     grid-template-rows 240ms cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 200ms ease-out;
+    opacity 200ms ease-out,
+    visibility 0s;
 }
 .pyreon-sidebar__collapse[data-collapsed='true'] {
   grid-template-rows: 0fr;
   opacity: 0;
+  /* `visibility: hidden` (delayed until the collapse finishes so it
+     doesn't snap) takes the still-mounted links OUT of the tab order +
+     a11y tree — `grid-rows: 0fr` + `overflow: hidden` only clip them
+     visually, leaving them focusable, which is the `aria-hidden-focus`
+     axe violation when the group is also aria-hidden. */
+  visibility: hidden;
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms ease-out,
+    visibility 0s linear 240ms;
 }
 .pyreon-sidebar__collapse > .pyreon-sidebar__list {
   min-height: 0;
