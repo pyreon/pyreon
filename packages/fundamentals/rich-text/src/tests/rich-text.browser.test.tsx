@@ -216,4 +216,72 @@ describe('rich-text editor in real browser', () => {
     editor.dispose()
     unmount()
   })
+
+  // ── Async-mount lifecycle robustness ─────────────────────────────────────
+
+  it('re-mounting the SAME instance after an edit preserves the edited content', async () => {
+    // The component is user-owned + re-mountable (it does not auto-dispose).
+    // A re-mount must seed from the CURRENT document, not the config-time
+    // content — otherwise edits silently revert on dispose → re-mount.
+    const editor = createRichTextEditor({ content: '<p>initial</p>' })
+    const m1 = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    editor.chain()?.selectAll().insertContent('EDITED').run()
+    await flush()
+    expect(m1.container.textContent).toContain('EDITED')
+    const editedJson = JSON.stringify(editor.json())
+
+    editor.dispose()
+    m1.unmount()
+
+    const m2 = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+    expect(m2.container.textContent).toContain('EDITED')
+    expect(m2.container.textContent).not.toContain('initial')
+    expect(JSON.stringify(editor.json())).toBe(editedJson)
+    editor.dispose()
+    m2.unmount()
+  })
+
+  it('disposing during a pending async mount does NOT leak a live editor', async () => {
+    // `_mount` lazy-imports @tiptap/* — a dispose() (e.g. a fast navigate-away
+    // while the chunk loads) must abort the in-flight mount, not create a
+    // ProseMirror view + contenteditable nothing will ever tear down.
+    const editor = createRichTextEditor({ content: '<p>x</p>' })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    const pending = editor._mount(host)
+    editor.dispose() // view is still null here → must invalidate the mount
+    await pending
+    await new Promise((r) => setTimeout(r, 30))
+
+    expect(editor.view()).toBeNull()
+    expect(host.querySelector('[contenteditable]')).toBeNull()
+    host.remove()
+  })
+
+  it('a mount failure routes to onError instead of an unhandled rejection', async () => {
+    // starterKit:false with no schema-providing extension makes TipTap throw
+    // ("Schema is missing its top node type"). The failure must surface via
+    // onError, not leak as an unhandled promise rejection.
+    const errors: Error[] = []
+    const editor = createRichTextEditor({
+      starterKit: false,
+      onError: (e) => errors.push(e),
+    })
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+
+    await editor._mount(host)
+    await new Promise((r) => setTimeout(r, 20))
+
+    expect(errors.length).toBeGreaterThan(0)
+    expect(editor.view()).toBeNull() // editor never came up
+    expect(host.querySelector('[contenteditable]')).toBeNull()
+    host.remove()
+  })
 })

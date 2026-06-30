@@ -28,6 +28,15 @@ export interface RichTextConfig {
   autofocus?: boolean
   /** Called with the document JSON on every change. */
   onChange?: (json: JSONContent) => void
+  /**
+   * Called if mounting the TipTap engine fails — a broken extension set
+   * (e.g. `starterKit: false` with no schema-providing extension), a
+   * throwing custom extension, or a failed dynamic import of `@tiptap/*`.
+   * Without this, a mount failure surfaces only as an unhandled promise
+   * rejection (the editor silently never mounts). When provided it takes the
+   * error; otherwise a `[Pyreon]`-prefixed message is logged in development.
+   */
+  onError?: (error: Error) => void
 }
 
 /**

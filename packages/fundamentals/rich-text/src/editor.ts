@@ -34,6 +34,7 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
     extensions: userExtensions = [],
     autofocus = false,
     onChange,
+    onError,
   } = config
 
   // ── Reactive state ───────────────────────────────────────────────────
@@ -63,6 +64,18 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   // The content the editor is created with at mount (covers a string OR a
   // pre-mount `json.set`).
   let pendingContent: string | JSONContent = content
+  // Mount-attempt generation. `_mount` lazy-imports `@tiptap/*` (async), so a
+  // `dispose()` or a newer `_mount` can land WHILE an import is in flight.
+  // `dispose()` bumps this; `_mount` captures it before its awaits and bails
+  // (without creating a leaked editor) if it changed — closes the
+  // dispose-during-pending-mount leak (orphaned ProseMirror view + DOM).
+  let mountToken = 0
+  // True once a mount has successfully created the editor. After that, the
+  // live document lives in `baseJson` (kept current by `onUpdate` / `json.set`),
+  // so a re-mount (dispose → mount the SAME instance, the documented
+  // user-owned lifecycle) seeds from the CURRENT doc — not the stale
+  // config-time `pendingContent`, which would silently revert edits.
+  let hasMountedOnce = false
 
   // `json` is a writable facade: reads/peek/subscribe delegate to baseJson;
   // `.set` pushes into the live editor (when mounted) then commits to base.
@@ -126,6 +139,9 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
     view.peek()?.chain().redo().run()
   }
   const dispose = (): void => {
+    // Invalidate any in-flight `_mount` so a mount whose dynamic import is
+    // still loading won't create a live editor AFTER we've torn down.
+    mountToken++
     const e = view.peek()
     if (e) {
       e.destroy()
@@ -136,46 +152,77 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   const _mount = async (parent: HTMLElement): Promise<void> => {
     if (view.peek()) return // already mounted
 
-    const { Editor } = await import('@tiptap/core')
-    const exts: AnyExtension[] = []
-    if (starterKit) {
-      const { StarterKit } = await import('@tiptap/starter-kit')
-      exts.push(StarterKit)
-    }
-    exts.push(...userExtensions)
+    // Claim this mount attempt. If `dispose()` (or a newer `_mount`) bumps the
+    // token while the dynamic imports below are in flight, we bail before
+    // creating the editor — no leaked ProseMirror view + contenteditable DOM.
+    const token = ++mountToken
 
-    const editor = new Editor({
-      element: parent,
-      extensions: exts,
-      content: pendingContent,
-      // honor a pre-mount `editable.set(false)` (config default otherwise).
-      editable: baseEditable.peek(),
-      autofocus,
-      // a11y: the contenteditable content area is a labeled multiline textbox.
-      editorProps: {
-        attributes: {
-          role: 'textbox',
-          'aria-multiline': 'true',
-          'aria-label': ariaLabel,
+    try {
+      const { Editor } = await import('@tiptap/core')
+      const exts: AnyExtension[] = []
+      if (starterKit) {
+        const { StarterKit } = await import('@tiptap/starter-kit')
+        exts.push(StarterKit)
+      }
+      exts.push(...userExtensions)
+
+      // Superseded while loading (disposed / re-mounted) — abort cleanly.
+      if (token !== mountToken) return
+
+      const editor = new Editor({
+        element: parent,
+        extensions: exts,
+        // First mount: the config content (a string lives only in
+        // `pendingContent`). Re-mount: the live document from `baseJson`.
+        content: hasMountedOnce ? baseJson.peek() : pendingContent,
+        // honor a pre-mount `editable.set(false)` (config default otherwise).
+        editable: baseEditable.peek(),
+        autofocus,
+        // a11y: the contenteditable content area is a labeled multiline textbox.
+        editorProps: {
+          attributes: {
+            role: 'textbox',
+            'aria-multiline': 'true',
+            'aria-label': ariaLabel,
+          },
         },
-      },
-      onUpdate: ({ editor: e }) => {
-        docVersion.update((v) => v + 1)
-        if (!applyingExternal) {
-          const next = e.getJSON()
-          baseJson.set(next)
-          onChange?.(next)
-        }
-      },
-      onSelectionUpdate: () => docVersion.update((v) => v + 1),
-      onFocus: () => focused.set(true),
-      onBlur: () => focused.set(false),
-    })
+        onUpdate: ({ editor: e }) => {
+          docVersion.update((v) => v + 1)
+          if (!applyingExternal) {
+            const next = e.getJSON()
+            baseJson.set(next)
+            onChange?.(next)
+          }
+        },
+        onSelectionUpdate: () => docVersion.update((v) => v + 1),
+        onFocus: () => focused.set(true),
+        onBlur: () => focused.set(false),
+      })
 
-    view.set(editor)
-    // Normalize the signal to the editor's parsed doc (covers string content).
-    baseJson.set(editor.getJSON())
-    docVersion.update((v) => v + 1)
+      // Disposed during the synchronous `new Editor` (defensive) — destroy the
+      // just-created view rather than leaking it.
+      if (token !== mountToken) {
+        editor.destroy()
+        return
+      }
+
+      view.set(editor)
+      hasMountedOnce = true
+      // Normalize the signal to the editor's parsed doc (covers string content).
+      baseJson.set(editor.getJSON())
+      docVersion.update((v) => v + 1)
+    } catch (err) {
+      // Mount failed (broken extension set, throwing extension, failed import).
+      // Surface it instead of leaving an unhandled promise rejection: route to
+      // the user `onError`, else log a `[Pyreon]`-prefixed message in dev.
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (onError) {
+        onError(error)
+      } else if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] @pyreon/rich-text failed to mount the editor:', error)
+      }
+    }
   }
 
   return {

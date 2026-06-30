@@ -74,7 +74,7 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 (config?: RichTextConfig) => RichTextEditor
 ```
 
-Create a reactive WYSIWYG editor instance. `editor.json` is a writable Signal&lt;JSONContent&gt; — `editor.json()` reads reactively, `editor.json.set(next)` replaces the editor content (loop-safe). `html`/`text`/`isEmpty`/`characterCount`/`wordCount`/`canUndo`/`canRedo` are computed signals; `editable` is a writable Signal&lt;boolean&gt; (runtime read-only toggle); `editor.isActive('bold')` is the reactive toolbar primitive. Commands run through `editor.chain()` (toggleBold/toggleHeading/toggleBulletList/…) plus `undo`/`redo`/`focus`/`blur` helpers. The TipTap `Editor` (over ProseMirror) is created lazily when mounted via `<RichText>`, so `@tiptap/*` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, and onChange. The instance is framework-independent — mount it via `<RichText instance={editor} />`.
+Create a reactive WYSIWYG editor instance. `editor.json` is a writable Signal&lt;JSONContent&gt; — `editor.json()` reads reactively, `editor.json.set(next)` replaces the editor content (loop-safe). `html`/`text`/`isEmpty`/`characterCount`/`wordCount`/`canUndo`/`canRedo` are computed signals; `editable` is a writable Signal&lt;boolean&gt; (runtime read-only toggle); `editor.isActive('bold')` is the reactive toolbar primitive. Commands run through `editor.chain()` (toggleBold/toggleHeading/toggleBulletList/…) plus `undo`/`redo`/`focus`/`blur` helpers. The TipTap `Editor` (over ProseMirror) is created lazily when mounted via `<RichText>`, so `@tiptap/*` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, onChange, and onError (mount failures route here instead of an unhandled rejection). The instance is framework-independent — mount it via `<RichText instance={editor} />`.
 
 **Example**
 
@@ -99,7 +99,8 @@ editor.chain()?.toggleBold().run()  // run a command
 - Calling editor.json(newDoc) to write — that reads and ignores the argument. Use editor.json.set(newDoc)
 - Reading editor.html() / editor.chain() before mount — the TipTap Editor is created on mount (async, lazy import). html falls back to the initial string; chain() returns null. Use editor.json.set(...) to set content independently of the view
 - Hand-rolling the applyingExternal flag pair for external sync — use bindRichTextToSignal instead
-- Forgetting editor.dispose() on unmount — like @pyreon/code, the instance is user-owned (the component does not auto-dispose so it can be re-mounted)
+- Forgetting editor.dispose() on unmount — like @pyreon/code, the instance is user-owned (the component does not auto-dispose so it can be re-mounted). A re-mount restores the CURRENT document (edits are preserved), and a dispose() during the pending async mount is safe (no leaked editor)
+- Relying on a thrown error to debug a broken extension set (e.g. starterKit&#58;false with no schema-providing extension) — mount failures no longer surface as an unhandled rejection; pass onError to observe them, otherwise they log a [Pyreon] message in dev
 
 **See also:** `RichText` · `bindRichTextToSignal`
 
