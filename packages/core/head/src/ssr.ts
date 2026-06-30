@@ -43,16 +43,41 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
 
   const html = await renderToString(h(HeadInjector as ComponentFn, null))
   const titleTemplate = ctx.resolveTitleTemplate()
-  const head = ctx
-    .resolve()
-    .map((tag) => serializeTag(tag, titleTemplate))
-    .join('\n  ')
+  const head = serializeHead(ctx.resolve(), titleTemplate)
   return {
     html,
     head,
     htmlAttrs: ctx.resolveHtmlAttrs(),
     bodyAttrs: ctx.resolveBodyAttrs(),
   }
+}
+
+/**
+ * Serialize an array of resolved head tags into an HTML `<head>` fragment
+ * string (the string-producing half of {@link renderWithHead}).
+ *
+ * Exposed for pipelines that resolve the head separately from the app render
+ * (streaming SSR, custom templating, framework adapters) and for
+ * apples-to-apples comparison against other head managers' `render()`.
+ *
+ * Uses a direct concat loop rather than `tags.map(…).join('\n  ')` — it avoids
+ * the intermediate array + per-tag closure allocation, and modern engines
+ * build the result as a rope (no O(n²) copying).
+ *
+ * @example
+ * const head = serializeHead(ctx.resolve(), ctx.resolveTitleTemplate())
+ * // → '<title>…</title>\n  <meta name="…" content="…" />'
+ */
+export function serializeHead(
+  tags: HeadTag[],
+  titleTemplate?: string | ((title: string) => string),
+): string {
+  let out = ''
+  for (let i = 0; i < tags.length; i++) {
+    if (i > 0) out += '\n  '
+    out += serializeTag(tags[i] as HeadTag, titleTemplate)
+  }
+  return out
 }
 
 function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) => string)): string {
@@ -65,13 +90,16 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
       : raw
     return `<title>${esc(title)}</title>`
   }
+  // Direct concat loop over own props — avoids the `Object.entries(props)`
+  // pairs-array + per-tag `.map()` closure + intermediate strings-array + join
+  // that dominated per-tag serialization cost (the hot path is N <meta> tags).
   const props = tag.props as Record<string, string> | undefined
-  const attrs = props
-    ? Object.entries(props)
-        .map(([k, v]) => `${k}="${esc(v)}"`)
-        .join(' ')
-    : ''
-  const open = attrs ? `<${tag.tag} ${attrs}` : `<${tag.tag}`
+  let open = `<${tag.tag}`
+  if (props) {
+    for (const k in props) {
+      open += ` ${k}="${esc(props[k] as string)}"`
+    }
+  }
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
   const content = tag.children || ''
   // Escape sequences that could break out of script/style/noscript blocks:
@@ -81,9 +109,39 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
   return `${open}>${body}</${tag.tag}>`
 }
 
-const ESC_RE = /[&<>"]/g
-const ESC_MAP: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }
-
+/**
+ * HTML-escape `&`, `<`, `>`, `"` in a single charCode pass — faster than the
+ * prior `RE.test(s) ? s.replace(RE, …)` (two regex passes on any string that
+ * contains a special char) and than an unconditional `s.replace(RE, …)`.
+ *
+ * Clean strings (the common case) loop once and return the original with zero
+ * allocation; strings needing escapes are rebuilt via slices in the same pass.
+ */
 function esc(s: string): string {
-  return ESC_RE.test(s) ? s.replace(ESC_RE, (ch) => ESC_MAP[ch] as string) : s
+  let result = ''
+  let start = 0
+  for (let i = 0; i < s.length; i++) {
+    let rep: string
+    switch (s.charCodeAt(i)) {
+      case 38: // &
+        rep = '&amp;'
+        break
+      case 60: // <
+        rep = '&lt;'
+        break
+      case 62: // >
+        rep = '&gt;'
+        break
+      case 34: // "
+        rep = '&quot;'
+        break
+      default:
+        continue
+    }
+    if (i > start) result += s.slice(start, i)
+    result += rep
+    start = i + 1
+  }
+  if (start === 0) return s // no special chars → original, no allocation
+  return start < s.length ? result + s.slice(start) : result
 }

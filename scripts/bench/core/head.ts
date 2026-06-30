@@ -18,7 +18,7 @@ import type { VNode } from '../../../packages/core/core/src/index'
 import { h } from '../../../packages/core/core/src/index'
 import type { HeadEntry, HeadTag } from '../../../packages/core/head/src/context'
 import { createHeadContext } from '../../../packages/core/head/src/context'
-import { renderWithHead } from '../../../packages/core/head/src/ssr'
+import { renderWithHead, serializeHead } from '../../../packages/core/head/src/ssr'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -153,8 +153,11 @@ async function benchPyreonHeadOnly(tagCount: number): Promise<BenchResult> {
   return benchAsync(`Pyreon head serialize (${tagCount})`, async () => {
     const ctx = createHeadContext()
     ctx.add(Symbol(), makePyreonEntry(tagCount))
-    ctx.resolve()
-    ctx.resolveTitleTemplate()
+    // Produce the final <head> HTML STRING — apples-to-apples with unhead's
+    // head.render() (which returns headTags as a string). Resolve-only would
+    // under-count Pyreon's work (it skips the per-tag serialization + escaping
+    // unhead performs), so the comparison would not be defensible.
+    serializeHead(ctx.resolve(), ctx.resolveTitleTemplate())
   })
 }
 
