@@ -76,7 +76,31 @@ const Readout: ComponentFn<SharedProps> = (props) => {
 // "no default export" error path.
 const NoDefaultExample = { named: () => null }
 
+// <Example> lazy-mounts: it imports + mounts the example only when its
+// wrapper intersects the viewport. Install an immediately-firing
+// IntersectionObserver so the load triggers in the test (real viewport
+// proximity is the one thing happy-dom's stub IO never reports; the
+// genuine scroll-in path is exercised by the real Chromium harness).
+let savedIO: typeof globalThis.IntersectionObserver | undefined
+class ImmediateIntersectionObserver {
+  constructor(private readonly cb: IntersectionObserverCallback) {}
+  observe(el: Element): void {
+    this.cb(
+      [{ isIntersecting: true, target: el } as IntersectionObserverEntry],
+      this as unknown as IntersectionObserver,
+    )
+  }
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return []
+  }
+}
+
 beforeEach(() => {
+  savedIO = globalThis.IntersectionObserver
+  globalThis.IntersectionObserver =
+    ImmediateIntersectionObserver as unknown as typeof globalThis.IntersectionObserver
   _resetExampleRegistry()
   clearAllSharedSignals()
   registerExamples({
@@ -88,6 +112,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  if (savedIO !== undefined) globalThis.IntersectionObserver = savedIO
   _resetExampleRegistry()
   clearAllSharedSignals()
 })
