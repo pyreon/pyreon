@@ -65,38 +65,38 @@ export function TodoApp() {
 
 describe('one code, runs everywhere — realistic canonical TodoMVC app', () => {
   it('FIELD-SWIFT: controlled <Field onChangeText> → SwiftUI TextField (not generic Field)', () => {
-    const out = transform(APP, { target: 'swift', componentName: 'TodoApp' }).code
+    const out = transform(APP, { target: 'swift' }).code
     expect(out).toContain('TextField(')
     expect(out).not.toMatch(/\bField\(value:/) // not the broken generic
   })
 
   it('OBJ-KOTLIN: "add an item" object literal → a named data-class ctor (not an invalid tuple)', () => {
-    const out = transform(APP, { target: 'kotlin', componentName: 'TodoApp' }).code
+    const out = transform(APP, { target: 'kotlin' }).code
     // the new `{ id: 3, text, done: false }` reuses the synthesized struct
     expect(out).toMatch(/__Obj\d+\(id = 3, text = text, done = false\)/)
     expect(out).not.toMatch(/listOf\(\(id = 3/) // not the invalid bare named-args "tuple"
   })
 
   it('FIELD-KOTLIN: controlled <Field value={draft()} onChangeText> → Compose TextField', () => {
-    const out = transform(APP, { target: 'kotlin', componentName: 'TodoApp' }).code
+    const out = transform(APP, { target: 'kotlin' }).code
     expect(out).toContain('TextField(value = draft, onValueChange =')
     expect(out).not.toMatch(/\bField\(value = /) // not the broken generic
   })
 
   it.skipIf(!isSwiftcAvailable())('iOS: the app parses on real swiftc', () => {
-    const r = validateSwift(transform(APP, { target: 'swift', componentName: 'TodoApp' }).code)
+    const r = validateSwift(transform(APP, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 
   // The "one code, runs everywhere" gate. Bisect-load-bearing: revert any of
   // the three fixes and one of these two fails.
   it.skipIf(!isSwiftUIAvailable())('iOS: the app TYPECHECKS against real SwiftUI', () => {
-    const r = validateSwiftTypecheck(transform(APP, { target: 'swift', componentName: 'TodoApp' }).code)
+    const r = validateSwiftTypecheck(transform(APP, { target: 'swift' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 
   it.skipIf(!isKotlincAvailable())('Android: the app compiles via kotlinc', () => {
-    const r = validateKotlin(transform(APP, { target: 'kotlin', componentName: 'TodoApp' }).code)
+    const r = validateKotlin(transform(APP, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
