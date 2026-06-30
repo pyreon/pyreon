@@ -1829,6 +1829,14 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'return':
       return s.expr ? `return ${emitSwiftExpr(s.expr, indent)}` : 'return'
     case 'expr':
+      // A bare `i++` / `i--` STATEMENT is side-effect-only → `i += 1` /
+      // `i -= 1`. The general `update` expr emit is a value-position IIFE
+      // (returns the OLD value), correct in value position but mis-compiles
+      // as a statement (`{ let v = i; i += 1; return v }()` → "cannot call
+      // value of non-function type"). Swift removed `++`/`--` in Swift 3.
+      if (s.expr.kind === 'update') {
+        return `${emitSwiftExpr(s.expr.argument, indent)} ${s.expr.op === '++' ? '+=' : '-='} 1`
+      }
       return emitSwiftExpr(s.expr, indent)
     case 'if': {
       const pad = ' '.repeat(indent)
@@ -2150,23 +2158,30 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         const args = e.args.map((a) => emitSwiftExpr(a, indent))
         switch (e.callee.property) {
-          // `.rounded()` is a Double method; the others are free
-          // functions (abs/min/max are stdlib; floor/ceil/sqrt/pow are
-          // Foundation).
+          // DOUBLE-DOMAIN functions (`.rounded()` is a Double method;
+          // floor/ceil/sqrt/pow are Foundation free functions over Double):
+          // their args MUST be coerced to Double. Swift has no implicit
+          // Int→Double, so `Math.sqrt(n())` on an Int signal emitted the
+          // bare `sqrt(n)` → "cannot convert 'Int' to 'Double'". `Double(x)`
+          // is identity on a Double, so coercion is safe for any arg type
+          // (matches the `SWIFT_MATH_DOUBLE` set below). `abs`/`min`/`max` are
+          // GENERIC over SignedNumeric/Comparable — they accept Int directly,
+          // and coercing them would wrongly force a Double result (e.g.
+          // `Math.abs(intCount)` must stay Int) — so they are NOT coerced.
           case 'round':
-            if (args.length === 1) return `(${args[0]!}).rounded()`
+            if (args.length === 1) return `(Double(${args[0]!})).rounded()`
             break
           case 'floor':
-            if (args.length === 1) return `floor(${args[0]!})`
+            if (args.length === 1) return `floor(Double(${args[0]!}))`
             break
           case 'ceil':
-            if (args.length === 1) return `ceil(${args[0]!})`
+            if (args.length === 1) return `ceil(Double(${args[0]!}))`
             break
           case 'abs':
             if (args.length === 1) return `abs(${args[0]!})`
             break
           case 'sqrt':
-            if (args.length === 1) return `sqrt(${args[0]!})`
+            if (args.length === 1) return `sqrt(Double(${args[0]!}))`
             break
           case 'min':
             if (args.length === 2) return `min(${args[0]!}, ${args[1]!})`
@@ -2175,7 +2190,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (args.length === 2) return `max(${args[0]!}, ${args[1]!})`
             break
           case 'pow':
-            if (args.length === 2) return `pow(${args[0]!}, ${args[1]!})`
+            if (args.length === 2) return `pow(Double(${args[0]!}), Double(${args[1]!}))`
             break
         }
         // Additional Double-domain Foundation free functions NOT in the
@@ -2822,7 +2837,26 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Optional chaining: `?.` when this link is optional OR its object
       // chain already carried one (`a?.b.c` → `a?.b?.c`). Swift accepts the
       // propagated `?.`; Kotlin requires it (see emit-kotlin).
-      const dot = e.optional === true || chainHasOptional(e.object) ? '?.' : '.'
+      //
+      // BUT a redundant `?.` on a PROVABLY non-optional receiver (`o?.a`
+      // where `o` is a concrete struct/number/etc., not a `T | null` union)
+      // is a Swift ERROR ("cannot use optional chaining on non-optional
+      // value") — TS allows the redundant `?.`, Swift does not. Strip it to
+      // `.` when the receiver type is provably non-nullable. Conservative:
+      // keep `?.` for union-with-null receivers, `Any`/unknown (can't prove),
+      // and propagated-optional chains — so a genuinely-nullable receiver is
+      // never wrongly de-optionalized (no null-deref risk).
+      const recvType = inferType(e.object, _exprInferCtx)
+      const recvProvablyNonNull =
+        recvType.kind !== 'unknown' &&
+        recvType.kind !== 'null' &&
+        recvType.kind !== 'undefined' &&
+        !(
+          recvType.kind === 'union' &&
+          recvType.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
+        )
+      const dot =
+        (e.optional === true && !recvProvablyNonNull) || chainHasOptional(e.object) ? '?.' : '.'
       if (e.property === 'length') {
         return `${emitSwiftExpr(e.object, indent)}${dot}count`
       }

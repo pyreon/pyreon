@@ -1768,6 +1768,21 @@ function tryNamespacedSchemaDefnFromTopLevel(
  *  Matches the inference contract `tryDeclFromVarDeclarator` uses
  *  for component-scope signals. */
 function inferTypeFromInitial(initial: ExprIR): TypeIR {
+  // Unary on a literal — `signal(-5)` / `signal(-9.5)` / `signal(+3)` parse as
+  // a `unary` node WRAPPING the literal, which otherwise fell through to
+  // `Any` (`@State private var n: Any = -5`), breaking arithmetic AND making
+  // generic Swift Math overloads (`abs`) resolve to the C `Int32` form. `-`/
+  // `+` preserve the underlying number type (int vs float from the literal);
+  // `!` on a boolean literal is boolean. The emit already renders the unary
+  // value verbatim (`-5`), so only the TYPE inference was missing.
+  if (initial.kind === 'unary') {
+    if (initial.op === '-' || initial.op === '+') {
+      const inner = inferTypeFromInitial(initial.argument)
+      if (inner.kind === 'number') return inner
+    } else if (initial.op === '!') {
+      return { kind: 'boolean' }
+    }
+  }
   if (initial.kind === 'literal') {
     if (typeof initial.value === 'number') {
       // A non-integer literal (`12.5`) is fractional → Double; an
@@ -3952,6 +3967,40 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         continue
       }
     }
+    // Body-local ARRAY destructure — `const [a, b] = <expr>` (the parallel of
+    // the object-destructure expansion above). `parseStatement` drops it (the
+    // ArrayPattern id has no `.name`). Expand into a synthetic container `let
+    // __pyDestrN = <expr>` + one indexed `let <local> = __pyDestrN[i]` per
+    // element. Only the all-simple shape lowers — a hole (`[, b]` → null
+    // element), rest (`[...r]`), default (`[a = 1]`), or nested pattern bails
+    // the whole expansion (allSimple guard) → falls through to the single-
+    // statement warn-drop, never a half-binding.
+    if (
+      stmt.type === 'VariableDeclaration' &&
+      ((stmt.declarations as AnyNode[])?.length ?? 0) === 1 &&
+      (stmt.declarations as AnyNode[])[0]?.id?.type === 'ArrayPattern' &&
+      (stmt.declarations as AnyNode[])[0]?.init
+    ) {
+      const d = (stmt.declarations as AnyNode[])[0]!
+      const els = (d.id.elements as (AnyNode | null)[] | undefined) ?? []
+      const allSimple = els.length > 0 && els.every((el) => el?.type === 'Identifier')
+      if (allSimple) {
+        const synthName = `__pyDestr${ctx.hookDestructureCounter++}`
+        out.push({ kind: 'let', name: synthName, expr: parseExpr(d.init as AnyNode, ctx) })
+        els.forEach((el, i) => {
+          out.push({
+            kind: 'let',
+            name: (el as AnyNode).name as string,
+            expr: {
+              kind: 'index',
+              object: { kind: 'identifier', name: synthName },
+              index: { kind: 'literal', value: i },
+            },
+          })
+        })
+        continue
+      }
+    }
     const parsed = parseStatement(stmt, ctx)
     if (parsed) out.push(parsed)
   }
@@ -3973,7 +4022,16 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
   const collect = (list: StatementIR[]): void => {
     for (const s of list) {
       if (s.kind === 'assign' && s.target.kind === 'identifier') reassigned.add(s.target.name)
-      else if (s.kind === 'if') {
+      // A bare `i++` / `i--` STATEMENT mutates `i` — it must promote the
+      // local to `var`, exactly like an `assign`. Without this the loop
+      // counter stayed `let` and Swift/Kotlin rejected the in-loop mutation.
+      else if (
+        s.kind === 'expr' &&
+        s.expr.kind === 'update' &&
+        s.expr.argument.kind === 'identifier'
+      ) {
+        reassigned.add(s.expr.argument.name)
+      } else if (s.kind === 'if') {
         collect(s.then)
         if (s.elseBody) collect(s.elseBody)
       } else if (s.kind === 'while' || s.kind === 'for-of') collect(s.body)
