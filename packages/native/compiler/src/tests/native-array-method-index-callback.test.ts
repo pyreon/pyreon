@@ -81,15 +81,23 @@ describe('P1 — array-method 2-param (index) callback lowers (was a silent mis-
   })
 
   // Real proof: a component using `.map((x,i))` + `.forEach((x,i))` compiles.
+  // 180s timeout — each spec runs TWO real toolchain compiles (mapIdx +
+  // forEachIdx), so two JVM/swiftc cold-starts; the default 60s flakes under
+  // CI load (the kotlinc JVM cold-start alone is ~17-30s per compile here).
   it.skipIf(!isSwiftUIAvailable())(
     'iOS: index-callback `.map`/`.forEach` TYPECHECK against real SwiftUI',
     () => {
       expect(validateSwiftTypecheck(sw(mapIdx)).ok, validateSwiftTypecheck(sw(mapIdx)).error ?? '').toBe(true)
       expect(validateSwiftTypecheck(sw(forEachIdx)).ok, validateSwiftTypecheck(sw(forEachIdx)).error ?? '').toBe(true)
     },
+    180_000,
   )
-  it.skipIf(!isKotlincAvailable())('Android: the same compile via kotlinc', () => {
-    expect(validateKotlin(kt(mapIdx)).ok, validateKotlin(kt(mapIdx)).error ?? '').toBe(true)
-    expect(validateKotlin(kt(forEachIdx)).ok, validateKotlin(kt(forEachIdx)).error ?? '').toBe(true)
-  })
+  it.skipIf(!isKotlincAvailable())(
+    'Android: the same compile via kotlinc',
+    () => {
+      expect(validateKotlin(kt(mapIdx)).ok, validateKotlin(kt(mapIdx)).error ?? '').toBe(true)
+      expect(validateKotlin(kt(forEachIdx)).ok, validateKotlin(kt(forEachIdx)).error ?? '').toBe(true)
+    },
+    180_000,
+  )
 })
