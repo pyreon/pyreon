@@ -3,7 +3,7 @@ title: '@pyreon/react-compat'
 description: React-compatible hook API that runs on Pyreon's fine-grained reactive engine.
 ---
 
-`@pyreon/react-compat` lets you write familiar React-style code -- hooks, `createRoot`, `lazy`, `memo`, portals -- while running on Pyreon's signal-based reactive engine under the hood. It is designed as a migration path: swap your imports, keep your component code, and gain Pyreon's fine-grained reactivity, automatic dependency tracking, and single-execution component model.
+`@pyreon/react-compat` lets you write familiar React-style code -- hooks, `createRoot`, `lazy`, `memo`, portals -- while running on Pyreon's signal-based reactive engine under the hood. It is designed as a migration path: swap your imports and keep your component code. It runs the **value + re-render model** -- `useState` returns the value directly (not a getter), the component body re-runs on state change, hooks are positional, and `useEffect` / `useMemo` / `useCallback` honor their deps arrays -- so most React code behaves identically, including hooks-rules ordering and stale-closure semantics.
 
 <PackageBadge name="@pyreon/react-compat" href="/docs/react-compat" status="stable" />
 
@@ -53,12 +53,12 @@ const Counter = memo(() => {
   const [count, setCount] = useState(0)
 
   useEffect(() => {
-    document.title = `Count: ${count()}`
-  })
+    document.title = `Count: ${count}`
+  }, [count])
 
   return (
     <div>
-      <p>Count: {count()}</p>
+      <p>Count: {count}</p>
       <button onClick={() => setCount((prev) => prev + 1)}>Increment</button>
     </div>
   )
@@ -69,74 +69,34 @@ createRoot(document.getElementById('app')!).render(<Counter />)
 
 ## Key Differences from React
 
-Understanding these differences is essential for a smooth migration:
+`@pyreon/react-compat` runs the **value + re-render model**: `useState` returns the value directly (not a getter), the component body re-runs on state change, and `useEffect` / `useMemo` / `useCallback` honor their deps arrays. Most React code -- including hooks-rules ordering and stale-closure semantics -- behaves identically. The genuine differences:
 
-| Behavior               | React                                                | @pyreon/react-compat                                                  |
-| ---------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| Component execution    | Re-runs on every render                              | Runs **once** (setup phase)                                           |
-| `useState` getter      | Returns the value directly                           | Returns a **getter function** -- call `count()` to read               |
-| `useEffect` deps       | Must specify deps array                              | Deps array is **ignored** -- Pyreon tracks dependencies automatically |
-| `useCallback` / `memo` | Prevents re-creation on re-render                    | **No-op** -- components run once, so closures are never stale         |
-| Hooks rules            | Must be called at top level, not in loops/conditions | **No restrictions** -- call anywhere, in loops, in conditions         |
-| `useMemo`              | Returns the memoized value                           | Returns a **getter function** -- call `value()` to read               |
-| `useLayoutEffect`      | Fires synchronously before paint                     | Same as `useEffect` -- Pyreon has no paint distinction                |
-| Concurrent mode        | `useTransition`, `useDeferredValue` defer updates    | **No-ops** -- all updates are synchronous                             |
+| Behavior                                              | React                                      | @pyreon/react-compat                                                                                                                                                                                                                  |
+| ----------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reactive engine                                       | VDOM diff + reconciliation                 | Pyreon signals driving a per-component re-render                                                                                                                                                                                       |
+| **Nested child state across an _ancestor_ re-render** | Preserved (reconciliation by position/key) | **Reset** -- a parent re-render rebuilds the child subtree, so a nested component's `useState` / `useReducer` / `useRef` revert to initial and `useEffect([])` re-fires. Lift such state up, or avoid re-rendering the ancestor. (`memo` does not prevent this.) |
+| Class components                                      | Full lifecycle support                     | **Unsupported** -- `Component` / `PureComponent` are stubs; `setState` / `forceUpdate` warn-and-no-op, lifecycle methods never fire, `render()` returns `null` |
+| Concurrent mode                                       | `useTransition` / `useDeferredValue` defer updates | **No-ops** -- all updates are synchronous; `useTransition` returns `[false, fn => fn()]`, `useDeferredValue` / `startTransition` / `flushSync` are synchronous pass-throughs |
+| `useLayoutEffect` / `useInsertionEffect`              | Distinct timing (sync before paint / before mutations) | Same as `useEffect` -- Pyreon has no layout/paint distinction                                                                                                                                                            |
+| `version`                                             | Real React version                         | Reports `19.0.0-pyreon`                                                                                                                                                                                                              |
 
 ### Reading State
 
-The most important difference: `useState` returns a **getter function**, not a raw value.
+`useState` returns the value directly and the component re-runs on state change -- exactly like React.
 
 ```tsx
 // React
 const [count, setCount] = useState(0)
 console.log(count) // 0
 
-// Pyreon
+// @pyreon/react-compat -- identical
 const [count, setCount] = useState(0)
-console.log(count()) // 0 -- note the function call
+console.log(count) // 0
 ```
 
-This is what enables fine-grained reactivity: only the DOM nodes or effects that call `count()` will update when the value changes. The component function itself never re-runs.
+### Closures follow React semantics
 
-### Dependency Arrays Are Ignored
-
-Pyreon tracks reactive dependencies automatically. You never need to list deps:
-
-```tsx
-const [name, setName] = useState('world')
-
-// React: must list [name] or the effect is stale
-// Pyreon: deps are ignored -- name() is auto-tracked
-useEffect(() => {
-  document.title = `Hello, ${name()}`
-})
-```
-
-The one exception is `useEffect(() => &#123;...&#125;, [])` with an **empty** array, which is treated as "run once on mount" -- the callback runs inside `runUntracked` so no signals are tracked.
-
-### No Hooks Rules
-
-In React, hooks must be called at the top level of the component, never inside conditionals or loops. In Pyreon, there are no such restrictions because the component runs once:
-
-```tsx
-function ConditionalHooks(props: { showExtra: boolean }) {
-  const [name, setName] = useState('Alice')
-
-  // This is perfectly fine in Pyreon -- forbidden in React
-  if (props.showExtra) {
-    const [extra, setExtra] = useState('bonus')
-    useEffect(() => {
-      console.log('Extra:', extra())
-    })
-  }
-
-  return <div>{name()}</div>
-}
-```
-
-### No Stale Closures
-
-In React, closures capture the value at render time and can become stale. In Pyreon, the component runs once and signals always return the current value:
+`useState` returns a plain value captured at render time, so a long-lived callback created in `useEffect([])` sees the value from the render it was created in -- exactly like React. Use the **updater form** to read the latest value, or include the value in the deps array to re-create the callback:
 
 ```tsx
 function Timer() {
@@ -144,17 +104,18 @@ function Timer() {
 
   useEffect(() => {
     const id = setInterval(() => {
-      // In React, this would always log 0 without deps
-      // In Pyreon, count() always returns the current value
-      console.log('Count is:', count())
+      // `count` here is the value from this render; use the updater form
+      // to read the latest:
       setCount((prev) => prev + 1)
     }, 1000)
     return () => clearInterval(id)
-  }, []) // empty deps -- mount-only
+  }, [])
 
-  return <div>{count()}</div>
+  return <p>{count}</p>
 }
 ```
+
+> If you want reads that are always current regardless of closure age, drop to Pyreon's native API -- a `signal()` from `@pyreon/reactivity` always returns the live value via its getter.
 
 ## API Reference
 
@@ -163,13 +124,14 @@ function Timer() {
 #### `useState`
 
 ```ts
-function useState<T>(initial: T | (() => T)): [() => T, (v: T | ((prev: T) => T)) => void]
+function useState<T>(initial: T | (() => T)): [T, (v: T | ((prev: T) => T)) => void]
 ```
 
-Creates a reactive signal. Returns a `[getter, setter]` tuple. The getter is a function that tracks reads automatically. The setter accepts a value or an updater function.
+Returns a `[value, setter]` tuple -- the value directly, exactly like React. The component re-runs when the setter is called. The setter accepts a value or an updater function, and has a stable identity across renders.
 
 ```tsx
 const [count, setCount] = useState(0)
+console.log(count) // 0
 
 setCount(5) // set directly
 setCount((prev) => prev + 1) // updater function
@@ -178,29 +140,17 @@ setCount((prev) => prev + 1) // updater function
 const [data, setData] = useState(() => expensiveComputation())
 ```
 
-**Gotcha: Passing state to child components.**
-
-Because the getter is a function, you must either pass it as-is or call it in a reactive context:
-
-```tsx
-// Pass the getter directly -- child reads it reactively
-<ChildComponent count={count} />
-// In child: props.count() to read
-
-// Or wrap in a reactive expression
-<span>{count()}</span>
-```
-
 #### `useReducer`
 
 ```ts
 function useReducer<S, A>(
   reducer: (state: S, action: A) => S,
-  initial: S | (() => S),
-): [() => S, (action: A) => void]
+  initialArg: S | (() => S),
+  init?: (arg: S) => S,
+): [S, (action: A) => void]
 ```
 
-Works like React's `useReducer`. Returns `[getter, dispatch]`.
+Works like React's `useReducer`. Returns `[state, dispatch]` -- the state value directly. Dispatch applies the reducer and re-renders the component, and has a stable identity across renders. The 3-argument form (`useReducer(reducer, initialArg, init)`) is supported.
 
 ```tsx
 type Action = { type: 'inc' } | { type: 'dec' } | { type: 'reset'; value: number }
@@ -218,9 +168,9 @@ const reducer = (state: number, action: Action): number => {
 
 const [count, dispatch] = useReducer(reducer, 0)
 
-dispatch({ type: 'inc' }) // count() === 1
-dispatch({ type: 'inc' }) // count() === 2
-dispatch({ type: 'reset', value: 0 }) // count() === 0
+dispatch({ type: 'inc' }) // count === 1
+dispatch({ type: 'inc' }) // count === 2
+dispatch({ type: 'reset', value: 0 }) // count === 0
 ```
 
 **Real-world reducer example -- form state machine:**
@@ -267,7 +217,7 @@ function ContactForm() {
     try {
       await fetch('/api/contact', {
         method: 'POST',
-        body: JSON.stringify(state().data),
+        body: JSON.stringify(state.data),
       })
       dispatch({ type: 'success' })
     } catch (err) {
@@ -278,7 +228,7 @@ function ContactForm() {
   return (
     <form onSubmit={handleSubmit}>
       <input
-        value={state().data.name ?? ''}
+        value={state.data.name ?? ''}
         onInput={(e) =>
           dispatch({
             type: 'field',
@@ -287,10 +237,10 @@ function ContactForm() {
           })
         }
       />
-      <button type="submit" disabled={state().status === 'submitting'}>
-        {state().status === 'submitting' ? 'Sending...' : 'Send'}
+      <button type="submit" disabled={state.status === 'submitting'}>
+        {state.status === 'submitting' ? 'Sending...' : 'Send'}
       </button>
-      {() => state().error && <p class="error">{state().error}</p>}
+      {state.error && <p class="error">{state.error}</p>}
     </form>
   )
 }
@@ -304,19 +254,19 @@ function ContactForm() {
 function useEffect(fn: () => CleanupFn | void, deps?: unknown[]): void
 ```
 
-Runs a reactive side effect. The `deps` array is **ignored** -- Pyreon auto-tracks all signal reads inside `fn`. Return a cleanup function to dispose resources when the effect re-runs or the component unmounts.
+Runs a side effect after render. The `deps` array is **honored** (the effect re-runs when a dep changes via `Object.is` comparison), exactly like React. Return a cleanup function to dispose resources when the effect re-runs or the component unmounts.
 
 ```tsx
 useEffect(() => {
   const controller = new AbortController()
-  fetch(`/api/user/${id()}`, { signal: controller.signal })
+  fetch(`/api/user/${id}`, { signal: controller.signal })
     .then((res) => res.json())
     .then(setUser)
   return () => controller.abort()
-})
+}, [id])
 ```
 
-**Mount-only effects:** Pass an empty deps array `[]` to run exactly once on mount. The callback is wrapped in `runUntracked`, so signal reads inside it will not establish tracking.
+**Mount-only effects:** Pass an empty deps array `[]` to run exactly once on mount; the cleanup runs on unmount.
 
 ```tsx
 useEffect(() => {
@@ -339,12 +289,12 @@ function AutoSizeTextarea() {
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${el.scrollHeight}px`
-  })
+  }, [text])
 
   return (
     <textarea
       ref={ref}
-      value={text()}
+      value={text}
       onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
     />
   )
@@ -369,20 +319,18 @@ function LazyImage(props: { src: string }) {
     return () => observer.disconnect()
   }, [])
 
-  return (
-    <div ref={ref}>{() => (visible() ? <img src={props.src} /> : <div class="placeholder" />)}</div>
-  )
+  return <div ref={ref}>{visible ? <img src={props.src} /> : <div class="placeholder" />}</div>
 }
 
 // Document event listener
-function useDocumentTitle(title: () => string) {
+function useDocumentTitle(title: string) {
   useEffect(() => {
-    document.title = title()
-  })
+    document.title = title
+  }, [title])
 }
 
 // Media query
-function useMediaQuery(query: string): () => boolean {
+function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(false)
 
   useEffect(() => {
@@ -391,7 +339,7 @@ function useMediaQuery(query: string): () => boolean {
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches)
     mql.addEventListener('change', handler)
     return () => mql.removeEventListener('change', handler)
-  }, [])
+  }, [query])
 
   return matches
 }
@@ -406,16 +354,16 @@ Alias for `useEffect`. Pyreon does not distinguish between layout and passive ef
 #### `useMemo`
 
 ```ts
-function useMemo<T>(fn: () => T, _deps?: unknown[]): () => T
+function useMemo<T>(fn: () => T, deps: unknown[]): T
 ```
 
-Creates a computed (memoized) value backed by Pyreon's `computed()`. Returns a **getter function**. The deps array is ignored -- Pyreon auto-tracks dependencies.
+Returns the memoized value directly (recomputed when `deps` change via `Object.is` comparison) -- exactly like React.
 
 ```tsx
 const [items, setItems] = useState([1, 2, 3])
-const total = useMemo(() => items().reduce((a, b) => a + b, 0))
+const total = useMemo(() => items.reduce((a, b) => a + b, 0), [items])
 
-console.log(total()) // 6
+console.log(total) // 6
 ```
 
 **Real-world memoization:**
@@ -426,18 +374,17 @@ function ProductList() {
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'price'>('name')
 
-  // Each computed only recalculates when its specific dependencies change
+  // Each memo only recalculates when its specific dependencies change
   const filtered = useMemo(() => {
-    const q = search().toLowerCase()
-    return q ? products().filter((p) => p.name.toLowerCase().includes(q)) : products()
-  })
+    const q = search.toLowerCase()
+    return q ? products.filter((p) => p.name.toLowerCase().includes(q)) : products
+  }, [products, search])
 
   const sorted = useMemo(() => {
-    const key = sortBy()
-    return [...filtered()].sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0))
-  })
+    return [...filtered].sort((a, b) => (a[sortBy] < b[sortBy] ? -1 : a[sortBy] > b[sortBy] ? 1 : 0))
+  }, [filtered, sortBy])
 
-  const totalPrice = useMemo(() => sorted().reduce((sum, p) => sum + p.price, 0))
+  const totalPrice = useMemo(() => sorted.reduce((sum, p) => sum + p.price, 0), [sorted])
 
   return (
     <div>
@@ -445,15 +392,13 @@ function ProductList() {
         placeholder="Search..."
         onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
       />
-      <p>Total: ${() => totalPrice().toFixed(2)}</p>
+      <p>Total: ${totalPrice.toFixed(2)}</p>
       <ul>
-        {() =>
-          sorted().map((p) => (
-            <li>
-              {p.name} - ${p.price}
-            </li>
-          ))
-        }
+        {sorted.map((p) => (
+          <li>
+            {p.name} - ${p.price}
+          </li>
+        ))}
       </ul>
     </div>
   )
@@ -463,14 +408,12 @@ function ProductList() {
 #### `useCallback`
 
 ```ts
-function useCallback<T extends (...args: unknown[]) => unknown>(fn: T, _deps?: unknown[]): T
+function useCallback<T extends (...args: never[]) => unknown>(fn: T, deps: unknown[]): T
 ```
 
-Returns `fn` as-is. Components run once in Pyreon, so there are no stale closure issues and no need to memoize callbacks.
+Memoizes `fn` across re-renders, returning the same reference until a dep changes -- exactly like React (`useCallback(fn, deps)` is `useMemo(() => fn, deps)`).
 
 ```tsx
-// React: useCallback prevents unnecessary child re-renders
-// Pyreon: returns fn as-is -- no re-renders to prevent
 const handleClick = useCallback((id: number) => {
   setSelected(id)
 }, [])
@@ -479,15 +422,16 @@ const handleClick = useCallback((id: number) => {
 #### `memo`
 
 ```ts
-function memo<P>(component: (props: P) => VNodeChild): (props: P) => VNodeChild
+function memo<P>(
+  component: (props: P) => VNodeChild,
+  areEqual?: (prev: P, next: P) => boolean,
+): (props: P) => VNodeChild
 ```
 
-Returns the component as-is (no-op). Pyreon components already run once, so wrapping in `memo` has no effect. Kept for API compatibility so you do not need to strip `memo` wrappers during migration.
+Wraps a component to skip re-render when its props are shallowly equal -- exactly like React. Each `<MemoComp />` usage gets its own per-instance props/result cache. Pass a custom `areEqual` to override the default shallow comparison.
 
 ```tsx
-// These are identical in Pyreon
 const MyComponent = memo((props: { name: string }) => <div>{props.name}</div>)
-const MyComponent = (props: { name: string }) => <div>{props.name}</div>
 ```
 
 ### Refs
@@ -532,7 +476,7 @@ function Stopwatch() {
 
   return (
     <div>
-      <p>{elapsed()}s</p>
+      <p>{elapsed}s</p>
       <button onClick={start}>Start</button>
       <button onClick={stop}>Stop</button>
     </div>
@@ -569,13 +513,13 @@ function FancyInput(props: { ref?: { current: FancyInputAPI | null } }) {
       setValue('')
       inputRef.current?.focus()
     },
-    getValue: () => value(),
+    getValue: () => value,
   }))
 
   return (
     <input
       ref={inputRef}
-      value={value()}
+      value={value}
       onInput={(e) => setValue((e.target as HTMLInputElement).value)}
     />
   )
@@ -600,18 +544,26 @@ function Form() {
 #### `createContext` / `useContext`
 
 ```ts
-function createContext<T>(defaultValue: T): Context<T>
-function useContext<T>(ctx: Context<T>): T
+function createContext<T>(defaultValue: T): CompatContext<T>
+function useContext<T>(ctx: CompatContext<T>): T
 ```
 
-Direct re-exports from `@pyreon/core`. Usage is identical to React:
+`createContext` returns a context with a React-style `Provider` that supports nesting (an inner Provider overrides an outer one for its subtree) and re-renders consumers when its `value` changes. `useContext` reads the nearest Provider's value and subscribes the calling component to future changes. Usage is identical to React:
 
 ```tsx
 const ThemeCtx = createContext('light')
 
 function App() {
-  const theme = useContext(ThemeCtx)
-  return <div class={theme}>...</div>
+  return (
+    <ThemeCtx.Provider value="dark">
+      <ThemedButton />
+    </ThemeCtx.Provider>
+  )
+}
+
+function ThemedButton() {
+  const theme = useContext(ThemeCtx) // 'dark'
+  return <button class={theme}>Click me</button>
 }
 ```
 
@@ -625,13 +577,13 @@ interface Toast {
 }
 
 interface ToastAPI {
-  toasts: () => Toast[]
+  toasts: Toast[]
   add: (message: string, type?: Toast['type']) => void
   remove: (id: string) => void
 }
 
 const ToastContext = createContext<ToastAPI>({
-  toasts: () => [],
+  toasts: [],
   add: () => {},
   remove: () => {},
 })
@@ -651,22 +603,19 @@ function ToastProvider(props: { children: VNodeChild }) {
     },
   }
 
-  // Provide via withContext (from @pyreon/core)
-  return withContext(ToastContext, api, () => (
-    <>
+  return (
+    <ToastContext.Provider value={api}>
       {props.children}
       <div class="toast-container">
-        {() =>
-          toasts().map((toast) => (
-            <div class={`toast toast-${toast.type}`}>
-              {toast.message}
-              <button onClick={() => api.remove(toast.id)}>&times;</button>
-            </div>
-          ))
-        }
+        {toasts.map((toast) => (
+          <div class={`toast toast-${toast.type}`}>
+            {toast.message}
+            <button onClick={() => api.remove(toast.id)}>&times;</button>
+          </div>
+        ))}
       </div>
-    </>
-  ))
+    </ToastContext.Provider>
+  )
 }
 
 // Consuming component
@@ -718,7 +667,7 @@ function AccessibleCombobox() {
   const [open, setOpen] = useState(false)
 
   return (
-    <div role="combobox" aria-expanded={open()} aria-owns={listboxId}>
+    <div role="combobox" aria-expanded={open} aria-owns={listboxId}>
       <input
         id={inputId}
         aria-autocomplete="list"
@@ -726,14 +675,12 @@ function AccessibleCombobox() {
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
       />
-      {() =>
-        open() && (
-          <ul id={listboxId} role="listbox" aria-labelledby={inputId}>
-            <li role="option">Option 1</li>
-            <li role="option">Option 2</li>
-          </ul>
-        )
-      }
+      {open && (
+        <ul id={listboxId} role="listbox" aria-labelledby={inputId}>
+          <li role="option">Option 1</li>
+          <li role="option">Option 2</li>
+        </ul>
+      )}
     </div>
   )
 }
@@ -781,9 +728,9 @@ React 19's `useOptimistic`. Returns `[optimisticState, addOptimistic]`. `optimis
 In React, optimistic updates are discarded once the surrounding async action settles and the host re-renders with the real value -- a behavior that relies on concurrent transitions. Pyreon has no concurrent transitions, so the faithful equivalent is: **the optimistic overlay is cleared whenever `passthrough` changes by reference** (`Object.is` comparison) -- that is, when the real update lands. Until then, the layered actions stay applied. For the canonical "show optimistic state -> await the action -> render the real value" flow, the observable behavior matches React. Called outside a component render, it degrades gracefully -- returning the base value and a no-op adder.
 
 ```tsx
-function TodoList(props: { todos: () => Todo[]; onAdd: (text: string) => Promise<void> }) {
+function TodoList(props: { todos: Todo[]; onAdd: (text: string) => Promise<void> }) {
   const [optimisticTodos, addOptimisticTodo] = useOptimistic(
-    props.todos(),
+    props.todos,
     (state: Todo[], newTodo: Todo) => [...state, { ...newTodo, pending: true }],
   )
 
@@ -797,11 +744,9 @@ function TodoList(props: { todos: () => Todo[]; onAdd: (text: string) => Promise
 
   return (
     <ul>
-      {() =>
-        optimisticTodos.map((todo) => (
-          <li class={() => (todo.pending ? 'pending' : '')}>{todo.text}</li>
-        ))
-      }
+      {optimisticTodos.map((todo) => (
+        <li class={todo.pending ? 'pending' : ''}>{todo.text}</li>
+      ))}
     </ul>
   )
 }
@@ -818,16 +763,15 @@ function createPortal(children: VNodeChild, target: Element): VNodeChild
 Renders `children` into a different DOM `target`, just like React's `createPortal`.
 
 ```tsx
-function Modal(props: { open: () => boolean; children: VNodeChild }) {
-  return () =>
-    props.open()
-      ? createPortal(
-          <div class="modal-overlay">
-            <div class="modal">{props.children}</div>
-          </div>,
-          document.getElementById('modal-root')!,
-        )
-      : null
+function Modal(props: { open: boolean; children: VNodeChild }) {
+  return props.open
+    ? createPortal(
+        <div class="modal-overlay">
+          <div class="modal">{props.children}</div>
+        </div>,
+        document.getElementById('modal-root')!,
+      )
+    : null
 }
 ```
 
@@ -841,21 +785,19 @@ function Dropdown(props: { trigger: VNodeChild; children: VNodeChild }) {
   return (
     <div ref={triggerRef} onClick={() => setOpen((prev) => !prev)}>
       {props.trigger}
-      {() =>
-        open() &&
+      {open &&
         createPortal(
           <div
             class="dropdown-menu"
-            style={() => {
+            style={(() => {
               const rect = triggerRef.current?.getBoundingClientRect()
               return rect ? `position:fixed;top:${rect.bottom}px;left:${rect.left}px` : ''
-            }}
+            })()}
           >
             {props.children}
           </div>,
           document.body,
-        )
-      }
+        )}
     </div>
   )
 }
@@ -887,18 +829,15 @@ function App() {
         <button onClick={() => setPage('profile')}>Profile</button>
       </nav>
       <Suspense fallback={<div class="loading-skeleton" />}>
-        {() => {
-          switch (page()) {
-            case 'dashboard':
-              return <Dashboard />
-            case 'settings':
-              return <Settings />
-            case 'profile':
-              return <Profile />
-            default:
-              return <div>Not found</div>
-          }
-        }}
+        {page === 'dashboard' ? (
+          <Dashboard />
+        ) : page === 'settings' ? (
+          <Settings />
+        ) : page === 'profile' ? (
+          <Profile />
+        ) : (
+          <div>Not found</div>
+        )}
       </Suspense>
     </div>
   )
@@ -970,12 +909,12 @@ async function fetchAndUpdate() {
 function createSelector<T>(source: () => T): (key: T) => boolean
 ```
 
-An O(1) equality selector from `@pyreon/reactivity`. Useful for large lists where only the selected item should react to selection changes. No direct React equivalent.
+An O(1) equality selector from `@pyreon/reactivity`. Useful for large lists where only the selected item should react to selection changes. No direct React equivalent. Its `source` is a Pyreon accessor, so pass `() => selectedId` when bridging from a `useState` value.
 
 ```tsx
 function SelectableList(props: { items: Item[] }) {
   const [selectedId, setSelectedId] = useState<number | null>(null)
-  const isSelected = createSelector(selectedId)
+  const isSelected = createSelector(() => selectedId)
 
   return (
     <ul>
@@ -1032,7 +971,7 @@ function SafeWrapper(props: { children: VNodeChild }) {
     return true // handled
   })
 
-  return () => (error() ? <div class="error">{error()}</div> : props.children)
+  return error ? <div class="error">{error}</div> : props.children
 }
 ```
 
@@ -1079,95 +1018,52 @@ render(<App />, document.getElementById('app')!)
 
 ## Common Migration Patterns
 
-### Converting useState Reads
+### State, effect, and memo reads port as-is
 
-The most common change is adding `()` to state reads:
-
-```tsx
-// Before (React)
-const [count, setCount] = useState(0)
-return <div>{count}</div>
-
-// After (Pyreon)
-const [count, setCount] = useState(0)
-return <div>{count()}</div>
-```
-
-Search for `useState` in your codebase and ensure every read of the state variable includes `()`.
-
-### Converting useEffect
-
-Remove dependency arrays (or leave them -- they are ignored):
+`useState` / `useReducer` / `useMemo` return plain values and deps arrays are honored, so most hook code needs no changes:
 
 ```tsx
-// Before (React)
+// React and @pyreon/react-compat — identical
+const [count, setCount] = useState(0)
+const doubled = useMemo(() => count * 2, [count])
+
 useEffect(() => {
   document.title = `Count: ${count}`
 }, [count])
 
-// After (Pyreon) -- deps removed, count read as function
-useEffect(() => {
-  document.title = `Count: ${count()}`
-})
+return <div>{count} / {doubled}</div>
 ```
 
-### Converting useMemo
+### Lift state that must survive an ancestor re-render
 
-Add `()` to read the memoized value:
+A parent re-render rebuilds the whole child subtree, so a nested component's `useState` / `useReducer` / `useRef` revert to their initial values and its `useEffect([])` re-fires. If a child holds state that must persist across an unrelated parent re-render, lift it up:
 
 ```tsx
-// Before (React)
-const total = useMemo(() => items.reduce((a, b) => a + b, 0), [items])
-return <p>Total: {total}</p>
-
-// After (Pyreon) -- total is a getter, deps removed
-const total = useMemo(() => items().reduce((a, b) => a + b, 0))
-return <p>Total: {total()}</p>
-```
-
-### Removing Unnecessary Wrappers
-
-```tsx
-// Before (React) -- memo and useCallback are needed
-const MemoChild = memo(({ onClick }: { onClick: () => void }) => (
-  <button onClick={onClick}>Click</button>
-))
-const Parent = () => {
-  const handleClick = useCallback(() => console.log('clicked'), [])
-  return <MemoChild onClick={handleClick} />
+// Risky: `draft` resets whenever <Parent> re-renders for any reason
+function Parent() {
+  const [count, setCount] = useState(0)
+  return (
+    <div>
+      <button onClick={() => setCount((c) => c + 1)}>{count}</button>
+      <Editor /> {/* its internal draft is rebuilt on every count change */}
+    </div>
+  )
 }
 
-// After (Pyreon) -- memo and useCallback are no-ops, can be removed
-const Child = ({ onClick }: { onClick: () => void }) => <button onClick={onClick}>Click</button>
-const Parent = () => {
-  const handleClick = () => console.log('clicked')
-  return <Child onClick={handleClick} />
+// Safe: the draft lives in <Parent>, so it survives the count re-render
+function Parent() {
+  const [count, setCount] = useState(0)
+  const [draft, setDraft] = useState('')
+  return (
+    <div>
+      <button onClick={() => setCount((c) => c + 1)}>{count}</button>
+      <Editor value={draft} onChange={setDraft} />
+    </div>
+  )
 }
 ```
 
-### Moving Render-Phase Logic to Effects
-
-If your React component had logic that ran on every render (outside of hooks), move it into an effect:
-
-```tsx
-// Before (React) -- runs on every render
-function Component({ data }) {
-  const processed = data.map(transform)
-  console.log('Processed:', processed)
-  return <List items={processed} />
-}
-
-// After (Pyreon) -- component runs once, use computed + effect
-function Component(props: { data: () => Item[] }) {
-  const processed = useMemo(() => props.data().map(transform))
-
-  useEffect(() => {
-    console.log('Processed:', processed())
-  })
-
-  return <List items={processed} />
-}
-```
+`memo` does not prevent this — the subtree is still rebuilt — so it is not a substitute for lifting the state.
 
 ## Migration Gotchas
 
@@ -1190,15 +1086,15 @@ export default defineConfig({
 
 ### forwardRef
 
-React's `forwardRef` is not needed in Pyreon. Pass refs as regular props:
+`forwardRef` is implemented as a pass-through — the render function receives `(props, ref)` and the ref is merged into props, so existing `forwardRef` code keeps working. In new Pyreon code you can also pass refs as regular props directly:
 
 ```tsx
-// React
+// forwardRef still works
 const FancyInput = forwardRef<HTMLInputElement, Props>((props, ref) => (
   <input ref={ref} {...props} />
 ))
 
-// Pyreon -- just pass ref as a prop
+// Or just pass ref as a prop
 const FancyInput = (props: Props & { ref?: Ref<HTMLInputElement> }) => (
   <input ref={props.ref} {...props} />
 )
@@ -1206,21 +1102,23 @@ const FancyInput = (props: Props & { ref?: Ref<HTMLInputElement> }) => (
 
 ### React.Children
 
-`React.Children` utilities are not available. Use standard array methods on `props.children` instead.
+The `Children` API is supported (`map`, `forEach`, `count`, `toArray`, `only`), but operates on Pyreon `VNodeChild` shapes. For simple cases, standard array methods on `props.children` work too.
+
+### Class components
+
+`Component` / `PureComponent` exist for import compatibility, but they are stubs: `setState` / `forceUpdate` warn-and-no-op, lifecycle methods never fire, and `render()` returns `null`. Refactor class components to function components with hooks, and use `onMount` / `onUnmount` from `@pyreon/core` for lifecycle.
 
 ### Strict Mode
 
-React's `<StrictMode>` has no equivalent (and no need) in Pyreon. Components run once, so double-invocation checks are not applicable.
+`<StrictMode>` is a pass-through that renders its children directly — no double-invocation checks. It is kept so migrated code does not break.
 
 ## Migration Checklist
 
 1. Replace `react` / `react-dom` imports with `@pyreon/react-compat` / `@pyreon/react-compat/dom`.
-2. Change state reads from `count` to `count()` and memo reads from `value` to `value()`.
-3. Remove dependency arrays from `useEffect` and `useMemo` (or leave them -- they are ignored).
-4. Remove `useCallback` wrappers and `memo` wrappers (or leave them -- they are no-ops).
-5. Verify any code that relies on re-render behavior. Pyreon components run once; logic that depends on running on every render must be moved into an `effect` or `useEffect`.
+2. Hook state reads are unchanged -- `useState` / `useReducer` / `useMemo` return values directly (`count`, not `count()`), and deps arrays are honored, so most hook code ports as-is.
+3. Lift any state that must survive an **ancestor** re-render -- a parent re-render rebuilds the child subtree, resetting nested `useState` and re-firing `useEffect([])`.
+4. Refactor class components to function components with hooks -- `Component` / `PureComponent` are stubs (`setState` / `forceUpdate` warn-and-no-op, lifecycle never fires).
+5. Replace concurrent-mode-dependent behavior -- `useTransition` / `useDeferredValue` / `startTransition` / `flushSync` are synchronous no-ops, so any code relying on deferral needs another approach.
 6. Check third-party library compatibility. Libraries using React internals will need alternatives.
-7. Remove `forwardRef` usage and pass refs as regular props.
-8. Remove `StrictMode` wrappers.
-9. Test `useEffect` with empty deps `[]` -- ensure the mount-only behavior matches your intent.
-10. Verify event handler closures work correctly -- they always read current signal values, unlike React where they capture values at render time.
+7. `forwardRef`, `memo`, and the `Children` API are all implemented, so those wrappers can stay.
+8. `<StrictMode>` is a harmless pass-through; you can keep it.
