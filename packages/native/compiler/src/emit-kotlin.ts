@@ -27,6 +27,7 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  optionalMemberTernary,
   rewriteObjectKeys,
   seedHandlerLocals,
 } from './infer-type'
@@ -2608,6 +2609,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // OPTIONAL as truthy-when-present (`const t = todos.find(...); t ? a : b`)
       // and `!optional` truthy-when-absent. `kotlinCondition` lowers an optional
       // cond → `<cond> != null` and a `!optional` cond → `<inner> == null`.
+      //
+      // `opt ? opt.prop : else` → `(opt?.prop ?: else)`. A bare-`val` local
+      // smart-casts inside the if-branch, but a `selected()` read is a `by
+      // remember { derivedStateOf }` DELEGATED property whose getter can't be
+      // smart-cast ("smart cast … impossible … delegated property") — the
+      // dominant master-detail shape. Optional-chaining sidesteps it uniformly
+      // (and matches the Swift lowering). `optionalMemberTernary` (infer-type.ts
+      // — the ONE bisect point) matches any structurally-equal optional cond.
+      const omt = optionalMemberTernary(e, _kotlinExprInferCtx)
+      if (omt) {
+        return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
+      }
       const condStr = kotlinCondition(e.cond, (x) => emitKotlinExpr(x, indent))
       return `if (${condStr}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
     }
