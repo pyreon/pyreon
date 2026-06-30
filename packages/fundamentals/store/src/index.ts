@@ -662,18 +662,34 @@ function defineSetupStore<T extends Record<string, unknown>>(
       }
     }
 
-    // Subscribe to each signal for change detection
+    // Lazy change-detection subscriptions. The per-signal subscribers exist
+    // ONLY to feed `notifyDirect` → store-level `subscribe()` callbacks (and the
+    // `patch()` mutation event). Most stores never call `.subscribe()`, so
+    // subscribing eagerly was pure overhead — AND it forced every signal write
+    // onto the slow batched-notify path: a SUBSCRIBED signal written inside the
+    // `patch()` / `reset()` batch round-trips the reactivity pending queue
+    // (~10× a direct write), whereas an UNSUBSCRIBED write hits the inline
+    // fast path. We now subscribe only while ≥1 store subscriber is attached;
+    // a no-subscriber store's `patch()` writes its signals unsubscribed + fast.
     const signalUnsubs: (() => void)[] = []
-    for (const key of signalKeys) {
-      const sig = raw[key] as SignalLike
-      let prev = sig.peek()
-      const unsub = sig.subscribe(() => {
-        const next = sig.peek()
-        const old = prev
-        prev = next
-        notifyDirect(key, old, next)
-      })
-      signalUnsubs.push(unsub)
+    function activateSignalSubs(): void {
+      if (signalUnsubs.length > 0) return // already active (idempotent)
+      for (const key of signalKeys) {
+        const sig = raw[key] as SignalLike
+        let prev = sig.peek()
+        signalUnsubs.push(
+          sig.subscribe(() => {
+            const next = sig.peek()
+            const old = prev
+            prev = next
+            notifyDirect(key, old, next)
+          }),
+        )
+      }
+    }
+    function deactivateSignalSubs(): void {
+      for (const unsub of signalUnsubs) unsub()
+      signalUnsubs.length = 0
     }
 
     // ─── onAction infrastructure ────────────────────────────────────────
@@ -814,6 +830,9 @@ function defineSetupStore<T extends Record<string, unknown>>(
       },
 
       subscribe(callback: SubscribeCallback, options?: { immediate?: boolean }): () => void {
+        // Bring change-detection live before the first subscriber so it sees
+        // every subsequent mutation (idempotent for additional subscribers).
+        activateSignalSubs()
         ;(subscribers ??= new Set()).add(callback)
         if (options?.immediate) {
           const mutation: MutationInfo = {
@@ -825,6 +844,9 @@ function defineSetupStore<T extends Record<string, unknown>>(
         }
         return () => {
           subscribers?.delete(callback)
+          // Tear the per-signal subscriptions back down once the last store
+          // subscriber leaves, restoring the fast unsubscribed-write path.
+          if (subscribers === null || subscribers.size === 0) deactivateSignalSubs()
         }
       },
 
@@ -844,8 +866,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
       },
 
       dispose() {
-        for (const unsub of signalUnsubs) unsub()
-        signalUnsubs.length = 0
+        deactivateSignalSubs()
         subscribers?.clear()
         actionListeners?.clear()
         getRegistry().delete(id)
