@@ -46,6 +46,65 @@ practice is store and lifecycle code; that is exactly what this layer
 makes portable.
 :::
 
+## Key Differences from Svelte
+
+`@pyreon/svelte-compat` is a **runtime-import shim, not a `.svelte`
+compiler**: it shims what Svelte code `import`s (stores, lifecycle,
+context, dispatch, the Svelte-5 client API), running each on Pyreon's
+reactive engine. It does **not** implement the single-file-component
+compiler or the rune / `$:` / `$store` *syntax* — those are compile-time
+constructs (the same boundary `@pyreon/solid-compat` draws around Solid's
+compiler). Components are plain functions returning JSX. The store
+contract (`subscribe` / `set` / `update`, lazy `start`/`stop`,
+`safe_not_equal` dedup) and `onMount` / `onDestroy` / `tick` are faithful
+to Svelte; the genuine differences:
+
+| Behavior                                              | Svelte                                                              | @pyreon/svelte-compat                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Component format                                      | `.svelte` single-file components compiled by the Svelte compiler   | Plain functions returning JSX — **no `.svelte` SFC compiler**                                                                                                                                                                                                                  |
+| Rune / `$:` / `$store` syntax                         | `$state` / `$derived` / `$effect` / `$:` / `$store` auto-subscribe | **Not shimmed** — compiler syntax, not runtime imports. Map to `signal` / `computed` / `effect` and a `.subscribe()` component-local (see [Migration](#migration))                                                                                                              |
+| Update model                                          | Fine-grained, compiler-generated targeted DOM updates              | The compat component **re-renders its subtree** (teardown + rebuild) on store change — output is correct, but not Svelte's per-binding patch                                                                                                                                    |
+| **`onDestroy` / `onMount` cleanup on an _ancestor_ re-render** | Fires only on real unmount                                | **Also fires during the transient teardown** when a parent re-renders a preserved child — a parent re-render tears down + rebuilds the child subtree, running the child's `onDestroy` / `onMount`-cleanup each time (see the caveat below). A resource closed there (`ws.close()`, `clearInterval`) is torn down mid-life. Known limitation — keep true-unmount-only cleanup aware of this, or avoid re-rendering the ancestor. |
+| `beforeUpdate` / `afterUpdate`                        | Run before / after **every** reactive update                       | Map to a **post-first-render hook only** — the wrapper re-renders by teardown + rebuild (no per-update diff), so they do **not** re-fire per update                                                                                                                             |
+| `getAllContexts()`                                    | Returns the full `Map` of provided context                         | Returns a **fresh empty `Map`** (best-effort stub) — Pyreon contexts are not enumerable per-component. `setContext` / `getContext` / `hasContext` resolve correctly; only enumerate-everything is unsupported                                                                   |
+| `createEventDispatcher`                               | Compiler-forwarded `on:foo`, bubbles across the component tree     | Forwards to the **direct parent's** matching prop (`on<Type>` / `on:<type>` / `on<type>`) with a `CustomEvent`; **no cross-level bubbling, no `on:foo` compiler transform**. Props are captured at the `createEventDispatcher()` call site                                       |
+| Control flow                                          | `{#if}` / `{#each}` / `{#await}` block syntax                      | `<Show>` / `<For>` / `<Suspense>` etc. re-exported from `@pyreon/core` (recognized as native, not wrapped)                                                                                                                                                                     |
+
+:::warning{title="onDestroy / onMount cleanup fires on every ancestor re-render, not only on real unmount"}
+A compat component re-renders by **teardown + rebuild** of its subtree.
+When a **parent** re-renders, the child's subtree is torn down and rebuilt
+— and the teardown runs the child's `onDestroy` callbacks **and** any
+cleanup returned from `onMount`, even though the child instance is
+otherwise preserved across the re-render. So a cleanup intended to run
+**only on true unmount** runs on *every ancestor re-render*:
+
+```tsx
+import { onMount, onDestroy } from '@pyreon/svelte-compat'
+
+function Live() {
+  const ws = new WebSocket('wss://example.com')
+  onDestroy(() => ws.close()) // ⚠ also runs each time a parent re-renders
+
+  onMount(() => {
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id) // ⚠ same — torn down on ancestor re-render
+  })
+
+  return <span>live</span>
+}
+```
+
+The lifecycle callback itself is re-registered for the next cycle (it is
+not *lost*), so the resource is recreated on the rebuild — but it is
+**closed mid-life** during the teardown, which can drop a live WebSocket
+or cancel an in-flight timer on every parent render. **Mitigation:** keep
+cleanup that must run only on real unmount aware of this (own the resource
+above the re-rendering ancestor, or guard the teardown), or avoid
+re-rendering the ancestor. This is a known open limitation of the compat
+wrapper's teardown-and-rebuild re-render model — a proper fix (running
+cleanup only on true unmount of a preserved child) is tracked.
+:::
+
 ## Installation
 
 :::code-group
@@ -408,6 +467,18 @@ function Subscription() {
   return <span>live</span>
 }
 ```
+
+:::warning{title="onDestroy fires on every ancestor re-render, not only on true unmount"}
+Because a compat component re-renders by **teardown + rebuild** of its
+subtree, an `onDestroy` (and an `onMount`-returned cleanup) on a
+**preserved child** runs during the transient teardown whenever a
+**parent** re-renders — not only on the child's real unmount. The example
+above closes the socket on every ancestor render, then recreates it on the
+rebuild. See the [ancestor-re-render
+caveat](#key-differences-from-svelte) for the full mechanism and the
+mitigation. This is a known open limitation of the wrapper's
+teardown-and-rebuild model.
+:::
 
 :::tip
 Prefer the `onMount` cleanup-return form over a separate `onDestroy` when
@@ -895,6 +966,12 @@ import { writable, derived, get } from '@pyreon/svelte-compat/store'
 - **Stores are signal-free** — a faithful Svelte subscriber `Set`, not a
   Pyreon signal. The re-render of a component subscribing to a store is a
   teardown + rebuild, not a fine-grained per-binding patch.
+- **`onDestroy` / `onMount` cleanup fires on every _ancestor_ re-render**
+  — a parent re-render tears down + rebuilds a preserved child's subtree,
+  so the child's `onDestroy` and `onMount`-returned cleanup run during the
+  transient teardown, not only on true unmount (see [Key
+  Differences](#key-differences-from-svelte)). Known open limitation; a
+  proper fix is tracked.
 
 ## See also
 
