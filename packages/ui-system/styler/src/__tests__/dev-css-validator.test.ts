@@ -54,3 +54,44 @@ describe('styler dev CSS validator', () => {
     expect(warn).toHaveBeenCalledTimes(1)
   })
 })
+
+// CLS footgun: `content-visibility: auto` reserves no box without
+// `contain-intrinsic-size` — the runtime safety net complementing the static
+// `pyreon/content-visibility-needs-intrinsic-size` lint rule (catches the
+// case where the CSS is computed at runtime, which the static rule can't see).
+describe('styler dev CSS validator — content-visibility CLS', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('warns on content-visibility:auto without contain-intrinsic-size', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sheet = createSheet()
+    sheet.insert('display: block; content-visibility: auto;')
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("'content-visibility: auto' without 'contain-intrinsic-size'"),
+    )
+  })
+
+  it('does NOT warn when contain-intrinsic-size is in the same rule', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sheet = createSheet()
+    sheet.insert('content-visibility: auto; contain-intrinsic-size: auto 800px;')
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('does NOT warn when a contain-intrinsic-* longhand is present', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sheet = createSheet()
+    sheet.insert('content-visibility: auto; contain-intrinsic-height: 800px;')
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('does NOT warn on content-visibility: hidden / visible', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const sheet = createSheet()
+    sheet.insert('content-visibility: hidden;')
+    sheet.insert('content-visibility: visible;')
+    expect(warn).not.toHaveBeenCalled()
+  })
+})
