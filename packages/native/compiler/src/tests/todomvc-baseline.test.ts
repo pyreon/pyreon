@@ -93,7 +93,7 @@ describe('TodoMVC compile baseline', () => {
           if text.count == 0 {
             return
           }
-          todos = todos + [Todo(id: { let __v = nextId; nextId += 1; return __v }(), text: text, done: false)]
+          todos = (todos + [Todo(id: { let __v = nextId; nextId += 1; return __v }(), text: text, done: false)])
           draft = ""
         }
         private func toggle(_ id: Int) {
@@ -368,7 +368,7 @@ describe('TodoMVC gap-tracking baseline', () => {
     // exact field-set match (sorted) → struct initializer. Visible in
     // the locked Swift-emit snapshot above's `addTodo` body.
     const out = transform(source, { target: 'swift' })
-    expect(out.code).toMatch(/todos = todos \+ \[Todo\(id: .+, text: .+, done: false\)\]/)
+    expect(out.code).toMatch(/todos = \(todos \+ \[Todo\(id: .+, text: .+, done: false\)\]\)/)
   })
 
   it('Phase 2 — array-literal object whose fields match a known struct emits as data-class constructor on Kotlin', () => {
@@ -376,7 +376,7 @@ describe('TodoMVC gap-tracking baseline', () => {
     // — Kotlin's data class constructor accepts the same source-order
     // the user wrote OR any order since args are named.
     const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toMatch(/todos = todos \+ listOf\(Todo\(id = .+, text = .+, done = false\)\)/)
+    expect(out.code).toMatch(/todos = \(todos \+ listOf\(Todo\(id = .+, text = .+, done = false\)\)\)/)
   })
 
   it('G6 — string-literal union Filter type emits `enum Filter: String`', () => {
