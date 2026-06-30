@@ -1,39 +1,45 @@
 /**
- * vite-plugin-inline-critical-css — inlines the app's render-blocking
- * stylesheet into every prerendered page's `<head>`.
+ * vite-plugin-inline-critical-css — extracts and inlines each prerendered
+ * page's CRITICAL (above-the-fold) CSS, and defers the rest.
  *
- * Why: the home page's critical request chain is
+ * Why: the app stylesheet (~59 KB raw) is the lone render-blocking
+ * resource on the home page's critical request chain. Inlining the whole
+ * sheet removes the request but trades it for a big main-thread parse —
+ * costly on mobile's 4× CPU throttle, which pins FCP/LCP. Instead we use
+ * `beasties` to inline ONLY the rules the page actually uses above the
+ * fold (a few KB, cheap to parse) and load the full stylesheet
+ * asynchronously (`preload: 'swap'`). So:
  *
- *   document → assets/index-*.css (render-blocking) → first paint
+ *   - nothing render-blocking sits between the HTML and first paint
+ *   - the inlined critical CSS is small → fast to download AND parse
+ *   - the FULL stylesheet still loads (async, `pruneSource: false`), so
+ *     below-the-fold / missed rules are always corrected — worst case is
+ *     a brief restyle of off-screen content, never a broken page
+ *   - `<noscript>` keeps the stylesheet for no-JS clients
  *
- * The page content is fully SSG-prerendered, so nothing between the HTML
- * arriving and first paint needs the JS bundle — the ONLY thing pinning
- * First Contentful Paint / Largest Contentful Paint is the round-trip
- * for that `<link rel=stylesheet>` (Lighthouse flagged it as the lone
- * render-blocking resource, ~320 ms on its mobile throttle). Inlining the
- * CSS into the document removes that request from the critical path
- * entirely — the page paints as soon as the HTML is parsed.
+ * Fonts are left untouched (`fonts: false`) — @pyreon/zero's fontPlugin
+ * owns the inline `@font-face` + self-host woff2 — and existing inline
+ * `<style>` blocks are preserved (`reduceInlineStyles: false`).
  *
- * The CSS is shared across pages, so after the first hard load every
- * in-app navigation is client-routed (no HTML re-fetch) — there is no
- * repeat-download cost for the SPA, only a first-paint win. Vite still
- * emits the `.css` asset on disk; it is simply no longer referenced.
- *
- * Runs at `closeBundle` with `enforce: 'post'` and is placed AFTER
- * `zero()` in the plugin array, so it operates on the FINAL
- * `dist/**​/*.html` files that zero's SSG pass has already written.
- * Build-only (`apply: 'build'`) — `vite dev` serves CSS over an open
- * connection where this trade-off doesn't apply.
+ * Runs at `closeBundle` (`enforce: 'post'`, AFTER `zero()` in the plugin
+ * array) so it operates on the FINAL `dist/**​/*.html` pages zero's SSG
+ * pass has written. Build-only. It fires inside zero's SSG sub-build, so
+ * it (a) re-roots `outDir` out of `dist/.zero-ssg-server` and (b) is
+ * idempotent — beasties rewrites the `<link rel=stylesheet>` to an async
+ * preload, so an already-processed page has no `rel=stylesheet` left to
+ * match, and the unrendered entry template (still carrying the
+ * `<!--pyreon-app-->` placeholder) is skipped so the prerender clones a
+ * link-bearing template and each rendered page gets its OWN critical CSS.
  */
 import { readdirSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Plugin } from 'vite'
 
-// A stylesheet larger than this is left as a `<link>` — inlining a very
-// large sheet would bloat every page's HTML past the round-trip it saves.
-// The docs' single app stylesheet is ~12 KB gzipped, well under this.
-const MAX_INLINE_BYTES = 200 * 1024
+// Marker the SSG entry template carries until the route content is
+// rendered into it. A file that still has it is the bare template, not a
+// finished page — skip it (it would yield empty critical CSS).
+const UNRENDERED_MARKER = '<!--pyreon-app-->'
 
 export default function inlineCriticalCss(): Plugin {
   let outDir = 'dist'
@@ -51,27 +57,22 @@ export default function inlineCriticalCss(): Plugin {
       // points at the sub-build dir — the real, page-bearing output is its
       // parent. (A normal build resolves to `outDir` unchanged.)
       const resolved = config.build.outDir
-      outDir = resolved.replace(/[/\\]\.zero-ssg-server[/\\]?$/, '')
-      if (outDir === resolved && resolved.endsWith('.zero-ssg-server')) {
-        outDir = dirname(resolved)
-      }
+      outDir = resolved.endsWith('.zero-ssg-server')
+        ? dirname(resolved)
+        : resolved
       base = config.base || '/'
     },
 
     async closeBundle() {
       const htmlFiles: string[] = []
       walkHtml(outDir, htmlFiles)
-      // Fires once per zero sub-build; the run AFTER the SSG prerender is
-      // the one that sees the final pages. Idempotent — a page whose
-      // stylesheet is already inlined has no `<link rel=stylesheet>` left
-      // to fold, so earlier/duplicate runs are harmless no-ops.
       if (htmlFiles.length === 0) return
 
-      // Cache CSS reads — every page references the same shared sheet.
-      const cssCache = new Map<string, string | null>()
-      let pagesTouched = 0
-      let linksInlined = 0
-
+      // Pages that still carry a render-blocking app stylesheet AND are
+      // finished (no template placeholder). Idempotent: a processed page's
+      // link is already an async preload, so it won't re-match.
+      const targets: string[] = []
+      const pageHtml = new Map<string, string>()
       for (const file of htmlFiles) {
         let html: string
         try {
@@ -79,63 +80,54 @@ export default function inlineCriticalCss(): Plugin {
         } catch {
           continue
         }
+        if (html.includes(UNRENDERED_MARKER)) continue
+        if (!/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="[^"]*\.css"[^>]*>/i.test(html))
+          continue
+        targets.push(file)
+        pageHtml.set(file, html)
+      }
+      if (targets.length === 0) return
 
-        const links = html.match(/<link\b[^>]*\brel="stylesheet"[^>]*>/gi)
-        if (!links) continue
+      // Lazy ESM import — keeps beasties out of the dev / SSR graph and
+      // only loads it when there is real work to do.
+      const { default: Beasties } = await import('beasties')
 
-        let changed = false
-        for (const link of links) {
-          const hrefMatch = link.match(/\bhref="([^"]+)"/i)
-          const href = hrefMatch?.[1]
-          if (!href) continue
-          // Leave cross-origin stylesheets alone (none expected, but safe).
-          if (/^(https?:)?\/\//i.test(href)) continue
-
-          const cssPath = resolveAsset(href, outDir, base)
-          let css = cssCache.get(cssPath)
-          if (css === undefined) {
-            css = await safeRead(cssPath)
-            if (css !== null && Buffer.byteLength(css) > MAX_INLINE_BYTES) {
-              css = null // too big — keep the <link>
-            }
-            cssCache.set(cssPath, css)
+      let done = 0
+      for (const file of targets) {
+        const html = pageHtml.get(file)
+        if (!html) continue
+        try {
+          // A fresh instance per page so critical sets never leak across
+          // pages; `path` lets beasties resolve the `<link href>` CSS file.
+          const beasties = new Beasties({
+            path: outDir,
+            publicPath: base,
+            preload: 'swap', // async-load the full sheet, non-blocking
+            pruneSource: false, // keep the full sheet intact for the async load
+            fonts: false, // fontPlugin owns @font-face / woff2
+            reduceInlineStyles: false, // never touch existing inline <style>
+            logLevel: 'silent',
+          })
+          const processed = await beasties.process(html)
+          if (processed && processed !== html) {
+            await writeFile(file, processed)
+            done++
           }
-          if (!css) continue
-
-          // split/join replaces every occurrence and never interprets
-          // `$`-patterns in the CSS as regex replacement tokens.
-          html = html.split(link).join(`<style>${css}</style>`)
-          changed = true
-          linksInlined++
-        }
-
-        if (changed) {
-          await writeFile(file, html)
-          pagesTouched++
+        } catch (err) {
+          // Never fail the build over one page — it keeps its (correct,
+          // render-blocking) <link>, just unoptimized.
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[pyreon-docs] critical-CSS skipped for ${file}: ${(err as Error).message}`,
+          )
         }
       }
 
       // eslint-disable-next-line no-console
       console.log(
-        `[pyreon-docs] inlined critical CSS into ${pagesTouched} page(s) (${linksInlined} link(s) folded into <style>)`,
+        `[pyreon-docs] inlined critical CSS + deferred full sheet on ${done}/${targets.length} page(s)`,
       )
     },
-  }
-}
-
-/** Resolve a built `href` (e.g. `/assets/x.css`) to its on-disk path. */
-function resolveAsset(href: string, outDir: string, base: string): string {
-  let rel = href
-  if (base !== '/' && rel.startsWith(base)) rel = rel.slice(base.length)
-  rel = rel.replace(/^\/+/, '')
-  return join(outDir, rel)
-}
-
-async function safeRead(path: string): Promise<string | null> {
-  try {
-    return await readFile(path, 'utf8')
-  } catch {
-    return null
   }
 }
 
