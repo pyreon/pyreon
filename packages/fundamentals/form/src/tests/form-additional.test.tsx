@@ -466,6 +466,74 @@ describe('useFormState — selector narrowing (perf contract)', () => {
 // flips the form-level signals — which is what would silently regress
 // if the count-tracking subscribers leaked or double-counted.
 
+describe('lazy per-field signal allocation (setup perf contract)', () => {
+  type CountSink = { __pyreon_count__?: (name: string, n?: number) => void }
+  function withCounters<T>(fn: (counts: Record<string, number>) => T): T {
+    const counts: Record<string, number> = {}
+    const sink = globalThis as CountSink
+    const prev = sink.__pyreon_count__
+    sink.__pyreon_count__ = (name: string, n = 1) => {
+      counts[name] = (counts[name] ?? 0) + n
+    }
+    try {
+      return fn(counts)
+    } finally {
+      if (prev) sink.__pyreon_count__ = prev
+      else delete sink.__pyreon_count__
+    }
+  }
+
+  // A blur-mode (default) form must allocate only the 2 eager signals per field
+  // (value + dirty) at setup — error/touched/disabled/readOnly are lazy. This is
+  // the ~24% setup win vs the old eager-6 path. Bisect: revert use-form.ts to
+  // eager allocation → this expects 6N and the test fails on the first assert.
+  it('allocates 2 signals per field at setup, materializing the rest on first access', () => {
+    withCounters((counts) => {
+      const initialValues = Object.fromEntries(
+        Array.from({ length: 10 }, (_, i) => [`f${i}`, '']),
+      ) as Record<string, string>
+      const { result, unmount } = mountWith(() =>
+        useForm({ initialValues, onSubmit: () => {} }),
+      )
+      // 2 eager signals × 10 fields. (Eager-6 regression would make this 60.)
+      expect(counts['form.fieldSignalCreate']).toBe(20)
+
+      // Accessing a lazy signal materializes exactly one more.
+      const f0 = result.fields.f0!
+      void f0.error
+      expect(counts['form.fieldSignalCreate']).toBe(21)
+      void f0.touched
+      void f0.disabled
+      void f0.readOnly
+      expect(counts['form.fieldSignalCreate']).toBe(24)
+
+      // Re-accessing returns the SAME instance (identity stable — load-bearing
+      // for reactive tracking) and does NOT re-allocate.
+      expect(f0.error).toBe(f0.error)
+      expect(counts['form.fieldSignalCreate']).toBe(24)
+      unmount()
+    })
+  })
+
+  it('lazy error still feeds isValid correctly (materializes + counts on first error)', () => {
+    const { result, unmount } = mountWith(() =>
+      useForm({
+        initialValues: { a: '', b: '' },
+        onSubmit: () => {},
+      }),
+    )
+    // No error materialized yet → form is valid.
+    expect(result.isValid()).toBe(true)
+    // Setting a field error materializes its signal + wires the _invalidCount
+    // subscriber, so isValid flips — proving the lazy-attached subscriber works.
+    result.setFieldError('a', 'bad')
+    expect(result.isValid()).toBe(false)
+    result.setFieldError('a', undefined)
+    expect(result.isValid()).toBe(true)
+    unmount()
+  })
+})
+
 describe('form.isValid / form.isDirty — incremental count contract', () => {
   it('isValid toggles correctly across error transitions on multiple fields', () => {
     const { result, unmount } = mountWith(() =>
