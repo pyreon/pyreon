@@ -374,6 +374,14 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
             case 'concat':
             case 'slice':
             case 'reverse':
+            case 'sort':
+              // `.sort(cmp)` keeps the element type (Swift `.sorted(by:)` /
+              // Kotlin `.sortedWith` both return the same array). It was
+              // MISSING here, so a sort inferred `Any` and broke any CHAINED
+              // method after it — `[...xs].sort(cmp).slice(0, n)` emitted a
+              // bare `.slice(...)` because the slice lowering gates on
+              // `objType.kind === 'array'`. `.sort` was already in the EMIT
+              // switch; this aligns inference with it.
               return objType // Array<T> → Array<T>
             case 'map': {
               // Element type is the arrow's RETURN type. Bind the callback's
@@ -661,10 +669,42 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     case 'arrow':
     case 'jsx-element':
     case 'jsx-fragment':
-    case 'array':
+      // Not a value-typed expression in this context — degrade. (Kept
+      // separate from `array` below so the `array` case narrows to the
+      // array variant; falling through would widen `expr` and `.elements`
+      // would not typecheck.)
+      return { kind: 'unknown' }
+    case 'array': {
+      // Infer the element type from an array expression used inside a
+      // computed — the dominant shape is the spread-copy `[...xs]` (the
+      // idiomatic non-mutating sort is `[...xs].sort(cmp)`). Without this the
+      // spread degraded to `Any`, breaking any chained method after it
+      // (`[...xs].sort(cmp).slice(0, n)`). Each element contributes: a spread
+      // `...x` → x's ELEMENT type (when x is an array); a plain value → its
+      // own type. If every element agrees on one non-unknown element type the
+      // array is `[that]`; a heterogeneous / un-inferrable / empty array
+      // degrades to `unknown` (safe — the prior behaviour).
+      const els = expr.elements
+      if (els.length === 0) return { kind: 'unknown' }
+      let elemType: TypeIR | undefined
+      for (const el of els) {
+        let t: TypeIR
+        if (el.kind === 'spread') {
+          const src = inferType(el.argument, ctx)
+          if (src.kind !== 'array') return { kind: 'unknown' }
+          t = src.element
+        } else {
+          t = inferType(el, ctx)
+        }
+        if (t.kind === 'unknown') return { kind: 'unknown' }
+        if (elemType === undefined) elemType = t
+        else if (JSON.stringify(elemType) !== JSON.stringify(t)) return { kind: 'unknown' }
+      }
+      return elemType !== undefined ? { kind: 'array', element: elemType } : { kind: 'unknown' }
+    }
     case 'object':
-      // These shouldn't appear inside a computed's expression in the
-      // Phase 0 fixtures. Document and degrade.
+      // An object literal inside a computed expression is the separate
+      // anonymous-object → struct gap; degrade for now.
       return { kind: 'unknown' }
   }
 }
