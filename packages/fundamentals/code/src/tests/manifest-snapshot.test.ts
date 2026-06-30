@@ -17,7 +17,7 @@ describe('gen-docs — code snapshot', () => {
       Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco's ~2.5MB). \`editor.value\` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.
 
       \`\`\`typescript
-      import { createEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
+      import { createEditor, createTabbedEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
       import { signal } from '@pyreon/reactivity'
 
       // Create a reactive editor instance
@@ -60,13 +60,16 @@ describe('gen-docs — code snapshot', () => {
       // Lazy-load a language grammar:
       await loadLanguage('python')
 
-      // Tabbed editor — multiple files:
-      <TabbedEditor
-        tabs={[
-          { id: 'main', label: 'main.ts', language: 'typescript', value: 'export {}' },
-          { id: 'styles', label: 'styles.css', language: 'css', value: 'body {}' },
-        ]}
-      />
+      // Tabbed editor — build an instance with createTabbedEditor, then mount it
+      // via the component's \`instance\` prop (each Tab uses \`name\`, not \`label\`):
+      const tabbed = createTabbedEditor({
+        tabs: [
+          { id: 'main', name: 'main.ts', language: 'typescript', value: 'export {}' },
+          { id: 'styles', name: 'styles.css', language: 'css', value: 'body {}' },
+        ],
+      })
+      tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '# Hi' })
+      <TabbedEditor instance={tabbed} style="height: 500px" />
       \`\`\`
 
       > **Peer dep**: @pyreon/runtime-dom
@@ -84,6 +87,6 @@ describe('gen-docs — code snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(6)
+    expect(Object.keys(record).length).toBe(8)
   })
 })

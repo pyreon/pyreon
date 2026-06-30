@@ -3585,11 +3585,38 @@ const binding = bindEditorToSignal({
     notes: 'Side-by-side diff editor. Accepts `original` and `modified` strings plus optional `language` and `theme`. Renders two CodeMirror instances with unified diff highlighting via @codemirror/merge. See also: CodeEditor, TabbedEditor.',
   },
 
+  'code/createTabbedEditor': {
+    signature: '(config?: TabbedEditorConfig) => TabbedEditorInstance',
+    example: `const tabbed = createTabbedEditor({
+  tabs: [
+    { id: 'main', name: 'main.ts', language: 'typescript', value: 'export {}' },
+    { id: 'styles', name: 'styles.css', language: 'css', value: 'body {}' },
+  ],
+})
+tabbed.openTab({ name: 'README.md', language: 'markdown', value: '# Hi' })
+tabbed.switchTab('styles')
+tabbed.activeTab()   // Computed<Tab | null>
+
+<TabbedEditor instance={tabbed} style="height: 500px" />`,
+    notes: 'Create a reactive multi-file (tabbed) editor instance. `config` is `{ tabs?, theme?, editorConfig? }` — `tabs` is an array of `Tab` (`{ name, value, id?, language?, modified?, closable? }`), `editorConfig` applies to every tab. The instance wraps a single underlying `editor` and exposes reactive `tabs` (Signal<Tab[]>), `activeTab` (Computed<Tab | null>), and `activeTabId` (Signal<string>), plus imperative `openTab` / `closeTab` / `switchTab` / `renameTab` / `setModified` / `moveTab` / `getTab` / `closeAll` / `closeOthers` / `dispose`. Mount it via `<TabbedEditor instance={…} />`. See also: TabbedEditor, createEditor.',
+    mistakes: `- Passing \`tabs\` directly to <TabbedEditor> — the component takes an \`instance\` prop, not \`tabs\`. Build the instance with createTabbedEditor, then pass \`instance={tabbed}\`.
+- Using \`label\` for the tab title — a Tab uses \`name\` (the displayed file name); \`id\` is the optional unique key (defaults to \`name\`).
+- Forgetting to call instance.dispose() on unmount — it owns an underlying editor instance.`,
+  },
+
+  'code/TabbedEditor': {
+    signature: '(props: TabbedEditorProps) => VNodeChild',
+    example: `const tabbed = createTabbedEditor({ tabs: [{ name: 'a.ts', value: 'export {}' }] })
+<TabbedEditor instance={tabbed} style="height: 500px" />`,
+    notes: 'Mount component for a `createTabbedEditor` instance. Props are `instance` (REQUIRED — a TabbedEditorInstance), plus optional `style` and `class`. Renders a headless tab bar (plain div + button tabs) above the editor; switching tabs swaps the underlying document reactively. See also: createTabbedEditor, CodeEditor, DiffEditor.',
+    mistakes: '- Passing `tabs={[…]}` — there is no `tabs` prop; pass a `createTabbedEditor` instance via `instance`.',
+  },
+
   'code/loadLanguage': {
-    signature: '(lang: EditorLanguage) => Promise<void>',
-    example: `await loadLanguage('python')
-// Now 'python' is available in createEditor({ language: 'python' })`,
-    notes: 'Lazy-load a language grammar. Supports 19 languages: json, typescript, javascript, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php, and more. Grammars are declared as optional dependencies and loaded on demand. See also: createEditor, getAvailableLanguages.',
+    signature: '(language: EditorLanguage) => Promise<Extension>',
+    example: `const ext = await loadLanguage('python') // the CodeMirror Extension
+// createEditor({ language: 'python' }) now resolves instantly (cache warm)`,
+    notes: 'Lazy-load a language grammar and return its CodeMirror `Extension`. Supports 19 grammars (json, typescript, javascript, jsx, tsx, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php, ruby, shell). The result is cached per language; an uninstalled or unknown grammar resolves to an empty `[]` extension (never throws). `createEditor` loads the grammar for its `language` on mount, so calling `loadLanguage` ahead of time just warms the cache. See also: createEditor, getAvailableLanguages.',
   },
 
   'code/minimapExtension': {

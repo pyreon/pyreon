@@ -497,3 +497,18 @@ describe('getAvailableLanguages', () => {
     expect(langs.length).toBeGreaterThanOrEqual(15)
   })
 })
+
+describe('public surface', () => {
+  it('re-exports createTabbedEditor from the package root', async () => {
+    // The <TabbedEditor> component requires a TabbedEditorInstance via its
+    // `instance` prop, which is built by createTabbedEditor — so the factory
+    // MUST be importable from the package entry, not just the internal module.
+    const codeIndex = await import('../index')
+    expect(typeof codeIndex.createTabbedEditor).toBe('function')
+    const tabbed = codeIndex.createTabbedEditor({
+      tabs: [{ id: 'a', name: 'a.ts', language: 'typescript', value: 'export {}' }],
+    })
+    expect(tabbed.tabs().length).toBe(1)
+    tabbed.dispose()
+  })
+})
