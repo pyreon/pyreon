@@ -3,6 +3,39 @@ import { batch } from '@pyreon/reactivity'
 import { instanceMeta, isModelInstance } from './registry'
 import type { SnapshotListener, Snapshot, StateShape } from './types'
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+/** True if an array/object holds at least one model instance (one level deep). */
+function holdsInstance(container: unknown[] | Record<string, unknown>): boolean {
+  const values = Array.isArray(container) ? container : Object.values(container)
+  for (const v of values) if (isModelInstance(v)) return true
+  return false
+}
+
+/**
+ * Serialize a single state value for `getSnapshot`. Recurses into model
+ * instances AND into arrays / plain objects that HOLD model instances — the
+ * `todos: Todo[]` (array of model instances) and `byId: { [k]: Model }` shapes,
+ * which previously serialized the live signal facades (`[Function …]`) instead
+ * of plain data. Arrays / objects of plain values are returned as-is (identity
+ * preserved), so only the previously-broken instance-bearing case changes.
+ */
+function serializeValue(val: unknown): unknown {
+  if (isModelInstance(val)) return getSnapshot(val as object)
+  if (Array.isArray(val)) return holdsInstance(val) ? val.map(serializeValue) : val
+  if (isPlainObject(val)) {
+    if (!holdsInstance(val)) return val
+    const out: Record<string, unknown> = {}
+    for (const k in val) out[k] = serializeValue(val[k])
+    return out
+  }
+  return val
+}
+
 // ─── getSnapshot ──────────────────────────────────────────────────────────────
 
 /**
@@ -28,8 +61,7 @@ export function getSnapshot<TState extends StateShape>(instance: object): Snapsh
     }
     const sig = (instance as Record<string, Signal<unknown>>)[key]
     if (!sig) continue
-    const val = sig.peek()
-    out[key] = isModelInstance(val) ? getSnapshot(val as object) : val
+    out[key] = serializeValue(sig.peek())
   }
   return out as Snapshot<TState>
 }
@@ -82,6 +114,26 @@ export function applySnapshot<TState extends StateShape>(
       if (isModelInstance(current)) {
         // Recurse into nested model instance
         applySnapshot(current as object, val as Record<string, unknown>)
+      } else if (Array.isArray(current) && Array.isArray(val) && holdsInstance(current)) {
+        // Array of model instances (`todos: Todo[]`): reconcile the existing
+        // instances in place from the matching snapshot elements. Same-shape
+        // lists round-trip exactly. Length changes beyond the overlap are NOT
+        // reconciled into instances (there's no element type to recreate them);
+        // the raw signal is deliberately NOT overwritten so instances are never
+        // replaced by plain snapshot objects (use the array's own mutation
+        // methods to add/remove elements).
+        const n = Math.min(current.length, val.length)
+        for (let i = 0; i < n; i++) {
+          const el = current[i]
+          if (isModelInstance(el)) applySnapshot(el as object, val[i] as Record<string, unknown>)
+        }
+      } else if (isPlainObject(current) && isPlainObject(val) && holdsInstance(current)) {
+        // Plain object whose values are model instances (`byId: { [k]: Model }`):
+        // reconcile each existing instance in place by key.
+        for (const k in val) {
+          const cur = current[k]
+          if (isModelInstance(cur)) applySnapshot(cur as object, val[k] as Record<string, unknown>)
+        }
       } else {
         sig.set(val)
       }
