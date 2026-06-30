@@ -60,6 +60,7 @@ const editor = createRichTextEditor({
   extensions: [],                     // extra TipTap extensions, appended
   autofocus: false,
   onChange: (json) => save(json),     // fires on every document change
+  onError: (err) => report(err),      // mount failure → here, not an unhandled rejection
 })
 ```
 
@@ -109,6 +110,8 @@ import { onCleanup } from '@pyreon/reactivity'
 const editor = createRichTextEditor({ content })
 onCleanup(() => editor.dispose())
 ```
+
+A re-mount restores the **current** document (edits made before `dispose()` are preserved, not reverted to the initial `content`), and calling `dispose()` while the editor is still mounting — e.g. a fast navigate-away during the lazy `@tiptap` load — is safe: the in-flight mount is aborted and no editor leaks. A mount that fails (a broken extension set, a throwing extension, a failed import) routes the error to `onError` instead of surfacing only as an unhandled promise rejection.
 :::
 
 ## Commands
