@@ -970,6 +970,60 @@ describe('@pyreon/solid-compat', () => {
     expect(fetchCount).toBe(2)
   })
 
+  it('createResource .state transitions: pending → ready', async () => {
+    const [data] = createResource(() => Promise.resolve(42))
+    // First load, no resolved value yet, loading → pending
+    expect(data.state).toBe('pending')
+
+    await new Promise((r) => setTimeout(r, 10))
+
+    // Resolved, not loading → ready
+    expect(data.state).toBe('ready')
+  })
+
+  it('createResource .state: unresolved when source is falsy (no fetch)', () => {
+    const [enabled] = createSignal(false)
+    createRoot((dispose) => {
+      const [data] = createResource(enabled, () => 'fetched')
+      // No fetch ran, no value, not loading → unresolved
+      expect(data.state).toBe('unresolved')
+      dispose()
+    })
+  })
+
+  it('createResource .state: refreshing on refetch with a prior value', async () => {
+    let n = 0
+    const [data, { refetch }] = createResource(async () => {
+      n++
+      return n
+    })
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data.state).toBe('ready')
+    expect(data()).toBe(1)
+
+    refetch()
+    // Loading again BUT a previous value exists → refreshing (value retained)
+    expect(data.state).toBe('refreshing')
+    expect(data()).toBe(1)
+
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data.state).toBe('ready')
+    expect(data()).toBe(2)
+  })
+
+  it('createResource .state: errored when the fetch rejects', async () => {
+    const [data] = createResource(() => Promise.reject(new Error('boom')))
+    await new Promise((r) => setTimeout(r, 10))
+    expect(data.state).toBe('errored')
+  })
+
+  it('createResource .state: ready immediately with an initialValue', () => {
+    const [data] = createResource(() => 'sync', { initialValue: 'seed' })
+    // Sync fetcher resolves immediately; value present, not loading → ready
+    expect(data.state).toBe('ready')
+  })
+
   // ─── createStore / produce ────────────────────────────────────────────
 
   it('createStore returns reactive proxy and setter', () => {

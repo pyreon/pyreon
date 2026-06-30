@@ -1,0 +1,7 @@
+---
+"@pyreon/solid-compat": patch
+---
+
+Implement `Resource.state` on `createResource` for real SolidJS parity. The accessor now exposes a reactive `.state` getter — one of `'unresolved' | 'pending' | 'ready' | 'refreshing' | 'errored'` — derived from the resource's loading/error/value signals (matching Solid's semantics: `pending` on first load with no value, `refreshing` when reloading over a prior value, `errored` on rejection). The README's API table previously promised `.state` AND `.pending`, but neither existed — reading `resource.state` silently returned `undefined`. `.state` is now real; `.pending` is removed from the docs (it is not a real Solid `Resource` field — use `.state === 'pending'` or `.loading`).
+
+Documentation corrections (README + `docs/src/content/docs/solid-compat.md`): document `.state`'s five values; add a caveat that `startTransition` / `useTransition` are no-op stubs (synchronous, `isPending` always `false`); add a "Not supported" section disclosing the absent SolidJS APIs (`createMutable` / `modifyMutable`, `onError`, `isServer`, and the SSR entry points `renderToString` / `renderToStringAsync` / `renderToStream` / `HydrationScript` / `NoHydration` / `Assets`); and soften the "thinnest layer / fine-grained / run-once / 1:1" framing to reflect the coarse whole-component re-render model (output and lifecycle are correct, but reactivity is per-component re-run, not Solid's fine-grained per-node).
