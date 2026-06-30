@@ -101,6 +101,14 @@ export class EffectScope {
     this._effects = null
     this._updateHooks = null
     this._updatePending = false
+    // Release the owner-chain + context references so a disposed scope doesn't
+    // retain its parent chain (and the parent's `_contexts` Map) when a
+    // descendant scope outlives it — e.g. a deferred/portal'd child whose
+    // ancestor unmounted first. A stopped scope is never walked as a context
+    // owner (`_active` is false + its effects are disposed), so dropping these
+    // is pure cleanup — and breaks the upward references for GC.
+    this._contexts = null
+    this._parent = null
     this._active = false
   }
 }
