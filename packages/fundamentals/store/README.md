@@ -160,11 +160,17 @@ afterEach(resetAllStores)
 ## Devtools
 
 ```ts
-import { storeRegistry } from '@pyreon/store/devtools'
-storeRegistry.forEach((api) => console.log(api.id, api.state))
+import { getRegisteredStores, getStoreById, onStoreChange } from '@pyreon/store/devtools'
+
+for (const id of getRegisteredStores()) {
+  console.log(id, getStoreById(id)?.state)
+}
+
+// React to stores being added/removed:
+const stop = onStoreChange(() => console.log('registry changed'))
 ```
 
-WeakRef-based registry of live store instances — tree-shakeable. Used by the Pyreon devtools panel to inspect store state.
+`getRegisteredStores()` returns the live store IDs, `getStoreById(id)` returns its `StoreApi` (read `.state`), `onStoreChange(listener)` notifies on add/remove — tree-shakeable. Used by the Pyreon devtools panel to inspect store state.
 
 ## Re-exports
 
