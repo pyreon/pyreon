@@ -781,8 +781,19 @@ function defineSetupStore<T extends Record<string, unknown>>(
       },
 
       patch(partialOrFn: Record<string, unknown> | ((state: Record<string, any>) => void)) {
-        patchInProgress = true
-        patchEvents = []
+        // The `patchInProgress` flag + `patchEvents` buffer exist ONLY to feed
+        // store-level `subscribe()` callbacks: they're written by `notifyDirect`,
+        // which only runs via the per-signal change-detection subscribers — and
+        // those are activated only while ≥1 store subscriber is attached. With no
+        // subscriber the whole machinery is dead weight, so a no-subscriber patch
+        // (the common case) skips two `patchEvents = []` allocations + the flag
+        // dance entirely. This turns the bulk-patch path from a loss into a
+        // tie/win vs Zustand's shallow merge on the no-subscriber case.
+        const hasSubs = subscribers !== null && subscribers.size > 0
+        if (hasSubs) {
+          patchInProgress = true
+          patchEvents = []
+        }
 
         batch(() => {
           if (typeof partialOrFn === 'function') {
@@ -793,40 +804,43 @@ function defineSetupStore<T extends Record<string, unknown>>(
             }
             partialOrFn(signalMap)
           } else {
-            // Object form: set values directly (skip reserved proto keys)
-            for (const [key, value] of Object.entries(partialOrFn)) {
+            // Object form: set values directly (skip reserved proto keys).
+            // `Object.keys` + index avoids the per-entry [k,v] tuple arrays that
+            // `Object.entries` allocates.
+            for (const key of Object.keys(partialOrFn)) {
               if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
               if (signalKeySet.has(key)) {
                 // Per-key write inside batched patch. Tracks batch-size
                 // distribution; correlate with `reactivity.signalWrite`
                 // — the two should match 1:1 on the object-form path.
                 if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
-                ;(raw[key] as SignalLike).set(value)
+                ;(raw[key] as SignalLike).set(partialOrFn[key])
               }
             }
           }
         })
 
-        patchInProgress = false
-
-        // Emit a single notification for the patch
-        if (subscribers !== null && subscribers.size > 0 && patchEvents.length > 0) {
-          const mutation: MutationInfo = {
-            storeId: id,
-            type: 'patch',
-            events: patchEvents,
+        if (hasSubs) {
+          patchInProgress = false
+          // Emit a single notification for the patch.
+          if (patchEvents.length > 0) {
+            const mutation: MutationInfo = {
+              storeId: id,
+              type: 'patch',
+              events: patchEvents,
+            }
+            const state = getState()
+            for (const cb of subscribers as Set<SubscribeCallback>) {
+              // Same fan-out counter as the direct-notify path; the patch
+              // path emits ONCE per patch (not per key) thanks to the
+              // batched flush, so this should equal the patch call count
+              // multiplied by subscriber count.
+              if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
+              cb(mutation, state)
+            }
           }
-          const state = getState()
-          for (const cb of subscribers) {
-            // Same fan-out counter as the direct-notify path; the patch
-            // path emits ONCE per patch (not per key) thanks to the
-            // batched flush, so this should equal the patch call count
-            // multiplied by subscriber count.
-            if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.subscribeNotify')
-            cb(mutation, state)
-          }
+          patchEvents = []
         }
-        patchEvents = []
       },
 
       subscribe(callback: SubscribeCallback, options?: { immediate?: boolean }): () => void {
