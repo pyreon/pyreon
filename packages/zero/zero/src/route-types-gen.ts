@@ -6,7 +6,7 @@
  * Split out of `vite-plugin.ts` so the page-filtering + write-if-changed logic
  * is unit-testable without importing the heavy plugin module.
  */
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { scanRouteFilesWithExports } from './fs-router'
 import { generateRouteTypes } from './route-types'
 import type { FileRoute, RenderMode } from './types'
@@ -41,11 +41,16 @@ export async function writeRouteTypes(
   }
   const dts = generateRouteTypes(paths)
   const out = `${root}/src/pyreon-routes.d.ts`
+  // Read-then-compare (no `existsSync` check-before-use — a missing file is
+  // just a read miss, so the try/catch handles it; this also avoids a
+  // time-of-check-to-time-of-use race on the `.d.ts`).
+  let previous: string | null = null
   try {
-    if (existsSync(out) && readFileSync(out, 'utf-8') === dts) return false
+    previous = readFileSync(out, 'utf-8')
   } catch {
-    /* ignore read error — fall through to write */
+    /* missing / unreadable — fall through to write */
   }
+  if (previous === dts) return false
   try {
     writeFileSync(out, dts)
     return true
