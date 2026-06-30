@@ -29,7 +29,11 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { parseSync } from 'oxc-parser'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+// `import.meta.dir` is a Bun-ism — undefined when this module is IMPORTED
+// under vitest (the pure helpers are unit-tested there). Fall back to cwd so
+// module-eval never crashes; REPO_ROOT is only consumed by `main()` (guarded
+// behind `import.meta.main`), so the fallback value is irrelevant in tests.
+const REPO_ROOT = resolve((import.meta as { dir?: string }).dir ?? process.cwd(), '..')
 
 // ─── Exemptions ─────────────────────────────────────────────────────────────
 //
@@ -271,7 +275,7 @@ const _strippedSourceCache = new Map<string, string>()
 
 /** Replace each `[start, end)` range with equal-length spaces (preserves
  *  offsets AND prevents adjacent tokens from merging, e.g. `a/* *​/b`). */
-function blankRanges(code: string, ranges: ReadonlyArray<{ start: number; end: number }>): string {
+export function blankRanges(code: string, ranges: ReadonlyArray<{ start: number; end: number }>): string {
   if (ranges.length === 0) return code
   const sorted = [...ranges].sort((a, b) => a.start - b.start)
   let out = ''
@@ -296,20 +300,22 @@ function blankRanges(code: string, ranges: ReadonlyArray<{ start: number; end: n
  * only if a file fails to parse (best-effort; over-strips at worst, which
  * can only inflate refs, never hide an unimplemented field).
  */
+export function stripComments(code: string, filename: string): string {
+  try {
+    const { comments } = parseSync(filename, code, {
+      sourceType: 'module',
+      lang: filename.endsWith('.tsx') ? 'tsx' : 'ts',
+    }) as { comments?: ReadonlyArray<{ start: number; end: number }> }
+    return blankRanges(code, comments ?? [])
+  } catch {
+    return code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  }
+}
+
 function commentStrippedSource(file: string): string {
   const cached = _strippedSourceCache.get(file)
   if (cached !== undefined) return cached
-  const code = readFileSync(file, 'utf-8')
-  let stripped: string
-  try {
-    const { comments } = parseSync(file, code, {
-      sourceType: 'module',
-      lang: file.endsWith('.tsx') ? 'tsx' : 'ts',
-    }) as { comments?: ReadonlyArray<{ start: number; end: number }> }
-    stripped = blankRanges(code, comments ?? [])
-  } catch {
-    stripped = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
-  }
+  const stripped = stripComments(readFileSync(file, 'utf-8'), file)
   _strippedSourceCache.set(file, stripped)
   return stripped
 }
@@ -538,7 +544,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`[audit-types] crashed: ${err}\n`)
-  process.exit(2)
-})
+// Guarded so the pure helpers (`stripComments` / `blankRanges`) can be
+// imported by tests without running the audit (which calls `process.exit`).
+if (import.meta.main) {
+  main().catch((err) => {
+    process.stderr.write(`[audit-types] crashed: ${err}\n`)
+    process.exit(2)
+  })
+}
