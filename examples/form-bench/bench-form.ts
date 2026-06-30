@@ -27,7 +27,7 @@ import { chromium, type Page } from 'playwright'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PORT = 4188
-const CANONICAL = ['Pyreon', 'React Hook Form'] as const
+const CANONICAL = ['Pyreon', 'React Hook Form', 'TanStack Form', 'Formik'] as const
 
 interface BenchResult {
   name: string
@@ -186,7 +186,8 @@ async function main(): Promise<void> {
   const scenarios = [...(pooled.get('Pyreon')?.keys() ?? [])]
   const machine = `${os.cpus()[0]?.model ?? 'unknown'} · ${os.cpus().length} cores · ${(os.totalmem() / 1e9).toFixed(0)} GB · ${os.platform()} · Chromium ${browser.version?.() ?? '?'}`
 
-  console.log(`\nTIER B — REAL-APP FORM BENCHMARK — Pyreon vs React Hook Form`)
+  const peers = CANONICAL.filter((f) => f !== 'Pyreon').join(' / ')
+  console.log(`\nTIER B — REAL-APP FORM BENCHMARK — Pyreon vs ${peers}`)
   console.log(`${machine}`)
   console.log(`Median ± 95% bootstrap CI, CV%, pooled ${repeat * 20} samples/scenario. Lower = faster.\n`)
   const head = ['scenario', ...CANONICAL, 'verdict']
@@ -199,10 +200,14 @@ async function main(): Promise<void> {
       const xs = pooled.get(fw)?.get(name) ?? []
       return { fw, median: median(xs), ci95: ci95(xs) }
     })
-    const best = Math.min(...stats.map((s) => s.median || Infinity))
-    const tied = stats.length === 2 && overlap(stats[0]!.ci95, stats[1]!.ci95)
-    const winner = stats.reduce((a, b) => (b.median < a.median ? b : a))
-    const verdict = tied ? '🤝 tied (CI overlap)' : winner.fw
+    const ranked = [...stats].sort((a, b) => a.median - b.median)
+    const leader = ranked[0]!
+    const runnerUp = ranked[1]
+    const best = leader.median || Infinity
+    // Tied-within-noise: the leader's CI overlaps the runner-up's → the win is
+    // not resolvable at this sample size (don't read a winner).
+    const tied = !!runnerUp && overlap(leader.ci95, runnerUp.ci95)
+    const verdict = tied ? `🤝 ${leader.fw}≈${runnerUp.fw} (CI overlap)` : leader.fw
     const cells = stats
       .map((s) => `${fmt(s.median)}(${(s.median / best).toFixed(1)}x)`.padEnd(26))
       .join('')

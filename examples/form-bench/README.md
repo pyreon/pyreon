@@ -1,8 +1,9 @@
 # @pyreon/form-bench
 
-Tier-B, real-browser, cross-framework form benchmark — **Pyreon vs React Hook
-Form** (MVP; more frameworks + scenarios are the next phases). The companion to
-the headless Tier-A store-primitive bench in
+Tier-B, real-browser, cross-framework form benchmark — **Pyreon vs the
+React-ecosystem peers: React Hook Form, TanStack Form, Formik** (the Vue /
+Svelte / Solid peers + more scenarios are the next phases). The companion to the
+headless Tier-A store-primitive bench in
 `packages/fundamentals/form/bench/form-bench.ts`.
 
 Read **[METHODOLOGY.md](./METHODOLOGY.md)** first — it is the fairness + honesty
@@ -34,12 +35,15 @@ bun run dev                             # open the page, click "Run"
 | `src/runner.ts` | Measurement core — adaptive warmup + 20 runs + median + CI95 + CV (same discipline as `examples/benchmark`) |
 | `src/dom.ts` | Real-keystroke driving (`setInput`) + DOM verification helpers |
 | `src/impl/pyreon.ts` | Idiomatic `@pyreon/form` impl |
-| `src/impl/rhf.ts` | Idiomatic React Hook Form impl |
+| `src/impl/rhf.ts` | Idiomatic React Hook Form impl (uncontrolled) |
+| `src/impl/tanstack.ts` | Idiomatic TanStack Form impl (controlled `form.Field`) |
+| `src/impl/formik.ts` | Idiomatic Formik impl (controlled `useFormik`) |
 | `bench-form.ts` | Playwright driver (the canonical run) |
 
 ## Status
 
-MVP: 4 scenarios (mount, keystroke-blur, keystroke-change, reset) × 2 frameworks
-(Pyreon, RHF). The `validate-submit-invalid` scenario and the Formik / TanStack /
-Vue / Svelte / Solid columns are the next increments — see METHODOLOGY.md →
-Roadmap. Nothing here is published; it is a benchmark example.
+4 scenarios (mount, keystroke-blur, keystroke-change, reset) × 4 frameworks
+(Pyreon, React Hook Form, TanStack Form, Formik — the React ecosystem). The
+`validate-submit-invalid` scenario and the Vue (vee-validate) / Svelte (Felte) /
+Solid (`@modular-forms/solid`) columns are the next increments — see
+METHODOLOGY.md → Roadmap. Nothing here is published; it is a benchmark example.

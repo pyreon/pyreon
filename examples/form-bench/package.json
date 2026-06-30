@@ -18,6 +18,8 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/validation": "workspace:*",
+    "@tanstack/react-form": "^1.23.4",
+    "formik": "^2.4.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hook-form": "^7.80.0",

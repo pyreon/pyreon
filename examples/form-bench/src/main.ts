@@ -1,5 +1,7 @@
+import { runFormik } from './impl/formik'
 import { runPyreon } from './impl/pyreon'
 import { runRhf } from './impl/rhf'
+import { runTanstack } from './impl/tanstack'
 import type { BenchSuite } from './runner'
 
 const statusEl = document.getElementById('status') as HTMLElement
@@ -9,6 +11,8 @@ const runBtn = document.getElementById('run') as HTMLButtonElement
 const ALL = [
   { name: 'Pyreon', run: runPyreon },
   { name: 'React Hook Form', run: runRhf },
+  { name: 'TanStack Form', run: runTanstack },
+  { name: 'Formik', run: runFormik },
 ] as const
 
 function fmt(ms: number): string {

@@ -26,9 +26,12 @@ exactly the artifact the DOM bench's objectivity pass existed to kill.
 
 1. **Idiomatic state model per framework, audited file-by-file.** Pyreon uses
    `register` + per-field signals; React Hook Form uses uncontrolled `register`
-   + `zodResolver`. We **never** force one framework into another's pattern
-   ("make React use signals"). Each impl is a small, readable file you can audit
-   against that library's own docs.
+   + `zodResolver`; TanStack Form uses controlled `form.Field` render-props +
+   standard-schema validators; Formik uses controlled `useFormik` + a manual
+   zod `validate` (no third-party adapter, so the schema stays shared). We
+   **never** force one framework into another's pattern ("make React use
+   signals"). Each impl is a small, readable file you can audit against that
+   library's own docs.
 2. **One validator, shared verbatim** (`shared/schema.ts`). The same zod schema
    feeds Pyreon's `@pyreon/validation` adapter and RHF's `@hookform/resolvers`,
    so a validation scenario measures the library's *wiring*, not the rules.
@@ -87,24 +90,26 @@ notice. Mitigations, in order of strength:
 ## Scenarios
 
 The framework-agnostic contract lives in `shared/scenarios.ts` (`status: 'active'`
-vs `'planned'`). The MVP ships four `active` scenarios — **mount-12-fields**,
-**keystroke-blur**, **keystroke-change**, **reset-dirty-form** — implemented
-identically (same ids, same shared schema) for Pyreon and React Hook Form.
+vs `'planned'`). Four `active` scenarios — **mount-12-fields**,
+**keystroke-blur**, **keystroke-change**, **reset-dirty-form** — are implemented
+identically (same ids, same shared schema) for every framework: Pyreon, React
+Hook Form, TanStack Form, and Formik (the React ecosystem).
 
 ## Roadmap (remaining phases — honest about what is NOT here yet)
 
-This package is the **MVP** of a larger plan (Pyreon vs RHF in a real browser —
-"if Pyreon's story holds vs the toughest React peer, it holds"). Still to come,
-each a reviewable increment:
+The React ecosystem is covered (Pyreon, React Hook Form, TanStack Form, Formik).
+Still to come, each a reviewable increment:
 
-- **`validate-submit-invalid`** — currently `status: 'planned'`. Deferred from
-  the MVP because RHF commits its error state through React's async path, which
+- **`validate-submit-invalid`** — currently `status: 'planned'`. Deferred
+  because the React libs commit error state through React's async path, which
   needs a fair `act()`/commit boundary to compare cleanly against Pyreon's
-  synchronous error patch. Adding it to *both* columns or neither is the rule;
-  it ships when the React commit boundary is made fair.
-- **More competitors** — Formik, `@tanstack/react-form` (React); then
-  vee-validate (Vue), Felte (Svelte), `@modular-forms/solid` (the true signal
-  peer). Each idiomatic, each its own `src/impl/<framework>.ts`.
+  synchronous error patch. Adding it to *all* columns or none is the rule; it
+  ships when the React commit boundary is made fair.
+- **Non-React frameworks** — vee-validate (Vue), Felte (Svelte),
+  `@modular-forms/solid` (the true signal peer that may tie). Each needs its own
+  Vite plugin (`@vitejs/plugin-vue`, `@sveltejs/vite-plugin-svelte`,
+  `vite-plugin-solid`), so they land as a separate PR rather than bloating the
+  React-peer set.
 - **More scenarios** — field-array append/remove/reorder, cross-field
   validation, bulk programmatic setValues, isolation/re-render-scope proof.
 - **Bundle-size dimension** — gzipped weight of the minimal "12-field validated
