@@ -17,6 +17,10 @@ routes):
 - `generateRouteTypes(routePaths)` + `extractRouteParams(path)` — the pure codegen that
   emits the augmenting `.d.ts` from the fs-router's `urlPath`s (`/posts/:id` →
   `{ id: string }`, `/blog/:slug*` → catch-all).
-
-This is the type foundation + codegen; the `@pyreon/vite-plugin` wiring that writes the
-generated `.d.ts` (so autocomplete lights up in a real app) is the next increment.
+- **`zero({ typedRoutes: true })` plugin wiring (opt-in).** When enabled, the zero plugin
+  scans your routes at `buildStart` and on route add/remove (HMR), filters to PAGE routes
+  (layouts / error / loading / 404 are skipped — they have no navigable path), and writes
+  `src/pyreon-routes.d.ts` (only on a content change — no HMR churn). The app's `tsconfig`
+  `include: ["src"]` picks it up automatically, so `<Link href>` autocomplete lights up.
+  Off by default (no surprise file writes); add the generated file to `.gitignore`. All
+  fs / scan errors are swallowed — typed routes never break the build.

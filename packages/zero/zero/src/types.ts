@@ -255,6 +255,15 @@ export interface ZeroConfig {
   /** Default rendering mode. Default: "ssr" */
   mode?: RenderMode
 
+  /**
+   * Typed route paths (opt-in). When `true`, the plugin scans your routes and
+   * generates `src/pyreon-routes.d.ts` (regenerated on route add/remove), which
+   * augments `RegisteredRoutes` so `<Link href>` / navigation autocomplete your
+   * real route paths and `RouteParams<P>` is typed. Add the generated file to
+   * `.gitignore`. Off by default.
+   */
+  typedRoutes?: boolean
+
   /** Vite config overrides. */
   vite?: Record<string, unknown>
 

@@ -132,7 +132,8 @@ export default defineConfig({
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
 | `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)** |
 | `middleware` | `Middleware[]`                                                                | `[]`    | Global server middleware                                     |
-| `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                      |
+| `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                     |
+| `typedRoutes`| `boolean`                                                                     | `false` | Generate `src/pyreon-routes.d.ts` so `<Link href>` autocompletes your routes — see **[Typed routes](#typed-routes)** |
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). When no `ssr.mode` is set, the server picks the effective default at runtime: `'stream'` for `mode: 'ssr'`, `'string'` for every other mode — pass `ssr: { mode: 'string' }` to opt an SSR app back into buffered rendering.
 
@@ -190,6 +191,50 @@ declare module 'virtual:zero/route-middleware' {
   import type { RouteMiddlewareEntry } from '@pyreon/zero'
   export const routeMiddleware: RouteMiddlewareEntry[]
 }
+```
+
+### Typed routes
+
+Turn `typedRoutes` on and `<Link href>` (and any `RouteHref`-typed API) autocompletes
+your real route paths and rejects typos at compile time — the TanStack-Router / SvelteKit
+/ Next-typed-routes bar, built on the standard module-augmentation pattern.
+
+```ts title="vite.config.ts"
+import { zero } from '@pyreon/zero/config'
+
+export default {
+  plugins: [pyreon(), zero({ typedRoutes: true })],
+}
+```
+
+The plugin scans your **page** routes (layouts, `_error`, `_loading`, `_404` are skipped —
+they have no navigable path) and writes `src/pyreon-routes.d.ts`, regenerated on route
+add/remove. Your `tsconfig` `include: ["src"]` picks it up automatically:
+
+```ts
+// src/pyreon-routes.d.ts — auto-generated, do not edit
+declare module '@pyreon/zero' {
+  interface RegisteredRoutes {
+    '/': Record<string, never>
+    '/about': Record<string, never>
+    '/posts/:id': { id: string }
+  }
+}
+export {}
+```
+
+```tsx
+<Link href="/posts/42" />   // ✓ autocompleted
+<Link href="/postz/42" />   // ✗ type error — unknown route
+<Link href={dynamicPath} /> // ✓ still accepts any string (RouteHref = RoutePath | (string & {}))
+```
+
+Add the generated file to `.gitignore` — it's build output. `RouteParams<'/posts/:id'>` is
+typed as `{ id: string }`. Off by default (no surprise file writes); until codegen runs,
+`href` stays `string`, so existing code never breaks.
+
+```gitignore title=".gitignore"
+src/pyreon-routes.d.ts
 ```
 
 ## Route Module Exports
