@@ -206,6 +206,17 @@ function drainQueuesLocked(): void {
                 'Common cause: an effect that writes to a signal it also reads, without a guard. ' +
                 'See packages/core/reactivity/src/batch.ts for the multi-pass flush contract.',
             )
+          } else {
+            // Surface in production TOO — dropping queued effects leaves the
+            // reactive graph inconsistent (some effects ran, some didn't), a
+            // silent correctness failure the dev-only branch above hid from
+            // production. Kept deliberately TERSE (the detailed message + label
+            // scan live in the dev branch, which tree-shakes out of prod) so the
+            // prod diagnostic costs the core minimal-import only ~one short
+            // string; fires per trip, matching the dev warning (a tripping
+            // effect is a user bug that must be fixed, not throttled away).
+            // oxlint-disable-next-line no-console
+            console.error('[pyreon] MAX_PASSES exceeded — effects dropped (effect writing a signal it reads?)')
           }
           // Drop the queue so subsequent batches start clean — without
           // this, the next batch would re-encounter the offending effect

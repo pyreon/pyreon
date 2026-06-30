@@ -106,6 +106,18 @@ export interface Selector<T> {
  * // Dynamic value spaces — call dispose() to release the per-value cache:
  * const isCurrentTab = createSelector(() => currentTabId())
  * onUnmount(() => isCurrentTab.dispose())
+ *
+ * @remarks
+ * Per-key state (the `subs`/`hosts` buckets created when an effect reads
+ * `selector(key)`) is the price of O(1)-per-key selection: a bucket is created
+ * on first access of a key and is NOT reclaimed when that key's subscribers
+ * later leave (the effect removes itself from the bucket Set, but the selector
+ * gets no callback to prune the now-empty key). For a bounded key set (a list
+ * of N rows) this is bounded by N; for UNBOUNDED-cardinality churn (e.g. an
+ * infinite-scroll list whose row ids never repeat, kept alive indefinitely) the
+ * buckets accumulate until `dispose()`. Dispose the selector when its keyed set
+ * is bounded-lived. (The `.subscribe()` channel's per-key Set IS reclaimed when
+ * its last subscriber leaves.)
  */
 export function createSelector<T>(source: () => T): Selector<T> {
   const subs = new Map<T, Set<() => void>>()
@@ -234,6 +246,11 @@ export function createSelector<T>(source: () => T): Selector<T> {
         boundSubs.delete(value)
       } else if (bucket instanceof Set) {
         bucket.delete(updater)
+        // Last subscriber of a promoted key left — drop the now-empty Set so
+        // the key doesn't linger in `boundSubs` (same unbounded-growth guard the
+        // inline branch applies; without this, a key that ever had ≥2 bound
+        // subscribers leaked an empty Set for the selector's lifetime).
+        if (bucket.size === 0) boundSubs.delete(value)
       }
     }
   }
