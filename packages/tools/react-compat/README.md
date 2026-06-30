@@ -2,7 +2,7 @@
 
 React-compatible API shim — write React-style hooks that run on Pyreon's reactive engine.
 
-`@pyreon/react-compat` is a near-full React 19 surface (`useState`, `useEffect`, `useReducer`, `useRef`, `useId`, `useSyncExternalStore`, `useTransition`, `useDeferredValue`, `useImperativeHandle`, `useActionState`, `useOptimistic`, `use`, `useLayoutEffect`, `useInsertionEffect`, plus `forwardRef`, `memo`, `lazy`, `Suspense`, `createContext`, `createPortal`, `cloneElement`, `Children`, `StrictMode`, `Profiler`, `Component`, `PureComponent`) backed by Pyreon's signal-based reactivity. The `./dom` subpath provides `createRoot` as a drop-in for `react-dom/client`. **This is a compat shim, not React** — it intentionally diverges where React's render-on-state-change model conflicts with Pyreon's run-once + fine-grained-reactivity model. The escape hatch is to drop the compat layer and use Pyreon's native API directly.
+`@pyreon/react-compat` is a near-full React 19 surface (`useState`, `useEffect`, `useReducer`, `useRef`, `useId`, `useSyncExternalStore`, `useTransition`, `useDeferredValue`, `useImperativeHandle`, `useActionState`, `useOptimistic`, `use`, `useLayoutEffect`, `useInsertionEffect`, plus `forwardRef`, `memo`, `lazy`, `Suspense`, `createContext`, `createPortal`, `cloneElement`, `Children`, `StrictMode`, `Profiler`, `Component`, `PureComponent`) backed by Pyreon's signal-based reactivity. The `./dom` subpath provides `createRoot` as a drop-in for `react-dom/client`. It runs the **value + re-render model**: `useState` returns the value directly (not a getter), the component body re-runs on state change, hooks are positional, and `useEffect` / `useMemo` / `useCallback` honor their deps arrays — so most React code behaves identically, including hooks-rules ordering and stale-closure semantics. **This is a compat shim, not React** — it intentionally diverges in a few places where React's reconciliation model conflicts with Pyreon's per-component re-render. The escape hatch is to drop the compat layer and use Pyreon's native API directly.
 
 ## Install
 
@@ -20,12 +20,12 @@ function Counter() {
   const [count, setCount] = useState(0)
 
   useEffect(() => {
-    document.title = `Count: ${count()}`
-  })
+    document.title = `Count: ${count}`
+  }, [count])
 
   return (
     <div>
-      <p>Count: {count()}</p>
+      <p>Count: {count}</p>
       <button onClick={() => setCount((c) => c + 1)}>+1</button>
     </div>
   )
@@ -45,32 +45,35 @@ createRoot(document.getElementById('app')!).render(<Counter />)
 
 ## Key differences from React
 
-| Behavior              | React                                  | `@pyreon/react-compat`                                                 |
-| --------------------- | -------------------------------------- | ---------------------------------------------------------------------- |
-| Component execution   | Re-runs render on every state change   | Runs **once** (setup phase)                                            |
-| `useState` getter     | Returns the value directly             | Returns a **getter function** — call `count()` to read                 |
-| `useEffect` deps      | Controls when the effect re-runs       | Deps array is **ignored** — Pyreon tracks dependencies automatically   |
-| `useCallback`         | Memoizes across renders                | **No-op** — returns `fn` as-is                                         |
-| `useMemo`             | Returns the memoized value             | Returns a **getter function** — call `value()` to read                 |
-| `useLayoutEffect`     | Sync before paint                      | Same as `useEffect`                                                    |
-| `useInsertionEffect`  | Library-injected CSS before mutations  | Same as `useEffect`                                                    |
-| `useTransition`       | Returns `[isPending, startTransition]` | Same shape; `isPending` is a getter                                    |
-| `useSyncExternalStore`| Subscribes via React's scheduler       | Same shape; getter return                                              |
-| `memo`                | Bails on equal props                   | **No-op** — pass-through                                               |
-| `forwardRef`          | Wraps for ref forwarding               | Pass-through; refs are first-class props                               |
-| Class components      | Full lifecycle support                 | `setState` + `forceUpdate` work; lifecycle methods are not called      |
-| Hooks rules           | Must be called at top level            | **No restrictions** — call anywhere in component setup                 |
+`@pyreon/react-compat` runs the **value + re-render model**: `useState` returns the value directly (not a getter), the component body re-runs on state change, and `useEffect` / `useMemo` / `useCallback` honor their deps arrays. So most React code — including hooks-rules ordering and stale-closure semantics — behaves identically. The genuine differences are:
 
-### Read state via a getter
+| Behavior                                              | React                                      | `@pyreon/react-compat`                                                                                                                                                                                                              |
+| ----------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reactive engine                                       | VDOM diff + reconciliation                 | Pyreon signals driving a per-component re-render                                                                                                                                                                                       |
+| **Nested child state across an _ancestor_ re-render** | Preserved (reconciliation by position/key) | **Reset** — a parent re-render rebuilds the child subtree, so a nested component's `useState` / `useReducer` / `useRef` revert to their initial values and `useEffect([])` re-fires. `memo` does not prevent this. Lift such state up, or avoid re-rendering the ancestor. |
+| Class components                                      | Full lifecycle support                     | **Unsupported** — `Component` / `PureComponent` are stubs; `setState` / `forceUpdate` warn-and-no-op, lifecycle methods never fire, `render()` returns `null`. Use function components with hooks. |
+| Concurrent mode                                       | `useTransition` / `useDeferredValue` defer updates | **No-ops** — all updates are synchronous; `useTransition` returns `[false, fn => fn()]`, `useDeferredValue` / `startTransition` / `flushSync` are synchronous pass-throughs |
+| `useLayoutEffect` / `useInsertionEffect`              | Distinct timing (sync before paint / before mutations) | Same as `useEffect` — Pyreon has no layout/paint distinction                                                                                                                                                                |
+| `version`                                             | Real React version                         | Reports `19.0.0-pyreon` — gates on React 19 work; exact-version equality won't match                                                                                                                                                |
+
+### Hooks behave like React
+
+`useState` returns the value directly and the component re-runs on state change — no getter call:
 
 ```tsx
-// React
 const [count, setCount] = useState(0)
-console.log(count) // 0
+console.log(count) // 0 — the value, exactly like React
+```
 
-// @pyreon/react-compat
-const [count, setCount] = useState(0)
-console.log(count()) // 0 — call the function
+Because the component re-runs, hooks are positional (call them at the top level, not in conditions/loops) and closures follow the usual React rules — use the updater form for the latest value inside long-lived callbacks:
+
+```tsx
+useEffect(() => {
+  const id = setInterval(() => {
+    setCount((prev) => prev + 1) // updater form reads the latest
+  }, 1000)
+  return () => clearInterval(id)
+}, [])
 ```
 
 ### `createRoot` from `./dom`
@@ -106,11 +109,10 @@ export default { plugins: [pyreon({ compat: 'react' })] }
 
 ## Gotchas
 
-- **Run-once mental model.** Components don't re-run on state change. Read signals/getters where they're used, not destructured into locals at the top of the function.
-- **`useEffect` / `useLayoutEffect` / `useInsertionEffect` deps are ignored.** Pyreon tracks dependencies automatically. Effects re-run when any signal they read changes.
-- **`memo` / `useCallback` / `forwardRef` are no-ops.** Pyreon's run-once model + fine-grained reactivity removes their reason to exist.
+- **Nested child state resets when an ancestor re-renders.** A parent re-render rebuilds the whole child subtree, so a nested component's `useState` / `useReducer` / `useRef` revert to their initial values and its `useEffect([])` runs again (re-subscribing / re-fetching). Keep state that must survive ancestor re-renders lifted up, or split the re-rendering ancestor out. (`memo` does not prevent this — the subtree is still rebuilt.)
+- **Class components are unsupported stubs.** `Component` / `PureComponent` exist for import compatibility, but `setState` / `forceUpdate` warn-and-no-op, lifecycle methods never fire, and `render()` returns `null`. Use function components with hooks; use `onMount` / `onUnmount` from `@pyreon/core` for lifecycle and an `ErrorBoundary` component for error handling.
+- **Concurrent-mode APIs are synchronous.** `useTransition` returns `[false, fn => fn()]`, `useDeferredValue` returns the value as-is, and `startTransition` / `flushSync` run synchronously — Pyreon has no concurrent mode, so these are kept for compatibility but defer nothing.
 - **`Children` API is supported** (`map`, `forEach`, `count`, `toArray`, `only`) but works on Pyreon `VNodeChild` shapes.
-- **Class-component lifecycle methods don't fire.** Use `onMount` / `onUnmount` from `@pyreon/core` for lifecycle.
 - **The DOM is fully replaced on re-render in the compat layer** — there's no VDOM diffing. Pre-captured `elementHandle()` references in tests will point at detached nodes; always re-query the DOM after a state change.
 - **`version`** reports `19.0.0-pyreon` — code that gates on React 19 keeps working; code that asserts equality won't match.
 
