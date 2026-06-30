@@ -1,0 +1,5 @@
+---
+"@pyreon/permissions": patch
+---
+
+perf: pre-partitioned resolver index. `resolve()` (run on every `can()` check) previously built candidate-key strings per check (`` `${parent}.*` ``, `` `${ancestor}.**` ``) while walking the most-specific-first fallback chain, so a deny/wildcard check cost ~5–7× a single exact lookup. `createPermissions` now keeps a derived index that pre-partitions keys into exact / `prefix.*` / `prefix.**` / `*` sub-maps (rebuilt on `set()`/`clear()`, incrementally updated on `patch()`); `resolve` does direct prefix lookups with no per-check string allocation, early-outs to one `Map.get` miss when the map has no wildcards, and skips empty partitions. Output is byte-identical (most-specific-first deny-override preserved; all 153 tests pass). Measured (controlled same-run A/B): wildcard-map deny ~87→~48ns and wildcard ~125→~80ns (both gaps to CASL halved); a no-wildcard flat-RBAC deny drops to ~30ns (now faster than CASL). Surfaced + driven by the `bench:casl` objective benchmark.
