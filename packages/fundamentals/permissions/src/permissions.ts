@@ -33,14 +33,18 @@ interface PermIndex {
   recursive: Map<string, PermissionValue> // 'prefix.**' → prefix → value
   global: PermissionValue | undefined // '*'
   hasWildcard: boolean
+  // True when ANY value is a predicate fn. Predicates depend on `context`, so a
+  // key→boolean resolve memo is only sound when the WHOLE map is static booleans.
+  hasPredicate: boolean
 }
 
 function emptyIndex(): PermIndex {
-  return { exact: new Map(), single: new Map(), recursive: new Map(), global: undefined, hasWildcard: false }
+  return { exact: new Map(), single: new Map(), recursive: new Map(), global: undefined, hasWildcard: false, hasPredicate: false }
 }
 
 /** Route one key into its partition (deterministic by key shape). */
 function indexKey(idx: PermIndex, key: string, value: PermissionValue): void {
+  if (typeof value === 'function') idx.hasPredicate = true
   if (key === '*') {
     idx.global = value
     idx.hasWildcard = true
@@ -60,6 +64,10 @@ function buildIndex(map: Map<string, PermissionValue>): PermIndex {
   for (const [key, value] of map) indexKey(idx, key, value)
   return idx
 }
+
+/** Defensive bound on the per-instance resolve memo (real permission vocabularies
+ *  are far smaller; this only guards against an adversarial distinct-key flood). */
+const RESOLVE_CACHE_CAP = 4096
 
 /**
  * Resolve a permission key against the pre-built index.
@@ -160,6 +168,13 @@ export function createPermissions(initial?: PermissionMap): Permissions {
   // with `store` on every set/patch/clear; `store` stays the source of truth for
   // `granted`/`entries` + the reactive signal.
   let index = buildIndex(store.peek())
+  // Per-key resolve memo. Apps check the same permission repeatedly (per render),
+  // so caching key→boolean turns a repeated wildcard/deny check (a multi-step
+  // partition walk) into one `Map.get`. SOUND only when the map is all static
+  // booleans (no predicates) AND no per-call `context` is supplied — then
+  // `resolve(key)` is a pure function of `key`. Cleared on every set/patch/clear.
+  // Capped so an adversarial flood of distinct keys can't grow it unboundedly.
+  const resolveCache = new Map<string, boolean>()
 
   function toMap(obj?: PermissionMap): Map<string, PermissionValue> {
     if (!obj) return new Map()
@@ -170,6 +185,14 @@ export function createPermissions(initial?: PermissionMap): Permissions {
   function can(key: string, context?: unknown): boolean {
     // Reading version subscribes this call to reactive updates
     version()
+    // Memoized fast path: pure-static map + no context → resolve(key) is pure.
+    if (context === undefined && !index.hasPredicate) {
+      const cached = resolveCache.get(key)
+      if (cached !== undefined) return cached
+      const result = resolve(index, key)
+      if (resolveCache.size < RESOLVE_CACHE_CAP) resolveCache.set(key, result)
+      return result
+    }
     return resolve(index, key, context)
   }
 
@@ -190,6 +213,7 @@ export function createPermissions(initial?: PermissionMap): Permissions {
       const map = toMap(permissions)
       store.set(map)
       index = buildIndex(map) // full rebuild — `set` replaces ALL permissions
+      resolveCache.clear() // permissions changed → memo is stale
       version.update((v) => v + 1)
     })
   }
@@ -205,6 +229,7 @@ export function createPermissions(initial?: PermissionMap): Permissions {
         indexKey(index, key, value)
       }
       store.set(current)
+      resolveCache.clear() // permissions changed → memo is stale
       version.update((v) => v + 1)
     })
   }
@@ -213,6 +238,7 @@ export function createPermissions(initial?: PermissionMap): Permissions {
     batch(() => {
       store.set(new Map())
       index = emptyIndex()
+      resolveCache.clear()
       version.update((v) => v + 1)
     })
   }
