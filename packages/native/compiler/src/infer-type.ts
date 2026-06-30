@@ -282,6 +282,35 @@ export function typeIsOptional(t: TypeIR): boolean {
   )
 }
 
+/**
+ * Classify a CONDITION expression for optional-truthiness lowering. JS treats
+ * an optional/nullable as truthy-when-PRESENT and a `!optional` as truthy-when-
+ * ABSENT, but Swift/Kotlin reject an optional/nullable (and `!optional`) as a
+ * Bool. Returns the lowering form so each condition site (ternary, `&&`, `Show
+ * when`, `if`/`while`) emits the explicit nil-comparison the target requires:
+ *   - bare optional `t`     → `'present'` → emit `t != nil` / `t != null`
+ *   - negated optional `!t` → `'absent'`  → emit `t == nil` / `t == null`
+ *                             (carries the inner `argument` so the `!` is
+ *                              dropped — `!t` is itself an error on an optional)
+ *   - anything else (a real Bool / number-compare / `.some(...)`) → `null`
+ *     (no lowering — the emitter renders the condition verbatim).
+ * One definition of the two forms, shared across both targets and every site.
+ */
+export function classifyOptionalCondition(
+  e: ExprIR,
+  ctx: InferenceCtx,
+): { form: 'present' } | { form: 'absent'; argument: ExprIR } | null {
+  if (
+    e.kind === 'unary' &&
+    e.op === '!' &&
+    typeIsOptional(inferType(e.argument, ctx))
+  ) {
+    return { form: 'absent', argument: e.argument }
+  }
+  if (typeIsOptional(inferType(e, ctx))) return { form: 'present' }
+  return null
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
