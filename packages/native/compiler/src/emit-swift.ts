@@ -29,6 +29,7 @@ import {
   inferReturnType,
   inferType,
   rewriteObjectKeys,
+  typeIsOptional,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -2965,9 +2966,23 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         return `(${emitSwiftExpr(e.left, indent)} ?? ${emitSwiftExpr(e.right, indent)})`
       }
       return `${emitSwiftExpr(e.left, indent)} ${e.op} ${emitSwiftExpr(e.right, indent)}`
-    case 'ternary':
-      // Swift ternary syntax is identical to JS.
-      return `${emitSwiftExpr(e.cond, indent)} ? ${emitSwiftExpr(e.then, indent)} : ${emitSwiftExpr(e.otherwise, indent)}`
+    case 'ternary': {
+      // Swift ternary syntax is identical to JS — EXCEPT Swift requires the
+      // condition to be a `Bool`. JS treats an OPTIONAL as truthy-when-present
+      // (`const t = todos.find(...); t ? a : b`), but Swift rejects an
+      // optional as a Bool ("optional type cannot be used as a boolean; test
+      // for '!= nil' instead"). When the condition infers OPTIONAL, lower the
+      // implicit truthiness to an explicit `(<cond> != nil)`. (Other JS
+      // coercions — `0`/`""` falsy — are left as-is; idiomatic native code
+      // compares explicitly, and `count > 0` / `!str.isEmpty` are the common
+      // shapes. The optional case is the high-frequency silent mis-emit: a
+      // `.find`/`.findLast`/`.at`/`T?`-field result used directly in a `?:`.)
+      const cond = emitSwiftExpr(e.cond, indent)
+      const condStr = typeIsOptional(inferType(e.cond, _exprInferCtx))
+        ? `(${cond} != nil)`
+        : cond
+      return `${condStr} ? ${emitSwiftExpr(e.then, indent)} : ${emitSwiftExpr(e.otherwise, indent)}`
+    }
     case 'update': {
       // `x++` / `x--` post-increment/decrement in expression position.
       // Returns the OLD value and mutates the variable (JS semantics).
@@ -3592,7 +3607,15 @@ function emitSwiftShow(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const when = e.attrs.find((a) => a.kind === 'attr' && a.name === 'when') as
     | Extract<AttrIR, { kind: 'attr' }>
     | undefined
-  const cond = when ? emitSwiftSignalRead(unwrapAccessorArrow(when.value)) : 'true'
+  // Same optional-truthiness lowering as the ternary / `&&`: `<Show when={t}>`
+  // where `t` is OPTIONAL → `if t != nil { … }`, not the bare `if t` swiftc
+  // rejects as a non-Bool condition.
+  const whenExpr = when ? unwrapAccessorArrow(when.value) : undefined
+  const condRaw = whenExpr ? emitSwiftSignalRead(whenExpr) : 'true'
+  const cond =
+    whenExpr && typeIsOptional(inferType(whenExpr, _exprInferCtx))
+      ? `${condRaw} != nil`
+      : condRaw
   const pad = ' '.repeat(indent + 2)
   const body = e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')
   return `if ${cond} {\n${body}\n${' '.repeat(indent)}}`
@@ -5567,7 +5590,13 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
   // form `<Show>` emits. The RHS recurses through `emitSwiftChild` so a
   // nested `a && b && <X/>` / `a && (c ? <X/> : <Y/>)` lowers correctly.
   if (c.expr.kind === 'logical' && c.expr.op === '&&' && swiftExprProducesView(c.expr.right)) {
-    const cond = emitSwiftExpr(c.expr.left, indent)
+    // Same optional-truthiness lowering as the ternary: `{t && <X/>}` where
+    // `t` is OPTIONAL (e.g. a `.find` result) → `if t != nil { … }`, not the
+    // bare `if t { … }` swiftc rejects as a non-Bool condition.
+    const condRaw = emitSwiftExpr(c.expr.left, indent)
+    const cond = typeIsOptional(inferType(c.expr.left, _exprInferCtx))
+      ? `${condRaw} != nil`
+      : condRaw
     const pad = ' '.repeat(indent + 2)
     const inner = emitSwiftChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
     return `if ${cond} {\n${pad}${inner}\n${' '.repeat(indent)}}`

@@ -263,6 +263,25 @@ function resolveStoreReadType(
   return ctx.stores.get(hookCall.callee.name)?.get(fieldMember.property)
 }
 
+/**
+ * True iff a type is OPTIONAL — a bare `null` / `undefined`, or a union that
+ * carries a `null` / `undefined` branch (the `T | undefined` shape produced by
+ * `.find` / `.findLast` / `.at` / a `T | null` field). Mirrors the
+ * optional-receiver test the emitters already use for the `?.`-vs-`.` decision
+ * (`recvProvablyNonNull`), exported so the ternary-condition lowering shares ONE
+ * definition of "optional" across both targets. Used to lower a JS truthiness
+ * test on an optional (`opt ? a : b`) to an explicit `opt != nil` / `opt != null`
+ * — Swift/Kotlin reject an optional/nullable as a Bool condition (where JS
+ * coerces null→false, non-null→true).
+ */
+export function typeIsOptional(t: TypeIR): boolean {
+  if (t.kind === 'null' || t.kind === 'undefined') return true
+  return (
+    t.kind === 'union' &&
+    t.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
+  )
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
