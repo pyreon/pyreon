@@ -49,6 +49,10 @@ const pendingRecomputes = new Set<() => void>()
 const pendingEffects = new Set<() => void>()
 const _nextEffectPass = new Set<() => void>()
 let _visitedThisPass: Set<() => void> | null = null
+// Persistent visited Set reused across passes + flushes (cleared, never
+// reallocated) — `_visitedThisPass` points at it while a pass is running. A
+// batched single-subscriber notify previously allocated a fresh `Set` per pass.
+const _visitedScratch = new Set<() => void>()
 const _recomputes = new WeakSet<() => void>()
 const MAX_PASSES = 32
 
@@ -119,6 +123,46 @@ function drainQueuesLocked(): void {
     // counts effect-tier passes only since recomputes converge by
     // `equals` short-circuit and don't infinite-loop in practice.
     let effectPass = 0
+
+    // FAST PATH — the dominant case: effects only (no computed recomputes
+    // pending) draining in a SINGLE pass because the effects don't cascade
+    // (the overwhelming majority of batched writes — a handful of subscribers
+    // / bindings that read + do work without writing more signals). The general
+    // multi-pass loop below pays an outer-loop check + a recompute-tier drain +
+    // (previously) a per-pass `new Set()` even when none of that is needed.
+    //
+    // This runs exactly ONE effect pass with the reused visited Set and returns
+    // if it produced no follow-up work. It IS pass 1 (`effectPass = 1`), so a
+    // cascade (an effect that enqueues a recompute, a new effect, or re-enqueues
+    // itself) falls through to the general loop as pass 2+ — IDENTICAL run-counts
+    // and MAX_PASSES semantics to the original. Equivalence rests on: the fast
+    // pass uses the same `_visitedThisPass`-routing as a general pass (so a
+    // same-pass re-enqueue still routes to `_nextEffectPass`); diamond dedup is
+    // the same `Set.add` idempotency; and skipping tier-1 here is sound because
+    // we gate on `pendingRecomputes.size === 0`.
+    if (pendingRecomputes.size === 0 && pendingEffects.size > 0) {
+      effectPass = 1
+      _visitedScratch.clear()
+      _visitedThisPass = _visitedScratch
+      for (const notify of pendingEffects) {
+        _visitedScratch.add(notify)
+        notify()
+      }
+      pendingEffects.clear()
+      // Promote a same-pass re-enqueue (self-re-fire) to the pending queue,
+      // mirroring the general loop's end-of-pass promotion.
+      if (_nextEffectPass.size > 0) {
+        for (const next of _nextEffectPass) pendingEffects.add(next)
+        _nextEffectPass.clear()
+      }
+      // No follow-up work → done in one pass.
+      if (pendingRecomputes.size === 0 && pendingEffects.size === 0) {
+        return
+      }
+      // else: a cascade enqueued recomputes/effects → continue with the general
+      // multi-pass loop below (from pass 2).
+    }
+
     while (pendingRecomputes.size > 0 || pendingEffects.size > 0) {
       // Tier 1: drain all recomputes via cascading iteration. Set
       // semantics visit entries added during iteration; Set.add
@@ -171,9 +215,10 @@ function drainQueuesLocked(): void {
           _nextEffectPass.clear()
           break
         }
-        _visitedThisPass = new Set<() => void>()
+        _visitedScratch.clear()
+        _visitedThisPass = _visitedScratch
         for (const notify of pendingEffects) {
-          _visitedThisPass.add(notify)
+          _visitedScratch.add(notify)
           notify()
         }
         // Promote next-pass entries to pending for the next iteration.
@@ -193,6 +238,7 @@ function drainQueuesLocked(): void {
     pendingRecomputes.clear()
     pendingEffects.clear()
     _nextEffectPass.clear()
+    _visitedScratch.clear()
     _visitedThisPass = null
     batchDepth = 0
   }
