@@ -89,7 +89,22 @@ const EXEMPT_FIELDS: Exemption[] = [
     package: '@pyreon/zero',
     interface: 'ViteManifestChunk',
     field: 'isDynamicEntry',
-    reason: 'external Vite-manifest-shape mirror — documented field Vite emits; the resolver uses isEntry + imports, not this flag',
+    reason: 'external Vite-manifest-shape mirror — documented field Vite emits; the perf-advisor + resolver read it',
+  },
+  // `ZeroConfig.perfAdvisor` IS implemented — read in `vite-plugin.ts`
+  // (`if (userConfig.perfAdvisor)` + `typeof userConfig.perfAdvisor === 'object'`,
+  // 3 raw matches). This is a FALSE POSITIVE from the audit's naive
+  // comment-stripper: `vite-plugin.ts` contains a `/*` inside a string/regex
+  // whose matching `*/` sits past these uses, so the non-string-aware
+  // block-comment strip (`/\/\*[\s\S]*?\*\//g`) deletes the region containing
+  // them → 0 post-strip matches → false HIGH. The field is genuinely wired;
+  // the stripper limitation is pre-existing + only ever over-reports (deflates
+  // real refs), never hides an unimplemented field.
+  {
+    package: '@pyreon/zero',
+    interface: 'ZeroConfig',
+    field: 'perfAdvisor',
+    reason: 'implemented (read in vite-plugin.ts zeroPlugin); audit comment-stripper false-positives on vite-plugin.ts strings/regexes containing /* */',
   },
 ]
 
