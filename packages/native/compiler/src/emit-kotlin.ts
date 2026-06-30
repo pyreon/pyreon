@@ -1528,9 +1528,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // ctx-pass.
   if (d.body !== undefined) {
     const bodyCtx: KotlinCtx = { ...ctx, lambdaLabel: 'derivedStateOf' }
+    // Seed this computed body's LOCAL `const`/`let` types so a later
+    // type-dependent emit resolves them — `const found = todos.find(…); return
+    // found ? … : …` lowers the ternary condition to `found != null`. The
+    // computed-body emit is the third statement-body path (after handler /
+    // function-decl decls). Restored after. Mirror of the Swift side.
+    const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
     const bodyLines = d.body
       .map((s) => `      ${emitKotlinStatement(s, 6, bodyCtx)}`)
       .join('\n')
+    _kotlinExprInferCtx.locals = savedLocals
     return [
       `val ${kotlinIdent(d.name)} by remember { derivedStateOf {`,
       bodyLines,

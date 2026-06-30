@@ -32,6 +32,7 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  optionalMemberTernary,
   rewriteObjectKeys,
   seedHandlerLocals,
 } from './infer-type'
@@ -1756,9 +1757,20 @@ function emitSwiftDecl(
     // if the computed wasn't pre-inferred for some reason — defensive.
     const inferred = inferCtx.computeds.get(d.name) ?? { kind: 'unknown' as const }
     const swiftReturnType = swiftType(inferred)
-    const bodyLines = inlineValueConstsInStmts(d.body)
+    // Seed this computed body's LOCAL `const`/`let` types into the infer ctx so
+    // a later type-dependent emit inside the body resolves them — e.g. `const
+    // found = todos.find(…); return found ? found.text : "…"` now sees `found`
+    // is optional and lowers the ternary condition to `found != nil`. The
+    // computed-body emit is the third statement-body path (after handler /
+    // function-decl decls) — without this, a computed-body-LOCAL optional in a
+    // condition emitted the bare optional (a non-Bool condition). Restored
+    // after (scoped to this body).
+    const inlinedStmts = inlineValueConstsInStmts(d.body)
+    const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+    const bodyLines = inlinedStmts
       .map((s) => `    ${emitSwiftStatement(s, 4)}`)
       .join('\n')
+    _exprInferCtx.locals = savedLocals
     return [
       `private var ${swiftIdent(d.name)}: ${swiftReturnType} {`,
       bodyLines,
@@ -3031,6 +3043,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // when-absent, both of which Swift rejects as a Bool. `swiftCondition`
       // lowers an optional cond → `<cond> != nil` and a `!optional` cond →
       // `<inner> == nil` (other JS coercions — `0`/`""` falsy — left as-is).
+      // Swift idiom: `opt ? opt.prop : else` → `(opt?.prop ?? else)`. Swift
+      // does NOT narrow the optional inside a ternary then-branch, so the
+      // straight `opt != nil ? opt.prop : else` would still fail ("value of
+      // optional type 'T?' must be unwrapped to refer to member 'prop'");
+      // optional-chaining + nil-coalescing expresses the same intent cleanly.
+      // Kotlin SMART-CASTS the then-branch (`if (opt != null) opt.prop else
+      // …` compiles), so this is a Swift-only refinement. `optionalMemberTernary`
+      // (infer-type.ts — the ONE bisect point) detects the simplest `opt` cond +
+      // `opt.prop` then shape (the find-then-field idiom).
+      const omt = optionalMemberTernary(e, _exprInferCtx)
+      if (omt) {
+        return `(${emitSwiftExpr(omt.opt, indent)}?.${swiftIdent(omt.property)} ?? ${emitSwiftExpr(e.otherwise, indent)})`
+      }
       const condStr = swiftCondition(e.cond, (x) => emitSwiftExpr(x, indent))
       return `${condStr} ? ${emitSwiftExpr(e.then, indent)} : ${emitSwiftExpr(e.otherwise, indent)}`
     }

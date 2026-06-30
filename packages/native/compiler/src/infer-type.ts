@@ -312,6 +312,37 @@ export function classifyOptionalCondition(
 }
 
 /**
+ * Swift-only: detect the `opt ? opt.prop : else` "find-then-field" idiom so the
+ * emit can lower it to `(opt?.prop ?? else)`. Swift does NOT narrow an optional
+ * inside a ternary then-branch, so the straight `opt != nil ? opt.prop : else`
+ * still fails ("value of optional type 'T?' must be unwrapped to refer to member
+ * 'prop'"); optional-chaining + nil-coalescing expresses the same intent. Kotlin
+ * SMART-CASTS the then-branch (`if (opt != null) opt.prop else …` compiles), so
+ * it needs no rewrite — only Swift calls this. Scoped to the simplest shape: a
+ * BARE-IDENTIFIER optional cond + a non-optional `cond.prop` then on the SAME
+ * identifier. Returns the optional expr + property, or null (anything else falls
+ * through to the general `swiftCondition` ternary path).
+ */
+export function optionalMemberTernary(
+  e: ExprIR,
+  ctx: InferenceCtx,
+): { opt: ExprIR; property: string } | null {
+  if (e.kind !== 'ternary') return null
+  const { cond, then } = e
+  if (
+    cond.kind === 'identifier' &&
+    then.kind === 'member' &&
+    then.optional !== true &&
+    then.object.kind === 'identifier' &&
+    then.object.name === cond.name &&
+    classifyOptionalCondition(cond, ctx)?.form === 'present'
+  ) {
+    return { opt: cond, property: then.property }
+  }
+  return null
+}
+
+/**
  * Seed a handler / action body's local `const`/`let` bindings into `ctx.locals`
  * so type-dependent emit INSIDE that body resolves them. Component-level decls
  * (signals / computeds / stores) are already in the ctx; handler-LOCAL vars
