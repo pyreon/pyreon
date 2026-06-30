@@ -616,6 +616,9 @@ function defineSetupStore<T extends Record<string, unknown>>(
         actionKeys.push(key)
       }
     }
+    // O(1) membership for the `patch` hot path (vs an O(signalKeys) array scan
+    // per patched key).
+    const signalKeySet = new Set(signalKeys)
 
     // ─── subscribe infrastructure ───────────────────────────────────────
     // Lazy Set allocation: most stores never get a user subscribe() call.
@@ -635,7 +638,12 @@ function defineSetupStore<T extends Record<string, unknown>>(
 
     function notifyDirect(key: string, oldValue: unknown, newValue: unknown) {
       if (patchInProgress) {
-        patchEvents.push({ key, newValue, oldValue })
+        // Only record per-key events when a subscriber will consume them — with
+        // no subscribers the patch notification below is skipped, so building
+        // the event object is pure allocation overhead on every patched key.
+        if (subscribers !== null && subscribers.size > 0) {
+          patchEvents.push({ key, newValue, oldValue })
+        }
         return
       }
       if (subscribers === null || subscribers.size === 0) return
@@ -772,7 +780,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
             // Object form: set values directly (skip reserved proto keys)
             for (const [key, value] of Object.entries(partialOrFn)) {
               if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
-              if (signalKeys.includes(key)) {
+              if (signalKeySet.has(key)) {
                 // Per-key write inside batched patch. Tracks batch-size
                 // distribution; correlate with `reactivity.signalWrite`
                 // — the two should match 1:1 on the object-form path.
