@@ -4001,6 +4001,27 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
         continue
       }
     }
+    // A body-local destructure that did NOT match the all-simple expansions
+    // above (nested `const {a:{b}} = o`, rest `const {a,...r}` / `[a,...r]`, or
+    // default `const {a = 1}`) reaches here. `parseStatement` would SILENTLY
+    // drop it (the ObjectPattern/ArrayPattern id has no `.name` → returns null),
+    // leaving every later reference to the would-be locals UNBOUND → invalid
+    // native code with NO warning (`var x: Any { b }` where `b` was never
+    // declared). Fail LOUDLY instead, naming the escape hatch — zero silent
+    // drops in the supported vocab. (Flat `const {x, y} = …` / `const [a, b]
+    // = …` lower above; this only fires for the shapes that don't.)
+    if (
+      stmt.type === 'VariableDeclaration' &&
+      ((stmt.declarations as AnyNode[])?.length ?? 0) === 1 &&
+      ((stmt.declarations as AnyNode[])[0]?.id?.type === 'ObjectPattern' ||
+        (stmt.declarations as AnyNode[])[0]?.id?.type === 'ArrayPattern') &&
+      (stmt.declarations as AnyNode[])[0]?.init
+    ) {
+      ctx.warnings.push(
+        'Nested / rest / default destructuring in a function body is not lowered to native — bind the fields explicitly (`const a = o().a; const b = a.b`). Only flat `const { x, y } = …` and `const [a, b] = …` lower.',
+      )
+      continue
+    }
     const parsed = parseStatement(stmt, ctx)
     if (parsed) out.push(parsed)
   }
