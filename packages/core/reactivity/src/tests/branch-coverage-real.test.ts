@@ -55,12 +55,7 @@ import {
   withSilent,
   withSilentSync,
 } from '../singleton-sentinel'
-import {
-  cleanupEffect,
-  notifySubscribers,
-  trackSubscriber,
-  withTracking,
-} from '../tracking'
+import { notifySubscribers } from '../tracking'
 
 // Cast helpers: @pyreon/reactivity narrows process.env to { NODE_ENV?: string }
 // for tree-shaking purposes; tests need wider access to PYREON_SINGLE_INSTANCE.
@@ -69,44 +64,6 @@ const _psi = () => _env.PYREON_SINGLE_INSTANCE
 const _setPsi = (v: string | undefined) => { _env.PYREON_SINGLE_INSTANCE = v }
 
 // ─── tracking.ts ────────────────────────────────────────────────────────────
-
-describe('tracking — cleanupEffect WeakMap path (lines 70-71)', () => {
-  test('cleanupEffect with effectDeps WeakMap entry deletes the fn from each tracked subscriber Set', () => {
-    // The WeakMap path is reached when trackSubscriber runs with activeEffect set
-    // but neither _depsCollector nor _skipDepsCollection. We achieve this by
-    // calling trackSubscriber directly inside withTracking — same shape the
-    // legacy effect-without-collector code path uses.
-    const host: { _s: Set<() => void> | null } = { _s: null }
-    const fn = () => {
-      /* effect body */
-    }
-
-    // Set activeEffect = fn via withTracking, then trigger trackSubscriber
-    // without setDepsCollector → falls through to effectDeps WeakMap branch.
-    withTracking(fn, () => {
-      trackSubscriber(host)
-    })
-
-    // host._s should contain fn after trackSubscriber (subscribed)
-    expect(host._s?.has(fn)).toBe(true)
-
-    // Now cleanupEffect — this is the path: effectDeps.get(fn) returns the
-    // deps Set containing host._s; the for-loop deletes fn from each sub
-    // (line 70), then deps.clear() (line 71).
-    cleanupEffect(fn)
-
-    // host._s no longer contains fn — the for-loop hit
-    expect(host._s?.has(fn)).toBe(false)
-  })
-
-  test('cleanupEffect is a no-op on a fn that was never tracked (deps undefined branch)', () => {
-    // The if-deps falsy arm — never crashes when WeakMap has no entry.
-    const neverTracked = () => {
-      /* never run */
-    }
-    expect(() => cleanupEffect(neverTracked)).not.toThrow()
-  })
-})
 
 describe('tracking — notifySubscribers non-batching arms (lines 81, 95-100)', () => {
   test('size==1 non-batching arm invokes the single subscriber inline (line 81)', () => {

@@ -111,6 +111,18 @@ export function shallowReactive<T extends object>(initial: T): T {
 }
 
 function wrap(raw: object, shallow: boolean): object {
+  // Cache lookup FIRST — the dominant path. A deep store's `get` trap calls
+  // `wrap()` on every nested-object property read, so the cache hit is the hot
+  // case. A cached `raw` was already validated as proxiable when first wrapped
+  // (the cache is only populated at the bottom of this function, AFTER the
+  // builtin/markRaw checks), and neither check can flip afterwards — object
+  // type is fixed, and markRaw-after-wrap is a documented no-op — so the hit
+  // returns without re-running the 8 `instanceof` checks + the markRaw symbol
+  // lookup that the builtin/markRaw guards below perform.
+  const cache = shallow ? shallowProxyCache : proxyCache
+  const cached = cache.get(raw)
+  if (cached) return cached
+
   // Built-ins with internal slots (Map, Set, Date, …) can't be proxied: their
   // methods fail the receiver check when called on the proxy. Return raw.
   if (isBuiltinNonProxiable(raw)) return raw
@@ -119,10 +131,6 @@ function wrap(raw: object, shallow: boolean): object {
   // wants to keep unwrapped.
   if (isMarkedRaw(raw)) return raw
 
-  const cache = shallow ? shallowProxyCache : proxyCache
-  const cached = cache.get(raw)
-  if (cached) return cached
-
   // Per-property signals. Lazily created on first access.
   const propSignals = new Map<PropertyKey, Signal<unknown>>()
   // For arrays: track length changes separately (push/pop/splice affect length)
@@ -130,10 +138,14 @@ function wrap(raw: object, shallow: boolean): object {
   const lengthSig = isArray ? signal((raw as unknown[]).length) : null
 
   function getOrCreateSignal(key: PropertyKey): Signal<unknown> {
-    if (!propSignals.has(key)) {
-      propSignals.set(key, signal((raw as Record<PropertyKey, unknown>)[key]))
+    // Single Map lookup (was has()+get()): `undefined` is never a stored value
+    // — every entry is a real Signal — so a missing key is unambiguous.
+    let sig = propSignals.get(key)
+    if (sig === undefined) {
+      sig = signal((raw as Record<PropertyKey, unknown>)[key])
+      propSignals.set(key, sig)
     }
-    return propSignals.get(key) as Signal<unknown>
+    return sig
   }
 
   const proxy = new Proxy(raw, {
