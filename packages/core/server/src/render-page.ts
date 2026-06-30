@@ -181,10 +181,25 @@ export async function renderPage(
     const finalHead = styleIsEmpty ? head : `${styleTag}\n${head}`
 
     const loaderData = serializeLoaderData(router as never)
-    const loaderScript
+    let loaderScript
       = loaderData && Object.keys(loaderData).length > 0
         ? `<script>window.__PYREON_LOADER_DATA__=${stringifyLoaderData(loaderData)}</script>`
         : ''
+
+    // SSR store-state hydration — decoupled bridge (set by @pyreon/store on
+    // import; one null check when the app uses no stores). Runs INSIDE
+    // runWithRequestContext so it snapshots the per-request store registry.
+    // Appended to loaderScript so all consumers (handler / SSG / dev) inject it
+    // with no caller change; the same safe `</script>`-escaping serializer.
+    const dehydrateStores = (
+      globalThis as { __PYREON_DEHYDRATE_STORES__?: () => Record<string, Record<string, unknown>> }
+    ).__PYREON_DEHYDRATE_STORES__
+    if (dehydrateStores) {
+      const storeState = dehydrateStores()
+      if (storeState && Object.keys(storeState).length > 0) {
+        loaderScript += `<script>window.__PYREON_STORE_STATE__=${stringifyLoaderData(storeState)}</script>`
+      }
+    }
 
     const routeModules = (resolved?.matched ?? [])
       .map((r) => (r.component as { _hmrId?: unknown } | undefined)?._hmrId)

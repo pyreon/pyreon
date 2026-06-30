@@ -129,6 +129,18 @@ describe('@pyreon/store — SSR hydration', () => {
     expect(useCounter().store.count.peek()).toBe(21)
   })
 
+  it('registers the decoupled framework bridge on import', () => {
+    // Importing @pyreon/store sets the globalThis bridge so the framework
+    // (@pyreon/server / @pyreon/zero) can drive the SSR handshake with no hard
+    // dependency on this package — mirrors the styler-flush / perf-sink pattern.
+    const g = globalThis as {
+      __PYREON_DEHYDRATE_STORES__?: typeof dehydrateStores
+      __PYREON_HYDRATE_STORES__?: typeof hydrateStores
+    }
+    expect(g.__PYREON_DEHYDRATE_STORES__).toBe(dehydrateStores)
+    expect(g.__PYREON_HYDRATE_STORES__).toBe(hydrateStores)
+  })
+
   describe('SSR per-request isolation (registry provider)', () => {
     afterEach(() => {
       // Neutralize the override; subsequent tests reset their own registry.

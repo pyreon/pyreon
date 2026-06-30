@@ -114,3 +114,21 @@ export function consumeHydration(id: string, api: HydratableStore): void {
 export function __clearStoreHydrationForTesting(): void {
   _hydrationData = null
 }
+
+// ─── Framework bridge (decoupled auto-wiring) ────────────────────────────────
+//
+// Register the dehydrate/hydrate helpers on `globalThis` at import time so the
+// framework (`@pyreon/zero` / `@pyreon/server`) can drive the SSR handshake
+// WITHOUT a hard dependency on `@pyreon/store` — the exact decoupling the
+// styler-flush (`__PYREON_STYLER_FLUSH__`) and perf-counter (`__pyreon_count__`)
+// globalThis sinks use. Only fires when the app actually imports `@pyreon/store`;
+// apps that don't use stores leave the bridge undefined → one null check, no
+// injection. The server reads `__PYREON_DEHYDRATE_STORES__` inside the
+// per-request render context (so it snapshots the right per-request registry);
+// the client calls `__PYREON_HYDRATE_STORES__` before mount.
+interface StoreHydrationBridge {
+  __PYREON_DEHYDRATE_STORES__?: typeof dehydrateStores
+  __PYREON_HYDRATE_STORES__?: typeof hydrateStores
+}
+;(globalThis as StoreHydrationBridge).__PYREON_DEHYDRATE_STORES__ = dehydrateStores
+;(globalThis as StoreHydrationBridge).__PYREON_HYDRATE_STORES__ = hydrateStores

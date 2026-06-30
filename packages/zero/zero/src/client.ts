@@ -100,6 +100,22 @@ export function startClient(options: StartClientOptions) {
     hydrateLoaderData(router as never, ssrLoaderData as Record<string, unknown>)
   }
 
+  // ── Store-state hydration (SSR path) ───────────────────────────────────────
+  // Seed @pyreon/store stores from the server snapshot BEFORE mounting so the
+  // initial render (and any island sharing a store) reads server values, not
+  // defaults. Decoupled bridge — `__PYREON_HYDRATE_STORES__` is set by
+  // @pyreon/store on import; undefined (one null check) when the app uses no
+  // stores. This is what makes cross-island shared state hydrate ONCE.
+  const hydrateStores = (
+    globalThis as { __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void }
+  ).__PYREON_HYDRATE_STORES__
+  if (hydrateStores) {
+    const ssrStoreState = (window as unknown as Record<string, unknown>).__PYREON_STORE_STATE__
+    if (ssrStoreState && typeof ssrStoreState === 'object') {
+      hydrateStores(ssrStoreState as Record<string, Record<string, unknown>>)
+    }
+  }
+
   // PR-S1: App is router-AGNOSTIC; supply the RouterProvider at this call
   // site (mirrors server createHandler / dev renderSsr / SSG renderPath).
   // See app.ts:createApp for the full rationale.

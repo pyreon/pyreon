@@ -96,6 +96,19 @@ export function startClient(options: StartClientOptions): () => void {
     hydrateLoaderData(router as never, loaderData as Record<string, unknown>)
   }
 
+  // Seed @pyreon/store stores from the SSR snapshot before mount (decoupled
+  // bridge set by @pyreon/store on import; one null check when unused). Makes
+  // cross-island shared state hydrate once with server values.
+  const hydrateStores = (
+    globalThis as { __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void }
+  ).__PYREON_HYDRATE_STORES__
+  if (hydrateStores) {
+    const storeState = (window as unknown as Record<string, unknown>).__PYREON_STORE_STATE__
+    if (storeState && typeof storeState === 'object') {
+      hydrateStores(storeState as Record<string, Record<string, unknown>>)
+    }
+  }
+
   // Build app tree
   const app = h(RouterProvider, { router }, h(App, null))
 
