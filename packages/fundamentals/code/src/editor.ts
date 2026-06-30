@@ -94,6 +94,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     ariaLabel: configAriaLabel = 'Code editor',
     extensions: userExtensions = [],
     onChange,
+    onError,
   } = config
 
   // ── Reactive state ───────────────────────────────────────────────────
@@ -328,25 +329,58 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   // ── Mount helper — called by CodeEditor component ────────────────────
 
   let mounted = false
+  // Mount-attempt generation. `mount()` lazy-loads the language grammar
+  // (async), so a `dispose()` can land WHILE the grammar import is in flight —
+  // at which point `view` is still null and `dispose()` no-ops. `dispose()`
+  // bumps this token; `mount()` captures it before its awaits and bails
+  // (without creating a leaked EditorView) if it changed. Closes the
+  // dispose-during-pending-mount leak (orphaned CodeMirror view + DOM).
+  let mountToken = 0
 
   async function mount(parent: HTMLElement): Promise<void> {
     if (mounted) return
 
-    const langExt = await loadLanguage(language.peek())
-    const extensions = buildExtensions(langExt)
+    const token = ++mountToken
 
-    const state = EditorState.create({
-      doc: value.peek(),
-      extensions,
-    })
+    try {
+      const langExt = await loadLanguage(language.peek())
+      // Superseded while loading (disposed / re-mounted) — abort cleanly.
+      if (token !== mountToken) return
 
-    const editorView = new EditorView({
-      state,
-      parent,
-    })
+      const extensions = buildExtensions(langExt)
 
-    view.set(editorView)
-    mounted = true
+      const state = EditorState.create({
+        doc: value.peek(),
+        extensions,
+      })
+
+      const editorView = new EditorView({
+        state,
+        parent,
+      })
+
+      // Disposed during the synchronous view construction (defensive) — tear
+      // down the just-created view rather than leaking it.
+      if (token !== mountToken) {
+        editorView.destroy()
+        return
+      }
+
+      view.set(editorView)
+      mounted = true
+    } catch (err) {
+      // Mount failed (throwing extension, failed grammar import). Surface it
+      // instead of leaving an unhandled promise rejection: route to the user
+      // `onError`, else log a `[Pyreon]`-prefixed message in dev.
+      const error = err instanceof Error ? err : new Error(String(err))
+      if (onError) {
+        onError(error)
+      } else if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] @pyreon/code failed to mount the editor:', error)
+      }
+      return
+    }
 
     // Sync signal → editor for value changes from outside
     effect(() => {
@@ -651,6 +685,9 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   function dispose(): void {
+    // Invalidate any in-flight `mount()` so a mount whose grammar import is
+    // still loading won't create a live editor AFTER we've torn down.
+    mountToken++
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (v) {

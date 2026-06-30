@@ -75,6 +75,14 @@ export interface EditorConfig {
   extensions?: Extension[]
   /** Called when value changes */
   onChange?: (value: string) => void
+  /**
+   * Called if mounting the CodeMirror engine fails — a throwing extension or a
+   * failed dynamic import of a language grammar. Without this, a mount failure
+   * surfaces only as an unhandled promise rejection (the editor silently never
+   * mounts). When provided it takes the error; otherwise a `[Pyreon]`-prefixed
+   * message is logged in development.
+   */
+  onError?: (error: Error) => void
 }
 
 // ─── Editor instance ─────────────────────────────────────────────────────────
@@ -193,6 +201,12 @@ export interface DiffEditorProps {
   readOnly?: boolean
   style?: string
   class?: string
+  /**
+   * Called if building the diff view fails (a failed language-grammar import or
+   * a throwing extension). Without this, the failure surfaces only as an
+   * unhandled promise rejection; otherwise a `[Pyreon]` message logs in dev.
+   */
+  onError?: (error: Error) => void
 }
 
 // ─── Tabs ────────────────────────────────────────────────────────────────────
