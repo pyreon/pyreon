@@ -1,7 +1,10 @@
 import { runFormik } from './impl/formik'
 import { runPyreon } from './impl/pyreon'
 import { runRhf } from './impl/rhf'
+import { runSolid } from './impl/solid'
+import { runSvelte } from './impl/svelte'
 import { runTanstack } from './impl/tanstack'
+import { runVue } from './impl/vue'
 import type { BenchSuite } from './runner'
 
 const statusEl = document.getElementById('status') as HTMLElement
@@ -13,6 +16,9 @@ const ALL = [
   { name: 'React Hook Form', run: runRhf },
   { name: 'TanStack Form', run: runTanstack },
   { name: 'Formik', run: runFormik },
+  { name: 'Vue (vee-validate)', run: runVue },
+  { name: 'Svelte (Felte)', run: runSvelte },
+  { name: 'Solid (modular-forms)', run: runSolid },
 ] as const
 
 function fmt(ms: number): string {

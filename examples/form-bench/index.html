@@ -35,10 +35,12 @@
   <body>
     <h1>Pyreon — Form Benchmark (Tier B, real browser)</h1>
     <p class="subtitle">
-      Real-app, real-Chromium, cross-framework form benchmark. Each framework uses its
-      <strong>idiomatic</strong> state model (Pyreon <code>register</code> + per-field signals; React Hook Form
-      uncontrolled <code>register</code> + <code>zodResolver</code>; TanStack Form controlled <code>form.Field</code> +
-      standard-schema; Formik controlled <code>useFormik</code>) and the <strong>same zod schema</strong>.
+      Real-app, real-Chromium, cross-framework form benchmark across the ecosystem — Pyreon vs
+      React Hook Form / TanStack Form / Formik (React), vee-validate (Vue), Felte (Svelte), and
+      <code>@modular-forms/solid</code> (Solid). Each uses its <strong>idiomatic</strong> state model
+      (Pyreon <code>register</code> + signals; RHF uncontrolled; TanStack/Formik controlled; vee-validate
+      <code>defineField</code>; Felte <code>use:form</code>; modular-forms <code>Field</code>) and the
+      <strong>same zod schema</strong>.
       Median + 95% bootstrap CI + CV across 20 timed runs after adaptive warmup; per-iteration DOM verification.<br />
       <strong>Lower is better.</strong> The canonical measurement is <code>bun bench:form</code>
       (per-framework page isolation, forced GC, randomized order). See <code>METHODOLOGY.md</code> for the

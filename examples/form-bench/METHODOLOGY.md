@@ -28,10 +28,14 @@ exactly the artifact the DOM bench's objectivity pass existed to kill.
    `register` + per-field signals; React Hook Form uses uncontrolled `register`
    + `zodResolver`; TanStack Form uses controlled `form.Field` render-props +
    standard-schema validators; Formik uses controlled `useFormik` + a manual
-   zod `validate` (no third-party adapter, so the schema stays shared). We
-   **never** force one framework into another's pattern ("make React use
-   signals"). Each impl is a small, readable file you can audit against that
-   library's own docs.
+   zod `validate` (no third-party adapter, so the schema stays shared); Vue uses
+   vee-validate's `useForm`/`defineField` (in `h()` render functions — no JSX);
+   Svelte uses Felte's `use:form` action + `@felte/validator-zod` (in a real
+   `.svelte` component); Solid uses `@modular-forms/solid` (`createForm` +
+   `Field` render-props, driven through the low-level `solid-js/web` API so no
+   Solid-JSX transform fights Pyreon's). We **never** force one framework into
+   another's pattern ("make React use signals"). Each impl is a small, readable
+   file you can audit against that library's own docs.
 2. **One validator, shared verbatim** (`shared/schema.ts`). The same zod schema
    feeds Pyreon's `@pyreon/validation` adapter and RHF's `@hookform/resolvers`,
    so a validation scenario measures the library's *wiring*, not the rules.
@@ -92,32 +96,40 @@ notice. Mitigations, in order of strength:
 The framework-agnostic contract lives in `shared/scenarios.ts` (`status: 'active'`
 vs `'planned'`). Four `active` scenarios — **mount-12-fields**,
 **keystroke-blur**, **keystroke-change**, **reset-dirty-form** — are implemented
-identically (same ids, same shared schema) for every framework: Pyreon, React
-Hook Form, TanStack Form, and Formik (the React ecosystem).
+identically (same ids, same shared schema) for **all seven** frameworks: Pyreon,
+React Hook Form, TanStack Form, Formik, Vue (vee-validate), Svelte (Felte), and
+Solid (modular-forms).
+
+**One per-framework fairness note (the "note if not supported" case):** Felte
+validates on input + blur by default with no per-mode toggle, so its
+`keystroke-blur` column includes per-keystroke validation cost (unlike RHF's
+true no-validation blur mode). It is reported as-is — Felte's eager default —
+rather than bent into a mode it doesn't have.
 
 ## Roadmap (remaining phases — honest about what is NOT here yet)
 
-The React ecosystem is covered (Pyreon, React Hook Form, TanStack Form, Formik).
-Still to come, each a reviewable increment:
+All seven frameworks are covered for the four active scenarios (speed + retained
+heap). Still to come, each a reviewable increment:
 
 - **`validate-submit-invalid`** — currently `status: 'planned'`. Deferred
   because the React libs commit error state through React's async path, which
   needs a fair `act()`/commit boundary to compare cleanly against Pyreon's
   synchronous error patch. Adding it to *all* columns or none is the rule; it
   ships when the React commit boundary is made fair.
-- **Non-React frameworks** — vee-validate (Vue), Felte (Svelte),
-  `@modular-forms/solid` (the true signal peer that may tie). Each needs its own
-  Vite plugin (`@vitejs/plugin-vue`, `@sveltejs/vite-plugin-svelte`,
-  `vite-plugin-solid`), so they land as a separate PR rather than bloating the
-  React-peer set.
+- **Bundle size beyond the React ecosystem** — `bundle-size.ts` currently covers
+  Pyreon + the React libs (no compile step needed). Vue (vee-validate) + Solid
+  (modular-forms) can be added the same way; Svelte needs the `.svelte` compile
+  wired into the size measurement — tracked.
 - **More scenarios** — field-array append/remove/reorder, cross-field
   validation, bulk programmatic setValues, isolation/re-render-scope proof.
 
 ## Bundle size (shipped — `bun bundle-size.ts`)
 
-The second half of the real-world story, reported next to speed. Per framework
-we production-minify + gzip two entries: BASELINE (runtime only) and FULL
-(runtime + form lib + zod adapter + a 12-field validated form); the **DELTA** is
+The second half of the real-world story, reported next to speed. For each
+framework (Pyreon + the React libs today — Vue/Svelte/Solid tracked in the
+Roadmap) we production-minify + gzip two entries: BASELINE (runtime only) and
+FULL (runtime + form lib + zod adapter + a 12-field validated form); the
+**DELTA** is
 the marginal cost of adding a validated form (zod is in every FULL, so it
 cancels across columns). The TOTAL is what the user downloads.
 

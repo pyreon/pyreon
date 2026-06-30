@@ -27,7 +27,15 @@ import { chromium, type Page } from 'playwright'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PORT = 4188
-const CANONICAL = ['Pyreon', 'React Hook Form', 'TanStack Form', 'Formik'] as const
+const ALL_FRAMEWORKS = [
+  'Pyreon',
+  'React Hook Form',
+  'TanStack Form',
+  'Formik',
+  'Vue (vee-validate)',
+  'Svelte (Felte)',
+  'Solid (modular-forms)',
+] as const
 
 interface BenchResult {
   name: string
@@ -110,6 +118,17 @@ async function main(): Promise<void> {
   const jsonOut = argv.includes('--json') ? argv[argv.indexOf('--json') + 1] : undefined
   const repeatIdx = argv.indexOf('--repeat')
   const repeat = repeatIdx >= 0 ? Math.max(1, Math.min(20, Number(argv[repeatIdx + 1]) || 1)) : 1
+  // `--only "Pyreon,Vue (vee-validate)"` restricts to a subset (fast per-framework
+  // verification). Default = all frameworks. Pyreon is always kept (it's the column
+  // every multiplier is relative to).
+  const onlyIdx = argv.indexOf('--only')
+  const CANONICAL: readonly string[] =
+    onlyIdx >= 0 && argv[onlyIdx + 1]
+      ? ALL_FRAMEWORKS.filter((f) => {
+          const req = argv[onlyIdx + 1]!.split(',').map((s) => s.trim())
+          return f === 'Pyreon' || req.includes(f)
+        })
+      : ALL_FRAMEWORKS
 
   console.log('[form-bench] building…')
   execSync('bun run build', { cwd: HERE, stdio: 'inherit' })
@@ -203,14 +222,15 @@ async function main(): Promise<void> {
     const ranked = [...stats].sort((a, b) => a.median - b.median)
     const leader = ranked[0]!
     const runnerUp = ranked[1]
-    const best = leader.median || Infinity
+    const best = leader.median
     // Tied-within-noise: the leader's CI overlaps the runner-up's → the win is
     // not resolvable at this sample size (don't read a winner).
     const tied = !!runnerUp && overlap(leader.ci95, runnerUp.ci95)
     const verdict = tied ? `🤝 ${leader.fw}≈${runnerUp.fw} (CI overlap)` : leader.fw
-    const cells = stats
-      .map((s) => `${fmt(s.median)}(${(s.median / best).toFixed(1)}x)`.padEnd(26))
-      .join('')
+    // Ratio is only meaningful when the fastest column is above the timer floor;
+    // at the floor (best === 0) show "—" rather than a misleading 0.0x.
+    const ratio = (m: number) => (best > 0 ? `${(m / best).toFixed(1)}×` : '—')
+    const cells = stats.map((s) => `${fmt(s.median)}(${ratio(s.median)})`.padEnd(26)).join('')
     console.log(name.padEnd(22) + cells + verdict)
     jsonRows.push({ scenario: name, verdict, tied, frameworks: stats })
   }
