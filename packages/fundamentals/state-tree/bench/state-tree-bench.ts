@@ -24,6 +24,7 @@
 process.env.NODE_ENV = 'production'
 
 import { effect } from '@pyreon/reactivity'
+import { s as v } from '@pyreon/validate'
 import { reaction } from 'mobx'
 import {
   applyPatch as mstApplyPatch,
@@ -60,16 +61,36 @@ const MstTodo = types
 const PyrTodo = model({ state: { id: 0, label: '', done: false } }).actions((self) => ({
   toggle: () => self.done.set(!self.done()),
 }))
+// Schema-mode Pyreon model — VALIDATES on create + applySnapshot, exactly like
+// MST. This is the apples-to-apples comparison for `create` / `applySnapshot`:
+// the plain-mode model above skips validation (its `create`/`applySnapshot`
+// numbers flatter Pyreon vs MST, which always type-checks the snapshot).
+const PyrTodoSchema = model({
+  schema: v.object({ id: v.number(), label: v.string(), done: v.boolean() }),
+}).actions((self) => ({
+  toggle: () => self.done.set(!self.done()),
+}))
 const INITIAL = { id: 1, label: 'pretty plate', done: false }
 
 // ─── one op = a {pyreon, mst} pair, measured in its OWN process ──────────────
 type Impl = { pyreon: () => void; mst: () => void }
 const OPS: Record<string, { note?: string; make: () => Impl }> = {
-  create: {
-    note: 'MST validates on create; plain state-tree does not',
+  'create (plain, no validation)': {
+    note: 'NOT apples-to-apples — Pyreon plain mode skips validation; MST validates. See "create (schema)".',
     make: () => ({
       pyreon: () => {
         sink += PyrTodo.create(INITIAL).id()
+      },
+      mst: () => {
+        sink += MstTodo.create(INITIAL).id
+      },
+    }),
+  },
+  'create (schema)': {
+    note: 'FAIR — both validate against a schema/model type on create',
+    make: () => ({
+      pyreon: () => {
+        sink += PyrTodoSchema.create(INITIAL).id()
       },
       mst: () => {
         sink += MstTodo.create(INITIAL).id
@@ -120,10 +141,28 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
       }
     },
   },
-  applySnapshot: {
-    note: 'MST validates the snapshot; plain state-tree does not',
+  'applySnapshot (plain, no validation)': {
+    note: 'NOT apples-to-apples — Pyreon plain mode skips validation; MST validates. See "applySnapshot (schema)".',
     make: () => {
       const pt = PyrTodo.create(INITIAL)
+      const mt = MstTodo.create(INITIAL)
+      let i = 0
+      return {
+        pyreon: () => {
+          i++
+          applySnapshot(pt, { id: i, label: 'x', done: (i & 1) === 1 })
+        },
+        mst: () => {
+          i++
+          mstApplySnapshot(mt, { id: i, label: 'x', done: (i & 1) === 1 })
+        },
+      }
+    },
+  },
+  'applySnapshot (schema)': {
+    note: 'FAIR — both re-validate the snapshot against a schema/model type',
+    make: () => {
+      const pt = PyrTodoSchema.create(INITIAL)
       const mt = MstTodo.create(INITIAL)
       let i = 0
       return {
