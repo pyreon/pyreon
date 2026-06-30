@@ -126,16 +126,26 @@ heap). Still to come, each a reviewable increment:
 ## Bundle size (shipped — `bun bundle-size.ts`)
 
 The second half of the real-world story, reported next to speed. For each
-framework (Pyreon + the React libs today — Vue/Svelte/Solid tracked in the
-Roadmap) we production-minify + gzip two entries: BASELINE (runtime only) and
-FULL (runtime + form lib + zod adapter + a 12-field validated form); the
-**DELTA** is
-the marginal cost of adding a validated form (zod is in every FULL, so it
-cancels across columns). The TOTAL is what the user downloads.
+framework (Pyreon + React libs + Vue + Solid; Svelte's `.svelte` compile in the
+size measurement is tracked in the Roadmap) we production-minify + gzip two
+entries: BASELINE (runtime only) and FULL (runtime + form lib + zod adapter + a
+12-field validated form); the **DELTA** is the marginal cost of adding a
+validated form (zod is in every FULL, so it cancels across columns). The TOTAL
+is what the user downloads.
 
-Representative (Bun.build, gzipped): Pyreon baseline **11.9 KB** vs the React
-trio's react-dom **57.7 KB**; FULL form — Pyreon **77.7 KB** vs RHF 132 / Formik
-134 / TanStack 140 KB. The marginal form DELTA is closer (Pyreon 65.8 / RHF 74.4
-/ Formik 76.3 / TanStack 81.8 KB — zod dominates it). Honest read: Pyreon's
-**total** is ~1.7× lighter, driven by the lean runtime; the form-wiring DELTA
-itself is within ~1.2× across all four.
+Representative (Bun.build, gzipped) — BASELINE / FULL / DELTA:
+
+| framework | baseline | full | delta |
+| --- | --- | --- | --- |
+| Solid (modular-forms) | 4.5 KB | **72.5 KB** | 68.0 KB |
+| Pyreon | 11.9 KB | 77.7 KB | **65.8 KB** |
+| Vue (vee-validate) | 24.5 KB | 95.3 KB | 70.7 KB |
+| React Hook Form | 57.7 KB | 132.1 KB | 74.4 KB |
+| Formik | 57.7 KB | 133.9 KB | 76.3 KB |
+| TanStack Form | 57.7 KB | 139.5 KB | 81.8 KB |
+
+Honest read: **Solid's TOTAL is smallest** (its 4.5 KB runtime undercuts even
+Pyreon's lean 11.9 KB), while **Pyreon's marginal form DELTA is smallest** — the
+two signal libs are the clear bundle leaders, both ~1.7–1.9× lighter than the
+React trio. The form-wiring DELTA is within ~1.2× across every column (zod
+dominates it), so the spread is almost entirely the runtime, not the form lib.

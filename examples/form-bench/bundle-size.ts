@@ -128,6 +128,38 @@ function Form(){
 }
 createRoot(document.body).render(createElement(Form))`,
   },
+  {
+    framework: 'Vue (vee-validate)',
+    baseline: `import { createApp, h } from 'vue'
+createApp({ render: () => h('div', null, 'x') }).mount(document.body)`,
+    full: `import { createApp, defineComponent, h } from 'vue'
+import { useForm } from 'vee-validate'
+import { toTypedSchema } from '@vee-validate/zod'
+import { z } from 'zod'
+const schema = ${SCHEMA}
+const Comp = defineComponent({ setup(){
+  const form = useForm({ validationSchema: toTypedSchema(schema), initialValues: ${EMPTY} })
+  const fields = ${NAMES}.map((n)=>{ const [model] = form.defineField(n); return { n, model } })
+  return () => h('form', null, fields.map(({n, model})=>h('input', { name:n, value: model.value, onInput:(e)=>{ model.value = e.target.value } })))
+} })
+createApp(Comp).mount(document.body)`,
+  },
+  {
+    framework: 'Solid (modular-forms)',
+    baseline: `import { render } from 'solid-js/web'
+render(() => { const d = document.createElement('div'); d.textContent = 'x'; return d }, document.body)`,
+    full: `import { createComponent } from 'solid-js'
+import { insert, render } from 'solid-js/web'
+import { createForm, zodForm } from '@modular-forms/solid'
+import { z } from 'zod'
+const schema = ${SCHEMA}
+render(() => {
+  const [, { Field }] = createForm({ initialValues: ${EMPTY}, validate: zodForm(schema) })
+  const formEl = document.createElement('form')
+  insert(formEl, () => ${NAMES}.map((n)=>createComponent(Field, { name:n, children:(field, props)=>{ const i=document.createElement('input'); i.name=n; props.ref(i); i.addEventListener('input', props.onInput); return i } })))
+  return formEl
+}, document.body)`,
+  },
 ]
 
 const gz = (code: string) => gzipSync(Buffer.from(code), { level: 9 }).length
