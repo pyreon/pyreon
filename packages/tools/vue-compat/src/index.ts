@@ -36,6 +36,7 @@ import {
   useContext,
 } from '@pyreon/core'
 import {
+  batch,
   createStore,
   effect,
   computed as pyreonComputed,
@@ -126,10 +127,19 @@ export function shallowRef<T>(value: T): Ref<T> {
 export function triggerRef<T>(r: Ref<T>): void {
   const internal = r as Ref<T> & { _signal: Signal<T>; _scheduleRerender?: () => void }
   if (internal._signal) {
-    // Force notify by setting the same value with Object.is bypass
+    // Force a notification even when the value is unchanged. Pyreon signals
+    // dedup on Object.is, so we bounce off a sentinel to defeat the dedup —
+    // but inside a `batch()` so subscribers are coalesced and fire EXACTLY
+    // ONCE, reading the final (restored) value. Without the batch the two
+    // writes fire subscribers twice and expose the transient `undefined`
+    // intermediate to anything that reads the ref synchronously during the
+    // notification (real Vue's triggerRef notifies once with the unchanged
+    // value).
     const current = internal._signal.peek()
-    internal._signal.set(undefined as T)
-    internal._signal.set(current)
+    batch(() => {
+      internal._signal.set(undefined as T)
+      internal._signal.set(current)
+    })
   }
   if (internal._scheduleRerender) {
     internal._scheduleRerender()
@@ -1147,6 +1157,15 @@ export function isProxy(value: unknown): boolean {
 
 /**
  * Marks an object so that `reactive()` will return it as-is (not wrapped).
+ *
+ * KNOWN LIMITATION (vs Vue 3): only honored at the TOP level —
+ * `reactive(markRaw(x))` returns `x` raw, but a markRaw'd object NESTED inside
+ * a reactive tree (`reactive({ x: markRaw(y) })`) is still deep-proxied, because
+ * the underlying `@pyreon/reactivity` `createStore()` recurses without knowledge
+ * of vue-compat's `V_SKIP` marker. Honoring nested `markRaw` would require a
+ * skip-predicate option on `createStore` (a reactivity-core change); deferred as
+ * low-impact. Workaround: keep markRaw'd values at the top level, or read them
+ * through `toRaw()`.
  */
 export function markRaw<T extends object>(obj: T): T {
   ;(obj as Record<symbol, boolean>)[V_SKIP] = true
