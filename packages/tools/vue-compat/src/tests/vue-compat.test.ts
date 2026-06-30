@@ -145,18 +145,26 @@ describe('@pyreon/vue-compat', () => {
 
   // ─── triggerRef ────────────────────────────────────────────────────────
 
-  it('triggerRef forces subscribers to re-run', () => {
-    const r = ref(0)
+  it('triggerRef forces subscribers to re-run exactly once, never observing the sentinel', () => {
+    const r = ref<number>(7)
     let runs = 0
+    const observed: number[] = []
 
     const stop = watchEffect(() => {
-      void r.value
+      observed.push(r.value)
       runs++
     })
 
     expect(runs).toBe(1)
     triggerRef(r)
-    expect(runs).toBe(3)
+    // Fires EXACTLY once more (real Vue notifies once with the unchanged
+    // value). Pre-fix the undefined-bounce fired subscribers TWICE (runs === 3)
+    // AND exposed `undefined` as an intermediate — both are bugs the previous
+    // test codified. The batch() wrap coalesces to a single fire on the
+    // restored value.
+    expect(runs).toBe(2)
+    // The effect must never have observed the sentinel `undefined` bounce value.
+    expect(observed).toEqual([7, 7])
     stop()
   })
 

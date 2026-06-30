@@ -80,7 +80,7 @@ createApp(Counter).mount('#app')
 | -------------------------- | ---------------------------------------- | ------------------------------------------------------------- |
 | Reactive engine            | Vue's Proxy-based reactivity             | Pyreon's signal-based reactivity                              |
 | `deep` option in `watch()` | Controls deep observation                | **Ignored** -- Pyreon tracks dependencies automatically       |
-| `computed` setter          | Supported via getter/setter object       | **Not supported** -- throws on write                          |
+| `computed` setter          | Supported via getter/setter object       | **Supported** -- `computed({ get, set })` is writable; the getter-only form is readonly (throws on write, like Vue) |
 | `shallowRef`               | Separate shallow implementation          | Identical to `ref()` -- Pyreon signals are inherently shallow |
 | `shallowReactive`          | Separate shallow implementation          | Same as `reactive()` in practice                              |
 | `readonly`                 | Vue's full readonly reactive proxy       | Simple Proxy that throws on set/delete                        |
@@ -308,18 +308,23 @@ const total = computed(() => subtotal.value + tax.value)
 total.value // 324 (300 + 24)
 ```
 
-**Difference from Vue:** Writable computed (getter/setter object form) is not supported. If you need a writable computed pattern, use a `ref` with a setter function:
+**Writable computed is supported** via the getter/setter object form, exactly like Vue 3. The getter-only form is readonly and throws on write.
 
 ```tsx
-// Vue 3 writable computed -- NOT supported in Pyreon:
-// const count = computed({ get: () => ..., set: (v) => ... })
-
-// Pyreon alternative:
 const _internal = ref(0)
-const count = computed(() => _internal.value * 2)
-function setCount(value: number) {
-  _internal.value = value / 2
-}
+const count = computed({
+  get: () => _internal.value * 2,
+  set: (value) => {
+    _internal.value = value / 2
+  },
+})
+
+count.value // getter
+count.value = 10 // setter → _internal.value becomes 5
+
+// Getter-only form is readonly:
+const doubled = computed(() => _internal.value * 2)
+// doubled.value = 1 // throws: computed refs are readonly
 ```
 
 ### Reactive Objects
@@ -1881,24 +1886,22 @@ const Counter = defineComponent({
 })
 ```
 
-**5. Replace writable computed:**
+**5. Writable computed ports as-is:**
 
 ```tsx
-// Vue 3 writable computed
-// const fullName = computed({
-//   get: () => `${first.value} ${last.value}`,
-//   set: (v) => { [first.value, last.value] = v.split(' ') }
-// })
-
-// Pyreon alternative
+// Vue 3 writable computed — works unchanged in vue-compat
 const first = ref('Alice')
 const last = ref('Smith')
-const fullName = computed(() => `${first.value} ${last.value}`)
-function setFullName(v: string) {
-  const [f, l] = v.split(' ')
-  first.value = f
-  last.value = l ?? ''
-}
+const fullName = computed({
+  get: () => `${first.value} ${last.value}`,
+  set: (v) => {
+    const [f, l] = v.split(' ')
+    first.value = f
+    last.value = l ?? ''
+  },
+})
+
+fullName.value = 'Bob Jones' // → first='Bob', last='Jones'
 ```
 
 **6. Replace `app.use()` plugins with direct imports:**
@@ -1933,7 +1936,7 @@ createApp(App).mount('#app')
 2. Replace `<template>` blocks with render functions returned from `setup()`.
 3. Remove `deep: true` from `watch` options (it is ignored -- Pyreon auto-tracks).
 4. Replace Options API components (`data`, `methods`, `computed`) with Composition API `setup()`.
-5. Remove writable computed usage -- use a `ref` plus a setter function instead.
+5. Writable computed (`computed({ get, set })`) ports as-is -- no change needed.
 6. Replace `app.use()` plugin registrations with direct imports.
 7. Replace Vue directives (`v-model`, `v-if`, `v-for`) with Pyreon control flow components (`Show`, `For`) or JSX expressions.
 8. The `.value` access pattern for `ref` and `computed` works exactly the same -- no changes needed.
