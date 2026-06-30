@@ -29,7 +29,11 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { parseSync } from 'oxc-parser'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
+// `import.meta.dir` is a Bun-ism — undefined when this module is IMPORTED
+// under vitest (the pure helpers are unit-tested there). Fall back to cwd so
+// module-eval never crashes; REPO_ROOT is only consumed by `main()` (guarded
+// behind `import.meta.main`), so the fallback value is irrelevant in tests.
+const REPO_ROOT = resolve((import.meta as { dir?: string }).dir ?? process.cwd(), '..')
 
 // ─── Exemptions ─────────────────────────────────────────────────────────────
 //
@@ -89,7 +93,7 @@ const EXEMPT_FIELDS: Exemption[] = [
     package: '@pyreon/zero',
     interface: 'ViteManifestChunk',
     field: 'isDynamicEntry',
-    reason: 'external Vite-manifest-shape mirror — documented field Vite emits; the resolver uses isEntry + imports, not this flag',
+    reason: 'external Vite-manifest-shape mirror — documented field Vite emits; the perf-advisor + resolver read it',
   },
 ]
 
@@ -265,6 +269,57 @@ function offsetToLine(code: string, offset: number): number {
   return line
 }
 
+// Per-file cache of comment-stripped source. Reference counting runs once
+// per field over every file in the package, so parse each file ONCE.
+const _strippedSourceCache = new Map<string, string>()
+
+/** Replace each `[start, end)` range with equal-length spaces (preserves
+ *  offsets AND prevents adjacent tokens from merging, e.g. `a/* *​/b`). */
+export function blankRanges(code: string, ranges: ReadonlyArray<{ start: number; end: number }>): string {
+  if (ranges.length === 0) return code
+  const sorted = [...ranges].sort((a, b) => a.start - b.start)
+  let out = ''
+  let pos = 0
+  for (const r of sorted) {
+    if (r.start < pos) continue // skip overlaps defensively
+    out += code.slice(pos, r.start) + ' '.repeat(Math.max(0, r.end - r.start))
+    pos = r.end
+  }
+  return out + code.slice(pos)
+}
+
+/**
+ * Source with REAL comments blanked out, via oxc's exact comment ranges.
+ *
+ * The previous `/\/\*[\s\S]*?\*\//g` regex strip was NOT string/regex-aware:
+ * a `/*` inside a string or regex literal would pair with a later `*​/`, so
+ * the strip deleted real CODE between them — under-counting (and falsely
+ * 0-counting) any field referenced in that window. oxc already parses every
+ * file here; its `comments` array gives the precise ranges, so we blank
+ * exactly the comments and nothing else. Falls back to the old regex strip
+ * only if a file fails to parse (best-effort; over-strips at worst, which
+ * can only inflate refs, never hide an unimplemented field).
+ */
+export function stripComments(code: string, filename: string): string {
+  try {
+    const { comments } = parseSync(filename, code, {
+      sourceType: 'module',
+      lang: filename.endsWith('.tsx') ? 'tsx' : 'ts',
+    }) as { comments?: ReadonlyArray<{ start: number; end: number }> }
+    return blankRanges(code, comments ?? [])
+  } catch {
+    return code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+  }
+}
+
+function commentStrippedSource(file: string): string {
+  const cached = _strippedSourceCache.get(file)
+  if (cached !== undefined) return cached
+  const stripped = stripComments(readFileSync(file, 'utf-8'), file)
+  _strippedSourceCache.set(file, stripped)
+  return stripped
+}
+
 function countReferences(
   packageDir: string,
   fieldName: string,
@@ -290,9 +345,7 @@ function countReferences(
   const pattern = new RegExp(`\\b${escapeRegex(fieldName)}\\b`, 'g')
   let count = 0
   for (const file of walkSourceFiles(packageDir)) {
-    const code = readFileSync(file, 'utf-8')
-    // Strip block + line comments so doc references don't inflate counts
-    const stripped = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    const stripped = commentStrippedSource(file)
     const matches = stripped.match(pattern)
     count += matches?.length ?? 0
   }
@@ -491,7 +544,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`[audit-types] crashed: ${err}\n`)
-  process.exit(2)
-})
+// Guarded so the pure helpers (`stripComments` / `blankRanges`) can be
+// imported by tests without running the audit (which calls `process.exit`).
+if (import.meta.main) {
+  main().catch((err) => {
+    process.stderr.write(`[audit-types] crashed: ${err}\n`)
+    process.exit(2)
+  })
+}

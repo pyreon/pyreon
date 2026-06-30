@@ -277,6 +277,19 @@ export interface ZeroConfig {
     mode?: 'string' | 'stream'
   }
 
+  /**
+   * Build-time per-route performance advisor (opt-in). When set, after the
+   * client build the advisor reads the Vite manifest + dist and prints, per
+   * route, the perf opportunities it finds — route JS over budget and
+   * `content-visibility: auto` without `contain-intrinsic-size` (CLS) — and
+   * writes `dist/_pyreon-perf-advisor.json`. Advisory only: never fails the
+   * build, silent when there's nothing to report.
+   *
+   * `true` uses defaults; pass `{ jsBudget }` to set the per-route
+   * static-JS-closure byte budget (default 150 KB).
+   */
+  perfAdvisor?: boolean | { jsBudget?: number }
+
   /** SSG options — only used when mode is "ssg". */
   ssg?: {
     /** Paths to prerender (or function returning paths). */
