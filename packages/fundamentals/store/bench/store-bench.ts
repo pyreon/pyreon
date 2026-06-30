@@ -155,12 +155,45 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
       }
     },
   },
-  'patch 2 fields': {
-    note: 'Jotai sets 2 atoms (no multi-field patch primitive)',
+  'patch 2 fields (no subscriber)': {
+    note: 'no listener attached — Pyreon takes its no-subscriber fast path; see the with-subscriber row for the realistic case. Jotai sets 2 atoms.',
     make: () => {
       const p = makePyreon()
       const z = makeZustand()
       const j = makeJotai()
+      let i = 0
+      return {
+        pyreon: () => {
+          i++
+          p.patch({ count: i, label: 'y' })
+        },
+        zustand: () => {
+          i++
+          z.setState({ count: i, label: 'y' })
+        },
+        jotai: () => {
+          i++
+          j.store.set(j.countAtom, i)
+          j.store.set(j.labelAtom, 'y')
+        },
+      }
+    },
+  },
+  'patch 2 fields (with subscriber)': {
+    note: 'REALISTIC — a listener is attached, so every lib does its full notify path (Pyreon: per-field write + patch event + notify; Zustand: shallow merge + notify). Jotai sets 2 atoms.',
+    make: () => {
+      const p = makePyreon()
+      const z = makeZustand()
+      const j = makeJotai()
+      p.subscribe(() => {
+        sink++
+      })
+      z.subscribe(() => {
+        sink++
+      })
+      j.store.sub(j.countAtom, () => {
+        sink++
+      })
       let i = 0
       return {
         pyreon: () => {
