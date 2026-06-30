@@ -100,8 +100,8 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 | [`createFlow`](#createflow) | function | Create a reactive flow instance. |
 | [`useFlow`](#useflow) | hook | Component-scoped wrapper around `createFlow` — identical shape plus an implicit `onUnmount(() => flow.dispose())`. |
 | [`Flow`](#flow) | component | Main flow container. |
-| [`Background`](#background) | component | Dot or line grid background inside a `<Flow>`. |
-| [`Controls`](#controls) | component | Zoom in / zoom out / fit-view button cluster. |
+| [`Background`](#background) | component | Grid background inside a `<Flow>`. |
+| [`Controls`](#controls) | component | Zoom / fit-view button cluster plus a live zoom-level readout. |
 | [`MiniMap`](#minimap) | component | Overview minimap of the full graph. |
 | [`Handle`](#handle) | component | Connection handle on a custom node — exposes a connectable point that edges attach to. |
 | [`Panel`](#panel) | component | Overlay panel positioned absolutely relative to the flow viewport. |
@@ -203,12 +203,12 @@ const MyDiagram = () => {
 (props: FlowComponentProps) => VNodeChild
 ```
 
-Main flow container. Accepts a `FlowInstance` via the `instance` prop plus optional `nodeTypes` / `edgeTypes` maps for custom renderers. Internally uses `<For>` keyed by `node.id` plus per-node reactive accessors that read live state from `instance.nodes()` — each node mounts EXACTLY ONCE across the lifetime of the graph regardless of drags, selection clicks, or `updateNode` mutations. A 60fps drag in a 1000-node graph stays O(1) per frame. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting.
+Main flow container. Accepts a `FlowInstance` via the `instance` prop plus optional `nodeTypes` / `edgeTypes` maps for custom renderers, `style` / `class`, and `ariaLabel` (the accessible name for the focusable canvas — defaults to `"Flow diagram"`; the container is `role="group"` + `tabindex=0`, so set a specific name like `"Pipeline editor"`). Internally uses `<For>` keyed by `node.id` plus per-node reactive accessors that read live state from `instance.nodes()` — each node mounts EXACTLY ONCE across the lifetime of the graph regardless of drags, selection clicks, or `updateNode` mutations. A 60fps drag in a 1000-node graph stays O(1) per frame. JSX components are NOT generic at the call site (`<Flow<MyData> />` is invalid JSX); `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass `FlowInstance<MyData>` without casting.
 
 **Example**
 
 ```tsx
-<Flow instance={flow} nodeTypes={{ custom: MyNode }} edgeTypes={{ arrow: ArrowEdge }}>
+<Flow instance={flow} ariaLabel="Pipeline editor" nodeTypes={{ custom: MyNode }} edgeTypes={{ arrow: ArrowEdge }}>
   <Background variant="dots" gap={20} />
   <Controls position="bottom-left" />
   <MiniMap nodeColor={(node) => '#6366f1'} />
@@ -240,16 +240,16 @@ function MyNode(props: NodeComponentProps<WorkflowData>) {
 ### Background `component`
 
 ```ts
-(props: { variant?: "dots" | "lines"; gap?: number; color?: string }) => VNodeChild
+(props?: { variant?: "dots" | "lines" | "cross"; gap?: number; size?: number; color?: string }) => VNodeChild
 ```
 
-Dot or line grid background inside a `<Flow>`. Place as a direct child. `variant` defaults to `"dots"`, `gap` controls pattern spacing, `color` sets the pattern color. Renders as an SVG pattern at the back of the z-order.
+Grid background inside a `<Flow>`. Place as a direct child. `variant` is `"dots"` (default), `"lines"`, or `"cross"`; `gap` is the pattern spacing (default `20`); `size` is the dot radius / line thickness (default `1`); `color` sets the pattern color (default `"#ddd"`). Renders as an SVG `<pattern>` at the back of the z-order.
 
 **Example**
 
 ```tsx
 <Flow instance={flow}>
-  <Background variant="dots" gap={24} color="#e5e7eb" />
+  <Background variant="dots" gap={24} size={1} color="#e5e7eb" />
 </Flow>
 ```
 
@@ -260,16 +260,16 @@ Dot or line grid background inside a `<Flow>`. Place as a direct child. `variant
 ### Controls `component`
 
 ```ts
-(props?: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" }) => VNodeChild
+(props?: { showZoomIn?: boolean; showZoomOut?: boolean; showFitView?: boolean; showLock?: boolean; position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" }) => VNodeChild
 ```
 
-Zoom in / zoom out / fit-view button cluster. Renders absolutely inside the flow viewport at the configured corner (default `"bottom-right"`). Each button dispatches to the corresponding `FlowInstance` viewport method.
+Zoom / fit-view button cluster plus a live zoom-level readout. Renders absolutely inside the flow viewport at the configured corner (default `"bottom-left"`). `showZoomIn` / `showZoomOut` / `showFitView` default to `true` and dispatch to `instance.zoomIn()` / `zoomOut()` / `fitView()`; `showLock` (default `false`) adds a lock/unlock toggle. Each button is `title`-labelled for accessibility.
 
 **Example**
 
 ```tsx
 <Flow instance={flow}>
-  <Controls position="bottom-left" />
+  <Controls position="bottom-right" showLock />
 </Flow>
 ```
 
@@ -280,10 +280,10 @@ Zoom in / zoom out / fit-view button cluster. Renders absolutely inside the flow
 ### MiniMap `component`
 
 ```ts
-(props?: { nodeColor?: (node: FlowNode) => string; maskColor?: string }) => VNodeChild
+(props?: { nodeColor?: string | ((node: FlowNode) => string); maskColor?: string; width?: number; height?: number; style?: string; class?: string }) => VNodeChild
 ```
 
-Overview minimap of the full graph. `nodeColor` is a per-node color function (default grey), `maskColor` fills the area outside the current viewport (default semi-transparent black). Clicks on the minimap recenter the main viewport.
+Overview minimap of the full graph. `nodeColor` is a flat color string OR a per-node color function (default a `--pyreon-flow-minimap-node` CSS var); `maskColor` fills the area outside the current viewport (default a `--pyreon-flow-minimap-mask` var). `width` / `height` size the minimap box (default `200` × `150`). Clicks on the minimap recenter the main viewport.
 
 **Example**
 
@@ -300,10 +300,10 @@ Overview minimap of the full graph. `nodeColor` is a per-node color function (de
 ### Handle `component`
 
 ```ts
-(props: { type: "source" | "target"; position: Position; id?: string }) => VNodeChild
+(props: { type: "source" | "target"; position: Position; id?: string; style?: string; class?: string }) => VNodeChild
 ```
 
-Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle`.
+Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle`. `style` / `class` restyle the handle dot.
 
 **Example**
 
@@ -335,10 +335,10 @@ flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })
 ### Panel `component`
 
 ```ts
-(props: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right"; children: VNodeChild }) => VNodeChild
+(props: { position?: "top-left" | "top-right" | "bottom-left" | "bottom-right"; style?: string; class?: string; children?: VNodeChild }) => VNodeChild
 ```
 
-Overlay panel positioned absolutely relative to the flow viewport. Use for toolbars, legend badges, or contextual action buttons. Pass any JSX as children — the panel is a plain positioned container, not a predefined chrome component.
+Overlay panel positioned absolutely relative to the flow viewport. Use for toolbars, legend badges, or contextual action buttons. Pass any JSX as children — the panel is a plain positioned container, not a predefined chrome component. `style` / `class` customise the container.
 
 **Example**
 
