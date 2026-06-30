@@ -161,7 +161,7 @@ jobs:
         id: affected
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            git fetch origin "${{ github.base_ref }}" || true
             FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
             echo "filter=$FILTER" >> $GITHUB_OUTPUT
           else
@@ -353,7 +353,7 @@ jobs:
             CATEGORY_GLOB="./packages/${{ matrix.category }}/*"
           fi
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            git fetch origin "${{ github.base_ref }}" || true
             FILTER=$(bun run scripts/affected.ts \
               --base=origin/${{ github.base_ref }} \
               --category=${{ matrix.category }})
@@ -420,6 +420,53 @@ jobs:
         run: bun run lint
       - name: Enforce pyreon/require-browser-smoke-test
         run: bun run lint:browser-smoke
+
+  # ── Changes: did this PR touch anything beyond pure docs? ────────────
+  # Layer-2 heavy-job gate. A PR that changes ONLY docs/markdown (CLAUDE.md,
+  # READMEs, docs/**, .claude/**, llms*.txt) cannot affect any build/test
+  # output, so the expensive always-run jobs (build, verify-modes, coverage,
+  # browser/rust tests, audit-types, bundle/import budgets, distribution,
+  # client-bundle-node-imports, manifest-depth, pyreon-lint-gate) gate on
+  # `code == 'true'` and SKIP — a docs PR then runs only the fast gates
+  # (lint, doc-claims, docs-sync, changeset, secrets-scan, …).
+  #
+  # CONSERVATIVE by construction (scripts/affected.ts:isDocsOnlyChange): any
+  # non-docs path → code=true; a null/unknowable diff → code=true; push:main
+  # + merge_group → code=true (the gate that protects main never trusts the
+  # narrowing). A skipped required check reports as SUCCESS to branch
+  # protection (same mechanism `e2e-suite` / `scaffold-smoke-cell` rely on),
+  # so a docs PR is mergeable with the heavy jobs skipped.
+  #
+  # NOTE the per-category test/typecheck/e2e cells are NOT gated here — they
+  # already self-skip via the (now merge-base-correct) affected filter, and
+  # their `result == 'success'` aggregators must see the cells COMPLETE
+  # (exit 0), not be skipped. Only standalone jobs (no aggregator) gate here.
+  changes:
+    name: Changes (decide)
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Detect non-docs (code) changes
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event (${{ github.event_name }}) → code=true (full run)."
+            exit 0
+          fi
+          git fetch origin "${{ github.base_ref }}" || true
+          CODE=$(bun run scripts/affected.ts --code-changed --base=origin/${{ github.base_ref }})
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Code (non-docs) changed: $CODE"
 
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
@@ -494,7 +541,7 @@ jobs:
           PYREON_SKIP_SLOW_TESTS: ${{ github.event_name == 'pull_request' && '1' || '' }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            git fetch origin "${{ github.base_ref }}" || true
             FILTER=$(bun run scripts/affected.ts \
               --base=origin/${{ github.base_ref }} \
               --category=${{ matrix.category }})
@@ -579,7 +626,7 @@ jobs:
             echo "Full run forced (event: ${{ github.event_name }})"
             exit 0
           fi
-          git fetch origin "${{ github.base_ref }}" --depth=1 || true
+          git fetch origin "${{ github.base_ref }}" || true
           BASE="origin/${{ github.base_ref }}"
           if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
             # Couldn't determine diff — safe default = run.
@@ -613,7 +660,9 @@ jobs:
     # on built artifacts (lib/) needs Bootstrap. Conservatively gate on
     # bootstrap rather than chase per-test audits.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, lint, typecheck]
+    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
+    needs: [bootstrap, lint, typecheck, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -657,7 +706,8 @@ jobs:
   # silent regressions going forward.
   test-rust-binary:
     name: Test (Rust binary)
-    needs: install
+    needs: [install, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -751,7 +801,7 @@ jobs:
         id: pick
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" --depth=1 || true
+            git fetch origin "${{ github.base_ref }}" || true
             MATRIX=$(bun run scripts/e2e-affected.ts --base=origin/${{ github.base_ref }})
           else
             MATRIX=$(bun run scripts/e2e-affected.ts --all)
@@ -885,7 +935,9 @@ jobs:
     # P3c — `vite build` of examples resolves @pyreon/* via the node
     # condition → lib/. Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, lint, typecheck]
+    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
+    needs: [bootstrap, lint, typecheck, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -929,7 +981,8 @@ jobs:
   # `full-coverage` label (label-gating is a follow-up, not in this PR).
   coverage:
     name: Coverage
-    needs: install
+    needs: [install, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -957,6 +1010,9 @@ jobs:
     # 92% to 88% (still above the floor) passes `Coverage` but fails
     # `Coverage (Full)` at merge-queue time. Same safety as before; the
     # signal just lands at merge-time instead of PR-time.
+    # Event-gated to push:main + merge_group only (never runs on PRs), so the
+    # docs-only Layer-2 gate does not apply here — a code change always exists
+    # by the time something lands on main.
     if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     needs: [bootstrap, lint, typecheck]
@@ -982,7 +1038,8 @@ jobs:
   # in-package-by-name read pattern.
   audit-types:
     name: Audit Types
-    needs: install
+    needs: [install, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1006,7 +1063,8 @@ jobs:
   # See packages/tools/cli/src/doctor/gates/lint.ts.
   pyreon-lint-gate:
     name: Pyreon Lint Gate
-    needs: install
+    needs: [install, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1032,7 +1090,9 @@ jobs:
     # P3c — bundles `lib/index.js` of every published package via Bun.build.
     # Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, lint, typecheck]
+    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
+    needs: [bootstrap, lint, typecheck, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1051,7 +1111,8 @@ jobs:
   # built lib/index.js). See scripts/check-import-budgets.ts.
   check-import-budgets:
     name: Check Import Budgets
-    needs: [bootstrap, lint, typecheck]
+    needs: [bootstrap, lint, typecheck, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1074,7 +1135,9 @@ jobs:
     # P3c — `npm pack --dry-run` probe reads lib/ via the `files` array.
     # Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, lint, typecheck]
+    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
+    needs: [bootstrap, lint, typecheck, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1099,7 +1162,8 @@ jobs:
   # See scripts/check-client-bundle-node-imports.ts.
   check-client-bundle-node-imports:
     name: Check Client Bundle Node Imports
-    needs: install
+    needs: [install, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -1186,7 +1250,8 @@ jobs:
   # CI. See scripts/check-manifest-depth.ts.
   check-manifest-depth:
     name: Check Manifest Depth
-    needs: install
+    needs: [install, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -1233,7 +1298,9 @@ jobs:
     name: Verify Modes
     # P3c — `vite build` of every example × mode cell. Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, lint, typecheck]
+    # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
+    needs: [bootstrap, lint, typecheck, changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -1289,7 +1356,7 @@ jobs:
             echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
             exit 0
           fi
-          git fetch origin "${{ github.base_ref }}" --depth=1 || true
+          git fetch origin "${{ github.base_ref }}" || true
           BASE="origin/${{ github.base_ref }}"
           # Changed files (handles fetch failures cleanly — fall back to
           # running the matrix if we can't determine the diff).
@@ -1400,7 +1467,7 @@ jobs:
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git fetch origin "${{ github.base_ref }}" --depth=1 || true
+          git fetch origin "${{ github.base_ref }}" || true
           CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" || echo '')
           if echo "$CHANGED" | grep -qE '(^packages/[^/]+/[^/]+/src/manifest\.ts$|^llms(-full)?\.txt$|^scripts/gen-docs(-core)?\.ts$|^packages/internals/manifest/|^package\.json$|^docs/src/content/docs/mcp\.md$|^scripts/check-mcp-docs\.ts$)'; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
