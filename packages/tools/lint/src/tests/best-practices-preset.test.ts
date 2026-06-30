@@ -21,11 +21,12 @@ function sev(entry: unknown): Severity {
 }
 
 describe('opt-in best-practice rule wiring', () => {
-  it('the expected 17 best-practice rules are tagged optIn', () => {
+  it('the expected 18 best-practice rules are tagged optIn', () => {
     expect(new Set(OPT_IN_IDS)).toEqual(
       new Set([
         'pyreon/require-img-alt',
         'pyreon/img-requires-dimensions',
+        'pyreon/content-visibility-needs-intrinsic-size',
         'pyreon/no-positive-tabindex',
         'pyreon/prefer-zero-image',
         'pyreon/no-discarded-optimize-fields',
