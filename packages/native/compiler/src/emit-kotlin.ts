@@ -19,7 +19,7 @@ import {
   substituteIdentifier,
   synthLiteralStructName,
 } from './expr-utils'
-import { buildInferenceCtx, inferReturnType, inferType } from './infer-type'
+import { buildInferenceCtx, inferReturnType, inferType, rewriteObjectKeys } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import {
@@ -1831,6 +1831,29 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return kotlinIdent(e.name)
     case 'call': {
+      // `Object.keys(<object-typed expr>)` → `listOf("a","b")` of the
+      // struct field names (statically known). Recurse into the rewritten
+      // array literal so the array emit produces the `List<String>`.
+      {
+        const rw = rewriteObjectKeys(e, _kotlinExprInferCtx)
+        if (rw !== null) return emitKotlinExpr(rw, indent)
+      }
+      // Any other `Object.<method>(...)` — `keys` on a non-data-class arg,
+      // `values` / `entries` (heterogeneous → `List<Any>`), `assign` /
+      // `fromEntries` — has no native analog: a Kotlin data class carries no
+      // runtime key reflection. The generic fall-through emits
+      // `Object.keys(...)` (unresolved reference). Degrade to a typed empty
+      // list (always compiles) and warn so the drop is loud.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Object'
+      ) {
+        _emitWarnings.push(
+          `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() on a statically-known object shape is supported (it lowers to a literal key list). Emitting an empty list; restructure to avoid runtime object reflection on native.`,
+        )
+        return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
+      }
       // `console.log(…)` → `println(…)` — the universal TS debug call
       // maps to Kotlin's stdlib print (Swift mirror: `print`).
       if (

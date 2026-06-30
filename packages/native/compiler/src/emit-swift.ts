@@ -23,7 +23,13 @@ import {
   substituteIdentifier,
   synthLiteralStructName,
 } from './expr-utils'
-import { buildInferenceCtx, emptyInferenceCtx, inferReturnType, inferType } from './infer-type'
+import {
+  buildInferenceCtx,
+  emptyInferenceCtx,
+  inferReturnType,
+  inferType,
+  rewriteObjectKeys,
+} from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
   type FlatRouteEntry,
@@ -2096,6 +2102,32 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
     case 'identifier':
       return swiftIdent(e.name)
     case 'call': {
+      // `Object.keys(<object-typed expr>)` → static `[String]` of the
+      // struct field names. A synthesized struct's keys are statically
+      // known, so the rewrite lowers to a plain string-array literal;
+      // recursing into the array emit produces the precise `[String]`.
+      {
+        const rw = rewriteObjectKeys(e, _exprInferCtx)
+        if (rw !== null) return emitSwiftExpr(rw, indent)
+      }
+      // Any other `Object.<method>(...)` — `keys` on a non-struct arg
+      // (dictionary/unknown), `values` / `entries` (heterogeneous value
+      // arrays → `[Any]`, type-lossy), `assign` / `fromEntries` — has no
+      // native analog: Swift structs carry no runtime key reflection. The
+      // generic fall-through emits `Object.keys(...)`, which is "cannot find
+      // 'Object' in scope" — silently uncompilable. Degrade to a TYPED empty
+      // array (always compiles, even in an `Any` computed context, unlike a
+      // bare `[]` which Swift can't type-infer) and warn so the drop is loud.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Object'
+      ) {
+        _emitWarnings.push(
+          `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() on a statically-known object shape is supported (it lowers to a literal key array). Emitting an empty array; restructure to avoid runtime object reflection on native.`,
+        )
+        return e.callee.property === 'keys' ? '[String]()' : '[Any]()'
+      }
       // `console.log(…)` → `print(…)` — the universal TS debug call
       // maps to Swift's stdlib print (Kotlin mirror: `println`).
       if (
