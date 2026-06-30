@@ -22,6 +22,7 @@ import {
 import {
   buildInferenceCtx,
   classifyOptionalCondition,
+  indexedArrayCallback,
   inferReturnType,
   inferType,
   rewriteObjectKeys,
@@ -2152,6 +2153,24 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               return `${obj}.all(${argExprs[0]!})`
             }
             break
+          case 'map':
+          case 'forEach': {
+            // JS `.map((el, idx) => …)` / `.forEach((el, idx) => …)` pass
+            // (element, index); Kotlin's `.map`/`.forEach` lambda takes ONLY
+            // the element, so a 2-param callback fails to infer. The
+            // index-aware form is `mapIndexed { idx, el -> … }` /
+            // `forEachIndexed { idx, el -> … }` — both are index-FIRST `(index,
+            // element)`, so bind `idx, el` SWAPPED from the JS `(el, idx)`
+            // order. 1-param callbacks fall through to the generic emit.
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = kotlinIdent(cb.params[0]!)
+              const idx = kotlinIdent(cb.params[1]!)
+              const fn = prop === 'map' ? 'mapIndexed' : 'forEachIndexed'
+              return `${obj}.${fn}({ ${idx}, ${el} -> ${emitKotlinExpr(cb.body, indent)} })`
+            }
+            break
+          }
           case 'includes':
             if (e.args.length === 1) {
               return `${obj}.contains(${argExprs[0]!})`

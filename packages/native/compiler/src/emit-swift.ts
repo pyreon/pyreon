@@ -27,6 +27,7 @@ import {
   buildInferenceCtx,
   classifyOptionalCondition,
   emptyInferenceCtx,
+  indexedArrayCallback,
   inferReturnType,
   inferType,
   rewriteObjectKeys,
@@ -2483,6 +2484,25 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               return `${obj}.allSatisfy(${argExprs[0]!})`
             }
             break
+          case 'map':
+          case 'forEach': {
+            // JS `.map((el, idx) => …)` / `.forEach((el, idx) => …)` pass
+            // (element, index); Swift's `.map`/`.forEach` closure takes ONLY
+            // the element (`{ x in … }`), so a 2-param callback fails
+            // ("expects 1 argument, but 2 were used"). The index-aware form is
+            // `enumerated().map { (idx, el) in … }` — `enumerated()` yields
+            // (offset, element) tuples (index-FIRST), so bind `(idx, el)`,
+            // SWAPPED from the JS `(el, idx)` order, keeping the body's names
+            // valid. 1-param callbacks fall through to the generic emit (which
+            // already works).
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = swiftIdent(cb.params[0]!)
+              const idx = swiftIdent(cb.params[1]!)
+              return `${obj}.enumerated().${prop}({ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })`
+            }
+            break
+          }
           case 'find':
             if (e.args.length === 1) {
               return `${obj}.first(where: ${argExprs[0]!})`

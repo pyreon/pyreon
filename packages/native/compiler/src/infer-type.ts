@@ -336,6 +336,22 @@ export function seedHandlerLocals(
   return saved
 }
 
+/**
+ * Recognise a 2-param array-method callback `(element, index) => …` — the JS
+ * `.map`/`.forEach` index form. Returns the arrow IR (so the emitter can read
+ * `params` + `body`) when `args` is exactly one 2-param arrow, else null. Used
+ * by both targets to lower to the index-aware native variant (Swift
+ * `enumerated().map { (idx, el) in … }`, Kotlin `mapIndexed { idx, el -> … }` —
+ * both index-FIRST, so the emitters bind the params swapped). 1-param callbacks
+ * return null and fall through to the generic `.map`/`.forEach` emit.
+ */
+export function indexedArrayCallback(
+  args: ExprIR[],
+): Extract<ExprIR, { kind: 'arrow' }> | null {
+  const cb = args[0]
+  return args.length === 1 && cb?.kind === 'arrow' && cb.params.length === 2 ? cb : null
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
