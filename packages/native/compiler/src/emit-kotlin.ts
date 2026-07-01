@@ -2378,9 +2378,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             //   slice(0, -n) → dropLast(n)   (drop last n)
             const negSlice = classifyNegativeSlice(e.args, (a) => emitKotlinExpr(a, indent))
             if (negSlice) {
-              return negSlice.kind === 'last'
-                ? `${obj}.takeLast(${negSlice.n})`
-                : `${obj}.dropLast(${negSlice.n})`
+              switch (negSlice.kind) {
+                case 'last':
+                  return `${obj}.takeLast(${negSlice.n})`
+                case 'dropLast':
+                  return `${obj}.dropLast(${negSlice.n})`
+                case 'dropFirstLast':
+                  return `${obj}.drop(${negSlice.s}).dropLast(${negSlice.n})`
+                case 'suffixDropLast':
+                  return `${obj}.takeLast(${negSlice.m}).dropLast(${negSlice.n})`
+              }
             }
             if (noNegative) {
               if (e.args.length === 1) return `${obj}.drop(${argExprs[0]!})`

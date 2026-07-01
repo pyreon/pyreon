@@ -2875,8 +2875,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               //   slice(0, -n) → dropLast(n)  (drop last n)
               const negSlice = classifyNegativeSlice(e.args, (a) => emitSwiftExpr(a, indent))
               if (negSlice) {
-                const tail =
-                  negSlice.kind === 'last' ? `suffix(${negSlice.n})` : `dropLast(${negSlice.n})`
+                let tail: string
+                switch (negSlice.kind) {
+                  case 'last':
+                    tail = `suffix(${negSlice.n})`
+                    break
+                  case 'dropLast':
+                    tail = `dropLast(${negSlice.n})`
+                    break
+                  case 'dropFirstLast':
+                    tail = `dropFirst(${negSlice.s}).dropLast(${negSlice.n})`
+                    break
+                  case 'suffixDropLast':
+                    tail = `suffix(${negSlice.m}).dropLast(${negSlice.n})`
+                    break
+                }
                 const body = `${wrap}(${recv}.${tail})`
                 return optional ? `${obj}.map { ${body} }` : body
               }
