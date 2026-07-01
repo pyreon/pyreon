@@ -609,13 +609,18 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // Classify properties
     const signalKeys: string[] = []
     const actionKeys: string[] = []
-    const initialValues = new Map<string, unknown>()
+    // Initial values captured at creation for `reset()`, kept as a parallel
+    // array aligned with `signalKeys` (both pushed in the same iteration below).
+    // An array is cheaper to build than a `Map` on the setup path, and `reset()`
+    // — the sole consumer — zips the two by index. (The snapshot MUST happen at
+    // creation, so this can't be deferred like `signalKeySet`/`subscribers`.)
+    const initialVals: unknown[] = []
 
     for (const key of Object.keys(raw)) {
       const val = raw[key]
       if (isSignalLike(val)) {
         signalKeys.push(key)
-        initialValues.set(key, val.peek())
+        initialVals.push(val.peek())
       } else if (isComputedLike(val)) {
         // computed — skip, just pass through
       } else if (typeof val === 'function') {
@@ -623,8 +628,12 @@ function defineSetupStore<T extends Record<string, unknown>>(
       }
     }
     // O(1) membership for the `patch` hot path (vs an O(signalKeys) array scan
-    // per patched key).
-    const signalKeySet = new Set(signalKeys)
+    // per patched key). LAZY: allocated on the first `patch()` object-form call
+    // and reused thereafter — most stores mutate via `store.x.set()` / actions
+    // and never call `patch()`, so the Set is pure setup overhead for them.
+    // Mirrors the lazy `subscribers` Set below. Built once, so the patch hot
+    // path stays O(1) after the first call.
+    let signalKeySet: Set<string> | null = null
 
     // ─── subscribe infrastructure ───────────────────────────────────────
     // Lazy Set allocation: most stores never get a user subscribe() call.
@@ -815,7 +824,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
             // `Object.entries` allocates.
             for (const key of Object.keys(partialOrFn)) {
               if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
-              if (signalKeySet.has(key)) {
+              if ((signalKeySet ??= new Set(signalKeys)).has(key)) {
                 // Per-key write inside batched patch. Tracks batch-size
                 // distribution; correlate with `reactivity.signalWrite`
                 // — the two should match 1:1 on the object-form path.
@@ -879,8 +888,8 @@ function defineSetupStore<T extends Record<string, unknown>>(
 
       reset() {
         batch(() => {
-          for (const [key, initial] of initialValues) {
-            ;(raw[key] as SignalLike).set(initial)
+          for (let i = 0; i < signalKeys.length; i++) {
+            ;(raw[signalKeys[i] as string] as SignalLike).set(initialVals[i])
           }
         })
       },
