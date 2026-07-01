@@ -464,7 +464,13 @@ jobs:
             exit 0
           fi
           git fetch origin "${{ github.base_ref }}" || true
-          CODE=$(bun run scripts/affected.ts --code-changed --base=origin/${{ github.base_ref }})
+          CODE=$(bun run scripts/affected.ts --code-changed --base=origin/${{ github.base_ref }}) || CODE=true
+          # Fail-closed: ONLY a clean "false" narrows the run to docs-only. Any
+          # other value (empty output, a non-zero affected.ts exit, an
+          # unexpected string) defaults to `true` → run the full set. A skipped
+          # heavy job reports success to branch protection, so a mis-detection
+          # must never silently disable the required checks.
+          if [ "$CODE" != "false" ]; then CODE=true; fi
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "Code (non-docs) changed: $CODE"
 
@@ -662,7 +668,7 @@ jobs:
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
     needs: [bootstrap, lint, typecheck, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -707,7 +713,7 @@ jobs:
   test-rust-binary:
     name: Test (Rust binary)
     needs: [install, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -937,7 +943,7 @@ jobs:
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
     needs: [bootstrap, lint, typecheck, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -982,7 +988,7 @@ jobs:
   coverage:
     name: Coverage
     needs: [install, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -1039,7 +1045,7 @@ jobs:
   audit-types:
     name: Audit Types
     needs: [install, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1064,7 +1070,7 @@ jobs:
   pyreon-lint-gate:
     name: Pyreon Lint Gate
     needs: [install, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1092,7 +1098,7 @@ jobs:
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
     needs: [bootstrap, lint, typecheck, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1112,7 +1118,7 @@ jobs:
   check-import-budgets:
     name: Check Import Budgets
     needs: [bootstrap, lint, typecheck, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1137,7 +1143,7 @@ jobs:
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
     needs: [bootstrap, lint, typecheck, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1163,7 +1169,7 @@ jobs:
   check-client-bundle-node-imports:
     name: Check Client Bundle Node Imports
     needs: [install, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -1251,7 +1257,7 @@ jobs:
   check-manifest-depth:
     name: Check Manifest Depth
     needs: [install, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -1300,7 +1306,7 @@ jobs:
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
     needs: [bootstrap, lint, typecheck, changes]
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
