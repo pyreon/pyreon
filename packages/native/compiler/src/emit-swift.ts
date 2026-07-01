@@ -2488,16 +2488,50 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               return `${obj}.trimmingCharacters(in: .whitespacesAndNewlines)`
             }
             break
-          case 'some':
+          case 'some': {
+            // 2-param INDEX callback `.some((el, idx) => …)` → the index-aware
+            // form. `enumerated()` yields (offset, element) index-FIRST, so bind
+            // `(idx, el)` SWAPPED from JS's `(el, idx)` — mirrors the map/forEach
+            // handling + the shared `indexedArrayCallback` gate (#1934). Checked
+            // BEFORE the 1-arg branch: a 2-PARAM arrow is still ONE argument, so
+            // `e.args.length === 1` is true — the gate discriminates on params.
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = swiftIdent(cb.params[0]!)
+              const idx = swiftIdent(cb.params[1]!)
+              return `${obj}.enumerated().contains(where: { (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })`
+            }
             if (e.args.length === 1) {
               return `${obj}.contains(where: ${argExprs[0]!})`
             }
             break
-          case 'every':
+          }
+          case 'every': {
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = swiftIdent(cb.params[0]!)
+              const idx = swiftIdent(cb.params[1]!)
+              return `${obj}.enumerated().allSatisfy({ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })`
+            }
             if (e.args.length === 1) {
               return `${obj}.allSatisfy(${argExprs[0]!})`
             }
             break
+          }
+          case 'filter': {
+            // 1-arg `.filter(pred)` passes through unchanged (Swift `.filter`
+            // matches JS); the 2-param INDEX form needs `enumerated().filter{…}`
+            // which yields (offset, element) tuples, so `.map({ $0.element })`
+            // recovers `[Element]` to match JS's `.filter` result.
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = swiftIdent(cb.params[0]!)
+              const idx = swiftIdent(cb.params[1]!)
+              return `${obj}.enumerated().filter({ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }).map({ $0.element })`
+            }
+            if (e.args.length === 1) return `${obj}.filter(${argExprs[0]!})`
+            break
+          }
           case 'map':
           case 'forEach': {
             // JS `.map((el, idx) => …)` / `.forEach((el, idx) => …)` pass
@@ -2740,6 +2774,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // contract — the result is a plain `Int`, so a downstream
             // `=== -1` / index use compiles. (Kotlin's `indexOfFirst`
             // already returns -1 when not found — faithful as-is.)
+            {
+              // 2-param INDEX callback `.findIndex((el, idx) => …)`: `firstIndex
+              // (where:)` takes only the element, so use `enumerated().first
+              // (where:)` (index-FIRST tuples) and read `.offset`, `?? -1` to
+              // keep the JS not-found sentinel + a plain `Int` result. Checked
+              // BEFORE the 1-arg branch (a 2-param arrow is still one argument).
+              const cb = indexedArrayCallback(e.args)
+              if (cb) {
+                const el = swiftIdent(cb.params[0]!)
+                const idx = swiftIdent(cb.params[1]!)
+                return `(${obj}.enumerated().first(where: { (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })?.offset ?? -1)`
+              }
+            }
             if (e.args.length === 1) return `(${obj}.firstIndex(where: ${argExprs[0]!}) ?? -1)`
             break
           case 'replaceAll':
