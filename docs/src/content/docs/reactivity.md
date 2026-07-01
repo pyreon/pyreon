@@ -1629,6 +1629,42 @@ The most interesting bucket is **`ran-once`** — an effect or computed that mou
 - **Retention.** `startReactiveCoverage()` pins every node created during the session with a strong ref so a component unmounting mid-run doesn't GC-prune it out of the denominator; `stopReactiveCoverage()` releases the pins.
 - Try it: `bun scripts/demo-reactive-coverage.ts`.
 
+## Describe a Reactive Graph
+
+No framework auto-generates *behavioral* (not API) docs from the reactive graph. Pyreon can — `describeReactiveGraph()` turns the live dependency graph into an English summary of what each change actually *does*, plus health insights only the graph shape can surface.
+
+```ts
+import { activateReactiveDevtools, describeReactiveGraph, formatGraphDescription } from '@pyreon/reactivity'
+
+activateReactiveDevtools()
+// … your reactive graph is built …
+console.log(formatGraphDescription(describeReactiveGraph()))
+```
+
+```text
+Reactive graph — 3 signals · 1 derived · 1 effect · 3 edges
+
+Signals:
+  qty            changing it re-derives 1 value and runs 1 effect  src/Cart.tsx:7:13
+  unitPrice      changing it re-derives 1 value and runs 1 effect  src/Cart.tsx:8:19
+  shippingFlat   nothing reacts to it (no dependents)              src/Cart.tsx:9:22
+Derived:
+  total          recomputes when qty, unitPrice change             src/Cart.tsx:11:9
+Effects:
+  effect#5       runs when total changes                           src/Cart.tsx:15:3
+
+Insights (1):
+  ⚠ orphan-signal nothing depends on `shippingFlat` — dead reactivity or an unused signal
+```
+
+`describeReactiveGraph(graph?)` returns a `GraphDescription` — `{ summary, nodes, insights }`. Each `nodes[]` entry carries an English `behavior` one-liner (a signal describes its downstream fan-out; a computed/effect describes what it reacts to). The **insights** surface behavioral smells:
+
+- **`orphan-signal`** — a signal nothing depends on (dead reactivity, or an unused signal).
+- **`high-fanout`** — changing one signal re-runs a large number of effects (a hot signal worth auditing).
+- **`deep-chain`** — a node at the end of a long dependency chain.
+
+Pure over the graph snapshot; dev/test only (the registry is tree-shaken in production, so an unactivated graph yields an empty summary). Pairs with `getUpdateCause` — `describe` explains the whole graph's behaviour, `getUpdateCause` explains one specific update.
+
 ## Exports Summary
 
 ### Core Primitives

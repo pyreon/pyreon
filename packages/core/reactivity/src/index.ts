@@ -40,6 +40,13 @@ export {
   getReactiveGraph,
   isReactiveDevtoolsActive,
 } from './reactive-devtools'
+export type {
+  GraphDescription,
+  GraphInsight,
+  GraphInsightKind,
+  NodeDescription,
+} from './reactive-describe'
+export { describeReactiveGraph, formatGraphDescription } from './reactive-describe'
 // `writeLpihCache` + `startLpihPolling` ship at the `@pyreon/reactivity/lpih`
 // subpath. They depend on `node:fs/promises` (Node-only) and are dev-mode
 // integration utilities — separating them keeps the core main-entry bundle

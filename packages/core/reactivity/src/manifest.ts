@@ -771,6 +771,30 @@ getReactiveFires() // → [{ id, ts }, …]  (bounded, chronological)`,
       seeAlso: ['activateReactiveDevtools', 'getReactiveTrace', 'onSignalUpdate'],
     },
     {
+      name: 'describeReactiveGraph',
+      kind: 'function',
+      signature:
+        'describeReactiveGraph(graph?: ReactiveGraph): GraphDescription  ·  formatGraphDescription(desc): string',
+      summary:
+        "Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, plus health insights only the graph shape can surface. No framework generates behavioral (not API) docs from the reactive graph; Pyreon can because it holds the precise graph. Returns `{ summary, nodes, insights }`: each `nodes[]` entry has an English `behavior` one-liner (a signal describes its downstream fan-out — 'changing it re-derives N values and runs M effects'; a computed/effect describes what it reacts to — 'recomputes when qty, price change'). `insights` flags behavioral smells: `orphan-signal` (nothing depends on it — dead reactivity), `high-fanout` (a change re-runs many effects — a hot signal), `deep-chain` (end of a long dependency chain). Pure over `getReactiveGraph()`; dev/test only. Pairs with `getUpdateCause` — this describes the whole graph, that explains one update.",
+      example: `activateReactiveDevtools()
+const qty = signal(2, { name: 'qty' })
+const shippingFlat = signal(4, { name: 'shippingFlat' }) // never read → orphan
+const total = computed(() => qty() * 9.99)
+effect(() => { void total() })
+console.log(formatGraphDescription(describeReactiveGraph()))
+// Signals:
+//   qty            changing it re-derives 1 value and runs 1 effect
+//   shippingFlat   nothing reacts to it (no dependents)
+// Insights: orphan-signal  nothing depends on \`shippingFlat\``,
+      mistakes: [
+        'Running it in production — the reactive registry is tree-shaken when `NODE_ENV === "production"`, so the graph (and description) is empty.',
+        "Treating an `orphan-signal` insight as always a bug — a signal read only outside a tracking scope (an event handler) legitimately has no graph dependents; it flags the SHAPE, you confirm intent.",
+        'Expecting it to describe a component from SOURCE without running — it reads the LIVE graph (`getReactiveGraph()`), so the reactive nodes must have been created + subscribed first.',
+      ],
+      seeAlso: ['getReactiveGraph', 'getUpdateCause', 'activateReactiveDevtools'],
+    },
+    {
       name: 'wrapSignal',
       kind: 'function',
       signature: '<T>(base: Signal<T>, options: WrapSignalOptions<T>) => Signal<T>',
