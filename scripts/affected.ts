@@ -328,12 +328,14 @@ export function computeAffectedFlags(opts: {
     const ws = findOwningWorkspace(path, workspaces, root)
     if (ws) seeds.add(ws.name)
     else if (hasScriptTestPkg && isScriptFile(path)) leafSeeds.add(SCRIPT_TEST_PACKAGE)
-    else {
-      // A doc-INPUT file (e.g. `.claude/rules/anti-patterns.md`) owns no
-      // workspace, but the package that parses it must run its tests.
-      const consumer = docInputConsumer(path)
-      if (consumer && workspaces.some((w) => w.name === consumer)) leafSeeds.add(consumer)
-    }
+    // A doc-INPUT file (`.claude/rules/anti-patterns.md`, `docs/patterns/**`)
+    // must run the package that PARSES it. ADDITIVE, NOT a fallback: an
+    // `else`-only branch would miss `docs/patterns/**`, which is already OWNED
+    // by the @pyreon/docs workspace — so `findOwningWorkspace` matches, the
+    // `else` never fires, and @pyreon/mcp's patterns.test.ts silently stops
+    // running on a pattern-doc reorg. Seed the consumer as a LEAF regardless.
+    const consumer = docInputConsumer(path)
+    if (consumer && workspaces.some((w) => w.name === consumer)) leafSeeds.add(consumer)
   }
 
   if (seeds.size === 0 && leafSeeds.size === 0) return ''
@@ -449,18 +451,32 @@ function main(): void {
   let base = 'origin/main'
   let category: string | undefined
   let codeChanged = false
+  let hasAffected = false
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
     else if (arg.startsWith('--category=')) category = arg.slice('--category='.length)
     // `--code-changed` prints `true`/`false`: does this diff touch anything
-    // beyond pure docs? Drives the Layer-2 heavy-job gate in ci.yml.
+    // beyond pure docs? Gates the READ-NOTHING heavy jobs (build, verify-modes,
+    // coverage, browser/rust, audit-types, budgets, distribution, …).
     else if (arg === '--code-changed') codeChanged = true
+    // `--has-affected` prints `true`/`false`: is ANY package affected (incl. a
+    // doc-INPUT change → its consuming package)? Gates bootstrap + the test /
+    // typecheck cells — those must run on a doc-input change even though it is
+    // docs-only for the heavy jobs. Non-empty affected (or an unknowable diff →
+    // `--filter=*`) → true; only a genuinely empty affected set → false.
+    else if (arg === '--has-affected') hasAffected = true
   }
 
   const changed = gitChangedFiles(base)
 
   if (codeChanged) {
     process.stdout.write(isDocsOnlyChange(changed) ? 'false' : 'true')
+    return
+  }
+
+  if (hasAffected) {
+    const workspaces = discoverWorkspaces()
+    process.stdout.write(computeAffectedFlags({ changed, workspaces }) !== '' ? 'true' : 'false')
     return
   }
 
