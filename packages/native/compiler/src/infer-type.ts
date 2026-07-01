@@ -523,6 +523,69 @@ export function classifyNegativeSlice(
   return null
 }
 
+/**
+ * Rewrite the MAP form of `Array.from` — `Array.from(src, fn)` — into the
+ * equivalent `src.map(fn)` member call, so both the emitters and the inference
+ * reuse the existing `.map` machinery (element type = the callback's return
+ * type; closure emit identical). Returns null for anything that ISN'T the
+ * 2-arg map form (so the caller handles the 1-arg copy / `isArray` / range
+ * shapes itself). The `{ length: n }` RANGE form (object-literal first arg) is
+ * excluded here — it needs a numeric-range source the caller warns about.
+ */
+export function arrayFromMapRewrite(expr: ExprIR): ExprIR | null {
+  if (
+    expr.kind !== 'call' ||
+    expr.callee.kind !== 'member' ||
+    expr.callee.object.kind !== 'identifier' ||
+    expr.callee.object.name !== 'Array' ||
+    expr.callee.property !== 'from' ||
+    expr.args.length !== 2
+  ) {
+    return null
+  }
+  const src = expr.args[0]!
+  if (src.kind === 'object') return null // `{ length: n }` range form — caller warns
+  return {
+    kind: 'call',
+    callee: { kind: 'member', object: src, property: 'map' },
+    args: [expr.args[1]!],
+  }
+}
+
+/**
+ * Infer the result type of the two static `Array.*` calls the emitters lower:
+ *   `Array.isArray(x)`  → boolean (a typed source is statically an array →
+ *                         the emit is the literal `true`).
+ *   `Array.from(x)`     → the source's array type (shallow copy preserves it;
+ *                         falls back to Array<unknown> for a non-array source).
+ *   `Array.from(x, fn)` → the `.map` result (element = the callback's return),
+ *                         via `arrayFromMapRewrite`.
+ * Returns null for any other callee / the `{ length: n }` range form, so those
+ * degrade unchanged. Without this the computed annotation degraded to `Any`,
+ * losing the array type for any chained method / typed position downstream.
+ */
+export function inferArrayStaticCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
+  if (
+    expr.kind !== 'call' ||
+    expr.callee.kind !== 'member' ||
+    expr.callee.object.kind !== 'identifier' ||
+    expr.callee.object.name !== 'Array'
+  ) {
+    return null
+  }
+  const fn = expr.callee.property
+  if (fn === 'isArray') return { kind: 'boolean' }
+  if (fn === 'from') {
+    const mapForm = arrayFromMapRewrite(expr)
+    if (mapForm !== null) return inferType(mapForm, ctx)
+    if (expr.args.length === 1 && expr.args[0]!.kind !== 'object') {
+      const src = inferType(expr.args[0]!, ctx)
+      return src.kind === 'array' ? src : { kind: 'array', element: { kind: 'unknown' } }
+    }
+  }
+  return null
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
@@ -601,6 +664,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (expr.callee.name === 'parseFloat' || expr.callee.name === 'Number') {
           return { kind: 'number', float: true }
         }
+      }
+      // `Array.from(x)` / `Array.from(x, fn)` / `Array.isArray(x)` — the
+      // emitters lower these; mirror their result type here (array copy /
+      // mapped array / boolean) so a computed over them isn't annotated `Any`.
+      {
+        const a = inferArrayStaticCall(expr, ctx)
+        if (a !== null) return a
       }
       // Fetch-field read: `quotes.data()` (CALL form — web reads the
       // signal). data → T; isPending → boolean; error → unknown.
