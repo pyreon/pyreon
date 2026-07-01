@@ -49,7 +49,14 @@ interface FieldLike {
   _runInto(input: unknown, ctx: ParseCtx): unknown
 }
 
-type CheckOpLike = { kind: string; n?: number; _checkFn?: (v: unknown, ctx: ParseCtx) => void }
+type CheckOpLike = {
+  kind: string
+  n?: number
+  lo?: number // check:number:between lower bound
+  hi?: number // check:number:between upper bound
+  s?: string // check:string:starts-with / ends-with / includes needle
+  _checkFn?: (v: unknown, ctx: ParseCtx) => void
+}
 
 /** Inline expression that is TRUE when `v` is the WRONG type for `kind`. */
 function typeFailExpr(kind: PrimKind, v: string, litRef: string): string {
@@ -124,6 +131,22 @@ function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
       return `!(${ve} >= 0)`
     case 'check:number:non-positive':
       return `!(${ve} <= 0)`
+    // between: pass = `v >= lo && v <= hi` → fail = `v < lo || v > hi`
+    // (the value has already passed the numeric type-guard at the call site).
+    case 'check:number:between':
+      return `${ve} < ${op.lo} || ${ve} > ${op.hi}`
+    // multipleOf: pass = `v % n === 0` → fail = `v % n !== 0` (no epsilon in the
+    // check impl, so a direct `%` is byte-exact).
+    case 'check:number:multiple-of':
+      return `${ve} % ${op.n} !== 0`
+    // positional string checks: pass = `v.startsWith/endsWith/includes(s)` →
+    // fail = `!v.<method>(s)`. The needle is baked as a string literal.
+    case 'check:string:starts-with':
+      return `!${ve}.startsWith(${JSON.stringify(op.s)})`
+    case 'check:string:ends-with':
+      return `!${ve}.endsWith(${JSON.stringify(op.s)})`
+    case 'check:string:includes':
+      return `!${ve}.includes(${JSON.stringify(op.s)})`
     default:
       return null
   }
