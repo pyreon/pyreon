@@ -2,7 +2,7 @@
   "name": "@pyreon/native-compiler",
   "version": "0.2.0",
   "private": true,
-  "description": "PRIVATE / EXPERIMENTAL — Pyreon Multi-Target Compiler (PMTC). Transforms Pyreon JSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose). Not published. See .claude/plans/native-platforms.md for strategic direction.",
+  "description": "PRIVATE / EXPERIMENTAL \u2014 Pyreon Multi-Target Compiler (PMTC). Transforms Pyreon JSX source to native Swift (SwiftUI) and Kotlin (Jetpack Compose). Not published. See .claude/plans/native-platforms.md for strategic direction.",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -22,7 +22,7 @@
     "coverage:swiftc": "bun scripts/coverage-gate.ts --swiftc-validate"
   },
   "dependencies": {
-    "oxc-parser": "^0.137.0"
+    "oxc-parser": "^0.138.0"
   },
   "devDependencies": {
     "@pyreon/vitest-config": "workspace:*",

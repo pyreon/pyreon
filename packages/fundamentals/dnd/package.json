@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/dnd",
   "version": "0.37.1",
-  "description": "Signal-driven drag and drop for Pyreon — wraps @atlaskit/pragmatic-drag-and-drop",
+  "description": "Signal-driven drag and drop for Pyreon \u2014 wraps @atlaskit/pragmatic-drag-and-drop",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/dnd#readme",
   "bugs": {
@@ -40,9 +40,9 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
-    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^2.1.5",
-    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^1.1.0"
+    "@atlaskit/pragmatic-drag-and-drop": "^2.0.1",
+    "@atlaskit/pragmatic-drag-and-drop-auto-scroll": "^3.0.0",
+    "@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.0.0"
   },
   "devDependencies": {
     "@pyreon/test-utils": "workspace:^",

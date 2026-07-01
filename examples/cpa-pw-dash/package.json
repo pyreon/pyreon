@@ -31,7 +31,7 @@
     "@pyreon/table": "workspace:^",
     "@pyreon/validation": "workspace:^",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.100.14",
+    "@tanstack/query-core": "^5.101.2",
     "@tanstack/table-core": "^8.21.3",
     "zod": "^4.4.3"
   },

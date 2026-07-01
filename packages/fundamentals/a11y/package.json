@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/a11y",
   "version": "0.37.1",
-  "description": "Accessibility primitives for Pyreon — screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
+  "description": "Accessibility primitives for Pyreon \u2014 screen-reader announcements, visually-hidden content, and stable ARIA ids, with zero setup",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/a11y#readme",
   "bugs": {
@@ -61,7 +61,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.8",
-    "@vitus-labs/tools-lint": "^2.5.0"
+    "@vitus-labs/tools-lint": "^2.6.3"
   },
   "publishConfig": {
     "access": "public"

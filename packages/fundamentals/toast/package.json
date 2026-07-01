@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/toast",
   "version": "0.37.1",
-  "description": "Imperative toast notifications for Pyreon — no provider needed",
+  "description": "Imperative toast notifications for Pyreon \u2014 no provider needed",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/toast#readme",
   "bugs": {
@@ -49,7 +49,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.8",
-    "@vitus-labs/tools-lint": "^2.5.0",
+    "@vitus-labs/tools-lint": "^2.6.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hot-toast": "^2.6.0"

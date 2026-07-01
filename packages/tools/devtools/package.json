@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/devtools",
   "version": "0.1.1",
-  "description": "Chrome DevTools extension for the Pyreon UI framework — live component tree, click-to-highlight, inspector",
+  "description": "Chrome DevTools extension for the Pyreon UI framework \u2014 live component tree, click-to-highlight, inspector",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/devtools#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
@@ -27,7 +27,7 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@types/chrome": "^0.2.0",
+    "@types/chrome": "^0.2.1",
     "playwright": "^1.60.0"
   }
 }

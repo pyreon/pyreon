@@ -57,7 +57,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "i18next": "^24.2.0"
+    "i18next": "^26.3.4"
   },
   "publishConfig": {
     "access": "public"

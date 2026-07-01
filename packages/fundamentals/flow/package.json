@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/flow",
   "version": "0.37.1",
-  "description": "Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, auto-layout",
+  "description": "Reactive flow diagrams for Pyreon \u2014 signal-native nodes, edges, pan/zoom, auto-layout",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/flow#readme",
   "bugs": {
@@ -52,7 +52,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.8",
-    "@vitus-labs/tools-lint": "^2.5.0"
+    "@vitus-labs/tools-lint": "^2.6.3"
   },
   "publishConfig": {
     "access": "public"
