@@ -2602,6 +2602,20 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
+              // Multi-statement block body (`(x, i) => { a.set(x); b.set(i) }`)
+              // — emit EVERY statement, mirroring `emitSwiftAction`. Reading only
+              // `cb.body` (the empty-literal SENTINEL a block body parses to)
+              // silently DROPPED the whole body and compiled clean.
+              if (cb.stmts !== undefined && cb.stmts.length > 0) {
+                const pad = ' '.repeat(indent + 2)
+                const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
+                const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+                const lines = inlinedStmts
+                  .map((s) => pad + emitSwiftStatement(s, indent + 2))
+                  .join('\n')
+                _exprInferCtx.locals = savedLocals
+                return `${obj}.enumerated().${prop}({ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}})`
+              }
               return `${obj}.enumerated().${prop}({ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })`
             }
             break

@@ -2208,6 +2208,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
               const fn = prop === 'map' ? 'mapIndexed' : 'forEachIndexed'
+              // Multi-statement block body (`(x, i) => { a.set(x); b.set(i) }`)
+              // — emit EVERY statement, mirroring `emitKotlinAction`. Reading
+              // only `cb.body` (the empty-literal SENTINEL a block body parses
+              // to) silently DROPPED the whole body and compiled clean.
+              if (cb.stmts !== undefined && cb.stmts.length > 0) {
+                const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+                const pad = ' '.repeat(indent + 2)
+                const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
+                const lines = cb.stmts
+                  .map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx))
+                  .join('\n')
+                _kotlinExprInferCtx.locals = savedLocals
+                return `${obj}.${fn}({ ${idx}, ${el} ->\n${lines}\n${' '.repeat(indent)}})`
+              }
               return `${obj}.${fn}({ ${idx}, ${el} -> ${emitKotlinExpr(cb.body, indent)} })`
             }
             break
