@@ -148,6 +148,25 @@ export function synthLiteralStructName(
 }
 
 /**
+ * True when `expr` is safe to EMIT TWICE without re-running work or changing
+ * meaning — a bare identifier, a signal/store READ (a zero-arg call like
+ * `nums()` / `useApp()`, which lowers to a free @State / singleton read), or a
+ * member/field access on such a base. Anything containing a method CALL WITH
+ * ARGS (`filter(...)`, `map(...)`, `slice(...)`) is NOT re-readable — emitting
+ * it twice would re-run that work. Used by the seedless-`.reduce(fn)` Swift
+ * lowering (`obj.dropFirst().reduce(obj[0], fn)` names `obj` twice).
+ */
+export function isReReadableExpr(expr: ExprIR): boolean {
+  if (expr.kind === 'identifier') return true
+  // zero-arg call = signal / store / hook read — re-reading is free
+  if (expr.kind === 'call' && expr.args.length === 0) return isReReadableExpr(expr.callee)
+  // member/field access on a re-readable base (`obj.field`, `store.tasks`)
+  if (expr.kind === 'member') return isReReadableExpr(expr.object)
+  if (expr.kind === 'paren') return isReReadableExpr(expr.inner)
+  return false
+}
+
+/**
  * True when `name` occurs as a FREE identifier anywhere in `expr`. Mirrors
  * `substituteIdentifier`'s total recursion (every node kind covered) but
  * returns a boolean and never mutates. A nested arrow that re-binds `name` in

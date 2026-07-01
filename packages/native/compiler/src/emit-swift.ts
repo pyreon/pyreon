@@ -20,6 +20,7 @@ import {
   buildComponentConstMap,
   chainHasOptional,
   isCompoundExpr,
+  isReReadableExpr,
   substituteIdentifier,
   synthLiteralStructName,
 } from './expr-utils'
@@ -2958,6 +2959,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // shape, so it falls through to the generic emit.
             if (e.args.length === 2) {
               return `${obj}.reduce(${argExprs[1]!}, ${argExprs[0]!})`
+            }
+            // Seedless `arr.reduce(fn)` — JS uses arr[0] as the seed and folds
+            // over the REST. Swift has no 1-arg reduce (the bare `reduce({…})`
+            // binds to `reduce(into:)` → "missing argument for parameter 'into'").
+            // Lower to `obj.dropFirst().reduce(obj[0], fn)` — but that names
+            // `obj` TWICE, so only when the receiver is RE-READABLE (identifier /
+            // signal / store read); a receiver with a real method call
+            // (`filter(...)`) would re-run that work → warn + defer instead.
+            // (Empty-array parity: `obj[0]` traps on empty like JS's
+            // "Reduce of empty array with no initial value" throw.)
+            if (
+              e.args.length === 1 &&
+              e.callee.kind === 'member' &&
+              isReReadableExpr(e.callee.object)
+            ) {
+              return `${obj}.dropFirst().reduce(${obj}[0], ${argExprs[0]!})`
+            }
+            if (e.args.length === 1) {
+              _emitWarnings.push(
+                'seedless `.reduce(fn)` on a non-trivial receiver (a chained method call) is not supported on Swift — the native lowering would re-evaluate the receiver. Provide an initial value (`.reduce(fn, seed)`) or bind the receiver to a `const` first.',
+              )
             }
             break
           case 'toFixed': {
