@@ -55,7 +55,13 @@ const kt = (src: string) => transform(src, { target: 'kotlin' }).code
 const copy = A(`  const out = computed(() => String(Array.from(rows()).length))`)
 const map2 = A(`  const out = computed(() => String(Array.from(rows(), (v: number) => v * 2).length))`)
 const isArr = A(`  const out = computed(() => Array.isArray(rows()) ? "arr" : "no")`)
-const chained = A(`  const out = computed(() => String(Array.from(rows()).reverse().length))`)
+// The chained shape — `Array.from(x)` feeds a further array method. The copy
+// result MUST be inferred as an array for `.reverse()` to lower (else it emits
+// a bare `.reverse()` on an `Any`-typed value). Uses an intermediate computed
+// so `rev`'s inferred type also drives the `.length` → `.size` lowering the
+// Kotlin proof needs.
+const chained = A(`  const rev = computed(() => Array.from(rows()).reverse())
+  const out = computed(() => String(rev().length))`)
 const range = A(
   `  const out = computed(() => String(Array.from({ length: 3 }, (_: unknown, i: number) => i).length))`,
 )
@@ -82,6 +88,19 @@ describe('P1 — Array.from / Array.isArray faithful native lowering', () => {
     expect(sw(isArr)).not.toContain('isArray')
     expect(kt(isArr)).toContain('true')
     expect(kt(isArr)).not.toContain('isArray')
+  })
+
+  // Chained — `Array.from(x)` lowers even mid-chain: the copy feeds `.reverse()`
+  // and never leaves a raw `Array.from` behind. Load-bearing at the EMIT block
+  // (disable it → the copy stays raw `Array.from(...)` and the chain carries it,
+  // failing `not.toContain('Array.from')` even where swiftc is skipped). The
+  // INFERENCE half (the copy result is array-TYPED, needed for `.reverse()` to
+  // typecheck) is covered by the compile proof below.
+  it('Swift/Kotlin: chained `Array.from(x).reverse()` lowers (no raw Array.from)', () => {
+    expect(sw(chained)).toContain('.reversed()')
+    expect(sw(chained)).not.toContain('Array.from')
+    expect(kt(chained)).toContain('.reversed()')
+    expect(kt(chained)).not.toContain('Array.from')
   })
 
   // The `{ length: n }` range form is NOT lowered — it must emit a NAMED
