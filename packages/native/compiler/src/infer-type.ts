@@ -904,8 +904,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               // fails swiftc (`no exact matches in call to initializer`).
               const reducer = expr.args[0]
               const seed = expr.args[1]
+              // Seeded → the seed's type; SEEDLESS (`reduce(fn)`) → JS seeds the
+              // accumulator with the FIRST element, so the accumulator (and
+              // result) type is the array's ELEMENT type (`objType.element`).
+              // Without this a seedless reduce degraded to `unknown` → `Any`
+              // (e.g. the max idiom `(a, b) => a > b ? a : b`).
               const seedType: TypeIR =
-                seed !== undefined ? inferType(seed, ctx) : { kind: 'unknown' }
+                seed !== undefined ? inferType(seed, ctx) : objType.element
               if (reducer !== undefined && reducer.kind === 'arrow' && reducer.params.length >= 1) {
                 const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
                 scratch.locals.set(reducer.params[0]!, seedType)
