@@ -1,5 +1,6 @@
 import {
   computeAffectedFlags,
+  docInputConsumer,
   filterByCategory,
   isDocsOnlyChange,
   isRootFile,
@@ -330,6 +331,61 @@ describe('computeAffectedFlags', () => {
       // WS has no test-utils → a lone script change seeds nothing → no-op.
       expect(
         computeAffectedFlags({ changed: ['scripts/affected.ts'], workspaces: WS, root: ROOT }),
+      ).toBe('')
+    })
+  })
+
+  describe('doc-input files map to their consuming package (@pyreon/mcp)', () => {
+    const WS_MCP: Workspace[] = [
+      ...WS,
+      { name: '@pyreon/mcp', dir: `${ROOT}/packages/tools/mcp`, deps: ['@pyreon/core'] },
+    ]
+
+    it('docInputConsumer identifies the parser package', () => {
+      expect(docInputConsumer('.claude/rules/anti-patterns.md')).toBe('@pyreon/mcp')
+      expect(docInputConsumer('docs/patterns/keyed-lists.md')).toBe('@pyreon/mcp')
+      expect(docInputConsumer('docs/guides/routing.md')).toBeUndefined()
+      expect(docInputConsumer('packages/tools/mcp/src/index.ts')).toBeUndefined()
+    })
+
+    it('a change to .claude/rules/anti-patterns.md runs the tools cell for @pyreon/mcp', () => {
+      // Regression: these doc-INPUTs used to seed nothing → the `test (tools)`
+      // cell skipped @pyreon/mcp's anti-patterns.test.ts / patterns.test.ts,
+      // so a structural break in the parsed files merged unnoticed.
+      const out = computeAffectedFlags({
+        changed: ['.claude/rules/anti-patterns.md'],
+        workspaces: WS_MCP,
+        category: 'tools',
+        root: ROOT,
+      })
+      expect(out).toBe('--filter=@pyreon/mcp')
+    })
+
+    it('a docs/patterns/*.md change runs the tools cell for @pyreon/mcp', () => {
+      expect(
+        computeAffectedFlags({
+          changed: ['docs/patterns/signal-writes.md'],
+          workspaces: WS_MCP,
+          category: 'tools',
+          root: ROOT,
+        }),
+      ).toBe('--filter=@pyreon/mcp')
+    })
+
+    it('does NOT leak into non-tools cells (leaf seed, no expansion)', () => {
+      expect(
+        computeAffectedFlags({
+          changed: ['.claude/rules/anti-patterns.md'],
+          workspaces: WS_MCP,
+          category: 'core',
+          root: ROOT,
+        }),
+      ).toBe('')
+    })
+
+    it('gracefully no-ops when @pyreon/mcp is absent (never --filter=*)', () => {
+      expect(
+        computeAffectedFlags({ changed: ['.claude/rules/anti-patterns.md'], workspaces: WS, root: ROOT }),
       ).toBe('')
     })
   })

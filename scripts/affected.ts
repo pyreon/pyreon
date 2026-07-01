@@ -96,6 +96,27 @@ export function isScriptFile(path: string): boolean {
 /** The package whose tests cover `scripts/**` (affected target for script edits). */
 export const SCRIPT_TEST_PACKAGE = '@pyreon/test-utils'
 
+/**
+ * Doc-INPUT files that a specific package's tests PARSE — a change to them is
+ * docs-only for the heavy-job gate (`build` / `verify-modes` never read them),
+ * but the consuming package's tests assert their structure, so that package's
+ * test cell MUST run. Without this, e.g. reorganizing
+ * `.claude/rules/anti-patterns.md` or renaming a `docs/patterns/*.md` merges
+ * without `@pyreon/mcp`'s `anti-patterns.test.ts` / `patterns.test.ts` ever
+ * running — and the MCP tool that ships those parsers then breaks silently.
+ * Mapped as LEAF seeds (like `scripts/**`): only the consuming package's own
+ * tests care, so we don't expand to its dependents.
+ */
+export const DOC_INPUT_CONSUMERS: ReadonlyArray<{ match: (p: string) => boolean; pkg: string }> = [
+  { match: (p) => p === '.claude/rules/anti-patterns.md', pkg: '@pyreon/mcp' },
+  { match: (p) => p.startsWith('docs/patterns/'), pkg: '@pyreon/mcp' },
+]
+
+/** The consuming package for a doc-input file, or undefined if it isn't one. */
+export function docInputConsumer(path: string): string | undefined {
+  return DOC_INPUT_CONSUMERS.find((c) => c.match(path))?.pkg
+}
+
 // ── Workspace discovery ────────────────────────────────────────────────────
 
 export interface Workspace {
@@ -307,6 +328,12 @@ export function computeAffectedFlags(opts: {
     const ws = findOwningWorkspace(path, workspaces, root)
     if (ws) seeds.add(ws.name)
     else if (hasScriptTestPkg && isScriptFile(path)) leafSeeds.add(SCRIPT_TEST_PACKAGE)
+    else {
+      // A doc-INPUT file (e.g. `.claude/rules/anti-patterns.md`) owns no
+      // workspace, but the package that parses it must run its tests.
+      const consumer = docInputConsumer(path)
+      if (consumer && workspaces.some((w) => w.name === consumer)) leafSeeds.add(consumer)
+    }
   }
 
   if (seeds.size === 0 && leafSeeds.size === 0) return ''
