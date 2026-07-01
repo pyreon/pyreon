@@ -872,6 +872,32 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               }
               return { kind: 'array', element: { kind: 'unknown' } }
             }
+            case 'flatMap': {
+              // `.flatMap(x => [E])` flattens one level → `[E]` (the callback's
+              // ARRAY body type ITSELF, unlike `.map(x => [E])` which wraps it →
+              // `[[E]]`). Bind the param to the element type + infer the body; if
+              // it's a concrete array, return it directly (the flattened result).
+              // The emit is the generic native `flatMap` (both targets have it) —
+              // only the inference lagged (result degraded to `Any`, so a chained
+              // `.length` / typed use failed). A body that doesn't infer to a
+              // concrete array (e.g. the `cond ? [x] : []` filter-map idiom, whose
+              // empty branch has no element type) stays Array<unknown> — a
+              // follow-up needs empty-array-in-ternary unification.
+              const cb = expr.args[0]
+              if (cb !== undefined && cb.kind === 'arrow' && cb.params.length >= 1) {
+                const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+                scratch.locals.set(cb.params[0]!, objType.element)
+                let bodyType: TypeIR = { kind: 'unknown' }
+                if (cb.stmts !== undefined) {
+                  const ret = findFirstReturnExpr(cb.stmts, scratch)
+                  if (ret) bodyType = inferType(ret, scratch)
+                } else {
+                  bodyType = inferType(cb.body, scratch)
+                }
+                if (bodyType.kind === 'array') return bodyType
+              }
+              return { kind: 'array', element: { kind: 'unknown' } }
+            }
             case 'some':
             case 'every':
             case 'includes':
@@ -1041,7 +1067,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // reduce-seed refinement: `s + m.growth` over a Double field infers
       // `{ float: true }` so the seed flips to `0.0`.)
       if (left.kind === 'number' && right.kind === 'number') {
-        return { kind: 'number', float: left.float === true || right.float === true }
+        return left.float === true || right.float === true
+          ? { kind: 'number', float: true }
+          : { kind: 'number' }
       }
       // One side unknown but other side concrete numeric/string — fall
       // through to the other side's type (best-effort). Aligned with
