@@ -224,10 +224,17 @@ export {}
 ```
 
 ```tsx
-<Link href="/posts/42" />   // ✓ autocompleted
-<Link href="/postz/42" />   // ✗ type error — unknown route
-<Link href={dynamicPath} /> // ✓ still accepts any string (RouteHref = RoutePath | (string & {}))
+<Link href="/posts/42" />           // ✓ concrete path matches the `/posts/:id` pattern
+<Link href="/postz/42" />           // ✗ type error — unknown route (did you mean /posts/:id?)
+<Link href={dynamicPath} />         // ✓ dynamic string, no cast
+<Link href="https://elsewhere.com" />{/* ✓ external URL — auto target="_blank" rel="noopener noreferrer" */}
 ```
+
+`href` is validated by `CheckHref` (a strict superset of `string`): registered routes
+(including concrete paths matching a `:param` pattern via `InterpolateRoute`) and external
+URLs are accepted, a mistyped internal path is a compile error, and any runtime `string`
+still flows through with no cast. External links are also auto-handled at runtime — see
+**[`<Link>` external links](#link-external-links)**.
 
 Add the generated file to `.gitignore` — it's build output. `RouteParams<'/posts/:id'>` is
 typed as `{ id: string }`. Off by default (no surprise file writes); until codegen runs,
@@ -533,10 +540,27 @@ import { Link, useLink, createLink, prefetchRoute } from '@pyreon/zero'
 
 | Prop               | Type                              | Default          | Description                                  |
 | ------------------ | --------------------------------- | ---------------- | -------------------------------------------- |
-| `href`             | `string`                          | required         | Navigation target                            |
+| `href`             | `CheckHref<T>`                    | required         | Navigation target — a route, dynamic string, or external URL (typo-rejects a mistyped route once `typedRoutes` is on) |
 | `prefetch`         | `"hover" \| "viewport" \| "none"` | `"hover"`        | When to prefetch the route                   |
 | `activeClass`      | `string`                          | `"active"`       | Class when the link matches the current route |
 | `exactActiveClass` | `string`                          | `"exact-active"` | Class for exact route match                  |
+| `external`         | `boolean`                         | auto             | Force external (`true`) / internal (`false`), overriding auto-detection |
+| `target`           | `string`                          | auto             | Override `<a target>` (auto `"_blank"` for external) |
+| `rel`              | `string`                          | auto             | Override `<a rel>` (auto `"noopener noreferrer"` on new-tab links) |
+
+#### `<Link>` external links
+
+`<Link>` classifies `href` at runtime and only intercepts INTERNAL navigations. External URLs, `mailto:`/`tel:`, and `#hash` are left to the browser — and external links auto-get `target="_blank" rel="noopener noreferrer"`. No manual `external` prop needed:
+
+```tsx
+<Link href="/docs">Docs</Link>                     {/* client nav + prefetch */}
+<Link href="https://github.com/pyreon">GitHub</Link> {/* new tab, secure rel */}
+<Link href="mailto:hi@pyreon.dev">Email</Link>      {/* browser mailto */}
+<Link href="/report.pdf" external>PDF</Link>        {/* force external for a same-origin asset */}
+<Link href="https://x.com" target="_self">stay</Link> {/* override the auto target */}
+```
+
+Same-origin absolute URLs are treated as internal by default (stripped to their path and client-navigated). Configure globally with `createApp({ links: { sameOriginAbsolute, externalNewTab, externalRel } })`; overrides win over config, config wins over auto-detection. Modifier / middle-clicks always fall through to the browser.
 
 **Three layers:**
 

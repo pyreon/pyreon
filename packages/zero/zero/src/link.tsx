@@ -1,7 +1,13 @@
 import { createRef, isServer } from '@pyreon/core'
-import { useRouter } from '@pyreon/router'
-import type { RouteHref } from './route-types'
+import type { CheckHref, LinkConfig } from '@pyreon/router'
+import { classifyHref, toRouterPath, useRouter } from '@pyreon/router'
+import type { RoutePath } from './route-types'
 import { useIntersectionObserver } from './utils/use-intersection-observer'
+
+/** Read the per-router `<Link>` config wired via `createApp({ links })`. */
+function linkConfigOf(router: unknown): LinkConfig | undefined {
+  return (router as { _linkConfig?: LinkConfig } | null)?._linkConfig
+}
 
 // ─── Link component with prefetching ────────────────────────────────────────
 //
@@ -12,12 +18,16 @@ import { useIntersectionObserver } from './utils/use-intersection-observer'
 // 2. createLink(Comp) — HOC wrapping any component with link behavior
 // 3. Link             — default <a>-based link (built on createLink)
 
-export interface LinkProps {
+export interface LinkProps<T extends string = string> {
   /**
-   * Target URL path. Autocompletes registered routes (when typed-routes codegen
-   * has run) but still accepts any string — `RouteHref = RoutePath | (string & {})`.
+   * Navigation target — a registered route, a dynamic `string`, or an external
+   * URL. Validated by `CheckHref`: once typed-routes codegen has run, a mistyped
+   * internal path (`/abuot`) is a compile error ("did you mean …"), while
+   * dynamic strings and external URLs (`https://…`, `mailto:`, `#hash`) are
+   * always accepted with no cast. With no routes registered, any string is
+   * accepted (the historical behaviour).
    */
-  href: RouteHref
+  href: CheckHref<T, RoutePath>
   /** Link content. */
   children?: any
   /** CSS class name. */
@@ -28,8 +38,17 @@ export interface LinkProps {
   exactActiveClass?: string
   /** Prefetch strategy. Default: "hover" */
   prefetch?: 'hover' | 'viewport' | 'none'
-  /** Open in new tab. */
+  /**
+   * Force external (`true`) or internal (`false`), overriding auto-detection.
+   * Omit to let `<Link>` classify `href` at runtime: external `http(s)` /
+   * protocol-relative URLs open in a new tab, `mailto:`/`tel:`/`#hash` are left
+   * to the browser, everything else client-navigates.
+   */
   external?: boolean
+  /** Override the `<a target>` (auto `"_blank"` for external links). */
+  target?: string
+  /** Override the `<a rel>` (auto `"noopener noreferrer"` on new-tab links). */
+  rel?: string
   /** Inline styles. */
   style?: string
   /** ARIA label. */
@@ -72,6 +91,12 @@ export interface UseLinkReturn {
   isExactActive: () => boolean
   /** Resolved class string including active classes. */
   classes: () => string
+  /** Whether this link is an INTERNAL navigation (client router intercepts it). */
+  isInternal: () => boolean
+  /** Resolved `<a target>` (auto `"_blank"` for external new-tab links). */
+  target: () => string | undefined
+  /** Resolved `<a rel>` (auto secure `rel` on new-tab links). */
+  rel: () => string | undefined
 }
 
 const MAX_PREFETCH_CACHE = 200
@@ -146,10 +171,28 @@ export function prefetchRoute(href: string): void {
  *   )
  * }
  */
-export function useLink(props: LinkProps): UseLinkReturn {
+export function useLink<const T extends string = string>(props: LinkProps<T>): UseLinkReturn {
   const router = useRouter()
   const elementRef = createRef<HTMLAnchorElement>()
   const strategy = props.prefetch ?? 'hover'
+  // `href` is typed as `CheckHref<…>`; at runtime it is always a string.
+  const hrefOf = (): string => props.href as string
+
+  // Only INTERNAL navigations are intercepted; external / mailto / hash are
+  // left to the browser. `external` prop overrides the auto-classification.
+  const isInternal = (): boolean => {
+    if (props.external === true) return false
+    if (props.external === false) return true
+    return classifyHref(hrefOf(), linkConfigOf(router)) === 'internal'
+  }
+  const isExternalNewTab = (): boolean => {
+    if (props.external === false) return false
+    if (props.external === true) return true
+    return classifyHref(hrefOf(), linkConfigOf(router)) === 'external'
+  }
+  // The path client navigation actually pushes (absolute same-origin URLs are
+  // stripped to `/path?q#h`; bare paths pass through).
+  const routerPath = (): string => toRouterPath(hrefOf())
 
   function handleClick(e: MouseEvent) {
     // Call user's onClick first — they may call e.preventDefault()
@@ -164,45 +207,48 @@ export function useLink(props: LinkProps): UseLinkReturn {
       e.ctrlKey ||
       e.shiftKey ||
       e.altKey ||
-      props.external ||
+      !isInternal() ||
       !props.href
     ) {
       return
     }
     e.preventDefault()
-    router.push(props.href)
+    router.push(routerPath())
   }
 
   function handleMouseEnter() {
-    if (strategy === 'hover') {
-      doPrefetch(props.href)
+    if (strategy === 'hover' && isInternal()) {
+      doPrefetch(routerPath())
     }
   }
 
   function handleTouchStart() {
-    if (strategy === 'hover' || strategy === 'viewport') {
-      doPrefetch(props.href)
+    if ((strategy === 'hover' || strategy === 'viewport') && isInternal()) {
+      doPrefetch(routerPath())
     }
   }
 
   if (strategy === 'viewport') {
     useIntersectionObserver(
       () => elementRef.current ?? undefined,
-      () => doPrefetch(props.href),
+      () => {
+        if (isInternal()) doPrefetch(routerPath())
+      },
     )
   }
 
   const isActive = () => {
     const currentPath = router.currentRoute()?.path
-    if (!currentPath || !props.href) return false
-    if (props.href === '/') return currentPath === '/'
-    return currentPath.startsWith(props.href)
+    if (!currentPath || !props.href || !isInternal()) return false
+    const path = routerPath()
+    if (path === '/') return currentPath === '/'
+    return currentPath.startsWith(path)
   }
 
   const isExactActive = () => {
     const currentPath = router.currentRoute()?.path
-    if (!currentPath) return false
-    return currentPath === props.href
+    if (!currentPath || !isInternal()) return false
+    return currentPath === routerPath()
   }
 
   const classes = () => {
@@ -213,6 +259,17 @@ export function useLink(props: LinkProps): UseLinkReturn {
     return cls.join(' ')
   }
 
+  const target = (): string | undefined => {
+    if (props.target !== undefined) return props.target
+    if (isExternalNewTab() && (linkConfigOf(router)?.externalNewTab ?? true)) return '_blank'
+    return undefined
+  }
+  const rel = (): string | undefined => {
+    if (props.rel !== undefined) return props.rel
+    if (target() === '_blank') return linkConfigOf(router)?.externalRel ?? 'noopener noreferrer'
+    return undefined
+  }
+
   return {
     ref: elementRef,
     handleClick,
@@ -221,6 +278,9 @@ export function useLink(props: LinkProps): UseLinkReturn {
     isActive,
     isExactActive,
     classes,
+    isInternal,
+    target,
+    rel,
   }
 }
 
@@ -259,9 +319,15 @@ export function useLink(props: LinkProps): UseLinkReturn {
  * <ButtonLink href="/about">About</ButtonLink>
  * <CardLink href="/posts" prefetch="viewport">Posts</CardLink>
  */
-export function createLink(Component: (props: LinkRenderProps) => any): (props: LinkProps) => any {
-  return function WrappedLink(props: LinkProps) {
+export function createLink(
+  Component: (props: LinkRenderProps) => any,
+): { <const T extends string>(props: LinkProps<T>): any } {
+  function WrappedLink(props: LinkProps) {
     const link = useLink(props)
+    // External-ness is a property of `href`; resolve target/rel once at render
+    // (matches the historical static `target`/`rel` spread).
+    const target = link.target()
+    const rel = link.rel()
 
     return (
       <Component
@@ -274,12 +340,14 @@ export function createLink(Component: (props: LinkRenderProps) => any): (props: 
         isExactActive={link.isExactActive}
         class={link.classes}
         {...(props.style ? { style: props.style } : {})}
-        {...(props.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+        {...(target ? { target } : {})}
+        {...(rel ? { rel } : {})}
         {...(props['aria-label'] ? { 'aria-label': props['aria-label'] } : {})}
         children={props.children}
       />
     )
   }
+  return WrappedLink as unknown as { <const T extends string>(props: LinkProps<T>): any }
 }
 
 /**
