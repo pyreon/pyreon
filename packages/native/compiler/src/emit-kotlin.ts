@@ -1849,6 +1849,41 @@ function synthesizeDataClassName(componentName: string, signalName?: string): st
   return componentName + stripped.charAt(0).toUpperCase() + stripped.slice(1)
 }
 
+/**
+ * Emit the BODY of an index-callback lambda for the withIndex()/`*Indexed`
+ * array methods (map / forEach / filter / any / all / firstOrNull). Handles a
+ * MULTI-statement block body via `cb.stmts` (mirroring `emitKotlinAction`), not
+ * just a single expression — reading only `cb.body` (the empty-literal SENTINEL
+ * a block body parses to) silently DROPPED the whole body and compiled clean.
+ * Returns the text that goes right after `->` (leading/trailing space for the
+ * single-expr case; a newline-wrapped block for multi-statement), so each call
+ * site keeps its own lambda head (`{ (idx, el) ->` vs `{ idx, el ->`).
+ *
+ * `label` is the enclosing method (`filterIndexed` / `any` / `mapIndexed` / …):
+ * a bare `return` inside a Kotlin lambda is prohibited (it targets the enclosing
+ * function), so `emitKotlinStatement` emits `return@<label>` when `lambdaLabel`
+ * is set — correct for both trailing AND early/nested returns.
+ */
+function emitKotlinIndexedBody(
+  cb: Extract<ExprIR, { kind: 'arrow' }>,
+  indent: number,
+  label: string,
+): string {
+  if (cb.stmts !== undefined && cb.stmts.length > 0) {
+    const stmtCtx: KotlinCtx = {
+      synthesizedDataClasses: [],
+      componentName: '',
+      lambdaLabel: label,
+    }
+    const pad = ' '.repeat(indent + 2)
+    const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
+    const lines = cb.stmts.map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx)).join('\n')
+    _kotlinExprInferCtx.locals = savedLocals
+    return `\n${lines}\n${' '.repeat(indent)}`
+  }
+  return ` ${emitKotlinExpr(cb.body, indent)} `
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -2188,7 +2223,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}.withIndex().any({ (${idx}, ${el}) -> ${emitKotlinExpr(cb.body, indent)} })`
+              return `${obj}.withIndex().any({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'any')}})`
             }
             if (e.args.length === 1) {
               return `${obj}.any(${argExprs[0]!})`
@@ -2200,7 +2235,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}.withIndex().all({ (${idx}, ${el}) -> ${emitKotlinExpr(cb.body, indent)} })`
+              return `${obj}.withIndex().all({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'all')}})`
             }
             if (e.args.length === 1) {
               return `${obj}.all(${argExprs[0]!})`
@@ -2214,7 +2249,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
-              return `${obj}.filterIndexed({ ${idx}, ${el} -> ${emitKotlinExpr(cb.body, indent)} })`
+              return `${obj}.filterIndexed({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, 'filterIndexed')}})`
             }
             if (e.args.length === 1) return `${obj}.filter(${argExprs[0]!})`
             break
@@ -2233,21 +2268,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               const el = kotlinIdent(cb.params[0]!)
               const idx = kotlinIdent(cb.params[1]!)
               const fn = prop === 'map' ? 'mapIndexed' : 'forEachIndexed'
-              // Multi-statement block body (`(x, i) => { a.set(x); b.set(i) }`)
-              // — emit EVERY statement, mirroring `emitKotlinAction`. Reading
-              // only `cb.body` (the empty-literal SENTINEL a block body parses
-              // to) silently DROPPED the whole body and compiled clean.
-              if (cb.stmts !== undefined && cb.stmts.length > 0) {
-                const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
-                const pad = ' '.repeat(indent + 2)
-                const savedLocals = seedHandlerLocals(cb.stmts, _kotlinExprInferCtx)
-                const lines = cb.stmts
-                  .map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx))
-                  .join('\n')
-                _kotlinExprInferCtx.locals = savedLocals
-                return `${obj}.${fn}({ ${idx}, ${el} ->\n${lines}\n${' '.repeat(indent)}})`
-              }
-              return `${obj}.${fn}({ ${idx}, ${el} -> ${emitKotlinExpr(cb.body, indent)} })`
+              return `${obj}.${fn}({ ${idx}, ${el} ->${emitKotlinIndexedBody(cb, indent, fn)}})`
             }
             break
           }
@@ -2379,7 +2400,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
               if (cb) {
                 const el = kotlinIdent(cb.params[0]!)
                 const idx = kotlinIdent(cb.params[1]!)
-                return `(${obj}.withIndex().firstOrNull({ (${idx}, ${el}) -> ${emitKotlinExpr(cb.body, indent)} })?.index ?: -1)`
+                return `(${obj}.withIndex().firstOrNull({ (${idx}, ${el}) ->${emitKotlinIndexedBody(cb, indent, 'firstOrNull')}})?.index ?: -1)`
               }
             }
             if (e.args.length === 1) return `${obj}.indexOfFirst(${argExprs[0]!})`
