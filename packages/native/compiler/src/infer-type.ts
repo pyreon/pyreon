@@ -391,6 +391,38 @@ export function buildArraySpreadConcat(
   return `(${parts.join(' + ')})`
 }
 
+/**
+ * Classify the two dominant NEGATIVE-index `.slice` idioms so the emitters can
+ * lower them (Swift/Kotlin `.slice`/`.drop`/`.take` count from the FRONT and
+ * can't take a JS negative-from-the-end index). Target-neutral — returns the
+ * idiom + the magnitude (the `n` in `-n`, already emitted by `emitArg`):
+ *   `arr.slice(-m)`    → { kind: 'last',     n: 'm' }  (last m → suffix/takeLast)
+ *   `arr.slice(0, -n)` → { kind: 'dropLast', n: 'n' }  (drop last n → dropLast)
+ * Any other shape (mixed signs, non-zero start with a negative end, a negative
+ * start with a positive end) returns null and falls through to the caller's
+ * non-negative path / generic emit — those are far rarer and ambiguous to
+ * clamp, deliberately left for a follow-up.
+ */
+export function classifyNegativeSlice(
+  args: ExprIR[],
+  emitArg: (e: ExprIR) => string,
+): { kind: 'last' | 'dropLast'; n: string } | null {
+  const neg = (a: ExprIR | undefined): a is Extract<ExprIR, { kind: 'unary' }> =>
+    a?.kind === 'unary' && a.op === '-'
+  if (args.length === 1 && neg(args[0])) {
+    return { kind: 'last', n: emitArg(args[0].argument) }
+  }
+  if (
+    args.length === 2 &&
+    args[0]?.kind === 'literal' &&
+    args[0].value === 0 &&
+    neg(args[1])
+  ) {
+    return { kind: 'dropLast', n: emitArg(args[1].argument) }
+  }
+  return null
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {

@@ -26,6 +26,7 @@ import {
 import {
   buildArraySpreadConcat,
   buildInferenceCtx,
+  classifyNegativeSlice,
   classifyOptionalCondition,
   emptyInferenceCtx,
   indexedArrayCallback,
@@ -2690,7 +2691,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
                   ? 'Array'
                   : null
             const noNegative = e.args.every((a) => a.kind !== 'unary')
-            if (wrap !== null && noNegative) {
+            if (wrap !== null) {
               // For an OPTIONAL-chained receiver (`f?.slice(...)`), apply the
               // slice INSIDE Swift's optional `.map { }` operating on the
               // unwrapped `$0`, so the result stays `WRAP?` (matches the `?.`
@@ -2699,12 +2700,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               // survived → `value of type 'String' has no member 'slice'`.
               const optional = e.callee.optional === true
               const recv = optional ? '$0' : obj
-              let body: string | null = null
-              if (e.args.length === 0) body = `${wrap}(${recv})`
-              else if (e.args.length === 1) body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}))`
-              else if (e.args.length === 2)
-                body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
-              if (body !== null) return optional ? `${obj}.map { ${body} }` : body
+              // Negative-index idioms (Swift indices count from the front):
+              //   slice(-m)    → suffix(m)    (last m)
+              //   slice(0, -n) → dropLast(n)  (drop last n)
+              const negSlice = classifyNegativeSlice(e.args, (a) => emitSwiftExpr(a, indent))
+              if (negSlice) {
+                const tail =
+                  negSlice.kind === 'last' ? `suffix(${negSlice.n})` : `dropLast(${negSlice.n})`
+                const body = `${wrap}(${recv}.${tail})`
+                return optional ? `${obj}.map { ${body} }` : body
+              }
+              if (noNegative) {
+                let body: string | null = null
+                if (e.args.length === 0) body = `${wrap}(${recv})`
+                else if (e.args.length === 1) body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}))`
+                else if (e.args.length === 2)
+                  body = `${wrap}(${recv}.dropFirst(${argExprs[0]!}).prefix(max(0, (${argExprs[1]!}) - (${argExprs[0]!}))))`
+                if (body !== null) return optional ? `${obj}.map { ${body} }` : body
+              }
             }
             break
           }
