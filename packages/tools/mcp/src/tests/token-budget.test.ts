@@ -46,15 +46,16 @@ async function callText(client: Client, name: string, args: Record<string, unkno
 }
 
 describe('MCP token budgets', () => {
-  it('tools/list payload stays under 1,300 tokens (per-session tax)', async () => {
+  it('tools/list payload stays under 1,400 tokens (per-session tax)', async () => {
     await withServer(async (client) => {
       const list = await client.listTools()
       const t = tok(JSON.stringify(list))
-      // Pre-PR ≈1,228. Ceiling 1,300 leaves head-room for one more
-      // small tool without forcing a budget bump, but catches a
-      // verbose-describe regression (each long prose `.describe()` is
-      // ~150-280 tokens — would blow this immediately).
-      expect(t).toBeLessThan(1300)
+      // ≈1,334 with 15 tools (the `explain_reactivity` tool added ~90 over the
+      // prior 14-tool ≈1,228 — a lean per-tool cost). Ceiling 1,400 leaves
+      // head-room for one more small tool, but still catches a verbose-
+      // `.describe()` regression (each long prose description is ~150-280
+      // tokens — would blow this immediately).
+      expect(t).toBeLessThan(1400)
     })
   })
 

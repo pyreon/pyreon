@@ -4023,6 +4023,21 @@ function MyComp(props) {
 - Calling \`validate\` after the code is already merged — it's a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.`,
   },
 
+  'mcp/explain_reactivity': {
+    signature: 'tool: explain_reactivity({ code: string; filename?: string }) → ReactivityMap',
+    example: `explain_reactivity({ code: \`
+function Cart(props) {
+  const { qty } = props            // → footgun: props-destructured-body
+  const price = signal(9.99)
+  return <div>{qty} × {price()}</div>  // {qty} → baked once (dead), {price()} → live
+}
+\` })`,
+    notes: `The compiler's per-expression reactivity VERDICT for a snippet. The Pyreon compiler already decides, while emitting codegen, whether each JSX expression is reactive or baked static — \`explain_reactivity\` surfaces that ground truth via \`analyzeReactivity\`: every expression classified \`live\` / \`live prop\` / \`live attr\` / \`baked once\` / \`hoisted static\`, merged with the \`detectPyreonPatterns\` footguns, over an annotated source view. Where \`validate\` reports BUGS, this reports the whole MAP: an agent sees that \`<div>{qty}</div>\` compiled to \`baked once\` (dead) BEFORE it ships the stale-closure / destructured-props / static-when-meant-reactive bug. The reactivity 'type-check' surface for AI agents. See also: validate, get_anti_patterns.`,
+    mistakes: `- Confusing it with \`validate\` — \`validate\` lists anti-patterns; \`explain_reactivity\` classifies EVERY expression live/static so you can spot a binding that silently won't update even when no footgun fires.
+- Passing a partial expression instead of a full component — the compiler needs complete JSX to classify bindings; a fragment yields "No reactive expressions detected".
+- Reading a \`baked once\` verdict as an error — static is often correct (literal text, one-time content). It is only a bug when that expression was MEANT to update; the tool flags the shape, you decide intent.`,
+  },
+
   'mcp/migrate_react': {
     signature: 'tool: migrate_react({ code: string; filename?: string }) → MigrationResult',
     example: `migrate_react({ code: \`

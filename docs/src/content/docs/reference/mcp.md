@@ -60,6 +60,7 @@ A full, end-to-end usage of the package:
 | [`get_browser_smoke_status`](#get-browser-smoke-status) | constant | Companion to the `pyreon/require-browser-smoke-test` lint rule. |
 | [`get_api`](#get-api) | constant | Look up any Pyreon API by `package` (e.g. |
 | [`validate`](#validate) | constant | Two AST-based detectors run in parallel: `detectReactPatterns` flags "coming from React" mistakes (`useState`, `useEffec |
+| [`explain_reactivity`](#explain-reactivity) | constant | The compiler's per-expression reactivity VERDICT for a snippet. |
 | [`migrate_react`](#migrate-react) | constant | Convert React code to idiomatic Pyreon. |
 | [`diagnose`](#diagnose) | constant | Parse a Pyreon runtime / build error into structured fix information. |
 | [`explain_error`](#explain-error) | constant | The rich-context sibling of `diagnose`. |
@@ -179,6 +180,36 @@ function MyComp(props) {
 - Calling `validate` after the code is already merged — it's a pre-commit / before-paste tool. After-the-fact use is fine but the maximum value is catching the bug BEFORE it ships.
 
 **See also:** `get_anti_patterns` · `migrate_react`
+
+---
+
+### explain_reactivity `constant`
+
+```ts
+tool: explain_reactivity({ code: string; filename?: string }) → ReactivityMap
+```
+
+The compiler's per-expression reactivity VERDICT for a snippet. The Pyreon compiler already decides, while emitting codegen, whether each JSX expression is reactive or baked static — `explain_reactivity` surfaces that ground truth via `analyzeReactivity`: every expression classified `live` / `live prop` / `live attr` / `baked once` / `hoisted static`, merged with the `detectPyreonPatterns` footguns, over an annotated source view. Where `validate` reports BUGS, this reports the whole MAP: an agent sees that `<div>{qty}</div>` compiled to `baked once` (dead) BEFORE it ships the stale-closure / destructured-props / static-when-meant-reactive bug. The reactivity 'type-check' surface for AI agents.
+
+**Example**
+
+```tsx
+explain_reactivity({ code: `
+function Cart(props) {
+  const { qty } = props            // → footgun: props-destructured-body
+  const price = signal(9.99)
+  return <div>{qty} × {price()}</div>  // {qty} → baked once (dead), {price()} → live
+}
+` })
+```
+
+**Common mistakes**
+
+- Confusing it with `validate` — `validate` lists anti-patterns; `explain_reactivity` classifies EVERY expression live/static so you can spot a binding that silently won't update even when no footgun fires.
+- Passing a partial expression instead of a full component — the compiler needs complete JSX to classify bindings; a fragment yields "No reactive expressions detected".
+- Reading a `baked once` verdict as an error — static is often correct (literal text, one-time content). It is only a bug when that expression was MEANT to update; the tool flags the shape, you decide intent.
+
+**See also:** `validate` · `get_anti_patterns`
 
 ---
 

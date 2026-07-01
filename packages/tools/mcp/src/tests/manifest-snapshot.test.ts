@@ -24,6 +24,7 @@ describe('gen-docs — mcp snapshot', () => {
       'mcp/audit_test_environment',
       'mcp/diagnose',
       'mcp/explain_error',
+      'mcp/explain_reactivity',
       'mcp/get_anti_patterns',
       'mcp/get_api',
       'mcp/get_browser_smoke_status',
