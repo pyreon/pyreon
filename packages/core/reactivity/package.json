@@ -27,6 +27,11 @@
       "bun": "./src/lpih.ts",
       "import": "./lib/lpih.js",
       "types": "./lib/types/lpih.d.ts"
+    },
+    "./coverage": {
+      "bun": "./src/coverage.ts",
+      "import": "./lib/coverage.js",
+      "types": "./lib/types/coverage.d.ts"
     }
   },
   "files": [

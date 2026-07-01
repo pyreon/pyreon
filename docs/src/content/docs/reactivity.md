@@ -1573,6 +1573,62 @@ editor.undo() // current() === "Hello"
 editor.redo() // current() === "Hello, World"
 ```
 
+## Reactive Coverage
+
+Code coverage tells you a _line_ ran. **Reactive Coverage** tells you a _reactive update fired_ — run your tests, then see every signal / computed / effect whose reactive behaviour was **never exercised**. A node that never fires is either dead reactivity (a signal nobody ever changes, an effect that only runs at mount) or an untested reactive path. No other framework has a name for this — Pyreon can measure it because the runtime holds a precise model of the reactive graph (the same always-on dev registry that powers Pyreon's live inlay hints).
+
+Import from the `@pyreon/reactivity/coverage` subpath:
+
+```ts
+import {
+  startReactiveCoverage,
+  takeReactiveCoverage,
+  stopReactiveCoverage,
+  formatReactiveCoverage,
+} from '@pyreon/reactivity/coverage'
+
+startReactiveCoverage() // reset baseline + pin nodes + enable reads
+// … create + exercise your reactive code (mount a component, run a scenario) …
+const report = takeReactiveCoverage()
+stopReactiveCoverage()
+
+console.log(formatReactiveCoverage(report))
+```
+
+```text
+Reactive Coverage — 42.9% (3 of 7 reactive nodes exercised)
+  signals 1/3   derived 1/2   effects 1/2
+
+Uncovered (4):
+  ✗ never changed          unitPrice [signal]  src/Cart.tsx:23:19
+  ✗ never changed          shippingFlat [signal]  src/Cart.tsx:24:22
+  ✗ ran once, never re-ran discount [derived]  src/Cart.tsx:15:18
+  ✗ ran once, never re-ran <effect> [effect]  src/Cart.tsx:22:3
+```
+
+### What "covered" means (kind-aware)
+
+A "fire" is a value-changing signal write, a computed recompute, or an effect run — and the **initial** run of an effect / first computation of a derived counts:
+
+| Kind        | Covered when          | Uncovered reasons                                                        |
+| ----------- | --------------------- | ------------------------------------------------------------------------ |
+| **signal**  | changed ≥ 1× (`fires ≥ 1`) | `never-changed` (the value never changed during the run)            |
+| **effect**  | re-ran (`fires ≥ 2`)  | `ran-once` (mounted but never re-ran) · `never-ran` (created, never executed) |
+| **derived** | recomputed (`fires ≥ 2`) | `ran-once` (computed once, never recomputed) · `never-ran` (never read) |
+
+The most interesting bucket is **`ran-once`** — an effect or computed that mounted but whose reactive re-run was never triggered by any test. That's a reactive behaviour your suite never exercised, and a line-coverage tool would happily report the surrounding code as 100%.
+
+### The report
+
+`takeReactiveCoverage()` returns a `ReactiveCoverageReport` — the machine-readable unit of record (`{ total, covered, uncovered, percent, byKind, entries, uncoveredEntries }`). Each entry carries `{ id, kind, name, fires, subscribers, covered, reason, loc }`. `computeReactiveCoverage(nodes)` is the pure function behind it (feed it `getReactiveGraph().nodes` from any snapshot), and `classifyReactiveNode(node)` is the single-node classifier.
+
+### Notes
+
+- **Dev/test only.** The reactive registry is always-on in `__DEV__` and tree-shaken in production, so coverage only measures when `NODE_ENV !== 'production'`. A production build's report is a vacuous 100% (empty registry).
+- **Source locations are exact in `@pyreon/vite-plugin` builds** (the plugin injects `__sourceLocation` at build time). Running raw code without the plugin uses a best-effort runtime stack capture that resolves signal locations reliably but may miss some computed/effect frames.
+- **Retention.** `startReactiveCoverage()` pins every node created during the session with a strong ref so a component unmounting mid-run doesn't GC-prune it out of the denominator; `stopReactiveCoverage()` releases the pins.
+- Try it: `bun scripts/demo-reactive-coverage.ts`.
+
 ## Exports Summary
 
 ### Core Primitives

@@ -76,13 +76,15 @@ describe('gen-docs — reactivity snapshot', () => {
     // Vue parity (markRaw, shallowReactive, onScopeDispose) + 1
     // getReactiveTrace (reactive-trace error-report enrichment) + 2
     // reactive-devtools bridge (activateReactiveDevtools, getReactiveGraph)
-    // + 2 environment flags (isServer, isClient).
-    expect(Object.keys(record).length).toBe(32)
+    // + 2 environment flags (isServer, isClient) + 3 Reactive Coverage
+    // (startReactiveCoverage, takeReactiveCoverage, formatReactiveCoverage).
+    expect(Object.keys(record).length).toBe(35)
     expect(Object.keys(record)).toContain('reactivity/isServer')
     expect(Object.keys(record)).toContain('reactivity/isClient')
     expect(Object.keys(record)).toContain('reactivity/wrapSignal')
     expect(Object.keys(record)).toContain('reactivity/signal')
     expect(Object.keys(record)).toContain('reactivity/createResource')
+    expect(Object.keys(record)).toContain('reactivity/startReactiveCoverage')
     // Spot-check the flagship API — signal is the core primitive
     const signal = record['reactivity/signal']!
     expect(signal.mistakes?.split('\n').length).toBe(6)

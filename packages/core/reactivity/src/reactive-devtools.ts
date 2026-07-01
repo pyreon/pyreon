@@ -192,6 +192,23 @@ let _nextId = 1
 // id → record. Records are pruned by the FinalizationRegistry the moment
 // the underlying node is GC'd, so this Map never retains a dead node.
 const _byId = new Map<number, NodeRec>()
+
+// ── Coverage retention ───────────────────────────────────────────────────
+// The registry holds nodes via WeakRef, so a signal/effect whose component
+// unmounts is GC-pruned and DISAPPEARS from `getReactiveGraph()`. That is
+// correct for a live devtools panel (show only what's alive) but WRONG for
+// reactive COVERAGE, whose denominator must be every node created during the
+// measured window — even ones already dropped. When retention is on,
+// `_rdRegister` pins each node with a STRONG ref so nothing is pruned before
+// the coverage snapshot is taken. `@pyreon/reactivity/coverage` toggles it.
+let _retain = false
+const _retained = new Set<object>()
+
+/** @internal — enable/disable strong-ref retention for a coverage session. */
+export function _setCoverageRetention(on: boolean): void {
+  _retain = on
+  if (!on) _retained.clear()
+}
 // Subscriber-callback identity → node id. Lets `getReactiveGraph()`
 // resolve `_s` Set membership (anonymous `recompute`/`run` closures)
 // back to graph nodes for edge extraction. A WeakMap so a disposed
@@ -274,6 +291,7 @@ export function deactivateReactiveDevtools(): void {
 export function __resetReactiveDevtoolsForTesting(): void {
   _active = false
   _byId.clear()
+  _retained.clear()
   _fireBuf = null
   _fireCount = 0
 }
@@ -455,6 +473,10 @@ export function _rdRegister(
     pendingSkip: isDeferred ? (loc as DeferredLocation).skipFrames : undefined,
   })
   if (sub) _subId.set(sub, id)
+  // During a coverage session, pin the node so it can't be GC-pruned before
+  // the snapshot — a complete denominator needs every node created in the
+  // window, including ones whose component has since unmounted.
+  if (_retain) _retained.add(node)
   _finalizer.register(node, id)
   // Stash the id on the node so fire events correlate in O(1). Every node
   // we register is a framework-created function/closure (signal/computed
