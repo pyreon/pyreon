@@ -1182,7 +1182,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // array is `[that]`; a heterogeneous / un-inferrable / empty array
       // degrades to `unknown` (safe — the prior behaviour).
       const els = expr.elements
-      if (els.length === 0) return { kind: 'unknown' }
+      // A TYPED-EMPTY array (`[] as T[]`) carries its element type — mirror it so
+      // a computed / reduce-seed over it types `[T]` instead of degrading to `Any`.
+      if (els.length === 0) {
+        return expr.elementType !== undefined
+          ? { kind: 'array', element: expr.elementType }
+          : { kind: 'unknown' }
+      }
       let elemType: TypeIR | undefined
       for (const el of els) {
         let t: TypeIR

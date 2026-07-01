@@ -4710,6 +4710,28 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
       return parseExpr(node.expression, ctx)
     }
+    case 'TSAsExpression':
+    case 'TSTypeAssertion': {
+      // A type ASSERTION is semantically transparent — the value is the inner
+      // expression. Unwrap to its IR (without this, parseExpr hit `default` →
+      // `unsupportedExpr` → a `""` string-literal fallback, so `[] as number[]`
+      // mis-emitted as `""`). SPECIAL case: an EMPTY array literal carries no
+      // element type of its own, so a bare `[]` degrades to `Any` — but the
+      // cast `[] as T[]` DOES name the element type, so thread it onto the array
+      // IR (`elementType`) → a typed-empty-array emit (`[Int]()` / `emptyList<Int>()`).
+      const inner = parseExpr(node.expression, ctx)
+      if (inner.kind === 'array' && inner.elements.length === 0 && node.typeAnnotation) {
+        const castType = parseTypeAnnotation(node.typeAnnotation, ctx)
+        if (castType.kind === 'array') {
+          return { kind: 'array', elements: [], elementType: castType.element }
+        }
+      }
+      return inner
+    }
+    case 'TSSatisfiesExpression':
+    case 'TSNonNullExpression':
+      // `x satisfies T` / `x!` — transparent; the value is the inner expression.
+      return parseExpr(node.expression, ctx)
     case 'AwaitExpression':
       return unsupportedExpr(
         ctx,

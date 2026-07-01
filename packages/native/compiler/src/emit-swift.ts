@@ -3308,6 +3308,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `Group {\n${e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
     }
     case 'array': {
+      // A TYPED-EMPTY array (`[] as T[]` → `elementType` set) emits a typed empty
+      // literal so Swift can infer the element type (a bare `[]` is `Any`).
+      if (e.elements.length === 0 && e.elementType !== undefined) {
+        return `[${swiftType(e.elementType)}]()`
+      }
       // Array spread → Swift `+` concat (preserves value-semantics). General
       // form, ANY position / count of spreads: walk the elements, emit each
       // SPREAD's argument bare and group consecutive NON-spread elements into
