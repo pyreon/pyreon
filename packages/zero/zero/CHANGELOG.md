@@ -1,5 +1,87 @@
 # @pyreon/zero
 
+## 0.38.0
+
+### Minor Changes
+
+- [#1892](https://github.com/pyreon/pyreon/pull/1892) [`d59f8ac`](https://github.com/pyreon/pyreon/commit/d59f8acacc0fe1dcd3abad932b0a6fbddc78a85c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add the build-time per-route performance advisor (opt-in via `zero({ perfAdvisor: true })`). After the client build it reads the Vite manifest + dist and prints, per route, the perf opportunities it finds — route JS over budget (static-closure bytes, islands-safe) and `content-visibility: auto` without `contain-intrinsic-size` (CLS) — and writes `dist/_pyreon-perf-advisor.json` for CI. Advisory only: never fails the build, silent when there's nothing to report. Configure the JS budget with `perfAdvisor: { jsBudget }` (default 150 KB). `perfAdvisorPlugin` + the pure check core (`runAdvisor` / `RouteAdvisorInput` / …) are exported from `@pyreon/zero/server` for standalone use and a future `pyreon doctor --perf` gate. The `collapse-off` + `hero-not-avif` checks ship in the core (tested) and are wired into the plugin in a follow-up (they need source scanning + HTML-preload parsing).
+
+- [#1927](https://github.com/pyreon/pyreon/pull/1927) [`442cc26`](https://github.com/pyreon/pyreon/commit/442cc26728fe5704a8bc9d8782f419d7a36a683a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR store hydration — `dehydrateStores` / `hydrateStores` + framework auto-wiring
+
+  The `dehydrate → inline-script → hydrate` handshake (the TanStack-Query / loader-data
+  pattern, for `@pyreon/store`), wired into the SSR pipeline:
+
+  - **@pyreon/store**: `dehydrateStores(filter?)` (server) snapshots every active
+    per-request store's signal `.state` into a JSON-serializable `Record<id, state>`;
+    `hydrateStores(data)` (client) seeds the stores back before mount — lazily and as a
+    boot-time one-shot. Registers a decoupled `globalThis` bridge on import so the
+    framework can drive the handshake with no hard dependency (the styler-flush pattern).
+  - **@pyreon/server**: `renderPage` reads the bridge inside the request context and
+    appends `<script>window.__PYREON_STORE_STATE__=…</script>` (same safe serializer as
+    loader data) — so handler / SSG / dev all inject it with no caller change.
+  - **@pyreon/zero** + **@pyreon/server** client entries: seed stores from the snapshot
+    before mount.
+
+  This makes cross-island shared state production-complete: two islands that both import
+  the same store already share one instance on the client (the registry is a module
+  singleton), so a signal write in one is seen by the other with zero prop-drilling — the
+  only missing piece was hydrating that shared store once with server state.
+
+- [#1936](https://github.com/pyreon/pyreon/pull/1936) [`8a221af`](https://github.com/pyreon/pyreon/commit/8a221af967dec5a2b28467423db2266456225b92) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Typed route paths (foundation) — `RegisteredRoutes` / `RoutePath` / `RouteHref` + `generateRouteTypes`
+
+  Closes the "`<Link href>` is just `string`" DX gap with the standard
+  module-augmentation-of-a-registry-interface pattern (TanStack Router / Next typed
+  routes):
+
+  - `RegisteredRoutes` (empty by default; a generated `.d.ts` augments it per route),
+    `RoutePath` (the path union, or `string` until routes are generated — so a fresh
+    project is never broken), `RouteParams<P>` (a route's params shape), and
+    `RouteHref = RoutePath | (string & {})` — which **autocompletes** registered routes
+    while still accepting any string (dynamic / runtime-constructed paths never break).
+  - `LinkProps.href` is now `RouteHref` (non-breaking — it's `string` until codegen runs).
+  - `generateRouteTypes(routePaths)` + `extractRouteParams(path)` — the pure codegen that
+    emits the augmenting `.d.ts` from the fs-router's `urlPath`s (`/posts/:id` →
+    `{ id: string }`, `/blog/:slug*` → catch-all).
+  - **`zero({ typedRoutes: true })` plugin wiring (opt-in).** When enabled, the zero plugin
+    scans your routes at `buildStart` and on route add/remove (HMR), filters to PAGE routes
+    (layouts / error / loading / 404 are skipped — they have no navigable path), and writes
+    `src/pyreon-routes.d.ts` (only on a content change — no HMR churn). The app's `tsconfig`
+    `include: ["src"]` picks it up automatically, so `<Link href>` autocomplete lights up.
+    Off by default (no surprise file writes); add the generated file to `.gitignore`. All
+    fs / scan errors are swallowed — typed routes never break the build.
+
+### Patch Changes
+
+- [#1945](https://github.com/pyreon/pyreon/pull/1945) [`bb3adfe`](https://github.com/pyreon/pyreon/commit/bb3adfee32bfb53161b1401fcab51b42268ae107) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix typed-routes dev regen firing on the wrong Vite hook (route add/remove was a no-op)
+
+  `zero({ typedRoutes: true })` regenerated `src/pyreon-routes.d.ts` from
+  `handleHotUpdate`, but Vite fires `handleHotUpdate` ONLY for content edits
+  (`type: "update"`), never for file add/delete — and editing a route file's body
+  can't change its `urlPath`. So the documented "autocomplete updates on route
+  add/remove during dev" silently did nothing (only the initial `buildStart` /
+  production build ever regenerated); adding a route left `<Link href>` without
+  its new path, and deleting one left a stale typed path, until a dev-server
+  restart.
+
+  Moved the regen to the existing `server.watcher` add/unlink handler — the exact
+  place route-SET changes actually land (it already invalidates the route virtual
+  modules there). Regression-locked (bisect-verified) by a new test that drives
+  the real watcher through a minimal fake dev server: an `add` event writes the
+  new route into the `.d.ts`, an `unlink` drops it, and it no-ops when
+  `typedRoutes` is off or the changed file is outside the routes dir.
+
+- Updated dependencies [[`8ca64d4`](https://github.com/pyreon/pyreon/commit/8ca64d4863bfc4c01f98880e9949307fa9f354d3), [`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668), [`442cc26`](https://github.com/pyreon/pyreon/commit/442cc26728fe5704a8bc9d8782f419d7a36a683a)]:
+  - @pyreon/head@0.38.0
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/server@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/vite-plugin@0.38.0
+  - @pyreon/meta@0.38.0
+  - @pyreon/core@0.38.0
+  - @pyreon/router@0.38.0
+  - @pyreon/runtime-server@0.38.0
+  - @pyreon/sized-map@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # @pyreon/solid-compat
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1922](https://github.com/pyreon/pyreon/pull/1922) [`4b30967`](https://github.com/pyreon/pyreon/commit/4b3096791db452a33a96d793d2c2750c53c55b9e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Implement `Resource.state` on `createResource` for real SolidJS parity. The accessor now exposes a reactive `.state` getter — one of `'unresolved' | 'pending' | 'ready' | 'refreshing' | 'errored'` — derived from the resource's loading/error/value signals (matching Solid's semantics: `pending` on first load with no value, `refreshing` when reloading over a prior value, `errored` on rejection). The README's API table previously promised `.state` AND `.pending`, but neither existed — reading `resource.state` silently returned `undefined`. `.state` is now real; `.pending` is removed from the docs (it is not a real Solid `Resource` field — use `.state === 'pending'` or `.loading`).
+
+  Documentation corrections (README + `docs/src/content/docs/solid-compat.md`): document `.state`'s five values; add a caveat that `startTransition` / `useTransition` are no-op stubs (synchronous, `isPending` always `false`); add a "Not supported" section disclosing the absent SolidJS APIs (`createMutable` / `modifyMutable`, `onError`, `isServer`, and the SSR entry points `renderToString` / `renderToStringAsync` / `renderToStream` / `HydrationScript` / `NoHydration` / `Assets`); and soften the "thinnest layer / fine-grained / run-once / 1:1" framing to reflect the coarse whole-component re-render model (output and lifecycle are correct, but reactivity is per-component re-run, not Solid's fine-grained per-node).
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0

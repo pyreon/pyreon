@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/sync",
-  "version": "0.37.1",
+  "version": "0.38.0",
   "description": "Local-first CRDT-backed sync for signals \u2014 a synced signal is just a signal, so remote ops drive surgical fine-grained updates",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/sync#readme",

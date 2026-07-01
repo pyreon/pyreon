@@ -1,5 +1,27 @@
 # @pyreon/feature
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1907](https://github.com/pyreon/pyreon/pull/1907) [`4f6135a`](https://github.com/pyreon/pyreon/commit/4f6135afac703ca77386819980769301cd10e2a9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct `@pyreon/feature` API docs (manifest feeding `llms.txt`, `llms-full.txt`, and MCP `get_api`). The manifest had drifted from the source and documented an API that never existed: a string-map `schema`, an object `api: { baseUrl }` with phantom per-endpoint overrides, string `reference('users')`, and wrong hook shapes. Now source-accurate (verified against the integration tests):
+
+  - `schema` is a real Zod / Valibot / ArkType validator (`z.object({ … })`), not a string map; `TValues` is inferred from it.
+  - `api` is a plain string base path (e.g. `/api/posts`); REST endpoints are derived from it (`GET /`, `GET /:id`, `POST /`, `PUT /:id`, `DELETE /:id`) — there are no `listUrl`/`getUrl`/etc. override fields.
+  - `reference({ name })` takes a Feature object or `{ name }`, not a string.
+  - `useList({ page, pageSize })` (`data()` is `T[]`, not `{ items }`), `useSearch(signal)` (a `Signal`, not an accessor), `useForm({ mode, id })` returning a `FormState` (`register`/`handleSubmit`/`isSubmitting`), `useTable(data, options)` (data first), `useCreate().mutate(…)` + `isPending()`, and `useStore()` exposing state on `.store`.
+
+  No runtime change — docs/metadata only.
+
+- Updated dependencies [[`5a39b0a`](https://github.com/pyreon/pyreon/commit/5a39b0ac0042dfa2ff8d120aa3679dbe98742014), [`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668), [`e08cf4b`](https://github.com/pyreon/pyreon/commit/e08cf4b9650f6e6c172b690eff2b192acc0ecb9a), [`979e434`](https://github.com/pyreon/pyreon/commit/979e4342776021eac5bfaed1c9e5ac0c4787dacc), [`abe3b61`](https://github.com/pyreon/pyreon/commit/abe3b61ac80bb91880752ae42351882f81cc61c2), [`47d7be4`](https://github.com/pyreon/pyreon/commit/47d7be4845808481b7a3fe3e111de834ae8a5604), [`8526e98`](https://github.com/pyreon/pyreon/commit/8526e9854318f886855d87b50b03373467436d80), [`442cc26`](https://github.com/pyreon/pyreon/commit/442cc26728fe5704a8bc9d8782f419d7a36a683a)]:
+  - @pyreon/form@0.38.0
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/store@0.38.0
+  - @pyreon/core@0.38.0
+  - @pyreon/query@0.38.0
+  - @pyreon/table@0.38.0
+  - @pyreon/validation@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

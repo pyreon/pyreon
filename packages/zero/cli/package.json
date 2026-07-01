@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/zero-cli",
-  "version": "0.37.1",
+  "version": "0.38.0",
   "description": "CLI for Pyreon Zero — dev, build, preview",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/cli#readme",

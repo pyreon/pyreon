@@ -1,5 +1,45 @@
 # @pyreon/meta
 
+## 0.38.0
+
+### Patch Changes
+
+- Updated dependencies [[`217157b`](https://github.com/pyreon/pyreon/commit/217157bbee6806b0f1309e5f36ef76abef422dd6), [`4f21060`](https://github.com/pyreon/pyreon/commit/4f2106031cb5011d72942664a7a740795e7e28ec), [`4f6135a`](https://github.com/pyreon/pyreon/commit/4f6135afac703ca77386819980769301cd10e2a9), [`240710c`](https://github.com/pyreon/pyreon/commit/240710c27a2006c7bb81543091070ff7be1bd09a), [`5a39b0a`](https://github.com/pyreon/pyreon/commit/5a39b0ac0042dfa2ff8d120aa3679dbe98742014), [`58b4bcb`](https://github.com/pyreon/pyreon/commit/58b4bcbcd2c9c1245bdf4bc733672ae95c40b2b2), [`fc6057e`](https://github.com/pyreon/pyreon/commit/fc6057e2a7c26a76b2ccc56f0732783be5835e1d), [`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668), [`1a83575`](https://github.com/pyreon/pyreon/commit/1a83575cc36a76a6810cf9cd656e3b3fc6efa0cf), [`e08cf4b`](https://github.com/pyreon/pyreon/commit/e08cf4b9650f6e6c172b690eff2b192acc0ecb9a), [`979e434`](https://github.com/pyreon/pyreon/commit/979e4342776021eac5bfaed1c9e5ac0c4787dacc), [`abe3b61`](https://github.com/pyreon/pyreon/commit/abe3b61ac80bb91880752ae42351882f81cc61c2), [`47d7be4`](https://github.com/pyreon/pyreon/commit/47d7be4845808481b7a3fe3e111de834ae8a5604), [`8526e98`](https://github.com/pyreon/pyreon/commit/8526e9854318f886855d87b50b03373467436d80), [`442cc26`](https://github.com/pyreon/pyreon/commit/442cc26728fe5704a8bc9d8782f419d7a36a683a), [`448b689`](https://github.com/pyreon/pyreon/commit/448b689cfd0a9346c13aa1f836a2467bb12d4fcb)]:
+  - @pyreon/code@0.38.0
+  - @pyreon/feature@0.38.0
+  - @pyreon/flow@0.38.0
+  - @pyreon/form@0.38.0
+  - @pyreon/i18n@0.38.0
+  - @pyreon/permissions@0.38.0
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/state-tree@0.38.0
+  - @pyreon/store@0.38.0
+  - @pyreon/styler@0.38.0
+  - @pyreon/charts@0.38.0
+  - @pyreon/dnd@0.38.0
+  - @pyreon/document@0.38.0
+  - @pyreon/hooks@0.38.0
+  - @pyreon/hotkeys@0.38.0
+  - @pyreon/machine@0.38.0
+  - @pyreon/query@0.38.0
+  - @pyreon/rx@0.38.0
+  - @pyreon/storage@0.38.0
+  - @pyreon/table@0.38.0
+  - @pyreon/toast@0.38.0
+  - @pyreon/url-state@0.38.0
+  - @pyreon/validation@0.38.0
+  - @pyreon/virtual@0.38.0
+  - @pyreon/attrs@0.38.0
+  - @pyreon/connector-document@0.38.0
+  - @pyreon/coolgrid@0.38.0
+  - @pyreon/document-primitives@0.38.0
+  - @pyreon/elements@0.38.0
+  - @pyreon/kinetic-presets@0.38.0
+  - @pyreon/kinetic@0.38.0
+  - @pyreon/rocketstyle@0.38.0
+  - @pyreon/ui-core@0.38.0
+  - @pyreon/unistyle@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

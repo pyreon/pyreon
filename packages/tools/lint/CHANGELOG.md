@@ -1,5 +1,29 @@
 # @pyreon/lint
 
+## 0.38.0
+
+### Minor Changes
+
+- [#1867](https://github.com/pyreon/pyreon/pull/1867) [`3ba1276`](https://github.com/pyreon/pyreon/commit/3ba1276d2be734a7b9e9ebd09d00b643a4b80396) Thanks [@vitbokisch](https://github.com/vitbokisch)! - cli: add `pyreon lint` — a unified front door to `@pyreon/lint`
+
+  `pyreon lint [paths]` forwards every `pyreon-lint` flag verbatim (`--preset`,
+  `--fix`, `--format`, `--quiet`, `--rule`, `--config`, `--ignore`, `--watch`,
+  `--lsp`). It exits non-zero on lint errors, just like the standalone binary.
+
+  To keep one implementation, `@pyreon/lint` now exports **`runCli(argv): number
+| null`** (extracted from its bin's `main()`): returns the exit code, or `null`
+  for the long-running `--watch` / `--lsp` modes. Both the `pyreon-lint` bin and
+  `pyreon lint` call it, so the two CLIs can never drift. Lazy-loaded in the
+  `pyreon` dispatch — no main-entry bundle growth.
+
+### Patch Changes
+
+- [#1890](https://github.com/pyreon/pyreon/pull/1890) [`8071b15`](https://github.com/pyreon/pyreon/commit/8071b15a6d353f550e7a499a5ace0baa9d7bc564) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add opt-in frontend rule `pyreon/content-visibility-needs-intrinsic-size` (CLS). Flags `content-visibility: auto` set without `contain-intrinsic-size` — the browser estimates the off-screen box height then corrects it on render, shoving content below it down (a mobile-biased Cumulative Layout Shift, invisible on fast desktop loads). Detects the object-literal form (JSX `style={{}}` + styler/rocketstyle `.theme(() => ({}))`), `css`/`styled` tagged-template CSS, and string `style="…"`. Off by default (opt-in, `frontend` category); enable via the `best-practices` preset or per-rule config; `exemptPaths` supported.
+
+- Updated dependencies [[`4cfd22f`](https://github.com/pyreon/pyreon/commit/4cfd22f68088f937535064e0a01a42aaf957f3e2), [`a71dfa2`](https://github.com/pyreon/pyreon/commit/a71dfa2a359b278bee6a38fa7a8a41b454adca28), [`a615f46`](https://github.com/pyreon/pyreon/commit/a615f46237685a1bf4a96f535b9375655cde2c79)]:
+  - @pyreon/compiler@0.38.0
+  - @pyreon/sized-map@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

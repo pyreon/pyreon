@@ -1,5 +1,67 @@
 # @pyreon/compiler
 
+## 0.38.0
+
+### Minor Changes
+
+- [#1930](https://github.com/pyreon/pyreon/pull/1930) [`4cfd22f`](https://github.com/pyreon/pyreon/commit/4cfd22f68088f937535064e0a01a42aaf957f3e2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `transformClientDirectives` — the directive-islands (`hydrate="…"`) lowering
+
+  A pure source→source compiler transform that turns a `hydrate="<strategy>"`
+  attribute on an imported component into a self-hydrating `island()` wrapper —
+  the Astro-`client:*`-style ergonomics, but coherent with Pyreon's existing
+  `island({ hydrate })` vocabulary (the directive value, the option key, and the
+  runtime strategy are the same word).
+
+  `<Counter hydrate="visible" />` → `island(() => import('./Counter'), { name,
+hydrate: 'visible' })` with a **file-derived stable name**, which eliminates the
+  entire duplicate-name / registry-drift / dead-island bug class by construction.
+
+  Supports default + named imports, all strategy strings (`load`/`idle`/`visible`/
+  `interaction`/`media(...)`/`never`) + bare `hydrate` (eager). Unsupported shapes
+  (dynamic strategy, local/non-imported component, namespace import, DOM element)
+  are left UNCHANGED and reported as a warning — never silently mis-compiled.
+
+  This is the compiler primitive (the `transformDeferInline` / `scanCollapsibleSites`
+  pattern); the `@pyreon/vite-plugin` wiring that calls it in the transform hook +
+  merges into the islands registry is the next increment.
+
+### Patch Changes
+
+- [#1951](https://github.com/pyreon/pyreon/pull/1951) [`a71dfa2`](https://github.com/pyreon/pyreon/commit/a71dfa2a359b278bee6a38fa7a8a41b454adca28) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Make directive-island registry names unique across files
+
+  Follow-up to the within-file collision fix: `fileSlug` collapses `-`/`_`/`.` to
+  `_`, so two sibling dirs differing only by the separator (`foo-bar/Page` vs
+  `foo_bar/Page`) produced the SAME island `name` — the cross-file `duplicate-name`
+  collision the feature promises to prevent by construction. A stable FNV-1a hash
+  of the full file path is now appended to `name` (the readable slug is kept;
+  `varName` is untouched — it's module-scoped).
+
+- [#1944](https://github.com/pyreon/pyreon/pull/1944) [`a615f46`](https://github.com/pyreon/pyreon/commit/a615f46237685a1bf4a96f535b9375655cde2c79) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix directive-islands duplicate-`const` collision for parameterized strategies
+
+  `transformClientDirectives` deduped island wrappers by the FULL strategy string
+  but derived `varName` + island `name` from a fragment truncated at the first
+  `(` (`strategyFrag`). So two parameterized strategies that share a base word —
+  `media(min-width: 100px)` vs `media(min-width: 999px)`, or `interaction(click)`
+  vs `interaction(focus)` on one component — were kept as two distinct islands yet
+  emitted the IDENTICAL `const __pyIsland_M_media` twice: a hard `SyntaxError`
+  ("already been declared") that fails the bundler, plus a duplicate island
+  `name` (exactly the `duplicate-name` bug the feature promises to prevent) and
+  both call sites silently hydrating under the wrong strategy.
+
+  Fixed by `strategyIdent`: the readable base fragment is kept for bare strategies
+  (`visible`/`idle`/`load`/`never` stay hash-free), and a stable FNV-1a hash of
+  the full strategy is appended only when the strategy is parameterized — so
+  distinct strategies always get distinct identifiers. Regression-locked
+  (bisect-verified) by two/interaction/media collision specs + a bare-strategy
+  hash-free spec.
+
+  Note: the transform has no consumer on `main` yet (the plugin wiring is a
+  separate increment), so this shipped as dead code — but the emitted output was
+  wrong and would have detonated the moment it was wired. A separate, niche
+  cross-FILE registry-name collision (two sibling dirs differing only by `-` vs
+  `_`) remains, and is caught by the `pyreon doctor --check-islands`
+  `duplicate-name` detector.
+
 ## 0.37.1
 
 ### Patch Changes

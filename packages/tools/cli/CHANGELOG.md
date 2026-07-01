@@ -1,5 +1,72 @@
 # @pyreon/cli
 
+## 0.38.0
+
+### Minor Changes
+
+- [#1867](https://github.com/pyreon/pyreon/pull/1867) [`3ba1276`](https://github.com/pyreon/pyreon/commit/3ba1276d2be734a7b9e9ebd09d00b643a4b80396) Thanks [@vitbokisch](https://github.com/vitbokisch)! - cli: add `pyreon info` — environment + installed `@pyreon/*` versions + version-skew detection
+
+  `pyreon info` reports the CLI version, runtime (node/bun/platform), the project
+  name (and whether it's a `@pyreon/zero` app), and every `@pyreon/*` package
+  installed in `node_modules` with its version. Because Pyreon ships its packages
+  on one synced version trajectory, `info` flags **version skew** when the
+  installed set spans more than one version — the condition that can trip the
+  `registerSingleton` duplicate-instance guard (`[Pyreon] Duplicate @pyreon/X
+detected`) and split context/reactivity across instances at runtime.
+
+  ```bash
+  pyreon info          # env + installed @pyreon versions + skew check
+  pyreon info --json   # machine-readable report
+  ```
+
+  Self-contained — reads only the project's `package.json` + `node_modules/@pyreon/*`,
+  so it works in any project (or none) with no framework packages required. The pure
+  core (`collectInfo` / `scanInstalledPyreon` / `detectSkew` / `formatInfo`) is
+  exported for programmatic use.
+
+  Also fixes `pyreon --version`, which was hardcoded to `0.4.0` and now reads the
+  package's real version.
+
+- [#1867](https://github.com/pyreon/pyreon/pull/1867) [`3ba1276`](https://github.com/pyreon/pyreon/commit/3ba1276d2be734a7b9e9ebd09d00b643a4b80396) Thanks [@vitbokisch](https://github.com/vitbokisch)! - cli: add `pyreon lint` — a unified front door to `@pyreon/lint`
+
+  `pyreon lint [paths]` forwards every `pyreon-lint` flag verbatim (`--preset`,
+  `--fix`, `--format`, `--quiet`, `--rule`, `--config`, `--ignore`, `--watch`,
+  `--lsp`). It exits non-zero on lint errors, just like the standalone binary.
+
+  To keep one implementation, `@pyreon/lint` now exports **`runCli(argv): number
+| null`** (extracted from its bin's `main()`): returns the exit code, or `null`
+  for the long-running `--watch` / `--lsp` modes. Both the `pyreon-lint` bin and
+  `pyreon lint` call it, so the two CLIs can never drift. Lazy-loaded in the
+  `pyreon` dispatch — no main-entry bundle growth.
+
+- [#1867](https://github.com/pyreon/pyreon/pull/1867) [`3ba1276`](https://github.com/pyreon/pyreon/commit/3ba1276d2be734a7b9e9ebd09d00b643a4b80396) Thanks [@vitbokisch](https://github.com/vitbokisch)! - cli: add `pyreon upgrade` — align every `@pyreon/*` dependency to one version
+
+  The fix for the skew `pyreon info` detects. `pyreon upgrade` rewrites every
+  `@pyreon/*` range in `package.json` to a single target — by default the highest
+  version present (aligning laggards up), or an explicit `--to <version>`.
+
+  ```bash
+  pyreon upgrade              # dry-run: print the alignment plan
+  pyreon upgrade --write      # apply (rewrite package.json), then install
+  pyreon upgrade --to 0.37.0  # target a specific version
+  pyreon upgrade --exact      # pin without the caret
+  ```
+
+  Dry-run by default (applies nothing until `--write`). `workspace:` / `link:` /
+  `file:` / git specifiers and non-`@pyreon` deps are left untouched. The pure
+  core (`resolveTarget` / `computeUpgradePlan` / `rewriteDeps`) is exported for
+  programmatic use. Lazy-loaded in the CLI dispatch (no main-entry bundle growth).
+
+### Patch Changes
+
+- [#1926](https://github.com/pyreon/pyreon/pull/1926) [`fae2a7f`](https://github.com/pyreon/pyreon/commit/fae2a7fb36be92194f2d08d0e32de0dbd77d17da) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Consolidate the `doc-claims` gate's CLAUDE.md claim sites to one per count.
+
+  CLAUDE.md was compressed from a per-PR engineering changelog (~2000 lines) down to a lean reference (~330 lines), keeping every durable contract/convention/gotcha + the package tables but cutting per-PR narratives, bisect details, and Phase sagas. As part of that, each gated numeric claim (hook count, lint rule count, lint category count, document output-format count) now lives in ONE CLAUDE.md site — the package-overview table rows + the summary line — instead of being re-quoted in 2–3 redundant per-category bullets / API-description sentences. The `doc-claims` gate's stale claim patterns for those removed sentences are dropped (the table-row patterns still verify each count); the gate now scans 25 claim sites (was 31), still drift-free. No consumer impact — the gate's `actual` functions read Pyreon-monorepo paths that don't exist in a consumer project.
+
+- Updated dependencies [[`8071b15`](https://github.com/pyreon/pyreon/commit/8071b15a6d353f550e7a499a5ace0baa9d7bc564), [`4cfd22f`](https://github.com/pyreon/pyreon/commit/4cfd22f68088f937535064e0a01a42aaf957f3e2), [`a71dfa2`](https://github.com/pyreon/pyreon/commit/a71dfa2a359b278bee6a38fa7a8a41b454adca28), [`a615f46`](https://github.com/pyreon/pyreon/commit/a615f46237685a1bf4a96f535b9375655cde2c79), [`3ba1276`](https://github.com/pyreon/pyreon/commit/3ba1276d2be734a7b9e9ebd09d00b643a4b80396)]:
+  - @pyreon/lint@0.38.0
+  - @pyreon/compiler@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

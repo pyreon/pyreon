@@ -1,5 +1,88 @@
 # @pyreon/store
 
+## 0.38.0
+
+### Minor Changes
+
+- [#1927](https://github.com/pyreon/pyreon/pull/1927) [`442cc26`](https://github.com/pyreon/pyreon/commit/442cc26728fe5704a8bc9d8782f419d7a36a683a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR store hydration — `dehydrateStores` / `hydrateStores` + framework auto-wiring
+
+  The `dehydrate → inline-script → hydrate` handshake (the TanStack-Query / loader-data
+  pattern, for `@pyreon/store`), wired into the SSR pipeline:
+
+  - **@pyreon/store**: `dehydrateStores(filter?)` (server) snapshots every active
+    per-request store's signal `.state` into a JSON-serializable `Record<id, state>`;
+    `hydrateStores(data)` (client) seeds the stores back before mount — lazily and as a
+    boot-time one-shot. Registers a decoupled `globalThis` bridge on import so the
+    framework can drive the handshake with no hard dependency (the styler-flush pattern).
+  - **@pyreon/server**: `renderPage` reads the bridge inside the request context and
+    appends `<script>window.__PYREON_STORE_STATE__=…</script>` (same safe serializer as
+    loader data) — so handler / SSG / dev all inject it with no caller change.
+  - **@pyreon/zero** + **@pyreon/server** client entries: seed stores from the snapshot
+    before mount.
+
+  This makes cross-island shared state production-complete: two islands that both import
+  the same store already share one instance on the client (the registry is a module
+  singleton), so a signal write in one is seen by the other with zero prop-drilling — the
+  only missing piece was hydrating that shared store once with server state.
+
+### Patch Changes
+
+- [#1931](https://github.com/pyreon/pyreon/pull/1931) [`e08cf4b`](https://github.com/pyreon/pyreon/commit/e08cf4b9650f6e6c172b690eff2b192acc0ecb9a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix the broken devtools example in the README. It imported a
+  non-existent `storeRegistry` symbol (`import { storeRegistry } from
+'@pyreon/store/devtools'`) — the actual `@pyreon/store/devtools` API is
+  `getRegisteredStores()` / `getStoreById(id)` / `onStoreChange(listener)`.
+  The documented snippet threw `undefined is not iterable`; corrected to the
+  real API. No runtime change.
+
+- [#1899](https://github.com/pyreon/pyreon/pull/1899) [`979e434`](https://github.com/pyreon/pyreon/commit/979e4342776021eac5bfaed1c9e5ac0c4787dacc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: lazy per-signal change-detection subscription. The store kept per-signal subscribers only to feed store-level `subscribe()` callbacks + the `patch()` mutation event, but subscribed EAGERLY at creation — and most stores never call `.subscribe()`. That was pure overhead AND it forced every signal write onto the slow batched-notify path (a subscribed signal written inside the `patch()`/`reset()` batch round-trips the reactivity pending queue ~10× a direct write). Subscriptions are now lazy: activated on the first `subscribe()`, torn down when the last leaves (mirrors the already-lazy subscribers Set). A no-subscriber store's `patch()` writes its signals unsubscribed + fast: measured `patch` (no subscriber) ~270 → ~96ns (~2.8×). Stores with a subscriber keep change-detection live (they opted into mutation tracking). Byte-identical behavior; all 142 tests pass (incl. a dedicated lazy-lifecycle + mutation-delivery suite, bisect-verified). The earlier "the gap to Zustand is intrinsic to per-field signals" assessment was wrong — the signals are faster than Zustand; the cost was the eager-subscription-forced batched notify.
+
+- [#1953](https://github.com/pyreon/pyreon/pull/1953) [`abe3b61`](https://github.com/pyreon/pyreon/commit/abe3b61ac80bb91880752ae42351882f81cc61c2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(store): trim per-store `setup` cost — lazy `signalKeySet` + array-backed initial values
+
+  Two allocation deferrals on the store-creation path, both feature-preserving and
+  mirroring the existing lazy-`subscribers` precedent:
+
+  - **`signalKeySet` is now lazy** — the `Set<signalKey>` used for `patch()`
+    object-form membership is allocated on the FIRST `patch()` call and reused
+    thereafter, instead of eagerly at creation. Most stores mutate via
+    `store.x.set()` / actions and never call `patch()`, so the Set was pure setup
+    overhead for them. The patch hot path stays O(1) after the first call (built
+    once, amortized).
+  - **Initial values are captured into a parallel array** aligned with
+    `signalKeys` instead of a `Map`. An array is cheaper to build on the setup
+    path; `reset()` — the sole consumer — zips the two by index. (The snapshot
+    must happen at creation, so unlike `signalKeySet` it can't be deferred.)
+
+  Measured (paired, per-op process isolation, median): `setup` ~17× → ~12.7×
+  vs Zustand (~730ns → ~665ns). Every other op is unchanged (read / dispatch /
+  write / patch all within noise); 151 store tests pass; typecheck clean.
+
+  This narrows the once-per-store `setup` gap without touching the registry,
+  per-field signals, or bound-method API — the features that win the hot path
+  (dispatch ~6×, write ~1.7×, patch ~1.2× vs Zustand). It does NOT overtake
+  Zustand's bare-closure `setup`; that gap is architectural (Pyreon's global
+  singleton registry powers SSR isolation / devtools / `resetAllStores`, which
+  Zustand has no equivalent of).
+
+- [#1910](https://github.com/pyreon/pyreon/pull/1910) [`47d7be4`](https://github.com/pyreon/pyreon/commit/47d7be4845808481b7a3fe3e111de834ae8a5604) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `patch()` no-subscriber fast path — turns the bulk-patch op from a loss into a
+  win vs Zustand. The `patchInProgress` flag + `patchEvents` buffer exist only to
+  feed store-`subscribe()` callbacks (written by `notifyDirect`, which runs only
+  via the per-signal change-detection subscribers — themselves active only while
+  ≥1 subscriber is attached). So a patch on a store with no subscriber (the common
+  case) now skips two `patchEvents = []` allocations + the flag dance, and the
+  object-form path uses `Object.keys` + index instead of `Object.entries` (no
+  per-entry `[k,v]` tuple arrays).
+
+  Measured (`bench:stores`, Apple M3, NODE_ENV=production, per-op isolated): `patch
+2 fields` **106ns → 49ns — now ~1.3× faster than Zustand (66ns), previously ~1.8×
+  slower**. The with-subscriber notify path is unchanged (locked by the existing
+  `type: 'patch'` notification tests); 142 store tests pass.
+
+- [#1894](https://github.com/pyreon/pyreon/pull/1894) [`8526e98`](https://github.com/pyreon/pyreon/commit/8526e9854318f886855d87b50b03373467436d80) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: leaner object-form `patch()`. When no subscriber is attached (the common case) `patch({...})` no longer allocates a per-key `{key,newValue,oldValue}` event object during the batched write — those events only feed the patch-`subscribe` notification, which is gated on `subscribers.size > 0`, so with no subscriber they were pure allocation waste. The per-patched-key membership test also uses a precomputed `Set` (`signalKeySet.has`) instead of an O(signalKeys) `Array.includes` scan (scales with store width). ~12% faster patch (controlled same-run A/B); byte-identical behavior, all 135 tests pass. The remaining gap to a plain object merge is intrinsic to the per-field-signal model. Surfaced by the `bench:stores` benchmark.
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/validation@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

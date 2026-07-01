@@ -1,5 +1,24 @@
 # @pyreon/flow
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1909](https://github.com/pyreon/pyreon/pull/1909) [`240710c`](https://github.com/pyreon/pyreon/commit/240710c27a2006c7bb81543091070ff7be1bd09a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Complete the `@pyreon/flow` component API docs (manifest feeding MCP `get_api`). The component signatures were accurate but omitted real props, and the `Controls` default position was wrong:
+
+  - `Background` — added the `"cross"` variant and the `size` prop (dot radius / line thickness).
+  - `Controls` — added `showZoomIn` / `showZoomOut` / `showFitView` / `showLock` toggles + the zoom-level readout, and corrected the default position from `"bottom-right"` to `"bottom-left"`.
+  - `MiniMap` — `nodeColor` accepts a flat string OR a per-node function; added `width` / `height` / `style` / `class`.
+  - `Handle` / `Panel` — added `style` / `class` (and `Panel`'s `children` is optional).
+  - `Flow` — documented the `ariaLabel` prop (the accessible name for the focusable canvas).
+
+  No runtime change — docs/metadata only.
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0

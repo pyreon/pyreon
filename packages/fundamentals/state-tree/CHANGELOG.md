@@ -1,5 +1,37 @@
 # @pyreon/state-tree
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1932](https://github.com/pyreon/pyreon/pull/1932) [`1a83575`](https://github.com/pyreon/pyreon/commit/1a83575cc36a76a6810cf9cd656e3b3fc6efa0cf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `getSnapshot` / `applySnapshot` now handle arrays and plain objects of model
+  instances (the `todos: Todo[]` and `byId: { [k]: Model }` shapes).
+
+  Previously `getSnapshot` only recursed into a field whose value was DIRECTLY a
+  model instance — an array or object of instances serialized the live signal
+  facades (`[Function …]`) instead of plain data, so list-shaped trees could not
+  be persisted to JSON, and `applySnapshot` wrote the raw snapshot objects,
+  replacing the instances with plain data.
+
+  Now:
+
+  - `getSnapshot` recurses one level into arrays / plain-objects that hold model
+    instances → valid serializable data. Arrays / objects of plain values are
+    returned as-is (identity preserved — no behavior change for non-instances).
+  - `applySnapshot` reconciles same-shape instance collections IN PLACE (each
+    existing instance is updated from the matching snapshot element / key), so
+    the round-trip preserves the model instances rather than overwriting them.
+
+  Known limit: length-changing the collection via `applySnapshot` (adding/removing
+  instance elements) is NOT reconciled — there is no element type to recreate
+  instances from; use the collection's own mutation methods to add/remove, then
+  `applySnapshot` to update the contents. (Granular per-element `onPatch`
+  propagation from instance collections remains a separate v1 limitation.)
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/validation@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

@@ -1,5 +1,28 @@
 # @pyreon/react-compat
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1919](https://github.com/pyreon/pyreon/pull/1919) [`885000e`](https://github.com/pyreon/pyreon/commit/885000e83d23ec811219f3f0f33ee97eda58fc14) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: correct the README and docs-site page to the actual value +
+  re-render model. The docs previously described a superseded run-once /
+  getter model — `useState` documented as returning a getter (`count()`),
+  deps arrays "ignored", `useCallback` / `memo` "no-ops", "no hooks rules",
+  "no stale closures" — none of which matches the shipped code (`useState`
+  returns the value directly, the component re-runs on state change, hooks
+  are positional, and `useEffect` / `useMemo` / `useCallback` honor deps;
+  `memo` genuinely memoizes via shallow-equal). Following the old docs
+  produced code that throws (`count()` on a number). The docs now document
+  the real behavior plus the two genuine caveats: nested child state resets
+  when an ancestor re-renders, and class components are unsupported stubs
+  (`setState` / `forceUpdate` warn-and-no-op, lifecycle never fires). The
+  already-correct notes (concurrent-mode no-ops, class stubs) are kept. No
+  runtime change.
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0
