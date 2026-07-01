@@ -12,43 +12,48 @@ name: Native Device Build
 # instrumented test is the next follow-up — pairs with the BUILD step
 # below; needs an emulator-runner action.
 #
-# ## Why this is OPT-IN ONLY (label / dispatch), never automatic
+# ## When this runs
 #
-# `native-validate.yml` deliberately runs on free Linux runners and notes:
-# "no Apple-hardware runners — `swiftc -parse` is the meaningful CI signal;
-# xcodegen verified locally per PR." This workflow is the OTHER half — the
-# real Xcode build — which REQUIRES a macOS runner (billable on private
-# repos) and is slower. So it never runs on a normal PR: it fires ONLY on
-#   - `workflow_dispatch` — a maintainer runs it manually, OR
-#   - a PR carrying the `native-device` label, OR
-#   - the nightly schedule (drift check against main).
-# This keeps the macOS-runner cost an explicit, opted-into decision while
-# still making the gate available whenever it's wanted.
+# `native-validate.yml` runs on free Linux runners per PR (`swiftc -parse`
+# + kotlinc-against-stubs). This workflow is the OTHER half — the real
+# Xcode / Gradle build — which needs a macOS runner and ~40 min. It runs:
+#   - AUTOMATICALLY on any PR that touches the native pipeline
+#     (packages/native/**, examples/native-*/**, or this file) — decided
+#     by the fail-closed `changes` job below, mirroring ci.yml's idiom.
+#     The repo is PUBLIC, so macOS runner minutes are free; the old
+#     label-only opt-in existed for private-repo billing, which no longer
+#     applies. PR-time coverage protects the nightly green streak: an
+#     emit regression is caught on the PR, not the next morning.
+#   - on a PR carrying the `native-device` label — the manual opt-in for
+#     changes OUTSIDE the native paths that a maintainer still wants
+#     device-proven (e.g. a compiler-adjacent refactor).
+#   - on `workflow_dispatch` (manual) and the nightly schedule (drift
+#     check against main) — both unconditional.
 #
-# ## Status
+# ## Status + promotion protocol
 #
-# Advisory — NOT in branch-protection's required checks. The jobs were
-# authored against the documented xcodegen/xcodebuild + Gradle pipelines but
-# are validated by CI itself (the device toolchains aren't available in the
-# dev sandbox), so expect to iterate the runner/destination/SDK details on
-# the first real runs. Promote to required once green across a few runs.
+# Advisory — NOT YET in branch-protection's required checks. The encoded
+# promotion gate is `bun scripts/check-native-device-streak.ts`: 14
+# consecutive green nightlies (the audit's 2-week observation window;
+# every red night resets the clock — see the sticky-issue job below).
+# THIS workflow shape is required-check-SAFE by construction: the
+# pull_request trigger has NO path filter (a filtered-out trigger creates
+# no check run → a required check would deadlock every non-native PR);
+# instead the `changes` job skips the build jobs at the JOB level, and a
+# skipped job satisfies a required status check. When the streak gate
+# passes, promotion is a pure branch-protection change (add the two build
+# job names as required checks) — zero workflow surgery.
 
 on:
   workflow_dispatch:
   pull_request:
-    types: [labeled, synchronize]
-    # Path-scope the PR trigger: the device gate compiles + boots the
-    # NATIVE pipeline only — a docs/web/tooling change on a labelled PR
-    # can't affect it, yet pre-filter every push to such a PR re-ran
-    # the full macOS Simulator + Android Emulator matrix (~40 min, 10×
-    # billing on the macOS half). The gate is ADVISORY (not in branch
-    # protection), so a trigger-level filter is deadlock-safe.
-    # schedule / workflow_dispatch are unaffected (nightly drift check
-    # stays unconditional).
-    paths:
-      - 'packages/native/**'
-      - 'examples/native-*/**'
-      - '.github/workflows/native-device.yml'
+    # NO `paths:` filter — deliberately. A trigger-level filter is
+    # deadlock-UNSAFE for a required check (no check run is created for a
+    # filtered-out PR, so branch protection waits forever). Path scoping
+    # lives in the `changes` job below (job-level skip = success).
+    # `opened`/`reopened` are included so a FRESH native PR gets its
+    # device run without waiting for a push or a label.
+    types: [opened, reopened, synchronize, labeled]
   schedule:
     # 47 past 05 UTC — offset from native-validate.yml's 05:23 so the two
     # native workflows don't queue against each other.
@@ -65,15 +70,69 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # ── Changes (decide native) ─────────────────────────────────────────
+  # Cheap always-on decide job — the required-check-safe replacement for
+  # the old trigger-level `paths:` filter. Mirrors ci.yml's `changes`
+  # job. FAIL-CLOSED: only a clean "false" narrows the run; an empty
+  # output, a failed diff, or a crashed job defaults the build jobs to
+  # RUNNING (a skipped required check reports success, so a mis-detection
+  # must never silently disable the gate).
+  changes:
+    name: Changes (decide native)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.detect.outputs.native }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Detect native-path changes
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event (${{ github.event_name }}) → native=true (full run)."
+            exit 0
+          fi
+          # Fail-closed: any diff failure → native=true.
+          git fetch origin "${{ github.base_ref }}" || true
+          if FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD"); then
+            if printf '%s\n' "$FILES" | grep -qE '^(packages/native/|examples/native-|\.github/workflows/native-device\.yml$)'; then
+              NATIVE=true
+            else
+              NATIVE=false
+            fi
+          else
+            NATIVE=true
+          fi
+          echo "native=$NATIVE" >> "$GITHUB_OUTPUT"
+          echo "Native paths changed: $NATIVE"
+
   ios-build:
-    # Opt-in gate, event-precise: the `labeled` event fires for EVERY
-    # label addition — pre-fix, adding `skip-changeset` to a labelled
-    # native PR re-ran the whole device matrix. Only the native-device
-    # label itself (or a code push to an already-labelled PR) runs it.
+    # Runs when: non-PR event (nightly / dispatch) · the PR touches native
+    # paths (`changes` job) · the PR carries the `native-device` label
+    # (manual opt-in for path-external changes).
+    # The path arm (native==true) fires on EVERY
+    # PR action INCLUDING unrelated-label events — deliberately: a job-
+    # level skip reports SUCCESS to branch protection, so if an unrelated
+    # `labeled` event skipped the builds on a native-path PR, a RED device
+    # run could be LAUNDERED into a skipped-green latest check by adding
+    # any label. Re-running the (free, cancel-in-progress-deduped) matrix
+    # on a rare label addition is the safe side of that trade. The label
+    # arms below are for path-EXTERNAL changes only.
+    # The `(failure() && …)` arm is the fail-closed guard from ci.yml's
+    # anti-pattern entry: a crashed `changes` job must RUN the gate, not
+    # skip it (a skipped required check reports success).
+    needs: changes
     if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
-      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'native-device'))
+      (success() && (
+        github.event_name != 'pull_request' ||
+        needs.changes.outputs.native == 'true' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
+        (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'native-device'))
+      )) ||
+      (failure() && needs.changes.result != 'success')
     name: iOS — xcodebuild (Simulator SDK)
     runs-on: macos-15
     # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
@@ -276,14 +335,16 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
   android-build:
-    # Opt-in gate, event-precise: the `labeled` event fires for EVERY
-    # label addition — pre-fix, adding `skip-changeset` to a labelled
-    # native PR re-ran the whole device matrix. Only the native-device
-    # label itself (or a code push to an already-labelled PR) runs it.
+    # Same gate as ios-build — see the comment there.
+    needs: changes
     if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
-      (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'native-device'))
+      (success() && (
+        github.event_name != 'pull_request' ||
+        needs.changes.outputs.native == 'true' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'native-device') ||
+        (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'native-device'))
+      )) ||
+      (failure() && needs.changes.result != 'success')
     name: Android — gradlew assembleDebug
     runs-on: ubuntu-latest
     # 60, not 40: the fetch-arc run data showed 40 is AT the wire —
