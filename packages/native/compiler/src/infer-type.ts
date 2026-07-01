@@ -26,6 +26,16 @@ export interface InferenceCtx {
   /** Computed name → already-inferred return type. */
   computeds: Map<string, TypeIR>
   /**
+   * Component-level value-const name → inferred type. `const pageSize = 2` /
+   * `const steps = ["a","b","c"]` at component scope. PERSISTENT (unlike the
+   * per-computed `locals`, which is reset each computed), so a computed or
+   * handler that references one infers its real type instead of degrading to
+   * `Any` — which on Swift makes the computed emit `private var x: Any { … }`
+   * and a downstream `String(x())` fail ("no exact matches in call to
+   * initializer"). The dominant data-table / wizard shape.
+   */
+  valueConsts: Map<string, TypeIR>
+  /**
    * Local `let` bindings inside the currently-walked computed/function
    * body (Phase 2 follow-up). Populated when inferring a multi-statement
    * body so member-access infers transitively (e.g. `xs.filter(...)`
@@ -76,6 +86,7 @@ export function emptyInferenceCtx(): InferenceCtx {
   return {
     signals: new Map(),
     computeds: new Map(),
+    valueConsts: new Map(),
     locals: new Map(),
     fetches: new Map(),
     stores: new Map(),
@@ -91,6 +102,7 @@ export function buildInferenceCtx(
   const ctx: InferenceCtx = {
     signals: new Map(),
     computeds: new Map(),
+    valueConsts: new Map(),
     locals: new Map(),
     structs: new Map(
       structDefs.map((s) => [s.name, new Map(s.fields.map((f) => [f.name, f.type]))]),
@@ -108,6 +120,7 @@ export function buildInferenceCtx(
           const storeCtx: InferenceCtx = {
             signals: new Map(s.fields.map((f) => [f.name, f.type])),
             computeds: new Map(),
+            valueConsts: new Map(),
             locals: new Map(),
             fetches: new Map(),
             stores: new Map(),
@@ -132,6 +145,16 @@ export function buildInferenceCtx(
   // generics, which `parse.ts` already extracted.
   for (const d of decls) {
     if (d.kind === 'signal') ctx.signals.set(d.name, d.type)
+  }
+  // Pass 1.5: value-consts (`const pageSize = 2` / `const steps = […]`).
+  // PERSISTENT (not the per-computed `locals`), inferred in source order so a
+  // const referencing a signal or an earlier const resolves. Seeds the type so
+  // a computed / handler that references one infers a real type instead of
+  // `Any` (`.length`, `/ pageSize`, `steps[i]` etc. — the data-table / wizard
+  // shape). `locals` is empty here, so a bare `let` inside the const's own expr
+  // is not resolvable — fine, value-consts are top-level expressions.
+  for (const d of decls) {
+    if (d.kind === 'value') ctx.valueConsts.set(d.name, inferType(d.expr, ctx))
   }
   // Pass 2: infer computeds. A computed can reference signals AND
   // other computeds declared above it in source order; we infer
@@ -225,6 +248,7 @@ export function inferReturnType(
   const scratch: InferenceCtx = {
     signals: ctx.signals,
     computeds: ctx.computeds,
+    valueConsts: ctx.valueConsts,
     locals: new Map(ctx.locals),
     fetches: ctx.fetches,
     stores: ctx.stores,
@@ -541,6 +565,8 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (sig) return sig
       const cmp = ctx.computeds.get(expr.name)
       if (cmp) return cmp
+      const vc = ctx.valueConsts.get(expr.name)
+      if (vc) return vc
       return { kind: 'unknown' }
     }
     case 'call': {

@@ -1132,11 +1132,23 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Component-scope const literals → static-attr resolution (`<Image
   // src={logo}>` where `logo` is a component-body const).
   _componentConstMap = buildComponentConstMap(c.decls)
-  // value-const name → ExprIR, for inlining into struct-level computeds
-  // (which can't reference the body-local `let`s — see the field's doc).
+  // value-const name → ExprIR, for inlining into struct-level computeds AND
+  // handler bodies (neither can reference the body-local `let`s — see the
+  // field's doc). EXCLUDE any value-const that is REASSIGNED anywhere (a
+  // `let nextId = 1; nextId++` counter): reassignment is only legal on a
+  // non-const binding, so inlining it (substituting its INITIAL value) is
+  // wrong — `nextId++` would inline to `(1)++`. Those stay body-local + read
+  // by name (their emit is unchanged; the Swift mutable-counter shape is a
+  // separate pre-existing concern). Immutable consts (`steps`, `factor`) still
+  // inline. Inference seeding (infer-type.ts `valueConsts`) keeps ALL of them —
+  // a mutated counter's TYPE is still correct; only INLINING is unsafe.
+  const mutatedVars = collectMutatedComponentVars(c.decls)
   _componentValueConstExprs = new Map(
     c.decls
-      .filter((d): d is Extract<DeclIR, { kind: 'value' }> => d.kind === 'value')
+      .filter(
+        (d): d is Extract<DeclIR, { kind: 'value' }> =>
+          d.kind === 'value' && !mutatedVars.has(d.name),
+      )
       .map((d) => [d.name, d.expr]),
   )
   // Expose the inference ctx to the expr-emit (which doesn't receive it as a
@@ -1389,6 +1401,44 @@ function emitSwiftComponent(c: ComponentIR): string {
  * against a (malformed) cyclic const chain. Returns the expr unchanged
  * when there are no value-consts (zero cost for the common case).
  */
+/**
+ * Collect every component-level identifier that is REASSIGNED (an `x++` / `x--`
+ * update, or an `x = …` assignment) inside a handler / function / computed body.
+ * These are non-const bindings (`let nextId = 1; nextId++`), so a value-const of
+ * the same name must NOT be inlined (substituting its initial value breaks the
+ * mutation). A generic deep-walk over the IR (any node with a `kind`; recurse
+ * into every field) so no expr/statement shape is missed. A value-const's OWN
+ * initializer is never walked (only body-bearing decls), so a plain `const x =
+ * 5` is never spuriously flagged.
+ */
+function collectMutatedComponentVars(decls: DeclIR[]): Set<string> {
+  const mutated = new Set<string>()
+  const visit = (node: unknown): void => {
+    if (node === null || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      for (const el of node) visit(el)
+      return
+    }
+    const n = node as { kind?: string; argument?: unknown; target?: unknown }
+    if (n.kind === 'update') {
+      const a = n.argument as { kind?: string; name?: string } | undefined
+      if (a?.kind === 'identifier' && typeof a.name === 'string') mutated.add(a.name)
+    } else if (n.kind === 'assign') {
+      const t = n.target as { kind?: string; name?: string } | undefined
+      if (t?.kind === 'identifier' && typeof t.name === 'string') mutated.add(t.name)
+    }
+    for (const v of Object.values(n as Record<string, unknown>)) visit(v)
+  }
+  for (const d of decls) {
+    if (d.kind === 'function') visit(d.body)
+    else if (d.kind === 'computed') {
+      visit((d as { body?: unknown }).body)
+      visit((d as { expr?: unknown }).expr)
+    }
+  }
+  return mutated
+}
+
 function inlineValueConsts(expr: ExprIR): ExprIR {
   if (_componentValueConstExprs.size === 0) return expr
   let cur = expr
@@ -1826,17 +1876,22 @@ function emitSwiftFunction(
     d.body[0]!.kind === 'return' &&
     d.body[0]!.expr !== undefined
   ) {
-    const concise = emitSwiftExpr((d.body[0]! as { expr: ExprIR }).expr, 0)
+    const concise = emitSwiftExpr(inlineValueConsts((d.body[0]! as { expr: ExprIR }).expr), 0)
     const vis = visibility === 'private' ? 'private ' : ''
     return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
   }
+  // Inline component value-consts into the body — a `private func` handler,
+  // like a struct-level computed, can't reference the body-local `let`s the
+  // value-consts emit as (`if step < steps.count` where `const steps = […]`
+  // → "cannot find 'steps' in scope"). Same inline the computed path uses.
+  const inlinedBody = inlineValueConstsInStmts(d.body)
   // Seed this function's LOCAL `const`/`let` types into the infer ctx so a
   // later type-dependent emit in the body resolves them — the named-handler
   // analog of the inline-handler seeding in emitSwiftAction (`const onTap = ()
   // => { const t = todos.find(…); if (t) { … } }` → `if t != nil`). Restored
   // after (scoped to this body).
-  const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
-  const bodyLines = d.body.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+  const savedLocals = seedHandlerLocals(inlinedBody, _exprInferCtx)
+  const bodyLines = inlinedBody.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
   _exprInferCtx.locals = savedLocals
   const vis2 = visibility === 'private' ? 'private ' : ''
   return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
@@ -3631,13 +3686,17 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
     // silently dropped the rest (a HIGH "1 code, all platforms" bug).
     if (handler.stmts !== undefined && handler.stmts.length > 0) {
       const pad = ' '.repeat(indent + 2)
+      // Inline component value-consts — an inline handler closure lives outside
+      // the ViewBuilder body too, so it can't see the body-local `let`s the
+      // value-consts emit as (same "cannot find in scope" as named handlers).
+      const inlinedStmts = inlineValueConstsInStmts(handler.stmts)
       // Seed the handler-LOCAL `const`/`let` types into the infer ctx so a
       // later type-dependent emit inside this body resolves them — e.g. `const
       // t = todos.find(…); if (t) { … }` now sees `t` is optional and lowers
       // the condition to `if t != nil`. Restored after, so the seeding is
       // scoped to this body (re-entrant-safe for nested handlers).
-      const savedLocals = seedHandlerLocals(handler.stmts, _exprInferCtx)
-      const lines = handler.stmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+      const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+      const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
       _exprInferCtx.locals = savedLocals
       return `{\n${lines}\n${' '.repeat(indent)}}`
     }
