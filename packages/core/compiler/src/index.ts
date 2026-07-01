@@ -50,6 +50,12 @@ export {
 export type { PyreonDiagnostic, PyreonDiagnosticCode } from './pyreon-intercept'
 export { detectPyreonPatterns, hasPyreonPatterns } from './pyreon-intercept'
 export type {
+  PyreonMigrationChange,
+  PyreonMigrationResult,
+  PyreonRemainingIssue,
+} from './pyreon-migrate'
+export { AUTO_FIXABLE_PYREON_CODES, migratePyreonCode } from './pyreon-migrate'
+export type {
   AuditFormatOptions,
   AuditRisk,
   TestAuditEntry,

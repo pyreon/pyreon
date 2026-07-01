@@ -1149,6 +1149,14 @@ const { code, changes } = migrateReactCode(reactSource, "C.tsx")`,
     notes: 'One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. Returns the rewritten code plus the list of applied `MigrationChange`s. Mechanical only: shapes it cannot safely rewrite are left as `detectReactPatterns` diagnostics for the human. See also: detectReactPatterns.',
   },
 
+  'compiler/migratePyreonCode': {
+    signature: 'migratePyreonCode(source: string, filename?: string): PyreonMigrationResult',
+    example: `import { migratePyreonCode } from "@pyreon/compiler"
+
+const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")`,
+    notes: 'Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). Auto-fixes ONLY the mechanically-safe `detectPyreonPatterns` footguns — `sig(v)`→`sig.set(v)` (signal-write-as-call), `<For key>`→`<For by>` (for-with-key), and dropping `x as unknown as VNodeChild` (as-unknown-as-vnodechild), tracked by `AUTO_FIXABLE_PYREON_CODES`. Span-based, applied back-to-front, non-overlapping, idempotent — so the output is safe to apply verbatim. Returns `{ code, changes, remaining }` where `remaining` is every OTHER detected footgun (props-destructured, on-click-undefined, …) that needs a human. This is why those three codes report `fixable: true`. See also: detectPyreonPatterns, migrateReactCode.',
+  },
+
   'compiler/hasReactPatterns': {
     signature: 'hasReactPatterns(code: string): boolean',
     example: `import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler"
@@ -4084,6 +4092,20 @@ function Counter() {
 - Running \`migrate_react\` on a file that's already mostly Pyreon — it's idempotent against already-migrated code (nothing flagged → nothing changed), so the cost is just the parse pass; safe to re-run.
 - Forgetting that \`useEffect(() => fn, [deps])\` → \`effect(() => fn)\` changes semantics: Pyreon effects auto-track via signal reads, the explicit deps array is dropped. Verify your effects read the same signals the React deps array listed.
 - Trusting the migration to produce idiomatic Pyreon — the output is CORRECT but mechanical. Pair with \`get_pattern\` after migration to apply Pyreon-native shapes (e.g. \`<Show when={() => …}>\` instead of ternaries; \`<For>\` instead of \`.map()\`).`,
+  },
+
+  'mcp/migrate_pyreon': {
+    signature: 'tool: migrate_pyreon({ code: string; filename?: string }) → PyreonMigrationResult',
+    example: `migrate_pyreon({ code: \`
+const count = signal(0)
+count(1)                                       // → count.set(1)
+const list = <For each={a} key={k}>{…}</For>   // → <For each={a} by={k}>
+const node = (x as unknown as VNodeChild)      // → x
+\` })`,
+    notes: 'The Pyreon → correct-Pyreon codemod (parallel to `migrate_react`). Auto-fixes ONLY the mechanically-safe footguns `validate` / `explain_reactivity` flag — `sig(v)` → `sig.set(v)`, `<For key={k}>` → `<For by={k}>`, and dropping `x as unknown as VNodeChild` — and returns every OTHER detected footgun (props-destructured, on-click-undefined, raw-add-event-listener, …) as a manual-fix list. This is what makes those three `detectPyreonPatterns` codes report `fixable: true`; a conservative codemod (span-based, idempotent, non-overlapping) that never mangles code, so an agent can apply the result verbatim. See also: validate, explain_reactivity, migrate_react.',
+    mistakes: `- Expecting it to fix everything \`validate\` flags — only the three mechanically-safe codes are auto-fixed; the rest (props-destructured, on-click-undefined, raw-add-event-listener, date-math-random-id) need human judgement and come back in \`remaining\`.
+- Running it as a formatter — it only rewrites the flagged footgun spans; whitespace / style elsewhere is untouched (pair with your formatter).
+- Skipping \`validate\` afterwards — \`migrate_pyreon\` clears the mechanical footguns, but re-run \`validate\` to confirm the \`remaining\` (human) issues are addressed.`,
   },
 
   'mcp/diagnose': {

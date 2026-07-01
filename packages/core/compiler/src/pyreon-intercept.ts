@@ -60,15 +60,16 @@
  *  - `detectPyreonPatterns(code)` — diagnostics only
  *  - `hasPyreonPatterns(code)`   — fast regex pre-filter
  *
- * ## fixable: false (invariant)
+ * ## fixable
  *
- * Every Pyreon diagnostic reports `fixable: false` — no exceptions.
- * The `migrate_react` MCP tool only knows React mappings, so claiming
- * a Pyreon code is auto-fixable would mislead a consumer who wires
- * their UX off the flag and finds nothing applies the fix. Flip to
- * `true` ONLY when a companion `migrate_pyreon` tool ships in a
- * subsequent PR. The invariant is locked in
- * `tests/pyreon-intercept.test.ts` under "fixable contract".
+ * A diagnostic reports `fixable: true` ONLY when `migratePyreonCode`
+ * (`pyreon-migrate.ts`) can auto-fix it mechanically — today the three
+ * unambiguous codes `signal-write-as-call`, `for-with-key`, and
+ * `as-unknown-as-vnodechild` (kept in sync via `AUTO_FIXABLE_PYREON_CODES`).
+ * Every other code stays `fixable: false`: the fix needs human judgement,
+ * and claiming otherwise would mislead a consumer who wires their UX off the
+ * flag. The contract is locked in `tests/pyreon-intercept.test.ts`
+ * ("fixable contract") + the round-trip test in `tests/pyreon-migrate.test.ts`.
  *
  * Designed for three consumers:
  *  1. Compiler pre-pass warnings during build
@@ -177,13 +178,13 @@ function pushDiag(
 // JSX helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function getJsxTagName(node: ts.JsxOpeningLikeElement): string {
+export function getJsxTagName(node: ts.JsxOpeningLikeElement): string {
   const t = node.tagName
   if (ts.isIdentifier(t)) return t.text
   return ''
 }
 
-function findJsxAttribute(
+export function findJsxAttribute(
   node: ts.JsxOpeningLikeElement,
   name: string,
 ): ts.JsxAttribute | undefined {
@@ -211,10 +212,8 @@ function detectForKeying(ctx: DetectContext, node: ts.JsxOpeningLikeElement): vo
       '`key` on <For> is reserved by JSX for VNode reconciliation and is extracted before the prop reaches the runtime. In Pyreon, use `by` for list identity.',
       getNodeText(ctx, keyAttr),
       getNodeText(ctx, keyAttr).replace(/^key\b/, 'by'),
-      // fixable remains `false` until a `migrate_pyreon` tool exists —
-      // today the MCP only ships `migrate_react`, so claiming auto-fix
-      // here would mislead consumers building on the flag.
-      false,
+      // Auto-fixable via `migratePyreonCode` (renames the attribute name).
+      true,
     )
   }
 
@@ -656,7 +655,7 @@ function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void
  * (2) the detector message points at exactly the wrong-shape call so a
  * human reviewer can dismiss the rare false positive in seconds.
  */
-function collectSignalBindings(sf: ts.SourceFile): Set<string> {
+export function collectSignalBindings(sf: ts.SourceFile): Set<string> {
   const names = new Set<string>()
   function isSignalFactoryCall(init: ts.Expression | undefined): boolean {
     if (!init || !ts.isCallExpression(init)) return false
@@ -700,7 +699,8 @@ function detectSignalWriteAsCall(ctx: DetectContext, node: ts.CallExpression): v
     `\`${callee.text}(value)\` does NOT write the signal — \`signal()\` is the read-only callable surface and ignores its arguments. Use \`${callee.text}.set(value)\` to assign or \`${callee.text}.update((prev) => …)\` to derive from the previous value. Pyreon's runtime warns about this pattern in dev, but the warning fires AFTER the silent no-op.`,
     getNodeText(ctx, node),
     `${callee.text}.set(${node.arguments.map((a) => getNodeText(ctx, a)).join(', ')})`,
-    false,
+    // Auto-fixable via `migratePyreonCode` (`sig(v)` → `sig.set(v)`).
+    true,
   )
 }
 
@@ -821,7 +821,8 @@ function detectAsUnknownAsVNodeChild(ctx: DetectContext, node: ts.AsExpression):
     '`as unknown as VNodeChild` is unnecessary — `JSX.Element` (the type produced by JSX) is already assignable to `VNodeChild`. Remove the double cast; it is pure noise that hides genuine type issues if they ever appear at this site.',
     getNodeText(ctx, node),
     getNodeText(ctx, inner.expression),
-    false,
+    // Auto-fixable via `migratePyreonCode` (drops the double cast).
+    true,
   )
 }
 

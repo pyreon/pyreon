@@ -1,3 +1,4 @@
+import { AUTO_FIXABLE_PYREON_CODES } from '../pyreon-migrate'
 import { detectPyreonPatterns, hasPyreonPatterns } from '../pyreon-intercept'
 
 describe('detectPyreonPatterns', () => {
@@ -31,9 +32,8 @@ describe('detectPyreonPatterns', () => {
       const withKey = diags.find((d) => d.code === 'for-with-key')
       expect(withKey).toBeDefined()
       expect(withKey!.suggested).toContain('by={')
-      // fixable stays `false` until a `migrate_pyreon` tool ships; see
-      // the top-of-file note on detectPyreonPatterns.
-      expect(withKey!.fixable).toBe(false)
+      // Auto-fixable via `migratePyreonCode` (renames the attribute name).
+      expect(withKey!.fixable).toBe(true)
     })
 
     it('does not ALSO flag for-missing-by when for-with-key fires', () => {
@@ -411,15 +411,16 @@ describe('detectPyreonPatterns', () => {
     })
   })
 
-  describe('fixable contract — ALL Pyreon codes are fixable:false', () => {
-    // Binding invariant: until a `migrate_pyreon` tool exists, every
-    // Pyreon diagnostic must report `fixable: false`. Claiming a code
-    // is auto-fixable while no migrator handles it would mislead
-    // consumers building on the flag. Flip to `true` only when the
-    // companion migrator lands in a subsequent PR.
-    it('never emits a Pyreon diagnostic with fixable: true', () => {
+  describe('fixable contract — only the auto-fixable codes are fixable:true', () => {
+    // A diagnostic reports `fixable: true` ONLY when `migratePyreonCode`
+    // handles it (kept in sync via `AUTO_FIXABLE_PYREON_CODES`). Every other
+    // code stays `fixable: false` — the fix needs human judgement, and
+    // claiming otherwise would mislead a consumer wiring UX off the flag.
+    it('sets fixable:true exactly for the auto-fixable codes', () => {
       const snippets = [
-        `<For each={x} key={(i) => i.id}>{(i) => <li />}</For>`, // for-with-key
+        `<For each={x} key={(i) => i.id}>{(i) => <li />}</For>`, // for-with-key (fixable)
+        `const s = signal(0); s(1)`, // signal-write-as-call (fixable)
+        `const v = (<li /> as unknown as VNodeChild)`, // as-unknown-as-vnodechild (fixable)
         `<For each={x}>{(i) => <li />}</For>`, // for-missing-by
         `const X = ({ y }) => <div>{y}</div>`, // props-destructured
         `typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'`, // process-dev-gate
@@ -430,9 +431,8 @@ describe('detectPyreonPatterns', () => {
         `<button onClick={undefined}>x</button>`, // on-click-undefined
       ]
       for (const code of snippets) {
-        const diags = detectPyreonPatterns(code)
-        for (const d of diags) {
-          expect(d.fixable, `${d.code} must be fixable:false`).toBe(false)
+        for (const d of detectPyreonPatterns(code)) {
+          expect(d.fixable, `${d.code} fixable flag`).toBe(AUTO_FIXABLE_PYREON_CODES.has(d.code))
         }
       }
     })

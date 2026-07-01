@@ -13,7 +13,7 @@ export default defineManifest({
     'Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s reactive-vs-static decision (experimental)',
     'Scope-aware signal auto-call: bare {count} → {() => count()}, shadowing-correct, knownSignals seeds cross-module',
     'detectReactPatterns + migrateReactCode — "coming from React" diagnostics + one-shot codemod',
-    'detectPyreonPatterns — 14 "using Pyreon wrong" anti-pattern codes (the MCP validate detector)',
+    'detectPyreonPatterns — 14 "using Pyreon wrong" anti-pattern codes (the MCP validate detector); migratePyreonCode auto-fixes the 3 mechanically-safe ones',
     'Project audits: auditTestEnvironment / auditIslands / auditSsg (power pyreon doctor)',
     'transformDeferInline — <Defer> namespace-import inlining pass',
     'generateContext — project scanner producing the AI .pyreon/context.json',
@@ -142,6 +142,17 @@ console.log(diags[0]?.code) // "react-use-state"`,
 
 const { code, changes } = migrateReactCode(reactSource, "C.tsx")`,
       seeAlso: ['detectReactPatterns'],
+    },
+    {
+      name: 'migratePyreonCode',
+      kind: 'function',
+      signature: 'migratePyreonCode(source: string, filename?: string): PyreonMigrationResult',
+      summary:
+        'Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). Auto-fixes ONLY the mechanically-safe `detectPyreonPatterns` footguns — `sig(v)`→`sig.set(v)` (signal-write-as-call), `<For key>`→`<For by>` (for-with-key), and dropping `x as unknown as VNodeChild` (as-unknown-as-vnodechild), tracked by `AUTO_FIXABLE_PYREON_CODES`. Span-based, applied back-to-front, non-overlapping, idempotent — so the output is safe to apply verbatim. Returns `{ code, changes, remaining }` where `remaining` is every OTHER detected footgun (props-destructured, on-click-undefined, …) that needs a human. This is why those three codes report `fixable: true`.',
+      example: `import { migratePyreonCode } from "@pyreon/compiler"
+
+const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")`,
+      seeAlso: ['detectPyreonPatterns', 'migrateReactCode'],
     },
     {
       name: 'hasReactPatterns',

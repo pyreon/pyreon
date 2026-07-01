@@ -36,6 +36,7 @@ describe('gen-docs — compiler snapshot', () => {
       'compiler/generateContext',
       'compiler/hasPyreonPatterns',
       'compiler/hasReactPatterns',
+      'compiler/migratePyreonCode',
       'compiler/migrateReactCode',
       'compiler/transformDeferInline',
       'compiler/transformJSX',

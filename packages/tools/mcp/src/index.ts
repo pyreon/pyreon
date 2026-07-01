@@ -11,6 +11,7 @@
  *   validate                  — Check a code snippet for Pyreon anti-patterns
  *   explain_reactivity        — The compiler's per-expression reactivity verdict (live / baked-static / footgun) for a snippet
  *   migrate_react             — Convert React code to idiomatic Pyreon
+ *   migrate_pyreon            — Auto-fix the mechanically-safe Pyreon footguns (sig(v)→sig.set(v), <For key>→<For by>, drop redundant casts)
  *   diagnose                  — Parse an error message into structured fix information
  *   explain_error             — Assemble a failure dossier from a full error report (incl. reactiveTrace)
  *   get_routes                — List all routes in the current project
@@ -40,6 +41,7 @@ import {
   diagnoseError,
   formatIslandAudit,
   formatTestAudit,
+  migratePyreonCode,
   migrateReactCode,
 } from '@pyreon/compiler'
 import { existsSync, readFileSync } from 'node:fs'
@@ -247,6 +249,44 @@ server.tool(
 
     return textResult(
       `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Changes applied (${result.changes.length}):**\n${changeList || 'No changes needed.'}${manualText}`,
+    )
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tool: migrate_pyreon
+// ═══════════════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'migrate_pyreon',
+  {
+    code: z.string(),
+    filename: z.string().optional(),
+  },
+  async ({ code, filename }) => {
+    // The Pyreon → correct-Pyreon codemod (parallel to `migrate_react`). It
+    // auto-fixes only the mechanically-safe footguns — `sig(v)` → `sig.set(v)`,
+    // `<For key>` → `<For by>`, and dropping `as unknown as VNodeChild` — and
+    // returns every OTHER detected footgun (props-destructured, on-click-
+    // undefined, …) as a manual-fix list. Span-based + idempotent, so an agent
+    // can apply the result verbatim.
+    const result = migratePyreonCode(code, filename ?? 'component.tsx')
+
+    const changeList = result.changes
+      .map((c) => `- Line ${c.line}: ${c.description} (${c.code})`)
+      .join('\n')
+
+    const manualText =
+      result.remaining.length > 0
+        ? `\n\n**Remaining footguns (manual fix needed):**\n${result.remaining
+            .map((d) => `- Line ${d.line}: **${d.code}** — ${d.message}`)
+            .join('\n')}`
+        : ''
+
+    return textResult(
+      `## Migrated Code\n\n\`\`\`tsx\n${result.code}\n\`\`\`\n\n**Auto-fixes applied (${result.changes.length}):**\n${
+        changeList || 'No mechanical fixes needed.'
+      }${manualText}`,
     )
   },
 )

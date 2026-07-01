@@ -50,12 +50,11 @@ describe('MCP token budgets', () => {
     await withServer(async (client) => {
       const list = await client.listTools()
       const t = tok(JSON.stringify(list))
-      // ≈1,334 with 15 tools (the `explain_reactivity` tool added ~90 over the
-      // prior 14-tool ≈1,228 — a lean per-tool cost). Ceiling 1,400 leaves
-      // head-room for one more small tool, but still catches a verbose-
-      // `.describe()` regression (each long prose description is ~150-280
-      // tokens — would blow this immediately).
-      expect(t).toBeLessThan(1400)
+      // 16 tools now: `explain_reactivity` (~90) + `migrate_pyreon` (~2 small
+      // string params, lean) both added over the prior 14-tool ≈1,228 baseline.
+      // Ceiling still catches a verbose-`.describe()` regression (each long
+      // prose description is ~150-280 tokens — would blow this immediately).
+      expect(t).toBeLessThan(1500)
     })
   })
 
