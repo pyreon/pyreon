@@ -148,6 +148,91 @@ export function synthLiteralStructName(
 }
 
 /**
+ * True when `name` occurs as a FREE identifier anywhere in `expr`. Mirrors
+ * `substituteIdentifier`'s total recursion (every node kind covered) but
+ * returns a boolean and never mutates. A nested arrow that re-binds `name` in
+ * its params shadows it — occurrences under that arrow are BOUND, not free, so
+ * the subtree is skipped. Conservative for the callers that use it (the
+ * `Array.from({length}, (el, i) => …)` element-param guard): a false "yes"
+ * only defers a lowering to a warning, never mis-emits.
+ */
+export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
+  switch (expr.kind) {
+    case 'literal':
+      return false
+    case 'identifier':
+      return expr.name === name
+    case 'call':
+      return (
+        exprReferencesIdent(expr.callee, name) ||
+        expr.args.some((a) => exprReferencesIdent(a, name))
+      )
+    case 'member':
+      return exprReferencesIdent(expr.object, name)
+    case 'index':
+      return exprReferencesIdent(expr.object, name) || exprReferencesIdent(expr.index, name)
+    case 'binary':
+    case 'comparison':
+    case 'logical':
+      return exprReferencesIdent(expr.left, name) || exprReferencesIdent(expr.right, name)
+    case 'unary':
+    case 'update':
+      return exprReferencesIdent(expr.argument, name)
+    case 'ternary':
+      return (
+        exprReferencesIdent(expr.cond, name) ||
+        exprReferencesIdent(expr.then, name) ||
+        exprReferencesIdent(expr.otherwise, name)
+      )
+    case 'arrow':
+      // Shadow boundary — a nested arrow re-binding `name` makes the inner
+      // occurrences BOUND (a different variable), so they don't count.
+      if (expr.params.includes(name)) return false
+      return exprReferencesIdent(expr.body, name)
+    case 'rx-call':
+      return (
+        exprReferencesIdent(expr.source, name) ||
+        expr.args.some((a) => exprReferencesIdent(a, name))
+      )
+    case 'array':
+      return expr.elements.some((el) => exprReferencesIdent(el, name))
+    case 'template':
+      return expr.exprs.some((ex) => exprReferencesIdent(ex, name))
+    case 'object':
+      return (
+        expr.fields.some((f) => exprReferencesIdent(f.value, name)) ||
+        (expr.spreads !== undefined && expr.spreads.some((sp) => exprReferencesIdent(sp, name)))
+      )
+    case 'paren':
+      return exprReferencesIdent(expr.inner, name)
+    case 'spread':
+      return exprReferencesIdent(expr.argument, name)
+    case 'jsx-element':
+      return (
+        expr.attrs.some((a) =>
+          a.kind === 'attr'
+            ? exprReferencesIdent(a.value, name)
+            : a.kind === 'event'
+              ? exprReferencesIdent(a.handler, name)
+              : false,
+        ) || childrenReferenceIdent(expr.children, name)
+      )
+    case 'jsx-fragment':
+      return childrenReferenceIdent(expr.children, name)
+  }
+}
+
+function childrenReferenceIdent(children: ChildIR[], name: string): boolean {
+  // Only expression children carry identifiers; `text` children never do.
+  // JSX inside these callbacks is nonsense, but the walker stays total so the
+  // helper is reusable.
+  for (const c of children) {
+    if (c.kind !== 'text' && exprReferencesIdent(c.expr, name)) return true
+  }
+  return false
+}
+
+/**
  * Replace every free occurrence of identifier `name` in `expr` with
  * `replacement`. Returns null (CONSERVATIVE BAIL) when a nested arrow
  * shadows `name` — substituting inside the shadow would change
