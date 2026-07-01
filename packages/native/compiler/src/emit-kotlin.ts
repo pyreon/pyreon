@@ -27,6 +27,7 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  optionalMemberTernary,
   rewriteObjectKeys,
   seedHandlerLocals,
 } from './infer-type'
@@ -1528,9 +1529,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // ctx-pass.
   if (d.body !== undefined) {
     const bodyCtx: KotlinCtx = { ...ctx, lambdaLabel: 'derivedStateOf' }
+    // Seed this computed body's LOCAL `const`/`let` types so a later
+    // type-dependent emit resolves them — `const found = todos.find(…); return
+    // found ? … : …` lowers the ternary condition to `found != null`. The
+    // computed-body emit is the third statement-body path (after handler /
+    // function-decl decls). Restored after. Mirror of the Swift side.
+    const savedLocals = seedHandlerLocals(d.body, _kotlinExprInferCtx)
     const bodyLines = d.body
       .map((s) => `      ${emitKotlinStatement(s, 6, bodyCtx)}`)
       .join('\n')
+    _kotlinExprInferCtx.locals = savedLocals
     return [
       `val ${kotlinIdent(d.name)} by remember { derivedStateOf {`,
       bodyLines,
@@ -2601,6 +2609,18 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       // OPTIONAL as truthy-when-present (`const t = todos.find(...); t ? a : b`)
       // and `!optional` truthy-when-absent. `kotlinCondition` lowers an optional
       // cond → `<cond> != null` and a `!optional` cond → `<inner> == null`.
+      //
+      // `opt ? opt.prop : else` → `(opt?.prop ?: else)`. A bare-`val` local
+      // smart-casts inside the if-branch, but a `selected()` read is a `by
+      // remember { derivedStateOf }` DELEGATED property whose getter can't be
+      // smart-cast ("smart cast … impossible … delegated property") — the
+      // dominant master-detail shape. Optional-chaining sidesteps it uniformly
+      // (and matches the Swift lowering). `optionalMemberTernary` (infer-type.ts
+      // — the ONE bisect point) matches any structurally-equal optional cond.
+      const omt = optionalMemberTernary(e, _kotlinExprInferCtx)
+      if (omt) {
+        return `(${emitKotlinExpr(omt.opt, indent)}?.${kotlinIdent(omt.property)} ?: ${emitKotlinExpr(e.otherwise, indent)})`
+      }
       const condStr = kotlinCondition(e.cond, (x) => emitKotlinExpr(x, indent))
       return `if (${condStr}) ${emitKotlinExpr(e.then, indent)} else ${emitKotlinExpr(e.otherwise, indent)}`
     }

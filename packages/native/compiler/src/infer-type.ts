@@ -283,6 +283,19 @@ export function typeIsOptional(t: TypeIR): boolean {
 }
 
 /**
+ * Unwrap an optional/nullable `T | undefined` (a `union` carrying a null/undefined
+ * branch — the shape `.find(…)` etc. produce) to its sole non-nullish branch, so
+ * a member read on it (`selected().name`) resolves the real field type instead of
+ * degrading to `unknown` → the computed's type collapsing to `Any`. A non-union,
+ * or a union without exactly one non-nullish branch, is returned unchanged.
+ */
+export function unwrapOptionalType(t: TypeIR): TypeIR {
+  if (t.kind !== 'union') return t
+  const nonNull = t.branches.filter((b) => b.kind !== 'null' && b.kind !== 'undefined')
+  return nonNull.length === 1 ? nonNull[0]! : t
+}
+
+/**
  * Classify a CONDITION expression for optional-truthiness lowering. JS treats
  * an optional/nullable as truthy-when-PRESENT and a `!optional` as truthy-when-
  * ABSENT, but Swift/Kotlin reject an optional/nullable (and `!optional`) as a
@@ -308,6 +321,69 @@ export function classifyOptionalCondition(
     return { form: 'absent', argument: e.argument }
   }
   if (typeIsOptional(inferType(e, ctx))) return { form: 'present' }
+  return null
+}
+
+/**
+ * Structural equality over the small ExprIR subset that can be an optional
+ * "base" in the find-then-field idiom — a bare identifier (`f`), a zero/equal-
+ * arg computed/signal read (`selected()`), or a member chain (`a.b`). Lets
+ * `optionalMemberTernary` confirm the ternary's COND and the then-branch's member
+ * OBJECT are the SAME expression (`selected() ? selected().name : …`) without
+ * pulling in a full expression comparator.
+ */
+function sameOptionalBase(a: ExprIR, b: ExprIR): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'identifier' && b.kind === 'identifier') return a.name === b.name
+  if (a.kind === 'call' && b.kind === 'call') {
+    return (
+      a.args.length === b.args.length &&
+      sameOptionalBase(a.callee, b.callee) &&
+      a.args.every((arg, i) => sameOptionalBase(arg, b.args[i]!))
+    )
+  }
+  if (a.kind === 'member' && b.kind === 'member') {
+    return (
+      a.property === b.property &&
+      a.optional === b.optional &&
+      sameOptionalBase(a.object, b.object)
+    )
+  }
+  return false
+}
+
+/**
+ * Detect the `opt ? opt.prop : else` "find-then-field" idiom so the emit can
+ * lower it to optional-chaining + nil-coalescing — `(opt?.prop ?? else)` (Swift)
+ * / `(opt?.prop ?: else)` (Kotlin). Neither target narrows the optional in a
+ * ternary then-branch the way JS does:
+ *   • Swift rejects `opt != nil ? opt.prop : …` ("value of optional type 'T?'
+ *     must be unwrapped to refer to member 'prop'").
+ *   • Kotlin SMART-CASTS a bare-`val` local (`if (f != null) f.text else …`
+ *     compiles), but a `selected()` read is a `by remember { derivedStateOf }`
+ *     DELEGATED property whose getter can't be smart-cast ("smart cast to 'Item'
+ *     is impossible, because 'selected' is a delegated property") — the dominant
+ *     master-detail shape (`const selected = computed(() => items().find(…))`).
+ * Optional-chaining sidesteps both uniformly. Matches the simplest shape: COND
+ * is structurally-EQUAL to the then-branch's member OBJECT (a bare identifier, a
+ * computed/signal read, or a member chain), the then is a NON-optional single
+ * member access, and the cond infers as a present optional. Returns the optional
+ * base + property, or null (anything else falls through to the general path).
+ */
+export function optionalMemberTernary(
+  e: ExprIR,
+  ctx: InferenceCtx,
+): { opt: ExprIR; property: string } | null {
+  if (e.kind !== 'ternary') return null
+  const { cond, then } = e
+  if (
+    then.kind === 'member' &&
+    then.optional !== true &&
+    sameOptionalBase(cond, then.object) &&
+    classifyOptionalCondition(cond, ctx)?.form === 'present'
+  ) {
+    return { opt: cond, property: then.property }
+  }
   return null
 }
 
@@ -670,7 +746,16 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // `item.label` on an object-typed signal returns the field's
       // declared type. Used when an object signal is destructured in
       // a computed body (`item.price * item.qty` etc.).
-      const objType = inferType(expr.object, ctx)
+      // Member access on an OPTIONAL base (`selected().name` where `selected`
+      // is `computed(() => items().find(…))` → `T | undefined`, a union): unwrap
+      // to the non-nullish branch so the field lookup resolves the real type.
+      // Without this the read degraded to `unknown` and the computed's type
+      // collapsed to `Any` — which compiles for a bare `Text(detail)`
+      // interpolation but breaks `String(detailQty())` / arithmetic
+      // ("no exact matches in call to initializer"). The find-then-field idiom
+      // is the dominant master-detail shape; the EMIT lowers it to
+      // optional-chaining (`optionalMemberTernary`), and this resolves its TYPE.
+      const objType = unwrapOptionalType(inferType(expr.object, ctx))
       if (objType.kind === 'object') {
         const field = objType.fields.find((f) => f.name === expr.property)
         if (field) return field.type
