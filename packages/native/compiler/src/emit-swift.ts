@@ -2264,14 +2264,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           // GENERIC over SignedNumeric/Comparable — they accept Int directly,
           // and coercing them would wrongly force a Double result (e.g.
           // `Math.abs(intCount)` must stay Int) — so they are NOT coerced.
+          //
+          // `ceil`/`floor`/`round`/`trunc` are INTEGER-VALUED in JS (page
+          // counts, indices) — the Foundation funcs return Double, so the
+          // result is wrapped `Int(…)` so it stays an Int usable in `page <
+          // pageCount` and prints "4" not "4.0" (matches `inferMathCall` → Int).
           case 'round':
-            if (args.length === 1) return `(Double(${args[0]!})).rounded()`
+            if (args.length === 1) return `Int((Double(${args[0]!})).rounded())`
             break
           case 'floor':
-            if (args.length === 1) return `floor(Double(${args[0]!}))`
+            if (args.length === 1) return `Int(floor(Double(${args[0]!})))`
             break
           case 'ceil':
-            if (args.length === 1) return `ceil(Double(${args[0]!}))`
+            if (args.length === 1) return `Int(ceil(Double(${args[0]!})))`
+            break
+          case 'trunc':
+            if (args.length === 1) return `Int(trunc(Double(${args[0]!})))`
             break
           case 'abs':
             if (args.length === 1) return `abs(${args[0]!})`
@@ -2296,10 +2304,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // function with each arg coerced to Double (Swift has no implicit
         // Int→Double, so a bare Int arg would mistype; `Double(x)` is
         // identity on a Double, so coercion is safe for any arg type).
+        // (`trunc` is NOT here — it's integer-valued, handled by the explicit
+        // `Int(trunc(…))` case in the switch above.)
         const SWIFT_MATH_DOUBLE: Record<string, number> = {
           cbrt: 1, hypot: 2, sin: 1, cos: 1, tan: 1, asin: 1, acos: 1,
           atan: 1, atan2: 2, sinh: 1, cosh: 1, tanh: 1, log: 1, log10: 1,
-          log2: 1, exp: 1, trunc: 1,
+          log2: 1, exp: 1,
         }
         const arity = SWIFT_MATH_DOUBLE[e.callee.property]
         if (arity !== undefined && args.length === arity) {
