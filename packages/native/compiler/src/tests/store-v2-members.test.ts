@@ -54,7 +54,7 @@ describe('store v2 — Swift', () => {
     // filter would have dropped it and broken this body.
     expect(out).toContain('var nextId: Int = 1')
     expect(out).toContain('func addTask(_ title: String)')
-    expect(out).toContain('tasks = tasks + [Task(id: nextId, title: title, done: false)]')
+    expect(out).toContain('tasks = (tasks + [Task(id: nextId, title: title, done: false)])')
     // `.update` lowering composes inside store method bodies.
     expect(out).toContain('nextId = nextId + 1')
     expect(out).toContain('func clear() { tasks = [] }')

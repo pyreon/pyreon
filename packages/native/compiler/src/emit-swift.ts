@@ -24,6 +24,7 @@ import {
   synthLiteralStructName,
 } from './expr-utils'
 import {
+  buildArraySpreadConcat,
   buildInferenceCtx,
   classifyOptionalCondition,
   emptyInferenceCtx,
@@ -3063,18 +3064,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `Group {\n${e.children.map((c) => pad + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
     }
     case 'array': {
-      // Array spread (`[...todos(), x]`) → Swift `+` concat (preserves
-      // source's value-semantics). Only handle the single-spread form;
-      // multi-spread degrades to verbatim emit (which would be invalid
-      // Swift but flagged at parse time).
-      const spreadIdx = e.elements.findIndex((el) => el.kind === 'spread')
-      if (spreadIdx === 0) {
-        const spread = e.elements[0]! as Extract<ExprIR, { kind: 'spread' }>
-        const tail = e.elements.slice(1)
-        const tailRendered = tail.map((el) => emitSwiftExpr(el, indent)).join(', ')
-        if (tail.length === 0) return emitSwiftExpr(spread.argument, indent)
-        return `${emitSwiftExpr(spread.argument, indent)} + [${tailRendered}]`
-      }
+      // Array spread → Swift `+` concat (preserves value-semantics). General
+      // form, ANY position / count of spreads: walk the elements, emit each
+      // SPREAD's argument bare and group consecutive NON-spread elements into
+      // an array literal, then join the parts with ` + `:
+      //   [...a, ...b]    → a + b
+      //   [...a, 9]       → (a + [9])      (the add-to-list idiom)
+      //   [9, ...a]       → ([9] + a)
+      //   [...a, 9, ...b] → (a + [9] + b)
+      //   [...a]          → a
+      // The whole concat is PARENTHESISED when there are ≥2 parts so a method
+      // applied directly to the literal binds to the concat result, not just
+      // the trailing array (`[...a, 9].length` → `(a + [9]).count`, not the
+      // pre-fix `a + [9].count` where `.count` bound to `[9]` → a type error).
+      // Pre-fix only a single LEADING spread + literal tail emitted, multi-
+      // spread emitted `a + [b]` (wrapping b), and nothing was parenthesised.
+      const spreadConcat = buildArraySpreadConcat(
+        e.elements,
+        (el) => emitSwiftExpr(el, indent),
+        (r) => `[${r}]`,
+      )
+      if (spreadConcat !== null) return spreadConcat
       return `[${e.elements.map((el) => emitSwiftExpr(el, indent)).join(', ')}]`
     }
     case 'spread':

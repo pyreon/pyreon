@@ -20,6 +20,7 @@ import {
   synthLiteralStructName,
 } from './expr-utils'
 import {
+  buildArraySpreadConcat,
   buildInferenceCtx,
   classifyOptionalCondition,
   indexedArrayCallback,
@@ -2621,16 +2622,26 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `Column {\n${body}\n${' '.repeat(indent)}}`
     }
     case 'array': {
-      // Array spread (`[...todos(), x]`) → Kotlin `+` concat
-      // (preserves source's value-semantics).
-      const spreadIdx = e.elements.findIndex((el) => el.kind === 'spread')
-      if (spreadIdx === 0) {
-        const spread = e.elements[0]! as Extract<ExprIR, { kind: 'spread' }>
-        const tail = e.elements.slice(1)
-        const tailRendered = tail.map((el) => emitKotlinExpr(el, indent)).join(', ')
-        if (tail.length === 0) return emitKotlinExpr(spread.argument, indent)
-        return `${emitKotlinExpr(spread.argument, indent)} + listOf(${tailRendered})`
-      }
+      // Array spread → Kotlin `+` concat (value-semantics). General form, ANY
+      // position / count of spreads: emit each SPREAD's argument bare and group
+      // consecutive NON-spread elements into a `listOf(...)`, then join with
+      // ` + `:
+      //   [...a, ...b]    → a + b
+      //   [...a, 9]       → (a + listOf(9))
+      //   [9, ...a]       → (listOf(9) + a)
+      //   [...a, 9, ...b] → (a + listOf(9) + b)
+      //   [...a]          → a
+      // Parenthesised for ≥2 parts so a method on the literal binds to the
+      // whole concat (`[...a, ...b].map { … }` → `(a + b).map { … }`, not the
+      // pre-fix `a + listOf(b).map { … }` which both wrapped b — a kotlinc
+      // "cannot infer type R" — AND would only map the tail). Mirror of the
+      // Swift array-spread fix.
+      const spreadConcat = buildArraySpreadConcat(
+        e.elements,
+        (el) => emitKotlinExpr(el, indent),
+        (r) => `listOf(${r})`,
+      )
+      if (spreadConcat !== null) return spreadConcat
       return `listOf(${e.elements.map((el) => emitKotlinExpr(el, indent)).join(', ')})`
     }
     case 'spread':

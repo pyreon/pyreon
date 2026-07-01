@@ -352,6 +352,45 @@ export function indexedArrayCallback(
   return args.length === 1 && cb?.kind === 'arrow' && cb.params.length === 2 ? cb : null
 }
 
+/**
+ * Build the native concat expression for an array literal containing one or
+ * more spreads (`[...a, 9, ...b]`). Target-neutral algorithm shared by both
+ * emitters: emit each SPREAD's argument bare and group consecutive NON-spread
+ * elements into a literal (`litWrap` renders `[e1, e2]` on Swift / `listOf(e1,
+ * e2)` on Kotlin), then join the parts with ` + `. Parenthesised for ≥2 parts
+ * so a method applied to the literal binds to the WHOLE concat, not just the
+ * trailing run (`[...a, 9].length` → `(a + [9]).count`, not `a + [9].count`).
+ * Returns null when there is NO spread (the caller emits a plain literal).
+ *   [...a, ...b] → a + b   ·   [...a, 9] → (a + [9])   ·   [...a] → a
+ */
+export function buildArraySpreadConcat(
+  elements: ExprIR[],
+  emitEl: (e: ExprIR) => string,
+  litWrap: (rendered: string) => string,
+): string | null {
+  if (!elements.some((el) => el.kind === 'spread')) return null
+  const parts: string[] = []
+  let litRun: ExprIR[] = []
+  const flushLit = () => {
+    if (litRun.length > 0) {
+      parts.push(litWrap(litRun.map(emitEl).join(', ')))
+      litRun = []
+    }
+  }
+  for (const el of elements) {
+    if (el.kind === 'spread') {
+      flushLit()
+      parts.push(emitEl(el.argument))
+    } else {
+      litRun.push(el)
+    }
+  }
+  flushLit()
+  if (parts.length === 0) return litWrap('')
+  if (parts.length === 1) return parts[0]!
+  return `(${parts.join(' + ')})`
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {

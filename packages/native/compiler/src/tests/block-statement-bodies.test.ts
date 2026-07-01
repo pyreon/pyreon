@@ -98,7 +98,7 @@ describe('Parser-A — const arrow function as DeclIR.function', () => {
     // Phase 2.5: nextId++ emits an IIFE that preserves post-increment
     // semantics (old value AND side-effect). Pre-fix shape was
     // `nextId + 1` — wrong VALUE + dropped side-effect.
-    expect(out.code).toContain('todos = todos + [{ let __v = nextId; nextId += 1; return __v }()]')
+    expect(out.code).toContain('todos = (todos + [{ let __v = nextId; nextId += 1; return __v }()])')
     expect(out.code).toContain('draft = ""')
   })
 
