@@ -51,6 +51,17 @@ const map1p = `${H}export function App(){
   const out = computed(() => String(ns().map(x => x * 2).length))
   return (<Stack><Text>{out}</Text></Stack>)
 }`
+// MULTI-statement block body. The parser stores it in `stmts` (with `body` set
+// to an empty-literal SENTINEL); the indexed emit used to read only `body` →
+// silently dropped the whole body while compiling clean. A SINGLE-statement
+// block collapses to `body` (that's why `forEachIdx` above never caught this).
+const forEachMulti = `${H}export function App(){
+  const a = signal(0)
+  const b = signal(0)
+  const ns = signal([1, 2, 3])
+  const onTap = () => { ns().forEach((x, i) => { a.set(x); b.set(i) }) }
+  return (<Stack><Button onPress={onTap}>x</Button></Stack>)
+}`
 
 const sw = (src: string) => transform(src, { target: 'swift' }).code
 const kt = (src: string) => transform(src, { target: 'kotlin' }).code
@@ -69,6 +80,20 @@ describe('P1 — array-method 2-param (index) callback lowers (was a silent mis-
     const code = kt(mapIdx)
     expect(code).toContain('.mapIndexed(')
     expect(code).toContain('i, x ->')
+  })
+  it('Swift: multi-statement `.forEach((x,i) => { … })` emits EVERY statement (no silent drop)', () => {
+    const code = sw(forEachMulti)
+    expect(code).toContain('.enumerated().forEach(')
+    expect(code).toContain('a = x') // element write kept (x = element, index-swapped bind)
+    expect(code).toContain('b = i') // index write kept
+    expect(code).not.toContain('in ""') // NOT the dropped-body empty sentinel
+  })
+  it('Kotlin: multi-statement `.forEach((x,i) => { … })` emits EVERY statement (no silent drop)', () => {
+    const code = kt(forEachMulti)
+    expect(code).toContain('.forEachIndexed(')
+    expect(code).toContain('a = x')
+    expect(code).toContain('b = i')
+    expect(code).not.toContain('-> ""')
   })
   it('Kotlin: `.forEach((x,i))` → `forEachIndexed`', () => {
     expect(kt(forEachIdx)).toContain('.forEachIndexed(')
@@ -89,6 +114,12 @@ describe('P1 — array-method 2-param (index) callback lowers (was a silent mis-
     () => {
       expect(validateSwiftTypecheck(sw(mapIdx)).ok, validateSwiftTypecheck(sw(mapIdx)).error ?? '').toBe(true)
       expect(validateSwiftTypecheck(sw(forEachIdx)).ok, validateSwiftTypecheck(sw(forEachIdx)).error ?? '').toBe(true)
+      // multi-statement body must ALSO compile (not just emit) — the whole
+      // point: it used to emit an empty `""` body and compile clean.
+      expect(
+        validateSwiftTypecheck(sw(forEachMulti)).ok,
+        validateSwiftTypecheck(sw(forEachMulti)).error ?? '',
+      ).toBe(true)
     },
     180_000,
   )
@@ -97,6 +128,10 @@ describe('P1 — array-method 2-param (index) callback lowers (was a silent mis-
     () => {
       expect(validateKotlin(kt(mapIdx)).ok, validateKotlin(kt(mapIdx)).error ?? '').toBe(true)
       expect(validateKotlin(kt(forEachIdx)).ok, validateKotlin(kt(forEachIdx)).error ?? '').toBe(true)
+      expect(
+        validateKotlin(kt(forEachMulti)).ok,
+        validateKotlin(kt(forEachMulti)).error ?? '',
+      ).toBe(true)
     },
     180_000,
   )
