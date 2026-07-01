@@ -9,6 +9,7 @@
  *   mcp_overview              — Discoverability map: every tool's "when to use" + example, in one call
  *   get_api                   — Look up any Pyreon API: signature, usage, common mistakes
  *   validate                  — Check a code snippet for Pyreon anti-patterns
+ *   explain_reactivity        — The compiler's per-expression reactivity verdict (live / baked-static / footgun) for a snippet
  *   migrate_react             — Convert React code to idiomatic Pyreon
  *   diagnose                  — Parse an error message into structured fix information
  *   explain_error             — Assemble a failure dossier from a full error report (incl. reactiveTrace)
@@ -53,6 +54,7 @@ import {
 } from './anti-patterns'
 import { API_REFERENCE } from './api-reference'
 import { buildErrorDossier, parseErrorReport } from './explain-error'
+import { explainReactivity } from './explain-reactivity'
 import {
   findChangelog,
   formatChangelog,
@@ -197,6 +199,28 @@ server.tool(
     return textResult(
       `Found ${merged.length} issue${merged.length === 1 ? '' : 's'}:\n\n${issueText}`,
     )
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tool: explain_reactivity
+// ═══════════════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'explain_reactivity',
+  {
+    code: z.string(),
+    filename: z.string().optional(),
+  },
+  async ({ code, filename }) => {
+    // The compiler ALREADY decides, per expression, whether code is reactive
+    // while emitting codegen. `explainReactivity` surfaces that ground truth:
+    // every JSX expression classified live / baked-static / hoisted, merged with
+    // the `detectPyreonPatterns` footguns. Feeding this to an AI agent BEFORE
+    // it commits means it sees the compiler's verdict — it cannot ship a
+    // stale-closure / destructured-props / static-when-meant-reactive bug
+    // without the map showing it. `validate` reports bugs; this reports the map.
+    return textResult(explainReactivity(code, filename ?? 'snippet.tsx').text)
   },
 )
 

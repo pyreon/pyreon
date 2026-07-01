@@ -7,7 +7,7 @@ description: Model Context Protocol server that gives AI coding assistants deep 
 
 <PackageBadge name="@pyreon/mcp" href="/docs/mcp" />
 
-The server runs as a subprocess over **stdio transport**, so any MCP-compatible client can connect by spawning it. It exposes **16 tools** spanning discovery, API lookup, static validation, React migration, error diagnosis, project introspection, content-collection navigation, and project-wide audits. It is read-only and deterministic — every tool returns **text only**; nothing mutates your files and no LLM is embedded in the server itself.
+The server runs as a subprocess over **stdio transport**, so any MCP-compatible client can connect by spawning it. It exposes **17 tools** spanning discovery, API lookup, static validation, React migration, error diagnosis, project introspection, content-collection navigation, and project-wide audits. It is read-only and deterministic — every tool returns **text only**; nothing mutates your files and no LLM is embedded in the server itself.
 
 ## Installation
 
@@ -115,6 +115,7 @@ Pick the tool that matches what you're trying to do — or call [`mcp_overview`]
 - **Discover the tool surface** — [`mcp_overview`](#mcp_overview) (start here)
 - **Look up an API** — [`get_api`](#get_api)
 - **Validate a snippet (React + Pyreon + native anti-patterns)** — [`validate`](#validate)
+- **See the compiler's reactivity verdict for a snippet** — [`explain_reactivity`](#explain_reactivity)
 - **Convert React code to Pyreon** — [`migrate_react`](#migrate_react)
 - **Diagnose a Pyreon error string** — [`diagnose`](#diagnose)
 - **Explain a captured crash with its reactive run-up** — [`explain_error`](#explain_error)
@@ -131,13 +132,14 @@ Pick the tool that matches what you're trying to do — or call [`mcp_overview`]
 
 ## Tools reference
 
-The server registers **16 tools**. The table below is the complete surface — every tool, its parameters, and what it returns.
+The server registers **17 tools**. The table below is the complete surface — every tool, its parameters, and what it returns.
 
 | Tool | Parameters | Returns |
 | ---- | ---------- | ------- |
 | [`mcp_overview`](#mcp_overview) | *(none)* | Markdown table of every tool with a "when to use" + one-line example |
 | [`get_api`](#get_api) | `package: string`, `symbol: string` | Signature + usage example + notes + common mistakes for one API |
 | [`validate`](#validate) | `code: string`, `filename?: string` | Merged React + Pyreon + native anti-pattern diagnostics (line/col, fix, fixable flag) |
+| [`explain_reactivity`](#explain_reactivity) | `code: string`, `filename?: string` | The compiler's per-expression reactivity verdict (live / baked-static / footgun) over an annotated source view |
 | [`migrate_react`](#migrate_react) | `code: string`, `filename?: string` | Rewritten Pyreon code + applied-changes list + remaining manual issues |
 | [`diagnose`](#diagnose) | `error: string`, `componentSource?: string`, `filename?: string`, `reactiveTrace?: ReactiveTraceEntry[]`, `phase?: string` | Probable cause + fix + related docs; optional detector + reactive-trace enrichment |
 | [`explain_error`](#explain_error) | `report: string`, `componentSource?: string` | A structured failure dossier from a full `ErrorContext` report |
@@ -155,7 +157,7 @@ The server registers **16 tools**. The table below is the complete surface — e
 `ReactiveTraceEntry` is `{ name?: string; prev: string; next: string; timestamp: number }`.
 
 :::note{title="14 in the overview, 16 registered"}
-`mcp_overview()` and the `get_api` database are generated from the package manifest, which currently documents **14** of the 16 tools — it reports **"MCP Tools (14)"**. The two content-navigation tools, `get_content_collection` and `get_content_entry`, are fully registered and callable but not yet listed in the manifest, so they don't appear in the overview table. Call them directly by name; they're documented in full below.
+`mcp_overview()` and the `get_api` database are generated from the package manifest, which currently documents **15** of the 17 tools — it reports **"MCP Tools (15)"**. The two content-navigation tools, `get_content_collection` and `get_content_entry`, are fully registered and callable but not yet listed in the manifest, so they don't appear in the overview table. Call them directly by name; they're documented in full below.
 :::
 
 ---
@@ -177,7 +179,7 @@ This is the intended **first call** for any agent connecting to the server: it e
 **Response shape:**
 
 ```text
-**MCP Tools (14):**
+**MCP Tools (15):**
 
 | Tool | When to use | Example |
 |---|---|---|
@@ -265,6 +267,59 @@ Found 2 issues:
 - **Pass a complete file**, not a partial expression. The detectors expect every `import` and `function` to be present; a fragment yields no diagnostics, which reads as "clean".
 - **Supply `filename`** for path-sensitive detectors (e.g. the SSR/server-only exemption logic). Without it, a diagnostic may misfire or fail to fire.
 - It's a **pre-commit / before-paste** tool — running it after the code is merged is fine, but the max value is catching the bug before it ships.
+:::
+
+---
+
+### explain_reactivity
+
+The compiler's **per-expression reactivity verdict** for a snippet. The Pyreon compiler already decides, while emitting codegen, whether each JSX expression is reactive or baked static — `explain_reactivity` surfaces that ground truth (via `analyzeReactivity`) instead of discarding it. Where [`validate`](#validate) reports *bugs*, this reports the whole *map*: every expression classified, so an agent sees a binding that silently won't update **before** it ships the stale-closure / destructured-props / static-when-meant-reactive bug.
+
+Each JSX expression is tagged:
+
+- **`◆ live`** — re-renders when its signals change (reactive text).
+- **`◆ live prop` / `◆ live attr`** — a reactive component prop / DOM attribute.
+- **`○ baked once`** — rendered once, never updates (no signal read). Often correct (literal text), a bug only when it was *meant* to update.
+- **`○ hoisted static`** — hoisted to module scope as a constant.
+- **`⚠ footgun`** — a detected anti-pattern (carries the `detectPyreonPatterns` code + fix).
+
+**Parameters:**
+
+| Param      | Type      | Description                                                          |
+| ---------- | --------- | ------------------------------------------------------------------- |
+| `code`     | `string`  | The component source to analyze (a complete file with JSX bindings) |
+| `filename` | `string?` | Parse-mode hint (`tsx` vs `jsx`). Defaults to `snippet.tsx`         |
+
+**Example call:**
+
+```json
+{
+  "code": "function Cart(props) {\n  const { qty } = props\n  const price = signal(9.99)\n  return <div>{qty} × {price()}</div>\n}"
+}
+```
+
+```text
+Reactivity map for snippet.tsx — 1 live · 1 baked-static · 1 footgun
+
+   2 |   const { qty } = props
+             ^ ⚠ footgun [props-destructured-body] — Destructuring `props` … dead snapshots …
+   4 |   return <div>{qty} × {price()}</div>
+                     ^ ○ baked once — never re-renders (no signal read here)
+                             ^ ◆ live — re-renders whenever its signals change
+
+⚠ 1 footgun:
+  • props-destructured-body (line 2): …
+
+Note: 1 expression is baked STATIC. If any was meant to update reactively, read a
+signal by CALLING it (`count()`), read `props.x` directly instead of destructuring …
+```
+
+The `{qty}` read — from the destructured `props` — is flagged **baked once** right at the source: the agent sees the dead binding without running anything.
+
+:::warning{title="Common mistakes"}
+- **It's not `validate`.** `validate` lists anti-patterns; `explain_reactivity` classifies *every* expression, so you catch a binding that silently won't update even when no footgun fires.
+- **Pass a complete component**, not a fragment — the compiler needs full JSX to classify bindings; a partial expression yields "No reactive expressions detected".
+- **`baked once` is not always an error.** Static is correct for literal / one-time content; it's a bug only when that expression was *meant* to update. The tool flags the shape; you decide intent.
 :::
 
 ---
