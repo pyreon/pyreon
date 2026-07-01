@@ -388,6 +388,50 @@ describe('computeAffectedFlags', () => {
         computeAffectedFlags({ changed: ['.claude/rules/anti-patterns.md'], workspaces: WS, root: ROOT }),
       ).toBe('')
     })
+
+    it('docs/patterns/** ADDITIVELY seeds BOTH its owner (@pyreon/docs) AND @pyreon/mcp', () => {
+      // Regression guard for the shadowing bug: in the real repo `docs/patterns/**`
+      // is OWNED by the @pyreon/docs workspace, so a fallback-only ("else if
+      // findOwningWorkspace is null") consumer branch never reaches mcp → its
+      // patterns.test.ts silently stops. The seed MUST be additive. (The
+      // sibling tests above use a fixture WITHOUT @pyreon/docs, so they can't
+      // catch this — this one adds the owner to expose the shadow.)
+      const WS_MCP_DOCS: Workspace[] = [
+        ...WS_MCP,
+        { name: '@pyreon/docs', dir: `${ROOT}/docs`, deps: [] },
+      ]
+      const out = computeAffectedFlags({
+        changed: ['docs/patterns/keyed-lists.md'],
+        workspaces: WS_MCP_DOCS,
+        root: ROOT,
+      })
+      expect(out).toContain('--filter=@pyreon/mcp')
+      expect(out).toContain('--filter=@pyreon/docs')
+      // …and the tools cell still narrows to mcp (the parser test runs).
+      expect(
+        computeAffectedFlags({
+          changed: ['docs/patterns/keyed-lists.md'],
+          workspaces: WS_MCP_DOCS,
+          category: 'tools',
+          root: ROOT,
+        }),
+      ).toBe('--filter=@pyreon/mcp')
+    })
+
+    // `--has-affected` (the bootstrap + test/typecheck-cell gate) is just
+    // `computeAffectedFlags(...) !== ''`: a doc-INPUT change is affected=true
+    // (its consumer is seeded) even though it is docs-only for the heavy jobs;
+    // a pure-prose docs change is affected=false → those jobs skip.
+    it('a doc-INPUT change is has-affected=true; pure prose is has-affected=false', () => {
+      const hasAffected = (changed: string[] | null) =>
+        computeAffectedFlags({ changed, workspaces: WS_MCP, root: ROOT }) !== ''
+      expect(hasAffected(['.claude/rules/anti-patterns.md'])).toBe(true)
+      expect(hasAffected(['docs/patterns/x.md'])).toBe(true)
+      expect(hasAffected(['CLAUDE.md'])).toBe(false)
+      expect(hasAffected(['packages/fundamentals/code/README.md'])).toBe(false)
+      expect(hasAffected([])).toBe(false)
+      expect(hasAffected(null)).toBe(true) // unknowable diff → fail-closed → run
+    })
   })
 
   it('narrow change in one category → only that category emits flags; others are empty', () => {

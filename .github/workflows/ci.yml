@@ -198,7 +198,16 @@ jobs:
   # exactly the lib/ that THIS run's bootstrap produced.
   bootstrap:
     name: Bootstrap
-    needs: install
+    # Skip the ~210s lib/ build when NOTHING is affected — a pure-prose docs PR
+    # (CLAUDE.md, a README). Gated on `affected` (NOT `code`): a doc-INPUT change
+    # (anti-patterns.md → @pyreon/mcp) is code=false but affected=true, and
+    # test-cell then needs lib/, so bootstrap must run. Every lib/ consumer
+    # (test-cell, build, verify-modes, budgets, distribution, browser/rust,
+    # e2e, scaffold) is gated on `affected`/`code` or its own decide, so nothing
+    # downstream needs lib/ when this skips. Fail-closed: also runs if `changes`
+    # itself failed.
+    needs: [install, changes]
+    if: ${{ (success() && needs.changes.outputs.affected == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -310,7 +319,12 @@ jobs:
   # sensitive `--sequential` path.
   typecheck-cell:
     name: typecheck (${{ matrix.category }})
-    needs: install
+    # Skip the whole matrix when nothing is affected (pure-prose docs PR). Gated
+    # on `affected` (NOT `code`) so a doc-INPUT change still typechecks its
+    # consuming package. The `typecheck` aggregator treats a skipped cell as a
+    # pass. Fail-closed: also runs if `changes` itself failed.
+    needs: [install, changes]
+    if: ${{ (success() && needs.changes.outputs.affected == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -396,11 +410,12 @@ jobs:
         run: |
           RESULT='${{ needs.typecheck-cell.result }}'
           echo "typecheck-cell=$RESULT"
-          # `success` = every cell passed (or skipped via empty filter,
-          # which exits 0). `skipped` only happens if all cells got
-          # `if:` filtered, which we don't do. Anything else = fail.
-          if [ "$RESULT" = "success" ]; then
-            echo "All typecheck cells passed."
+          # `success` = every cell passed (or self-skipped via empty filter,
+          # which exits 0). `skipped` = the whole matrix was `if:`-gated off
+          # because nothing is affected (a pure-prose docs PR) — a pass, not a
+          # regression. Anything else (failure/cancelled) = fail.
+          if [ "$RESULT" = "success" ] || [ "$RESULT" = "skipped" ]; then
+            echo "All typecheck cells passed (or skipped: nothing affected)."
             exit 0
           fi
           echo "::error::One or more typecheck cells failed ($RESULT)"
@@ -446,8 +461,24 @@ jobs:
     needs: install
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Two SEPARATE skip signals, because "docs-only" is too coarse for two job
+    # classes:
+    #   • code     = a non-docs source file changed. Gates the READ-NOTHING
+    #                heavy jobs (build, verify-modes, coverage, browser/rust,
+    #                audit-types, budgets, distribution, manifest-depth,
+    #                pyreon-lint-gate, client-bundle) — they never read docs.
+    #   • affected = ANY workspace is affected, INCLUDING a doc-INPUT change
+    #                mapped to its consuming package (anti-patterns.md +
+    #                docs/patterns/** → @pyreon/mcp, whose tests PARSE them).
+    #                Gates bootstrap + the test/typecheck cells — those MUST run
+    #                on a doc-input change even though it's docs-only for the
+    #                heavy jobs.
+    # They diverge exactly on a doc-INPUT change (code=false, affected=true). A
+    # pure-prose docs PR is code=false AND affected=false → everything heavy
+    # skips, only the fast gates run.
     outputs:
       code: ${{ steps.detect.outputs.code }}
+      affected: ${{ steps.detect.outputs.affected }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -455,24 +486,29 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
-      - name: Detect non-docs (code) changes
+      - name: Detect changes (code + affected)
         id: detect
         run: |
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
-            echo "Non-PR event (${{ github.event_name }}) → code=true (full run)."
+            echo "affected=true" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event (${{ github.event_name }}) → code=true, affected=true (full run)."
             exit 0
           fi
           git fetch origin "${{ github.base_ref }}" || true
-          CODE=$(bun run scripts/affected.ts --code-changed --base=origin/${{ github.base_ref }}) || CODE=true
-          # Fail-closed: ONLY a clean "false" narrows the run to docs-only. Any
-          # other value (empty output, a non-zero affected.ts exit, an
-          # unexpected string) defaults to `true` → run the full set. A skipped
-          # heavy job reports success to branch protection, so a mis-detection
-          # must never silently disable the required checks.
+          BASE="origin/${{ github.base_ref }}"
+          # Fail-closed: ONLY a clean "false" narrows the run. Any other value
+          # (empty output, a non-zero affected.ts exit, an unexpected string)
+          # defaults to `true` → run the full set. A skipped heavy job reports
+          # success to branch protection, so a mis-detection must never silently
+          # disable the required checks.
+          CODE=$(bun run scripts/affected.ts --code-changed --base="$BASE") || CODE=true
           if [ "$CODE" != "false" ]; then CODE=true; fi
+          AFFECTED=$(bun run scripts/affected.ts --has-affected --base="$BASE") || AFFECTED=true
+          if [ "$AFFECTED" != "false" ]; then AFFECTED=true; fi
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
-          echo "Code (non-docs) changed: $CODE"
+          echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
+          echo "Code (non-docs) changed: $CODE | Any package affected: $AFFECTED"
 
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
@@ -506,7 +542,16 @@ jobs:
     # cheap gate regardless of how the skipped expensive checks resolve.
     # The same `[bootstrap, lint, typecheck]` gate is applied to every
     # other lib-needing expensive job below.
-    needs: [bootstrap, lint, typecheck]
+    # Skip the whole matrix when nothing is affected (pure-prose docs PR). Gated
+    # on `affected` (NOT `code`): a doc-INPUT change (anti-patterns.md /
+    # docs/patterns/** → @pyreon/mcp) is docs-only for the heavy jobs yet its
+    # parser test MUST run, so it stays affected=true and this cell runs mcp. The
+    # `test` aggregator treats a skipped cell as a pass. Fail-closed: also runs
+    # if `changes` itself failed. (bootstrap/lint/typecheck cost-gate preserved —
+    # a lint/typecheck failure skips this via the failure() arm requiring
+    # changes.result != 'success', which is false when they, not changes, fail.)
+    needs: [bootstrap, lint, typecheck, changes]
+    if: ${{ (success() && needs.changes.outputs.affected == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     # The `native` cell runs the heaviest tests in the repo (swiftc / kotlinc /
     # cargo compiles in the native-compiler + runtime gates) and consistently
@@ -591,8 +636,11 @@ jobs:
         run: |
           RESULT='${{ needs.test-cell.result }}'
           echo "test-cell=$RESULT"
-          if [ "$RESULT" = "success" ]; then
-            echo "All test cells passed."
+          # `success` = every cell passed (or self-skipped via empty filter).
+          # `skipped` = the whole matrix was `if:`-gated off because nothing is
+          # affected (a pure-prose docs PR) — a pass, not a regression.
+          if [ "$RESULT" = "success" ] || [ "$RESULT" = "skipped" ]; then
+            echo "All test cells passed (or skipped: nothing affected)."
             exit 0
           fi
           echo "::error::One or more test cells failed ($RESULT)"
