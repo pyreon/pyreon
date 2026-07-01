@@ -28,6 +28,7 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  objectLengthRangeForm,
   optionalMemberTernary,
   rewriteObjectKeys,
   seedHandlerLocals,
@@ -1970,15 +1971,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         if (e.callee.property === 'isArray') return 'true'
         if (e.callee.property === 'from') {
+          // `Array.from({ length: n }, (_, i) => body)` → `(0 until n).map { i -> body }`.
+          const range = objectLengthRangeForm(e)
+          if (range !== null) {
+            return `(0 until ${emitKotlinExpr(range.lenExpr, indent)}).map({ ${kotlinIdent(range.indexParam)} -> ${emitKotlinExpr(range.body, indent)} })`
+          }
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitKotlinExpr(mapForm, indent)
           if (e.args.length === 1 && e.args[0]!.kind !== 'object') {
             return `(${emitKotlinExpr(e.args[0]!, indent)}).toList()`
           }
-          // `Array.from({ length: n }, …)` RANGE form (object-literal first
-          // arg) is not yet lowered — name it loudly rather than drop silently.
+          // Any OTHER `Array.from({ length: n }, …)` shape — the 1-arg form (no
+          // map fn), a block-body callback, or one that references the
+          // (always-`undefined`) element param — is not lowered: name it loudly
+          // rather than drop it.
           _emitWarnings.push(
-            '`Array.from({ length: n }, …)` (the numeric-range form) is not yet supported on native — this call keeps the raw `Array.from(` emit (a kotlinc error at the site). Use `(0 until n).map { … }` directly, or a numeric loop.',
+            '`Array.from({ length: n })` without an `(_, index) => expr` map callback is not supported on native — this call keeps the raw `Array.from(` emit (a kotlinc error at the site). Use `Array.from({ length: n }, (_, i) => …)`, `(0 until n).map { … }`, or a numeric loop.',
           )
         }
       }

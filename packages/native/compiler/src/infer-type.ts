@@ -18,6 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
+import { exprReferencesIdent } from './expr-utils'
 import type { DeclIR, ExprIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 
 export interface InferenceCtx {
@@ -532,6 +533,49 @@ export function classifyNegativeSlice(
  * shapes itself). The `{ length: n }` RANGE form (object-literal first arg) is
  * excluded here — it needs a numeric-range source the caller warns about.
  */
+/**
+ * Classify the numeric-RANGE form of `Array.from` —
+ * `Array.from({ length: n }, (_, i) => expr)` — so the emitters can lower it to
+ * `(0..<n).map { i in expr }` (Swift) / `(0 until n).map { i -> expr }`
+ * (Kotlin). Returns the length expr, the INDEX param name (the 2nd arrow param,
+ * bound to the range variable), and the body — or null when it isn't this form.
+ *
+ * Requirements (anything else falls through to the caller's named warning):
+ *   • first arg is exactly `{ length: <expr> }` (one field, no spreads);
+ *   • second arg is a ≥2-param arrow with an EXPRESSION body (block bodies
+ *     deferred);
+ *   • the ELEMENT param (the 1st) is NOT referenced in the body — a `{ length }`
+ *     source yields `undefined` elements, so there's no faithful native value
+ *     for it; referencing it defers to the warning rather than mis-emit.
+ */
+export function objectLengthRangeForm(
+  expr: ExprIR,
+): { lenExpr: ExprIR; indexParam: string; body: ExprIR } | null {
+  if (
+    expr.kind !== 'call' ||
+    expr.callee.kind !== 'member' ||
+    expr.callee.object.kind !== 'identifier' ||
+    expr.callee.object.name !== 'Array' ||
+    expr.callee.property !== 'from' ||
+    expr.args.length !== 2
+  ) {
+    return null
+  }
+  const obj = expr.args[0]!
+  const fn = expr.args[1]!
+  if (
+    obj.kind !== 'object' ||
+    obj.spreads !== undefined ||
+    obj.fields.length !== 1 ||
+    obj.fields[0]!.name !== 'length'
+  ) {
+    return null
+  }
+  if (fn.kind !== 'arrow' || fn.params.length < 2 || fn.stmts !== undefined) return null
+  if (exprReferencesIdent(fn.body, fn.params[0]!)) return null
+  return { lenExpr: obj.fields[0]!.value, indexParam: fn.params[1]!, body: fn.body }
+}
+
 export function arrayFromMapRewrite(expr: ExprIR): ExprIR | null {
   if (
     expr.kind !== 'call' ||
@@ -576,6 +620,15 @@ export function inferArrayStaticCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | 
   const fn = expr.callee.property
   if (fn === 'isArray') return { kind: 'boolean' }
   if (fn === 'from') {
+    // Range form: `Array.from({ length: n }, (_, i) => body)` → the mapped
+    // array whose element is the body's type (index bound to a number).
+    const range = objectLengthRangeForm(expr)
+    if (range !== null) {
+      const scratch: InferenceCtx = { ...ctx, locals: new Map(ctx.locals) }
+      scratch.locals.set(range.indexParam, { kind: 'number' })
+      const el = inferType(range.body, scratch)
+      return { kind: 'array', element: el }
+    }
     const mapForm = arrayFromMapRewrite(expr)
     if (mapForm !== null) return inferType(mapForm, ctx)
     if (expr.args.length === 1 && expr.args[0]!.kind !== 'object') {

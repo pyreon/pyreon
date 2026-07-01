@@ -33,6 +33,7 @@ import {
   indexedArrayCallback,
   inferReturnType,
   inferType,
+  objectLengthRangeForm,
   optionalMemberTernary,
   rewriteObjectKeys,
   seedHandlerLocals,
@@ -2329,17 +2330,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         if (e.callee.property === 'isArray') return 'true'
         if (e.callee.property === 'from') {
+          // `Array.from({ length: n }, (_, i) => body)` → `(0..<n).map { i in body }`.
+          const range = objectLengthRangeForm(e)
+          if (range !== null) {
+            return `(0..<${emitSwiftExpr(range.lenExpr, indent)}).map({ ${swiftIdent(range.indexParam)} in ${emitSwiftExpr(range.body, indent)} })`
+          }
           const mapForm = arrayFromMapRewrite(e)
           if (mapForm !== null) return emitSwiftExpr(mapForm, indent)
           if (e.args.length === 1 && e.args[0]!.kind !== 'object') {
             return `Array(${emitSwiftExpr(e.args[0]!, indent)})`
           }
-          // `Array.from({ length: n }, …)` RANGE form (object-literal first
-          // arg) is not yet lowered — it needs a numeric-range source. Name it
-          // loudly (the raw emit below then fails at the site) rather than drop
-          // it silently.
+          // Any OTHER `Array.from({ length: n }, …)` shape — the 1-arg form (no
+          // map fn), a block-body callback, or one that references the
+          // (always-`undefined`) element param — is not lowered: name it loudly
+          // (the raw emit below then fails at the site) rather than drop it.
           _emitWarnings.push(
-            '`Array.from({ length: n }, …)` (the numeric-range form) is not yet supported on native — this call keeps the raw `Array.from(` emit (a swiftc error at the site). Use `Array(0..<n).map { … }` directly, or a numeric loop.',
+            '`Array.from({ length: n })` without an `(_, index) => expr` map callback is not supported on native — this call keeps the raw `Array.from(` emit (a swiftc error at the site). Use `Array.from({ length: n }, (_, i) => …)`, `Array(0..<n).map { … }`, or a numeric loop.',
           )
         }
       }

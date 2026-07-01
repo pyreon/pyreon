@@ -62,8 +62,11 @@ const isArr = A(`  const out = computed(() => Array.isArray(rows()) ? "arr" : "n
 // Kotlin proof needs.
 const chained = A(`  const rev = computed(() => Array.from(rows()).reverse())
   const out = computed(() => String(rev().length))`)
+// The 1-arg `{ length: n }` form (no map callback) stays deferred with a named
+// warning. (The 2-arg `(_, i) => expr` RANGE form IS lowered now — see
+// native-array-from-range.test.ts.)
 const range = A(
-  `  const out = computed(() => String(Array.from({ length: 3 }, (_: unknown, i: number) => i).length))`,
+  `  const out = computed(() => String(Array.from({ length: 3 }).length))`,
 )
 
 describe('P1 — Array.from / Array.isArray faithful native lowering', () => {
@@ -103,13 +106,13 @@ describe('P1 — Array.from / Array.isArray faithful native lowering', () => {
     expect(kt(chained)).not.toContain('Array.from')
   })
 
-  // The `{ length: n }` range form is NOT lowered — it must emit a NAMED
-  // warning (not a silent drop) and keep the raw `Array.from(` emit.
-  it('Swift/Kotlin: `Array.from({ length: n }, …)` warns loudly (no silent drop)', () => {
+  // The 1-arg `{ length: n }` form (no map callback) is NOT lowered — it must
+  // emit a NAMED warning (not a silent drop) and keep the raw `Array.from(` emit.
+  it('Swift/Kotlin: 1-arg `Array.from({ length: n })` warns loudly (no silent drop)', () => {
     const rs = transform(range, { target: 'swift' })
     const rk = transform(range, { target: 'kotlin' })
-    expect(rs.warnings.some((w) => w.includes('numeric-range form'))).toBe(true)
-    expect(rk.warnings.some((w) => w.includes('numeric-range form'))).toBe(true)
+    expect(rs.warnings.some((w) => w.includes('map callback'))).toBe(true)
+    expect(rk.warnings.some((w) => w.includes('map callback'))).toBe(true)
     // Still emits (loudly broken at the site), never dropped:
     expect(rs.code).toContain('Array.from(')
     expect(rk.code).toContain('Array.from(')
