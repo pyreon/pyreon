@@ -122,6 +122,8 @@ The route banner is **collapsed to a one-line summary by default** — e.g. `Rou
 
 The **Local URL and ready time are always printed last**, after the route banner. This keeps them visible even when a large app is run under a wrapping task runner such as `bun run --filter <app> dev`, whose runner elides the *middle* of long child output and keeps only the tail — a full route table printed first would push the URL off the top.
 
+The banner honors [`NO_COLOR`](https://no-color.org) / `FORCE_COLOR` and falls back to plain text on a non-interactive stdout, so piped output (`bun run dev > log`, CI) stays free of raw escape codes.
+
 :::tip
 `--host` exposes your dev server to the local network. Use it to test on a phone or another machine, but don't leave it on for a server you don't trust the network around.
 :::
