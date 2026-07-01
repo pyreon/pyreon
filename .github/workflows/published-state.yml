@@ -26,4 +26,8 @@ jobs:
         with:
           bun-version: latest
       - name: Check published state
-        run: bun scripts/check-published-state.ts
+        # `--native` ALSO verifies the native compiler binaries (published by
+        # release-native.yml AFTER the JS packages). The in-release check in
+        # release.yml deliberately omits it — native isn't on npm yet at that
+        # point — so this daily run is what guards the native-binary cascade.
+        run: bun scripts/check-published-state.ts --native
