@@ -27,7 +27,7 @@
     "@pyreon/store": "workspace:^",
     "@pyreon/validation": "workspace:^",
     "@pyreon/zero": "workspace:^",
-    "@tanstack/query-core": "^5.100.14",
+    "@tanstack/query-core": "^5.101.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

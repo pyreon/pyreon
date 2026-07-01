@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/document",
   "version": "0.38.0",
-  "description": "Universal document rendering for Pyreon — one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more)",
+  "description": "Universal document rendering for Pyreon \u2014 one template, every output format (HTML, PDF, DOCX, email, XLSX, Markdown, and more)",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/document#readme",
   "bugs": {
@@ -46,7 +46,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@types/pdfmake": "^0.3.3",
-    "@vitus-labs/tools-lint": "^2.5.0",
+    "@vitus-labs/tools-lint": "^2.6.3",
     "docx": "^9.7.1",
     "exceljs": "^4.4.0",
     "pdfmake": "^0.3.9",

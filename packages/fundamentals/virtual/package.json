@@ -43,7 +43,7 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "dependencies": {
-    "@tanstack/virtual-core": "^3.16.0"
+    "@tanstack/virtual-core": "^3.17.3"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",

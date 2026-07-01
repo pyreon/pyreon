@@ -50,9 +50,9 @@
     "@pyreon/validation": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/zero": "workspace:*",
-    "@tanstack/query-core": "^5.100.14",
+    "@tanstack/query-core": "^5.101.2",
     "@tanstack/table-core": "^8.21.3",
-    "@tanstack/virtual-core": "^3.16.0",
+    "@tanstack/virtual-core": "^3.17.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
