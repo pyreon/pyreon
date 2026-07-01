@@ -27,6 +27,7 @@ import {
   buildArraySpreadConcat,
   buildInferenceCtx,
   classifyNegativeSlice,
+  arrayFromMapRewrite,
   classifyOptionalCondition,
   emptyInferenceCtx,
   indexedArrayCallback,
@@ -2303,6 +2304,33 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const arity = SWIFT_MATH_DOUBLE[e.callee.property]
         if (arity !== undefined && args.length === arity) {
           return `${e.callee.property}(${args.map((a) => `Double(${a})`).join(', ')})`
+        }
+      }
+      // `Array.from(x)` → `Array(x)` (shallow copy). `Array.from(x, fn)` →
+      // `x.map(fn)` (reuses the `.map` emit). `Array.isArray(x)` → `true` (a
+      // typed source IS statically an array). The generic emit would produce
+      // `Array.from(...)` / `Array.isArray(...)` → INVALID Swift (`type
+      // 'Array<Element>' has no member 'from'` / "generic parameter 'Element'
+      // could not be inferred", confirmed via swiftc -typecheck).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Array'
+      ) {
+        if (e.callee.property === 'isArray') return 'true'
+        if (e.callee.property === 'from') {
+          const mapForm = arrayFromMapRewrite(e)
+          if (mapForm !== null) return emitSwiftExpr(mapForm, indent)
+          if (e.args.length === 1 && e.args[0]!.kind !== 'object') {
+            return `Array(${emitSwiftExpr(e.args[0]!, indent)})`
+          }
+          // `Array.from({ length: n }, …)` RANGE form (object-literal first
+          // arg) is not yet lowered — it needs a numeric-range source. Name it
+          // loudly (the raw emit below then fails at the site) rather than drop
+          // it silently.
+          _emitWarnings.push(
+            '`Array.from({ length: n }, …)` (the numeric-range form) is not yet supported on native — this call keeps the raw `Array.from(` emit (a swiftc error at the site). Use `Array(0..<n).map { … }` directly, or a numeric loop.',
+          )
         }
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`

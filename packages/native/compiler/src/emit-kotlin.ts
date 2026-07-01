@@ -22,6 +22,7 @@ import {
 import {
   buildArraySpreadConcat,
   buildInferenceCtx,
+  arrayFromMapRewrite,
   classifyNegativeSlice,
   classifyOptionalCondition,
   indexedArrayCallback,
@@ -1955,6 +1956,30 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             .join(', ')
           const callee = KOTLIN_MATH_REMAP[fn] ?? `Math.${fn}`
           return `${callee}(${args})`
+        }
+      }
+      // `Array.from(x)` → `(x).toList()` (shallow copy). `Array.from(x, fn)` →
+      // `x.map(fn)` (reuses the `.map` emit). `Array.isArray(x)` → `true` (a
+      // typed source IS statically an array). The generic emit would produce
+      // `Array.from(...)` / `Array.isArray(...)` → INVALID Kotlin ("cannot
+      // infer type for type parameter 'T'", confirmed via kotlinc).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Array'
+      ) {
+        if (e.callee.property === 'isArray') return 'true'
+        if (e.callee.property === 'from') {
+          const mapForm = arrayFromMapRewrite(e)
+          if (mapForm !== null) return emitKotlinExpr(mapForm, indent)
+          if (e.args.length === 1 && e.args[0]!.kind !== 'object') {
+            return `(${emitKotlinExpr(e.args[0]!, indent)}).toList()`
+          }
+          // `Array.from({ length: n }, …)` RANGE form (object-literal first
+          // arg) is not yet lowered — name it loudly rather than drop silently.
+          _emitWarnings.push(
+            '`Array.from({ length: n }, …)` (the numeric-range form) is not yet supported on native — this call keeps the raw `Array.from(` emit (a kotlinc error at the site). Use `(0 until n).map { … }` directly, or a numeric loop.',
+          )
         }
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
