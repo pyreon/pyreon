@@ -4,6 +4,7 @@ import {
   formatReadyLine,
   formatRouteSummary,
   formatRouteTable,
+  renderRouteBanner,
   type RouteSummaryInput,
 } from './dev-banner'
 
@@ -13,6 +14,7 @@ import {
 const ESC = String.fromCharCode(27)
 const ANSI = new RegExp(`${ESC}\\[[0-9;]*m`, 'g')
 const strip = (s: string) => s.replace(ANSI, '')
+const hasAnsi = (s: string) => s.includes(ESC)
 
 const pages: RouteSummaryInput[] = [
   { urlPath: '/', renderMode: 'ssr' },
@@ -38,8 +40,6 @@ describe('countRoutes', () => {
 describe('formatRouteSummary', () => {
   it('renders one line ordered by count (desc), includes API, and the --routes hint', () => {
     const line = strip(formatRouteSummary(countRoutes(pages, 1)))
-    // SSR (3) leads, then SSG/SPA (1 each, alpha tie-break: SPA before SSG? no —
-    // localeCompare puts SPA before SSG), then API.
     expect(line).toContain('Routes')
     expect(line).toContain('SSR 3')
     expect(line).toContain('SSG 1')
@@ -58,10 +58,24 @@ describe('formatRouteSummary', () => {
     expect(line).toContain('SSR 3')
   })
 
+  it('renders an API-only app (no page routes) as just the API count', () => {
+    const line = strip(formatRouteSummary(countRoutes([], 2)))
+    expect(line).toContain('API 2')
+    expect(line).not.toContain('SSR')
+    expect(line).not.toContain('none')
+  })
+
   it('renders "none" when there are neither page nor API routes', () => {
     const line = strip(formatRouteSummary(countRoutes([], 0)))
     expect(line).toContain('Routes')
     expect(line).toContain('none')
+  })
+
+  it('emits raw ANSI when color is on and plain text when color is off', () => {
+    expect(hasAnsi(formatRouteSummary(countRoutes(pages, 1), true))).toBe(true)
+    const plain = formatRouteSummary(countRoutes(pages, 1), false)
+    expect(hasAnsi(plain)).toBe(false)
+    expect(plain).toContain('SSR 3')
   })
 })
 
@@ -82,10 +96,53 @@ describe('formatRouteTable', () => {
     expect(joined).not.toContain('API Routes')
     expect(joined).toContain('SSR  /')
   })
+
+  it('emits plain text when color is off', () => {
+    const joined = formatRouteTable(pages, ['/api/x'], false).join('\n')
+    expect(hasAnsi(joined)).toBe(false)
+    expect(joined).toContain('SSG  /about')
+  })
+})
+
+describe('renderRouteBanner', () => {
+  it('returns the collapsed summary by default', () => {
+    const lines = renderRouteBanner(pages, ['/api/health'], { verbose: false }).map(strip)
+    const joined = lines.join('\n')
+    expect(joined).toContain('SSR 3')
+    expect(joined).toContain('API 1')
+    // Collapsed: NOT the full per-route table.
+    expect(joined).not.toContain('/blog/:slug')
+  })
+
+  it('returns the full table under verbose (--routes)', () => {
+    const joined = renderRouteBanner(pages, ['/api/health'], { verbose: true }).map(strip).join('\n')
+    expect(joined).toContain('/blog/:slug')
+    expect(joined).toContain('API  /api/health')
+  })
+
+  it('returns [] when there are no routes at all (no banner, server still starts)', () => {
+    expect(renderRouteBanner([], [], { verbose: false })).toEqual([])
+    expect(renderRouteBanner([], [], { verbose: true })).toEqual([])
+  })
+
+  it('honors the color flag', () => {
+    expect(hasAnsi(renderRouteBanner(pages, [], { verbose: false, color: true }).join('\n'))).toBe(
+      true,
+    )
+    expect(hasAnsi(renderRouteBanner(pages, [], { verbose: false, color: false }).join('\n'))).toBe(
+      false,
+    )
+  })
 })
 
 describe('formatReadyLine', () => {
   it('shows the elapsed startup time', () => {
     expect(strip(formatReadyLine(234))).toContain('ready in 234ms')
+  })
+
+  it('emits plain text when color is off', () => {
+    const line = formatReadyLine(234, false)
+    expect(hasAnsi(line)).toBe(false)
+    expect(line).toContain('ready in 234ms')
   })
 })
