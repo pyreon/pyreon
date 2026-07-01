@@ -57,6 +57,28 @@ export interface ReactiveGraph {
   edges: ReactiveEdge[]
 }
 
+// Structural mirror of @pyreon/reactivity's `SourceLocation` / `CauseLink` /
+// `UpdateCause` (the "why did this update?" surface).
+export interface SourceLocation {
+  file: string
+  line: number
+  col: number
+}
+
+export interface CauseLink {
+  id: number
+  kind: ReactiveNodeKind
+  name: string
+  loc?: SourceLocation
+  ts: number
+}
+
+export interface UpdateCause {
+  target: CauseLink
+  chain: CauseLink[]
+  rootReached: boolean
+}
+
 export interface ReactiveFire {
   id: number
   ts: number
@@ -70,6 +92,8 @@ export interface ReactiveDevtools {
   deactivate(): void
   getGraph(): ReactiveGraph
   getFires(): ReactiveFire[]
+  getUpdateCause(nodeId: number): UpdateCause | null
+  formatUpdateCause(cause: UpdateCause): string
 }
 
 export interface PyreonDevtools {

@@ -25,19 +25,23 @@ export { inspectSignal, onSignalUpdate, why } from './debug'
 export type {
   FireSummary,
   ReactiveEdge,
+  CauseLink,
   ReactiveFire,
   ReactiveGraph,
   ReactiveNode,
   ReactiveNodeKind,
   SourceLocation,
+  UpdateCause,
 } from './reactive-devtools'
 export {
   __resetReactiveDevtoolsForTesting,
   activateReactiveDevtools,
   deactivateReactiveDevtools,
+  formatUpdateCause,
   getFireSummaries,
   getReactiveFires,
   getReactiveGraph,
+  getUpdateCause,
   isReactiveDevtoolsActive,
 } from './reactive-devtools'
 export type {

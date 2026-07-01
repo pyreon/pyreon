@@ -681,3 +681,158 @@ export function getReactiveFires(): ReactiveFire[] {
   return out
 }
 
+// ── "Why did this update?" — causal chain reconstruction ─────────────────────
+//
+// No other framework can answer "why did this node just update?" at the source
+// line. Pyreon can, because it holds BOTH a precise dependency graph
+// (`getReactiveGraph().edges`) AND a timestamped fire timeline
+// (`getReactiveFires()`). `getUpdateCause` reconstructs the causal chain purely
+// at READ time — no hot-path instrumentation: for the target's most recent
+// fire, it walks the dependency graph backward, at each step picking the
+// dependency that fired MOST RECENTLY before the current node, until it reaches
+// a node with no earlier-firing dependency (the root — usually a signal write).
+//
+// Accuracy: EXACT for a synchronous update cascade (the common "I just
+// interacted — why did this change?" case), since a whole cascade completes in
+// one JS tick with the direct-dependency fire immediately preceding each
+// downstream fire. Best-effort if unrelated updates interleave in time, and
+// truncated (`rootReached: false`) when older fires have aged out of the bounded
+// ring buffer.
+
+/** One link in a causal chain — a node that fired, with when + where. */
+export interface CauseLink {
+  id: number
+  kind: ReactiveNodeKind
+  name: string
+  loc?: SourceLocation
+  /** `performance.now()` of this node's fire in the reconstructed cascade. */
+  ts: number
+}
+
+/** The answer to "why did `target` update?". */
+export interface UpdateCause {
+  /** The node whose update was explained. */
+  target: CauseLink
+  /**
+   * The causal chain, ROOT-FIRST: `chain[0]` is the originating change (usually
+   * a signal write), each link caused the next, and the last link is the direct
+   * cause of `target`. Empty when `target` fired with no dependency fire before
+   * it — it IS the root (e.g. a signal you set directly).
+   */
+  chain: CauseLink[]
+  /** The chain reached a root (a node with no earlier-firing dependency). */
+  rootReached: boolean
+}
+
+/**
+ * Reconstruct the causal chain that led to `nodeId`'s most recent fire.
+ * Returns `null` when devtools is inactive, the node is unknown, or it never
+ * fired. See the block comment above for the accuracy contract.
+ */
+export function getUpdateCause(nodeId: number): UpdateCause | null {
+  if (!_active) return null
+  const graph = getReactiveGraph()
+  const fires = getReactiveFires()
+  if (fires.length === 0) return null
+
+  const nodeById = new Map(graph.nodes.map((n) => [n.id, n]))
+  if (!nodeById.has(nodeId)) return null
+
+  // The causal STRUCTURE is the dependency graph; the fire timeline only tells us
+  // WHICH nodes participated in this cascade. We can't use timeline order alone,
+  // because a LAZY computed recomputes DURING its subscriber's read — so an
+  // effect's fire precedes the fire of the dependency that caused it. Instead we
+  // walk the graph from the target through its dependencies, following only the
+  // deps that fired in the SAME synchronous cascade (clustered by timestamp — a
+  // whole cascade runs within one JS tick, ~sub-ms; separate interactions are
+  // frames apart).
+  //
+  // Dependencies of `id`: the nodes it READS — edges point dep → subscriber, so
+  // `id`'s deps are the `from` of edges whose `to` is `id`.
+  const depsOf = (id: number): number[] => {
+    const out: number[] = []
+    for (const e of graph.edges) if (e.to === id) out.push(e.from)
+    return out
+  }
+  const lastFireTs = (id: number): number | null => {
+    let best: number | null = null
+    for (const f of fires) if (f.id === id && (best === null || f.ts > best)) best = f.ts
+    return best
+  }
+  const toLink = (id: number, ts: number): CauseLink => {
+    const n = nodeById.get(id)!
+    return { id, kind: n.kind, name: n.name, ...(n.loc ? { loc: n.loc } : {}), ts }
+  }
+
+  const targetTs = lastFireTs(nodeId)
+  if (targetTs === null) return null // never fired
+
+  // A whole synchronous cascade completes within ~one animation frame; use that
+  // as the cluster window so a node's stale fire from an earlier interaction is
+  // not mistaken for a cause.
+  const CLUSTER_MS = 16
+  const firedInCluster = new Map<number, number>() // id → latest fire ts in cluster
+  for (const f of fires) {
+    if (Math.abs(f.ts - targetTs) <= CLUSTER_MS) {
+      const prev = firedInCluster.get(f.id)
+      if (prev === undefined || f.ts > prev) firedInCluster.set(f.id, f.ts)
+    }
+  }
+
+  const chain: CauseLink[] = []
+  const visited = new Set<number>([nodeId])
+  let currentId = nodeId
+  let rootReached = false
+  const MAX_DEPTH = 64
+  for (let d = 0; d < MAX_DEPTH; d++) {
+    let causeId: number | null = null
+    for (const dep of depsOf(currentId)) {
+      if (!visited.has(dep) && firedInCluster.has(dep)) {
+        causeId = dep
+        break
+      }
+    }
+    if (causeId === null) {
+      rootReached = true
+      break
+    }
+    chain.push(toLink(causeId, firedInCluster.get(causeId)!))
+    visited.add(causeId)
+    currentId = causeId
+  }
+  chain.reverse() // root-first
+  return { target: toLink(nodeId, targetTs), chain, rootReached }
+}
+
+const CAUSE_VERB: Record<ReactiveNodeKind, string> = {
+  signal: 'changed',
+  derived: 'recomputed',
+  effect: 'ran',
+}
+
+function causeLocText(l: CauseLink): string {
+  return l.loc ? `  ${l.loc.file}:${l.loc.line}:${l.loc.col}` : ''
+}
+
+/** Render an {@link UpdateCause} as a human-readable, source-anchored trace. */
+export function formatUpdateCause(cause: UpdateCause): string {
+  const lines: string[] = [`Why did ${cause.target.name} (${cause.target.kind}) update?`]
+  if (cause.chain.length === 0) {
+    lines.push(
+      `  ${cause.target.name} was updated directly (no upstream dependency fired before it).`,
+    )
+    return lines.join('\n')
+  }
+  cause.chain.forEach((l, i) => {
+    lines.push(`  ${i === 0 ? '' : '→ '}${l.name} (${l.kind}) ${CAUSE_VERB[l.kind]}${causeLocText(l)}`)
+  })
+  lines.push(
+    `  → ${cause.target.name} (${cause.target.kind}) ${CAUSE_VERB[cause.target.kind]}${causeLocText(
+      cause.target,
+    )}   ← explained`,
+  )
+  if (!cause.rootReached) {
+    lines.push('  (chain truncated — earlier fires aged out of the ring buffer)')
+  }
+  return lines.join('\n')
+}

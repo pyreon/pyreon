@@ -19,11 +19,14 @@
 import {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
+  formatUpdateCause,
   getReactiveFires,
   getReactiveGraph,
+  getUpdateCause,
   isClient,
   type ReactiveFire,
   type ReactiveGraph,
+  type UpdateCause,
 } from '@pyreon/reactivity'
 
 export interface DevtoolsComponentEntry {
@@ -62,6 +65,10 @@ export interface PyreonReactiveDevtools {
   getGraph(): ReactiveGraph
   /** Bounded recent-fire timeline (oldest → newest). */
   getFires(): ReactiveFire[]
+  /** "Why did this update?" — the causal chain that led to a node's last fire. */
+  getUpdateCause(nodeId: number): UpdateCause | null
+  /** Render an {@link UpdateCause} as a source-anchored trace. */
+  formatUpdateCause(cause: UpdateCause): string
 }
 
 // ─── Internal registry ────────────────────────────────────────────────────────
@@ -285,6 +292,8 @@ export function installDevTools(): void {
       deactivate: deactivateReactiveDevtools,
       getGraph: getReactiveGraph,
       getFires: getReactiveFires,
+      getUpdateCause,
+      formatUpdateCause,
     },
   }
 
