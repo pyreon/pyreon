@@ -2771,6 +2771,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `Column {\n${body}\n${' '.repeat(indent)}}`
     }
     case 'array': {
+      // A TYPED-EMPTY array (`[] as T[]` → `elementType` set) emits a typed empty
+      // literal so Kotlin can infer the element type (a bare `listOf()` is
+      // `List<Nothing>`, which breaks a downstream `+ listOf(x)` / element read).
+      if (e.elements.length === 0 && e.elementType !== undefined) {
+        return `emptyList<${kotlinType(e.elementType)}>()`
+      }
       // Array spread → Kotlin `+` concat (value-semantics). General form, ANY
       // position / count of spreads: emit each SPREAD's argument bare and group
       // consecutive NON-spread elements into a `listOf(...)`, then join with

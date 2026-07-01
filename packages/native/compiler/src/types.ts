@@ -733,7 +733,7 @@ export type ExprIR =
   | { kind: 'rx-call'; method: string; source: ExprIR; args: ExprIR[] }
   | { kind: 'jsx-element'; tag: string; attrs: AttrIR[]; children: ChildIR[] }
   | { kind: 'jsx-fragment'; children: ChildIR[] }
-  | { kind: 'array'; elements: ExprIR[] }
+  | { kind: 'array'; elements: ExprIR[]; elementType?: TypeIR }
   /**
    * Object literal with optional spread members. The classic shape is
    * `{ a: 1, b: 2 }` (zero spreads); G4 (TodoMVC walkthrough) adds the
