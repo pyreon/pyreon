@@ -330,34 +330,111 @@ export function computeAffectedFlags(opts: {
     .join(' ')
 }
 
+// ── Changed-file computation (robust to shallow CI clones) ──────────────────
+
+/**
+ * Files changed vs `base`, tried in order — each falls through to the next on
+ * failure, so a shallow CI clone degrades GRACEFULLY instead of jumping
+ * straight to "run everything":
+ *
+ *   1. `base...HEAD` — merge-base (symmetric) diff: ONLY what this branch
+ *      added. The precise, ideal result — works when the merge-base commit is
+ *      present (a full / fetch-depth:0 clone).
+ *   2. `git merge-base base HEAD` then diff against it — same result as (1) by
+ *      a different route; covers cases where the `...` syntax can't resolve.
+ *   3. `base HEAD` — two-commit diff. OVER-includes files main changed since
+ *      the branch point (they show as diffs), so it can over-run — but it
+ *      NEVER under-runs, and it works as long as both commits are present
+ *      (always true post-fetch, even shallow). This is what keeps a routine
+ *      doc-only PR off the `--filter=*` escalation when the merge-base is
+ *      unavailable.
+ *
+ * Returns null ONLY if every git call fails (the base ref doesn't exist at
+ * all) — the caller then escalates to the full suite, the safe last resort.
+ * execFileSync (argv array, no shell) keeps `base` un-injectable.
+ */
+export function gitChangedFiles(base: string, cwd: string = ROOT): string[] | null {
+  const tryDiff = (args: string[]): string[] | null => {
+    try {
+      const out = execFileSync('git', ['diff', '--name-only', ...args], { cwd, encoding: 'utf-8' })
+      return out.split('\n').filter(Boolean)
+    } catch {
+      return null
+    }
+  }
+  // 1. merge-base symmetric diff (precise).
+  const symmetric = tryDiff([`${base}...HEAD`])
+  if (symmetric !== null) return symmetric
+  // 2. explicit merge-base, then diff against it.
+  try {
+    const mb = execFileSync('git', ['merge-base', base, 'HEAD'], { cwd, encoding: 'utf-8' }).trim()
+    if (mb) {
+      const viaMergeBase = tryDiff([mb, 'HEAD'])
+      if (viaMergeBase !== null) return viaMergeBase
+    }
+  } catch {
+    /* fall through to the two-commit diff */
+  }
+  // 3. two-commit diff (over-includes, never under-includes).
+  const twoCommit = tryDiff([base, 'HEAD'])
+  if (twoCommit !== null) return twoCommit
+  // Every git call failed — base ref unresolvable. Escalate.
+  return null
+}
+
+// ── Docs-only classification (Layer-2 heavy-job gate) ───────────────────────
+
+/**
+ * A path that CANNOT affect any build / test / typecheck output — pure prose.
+ * The heavy CI jobs (build, verify-modes, coverage, browser/rust tests,
+ * audit-types, bundle/import budgets, distribution, manifest-depth) gate on
+ * the inverse of `isDocsOnlyChange`, so a PR touching ONLY these paths skips
+ * all of them and runs just the fast gates (lint, doc-claims, docs-sync, …).
+ *
+ * STRICT allowlist — anything not matched here is treated as code (the
+ * conservative bias: never skip a heavy job for a real source change):
+ *   - any `*.md` / `*.mdx` (CLAUDE.md, READMEs, anti-patterns.md, …)
+ *   - the docs site content (`docs/**`) — its own `docs-sync` gate covers it
+ *   - the `.claude/**` rules / audits / plans
+ *   - the generated AI-reference files `llms.txt` / `llms-full.txt`
+ *
+ * NOTE `.github/**`, `scripts/**`, `package.json`, lockfiles, tsconfig, and
+ * every `packages/**` / `examples/**` source file are NOT docs → code=true.
+ */
+const DOCS_PATTERNS: RegExp[] = [
+  /\.mdx?$/i,
+  /^docs\//,
+  /^\.claude\//,
+  /^llms(-full)?\.txt$/,
+]
+
+export function isDocsOnlyChange(changed: string[] | null): boolean {
+  // null = git couldn't compute the diff → unknowable → treat as code (run).
+  if (changed === null) return false
+  // Empty diff = nothing changed → no heavy work needed → docs-only=true.
+  if (changed.length === 0) return true
+  return changed.every((path) => DOCS_PATTERNS.some((re) => re.test(path)))
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 function main(): void {
   let base = 'origin/main'
   let category: string | undefined
+  let codeChanged = false
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
     else if (arg.startsWith('--category=')) category = arg.slice('--category='.length)
+    // `--code-changed` prints `true`/`false`: does this diff touch anything
+    // beyond pure docs? Drives the Layer-2 heavy-job gate in ci.yml.
+    else if (arg === '--code-changed') codeChanged = true
   }
 
-  let changed: string[] | null
-  try {
-    // execFileSync (not execSync) — argv array, no shell interpretation.
-    // CodeQL's "indirect uncontrolled command line" rule flags string-
-    // interpolated execSync calls even when the value comes from our own
-    // CI; defense-in-depth here removes the entire class of shell-injection
-    // concerns (`--base="; rm -rf / #"` is just an unknown ref to git now,
-    // not executable shell). Same fix shape applies to scripts/e2e-affected.ts
-    // — tracked as a follow-up to keep this PR scoped to the typecheck/test
-    // shard work.
-    const diffOut = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], {
-      cwd: ROOT,
-      encoding: 'utf-8',
-    })
-    changed = diffOut.split('\n').filter(Boolean)
-  } catch {
-    // Diff failed (bad base ref, shallow clone, etc.) — be safe, run all.
-    changed = null
+  const changed = gitChangedFiles(base)
+
+  if (codeChanged) {
+    process.stdout.write(isDocsOnlyChange(changed) ? 'false' : 'true')
+    return
   }
 
   const workspaces = discoverWorkspaces()

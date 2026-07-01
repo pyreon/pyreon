@@ -1,6 +1,7 @@
 import {
   computeAffectedFlags,
   filterByCategory,
+  isDocsOnlyChange,
   isRootFile,
   transitiveDependents,
   type Workspace,
@@ -100,6 +101,43 @@ describe('isRootFile', () => {
     'scripts/scaffold-smoke.ts',
   ])('does NOT treat %s as a root file', (path) => {
     expect(isRootFile(path)).toBe(false)
+  })
+})
+
+describe('isDocsOnlyChange — Layer-2 heavy-job gate', () => {
+  it('treats a pure CLAUDE.md / README change as docs-only (heavy jobs skip)', () => {
+    expect(isDocsOnlyChange(['CLAUDE.md'])).toBe(true)
+    expect(isDocsOnlyChange(['CLAUDE.md', 'packages/fundamentals/code/README.md'])).toBe(true)
+    expect(isDocsOnlyChange(['.claude/rules/anti-patterns.md'])).toBe(true)
+  })
+
+  it('treats docs-site / .claude / llms files as docs-only', () => {
+    expect(
+      isDocsOnlyChange([
+        'docs/src/content/docs/code.md',
+        '.claude/audits/x.md',
+        'llms.txt',
+        'llms-full.txt',
+        'README.mdx',
+      ]),
+    ).toBe(true)
+  })
+
+  it('treats ANY non-docs path as code (heavy jobs run) — conservative bias', () => {
+    expect(isDocsOnlyChange(['CLAUDE.md', 'packages/core/reactivity/src/signal.ts'])).toBe(false)
+    expect(isDocsOnlyChange(['.github/workflows/ci.yml'])).toBe(false)
+    expect(isDocsOnlyChange(['scripts/affected.ts'])).toBe(false)
+    expect(isDocsOnlyChange(['package.json'])).toBe(false)
+    expect(isDocsOnlyChange(['examples/playground/src/App.tsx'])).toBe(false)
+    expect(isDocsOnlyChange(['packages/fundamentals/code/src/editor.ts'])).toBe(false)
+  })
+
+  it('null diff (unknowable) → NOT docs-only (escalate to run)', () => {
+    expect(isDocsOnlyChange(null)).toBe(false)
+  })
+
+  it('empty diff (nothing changed) → docs-only (no heavy work needed)', () => {
+    expect(isDocsOnlyChange([])).toBe(true)
   })
 })
 
