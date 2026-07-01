@@ -29,6 +29,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "oxlint ."
   },
   "dependencies": {
@@ -38,6 +39,9 @@
     "@pyreon/zero": "workspace:^",
     "cac": "^7.0.0",
     "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "@pyreon/vitest-config": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

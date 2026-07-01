@@ -90,20 +90,22 @@ zero build packages/site
 
 ### `zero dev [root]`
 
-Start the Vite dev server with HMR, then print the file-system route table (page routes + API routes) discovered under `src/routes`.
+Start the Vite dev server with HMR, then print a compact startup banner: a one-line route summary, the **Local URL**, and the **ready time**.
 
 | Flag | Description |
 | --- | --- |
 | `--port <port>` | Server port. Defaults to `3000` (see resolution order below). |
 | `--host [host]` | Bind host. Pass `--host` alone to bind `0.0.0.0` (exposes the server on your LAN); pass `--host <addr>` for a specific interface. Omitted → Vite's default (localhost only). |
 | `--open` | Open the browser on first listen. |
+| `--routes` | Print the full route table instead of the collapsed one-line summary. |
 
 ```bash
-zero dev                       # localhost:3000
+zero dev                       # localhost:3000 — collapsed route summary
 zero dev --port 5173           # explicit port
 zero dev --host                # bind 0.0.0.0 — reachable from other devices
 zero dev --host 192.168.1.50   # bind a specific interface
 zero dev --open                # auto-open the browser
+zero dev --routes              # expand the full route table
 ```
 
 **Port resolution order** (highest precedence first):
@@ -116,7 +118,9 @@ zero dev --open                # auto-open the browser
 
 The CLI intentionally has **no** hardcoded default on the `--port` flag. When you omit it, the value falls through to `zero({ port })` from your `vite.config.ts`, and only then to `3000`. This is what lets an app with `zero({ port: 8080 })` work without also passing `--port` on every invocation.
 
-The route table is informational — if route scanning fails for any reason, the dev server still starts. Page routes are listed with their resolved render mode (`SSR` / `SSG` / `SPA` / `ISR`); API routes are listed separately under their URL pattern.
+The route banner is **collapsed to a one-line summary by default** — e.g. `Routes  SSR 15 · SSG 4 · API 1` — with per-mode page counts (`SSR` / `SSG` / `SPA` / `ISR`) plus the API count. Pass `--routes` to expand the full table (one line per route, API routes listed separately under their URL pattern). The banner is informational — if route scanning fails for any reason, the dev server still starts.
+
+The **Local URL and ready time are always printed last**, after the route banner. This keeps them visible even when a large app is run under a wrapping task runner such as `bun run --filter <app> dev`, whose runner elides the *middle* of long child output and keeps only the tail — a full route table printed first would push the URL off the top.
 
 :::tip
 `--host` exposes your dev server to the local network. Use it to test on a phone or another machine, but don't leave it on for a server you don't trust the network around.
