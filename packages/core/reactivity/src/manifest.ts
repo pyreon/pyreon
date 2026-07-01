@@ -818,6 +818,49 @@ const wrapped = wrapSignal(countSig, {
       ],
       seeAlso: ['wrapSignal', 'Signal'],
     },
+    {
+      name: 'startReactiveCoverage',
+      kind: 'function',
+      signature: '() => void',
+      summary:
+        "Begin a Reactive Coverage session (from the `@pyreon/reactivity/coverage` subpath). Resets the dev registry to a clean baseline, pins every node created from here on (so an unmounting component isn't GC-pruned out of the denominator), and enables graph reads. Create + exercise the reactive code you want to measure AFTER calling this. Pairs with `takeReactiveCoverage()` + `stopReactiveCoverage()`. Dev/test only — the registry is tree-shaken in production.",
+      example: `import { startReactiveCoverage, takeReactiveCoverage, stopReactiveCoverage, formatReactiveCoverage } from '@pyreon/reactivity/coverage'
+
+startReactiveCoverage()
+// … mount a component / run a test scenario …
+const report = takeReactiveCoverage()
+stopReactiveCoverage()
+console.log(formatReactiveCoverage(report))`,
+      mistakes: [
+        'Creating the signals/effects you want to measure BEFORE `startReactiveCoverage()` — the baseline reset wipes pre-session nodes; create them after.',
+        'Expecting coverage in a production build — the reactive registry is tree-shaken when `NODE_ENV === "production"`, so the report is a vacuous 100%.',
+      ],
+      seeAlso: ['takeReactiveCoverage', 'stopReactiveCoverage', 'computeReactiveCoverage'],
+    },
+    {
+      name: 'takeReactiveCoverage',
+      kind: 'function',
+      signature: '() => ReactiveCoverageReport',
+      summary:
+        "Snapshot the current Reactive Coverage session into a `ReactiveCoverageReport` — `{ total, covered, uncovered, percent, byKind, entries, uncoveredEntries }`, where each entry is `{ id, kind, name, fires, subscribers, covered, reason, loc }`. A node is covered when its reactive behaviour actually fired: signals when they changed (`fires ≥ 1`), effects/derived when they RE-ran past their mount run (`fires ≥ 2`). The `ran-once` reason flags the interesting bucket — a mounted effect/computed whose reactive re-run was never triggered. Call any number of times while the session is active.",
+      example: `const report = takeReactiveCoverage()
+console.log(report.percent, 'covered') // e.g. 42.9
+for (const e of report.uncoveredEntries) console.log(e.reason, e.name, e.loc)`,
+      seeAlso: ['startReactiveCoverage', 'formatReactiveCoverage', 'computeReactiveCoverage'],
+    },
+    {
+      name: 'formatReactiveCoverage',
+      kind: 'function',
+      signature:
+        '(report: ReactiveCoverageReport, opts?: { showCovered?: boolean; limit?: number }) => string',
+      summary:
+        "Render a `ReactiveCoverageReport` as a dependency-free, human-readable text block: a headline (`Reactive Coverage — 42.9% (3 of 7 …)`), a per-kind line (`signals 1/3   derived 1/2   effects 1/2`), and the uncovered list with each node's reason + source location. The machine-readable form is the `ReactiveCoverageReport` itself; `computeReactiveCoverage(nodes)` is the pure function that builds it from `getReactiveGraph().nodes`.",
+      example: `console.log(formatReactiveCoverage(report))
+// Reactive Coverage — 42.9% (3 of 7 reactive nodes exercised)
+//   signals 1/3   derived 1/2   effects 1/2
+console.log(formatReactiveCoverage(report, { showCovered: true, limit: 20 }))`,
+      seeAlso: ['takeReactiveCoverage', 'computeReactiveCoverage'],
+    },
   ],
   gotchas: [
     {
