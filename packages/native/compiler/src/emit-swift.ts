@@ -340,6 +340,66 @@ function numericFloatness(e: ExprIR): 'double' | 'int' | 'other' {
   return t.float === true ? 'double' : 'int'
 }
 
+/**
+ * Methods whose FIRST callback param IS the array element, so the emit can
+ * bind that param to the receiver's element type while emitting the closure.
+ * Excludes `.reduce`/`.sort` (the element is NOT the 1st param there).
+ */
+const ELEMENT_FIRST_CALLBACK_METHODS = new Set([
+  'map',
+  'filter',
+  'forEach',
+  'find',
+  'findLast',
+  'findIndex',
+  'some',
+  'every',
+  'flatMap',
+])
+
+/**
+ * Emit a member-call's args, temporarily binding an element-callback's first
+ * arrow param to the receiver's element type in `_activeInferCtx.locals`. A JS
+ * `.map((x) => …)` param `x` is neither a signal nor a const, so inside the
+ * closure it otherwise infers `unknown` — which makes `numericFloatness(x)`
+ * return `'other'` and DEFEATS the Int×Double coercion (`x * 1.5` emits bare,
+ * a Swift "cannot convert value of type 'Int' to expected argument type
+ * 'Double'"). Binding `x → element` makes the coercion fire (`Double(x) * 1.5`)
+ * AND fixes any other body inference that reads the param. Restored after via
+ * try/finally, so nested/sibling closures (`a.map(x => b.map(x => …))`) each
+ * see their own element type. Only fires for an ARRAY receiver + an arrow with
+ * ≥1 param. Swift-only (Kotlin auto-promotes Int×Double arithmetic).
+ */
+function emitSwiftMemberCallArgs(
+  e: Extract<ExprIR, { kind: 'call' }>,
+  indent: number,
+): string[] {
+  const callee = e.callee
+  const cb = e.args[0]
+  if (
+    callee.kind === 'member' &&
+    ELEMENT_FIRST_CALLBACK_METHODS.has(callee.property) &&
+    cb !== undefined &&
+    cb.kind === 'arrow' &&
+    cb.params.length >= 1
+  ) {
+    const recvT = inferType(callee.object, _activeInferCtx)
+    if (recvT.kind === 'array') {
+      const p = cb.params[0]!
+      const had = _activeInferCtx.locals.has(p)
+      const prev = _activeInferCtx.locals.get(p)
+      _activeInferCtx.locals.set(p, recvT.element)
+      try {
+        return e.args.map((a) => emitSwiftExpr(a, indent))
+      } finally {
+        if (had) _activeInferCtx.locals.set(p, prev!)
+        else _activeInferCtx.locals.delete(p)
+      }
+    }
+  }
+  return e.args.map((a) => emitSwiftExpr(a, indent))
+}
+
 /** Test/debug-only helper to read accumulated warnings without
  *  going through the full emit pipeline. Returns a copy. */
 export function _peekSwiftEmitWarnings(): string[] {
@@ -2606,7 +2666,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       if (e.callee.kind === 'member') {
         const obj = emitSwiftExpr(e.callee.object, indent)
         const prop = e.callee.property
-        const argExprs = e.args.map((a) => emitSwiftExpr(a, indent))
+        const argExprs = emitSwiftMemberCallArgs(e, indent)
         switch (prop) {
           case 'trim':
             if (e.args.length === 0) {
@@ -3035,6 +3095,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             }
             break
         }
+        // Generic member call — no specific rewrite matched. Reuse the
+        // element-scoped `argExprs` (from `emitSwiftMemberCallArgs`) so a
+        // 1-param element-callback that falls through to here (`.map` /
+        // `.forEach`) emits its closure body with the param bound to the
+        // receiver's element type — enabling the Int×Double coercion
+        // (`.map(x => x * 1.5)` → `.map({ x in Double(x) * 1.5 })`) that the
+        // plain, unscoped `e.args` re-emit below misses. Byte-identical to
+        // the generic emit otherwise (same callee emit; scoped args).
+        return `${emitSwiftExpr(e.callee, indent)}(${argExprs.join(', ')})`
       }
       const callee = emitSwiftExpr(e.callee, indent)
       const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
