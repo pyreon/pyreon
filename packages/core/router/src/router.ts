@@ -1184,6 +1184,7 @@ export function createRouter<TNames extends string = string>(
     _readyResolve,
     _readyPromise,
     _onError: onError,
+    _linkConfig: opts.links,
     _maxCacheSize: maxCacheSize,
     _navigationStartTime: Date.now(),
     _loaderCache: new SizedMap({ maxEntries: maxCacheSize }),

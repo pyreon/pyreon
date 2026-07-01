@@ -1,4 +1,5 @@
 import type { ComponentFn } from '@pyreon/core'
+import type { LinkConfig } from './typed-routes'
 
 export type { ComponentFn }
 
@@ -400,6 +401,11 @@ export interface RouterOptions {
    *   - `"ignore"` — no normalization
    */
   trailingSlash?: 'strip' | 'add' | 'ignore'
+  /**
+   * `<RouterLink>` external-link behaviour (same-origin-absolute policy,
+   * new-tab, and `rel`). See {@link LinkConfig}.
+   */
+  links?: LinkConfig
 }
 
 // ─── Router interface ─────────────────────────────────────────────────────────
@@ -520,6 +526,7 @@ export interface RouterInstance extends Router {
   _scrollPositions: Map<string, number>
   _scrollBehavior: RouterOptions['scrollBehavior']
   _onError: RouterOptions['onError']
+  _linkConfig: LinkConfig | undefined
   _maxCacheSize: number
   /**
    * Current RouterView nesting depth. Incremented by each RouterView as it

@@ -222,22 +222,22 @@ const Admin = () => (
 <RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>
 ```
 
-Declarative navigation link that renders an `<a>` element. Supports string paths or named route objects (`{ name, params }`). Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Click handler calls `router.push()` and prevents default.
+Declarative navigation link that renders an `<a>` element. Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Only INTERNAL navigations are intercepted (`router.push()` + `preventDefault`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `to` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. `to` is generic (`CheckHref<T>`): with routes registered via the `RegisteredRoutes` augmentation, a mistyped internal path is a compile error, while dynamic `string`s and external URLs are always accepted.
 
 **Example**
 
 ```tsx
 <RouterLink to="/" activeClass="nav-active">Home</RouterLink>
-<RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>
+<RouterLink to="https://github.com/pyreon">GitHub</RouterLink>{/* auto target=_blank + secure rel */}
 ```
 
 **Common mistakes**
 
 - `<a href="/about" onClick={() => router.push("/about")}>` — use `<RouterLink to="/about">` instead; it handles the anchor element, active class, and click interception
-- `<RouterLink to="/about" target="_blank">` — external navigation bypasses the router; use a plain `<a>` for external links
+- Wrapping an external URL in a plain `<a>` to avoid router interception — unnecessary: `<RouterLink to="https://x.com">` already detects it as external, renders `target="_blank" rel="noopener noreferrer"`, and does NOT client-navigate. Override with `external` / `target` / `rel` props or the `createRouter({ links })` config.
 - `<RouterLink to={dynamicPath}>` without calling the signal — must call: `<RouterLink to={dynamicPath()}>` (or let the compiler handle it via `_rp()`)
 
-**See also:** `useRouter` · `useIsActive`
+**See also:** `useRouter` · `useIsActive` · `createRouter`
 
 ---
 

@@ -1288,10 +1288,10 @@ const Admin = () => (
   'router/RouterLink': {
     signature: '<RouterLink to={path} activeClass={cls} exactActiveClass={cls}>{children}</RouterLink>',
     example: `<RouterLink to="/" activeClass="nav-active">Home</RouterLink>
-<RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>`,
-    notes: 'Declarative navigation link that renders an `<a>` element. Supports string paths or named route objects (`{ name, params }`). Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Click handler calls `router.push()` and prevents default. See also: useRouter, useIsActive.',
+<RouterLink to="https://github.com/pyreon">GitHub</RouterLink>{/* auto target=_blank + secure rel */}`,
+    notes: 'Declarative navigation link that renders an `<a>` element. Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Only INTERNAL navigations are intercepted (`router.push()` + `preventDefault`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `to` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. `to` is generic (`CheckHref<T>`): with routes registered via the `RegisteredRoutes` augmentation, a mistyped internal path is a compile error, while dynamic `string`s and external URLs are always accepted. See also: useRouter, useIsActive, createRouter.',
     mistakes: `- \`<a href="/about" onClick={() => router.push("/about")}>\` — use \`<RouterLink to="/about">\` instead; it handles the anchor element, active class, and click interception
-- \`<RouterLink to="/about" target="_blank">\` — external navigation bypasses the router; use a plain \`<a>\` for external links
+- Wrapping an external URL in a plain \`<a>\` to avoid router interception — unnecessary: \`<RouterLink to="https://x.com">\` already detects it as external, renders \`target="_blank" rel="noopener noreferrer"\`, and does NOT client-navigate. Override with \`external\` / \`target\` / \`rel\` props or the \`createRouter({ links })\` config.
 - \`<RouterLink to={dynamicPath}>\` without calling the signal — must call: \`<RouterLink to={dynamicPath()}>\` (or let the compiler handle it via \`_rp()\`)`,
   },
 
@@ -5420,14 +5420,15 @@ const user = useRequestLocals().user as User | null`,
     example: `import { Link } from '@pyreon/zero/link'
 
 <Link href="/about" prefetch="viewport" activeClass="nav-active">About</Link>
-<Link href="/external" external>External</Link>  // target="_blank" rel="noopener noreferrer"`,
-    notes: 'Default navigation link built on an `<a>` tag — client-side push via `router.push()`, hover/viewport prefetch, `aria-current="page"` on exact match, `activeClass` / `exactActiveClass` for nav-state styling. Built on `createLink` so consumers can swap the rendered element via `createLink(MyCustomLink)` without losing the prefetch + active-state behavior. See also: useLink, createLink, prefetchRoute.',
-    mistakes: `- Using \`<a href={path} onClick={() => router.push(path)}>\` instead of \`<Link>\` — manual approach skips prefetch, active-state class merging, and the keyboard-modifier guard (Cmd+click should open new tab, not navigate in-place)
+<Link href="https://example.com">External</Link>  // auto target="_blank" rel="noopener noreferrer"
+<Link href="/report.pdf" external>PDF</Link>       // force external for a same-origin asset`,
+    notes: 'Default navigation link built on an `<a>` tag. Only INTERNAL navigations are intercepted (`router.push()` + prefetch + `activeClass`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `href` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. `href` is generic (`CheckHref<T, RoutePath>`): once typed-routes codegen has run, a mistyped internal path is a compile error while dynamic strings + external URLs are always accepted. Built on `createLink` so consumers can swap the rendered element via `createLink(MyCustomLink)` without losing any of this. See also: useLink, createLink, prefetchRoute.',
+    mistakes: `- Wrapping an external URL in a plain \`<a>\` to avoid \`router.push\` — unnecessary: \`<Link href="https://x.com">\` auto-detects it as external, renders \`target="_blank" rel="noopener noreferrer"\`, and does NOT client-navigate. Override with \`external\` / \`target\` / \`rel\` or \`createApp({ links })\`
+- Using \`<a href={path} onClick={() => router.push(path)}>\` instead of \`<Link>\` — manual approach skips prefetch, active-state class merging, and the keyboard-modifier guard (Cmd+click should open new tab, not navigate in-place)
 - Setting \`prefetch="hover"\` (default) and expecting prefetch on mobile — mobile devices don't fire mouseenter; use \`prefetch="viewport"\` for IntersectionObserver-based prefetch (or accept that touchstart triggers prefetch too)
 - Passing \`class\` AND \`activeClass\` — both are MERGED via \`cx\` (not overridden); the user-provided \`class\` always applies, \`activeClass\` is appended when \`isActive()\` is true
 - \`<Link to={...}>\` — Link uses \`href\`, NOT \`to\` (RouterLink from \`@pyreon/router\` uses \`to\`; Link from \`@pyreon/zero/link\` uses \`href\` to match HTML anchor convention)
-- Expecting \`external: true\` to skip prefetch — \`external\` controls click handling (opens in new tab via \`target="_blank"\`), not prefetch. Use \`prefetch="none"\` if you want to skip prefetch for an internal link
-- Building a custom anchor wrapper from scratch instead of using \`createLink\` or \`useLink\` — the prefetch cache, keyboard-modifier guard, active-state class composition, and SSR-safe document.head injection are non-trivial`,
+- Building a custom anchor wrapper from scratch instead of using \`createLink\` or \`useLink\` — the prefetch cache, keyboard-modifier guard, external-link classification, active-state class composition, and SSR-safe document.head injection are non-trivial`,
   },
 
   'zero/useLink': {

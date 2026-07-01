@@ -1,7 +1,7 @@
 import type { ComponentFn, Props } from '@pyreon/core'
 import { Fragment, h } from '@pyreon/core'
 import { HeadProvider } from '@pyreon/head'
-import type { RouteRecord } from '@pyreon/router'
+import type { LinkConfig, RouteRecord } from '@pyreon/router'
 import { createRouter, RouterView } from '@pyreon/router'
 
 // ─── App assembly ────────────────────────────────────────────────────────────
@@ -34,6 +34,13 @@ export interface CreateAppOptions {
    * navigation to break against subpath deploys.
    */
   base?: string
+
+  /**
+   * `<Link>` external-link behaviour — `sameOriginAbsolute` (`'internal'` |
+   * `'external'`), `externalNewTab`, `externalRel`. Forwarded to
+   * `createRouter({ links })`; read by `<Link>` / `useLink`.
+   */
+  links?: LinkConfig
 }
 
 /**
@@ -47,6 +54,7 @@ export function createApp(options: CreateAppOptions) {
     mode: options.routerMode ?? 'history',
     ...(options.url ? { url: options.url } : {}),
     ...(options.base && options.base !== '/' ? { base: options.base } : {}),
+    ...(options.links ? { links: options.links } : {}),
     scrollBehavior: 'top',
   })
 
