@@ -63,24 +63,27 @@ export type ExternalHref =
   | `#${string}` // same-page hash anchor
 
 /**
- * The `to` validator for the generic `<RouterLink>`:
+ * The `to` validator for the generic `<RouterLink>` (and, with an explicit
+ * `Routes` argument, any other route-aware link — e.g. `@pyreon/zero`'s
+ * `<Link>` binds it to zero's own registry):
  *   - a dynamic `string` variable → accepted as-is (no cast needed)
  *   - a literal that IS a registered route → accepted
  *   - a literal that is an external URL / mailto / hash → accepted
  *   - a literal that LOOKS like an internal path but isn't registered →
- *     collapses to `RoutePath`, producing a "not assignable, did you mean …"
+ *     collapses to `Routes`, producing a "not assignable, did you mean …"
  *     error at the call site.
  *
- * When no routes are registered `RoutePath` is `string`, so every branch
- * returns `T` and this is transparently permissive.
+ * `Routes` defaults to this package's {@link RoutePath}. When no routes are
+ * registered `Routes` is `string`, so every branch returns `T` and this is
+ * transparently permissive.
  */
-export type CheckHref<T extends string> = string extends T
+export type CheckHref<T extends string, Routes extends string = RoutePath> = string extends T
   ? T
-  : T extends RoutePath
+  : T extends Routes
     ? T
     : T extends ExternalHref
       ? T
-      : RoutePath
+      : Routes
 
 /** Per-router configuration for `<RouterLink>` external-link handling. */
 export interface LinkConfig {
