@@ -37,6 +37,7 @@ import {
   objectLengthRangeForm,
   optionalMemberTernary,
   rewriteObjectKeys,
+  rewriteObjectValues,
   seedHandlerLocals,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
@@ -2330,6 +2331,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const rw = rewriteObjectKeys(e, _exprInferCtx)
         if (rw !== null) return emitSwiftExpr(rw, indent)
       }
+      // `Object.values(<object-typed expr>)` → a static member-access array
+      // ([p.a, p.b]) when the fields are homogeneous + the arg re-readable.
+      {
+        const rw = rewriteObjectValues(e, _exprInferCtx)
+        if (rw !== null) return emitSwiftExpr(rw, indent)
+      }
       // Any other `Object.<method>(...)` — `keys` on a non-struct arg
       // (dictionary/unknown), `values` / `entries` (heterogeneous value
       // arrays → `[Any]`, type-lossy), `assign` / `fromEntries` — has no
@@ -2344,7 +2351,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.name === 'Object'
       ) {
         _emitWarnings.push(
-          `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() on a statically-known object shape is supported (it lowers to a literal key array). Emitting an empty array; restructure to avoid runtime object reflection on native.`,
+          `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (they lower to a literal key / member-access array). Emitting an empty array; restructure to avoid runtime object reflection on native.`,
         )
         return e.callee.property === 'keys' ? '[String]()' : '[Any]()'
       }
