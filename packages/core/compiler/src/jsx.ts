@@ -101,6 +101,7 @@ export interface CompilerWarning {
     | 'missing-key-on-for'
     | 'signal-in-static-prop'
     | 'circular-prop-derived'
+    | 'duplicate-jsx-attr'
 }
 
 /**
@@ -2434,7 +2435,19 @@ export function transformJSX_JS(
     }
 
     function staticAttrToHtml(exprNode: N, htmlAttrName: string): string | null {
-      if (!isStatic(exprNode)) return null
+      // Parens + TS type layers are value-transparent: `id={("a")}` /
+      // `id={"a" as const}` IS the static literal — unwrap before
+      // classifying so it bakes into the template instead of paying a
+      // runtime setAttribute (JS) or being dropped entirely (the historical
+      // Rust behavior — silent attribute loss, fuzz-found).
+      exprNode = unwrapTypeLayers(exprNode)
+      // No `isStatic` pre-gate: the arms below are self-evidently-static
+      // shapes, and the two backends' static classifiers disagreed on the
+      // margins (JS said `-5` was dynamic → runtime setAttribute; Rust said
+      // static → hit a silent-omit catch-all and DROPPED the attribute).
+      // Shape-matching directly keeps the backends byte-identical by
+      // construction: recognized static shape → bake; anything else →
+      // `null` → the dynamic path emits a one-time setAttribute.
       // String literal
       if (
         (exprNode.type === 'Literal' || exprNode.type === 'StringLiteral') &&
@@ -2453,7 +2466,34 @@ export function transformJSX_JS(
         exprNode.value === true
       )
         return ` ${htmlAttrName}`
-      return '' // false/null/undefined → omit
+      // No-substitution template literal: `id={\`x\`}` — bake the raw text
+      // (parity with the Rust backend, which always baked this; the JS
+      // fallthrough used to DROP the attribute entirely).
+      if (exprNode.type === 'TemplateLiteral' && (exprNode.expressions?.length ?? 0) === 0) {
+        const quasi = exprNode.quasis?.[0]
+        if (quasi) return ` ${htmlAttrName}="${escapeHtmlAttr(quasi.value?.raw ?? '')}"`
+        return ''
+      }
+      // Signed numeric literal: `tabIndex={-1}` — trivially foldable, bake it.
+      // (The Rust backend used to DROP these; JS paid a runtime setAttribute.)
+      if (
+        exprNode.type === 'UnaryExpression' &&
+        (exprNode.operator === '-' || exprNode.operator === '+') &&
+        ((exprNode.argument?.type === 'Literal' && typeof exprNode.argument.value === 'number') ||
+          exprNode.argument?.type === 'NumericLiteral')
+      )
+        return ` ${htmlAttrName}="${exprNode.operator === '-' ? '-' : ''}${exprNode.argument.value}"`
+      if (
+        (exprNode.type === 'Literal' && (exprNode.value === false || exprNode.value === null)) ||
+        exprNode.type === 'BooleanLiteral' ||
+        exprNode.type === 'NullLiteral'
+      )
+        return '' // false/null → omit (semantic)
+      if (exprNode.type === 'Identifier' && exprNode.name === 'undefined')
+        return '' // undefined → omit (semantic)
+      // Static-but-computed (`{1+2}`, `{!0}`) — NOT silently omitted: fall
+      // through to the dynamic path, which emits a one-time setAttribute.
+      return null
     }
 
     /**
@@ -2851,8 +2891,36 @@ export function transformJSX_JS(
     }
 
     function processAttrs(el: N, varName: string): string {
+      // Duplicate plain attributes: JSX object semantics — the LAST value
+      // wins (`<p id="a" id="b">` ≡ props `{id:"a", id:"b"}` → "b"). The
+      // template path must dedupe explicitly: baking both into the HTML
+      // string hands the decision to the HTML parser, which is FIRST-wins —
+      // the opposite semantic. Earlier duplicates are dropped with a
+      // warning. Spread attributes are untouched (a later plain attr wins
+      // over an earlier spread's key by the same object semantics).
+      const attrs = jsxAttrs(el)
+      const lastPlainIdx = new Map<string, number>()
+      for (let i = 0; i < attrs.length; i++) {
+        const a = attrs[i]!
+        if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier')
+          lastPlainIdx.set(a.name.name as string, i)
+      }
       let htmlAttrs = ''
-      for (const attr of jsxAttrs(el)) htmlAttrs += processOneAttr(attr, varName)
+      for (let i = 0; i < attrs.length; i++) {
+        const a = attrs[i]!
+        if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier') {
+          const name = a.name.name as string
+          if ((lastPlainIdx.get(name) ?? i) > i) {
+            warn(
+              a,
+              `Duplicate JSX attribute \`${name}\` — the later occurrence wins (JSX object semantics); this earlier one is ignored.`,
+              'duplicate-jsx-attr',
+            )
+            continue
+          }
+        }
+        htmlAttrs += processOneAttr(a, varName)
+      }
       return htmlAttrs
     }
 
@@ -3014,7 +3082,13 @@ export function transformJSX_JS(
       if (EVENT_RE.test(name)) return true
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return false
       const expr = attr.value.expression
-      return expr && expr.type !== 'JSXEmptyExpression' ? !isStatic(expr) : false
+      if (!expr || expr.type === 'JSXEmptyExpression') return false
+      // Aligned with the emit path: any shape staticAttrToHtml bakes into the
+      // template HTML (or semantically omits) needs NO element ref. A
+      // misaligned prescan allocated vestigial `__eN` refs for shapes the
+      // emitter then baked (`id={(231)}`), shifting sibling ref-chains.
+      if (staticAttrToHtml(expr, name) !== null) return false
+      return !isStatic(expr)
     }
 
     function elementHasDynamic(node: N): boolean {
@@ -3236,11 +3310,15 @@ export function transformJSX_JS(
 
     // Auto-call signal variables: replace bare `x` with `x()` in the expression.
     // Only applies to identifiers that are NOT already being called (not `x()`).
-    if (
-      signalVars.size > 0 &&
-      signalVars.size > shadowedSignals.size &&
-      referencesSignalVar(expr)
-    ) {
+    //
+    // No `referencesSignalVar` pre-gate here: that gate skipped nested
+    // Arrow/FunctionExpression children, so an expression whose ONLY signal
+    // reads sat inside a callback (`{[1,2].map(i => s1 ? "a" : "b")}`) was
+    // never rewritten — the bare signal function is always truthy / string-
+    // concats its own source. `autoCallSignals` walks the exact reachability
+    // itself (shadow-aware, JSX-aware) and returns the text unchanged when
+    // nothing needs calling, so the gate bought only a redundant walk.
+    if (signalVars.size > 0 && signalVars.size > shadowedSignals.size) {
       result = autoCallSignals(result, expr)
     }
 
@@ -3348,6 +3426,63 @@ export function transformJSX_JS(
     return out.filter((n) => signalVars.has(n))
   }
 
+  /**
+   * Exactly-bare signal in a DOM-element binding position stays BARE.
+   * Both runtimes treat a callable attr value / child as a reactive
+   * accessor (runtime-dom `applyProp` wraps functions in `renderEffect`;
+   * runtime-server `renderProp` unwraps them; `mountChild` routes function
+   * children through `mountReactive`) — leaving the signal bare yields a
+   * FINE-GRAINED binding on that one attr/text node. Auto-calling here
+   * would instead read the signal during the enclosing slot/callback
+   * evaluation, subscribing the WHOLE slot and remounting the branch on
+   * every change (DOM state loss + wasted work). Parens and TS type
+   * layers are transparent (`{(s1)}`, `{s1 as T}`). Component attrs and
+   * component children are NOT skipped — they go through the `_rp` /
+   * accessor-wrap machinery, which expects the call inside its closure.
+   *
+   * CRITICAL scope limit: the rule applies ONLY to JSX that is RE-EMITTED
+   * inside the sliced expression (h-composed at runtime — nested JSX under
+   * a `_mountSlot` accessor / callback). A TEMPLATE-path binding slices the
+   * bare identifier itself, and its JSXExpressionContainer sits OUTSIDE the
+   * slice — there the emitted code assigns the value raw
+   * (`t.data = count()` / `setAttribute("title", s1())`), so the call is
+   * REQUIRED. Discriminator: the container must lie strictly within
+   * [sliceStart, sliceEnd).
+   */
+  function isBareDomBinding(node: N, sliceStart: number, sliceEnd: number): boolean {
+    let cur: N = node
+    let parent = findParent(cur)
+    while (
+      parent &&
+      (parent.type === 'ParenthesizedExpression' ||
+        parent.type === 'TSAsExpression' ||
+        parent.type === 'TSSatisfiesExpression' ||
+        parent.type === 'TSNonNullExpression' ||
+        parent.type === 'TSTypeAssertion')
+    ) {
+      cur = parent
+      parent = findParent(cur)
+    }
+    if (!parent || parent.type !== 'JSXExpressionContainer') return false
+    // Template-path binding: the container is the slice's own wrapper
+    // (outside the sliced range) — the emit needs the VALUE, don't skip.
+    if ((parent.start as number) < sliceStart || (parent.end as number) > sliceEnd) return false
+    const owner = findParent(parent)
+    if (!owner) return false
+    if (owner.type === 'JSXAttribute') {
+      const opening = findParent(owner)
+      if (!opening || opening.type !== 'JSXOpeningElement') return false
+      const name = opening.name
+      const tag = name?.type === 'JSXIdentifier' ? (name.name as string) : ''
+      return tag.length > 0 && !isComponentTag(tag)
+    }
+    if (owner.type === 'JSXElement') {
+      const tag = jsxTagName(owner)
+      return tag.length > 0 && !isComponentTag(tag)
+    }
+    return false
+  }
+
   function autoCallSignals(text: string, expr: N): string {
     const start = expr.start as number
     // Collect signal identifier positions that need auto-calling
@@ -3404,6 +3539,9 @@ export function transformJSX_JS(
           if (parent.shorthand) return // { name } — can't auto-call without breaking syntax
           if (parent.key === node && !parent.computed) return // { name: val } — key position
         }
+        // Exactly-bare DOM attr/child — leave bare for the runtimes'
+        // fine-grained accessor treatment (see isBareDomBinding).
+        if (isBareDomBinding(node, start, start + text.length)) return
         idents.push({ start: node.start as number, end: node.end as number })
       }
       forEachChildFast(node, findSignalIdents)

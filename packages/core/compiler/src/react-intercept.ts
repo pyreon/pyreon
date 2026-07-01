@@ -1118,6 +1118,21 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Auto-call reachability fix (2026-07 fuzz campaign): symptoms of the
+    // OLD emit — a signal function leaking into DOM output / handler math.
+    pattern: /(\(\.\.\.args\) =>|function\s*\(\)).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|s\w*\.set\(.*=>.*\+/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/compiler` versions before the auto-call reachability release, bare signal reads inside event-handler bodies, `.map`/callback re-emits, and nested JSX under conditional slots were NOT auto-called on one or both backends — the signal FUNCTION leaked into the emitted code, so string contexts rendered its source (`id="v(...args) => {…"`), boolean contexts were always truthy (`title={sig ? "a" : "b"}` stuck), and the canonical counter (`count.set(count + 1)`) concatenated the function.',
+      fix: 'Upgrade `@pyreon/compiler` — the auto-call pass now walks nested function bodies (shadow-aware) and nested JSX uniformly in BOTH backends, locked by a seeded differential-fuzz gate. No app code change needed; explicit `sig()` calls always worked and continue to.',
+      fixCode: `// All of these now compile correctly with BARE signal reads:
+<button onClick={() => count.set(count + 1)}>+</button>
+<ul>{items().map((it) => <li title={flag ? "a" : "b"}>{it}</li>)}</ul>
+{cond() ? <span id={\`v\${sig}\`}>x</span> : null}`,
+      related: 'duplicate-jsx-attr warning: duplicate JSX attributes now dedupe last-wins (JSX object semantics) with a compiler warning.',
+    }),
+  },
+  {
     // Hydration-blob same-path collision (fixed alongside the server-loaders
     // correctness PR): a layout and its index page SHARE a route path, and
     // the SSR hydration blob keyed loader data by record.path — so on older
