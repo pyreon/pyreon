@@ -90,10 +90,36 @@ function fileSlug(filePath: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
-/** Sanitize a strategy into an identifier fragment: `media(...)` → `media`. */
-function strategyFrag(strategy: string): string {
+/** FNV-1a 32-bit → 8-char hex — a stable, collision-resistant discriminator. */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
+/**
+ * A collision-free identifier fragment for a hydration strategy.
+ *
+ * The readable base (`visible`, `idle`, `media`, `interaction`, …) is the
+ * strategy up to the first `(`, but that alone is NOT unique: two parameterized
+ * strategies that share a base — `media(min-width: 100px)` vs
+ * `media(min-width: 999px)`, or `interaction(click)` vs `interaction(focus)` —
+ * would collapse to the same fragment. Since wrappers are deduped by the FULL
+ * strategy string, that produced a duplicate `const` (a hard SyntaxError) + a
+ * duplicate island `name`. When the strategy carries params (the fragment
+ * doesn't capture the whole string), append a stable hash of the full strategy
+ * so distinct strategies always get distinct identifiers.
+ */
+function strategyIdent(strategy: string): string {
   const base = strategy.split('(')[0] ?? strategy
-  return base.replace(/[^a-zA-Z0-9]+/g, '') || 'load'
+  const frag = base.replace(/[^a-zA-Z0-9]+/g, '') || 'load'
+  // If the sanitized WHOLE strategy equals the fragment, it's a bare strategy
+  // (`visible`/`idle`/`load`/…) — no hash needed. Otherwise it's parameterized.
+  const full = strategy.replace(/[^a-zA-Z0-9]+/g, '')
+  return full === frag ? frag : `${frag}_${fnv1a(strategy)}`
 }
 
 export function transformClientDirectives(
@@ -233,14 +259,14 @@ export function transformClientDirectives(
     const key = `${site.component}::${site.strategy}`
     let island = wrapperByKey.get(key)
     if (!island) {
-      const varName = `__pyIsland_${site.component}_${strategyFrag(site.strategy)}`
+      const varName = `__pyIsland_${site.component}_${strategyIdent(site.strategy)}`
       island = {
         varName,
         component: site.component,
         importSource: site.binding.source,
         exportName: site.binding.exportName,
         hydrate: site.strategy,
-        name: `${slug}_${site.component}_${strategyFrag(site.strategy)}`,
+        name: `${slug}_${site.component}_${strategyIdent(site.strategy)}`,
       }
       wrapperByKey.set(key, island)
       islands.push(island)

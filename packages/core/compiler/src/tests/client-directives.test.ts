@@ -76,12 +76,47 @@ export const P = () => (<div><Counter hydrate="visible" /><Counter hydrate="visi
     expect(r.code.match(/__pyIsland_Counter_visible/g)?.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('media(...) strategy sanitizes the var/name fragment but keeps the full strategy value', () => {
+  it('media(...) strategy keeps a readable base fragment (+ a disambiguating hash) and the full strategy value', () => {
     const src = `import M from './M'\nexport const P = () => <M hydrate="media(min-width: 768px)" />`
     const r = transformClientDirectives(src, F)
-    expect(r.islands[0]!.varName).toBe('__pyIsland_M_media')
+    // parameterized strategies append a stable hash so two `media(...)` queries
+    // never collide on the same identifier (see the collision test below).
+    expect(r.islands[0]!.varName).toMatch(/^__pyIsland_M_media_[0-9a-f]{8}$/)
     expect(r.islands[0]!.hydrate).toBe('media(min-width: 768px)')
     expect(r.code).toContain(`hydrate: "media(min-width: 768px)"`)
+  })
+
+  it('bare strategies stay hash-free (readable identifiers)', () => {
+    for (const s of ['visible', 'idle', 'load', 'never']) {
+      const r = transformClientDirectives(`import C from './C'\nexport const P = () => <C hydrate="${s}" />`, F)
+      expect(r.islands[0]!.varName).toBe(`__pyIsland_C_${s}`)
+    }
+  })
+
+  it('two media(...) queries on one component → DISTINCT wrappers (no duplicate const / name)', () => {
+    // Regression: the dedup key uses the FULL strategy, but the identifier used
+    // to derive `varName`/`name` used to collapse `media(...)` → `media`, so two
+    // distinct queries produced a duplicate `const __pyIsland_M_media` (a hard
+    // SyntaxError) + a duplicate island `name`.
+    const src = `import M from './M'
+export const P = () => (<div><M hydrate="media(min-width: 100px)" /><M hydrate="media(min-width: 999px)" /></div>)`
+    const r = transformClientDirectives(src, F)
+    expect(r.islands).toHaveLength(2)
+    const consts = [...r.code.matchAll(/const (__pyIsland_\w+) =/g)].map((m) => m[1])
+    expect(new Set(consts).size).toBe(consts.length) // no duplicate lexical binding
+    const names = r.islands.map((i) => i.name)
+    expect(new Set(names).size).toBe(names.length) // no duplicate registry name
+    expect(r.code).toContain('hydrate: "media(min-width: 100px)"')
+    expect(r.code).toContain('hydrate: "media(min-width: 999px)"')
+  })
+
+  it('interaction(click) vs interaction(focus) also get distinct wrappers', () => {
+    const src = `import W from './W'
+export const P = () => (<div><W hydrate="interaction(click)" /><W hydrate="interaction(focus)" /></div>)`
+    const r = transformClientDirectives(src, F)
+    expect(r.islands).toHaveLength(2)
+    const consts = [...r.code.matchAll(/const (__pyIsland_\w+) =/g)].map((m) => m[1])
+    expect(new Set(consts).size).toBe(consts.length)
   })
 
   // ── bail / warn cases (left UNCHANGED) ──
