@@ -507,19 +507,35 @@ export function buildArraySpreadConcat(
 export function classifyNegativeSlice(
   args: ExprIR[],
   emitArg: (e: ExprIR) => string,
-): { kind: 'last' | 'dropLast'; n: string } | null {
+):
+  | { kind: 'last'; n: string }
+  | { kind: 'dropLast'; n: string }
+  | { kind: 'dropFirstLast'; s: string; n: string }
+  | { kind: 'suffixDropLast'; m: string; n: string }
+  | null {
   const neg = (a: ExprIR | undefined): a is Extract<ExprIR, { kind: 'unary' }> =>
     a?.kind === 'unary' && a.op === '-'
   if (args.length === 1 && neg(args[0])) {
     return { kind: 'last', n: emitArg(args[0].argument) }
   }
-  if (
-    args.length === 2 &&
-    args[0]?.kind === 'literal' &&
-    args[0].value === 0 &&
-    neg(args[1])
-  ) {
-    return { kind: 'dropLast', n: emitArg(args[1].argument) }
+  // Two-arg forms with a NEGATIVE end (drop-from-the-end). The start decides
+  // the front operation:
+  //   slice(0, -n)  -> dropLast(n)                (drop last n)
+  //   slice(s, -n)  -> dropFirst(s).dropLast(n)   (s a positive literal)
+  //   slice(-m, -n) -> suffix(m).dropLast(n)      (last m, then drop last n)
+  // A NON-literal non-negative start (a variable) with a negative end can't be
+  // proven front-anchored, so it falls through to null (a follow-up shape).
+  if (args.length === 2 && neg(args[1])) {
+    const endN = emitArg(args[1].argument)
+    const start = args[0]
+    if (start?.kind === 'literal' && typeof start.value === 'number' && start.value >= 0) {
+      return start.value === 0
+        ? { kind: 'dropLast', n: endN }
+        : { kind: 'dropFirstLast', s: emitArg(start), n: endN }
+    }
+    if (neg(start)) {
+      return { kind: 'suffixDropLast', m: emitArg(start.argument), n: endN }
+    }
   }
   return null
 }
