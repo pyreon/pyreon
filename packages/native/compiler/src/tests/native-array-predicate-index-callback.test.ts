@@ -51,6 +51,15 @@ const findIdxIdx = A(`  const out = computed(() => String(xs().findIndex((x, i) 
 // 1-arg controls — must keep the plain form (NOT the enumerated/withIndex form).
 const some1 = A(`  const out = computed(() => xs().some(x => x > 3) ? "y" : "n")`)
 const filter1 = A(`  const out = computed(() => String(xs().filter(x => x > 2).length))`)
+// MULTI-statement predicate bodies. The parser stores these in `stmts` (body =
+// empty sentinel); reading only `body` DROPPED them. Kotlin additionally needs a
+// labeled `return@<method>` — a bare `return` in a lambda is prohibited.
+const filterMulti = A(
+  `  const out = computed(() => String(xs().filter((x, i) => { const keep = x > i; return keep }).length))`,
+)
+const someEarly = A(
+  `  const out = computed(() => xs().some((x, i) => { if (x > i) { return true }; return false }) ? "y" : "n")`,
+)
 
 describe('P1 — array PREDICATE methods with a 2-param index callback (completes #1934)', () => {
   it('Swift: `.filter((el,idx))` → enumerated().filter{…}.map{ $0.element }', () => {
@@ -82,6 +91,25 @@ describe('P1 — array PREDICATE methods with a 2-param index callback (complete
     expect(kt(findIdxIdx)).toContain('?.index ?: -1')
   })
 
+  // Multi-statement predicate bodies — the whole-class fix (completes #1947 for
+  // the sibling predicate methods): emit every statement, not just `cb.body`.
+  it('Swift: multi-statement filter predicate emits the body (no silent drop)', () => {
+    const code = sw(filterMulti)
+    expect(code).toContain('let keep = x > i')
+    expect(code).toContain('return keep')
+    expect(code).not.toContain('in ""')
+  })
+  it('Kotlin: multi-statement filter predicate uses a LABELED return (return@filterIndexed)', () => {
+    const code = kt(filterMulti)
+    expect(code).toContain('val keep = x > i')
+    // a bare `return` inside a lambda is prohibited — must be `return@filterIndexed`
+    expect(code).toContain('return@filterIndexed keep')
+    expect(code).not.toContain('-> ""')
+  })
+  it('Kotlin: an EARLY/nested return inside a predicate lambda is labeled (return@any)', () => {
+    expect(kt(someEarly)).toContain('return@any')
+  })
+
   // Controls — a 1-arg predicate must keep the plain form (the index emit must
   // NOT fire for a single-param callback).
   it('Swift/Kotlin: 1-arg `.some`/`.filter` keep the plain form (no index emit)', () => {
@@ -99,12 +127,24 @@ describe('P1 — array PREDICATE methods with a 2-param index callback (complete
   const firstBig = computed(() => xs().findIndex((x, i) => x > 3 && i > 0))
   const out = computed(() => String(evens()) + " " + String(anyAtIndex()) + " " + String(allGtIndex()) + " " + String(firstBig()))`)
 
-  it.skipIf(!isSwiftUIAvailable())('iOS: all four index methods TYPECHECK against real SwiftUI', () => {
-    const r = validateSwiftTypecheck(sw(proof))
-    expect(r.ok, r.error ?? '').toBe(true)
-  })
-  it.skipIf(!isKotlincAvailable())('Android: the same component compiles via kotlinc', () => {
-    const r = validateKotlin(kt(proof))
-    expect(r.ok, r.error ?? '').toBe(true)
-  })
+  it.skipIf(!isSwiftUIAvailable())(
+    'iOS: all four index methods + multi-statement bodies TYPECHECK against real SwiftUI',
+    () => {
+      for (const src of [proof, filterMulti, someEarly]) {
+        const r = validateSwiftTypecheck(sw(src))
+        expect(r.ok, r.error ?? '').toBe(true)
+      }
+    },
+    180_000,
+  )
+  it.skipIf(!isKotlincAvailable())(
+    'Android: the same components (incl. multi-statement + labeled returns) compile via kotlinc',
+    () => {
+      for (const src of [proof, filterMulti, someEarly]) {
+        const r = validateKotlin(kt(src))
+        expect(r.ok, r.error ?? '').toBe(true)
+      }
+    },
+    180_000,
+  )
 })

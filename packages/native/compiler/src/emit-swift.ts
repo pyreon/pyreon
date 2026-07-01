@@ -2178,6 +2178,31 @@ function swiftUnionType(branches: TypeIR[]): string {
   return 'Any'
 }
 
+/**
+ * Emit an index-callback closure `{ (idx, el) in <body> }` for the enumerated()
+ * array methods (map / forEach / filter / contains / allSatisfy / first-where).
+ * Handles a MULTI-statement block body via `cb.stmts` (mirroring
+ * `emitSwiftAction`), not just a single expression — reading only `cb.body` (the
+ * empty-literal SENTINEL a block body parses to) silently DROPPED the whole body
+ * and compiled clean.
+ */
+function emitSwiftIndexedClosure(
+  cb: Extract<ExprIR, { kind: 'arrow' }>,
+  idx: string,
+  el: string,
+  indent: number,
+): string {
+  if (cb.stmts !== undefined && cb.stmts.length > 0) {
+    const pad = ' '.repeat(indent + 2)
+    const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
+    const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+    const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+    _exprInferCtx.locals = savedLocals
+    return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
+  }
+  return `{ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }`
+}
+
 function emitSwiftExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -2598,7 +2623,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().contains(where: { (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })`
+              return `${obj}.enumerated().contains(where: ${emitSwiftIndexedClosure(cb, idx, el, indent)})`
             }
             if (e.args.length === 1) {
               return `${obj}.contains(where: ${argExprs[0]!})`
@@ -2610,7 +2635,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().allSatisfy({ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })`
+              return `${obj}.enumerated().allSatisfy(${emitSwiftIndexedClosure(cb, idx, el, indent)})`
             }
             if (e.args.length === 1) {
               return `${obj}.allSatisfy(${argExprs[0]!})`
@@ -2626,7 +2651,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().filter({ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }).map({ $0.element })`
+              return `${obj}.enumerated().filter(${emitSwiftIndexedClosure(cb, idx, el, indent)}).map({ $0.element })`
             }
             if (e.args.length === 1) return `${obj}.filter(${argExprs[0]!})`
             break
@@ -2646,21 +2671,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              // Multi-statement block body (`(x, i) => { a.set(x); b.set(i) }`)
-              // — emit EVERY statement, mirroring `emitSwiftAction`. Reading only
-              // `cb.body` (the empty-literal SENTINEL a block body parses to)
-              // silently DROPPED the whole body and compiled clean.
-              if (cb.stmts !== undefined && cb.stmts.length > 0) {
-                const pad = ' '.repeat(indent + 2)
-                const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
-                const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
-                const lines = inlinedStmts
-                  .map((s) => pad + emitSwiftStatement(s, indent + 2))
-                  .join('\n')
-                _exprInferCtx.locals = savedLocals
-                return `${obj}.enumerated().${prop}({ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}})`
-              }
-              return `${obj}.enumerated().${prop}({ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })`
+              return `${obj}.enumerated().${prop}(${emitSwiftIndexedClosure(cb, idx, el, indent)})`
             }
             break
           }
@@ -2897,7 +2908,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               if (cb) {
                 const el = swiftIdent(cb.params[0]!)
                 const idx = swiftIdent(cb.params[1]!)
-                return `(${obj}.enumerated().first(where: { (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} })?.offset ?? -1)`
+                return `(${obj}.enumerated().first(where: ${emitSwiftIndexedClosure(cb, idx, el, indent)})?.offset ?? -1)`
               }
             }
             if (e.args.length === 1) return `(${obj}.firstIndex(where: ${argExprs[0]!}) ?? -1)`
