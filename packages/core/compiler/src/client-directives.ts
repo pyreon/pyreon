@@ -253,6 +253,13 @@ export function transformClientDirectives(
 
   // ── 3. One island wrapper per (component, strategy) ──
   const slug = fileSlug(filePath)
+  // A hash of the FULL file path makes the registry `name` unique BY
+  // CONSTRUCTION across files — the readable `slug` alone collides when two
+  // paths differ only in characters the slug collapses (e.g. `foo-bar/Page` vs
+  // `foo_bar/Page` both → `foo_bar_Page`), which would produce a duplicate
+  // island `name` the moment those two files' registries merge. `varName` does
+  // NOT need it (it's module-scoped — no cross-file collision).
+  const fileHash = fnv1a(filePath)
   const islands: DirectiveIsland[] = []
   const wrapperByKey = new Map<string, DirectiveIsland>()
   for (const site of sites) {
@@ -266,7 +273,7 @@ export function transformClientDirectives(
         importSource: site.binding.source,
         exportName: site.binding.exportName,
         hydrate: site.strategy,
-        name: `${slug}_${site.component}_${strategyIdent(site.strategy)}`,
+        name: `${slug}_${site.component}_${strategyIdent(site.strategy)}_${fileHash}`,
       }
       wrapperByKey.set(key, island)
       islands.push(island)
