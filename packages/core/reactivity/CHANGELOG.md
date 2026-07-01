@@ -1,5 +1,24 @@
 # @pyreon/reactivity
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1904](https://github.com/pyreon/pyreon/pull/1904) [`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reactivity hardening (deep-analysis pass): fix three issues in the reactivity core.
+
+  - **`createSelector` promoted-key leak** — `selector.subscribe`'s unsubscribe path deleted the updater from a promoted `boundSubs` Set but never dropped the now-empty key, so any key that ever had ≥2 bound subscribers leaked an empty `Set` for the selector's lifetime. The Set is now removed when its last subscriber leaves (matching the inline-1-subscriber branch).
+  - **`EffectScope.stop()` owner-chain retention** — `stop()` now nulls `_parent` and `_contexts` alongside `_effects`/`_updateHooks`, so a disposed scope no longer retains its parent chain (and the parent's context Map) when a descendant scope outlives it. A stopped scope is never walked as a context owner, so this is pure GC cleanup with no behavior change.
+  - **`batch.ts` `MAX_PASSES` silent production drop** — the cap-exceeded warning was dev-only, so production silently dropped queued effects, leaving the reactive graph half-applied. The condition now surfaces a `console.error` in production too.
+
+- [#1901](https://github.com/pyreon/pyreon/pull/1901) [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: fast path for the explicit-`batch()` drain. Writes made INSIDE a `batch(() => …)` must coalesce, so they enqueue + drain via `drainQueuesLocked` instead of the inline-batch direct-dispatch path — and that drain paid an outer-loop + recompute-tier check + a per-pass `new Set()` even for the dominant case (a handful of non-cascading subscribers in a single pass), making a batched single-subscriber notify ~10× the unbatched fast path. The drain now (a) runs a single effects-only pass up front and returns if it produced no follow-up work — a cascade falls through to the general multi-pass loop as pass 2+, so run-counts + MAX_PASSES are identical; (b) reuses a persistent `_visitedScratch` Set instead of reallocating per pass. Provably equivalent (the fast pass IS pass 1 — same live-Set iteration + `_visitedThisPass` routing, so coalescing / diamond dedup / cross-pass self-re-fire are preserved); validated by the full reactivity suite (642) + runtime-dom suite (799) staying green + a dedicated fast-path parity suite (bisect-verified). Measured (controlled interleaved A/B): batched single-subscriber notify ~155 → ~126ns, 2-subscriber ~156 → ~122ns (~20%) — a framework-wide win for any `batch()` over subscribed signals (form bulk-updates, store patch on a subscribed store, etc.).
+
+- [#1913](https://github.com/pyreon/pyreon/pull/1913) [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reactivity perf-cleanup pass (deep-audit follow-up; every claim measured under `NODE_ENV=production`):
+
+  - **`createStore` read-path speedups.** `wrap()` now checks the proxy cache before the 8 `instanceof` builtin checks + the `markRaw` symbol lookup (the cache hit is the dominant path — the `get` trap re-`wrap()`s every nested object on every read), and `getOrCreateSignal` does one `Map.get` instead of `has`+`get`. Measured: flat property read ~24.6 → 15.4 ns (−37%), deep nested read ~73 → 63 ns (−14%). Benefits every `createStore`/`shallowReactive`/`reconcile` consumer.
+  - **Removed dead `effectDeps` WeakMap.** `trackSubscriber`'s WeakMap fallback branch was unreachable (every tracking path sets a deps collector before `activeEffect` goes live), so it never wrote the WeakMap and `cleanupEffect` always no-op'd. Removed the WeakMap, the dead branch, and `cleanupEffect`. −14 bytes off the `@pyreon/reactivity` minimal-import bundle, zero runtime change (it was dead code).
+
+  No public API or behavior change.
+
 ## 0.37.1
 
 ## 0.37.0

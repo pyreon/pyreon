@@ -1,0 +1,49 @@
+# @pyreon/rich-text
+
+## 0.38.0
+
+### Minor Changes
+
+- [#1866](https://github.com/pyreon/pyreon/pull/1866) [`b8b7a8a`](https://github.com/pyreon/pyreon/commit/b8b7a8a99c26a137d438abe4e13ed4cc8e9eae7d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `@pyreon/rich-text` — a reactive WYSIWYG rich-text editor built as a thin
+  signal-backed layer over TipTap (MIT, framework-agnostic, ProseMirror-based),
+  the same adapter shape as `@pyreon/code` (CodeMirror) and `@pyreon/charts`
+  (ECharts).
+
+  - `createRichTextEditor(config?)` — reactive instance; `editor.json` is a
+    writable `Signal<JSONContent>`, with computed `html` / `text` / `isEmpty` /
+    `characterCount` / `canUndo` / `canRedo`.
+  - `<RichText instance={editor} />` — mount component; lazy-loads `@tiptap/*` on
+    first render so the engine stays out of the initial bundle. The content area
+    is a labeled `role="textbox"` multiline region (configurable `ariaLabel`).
+  - `bindRichTextToSignal({ editor, signal, format })` — two-way binding (`json`
+    or `html`) with built-in loop prevention, mirroring
+    `@pyreon/code`'s `bindEditorToSignal`.
+
+  MIT throughout (TipTap + ProseMirror). Real-time collaboration composes with
+  `@pyreon/sync` (bind to the same `Y.Doc` XML fragment) — no paid cloud.
+
+- [#1871](https://github.com/pyreon/pyreon/pull/1871) [`fb4d884`](https://github.com/pyreon/pyreon/commit/fb4d8847a7c41536cb1b42861fb4d8f8f2f89320) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/rich-text`: toolbar-completeness API + exhaustive docs & demo.
+
+  - `editor.isActive(name, attrs?)` — reactive toolbar primitive for active-state
+    highlighting (`isActive('bold')`, `isActive('heading', { level: 2 })`).
+  - `editor.editable` — writable `Signal<boolean>` for a runtime read-only toggle.
+  - `editor.wordCount` computed; `editor.undo()` / `editor.redo()` / `editor.blur()`
+    helpers alongside the existing `chain()` escape hatch.
+  - Exhaustive conceptual guide at `docs/rich-text` (editor API, toolbars,
+    read-only, counts, two-way binding, extensions, a11y, collaboration via
+    `@pyreon/sync`, SSR note) + a full-featured `fundamentals-playground` demo.
+
+### Patch Changes
+
+- [#1914](https://github.com/pyreon/pyreon/pull/1914) [`fe58eb6`](https://github.com/pyreon/pyreon/commit/fe58eb6ddc5aa2f087496eb0dc36021962a59677) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Harden the `@pyreon/rich-text` async-mount lifecycle — three correctness fixes in `createRichTextEditor`'s `_mount`/`dispose`, all confirmed in a real browser:
+
+  - **Dispose-during-pending-mount no longer leaks.** `_mount` lazy-imports `@tiptap/*`, so a `dispose()` (e.g. a fast navigate-away while the chunk loads) used to land while `view` was still `null` — `dispose()` no-op'd and the resolving import then created a live ProseMirror view + contenteditable DOM that nothing tore down. A `mountToken` generation counter (bumped by `dispose()` and any newer `_mount`) now aborts the in-flight mount cleanly.
+  - **Mount failures surface instead of crashing silently.** A broken extension set (e.g. `starterKit: false` with no schema-providing extension), a throwing extension, or a failed import used to become an unhandled promise rejection while the editor silently never mounted. The new `RichTextConfig.onError?: (error: Error) => void` receives the error; without it, a `[Pyreon]`-prefixed message is logged in development.
+  - **Re-mounting the same instance preserves edits.** Disposing then re-mounting (the documented user-owned lifecycle) used to reset the editor to the config-time `content`, dropping every edit. A re-mount now seeds from the current document.
+
+  No breaking changes — `onError` is additive and every existing behavior is unchanged. Regression-locked by three new real-Chromium specs (bisect-verified).
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/core@0.38.0

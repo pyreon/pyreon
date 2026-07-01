@@ -1,5 +1,40 @@
 # @pyreon/server
 
+## 0.38.0
+
+### Minor Changes
+
+- [#1927](https://github.com/pyreon/pyreon/pull/1927) [`442cc26`](https://github.com/pyreon/pyreon/commit/442cc26728fe5704a8bc9d8782f419d7a36a683a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR store hydration — `dehydrateStores` / `hydrateStores` + framework auto-wiring
+
+  The `dehydrate → inline-script → hydrate` handshake (the TanStack-Query / loader-data
+  pattern, for `@pyreon/store`), wired into the SSR pipeline:
+
+  - **@pyreon/store**: `dehydrateStores(filter?)` (server) snapshots every active
+    per-request store's signal `.state` into a JSON-serializable `Record<id, state>`;
+    `hydrateStores(data)` (client) seeds the stores back before mount — lazily and as a
+    boot-time one-shot. Registers a decoupled `globalThis` bridge on import so the
+    framework can drive the handshake with no hard dependency (the styler-flush pattern).
+  - **@pyreon/server**: `renderPage` reads the bridge inside the request context and
+    appends `<script>window.__PYREON_STORE_STATE__=…</script>` (same safe serializer as
+    loader data) — so handler / SSG / dev all inject it with no caller change.
+  - **@pyreon/zero** + **@pyreon/server** client entries: seed stores from the snapshot
+    before mount.
+
+  This makes cross-island shared state production-complete: two islands that both import
+  the same store already share one instance on the client (the registry is a module
+  singleton), so a signal write in one is seen by the other with zero prop-drilling — the
+  only missing piece was hydrating that shared store once with server state.
+
+### Patch Changes
+
+- Updated dependencies [[`8ca64d4`](https://github.com/pyreon/pyreon/commit/8ca64d4863bfc4c01f98880e9949307fa9f354d3), [`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/head@0.38.0
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/core@0.38.0
+  - @pyreon/router@0.38.0
+  - @pyreon/runtime-server@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

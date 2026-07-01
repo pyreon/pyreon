@@ -1,5 +1,29 @@
 # @pyreon/zero-content
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1903](https://github.com/pyreon/pyreon/pull/1903) [`6108d39`](https://github.com/pyreon/pyreon/commit/6108d39945f08bec26c6af9be097faca33e23748) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<Example>` now lazy-mounts: each example's chunk is dynamically imported and
+  mounted only when its wrapper nears the viewport (IntersectionObserver, 400px
+  rootMargin), instead of eagerly on hydration. A page with many `<Example>`s
+  (the docs examples gallery has 40+) previously fired every chunk load + mount
+  on load, streaming content in progressively and pushing LCP out; now
+  above-the-fold examples load immediately and the rest load just before they
+  scroll into view (no perceptible delay). Falls back to eager loading when
+  `IntersectionObserver` is unavailable. The loading-skeleton placeholder is now
+  `aria-hidden` (it was a roleless `<div>` with `aria-label`, a prohibited-ARIA
+  attribute that — with many skeletons coexisting below the fold under
+  lazy-mount — would also have spammed screen readers with repeated "Loading
+  example" announcements).
+- Updated dependencies [[`8ca64d4`](https://github.com/pyreon/pyreon/commit/8ca64d4863bfc4c01f98880e9949307fa9f354d3), [`d59f8ac`](https://github.com/pyreon/pyreon/commit/d59f8acacc0fe1dcd3abad932b0a6fbddc78a85c), [`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668), [`442cc26`](https://github.com/pyreon/pyreon/commit/442cc26728fe5704a8bc9d8782f419d7a36a683a), [`8a221af`](https://github.com/pyreon/pyreon/commit/8a221af967dec5a2b28467423db2266456225b92), [`bb3adfe`](https://github.com/pyreon/pyreon/commit/bb3adfee32bfb53161b1401fcab51b42268ae107)]:
+  - @pyreon/head@0.38.0
+  - @pyreon/zero@0.38.0
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/core@0.38.0
+  - @pyreon/router@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

@@ -1,5 +1,38 @@
 # @pyreon/head
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1925](https://github.com/pyreon/pyreon/pull/1925) [`8ca64d4`](https://github.com/pyreon/pyreon/commit/8ca64d4863bfc4c01f98880e9949307fa9f354d3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster SSR head serialization + a public `serializeHead()` export.
+
+  - `serializeTag` now builds attributes with a direct `for…in` concat loop
+    instead of `Object.entries(props).map(closure).join(' ')` (which
+    allocated a pairs array + a per-tag closure + a strings array + a join
+    per tag — the dominant cost when serializing many `<meta>` tags).
+  - The HTML escaper is a single charCode-scan pass: clean strings (the
+    common case) return the original with zero allocation; strings needing
+    escapes are rebuilt via slices in the same pass — replacing the prior
+    `RE.test(s) ? s.replace(RE, …) : s` (two regex passes on any string
+    containing a special char).
+  - New public `serializeHead(tags, titleTemplate?)` (from `@pyreon/head/ssr`)
+    — the string-producing half of `renderWithHead`, for pipelines that
+    resolve the head separately from the app render (streaming SSR, custom
+    templating, framework adapters). `renderWithHead` now uses it (DRY).
+
+  Measured (`bench:head`, Bun, apples-to-apples — both producing the final
+  `<head>` HTML string): Pyreon is ~2.1× / ~1.33× / ~1.34× faster than unhead
+  at 5 / 20 / 50 meta tags. (The previous "4.9–7.2×" figure was a benchmark
+  artifact — it compared Pyreon's resolve-only against unhead's
+  resolve-and-serialize; with the bench corrected to compare equal work,
+  Pyreon initially LOST until this optimization.) Output is byte-identical
+  (127 head tests pass).
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/core@0.38.0
+  - @pyreon/runtime-server@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

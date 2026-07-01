@@ -1,5 +1,15 @@
 # @pyreon/styler
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1891](https://github.com/pyreon/pyreon/pull/1891) [`448b689`](https://github.com/pyreon/pyreon/commit/448b689cfd0a9346c13aa1f836a2467bb12d4fcb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Extend the dev-mode resolved-CSS validator (`sheet.insert`) to warn on `content-visibility: auto` resolved without `contain-intrinsic-size` — a Cumulative Layout Shift footgun (the browser estimates the off-screen box height then corrects it on render, shifting content below). This is the runtime safety net complementing the static `pyreon/content-visibility-needs-intrinsic-size` lint rule: it catches the case where the CSS is computed at runtime, which the static rule can't see. Dev-only (tree-shaken from production), warns once per finding, ReDoS-safe scan.
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0

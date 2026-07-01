@@ -1,5 +1,22 @@
 # @pyreon/ui-components
 
+## 0.28.0
+
+### Patch Changes
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668), [`448b689`](https://github.com/pyreon/pyreon/commit/448b689cfd0a9346c13aa1f836a2467bb12d4fcb)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/styler@0.38.0
+  - @pyreon/core@0.38.0
+  - @pyreon/hooks@0.38.0
+  - @pyreon/coolgrid@0.38.0
+  - @pyreon/elements@0.38.0
+  - @pyreon/rocketstyle@0.38.0
+  - @pyreon/ui-core@0.38.0
+  - @pyreon/unistyle@0.38.0
+  - @pyreon/ui-primitives@0.38.0
+  - @pyreon/ui-theme@0.13.25
+
 ## 0.27.0
 
 ### Patch Changes

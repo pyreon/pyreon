@@ -1,5 +1,15 @@
 # @pyreon/i18n
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1888](https://github.com/pyreon/pyreon/pull/1888) [`58b4bcb`](https://github.com/pyreon/pyreon/commit/58b4bcbcd2c9c1245bdf4bc733672ae95c40b2b2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: memoize `Intl.PluralRules` per locale in `resolvePluralCategory`. Plural `t()` calls previously allocated a fresh `new Intl.PluralRules(locale)` every call (the `Intl` constructor dominates — `.select()` is cheap), making a plural lookup ~50× a plain interpolation. Caching the `PluralRules` per locale (mirroring the already-memoized number/date/relative-time formatters) drops plural resolution ~11µs → ~700ns (~16×). Output is unchanged; custom-`pluralRules` callers are unaffected (they early-return before the Intl path). Surfaced by the new `bench:i18next` objective benchmark.
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0

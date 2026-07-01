@@ -1,5 +1,29 @@
 # @pyreon/form
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1896](https://github.com/pyreon/pyreon/pull/1896) [`5a39b0a`](https://github.com/pyreon/pyreon/commit/5a39b0ac0042dfa2ff8d120aa3679dbe98742014) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lazy-allocate the four off-hot-path per-field signals (`error` / `touched` /
+  `disabled` / `readOnly`), keeping `value` + `dirty` eager (both are written by
+  `setValue` on the keystroke path, so they stay captured directly in the closures
+  — no getter on the hot path, no V8 deopt). A freshly created N-field form now
+  allocates **2N signals at setup instead of 6N**, materializing the rest on first
+  access with stable signal identity. The `error` signal's `_invalidCount`
+  subscriber attaches on materialization (until then the field has no error and
+  contributes 0, so `isValid` stays correct).
+
+  Measured (Tier-A headless bench, Apple M3 / Node 24, TanStack Form as the stable
+  in-bench control): `setup-12-fields` **~4.8µs → ~3.65µs (−24%)** — now ties/beats
+  TanStack Form, closing the one op where Pyreon was behind; the keystroke hot path
+  is unchanged (40–42ns); `reset` is ~15% faster (it skips resetting unmaterialized
+  signals). All existing behavior is preserved (228 form tests pass; the lazy
+  contract is bisect-verified by `form-additional.test.tsx`).
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0
