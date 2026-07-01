@@ -1194,10 +1194,24 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       }
       return elemType !== undefined ? { kind: 'array', element: elemType } : { kind: 'unknown' }
     }
-    case 'object':
-      // An object literal inside a computed expression is the separate
-      // anonymous-object → struct gap; degrade for now.
+    case 'object': {
+      // Match the literal's field-set against a DECLARED struct — mirrors the
+      // emit's `_structFieldsToName` first-wins lookup (emit-swift/kotlin) — so
+      // a computed returning the literal (or a `.reduce`/`.map`/… producing it)
+      // types the struct instead of `Any`, and a downstream `x.field` resolves.
+      // A literal matching NO declared struct stays `unknown` (the emit
+      // synthesizes an anonymous struct for it, but inference can't name that
+      // without the emitter's per-run registry — a separate follow-up).
+      if (expr.spreads === undefined || expr.spreads.length === 0) {
+        const fieldSet = expr.fields.map((f) => f.name).sort().join(',')
+        for (const [name, fields] of ctx.structs) {
+          if ([...fields.keys()].sort().join(',') === fieldSet) {
+            return { kind: 'typeRef', name, args: [] }
+          }
+        }
+      }
       return { kind: 'unknown' }
+    }
   }
 }
 
