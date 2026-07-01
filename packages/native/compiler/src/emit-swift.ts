@@ -42,6 +42,7 @@ import {
   seedHandlerLocals,
   typeContainsFunction,
   typeIsOptional,
+  unwrapOptionalType,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -2681,6 +2682,39 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         _emitWarnings.push(
           `isNaN(${nStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
         )
+      }
+      // `Boolean(x)` — JS truthiness coercion as a VALUE. Swift has no
+      // `Boolean` initializer ("cannot find 'Boolean' in scope" — the raw
+      // emit failed to compile), so lower by the arg's INFERRED type,
+      // JS-exact for the scalar shapes: bool → identity; number → `!= 0`
+      // (NaN edge: JS Boolean(NaN)=false, Swift NaN != 0 is true — no
+      // native NaN analog, same simplification the parseInt `?? 0` makes);
+      // string → non-empty; OPTIONAL number/string ALSO check the inner
+      // value ((x ?? 0) != 0 — JS Boolean(undefined)=Boolean(0)=false);
+      // other optionals → presence (`!= nil`, the same simplification the
+      // optional-truthiness condition lowering uses). An arg whose type
+      // can't be resolved keeps the raw emit + a NAMED warning (swiftc
+      // names the site loudly — never a silent drop).
+      if (
+        e.callee.kind === 'identifier' &&
+        e.callee.name === 'Boolean' &&
+        e.args.length === 1
+      ) {
+        const t = inferType(e.args[0]!, _activeInferCtx)
+        const arg = emitSwiftExpr(e.args[0]!, indent)
+        if (t.kind === 'boolean') return arg
+        if (t.kind === 'number') return `(${arg} != 0)`
+        if (t.kind === 'string') return `!(${arg}).isEmpty`
+        if (typeIsOptional(t)) {
+          const inner = unwrapOptionalType(t)
+          if (inner.kind === 'number') return `((${arg} ?? 0) != 0)`
+          if (inner.kind === 'string') return `!((${arg} ?? "").isEmpty)`
+          return `(${arg} != nil)`
+        }
+        _emitWarnings.push(
+          `Boolean(${arg}): the argument's type could not be inferred, so the JS-truthiness lowering (!= 0 / !isEmpty / != nil) cannot be chosen — emitting the raw call, which does not compile on Swift. Give the argument a resolvable type (signal<T>, a typed param, a declared struct field).`,
+        )
+        return `Boolean(${arg})`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default

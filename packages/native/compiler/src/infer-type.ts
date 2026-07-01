@@ -829,6 +829,14 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (expr.callee.name === 'parseFloat' || expr.callee.name === 'Number') {
           return { kind: 'number', float: true }
         }
+        // Coercion constructors as VALUES: `String(x)` → string (both emits
+        // are valid — Swift's `String(x)` initializer / Kotlin's `.toString()`
+        // rewrite — but with no inference case the RESULT typed `Any`, which
+        // broke any typed consumer: `["v", String(n)]` degraded the whole
+        // array literal to `[Any]` → `.length` failed on Swift). `Boolean(x)`
+        // → boolean (paired with the truthiness-lowering emit both targets).
+        if (expr.callee.name === 'String') return { kind: 'string' }
+        if (expr.callee.name === 'Boolean') return { kind: 'boolean' }
       }
       // `Array.from(x)` / `Array.from(x, fn)` / `Array.isArray(x)` — the
       // emitters lower these; mirror their result type here (array copy /
