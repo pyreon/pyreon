@@ -18,6 +18,7 @@ cli
   .option('--port <port>', 'Server port (default: 3000)')
   .option('--host [host]', 'Server host')
   .option('--open', 'Open browser on start')
+  .option('--routes', 'Print the full route table (collapsed to a one-line summary by default)')
   .action(dev)
 
 cli
