@@ -248,11 +248,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			if (ctx.file === `${root}/index.html`) {
 				_indexHtmlCache = null;
 			}
-			// Typed routes: regenerate the .d.ts when a route file is
-			// added/renamed/removed (fire-and-forget; change-detected internally).
-			if (config.typedRoutes && ctx.file.startsWith(routesDir)) {
-				void writeRouteTypes(routesDir, root, config.mode ?? "ssr");
-			}
+			// NOTE: typed-routes regen is NOT wired here. `handleHotUpdate` fires
+			// only for Vite `type: "update"` (content EDITS), never for add/delete
+			// — and a content edit can't change a route's urlPath — so it would
+			// never do useful work. The regen lives in the `server.watcher`
+			// add/unlink handler above, where route-SET changes actually land.
 		},
 
 		/**
@@ -556,6 +556,14 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					]) {
 						const mod = server.moduleGraph.getModuleById(resolvedId);
 						if (mod) server.moduleGraph.invalidateModule(mod);
+					}
+					// Typed routes: the route SET changed (add / rename / remove),
+					// so regenerate src/pyreon-routes.d.ts. This is the correct hook
+					// for it — `handleHotUpdate` fires only on content EDITS (Vite's
+					// `type: "update"`), which never change a route's urlPath, so the
+					// regen belongs here where add/unlink actually land.
+					if (config.typedRoutes) {
+						void writeRouteTypes(routesDir, root, config.mode ?? "ssr");
 					}
 					server.ws.send({ type: "full-reload" });
 				}
