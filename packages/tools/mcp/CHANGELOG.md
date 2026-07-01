@@ -1,5 +1,12 @@
 # @pyreon/mcp
 
+## 0.38.0
+
+### Patch Changes
+
+- Updated dependencies [[`4cfd22f`](https://github.com/pyreon/pyreon/commit/4cfd22f68088f937535064e0a01a42aaf957f3e2), [`a71dfa2`](https://github.com/pyreon/pyreon/commit/a71dfa2a359b278bee6a38fa7a8a41b454adca28), [`a615f46`](https://github.com/pyreon/pyreon/commit/a615f46237685a1bf4a96f535b9375655cde2c79)]:
+  - @pyreon/compiler@0.38.0
+
 ## 0.37.1
 
 ### Patch Changes

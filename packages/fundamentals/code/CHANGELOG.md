@@ -1,5 +1,26 @@
 # @pyreon/code
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1916](https://github.com/pyreon/pyreon/pull/1916) [`217157b`](https://github.com/pyreon/pyreon/commit/217157bbee6806b0f1309e5f36ef76abef422dd6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Harden the `@pyreon/code` async-mount lifecycle — two correctness fixes confirmed in a real browser, mirroring the `@pyreon/rich-text` fix:
+
+  - **Dispose-during-pending-mount no longer leaks.** `createEditor`'s `mount()` lazy-loads the language grammar, so a `dispose()` (e.g. a fast navigate-away while the grammar loads) used to land while `view` was still `null` — `dispose()` no-op'd and the resolving import then created a live CodeMirror view + DOM that nothing tore down. A `mountToken` generation counter (bumped by `dispose()`) now aborts the in-flight mount. The same shape in `<DiffEditor>` (unmount during the async grammar load left a leaked `MergeView`) is fixed with an `unmounted` guard.
+  - **Mount failures surface instead of crashing silently.** A throwing extension or a failed grammar import used to become an unhandled promise rejection while the editor silently never mounted. The new `EditorConfig.onError?: (error: Error) => void` (and `DiffEditorProps.onError`) receives the error; without it, a `[Pyreon]`-prefixed message is logged in development.
+
+  No breaking changes — `onError` is additive and existing behavior is unchanged. Regression-locked by three new real-Chromium specs (createEditor leak + onError, DiffEditor leak), each bisect-verified.
+
+- [#1908](https://github.com/pyreon/pyreon/pull/1908) [`4f21060`](https://github.com/pyreon/pyreon/commit/4f2106031cb5011d72942664a7a740795e7e28ec) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Export `createTabbedEditor` from the package root + correct the `@pyreon/code` API docs.
+
+  - **Packaging fix**: `<TabbedEditor>` requires a `TabbedEditorInstance` (its `instance` prop), which is built by `createTabbedEditor` — but the factory was never re-exported from `@pyreon/code` (only the component + its types were). It's now importable: `import { createTabbedEditor } from '@pyreon/code'`.
+  - **Docs accuracy** (manifest feeding `llms.txt` / MCP `get_api`): `<TabbedEditor>` takes an `instance` prop (not `tabs`), each `Tab` uses `name` (not `label`), and `loadLanguage` returns `Promise<Extension>` (not `Promise<void>`), caches per language, and resolves to `[]` for uninstalled grammars. Added `createTabbedEditor` and `TabbedEditor` API-reference entries.
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/runtime-dom@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0

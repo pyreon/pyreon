@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-tasks-web",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Tasks showcase rendered on WEB via @pyreon/primitives runtime. Sibling host for the canonical TasksApp.tsx source from native-tasks/. Closes Gap 5 (web host shell for the tasks showcase).",
   "license": "MIT",

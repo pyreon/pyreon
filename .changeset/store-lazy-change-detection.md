@@ -1,5 +1,0 @@
----
-"@pyreon/store": patch
----
-
-perf: lazy per-signal change-detection subscription. The store kept per-signal subscribers only to feed store-level `subscribe()` callbacks + the `patch()` mutation event, but subscribed EAGERLY at creation — and most stores never call `.subscribe()`. That was pure overhead AND it forced every signal write onto the slow batched-notify path (a subscribed signal written inside the `patch()`/`reset()` batch round-trips the reactivity pending queue ~10× a direct write). Subscriptions are now lazy: activated on the first `subscribe()`, torn down when the last leaves (mirrors the already-lazy subscribers Set). A no-subscriber store's `patch()` writes its signals unsubscribed + fast: measured `patch` (no subscriber) ~270 → ~96ns (~2.8×). Stores with a subscriber keep change-detection live (they opted into mutation tracking). Byte-identical behavior; all 142 tests pass (incl. a dedicated lazy-lifecycle + mutation-delivery suite, bisect-verified). The earlier "the gap to Zustand is intrinsic to per-field signals" assessment was wrong — the signals are faster than Zustand; the cost was the eager-subscription-forced batched notify.

@@ -1,5 +1,36 @@
 # @pyreon/validate
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1955](https://github.com/pyreon/pyreon/pull/1955) [`1302e57`](https://github.com/pyreon/pyreon/commit/1302e5726a05a3ffe08f18be75908de4359f3689) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(validate): JIT-inline `between` / `multipleOf` / `startsWith` / `endsWith` / `includes`
+
+  The JIT already inlined the cheap numeric/length conditions (`min`/`max`/`int`/…)
+  but fell back to a per-parse CLOSURE call for five more common checks. They are
+  all trivially inlinable with a byte-exact condition, so the generated validator
+  now emits the comparison directly instead of `H[k](v, ctx)`:
+
+  - `check:number:between` → `v < lo || v > hi`
+  - `check:number:multiple-of` → `v % n !== 0`
+  - `check:string:starts-with` → `!v.startsWith("…")`
+  - `check:string:ends-with` → `!v.endsWith("…")`
+  - `check:string:includes` → `!v.includes("…")`
+
+  Each matches its check closure's fail condition exactly (verified by the
+  `jit-differential` seeded-fuzz suite — 1000 random object schemas + 300 array
+  roots agree JIT-vs-interpreter; 619 tests green). Removes one closure call per
+  such check on the valid parse path — measured ~10% faster on a range/positional
+  schema with no format checks (e.g. `{ age: between(0,150) }`: ~21ns → ~19ns).
+
+  Note: the flagship valid-parse benchmark rows all carry `string().email()`,
+  whose regex closure dominates, so this doesn't move those headline numbers — it
+  speeds up the (very common) class of schemas doing numeric-range / prefix /
+  suffix / multiple-of validation without a format check.
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0

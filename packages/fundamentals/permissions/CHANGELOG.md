@@ -1,5 +1,15 @@
 # @pyreon/permissions
 
+## 0.38.0
+
+### Patch Changes
+
+- [#1889](https://github.com/pyreon/pyreon/pull/1889) [`fc6057e`](https://github.com/pyreon/pyreon/commit/fc6057e2a7c26a76b2ccc56f0732783be5835e1d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: pre-partitioned resolver index + per-key resolve memo. `resolve()` (run on every `can()` check) previously built candidate-key strings per check (`` `${parent}.*` ``, `` `${ancestor}.**` ``) while walking the most-specific-first fallback chain, so a deny/wildcard check cost ~5–7× a single exact lookup. Two layers now: (1) `createPermissions` keeps a derived index that pre-partitions keys into exact / `prefix.*` / `prefix.**` / `*` sub-maps (rebuilt on `set()`/`clear()`, incrementally on `patch()`) — direct prefix lookups, no per-check string allocation, early-out to one `Map.get` when the map has no wildcards; (2) a per-key `key→boolean` memo over `resolve` for the static-map / no-context case (the common repeated-check pattern), cleared on every `set()`/`patch()`/`clear()` and bypassed for predicate maps + context-bearing checks. Output is byte-identical (most-specific-first deny-override preserved; all 160 tests pass, incl. a dedicated memo-invalidation suite). Measured (Apple M3, median ns/op): Pyreon now faster than CASL on every benched op — exact-allow ~2.8×, deny ~2× (was ~5× slower), wildcard ~2.4× (was ~6–7× slower), multi-check ~2.5×. Surfaced + driven by the `bench:casl` objective benchmark.
+
+- Updated dependencies [[`cfa422f`](https://github.com/pyreon/pyreon/commit/cfa422fdb6985e50c74e06cf0f4c1318213d6303), [`0376a3d`](https://github.com/pyreon/pyreon/commit/0376a3ddc75dd1fbee582e7cabe98beb01d60073), [`6ee46e7`](https://github.com/pyreon/pyreon/commit/6ee46e7dca1cb01aacaa7c61ef5dbbcf12b30668)]:
+  - @pyreon/reactivity@0.38.0
+  - @pyreon/core@0.38.0
+
 ## 0.37.1
 
 ## 0.37.0
