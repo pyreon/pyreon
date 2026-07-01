@@ -1047,7 +1047,22 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // right (the fallback expression is usually the more literal,
       // e.g. `quotes.data ?? []`).
       if (expr.kind === 'logical' && expr.op === '??') {
-        return inferType(expr.left, ctx) ?? inferType(expr.right, ctx)
+        // `a ?? b` yields the NON-nullish form of `a` — the fallback only fires
+        // when `a` is null/undefined, so the result is `NonNullable<a> | b`.
+        // (The old code was `inferType(left) ?? inferType(right)` — a JS `??`
+        // on the results, but `inferType` NEVER returns null/undefined, so it
+        // ALWAYS returned the LEFT type INCLUDING its optional branch. So
+        // `nums().at(-1) ?? 0` typed `Int?` instead of `Int`, and consuming it
+        // — `String(out())`, arithmetic, a typed position — failed on Swift
+        // ("value of optional type 'Int?' must be unwrapped"). This affects the
+        // whole idiomatic optional-consumption family: `.at()`, `.find()`,
+        // `.findLast()`, `fetch.data() ?? []`, a store/optional read `?? def`.)
+        const unwrapped = unwrapOptionalType(inferType(expr.left, ctx))
+        // When the left resolves to a concrete non-optional type, that's the
+        // result. Otherwise the fallback (right) carries the type — the more
+        // literal side (`quotes.data() ?? []` → the `[]` array type).
+        if (unwrapped.kind !== 'unknown' && !typeIsOptional(unwrapped)) return unwrapped
+        return inferType(expr.right, ctx)
       }
       return { kind: 'boolean' }
     case 'unary': {
