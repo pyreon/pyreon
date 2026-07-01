@@ -64,7 +64,7 @@ export function repoVersion(pkg: string, root: string = repoRoot): string {
     // packages/core/compiler/npm/<target>, not packages/core/compiler-<target>.
     // (Harmless for non-native names — the path won't exist and the `p.name ===
     // pkg` guard below rejects any accidental match.)
-    `packages/core/compiler/npm/${name.replace(/^compiler-/, '')}`,
+    `packages/core/compiler/npm/${(name ?? '').replace(/^compiler-/, '')}`,
   ]
   for (const c of candidates) {
     try {
