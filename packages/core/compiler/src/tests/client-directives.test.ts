@@ -19,8 +19,9 @@ export default function Page() {
     expect(i.importSource).toBe('./Counter')
     expect(i.hydrate).toBe('visible')
     expect(i.exportName).toBe('default')
-    // file-derived, unique-by-construction name
-    expect(i.name).toBe('components_Page_Counter_visible')
+    // file-derived, unique-by-construction name: readable `slug_Component_strategy`
+    // plus a stable file-path hash so it can't collide across files.
+    expect(i.name).toMatch(/^components_Page_Counter_visible_[0-9a-f]{8}$/)
     // rewritten usage + injected wrapper + island import
     expect(r.code).toContain('<__pyIsland_Counter_visible />')
     expect(r.code).toContain('const __pyIsland_Counter_visible = /*#__PURE__*/ __pyIsland(')
@@ -117,6 +118,20 @@ export const P = () => (<div><W hydrate="interaction(click)" /><W hydrate="inter
     expect(r.islands).toHaveLength(2)
     const consts = [...r.code.matchAll(/const (__pyIsland_\w+) =/g)].map((m) => m[1])
     expect(new Set(consts).size).toBe(consts.length)
+  })
+
+  it('two files whose slugs collide (foo-bar vs foo_bar) get DISTINCT island names', () => {
+    // Cross-file uniqueness: `fileSlug` collapses `-`/`_`/`.` to `_`, so two
+    // sibling dirs differing only by the separator produce the same readable
+    // slug. The file-path hash appended to `name` keeps the registry names
+    // distinct BY CONSTRUCTION (they'd otherwise collide when the registries
+    // merge — the `duplicate-name` bug the feature promises to prevent).
+    const src = `import Counter from './Counter'\nexport const P = () => <Counter hydrate="visible" />`
+    const a = transformClientDirectives(src, 'src/foo-bar/Page.tsx')
+    const b = transformClientDirectives(src, 'src/foo_bar/Page.tsx')
+    expect(a.islands[0]!.name).toMatch(/^foo_bar_Page_Counter_visible_[0-9a-f]{8}$/)
+    expect(b.islands[0]!.name).toMatch(/^foo_bar_Page_Counter_visible_[0-9a-f]{8}$/)
+    expect(a.islands[0]!.name).not.toBe(b.islands[0]!.name)
   })
 
   // ── bail / warn cases (left UNCHANGED) ──
