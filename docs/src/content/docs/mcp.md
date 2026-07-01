@@ -117,6 +117,7 @@ Pick the tool that matches what you're trying to do — or call [`mcp_overview`]
 - **Validate a snippet (React + Pyreon + native anti-patterns)** — [`validate`](#validate)
 - **See the compiler's reactivity verdict for a snippet** — [`explain_reactivity`](#explain_reactivity)
 - **Convert React code to Pyreon** — [`migrate_react`](#migrate_react)
+- **Auto-fix the mechanical Pyreon footguns** — [`migrate_pyreon`](#migrate_pyreon)
 - **Diagnose a Pyreon error string** — [`diagnose`](#diagnose)
 - **Explain a captured crash with its reactive run-up** — [`explain_error`](#explain_error)
 - **Project introspection** — [`get_routes`](#get_routes), [`get_components`](#get_components)
@@ -141,6 +142,7 @@ The server registers **17 tools**. The table below is the complete surface — e
 | [`validate`](#validate) | `code: string`, `filename?: string` | Merged React + Pyreon + native anti-pattern diagnostics (line/col, fix, fixable flag) |
 | [`explain_reactivity`](#explain_reactivity) | `code: string`, `filename?: string` | The compiler's per-expression reactivity verdict (live / baked-static / footgun) over an annotated source view |
 | [`migrate_react`](#migrate_react) | `code: string`, `filename?: string` | Rewritten Pyreon code + applied-changes list + remaining manual issues |
+| [`migrate_pyreon`](#migrate_pyreon) | `code: string`, `filename?: string` | Auto-fixes the mechanically-safe Pyreon footguns; returns the rest for manual fix |
 | [`diagnose`](#diagnose) | `error: string`, `componentSource?: string`, `filename?: string`, `reactiveTrace?: ReactiveTraceEntry[]`, `phase?: string` | Probable cause + fix + related docs; optional detector + reactive-trace enrichment |
 | [`explain_error`](#explain_error) | `report: string`, `componentSource?: string` | A structured failure dossier from a full `ErrorContext` report |
 | [`get_routes`](#get_routes) | *(none)* | Every route in the current project — path, loader, guard, params, name |
@@ -364,6 +366,55 @@ Convert React code to idiomatic Pyreon in one pass. Reports per-edit changes so 
 - **`useEffect(fn, [deps])` → `effect(fn)` drops the deps array.** Pyreon effects auto-track via signal *reads* — verify your effect reads the same signals the React deps array listed.
 - **The output is correct but mechanical.** Pair with `get_pattern` afterward to apply Pyreon-native shapes (`<Show when={() => …}>` over ternaries, `<For>` over `.map()`).
 - **Idempotent** against already-migrated code — re-running it on a mostly-Pyreon file costs only the parse pass.
+:::
+
+---
+
+### migrate_pyreon
+
+The Pyreon → correct-Pyreon codemod — the parallel to [`migrate_react`](#migrate_react). Where `validate` / `explain_reactivity` *report* footguns, `migrate_pyreon` *fixes* the mechanically-safe ones and returns the rest for a human. This is what makes those three `detectPyreonPatterns` codes report `fixable: true`.
+
+**Auto-fixed** (conservative — span-based, idempotent, never mangles surrounding code):
+
+| Footgun | Fix |
+| ------- | --- |
+| `signal-write-as-call` | `sig(v)` → `sig.set(v)` |
+| `for-with-key` | `<For key={k}>` → `<For by={k}>` |
+| `as-unknown-as-vnodechild` | `x as unknown as VNodeChild` → `x` |
+
+Every **other** detected footgun (`props-destructured`, `on-click-undefined`, `raw-add-event-listener`, `date-math-random-id`, …) needs human judgement and comes back in a **Remaining** list, untouched.
+
+**Parameters:**
+
+| Param      | Type      | Description                                                    |
+| ---------- | --------- | ------------------------------------------------------------- |
+| `code`     | `string`  | The component source to fix                                   |
+| `filename` | `string?` | Parse-mode hint (`.tsx` → JSX). Defaults to `component.tsx`   |
+
+**Example call:**
+
+```json
+{
+  "code": "const count = signal(0)\ncount(1)\nconst list = <For each={a} key={k}>{i => <li />}</For>"
+}
+```
+
+```text
+## Migrated Code
+
+const count = signal(0)
+count.set(1)
+const list = <For each={a} by={k}>{i => <li />}</For>
+
+**Auto-fixes applied (2):**
+- Line 2: `count(…)` → `count.set(…)` (signal-write-as-call)
+- Line 3: `<For key={…}>` → `<For by={…}>` (for-with-key)
+```
+
+:::warning{title="Common mistakes"}
+- **It doesn't fix everything `validate` flags** — only the three mechanically-safe codes. The rest need human judgement and come back in `remaining`.
+- **It's not a formatter** — only the flagged spans are rewritten; run your formatter separately.
+- **Re-run `validate` afterwards** to confirm the human `remaining` issues are addressed.
 :::
 
 ---

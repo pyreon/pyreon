@@ -33,6 +33,7 @@ describe('gen-docs — mcp snapshot', () => {
       'mcp/get_pattern',
       'mcp/get_routes',
       'mcp/mcp_overview',
+      'mcp/migrate_pyreon',
       'mcp/migrate_react',
       'mcp/validate',
     ])

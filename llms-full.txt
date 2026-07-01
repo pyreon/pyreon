@@ -264,6 +264,10 @@ import { migrateReactCode } from "@pyreon/compiler"
 
 const { code, changes } = migrateReactCode(reactSource, "C.tsx")
 
+import { migratePyreonCode } from "@pyreon/compiler"
+
+const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")
+
 import { hasReactPatterns, detectReactPatterns } from "@pyreon/compiler"
 
 if (hasReactPatterns(src)) report(detectReactPatterns(src, file))

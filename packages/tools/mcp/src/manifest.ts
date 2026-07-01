@@ -157,6 +157,25 @@ function Counter() {
       seeAlso: ['validate'],
     },
     {
+      name: 'migrate_pyreon',
+      kind: 'constant',
+      signature: 'tool: migrate_pyreon({ code: string; filename?: string }) → PyreonMigrationResult',
+      summary:
+        "The Pyreon → correct-Pyreon codemod (parallel to `migrate_react`). Auto-fixes ONLY the mechanically-safe footguns `validate` / `explain_reactivity` flag — `sig(v)` → `sig.set(v)`, `<For key={k}>` → `<For by={k}>`, and dropping `x as unknown as VNodeChild` — and returns every OTHER detected footgun (props-destructured, on-click-undefined, raw-add-event-listener, …) as a manual-fix list. This is what makes those three `detectPyreonPatterns` codes report `fixable: true`; a conservative codemod (span-based, idempotent, non-overlapping) that never mangles code, so an agent can apply the result verbatim.",
+      example: `migrate_pyreon({ code: \`
+const count = signal(0)
+count(1)                                       // → count.set(1)
+const list = <For each={a} key={k}>{…}</For>   // → <For each={a} by={k}>
+const node = (x as unknown as VNodeChild)      // → x
+\` })`,
+      mistakes: [
+        'Expecting it to fix everything `validate` flags — only the three mechanically-safe codes are auto-fixed; the rest (props-destructured, on-click-undefined, raw-add-event-listener, date-math-random-id) need human judgement and come back in `remaining`.',
+        'Running it as a formatter — it only rewrites the flagged footgun spans; whitespace / style elsewhere is untouched (pair with your formatter).',
+        'Skipping `validate` afterwards — `migrate_pyreon` clears the mechanical footguns, but re-run `validate` to confirm the `remaining` (human) issues are addressed.',
+      ],
+      seeAlso: ['validate', 'explain_reactivity', 'migrate_react'],
+    },
+    {
       name: 'diagnose',
       kind: 'constant',
       signature:

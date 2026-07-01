@@ -15,7 +15,7 @@ Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native b
 - Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s reactive-vs-static decision (experimental)
 - Scope-aware signal auto-call: bare &#123;count&#125; → &#123;() =&gt; count()&#125;, shadowing-correct, knownSignals seeds cross-module
 - detectReactPatterns + migrateReactCode — "coming from React" diagnostics + one-shot codemod
-- detectPyreonPatterns — 14 "using Pyreon wrong" anti-pattern codes (the MCP validate detector)
+- detectPyreonPatterns — 14 "using Pyreon wrong" anti-pattern codes (the MCP validate detector); migratePyreonCode auto-fixes the 3 mechanically-safe ones
 - Project audits: auditTestEnvironment / auditIslands / auditSsg (power pyreon doctor)
 - transformDeferInline — &lt;Defer&gt; namespace-import inlining pass
 - generateContext — project scanner producing the AI .pyreon/context.json
@@ -32,6 +32,7 @@ Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native b
 | [`emitValidator`](#emitvalidator) | function | Emits a monomorphic, fully-inlined validator FUNCTION SOURCE for an emittable `analyzeValidate` IR node — straight-line  |
 | [`detectReactPatterns`](#detectreactpatterns) | function | AST-based detector for "coming from React" mistakes — `useState` / `useEffect`, `className` / `htmlFor`, `onChange` on i |
 | [`migrateReactCode`](#migratereactcode) | function | One-shot React→Pyreon codemod — `useState`→`signal`, `useEffect`→`effect`/`onMount`, `className`→`class`, etc. |
+| [`migratePyreonCode`](#migratepyreoncode) | function | Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). |
 | [`hasReactPatterns`](#hasreactpatterns) | function | Fast regex pre-filter — returns whether `code` is worth a full `detectReactPatterns` AST walk. |
 | [`diagnoseError`](#diagnoseerror) | function | Maps a raw runtime/build error string to a structured `ErrorDiagnosis` (likely cause + actionable fix) for known Pyreon  |
 | [`detectPyreonPatterns`](#detectpyreonpatterns) | function | AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 14 codes today (`for-missing-by`, `for- |
@@ -232,6 +233,26 @@ const { code, changes } = migrateReactCode(reactSource, "C.tsx")
 ```
 
 **See also:** `detectReactPatterns`
+
+---
+
+### migratePyreonCode `function`
+
+```ts
+migratePyreonCode(source: string, filename?: string): PyreonMigrationResult
+```
+
+Pyreon→correct-Pyreon codemod (the parallel to `migrateReactCode`). Auto-fixes ONLY the mechanically-safe `detectPyreonPatterns` footguns — `sig(v)`→`sig.set(v)` (signal-write-as-call), `<For key>`→`<For by>` (for-with-key), and dropping `x as unknown as VNodeChild` (as-unknown-as-vnodechild), tracked by `AUTO_FIXABLE_PYREON_CODES`. Span-based, applied back-to-front, non-overlapping, idempotent — so the output is safe to apply verbatim. Returns `{ code, changes, remaining }` where `remaining` is every OTHER detected footgun (props-destructured, on-click-undefined, …) that needs a human. This is why those three codes report `fixable: true`.
+
+**Example**
+
+```tsx
+import { migratePyreonCode } from "@pyreon/compiler"
+
+const { code, changes, remaining } = migratePyreonCode(source, "C.tsx")
+```
+
+**See also:** `detectPyreonPatterns` · `migrateReactCode`
 
 ---
 
