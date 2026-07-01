@@ -73,8 +73,7 @@ describe('getUpdateCause — "why did this update?"', () => {
 
   it('returns null for a node that never fired', () => {
     activateReactiveDevtools()
-    const s = signal(0, { name: '$never' })
-    // never write it → no fire
+    signal(0, { name: '$never' }) // create the node; never write it → no fire
     expect(getUpdateCause(nodeId('signal', '$never'))).toBeNull()
   })
 
