@@ -53,6 +53,16 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 export type { RouterLinkProps, RouterProviderProps, RouterViewProps } from './components'
 // Components
 export { RouterLink, RouterProvider, RouterView } from './components'
+// Typed routes + external-link classification
+export type {
+  CheckHref,
+  ExternalHref,
+  LinkConfig,
+  LinkKind,
+  RegisteredRoutes,
+  RoutePath,
+} from './typed-routes'
+export { classifyHref, toRouterPath } from './typed-routes'
 export type { NotFoundBoundaryProps } from './not-found'
 export { isNotFoundError, NotFoundBoundary, notFound } from './not-found'
 export type { RedirectStatus } from './redirect'

@@ -95,6 +95,7 @@ interface RouterOptions {
   url?: string
   onError?: (err: unknown, route: ResolvedRoute) => undefined | false
   maxCacheSize?: number
+  links?: LinkConfig
 }
 ```
 
@@ -109,6 +110,7 @@ interface RouterOptions {
 | `url`            | `string`                                           | -         | Initial URL for SSR (when `window.location` is unavailable)                                                                                        |
 | `onError`        | `(err, route) => undefined \| false`               | -         | Global loader error handler. Return `false` to cancel navigation.                                                                                  |
 | `maxCacheSize`   | `number`                                           | `100`     | Max number of resolved lazy components to cache (LRU eviction)                                                                                     |
+| `links`          | `LinkConfig`                                       | -         | `<RouterLink>` external-link behaviour — `sameOriginAbsolute` (`'internal'` \| `'external'`), `externalNewTab`, `externalRel`. See [External links](#external-links). |
 
 **Hash mode vs history mode:**
 
@@ -711,19 +713,25 @@ When a route has a loader, `RouterView` wraps the route component with a `Loader
 
 ### RouterLink
 
-A reactive link component that renders an `<a>` tag with automatic active class management and prefetching.
+A reactive link component that renders an `<a>` tag with automatic active class management, prefetching, **typed route paths**, and **automatic external-link handling**.
 
 ```tsx
-interface RouterLinkProps {
-  to: string
+interface RouterLinkProps<T extends string = string> {
+  to: CheckHref<T>
   replace?: boolean
   activeClass?: string
   exactActiveClass?: string
   exact?: boolean
   prefetch?: 'intent' | 'hover' | 'viewport' | 'none'
+  // External-link overrides (auto-detected from `to`; set these to force a choice):
+  external?: boolean
+  target?: string
+  rel?: string
   children?: VNodeChild | null
 }
 ```
+
+`to` is validated by `CheckHref<T>`: when routes are registered (see [Typed routes](#typed-routes)) a mistyped internal path is a compile error, while dynamic `string`s and external URLs are always accepted with no cast.
 
 **Basic usage:**
 
@@ -748,12 +756,15 @@ interface RouterLinkProps {
 
 | Prop               | Type                              | Default                      | Description                                                      |
 | ------------------ | --------------------------------- | ---------------------------- | ---------------------------------------------------------------- |
-| `to`               | `string`                          | required                     | Navigation target path                                           |
+| `to`               | `CheckHref<T>`                    | required                     | Navigation target — a route path, dynamic `string`, or external URL |
 | `replace`          | `boolean`                         | `false`                      | Use `replace` instead of `push`                                  |
 | `activeClass`      | `string`                          | `"router-link-active"`       | Class when link is active (current path starts with link target) |
 | `exactActiveClass` | `string`                          | `"router-link-exact-active"` | Class on exact path match                                        |
 | `exact`            | `boolean`                         | `false`                      | Only apply activeClass on exact match                            |
 | `prefetch`         | `"intent" \| "hover" \| "viewport" \| "none"` | `"intent"`       | Prefetch strategy for loader data (default prefetches on hover **and** keyboard focus) |
+| `external`         | `boolean`                         | auto                         | Force external (`true`) or internal (`false`), overriding auto-detection |
+| `target`           | `string`                          | auto (`"_blank"` for external) | Override the `<a target>` (auto `"_blank"` for external links)  |
+| `rel`              | `string`                          | auto (`"noopener noreferrer"`) | Override the `<a rel>` (auto secure `rel` on new-tab links)     |
 
 **Active class behavior:**
 
@@ -778,6 +789,67 @@ The active class is segment-aware. `/admin` is a prefix of `/admin/users` but NO
 
 - Hash mode: `href="#/about"`
 - History mode: `href="/about"`
+
+#### External links
+
+`RouterLink` inspects `to` at runtime and only intercepts **internal** navigations. Anything else is left to the browser, with the right `<a>` attributes applied automatically:
+
+| `to` shape | Kind | Rendered `<a>` | Click |
+| ---------- | ---- | -------------- | ----- |
+| `/about`, `about` | internal | `href="#/about"` (hash) / `href="/about"` (history) | `router.push()` |
+| `https://x.com/…`, `//cdn.x.com/…` | external | `target="_blank" rel="noopener noreferrer"` | full browser navigation (new tab) |
+| `mailto:`, `tel:`, `sms:`, other schemes | protocol | plain `<a href>` | browser handles it |
+| `#section` | hash | plain `<a href="#section">` | browser scroll |
+| `https://this-site.com/about` (same origin) | internal by default | stripped to `href="#/about"` | `router.push()` |
+
+```tsx
+<RouterLink to="/docs">Docs</RouterLink>                {/* client nav */}
+<RouterLink to="https://github.com/pyreon">GitHub</RouterLink> {/* new tab, secure rel */}
+<RouterLink to="mailto:hi@pyreon.dev">Email</RouterLink>  {/* browser mailto */}
+```
+
+Modifier / middle-clicks (⌘/Ctrl/Shift/Alt, non-primary button) always fall through to the browser's native open-in-new-tab behaviour, even on internal links.
+
+**Configure globally** via `createRouter({ links })` ([RouterOptions](#routeroptions)):
+
+```tsx
+createRouter({
+  routes,
+  links: {
+    sameOriginAbsolute: 'internal', // or 'external' — how to treat same-origin absolute URLs (default 'internal')
+    externalNewTab: true,           // external links open in a new tab (default true)
+    externalRel: 'noopener noreferrer', // rel applied to new-tab links (default)
+  },
+})
+```
+
+**Override per link** — explicit props win over config and auto-detection:
+
+```tsx
+<RouterLink to="https://x.com" target="_self">stay here</RouterLink>
+<RouterLink to="/report.pdf" external>open PDF in new tab</RouterLink>
+<RouterLink to="https://this-site.com/a" external={false}>client-nav a same-origin absolute</RouterLink>
+```
+
+#### Typed routes
+
+By default `to` is `string` — the router is fully usable with no codegen. Register your app's routes by augmenting the `RegisteredRoutes` interface (a build step like `@pyreon/zero`'s `typedRoutes` can emit this for you) and `to` gains autocomplete + typo-rejection, while still accepting dynamic strings and external URLs:
+
+```tsx
+declare module '@pyreon/router' {
+  interface RegisteredRoutes {
+    '/': Record<string, never>
+    '/resume': Record<string, never>
+  }
+}
+
+<RouterLink to="/resume" />          // ✓ autocompleted
+<RouterLink to="/rezume" />          // ✗ TS error: did you mean '/resume'?
+<RouterLink to={someString} />       // ✓ dynamic string, no cast
+<RouterLink to="https://x.com" />    // ✓ external URL, never typo-checked
+```
+
+The generic `RouterLink<const T>` infers `T` from the `to` literal and runs it through `CheckHref<T>`: a literal that looks internal but isn't registered collapses to the route union (producing the error), while registered routes / external URLs / dynamic `string`s pass through unchanged. This is a strict superset of `to: string` — nothing that compiled before stops compiling.
 
 #### Prefetch Strategies
 

@@ -47,7 +47,7 @@ Key reactivity optimizations: `_tpl()` (cloneNode), `_bind()` static-dep trackin
 | `@pyreon/runtime-dom` | DOM renderer, mount, hydrateRoot, Transition, TransitionGroup, KeepAlive, SVG/MathML namespace, custom elements |
 | `@pyreon/compiler` | JSX transform: Rust native (napi-rs, 3.7-8.9x faster) + JS fallback. `shouldWrap`, static hoisting, `_bind`, pure calls, spread templates. Reactivity-Lens sidecar (`analyzeReactivity`) |
 | `@pyreon/runtime-server` | renderToString, renderToStream, Suspense 30s timeout, XSS-safe templates, For key markers |
-| `@pyreon/router` | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params |
+| `@pyreon/router` | hash+history+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params, typed routes (`RegisteredRoutes` augmentation → `RouterLink` typo-rejection), auto external-link handling (`target=_blank`/`rel`, per-router `links` config + per-link overrides) |
 | `@pyreon/head` | useHead, HeadProvider, renderWithHead, ScriptTag |
 | `@pyreon/server` | createHandler (SSR), renderPage (shared string-mode pipeline), prerender (SSG), island(), middleware |
 | `@pyreon/vite-plugin` | JSX transform + SSR dev middleware + signal-preserving HMR |

@@ -14,6 +14,7 @@ import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { _setDefaultChromeLayout } from './match'
 import { isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
+import { type CheckHref, classifyHref, toRouterPath } from './typed-routes'
 
 // Track prefetched paths per router to avoid duplicate fetches
 const _prefetched = new WeakMap<RouterInstance, Set<string>>()
@@ -250,8 +251,14 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
 
 // ─── RouterLink ───────────────────────────────────────────────────────────────
 
-export interface RouterLinkProps extends Props {
-  to: string
+export interface RouterLinkProps<T extends string = string> extends Props {
+  /**
+   * The destination. Typo-checked against the app's registered routes when
+   * typed routes are enabled (else any `string`); external URLs (`https://…`,
+   * `mailto:`, `#hash`, …) and dynamic `string` variables are always accepted.
+   * See `CheckHref` / `RegisteredRoutes`.
+   */
+  to: CheckHref<T>
   /** If true, uses router.replace() instead of router.push() */
   replace?: boolean
   /** CSS class applied when this link is active (default: "router-link-active") */
@@ -268,26 +275,65 @@ export interface RouterLinkProps extends Props {
    *   - "none" — no prefetching
    */
   prefetch?: 'intent' | 'hover' | 'viewport' | 'none'
+  /**
+   * Override the auto internal/external classification of `to`:
+   *   - `true`  — force external (full browser navigation, new-tab eligible).
+   *   - `false` — force internal (client-side routing), e.g. for a same-origin
+   *     absolute URL you want handled by the router.
+   *   - omitted — auto-detect (URLs with a scheme / protocol-relative /
+   *     cross-origin → external; registered/relative paths → internal).
+   */
+  external?: boolean
+  /** Override the anchor `target` (auto: `_blank` for external new-tab links). */
+  target?: string
+  /** Override the anchor `rel` (auto: `noopener noreferrer` for `_blank`). */
+  rel?: string
   children?: VNodeChild | null
 }
 
-export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
+/**
+ * Runtime implementation. Typed against the WIDENED props (`RouterLinkProps` =
+ * `RouterLinkProps<string>`, so `to` is `string`); the exported `RouterLink`
+ * carries the generic `<const T>` signature for compile-time `to` validation.
+ */
+const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   const router = useContext(RouterContext)
   const prefetchMode = props.prefetch ?? 'intent'
+  const inst = router as RouterInstance | null
+
+  // Resolve the effective navigation kind, honouring the per-link `external`
+  // override (true → external, false → internal) over the auto-classification.
+  // Recomputed on read so it tracks a reactive `to`. `internal` uses the client
+  // router; every other kind (external / hash / protocol) is left to the browser.
+  const isInternal = (): boolean => {
+    if (props.external === true) return false
+    if (props.external === false) return true
+    return classifyHref(props.to, inst?._linkConfig) === 'internal'
+  }
+  const isExternalNewTabEligible = (): boolean => {
+    if (props.external === false) return false
+    if (props.external === true) return true
+    return classifyHref(props.to, inst?._linkConfig) === 'external'
+  }
 
   const handleClick = (e: MouseEvent) => {
+    // Modifier / non-primary clicks (ctrl/meta/shift/middle) always fall through
+    // to the browser's native open-in-new-tab behaviour.
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    if (!isInternal()) return // external / hash / mailto → let the browser navigate
     e.preventDefault()
     if (!router) return
+    const path = toRouterPath(props.to)
     if (props.replace) {
-      router.replace(props.to)
+      router.replace(path)
     } else {
-      router.push(props.to)
+      router.push(path)
     }
   }
 
   const triggerPrefetch = () => {
-    if (!router) return
-    prefetchRoute(router as RouterInstance, props.to)
+    if (!router || !isInternal()) return // never prefetch external destinations
+    prefetchRoute(router as RouterInstance, toRouterPath(props.to))
   }
 
   const handleMouseEnter = () => {
@@ -298,27 +344,44 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     if (prefetchMode === 'intent') triggerPrefetch()
   }
 
-  const inst = router as RouterInstance | null
   // `href` MUST be an accessor, not a string captured at setup. `props.to`
   // is a getter when the parent passes a reactive expression (the JSX
   // compiler wraps `<RouterLink to={someExpr}>` as `_rp(() => someExpr)`).
   // Capturing into a string at setup time freezes the URL — passing the
   // accessor lets `applyProp` wrap it in `renderEffect` so href tracks the
-  // underlying signal.
-  const href = (): string =>
-    inst?.mode === 'history' ? `${inst._base}${props.to}` : `#${props.to}`
+  // underlying signal. External/hash/protocol hrefs are emitted verbatim; only
+  // internal paths get the mode-specific base/hash prefix.
+  const href = (): string => {
+    if (!isInternal()) return props.to
+    const path = toRouterPath(props.to)
+    return inst?.mode === 'history' ? `${inst._base}${path}` : `#${path}`
+  }
+
+  // Auto target/rel for external links (overridable per-link). `_blank` gets a
+  // secure `rel` by default (noopener stops window.opener hijacking).
+  const linkTarget = (): string | undefined => {
+    if (props.target !== undefined) return props.target
+    if (isExternalNewTabEligible() && (inst?._linkConfig?.externalNewTab ?? true)) return '_blank'
+    return undefined
+  }
+  const linkRel = (): string | undefined => {
+    if (props.rel !== undefined) return props.rel
+    if (linkTarget() === '_blank') return inst?._linkConfig?.externalRel ?? 'noopener noreferrer'
+    return undefined
+  }
 
   const isExactMatch = (): boolean => {
     if (!router) return false
-    const target = props.to
+    if (!isInternal()) return false
+    const target = toRouterPath(props.to)
     if (typeof target !== 'string') return false
     return router.currentRoute().path === target
   }
 
   const activeClass = (): string => {
-    if (!router) return ''
+    if (!router || !isInternal()) return ''
     const current = router.currentRoute().path
-    const target = props.to
+    const target = toRouterPath(props.to)
     if (typeof target !== 'string') return ''
     const isExact = current === target
     const isActive = isExact || (!props.exact && isSegmentPrefix(current, target))
@@ -364,7 +427,7 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
             // Disconnect synchronously so a re-intersection (scroll
             // jitter) before the idle callback runs can't double-schedule.
             observer.disconnect()
-            scheduleIdle(() => prefetchRoute(router as RouterInstance, props.to))
+            if (isInternal()) scheduleIdle(() => prefetchRoute(router as RouterInstance, toRouterPath(props.to)))
             break
           }
         }
@@ -389,6 +452,9 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     exactActiveClass: _eac,
     exact: _exact,
     prefetch: _prefetch,
+    external: _external,
+    target: _target,
+    rel: _rel,
     class: userClass,
     children,
     ...rest
@@ -410,6 +476,8 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
       ...rest,
       ref,
       href,
+      target: linkTarget,
+      rel: linkRel,
       class: mergedClass,
       'aria-current': ariaCurrent,
       onClick: handleClick,
@@ -418,6 +486,17 @@ export const RouterLink: ComponentFn<RouterLinkProps> = (props) => {
     },
     children ?? props.to,
   )
+}
+
+/**
+ * `<RouterLink>` — client-side navigation for internal routes, with automatic
+ * external-link handling. Generic over the `to` literal so it validates against
+ * the app's registered routes (typo → TS error + "did you mean …"), while still
+ * accepting dynamic `string`s and external URLs. The runtime is
+ * {@link RouterLinkImpl}; this const only refines the call signature.
+ */
+export const RouterLink = RouterLinkImpl as {
+  <const T extends string>(props: RouterLinkProps<T>): VNodeChild
 }
 
 /** Prefetch loader data for a route (only once per router + path). */
@@ -687,7 +766,7 @@ function isStaleChunk(err: unknown): boolean {
 // runUntracked accessor.
 nativeCompat(RouterProvider)
 nativeCompat(RouterView)
-nativeCompat(RouterLink)
+nativeCompat(RouterLinkImpl)
 
 // ─── DefaultChromeLayout ─────────────────────────────────────────────────────
 //
