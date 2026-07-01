@@ -586,6 +586,57 @@ export function inferArrayStaticCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | 
   return null
 }
 
+/**
+ * Infer the result type of a `Math.*(…)` call, or null when it isn't one. A
+ * computed RETURNING `Math.ceil(x)` etc. otherwise had no inference case → `Any`,
+ * so Swift emitted `private var x: Any { ceil(…) }` and a downstream `String(x())`
+ * / arithmetic failed ("no exact matches in call to initializer" / "cannot
+ * convert 'Any' to 'Int'") — the paginated data-table shape. Types match the
+ * per-fn emit RESULT (`emit-swift.ts` Math.* switch):
+ *   • ceil/floor/round/trunc → INT. These are INTEGER-VALUED in JS (page counts,
+ *     indices), and the emit wraps them `Int(ceil(Double(x)))` etc. so the value
+ *     stays an Int usable in `page < pageCount` and printed "4" not "4.0".
+ *   • sqrt/pow + the trig/log/exp free functions → DOUBLE (irrational results).
+ *   • abs → PRESERVES the arg's numeric type (generic `abs(Int)` stays Int).
+ *   • min/max → the args' COMMON type (Double if any arg is fractional).
+ * Kotlin's `derivedStateOf` infers on its own (and allows Int↔Double comparison),
+ * so this only feeds Swift's annotation — but it's target-neutral inference.
+ */
+function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
+  if (
+    expr.kind !== 'call' ||
+    expr.callee.kind !== 'member' ||
+    expr.callee.object.kind !== 'identifier' ||
+    expr.callee.object.name !== 'Math'
+  ) {
+    return null
+  }
+  const fn = expr.callee.property
+  if (fn === 'ceil' || fn === 'floor' || fn === 'round' || fn === 'trunc') {
+    return { kind: 'number' } // integer-valued → Int
+  }
+  const DOUBLE = new Set([
+    'sqrt', 'pow', 'cbrt', 'hypot', 'sin', 'cos', 'tan', 'asin', 'acos',
+    'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'log', 'log10', 'log2', 'exp',
+  ])
+  if (DOUBLE.has(fn)) return { kind: 'number', float: true }
+  if (fn === 'abs') {
+    const a =
+      expr.args[0] !== undefined ? inferType(expr.args[0], ctx) : { kind: 'unknown' as const }
+    return a.kind === 'number' && a.float === true
+      ? { kind: 'number', float: true }
+      : { kind: 'number' }
+  }
+  if (fn === 'min' || fn === 'max') {
+    const anyFloat = expr.args.some((a) => {
+      const t = inferType(a, ctx)
+      return t.kind === 'number' && t.float === true
+    })
+    return anyFloat ? { kind: 'number', float: true } : { kind: 'number' }
+  }
+  return null
+}
+
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
     case 'literal': {
@@ -671,6 +722,11 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       {
         const a = inferArrayStaticCall(expr, ctx)
         if (a !== null) return a
+      }
+      // Math.* numeric builtins — see `inferMathCall`.
+      {
+        const m = inferMathCall(expr, ctx)
+        if (m !== null) return m
       }
       // Fetch-field read: `quotes.data()` (CALL form — web reads the
       // signal). data → T; isPending → boolean; error → unknown.
