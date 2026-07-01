@@ -39,7 +39,7 @@ describe('describeReactiveGraph — behavioral summary from the graph', () => {
   it('flags an orphan signal that nothing depends on', () => {
     activateReactiveDevtools()
     const used = signal(1, { name: 'used' })
-    const orphan = signal(2, { name: 'orphan' })
+    signal(2, { name: 'orphan' }) // created but never read → orphan
     effect(() => {
       used()
     })
@@ -85,7 +85,7 @@ describe('describeReactiveGraph — behavioral summary from the graph', () => {
   it('formatGraphDescription renders sections + insights', () => {
     activateReactiveDevtools()
     const qty = signal(1, { name: 'qty' })
-    const orphan = signal(0, { name: 'orphan' })
+    signal(0, { name: 'orphan' }) // created but never read → orphan (asserted in output)
     const total = computed(() => qty() * 2)
     effect(() => {
       total()
