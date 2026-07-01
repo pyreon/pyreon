@@ -2153,16 +2153,47 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const prop = e.callee.property
         const argExprs = e.args.map((a) => emitKotlinExpr(a, indent))
         switch (prop) {
-          case 'some':
+          case 'some': {
+            // 2-param INDEX callback `.some((el, idx) => …)`: `withIndex()`
+            // yields `IndexedValue(index, value)` (destructured `(idx, el)`,
+            // index-FIRST) → `.any { (idx, el) -> … }`. Mirrors mapIndexed +
+            // the shared `indexedArrayCallback` gate (#1934). Checked BEFORE the
+            // 1-arg branch — a 2-PARAM arrow is still ONE argument.
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = kotlinIdent(cb.params[0]!)
+              const idx = kotlinIdent(cb.params[1]!)
+              return `${obj}.withIndex().any({ (${idx}, ${el}) -> ${emitKotlinExpr(cb.body, indent)} })`
+            }
             if (e.args.length === 1) {
               return `${obj}.any(${argExprs[0]!})`
             }
             break
-          case 'every':
+          }
+          case 'every': {
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = kotlinIdent(cb.params[0]!)
+              const idx = kotlinIdent(cb.params[1]!)
+              return `${obj}.withIndex().all({ (${idx}, ${el}) -> ${emitKotlinExpr(cb.body, indent)} })`
+            }
             if (e.args.length === 1) {
               return `${obj}.all(${argExprs[0]!})`
             }
             break
+          }
+          case 'filter': {
+            // 1-arg `.filter(pred)` passes through unchanged; the 2-param INDEX
+            // form is Kotlin's `filterIndexed { idx, el -> … }` (index-FIRST).
+            const cb = indexedArrayCallback(e.args)
+            if (cb) {
+              const el = kotlinIdent(cb.params[0]!)
+              const idx = kotlinIdent(cb.params[1]!)
+              return `${obj}.filterIndexed({ ${idx}, ${el} -> ${emitKotlinExpr(cb.body, indent)} })`
+            }
+            if (e.args.length === 1) return `${obj}.filter(${argExprs[0]!})`
+            break
+          }
           case 'map':
           case 'forEach': {
             // JS `.map((el, idx) => …)` / `.forEach((el, idx) => …)` pass
@@ -2299,6 +2330,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // JS `arr.findIndex(pred)` → Kotlin `indexOfFirst(pred)`
             // (Swift: `firstIndex(where:)`). Kotlin's `String.repeat(n)`
             // already matches JS, so `repeat` needs no Kotlin mapping.
+            {
+              // 2-param INDEX callback `.findIndex((el, idx) => …)`:
+              // `indexOfFirst` takes only the element, so use `withIndex()
+              // .firstOrNull { (idx, el) -> … }?.index ?: -1` to keep the JS
+              // not-found sentinel + a plain `Int`. Checked BEFORE the 1-arg
+              // branch (a 2-param arrow is still one argument).
+              const cb = indexedArrayCallback(e.args)
+              if (cb) {
+                const el = kotlinIdent(cb.params[0]!)
+                const idx = kotlinIdent(cb.params[1]!)
+                return `(${obj}.withIndex().firstOrNull({ (${idx}, ${el}) -> ${emitKotlinExpr(cb.body, indent)} })?.index ?: -1)`
+              }
+            }
             if (e.args.length === 1) return `${obj}.indexOfFirst(${argExprs[0]!})`
             break
           case 'replaceAll':
