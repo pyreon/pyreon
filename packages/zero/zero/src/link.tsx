@@ -1,5 +1,6 @@
 import { createRef, isServer } from '@pyreon/core'
 import { useRouter } from '@pyreon/router'
+import type { RouteHref } from './route-types'
 import { useIntersectionObserver } from './utils/use-intersection-observer'
 
 // ─── Link component with prefetching ────────────────────────────────────────
@@ -12,8 +13,11 @@ import { useIntersectionObserver } from './utils/use-intersection-observer'
 // 3. Link             — default <a>-based link (built on createLink)
 
 export interface LinkProps {
-  /** Target URL path. */
-  href: string
+  /**
+   * Target URL path. Autocompletes registered routes (when typed-routes codegen
+   * has run) but still accepts any string — `RouteHref = RoutePath | (string & {})`.
+   */
+  href: RouteHref
   /** Link content. */
   children?: any
   /** CSS class name. */

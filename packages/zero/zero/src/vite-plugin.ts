@@ -55,6 +55,7 @@ import {
 	scanRouteFilesWithExports,
 } from "./fs-router";
 import { expandRoutesForLocales } from "./i18n-routing";
+import { writeRouteTypes } from "./route-types-gen";
 import { render404Page } from "./not-found";
 import { fontPlugin } from "./font";
 import { fontImportPlugin } from "./font-import-plugin";
@@ -231,6 +232,14 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			}
 		},
 
+		async buildStart() {
+			// Typed routes (opt-in): generate src/pyreon-routes.d.ts once at
+			// build/dev start so `<Link href>` autocomplete is available.
+			if (config.typedRoutes) {
+				await writeRouteTypes(routesDir, root, config.mode ?? "ssr");
+			}
+		},
+
 		handleHotUpdate(ctx) {
 			// Invalidate cached index.html when the file itself OR any of its
 			// imported deps change. Vite calls this per-file change; we filter
@@ -238,6 +247,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 			// HMR updates (user code, deps, etc.).
 			if (ctx.file === `${root}/index.html`) {
 				_indexHtmlCache = null;
+			}
+			// Typed routes: regenerate the .d.ts when a route file is
+			// added/renamed/removed (fire-and-forget; change-detected internally).
+			if (config.typedRoutes && ctx.file.startsWith(routesDir)) {
+				void writeRouteTypes(routesDir, root, config.mode ?? "ssr");
 			}
 		},
 
