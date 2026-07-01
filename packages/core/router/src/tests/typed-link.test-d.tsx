@@ -24,6 +24,7 @@ declare module '../typed-routes' {
   interface RegisteredRoutes {
     '/': Record<string, never>
     '/resume': Record<string, never>
+    '/user/:id': { id: string }
   }
 }
 
@@ -35,6 +36,8 @@ export const _accepted = [
   // registered routes — OK
   <RouterLink to="/">home</RouterLink>,
   <RouterLink to="/resume">résumé</RouterLink>,
+  // concrete path matching a `:param` pattern — OK (InterpolateRoute)
+  <RouterLink to="/user/42">user</RouterLink>,
   // dynamic string — OK, no cast
   <RouterLink to={dynamic}>dyn</RouterLink>,
   // external / handler / protocol-relative / hash — OK (never typo-checked)
@@ -48,4 +51,7 @@ export const _rejected = [
   // A typo that looks internal but isn't registered — MUST error.
   // @ts-expect-error — '/rezume' is not a registered route (did you mean '/resume'?)
   <RouterLink to="/rezume">typo</RouterLink>,
+  // Wrong param-route prefix — MUST error (not `/user/:id`).
+  // @ts-expect-error — '/users/42' is not a registered route (did you mean '/user/:id'?)
+  <RouterLink to="/users/42">bad-param</RouterLink>,
 ]

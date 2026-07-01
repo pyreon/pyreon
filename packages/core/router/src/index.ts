@@ -57,6 +57,7 @@ export { RouterLink, RouterProvider, RouterView } from './components'
 export type {
   CheckHref,
   ExternalHref,
+  InterpolateRoute,
   LinkConfig,
   LinkKind,
   RegisteredRoutes,

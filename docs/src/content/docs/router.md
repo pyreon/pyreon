@@ -840,14 +840,19 @@ declare module '@pyreon/router' {
   interface RegisteredRoutes {
     '/': Record<string, never>
     '/resume': Record<string, never>
+    '/user/:id': { id: string }
   }
 }
 
 <RouterLink to="/resume" />          // ✓ autocompleted
+<RouterLink to="/user/42" />         // ✓ concrete path matches the `:id` pattern
 <RouterLink to="/rezume" />          // ✗ TS error: did you mean '/resume'?
+<RouterLink to="/users/42" />        // ✗ TS error: wrong prefix (it's /user/:id)
 <RouterLink to={someString} />       // ✓ dynamic string, no cast
 <RouterLink to="https://x.com" />    // ✓ external URL, never typo-checked
 ```
+
+Concrete paths validate against `:param` patterns via `InterpolateRoute` (`/user/:id` accepts `/user/42`, `/user/anything`, but not `/users/42`).
 
 The generic `RouterLink<const T>` infers `T` from the `to` literal and runs it through `CheckHref<T>`: a literal that looks internal but isn't registered collapses to the route union (producing the error), while registered routes / external URLs / dynamic `string`s pass through unchanged. This is a strict superset of `to: string` — nothing that compiled before stops compiling.
 

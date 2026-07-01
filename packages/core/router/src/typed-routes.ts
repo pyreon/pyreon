@@ -49,6 +49,23 @@ export type RoutePath = keyof RegisteredRoutes extends never
   : keyof RegisteredRoutes & string
 
 /**
+ * Turn a route PATTERN's `:param` segments into `${string}` so a CONCRETE path
+ * matches the pattern:
+ *   - `/posts/:id`      → `` `/posts/${string}` ``      (so `/posts/42` matches)
+ *   - `/a/:x/b/:y`      → `` `/a/${string}/b/${string}` ``
+ *   - `/about`          → `/about` (no params, unchanged)
+ *
+ * Without this, a registry key like `/posts/:id` would only accept the literal
+ * string `"/posts/:id"` and reject `"/posts/42"` — the concrete path apps
+ * actually navigate to. Distributes over a union of patterns.
+ */
+export type InterpolateRoute<P extends string> = P extends `${infer Pre}:${string}/${infer Rest}`
+  ? `${Pre}${string}/${InterpolateRoute<Rest>}`
+  : P extends `${infer Pre}:${string}`
+    ? `${Pre}${string}`
+    : P
+
+/**
  * String shapes that are UNAMBIGUOUSLY external (or non-route) and must NOT be
  * typo-checked against {@link RoutePath}: any URL with a scheme, a
  * protocol-relative URL, a `mailto:`/`tel:`/`sms:` handler, or a bare `#hash`
@@ -67,7 +84,8 @@ export type ExternalHref =
  * `Routes` argument, any other route-aware link — e.g. `@pyreon/zero`'s
  * `<Link>` binds it to zero's own registry):
  *   - a dynamic `string` variable → accepted as-is (no cast needed)
- *   - a literal that IS a registered route → accepted
+ *   - a literal that IS a registered route (incl. a concrete path matching a
+ *     `:param` pattern via {@link InterpolateRoute}) → accepted
  *   - a literal that is an external URL / mailto / hash → accepted
  *   - a literal that LOOKS like an internal path but isn't registered →
  *     collapses to `Routes`, producing a "not assignable, did you mean …"
@@ -79,7 +97,7 @@ export type ExternalHref =
  */
 export type CheckHref<T extends string, Routes extends string = RoutePath> = string extends T
   ? T
-  : T extends Routes
+  : T extends InterpolateRoute<Routes>
     ? T
     : T extends ExternalHref
       ? T
