@@ -1151,7 +1151,13 @@ function emitSwiftStruct(s: StructIR): string {
   const lines: string[] = []
   lines.push(`struct ${swiftIdent(s.name)}: Codable {`)
   for (const f of s.fields) {
-    lines.push(`  var ${swiftIdent(f.name)}: ${swiftType(f.type)}`)
+    // Optional field (`label?: string` → union-with-undefined) gets an
+    // explicit `= nil` default so the memberwise initializer's parameter
+    // is omittable — an object literal that skips the field
+    // (`{ qty: 3 }` → `P(qty: 3)`) compiles. Codable synthesis also
+    // decodes a missing JSON key to nil for defaulted optionals.
+    const suffix = typeIsOptional(f.type) ? ' = nil' : ''
+    lines.push(`  var ${swiftIdent(f.name)}: ${swiftType(f.type)}${suffix}`)
   }
   lines.push(`}`)
   return lines.join('\n')
@@ -1193,7 +1199,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Store field types thread into the inference ctx so computeds over
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
   // concrete return type instead of degrading to Any.
-  const inferCtx = buildInferenceCtx(c.decls, _storeDefs, _structDefs)
+  const inferCtx = buildInferenceCtx(c.decls, _storeDefs, _structDefs, c.props, c.propsParamName)
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.
   _exprInferCtx = inferCtx
@@ -1332,8 +1338,16 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Swift doesn't require that ordering at file scope, but it keeps the
   // file readable and byte-mirrors the Kotlin emit's layout.
   const synth: SwiftSynthCtx = { componentName: c.name, structs: [] }
-  const propLines = c.props.map(
-    (p) => `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`,
+  // Optional props (`label?: string` → union-with-undefined) emit as
+  // `var label: String? = nil` — the explicit `= nil` default is what
+  // makes the MEMBERWISE initializer's parameter omittable, so a call
+  // site that skips the prop (`Card(qty: 2)`) compiles. A defaultless
+  // `let label: String?` would still REQUIRE the argument. Required
+  // props stay `let` (immutable per instance).
+  const propLines = c.props.map((p) =>
+    typeIsOptional(p.type)
+      ? `  var ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)} = nil`
+      : `  let ${swiftIdent(p.name)}: ${swiftType(p.type, synth, p.name)}`,
   )
   // Pre-walk signal decl types through the synth ctx so INLINE anonymous
   // object types in signal generics (`signal<{ price: number }[]>`)
@@ -2218,7 +2232,7 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
     case 'undefined':
       return 'Any?'
     case 'union':
-      return swiftUnionType(t.branches)
+      return swiftUnionType(t.branches, synth, declName)
     case 'typeRef': {
       // `Foo` → `Foo`; `Array<T>` → `[T]`; `Promise<T>` → emit a
       // sentinel that compiles in Swift (the actual async lowering
@@ -2258,13 +2272,20 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
  *   - `T1 | T2` where both are non-null → `Any` with a doc-comment
  *     hint to refine via an enum at the Pyreon source level
  */
-function swiftUnionType(branches: TypeIR[]): string {
+function swiftUnionType(
+  branches: TypeIR[],
+  synth?: SwiftSynthCtx,
+  declName?: string,
+): string {
   const nonNullBranches = branches.filter(
     (b) => b.kind !== 'null' && b.kind !== 'undefined',
   )
   const hasNullish = branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
   if (nonNullBranches.length === 1 && hasNullish) {
-    return `${swiftType(nonNullBranches[0]!)}?`
+    // Thread synth/declName so an OPTIONAL anonymous-object type
+    // (`config?: { a: number }`) still synthesizes a named struct
+    // (`Config?`) instead of degrading.
+    return `${swiftType(nonNullBranches[0]!, synth, declName)}?`
   }
   if (nonNullBranches.length === 0) return 'Any?'
   // Mixed-type union — Swift can't express it structurally; degrade.
@@ -3981,6 +4002,24 @@ function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
  * the modifier-appending variant from Heading would double-emit the
  * accessibility identifier).
  */
+/**
+ * Interpolation segment for a VALUE expression inside a Text string. An
+ * OPTIONAL-typed expr (an optional prop, a `.find` result) renders EMPTY
+ * when nil — matching JSX, where `{undefined}` renders nothing — instead
+ * of Swift's `Optional(x)` debug description (which also trips the swiftc
+ * "string interpolation produces a debug description" warning). The
+ * receiver is parenthesized so `.map` binds to the WHOLE expr — an
+ * optional CHAIN (`a?.b`) would otherwise flatten and `.map` would land
+ * on the non-optional link.
+ */
+function swiftInterpSegment(e: ExprIR, indent: number): string {
+  const emitted = emitSwiftExpr(e, indent)
+  if (typeIsOptional(inferType(e, _activeInferCtx))) {
+    return `\\((${emitted}).map { "\\($0)" } ?? "")`
+  }
+  return `\\(${emitted})`
+}
+
 function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   if (e.children.length === 0) return 'Text("")'
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
@@ -4001,7 +4040,7 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
         if (i < t.exprs.length) parts.push(`\\(${emitSwiftExpr(t.exprs[i]!, indent)})`)
       }
     } else {
-      parts.push(`\\(${emitSwiftExpr(c.expr, indent)})`)
+      parts.push(swiftInterpSegment(c.expr, indent))
     }
   }
   return `Text("${parts.join('')}")`
@@ -6099,15 +6138,18 @@ function expandSwiftSpread(
   targetTag: string,
   explicitNames: Set<string>,
   indent: number,
-): string[] {
-  const out: string[] = []
+): { name: string; part: string }[] {
+  const out: { name: string; part: string }[] = []
   if (
     spreadArg.kind === 'object' &&
     (spreadArg.spreads === undefined || spreadArg.spreads.length === 0)
   ) {
     for (const f of spreadArg.fields) {
       if (explicitNames.has(f.name)) continue
-      out.push(`${swiftIdent(safeIdent(f.name))}: ${emitSwiftExpr(f.value, indent)}`)
+      out.push({
+        name: f.name,
+        part: `${swiftIdent(safeIdent(f.name))}: ${emitSwiftExpr(f.value, indent)}`,
+      })
     }
     return out
   }
@@ -6116,9 +6158,10 @@ function expandSwiftSpread(
     if (targetProps !== undefined) {
       for (const p of targetProps) {
         if (explicitNames.has(p.name)) continue
-        out.push(
-          `${swiftIdent(safeIdent(p.name))}: ${emitSwiftExpr({ kind: 'member', object: spreadArg, property: p.name }, indent)}`,
-        )
+        out.push({
+          name: p.name,
+          part: `${swiftIdent(safeIdent(p.name))}: ${emitSwiftExpr({ kind: 'member', object: spreadArg, property: p.name }, indent)}`,
+        })
       }
       return out
     }
@@ -6146,7 +6189,7 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       explicitNames.add(`on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`)
     }
   }
-  const argParts: string[] = []
+  const argEntries: { name: string; part: string }[] = []
   for (const a of e.attrs) {
     if (a.kind === 'attr') {
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
@@ -6157,24 +6200,44 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // Also `swiftIdent`-escape the attr label in case the kebab→camel
       // conversion lands on a reserved keyword (e.g. `for-class` →
       // `forClass` — both halves are reserved when used as identifiers).
-      argParts.push(
-        `${swiftIdent(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
-      )
+      argEntries.push({
+        name: a.name,
+        part: `${swiftIdent(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
+      })
     } else if (a.kind === 'event' && isUserComponent) {
       // User component prop named `on<Cap>` — the parser stripped the
       // `on` prefix and lowercased: `onToggle` → `event { name: 'toggle' }`.
       // Recover the camelCase prop name by re-adding the `on` prefix +
       // upper-casing the first letter.
       const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
-      argParts.push(`${swiftIdent(propName)}: ${emitSwiftAction(a.handler, indent)}`)
+      argEntries.push({
+        name: propName,
+        part: `${swiftIdent(propName)}: ${emitSwiftAction(a.handler, indent)}`,
+      })
     } else if (a.kind === 'spread' && isUserComponent) {
-      argParts.push(...expandSwiftSpread(a.argument, e.tag, explicitNames, indent))
+      argEntries.push(...expandSwiftSpread(a.argument, e.tag, explicitNames, indent))
     }
     // A spread on a non-user-component tag is warned once at the top of
     // emitSwiftJsx (the single entry for every jsx-element) — no warning
     // needed here.
   }
-  const attrPairs = argParts.join(', ')
+  // Swift's MEMBERWISE initializer requires arguments in property
+  // DECLARATION order (`argument 'qty' must precede argument 'label'` is
+  // a hard error). JSX attrs arrive in AUTHOR order, so re-sort against
+  // the target component's declared props when known. Names not in the
+  // props list keep author order at the end (stable sort). Non-user
+  // components (SwiftUI primitives) keep author order — their inits are
+  // hand-mapped, not memberwise.
+  const targetPropsOrder = isUserComponent ? _componentPropsMap.get(e.tag) : undefined
+  if (targetPropsOrder !== undefined && targetPropsOrder.length > 0) {
+    const orderOf = new Map(targetPropsOrder.map((p, i) => [p.name, i]))
+    argEntries.sort(
+      (x, y) =>
+        (orderOf.get(x.name) ?? Number.MAX_SAFE_INTEGER) -
+        (orderOf.get(y.name) ?? Number.MAX_SAFE_INTEGER),
+    )
+  }
+  const attrPairs = argEntries.map((x) => x.part).join(', ')
   // `swiftIdent`-escape the tag name — covers user-defined components
   // whose name collides with a Swift keyword (e.g. `<class>...</class>`).
   const tag = swiftIdent(e.tag)
@@ -6223,7 +6286,7 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     if (c.expr.kind === 'template') {
       return `Text(${emitSwiftExpr(c.expr, indent)})`
     }
-    return `Text("\\(${emitSwiftExpr(c.expr, indent)})")`
+    return `Text("${swiftInterpSegment(c.expr, indent)}")`
   }
   // `{cond && <View/>}` — the dominant React/Solid conditional-render
   // idiom. A raw `cond && View` is `Bool && View`, a type error inside a

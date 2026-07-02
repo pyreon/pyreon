@@ -47,6 +47,17 @@ interface ParseCtx {
    */
   storeHookNames: Set<string>
   /**
+   * Locally-declared object-shape type aliases (`type CardProps = { … }`),
+   * name → parsed object TypeIR, collected in a pre-pass so a component's
+   * NAMED props annotation (`function Card(props: CardProps)`) resolves
+   * regardless of declaration order. Before this registry existed the
+   * typeRef bailed to EMPTY props — the component emitted with no stored
+   * properties / parameters while its body referenced them bare and call
+   * sites passed args, an uncompilable emit on BOTH targets with no
+   * warning (the dominant real-world props shape).
+   */
+  objectTypeAliases: Map<string, Extract<TypeIR, { kind: 'object' }>>
+  /**
    * Per-component store ALIASES: local binding name → store hook name,
    * populated from `const app = useApp()` declarations in the CURRENT
    * component body and CLEARED before each top-level node is parsed (so a
@@ -85,6 +96,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     warnings: [],
     source,
     storeHookNames: new Set(),
+    objectTypeAliases: new Map(),
     storeAliases: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
@@ -97,6 +109,12 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // effect-free (no warnings) — full validation stays in
   // tryStoreDefnFromTopLevel during the main pass.
   collectStoreHookNames(ast.program.body as AnyNode[], ctx.storeHookNames)
+  // Pre-pass: collect object-shape type aliases so a NAMED props annotation
+  // (`props: CardProps`) resolves regardless of declaration order. Warnings
+  // from this parse are DISCARDED (a scratch ctx) — the main pass's
+  // tryStructFromTypeAlias re-parses the same annotation and owns the
+  // user-facing diagnostics, so nothing double-fires.
+  collectObjectTypeAliases(ast.program.body as AnyNode[], ctx)
   // Pre-pass: warn on imports of WEB-ONLY @pyreon/* packages. These render
   // via the DOM / a browser-only library (ECharts, CodeMirror, elkjs,
   // pdfmake, the styler CSS-in-JS stack, …) and have NO native emit — PMTC
@@ -2253,6 +2271,48 @@ function tryStructFromTypeAlias(node: AnyNode, ctx: ParseCtx): StructIR | null {
   return { name, fields: parsed.fields }
 }
 
+/**
+ * Pre-pass companion to `tryStructFromTypeAlias`: fill
+ * `ctx.objectTypeAliases` with every locally-declared object-shape type
+ * alias (bare or export-wrapped, generic-free), name → parsed object
+ * TypeIR. Runs BEFORE the main pass so `parseProps` can resolve a NAMED
+ * props annotation (`props: CardProps`) even when the alias is declared
+ * below the component. Uses a scratch ctx so parse warnings from the
+ * annotation don't double-fire (the main pass re-parses and owns them).
+ */
+function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
+  const scratch: ParseCtx = {
+    warnings: [],
+    source: ctx.source,
+    storeHookNames: new Set(),
+    objectTypeAliases: new Map(),
+    storeAliases: new Map(),
+    hookFieldAliases: new Map(),
+    hookDestructureCounter: 0,
+  }
+  for (const node of body) {
+    let alias: AnyNode | null = null
+    if (
+      node.type === 'ExportNamedDeclaration' &&
+      node.declaration?.type === 'TSTypeAliasDeclaration'
+    ) {
+      alias = node.declaration
+    } else if (node.type === 'TSTypeAliasDeclaration') {
+      alias = node
+    }
+    if (!alias) continue
+    if (alias.typeParameters?.params?.length > 0) continue
+    const name = alias.id?.name as string | undefined
+    if (!name) continue
+    const aliasBody = alias.typeAnnotation as AnyNode | undefined
+    if (!aliasBody || aliasBody.type !== 'TSTypeLiteral') continue
+    const parsed = parseTypeAnnotation(aliasBody, scratch)
+    if (parsed.kind === 'object' && parsed.fields.length > 0) {
+      ctx.objectTypeAliases.set(name, parsed)
+    }
+  }
+}
+
 /** Extract a component from `export function NAME(...) { ... }`. */
 function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | null {
   // Walk through `ExportNamedDeclaration` → `FunctionDeclaration`.
@@ -2394,7 +2454,7 @@ function parseProps(
   if (firstParam?.type === 'ObjectPattern') {
     const annot = firstParam.typeAnnotation?.typeAnnotation as AnyNode | undefined
     if (!annot) return { props: [], propsParamName: undefined }
-    const t = parseTypeAnnotation(annot, ctx)
+    const t = resolvePropsObjectType(parseTypeAnnotation(annot, ctx), ctx)
     if (t.kind !== 'object') return { props: [], propsParamName: undefined }
     const properties = (firstParam.properties as AnyNode[] | undefined) ?? []
     const allSimpleNoRename =
@@ -2419,17 +2479,40 @@ function parseProps(
   const annotation = firstParam.typeAnnotation?.typeAnnotation as AnyNode | undefined
   if (!annotation) return { props: [], propsParamName: paramName }
 
-  const objType = parseTypeAnnotation(annotation, ctx)
+  const objType = resolvePropsObjectType(parseTypeAnnotation(annotation, ctx), ctx)
   if (objType.kind !== 'object') {
-    // Non-object type — could be a named interface ref we can't resolve
-    // (Phase 0 doesn't follow imports). Track the binding name so member
-    // rewrites still work; props list stays empty.
+    // Non-object type (a `props: string` edge case — the unresolvable
+    // typeRef already warned inside resolvePropsObjectType). Track the
+    // binding name so member rewrites still structurally work; props
+    // list stays empty.
     return { props: [], propsParamName: paramName }
   }
   return {
     props: objType.fields.map((f) => ({ name: f.name, type: f.type })),
     propsParamName: paramName,
   }
+}
+
+/**
+ * Resolve a NAMED props annotation (`props: CardProps`) to its
+ * locally-declared object type via the `collectObjectTypeAliases`
+ * pre-pass registry. An UNRESOLVABLE generic-free typeRef (an IMPORTED
+ * type, an interface) warns LOUDLY: with empty props the emitted
+ * component declares NO stored properties / parameters while its body
+ * references them bare and call sites pass args — uncompilable on BOTH
+ * targets, previously with no warning (the pre-fix behavior for every
+ * named props type, the dominant real-world component shape). Any other
+ * TypeIR passes through unchanged.
+ */
+function resolvePropsObjectType(t: TypeIR, ctx: ParseCtx): TypeIR {
+  if (t.kind === 'typeRef' && t.args.length === 0) {
+    const resolved = ctx.objectTypeAliases.get(t.name)
+    if (resolved !== undefined) return resolved
+    ctx.warnings.push(
+      `Component props type \`${t.name}\` can't be resolved — PMTC only resolves an object-shape \`type ${t.name} = { … }\` declared in the SAME file (imports and interfaces aren't followed). The emitted component would reference undeclared properties and fail the native build. Declare the alias locally or inline the annotation (\`props: { … }\`).`,
+    )
+  }
+  return t
 }
 
 /**
@@ -4303,10 +4386,26 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
     case 'TSTypeLiteral': {
       const fields = (node.members as AnyNode[])
         .filter((m) => m.type === 'TSPropertySignature' && m.key?.name && m.typeAnnotation)
-        .map((m) => ({
-          name: m.key.name as string,
-          type: parseTypeAnnotation(m.typeAnnotation.typeAnnotation, ctx),
-        }))
+        .map((m) => {
+          const fieldType = parseTypeAnnotation(m.typeAnnotation.typeAnnotation, ctx)
+          // `label?: string` — TS marks the member `optional`. Represent it
+          // the same way an explicit `string | undefined` parses (union with
+          // undefined) so ONE convention carries optionality end-to-end:
+          // typeIsOptional/unwrapOptionalType in inference, `T?` in both
+          // type emitters, and `= nil` / `= null` field defaults. Dropping
+          // it (the pre-fix behavior) emitted a REQUIRED native field for an
+          // optional TS one — every call/literal site omitting it failed the
+          // real compile. An already-optional type (`x?: string | undefined`)
+          // is left as-is — no double wrap.
+          const isAlreadyOptional =
+            fieldType.kind === 'union' &&
+            fieldType.branches.some((b) => b.kind === 'undefined' || b.kind === 'null')
+          const type =
+            m.optional === true && !isAlreadyOptional
+              ? ({ kind: 'union', branches: [fieldType, { kind: 'undefined' }] } as TypeIR)
+              : fieldType
+          return { name: m.key.name as string, type }
+        })
       return { kind: 'object', fields }
     }
     case 'TSUnionType': {

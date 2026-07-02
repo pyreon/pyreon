@@ -75,6 +75,19 @@ export interface InferenceCtx {
    * id, arithmetic, a typed function arg).
    */
   structs: Map<string, Map<string, TypeIR>>
+  /**
+   * Component prop name → declared type, plus the props parameter's
+   * binding name (`props` in `function Card(props: CardProps)`). Both
+   * read shapes seed from this: the member form `props.qty` (object is
+   * the props param identifier) AND the bare form `qty` (destructured
+   * components — the emit declares one stored property / parameter per
+   * prop, so the body references props bare either way). Without this,
+   * a computed or handler over a prop inferred `unknown` → Swift
+   * annotated the computed `Any` and any typed consumer
+   * (`String(total())`, arithmetic) failed the real compile.
+   */
+  props?: Map<string, TypeIR>
+  propsParamName?: string | undefined
 }
 
 /**
@@ -99,12 +112,16 @@ export function buildInferenceCtx(
   decls: DeclIR[],
   storeDefs: StoreDefnIR[] = [],
   structDefs: StructIR[] = [],
+  props: { name: string; type: TypeIR }[] = [],
+  propsParamName?: string,
 ): InferenceCtx {
   const ctx: InferenceCtx = {
     signals: new Map(),
     computeds: new Map(),
     valueConsts: new Map(),
     locals: new Map(),
+    props: new Map(props.map((p) => [p.name, p.type])),
+    propsParamName,
     structs: new Map(
       structDefs.map((s) => [s.name, new Map(s.fields.map((f) => [f.name, f.type]))]),
     ),
@@ -750,6 +767,10 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (cmp) return cmp
       const vc = ctx.valueConsts.get(expr.name)
       if (vc) return vc
+      // Component props read BARE (`qty` in a destructured component, or
+      // post-rewrite in the emit) — the declared prop type.
+      const pr = ctx.props?.get(expr.name)
+      if (pr) return pr
       return { kind: 'unknown' }
     }
     case 'call': {
@@ -1046,6 +1067,19 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       if (expr.object.kind === 'identifier' && ctx.fetches.has(expr.object.name)) {
         if (expr.property === 'data') return ctx.fetches.get(expr.object.name)!
         if (expr.property === 'isPending') return { kind: 'boolean' }
+      }
+      // Component props read through the param (`props.qty`) — the
+      // declared prop type. Checked BEFORE the generic object walk: the
+      // props param identifier has no type of its own in the ctx, so
+      // without this the read degraded to `unknown`.
+      if (
+        ctx.props !== undefined &&
+        ctx.propsParamName !== undefined &&
+        expr.object.kind === 'identifier' &&
+        expr.object.name === ctx.propsParamName
+      ) {
+        const pt = ctx.props.get(expr.property)
+        if (pt) return pt
       }
       // `item.label` on an object-typed signal returns the field's
       // declared type. Used when an object signal is destructured in
