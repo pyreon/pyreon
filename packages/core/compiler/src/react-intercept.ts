@@ -1479,6 +1479,20 @@ onBeforeRouteEnter(() => { viewedAt.set(Date.now()) })`,
 // <img src="data:image/svg+xml,<svg onload=...>" />`,
     }),
   },
+  {
+    // mountFor LIS-scratch retention (fixed 2026-07): memory-growth symptom
+    // when a large keyed list is reordered then filtered down.
+    pattern: /(memory|heap|retained).*(For|list|rows).*(shrink|filter|grow|leak)|removed rows.*(retain|pinned|memory|leak)/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/runtime-dom` versions before the LIS-scratch release fix, `<For>`\u2019s reorder scratch retained ForEntry references after each pass. A large reorder followed by a SHRINK (10k rows filtered to 50) left the stale scratch tail pinning every removed row\u2019s DOM subtree + cleanup closure for as long as the <For> stayed mounted.',
+      fix: 'Upgrade `@pyreon/runtime-dom` — the scratch is now released (`entries.fill(undefined, 0, n)`) at the end of every reorder pass. No app code change needed.',
+      fixCode: `// This access pattern no longer retains the removed 9,950 rows:
+rows.set(tenThousandRows)   // large keyed <For>
+rows.update(shuffle)        // reorder fills the LIS scratch
+rows.set(filtered50)        // shrink — removed rows are now GC-eligible`,
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
