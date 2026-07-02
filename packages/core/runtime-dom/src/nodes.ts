@@ -147,11 +147,17 @@ interface KeyedEntry {
   /** Comment node placed immediately before this entry's DOM content. */
   anchor: Comment
   cleanup: Cleanup
+  /**
+   * Last DOM node of this entry's content, or null when the entry is the
+   * anchor comment alone. Captured at mount; stays valid because every
+   * dynamic child inserts BEFORE its own end marker, which lies inside
+   * [anchor..end]. Lets `moveEntryBefore` move the exact range with no
+   * module-level anchor registry (a per-row `WeakSet<Node>` registry
+   * retained its grown backing table forever — V8 never shrinks it — which
+   * was the entire retained-heap delta vs Solid on the 10k-row bench).
+   */
+  end: Node | null
 }
-
-// WeakSets to identify anchor nodes belonging to list entries.
-// Entries use their first DOM node as anchor (element for simple vnodes, comment fallback for empty).
-const _keyedAnchors = new WeakSet<Node>()
 
 /** LIS-based reorder state — shared across keyed list instances, grown as needed */
 interface LisState {
@@ -233,7 +239,7 @@ function applyKeyedMoves(
     if (key === undefined) continue
     const entry = cache.get(key)
     if (!entry) continue
-    if (!stay[i]) moveEntryBefore(parent, entry.anchor, cursor)
+    if (!stay[i]) moveEntryBefore(parent, entry.anchor, entry.end, cursor)
     cursor = entry.anchor
   }
 }
@@ -309,10 +315,12 @@ export function mountKeyedList(
       if (key === null || key === undefined) continue
       if (cache.has(key)) continue
       const anchor = document.createComment('')
-      _keyedAnchors.add(anchor)
       liveParent.insertBefore(anchor, tailMarker)
       const cleanup = mountVNode(vnode, liveParent, tailMarker)
-      cache.set(key, { anchor, cleanup })
+      // Content just mounted immediately before tailMarker — its last node is
+      // tailMarker's previous sibling (or the anchor itself when empty).
+      const last = tailMarker.previousSibling
+      cache.set(key, { anchor, cleanup, end: last === anchor ? null : last })
       added++
     }
     return added
@@ -388,17 +396,19 @@ export function mountKeyedList(
 /** Maximum number of displaced positions before falling back to full LIS. */
 const SMALL_K = 8
 
-// WeakSet to identify anchor nodes belonging to mountFor entries.
-const _forAnchors = new WeakSet<Node>()
-
 // anchor is the first DOM node of the entry (element for normal vnodes, comment fallback for empty).
 // Using the element itself saves 1 createComment + 1 DOM node per entry.
 // pos is merged here (instead of a separate Map) to halve Map operations.
 // cleanup is null when the entry has no teardown work (saves function call overhead on clear).
+// end is the entry's LAST DOM node, or null for the dominant single-node case
+// (compiled-template rows) — see KeyedEntry.end for the range contract + the
+// retained-heap rationale for why this replaced the module-level WeakSet
+// anchor registry.
 interface ForEntry {
   anchor: Node
   cleanup: Cleanup | null
   pos: number
+  end: Node | null
 }
 
 /** Try small-k reorder; returns true if handled, false if LIS fallback needed. */
@@ -499,7 +509,7 @@ function applyForMoves(
   for (let i = n - 1; i >= 0; i--) {
     const entry = entries[i]
     if (!entry) continue
-    if (!stay[i]) moveEntryBefore(liveParent, entry.anchor, cursor)
+    if (!stay[i]) moveEntryBefore(liveParent, entry.anchor, entry.end, cursor)
     cursor = entry.anchor
   }
 }
@@ -573,7 +583,6 @@ export function mountFor<T>(
   let currentKeys: (string | number)[] = []
   const _reusableKeySet = new Set<string | number>()
   let cleanupCount = 0
-  let anchorsRegistered = false
 
   let lis: LisState = {
     tails: new Int32Array(16),
@@ -603,7 +612,7 @@ export function mountFor<T>(
     return false
   }
 
-  /** Render item into container, update cache+cleanupCount. No anchor registration. */
+  /** Render item into container, update cache+cleanupCount. */
   const renderInto = (
     item: T,
     key: string | number,
@@ -615,7 +624,7 @@ export function mountFor<T>(
     if ((result as import('@pyreon/core').NativeItem).__isNative) {
       const native = result as import('@pyreon/core').NativeItem
       container.insertBefore(native.el, before)
-      cache.set(key, { anchor: native.el, cleanup: native.cleanup, pos })
+      cache.set(key, { anchor: native.el, cleanup: native.cleanup, pos, end: null })
       if (native.cleanup) cleanupCount++
       return
     }
@@ -625,9 +634,17 @@ export function mountFor<T>(
     if (!firstMounted || firstMounted === before) {
       const ph = document.createComment('')
       container.insertBefore(ph, before)
-      cache.set(key, { anchor: ph, cleanup: cl, pos })
+      cache.set(key, { anchor: ph, cleanup: cl, pos, end: null })
     } else {
-      cache.set(key, { anchor: firstMounted, cleanup: cl, pos })
+      // Everything mounted for this entry sits in [firstMounted..lastMounted];
+      // end stays null for the dominant single-node case.
+      const lastMounted = before ? before.previousSibling : container.lastChild
+      cache.set(key, {
+        anchor: firstMounted,
+        cleanup: cl,
+        pos,
+        end: lastMounted && lastMounted !== firstMounted ? lastMounted : null,
+      })
     }
     cleanupCount++
   }
@@ -644,7 +661,6 @@ export function mountFor<T>(
       renderInto(item, key, i, frag, null)
     }
     liveParent.insertBefore(frag, tailMarker)
-    anchorsRegistered = false
     currentKeys = keys
   }
 
@@ -693,7 +709,6 @@ export function mountFor<T>(
     for (let i = 0; i < n; i++) {
       renderInto(items[i] as T, newKeys[i] as string | number, i, frag, null)
     }
-    anchorsRegistered = false
 
     if (canSwap) {
       const fresh = liveParent.cloneNode(false)
@@ -732,8 +747,6 @@ export function mountFor<T>(
       const key = newKeys[i] as string | number
       if (cache.has(key)) continue
       renderInto(items[i] as T, key, i, liveParent, tailMarker)
-      const entry = cache.get(key)
-      if (entry) _forAnchors.add(entry.anchor)
       added++
     }
     return added
@@ -791,11 +804,6 @@ export function mountFor<T>(
       _reusableKeySet.clear()
       for (let i = 0; i < newKeys.length; i++) _reusableKeySet.add(newKeys[i] as string | number)
       removeStaleForEntries(_reusableKeySet)
-    }
-
-    if (!anchorsRegistered) {
-      for (const entry of cache.values()) _forAnchors.add(entry.anchor)
-      anchorsRegistered = true
     }
 
     if (trySmallKReorder(n, newKeys, currentKeys, cache, liveParent, tailMarker)) {
@@ -867,7 +875,7 @@ function smallKPlace(
   parent: Node,
   diffs: number[],
   newKeys: (string | number)[],
-  cache: Map<string | number, { anchor: Node; cleanup: Cleanup | null }>,
+  cache: Map<string | number, { anchor: Node; cleanup: Cleanup | null; end: Node | null }>,
   tailMarker: Comment,
 ): void {
   const diffSet = new Set(diffs)
@@ -895,7 +903,7 @@ function smallKPlace(
       prevDiffIdx = i
       continue
     }
-    moveEntryBefore(parent, entry.anchor, cursor)
+    moveEntryBefore(parent, entry.anchor, entry.end, cursor)
     cursor = entry.anchor
     prevDiffIdx = i
   }
@@ -908,32 +916,23 @@ function smallKPlace(
  * Fast path: if the next sibling is already a boundary (another entry or tail),
  * this entry is a single node — skip the toMove array entirely.
  */
-function moveEntryBefore(parent: Node, startNode: Node, before: Node): void {
-  const next = startNode.nextSibling
-  // Single-node fast path (covers all createTemplate rows — the common case)
-  if (
-    !next ||
-    next === before ||
-    (next.parentNode === parent && (_forAnchors.has(next) || _keyedAnchors.has(next)))
-  ) {
+function moveEntryBefore(parent: Node, startNode: Node, endNode: Node | null, before: Node): void {
+  // Single-node fast path (covers all createTemplate rows — the common case).
+  // `end === null` is the entry's own mount-time statement that its content is
+  // exactly one node — no neighbor inspection, no module-level anchor registry
+  // (the prior WeakSet registry retained its grown backing table forever).
+  if (endNode === null) {
     parent.insertBefore(startNode, before)
     return
   }
-  // Multi-node slow path (fragments, components with multiple root nodes)
-  const toMove: Node[] = [startNode]
-  let cur: Node | null = next
+  // Multi-node slow path (fragments, components with multiple root nodes):
+  // move exactly [startNode..endNode]. Capturing nextSibling before each
+  // insertBefore keeps the walk valid while nodes detach — no toMove array.
+  let cur: Node | null = startNode
   while (cur && cur !== before) {
-    const nextNode: Node | null = cur.nextSibling
-    toMove.push(cur)
-    cur = nextNode
-    if (
-      cur &&
-      cur.parentNode === parent &&
-      (cur === before || _forAnchors.has(cur) || _keyedAnchors.has(cur))
-    )
-      break
-  }
-  for (const node of toMove) {
-    parent.insertBefore(node, before)
+    const next: Node | null = cur.nextSibling
+    parent.insertBefore(cur, before)
+    if (cur === endNode) return
+    cur = next
   }
 }

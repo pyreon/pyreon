@@ -14,5 +14,5 @@ Common mistakes and anti-patterns across Pyreon, grouped by area, each with its 
 - **[Context & Provider Mistakes](/docs/troubleshooting/context)** — 5 entries
 - **[Architecture Mistakes](/docs/troubleshooting/architecture)** — 50 entries
 - **[Testing Mistakes](/docs/troubleshooting/testing)** — 6 entries
-- **[Lifecycle & Cleanup Mistakes](/docs/troubleshooting/lifecycle)** — 17 entries
+- **[Lifecycle & Cleanup Mistakes](/docs/troubleshooting/lifecycle)** — 18 entries
 - **[Documentation Mistakes](/docs/troubleshooting/documentation)** — 6 entries
