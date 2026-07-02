@@ -623,6 +623,69 @@ export interface ZeroConfig {
    * supplied. Pass `false` to remove it from the chain entirely.
    */
   font?: import('./font').FontConfig | false
+
+  /**
+   * SEO artifacts — auto-wires `seoPlugin` (sitemap.xml, robots.txt, RSS)
+   * when a config is supplied. Same shape as `seoPlugin(config)`; declare it
+   * here instead of importing + wiring the plugin manually:
+   *
+   * ```ts
+   * zero({ seo: { sitemap: { origin: 'https://example.com' }, robots: { … } } })
+   * ```
+   *
+   * Not auto-wired when omitted (a sitemap needs an `origin` — there is no
+   * meaningful zero-config default).
+   */
+  seo?: import('./seo').SeoPluginConfig
+
+  /**
+   * Favicon set generation — auto-wires `faviconPlugin` (source SVG/PNG →
+   * ICO + PNG sizes + web manifest + theme-aware SVG links).
+   *
+   * Three forms:
+   *   - **config object** — explicit opt-in, same shape as `faviconPlugin(config)`:
+   *     `zero({ favicon: { source: './src/favicon.svg' } })`. Requires `sharp`
+   *     (the build fails loudly when it's missing — you clearly wanted favicons).
+   *   - **omitted** — FILE-CONVENTION auto-detect: when `src/favicon.svg` (or
+   *     `src/favicon.png`) exists, the full set is generated from it with
+   *     defaults — zero config, like Next's `app/icon.png`. Because you never
+   *     explicitly asked, a missing `sharp` SOFT-degrades to a one-time build
+   *     warning instead of an error. (`public/favicon.svg` is deliberately NOT
+   *     detected — Vite copies `public/` verbatim and the plugin would collide
+   *     with it.)
+   *   - **`false`** — no favicon plugin, no detection.
+   */
+  favicon?: import('./favicon').FaviconPluginConfig | false
+
+  /**
+   * Pre-paint theme script injection. `true` injects zero's `themeScript`
+   * (dark/light from localStorage / `prefers-color-scheme`, applied BEFORE
+   * first paint — no FOUC) into every page's `<head>` automatically — the
+   * manual `<script>{themeScript}</script>` step disappears:
+   *
+   * ```ts
+   * zero({ theme: true })
+   * ```
+   *
+   * Off by default: the script writes `data-theme` on `<html>` and reads
+   * localStorage, which apps not using zero's theme system shouldn't pay for.
+   * Under a strict CSP allow it by hash — see `themeScriptCspHash`.
+   */
+  theme?: boolean
+
+  /**
+   * Social-share (og:image) generation — auto-wires `ogImagePlugin` when a
+   * config is supplied (template + text layers → per-locale PNG/JPEG at
+   * build time). Same shape as `ogImagePlugin(config)`.
+   */
+  og?: import('./og-image').OgImagePluginConfig
+
+  /**
+   * AI discoverability — auto-wires `aiPlugin` when a config is supplied
+   * (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec).
+   * Same shape as `aiPlugin(config)`.
+   */
+  ai?: import('./ai').AiPluginConfig
 }
 
 // ─── File-system route ───────────────────────────────────────────────────────

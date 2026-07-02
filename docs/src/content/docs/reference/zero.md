@@ -25,7 +25,7 @@ Pyreon's full-stack meta-framework. Single `zero({ mode, base, ssg, i18n })` plu
 - createImageRegistry(map) — typed name → ?optimize descriptor registry (autocomplete over imported assets)
 - usePreconnect / useDnsPrefetch / usePreload — typed resource-hint primitives (each emits the right &lt;link rel&gt;)
 - usePreloadFont(href) + ?font import — font preload + auto @font-face / hashed-URL FontDescriptor
-- zero(&#123; image, font &#125;) — auto-wires imagePlugin / fontPlugin into the Vite plugin chain
+- zero(&#123; image, font, seo, favicon, og, ai &#125;) — ONE config surface auto-wires image/font (default-on, `false` opts out) + seo/favicon/og-image/ai plugins (config-present opt-in) — no manual plugin imports
 - SSG injects per-route &lt;link rel=modulepreload&gt; — islands-safe (follows static imports, never dynamicImports)
 
 ## Complete example

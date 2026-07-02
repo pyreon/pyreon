@@ -72,6 +72,16 @@ export interface FaviconLocaleConfig {
 export interface FaviconPluginConfig {
   /** Path to the source icon (SVG or PNG, at least 512x512 for PNG). */
   source: string
+  /**
+   * @internal Set by `zero()` when the plugin was wired by FILE-CONVENTION
+   * auto-detection (`src/favicon.svg` existed) rather than explicit config.
+   * Downgrades the missing-`sharp` production-build failure from a hard
+   * error to a one-time warning: the user never explicitly asked for
+   * favicons, so failing their build over an optional dependency would be
+   * wrong — while an EXPLICIT `source` with no sharp stays a loud error
+   * (they clearly wanted favicons; silently shipping none is the footgun).
+   */
+  autoDetected?: boolean
   /** Theme color for web manifest. Default: "#ffffff" */
   themeColor?: string
   /** Background color for web manifest. Default: "#ffffff" */
@@ -203,6 +213,22 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         : null
       const autoDevBadge = config.devSource === true
       const devCache = new Map<string, Uint8Array>()
+
+      // Invalidate the dev cache when any source icon changes — otherwise an
+      // edit to `src/favicon.svg` keeps serving the stale rendered PNGs until
+      // a dev-server restart (the cache key is source PATH + size, which does
+      // not change when the file's CONTENT does).
+      const watchedSources = [sourcePath, darkPath, devSourcePath].filter(
+        (p): p is string => p !== null,
+      )
+      for (const localeConfig of Object.values(config.locales ?? {})) {
+        watchedSources.push(join(root, localeConfig.source))
+        if (localeConfig.darkSource) watchedSources.push(join(root, localeConfig.darkSource))
+      }
+      server.watcher.add(watchedSources)
+      server.watcher.on('change', (file) => {
+        if (watchedSources.includes(file)) devCache.clear()
+      })
 
       /** Resolve source path for a request — handles dark variants and dev badge. */
       function resolveSourceForDev(baseName: string, defaultSource: string): string {
@@ -437,16 +463,31 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     async generateBundle() {
       if (!isBuild) return
 
-      // `faviconPlugin` is in the plugin list and a `source` is configured
-      // (it's a required field), so the user clearly WANTS favicons. If
+      // An EXPLICIT `source` means the user clearly WANTS favicons. If
       // `sharp` is missing, the old behaviour was a single swallow-able
       // `console.warn` + emit nothing — i.e. silently ship a production
       // site with zero favicons. That's the footgun. Fail the build loudly
       // with an actionable message instead. Dev keeps the soft warning
       // (see `warnSharpMissing`) so local iteration isn't blocked.
+      //
+      // FILE-CONVENTION auto-detected wiring (`config.autoDetected`, set by
+      // `zero()` when `src/favicon.svg` exists with no explicit config) is
+      // the one exception: the user never asked for favicons, so a missing
+      // optional dependency must not fail their build — warn once and skip
+      // generation instead.
       try {
         await import('sharp')
       } catch {
+        if (config.autoDetected) {
+          // oxlint-disable-next-line no-console
+          console.warn(
+            '[Pyreon] faviconPlugin: `src/favicon.svg` was auto-detected but ' +
+              '`sharp` is not installed — skipping favicon generation.\n' +
+              '  To generate the full favicon set: bun add -D sharp\n' +
+              '  To silence this warning: zero({ favicon: false })',
+          )
+          return
+        }
         this.error(
           '[Pyreon] faviconPlugin: a favicon `source` is configured but ' +
             '`sharp` is not installed — NO favicons would be generated and ' +
@@ -458,15 +499,16 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         )
       }
 
-      // Generate favicons for the base (default) source
-      await generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest)
-
-      // Generate locale-specific favicon sets
-      if (config.locales) {
-        for (const [locale, localeConfig] of Object.entries(config.locales)) {
-          await generateFaviconSet.call(this, root, localeConfig.source, localeConfig.darkSource, `${locale}/`, config, themeColor, backgroundColor, generateManifest)
-        }
-      }
+      // Generate the base set + every locale set IN PARALLEL — each locale is
+      // an independent source → independent sharp pipelines (previously each
+      // locale was awaited sequentially, so a 5-locale build paid 6× the
+      // single-set wall clock).
+      await Promise.all([
+        generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest),
+        ...Object.entries(config.locales ?? {}).map(([locale, localeConfig]) =>
+          generateFaviconSet.call(this, root, localeConfig.source, localeConfig.darkSource, `${locale}/`, config, themeColor, backgroundColor, generateManifest),
+        ),
+      ])
     },
   }
 }
@@ -582,43 +624,46 @@ async function generateFaviconSet(
     })
   }
 
-  // Generate PNG sizes via sharp
+  // Generate PNG sizes via sharp — all sizes resized IN PARALLEL (each is an
+  // independent sharp pipeline; the previous serial `await`-in-loop shape made
+  // a 5-locale dual-variant build pay every resize sequentially). The light
+  // buffer is REUSED for the standard names (same source + size ⇒ identical
+  // bytes) instead of re-rendering a third time.
   if (darkSource) {
-    // Dual-variant: generate light + dark PNGs with prefixed names
+    // Dual-variant: light + dark PNGs with prefixed names + standard names.
     const darkPath = join(rootDir, darkSource)
     const darkExists = existsSync(darkPath)
 
-    for (const { size, name } of SIZES) {
-      // Light variant
+    const lightPngs = await Promise.all(
+      SIZES.map(async ({ size, name }) => ({ name, png: await resizeToPng(sourcePath, size) })),
+    )
+    const darkPngs = darkExists
+      ? await Promise.all(
+          SIZES.map(async ({ size, name }) => ({ name, png: await resizeToPng(darkPath, size) })),
+        )
+      : []
+
+    for (const { name, png } of lightPngs) {
+      if (!png) continue
       const lightName = name.replace(/^(favicon-)/, '$1light-').replace(/^(apple-touch-icon)/, '$1-light').replace(/^(icon-)/, '$1light-')
-      const lightPng = await resizeToPng(sourcePath, size)
-      if (lightPng) {
-        this.emitFile({ type: 'asset', fileName: `${prefix}${lightName}`, source: lightPng })
-      }
-
-      // Dark variant
-      if (darkExists) {
-        const darkName = name.replace(/^(favicon-)/, '$1dark-').replace(/^(apple-touch-icon)/, '$1-dark').replace(/^(icon-)/, '$1dark-')
-        const darkPng = await resizeToPng(darkPath, size)
-        if (darkPng) {
-          this.emitFile({ type: 'asset', fileName: `${prefix}${darkName}`, source: darkPng })
-        }
-      }
+      this.emitFile({ type: 'asset', fileName: `${prefix}${lightName}`, source: png })
+      // Standard name (used by manifest + external references) — identical
+      // bytes to the light variant; emit the same buffer, no re-render.
+      this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: png })
     }
-
-    // Also generate standard names (used by manifest + external references)
-    for (const { size, name } of SIZES) {
-      const pngBuffer = await resizeToPng(sourcePath, size)
-      if (pngBuffer) {
-        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
-      }
+    for (const { name, png } of darkPngs) {
+      if (!png) continue
+      const darkName = name.replace(/^(favicon-)/, '$1dark-').replace(/^(apple-touch-icon)/, '$1-dark').replace(/^(icon-)/, '$1dark-')
+      this.emitFile({ type: 'asset', fileName: `${prefix}${darkName}`, source: png })
     }
   } else {
     // Single-variant
-    for (const { size, name } of SIZES) {
-      const pngBuffer = await resizeToPng(sourcePath, size)
-      if (pngBuffer) {
-        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
+    const pngs = await Promise.all(
+      SIZES.map(async ({ size, name }) => ({ name, png: await resizeToPng(sourcePath, size) })),
+    )
+    for (const { name, png } of pngs) {
+      if (png) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: png })
       }
     }
   }

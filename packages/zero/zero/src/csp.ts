@@ -145,6 +145,42 @@ export function buildCspHeader(directives: CspDirectives, nonce?: string): strin
 }
 
 /**
+ * Compute the CSP `script-src` source expression (`'sha256-<base64>'`) for an
+ * inline script's CONTENT — the strict-CSP alternative to `'unsafe-inline'`
+ * that works for STATIC HTML too (SSG can't thread per-request nonces; a
+ * baked nonce defeats CSP entirely).
+ *
+ * Use for parametrized inline scripts whose content varies with options —
+ * e.g. `@pyreon/ui-core`'s `cssVariablesPrePaintScript(opts)`:
+ *
+ * ```ts
+ * const script = cssVariablesPrePaintScript({ storageKey: 'my-theme' })
+ * const hash = await cspHashForInlineScript(script)
+ * cspMiddleware({ directives: { scriptSrc: ["'self'", hash] } })
+ * ```
+ *
+ * (For zero's own fixed `themeScript`, use the precomputed
+ * `themeScriptCspHash` constant — no async needed.)
+ *
+ * Async because it uses Web Crypto (`crypto.subtle.digest`) — available in
+ * Node 18+, Bun, Deno, browsers, and edge workers with no `node:` import,
+ * keeping this module client-safe. The hash covers the script CONTENT only
+ * (never the `<script>` tag), exactly what the CSP spec hashes.
+ */
+export async function cspHashForInlineScript(script: string): Promise<string> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    throw new Error(
+      '[Pyreon] cspHashForInlineScript requires the Web Crypto API (`crypto.subtle`). ' +
+        'Ensure Node 18+, Bun, Deno, an edge runtime, or a browser environment.',
+    )
+  }
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(script))
+  let binary = ''
+  for (const byte of new Uint8Array(digest)) binary += String.fromCharCode(byte)
+  return `'sha256-${btoa(binary)}'`
+}
+
+/**
  * Generate a cryptographically-random nonce string (base64, 16 bytes).
  *
  * Throws when `crypto.getRandomValues` is unavailable. CSP nonces protect

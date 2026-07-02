@@ -73,7 +73,7 @@ export default function PostPage() { /* component body */ }`,
     'createImageRegistry(map) — typed name → ?optimize descriptor registry (autocomplete over imported assets)',
     'usePreconnect / useDnsPrefetch / usePreload — typed resource-hint primitives (each emits the right <link rel>)',
     'usePreloadFont(href) + ?font import — font preload + auto @font-face / hashed-URL FontDescriptor',
-    'zero({ image, font }) — auto-wires imagePlugin / fontPlugin into the Vite plugin chain',
+    'zero({ image, font, seo, favicon, og, ai }) — ONE config surface auto-wires image/font (default-on, `false` opts out) + seo/favicon/og-image/ai plugins (config-present opt-in) — no manual plugin imports',
     'SSG injects per-route <link rel=modulepreload> — islands-safe (follows static imports, never dynamicImports)',
   ],
   // MCP-density entries: dense summary + 6+ mistakes per flagship API.

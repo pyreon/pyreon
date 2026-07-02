@@ -317,3 +317,22 @@ describe('emitFontDescriptorModule', () => {
     expect(js).toContain('import "\\u0000odd \\"id\\""')
   })
 })
+
+describe('parseFontQueryOverrides — display', () => {
+  it('parses a valid display override', () => {
+    expect(parseFontQueryOverrides('display=optional')).toEqual({ display: 'optional' })
+    expect(parseFontQueryOverrides('display=block')).toEqual({ display: 'block' })
+  })
+
+  it('ignores invalid display values (falls back to the swap default downstream)', () => {
+    expect(parseFontQueryOverrides('display=bogus')).toEqual({})
+  })
+
+  it('composes with family/weight/style', () => {
+    expect(parseFontQueryOverrides('family=Hero&weight=700&display=fallback')).toEqual({
+      family: 'Hero',
+      weight: 700,
+      display: 'fallback',
+    })
+  })
+})

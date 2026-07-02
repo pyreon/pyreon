@@ -24,6 +24,17 @@ export interface SitemapConfig {
   changefreq?: ChangeFreq
   /** Default priority. Default: 0.7 */
   priority?: number
+  /**
+   * Default `<lastmod>` applied to every entry that doesn't carry its own
+   * (an explicit `additionalPaths[].lastmod` always wins):
+   *   - `'build-time'` — stamp the date of the build (`YYYY-MM-DD`). The
+   *     honest automated choice: file mtimes are NOT reliable in CI (a git
+   *     checkout stamps checkout time on every file), so "when did this
+   *     deploy happen" is the strongest truthful signal available.
+   *   - an ISO date string (e.g. `'2026-07-01'`) — applied verbatim.
+   *   - omitted (default) — no `<lastmod>` unless an entry supplies one.
+   */
+  lastmod?: 'build-time' | string
   /** Additional URLs to include (for dynamic routes). */
   additionalPaths?: SitemapEntry[]
   /**
@@ -167,6 +178,11 @@ export function generateSitemap(
   i18n?: I18nRoutingConfig,
 ): string {
   const { origin, exclude = [], changefreq = 'weekly', priority = 0.7, trailingSlash = 'preserve' } = config
+  // Resolve the config-level default <lastmod>. 'build-time' stamps the day
+  // this sitemap was generated (W3C date form); an explicit string passes
+  // through verbatim; per-entry lastmod always wins (see renderClusterEntry).
+  const defaultLastmod =
+    config.lastmod === 'build-time' ? new Date().toISOString().slice(0, 10) : config.lastmod
 
   const paths = routeFiles
     .filter((f) => {
@@ -225,7 +241,7 @@ export function generateSitemap(
   const xmlnsHreflang = hasHreflang ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : ''
 
   const entries = clusters
-    .map((cluster) => renderClusterEntry(cluster, origin, changefreq, priority, i18n, trailingSlash))
+    .map((cluster) => renderClusterEntry(cluster, origin, changefreq, priority, i18n, trailingSlash, defaultLastmod))
     .join('\n')
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -333,6 +349,7 @@ function renderClusterEntry(
   priority: number,
   i18n: I18nRoutingConfig | undefined,
   trailingSlash: TrailingSlash,
+  defaultLastmod?: string,
 ): string {
   const { canonical, variantsByLocale } = cluster
   const loc = formatLoc(origin, canonical.path, trailingSlash)
@@ -343,7 +360,8 @@ function renderClusterEntry(
     `    <changefreq>${canonical.changefreq ?? changefreq}</changefreq>`,
     `    <priority>${canonical.priority ?? priority}</priority>`,
   ]
-  if (canonical.lastmod) lines.push(`    <lastmod>${canonical.lastmod}</lastmod>`)
+  const lastmod = canonical.lastmod ?? defaultLastmod
+  if (lastmod) lines.push(`    <lastmod>${lastmod}</lastmod>`)
 
   if (i18n != null && i18n.locales.length > 0 && variantsByLocale.size > 1) {
     // hreflang per locale variant + x-default → default locale's URL.

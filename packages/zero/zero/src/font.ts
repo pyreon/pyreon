@@ -619,8 +619,21 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
           const result = await selfHostFonts(cssUrl, 'assets/fonts', root, config.subsets)
           selfHostedCSS = result.css
           selfHostedFontFiles = result.fontFiles
-        } catch {
-          // Self-hosting failed — fall back to CDN link
+        } catch (err) {
+          // Self-hosting failed — fall back to the CDN link so the build
+          // never breaks over a network blip. But say so LOUDLY: silently
+          // regressing to two cross-origin connections + Google's
+          // short-cached CSS is a perf + privacy change the developer must
+          // be able to see (a CI box without network, a proxy, an expired
+          // cache all land here).
+          // oxlint-disable-next-line no-console
+          console.warn(
+            '[Pyreon] fontPlugin: self-hosting Google Fonts FAILED — falling back to the fonts.googleapis.com CDN <link>.\n' +
+              '  The built site will make cross-origin font requests (slower first paint, IP shared with Google).\n' +
+              `  Cause: ${err instanceof Error ? err.message : String(err)}\n` +
+              '  Fix: check network access from the build machine (node_modules/.cache/zero-fonts caches prior downloads),\n' +
+              '  or set `font: { selfHost: false }` to make the CDN fallback explicit and silence this warning.',
+          )
         }
       }
 

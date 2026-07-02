@@ -17,8 +17,12 @@
  * push fails the default-auto-wire spec; setting `image: false` then asserting
  * the plugin is absent fails when the opt-out branch is removed.
  */
-import { describe, expect, it } from 'vitest'
-import { zeroPlugin } from '../vite-plugin'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import { themeScript } from '../theme'
+import { detectConventionFavicon, zeroPlugin } from '../vite-plugin'
 
 function pluginNames(plugins: ReturnType<typeof zeroPlugin>): string[] {
   return plugins.map((p) => p.name)
@@ -100,5 +104,138 @@ describe('zero({ image, font }) — auto-wire contract', () => {
     const names = pluginNames(plugins)
     expect(names).toContain('pyreon-zero-images')
     expect(names).toContain('pyreon-zero-fonts')
+  })
+})
+
+describe('zero({ seo, favicon, og, ai }) — config-present auto-wire contract', () => {
+  // Unlike image/font these are NOT default-on: each needs user input to do
+  // anything meaningful (an origin, a source icon, templates). `undefined`
+  // means "not used"; supplying the config IS the opt-in.
+  it('default zero() wires NONE of seo/favicon/og/ai', () => {
+    const names = pluginNames(zeroPlugin())
+    expect(names).not.toContain('pyreon-zero-seo')
+    expect(names).not.toContain('pyreon-zero-favicon')
+    expect(names).not.toContain('pyreon-zero-og-image')
+    expect(names).not.toContain('pyreon-zero-ai')
+  })
+
+  it('zero({ seo }) wires seoPlugin', () => {
+    const names = pluginNames(
+      zeroPlugin({ seo: { sitemap: { origin: 'https://example.com' } } }),
+    )
+    expect(names).toContain('pyreon-zero-seo')
+    // the others stay absent
+    expect(names).not.toContain('pyreon-zero-favicon')
+  })
+
+  it('zero({ favicon }) wires faviconPlugin', () => {
+    const names = pluginNames(zeroPlugin({ favicon: { source: './src/favicon.svg' } }))
+    expect(names).toContain('pyreon-zero-favicon')
+  })
+
+  it('zero({ og }) wires ogImagePlugin', () => {
+    const names = pluginNames(
+      zeroPlugin({
+        og: {
+          templates: [
+            { name: 'default', background: { color: '#111827' }, layers: [{ text: 'Hi' }] },
+          ],
+        },
+      }),
+    )
+    expect(names).toContain('pyreon-zero-og-image')
+  })
+
+  it('zero({ ai }) wires aiPlugin', () => {
+    const names = pluginNames(zeroPlugin({ ai: { name: 'My Site' } }))
+    expect(names).toContain('pyreon-zero-ai')
+  })
+
+  it('all four together wire all four (one config surface)', () => {
+    const names = pluginNames(
+      zeroPlugin({
+        seo: { sitemap: { origin: 'https://example.com' } },
+        favicon: { source: './src/favicon.svg' },
+        og: {
+          templates: [
+            { name: 'default', background: { color: '#111827' }, layers: [{ text: 'Hi' }] },
+          ],
+        },
+        ai: { name: 'My Site' },
+      }),
+    )
+    expect(names).toContain('pyreon-zero-seo')
+    expect(names).toContain('pyreon-zero-favicon')
+    expect(names).toContain('pyreon-zero-og-image')
+    expect(names).toContain('pyreon-zero-ai')
+  })
+})
+
+describe('favicon file-convention auto-detect', () => {
+  it('detectConventionFavicon finds src/favicon.svg (preferred) then src/favicon.png', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    expect(detectConventionFavicon(dir)).toBeNull()
+    writeFileSync(join(dir, 'src', 'favicon.png'), 'png')
+    expect(detectConventionFavicon(dir)).toBe('src/favicon.png')
+    writeFileSync(join(dir, 'src', 'favicon.svg'), '<svg/>')
+    expect(detectConventionFavicon(dir)).toBe('src/favicon.svg') // svg wins
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('zero() auto-wires faviconPlugin when src/favicon.svg exists (convention)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    writeFileSync(join(dir, 'src', 'favicon.svg'), '<svg/>')
+    const spy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    try {
+      expect(pluginNames(zeroPlugin())).toContain('pyreon-zero-favicon')
+    } finally {
+      spy.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('zero({ favicon: false }) suppresses the convention detect', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    writeFileSync(join(dir, 'src', 'favicon.svg'), '<svg/>')
+    const spy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    try {
+      expect(pluginNames(zeroPlugin({ favicon: false }))).not.toContain('pyreon-zero-favicon')
+    } finally {
+      spy.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('no convention file + no config → no favicon plugin (unchanged default)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    const spy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    try {
+      expect(pluginNames(zeroPlugin())).not.toContain('pyreon-zero-favicon')
+    } finally {
+      spy.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('zero({ theme: true }) — pre-paint theme script injection', () => {
+  it('default zero() does NOT inject the theme script', () => {
+    expect(pluginNames(zeroPlugin())).not.toContain('pyreon-zero-theme-script')
+  })
+
+  it('theme: true wires the inject plugin', () => {
+    expect(pluginNames(zeroPlugin({ theme: true }))).toContain('pyreon-zero-theme-script')
+  })
+
+  it('the injected tag is head-prepend with the exact themeScript content (CSP-hash compatible)', () => {
+    const plugin = zeroPlugin({ theme: true }).find((p) => p.name === 'pyreon-zero-theme-script')!
+    const hook = plugin.transformIndexHtml as { handler: () => Array<Record<string, unknown>> }
+    const tags = hook.handler()
+    expect(tags).toHaveLength(1)
+    expect(tags[0]).toMatchObject({ tag: 'script', injectTo: 'head-prepend', children: themeScript })
   })
 })
