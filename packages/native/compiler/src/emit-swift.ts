@@ -1982,7 +1982,11 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'let':
       // `var` when a later `assign` reassigns this local (markReassigned-
       // LocalsMutable), else immutable `let`.
-      return `${s.mutable ? 'var' : 'let'} ${swiftIdent(s.name)} = ${emitSwiftExpr(s.expr, indent)}`
+      // A collection local is ALWAYS `var` — subscript-assign (`m[k] = v`)
+      // and `insert` are mutating, and the reassignment tracker only sees
+      // `=` assignments, not method mutation. (A never-mutated var is a
+      // swiftc warning, not an error.)
+      return `${s.mutable || s.expr.kind === 'new-collection' ? 'var' : 'let'} ${swiftIdent(s.name)} = ${emitSwiftExpr(s.expr, indent)}`
     case 'assign':
       return `${emitSwiftExpr(s.target, indent)} ${s.op} ${emitSwiftExpr(s.value, indent)}`
     case 'return':
@@ -2143,6 +2147,10 @@ export function swiftType(t: TypeIR, synth?: SwiftSynthCtx, declName?: string): 
       return 'String'
     case 'boolean':
       return 'Bool'
+    case 'map':
+      return `[${swiftType(t.key, synth)}: ${swiftType(t.value, synth)}]`
+    case 'set':
+      return `Set<${swiftType(t.element, synth)}>`
     case 'array':
       return `[${swiftType(t.element, synth, declName)}]`
     case 'object': {
@@ -2705,7 +2713,9 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         }
       }
       // Special case: `signal.set(x)` → `signal = x` (Swift @State is a var).
-      if (e.callee.kind === 'member' && e.callee.property === 'set') {
+      // Gated to ONE argument — a 2-arg `.set(k, v)` is a Map write (its
+      // rewrite runs in the member switch below), never a signal write.
+      if (e.callee.kind === 'member' && e.callee.property === 'set' && e.args.length === 1) {
         const target = emitSwiftExpr(e.callee.object, indent)
         // Look up whether the target signal is enum-typed (e.g.
         // `filter.set('active')` where `filter` is declared as
@@ -2773,6 +2783,27 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         const obj = emitSwiftExpr(e.callee.object, indent)
         const prop = e.callee.property
         const argExprs = emitSwiftMemberCallArgs(e, indent)
+        // Map/Set method vocabulary — typed off the receiver's inferred
+        // kind (locals seed via seedHandlerLocals). Value-position-only
+        // semantics differences (JS .set returns the map, .delete a Bool)
+        // are fine in the dominant STATEMENT position; chaining warns via
+        // swiftc loudly if used.
+        {
+          const recvT = inferType(e.callee.object, _activeInferCtx)
+          if (recvT.kind === 'map') {
+            if (prop === 'set' && e.args.length === 2) return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
+            if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
+            if (prop === 'has' && e.args.length === 1) return `(${obj}[${argExprs[0]!}] != nil)`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}.removeValue(forKey: ${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}.removeAll()`
+          }
+          if (recvT.kind === 'set') {
+            if (prop === 'add' && e.args.length === 1) return `${obj}.insert(${argExprs[0]!})`
+            if (prop === 'has' && e.args.length === 1) return `${obj}.contains(${argExprs[0]!})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}.remove(${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}.removeAll()`
+          }
+        }
         switch (prop) {
           case 'trim':
             if (e.args.length === 0) {
@@ -3245,6 +3276,13 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
     }
     case 'member': {
+      // `m.size` (Map/Set property) → Swift `.count`, typed off the receiver.
+      if (e.property === 'size') {
+        const szT = inferType(e.object, _activeInferCtx)
+        if (szT.kind === 'map' || szT.kind === 'set') {
+          return `${emitSwiftExpr(e.object, indent)}.count`
+        }
+      }
       // v2 (form-binding arc) — per-field dict access on a form
       // container: `form.values.email` is ILLEGAL member access on a
       // Swift dictionary; rewrite to the subscript with the
@@ -3518,10 +3556,35 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const step = e.op === '++' ? '+= 1' : '-= 1'
       return `{ let __v = ${arg}; ${arg} ${step}; return __v }()`
     }
-    case 'arrow':
-      // Swift closure: `{ params in body }`.
+    case 'arrow': {
+      // Swift closure: `{ params in body }`. A BLOCK body carries `stmts` —
+      // reading only `e.body` (the block-body SENTINEL `""`) silently DROPPED
+      // the whole body on the PLAIN 1-param path (the indexed path fixed
+      // this in #1954; the dedup idiom `filter(x => { …; seen.add(x); return
+      // true })` exposed the plain-path sibling).
+      if (e.stmts !== undefined && e.stmts.length > 0) {
+        const pad = ' '.repeat(indent + 2)
+        const inlined = inlineValueConstsInStmts(e.stmts)
+        const saved = seedHandlerLocals(inlined, _exprInferCtx)
+        const lines = inlined.map((st) => pad + emitSwiftStatement(st, indent + 2)).join('\n')
+        _exprInferCtx.locals = saved
+        const params = e.params.length > 0 ? `${e.params.map(swiftIdent).join(', ')} in` : ''
+        return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
+      }
       if (e.params.length === 0) return `{ ${emitSwiftExpr(e.body, indent)} }`
       return `{ ${e.params.map(swiftIdent).join(', ')} in ${emitSwiftExpr(e.body, indent)} }`
+    }
+    case 'new-collection': {
+      // `new Map<K,V>()` → `[K: V]()`; `new Set<T>()` → `Set<T>()`;
+      // `new Set(arr)` → `Set(arr)`. See the local-let mutability note in
+      // the statement emit (collections force `var` — subscript-assign and
+      // insert are mutating).
+      if (e.collection === 'map') {
+        return `[${swiftType(e.keyType!)}: ${swiftType(e.valueType!)}]()`
+      }
+      if (e.seed !== undefined) return `Set(${emitSwiftExpr(e.seed, indent)})`
+      return `Set<${swiftType(e.elementType!)}>()`
+    }
     case 'rx-call':
       return emitSwiftRxCall(e, indent)
     case 'jsx-element':

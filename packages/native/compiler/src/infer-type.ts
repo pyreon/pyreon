@@ -708,6 +708,15 @@ function inferMathCall(expr: ExprIR, ctx: InferenceCtx): TypeIR | null {
 
 export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
   switch (expr.kind) {
+    case 'new-collection': {
+      if (expr.collection === 'map') {
+        return { kind: 'map', key: expr.keyType!, value: expr.valueType! }
+      }
+      if (expr.elementType !== undefined) return { kind: 'set', element: expr.elementType }
+      // `new Set(arr)` — element type from the seed array.
+      const seedT = expr.seed !== undefined ? inferType(expr.seed, ctx) : { kind: 'unknown' as const }
+      return { kind: 'set', element: seedT.kind === 'array' ? seedT.element : { kind: 'unknown' } }
+    }
     case 'literal': {
       if (typeof expr.value === 'string') return { kind: 'string' }
       if (typeof expr.value === 'number') {
@@ -826,6 +835,27 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         expr.args.length === 1
       ) {
         return { kind: 'boolean' }
+      }
+      // Map/Set method results — typed off the receiver's inferred kind.
+      if (expr.callee.kind === 'member') {
+        const msT = inferType(expr.callee.object, ctx)
+        if (msT.kind === 'map') {
+          if (expr.callee.property === 'get') {
+            return { kind: 'union', branches: [msT.value, { kind: 'undefined' }] }
+          }
+          if (expr.callee.property === 'has' || expr.callee.property === 'delete') {
+            return { kind: 'boolean' }
+          }
+        }
+        if (msT.kind === 'set') {
+          if (
+            expr.callee.property === 'has' ||
+            expr.callee.property === 'delete' ||
+            expr.callee.property === 'add'
+          ) {
+            return { kind: 'boolean' }
+          }
+        }
       }
       // Math.* numeric builtins — see `inferMathCall`.
       {
@@ -1033,6 +1063,11 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'member': {
+      // `m.size` on a Map/Set → number.
+      if (expr.property === 'size') {
+        const szT = inferType(expr.object, ctx)
+        if (szT.kind === 'map' || szT.kind === 'set') return { kind: 'number' }
+      }
       // Fetch-field read, property form (`quotes.data` — the native
       // shape). Mirrors the call-form branch above.
       if (expr.object.kind === 'identifier' && ctx.fetches.has(expr.object.name)) {

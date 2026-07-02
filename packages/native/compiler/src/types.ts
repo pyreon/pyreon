@@ -582,6 +582,10 @@ export type TypeIR =
   | { kind: 'string' }
   | { kind: 'boolean' }
   | { kind: 'array'; element: TypeIR }
+  /** `Map<K, V>` → Swift `[K: V]` / Kotlin `MutableMap<K, V>`. */
+  | { kind: 'map'; key: TypeIR; value: TypeIR }
+  /** `Set<T>` → Swift `Set<T>` / Kotlin `MutableSet<T>`. */
+  | { kind: 'set'; element: TypeIR }
   | { kind: 'object'; fields: { name: string; type: TypeIR }[] }
   | { kind: 'null' }
   | { kind: 'undefined' }
@@ -641,6 +645,20 @@ export type ExprIR =
    * (the broken shape the original tasks scaffold shipped).
    */
   | { kind: 'index'; object: ExprIR; index: ExprIR }
+  /**
+   * `new Map<K, V>()` / `new Set<T>()` / `new Set(seedArray)` — the two
+   * supported collection constructors (the accumulator / dedup idioms).
+   * `seed` is the optional Set-from-array argument. Other `new X()`
+   * expressions stay the named unsupported warning.
+   */
+  | {
+      kind: 'new-collection'
+      collection: 'map' | 'set'
+      keyType?: TypeIR
+      valueType?: TypeIR
+      elementType?: TypeIR
+      seed?: ExprIR
+    }
   | {
       kind: 'binary'
       // Arithmetic + bitwise + exponent. Bitwise ops (`& | ^ << >>`) emit
