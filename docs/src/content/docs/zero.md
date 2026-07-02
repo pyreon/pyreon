@@ -414,6 +414,8 @@ Resolution is leaf-first along the matched chain: a page's own declaration beats
 
 When no route declares a divergent mode, the pipeline is byte-identical to the app-level mode — existing apps are unaffected.
 
+**`mode: 'auto'` (EXPERIMENTAL) — let zero decide.** Inference follows the conservative "static unless the code says otherwise" model, per route: a `revalidate` export → `isr`; a `getStaticPaths` export → `ssg` (an enumerator is a static-intent signal, even alongside a loader — SSG runs loaders at build); a `loader` / `.server.ts` sibling / `guard` / `middleware` → `ssr` (request-coupled work inference can't prove build-safe); otherwise → `ssg`. Explicit `renderMode` exports and `routeRules` always win — inference only fills the undeclared gaps. The app-level pipeline is derived from the result (any server-needing route → server build; else pure static), announced at startup, and the build mode table shows every inferred decision — inference is never invisible. Escape hatch per route: declare `export const renderMode = 'ssg'` on a loader route you know is build-safe.
+
 **Central overrides — `routeRules`.** When you'd rather declare a mode policy in ONE place than touch route files (retrofits, monorepo conventions), `zero({ routeRules })` maps path globs to modes — `*` matches one segment, `**` any depth, most-specific key wins:
 
 ```ts

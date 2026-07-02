@@ -2028,8 +2028,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // prints the table there; printing from both would duplicate it.
       if (config.mode === 'ssg') {
         try {
-          const modeEntries = await collectFileRouteModes(routesDir, config.mode, config.routeRules)
-          for (const line of formatRouteModeTable(modeEntries, config.mode)) {
+          const tableMode = config._autoMode ? ('auto' as const) : config.mode
+          const modeEntries = await collectFileRouteModes(routesDir, tableMode, config.routeRules)
+          for (const line of formatRouteModeTable(modeEntries, tableMode)) {
             // oxlint-disable-next-line no-console
             console.log(line)
           }

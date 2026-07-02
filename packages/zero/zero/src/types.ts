@@ -349,6 +349,13 @@ export interface ZeroConfig {
    */
   routeRules?: import('./route-modes').RouteRules
 
+  /**
+   * @internal Set by `zero()` after resolving `mode: 'auto'` — tells the
+   * build plugins + mode table that per-route inference is active (the
+   * table shows 'auto' as the app mode and per-route inferred values).
+   */
+  _autoMode?: boolean
+
   /** SSG options — only used when mode is "ssg". */
   ssg?: {
     /**

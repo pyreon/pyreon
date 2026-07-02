@@ -237,7 +237,7 @@ const MODE_GLYPH: Record<RenderMode, string> = {
  */
 export function formatRouteModeTable(
   entries: ReadonlyArray<{ pattern: string; mode: RenderMode; declared: boolean }>,
-  appMode: RenderMode,
+  appMode: RenderMode | 'auto',
   maxRows = 40,
 ): string[] {
   if (entries.length === 0) return []

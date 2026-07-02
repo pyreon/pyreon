@@ -293,8 +293,9 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // Per-route mode table (Tier-1 DX): which route ships in which mode,
       // at a glance, on every build. Informational — never fails the build.
       try {
-        const modeEntries = await collectFileRouteModes(join(root, 'src', 'routes'), config.mode, config.routeRules)
-        for (const line of formatRouteModeTable(modeEntries, config.mode)) {
+        const tableMode = config._autoMode ? ('auto' as const) : config.mode
+        const modeEntries = await collectFileRouteModes(join(root, 'src', 'routes'), tableMode, config.routeRules)
+        for (const line of formatRouteModeTable(modeEntries, tableMode)) {
           // oxlint-disable-next-line no-console
           console.log(line)
         }
