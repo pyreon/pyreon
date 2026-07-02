@@ -1,5 +1,5 @@
 /**
- * Playwright harness for @pyreon/real-bench. Builds the production bundle,
+ * Playwright harness for @pyreon/example-real-bench. Builds the production bundle,
  * serves it via `vite preview`, then drives each framework in its OWN fresh
  * page (`?framework=<name>` isolation) under a Chromium launched with
  * `--js-flags=--expose-gc` so the in-page runner can force GC between
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
 
 function printTable(results: FrameworkResult[]): void {
   console.log(
-    `\n=== @pyreon/real-bench — real-app head-to-head (${runs} runs, median + CI95) ===\n`,
+    `\n=== @pyreon/example-real-bench — real-app head-to-head (${runs} runs, median + CI95) ===\n`,
   )
   const head: string[] = ['scenario', ...results.map((r) => r.framework)]
   const rows: string[][] = [head]

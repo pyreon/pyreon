@@ -27,7 +27,7 @@ export default definePlaywrightConfig({
   webServer: [
     {
       command:
-        'bun run --filter=@pyreon/ssr-showcase build:islands && bun run --filter=@pyreon/ssr-showcase preview:islands -- --port 5202 --strictPort',
+        'bun run --filter=@pyreon/example-ssr-showcase build:islands && bun run --filter=@pyreon/example-ssr-showcase preview:islands -- --port 5202 --strictPort',
       port: 5202,
       timeout: 180_000,
     },

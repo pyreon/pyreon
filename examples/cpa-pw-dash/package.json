@@ -1,5 +1,5 @@
 {
-  "name": "cpa-pw-dash",
+  "name": "@pyreon/example-cpa-pw-dash",
   "version": "0.0.25",
   "private": true,
   "type": "module",

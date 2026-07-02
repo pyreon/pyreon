@@ -1,5 +1,5 @@
 {
-  "name": "@pyreon/experiments",
+  "name": "@pyreon/example-experiments",
   "version": "0.1.11",
   "private": true,
   "description": "Architectural experiments parent — see README.md and the open-work tracker at .claude/plans/open-work-2026-q3.md.",

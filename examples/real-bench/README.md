@@ -1,4 +1,4 @@
-# `@pyreon/real-bench` — real-framework, real-app head-to-head
+# `@pyreon/example-real-bench` — real-framework, real-app head-to-head
 
 A **real-app-shape** benchmark against **real framework runtimes** (no compat
 shims). Today it runs a TodoMVC-shape stateful list in **Pyreon** (real

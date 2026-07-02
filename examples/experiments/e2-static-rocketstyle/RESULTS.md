@@ -110,7 +110,7 @@ GRADUATE → next step is **NOT another experiment** but a real RFC/plan:
 - `examples/experiments/e2-static-rocketstyle/baseline-Button.tsx` — current `<Button>` mount harness with PyreonUI provider amortization
 - `examples/experiments/e2-static-rocketstyle/collapsed-Button.ts` — hand-written compile-output equivalent
 - `examples/experiments/e2-static-rocketstyle/e2.browser.test.ts` — 2 vitest browser tests: parity check (DOM matches) + benchmark with assertions
-- Harness changes to `@pyreon/experiments` package: added `@pyreon/ui-components` / `@pyreon/ui-core` / `@pyreon/ui-theme` deps, `@pyreon/vite-plugin` devDep for browser-test JSX transforms, `vitest.browser.config.ts` with the Pyreon plugin wired.
+- Harness changes to `@pyreon/example-experiments` package: added `@pyreon/ui-components` / `@pyreon/ui-core` / `@pyreon/ui-theme` deps, `@pyreon/vite-plugin` devDep for browser-test JSX transforms, `vitest.browser.config.ts` with the Pyreon plugin wired.
 
 ## What's NOT in this PR
 

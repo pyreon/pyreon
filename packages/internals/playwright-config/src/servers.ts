@@ -35,7 +35,7 @@ export interface E2eWebServer {
  * Pass `strictPort: false` for the few configs that deliberately omit it.
  *
  * @param filter  the `bun run --filter` target — the FULL workspace name
- *                (e.g. `@pyreon/playground`, `cpa-pw-app`); naming is not
+ *                (e.g. `@pyreon/example-playground`, `@pyreon/example-cpa-pw-app`); naming is not
  *                uniform across examples, so it's passed verbatim.
  */
 export function viteDevServer(

@@ -1,5 +1,5 @@
 {
-  "name": "cpa-pw-app-react",
+  "name": "@pyreon/example-cpa-pw-app-react",
   "version": "0.0.25",
   "private": true,
   "type": "module",

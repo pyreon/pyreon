@@ -1,5 +1,5 @@
 {
-  "name": "@pyreon/docs-pyreon",
+  "name": "@pyreon/example-docs-pyreon",
   "version": "0.0.11",
   "private": true,
   "description": "Pyreon's documentation site, built with Pyreon itself. Dogfooding @pyreon/zero + @pyreon/vite-plugin + a custom markdown-to-Pyreon-JSX compiler.",

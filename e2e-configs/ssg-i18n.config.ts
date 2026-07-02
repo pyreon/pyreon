@@ -28,7 +28,7 @@ export default definePlaywrightConfig({
       // repo-root-relative.
       cwd: '..',
       command:
-        'bun run --filter=@pyreon/ssr-showcase build:i18n && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199',
+        'bun run --filter=@pyreon/example-ssr-showcase build:i18n && bun scripts/serve-ssg.ts examples/ssr-showcase/dist 5199',
       port: 5199,
       timeout: 180_000,
     },
