@@ -46,7 +46,6 @@ import {
 import type { Middleware, MiddlewareContext } from './middleware'
 import { provideRequestLocals } from './middleware'
 
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 
 export interface HandlerOptions {
   /** Root application component */
@@ -222,7 +221,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
               headers: { Location: info.url },
             })
           }
-          if (__DEV__) {
+          if (process.env.NODE_ENV !== 'production') {
             console.error('[Pyreon Server] SSR render failed:', err)
           }
           return new Response('Internal Server Error', {
@@ -279,7 +278,7 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
       }
       return new Response(fullHtml, { status: result.status, headers: ctx.headers })
     } catch (err) {
-      if (__DEV__) {
+      if (process.env.NODE_ENV !== 'production') {
         console.error('[Pyreon Server] SSR render failed:', err)
       }
       return new Response('Internal Server Error', {
@@ -363,7 +362,7 @@ async function renderStreamResponse(
         // inline error script and close the body. Branch is intentionally
         // hard to exercise from tests without mocking `reader.read()`.
         /* v8 ignore start */
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           console.error('[Pyreon Server] Stream render failed:', err)
         }
         push(`<script>console.error("[pyreon/server] Stream render failed")</script>`)

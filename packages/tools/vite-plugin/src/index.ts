@@ -47,7 +47,6 @@ import type { CollapseResolver } from './rocketstyle-collapse'
 import type { Plugin, ViteDevServer } from 'vite'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // Lazy — the resolver module (and its `vite` SSR machinery) must NOT be
@@ -832,7 +831,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // monotonically with developer edit activity. Zero in a session
       // with known deletes = the watchChange hook regressed (and the
       // 4 per-instance caches will leak again).
-      if (__DEV__) _countSink.__pyreon_count__?.('vite-plugin.watchChange.delete')
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('vite-plugin.watchChange.delete')
 
       const normalized = normalizeModuleId(id)
 

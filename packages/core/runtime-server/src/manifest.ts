@@ -120,7 +120,7 @@ decodeKeyFromMarker("a%2Db") // "a-b"`,
     },
     {
       label: 'Server dev-gate convention',
-      note: 'As a server package, `@pyreon/runtime-server` correctly uses `typeof process !== "undefined" && process.env.NODE_ENV !== "production"` for its dev-mode perf-counter sink — NOT the browser `import.meta.env.DEV` form. It always runs in Node/Bun where `process` is real.',
+      note: 'As a server package, `@pyreon/runtime-server` gates its dev-mode perf counters + warnings on the BARE INLINE `process.env.NODE_ENV !== "production"` at every call site — NOT the browser `import.meta.env.DEV` form, NOT a `typeof process` prefix, and NOT a local `__DEV__` const alias. `process` is always real in Node/Bun where this runs; the bare inline shape additionally lets edge/workerd SSR bundlers (which minify this file with a NODE_ENV define) fold every dev branch out of the deployed bundle — the alias/prefix forms made the gate non-constant and shipped the counters + warnings.',
     },
   ],
 })
