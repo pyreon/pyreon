@@ -1118,6 +1118,21 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // SSR↔hydration parity fixes (2026-07 fuzz campaign): symptoms of the
+    // OLD hydration behavior — duplicated lists, mismatches, or dynamic
+    // content rendered wrong after hydration.
+    pattern: /hydrat.*(duplicat|mismatch|twice|doubled|wrong order)|<For>.*(duplicat|twice|doubled).*hydrat|\[object Object\].*(hydrat|reactive|accessor)|SSR.*(duplicat|mismatch).*hydrat/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/runtime-dom` / `@pyreon/runtime-server` versions before the SSR↔hydration parity release, hydration had cursor/extent bugs: a `<For>` duplicated its list (fresh rows mounted while the SSR rows stayed), adjacent text-producing children (merged into one node by the HTML parser) misaligned the sibling cursor, a reactive accessor with a multi-root initial removed only ONE node before re-mounting, and a reactive text accessor that later yielded a VNode rendered `[object Object]`.',
+      fix: 'Upgrade `@pyreon/runtime-dom` + `@pyreon/runtime-server` together. The SSR renderer now wraps reactive-accessor children in `<!--$-->…<!--/$-->` hydration range markers and hydration consumes them (plus the `<!--pyreon-for-->` block) as a unit; a shared `bindPolymorphicText` upgrades a text binding to a subtree mount when the value stops being text. No app code change needed. NOTE: reactive-accessor children now carry `<!--$-->` comment markers in SSR output — update any snapshot/string assertions on SSR HTML for dynamic content to account for them.',
+      fixCode: `// All correct after upgrade — no code change:
+<ul><For each={rows} by={r => r.id}>{r => <li>{r.name}</li>}</For></ul>  // no dup on hydrate
+<div>{count()}{' items'}</div>                                            // adjacent text OK
+{() => loading() ? 'Loading…' : <Table/>}                                 // text→VNode OK`,
+    }),
+  },
+  {
     // Auto-call reachability fix (2026-07 fuzz campaign): symptoms of the
     // OLD emit — a signal function leaking into DOM output / handler math.
     pattern: /(\(\.\.\.args\) =>|function\s*\(\)).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|s\w*\.set\(.*=>.*\+/i,
