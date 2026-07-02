@@ -1997,6 +1997,28 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         e.callee.object.name === 'Math'
       ) {
+        // `Math.max(...arr)` / `Math.min(...arr)` — spread form (mirror of the
+        // Swift lowering; raw emit was a SILENT "unresolved reference").
+        if (
+          (e.callee.property === 'max' || e.callee.property === 'min') &&
+          e.args.length === 1 &&
+          e.args[0]!.kind === 'spread'
+        ) {
+          const spreadArg = (e.args[0]! as { kind: 'spread'; argument: ExprIR }).argument
+          const arrT = inferType(spreadArg, _kotlinExprInferCtx)
+          const isFloat =
+            arrT.kind === 'array' && arrT.element.kind === 'number' && arrT.element.float === true
+          const arrStr = emitKotlinExpr(spreadArg, indent)
+          const isMax = e.callee.property === 'max'
+          const sentinel = isFloat
+            ? isMax
+              ? 'Double.NEGATIVE_INFINITY'
+              : 'Double.POSITIVE_INFINITY'
+            : isMax
+              ? 'Int.MIN_VALUE'
+              : 'Int.MAX_VALUE'
+          return `(${arrStr}.${isMax ? 'maxOrNull' : 'minOrNull'}() ?: ${sentinel})`
+        }
         const fn = e.callee.property
         // java.lang.Math Double-domain fns — keep `Math.<fn>`, coerce args.
         const JAVA_MATH_DOUBLE = new Set([
@@ -2048,6 +2070,25 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             '`Array.from({ length: n })` without an `(_, index) => expr` map callback is not supported on native — this call keeps the raw `Array.from(` emit (a kotlinc error at the site). Use `Array.from({ length: n }, (_, i) => …)`, `(0 until n).map { … }`, or a numeric loop.',
           )
         }
+      }
+      // `Number.isInteger(x)` — mirror of the Swift lowering (raw emit was
+      // a SILENT "unresolved reference 'Number'").
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Number' &&
+        e.callee.property === 'isInteger' &&
+        e.args.length === 1
+      ) {
+        const nt = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const argStr = emitKotlinExpr(e.args[0]!, indent)
+        if (nt.kind === 'number' && nt.float !== true) return 'true'
+        if (nt.kind === 'number') {
+          return `((${argStr}) % 1.0 == 0.0)`
+        }
+        _emitWarnings.push(
+          `Number.isInteger(${argStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively. Give the argument a resolvable number type.`,
+        )
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
