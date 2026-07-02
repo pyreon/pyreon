@@ -555,6 +555,16 @@ async function resolvePaths(
   errors: { path: string; error: unknown }[] = [],
 ): Promise<string[]> {
   const explicit = config.ssg?.paths
+  // Explicit paths REPLACE auto-detection (documented on ZeroConfig.ssg.paths)
+  // — but replacing route-level getStaticPaths exports SILENTLY is a trap
+  // (the route file says "enumerate me", the config quietly wins). Surface
+  // the double declaration once so the precedence is never a surprise.
+  if (explicit !== undefined && registry !== undefined && registry.size > 0) {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] SSG: zero({ ssg: { paths } }) is set, so auto-detection is skipped — the ${registry.size} route-level getStaticPaths export(s) (${[...registry.keys()].join(', ')}) are IGNORED. Remove ssg.paths to let the route files enumerate themselves, or fold their URLs into ssg.paths.`,
+    )
+  }
   if (typeof explicit === 'function') {
     const result = await explicit()
     return Array.isArray(result) ? result : []
@@ -744,6 +754,7 @@ async function writeRouteOutputs(
   html: string,
   format: SsgFormat,
   errors: { path: string; error: unknown }[],
+  base = '/',
 ): Promise<boolean> {
   const targets = selectSsgTargets(distDir, path, format)
   for (const target of targets) {
@@ -752,11 +763,43 @@ async function writeRouteOutputs(
       return false
     }
   }
+  // `format: 'both'` intentionally emits the SAME page at two URLs
+  // (`/resume` and `/resume.html`) — a duplicate-content pair search
+  // engines penalize unless one declares the other canonical. Inject a
+  // root-relative canonical to the clean (directory) URL into BOTH copies
+  // (a self-canonical on the directory form is standard and harmless) —
+  // unless the page already carries one (seoPlugin / useHead wins).
+  // Meta-refresh redirect stubs are exempt — canonicalizing a redirect to
+  // its own source URL would assert the opposite of what the page does.
+  const body
+    = targets.length > 1
+      && !/rel=["']canonical["']/.test(html)
+      && !/http-equiv=["']refresh["']/i.test(html)
+      ? injectCanonical(html, joinBaseAndPath(base, path))
+      : html
   for (const target of targets) {
     await mkdirOnce(dirname(target))
-    await writeFile(target, html, 'utf-8')
+    await writeFile(target, body, 'utf-8')
   }
   return true
+}
+
+/** `/base` + `/path` → `/base/path` (no double slash, root-safe). Pure. */
+export function joinBaseAndPath(base: string, path: string): string {
+  const b = base.endsWith('/') ? base.slice(0, -1) : base
+  return `${b}${path}` || '/'
+}
+
+/**
+ * Insert `<link rel="canonical">` before `</head>` (case-insensitive,
+ * first occurrence). No `</head>` → returned unchanged (a headless HTML
+ * fragment is not worth corrupting). Href is attribute-escaped. Pure.
+ */
+export function injectCanonical(html: string, href: string): string {
+  const idx = html.search(/<\/head\s*>/i)
+  if (idx === -1) return html
+  const escaped = href.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+  return `${html.slice(0, idx)}<link rel="canonical" href="${escaped}">${html.slice(idx)}`
 }
 
 /**
@@ -1553,7 +1596,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // Write the directory and/or file form per `ssg.format`. The
           // helper path-traversal-guards every target (same `isInsideDist`
           // check as before) and records + bails on any escape.
-          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors))) {
+          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors, config.base ?? '/'))) {
             return
           }
           pages++
@@ -1577,7 +1620,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             try {
               const fallbackHtml = await config.ssg.onPathError(p, error)
               if (typeof fallbackHtml === 'string') {
-                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors)) {
+                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors, config.base ?? '/')) {
                   pages++
                 }
               }
@@ -2010,6 +2053,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 export const _internal = {
   resolvePaths,
   autoDetectStaticPaths,
+  writeRouteOutputs,
+  injectCanonical,
+  joinBaseAndPath,
   resolveOutputPath,
   selectSsgTargets,
   isInsideDist,

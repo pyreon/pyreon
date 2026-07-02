@@ -121,10 +121,17 @@ export function assertModesSupported(
     (e) => e.declared && (e.mode === 'ssr' || e.mode === 'isr'),
   )
   if (offenders.length === 0) return
-  const list = offenders.map((o) => `  ${o.pattern} (renderMode: '${o.mode}')`).join('\n')
+  // Each offender line carries its own one-line fix — the reader should be
+  // able to paste the fix without reconstructing it from prose.
+  const list = offenders
+    .map(
+      (o) =>
+        `  ${o.pattern} (renderMode: '${o.mode}') → change to \`export const renderMode = '${appMode === 'ssg' ? 'ssg' : 'spa'}'\` in its route file, or remove the export`,
+    )
+    .join('\n')
   throw new Error(
     `[Pyreon] zero({ mode: '${appMode}' }) builds a static deploy with no server, but ${offenders.length} route(s) declare a server render mode:\n${list}\n` +
-      `Fix: set zero({ mode: 'ssr' }) (or 'isr') so a server bundle is emitted — per-route 'ssg'/'spa' declarations keep those routes static — or change the offending route's renderMode.`,
+      `Or raise the app mode — zero({ mode: 'ssr' }) (or 'isr') emits a server bundle; per-route 'ssg'/'spa' declarations keep those routes static.`,
   )
 }
 

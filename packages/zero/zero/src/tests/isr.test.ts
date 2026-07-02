@@ -1104,3 +1104,81 @@ describe('PR-S4: responseFilter — final-say override', () => {
     expect(inner).toHaveBeenCalledTimes(1)
   })
 })
+
+describe("cacheKey: 'path-only' shorthand (Tier-2 G)", () => {
+  it('strips every query param — same cache entry for all query variants', async () => {
+    const base = mockHandler()
+    const handler = createISRHandler(base, { revalidate: 60, cacheKey: 'path-only' })
+    await handler(new Request('http://x/page?utm_source=a'))
+    await handler(new Request('http://x/page?utm_source=b&fbclid=z'))
+    await handler(new Request('http://x/page'))
+    // one render — the two query variants hit the same cached entry
+    expect(base).toHaveBeenCalledTimes(1)
+  })
+
+  it('default key still varies by query string', async () => {
+    const base = mockHandler()
+    const handler = createISRHandler(base, { revalidate: 60 })
+    await handler(new Request('http://x/page?a=1'))
+    await handler(new Request('http://x/page?a=2'))
+    expect(base).toHaveBeenCalledTimes(2)
+  })
+
+  it("suppresses the default-cacheKey dev warning (explicit choice)", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const handler = createISRHandler(mockHandler(), { revalidate: 60, cacheKey: 'path-only' })
+      await handler(new Request('http://x/p'))
+      const hit = warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes('No `cacheKey` configured'))
+      expect(hit).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('expireOnTimeout (Tier-2 G)', () => {
+  it('drops the stale entry when background revalidation times out', async () => {
+    let calls = 0
+    const base = vi.fn(async (): Promise<Response> => {
+      calls++
+      if (calls === 1) return new Response('v1', { headers: { 'content-type': 'text/html' } })
+      // second render (the background revalidation) hangs past the timeout
+      await new Promise((r) => setTimeout(r, 200))
+      return new Response('v2', { headers: { 'content-type': 'text/html' } })
+    })
+    const store = createMemoryStore()
+    const handler = createISRHandler(base, {
+      revalidate: 0.01, // 10ms — entry stale almost immediately
+      revalidateTimeoutMs: 50,
+      expireOnTimeout: true,
+      store,
+    })
+    await handler(new Request('http://x/p')) // populate
+    await new Promise((r) => setTimeout(r, 30)) // let it go stale
+    await handler(new Request('http://x/p')) // stale hit → background revalidation (will time out)
+    await new Promise((r) => setTimeout(r, 120)) // wait past the 50ms timeout
+    expect(await store.get('/p')).toBeUndefined() // entry expired, next request = fresh miss
+  })
+
+  it('default (false) keeps serving the stale entry after a timeout', async () => {
+    let calls = 0
+    const base = vi.fn(async (): Promise<Response> => {
+      calls++
+      if (calls === 1) return new Response('v1', { headers: { 'content-type': 'text/html' } })
+      await new Promise((r) => setTimeout(r, 200))
+      return new Response('v2', { headers: { 'content-type': 'text/html' } })
+    })
+    const store = createMemoryStore()
+    const handler = createISRHandler(base, {
+      revalidate: 0.01,
+      revalidateTimeoutMs: 50,
+      store,
+    })
+    await handler(new Request('http://x/p'))
+    await new Promise((r) => setTimeout(r, 30))
+    await handler(new Request('http://x/p'))
+    await new Promise((r) => setTimeout(r, 120))
+    expect(await store.get('/p')).toBeDefined() // stale entry retained
+  })
+})

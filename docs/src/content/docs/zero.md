@@ -1117,6 +1117,13 @@ const handler = createISRHandler(
 
 In-memory LRU cache with stale-while-revalidate. Cached responses carry `x-isr-cache: HIT|STALE|MISS` and `x-isr-age` headers.
 
+Two hardening knobs worth knowing:
+
+- **`cacheKey: 'path-only'`** — shorthand that keys by pathname alone, stripping every query param: the one-liner fix for analytics-param cache explosion (`utm_*`, `fbclid` would otherwise create one cache entry per click variant). It deliberately does **not** count as a custom key for the auth-safety checks — responses with `Vary: Cookie`/`Authorization` are still refused unless a cacheKey *function* varies by user identity.
+- **`expireOnTimeout: true`** — when a background revalidation times out, drop the stale entry so the next request renders fresh (a cache miss) instead of serving the stale copy forever. Default `false` (keep serving stale) is safest under load; enable when eventual freshness beats guaranteed availability for hung renders.
+
+Note on the `revalidate` name: `isr.revalidate` is the RUNTIME stale-while-revalidate TTL; a route file's `export const revalidate` feeds the BUILD-TIME platform manifest (`_pyreon-revalidate.json`) consumed by `Adapter.revalidate()`. Different enforcement points, deliberately the same name — both mean "how stale may this page get".
+
 ## Other Build-Time Plugins
 
 | Plugin / API     | Import path                | Purpose                                               |
