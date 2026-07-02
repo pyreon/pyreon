@@ -639,18 +639,39 @@ export interface ZeroConfig {
   seo?: import('./seo').SeoPluginConfig
 
   /**
-   * Favicon set generation — auto-wires `faviconPlugin` when a config is
-   * supplied (source SVG/PNG → ICO + PNG sizes + web manifest + theme-aware
-   * SVG links). Same shape as `faviconPlugin(config)`:
+   * Favicon set generation — auto-wires `faviconPlugin` (source SVG/PNG →
+   * ICO + PNG sizes + web manifest + theme-aware SVG links).
+   *
+   * Three forms:
+   *   - **config object** — explicit opt-in, same shape as `faviconPlugin(config)`:
+   *     `zero({ favicon: { source: './src/favicon.svg' } })`. Requires `sharp`
+   *     (the build fails loudly when it's missing — you clearly wanted favicons).
+   *   - **omitted** — FILE-CONVENTION auto-detect: when `src/favicon.svg` (or
+   *     `src/favicon.png`) exists, the full set is generated from it with
+   *     defaults — zero config, like Next's `app/icon.png`. Because you never
+   *     explicitly asked, a missing `sharp` SOFT-degrades to a one-time build
+   *     warning instead of an error. (`public/favicon.svg` is deliberately NOT
+   *     detected — Vite copies `public/` verbatim and the plugin would collide
+   *     with it.)
+   *   - **`false`** — no favicon plugin, no detection.
+   */
+  favicon?: import('./favicon').FaviconPluginConfig | false
+
+  /**
+   * Pre-paint theme script injection. `true` injects zero's `themeScript`
+   * (dark/light from localStorage / `prefers-color-scheme`, applied BEFORE
+   * first paint — no FOUC) into every page's `<head>` automatically — the
+   * manual `<script>{themeScript}</script>` step disappears:
    *
    * ```ts
-   * zero({ favicon: { source: './src/favicon.svg' } })
+   * zero({ theme: true })
    * ```
    *
-   * Requires `sharp` as a devDependency (the plugin fails the build loudly
-   * when a source is configured but sharp is missing).
+   * Off by default: the script writes `data-theme` on `<html>` and reads
+   * localStorage, which apps not using zero's theme system shouldn't pay for.
+   * Under a strict CSP allow it by hash — see `themeScriptCspHash`.
    */
-  favicon?: import('./favicon').FaviconPluginConfig
+  theme?: boolean
 
   /**
    * Social-share (og:image) generation — auto-wires `ogImagePlugin` when a

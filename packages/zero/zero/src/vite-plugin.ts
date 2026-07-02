@@ -67,6 +67,7 @@ import { perfAdvisorPlugin } from "./perf-advisor-plugin";
 import { seoPlugin } from "./seo";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
+import { themeScript } from "./theme";
 import type { ZeroConfig } from "./types";
 
 import { withSilent } from "@pyreon/reactivity";
@@ -768,11 +769,72 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 	// icon, templates), so `undefined` simply means "not used" and there is
 	// no `false` opt-out to learn. Supplying the config IS the opt-in.
 	if (userConfig.seo) plugins.push(seoPlugin(userConfig.seo));
-	if (userConfig.favicon) plugins.push(faviconPlugin(userConfig.favicon));
 	if (userConfig.og) plugins.push(ogImagePlugin(userConfig.og));
 	if (userConfig.ai) plugins.push(aiPlugin(userConfig.ai));
 
+	// Favicon: explicit config wins; `false` opts out entirely; OMITTED falls
+	// back to FILE-CONVENTION auto-detect (`src/favicon.svg` / `src/favicon.png`
+	// → full set with defaults, like Next's `app/icon.png`). The auto-detected
+	// wiring carries `autoDetected: true` so a missing `sharp` soft-degrades to
+	// a build warning instead of a hard error (the user never explicitly asked).
+	if (userConfig.favicon) {
+		plugins.push(faviconPlugin(userConfig.favicon));
+	} else if (userConfig.favicon !== false) {
+		const detected = detectConventionFavicon();
+		if (detected) plugins.push(faviconPlugin({ source: detected, autoDetected: true }));
+	}
+
+	// Pre-paint theme script injection (`zero({ theme: true })`) — the manual
+	// `<script>{themeScript}</script>` head step, automated.
+	if (userConfig.theme) plugins.push(themeScriptInjectPlugin());
+
 	return plugins;
+}
+
+/**
+ * File-convention favicon detection — `src/favicon.svg` (preferred: one
+ * scalable source renders every size) or `src/favicon.png`, relative to the
+ * project root. `public/favicon.svg` is deliberately NOT detected: Vite
+ * copies `public/` verbatim, so the plugin's emitted `favicon.svg` would
+ * collide with it.
+ *
+ * Uses `process.cwd()` by default — vite.config.ts always evaluates with
+ * cwd = project root (same assumption every file-convention Vite plugin
+ * makes at construction time; the resolved Vite root isn't known until the
+ * `config` hook, which is too late to decide the plugin list).
+ *
+ * @internal exported for testing
+ */
+export function detectConventionFavicon(root: string = process.cwd()): string | null {
+	for (const candidate of ["src/favicon.svg", "src/favicon.png"]) {
+		if (existsSync(join(root, candidate))) return candidate;
+	}
+	return null;
+}
+
+/**
+ * Injects zero's pre-paint `themeScript` into every page `<head>` (prepend,
+ * so it runs before stylesheets paint — that's the whole FOUC-prevention
+ * point). Content is the same `themeScript` string users previously pasted
+ * manually, so `themeScriptCspHash` covers the injected tag under a strict
+ * CSP unchanged.
+ */
+function themeScriptInjectPlugin(): Plugin {
+	return {
+		name: "pyreon-zero-theme-script",
+		transformIndexHtml: {
+			order: "pre",
+			handler() {
+				return [
+					{
+						tag: "script",
+						children: themeScript,
+						injectTo: "head-prepend" as const,
+					},
+				];
+			},
+		},
+	};
 }
 
 /**
