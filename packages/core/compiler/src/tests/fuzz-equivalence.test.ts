@@ -26,7 +26,6 @@
  * Deterministic (mulberry32 PRNG, fixed seed range) — a failure prints its
  * seed; reproduce with the same seed in scripts or a debugger.
  */
-import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
