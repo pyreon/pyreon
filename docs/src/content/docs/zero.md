@@ -135,7 +135,8 @@ export default defineConfig({
 | `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                     |
 | `typedRoutes`| `boolean`                                                                     | `false` | Generate `src/pyreon-routes.d.ts` so `<Link href>` autocompletes your routes — see **[Typed routes](#typed-routes)** |
 | `seo`        | `SeoPluginConfig`                                                             | —       | Auto-wires `seoPlugin` (sitemap.xml, robots.txt, RSS) — same shape as the plugin config, no manual import. See **[SEO](#seo)** |
-| `favicon`    | `FaviconPluginConfig`                                                         | —       | Auto-wires `faviconPlugin` (source SVG/PNG → full favicon set) — see **[Favicons](#favicons)** |
+| `favicon`    | `FaviconPluginConfig \| false`                                                | auto    | Explicit config wires `faviconPlugin`; **omitted → file-convention auto-detect** (`src/favicon.svg` → full set, zero config); `false` disables — see **[Favicons](#favicons)** |
+| `theme`      | `boolean`                                                                     | `false` | `true` auto-injects the pre-paint `themeScript` into every page `<head>` (no manual script tag) — see **[Theme System](#theme-system)** |
 | `og`         | `OgImagePluginConfig`                                                         | —       | Auto-wires `ogImagePlugin` (templates + text layers → per-locale social-share images) |
 | `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
 
@@ -745,7 +746,9 @@ function Header() {
 | `themeScript`        | `string`                                     | Inline `<script>` to apply theme before first paint      |
 | `setSSRThemeDefault` | `(t) => void`                                | Set the theme used during SSR render                     |
 
-Add `themeScript` to your HTML `<head>` and call `initTheme()` on startup to prevent FOUC.
+**Auto-injection.** Set `zero({ theme: true })` and the pre-paint script is injected into every page's `<head>` (prepended, so it runs before stylesheets paint) — no manual `<script>{themeScript}</script>` step. Just call `initTheme()` on startup (or render a `<ThemeToggle>`, which does it for you). The injected content is byte-identical to `themeScript`, so `themeScriptCspHash` covers it under a strict CSP unchanged.
+
+Manual alternative: add `themeScript` to your HTML `<head>` yourself and call `initTheme()` on startup.
 
 **Strict CSP.** The pre-paint script is inline, which a strict `script-src` (no `'unsafe-inline'`) would block — silently reintroducing FOUC. Allow it by **hash**, which works for SSR *and* static SSG HTML (where per-request nonces are impossible):
 
@@ -989,7 +992,11 @@ This makes `import hero from './x.jpg?optimize'` resolve to `ProcessedImage` (an
 
 ## Favicons
 
-Zero generates the full favicon set from a **single source** (SVG or PNG) and injects every `<head>` tag automatically — no manual `<link>`/`<meta>` wiring. Declare it directly on `zero()`; like `imagePlugin`, it uses [sharp](https://sharp.pixelplumbing.com/) for image generation.
+Zero generates the full favicon set from a **single source** (SVG or PNG) and injects every `<head>` tag automatically — no manual `<link>`/`<meta>` wiring. Like `imagePlugin`, it uses [sharp](https://sharp.pixelplumbing.com/) for image generation.
+
+**Zero-config (file convention).** Drop `src/favicon.svg` (or `src/favicon.png`) in your project and the full set is generated with defaults — nothing to configure, like Next's `app/icon.png`. Because you never explicitly asked, a missing `sharp` only warns (it never fails the build); `zero({ favicon: false })` disables detection. `public/favicon.svg` is deliberately **not** detected — Vite copies `public/` verbatim and the generated `favicon.svg` would collide with it.
+
+**Explicit config** (dark variants, locales, theme colors) — declare it on `zero()`; with an explicit `source`, a missing `sharp` is a **hard build error** (you clearly wanted favicons):
 
 ```ts title="vite.config.ts"
 export default {

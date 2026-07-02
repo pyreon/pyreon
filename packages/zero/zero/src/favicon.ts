@@ -72,6 +72,16 @@ export interface FaviconLocaleConfig {
 export interface FaviconPluginConfig {
   /** Path to the source icon (SVG or PNG, at least 512x512 for PNG). */
   source: string
+  /**
+   * @internal Set by `zero()` when the plugin was wired by FILE-CONVENTION
+   * auto-detection (`src/favicon.svg` existed) rather than explicit config.
+   * Downgrades the missing-`sharp` production-build failure from a hard
+   * error to a one-time warning: the user never explicitly asked for
+   * favicons, so failing their build over an optional dependency would be
+   * wrong — while an EXPLICIT `source` with no sharp stays a loud error
+   * (they clearly wanted favicons; silently shipping none is the footgun).
+   */
+  autoDetected?: boolean
   /** Theme color for web manifest. Default: "#ffffff" */
   themeColor?: string
   /** Background color for web manifest. Default: "#ffffff" */
@@ -453,16 +463,31 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
     async generateBundle() {
       if (!isBuild) return
 
-      // `faviconPlugin` is in the plugin list and a `source` is configured
-      // (it's a required field), so the user clearly WANTS favicons. If
+      // An EXPLICIT `source` means the user clearly WANTS favicons. If
       // `sharp` is missing, the old behaviour was a single swallow-able
       // `console.warn` + emit nothing — i.e. silently ship a production
       // site with zero favicons. That's the footgun. Fail the build loudly
       // with an actionable message instead. Dev keeps the soft warning
       // (see `warnSharpMissing`) so local iteration isn't blocked.
+      //
+      // FILE-CONVENTION auto-detected wiring (`config.autoDetected`, set by
+      // `zero()` when `src/favicon.svg` exists with no explicit config) is
+      // the one exception: the user never asked for favicons, so a missing
+      // optional dependency must not fail their build — warn once and skip
+      // generation instead.
       try {
         await import('sharp')
       } catch {
+        if (config.autoDetected) {
+          // oxlint-disable-next-line no-console
+          console.warn(
+            '[Pyreon] faviconPlugin: `src/favicon.svg` was auto-detected but ' +
+              '`sharp` is not installed — skipping favicon generation.\n' +
+              '  To generate the full favicon set: bun add -D sharp\n' +
+              '  To silence this warning: zero({ favicon: false })',
+          )
+          return
+        }
         this.error(
           '[Pyreon] faviconPlugin: a favicon `source` is configured but ' +
             '`sharp` is not installed — NO favicons would be generated and ' +

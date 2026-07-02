@@ -17,8 +17,12 @@
  * push fails the default-auto-wire spec; setting `image: false` then asserting
  * the plugin is absent fails when the opt-out branch is removed.
  */
-import { describe, expect, it } from 'vitest'
-import { zeroPlugin } from '../vite-plugin'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, vi } from 'vitest'
+import { themeScript } from '../theme'
+import { detectConventionFavicon, zeroPlugin } from '../vite-plugin'
 
 function pluginNames(plugins: ReturnType<typeof zeroPlugin>): string[] {
   return plugins.map((p) => p.name)
@@ -164,5 +168,74 @@ describe('zero({ seo, favicon, og, ai }) — config-present auto-wire contract',
     expect(names).toContain('pyreon-zero-favicon')
     expect(names).toContain('pyreon-zero-og-image')
     expect(names).toContain('pyreon-zero-ai')
+  })
+})
+
+describe('favicon file-convention auto-detect', () => {
+  it('detectConventionFavicon finds src/favicon.svg (preferred) then src/favicon.png', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    expect(detectConventionFavicon(dir)).toBeNull()
+    writeFileSync(join(dir, 'src', 'favicon.png'), 'png')
+    expect(detectConventionFavicon(dir)).toBe('src/favicon.png')
+    writeFileSync(join(dir, 'src', 'favicon.svg'), '<svg/>')
+    expect(detectConventionFavicon(dir)).toBe('src/favicon.svg') // svg wins
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('zero() auto-wires faviconPlugin when src/favicon.svg exists (convention)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    writeFileSync(join(dir, 'src', 'favicon.svg'), '<svg/>')
+    const spy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    try {
+      expect(pluginNames(zeroPlugin())).toContain('pyreon-zero-favicon')
+    } finally {
+      spy.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('zero({ favicon: false }) suppresses the convention detect', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    writeFileSync(join(dir, 'src', 'favicon.svg'), '<svg/>')
+    const spy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    try {
+      expect(pluginNames(zeroPlugin({ favicon: false }))).not.toContain('pyreon-zero-favicon')
+    } finally {
+      spy.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('no convention file + no config → no favicon plugin (unchanged default)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zero-favicon-'))
+    mkdirSync(join(dir, 'src'), { recursive: true })
+    const spy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    try {
+      expect(pluginNames(zeroPlugin())).not.toContain('pyreon-zero-favicon')
+    } finally {
+      spy.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('zero({ theme: true }) — pre-paint theme script injection', () => {
+  it('default zero() does NOT inject the theme script', () => {
+    expect(pluginNames(zeroPlugin())).not.toContain('pyreon-zero-theme-script')
+  })
+
+  it('theme: true wires the inject plugin', () => {
+    expect(pluginNames(zeroPlugin({ theme: true }))).toContain('pyreon-zero-theme-script')
+  })
+
+  it('the injected tag is head-prepend with the exact themeScript content (CSP-hash compatible)', () => {
+    const plugin = zeroPlugin({ theme: true }).find((p) => p.name === 'pyreon-zero-theme-script')!
+    const hook = plugin.transformIndexHtml as { handler: () => Array<Record<string, unknown>> }
+    const tags = hook.handler()
+    expect(tags).toHaveLength(1)
+    expect(tags[0]).toMatchObject({ tag: 'script', injectTo: 'head-prepend', children: themeScript })
   })
 })
