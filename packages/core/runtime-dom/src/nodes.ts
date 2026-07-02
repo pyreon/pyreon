@@ -532,6 +532,18 @@ function forLisReorder(
     if (cached) cached.pos = i
   }
 
+  // Release the scratch references — `entries` is per-<For> state that
+  // lives as long as the component. Left populated, a large reorder
+  // followed by a SHRINK (10k rows filtered to 50) leaves the stale tail
+  // [newN..oldN) pinning every removed row's ForEntry → its `anchor` DOM
+  // subtree + `cleanup` closure (disposers → signal subscriber links) —
+  // unreclaimable for the <For>'s remaining lifetime. Later reorders only
+  // overwrite [0..n), so the tail never self-heals. The typed arrays
+  // (tails/pred/stay) hold plain numbers and stay as scratch capacity.
+  // Class-H retention (closure-held scratch snapshot); leak-class audit
+  // 2026-07.
+  entries.fill(undefined, 0, n)
+
   return grown
 }
 

@@ -25,4 +25,14 @@ export default defineNodeConfig({
   // The remaining uncov in template/nodes/hydrate/mount is covered by
   // Playwright in real Chromium.
   coverageThresholds: { statements: 95, lines: 94, branches: 86 },
+  // --expose-gc makes `globalThis.gc` available in the fork workers so the
+  // GC-observable retention regression (for-lis-scratch-release.test.tsx)
+  // RUNS in CI instead of skipping. One flag, no behavioral change for the
+  // rest of the suite.
+  overrides: {
+    test: {
+      // Vitest 4: pool options are top-level (`poolOptions` was removed).
+      execArgv: ['--expose-gc'],
+    },
+  },
 })
