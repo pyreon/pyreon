@@ -1,9 +1,11 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { matchPattern } from '../entry-server'
 import {
+  applyModeInference, inferRouteMode, resolveAutoAppMode, resolveAutoModeSync,
+  collectFileRouteModes,
   detectRouteExports,
   filePathToUrlPath,
   generateMiddlewareModule,
@@ -984,5 +986,238 @@ export default function PostsPage() {
       expect(result.hasRevalidate).toBe(true)
       expect(result.revalidateLiteral).toBeUndefined()
     })
+  })
+})
+
+describe('collectFileRouteModes (file-level mode resolution parity)', () => {
+  let modeDir: string
+  const write = (rel: string, body: string) => {
+    const full = join(modeDir, rel)
+    mkdirSync(dirname(full), { recursive: true })
+    writeFileSync(full, body)
+  }
+
+  beforeEach(() => {
+    modeDir = mkdtempSync(join(tmpdir(), 'pyreon-mode-'))
+  })
+  afterEach(() => {
+    rmSync(modeDir, { recursive: true, force: true })
+  })
+
+  it('leaf declaration > layout declaration > app mode (the runtime cascade)', async () => {
+    write('index.tsx', 'export default () => null')
+    write('blog/_layout.tsx', "export default (p) => p.children\nexport const renderMode = 'ssg'")
+    write('blog/post.tsx', 'export default () => null')
+    write('blog/live.tsx', "export default () => null\nexport const renderMode = 'ssr'")
+    const entries = await collectFileRouteModes(modeDir, 'isr')
+    const byPattern = new Map(entries.map((e) => [e.pattern, e]))
+    // no declaration anywhere → app mode
+    expect(byPattern.get('/')).toMatchObject({ mode: 'isr', declared: false })
+    // layout cascade
+    expect(byPattern.get('/blog/post')).toMatchObject({ mode: 'ssg', declared: true })
+    // leaf wins over layout
+    expect(byPattern.get('/blog/live')).toMatchObject({ mode: 'ssr', declared: true })
+  })
+
+  it('nearest ancestor layout wins over a higher one', async () => {
+    write('_layout.tsx', "export default (p) => p.children\nexport const renderMode = 'ssg'")
+    write('app/_layout.tsx', "export default (p) => p.children\nexport const renderMode = 'spa'")
+    write('app/page.tsx', 'export default () => null')
+    write('about.tsx', 'export default () => null')
+    const entries = await collectFileRouteModes(modeDir, 'ssr')
+    const byPattern = new Map(entries.map((e) => [e.pattern, e]))
+    expect(byPattern.get('/app/page')?.mode).toBe('spa')
+    expect(byPattern.get('/about')?.mode).toBe('ssg') // root layout cascades
+  })
+
+  it('skips api routes and special files', async () => {
+    write('index.tsx', 'export default () => null')
+    write('api/items.ts', 'export function GET() { return new Response("ok") }')
+    write('_404.tsx', 'export default () => null')
+    const entries = await collectFileRouteModes(modeDir, 'ssr')
+    expect(entries.map((e) => e.pattern)).toEqual(['/'])
+  })
+})
+
+describe('computed renderMode warning (Tier-2 D)', () => {
+  const routeWith = (exp: Partial<RouteFileExports>): FileRoute => ({
+    filePath: 'computed-mode.tsx',
+    urlPath: '/computed-mode',
+    dirPath: '',
+    depth: 1,
+    isLayout: false,
+    isError: false,
+    isLoading: false,
+    isNotFound: false,
+    isCatchAll: false,
+    renderMode: 'ssr',
+    exports: {
+      hasLoader: false,
+      hasGuard: false,
+      hasMeta: false,
+      hasRenderMode: false,
+      hasError: false,
+      hasMiddleware: false,
+      hasLoading: false,
+      hasGetStaticPaths: false,
+      hasLoaderKey: false,
+      hasGcTime: false,
+      hasServerLoader: false,
+      ...exp,
+    } as RouteFileExports,
+  })
+
+  it('warns once when renderMode is detected but not a pure literal', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      generateRouteModuleFromRoutes([routeWith({ hasRenderMode: true })], './routes')
+      generateRouteModuleFromRoutes([routeWith({ hasRenderMode: true })], './routes')
+      const hits = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('COMPUTED renderMode'))
+      expect(hits).toHaveLength(1) // deduped per file
+      expect(hits[0]).toContain('computed-mode.tsx')
+      expect(hits[0]).toContain("export const renderMode = 'ssg'")
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('does not warn for a literal renderMode', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      generateRouteModuleFromRoutes(
+        [routeWith({ hasRenderMode: true, renderModeLiteral: "'ssg'" })],
+        './routes',
+      )
+      expect(
+        warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes('COMPUTED renderMode')),
+      ).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('collectFileRouteModes — routeRules integration (Tier-4)', () => {
+  it('rule applies when no file/layout declaration; file declaration wins over rule', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+    const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-rules-'))
+    try {
+      const write = (rel: string, body: string) => {
+        const full = path.join(dir, rel)
+        mkdirSync(path.dirname(full), { recursive: true })
+        writeFileSync(full, body)
+      }
+      write('blog/post.tsx', 'export default () => null')
+      write('blog/live.tsx', "export default () => null\nexport const renderMode = 'ssr'")
+      write('about.tsx', 'export default () => null')
+      const entries = await collectFileRouteModes(dir, 'ssr', {
+        '/blog/**': { renderMode: 'isr' },
+      })
+      const by = new Map(entries.map((e) => [e.pattern, e]))
+      expect(by.get('/blog/post')).toMatchObject({ mode: 'isr', declared: true }) // rule
+      expect(by.get('/blog/live')).toMatchObject({ mode: 'ssr', declared: true }) // file wins
+      expect(by.get('/about')).toMatchObject({ mode: 'ssr', declared: false }) // app default
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("mode: 'auto' inference (EXPERIMENTAL)", () => {
+  const exp = (over: Partial<RouteFileExports>): RouteFileExports =>
+    ({
+      hasLoader: false,
+      hasGuard: false,
+      hasMeta: false,
+      hasRenderMode: false,
+      hasRevalidate: false,
+      hasError: false,
+      hasMiddleware: false,
+      hasLoading: false,
+      hasGetStaticPaths: false,
+      hasLoaderKey: false,
+      hasGcTime: false,
+      ...over,
+    }) as RouteFileExports
+
+  it('inferRouteMode: static unless the code says otherwise', () => {
+    expect(inferRouteMode(exp({}))).toBe('ssg')
+    expect(inferRouteMode(exp({ hasLoader: true }))).toBe('ssr')
+    expect(inferRouteMode(exp({ hasGuard: true }))).toBe('ssr')
+    expect(inferRouteMode(exp({ hasMiddleware: true }))).toBe('ssr')
+    expect(inferRouteMode(exp({ hasRevalidate: true }))).toBe('isr')
+    // an enumerator is a static-intent signal even alongside a loader
+    expect(inferRouteMode(exp({ hasLoader: true, hasGetStaticPaths: true }))).toBe('ssg')
+  })
+
+  it('applyModeInference injects literals for undeclared pages only', () => {
+    const routes: FileRoute[] = [
+      {
+        filePath: 'index.tsx', urlPath: '/', dirPath: '', depth: 0,
+        isLayout: false, isError: false, isLoading: false, isNotFound: false,
+        isCatchAll: false, renderMode: 'ssr', exports: exp({}),
+      },
+      {
+        filePath: 'dash.tsx', urlPath: '/dash', dirPath: '', depth: 1,
+        isLayout: false, isError: false, isLoading: false, isNotFound: false,
+        isCatchAll: false, renderMode: 'ssr',
+        exports: exp({ hasRenderMode: true, renderModeLiteral: "'spa'" } as never),
+      },
+      {
+        filePath: '_layout.tsx', urlPath: '/', dirPath: '', depth: 0,
+        isLayout: true, isError: false, isLoading: false, isNotFound: false,
+        isCatchAll: false, renderMode: 'ssr', exports: exp({ hasLoader: true }),
+      },
+    ]
+    const out = applyModeInference(routes)
+    expect(out[0]!.exports?.renderModeLiteral).toBe('"ssg"') // inferred
+    expect(out[1]!.exports?.renderModeLiteral).toBe("'spa'") // declared untouched
+    expect(out[2]!.exports?.renderModeLiteral).toBeUndefined() // layout untouched
+  })
+
+  it('resolveAutoAppMode: pure-static → ssg; any server-needing page or rule → ssr', () => {
+    const page = (over: Partial<RouteFileExports>): FileRoute => ({
+      filePath: 'x.tsx', urlPath: '/x', dirPath: '', depth: 1,
+      isLayout: false, isError: false, isLoading: false, isNotFound: false,
+      isCatchAll: false, renderMode: 'ssr', exports: exp(over),
+    })
+    expect(resolveAutoAppMode([page({})])).toBe('ssg')
+    expect(resolveAutoAppMode([page({ hasLoader: true })])).toBe('ssr')
+    expect(resolveAutoAppMode([page({})], { '/x': { renderMode: 'isr' } })).toBe('ssr')
+  })
+
+  it('resolveAutoModeSync + collectFileRouteModes(auto) agree on a real fixture', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+    const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-auto-'))
+    try {
+      const write = (rel: string, body: string) => {
+        const full = path.join(dir, rel)
+        mkdirSync(path.dirname(full), { recursive: true })
+        writeFileSync(full, body)
+      }
+      write('index.tsx', 'export default () => null')
+      write('dash.tsx', 'export default () => null\nexport const loader = async () => ({})')
+      const nodeFs = require('node:fs')
+      const sync = resolveAutoModeSync(dir, undefined, nodeFs)
+      expect(sync).toEqual({ mode: 'ssr', pages: 2 })
+
+      const entries = await collectFileRouteModes(dir, 'auto')
+      const by = new Map(entries.map((e) => [e.pattern, e]))
+      expect(by.get('/')?.mode).toBe('ssg') // inferred static
+      expect(by.get('/dash')?.mode).toBe('ssr') // inferred server (loader)
+
+      // generation carries the inference as literals
+      const { scanRouteFilesWithExports } = await import('../fs-router')
+      const scanned = await scanRouteFilesWithExports(dir, 'ssr')
+      const generated = generateRouteModuleFromRoutes(applyModeInference(scanned), dir)
+      expect(generated).toContain('renderMode: "ssg"')
+      expect(generated).toContain('renderMode: "ssr"')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

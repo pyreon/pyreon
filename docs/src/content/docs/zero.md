@@ -128,7 +128,7 @@ export default defineConfig({
 | `ssr.mode`   | `"stream" \| "string"`                                                        | `"stream"` when `mode: "ssr"`, `"string"` otherwise | SSR output mode                |
 | `ssg`        | `{ paths?, emit404?, emitRedirects?, redirectsAsHtml?, onPathError?, errorArtifact?, concurrency?, onProgress?, splitChunks?, speculationRules?, viewTransitions?, cssMode?, earlyHints?, modulePreload? }` | `{}` | SSG options — see **[SSG](/docs/ssg)** |
 | `isr`        | `ISRConfig` (`{ revalidate, maxEntries?, cacheKey?, store?, tagsForRequest? }`) | —       | Runtime ISR config (only used when `mode: "isr"`)            |
-| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | `"node"` | Deployment adapter (name or constructed instance)        |
+| `adapter`    | `"node" \| "bun" \| "static" \| "vercel" \| "cloudflare" \| "netlify" \| Adapter` | auto     | Deployment adapter (name or constructed instance). When unset, the build platform is auto-detected from its env (`VERCEL` / `NETLIFY` / `CF_PAGES`) and that adapter is used — local builds default to `"node"` |
 | `base`       | `string`                                                                      | `"/"`   | Base URL path — single source of truth (see [Base Path](#base-path)) |
 | `i18n`       | `I18nRoutingConfig`                                                           | —       | Build-time locale-prefixed route duplication — see **[SSG → i18n](/docs/ssg#i18n-localized-routes)** |
 | `middleware` | `Middleware[]`                                                                | `[]`    | Global server middleware                                     |
@@ -438,6 +438,26 @@ Resolution is leaf-first along the matched chain: a page's own declaration beats
 **Inside a static app (`mode: 'ssg'`):** `'spa'` routes emit the CSR shell instead of prerendered HTML; declaring `'ssr'` or `'isr'` is a **build error** (a static deploy has no server — the error names each offending route and the fix). Vercel/Netlify serve prerendered files static-first by platform convention; for subpath (`base`) deploys on Cloudflare the `_routes.json` excludes are root-relative — verify them when combining `base` with hybrid.
 
 When no route declares a divergent mode, the pipeline is byte-identical to the app-level mode — existing apps are unaffected.
+
+**`mode: 'auto'` (EXPERIMENTAL) — let zero decide.** Inference follows the conservative "static unless the code says otherwise" model, per route: a `revalidate` export → `isr`; a `getStaticPaths` export → `ssg` (an enumerator is a static-intent signal, even alongside a loader — SSG runs loaders at build); a `loader` / `.server.ts` sibling / `guard` / `middleware` → `ssr` (request-coupled work inference can't prove build-safe); otherwise → `ssg`. Explicit `renderMode` exports and `routeRules` always win — inference only fills the undeclared gaps. The app-level pipeline is derived from the result (any server-needing route → server build; else pure static), announced at startup, and the build mode table shows every inferred decision — inference is never invisible. Escape hatch per route: declare `export const renderMode = 'ssg'` on a loader route you know is build-safe.
+
+**Central overrides — `routeRules`.** When you'd rather declare a mode policy in ONE place than touch route files (retrofits, monorepo conventions), `zero({ routeRules })` maps path globs to modes — `*` matches one segment, `**` any depth, most-specific key wins:
+
+```ts
+zero({
+  mode: 'ssr',
+  routeRules: {
+    '/blog/**': { renderMode: 'isr' },
+    '/admin/**': { renderMode: 'spa' },
+  },
+})
+```
+
+Precedence is always: route-file `export const renderMode` (closest to the code) > `routeRules` > app `mode`. Rule-sourced modes appear in the build mode table and count as declarations for the impossible-combo build errors (the error names the offending rule).
+
+**You can always SEE the resolved modes.** Every production build prints a per-route mode table — `○ ssg`, `λ ssr`, `⟳ isr`, `⚡ spa`, with `(declared)` marking per-route overrides — and `zero dev`'s banner shows the app mode plus any hybrid overrides (`Mode  ssr (hybrid: 2 ssg, 1 isr)`); `zero dev --routes` lists each route with its true resolved mode. Apps above 40 routes collapse the build table to the counts line.
+
+**No silent missing pages.** Under SSG, a dynamic route (`[id].tsx`) with no `getStaticPaths` cannot be enumerated — the build now warns loudly, naming the file and the three fixes (add `getStaticPaths`, hand-list `ssg.paths`, or declare `renderMode = 'spa'` if a client-rendered shell is intended). Routes that declare a non-static mode and API routes are exempt.
 
 ### Streaming by default (`mode: 'ssr'`)
 
@@ -1212,6 +1232,13 @@ const handler = createISRHandler(
 ```
 
 In-memory LRU cache with stale-while-revalidate. Cached responses carry `x-isr-cache: HIT|STALE|MISS` and `x-isr-age` headers.
+
+Two hardening knobs worth knowing:
+
+- **`cacheKey: 'path-only'`** — shorthand that keys by pathname alone, stripping every query param: the one-liner fix for analytics-param cache explosion (`utm_*`, `fbclid` would otherwise create one cache entry per click variant). It deliberately does **not** count as a custom key for the auth-safety checks — responses with `Vary: Cookie`/`Authorization` are still refused unless a cacheKey *function* varies by user identity.
+- **`expireOnTimeout: true`** — when a background revalidation times out, drop the stale entry so the next request renders fresh (a cache miss) instead of serving the stale copy forever. Default `false` (keep serving stale) is safest under load; enable when eventual freshness beats guaranteed availability for hung renders.
+
+Note on the `revalidate` name: `isr.revalidate` is the RUNTIME stale-while-revalidate TTL; a route file's `export const revalidate` feeds the BUILD-TIME platform manifest (`_pyreon-revalidate.json`) consumed by `Adapter.revalidate()`. Different enforcement points, deliberately the same name — both mean "how stale may this page get".
 
 ## Other Build-Time Plugins
 

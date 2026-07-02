@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { createServer } from 'vite'
 import { formatReadyLine, renderRouteBanner } from './dev-banner'
@@ -87,17 +87,45 @@ async function scanRouteBanner(
     const routesDir = join(projectRoot, 'src/routes')
     if (!existsSync(routesDir)) return []
 
-    const { scanRouteFiles, parseFileRoutes } = await import('@pyreon/zero/server')
+    const { scanRouteFiles, collectFileRouteModes } = await import('@pyreon/zero/server')
     const { isApiRoute, apiFilePathToPattern } = await import('@pyreon/zero/api-routes')
 
+    // App mode from the project's vite config — a cheap text scan (the
+    // banner is informational and must never fail the dev server; parsing
+    // the config through Vite here would double the startup cost).
+    const appMode = detectAppMode(projectRoot)
+
     const files = await scanRouteFiles(routesDir)
-    const pageRoutes = parseFileRoutes(files).filter(
-      (r) => !r.isLayout && !r.isError && !r.isLoading && !isApiRoute(r.filePath),
-    )
+    // Truthful per-route modes: leaf `renderMode` declaration > nearest
+    // ancestor layout declaration > app mode (pre-fix the banner stamped
+    // every route with the DEFAULT mode, so hybrid apps read as all-SSR).
+    const modeEntries = await collectFileRouteModes(routesDir, appMode)
+    const pageRoutes = modeEntries.map((e) => ({ urlPath: e.pattern, renderMode: e.mode }))
     const apiPatterns = files.filter(isApiRoute).map(apiFilePathToPattern)
 
-    return renderRouteBanner(pageRoutes, apiPatterns, { verbose, color })
+    return renderRouteBanner(pageRoutes, apiPatterns, { verbose, color, appMode })
   } catch {
     return []
   }
+}
+
+/**
+ * Best-effort app-mode detection from the project's vite config source —
+ * matches `zero({ ... mode: 'ssg' ... })`. Text-scan by design: the banner
+ * is informational, must never fail the dev server, and loading the config
+ * through Vite just to read one field would double startup cost. Falls back
+ * to zero's default ('ssr').
+ */
+function detectAppMode(projectRoot: string): 'ssr' | 'ssg' | 'spa' | 'isr' {
+  for (const name of ['vite.config.ts', 'vite.config.js', 'vite.config.mts', 'vite.config.mjs']) {
+    try {
+      const source = readFileSync(join(projectRoot, name), 'utf-8')
+      const m = /\bmode\s*:\s*['"](ssr|ssg|spa|isr)['"]/.exec(source)
+      if (m) return m[1] as 'ssr' | 'ssg' | 'spa' | 'isr'
+      return 'ssr' // config exists, no mode → zero's default
+    } catch {
+      /* try next name */
+    }
+  }
+  return 'ssr'
 }

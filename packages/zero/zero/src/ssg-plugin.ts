@@ -29,9 +29,10 @@ import { withSilent } from '@pyreon/reactivity'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
-import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
+import { isApiRoute } from './api-routes'
+import { collectFileRouteModes, detectRouteExports, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
-import { assertModesSupported } from './route-modes'
+import { assertModesSupported, formatRouteModeTable, matchRouteRules, type RouteRules } from './route-modes'
 import {
   extractStylerStyleTag,
   hashCss,
@@ -119,9 +120,11 @@ const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 const renderSsgEntrySource = (
   locales: readonly string[] = [],
   appMode: string = 'ssg',
+  routeRules?: Record<string, { renderMode?: string }>,
 ): string => {
   const i18nLocalesLiteral = JSON.stringify(locales)
   const appModeLiteral = JSON.stringify(appMode)
+  const routeRulesLiteral = routeRules ? JSON.stringify(routeRules) : 'undefined'
   return `
 import { routes } from "virtual:zero/routes"
 // h / renderWithHead / runWithRequestContext serve ONLY the legacy
@@ -139,9 +142,10 @@ import { collectRouteModes, createApp, resolveRenderModeForPath } from "@pyreon/
 // layout cascade, app-mode default) as the runtime dispatch in
 // entry-server.ts — one implementation, no drift.
 const __appMode = ${appModeLiteral}
-export const __routeModeEntries = collectRouteModes(routes, __appMode)
+const __routeRules = ${routeRulesLiteral}
+export const __routeModeEntries = collectRouteModes(routes, __appMode, __routeRules)
 export function __resolveRenderMode(path) {
-  return resolveRenderModeForPath(routes, path, __appMode)
+  return resolveRenderModeForPath(routes, path, __appMode, __routeRules)
 }
 
 // Lazy-imported styler integration. Projects that don't depend on
@@ -435,11 +439,48 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
  * routes are silently skipped (the user must hand-list them in
  * `ssg.paths`).
  */
+/**
+ * Loud, mode-aware warning for a dynamic route that SSG cannot enumerate.
+ * Deduped per source file (i18n fan-out produces one FileRoute per locale).
+ */
+async function warnUnenumeratedDynamicRoute(
+  routesDir: string,
+  filePath: string,
+  pattern: string,
+  warned: Set<string>,
+  rules?: RouteRules,
+): Promise<void> {
+  if (warned.has(filePath)) return
+  warned.add(filePath)
+  if (isApiRoute(filePath)) return // runtime-only by definition
+  // A routeRules glob declaring the route non-static is as intentional as
+  // a file-level declaration — same exemption.
+  const ruleMode = matchRouteRules(rules, pattern)
+  if (ruleMode === 'spa' || ruleMode === 'ssr' || ruleMode === 'isr') return
+  try {
+    const source = await readFile(join(routesDir, filePath), 'utf-8')
+    const literal = detectRouteExports(source).renderModeLiteral
+    const declared = literal?.replace(/['"]/g, '')
+    // Declared non-static mode → the skip is intentional, not a footgun.
+    if (declared === 'spa' || declared === 'ssr' || declared === 'isr') return
+  } catch {
+    // unreadable file → fall through to the warning (better loud than silent)
+  }
+  console.warn(
+    `[Pyreon] SSG: dynamic route "${filePath}" (${pattern}) has no \`getStaticPaths\` — no page will be emitted for it.\n`
+      + `  Fix one of:\n`
+      + `    • export const getStaticPaths = () => [{ params: { … } }]  (enumerate the pages)\n`
+      + `    • zero({ ssg: { paths: [...] } })                          (hand-list concrete URLs)\n`
+      + `    • export const renderMode = 'spa'                          (client-rendered shell is intended)`,
+  )
+}
+
 async function autoDetectStaticPaths(
   routesDir: string,
   registry?: GetStaticPathsRegistry,
   errors: { path: string; error: unknown }[] = [],
   i18n?: I18nRoutingConfig,
+  rules?: RouteRules,
 ): Promise<string[]> {
   // Routes dir missing → fall back to "/" anyway. A project that doesn't
   // expose routes via fs-routing (custom routes module, single-page app
@@ -457,6 +498,7 @@ async function autoDetectStaticPaths(
   const fileRoutes = i18n ? expandRoutesForLocales(baseRoutes, i18n) : baseRoutes
 
   const out: string[] = []
+  const warnedDynamicFiles = new Set<string>()
   for (const r of fileRoutes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
     const path = r.urlPath
@@ -470,7 +512,17 @@ async function autoDetectStaticPaths(
 
     // Dynamic path — expand via getStaticPaths if available.
     const enumerator = registry?.get(path)
-    if (!enumerator) continue // no getStaticPaths → skip silently
+    if (!enumerator) {
+      // A dynamic route with no getStaticPaths cannot be enumerated — NO
+      // page will exist for it in dist. Historically this skip was SILENT
+      // (the sharpest DX failure in the mode system: the user thinks the
+      // route is prerendered; production 404s). Warn loudly with the fix,
+      // unless the route file explicitly declares a non-static renderMode
+      // ('spa' gets the CSR shell; 'ssr'/'isr' are served by the hybrid
+      // server) or is an API route (runtime-only by definition).
+      await warnUnenumeratedDynamicRoute(routesDir, r.filePath, path, warnedDynamicFiles, rules)
+      continue
+    }
 
     try {
       const result = await enumerator()
@@ -512,12 +564,22 @@ async function resolvePaths(
   errors: { path: string; error: unknown }[] = [],
 ): Promise<string[]> {
   const explicit = config.ssg?.paths
+  // Explicit paths REPLACE auto-detection (documented on ZeroConfig.ssg.paths)
+  // — but replacing route-level getStaticPaths exports SILENTLY is a trap
+  // (the route file says "enumerate me", the config quietly wins). Surface
+  // the double declaration once so the precedence is never a surprise.
+  if (explicit !== undefined && registry !== undefined && registry.size > 0) {
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] SSG: zero({ ssg: { paths } }) is set, so auto-detection is skipped — the ${registry.size} route-level getStaticPaths export(s) (${[...registry.keys()].join(', ')}) are IGNORED. Remove ssg.paths to let the route files enumerate themselves, or fold their URLs into ssg.paths.`,
+    )
+  }
   if (typeof explicit === 'function') {
     const result = await explicit()
     return Array.isArray(result) ? result : []
   }
   if (Array.isArray(explicit)) return explicit
-  return autoDetectStaticPaths(routesDir, registry, errors, config.i18n)
+  return autoDetectStaticPaths(routesDir, registry, errors, config.i18n, config.routeRules)
 }
 
 // `writeFileAtomic`, `mkdirOnce`, `_resetMkdirCache` are imported from
@@ -701,6 +763,7 @@ async function writeRouteOutputs(
   html: string,
   format: SsgFormat,
   errors: { path: string; error: unknown }[],
+  base = '/',
 ): Promise<boolean> {
   const targets = selectSsgTargets(distDir, path, format)
   for (const target of targets) {
@@ -709,11 +772,43 @@ async function writeRouteOutputs(
       return false
     }
   }
+  // `format: 'both'` intentionally emits the SAME page at two URLs
+  // (`/resume` and `/resume.html`) — a duplicate-content pair search
+  // engines penalize unless one declares the other canonical. Inject a
+  // root-relative canonical to the clean (directory) URL into BOTH copies
+  // (a self-canonical on the directory form is standard and harmless) —
+  // unless the page already carries one (seoPlugin / useHead wins).
+  // Meta-refresh redirect stubs are exempt — canonicalizing a redirect to
+  // its own source URL would assert the opposite of what the page does.
+  const body
+    = targets.length > 1
+      && !/rel=["']canonical["']/.test(html)
+      && !/http-equiv=["']refresh["']/i.test(html)
+      ? injectCanonical(html, joinBaseAndPath(base, path))
+      : html
   for (const target of targets) {
     await mkdirOnce(dirname(target))
-    await writeFile(target, html, 'utf-8')
+    await writeFile(target, body, 'utf-8')
   }
   return true
+}
+
+/** `/base` + `/path` → `/base/path` (no double slash, root-safe). Pure. */
+export function joinBaseAndPath(base: string, path: string): string {
+  const b = base.endsWith('/') ? base.slice(0, -1) : base
+  return `${b}${path}` || '/'
+}
+
+/**
+ * Insert `<link rel="canonical">` before `</head>` (case-insensitive,
+ * first occurrence). No `</head>` → returned unchanged (a headless HTML
+ * fragment is not worth corrupting). Href is attribute-escaped. Pure.
+ */
+export function injectCanonical(html: string, href: string): string {
+  const idx = html.search(/<\/head\s*>/i)
+  if (idx === -1) return html
+  const escaped = href.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+  return `${html.slice(0, idx)}<link rel="canonical" href="${escaped}">${html.slice(idx)}`
 }
 
 /**
@@ -1167,7 +1262,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // per-locale 404 walker can detect which RouteRecord serves which
       // locale at module-eval time inside the SSR sub-build.
       const i18nLocales = config.i18n?.locales ?? []
-      await materializeEntry(entryPath, renderSsgEntrySource(i18nLocales, config.mode ?? 'ssg'))
+      await materializeEntry(entryPath, renderSsgEntrySource(i18nLocales, config.mode ?? 'ssg', config.routeRules))
 
       // Inner SSR sub-build via the shared helper. Owns the env-flag
       // set/clear recipe — see `ssr-build-shared.ts:buildSsrBundle`.
@@ -1510,7 +1605,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // Write the directory and/or file form per `ssg.format`. The
           // helper path-traversal-guards every target (same `isInsideDist`
           // check as before) and records + bails on any escape.
-          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors))) {
+          if (!(await writeRouteOutputs(distDir, p, html, ssgFormat, errors, config.base ?? '/'))) {
             return
           }
           pages++
@@ -1534,7 +1629,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
             try {
               const fallbackHtml = await config.ssg.onPathError(p, error)
               if (typeof fallbackHtml === 'string') {
-                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors)) {
+                if (await writeRouteOutputs(distDir, p, fallbackHtml, ssgFormat, errors, config.base ?? '/')) {
                   pages++
                 }
               }
@@ -1925,6 +2020,24 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // oxlint-disable-next-line no-console
         console.error(`[zero:ssg] Failed to prerender "${errPath}":`, error)
       }
+
+      // Per-route mode table (Tier-1 DX): which route ships in which mode,
+      // at a glance, on every build. Informational — never fails the build.
+      // Only under app-mode 'ssg' — hybrid ssr/isr builds ALSO run this
+      // plugin (for the static-first routes) and the ssr-plugin already
+      // prints the table there; printing from both would duplicate it.
+      if (config.mode === 'ssg') {
+        try {
+          const tableMode = config._autoMode ? ('auto' as const) : config.mode
+          const modeEntries = await collectFileRouteModes(routesDir, tableMode, config.routeRules)
+          for (const line of formatRouteModeTable(modeEntries, tableMode)) {
+            // oxlint-disable-next-line no-console
+            console.log(line)
+          }
+        } catch {
+          /* table is informational only */
+        }
+      }
       } finally {
         // PR-S13: ensure the per-build mkdir cache is cleared even if the
         // render loop above throws. The cache holds resolved-mkdir
@@ -1950,6 +2063,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 export const _internal = {
   resolvePaths,
   autoDetectStaticPaths,
+  writeRouteOutputs,
+  injectCanonical,
+  joinBaseAndPath,
   resolveOutputPath,
   selectSsgTargets,
   isInsideDist,

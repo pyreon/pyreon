@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import type { Plugin, ViteDevServer } from 'vite'
@@ -50,7 +50,9 @@ function resolveNestedPackage(root: string, name: string): string | undefined {
 import { renderErrorOverlay } from "./error-overlay";
 import {
 	generateMiddlewareModule,
+	applyModeInference,
 	generateRouteModuleFromRoutes,
+	resolveAutoModeSync,
 	scanRouteFiles,
 	scanRouteFilesWithExports,
 } from "./fs-router";
@@ -208,7 +210,36 @@ export function argvHasBaseFlag(argv: readonly string[] = process.argv): boolean
  */
 let _indexHtmlCache: string | null = null;
 
-export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
+/** `zero()`'s accepted config: `ZeroConfig` plus the `mode: 'auto'` input. */
+export type ZeroUserConfig = Omit<ZeroConfig, 'mode'> & {
+	/** Render mode — or 'auto' (EXPERIMENTAL): infer per route from exports. */
+	mode?: ZeroConfig['mode'] | 'auto'
+};
+
+export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
+	// ── mode: 'auto' (EXPERIMENTAL) — resolve inference ONCE, up front ──
+	// Per-route inference happens at route-module generation (inference-as-
+	// declaration: inferred modes become renderMode literals, so runtime
+	// dispatch / build filtering / mode errors need zero auto-awareness).
+	// The APP-LEVEL pipeline (server vs pure-static) must be decided at
+	// plugin-factory time, before any async hook: scan synchronously.
+	let userConfig: ZeroConfig;
+	if (userInput.mode === 'auto') {
+		const routesDirGuess = `${process.cwd()}/src/routes`;
+		const { mode, pages } = resolveAutoModeSync(routesDirGuess, userInput.routeRules, {
+			existsSync,
+			readdirSync,
+			readFileSync,
+			statSync,
+		});
+		// oxlint-disable-next-line no-console
+		console.log(
+			`[Pyreon] mode: 'auto' → '${mode}' (${pages} page route(s) scanned; the build mode table shows the per-route inference — explicit renderMode exports and routeRules always win)`,
+		);
+		userConfig = { ...userInput, mode, _autoMode: true };
+	} else {
+		userConfig = userInput as ZeroConfig;
+	}
 	const config = resolveConfig(userConfig);
 	let routesDir: string;
 	let root: string;
@@ -305,9 +336,11 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 					// PR H — fan routes into per-locale variants when `i18n` is
 					// configured. No-op when unset; identity-returns the input
 					// otherwise so existing apps see byte-identical output.
-					const routes = config.i18n
+					const expandedRoutes = config.i18n
 						? expandRoutesForLocales(baseRoutes, config.i18n)
 						: baseRoutes;
+					// mode: 'auto' — inference-as-declaration (see zeroPlugin head).
+					const routes = config._autoMode ? applyModeInference(expandedRoutes) : expandedRoutes;
 					// SSG mode: lazy() route splitting by default (parity with
 					// SSR/SPA). Opt-out via `ssg.splitChunks: false` for tiny
 					// sites that prefer single-chunk + instant navigation.
