@@ -252,8 +252,17 @@ export async function createCollapseResolver(projectRoot: string): Promise<Colla
           : []
       const node = (mode: string) =>
         h(Provider, { theme: themeVal, mode }, h(Component, input.props, ...childArgs))
-      const lightHtml = await renderToString(node('light'))
-      const darkHtml = await renderToString(node('dark'))
+      // The SSR renderer wraps reactive-accessor children in
+      // `<!--$-->…<!--/$-->` hydration range markers (the extent contract
+      // for hydrateReactiveChild). A collapse bake is a STATIC cloneNode
+      // template that is never range-hydrated — the markers would be dead
+      // comment nodes cloned into EVERY mount — so strip them from the
+      // captured HTML. Only the accessor markers are stripped; the
+      // underlying text still participates in the light/dark byte-compare.
+      const stripHydrationMarkers = (html: string) =>
+        html.replaceAll('<!--$-->', '').replaceAll('<!--/$-->', '')
+      const lightHtml = stripHydrationMarkers(await renderToString(node('light')))
+      const darkHtml = stripHydrationMarkers(await renderToString(node('dark')))
       const rules = sheet.getStyleRules().slice()
       const result = deriveCollapse(lightHtml, darkHtml, rules)
       cache.set(ck, result)
