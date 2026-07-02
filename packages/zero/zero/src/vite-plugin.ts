@@ -57,10 +57,14 @@ import {
 import { expandRoutesForLocales } from "./i18n-routing";
 import { writeRouteTypes } from "./route-types-gen";
 import { render404Page } from "./not-found";
+import { aiPlugin } from "./ai";
+import { faviconPlugin } from "./favicon";
 import { fontPlugin } from "./font";
 import { fontImportPlugin } from "./font-import-plugin";
 import { imagePlugin } from "./image-plugin";
+import { ogImagePlugin } from "./og-image";
 import { perfAdvisorPlugin } from "./perf-advisor-plugin";
+import { seoPlugin } from "./seo";
 import { ssgPlugin } from "./ssg-plugin";
 import { ssrPlugin } from "./ssr-plugin";
 import type { ZeroConfig } from "./types";
@@ -756,6 +760,17 @@ export function zeroPlugin(userConfig: ZeroConfig = {}): Plugin[] {
 		// when a `?font` query is actually used; no cost otherwise.
 		plugins.push(fontImportPlugin());
 	}
+
+	// Config-present auto-wiring for the remaining DX plugins — one config
+	// surface (`zero({ seo, favicon, og, ai })`) instead of four manual
+	// imports + plugin entries. Unlike image/font these are NOT default-on:
+	// each needs user input to do anything meaningful (an origin, a source
+	// icon, templates), so `undefined` simply means "not used" and there is
+	// no `false` opt-out to learn. Supplying the config IS the opt-in.
+	if (userConfig.seo) plugins.push(seoPlugin(userConfig.seo));
+	if (userConfig.favicon) plugins.push(faviconPlugin(userConfig.favicon));
+	if (userConfig.og) plugins.push(ogImagePlugin(userConfig.og));
+	if (userConfig.ai) plugins.push(aiPlugin(userConfig.ai));
 
 	return plugins;
 }

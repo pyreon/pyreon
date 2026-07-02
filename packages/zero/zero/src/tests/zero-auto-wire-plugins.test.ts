@@ -102,3 +102,67 @@ describe('zero({ image, font }) — auto-wire contract', () => {
     expect(names).toContain('pyreon-zero-fonts')
   })
 })
+
+describe('zero({ seo, favicon, og, ai }) — config-present auto-wire contract', () => {
+  // Unlike image/font these are NOT default-on: each needs user input to do
+  // anything meaningful (an origin, a source icon, templates). `undefined`
+  // means "not used"; supplying the config IS the opt-in.
+  it('default zero() wires NONE of seo/favicon/og/ai', () => {
+    const names = pluginNames(zeroPlugin())
+    expect(names).not.toContain('pyreon-zero-seo')
+    expect(names).not.toContain('pyreon-zero-favicon')
+    expect(names).not.toContain('pyreon-zero-og-image')
+    expect(names).not.toContain('pyreon-zero-ai')
+  })
+
+  it('zero({ seo }) wires seoPlugin', () => {
+    const names = pluginNames(
+      zeroPlugin({ seo: { sitemap: { origin: 'https://example.com' } } }),
+    )
+    expect(names).toContain('pyreon-zero-seo')
+    // the others stay absent
+    expect(names).not.toContain('pyreon-zero-favicon')
+  })
+
+  it('zero({ favicon }) wires faviconPlugin', () => {
+    const names = pluginNames(zeroPlugin({ favicon: { source: './src/favicon.svg' } }))
+    expect(names).toContain('pyreon-zero-favicon')
+  })
+
+  it('zero({ og }) wires ogImagePlugin', () => {
+    const names = pluginNames(
+      zeroPlugin({
+        og: {
+          templates: [
+            { name: 'default', background: { color: '#111827' }, layers: [{ text: 'Hi' }] },
+          ],
+        },
+      }),
+    )
+    expect(names).toContain('pyreon-zero-og-image')
+  })
+
+  it('zero({ ai }) wires aiPlugin', () => {
+    const names = pluginNames(zeroPlugin({ ai: { name: 'My Site' } }))
+    expect(names).toContain('pyreon-zero-ai')
+  })
+
+  it('all four together wire all four (one config surface)', () => {
+    const names = pluginNames(
+      zeroPlugin({
+        seo: { sitemap: { origin: 'https://example.com' } },
+        favicon: { source: './src/favicon.svg' },
+        og: {
+          templates: [
+            { name: 'default', background: { color: '#111827' }, layers: [{ text: 'Hi' }] },
+          ],
+        },
+        ai: { name: 'My Site' },
+      }),
+    )
+    expect(names).toContain('pyreon-zero-seo')
+    expect(names).toContain('pyreon-zero-favicon')
+    expect(names).toContain('pyreon-zero-og-image')
+    expect(names).toContain('pyreon-zero-ai')
+  })
+})

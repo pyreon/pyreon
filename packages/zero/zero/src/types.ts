@@ -623,6 +623,48 @@ export interface ZeroConfig {
    * supplied. Pass `false` to remove it from the chain entirely.
    */
   font?: import('./font').FontConfig | false
+
+  /**
+   * SEO artifacts — auto-wires `seoPlugin` (sitemap.xml, robots.txt, RSS)
+   * when a config is supplied. Same shape as `seoPlugin(config)`; declare it
+   * here instead of importing + wiring the plugin manually:
+   *
+   * ```ts
+   * zero({ seo: { sitemap: { origin: 'https://example.com' }, robots: { … } } })
+   * ```
+   *
+   * Not auto-wired when omitted (a sitemap needs an `origin` — there is no
+   * meaningful zero-config default).
+   */
+  seo?: import('./seo').SeoPluginConfig
+
+  /**
+   * Favicon set generation — auto-wires `faviconPlugin` when a config is
+   * supplied (source SVG/PNG → ICO + PNG sizes + web manifest + theme-aware
+   * SVG links). Same shape as `faviconPlugin(config)`:
+   *
+   * ```ts
+   * zero({ favicon: { source: './src/favicon.svg' } })
+   * ```
+   *
+   * Requires `sharp` as a devDependency (the plugin fails the build loudly
+   * when a source is configured but sharp is missing).
+   */
+  favicon?: import('./favicon').FaviconPluginConfig
+
+  /**
+   * Social-share (og:image) generation — auto-wires `ogImagePlugin` when a
+   * config is supplied (template + text layers → per-locale PNG/JPEG at
+   * build time). Same shape as `ogImagePlugin(config)`.
+   */
+  og?: import('./og-image').OgImagePluginConfig
+
+  /**
+   * AI discoverability — auto-wires `aiPlugin` when a config is supplied
+   * (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec).
+   * Same shape as `aiPlugin(config)`.
+   */
+  ai?: import('./ai').AiPluginConfig
 }
 
 // ─── File-system route ───────────────────────────────────────────────────────
