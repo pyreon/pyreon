@@ -1617,3 +1617,118 @@ describe('ssgPlugin', () => {
     })
   })
 })
+
+describe('ssg.paths precedence warning (Tier-2 F)', () => {
+  it('warns when explicit ssg.paths coexists with route getStaticPaths exports', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const registry = new Map([['/posts/:id', () => [{ params: { id: 'a' } }]]])
+      const paths = await _internal.resolvePaths(
+        { ssg: { paths: ['/only-this'] } },
+        '/nonexistent-routes-dir',
+        registry as never,
+        [],
+      )
+      expect(paths).toEqual(['/only-this'])
+      const hit = warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes('IGNORED'))
+      expect(hit).toBeDefined()
+      expect(hit).toContain('/posts/:id')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('does not warn without getStaticPaths exports', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await _internal.resolvePaths({ ssg: { paths: ['/a'] } }, '/nx', new Map() as never, [])
+      expect(warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes('IGNORED'))).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe("format 'both' auto-canonical (Tier-2 H)", () => {
+  it('joinBaseAndPath composes base and path', () => {
+    expect(_internal.joinBaseAndPath('/', '/resume')).toBe('/resume')
+    expect(_internal.joinBaseAndPath('/docs/', '/resume')).toBe('/docs/resume')
+    expect(_internal.joinBaseAndPath('/docs', '/resume')).toBe('/docs/resume')
+  })
+
+  it('injectCanonical inserts before </head> and escapes the href', () => {
+    const out = _internal.injectCanonical('<head><title>x</title></head><body></body>', '/a"b&c')
+    expect(out).toContain('<link rel="canonical" href="/a&quot;b&amp;c"></head>')
+  })
+
+  it('injectCanonical leaves headless fragments unchanged', () => {
+    expect(_internal.injectCanonical('<div>no head</div>', '/x')).toBe('<div>no head</div>')
+  })
+
+  it("writeRouteOutputs injects canonical into BOTH copies under format 'both'", async () => {
+    const { mkdtempSync, rmSync, readFileSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+    const dist = mkdtempSync(path.join(tmpdir(), 'pyreon-canon-'))
+    try {
+      const ok = await _internal.writeRouteOutputs(
+        dist,
+        '/resume',
+        '<head></head><body>cv</body>',
+        'both',
+        [],
+        '/',
+      )
+      expect(ok).toBe(true)
+      const dirCopy = readFileSync(path.join(dist, 'resume', 'index.html'), 'utf-8')
+      const fileCopy = readFileSync(path.join(dist, 'resume.html'), 'utf-8')
+      expect(dirCopy).toContain('<link rel="canonical" href="/resume">')
+      expect(fileCopy).toContain('<link rel="canonical" href="/resume">')
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('does NOT inject when a canonical already exists or format is single', async () => {
+    const { mkdtempSync, rmSync, readFileSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+    const dist = mkdtempSync(path.join(tmpdir(), 'pyreon-canon2-'))
+    try {
+      await _internal.writeRouteOutputs(
+        dist,
+        '/a',
+        '<head><link rel="canonical" href="/custom"></head>',
+        'both',
+        [],
+        '/',
+      )
+      expect(readFileSync(path.join(dist, 'a.html'), 'utf-8')).not.toContain('href="/a"')
+
+      await _internal.writeRouteOutputs(dist, '/b', '<head></head>', 'directory', [], '/')
+      expect(readFileSync(path.join(dist, 'b', 'index.html'), 'utf-8')).not.toContain('canonical')
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('does NOT canonicalize meta-refresh redirect stubs', async () => {
+    const { mkdtempSync, rmSync, readFileSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+    const dist = mkdtempSync(path.join(tmpdir(), 'pyreon-canon3-'))
+    try {
+      await _internal.writeRouteOutputs(
+        dist,
+        '/old',
+        '<head><meta http-equiv="refresh" content="0;url=/new"></head>',
+        'both',
+        [],
+        '/',
+      )
+      expect(readFileSync(path.join(dist, 'old.html'), 'utf-8')).not.toContain('canonical')
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+})

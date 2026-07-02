@@ -790,6 +790,8 @@ function scanTopLevelExportTokens(source: string): ExportToken[] {
 }
 
 /** All-false exports record. Used when source detection fails. */
+const _warnedNonLiteralMode = new Set<string>()
+
 const EMPTY_EXPORTS: RouteFileExports = {
   hasLoader: false,
   hasGuard: false,
@@ -1145,6 +1147,27 @@ export function generateRouteModuleFromRoutes(
     }
   }
 
+  /**
+   * A COMPUTED `renderMode` (`renderMode: isProd ? 'ssg' : 'ssr'`, a const
+   * reference, a function call) still resolves at runtime via the namespace-
+   * import fallback — but it can't be inlined (the whole route module joins
+   * the eager graph, defeating per-route code splitting) and the FILE-LEVEL
+   * mode surfaces (build mode table, dev banner, SSG completeness warning)
+   * can't see it. Historically this fallback was completely silent.
+   */
+  function warnNonLiteralRenderMode(filePath: string, exp: RouteFileExports): void {
+    if (!exp.hasRenderMode || exp.renderModeLiteral !== undefined) return
+    if (_warnedNonLiteralMode.has(filePath)) return
+    _warnedNonLiteralMode.add(filePath)
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] Route "${filePath}" exports a COMPUTED renderMode. It still works at runtime, `
+        + `but it cannot be inlined (larger route chunk) and build-time mode surfaces (mode table, `
+        + `dev banner, SSG completeness checks) cannot see it. Keep it a plain string literal: `
+        + `export const renderMode = 'ssg'`,
+    )
+  }
+
   function generatePageRoute(
     page: FileRoute,
     indent: string,
@@ -1155,6 +1178,7 @@ export function generateRouteModuleFromRoutes(
     const exp = page.exports ?? EMPTY_EXPORTS
     const props: string[] = [`${indent}  path: ${JSON.stringify(page.urlPath)}`]
     const hasMeta = hasAnyMetaExport(exp)
+    warnNonLiteralRenderMode(page.filePath, exp)
 
     if (useStaticOnly) {
       // SSG / static mode: bundle everything synchronously, no lazy().

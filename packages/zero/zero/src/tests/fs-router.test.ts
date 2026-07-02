@@ -1031,3 +1031,61 @@ describe('collectFileRouteModes (file-level mode resolution parity)', () => {
     expect(entries.map((e) => e.pattern)).toEqual(['/'])
   })
 })
+
+describe('computed renderMode warning (Tier-2 D)', () => {
+  const routeWith = (exp: Partial<RouteFileExports>): FileRoute => ({
+    filePath: 'computed-mode.tsx',
+    urlPath: '/computed-mode',
+    dirPath: '',
+    depth: 1,
+    isLayout: false,
+    isError: false,
+    isLoading: false,
+    isNotFound: false,
+    isCatchAll: false,
+    renderMode: 'ssr',
+    exports: {
+      hasLoader: false,
+      hasGuard: false,
+      hasMeta: false,
+      hasRenderMode: false,
+      hasError: false,
+      hasMiddleware: false,
+      hasLoading: false,
+      hasGetStaticPaths: false,
+      hasLoaderKey: false,
+      hasGcTime: false,
+      hasServerLoader: false,
+      ...exp,
+    } as RouteFileExports,
+  })
+
+  it('warns once when renderMode is detected but not a pure literal', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      generateRouteModuleFromRoutes([routeWith({ hasRenderMode: true })], './routes')
+      generateRouteModuleFromRoutes([routeWith({ hasRenderMode: true })], './routes')
+      const hits = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('COMPUTED renderMode'))
+      expect(hits).toHaveLength(1) // deduped per file
+      expect(hits[0]).toContain('computed-mode.tsx')
+      expect(hits[0]).toContain("export const renderMode = 'ssg'")
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('does not warn for a literal renderMode', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      generateRouteModuleFromRoutes(
+        [routeWith({ hasRenderMode: true, renderModeLiteral: "'ssg'" })],
+        './routes',
+      )
+      expect(
+        warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes('COMPUTED renderMode')),
+      ).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
