@@ -1965,7 +1965,24 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `(${emitKotlinExpr(e.args[0]!, indent)}).toString()`
       }
-      // `Math.<fn>(args)` — DOUBLE-DOMAIN math. The generic passthrough
+      // `Date.now()` — JS ms-since-epoch. `Date` is an unresolved reference
+      // on Kotlin (verbatim emit failed) — lower to
+      // `System.currentTimeMillis().toDouble()` (Double: Kotlin Int is
+      // 32-bit, ms-since-epoch overflows it; the inference types this
+      // float). Other `Date.*` statics → NAMED warning (mirror of Swift).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Date'
+      ) {
+        if (e.callee.property === 'now' && e.args.length === 0) {
+          return 'System.currentTimeMillis().toDouble()'
+        }
+        _emitWarnings.push(
+          `Date.${e.callee.property}(...) has no native lowering — only Date.now() (epoch milliseconds, a Double) is supported. Format or parse dates in display logic on the platform side.`,
+        )
+      }
+            // `Math.<fn>(args)` — DOUBLE-DOMAIN math. The generic passthrough
       // `Math.sqrt(16)` resolves to `java.lang.Math.sqrt(double)` but rejects
       // an Int arg ("type mismatch") — Kotlin does NOT auto-widen Int→Double
       // for a java method call — and `sign`/`trunc`/`log2` don't exist on

@@ -2365,7 +2365,26 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       ) {
         return `print(${e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')})`
       }
-      // `Math.X(...)` — JS has the `Math` namespace; Swift does not.
+      // `Date.now()` — JS ms-since-epoch. Foundation's `Date` resolves as a
+      // TYPE, so the verbatim emit failed "cannot call value of non-function
+      // type 'Date'" — a clean-parse silent mis-emit. Lower to the epoch-ms
+      // Double (the inference types it float — see infer-type.ts: Kotlin's
+      // Int is 32-bit, ms-since-epoch needs Double). Other `Date.*` statics
+      // (`Date.parse`, …) have no faithful mapping → NAMED build-failing
+      // warning, never a silent drop.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Date'
+      ) {
+        if (e.callee.property === 'now' && e.args.length === 0) {
+          return '(Date().timeIntervalSince1970 * 1000)'
+        }
+        _emitWarnings.push(
+          `Date.${e.callee.property}(...) has no native lowering — only Date.now() (epoch milliseconds, a Double) is supported. Format or parse dates in display logic on the platform side.`,
+        )
+      }
+            // `Math.X(...)` — JS has the `Math` namespace; Swift does not.
       // Map the common functions to their Swift stdlib / Foundation
       // equivalents (Foundation is in the CLI import header). Kotlin
       // needs no mapping — java.lang.Math is valid on Android/JVM. An

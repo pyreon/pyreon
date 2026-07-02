@@ -799,6 +799,23 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const a = inferArrayStaticCall(expr, ctx)
         if (a !== null) return a
       }
+      // `Date.now()` — JS ms-since-epoch as a Number. The value (~1.7e12)
+      // OVERFLOWS Kotlin's 32-bit Int (PMTC's `number` → Int default), so the
+      // one lossless cross-target carrier is Double (exact for ms < 2^53) —
+      // float: true maps to Swift Double / Kotlin Double, and the
+      // Int×Double coercion machinery makes mixed arithmetic
+      // (`Date.now() - start()`) work. Paired with the faithful emits
+      // (Swift `Date().timeIntervalSince1970 * 1000` / Kotlin
+      // `System.currentTimeMillis().toDouble()`).
+      if (
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        expr.callee.object.name === 'Date' &&
+        expr.callee.property === 'now' &&
+        expr.args.length === 0
+      ) {
+        return { kind: 'number', float: true }
+      }
       // Math.* numeric builtins — see `inferMathCall`.
       {
         const m = inferMathCall(expr, ctx)
