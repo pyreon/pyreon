@@ -59,16 +59,16 @@ import { ensureNoindexMeta } from './not-found'
 import type { ZeroConfig } from './types'
 
 // M2.3 — Server-side perf-harness counter sink (same shape as
-// runtime-server). `__DEV__` is gated at the call site so prod builds with
-// `NODE_ENV=production` skip the optional-chain entirely. Counter strings
-// remain in the bundle (few bytes) but the runtime cost is zero.
+// runtime-server). Every emission is gated on the BARE INLINE
+// `process.env.NODE_ENV !== 'production'` at the call site (never a local
+// `__DEV__` alias — the documented anti-pattern), so bundlers with a
+// NODE_ENV define fold the counters out entirely.
 //
 // Consumers run the build under a process that has installed a sink via
 // `@pyreon/perf-harness`'s `install()` / `enable()` API. Without a sink
 // installed, the optional chaining short-circuits and emission is free.
 // Useful for: CI plugins tracking SSG perf over time, dev profiling, or
 // the future `vite build --profile` flag.
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // Marker env var used to skip the SSG hook on the recursive SSR sub-build —
@@ -1422,7 +1422,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         // M2.3 — emit `ssg.pathRender` per attempted render. Pair with
         // `ssg.pathWrite` / `ssg.pathRedirect` / `ssg.pathError` to see
         // per-path settle distribution.
-        if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathRender')
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('ssg.pathRender')
         // Hold the timer id outside try/Promise.race so the finally
         // block can `clearTimeout` it on the success path. Pre-fix the
         // rejection setTimeout was left pending until 30s every time
@@ -1444,7 +1444,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 
           if (result.kind === 'redirect') {
             // M2.3 — track redirect outcomes separately from successful renders.
-            if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathRedirect')
+            if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('ssg.pathRedirect')
             // PR B — loader threw `redirect()`. Record for the manifest;
             // optionally emit a meta-refresh HTML stub at the source path.
             redirects.push({ from: result.from, to: result.to, status: result.status })
@@ -1518,10 +1518,10 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
           // M2.3 — track successful HTML emits. `ssg.pathRender - ssg.pathWrite
           // - ssg.pathRedirect - ssg.pathError` should sum to roughly zero;
           // non-zero residual = paths swallowed silently somewhere.
-          if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathWrite')
+          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('ssg.pathWrite')
         } catch (error) {
           // M2.3 — track render-error outcomes.
-          if (__DEV__) _countSink.__pyreon_count__?.('ssg.pathError')
+          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('ssg.pathError')
           errors.push({ path: p, error })
           // PR G — onPathError fallback hook. The user-supplied callback
           // can return HTML to write at the path's URL, OR null to skip.
@@ -1818,7 +1818,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
               await writeFile(filePath, html, 'utf-8')
               emitted404Count++
               // M2.3 — track per-locale 404 emits.
-              if (__DEV__) _countSink.__pyreon_count__?.('ssg.404Emit')
+              if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('ssg.404Emit')
             }
           } catch (error) {
             errors.push({

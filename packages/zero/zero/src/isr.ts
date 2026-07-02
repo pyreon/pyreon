@@ -3,7 +3,6 @@ import type { ISRConfig } from './types'
 
 // Dev-mode counter sink — see packages/internals/perf-harness for contract.
 // Zero cost in prod (gate folds to `false`, optional-chain short-circuits).
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // Module-level dedup for the default-cacheKey dev warning. Keyed on the
@@ -388,7 +387,7 @@ export function createISRHandler(
       // `Vary: Accept-Cookie-Format` (hypothetical but defensive).
       const varyTokens = vary.split(',').map((t) => t.trim())
       if (varyTokens.includes('cookie') || varyTokens.includes('authorization') || varyTokens.includes('*')) {
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           console.warn(
             '[Pyreon ISR] Response has `Vary: Cookie` (or Authorization / *) ' +
               'but no `cacheKey` is configured — refusing to cache to prevent ' +
@@ -432,13 +431,11 @@ export function createISRHandler(
   // fires regardless of whether the handler ever sees an auth-bearing
   // request — the goal is to teach the trade-offs at developer time,
   // not at runtime.
-  // Bare `process.env.NODE_ENV` gate (NOT the file's local `__DEV__`
-  // alias) — folds to dead code under every modern bundler's define
-  // replacement, so the warning string + WeakSet membership check
-  // tree-shake to zero bytes in production. The local `__DEV__` const
-  // shipped pre-fix throughout this file is the documented anti-pattern
-  // (catches bundler reliability gaps in Bun.build / some esbuild
-  // configs); migrating existing call sites is a separate cleanup.
+  // Bare inline `process.env.NODE_ENV` gate — folds to dead code under
+  // every modern bundler's define replacement, so the warning string +
+  // WeakSet membership check tree-shake to zero bytes in production.
+  // Every dev gate in this file is now this bare inline shape (the local
+  // `__DEV__` const alias it replaced is the documented anti-pattern).
   // See .claude/rules/anti-patterns.md → "Local `__DEV__` const alias".
   if (
     process.env.NODE_ENV !== 'production'
@@ -586,7 +583,7 @@ export function createISRHandler(
         // count = revalidation-attempts (every attempt should clear its
         // timer in finally). A LOWER count than revalidations means
         // clearTimeout failed to fire — the orphan-timer leak is back.
-        if (__DEV__) _countSink.__pyreon_count__?.('isr.revalidate.timerClear')
+        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('isr.revalidate.timerClear')
       }
       revalidating.delete(key)
     }

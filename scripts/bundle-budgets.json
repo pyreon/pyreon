@@ -39,7 +39,7 @@
   "@pyreon/rocketstyle": 5120,
   "@pyreon/router": 12288,
   "@pyreon/runtime-dom": 12544,
-  "@pyreon/runtime-server": 6144,
+  "@pyreon/runtime-server": 5248,
   "@pyreon/rx": 2304,
   "@pyreon/server": 3328,
   "@pyreon/sized-map": 512,
