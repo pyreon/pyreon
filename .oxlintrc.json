@@ -1,6 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "import", "jsx-a11y", "promise", "node", "vitest"],
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "jsx-a11y",
+    "promise",
+    "node",
+    "vitest"
+  ],
   "categories": {
     "correctness": "warn"
   },
@@ -16,7 +25,15 @@
     ],
     "no-shadow": "error",
     "no-empty": "warn",
-    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "no-console": [
+      "error",
+      {
+        "allow": [
+          "warn",
+          "error"
+        ]
+      }
+    ],
     "no-template-curly-in-string": "off",
     "no-debugger": "error",
     "typescript/no-non-null-assertion": "off",
@@ -43,12 +60,20 @@
     "unicorn/no-useless-length-check": "error",
     "unicorn/no-useless-fallback-in-spread": "error",
     "unicorn/no-useless-spread": "off",
-    "vitest/valid-expect": ["error", { "maxArgs": 2 }],
+    "vitest/valid-expect": [
+      "error",
+      {
+        "maxArgs": 2
+      }
+    ],
     "vitest/no-standalone-expect": "error"
   },
   "overrides": [
     {
-      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
       "rules": {
         "no-console": "off",
         "no-empty": "off",
@@ -62,7 +87,9 @@
       }
     },
     {
-      "files": ["**/*.d.ts"],
+      "files": [
+        "**/*.d.ts"
+      ],
       "rules": {
         "unicorn/no-empty-file": "off"
       }
@@ -100,13 +127,18 @@
       }
     },
     {
-      "files": ["packages/tools/devtools/scripts/generate-icons.ts"],
+      "files": [
+        "packages/tools/devtools/scripts/generate-icons.ts"
+      ],
       "rules": {
         "typescript/no-non-null-assertion": "off"
       }
     },
     {
-      "files": ["packages/fundamentals/flow/src/**", "packages/fundamentals/code/src/**"],
+      "files": [
+        "packages/fundamentals/flow/src/**",
+        "packages/fundamentals/code/src/**"
+      ],
       "rules": {
         "jsx-a11y/alt-text": "off",
         "jsx-a11y/prefer-tag-over-role": "off",
@@ -118,32 +150,44 @@
       }
     },
     {
-      "files": ["packages/tools/mcp/src/api-reference.ts"],
+      "files": [
+        "packages/tools/mcp/src/api-reference.ts"
+      ],
       "rules": {
         "no-useless-escape": "off",
         "no-template-curly-in-string": "off"
       }
     },
     {
-      "files": ["packages/core/compiler/src/jsx.ts"],
+      "files": [
+        "packages/core/compiler/src/jsx.ts"
+      ],
       "rules": {
         "no-shadow": "off"
       }
     },
     {
-      "files": ["**/*.bench.ts", "scripts/bench/**"],
+      "files": [
+        "**/*.bench.ts",
+        "scripts/bench/**"
+      ],
       "rules": {
         "no-unused-expressions": "off"
       }
     },
     {
-      "files": ["packages/native/compiler/src/**"],
+      "files": [
+        "packages/native/compiler/src/**"
+      ],
       "rules": {
         "unicorn/no-thenable": "off"
       }
     },
     {
-      "files": ["examples/**", "packages/ui/primitives/src/**"],
+      "files": [
+        "examples/**",
+        "packages/ui/primitives/src/**"
+      ],
       "rules": {
         "jsx-a11y/click-events-have-key-events": "off",
         "jsx-a11y/no-static-element-interactions": "off",
@@ -153,6 +197,17 @@
         "jsx-a11y/prefer-tag-over-role": "off",
         "jsx-a11y/no-autofocus": "off",
         "jsx-a11y/anchor-is-valid": "off"
+      }
+    },
+    {
+      "files": [
+        "contrib/**"
+      ],
+      "rules": {
+        "no-console": "off",
+        "jsx-a11y/anchor-is-valid": "off",
+        "jsx-a11y/click-events-have-key-events": "off",
+        "jsx-a11y/no-static-element-interactions": "off"
       }
     }
   ],
@@ -178,5 +233,13 @@
     "beforeAll": "readonly",
     "afterAll": "readonly"
   },
-  "ignorePatterns": ["dist", "lib", "node_modules", ".turbo", "e2e", "tests/browser", "templates"]
+  "ignorePatterns": [
+    "dist",
+    "lib",
+    "node_modules",
+    ".turbo",
+    "e2e",
+    "tests/browser",
+    "templates"
+  ]
 }
