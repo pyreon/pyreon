@@ -23,7 +23,11 @@
     "pyreon/no-unbatched-updates": [
       "warn",
       {
-        "exemptPaths": ["__tests__/", ".test."]
+        "exemptPaths": [
+          "__tests__/",
+          ".test.",
+          "packages/native/compiler/"
+        ]
       }
     ],
     "pyreon/no-error-without-prefix": [
