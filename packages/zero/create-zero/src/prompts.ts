@@ -110,6 +110,11 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
           hint: 'buffered HTML, simpler but slower TTFB',
         },
         { value: 'ssg', label: 'Static (SSG)', hint: 'pre-rendered at build time' },
+        {
+          value: 'isr',
+          label: 'ISR',
+          hint: 'static-first with periodic revalidation (SWR cache)',
+        },
         { value: 'spa', label: 'SPA', hint: 'client-only, no server rendering' },
       ],
       initialValue: tmpl.defaultMode,
@@ -122,26 +127,34 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
   }
 
   // ─── Adapter (filtered by template compatibility) ─────────────────────────
+  // ISR keeps a server-side SWR cache — it cannot deploy to a static host.
+  const modeAdapters =
+    renderMode === 'isr' ? tmpl.adapters.filter((id) => id !== 'static') : tmpl.adapters
+  const modeDefaultAdapter = modeAdapters.includes(tmpl.defaultAdapter)
+    ? tmpl.defaultAdapter
+    : (modeAdapters[0] as AdapterId)
   let adapter: AdapterId
   if (args.adapter) {
-    if (!tmpl.adapters.includes(args.adapter)) {
-      p.cancel(
-        `Adapter "${args.adapter}" is not supported by template "${template}". Allowed: ${tmpl.adapters.join(', ')}.`,
-      )
+    if (!modeAdapters.includes(args.adapter)) {
+      const why =
+        renderMode === 'isr' && args.adapter === 'static'
+          ? `Adapter "static" cannot serve ISR (the SWR cache needs a server).`
+          : `Adapter "${args.adapter}" is not supported by template "${template}".`
+      p.cancel(`${why} Allowed: ${modeAdapters.join(', ')}.`)
       process.exit(2)
     }
     adapter = args.adapter
   } else if (yes) {
-    adapter = tmpl.defaultAdapter
+    adapter = modeDefaultAdapter
   } else {
     const value = await p.select({
       message: 'Deployment target',
-      options: tmpl.adapters.map((id) => ({
+      options: modeAdapters.map((id) => ({
         value: id,
         label: ADAPTER_LABELS[id].label,
         hint: ADAPTER_LABELS[id].hint,
       })),
-      initialValue: tmpl.defaultAdapter,
+      initialValue: modeDefaultAdapter,
     })
     if (p.isCancel(value)) {
       p.cancel('Cancelled.')
@@ -287,6 +300,24 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
     lint = value
   }
 
+  // ─── Typed routes ─────────────────────────────────────────────────────────
+  let typedRoutes: boolean
+  if (args.typedRoutes !== undefined) {
+    typedRoutes = args.typedRoutes
+  } else if (yes) {
+    typedRoutes = true
+  } else {
+    const value = await p.confirm({
+      message: 'Typed routes? (<Link href> autocompletes real paths + rejects typos)',
+      initialValue: true,
+    })
+    if (p.isCancel(value)) {
+      p.cancel('Cancelled.')
+      process.exit(0)
+    }
+    typedRoutes = value
+  }
+
   return {
     name,
     targetDir,
@@ -299,6 +330,7 @@ export async function runPrompts(args: CliArgs): Promise<ProjectConfig> {
     aiTools,
     compat,
     lint,
+    typedRoutes,
   }
 }
 

@@ -39,6 +39,7 @@ export interface CliArgs {
   compat: 'none' | 'react' | 'vue' | 'solid' | 'preact' | undefined
   packageStrategy: 'meta' | 'individual' | undefined
   lint: boolean | undefined
+  typedRoutes: boolean | undefined
 }
 
 const TEMPLATE_VALUES: TemplateId[] = ['app', 'blog', 'dashboard', 'monorepo']
@@ -50,7 +51,7 @@ const ADAPTER_VALUES: AdapterId[] = [
   'bun',
   'static',
 ]
-const MODE_VALUES: RenderMode[] = ['ssr-stream', 'ssr-string', 'ssg', 'spa']
+const MODE_VALUES: RenderMode[] = ['ssr-stream', 'ssr-string', 'ssg', 'spa', 'isr']
 const INTEGRATION_VALUES: IntegrationId[] = ['supabase', 'email']
 const AI_VALUES: AiToolId[] = ['mcp', 'claude', 'cursor', 'copilot', 'agents']
 type CompatId = 'none' | 'react' | 'vue' | 'solid' | 'preact'
@@ -78,6 +79,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     compat: undefined,
     packageStrategy: undefined,
     lint: undefined,
+    typedRoutes: undefined,
   }
 
   for (let i = 0; i < argv.length; i++) {
@@ -115,7 +117,7 @@ export function parseArgs(argv: readonly string[]): CliArgs {
       // on them (as a phantom `install` feature) is hostile. `--no-install`
       // already describes the actual behavior.
       if (key === 'install' || key === 'no-install') continue
-      if (key.startsWith('no-') && key.length > 3 && key !== 'no-lint') {
+      if (key.startsWith('no-') && key.length > 3 && key !== 'no-lint' && key !== 'no-typed-routes') {
         const feat = key.slice(3)
         if (!FEATURE_KEYS.has(feat)) {
           throw new Error(
@@ -139,6 +141,12 @@ export function parseArgs(argv: readonly string[]): CliArgs {
           break
         case 'no-lint':
           out.lint = false
+          break
+        case 'typed-routes':
+          out.typedRoutes = true
+          break
+        case 'no-typed-routes':
+          out.typedRoutes = false
           break
         case 'preset':
           out.preset = pickEnum(consumeValue(), PRESET_VALUES, '--preset')
@@ -246,7 +254,7 @@ Deployment:
   --adapter <id>           vercel | cloudflare | netlify | node | bun | static
 
 Rendering:
-  --mode <id>              ssr-stream | ssr-string | ssg | spa
+  --mode <id>              ssr-stream | ssr-string | ssg | spa | isr
 
 Features:
   --preset <id>            minimal | standard | dashboard | full
@@ -262,6 +270,8 @@ Other:
   --compat <id>            none | react | vue | solid | preact
   --packages <id>          meta | individual
   --lint / --no-lint       toggle @pyreon/lint
+  --typed-routes / --no-typed-routes
+                           toggle typed routes (<Link href> autocomplete; default on)
   --yes                    skip prompts, accept defaults
   --help, -h               show this help
 

@@ -14,10 +14,16 @@ const MODE_MAP: Record<ProjectConfig['renderMode'], string> = {
   'ssr-string': `mode: 'ssr'`,
   ssg: `mode: 'ssg'`,
   spa: `mode: 'spa'`,
+  // Every route gets the SWR cache with a 60s revalidation window by
+  // default; per-route `export const revalidate = N` overrides it.
+  isr: `mode: 'isr', isr: { revalidate: 60 }`,
 }
 
 export function generateViteConfig(config: ProjectConfig): string {
   const pyreonOpts = config.compat !== 'none' ? `{ compat: '${config.compat}' }` : ''
+  // Typed routes — `<Link href>` autocomplete + typo rejection. The
+  // generated `src/pyreon-routes.d.ts` is gitignored by the template.
+  const typedRoutesLine = config.typedRoutes ? `\n      typedRoutes: true,` : ''
 
   // Adapter wiring — `static` has no factory (dist/ IS the artefact).
   const adapter = ADAPTERS[config.adapter]
@@ -35,7 +41,7 @@ export default {
   plugins: [
     pyreon(${pyreonOpts}),
     zero({
-      ${MODE_MAP[config.renderMode]}${adapterArg},
+      ${MODE_MAP[config.renderMode]}${adapterArg},${typedRoutesLine}
 
       // Google Fonts — self-hosted at build time (CDN in dev), preloaded,
       // with auto size-adjusted fallbacks that eliminate font-swap CLS

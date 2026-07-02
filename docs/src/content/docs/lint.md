@@ -499,7 +499,7 @@ Route-scoped (`src/routes/`) rules for `@pyreon/zero` static-site generation.
 | Rule                                 | Severity | Description                                                                          |
 | ------------------------------------ | -------- | ------------------------------------------------------------------------------------ |
 | `pyreon/revalidate-not-pure-literal` | error    | `export const revalidate` must be a numeric literal or `false` — non-literals are silently dropped from the build-time ISR manifest |
-| `pyreon/missing-get-static-paths`    | warn     | Dynamic route (`[id].tsx` / `[...slug].tsx`) without `export const getStaticPaths` — silently skipped by SSG auto-detect |
+| `pyreon/missing-get-static-paths`    | warn     | Dynamic route (`[id].tsx` / `[...slug].tsx`) without `export const getStaticPaths` — silently skipped by SSG auto-detect. App-mode-aware via the `appMode` option: `["warn", { "appMode": "ssr" }]` stays quiet for undeclared routes (they render per-request) and fires only on explicit `renderMode = 'ssg'` declarations |
 | `pyreon/invalid-loader-export`       | error    | `export const loader` is not callable — crashes the SSR runtime with `loader is not a function` |
 
 ### Frontend (10) ᵒ

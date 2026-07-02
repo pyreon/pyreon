@@ -6,12 +6,14 @@ import { matchPattern } from '../entry-server'
 import {
   applyModeInference, inferRouteMode, resolveAutoAppMode, resolveAutoModeSync,
   collectFileRouteModes,
+  detectIsrAuthRisk,
   detectRouteExports,
   filePathToUrlPath,
   generateMiddlewareModule,
   generateRouteModule,
   generateRouteModuleFromRoutes,
   parseFileRoutes,
+  warnIsrAuthRisk,
 } from '../fs-router'
 import type { FileRoute, RouteFileExports } from '../types'
 
@@ -1091,6 +1093,142 @@ describe('computed renderMode warning (Tier-2 D)', () => {
       expect(
         warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes('COMPUTED renderMode')),
       ).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('ISR auth-read build warning (Tier-2 G3)', () => {
+  const mkRoute = (
+    filePath: string,
+    urlPath: string,
+    dirPath: string,
+    exp: Partial<RouteFileExports>,
+    special: Partial<Pick<FileRoute, 'isLayout' | 'isError' | 'isLoading' | 'isNotFound'>> = {},
+  ): FileRoute => ({
+    filePath,
+    urlPath,
+    dirPath,
+    depth: 1,
+    isLayout: false,
+    isError: false,
+    isLoading: false,
+    isNotFound: false,
+    isCatchAll: false,
+    renderMode: 'ssr',
+    ...special,
+    exports: {
+      hasLoader: false,
+      hasGuard: false,
+      hasMeta: false,
+      hasRenderMode: false,
+      hasError: false,
+      hasMiddleware: false,
+      hasLoaderKey: false,
+      hasGcTime: false,
+      hasGetStaticPaths: false,
+      hasRevalidate: false,
+      readsRequestAuth: false,
+      ...exp,
+    } as RouteFileExports,
+  })
+
+  describe('detectRouteExports.readsRequestAuth', () => {
+    it('detects cookie + authorization header reads (any casing/quotes)', () => {
+      expect(
+        detectRouteExports(`export const loader = ({ request }) => request.headers.get('cookie')`)
+          .readsRequestAuth,
+      ).toBe(true)
+      expect(
+        detectRouteExports(`export const loader = (c) => c.request?.headers.get("Authorization")`)
+          .readsRequestAuth,
+      ).toBe(true)
+      expect(
+        detectRouteExports('export const middleware = (ctx) => ctx.request.headers.get(`COOKIE`)')
+          .readsRequestAuth,
+      ).toBe(true)
+    })
+
+    it('does NOT flag benign header reads or auth-free loaders', () => {
+      expect(
+        detectRouteExports(`export const loader = ({ request }) => request.headers.get('accept-language')`)
+          .readsRequestAuth,
+      ).toBe(false)
+      expect(detectRouteExports(`export const loader = () => fetch('/api/x')`).readsRequestAuth).toBe(
+        false,
+      )
+    })
+  })
+
+  describe('detectIsrAuthRisk', () => {
+    const authLoader = { hasLoader: true, readsRequestAuth: true }
+
+    it('flags a route whose own literal is isr', () => {
+      const routes = [
+        mkRoute('account.tsx', '/account', '', {
+          ...authLoader,
+          hasRenderMode: true,
+          renderModeLiteral: "'isr'",
+        }),
+      ]
+      expect(detectIsrAuthRisk(routes, 'ssr')).toEqual([
+        { filePath: 'account.tsx', urlPath: '/account' },
+      ])
+    })
+
+    it('flags undeclared routes under an isr APP mode; ssr app mode is clean', () => {
+      const routes = [mkRoute('account.tsx', '/account', '', authLoader)]
+      expect(detectIsrAuthRisk(routes, 'isr')).toHaveLength(1)
+      expect(detectIsrAuthRisk(routes, 'ssr')).toHaveLength(0)
+    })
+
+    it('layout-declared isr cascades to its subtree only (deepest wins)', () => {
+      const routes = [
+        mkRoute('account/_layout.tsx', '/account', 'account', {
+          hasRenderMode: true,
+          renderModeLiteral: "'isr'",
+        }, { isLayout: true }),
+        mkRoute('account/profile.tsx', '/account/profile', 'account', authLoader),
+        mkRoute('about.tsx', '/about', '', authLoader),
+      ]
+      const offenders = detectIsrAuthRisk(routes, 'ssr')
+      expect(offenders.map((o) => o.filePath)).toEqual(['account/profile.tsx'])
+    })
+
+    it('routeRules glob resolves isr; own file declaration beats the rule', () => {
+      const routes = [
+        mkRoute('blog/post.tsx', '/blog/post', 'blog', authLoader),
+        mkRoute('blog/live.tsx', '/blog/live', 'blog', {
+          ...authLoader,
+          hasRenderMode: true,
+          renderModeLiteral: "'ssr'",
+        }),
+      ]
+      const rules = { '/blog/**': { renderMode: 'isr' as const } }
+      const offenders = detectIsrAuthRisk(routes, 'ssr', rules)
+      expect(offenders.map((o) => o.filePath)).toEqual(['blog/post.tsx'])
+    })
+
+    it('isr route without an auth read, or without loader/middleware/guard, is clean', () => {
+      const routes = [
+        mkRoute('a.tsx', '/a', '', { hasLoader: true }), // no auth read
+        mkRoute('b.tsx', '/b', '', { readsRequestAuth: true }), // no server hook
+      ]
+      expect(detectIsrAuthRisk(routes, 'isr')).toHaveLength(0)
+    })
+  })
+
+  it('warnIsrAuthRisk warns once per file with the cacheKey fix', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const offenders = [{ filePath: 'g3-dedupe-probe.tsx', urlPath: '/probe' }]
+      warnIsrAuthRisk(offenders)
+      warnIsrAuthRisk(offenders)
+      const hits = warn.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('g3-dedupe-probe.tsx'))
+      expect(hits).toHaveLength(1)
+      expect(hits[0]).toContain('cacheKey')
+      expect(hits[0]).toContain("renderMode = 'ssr'")
     } finally {
       warn.mockRestore()
     }

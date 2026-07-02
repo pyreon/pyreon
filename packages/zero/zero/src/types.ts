@@ -821,6 +821,18 @@ export interface RouteFileExports {
    */
   hasRevalidate: boolean
   /**
+   * The route file's source reads request cookie / authorization state —
+   * a `headers.get('cookie')` / `headers.get('authorization')` call
+   * (case-insensitive; header names are case-insensitive). Feeds the
+   * build-time ISR safety warning: an ISR route whose loader varies on
+   * auth state without a custom `isr.cacheKey` FUNCTION caches one
+   * user's HTML and replays it to everyone (the default key — and the
+   * `'path-only'` shorthand — do not vary per user). Source-level scan,
+   * so a read inside middleware/guard counts too; a comment containing
+   * the exact call shape is a tolerable warn-level false positive.
+   */
+  readsRequestAuth: boolean
+  /**
    * Raw text of the `export const meta = …` initializer, captured as a
    * literal expression. When present, the route generator inlines this
    * value directly into the generated routes module instead of importing

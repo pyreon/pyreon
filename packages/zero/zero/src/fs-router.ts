@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
+import { matchRouteRules } from './route-modes'
 
 /**
  * Return type of a route file's `getStaticPaths()` export. Each entry
@@ -165,11 +166,22 @@ export function detectRouteExports(source: string): RouteFileExports {
     hasGcTime: found.has('gcTime'),
     hasGetStaticPaths: found.has('getStaticPaths'),
     hasRevalidate: found.has('revalidate'),
+    readsRequestAuth: READS_REQUEST_AUTH_RE.test(source),
     ...(metaLiteral !== undefined ? { metaLiteral } : {}),
     ...(renderModeLiteral !== undefined ? { renderModeLiteral } : {}),
     ...(revalidateLiteral !== undefined ? { revalidateLiteral } : {}),
   }
 }
+
+/**
+ * Auth-state reads that make ISR caching per-user-unsafe. Matches the two
+ * auth-bearing header reads (`headers.get('cookie')` / `('authorization')`,
+ * any casing — header names are case-insensitive) — the same pair the ISR
+ * runtime's `Vary: Cookie | Authorization` refusal keys on. Deliberately
+ * NOT any-header-read: `headers.get('accept-language')` etc. would flood
+ * the warn with benign reads.
+ */
+const READS_REQUEST_AUTH_RE = /headers\s*\.\s*get\s*\(\s*['"`](?:cookie|authorization)['"`]\s*\)/i
 
 /**
  * Extract the literal initializer of an `export const NAME = …` statement
@@ -803,6 +815,7 @@ const EMPTY_EXPORTS: RouteFileExports = {
   hasGcTime: false,
   hasGetStaticPaths: false,
   hasRevalidate: false,
+  readsRequestAuth: false,
 }
 
 /**
@@ -1625,6 +1638,88 @@ export function applyModeInference(routes: FileRoute[]): FileRoute[] {
   })
 }
 
+/** One route flagged by {@link detectIsrAuthRisk}. */
+export interface IsrAuthRiskEntry {
+  filePath: string
+  urlPath: string
+}
+
+/**
+ * Build-time ISR safety check: find routes whose EFFECTIVE mode is `'isr'`
+ * and whose source reads request cookie/authorization state (see
+ * `RouteFileExports.readsRequestAuth`) — with the default cache key (or the
+ * `'path-only'` shorthand) that HTML is cached once and replayed to every
+ * user, leaking per-user content. The runtime handler refuses to cache such
+ * responses (`Vary: Cookie|Authorization` refusal in `isr.ts`), but that
+ * surfaces per-request in production logs; this is the build-time signal
+ * that names the file while the author is still editing it.
+ *
+ * Effective-mode resolution mirrors the runtime cascade at the file level:
+ * own literal > nearest ancestor layout literal (deepest wins; group dirs
+ * are real tree boundaries) > routeRules glob > app mode. Non-literal
+ * (computed) renderMode exports are invisible here — they already get their
+ * own build warning.
+ *
+ * Pure — the caller decides suppression (a custom `isr.cacheKey` FUNCTION
+ * means the user opted into per-user caching) and emission.
+ */
+export function detectIsrAuthRisk(
+  routes: FileRoute[],
+  appMode: RenderMode,
+  rules?: import('./route-modes').RouteRules,
+): IsrAuthRiskEntry[] {
+  // Layouts with a literal mode, for the cascade walk. dirPath '' covers
+  // everything; dirPath 'account' covers 'account' + 'account/…'.
+  const layoutModes: Array<{ dirPath: string; mode: string }> = []
+  for (const r of routes) {
+    if (!r.isLayout) continue
+    const lit = r.exports?.renderModeLiteral?.replace(/['"]/g, '')
+    if (lit !== undefined) layoutModes.push({ dirPath: r.dirPath, mode: lit })
+  }
+  const layoutModeFor = (dirPath: string): string | undefined => {
+    let best: { dirPath: string; mode: string } | undefined
+    for (const l of layoutModes) {
+      const covers = l.dirPath === '' || dirPath === l.dirPath || dirPath.startsWith(`${l.dirPath}/`)
+      if (covers && (best === undefined || l.dirPath.length > best.dirPath.length)) best = l
+    }
+    return best?.mode
+  }
+
+  const offenders: IsrAuthRiskEntry[] = []
+  for (const r of routes) {
+    if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
+    const exp = r.exports
+    if (!exp?.readsRequestAuth) continue
+    if (!(exp.hasLoader || exp.hasMiddleware || exp.hasGuard)) continue
+    const own = exp.renderModeLiteral?.replace(/['"]/g, '')
+    const effective = own ?? layoutModeFor(r.dirPath) ?? matchRouteRules(rules, r.urlPath) ?? appMode
+    if (effective === 'isr') offenders.push({ filePath: r.filePath, urlPath: r.urlPath })
+  }
+  return offenders
+}
+
+// Module-level dedup so the client + SSR module-graph loads (and dev
+// re-scans) warn once per file per process.
+const _warnedIsrAuth = new Set<string>()
+
+/** Emit the {@link detectIsrAuthRisk} warning (once per file per process). */
+export function warnIsrAuthRisk(offenders: IsrAuthRiskEntry[]): void {
+  for (const o of offenders) {
+    if (_warnedIsrAuth.has(o.filePath)) continue
+    _warnedIsrAuth.add(o.filePath)
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] ISR route "${o.filePath}" reads request cookie/authorization state `
+        + `(headers.get('cookie'|'authorization')) but zero({ isr }) has no custom cacheKey `
+        + `FUNCTION — the default cache key (and 'path-only') is shared across users, so one `
+        + `user's HTML would be cached and replayed to everyone. The runtime refuses to cache `
+        + `such responses, making the route effectively uncached SSR. Fix: supply `
+        + `isr: { cacheKey: (req) => ... } keyed on the auth state, or drop the auth read, `
+        + `or declare export const renderMode = 'ssr' for this route.`,
+    )
+  }
+}
+
 /**
  * The app-level pipeline a `mode: 'auto'` project needs: 'ssr' when ANY page
  * (declared or inferred) requires a server, else pure-static 'ssg'.
@@ -1731,7 +1826,8 @@ export async function collectFileRouteModes(
   appMode: RenderMode | 'auto' = 'ssr',
   rules?: import('./route-modes').RouteRules,
 ): Promise<FileRouteModeEntry[]> {
-  const { matchRouteRules } = await import('./route-modes')
+  // matchRouteRules comes from the module-level static import — route-modes
+  // is a value dep of this module now (detectIsrAuthRisk uses it too).
   const { isApiRoute } = await import('./api-routes')
   const infer = appMode === 'auto'
   const scanMode: RenderMode = infer ? 'ssg' : appMode

@@ -384,7 +384,7 @@ defineConfig({
 :::warning{title="ISR cache key — two trade-offs"}
 The default cache key is `url.pathname + url.search` — query strings affect the key, cookies and Authorization headers do NOT. Two adjustments depending on your route:
 
-**Auth-gated content** (loader reads `cookie` / `Authorization`): the default is unsafe — the first user's cached HTML serves every other user. Supply a `cacheKey` that varies on the session identifier:
+**Auth-gated content** (loader reads `cookie` / `Authorization`): the default is unsafe — the first user's cached HTML serves every other user. The build catches this: an ISR-mode route whose loader/middleware/guard source reads `headers.get('cookie')` / `headers.get('authorization')` without a custom `cacheKey` **function** gets a build/dev warning naming the file (the runtime additionally refuses to cache such responses per-request). Supply a `cacheKey` that varies on the session identifier:
 
 ```ts
 cacheKey: (req) => {

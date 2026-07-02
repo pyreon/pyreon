@@ -57,6 +57,9 @@ const SSR_MODE_MAP: Record<ProjectConfig['renderMode'], string> = {
   'ssr-string': 'string',
   ssg: 'string',
   spa: 'string',
+  // ISR caches complete HTML documents — the SWR handler wraps the
+  // buffered string renderer (a stream can't be cached-then-replayed).
+  isr: 'string',
 }
 
 export async function scaffold(config: ProjectConfig): Promise<void> {
