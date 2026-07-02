@@ -2252,16 +2252,45 @@ function emitSwiftIndexedClosure(
   idx: string,
   el: string,
   indent: number,
+  receiver?: ExprIR,
 ): string {
-  if (cb.stmts !== undefined && cb.stmts.length > 0) {
-    const pad = ' '.repeat(indent + 2)
-    const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
-    const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
-    const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
-    _exprInferCtx.locals = savedLocals
-    return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
+  // Bind the callback params' TYPES for the body emit — the indexed sibling
+  // of `emitSwiftMemberCallArgs`'s element scoping: without it the element
+  // param inferred `unknown` inside the closure, so the Int×Double coercion
+  // never fired (`.map((x, i) => x * 1.5)` emitted the bare `x * 1.5` —
+  // "cannot convert value of type 'Int' to expected argument type
+  // 'Double'"). The element param gets the receiver's element type; the
+  // index param is always Int (enumerated()'s offset). Bound by the JS
+  // param names (inference looks identifiers up by IR name, not the
+  // swiftIdent-mapped emit name). Restored via try/finally so sibling /
+  // nested closures each see their own bindings.
+  const elJs = cb.params[0]
+  const idxJs = cb.params[1]
+  const recvT = receiver !== undefined ? inferType(receiver, _activeInferCtx) : undefined
+  const bind: Array<[string, boolean, TypeIR | undefined]> = []
+  const setLocal = (name: string | undefined, t: TypeIR) => {
+    if (name === undefined) return
+    bind.push([name, _exprInferCtx.locals.has(name), _exprInferCtx.locals.get(name)])
+    _exprInferCtx.locals.set(name, t)
   }
-  return `{ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }`
+  if (recvT !== undefined && recvT.kind === 'array') setLocal(elJs, recvT.element)
+  setLocal(idxJs, { kind: 'number' })
+  try {
+    if (cb.stmts !== undefined && cb.stmts.length > 0) {
+      const pad = ' '.repeat(indent + 2)
+      const inlinedStmts = inlineValueConstsInStmts(cb.stmts)
+      const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
+      const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+      _exprInferCtx.locals = savedLocals
+      return `{ (${idx}, ${el}) in\n${lines}\n${' '.repeat(indent)}}`
+    }
+    return `{ (${idx}, ${el}) in ${emitSwiftExpr(cb.body, indent)} }`
+  } finally {
+    for (const [name, had, prev] of bind.reverse()) {
+      if (had) _exprInferCtx.locals.set(name, prev!)
+      else _exprInferCtx.locals.delete(name)
+    }
+  }
 }
 
 function emitSwiftExpr(e: ExprIR, indent: number): string {
@@ -2684,7 +2713,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().contains(where: ${emitSwiftIndexedClosure(cb, idx, el, indent)})`
+              return `${obj}.enumerated().contains(where: ${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
             }
             if (e.args.length === 1) {
               return `${obj}.contains(where: ${argExprs[0]!})`
@@ -2696,7 +2725,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().allSatisfy(${emitSwiftIndexedClosure(cb, idx, el, indent)})`
+              return `${obj}.enumerated().allSatisfy(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
             }
             if (e.args.length === 1) {
               return `${obj}.allSatisfy(${argExprs[0]!})`
@@ -2712,7 +2741,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().filter(${emitSwiftIndexedClosure(cb, idx, el, indent)}).map({ $0.element })`
+              return `${obj}.enumerated().filter(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)}).map({ $0.element })`
             }
             if (e.args.length === 1) return `${obj}.filter(${argExprs[0]!})`
             break
@@ -2732,7 +2761,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             if (cb) {
               const el = swiftIdent(cb.params[0]!)
               const idx = swiftIdent(cb.params[1]!)
-              return `${obj}.enumerated().${prop}(${emitSwiftIndexedClosure(cb, idx, el, indent)})`
+              return `${obj}.enumerated().${prop}(${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})`
             }
             break
           }
@@ -2982,7 +3011,7 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               if (cb) {
                 const el = swiftIdent(cb.params[0]!)
                 const idx = swiftIdent(cb.params[1]!)
-                return `(${obj}.enumerated().first(where: ${emitSwiftIndexedClosure(cb, idx, el, indent)})?.offset ?? -1)`
+                return `(${obj}.enumerated().first(where: ${emitSwiftIndexedClosure(cb, idx, el, indent, e.callee.object)})?.offset ?? -1)`
               }
             }
             if (e.args.length === 1) return `(${obj}.firstIndex(where: ${argExprs[0]!}) ?? -1)`
@@ -3295,6 +3324,29 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       const rightStr = emitSwiftExpr(e.right, indent)
       if (prevEnumType !== undefined || _activeEnumType !== undefined) {
         _activeEnumType = prevEnumType
+      }
+      // Mixed Int×Double comparison — Swift requires SAME-type operands for
+      // `> < >= <= == !=` (JS compares numbers freely). The arithmetic ops
+      // already coerce (the `binary` case); comparisons hit the same wall
+      // the moment one side is Double — `x * 1.5 > i` inside an indexed
+      // filter callback failed "referencing operator function '>' on
+      // 'BinaryInteger' requires…". Coerce the INT side when EXACTLY one
+      // operand is Double (numericFloatness returns 'other' for
+      // non-numbers, so string/enum/bool comparisons are untouched).
+      // A numeric LITERAL never needs the wrap — Swift self-types integer
+      // literals in a Double context (ExpressibleByIntegerLiteral), so
+      // `Double(x) * 1.5 > 2` already compiles; coercing it would churn
+      // every existing emit for zero gain. Only NON-literal Int operands
+      // (params, signal reads, member chains) get wrapped.
+      {
+        const lf = numericFloatness(e.left)
+        const rf = numericFloatness(e.right)
+        if (lf === 'double' && rf === 'int' && e.right.kind !== 'literal') {
+          return `${leftStr} ${e.op} Double(${rightStr})`
+        }
+        if (lf === 'int' && rf === 'double' && e.left.kind !== 'literal') {
+          return `Double(${leftStr}) ${e.op} ${rightStr}`
+        }
       }
       return `${leftStr} ${e.op} ${rightStr}`
     }

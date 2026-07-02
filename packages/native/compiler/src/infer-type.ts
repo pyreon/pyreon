@@ -1133,6 +1133,20 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       const t = inferType(expr.then, ctx)
       const o = inferType(expr.otherwise, ctx)
       if (t.kind === o.kind) return t
+      // Empty-array-literal branch unification — `cond ? [x] : []` (the
+      // conditional filter-map idiom, esp. as a `.flatMap` body) and the
+      // mirrored `cond ? [] : [x]`. A bare `[]` carries no element type so
+      // it infers `unknown`, degrading the whole ternary (and the computed's
+      // annotation) to `Any` — but the VALUE is statically an empty array,
+      // and JS types `cond ? T[] : []` as `T[]`. Both emits already compile
+      // under the unified annotation (Swift types `[]` bidirectionally from
+      // context; Kotlin's `listOf()` is `List<Nothing>`, a subtype). Gated on
+      // the branch EXPR being an untyped empty array LITERAL — never on a
+      // mere `unknown` type, which could be anything.
+      const isEmptyArrayLit = (x: ExprIR): boolean =>
+        x.kind === 'array' && x.elements.length === 0 && x.elementType === undefined
+      if (t.kind === 'array' && isEmptyArrayLit(expr.otherwise)) return t
+      if (o.kind === 'array' && isEmptyArrayLit(expr.then)) return o
       return { kind: 'unknown' }
     }
     case 'update':
