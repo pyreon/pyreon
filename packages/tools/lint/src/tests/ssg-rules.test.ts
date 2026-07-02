@@ -67,6 +67,53 @@ export const revalidate = TTL`
   })
 })
 
+// ─── 2b) pyreon/missing-get-static-paths — appMode option (zero-modes-dx I) ─
+
+describe('pyreon/missing-get-static-paths — appMode option', () => {
+  const GSP_ID = 'pyreon/missing-get-static-paths'
+  const lintWithAppMode = (source: string, filePath: string, appMode: string) =>
+    lintFile(filePath, source, allRules, {
+      rules: { [GSP_ID]: ['warn', { appMode }] },
+    })
+
+  it("appMode 'ssr': undeclared dynamic route is QUIET (renders per-request)", () => {
+    const source = `export default function Post() { return null }`
+    const result = lintWithAppMode(source, 'src/routes/posts/[id].tsx', 'ssr')
+    expect(result.diagnostics.map((d) => d.ruleId)).not.toContain(GSP_ID)
+  })
+
+  it("appMode 'ssr': explicit renderMode = 'ssg' declaration still FIRES (joins the prerender pass)", () => {
+    const source = `export const renderMode = 'ssg'
+export default function Post() { return null }`
+    const result = lintWithAppMode(source, 'src/routes/posts/[id].tsx', 'ssr')
+    expect(result.diagnostics.map((d) => d.ruleId)).toContain(GSP_ID)
+  })
+
+  it("appMode 'isr' + 'spa' behave like 'ssr' (server/runtime modes)", () => {
+    const source = `export default function Post() { return null }`
+    for (const mode of ['isr', 'spa']) {
+      const result = lintWithAppMode(source, 'src/routes/posts/[id].tsx', mode)
+      expect(result.diagnostics.map((d) => d.ruleId)).not.toContain(GSP_ID)
+    }
+  })
+
+  it("appMode 'ssg' (and unset) keeps the conservative default: FIRES on undeclared", () => {
+    const source = `export default function Post() { return null }`
+    expect(
+      lintWithAppMode(source, 'src/routes/posts/[id].tsx', 'ssg').diagnostics.map((d) => d.ruleId),
+    ).toContain(GSP_ID)
+    expect(diagIds(lintRoute(source, 'src/routes/posts/[id].tsx'))).toContain(GSP_ID)
+  })
+
+  it("appMode 'ssr' + file 'ssg' declaration WITH getStaticPaths is quiet", () => {
+    const source = `export const renderMode = 'ssg'
+export const getStaticPaths = () => [{ params: { id: '1' } }]
+export default function Post() { return null }`
+    const result = lintWithAppMode(source, 'src/routes/posts/[id].tsx', 'ssr')
+    expect(result.diagnostics.map((d) => d.ruleId)).not.toContain(GSP_ID)
+  })
+})
+
 // ─── 2) pyreon/missing-get-static-paths ────────────────────────────────────
 
 describe('pyreon/missing-get-static-paths (M3.5)', () => {

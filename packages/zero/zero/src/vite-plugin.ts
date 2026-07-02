@@ -51,6 +51,8 @@ import { renderErrorOverlay } from "./error-overlay";
 import {
 	generateMiddlewareModule,
 	applyModeInference,
+	detectIsrAuthRisk,
+	warnIsrAuthRisk,
 	generateRouteModuleFromRoutes,
 	resolveAutoModeSync,
 	scanRouteFiles,
@@ -341,6 +343,15 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 						: baseRoutes;
 					// mode: 'auto' — inference-as-declaration (see zeroPlugin head).
 					const routes = config._autoMode ? applyModeInference(expandedRoutes) : expandedRoutes;
+					// Build-time ISR safety: an isr-mode route whose source reads
+					// request cookie/authorization state is per-user — with the
+					// default cache key (or 'path-only') the runtime REFUSES to
+					// cache it (silent per-request refusal in prod logs). Name the
+					// file now, at build/dev time. A custom cacheKey FUNCTION is
+					// the user opting into per-user caching — suppresses the warn.
+					if (typeof config.isr?.cacheKey !== "function") {
+						warnIsrAuthRisk(detectIsrAuthRisk(routes, config.mode ?? "ssr", config.routeRules));
+					}
 					// SSG mode: lazy() route splitting by default (parity with
 					// SSR/SPA). Opt-out via `ssg.splitChunks: false` for tiny
 					// sites that prefer single-chunk + instant navigation.

@@ -35,6 +35,7 @@ function baseConfig(overrides: Partial<ProjectConfig>): ProjectConfig {
     aiTools: [],
     compat: 'none',
     lint: false,
+    typedRoutes: false,
     ...overrides,
   }
 }
@@ -50,6 +51,7 @@ describe('scaffold — output file-set snapshots', () => {
           features: ['store', 'query', 'forms', 'feature'],
           aiTools: ['mcp', 'claude'],
           lint: true,
+          typedRoutes: false,
         }),
       )
       expect(await listFiles(dir)).toMatchInlineSnapshot(`

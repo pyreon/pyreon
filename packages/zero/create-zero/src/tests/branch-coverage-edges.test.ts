@@ -23,6 +23,7 @@ const base = (overrides: Partial<ProjectConfig> = {}): ProjectConfig => ({
   compat: 'none',
   aiTools: [],
   lint: false,
+  typedRoutes: false,
   ...overrides,
 })
 
@@ -109,6 +110,19 @@ describe('vite-config — compat flag emits compat option', () => {
     const config = base({ compat: 'none' })
     const out = generateViteConfig(config)
     expect(out).not.toContain('compat:')
+  })
+})
+
+describe('vite-config — ISR mode + typed routes (zero-modes-dx N)', () => {
+  it("isr mode emits `mode: 'isr'` with a default revalidate window", () => {
+    const out = generateViteConfig(base({ renderMode: 'isr' }))
+    expect(out).toContain("mode: 'isr'")
+    expect(out).toContain('isr: { revalidate: 60 }')
+  })
+
+  it('typedRoutes: true emits the zero() flag; false emits nothing', () => {
+    expect(generateViteConfig(base({ typedRoutes: true }))).toContain('typedRoutes: true')
+    expect(generateViteConfig(base({ typedRoutes: false }))).not.toContain('typedRoutes')
   })
 })
 

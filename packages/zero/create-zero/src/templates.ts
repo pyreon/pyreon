@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 
 export type TemplateId = 'app' | 'blog' | 'dashboard' | 'monorepo'
 
-export type RenderMode = 'ssr-stream' | 'ssr-string' | 'ssg' | 'spa'
+export type RenderMode = 'ssr-stream' | 'ssr-string' | 'ssg' | 'spa' | 'isr'
 
 export type AdapterId = 'vercel' | 'cloudflare' | 'netlify' | 'node' | 'bun' | 'static'
 
@@ -45,6 +45,14 @@ export interface ProjectConfig {
   compat: 'none' | 'react' | 'vue' | 'solid' | 'preact'
   /** Include @pyreon/lint with recommended preset */
   lint: boolean
+  /**
+   * Wire `zero({ typedRoutes: true })` — `<Link href>` autocompletes real
+   * route paths + rejects typos at compile time. The generated
+   * `src/pyreon-routes.d.ts` is gitignored by the shared template. Default
+   * ON for new apps (there is no cost: the file regenerates on route
+   * add/remove and `RouteHref` still accepts any string for dynamic paths).
+   */
+  typedRoutes: boolean
 }
 
 // ─── Feature categories + presets ──────────────────────────────────────────

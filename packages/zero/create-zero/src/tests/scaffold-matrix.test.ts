@@ -39,6 +39,7 @@ function base(o: Partial<ProjectConfig>): ProjectConfig {
     aiTools: ['mcp', 'claude'],
     compat: 'none',
     lint: true,
+    typedRoutes: false,
     ...o,
   }
 }

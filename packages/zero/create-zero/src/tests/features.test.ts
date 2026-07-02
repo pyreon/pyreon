@@ -16,6 +16,23 @@ import { parseArgs } from '../args'
 import { resolveFeatures } from '../prompts'
 import { PRESETS } from '../templates'
 
+describe('parseArgs — isr mode + typed-routes flags (zero-modes-dx N)', () => {
+  it('accepts --mode isr', () => {
+    expect(parseArgs(['--mode', 'isr']).mode).toBe('isr')
+  })
+
+  it('parses --typed-routes / --no-typed-routes; undefined when absent', () => {
+    expect(parseArgs(['--typed-routes']).typedRoutes).toBe(true)
+    expect(parseArgs(['--no-typed-routes']).typedRoutes).toBe(false)
+    expect(parseArgs([]).typedRoutes).toBeUndefined()
+  })
+
+  it('--no-typed-routes is NOT swallowed by the --no-<feature> toggle', () => {
+    const args = parseArgs(['--no-typed-routes'])
+    expect(args.withoutFeatures.size).toBe(0)
+  })
+})
+
 describe('parseArgs — feature flags', () => {
   it('parses --preset', () => {
     const args = parseArgs(['--preset', 'standard'])
@@ -90,6 +107,7 @@ describe('resolveFeatures — priority resolution', () => {
       compat: undefined,
       packageStrategy: undefined,
       lint: undefined,
+      typedRoutes: undefined,
     }
   }
 

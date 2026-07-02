@@ -78,11 +78,12 @@ function interactiveArgs(over: Partial<CliArgs> = {}): CliArgs {
     compat: undefined,
     packageStrategy: undefined,
     lint: undefined,
+    typedRoutes: undefined,
     ...over,
   }
 }
 
-const MODES = ['ssr-stream', 'ssr-string', 'ssg', 'spa']
+const MODES = ['ssr-stream', 'ssr-string', 'ssg', 'spa', 'isr']
 
 beforeEach(() => {
   state.groupMultiselectCalls.length = 0
@@ -176,5 +177,54 @@ describe('resolveFeatures — interactive branches in isolation', () => {
       const features = await resolveFeatures(interactiveArgs(), [], false)
       expect(features.sort()).toEqual([...PRESETS[id as keyof typeof PRESETS].features].sort())
     }
+  })
+})
+
+describe('runPrompts — isr mode + typed routes (zero-modes-dx N)', () => {
+  it('isr filters the static adapter from the deploy select; typedRoutes confirm lands in config', async () => {
+    const p = await import('@clack/prompts')
+    ;(p.select as ReturnType<typeof vi.fn>).mockClear()
+    Object.assign(selectReturns, {
+      Template: 'app',
+      'Rendering mode': 'isr',
+      'Deployment target': 'node',
+      'Feature preset': 'minimal',
+      'Package imports': 'meta',
+      'Migrating from': 'none',
+    })
+    Object.assign(multiselectReturns, {
+      'Backend integrations': [],
+      'AI tooling': [],
+    })
+    state.confirmReturn = true // lint + typedRoutes confirms
+    const cfg = await runPrompts(interactiveArgs())
+    expect(cfg.renderMode).toBe('isr')
+    expect(cfg.typedRoutes).toBe(true)
+    const deployCall = (p.select as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => (c[0] as { message: string }).message === 'Deployment target',
+    )
+    expect(deployCall).toBeDefined()
+    const values = (deployCall![0] as { options: Array<{ value: string }> }).options.map(
+      (o) => o.value,
+    )
+    expect(values).toContain('node')
+    expect(values).not.toContain('static')
+  })
+
+  it('--no-typed-routes arg skips the prompt and lands false', async () => {
+    Object.assign(selectReturns, {
+      Template: 'app',
+      'Rendering mode': 'ssg',
+      'Deployment target': 'static',
+      'Feature preset': 'minimal',
+      'Package imports': 'meta',
+      'Migrating from': 'none',
+    })
+    Object.assign(multiselectReturns, {
+      'Backend integrations': [],
+      'AI tooling': [],
+    })
+    const cfg = await runPrompts(interactiveArgs({ typedRoutes: false }))
+    expect(cfg.typedRoutes).toBe(false)
   })
 })

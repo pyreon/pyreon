@@ -402,7 +402,8 @@ Every prompt maps to a flag, so the entire flow is scriptable. Run `--help` (or 
 | --- | --- |
 | `[name]` | Positional project name (required with `--yes`) |
 | `--template <id>` | `app` / `blog` / `dashboard` / `monorepo` |
-| `--mode <id>` | `ssr-stream` / `ssr-string` / `ssg` / `spa` |
+| `--mode <id>` | `ssr-stream` / `ssr-string` / `ssg` / `spa` / `isr` |
+| `--typed-routes` / `--no-typed-routes` | Typed routes (`<Link href>` autocomplete + typo rejection); default on |
 | `--adapter <id>` | `vercel` / `cloudflare` / `netlify` / `node` / `bun` / `static` |
 | `--preset <id>` | `minimal` / `standard` / `dashboard` / `full` (composes with `--with-X` / `--no-X`) |
 | `--features <csv>` | e.g. `store,query,forms` — overrides `--preset` entirely |

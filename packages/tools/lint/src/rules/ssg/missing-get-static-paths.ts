@@ -27,6 +27,17 @@
  * read `vite.config.ts` to know which mode the app uses. The warn
  * level signals "review whether this is intentional" without blocking
  * the build.
+ *
+ * **App-mode awareness (`appMode` option).** The rule can't read
+ * `vite.config.ts`, so the app's mode is declared in lint config:
+ * `"pyreon/missing-get-static-paths": ["warn", { "appMode": "ssr" }]`.
+ * Under a server app mode (`'ssr'` / `'isr'` / `'spa'`) the polarity
+ * FLIPS: undeclared dynamic routes render per-request (no prerender,
+ * nothing silently skipped), so the rule stays quiet — it fires ONLY
+ * on routes that explicitly declare `renderMode = 'ssg'` (those join
+ * the prerender pass and hit the same silent skip). Unset (or
+ * `'ssg'`) keeps the conservative default: fire on every undeclared
+ * dynamic route.
  */
 import type { Rule, VisitorCallbacks } from '../../types'
 
@@ -43,6 +54,7 @@ export const missingGetStaticPaths: Rule = {
       'Dynamic route files (`[id].tsx`, `[...slug].tsx`) should export `getStaticPaths` — under `mode: "ssg"` the SSG plugin silently skips routes without it.',
     severity: 'warn',
     fixable: false,
+    schema: { appMode: 'string' },
   },
   create(context) {
     const filePath = context.getFilePath()
@@ -53,9 +65,16 @@ export const missingGetStaticPaths: Rule = {
     if (!DYNAMIC_FILENAME_RE.test(filePath)) return {}
     if (SPECIAL_ROUTE_RE.test(filePath)) return {}
 
+    // `appMode` option — under a server app mode, undeclared dynamic
+    // routes render per-request; only explicit `renderMode = 'ssg'`
+    // declarations join the prerender pass (see rule docblock).
+    const appMode = context.getOptions().appMode
+    const serverAppMode = appMode === 'ssr' || appMode === 'isr' || appMode === 'spa'
+
     let hasGetStaticPaths = false
     let hasDefaultExport = false
     let declaresRuntimeMode = false
+    let declaresSsgMode = false
     let programSpan: { start: number; end: number } | null = null
 
     const callbacks: VisitorCallbacks = {
@@ -84,6 +103,8 @@ export const missingGetStaticPaths: Rule = {
                   : undefined
               if (value === 'ssr' || value === 'isr' || value === 'spa') {
                 declaresRuntimeMode = true
+              } else if (value === 'ssg') {
+                declaresSsgMode = true
               }
             }
           }
@@ -105,6 +126,9 @@ export const missingGetStaticPaths: Rule = {
         if (!hasDefaultExport) return
         if (declaresRuntimeMode) return
         if (hasGetStaticPaths || !programSpan) return
+        // Server app mode: undeclared routes render per-request — only an
+        // explicit file-level 'ssg' declaration joins the prerender pass.
+        if (serverAppMode && !declaresSsgMode) return
         context.report({
           message:
             'Dynamic route file is missing `export const getStaticPaths` — under `mode: "ssg"` the SSG plugin silently skips this route, so the dist won\'t contain prerendered HTML. Either add `export const getStaticPaths = () => [{ params: { ... } }, ...]` enumerating the concrete values, OR declare the route\'s own mode: `export const renderMode = \'ssr\'` (server-rendered) / `\'spa\'` (client shell) — or switch the app to `mode: "ssr"` / `mode: "isr"`.',

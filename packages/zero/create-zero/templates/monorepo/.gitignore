@@ -7,3 +7,4 @@ lib
 .env.local
 coverage
 .cache/
+src/pyreon-routes.d.ts
