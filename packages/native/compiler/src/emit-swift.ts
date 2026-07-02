@@ -2027,6 +2027,9 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
     case 'switch': {
       const pad = ' '.repeat(indent)
       const disc = emitSwiftExpr(s.discriminant, indent)
+      const discT = inferType(s.discriminant, _activeInferCtx)
+      const discEnumName =
+        discT.kind === 'typeRef' && _enumNames.has(discT.name) ? discT.name : undefined
       const caseLines = s.cases
         .map((c) => {
           const bodyLines = c.body
@@ -2035,7 +2038,15 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
           // A Swift `case` body cannot be empty — emit `break` as a no-op.
           const body = bodyLines.length > 0 ? bodyLines : `${pad}    break`
           if (c.tests.length === 0) return `${pad}  default:\n${body}`
+          // ENUM-typed discriminant: emit the case LABELS with the
+          // active-enum context set so string-literal tests rewrite to
+          // `.case` — a raw `case "busy":` against an enum subject is a
+          // swiftc type error (String pattern vs enum). Labels ONLY —
+          // case BODIES must keep string literals as strings.
+          const prevEnum = _activeEnumType
+          if (discEnumName !== undefined) _activeEnumType = discEnumName
           const labels = c.tests.map((t) => emitSwiftExpr(t, indent)).join(', ')
+          _activeEnumType = prevEnum
           return `${pad}  case ${labels}:\n${body}`
         })
         .join('\n')
@@ -4597,6 +4608,33 @@ function readStaticAttr(
 }
 
 /**
+ * Read an attr as an emitted Swift STRING EXPRESSION — the dynamic
+ * companion to `readStaticAttr` for string-slot modifiers
+ * (`.accessibilityIdentifier(...)` / `.accessibilityLabel(...)` accept
+ * any String expr, not just literals). A literal / resolvable const
+ * emits the quoted literal; a TEMPLATE emits the native interpolated
+ * string; any other expression interpolates (`"\(expr)"` — matches JS
+ * string coercion). Pre-fix these attrs were read via `readStaticAttr`
+ * only, so a dynamic testid/label (`data-testid={\`row-\${i}\`}`) was
+ * SILENTLY DROPPED — the a11y/e2e-critical shape inside For rows.
+ */
+function readStringAttrExpr(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+  indent: number,
+): string | undefined {
+  const stat = readStaticAttr(e, name)
+  if (stat !== undefined) return JSON.stringify(String(stat))
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      if (a.value.kind === 'template') return emitSwiftExpr(a.value, indent)
+      return `"\\(${emitSwiftExpr(a.value, indent)})"`
+    }
+  }
+  return undefined
+}
+
+/**
  * Tags that emit a plain SwiftUI layout CONTAINER (VStack / HStack /
  * ZStack / ScrollView). Used by the `data-testid` emit: containers
  * need `.accessibilityElement(children: .contain)` for their
@@ -4669,21 +4707,21 @@ function emitSwiftLayoutModifiers(
   // semantic to them would BREAK their tap targeting, hence the
   // tag-gated emit. Compose is unaffected (`Modifier.testTag` adds
   // its own semantics node on any composable).
-  const testid = readStaticAttr(e, 'data-testid')
-  if (typeof testid === 'string') {
+  const testid = readStringAttrExpr(e, 'data-testid', 0)
+  if (testid !== undefined) {
     if (SWIFT_CONTAINER_TAGS.has(e.tag)) {
       parts.push('.accessibilityElement(children: .contain)')
     }
-    parts.push(`.accessibilityIdentifier(${JSON.stringify(testid)})`)
+    parts.push(`.accessibilityIdentifier(${testid})`)
   }
   // Cross-platform a11y vocabulary (`@pyreon/primitives` AccessibilityProps)
   // → SwiftUI a11y modifiers — the iOS lowering of the same neutral props the
   // web lowers to aria-* (`collectPassthroughAttrs`). `accessibilityLabel`
   // sets the VoiceOver name (icon-only buttons, images); `accessibilityHidden`
   // removes the element + its subtree from the accessibility tree.
-  const a11yLabel = readStaticAttr(e, 'accessibilityLabel')
-  if (typeof a11yLabel === 'string') {
-    parts.push(`.accessibilityLabel(${JSON.stringify(a11yLabel)})`)
+  const a11yLabel = readStringAttrExpr(e, 'accessibilityLabel', 0)
+  if (a11yLabel !== undefined) {
+    parts.push(`.accessibilityLabel(${a11yLabel})`)
   }
   if (readStaticAttr(e, 'accessibilityHidden') === true) {
     parts.push('.accessibilityHidden(true)')
