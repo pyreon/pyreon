@@ -23,6 +23,7 @@ import {
   isReReadableExpr,
   substituteIdentifier,
   synthLiteralStructName,
+  classifyDynamicStylingAttr,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -4597,6 +4598,34 @@ function readStaticAttr(
 }
 
 /**
+ * Resolve a STYLING attr (`gap`/`padding*`/`background`/`radius`) to
+ * emitted Swift source. Static (literal / resolvable const) → the
+ * resolved token; TERNARY OF TWO LITERALS → a native conditional with
+ * both branches compile-resolved (`(dense ? 8 : 16)`); any other
+ * dynamic value → NAMED warning + undefined (pre-fix the whole
+ * modifier was SILENTLY dropped — zero warnings).
+ */
+function swiftStylingValue(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+  resolve: (v: string | number) => string | number,
+): string | undefined {
+  const stat = readStaticAttr(e, name)
+  if (typeof stat === 'number' || typeof stat === 'string') return String(resolve(stat))
+  const dyn = classifyDynamicStylingAttr(e, name)
+  if (dyn.kind === 'ternary') {
+    const cond = swiftCondition(dyn.cond, (x) => emitSwiftExpr(x, 0))
+    return `(${cond} ? ${resolve(dyn.a)} : ${resolve(dyn.b)})`
+  }
+  if (dyn.kind === 'dynamic') {
+    _emitWarnings.push(
+      `<${e.tag} ${name}={…}>: styling tokens resolve at COMPILE time — a fully-dynamic ${name} has no native lowering (it was silently dropped before). Use a fixed token, or a ternary of two literal tokens (${name}={cond ? "sm" : "lg"}).`,
+    )
+  }
+  return undefined
+}
+
+/**
  * Tags that emit a plain SwiftUI layout CONTAINER (VStack / HStack /
  * ZStack / ScrollView). Used by the `data-testid` emit: containers
  * need `.accessibilityElement(children: .contain)` for their
@@ -4630,25 +4659,27 @@ function emitSwiftLayoutModifiers(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string {
   const parts: string[] = []
-  const padding = readStaticAttr(e, 'padding')
-  if (typeof padding === 'number' || typeof padding === 'string') {
-    parts.push(`.padding(${resolveSpace(padding)})`)
+  const padding = swiftStylingValue(e, 'padding', resolveSpace)
+  if (padding !== undefined) {
+    parts.push(`.padding(${padding})`)
   }
-  const paddingX = readStaticAttr(e, 'paddingX')
-  if (typeof paddingX === 'number' || typeof paddingX === 'string') {
-    parts.push(`.padding(.horizontal, ${resolveSpace(paddingX)})`)
+  const paddingX = swiftStylingValue(e, 'paddingX', resolveSpace)
+  if (paddingX !== undefined) {
+    parts.push(`.padding(.horizontal, ${paddingX})`)
   }
-  const paddingY = readStaticAttr(e, 'paddingY')
-  if (typeof paddingY === 'number' || typeof paddingY === 'string') {
-    parts.push(`.padding(.vertical, ${resolveSpace(paddingY)})`)
+  const paddingY = swiftStylingValue(e, 'paddingY', resolveSpace)
+  if (paddingY !== undefined) {
+    parts.push(`.padding(.vertical, ${paddingY})`)
   }
-  const background = readStaticAttr(e, 'background')
-  if (typeof background === 'string') {
-    parts.push(`.background(${resolveColor(background, 'swift')})`)
+  const background = swiftStylingValue(e, 'background', (v) =>
+    resolveColor(String(v), 'swift'),
+  )
+  if (background !== undefined) {
+    parts.push(`.background(${background})`)
   }
-  const radius = readStaticAttr(e, 'radius')
-  if (typeof radius === 'string') {
-    parts.push(`.cornerRadius(${resolveRadius(radius)})`)
+  const radius = swiftStylingValue(e, 'radius', (v) => resolveRadius(String(v)))
+  if (radius !== undefined) {
+    parts.push(`.cornerRadius(${radius})`)
   }
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also
@@ -4739,9 +4770,9 @@ function emitSwiftStack(
       `alignment: ${resolveAlign(align, 'swift', isRow ? 'vertical' : 'horizontal')}`,
     )
   }
-  const gap = readStaticAttr(e, 'gap')
-  if (typeof gap === 'number' || typeof gap === 'string') {
-    initArgs.push(`spacing: ${resolveSpace(gap)}`)
+  const gap = swiftStylingValue(e, 'gap', resolveSpace)
+  if (gap !== undefined) {
+    initArgs.push(`spacing: ${gap}`)
   }
   const initSignature = initArgs.length > 0 ? `(${initArgs.join(', ')})` : ''
   const modifiers = emitSwiftLayoutModifiers(e)

@@ -550,3 +550,39 @@ function substituteInChildren(
   }
   return out
 }
+
+/**
+ * Classify a styling attr's DYNAMIC value (called only after the static
+ * path — literal / resolvable const via readStaticAttr — came up empty).
+ * Styling tokens (`gap`/`pad`/`background`/`radius`) resolve at COMPILE
+ * time, so the only faithful dynamic form is a TERNARY OF TWO LITERALS
+ * (`gap={dense() ? "sm" : "lg"}` — the binary-state idiom): both
+ * branches compile-resolve and the condition emits natively. Anything
+ * else is `dynamic` — the caller warns loudly (pre-fix the whole
+ * modifier was SILENTLY dropped).
+ */
+export function classifyDynamicStylingAttr(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+):
+  | { kind: 'none' }
+  | { kind: 'ternary'; cond: ExprIR; a: string | number; b: string | number }
+  | { kind: 'dynamic' } {
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      const v = a.value
+      if (v.kind === 'literal') return { kind: 'none' }
+      if (
+        v.kind === 'ternary' &&
+        v.then.kind === 'literal' &&
+        v.otherwise.kind === 'literal' &&
+        (typeof v.then.value === 'string' || typeof v.then.value === 'number') &&
+        (typeof v.otherwise.value === 'string' || typeof v.otherwise.value === 'number')
+      ) {
+        return { kind: 'ternary', cond: v.cond, a: v.then.value, b: v.otherwise.value }
+      }
+      return { kind: 'dynamic' }
+    }
+  }
+  return { kind: 'none' }
+}
