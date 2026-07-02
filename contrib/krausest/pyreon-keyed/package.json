@@ -1,0 +1,31 @@
+{
+  "name": "js-framework-benchmark-pyreon",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/main.js",
+  "js-framework-benchmark": {
+    "frameworkVersionFromPackage": "@pyreon/core",
+    "frameworkHomeURL": "https://pyreon.dev/",
+    "language": "TypeScript"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build-prod": "vite build"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/krausest/js-framework-benchmark",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/krausest/js-framework-benchmark.git"
+  },
+  "dependencies": {
+    "@pyreon/core": "^0.38.0",
+    "@pyreon/reactivity": "^0.38.0",
+    "@pyreon/runtime-dom": "^0.38.0"
+  },
+  "devDependencies": {
+    "@pyreon/vite-plugin": "^0.38.0",
+    "typescript": "^5.8.0",
+    "vite": "^8.0.0"
+  }
+}
