@@ -164,9 +164,15 @@ describe('parseFileRoutes', () => {
     }
   })
 
-  it('strips groups from dirPath', () => {
+  it('KEEPS groups in dirPath (tree boundary) while stripping them from urlPath', () => {
+    // Pre-fix this test asserted dirPath === '' — codifying the bug: group
+    // stripping collapsed `(auth)/` onto the parent node, so a group's
+    // `_layout.tsx` landed on the SAME tree node as the root layout and
+    // `placeRoute`'s last-wins assignment silently clobbered one of them.
+    // Groups are URL-invisible but they ARE nesting boundaries.
     const routes = parseFileRoutes(['(auth)/login.tsx'])
-    expect(routes[0]?.dirPath).toBe('')
+    expect(routes[0]?.dirPath).toBe('(auth)')
+    expect(routes[0]?.urlPath).toBe('/login')
   })
 
   it('uses default renderMode', () => {

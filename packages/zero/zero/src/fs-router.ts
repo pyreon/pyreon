@@ -864,10 +864,18 @@ function parseFilePath(filePath: string, defaultMode: RenderMode): FileRoute {
   const isNotFound = fileName === '_404' || fileName === '_not-found'
   const isCatchAll = route.includes('[...')
 
-  // Get directory path (strip groups for consistent grouping)
+  // Directory path — KEEP route-group segments. Groups are URL-invisible
+  // (filePathToUrlPath strips them) but they are REAL tree boundaries: a
+  // `(app)/_layout.tsx` wraps exactly the group's children. The previous
+  // group-stripping here collapsed `(app)/` onto the parent directory, so
+  // `(app)/_layout.tsx` landed on the SAME tree node as the root
+  // `_layout.tsx` — and `placeRoute`'s `node.layout = route` (last-wins)
+  // silently clobbered one of them (same class for `_error` / `_loading` /
+  // `_404` in groups, and sibling groups clobbered each other). The group
+  // layout rendered NOTHING with no error — RouterView → RouterView → page.
   const parts = route.split('/')
   parts.pop() // remove filename
-  const dirPath = parts.filter((s) => !(s.startsWith('(') && s.endsWith(')'))).join('/')
+  const dirPath = parts.join('/')
 
   // Convert file path to URL pattern
   const urlPath = filePathToUrlPath(route)
@@ -994,11 +1002,36 @@ function resolveNode(root: RouteNode, dirPath: string): RouteNode {
 }
 
 function placeRoute(node: RouteNode, route: FileRoute) {
-  if (route.isLayout) node.layout = route
-  else if (route.isError) node.error = route
-  else if (route.isLoading) node.loading = route
-  else if (route.isNotFound) node.notFound = route
-  else node.pages.push(route)
+  // Loud-clobber guard: each special slot is single-occupancy per tree node.
+  // A second file landing in the SAME slot means two files are competing for
+  // one position (the historical group-layout bug was exactly this — group
+  // stripping in dirPath sent `(app)/_layout` onto the root node, silently
+  // replacing the root `_layout`). A filesystem can't produce two `_layout`
+  // files in one directory, so any overwrite here is a route-expansion bug —
+  // surface it instead of letting one layout vanish without a trace.
+  const warnClobber = (slot: string, prev: FileRoute) => {
+    if (process.env.NODE_ENV !== 'production') {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        `[Pyreon] fs-router: two ${slot} files resolved to the same route-tree node — ` +
+          `"${route.filePath}" is replacing "${prev.filePath}". ` +
+          'One of them will not render. This indicates a route-expansion bug (please report it).',
+      )
+    }
+  }
+  if (route.isLayout) {
+    if (node.layout) warnClobber('_layout', node.layout)
+    node.layout = route
+  } else if (route.isError) {
+    if (node.error) warnClobber('_error', node.error)
+    node.error = route
+  } else if (route.isLoading) {
+    if (node.loading) warnClobber('_loading', node.loading)
+    node.loading = route
+  } else if (route.isNotFound) {
+    if (node.notFound) warnClobber('_404', node.notFound)
+    node.notFound = route
+  } else node.pages.push(route)
 }
 
 function buildRouteTree(routes: FileRoute[]): RouteNode {
