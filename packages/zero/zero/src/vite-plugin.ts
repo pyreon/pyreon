@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import type { Plugin, ViteDevServer } from 'vite'
@@ -221,7 +221,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	let userConfig: ZeroConfig;
 	if (userInput.mode === 'auto') {
 		const routesDirGuess = `${process.cwd()}/src/routes`;
-		const { mode, pages } = resolveAutoModeSync(routesDirGuess, userInput.routeRules);
+		const { mode, pages } = resolveAutoModeSync(routesDirGuess, userInput.routeRules, {
+			existsSync,
+			readdirSync,
+			readFileSync,
+			statSync,
+		});
 		// oxlint-disable-next-line no-console
 		console.log(
 			`[Pyreon] mode: 'auto' → '${mode}' (${pages} page route(s) scanned; the build mode table shows the per-route inference — explicit renderMode exports and routeRules always win)`,

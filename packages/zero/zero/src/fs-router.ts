@@ -1628,9 +1628,13 @@ export function resolveAutoAppMode(
  */
 export function resolveAutoModeSync(
   routesDir: string,
-  rules?: import('./route-modes').RouteRules,
+  rules: import('./route-modes').RouteRules | undefined,
+  // fs is INJECTED (not imported) — this module is reachable from the
+  // client-safe entry, so it must not carry a static node:fs import, and
+  // the built lib is ESM so `require` doesn't exist. The caller
+  // (zeroPlugin — server-only) passes the real node:fs.
+  fs: Pick<typeof import('node:fs'), 'existsSync' | 'readdirSync' | 'readFileSync' | 'statSync'>,
 ): { mode: 'ssr' | 'ssg'; pages: number } {
-  const fs = require('node:fs') as typeof import('node:fs')
   if (!fs.existsSync(routesDir)) return { mode: 'ssg', pages: 0 }
   const files: string[] = []
   const walk = (dir: string): void => {

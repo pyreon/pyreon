@@ -1195,7 +1195,8 @@ describe("mode: 'auto' inference (EXPERIMENTAL)", () => {
       }
       write('index.tsx', 'export default () => null')
       write('dash.tsx', 'export default () => null\nexport const loader = async () => ({})')
-      const sync = resolveAutoModeSync(dir)
+      const nodeFs = require('node:fs')
+      const sync = resolveAutoModeSync(dir, undefined, nodeFs)
       expect(sync).toEqual({ mode: 'ssr', pages: 2 })
 
       const entries = await collectFileRouteModes(dir, 'auto')
