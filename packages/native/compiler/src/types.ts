@@ -579,6 +579,30 @@ export type StatementIR =
   | { kind: 'break'; label?: string }
   | { kind: 'continue'; label?: string }
   /**
+   * The canonical C-style count-loop `for (let i = 0; i < n; i++)` /
+   * `i += k`, lowered to a native RANGE loop — Swift `for i in 0..<n`
+   * (steps via `stride(from:to:by:)`), Kotlin `for (i in 0 until n)`
+   * (steps via `step k`). Ranges keep `break`/`continue` semantics
+   * intact (no while-desugar update-skip hazard). Non-canonical shapes
+   * warn — they don't reach this IR.
+   */
+  | {
+      kind: 'for-range'
+      item: string
+      from: ExprIR
+      to: ExprIR
+      inclusive?: boolean
+      step?: ExprIR
+      body: StatementIR[]
+    }
+  /**
+   * `do { … } while (cond)` — Swift `repeat { … } while cond`, Kotlin
+   * `do { … } while (cond)`. Pre-fix this warn-dropped the WHOLE loop,
+   * leaving semantically wrong residue (the post-loop reads saw the
+   * initial values).
+   */
+  | { kind: 'do-while'; cond: ExprIR; body: StatementIR[] }
+  /**
    * `switch (x) { case 'a': …; default: … }` — Swift `switch x { case
    * "a": … }` / Kotlin `when (x) { "a" -> { … } }`. Each entry groups
    * consecutive `case` labels (`tests`) that share one body; `tests: []`

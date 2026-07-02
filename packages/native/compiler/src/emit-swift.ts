@@ -1599,6 +1599,16 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
         return s
       case 'while':
         return { ...s, cond: inlineValueConsts(s.cond), body: s.body.map(mapStmt) }
+      case 'do-while':
+        return { ...s, cond: inlineValueConsts(s.cond), body: s.body.map(mapStmt) }
+      case 'for-range':
+        return {
+          ...s,
+          from: inlineValueConsts(s.from),
+          to: inlineValueConsts(s.to),
+          ...(s.step ? { step: inlineValueConsts(s.step) } : {}),
+          body: s.body.map(mapStmt),
+        }
       case 'for-of':
         return { ...s, iterable: inlineValueConsts(s.iterable), body: s.body.map(mapStmt) }
       case 'switch':
@@ -2090,6 +2100,32 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       return s.label !== undefined ? `break ${swiftIdent(s.label)}` : 'break'
     case 'continue':
       return s.label !== undefined ? `continue ${swiftIdent(s.label)}` : 'continue'
+    case 'for-range': {
+      // Canonical count-loop. Step 1 → the range literals (`0..<n` /
+      // `0...n`); a literal step > 1 → `stride(from:to:by:)`
+      // (inclusive → `through:`). Ranges keep break/continue semantics.
+      const pad = ' '.repeat(indent)
+      const from = emitSwiftExpr(s.from, indent)
+      const to = emitSwiftExpr(s.to, indent)
+      const lines = s.body
+        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
+        .join('\n')
+      const head =
+        s.step !== undefined
+          ? `stride(from: ${from}, ${s.inclusive === true ? 'through' : 'to'}: ${to}, by: ${emitSwiftExpr(s.step, indent)})`
+          : s.inclusive === true
+            ? `${from}...${to}`
+            : `${from}..<${to}`
+      return `for ${swiftIdent(s.item)} in ${head} {\n${lines}\n${pad}}`
+    }
+    case 'do-while': {
+      const pad = ' '.repeat(indent)
+      const cond = swiftCondition(s.cond, (x) => emitSwiftExpr(x, indent))
+      const lines = s.body
+        .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
+        .join('\n')
+      return `repeat {\n${lines}\n${pad}} while ${cond}`
+    }
     case 'switch': {
       const pad = ' '.repeat(indent)
       const disc = emitSwiftExpr(s.discriminant, indent)

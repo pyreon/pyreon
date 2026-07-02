@@ -4203,7 +4203,13 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
       } else if (s.kind === 'if') {
         collect(s.then)
         if (s.elseBody) collect(s.elseBody)
-      } else if (s.kind === 'while' || s.kind === 'for-of') collect(s.body)
+      } else if (
+        s.kind === 'while' ||
+        s.kind === 'for-of' ||
+        s.kind === 'for-range' ||
+        s.kind === 'do-while'
+      )
+        collect(s.body)
       else if (s.kind === 'switch') for (const c of s.cases) collect(c.body)
     }
   }
@@ -4215,11 +4221,112 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
       else if (s.kind === 'if') {
         mark(s.then)
         if (s.elseBody) mark(s.elseBody)
-      } else if (s.kind === 'while' || s.kind === 'for-of') mark(s.body)
+      } else if (
+        s.kind === 'while' ||
+        s.kind === 'for-of' ||
+        s.kind === 'for-range' ||
+        s.kind === 'do-while'
+      )
+        mark(s.body)
       else if (s.kind === 'switch') for (const c of s.cases) mark(c.body)
     }
   }
   mark(stmts)
+}
+
+/**
+ * Classify a ForStatement as the canonical count-loop → `for-range` IR,
+ * or null when any part is non-canonical (the caller warns). Canonical:
+ * init `let/var i = <expr>`; test `i < LIMIT` / `i <= LIMIT`; update
+ * `i++` / `++i` / `i += K` (positive numeric literal K); and the body
+ * never REASSIGNS the counter (Swift's range binding is a `let`).
+ */
+function classifyForRange(
+  node: AnyNode,
+  ctx: ParseCtx,
+): Extract<StatementIR, { kind: 'for-range' }> | null {
+  const init = node.init as AnyNode | undefined
+  const test = node.test as AnyNode | undefined
+  const update = node.update as AnyNode | undefined
+  if (!init || !test || !update) return null
+  if (init.type !== 'VariableDeclaration') return null
+  const decls = (init.declarations as AnyNode[] | undefined) ?? []
+  if (decls.length !== 1 || decls[0]?.id?.type !== 'Identifier' || !decls[0]?.init) return null
+  const item = decls[0].id.name as string
+  if (
+    test.type !== 'BinaryExpression' ||
+    (test.operator !== '<' && test.operator !== '<=') ||
+    (test.left as AnyNode)?.type !== 'Identifier' ||
+    (test.left as AnyNode)?.name !== item
+  ) {
+    return null
+  }
+  let step: ExprIR | undefined
+  if (
+    update.type === 'UpdateExpression' &&
+    update.operator === '++' &&
+    (update.argument as AnyNode)?.type === 'Identifier' &&
+    (update.argument as AnyNode)?.name === item
+  ) {
+    step = undefined
+  } else if (
+    update.type === 'AssignmentExpression' &&
+    update.operator === '+=' &&
+    (update.left as AnyNode)?.type === 'Identifier' &&
+    (update.left as AnyNode)?.name === item &&
+    ((update.right as AnyNode)?.type === 'Literal' ||
+      (update.right as AnyNode)?.type === 'NumericLiteral') &&
+    typeof (update.right as AnyNode)?.value === 'number' &&
+    ((update.right as AnyNode).value as number) > 0
+  ) {
+    step = { kind: 'literal', value: (update.right as AnyNode).value as number }
+  } else {
+    return null
+  }
+  // The body must not REASSIGN the counter — walk the raw AST before
+  // parsing (an inner shadowing loop with the same name is rare enough
+  // to accept the conservative bail).
+  if (astReassignsIdent(node.body as AnyNode, item)) return null
+  const body = parseLoopBody(node.body as AnyNode, ctx)
+  return {
+    kind: 'for-range',
+    item,
+    from: parseExpr(decls[0].init as AnyNode, ctx),
+    to: parseExpr(test.right as AnyNode, ctx),
+    ...(test.operator === '<=' ? { inclusive: true } : {}),
+    ...(step !== undefined ? { step } : {}),
+    body,
+  }
+}
+
+/** Does any AST node under `root` write to identifier `name`? */
+function astReassignsIdent(root: AnyNode, name: string): boolean {
+  let found = false
+  const walk = (n: unknown): void => {
+    if (found || n === null || typeof n !== 'object') return
+    if (Array.isArray(n)) {
+      for (const x of n) walk(x)
+      return
+    }
+    const node = n as AnyNode
+    if (
+      (node.type === 'AssignmentExpression' &&
+        (node.left as AnyNode)?.type === 'Identifier' &&
+        (node.left as AnyNode)?.name === name) ||
+      (node.type === 'UpdateExpression' &&
+        (node.argument as AnyNode)?.type === 'Identifier' &&
+        (node.argument as AnyNode)?.name === name)
+    ) {
+      found = true
+      return
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'type' || key === 'loc' || key === 'range' || key === 'span') continue
+      walk((node as Record<string, unknown>)[key])
+    }
+  }
+  walk(root)
+  return found
 }
 
 function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
@@ -4325,6 +4432,32 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
       }
       ctx.warnings.push(
         `A labeled statement is only supported on a LOOP (\`outer: for (…)\` / \`outer: while (…)\`) — other labeled statements have no native lowering.`,
+      )
+      return null
+    }
+    case 'DoWhileStatement': {
+      // `do { … } while (cond)` — Swift `repeat { } while` / Kotlin
+      // `do { } while ( )` map directly. Pre-fix this warn-dropped the
+      // WHOLE loop, leaving semantically wrong residue.
+      return {
+        kind: 'do-while',
+        cond: parseExpr(node.test, ctx),
+        body: parseLoopBody(node.body, ctx),
+      }
+    }
+    case 'ForStatement': {
+      // The canonical C-style COUNT loop — `for (let i = START; i < LIMIT;
+      // i++)` (also `<=`, and `i += K` for a positive literal step) —
+      // lowers to a native RANGE loop; ranges keep `break`/`continue`
+      // semantics intact (a while-desugar would skip the update on
+      // `continue` → infinite loop). Anything non-canonical (other
+      // conditions/updates, a counter REASSIGNED in the body — Swift's
+      // range binding is immutable) warns by name; pre-fix EVERY
+      // ForStatement warn-dropped the whole loop.
+      const range = classifyForRange(node, ctx)
+      if (range !== null) return range
+      ctx.warnings.push(
+        `Only the canonical count-loop lowers to native (\`for (let i = 0; i < n; i++)\`, \`<=\`, or \`i += k\` with a positive literal step; the counter must not be reassigned in the body) — rewrite this \`for\` as a \`while\` (or \`for…of\`).`,
       )
       return null
     }
