@@ -1,5 +1,5 @@
 {
-  "name": "hn-clone",
+  "name": "@pyreon/example-hn-clone",
   "version": "0.0.21",
   "private": true,
   "type": "module",

@@ -1,6 +1,6 @@
 # Form benchmark — methodology, fairness & honesty contract
 
-This is the **objectivity contract** for `@pyreon/form-bench`. It is committed
+This is the **objectivity contract** for `@pyreon/example-form-bench`. It is committed
 and reviewable on purpose: a benchmark is only as trustworthy as the rules it
 binds itself to *before* the numbers exist.
 

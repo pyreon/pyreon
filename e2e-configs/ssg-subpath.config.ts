@@ -21,7 +21,7 @@ export default definePlaywrightConfig({
   webServer: [
     {
       command:
-        'bun run --filter=@pyreon/ssr-showcase build:subpath && bun run --filter=@pyreon/ssr-showcase preview:subpath -- --port 5198 --strictPort',
+        'bun run --filter=@pyreon/example-ssr-showcase build:subpath && bun run --filter=@pyreon/example-ssr-showcase preview:subpath -- --port 5198 --strictPort',
       port: 5198,
       timeout: 180_000,
     },

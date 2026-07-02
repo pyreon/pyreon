@@ -117,7 +117,7 @@ Both compound: the compiler kills the path entirely for static cases; the memo a
 ## What lands
 
 - `B-FINDING.md` — this writeup
-- `probe-resolves.browser.test.ts` — the probe (re-runnable via `bun run --filter=@pyreon/experiments test:browser:e2-probe`)
+- `probe-resolves.browser.test.ts` — the probe (re-runnable via `bun run --filter=@pyreon/example-experiments test:browser:e2-probe`)
 
 ## Reproducing
 

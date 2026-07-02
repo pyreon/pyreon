@@ -1,5 +1,5 @@
 {
-  "name": "cpa-pw-app-vue",
+  "name": "@pyreon/example-cpa-pw-app-vue",
   "version": "0.0.25",
   "private": true,
   "type": "module",

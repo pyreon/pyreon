@@ -1,5 +1,5 @@
 {
-  "name": "@pyreon/islands-showcase",
+  "name": "@pyreon/example-islands-showcase",
   "version": "0.0.12",
   "private": true,
   "type": "module",

@@ -63,12 +63,12 @@ const PACKAGES: PackageInfo[] = [
   { name: '@pyreon/ui-components', dir: `${REPO}/packages/ui/components`, private: true },
   { name: '@pyreon/devtools', dir: `${REPO}/packages/tools/devtools`, private: true },
   { name: '@pyreon/zero', dir: `${REPO}/packages/zero/zero`, private: false },
-  { name: '@pyreon/playground', dir: `${REPO}/examples/playground`, private: true },
+  { name: '@pyreon/example-playground', dir: `${REPO}/examples/playground`, private: true },
   { name: '@pyreon/docs', dir: `${REPO}/docs`, private: true },
 ]
 
 const IGNORED = new Set<string>([
-  '@pyreon/playground',
+  '@pyreon/example-playground',
   '@pyreon/docs',
   '@pyreon/example-react-compat',
 ])
@@ -105,7 +105,7 @@ describe('findOwningPackage', () => {
       PACKAGES,
       REPO,
     )
-    expect(owner?.name).toBe('@pyreon/playground')
+    expect(owner?.name).toBe('@pyreon/example-playground')
   })
 
   it('handles the docs workspace', () => {
@@ -643,7 +643,7 @@ describe('discoverPackages + readChangesetIgnore', () => {
       private: true,
     })
     writePkg('examples/playground', {
-      name: '@pyreon/playground',
+      name: '@pyreon/example-playground',
       private: true,
     })
     writePkg('docs', { name: '@pyreon/docs', private: true })
@@ -652,7 +652,7 @@ describe('discoverPackages + readChangesetIgnore', () => {
     const names = result.map((p) => p.name).sort()
     expect(names).toEqual([
       '@pyreon/docs',
-      '@pyreon/playground',
+      '@pyreon/example-playground',
       '@pyreon/router',
       '@pyreon/test-utils',
     ])
@@ -673,10 +673,10 @@ describe('discoverPackages + readChangesetIgnore', () => {
     writeFileSync(
       join(tmp, '.changeset', 'config.json'),
       JSON.stringify({
-        ignore: ['@pyreon/playground', '@pyreon/docs'],
+        ignore: ['@pyreon/example-playground', '@pyreon/docs'],
       }),
     )
-    expect(readChangesetIgnore(tmp)).toEqual(['@pyreon/playground', '@pyreon/docs'])
+    expect(readChangesetIgnore(tmp)).toEqual(['@pyreon/example-playground', '@pyreon/docs'])
   })
 
   it('returns [] when .changeset/config.json is missing', () => {
@@ -722,7 +722,7 @@ describe('real-repo smoke (the actual Pyreon monorepo)', () => {
 
   it('reads the real ignore list', () => {
     const ignore = readChangesetIgnore(REPO_ROOT)
-    expect(ignore).toContain('@pyreon/playground')
+    expect(ignore).toContain('@pyreon/example-playground')
     expect(ignore).toContain('@pyreon/docs')
   })
 

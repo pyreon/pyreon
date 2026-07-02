@@ -97,8 +97,8 @@ export default definePlaywrightConfig({
     { name: 'fundamentals', testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/, port: 5176 },
   ],
   webServer: [
-    viteDevServer('@pyreon/playground', 5173),
-    viteDevServer('@pyreon/ssr-showcase', 5175),
-    viteDevServer('@pyreon/fundamentals-playground', 5176),
+    viteDevServer('@pyreon/example-playground', 5173),
+    viteDevServer('@pyreon/example-ssr-showcase', 5175),
+    viteDevServer('@pyreon/example-fundamentals-playground', 5176),
   ],
 })

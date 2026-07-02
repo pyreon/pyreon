@@ -42,7 +42,7 @@ count.update(n => n + 1)`,
   'config.json': {
     language: 'json',
     value: `{
-  "name": "@pyreon/playground",
+  "name": "@pyreon/example-playground",
   "version": "0.1.0",
   "dependencies": {
     "@pyreon/core": "^0.5.0",

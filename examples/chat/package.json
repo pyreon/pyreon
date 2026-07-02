@@ -1,5 +1,5 @@
 {
-  "name": "chat",
+  "name": "@pyreon/example-chat",
   "version": "0.0.21",
   "private": true,
   "type": "module",

@@ -33,5 +33,5 @@ export default definePlaywrightConfig({
       use: { ...devices['iPhone 12'] },
     },
   ],
-  webServer: [viteDevServer('@pyreon/islands-showcase', 5182)],
+  webServer: [viteDevServer('@pyreon/example-islands-showcase', 5182)],
 })

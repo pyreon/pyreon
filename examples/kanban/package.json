@@ -1,5 +1,5 @@
 {
-  "name": "kanban",
+  "name": "@pyreon/example-kanban",
   "version": "0.0.21",
   "private": true,
   "type": "module",
