@@ -24,6 +24,7 @@ import {
   getContextOwner,
   renderEffect,
   runUntracked,
+  runWithContextOwner,
   setContextOwner,
   setCurrentScope,
 } from '@pyreon/reactivity'
@@ -77,15 +78,17 @@ export function mountChild(
       _elementDepth = prevDepth
       return cleanup
     }
-    // Text fast path: reactive string/number/boolean — update text.data in-place
+    // Text fast path: reactive string/number/boolean — update text.data
+    // in-place. POLYMORPHIC: the accessor may later return a VNode
+    // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades
+    // to a full subtree mount on the first non-text value (and back). The
+    // historical binding did `text.data = String(v)` unconditionally —
+    // rendering "[object Object]" for the VNode arm (fuzz-found via the
+    // SSR↔hydration parity campaign's post-flip oracle, 2026-07).
     if (typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean') {
       const text = document.createTextNode(sample === false ? '' : String(sample))
       parent.insertBefore(text, anchor)
-      const dispose = renderEffect(() => {
-        const v = (child as () => unknown)()
-        const next = v == null || v === false ? '' : String(v as string | number)
-        if (next !== text.data) text.data = next
-      })
+      const dispose = bindPolymorphicText(child as () => VNodeChild, text, parent)
       if (_elementDepth > 0) return dispose
       return () => {
         dispose()
@@ -108,8 +111,24 @@ export function mountChild(
 
   // Primitive — text node (static, no reactive effects to tear down).
   if (typeof child !== 'object') {
-    parent.insertBefore(document.createTextNode(String(child)), anchor)
-    return noop
+    const tn = document.createTextNode(String(child))
+    parent.insertBefore(tn, anchor)
+    // `_elementDepth > 0` → this text is a child of a freshly-built element
+    // that is removed as a unit (its removeChild drops all descendants), so a
+    // per-node remover is redundant — noop (the perf optimization). BUT at
+    // depth 0 the text was mounted directly into a LIVE parent through a
+    // reactive boundary (a `mountReactive` accessor, or a top-level Fragment
+    // under one), whose teardown removes children INDIVIDUALLY via their
+    // cleanups. A noop there ORPHANS the text node: an accessor yielding a
+    // fragment-of-static-text then flipping to a different value left the old
+    // text stranded (`() => cond ? <>a b</> : 'x'` → "abx"; pre-existing,
+    // fuzz-found via the SSR↔hydration parity O5 ground-truth oracle, 2026-07).
+    // Mirrors the reactive-text fast path's own `_elementDepth` gate above.
+    if (_elementDepth > 0) return noop
+    return () => {
+      const p = tn.parentNode
+      if (p && (p as Element).isConnected !== false) p.removeChild(tn)
+    }
   }
 
   // NativeItem — pre-built DOM element from _tpl() or createTemplate().
@@ -630,6 +649,75 @@ function mountComponent(
 
 // ─── Children ────────────────────────────────────────────────────────────────
 
+/**
+ * Reactive TEXT binding that can UPGRADE to a subtree mount (and back).
+ *
+ * The dominant case — an accessor that only ever yields strings/numbers —
+ * pays exactly the historical fast path: one text node, `data` updated
+ * in-place. But a reactive child's type is not stable: the idiomatic
+ * `{() => loading() ? 'Loading…' : <Table/>}` starts text-ish and later
+ * yields a VNode. On the first non-text value the binding swaps the text
+ * node for a comment marker and mounts the subtree there (untracked, with
+ * the setup-time context owner restored — same discipline as
+ * mountReactive); a later text value tears the subtree down and restores
+ * the text node. Shared by mountChild's fast path AND the hydration
+ * adoption paths (which bind an SSR-adopted text node the same way).
+ */
+export function bindPolymorphicText(
+  child: () => VNodeChild,
+  text: Text,
+  parentAtSetup: Node,
+): Cleanup {
+  const ownerAtSetup = getContextOwner()
+  let marker: Comment | null = null
+  let mode: 'text' | 'sub' = 'text'
+  let subCleanup: Cleanup = noop
+
+  const dispose = renderEffect(() => {
+    const v = child()
+    const textish =
+      v == null || v === false || (typeof v !== 'object' && typeof v !== 'function')
+    if (textish) {
+      if (mode === 'sub') {
+        runUntracked(subCleanup)
+        subCleanup = noop
+        // Restore the text node at the marker's LIVE position.
+        const p = marker!.parentNode ?? parentAtSetup
+        p.insertBefore(text, marker)
+        marker!.parentNode?.removeChild(marker!)
+        mode = 'text'
+      }
+      const next = v == null || v === false ? '' : String(v as string | number | boolean)
+      if (next !== text.data) text.data = next
+      return
+    }
+    // Non-text value — mount it as a subtree at this binding's position.
+    if (mode === 'text') {
+      if (!marker) marker = document.createComment('pyreon')
+      // Live parent at swap time (the frag-then-move discipline — see the
+      // mountReactive stale-parent bug class in anti-patterns).
+      const p = text.parentNode ?? parentAtSetup
+      p.insertBefore(marker, text)
+      p.removeChild(text)
+      mode = 'sub'
+    } else {
+      runUntracked(subCleanup)
+    }
+    const liveParent = marker!.parentNode ?? parentAtSetup
+    subCleanup = runUntracked(() =>
+      runWithContextOwner(ownerAtSetup, () => mountChild(v as VNodeChild, liveParent, marker)),
+    )
+  })
+
+  return () => {
+    dispose()
+    if (mode === 'sub') {
+      subCleanup()
+      marker?.parentNode?.removeChild(marker)
+    }
+  }
+}
+
 function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null): Cleanup {
   if (children.length === 0) return noop
 
@@ -637,7 +725,20 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
   if (children.length === 1) {
     const c = children[0] as VNodeChild
     if (c !== undefined) {
-      if (anchor === null && (typeof c === 'string' || typeof c === 'number')) {
+      // `textContent =` REPLACES the parent's entire child list — only valid
+      // when the parent is EMPTY (the dominant fresh-element case:
+      // mountElement creates the element and immediately mounts its
+      // children). mountChildren is ALSO the Fragment mount path, where the
+      // parent is a live element that may already hold earlier siblings — a
+      // Fragment whose sole child is text used to WIPE them all
+      // (`<i>{'head'}<>{'X'}</></i>` rendered just "X"; fuzz-found via the
+      // SSR↔hydration parity oracle, where hydration — correctly —
+      // preserved the SSR DOM and pure client mount lost it).
+      if (
+        anchor === null &&
+        (typeof c === 'string' || typeof c === 'number') &&
+        parent.firstChild === null
+      ) {
         ;(parent as HTMLElement).textContent = String(c)
         return noop
       }

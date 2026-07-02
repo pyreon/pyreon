@@ -130,7 +130,7 @@ describe('renderToString — reactive props (signal snapshots)', () => {
   test('snapshots a reactive child getter', async () => {
     const name = signal('world')
     const html = await renderToString(h('p', null, () => name()))
-    expect(html).toBe('<p>world</p>')
+    expect(html).toBe('<p><!--$-->world<!--/$--></p>')
   })
 })
 
@@ -274,8 +274,8 @@ describe('concurrent SSR — context isolation', () => {
       renderToString(h(makeInjector('request-B'), null)),
     ])
 
-    expect(html1).toBe('<span>request-A</span>')
-    expect(html2).toBe('<span>request-B</span>')
+    expect(html1).toBe('<span><!--$-->request-A<!--/$--></span>')
+    expect(html2).toBe('<span><!--$-->request-B<!--/$--></span>')
   })
 
   test('concurrent renders with async components stay isolated', async () => {
@@ -297,8 +297,8 @@ describe('concurrent SSR — context isolation', () => {
 
     // Async-component output is bracketed with `<!--$pas-->/<!--$pae-->`
     // sentinel markers — the hydrate-side handshake for attaching reactivity.
-    expect(html1).toBe('<!--$pas--><div>R1</div><!--$pae-->')
-    expect(html2).toBe('<!--$pas--><div>R2</div><!--$pae-->')
+    expect(html1).toBe('<!--$pas--><div><!--$-->R1<!--/$--></div><!--$pae-->')
+    expect(html2).toBe('<!--$pas--><div><!--$-->R2<!--/$--></div><!--$pae-->')
   })
 })
 
@@ -1609,8 +1609,8 @@ describe('SSR — provide() context cleanup across siblings (Bug 4)', () => {
 
     const html = await renderToString(h(App, null))
 
-    expect(html).toContain('data-testid="inner">inner<')
-    expect(html).toContain('data-testid="sibling">outer<') // not "inner"
+    expect(html).toContain('data-testid="inner"><!--$-->inner<!--/$--><')
+    expect(html).toContain('data-testid="sibling"><!--$-->outer<!--/$--><') // not "inner"
   })
 
   test('multiple sequential provide() calls each clean up their own frame', async () => {
@@ -1632,10 +1632,10 @@ describe('SSR — provide() context cleanup across siblings (Bug 4)', () => {
       h(Fragment, null, h(First, null), h(Second, null), h(Third, null)),
     )
 
-    expect(html).toContain('data-testid="first">first<')
-    expect(html).toContain('data-testid="second">second<')
+    expect(html).toContain('data-testid="first"><!--$-->first<!--/$--><')
+    expect(html).toContain('data-testid="second"><!--$-->second<!--/$--><')
     // Third sees 'default' — no leakage from First or Second.
-    expect(html).toContain('data-testid="third">default<')
+    expect(html).toContain('data-testid="third"><!--$-->default<!--/$--><')
   })
 
   test('nested provide() — child sees parent provide, sibling outside sees outer', async () => {
@@ -1657,10 +1657,10 @@ describe('SSR — provide() context cleanup across siblings (Bug 4)', () => {
     )
 
     // Inner child sees the provider's value (correct).
-    expect(html).toContain('data-testid="inner-child">provider-value<')
+    expect(html).toContain('data-testid="inner-child"><!--$-->provider-value<!--/$--><')
     // Sibling outside the provider sees outer (must NOT see leaked
     // provider-value).
-    expect(html).toContain('data-testid="sibling">outer<')
+    expect(html).toContain('data-testid="sibling"><!--$-->outer<!--/$--><')
   })
 
   // Bug 4 follow-up: the FIRST attempt at the fix (running runUnmountHooks

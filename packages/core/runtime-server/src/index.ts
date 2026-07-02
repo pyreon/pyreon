@@ -453,7 +453,11 @@ async function streamNode(
   enqueue: (s: string) => void,
 ): Promise<void> {
   if (typeof node === 'function') {
-    return streamNode((node as () => VNodeChild)(), enqueue)
+    // Range markers around accessor output — see renderNode's fn arm.
+    enqueue('<!--$-->')
+    await streamNode((node as () => VNodeChild)(), enqueue)
+    enqueue('<!--/$-->')
+    return
   }
   if (node == null || node === false) return
   if (typeof node === 'string') {
@@ -664,9 +668,22 @@ function renderChildList(children: readonly VNodeChild[], start: number, acc: st
 }
 
 function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
-  // Reactive accessor — call it synchronously (snapshot)
+  // Reactive accessor — snapshot it and WRAP the output in
+  // `<!--$-->…<!--/$-->` hydration range markers. The markers give hydration
+  // the accessor's exact DOM extent, otherwise unknowable client-side: the
+  // initial can render zero nodes (`''`/null), one text node, or MANY
+  // (fragment / <For> / component). Without them, hydration removed exactly
+  // ONE node before re-mounting — a multi-root initial left the rest of its
+  // SSR output DUPLICATED, and adjacent text-producing siblings merged into
+  // one node, misaligning the sibling cursor (fuzz-found, 2026-07). Uniform
+  // (not conditional-on-value) because a marked range adjacent to an
+  // unmarked one reintroduces the same cursor-alignment gaps the fuzzer
+  // flags. Consistent with the framework's existing SSR hydration markers
+  // (`<!--k:-->` / `<!--pyreon-for-->`); the analogue is Solid's `<!--$-->`.
   if (typeof node === 'function') {
-    return renderNode((node as () => VNodeChild)())
+    const inner = renderNode((node as () => VNodeChild)())
+    if (typeof inner === 'string') return `<!--$-->${inner}<!--/$-->`
+    return inner.then((s) => `<!--$-->${s}<!--/$-->`)
   }
 
   if (node == null || node === false) return ''
