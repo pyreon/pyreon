@@ -4390,6 +4390,15 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       // the WHOLE union degraded to `Any?` — silently compilable for
       // assignment, uncompilable the moment the callback is CALLED.
       return parseTypeAnnotation(node.typeAnnotation, ctx)
+    case 'TSTupleType':
+      // `[string, number]` — no TypeIR tuple kind (Swift tuples can't be
+      // Codable; Kotlin has no tuples beyond Pair/Triple). Name the fix
+      // instead of the generic "Unknown type annotation" the default
+      // used to emit.
+      ctx.warnings.push(
+        `Tuple types (\`[string, number]\`) are not supported in native (PMTC) — use an object type (\`{ k: string; v: number }\`), which lowers to a struct / data class.`,
+      )
+      return { kind: 'unknown' }
     case 'TSTypeLiteral': {
       const fields = (node.members as AnyNode[])
         .filter((m) => m.type === 'TSPropertySignature' && m.key?.name && m.typeAnnotation)
@@ -4597,6 +4606,24 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
       return { kind: 'identifier', name: node.name as string }
     case 'CallExpression': {
+      // `JSON.parse(x)` / `JSON.stringify(x)` — no native lowering yet
+      // (Swift needs a JSONEncoder/Decoder bridge gated on Codable
+      // conformance; Kotlin needs kotlinx `Json` + imports). Pre-fix the
+      // call emitted VERBATIM (`JSON.stringify(todos)`) — an unresolved
+      // `JSON` reference on BOTH targets, with no warning. Fail loudly.
+      if (
+        node.callee?.type === 'MemberExpression' &&
+        node.callee.object?.type === 'Identifier' &&
+        node.callee.object.name === 'JSON' &&
+        (node.callee.property?.name === 'parse' || node.callee.property?.name === 'stringify')
+      ) {
+        return unsupportedExpr(
+          ctx,
+          node,
+          `\`JSON.${node.callee.property.name}\``,
+          'no native lowering yet — keep data in typed signals/structs (fetch decode is handled by useFetch<T>); a serialization bridge is a tracked follow-up.',
+        )
+      }
       const callee = parseExpr(node.callee, ctx)
       const args = (node.arguments as AnyNode[]).map((a) => parseExpr(a, ctx))
       return { kind: 'call', callee, args }
@@ -4748,6 +4775,18 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       return { kind: 'update', op, argument: parseExpr(node.argument, ctx) }
     }
     case 'ArrowFunctionExpression': {
+      // A DESTRUCTURED callback param (`.map(([k, v]) => k)` /
+      // `.map(({ id }) => id)`) has no lowering — the filter below keeps
+      // only identifier params, so pre-fix the body referenced UNBOUND
+      // names (`pairs.map({ k })` — uncompilable) with no warning. Warn
+      // loudly; the fix is a plain param + member/index reads.
+      for (const p of node.params as AnyNode[]) {
+        if (p.type === 'ArrayPattern' || p.type === 'ObjectPattern') {
+          ctx.warnings.push(
+            `[${locOf(node, ctx)}] A destructured callback parameter (\`([a, b]) =>\` / \`({ a }) =>\`) is not supported in native (PMTC) — take a plain parameter and read fields/indices (\`(pair) => pair.a\`).`,
+          )
+        }
+      }
       const params = (node.params as AnyNode[])
         .filter((p) => p.type === 'Identifier')
         .map((p) => p.name as string)
