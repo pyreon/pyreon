@@ -1,5 +1,31 @@
 # @pyreon/zero
 
+## 0.39.0
+
+### Minor Changes
+
+- [#1962](https://github.com/pyreon/pyreon/pull/1962) [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): typed `<Link href>` + automatic external-link handling
+
+  `<Link>` / `useLink` / `createLink` gain the same upgrades landed for `@pyreon/router`'s `<RouterLink>`, applied to the `href` API zero apps actually use.
+
+  **Typed `href` (typo-rejection).** `<Link>` is now generic (`Link<const T>`), with `href: CheckHref<T, RoutePath>` bound to zero's own route registry. Once `typedRoutes` codegen has run, a mistyped internal path is a compile error, concrete paths validate against `:param` patterns (`/posts/42` matches `/posts/:id`), and dynamic `string`s + external URLs are always accepted. This replaces the old `href: RouteHref = RoutePath | (string & {})`, which silently accepted every typo — the "typed routes reject typos" claim is now actually enforced. Strict superset of the old `string`-accepting behaviour.
+
+  **Automatic external-link detection.** `<Link>` classifies `href` at runtime (`classifyHref` from `@pyreon/router`) and only intercepts INTERNAL navigations. External `http(s)` / protocol-relative URLs now auto-render `<a target="_blank" rel="noopener noreferrer">` and full-navigate (**previously** `<Link href="https://x.com">` called `router.push("https://x.com")` unless you manually added `external` — a broken-navigation footgun); `mailto:`/`tel:`/`#hash` are left to the browser; same-origin absolute URLs are internal by default (stripped to their path). New per-link `target` / `rel` overrides join the existing `external`; a per-router `createApp({ links: { sameOriginAbsolute, externalNewTab, externalRel } })` config tunes the defaults (explicit prop > config > auto-detect).
+
+### Patch Changes
+
+- Updated dependencies [[`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31), [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e)]:
+  - @pyreon/vite-plugin@0.39.0
+  - @pyreon/runtime-dom@0.39.0
+  - @pyreon/runtime-server@0.39.0
+  - @pyreon/reactivity@0.39.0
+  - @pyreon/router@0.39.0
+  - @pyreon/head@0.39.0
+  - @pyreon/server@0.39.0
+  - @pyreon/core@0.39.0
+  - @pyreon/meta@0.39.0
+  - @pyreon/sized-map@0.39.0
+
 ## 0.38.0
 
 ### Minor Changes

@@ -1,5 +1,27 @@
 # @pyreon/router
 
+## 0.39.0
+
+### Minor Changes
+
+- [#1962](https://github.com/pyreon/pyreon/pull/1962) [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(router): typed route paths + automatic external-link handling for `<RouterLink>`
+
+  **Typed routes.** `<RouterLink>` is now generic over its `to` literal (`RouterLink<const T>` + `CheckHref<T>`). Augment the new `RegisteredRoutes` interface (a build step like `@pyreon/zero`'s `typedRoutes` can emit this) and `to` gains autocomplete + a real "did you mean …" type error on a mistyped internal path — while dynamic `string`s and external URLs are still accepted with no cast. Concrete paths validate against `:param` patterns via `InterpolateRoute` (`/user/:id` accepts `/user/42` but rejects `/users/42`). Zero routes registered → `RoutePath` widens to `string` (the historical untyped behaviour, unchanged). This is a strict superset of `to: string`; nothing that compiled before stops compiling.
+
+  `CheckHref<T, Routes = RoutePath>` takes an optional second type argument so other route-aware link components (e.g. `@pyreon/zero`'s `<Link>`) can reuse the validator against their own route registry. New type exports also include `InterpolateRoute`.
+
+  **External links.** `<RouterLink>` classifies `to` at runtime and only intercepts INTERNAL navigations. External `http(s)`/protocol-relative URLs render `<a target="_blank" rel="noopener noreferrer">` and full-navigate (no router intercept); `mailto:`/`tel:`/other schemes and `#hash` anchors render a plain `<a>` the browser owns; same-origin absolute URLs are treated as internal by default. Modifier/middle-clicks always fall through to the browser. Configure globally with `createRouter({ links: { sameOriginAbsolute, externalNewTab, externalRel } })` or override per link with the new `external` / `target` / `rel` props (explicit prop > config > auto-detect).
+
+  New public exports: `RegisteredRoutes`, `RoutePath`, `CheckHref`, `ExternalHref`, `LinkConfig` (types) + `classifyHref`, `toRouterPath` (runtime helpers).
+
+### Patch Changes
+
+- Updated dependencies [[`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31)]:
+  - @pyreon/runtime-dom@0.39.0
+  - @pyreon/reactivity@0.39.0
+  - @pyreon/core@0.39.0
+  - @pyreon/sized-map@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

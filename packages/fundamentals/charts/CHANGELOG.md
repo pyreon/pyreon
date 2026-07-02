@@ -1,5 +1,13 @@
 # @pyreon/charts
 
+## 0.39.0
+
+### Patch Changes
+
+- Updated dependencies [[`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a)]:
+  - @pyreon/reactivity@0.39.0
+  - @pyreon/core@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

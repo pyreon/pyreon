@@ -1,5 +1,16 @@
 # @pyreon/validate
 
+## 0.39.0
+
+### Patch Changes
+
+- [#1988](https://github.com/pyreon/pyreon/pull/1988) [`17daf5b`](https://github.com/pyreon/pyreon/commit/17daf5b97e0975e3bb3df7992c46ddf452c621b8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `s.union` now accepts the array form `s.union([a, b])` in addition to the rest form `s.union(a, b)`, matching Zod / Valibot / ArkType and staying consistent with `s.tuple([...])` / `s.enum([...])`. Previously the array form was a type error that, if reached at runtime (dynamic construction, `as` cast, plain JS), crashed with a cryptic `member['~standard'] is undefined` deep in the union validator. Non-schema members and unions of fewer than two members now throw a clear `[Pyreon]` error at construction instead of crashing at parse time.
+
+  Also: the JIT object codegen no longer emits the redundant `if (r !== undefined || (key in src))` strip-assignment guard for fields whose valid value is provably defined (inline primitives past their type-guard, and freshly-built nested objects/arrays) — smaller generated validators, behavior-identical (locked by the JIT↔interpreter differential fuzz).
+
+- Updated dependencies [[`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a)]:
+  - @pyreon/reactivity@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

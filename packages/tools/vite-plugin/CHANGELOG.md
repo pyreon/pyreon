@@ -1,5 +1,16 @@
 # @pyreon/vite-plugin
 
+## 0.39.0
+
+### Patch Changes
+
+- [#1992](https://github.com/pyreon/pyreon/pull/1992) [`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Rocketstyle-collapse resolver: strip the SSR renderer's `<!--$-->…<!--/$-->` hydration range markers from the captured HTML before baking the `_rsCollapse` template. A collapse bake is a static cloneNode template that is never range-hydrated — the markers would be dead comment nodes cloned into every mount.
+
+- Updated dependencies [[`514f28d`](https://github.com/pyreon/pyreon/commit/514f28da2c442e9fffd694a88a2b8fd8c9a48088), [`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`2444405`](https://github.com/pyreon/pyreon/commit/244440585f0066759a0f1bc4aec087e44b131466), [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31)]:
+  - @pyreon/compiler@0.39.0
+  - @pyreon/runtime-dom@0.39.0
+  - @pyreon/reactivity@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes
