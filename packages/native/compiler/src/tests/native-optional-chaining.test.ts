@@ -64,17 +64,21 @@ function App() {
     expect(out).not.toContain('o?.a')
   })
 
-  it('optional INDEX / CALL still warn-falls-back (deliberately unsupported)', () => {
-    const idx = transform(
+  it('optional CALL still warn-falls-back; optional INDEX now lowers (safe-index)', () => {
+    // #1989 lowers optional INDEX (`a?.[i]`) to the guarded safe-index idiom
+    // for a re-readable receiver (see native-optional-index.test.ts), so it no
+    // longer warns. Optional CALL (`fn?.()`) still diverges per target (Swift
+    // `fn?()` vs Kotlin `fn?.invoke()`) and warn-falls-back.
+    const call = transform(
       `import { Stack, Text } from '@pyreon/primitives'
 function App() {
-  const arr = signal<number[]>([])
-  const v = computed(() => arr()?.[0])
+  const fn = signal<(() => number) | undefined>(undefined)
+  const v = computed(() => fn?.())
   return (<Stack><Text>x</Text></Stack>)
 }`,
       { target: 'swift' },
     )
-    expect(idx.warnings.some((w) => w.includes('index/call'))).toBe(true)
+    expect(call.warnings.some((w) => w.includes('index/call'))).toBe(true)
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: optional-chain emit parses via swiftc -parse', () => {

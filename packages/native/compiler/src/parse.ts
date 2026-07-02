@@ -4717,11 +4717,10 @@ function unsupportedExpr(
 
 /**
  * Walk a ChainExpression's inner AST for optional links that DON'T lower
- * cleanly: an optional CALL (`fn?.()`) or an optional COMPUTED member
- * (`a?.[i]`). Both diverge per target (Swift `fn?()`/`a?[i]` vs Kotlin
- * `fn?.invoke()`/`a?.get(i)`), so the parser keeps the explicit-guard
- * warning for them. Optional plain-member access (`a?.b`) lowers cleanly and
- * is NOT flagged here. Walks only the access chain (object / callee spine).
+ * cleanly: an optional CALL (`fn?.()` — diverges per target, keeps the
+ * explicit-guard warning). Optional plain members (`a?.b`) and optional
+ * COMPUTED members (`a?.[i]` — the safe-index idiom) both lower and are
+ * NOT flagged. Walks only the access chain (object / callee spine).
  */
 function chainHasUnsupportedOptional(node: AnyNode): boolean {
   if (node === null || node === undefined || typeof node !== 'object') return false
@@ -4730,7 +4729,8 @@ function chainHasUnsupportedOptional(node: AnyNode): boolean {
     return chainHasUnsupportedOptional(node.callee)
   }
   if (node.type === 'MemberExpression') {
-    if (node.optional === true && node.computed === true) return true
+    // Optional COMPUTED members (`a?.[i]`) now lower (the safe-index idiom)
+    // — only optional CALLS (`fn?.()`) keep the explicit-guard warning.
     return chainHasUnsupportedOptional(node.object)
   }
   return false
@@ -4812,7 +4812,11 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // a name. Pre-PR-D this fell through to the member case with
       // `property: undefined` → emitted `xs.undefined`.
       if (node.computed === true) {
-        return { kind: 'index', object, index: parseExpr(node.property, ctx) }
+        // `a?.[i]` — the optional COMPUTED link carries the flag; the emit
+        // lowers it to the guarded safe-index idiom (see the index IR doc).
+        return node.optional === true
+          ? { kind: 'index', object, index: parseExpr(node.property, ctx), optional: true }
+          : { kind: 'index', object, index: parseExpr(node.property, ctx) }
       }
       const property = node.property?.name as string
       // `node.optional` is set for the `a?.b` link of an optional chain
