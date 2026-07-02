@@ -42,6 +42,7 @@ import {
   transformJSX,
 } from '@pyreon/compiler'
 import { buildCompiledVerdicts } from './compiled-verdicts'
+import { injectIslandNames } from './island-auto-name'
 import { optimizeValidators } from './optimize-validators'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import type { Plugin, ViteDevServer } from 'vite'
@@ -993,6 +994,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // hydrate until a manual reload") shipped UNFIXED. Single-character
       // fix: use the same constant `resolveId` returns.
       if (islandsEnabled) {
+        // Auto-name nameless const-bound island() calls BEFORE scanning —
+        // the scan then always sees a literal `name:`, and the runtime
+        // receives it (same derivation the prescan applies to raw disk
+        // source, so registry and marker can never disagree).
+        const named = injectIslandNames(code, id, projectRoot)
+        if (named !== null) code = named
         const changed = scanIslandDeclarations(code, id, islandRegistry)
         if (changed && _devServer) {
           const mod = _devServer.moduleGraph.getModuleById(ISLANDS_REGISTRY_ID)
@@ -1153,6 +1160,34 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       // virtual-module invalidation. Reset to undefined when the server
       // is replaced (next configureServer call).
       _devServer = server
+
+      // ── Islands doctor-lite (dev-only, advisory) ─────────────────────
+      // The islands audit (duplicate-name / nested-island / dead-island /
+      // registry drift) historically ran only via `pyreon doctor
+      // --check-islands` — CI-or-manual, so a broken island shipped a full
+      // dev session before anyone saw the finding. Run it once on server
+      // boot, deferred off the startup path, and print findings as plain
+      // warnings. Advisory: any failure is swallowed (the audit must never
+      // break `vite dev`).
+      if (islandsEnabled) {
+        setTimeout(() => {
+          void (async () => {
+            try {
+              const { auditIslands, formatIslandAudit } = await import('@pyreon/compiler')
+              const result = auditIslands(projectRoot)
+              if (result.findings.length > 0) {
+                // oxlint-disable-next-line no-console
+                console.warn(
+                  `\n[Pyreon islands] ${result.findings.length} finding(s) — \`pyreon doctor --check-islands\` for details:\n`
+                    + formatIslandAudit(result),
+                )
+              }
+            } catch {
+              /* advisory only */
+            }
+          })()
+        }, 1_000)
+      }
 
       // Generate .pyreon/context.json for AI tools on dev server start
       generateProjectContext(projectRoot)
@@ -2294,7 +2329,10 @@ async function prescanIslandDeclarations(
 
   for (const file of files) {
     try {
-      const code = readFileSync(file, 'utf-8')
+      const raw = readFileSync(file, 'utf-8')
+      // Same auto-naming the transform applies — keeps the prescan's view
+      // of derived names byte-identical to what the runtime will receive.
+      const code = injectIslandNames(raw, file, root) ?? raw
       scanIslandDeclarations(code, file, registry)
     } catch {
       /* read error */

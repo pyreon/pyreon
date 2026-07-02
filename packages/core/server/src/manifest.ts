@@ -13,7 +13,7 @@ export default defineManifest({
     'mode: "string" (renderToString) or "stream" (renderToStream with Suspense out-of-order)',
     'Middleware chain — `(ctx) => Response | void | Promise<…>`, short-circuit on first Response',
     'prerender({ handler, paths, outDir, origin?, onPage? }) — SSG with onPage callback',
-    'island(loader, { name, hydrate, prefetch? }) — lazy island with hydration strategy + optional prefetch hint',
+    'island(loader, { name?, hydrate, prefetch? }) — lazy island with hydration strategy + optional prefetch hint; name is auto-derived from the const binding by @pyreon/vite-plugin (islands: true), explicit name wins',
     'Hydration strategies: "load" | "idle" | "visible" | "interaction" | "media(...)" | "never"',
     'serverIsland(loader, { name, fallback?, cache? }) — per-request server-rendered holes in cacheable pages (GET /_pyreon/fragment/<name>)',
     'renderPage(router, options) — the ONE string-mode render pipeline shared by handler + SSG + dev SSR',

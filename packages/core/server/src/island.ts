@@ -94,8 +94,19 @@ export type HydrationStrategy =
 export type PrefetchStrategy = 'none' | 'idle' | 'visible'
 
 export interface IslandOptions {
-  /** Unique name — must match the key in the client-side hydrateIslands() registry */
-  name: string
+  /**
+   * Unique name — the key in the client-side hydration registry.
+   *
+   * OPTIONAL under `@pyreon/vite-plugin` (`islands: true`, the default):
+   * the plugin derives a collision-free name from the const binding
+   * (`const Counter = island(…)` → `Counter$<file-hash>`) and injects it
+   * at build time, in both the transform and the auto-registry prescan —
+   * so marker and registry can never disagree. Pass an explicit name for
+   * a pretty identifier, for the MANUAL `hydrateIslands({ Name: loader })`
+   * form (its keys are hand-written), or when building without the plugin
+   * (the runtime throws with guidance if no name reaches it).
+   */
+  name?: string
   /** When to hydrate on the client (default: "load") */
   hydrate?: HydrationStrategy
   /**
@@ -125,9 +136,19 @@ export interface IslandMeta {
  */
 export function island<P extends Props = Props>(
   loader: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>,
-  options: IslandOptions,
+  options: IslandOptions = {},
 ): ComponentFn<P> & IslandMeta {
   const { name, hydrate = 'load', prefetch = 'none' } = options
+  if (!name) {
+    // `name` is auto-derived from the const binding by @pyreon/vite-plugin
+    // (`islands: true`, the default) — reaching here means the build ran
+    // WITHOUT the plugin (or the call has no const binding to derive from).
+    throw new Error(
+      '[Pyreon] island() has no name. Either build with @pyreon/vite-plugin '
+        + '(islands auto-naming derives it from the `const X = island(…)` binding), '
+        + "or pass one explicitly: island(loader, { name: 'MyIsland' }).",
+    )
+  }
 
   const IslandWrapper = function IslandWrapper(props: P): VNode | Promise<VNode | null> {
     const serializedProps = serializeIslandProps(props, name)

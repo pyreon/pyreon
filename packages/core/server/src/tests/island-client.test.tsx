@@ -134,3 +134,11 @@ describe("island() — client self-hydration branch", () => {
     expect(marker?.children.length).toBe(0)
   })
 })
+
+describe('island() without a name (auto-naming contract)', () => {
+  it('throws with plugin guidance when no name reaches the runtime', () => {
+    expect(() => island(async () => ({ default: () => null }) as never)).toThrow(
+      /island\(\) has no name[\s\S]*@pyreon\/vite-plugin/,
+    )
+  })
+})

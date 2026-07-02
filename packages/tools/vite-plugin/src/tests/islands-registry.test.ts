@@ -452,3 +452,50 @@ export const A = island(() => import('./X'), { name: 'A', hydrate: 'load' })`
     })
   })
 })
+
+describe('island auto-naming (Tier-3 DX)', () => {
+  it('a NAMELESS const-bound island lands in the registry with the derived name', async () => {
+    writeFile(
+      'src/islands.ts',
+      `import { island } from '@pyreon/server'
+export const Counter = island(() => import('./components/Counter'), { hydrate: 'visible' })`,
+    )
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const source = runLoad(plugin, ISLANDS_REGISTRY_ID)
+    // derived name = Counter$fnv1a6('src/islands.ts')
+    expect(source).toMatch(/"Counter\$[0-9a-z]{1,6}":/)
+    expect(source).toContain('/components/Counter')
+  })
+
+  it('the no-options form is auto-named and registered too', async () => {
+    writeFile(
+      'src/islands.ts',
+      `import { island } from '@pyreon/server'
+export const Clock = island(() => import('./components/Clock'))`,
+    )
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const source = runLoad(plugin, ISLANDS_REGISTRY_ID)
+    expect(source).toMatch(/"Clock\$[0-9a-z]{1,6}":/)
+  })
+
+  it('same binding name in TWO files derives two distinct registry keys', async () => {
+    writeFile(
+      'src/a.ts',
+      `import { island } from '@pyreon/server'
+export const Widget = island(() => import('./components/A'), { hydrate: 'load' })`,
+    )
+    writeFile(
+      'src/b.ts',
+      `import { island } from '@pyreon/server'
+export const Widget = island(() => import('./components/B'), { hydrate: 'load' })`,
+    )
+    const plugin = bootstrap()
+    await runBuildStart(plugin)
+    const source = runLoad(plugin, ISLANDS_REGISTRY_ID)
+    const keys = [...source.matchAll(/"(Widget\$[0-9a-z]{1,6})":/g)].map((m) => m[1])
+    expect(keys).toHaveLength(2)
+    expect(new Set(keys).size).toBe(2) // collision-free by construction
+  })
+})

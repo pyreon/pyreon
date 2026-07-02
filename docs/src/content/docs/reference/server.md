@@ -15,7 +15,7 @@ description: "SSR + SSG + island architecture — createHandler(), prerender(), 
 - mode: "string" (renderToString) or "stream" (renderToStream with Suspense out-of-order)
 - Middleware chain — `(ctx) => Response | void | Promise<…>`, short-circuit on first Response
 - prerender(&#123; handler, paths, outDir, origin?, onPage? &#125;) — SSG with onPage callback
-- island(loader, &#123; name, hydrate, prefetch? &#125;) — lazy island with hydration strategy + optional prefetch hint
+- island(loader, &#123; name?, hydrate, prefetch? &#125;) — lazy island with hydration strategy + optional prefetch hint; name is auto-derived from the const binding by @pyreon/vite-plugin (islands: true), explicit name wins
 - Hydration strategies: "load" | "idle" | "visible" | "interaction" | "media(...)" | "never"
 - serverIsland(loader, &#123; name, fallback?, cache? &#125;) — per-request server-rendered holes in cacheable pages (GET /_pyreon/fragment/&lt;name&gt;)
 - renderPage(router, options) — the ONE string-mode render pipeline shared by handler + SSG + dev SSR
