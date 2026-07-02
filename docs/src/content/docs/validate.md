@@ -805,10 +805,10 @@ On the client, `.serverCheck` ALWAYS passes — the entry is recorded on `Result
 
 ## Performance
 
-The `s` runtime is benchmarked against Zod 4 / Valibot 1 / ArkType 2 (`bun bench:validation`):
+The `s` runtime is benchmarked against Zod 4 / Valibot 1 / ArkType 2 (`bun bench:validation`). The harness is built for objectivity: every scenario × path × library cell runs in fresh isolated processes (3 pooled per cell, so the confidence interval covers process-level jitter), a cross-library correctness gate runs before any timing, and each row carries a seeded bootstrap 95% CI — rows inside the winner's CI are marked 🤝 tied. One honest limit is structural: the bench is written and judged by the Pyreon authors (disclosed in its header); every scenario, input, and competitor call form is in the one file for review.
 
-- **Fastest on the error / invalid path** across every shape — roughly **2.5–50× faster**, because it early-exits on the first failing op while Zod and ArkType allocate rich structured error objects.
-- **Runner-up on the valid-parse path** — behind only ArkType's JIT, but **faster than Zod and Valibot**. The chainable API doesn't pay class-overhead per parse: each schema's ops compile to one closure on first call, and pure object/array/primitive trees get a flat monomorphic JIT validator.
+- **Fastest on the error / invalid path** across every shape — **31–53× vs Zod, 15–64× vs ArkType, 1.2–4.6× vs Valibot** — because it early-exits on the first failing op while Zod and ArkType allocate rich structured error objects. Error-information parity is verified separately: on a multi-fail object Pyreon reports the same issue count with paths and messages as Zod, so the error-path speed is not "reporting less".
+- **Valid-parse path** — at par or ahead of ArkType on the array shapes (~1.1× ahead in the pooled run, inside run-to-run drift), statistically tied 🤝 on number-range and deep-nested objects, and behind only ArkType's type-level AOT on scalar-string and flat-object parse (~1.6×). **Faster than Zod and Valibot on every shape.** The chainable API doesn't pay class-overhead per parse: each schema's ops compile to one closure on first call, and pure object/array/primitive trees get a flat monomorphic JIT validator.
 
 The valid-parse gap to ArkType is the documented frontier — a follow-up adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators at build time (works against any Standard Schema validator). Until then you can keep using Zod / Valibot / ArkType through the DX helpers — `@pyreon/validate` never locks you in.
 
