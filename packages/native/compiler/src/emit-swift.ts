@@ -43,6 +43,7 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
+  widenFloatSignals,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -1209,6 +1210,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Store field types thread into the inference ctx so computeds over
   // store reads (`useApp().store.tasks().filter(...).length`) infer a
   // concrete return type instead of degrading to Any.
+  // Write-site float widening BEFORE the ctx build — a signal whose writes
+  // are fractional (`start.set(Date.now())`) must DECLARE Double. Mutates
+  // the decls in place (idempotent). See infer-type.ts:widenFloatSignals.
+  widenFloatSignals(c, _storeDefs, _structDefs)
   const inferCtx = buildInferenceCtx(c.decls, _storeDefs, _structDefs, c.props, c.propsParamName)
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.
