@@ -1,5 +1,36 @@
 # @pyreon/compiler
 
+## 0.39.0
+
+### Minor Changes
+
+- [#1971](https://github.com/pyreon/pyreon/pull/1971) [`2444405`](https://github.com/pyreon/pyreon/commit/244440585f0066759a0f1bc4aec087e44b131466) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: `migrate_pyreon` — auto-fix the mechanically-safe Pyreon footguns
+
+  Closes the documented gap that kept every `detectPyreonPatterns` diagnostic `fixable: false` ("no migrate_pyreon tool yet"). New `migratePyreonCode(source, filename?)` in `@pyreon/compiler` + the `migrate_pyreon` MCP tool (parallel to `migrate_react`) rewrite Pyreon-footgun → correct-Pyreon for the three UNAMBIGUOUS, purely-mechanical codes:
+
+  - `signal-write-as-call` — `sig(v)` → `sig.set(v)`
+  - `for-with-key` — `<For key={k}>` → `<For by={k}>`
+  - `as-unknown-as-vnodechild` — `x as unknown as VNodeChild` → `x`
+
+  Every other footgun (props-destructured, on-click-undefined, raw-add-event-listener, …) needs human judgement and is returned in `remaining`, untouched. The codemod is span-based (exact `getStart`/`getEnd`), applied back-to-front, non-overlapping, and idempotent — so an agent can apply the result verbatim. This makes those three `detectPyreonPatterns` codes report `fixable: true` (kept in sync via the new `AUTO_FIXABLE_PYREON_CODES` set); every other code stays `fixable: false`.
+
+### Patch Changes
+
+- [#1980](https://github.com/pyreon/pyreon/pull/1980) [`514f28d`](https://github.com/pyreon/pyreon/commit/514f28da2c442e9fffd694a88a2b8fd8c9a48088) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a family of fuzz-found signal auto-call + static-attribute bugs — several runtime-broken on the shipped (native-first) backend:
+
+  - **`onClick={() => count.set(count + 1)}` — the canonical counter — was broken on the native backend**: auto-call never descended into handler bodies, so the emitted code added the signal _function_ (`count.set(count + 1)` → `"() => {…}1"`). Both backends now walk nested function bodies (shadow-aware) uniformly.
+  - **Signals inside `.map`/callback re-emits were never auto-called in either backend** — `title={sig ? "a" : "b"}` inside a `.map` was stuck forever (a bare signal function is always truthy).
+  - **Nested JSX inside conditional slots stringified signal source on native** — `{cond() ? <span id={`v${sig}`}> : null}` rendered `id="v(...args) => {…"`. The native rewriter now descends into nested JSX like the JS backend.
+  - **Exactly-bare signal attrs/children in re-emitted JSX now stay bare in both backends** (fine-grained runtime accessor binding — the attr updates without remounting the branch). Previously the JS backend value-called them, subscribing the whole slot and remounting the branch on every change.
+  - **Static attributes are never silently dropped**: the native backend's static-attr catch-all dropped `tabIndex={-1}`, `title={1+2}`, and `id={("x")}` from the DOM entirely; the JS backend dropped no-substitution template attrs (`` id={`x`} ``). Both now unwrap parens/TS layers and bake literal / no-subst-template / signed-numeric shapes; anything else static-but-computed pays a one-time runtime `setAttribute`. `hidden={undefined}` is now omitted (it used to render the string `"undefined"`, which is truthy for boolean attrs).
+  - **Duplicate JSX attributes now dedupe last-wins** in the template path (baking both handed the decision to the HTML parser, which is first-wins — the opposite of JSX object semantics) and emit a new `duplicate-jsx-attr` compiler warning.
+
+  Backed by a new permanent seeded differential-fuzz gate (300 seeds × client/SSR, byte-equivalence JS ≡ Rust), a curated R21 equivalence corpus, and runtime regression locks (compile → mount → signal flip → DOM assert). Campaign result: 10,000 seeds × 2 modes, zero divergence, zero throws, zero invalid output.
+
+- [#1985](https://github.com/pyreon/pyreon/pull/1985) [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<For>`: release the LIS reorder scratch after each pass — removed rows are now GC-eligible immediately.
+
+  `forLisReorder` filled the per-`<For>` scratch array with `ForEntry` references (each pinning its row's DOM subtree + cleanup closure) and never cleared them. A large reorder followed by a shrink (e.g. 10k rows filtered down to 50) left the stale tail pinning every removed row's DOM for as long as the `<For>` stayed mounted — later reorders only overwrite the head of the scratch, so the tail never self-healed. GC-observable regression test (bisect-verified: 60/62 removed rows stayed pinned pre-fix) now runs in CI under `--expose-gc`.
+
 ## 0.38.0
 
 ### Minor Changes

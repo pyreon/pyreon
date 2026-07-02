@@ -1,5 +1,25 @@
 # cpa-pw-app-preact
 
+## 0.0.25
+
+### Patch Changes
+
+- Updated dependencies [[`45791ad`](https://github.com/pyreon/pyreon/commit/45791ad573960d6d6741fbdc3621b24210b3fbd1), [`e1e5278`](https://github.com/pyreon/pyreon/commit/e1e527837f0761d2ee4815c2960f63d1dc70f522), [`b15b4b5`](https://github.com/pyreon/pyreon/commit/b15b4b5b823c85babc07b9250bc4fa39a4b22d31), [`a0c82c3`](https://github.com/pyreon/pyreon/commit/a0c82c3270a8e89e69d88046b590f04588f6802f), [`6d358d4`](https://github.com/pyreon/pyreon/commit/6d358d4d97ff8185518f58ddebb52233281cb83d), [`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`801f5a7`](https://github.com/pyreon/pyreon/commit/801f5a758d04bde0ed3a63ae03c3f7d7af12931d), [`9562f24`](https://github.com/pyreon/pyreon/commit/9562f2489e1d7176dd41b1ec52fe0fb39568b100), [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31), [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e), [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187), [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187), [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`74bbc94`](https://github.com/pyreon/pyreon/commit/74bbc9423245e0596872c9a7fb230bacdc411cca), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e)]:
+  - @pyreon/query@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/zero@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/preact-compat@1.0.0
+  - @pyreon/meta@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/store@1.0.0
+
 ## 0.0.24
 
 ### Patch Changes

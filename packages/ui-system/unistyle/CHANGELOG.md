@@ -1,5 +1,17 @@
 # @pyreon/unistyle
 
+## 0.39.0
+
+### Patch Changes
+
+- [#2022](https://github.com/pyreon/pyreon/pull/2022) [`2e9cd0e`](https://github.com/pyreon/pyreon/commit/2e9cd0ecf98d61b8fa0ce6cd1aa0fec73bc844a6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `spaceEvenly` being typed-but-unimplemented: coolgrid's `contentAlignX` (and unistyle's shared alignment vocabulary) advertised `'spaceEvenly'` from inception, but the alignment map had no entry — the declaration silently emitted nothing. The map now emits `space-evenly`; regression-locked.
+
+- Updated dependencies [[`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a)]:
+  - @pyreon/reactivity@0.39.0
+  - @pyreon/core@0.39.0
+  - @pyreon/styler@0.39.0
+  - @pyreon/ui-core@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

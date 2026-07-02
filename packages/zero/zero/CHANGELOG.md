@@ -1,5 +1,104 @@
 # @pyreon/zero
 
+## 0.39.0
+
+### Minor Changes
+
+- [#2004](https://github.com/pyreon/pyreon/pull/2004) [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): zero-config conventions — favicon file-detection + auto-injected theme script
+
+  **Favicon file convention.** Drop `src/favicon.svg` (or `.png`) in your project and zero generates the full favicon set (ICO + PNG sizes + web manifest + injected `<head>` tags) with defaults — no config, like Next's `app/icon.png`. Because the wiring is implicit, a missing `sharp` **soft-degrades to a one-time build warning** instead of the hard error explicit config keeps (you never explicitly asked, so an optional dependency must not fail your build). `zero({ favicon: false })` disables detection; explicit `zero({ favicon: { source } })` behaves exactly as before. `public/favicon.svg` is deliberately not detected (Vite copies `public/` verbatim — the generated file would collide).
+
+  **Auto-injected theme script.** `zero({ theme: true })` injects the pre-paint `themeScript` (dark/light from localStorage / `prefers-color-scheme`, applied before first paint) into every page's `<head>` — the manual `<script>{themeScript}</script>` step disappears. Injected content is byte-identical to `themeScript`, so `themeScriptCspHash` covers it under a strict CSP unchanged. Off by default (apps not using zero's theme system shouldn't pay for a localStorage read + `data-theme` write).
+
+- [#2004](https://github.com/pyreon/pyreon/pull/2004) [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): DX-audit follow-ups — strict-CSP theme script, auto-canonical, sitemap lastmod, font visibility, dev-cache invalidation
+
+  Five follow-ups from the zero DX audit:
+
+  - **Strict CSP for the theme script.** New `themeScriptCspHash` constant (precomputed `'sha256-…'`, drift-locked by a test that recomputes it from `themeScript`) lets the pre-paint theme script run under `script-src` without `'unsafe-inline'` — including on static SSG HTML where per-request nonces are impossible. For parametrized inline scripts (e.g. ui-core's `cssVariablesPrePaintScript(opts)`), new `cspHashForInlineScript(script)` in `@pyreon/zero/csp` computes the hash via Web Crypto (client-safe, Node/Bun/edge).
+  - **Auto-canonical URLs.** `<Meta origin="https://example.com">` now derives `<link rel="canonical">` (and `og:url`) from the current route path — every page gets a canonical with zero per-route boilerplate. Explicit `canonical` wins; `autoCanonical={false}` opts out; no-op outside a router context.
+  - **Sitemap `lastmod`.** `sitemap: { lastmod: 'build-time' | '<ISO date>' }` stamps entries that don't carry their own (per-entry `additionalPaths[].lastmod` wins). `'build-time'` is the honest automated default — file mtimes are unreliable in CI.
+  - **Font failure visibility + `?font&display=`.** Google-Fonts self-hosting failure at build now warns loudly (it silently fell back to the CDN — a perf/privacy regression you couldn't see). The `?font` import accepts a `display=` query override (`swap` default unchanged).
+  - **Dev-cache invalidation.** Editing a favicon source icon or an og-image background now clears the dev server's on-the-fly cache — no more stale icons until restart.
+
+  Plus first-class docs for the og-image subsystem (previously discoverable only via TypeScript).
+
+- [#2004](https://github.com/pyreon/pyreon/pull/2004) [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): one config surface for the whole DX suite — `zero({ seo, favicon, og, ai })` — plus parallel favicon/og generation
+
+  **Unified auto-wiring.** `seoPlugin`, `faviconPlugin`, `ogImagePlugin`, and `aiPlugin` are now fields on `zero()` — the same pattern `image`/`font` already used — instead of four separate imports + plugin entries:
+
+  ```ts
+  zero({
+    font: { google: ['Inter:wght@400;700'], fallbackAdjust: true },
+    seo: { sitemap: { origin: 'https://example.com' }, robots: { … } },
+    favicon: { source: './src/favicon.svg', darkSource: './src/favicon-dark.svg' },
+    og: { templates: [{ name: 'default', background: { color: '[#111](https://github.com/pyreon/pyreon/issues/111)' }, layers: [{ text: 'Hi' }] }] },
+    ai: { name: 'My Site' },
+  })
+  ```
+
+  Unlike image/font these are NOT default-on — each needs user input to do anything meaningful (an origin, a source icon, templates), so supplying the config IS the opt-in. The standalone plugin imports keep working unchanged.
+
+  **Parallel image generation.** `faviconPlugin` previously resized every PNG **serially** — and in dual-variant (dark) mode re-rendered the light PNGs a second time for the standard names. All sizes + locale sets now generate in parallel and the light buffers are reused (identical bytes), so a 5-locale dual-variant build drops from ~6× to ~1× the single-set wall clock. `ogImagePlugin` likewise renders all template × locale variants in parallel (3 templates × 5 locales previously paid 15× the single-image time).
+
+  **Scaffolder alignment.** `create-zero`'s generated `vite.config.ts` now uses the unified `zero({ font, seo })` surface, `subsets: ['latin']`, and `fallbackAdjust: true` (the auto capsize-derived CLS-free fallback) instead of hand-tuned `sizeAdjust`/`ascentOverride` metrics.
+
+- [#2006](https://github.com/pyreon/pyreon/pull/2006) [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero({ mode: 'auto' })` (EXPERIMENTAL) — automatic per-route static optimization. Inference is conservative ("static unless the code says otherwise"): `revalidate` export → `isr`; `getStaticPaths` → `ssg` (a static-intent signal even alongside a loader); `loader` / `.server.ts` / `guard` / `middleware` → `ssr`; otherwise `ssg`. Explicit `renderMode` exports and `routeRules` always win. The app-level pipeline (server vs pure-static) is derived from the result and announced at startup, and the build mode table shows every inferred decision — inference is never invisible magic. Implemented as inference-as-declaration: inferred modes become `renderMode` literals at route-module generation, so runtime dispatch, build filtering, and mode errors need zero auto-awareness.
+
+- [#2006](https://github.com/pyreon/pyreon/pull/2006) [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Render-mode DX, Tier 1 — "zero decides, you override, everything is visible":
+
+  - **Per-route mode table on every build** — `○ ssg · λ ssr · ⟳ isr · ⚡ spa` with `(declared)` marking per-route overrides (apps >40 routes collapse to the counts line). New public helpers on `@pyreon/zero/server`: `collectFileRouteModes` (file-level mode resolution with layout cascade) + `formatRouteModeTable`.
+  - **`zero dev` banner mode line** — shows the app mode plus hybrid overrides (`Mode  ssr (hybrid: 2 ssg, 1 isr)`), and the route summary/table now shows TRUTHFUL resolved per-route modes (previously every route was stamped with the default).
+  - **Adapter auto-detection** — `adapter` unset + building on Vercel / Netlify / Cloudflare Pages (`VERCEL` / `NETLIFY` / `CF_PAGES` env) picks that platform's adapter automatically; explicit `adapter` always wins; local builds keep `node`.
+  - **No more silent missing SSG pages** — a dynamic route with no `getStaticPaths` under SSG now produces a loud build warning naming the file and the three fixes (previously the page was silently absent from `dist/`). Routes declaring a non-static `renderMode` and API routes are exempt.
+
+- [#2023](https://github.com/pyreon/pyreon/pull/2023) [`74bbc94`](https://github.com/pyreon/pyreon/commit/74bbc9423245e0596872c9a7fb230bacdc411cca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Zero render-modes DX — the final three roadmap gaps:
+
+  - **Build-time ISR auth-read warning** (`@pyreon/zero`): an ISR-mode route whose loader/middleware/guard reads `headers.get('cookie'|'authorization')` without a custom `isr.cacheKey` FUNCTION now gets a loud build/dev warning naming the file and the fix (the runtime already refuses to cache such responses, but only per-request in prod logs). Effective-mode resolution mirrors the file/layout/routeRules/app cascade; a custom `cacheKey` function suppresses it.
+  - **Scaffolder ISR + typed routes** (`@pyreon/create-zero`): `--mode isr` (and the interactive ISR choice) scaffolds `mode: 'isr', isr: { revalidate: 60 }` and filters the `static` adapter (ISR needs a server); new `--typed-routes` / `--no-typed-routes` flags + prompt (default ON) wire `zero({ typedRoutes: true })` with the generated `src/pyreon-routes.d.ts` gitignored by the template.
+  - **`pyreon/missing-get-static-paths` is now app-mode-aware** (`@pyreon/lint`): new `appMode` option — `["warn", { "appMode": "ssr" }]` flips the polarity for server apps: undeclared dynamic routes are quiet (they render per-request), and only explicit `renderMode = 'ssg'` declarations (which join the prerender pass) still require `getStaticPaths`.
+
+- [#2006](https://github.com/pyreon/pyreon/pull/2006) [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Render-mode DX, Tier 2 — kill the remaining silent failures:
+
+  - **Computed `renderMode` warning** — a non-literal `export const renderMode` still works at runtime (namespace-import fallback) but defeats inlining and is invisible to the build mode table / dev banner / SSG completeness checks; the build now says so once per file.
+  - **Pasteable fix lines in mode errors** — the `mode: 'ssg'|'spa'` × server-route build error now carries a per-route `→ change to \`export const renderMode = '…'\`` line.
+  - **`ssg.paths` precedence surfaced** — explicit paths REPLACE auto-detection (now documented on the option); when route-level `getStaticPaths` exports would be silently ignored, the build warns and names them.
+  - **`revalidate` layers documented** — route `export const revalidate` (build-time platform manifest) vs `isr.revalidate` (runtime SWR TTL) cross-referenced in both JSDoc sites.
+  - **ISR: `cacheKey: 'path-only'` shorthand** — keys by pathname, stripping analytics params; deliberately does NOT relax the `Vary: Cookie` auth-refusal. Suppresses the default-key dev warning (it's an explicit choice).
+  - **ISR: `expireOnTimeout`** — opt-in: a timed-out background revalidation drops the stale entry so the next request renders fresh instead of serving stale forever.
+  - **`ssg.format: 'both'` auto-canonical** — the duplicate-URL pair now carries a root-relative `<link rel="canonical">` to the clean URL in both copies (skipped when the page already has one, and for meta-refresh redirect stubs).
+
+- [#2006](https://github.com/pyreon/pyreon/pull/2006) [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero({ routeRules })` — central per-path render-mode overrides (Nuxt's routeRules idiom, scoped v1: `renderMode`). Glob keys (`*` = one segment, `**` = any depth, most-specific wins) map to modes for every route that doesn't declare its own — precedence: route-file `export const renderMode` > `routeRules` > app `mode`. Applied uniformly across runtime dispatch, build-time route filtering, the mode table (rule-sourced modes are marked), the SSG completeness warning (a rule declaring a dynamic route non-static is as intentional as a file declaration), and the impossible-combo build errors (which now name the offending rule).
+
+- [#1962](https://github.com/pyreon/pyreon/pull/1962) [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(zero): typed `<Link href>` + automatic external-link handling
+
+  `<Link>` / `useLink` / `createLink` gain the same upgrades landed for `@pyreon/router`'s `<RouterLink>`, applied to the `href` API zero apps actually use.
+
+  **Typed `href` (typo-rejection).** `<Link>` is now generic (`Link<const T>`), with `href: CheckHref<T, RoutePath>` bound to zero's own route registry. Once `typedRoutes` codegen has run, a mistyped internal path is a compile error, concrete paths validate against `:param` patterns (`/posts/42` matches `/posts/:id`), and dynamic `string`s + external URLs are always accepted. This replaces the old `href: RouteHref = RoutePath | (string & {})`, which silently accepted every typo — the "typed routes reject typos" claim is now actually enforced. Strict superset of the old `string`-accepting behaviour.
+
+  **Automatic external-link detection.** `<Link>` classifies `href` at runtime (`classifyHref` from `@pyreon/router`) and only intercepts INTERNAL navigations. External `http(s)` / protocol-relative URLs now auto-render `<a target="_blank" rel="noopener noreferrer">` and full-navigate (**previously** `<Link href="https://x.com">` called `router.push("https://x.com")` unless you manually added `external` — a broken-navigation footgun); `mailto:`/`tel:`/`#hash` are left to the browser; same-origin absolute URLs are internal by default (stripped to their path). New per-link `target` / `rel` overrides join the existing `external`; a per-router `createApp({ links: { sameOriginAbsolute, externalNewTab, externalRel } })` config tunes the defaults (explicit prop > config > auto-detect).
+
+### Patch Changes
+
+- [#2001](https://github.com/pyreon/pyreon/pull/2001) [`e1e5278`](https://github.com/pyreon/pyreon/commit/e1e527837f0761d2ee4815c2960f63d1dc70f522) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: kill the `__DEV__` const-alias dev gates — edge/workerd SSR bundles no longer ship dev counters + warnings
+
+  A prod-bundle sweep across every published package (fundamentals + ui-system + core, probing minified NODE_ENV=production bundles for dev survivors) found one remaining instance class of the documented `__DEV__`-alias anti-pattern: `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` in 6 files. The alias is non-constant under a bundler's define (the `typeof process` prefix stays dynamic on non-Node platforms, and const-aliases don't propagate anyway), so **edge/workerd SSR bundles — which minify these files — shipped every perf counter and dev warning**. `@pyreon/runtime-server` was the worst: 9 counters + the Suspense-timeout warning + the tag-name validator survived in production (−423 B gz / −8% after the fix).
+
+  Fixed to the repo-standard bare inline `process.env.NODE_ENV !== 'production'` at every site in: `@pyreon/runtime-server` (14 sites), `@pyreon/server` `handler.ts`, `@pyreon/zero` `isr.ts` + `ssg-plugin.ts`, `@pyreon/vite-plugin`, `@pyreon/zero-content` `config.ts`. Zero behavior change in dev or Node prod (the gate evaluates identically at runtime); the win is bundle-level. Locked by a bisect-verified tree-shake test that bundles the real runtime-server entry for the browser platform (the edge-bundle simulation — `platform: 'node'` masks the bug because esbuild folds `typeof process` there) and asserts counters + dev-warning strings are absent in prod / present in dev. The runtime-server bundle budget is ratcheted down 6,144 → 5,248 B. Everything else in the sweep came back clean — the `[Pyreon]` strings surviving in fundamentals bundles are all legitimate `throw` error paths that must ship.
+
+- [#2017](https://github.com/pyreon/pyreon/pull/2017) [`6d358d4`](https://github.com/pyreon/pyreon/commit/6d358d4d97ff8185518f58ddebb52233281cb83d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix route-group special files being silently clobbered: `(group)/_layout.tsx` (and `_error` / `_loading` / `_404` inside groups) landed on the same route-tree node as the parent directory's specials because `parseFilePath` stripped `(group)` segments from `dirPath` — the group layout rendered nothing (RouterView → RouterView → page, no layout DOM). Group segments now survive in the tree key while staying URL-invisible, sibling groups are fully isolated, `placeRoute` warns loudly on any same-slot overwrite, and i18n `prefix-except-default` now duplicates group layouts per locale (root-ness is keyed on `dirPath === ''`, not `urlPath === '/'`).
+
+- Updated dependencies [[`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`e1e5278`](https://github.com/pyreon/pyreon/commit/e1e527837f0761d2ee4815c2960f63d1dc70f522), [`b15b4b5`](https://github.com/pyreon/pyreon/commit/b15b4b5b823c85babc07b9250bc4fa39a4b22d31), [`a0c82c3`](https://github.com/pyreon/pyreon/commit/a0c82c3270a8e89e69d88046b590f04588f6802f), [`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`801f5a7`](https://github.com/pyreon/pyreon/commit/801f5a758d04bde0ed3a63ae03c3f7d7af12931d), [`a401811`](https://github.com/pyreon/pyreon/commit/a40181170cad2c71efa66244aa9306b4b3f8527f), [`9562f24`](https://github.com/pyreon/pyreon/commit/9562f2489e1d7176dd41b1ec52fe0fb39568b100), [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31), [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e)]:
+  - @pyreon/vite-plugin@0.39.0
+  - @pyreon/runtime-server@0.39.0
+  - @pyreon/server@0.39.0
+  - @pyreon/runtime-dom@0.39.0
+  - @pyreon/sized-map@0.39.0
+  - @pyreon/reactivity@0.39.0
+  - @pyreon/router@0.39.0
+  - @pyreon/head@0.39.0
+  - @pyreon/meta@0.39.0
+  - @pyreon/core@0.39.0
+
 ## 0.38.0
 
 ### Minor Changes

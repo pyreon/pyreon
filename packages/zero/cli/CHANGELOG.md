@@ -1,5 +1,30 @@
 # zero-cli
 
+## 0.39.0
+
+### Patch Changes
+
+- [#1973](https://github.com/pyreon/pyreon/pull/1973) [`fad3226`](https://github.com/pyreon/pyreon/commit/fad3226d42f4767c869bdc71d5ba58bc920ad500) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero dev`: honor `NO_COLOR` / `FORCE_COLOR` / `isTTY` in the startup banner, so piped output (`bun run dev > log`, CI, `bun run --filter`'s boxed capture) stays clean plain text instead of leaking raw ANSI escape codes.
+
+- [#1967](https://github.com/pyreon/pyreon/pull/1967) [`1572afd`](https://github.com/pyreon/pyreon/commit/1572afd8891f022b45bbff10575500feb89d6e9e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero dev`: collapse the route list to a one-line summary by default and always print the Local URL + ready time last.
+
+  The startup banner previously printed the full route table (one line per route) with the Local URL first. Under `bun run --filter <app> dev` — whose runner elides the _middle_ of long child output and keeps only the tail — a large app's route table pushed the Local URL and startup time off the top, so you couldn't see where to open the app or how long it took.
+
+  Now the banner is collapsed to a compact summary (`Routes  SSR 15 · SSG 4 · API 1`), and the Local URL + `ready in <ms>` are printed last so they survive in the visible tail. Pass `--routes` to expand the full table.
+
+- [#2006](https://github.com/pyreon/pyreon/pull/2006) [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Render-mode DX, Tier 1 — "zero decides, you override, everything is visible":
+
+  - **Per-route mode table on every build** — `○ ssg · λ ssr · ⟳ isr · ⚡ spa` with `(declared)` marking per-route overrides (apps >40 routes collapse to the counts line). New public helpers on `@pyreon/zero/server`: `collectFileRouteModes` (file-level mode resolution with layout cascade) + `formatRouteModeTable`.
+  - **`zero dev` banner mode line** — shows the app mode plus hybrid overrides (`Mode  ssr (hybrid: 2 ssg, 1 isr)`), and the route summary/table now shows TRUTHFUL resolved per-route modes (previously every route was stamped with the default).
+  - **Adapter auto-detection** — `adapter` unset + building on Vercel / Netlify / Cloudflare Pages (`VERCEL` / `NETLIFY` / `CF_PAGES` env) picks that platform's adapter automatically; explicit `adapter` always wins; local builds keep `node`.
+  - **No more silent missing SSG pages** — a dynamic route with no `getStaticPaths` under SSG now produces a loud build warning naming the file and the three fixes (previously the page was silently absent from `dist/`). Routes declaring a non-static `renderMode` and API routes are exempt.
+
+- Updated dependencies [[`e1e5278`](https://github.com/pyreon/pyreon/commit/e1e527837f0761d2ee4815c2960f63d1dc70f522), [`6d358d4`](https://github.com/pyreon/pyreon/commit/6d358d4d97ff8185518f58ddebb52233281cb83d), [`801f5a7`](https://github.com/pyreon/pyreon/commit/801f5a758d04bde0ed3a63ae03c3f7d7af12931d), [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187), [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187), [`31cfc98`](https://github.com/pyreon/pyreon/commit/31cfc984138936feb5c51a2256cff7583e855187), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`74bbc94`](https://github.com/pyreon/pyreon/commit/74bbc9423245e0596872c9a7fb230bacdc411cca), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`08c022e`](https://github.com/pyreon/pyreon/commit/08c022e2d598ebf70f5b71bfc0a5b274e61991ef), [`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e)]:
+  - @pyreon/server@0.39.0
+  - @pyreon/zero@0.39.0
+  - @pyreon/create-zero@0.39.0
+  - @pyreon/cli@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

@@ -1,5 +1,29 @@
 # @pyreon/vite-plugin
 
+## 0.39.0
+
+### Minor Changes
+
+- [#2012](https://github.com/pyreon/pyreon/pull/2012) [`801f5a7`](https://github.com/pyreon/pyreon/commit/801f5a758d04bde0ed3a63ae03c3f7d7af12931d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Islands DX — auto-naming + dev doctor-lite:
+
+  - **`island()` `name` is now optional** for const-bound declarations under `@pyreon/vite-plugin` (`islands: true`, the default). The plugin derives a collision-free name from the binding (`const Counter = island(…)` → `Counter$<file-hash>`) and injects it in BOTH the transform (what the runtime receives) and the auto-registry prescan (what the client hydrates) — one derivation, so marker and registry can never disagree, and the manual-name typo class disappears. Explicit `name:` always wins. The no-options form `island(() => import('./X'))` works too. Without the plugin (or for bindingless calls) the runtime throws at declaration time with guidance instead of failing silently at hydration.
+  - **Islands doctor-lite on `vite dev`**: the islands audit (duplicate-name / nested-island / dead-island / registry drift — previously CI-or-manual via `pyreon doctor --check-islands`) now runs once on dev-server boot and prints findings as plain warnings. Advisory: any audit failure is swallowed, never breaking the dev server.
+
+### Patch Changes
+
+- [#1992](https://github.com/pyreon/pyreon/pull/1992) [`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Rocketstyle-collapse resolver: strip the SSR renderer's `<!--$-->…<!--/$-->` hydration range markers from the captured HTML before baking the `_rsCollapse` template. A collapse bake is a static cloneNode template that is never range-hydrated — the markers would be dead comment nodes cloned into every mount.
+
+- [#2001](https://github.com/pyreon/pyreon/pull/2001) [`e1e5278`](https://github.com/pyreon/pyreon/commit/e1e527837f0761d2ee4815c2960f63d1dc70f522) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: kill the `__DEV__` const-alias dev gates — edge/workerd SSR bundles no longer ship dev counters + warnings
+
+  A prod-bundle sweep across every published package (fundamentals + ui-system + core, probing minified NODE_ENV=production bundles for dev survivors) found one remaining instance class of the documented `__DEV__`-alias anti-pattern: `const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'` in 6 files. The alias is non-constant under a bundler's define (the `typeof process` prefix stays dynamic on non-Node platforms, and const-aliases don't propagate anyway), so **edge/workerd SSR bundles — which minify these files — shipped every perf counter and dev warning**. `@pyreon/runtime-server` was the worst: 9 counters + the Suspense-timeout warning + the tag-name validator survived in production (−423 B gz / −8% after the fix).
+
+  Fixed to the repo-standard bare inline `process.env.NODE_ENV !== 'production'` at every site in: `@pyreon/runtime-server` (14 sites), `@pyreon/server` `handler.ts`, `@pyreon/zero` `isr.ts` + `ssg-plugin.ts`, `@pyreon/vite-plugin`, `@pyreon/zero-content` `config.ts`. Zero behavior change in dev or Node prod (the gate evaluates identically at runtime); the win is bundle-level. Locked by a bisect-verified tree-shake test that bundles the real runtime-server entry for the browser platform (the edge-bundle simulation — `platform: 'node'` masks the bug because esbuild folds `typeof process` there) and asserts counters + dev-warning strings are absent in prod / present in dev. The runtime-server bundle budget is ratcheted down 6,144 → 5,248 B. Everything else in the sweep came back clean — the `[Pyreon]` strings surviving in fundamentals bundles are all legitimate `throw` error paths that must ship.
+
+- Updated dependencies [[`514f28d`](https://github.com/pyreon/pyreon/commit/514f28da2c442e9fffd694a88a2b8fd8c9a48088), [`b15b4b5`](https://github.com/pyreon/pyreon/commit/b15b4b5b823c85babc07b9250bc4fa39a4b22d31), [`a0c82c3`](https://github.com/pyreon/pyreon/commit/a0c82c3270a8e89e69d88046b590f04588f6802f), [`16f2ad1`](https://github.com/pyreon/pyreon/commit/16f2ad130f7ba1fd0e821bf28bc59fe49787790b), [`2444405`](https://github.com/pyreon/pyreon/commit/244440585f0066759a0f1bc4aec087e44b131466), [`9562f24`](https://github.com/pyreon/pyreon/commit/9562f2489e1d7176dd41b1ec52fe0fb39568b100), [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31)]:
+  - @pyreon/compiler@0.39.0
+  - @pyreon/runtime-dom@0.39.0
+  - @pyreon/reactivity@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

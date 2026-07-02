@@ -1,5 +1,26 @@
 # @pyreon/elements
 
+## 0.39.0
+
+### Patch Changes
+
+- [#2014](https://github.com/pyreon/pyreon/pull/2014) [`9562f24`](https://github.com/pyreon/pyreon/commit/9562f2489e1d7176dd41b1ec52fe0fb39568b100) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: overlay content now positions on open + Portal wires its own event delegation
+
+  Two long-standing bugs reported by a downstream consumer, both verified and fixed at the root:
+
+  **`useOverlay` never positioned content on open.** `setContentPosition()` was only reachable through the throttled window resize/scroll handlers — nothing ran it when the content actually mounted, so every dropdown/tooltip/popover portaled to `document.body` rendered at the page's flow position (bottom-left) until a scroll or resize. The hook now subscribes to `active` + `isContentLoaded` in `setupListeners()` and repositions one animation frame after open (re-checked against a racing close). `setContentPosition` is also exposed from the hook for content whose size changes while open (async option lists).
+
+  **`useOverlay` auto-attaches its listeners.** `setupListeners()` previously returned un-attached and only the built-in Overlay component remembered to call it — raw `useOverlay` consumers shipped dead triggers. The hook now auto-attaches via `onMount`; `setupListeners` stays exported for manual control and is idempotent (a second call returns the first call's cached cleanup; cleanup resets so KeepAlive re-mounts re-attach). A dev warning fires if `showContent()` runs with listeners never attached (outside-setup usage that skipped manual wiring).
+
+  **`<Portal>` wires its own event delegation.** Pyreon delegates bubbling events at the app's mount container; portal content lives outside it, so every delegated handler (`onClick` etc.) inside any Portal was silently dead unless the app manually delegated the target. The Portal mount branch now calls `setupDelegation(target)` itself. Safe when the target is an ancestor of the app root (`document.body`): the per-dispatch invoked-set dedupes, so app handlers don't double-fire — both directions locked by real-Chromium tests. Downstream workarounds (synthetic-resize dispatch, manual `setupDelegation(document.body)`) can be removed.
+
+- Updated dependencies [[`a401811`](https://github.com/pyreon/pyreon/commit/a40181170cad2c71efa66244aa9306b4b3f8527f), [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72), [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102), [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09), [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a), [`2e9cd0e`](https://github.com/pyreon/pyreon/commit/2e9cd0ecf98d61b8fa0ce6cd1aa0fec73bc844a6)]:
+  - @pyreon/sized-map@0.39.0
+  - @pyreon/reactivity@0.39.0
+  - @pyreon/unistyle@0.39.0
+  - @pyreon/core@0.39.0
+  - @pyreon/ui-core@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes
