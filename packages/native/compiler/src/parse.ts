@@ -2310,6 +2310,48 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       if (decl) decls.push(decl)
     } else if (stmt.type === 'ReturnStatement' && stmt.argument) {
       returnExpr = parseExpr(stmt.argument, ctx)
+    } else if (stmt.type === 'ExpressionStatement') {
+      // A bare component-body statement. `onMount(fn)` — the documented
+      // lifecycle escape hatch — LOWERS to a mount-time harness decl.
+      // Everything else (bare `effect(...)`, stray calls) gets a NAMED
+      // warning: pre-fix ANY expression statement fell through this walker
+      // silently, so the documented `onMount(() => ws.connect())` pattern
+      // compiled clean and did NOTHING on device.
+      const call = stmt.expression as AnyNode
+      if (
+        call?.type === 'CallExpression' &&
+        call.callee?.type === 'Identifier' &&
+        call.callee.name === 'onMount' &&
+        call.arguments?.length === 1 &&
+        (call.arguments[0]?.type === 'ArrowFunctionExpression' ||
+          call.arguments[0]?.type === 'FunctionExpression')
+      ) {
+        const cb = call.arguments[0] as AnyNode
+        let bodyStmts: StatementIR[]
+        if (cb.body?.type === 'BlockStatement') {
+          bodyStmts = parseStatementBlock(cb.body, ctx)
+        } else {
+          bodyStmts = [{ kind: 'expr', expr: parseExpr(cb.body, ctx) }]
+        }
+        // A returned CLEANUP fn (onMount's unmount contract) is not emitted
+        // in v1 — strip it (a bare `return <closure>` inside .onAppear /
+        // LaunchedEffect would be a type error) + warn NAMED.
+        const kept = bodyStmts.filter((st) => {
+          const isCleanupReturn =
+            st.kind === 'return' && st.expr !== undefined && st.expr.kind === 'arrow'
+          if (isCleanupReturn) {
+            ctx.warnings.push(
+              `Component ${name}: onMount returned a cleanup function — unmount cleanup is not emitted natively yet (the mount body IS). Move teardown to the host, or track the follow-up.`,
+            )
+          }
+          return !isCleanupReturn
+        })
+        decls.push({ kind: 'on-mount', body: kept })
+      } else {
+        ctx.warnings.push(
+          `Component ${name}: a bare component-body statement (${call?.type === 'CallExpression' && call.callee?.type === 'Identifier' ? call.callee.name + '(...)' : stmt.expression?.type ?? 'statement'}) is not lowered natively and was DROPPED — only declarations, onMount(fn), and the return JSX run on native. Move side effects into onMount or a handler.`,
+        )
+      }
     }
   }
 
