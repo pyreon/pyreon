@@ -173,6 +173,22 @@ const isInlineArray = (s: FieldLike): boolean =>
   s._kind === 'array' && !!s.element && Array.isArray(s._ops) && s._ops.every((op) => op.kind.startsWith('check:'))
 
 /**
+ * Whether a field's VALID value is provably never `undefined` — lets
+ * `genObjectBody` drop the redundant `if (r !== undefined || (k in src))`
+ * strip-assignment guard. True for inline objects/arrays (freshly built) and
+ * inline primitives whose type-guard excludes `undefined` (everything except
+ * the `undefined` kind and `literal`, whose literal value could itself be
+ * `undefined`). Anything routed to the `_runInto` fallback (optional / default
+ * / nullable / union / …) can legitimately yield `undefined`, so it is NOT
+ * covered here and keeps the guard.
+ */
+function fieldDefinedWhenValid(field: FieldLike): boolean {
+  if (isPlainObject(field) || isInlineArray(field)) return true
+  if (isInlinePrimitive(field)) return field._kind !== 'undefined' && field._kind !== 'literal'
+  return false
+}
+
+/**
  * Whether `s` (or any nested field) carries a `serverCheck` op. The JIT emits
  * SYNCHRONOUS code; a `serverCheck` resolved by an async registered validator
  * returns a Promise, which the generated code can't await — so any tree with a
@@ -335,7 +351,22 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         const kl = keyLit(key)
         const vV = nv()
         lines.push(`P.push(${kl}); var ${vV} = ${srcVar}[${kl}];`)
-        genValue(field, vV, (r) => `if (${r} !== undefined || (${kl} in ${srcVar})) { ${assign(outVar, kl, key, r)} }`, ASYNC_FIELD, depth)
+        // The assignment guard `if (r !== undefined || (k in src))` decides
+        // whether strip-mode copies the key. It is REDUNDANT when the value
+        // reaching `onValid` is provably-not-`undefined`: an inline primitive
+        // is assigned only inside the branch that already passed its
+        // `typeof`/identity guard (so `undefined` is excluded — except the
+        // `undefined`/`literal` kinds, whose valid value CAN be `undefined`),
+        // and an inline object/array is a freshly-built `{}`/`[]`. In those
+        // cases we emit the bare assignment — dropping a comparison (+ a
+        // potential `in`) per required field on every parse. The fallback
+        // path (`_runInto` for optional/default/nullable/union/…) can yield
+        // `undefined`, so it KEEPS the guard. Locked by the JIT↔interpreter
+        // differential fuzz (strip semantics compared).
+        const onValid = fieldDefinedWhenValid(field)
+          ? (r: string) => assign(outVar, kl, key, r)
+          : (r: string) => `if (${r} !== undefined || (${kl} in ${srcVar})) { ${assign(outVar, kl, key, r)} }`
+        genValue(field, vV, onValid, ASYNC_FIELD, depth)
         lines.push(`P.pop();`)
       }
     }
