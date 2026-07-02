@@ -49,8 +49,12 @@ describe('JSX spread attributes', () => {
 
   it('an explicit sibling attr WINS over the spread (override rule)', () => {
     const sw = transform(APP, { target: 'swift' }).code
-    // title comes from the explicit attr, count from the spread — title NOT doubled
-    expect(sw).toContain('Card(count: count, title: "override")')
+    // title comes from the explicit attr, count from the spread — title NOT
+    // doubled. Args are in DECLARATION order (title first): Swift's
+    // memberwise init hard-errors on out-of-order labels, so the pre-fix
+    // emit this spec used to codify (`Card(count: count, title:
+    // "override")`) was uncompilable.
+    expect(sw).toContain('Card(title: "override", count: count)')
     expect(sw).not.toContain('title: title, count: count, title: "override"')
   })
 
