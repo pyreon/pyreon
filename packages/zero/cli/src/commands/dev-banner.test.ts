@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   countRoutes,
+  formatModeLine,
   formatReadyLine,
   formatRouteSummary,
   formatRouteTable,
@@ -144,5 +145,34 @@ describe('formatReadyLine', () => {
     const line = formatReadyLine(234, false)
     expect(hasAnsi(line)).toBe(false)
     expect(line).toContain('ready in 234ms')
+  })
+})
+
+describe('formatModeLine', () => {
+  it('shows the app mode', () => {
+    const line = formatModeLine('ssr', [{ urlPath: '/', renderMode: 'ssr' }], false)
+    expect(line).toContain('Mode')
+    expect(line).toContain('ssr')
+    expect(line).not.toContain('hybrid')
+  })
+
+  it('shows hybrid override counts when routes declare differing modes', () => {
+    const pages: RouteSummaryInput[] = [
+      { urlPath: '/', renderMode: 'ssg' },
+      { urlPath: '/a', renderMode: 'ssg' },
+      { urlPath: '/b', renderMode: 'isr' },
+      { urlPath: '/c', renderMode: 'ssr' },
+    ]
+    const line = formatModeLine('ssr', pages, false)
+    expect(line).toContain('hybrid: 2 ssg, 1 isr')
+  })
+
+  it('renderRouteBanner prepends the mode line when appMode is supplied', () => {
+    const lines = renderRouteBanner(
+      [{ urlPath: '/', renderMode: 'ssr' }],
+      [],
+      { verbose: false, color: false, appMode: 'ssr' },
+    )
+    expect(lines.some((l) => l.includes('Mode'))).toBe(true)
   })
 })

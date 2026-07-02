@@ -1518,6 +1518,73 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
  *   • Direct property access for components with metadata (no _pick)
  *   • No spurious IMPORT_IS_UNDEFINED warnings
  */
+/** One page route with its file-level effective render mode. */
+export interface FileRouteModeEntry {
+  /** URL pattern (`/posts/:id`). */
+  pattern: string
+  /** Effective mode: leaf declaration > nearest ancestor layout > app mode. */
+  mode: RenderMode
+  /** True when the route (or an ancestor layout) DECLARED the mode. */
+  declared: boolean
+  /** Source file, relative to the routes dir. */
+  filePath: string
+}
+
+/**
+ * File-level twin of `collectRouteModes` (route-modes.ts): classify every
+ * PAGE route's effective render mode straight from the routes directory —
+ * no route-module build needed, so the dev banner and both build plugins
+ * can print the SAME per-route mode table. Resolution parity contract
+ * (leaf declaration > nearest ancestor `_layout` declaration > app mode)
+ * is locked by fs-router tests against the runtime resolver's semantics.
+ */
+export async function collectFileRouteModes(
+  routesDir: string,
+  appMode: RenderMode = 'ssr',
+): Promise<FileRouteModeEntry[]> {
+  const { isApiRoute } = await import('./api-routes')
+  const routes = await scanRouteFilesWithExports(routesDir, appMode)
+
+  const parseDeclared = (r: FileRoute): RenderMode | undefined => {
+    const lit = r.exports?.renderModeLiteral?.replace(/['"]/g, '')
+    return lit === 'ssr' || lit === 'ssg' || lit === 'spa' || lit === 'isr' ? lit : undefined
+  }
+
+  // Layout declarations cascade to everything under their directory.
+  const layoutModes = new Map<string, RenderMode>()
+  for (const r of routes) {
+    if (!r.isLayout) continue
+    const m = parseDeclared(r)
+    if (m) layoutModes.set(r.dirPath, m)
+  }
+
+  const out: FileRouteModeEntry[] = []
+  for (const r of routes) {
+    if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
+    if (isApiRoute(r.filePath)) continue
+    if (!r.urlPath) continue
+    let mode = parseDeclared(r)
+    let declared = mode !== undefined
+    if (!mode) {
+      // Nearest ancestor layout wins (walk the dir chain upward).
+      let dir = r.dirPath
+      for (;;) {
+        const m = layoutModes.get(dir)
+        if (m) {
+          mode = m
+          declared = true
+          break
+        }
+        if (dir === '') break
+        const i = dir.lastIndexOf('/')
+        dir = i === -1 ? '' : dir.slice(0, i)
+      }
+    }
+    out.push({ pattern: r.urlPath, mode: mode ?? appMode, declared, filePath: r.filePath })
+  }
+  return out
+}
+
 export async function scanRouteFilesWithExports(
   routesDir: string,
   defaultMode: RenderMode = 'ssr',

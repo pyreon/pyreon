@@ -127,3 +127,41 @@ export function assertModesSupported(
       `Fix: set zero({ mode: 'ssr' }) (or 'isr') so a server bundle is emitted — per-route 'ssg'/'spa' declarations keep those routes static — or change the offending route's renderMode.`,
   )
 }
+
+// ─── Route-mode build table ──────────────────────────────────────────────────
+
+/** Glyphs follow the convention the ecosystem reads at a glance. */
+const MODE_GLYPH: Record<RenderMode, string> = {
+  ssg: '○', // prerendered static
+  ssr: 'λ', // server-rendered per request
+  isr: '⟳', // static with revalidation
+  spa: '⚡', // client-rendered shell
+}
+
+/**
+ * Render the per-route mode table printed at build time (and by the dev
+ * banner in verbose mode). Pure — no IO, unit-testable. Entries above
+ * `maxRows` collapse to the counts line only (large apps keep short logs).
+ */
+export function formatRouteModeTable(
+  entries: ReadonlyArray<{ pattern: string; mode: RenderMode; declared: boolean }>,
+  appMode: RenderMode,
+  maxRows = 40,
+): string[] {
+  if (entries.length === 0) return []
+  const counts: Partial<Record<RenderMode, number>> = {}
+  for (const e of entries) counts[e.mode] = (counts[e.mode] ?? 0) + 1
+  const countsLine = (Object.entries(counts) as Array<[RenderMode, number]>)
+    .sort(([, a], [, b]) => b - a)
+    .map(([m, n]) => `${n} ${m} ${MODE_GLYPH[m]}`)
+    .join(' · ')
+  const lines: string[] = [`[zero] Route modes (app: ${appMode}) — ${countsLine}`]
+  if (entries.length <= maxRows) {
+    const sorted = [...entries].sort((a, b) => a.pattern.localeCompare(b.pattern))
+    for (const e of sorted) {
+      const marker = e.declared && e.mode !== appMode ? '  (declared)' : ''
+      lines.push(`  ${MODE_GLYPH[e.mode]} ${e.mode.padEnd(3)}  ${e.pattern}${marker}`)
+    }
+  }
+  return lines
+}

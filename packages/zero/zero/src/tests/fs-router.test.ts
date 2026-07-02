@@ -1,9 +1,10 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { matchPattern } from '../entry-server'
 import {
+  collectFileRouteModes,
   detectRouteExports,
   filePathToUrlPath,
   generateMiddlewareModule,
@@ -978,5 +979,55 @@ export default function PostsPage() {
       expect(result.hasRevalidate).toBe(true)
       expect(result.revalidateLiteral).toBeUndefined()
     })
+  })
+})
+
+describe('collectFileRouteModes (file-level mode resolution parity)', () => {
+  let modeDir: string
+  const write = (rel: string, body: string) => {
+    const full = join(modeDir, rel)
+    mkdirSync(dirname(full), { recursive: true })
+    writeFileSync(full, body)
+  }
+
+  beforeEach(() => {
+    modeDir = mkdtempSync(join(tmpdir(), 'pyreon-mode-'))
+  })
+  afterEach(() => {
+    rmSync(modeDir, { recursive: true, force: true })
+  })
+
+  it('leaf declaration > layout declaration > app mode (the runtime cascade)', async () => {
+    write('index.tsx', 'export default () => null')
+    write('blog/_layout.tsx', "export default (p) => p.children\nexport const renderMode = 'ssg'")
+    write('blog/post.tsx', 'export default () => null')
+    write('blog/live.tsx', "export default () => null\nexport const renderMode = 'ssr'")
+    const entries = await collectFileRouteModes(modeDir, 'isr')
+    const byPattern = new Map(entries.map((e) => [e.pattern, e]))
+    // no declaration anywhere → app mode
+    expect(byPattern.get('/')).toMatchObject({ mode: 'isr', declared: false })
+    // layout cascade
+    expect(byPattern.get('/blog/post')).toMatchObject({ mode: 'ssg', declared: true })
+    // leaf wins over layout
+    expect(byPattern.get('/blog/live')).toMatchObject({ mode: 'ssr', declared: true })
+  })
+
+  it('nearest ancestor layout wins over a higher one', async () => {
+    write('_layout.tsx', "export default (p) => p.children\nexport const renderMode = 'ssg'")
+    write('app/_layout.tsx', "export default (p) => p.children\nexport const renderMode = 'spa'")
+    write('app/page.tsx', 'export default () => null')
+    write('about.tsx', 'export default () => null')
+    const entries = await collectFileRouteModes(modeDir, 'ssr')
+    const byPattern = new Map(entries.map((e) => [e.pattern, e]))
+    expect(byPattern.get('/app/page')?.mode).toBe('spa')
+    expect(byPattern.get('/about')?.mode).toBe('ssg') // root layout cascades
+  })
+
+  it('skips api routes and special files', async () => {
+    write('index.tsx', 'export default () => null')
+    write('api/items.ts', 'export function GET() { return new Response("ok") }')
+    write('_404.tsx', 'export default () => null')
+    const entries = await collectFileRouteModes(modeDir, 'ssr')
+    expect(entries.map((e) => e.pattern)).toEqual(['/'])
   })
 })

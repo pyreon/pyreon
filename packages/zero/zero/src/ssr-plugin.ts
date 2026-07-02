@@ -58,6 +58,8 @@ import { join, resolve } from 'node:path'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
+import { collectFileRouteModes } from './fs-router'
+import { formatRouteModeTable } from './route-modes'
 import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
 import type { ZeroConfig } from './types'
 
@@ -287,6 +289,18 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       console.log(
         `[zero:ssr] Built ${serverEntry} [adapter: ${adapter.name}]${userEntryExists ? ' (using src/entry-server.ts)' : ' (synthetic entry)'}`,
       )
+
+      // Per-route mode table (Tier-1 DX): which route ships in which mode,
+      // at a glance, on every build. Informational — never fails the build.
+      try {
+        const modeEntries = await collectFileRouteModes(join(root, 'src', 'routes'), config.mode)
+        for (const line of formatRouteModeTable(modeEntries, config.mode)) {
+          // oxlint-disable-next-line no-console
+          console.log(line)
+        }
+      } catch {
+        /* table is informational only */
+      }
     },
   } satisfies Plugin
 }
