@@ -85,3 +85,25 @@ test.describe('islands in @pyreon/zero (self-hydrating)', () => {
     expect(errors).toEqual([])
   })
 })
+
+test.describe('auto-named island (no explicit name — plugin-derived)', () => {
+  test('an island declared WITHOUT a name hydrates and is reactive', async ({ page }) => {
+    await page.goto('/island-demo')
+    const probe = page.getByTestId('auto-island-probe')
+    // SSR rendered it inside a marker whose data-component is the DERIVED
+    // name (AutoIsland$<file-hash>) — assert the marker shape explicitly so
+    // a regression to an empty/missing name fails here, not just on click.
+    await expect(probe).toBeVisible()
+    const markerName = await probe.evaluate(
+      (el) => el.closest('pyreon-island')?.getAttribute('data-component') ?? '',
+    )
+    expect(markerName).toMatch(/^AutoIsland\$[0-9a-z]{1,6}$/)
+    await expect(probe).toHaveText('auto island clicks: 0')
+
+    await probe.scrollIntoViewIfNeeded()
+    await expect(async () => {
+      await probe.click()
+      await expect(probe).toHaveText(/auto island clicks: [1-9]/)
+    }).toPass({ timeout: 15_000 })
+  })
+})
