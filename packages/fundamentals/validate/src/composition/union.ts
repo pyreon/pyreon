@@ -27,6 +27,27 @@ export class UnionSchema<T extends readonly AnySchema[]> extends SchemaBase<Infe
 
   constructor(members: T) {
     super()
+    // Guard non-schema members with a clear, actionable message. Without
+    // this, a bad member (e.g. a nested array from the wrong call form, or
+    // `undefined` from a typo) surfaces at PARSE time as a cryptic
+    // `member['~standard'] is undefined` deep in `_compileType`. A union of
+    // fewer than two members is almost always a mistake, too.
+    if (process.env.NODE_ENV !== 'production') {
+      if (!Array.isArray(members) || members.length < 2) {
+        throw new Error(
+          `[Pyreon] s.union(...) needs at least two member schemas — got ${
+            Array.isArray(members) ? members.length : typeof members
+          }. Call as s.union(a, b) or s.union([a, b]).`,
+        )
+      }
+      for (const m of members) {
+        if (!m || typeof (m as { ['~standard']?: unknown })['~standard'] !== 'object') {
+          throw new Error(
+            '[Pyreon] s.union(...) received a non-schema member. Each member must be a schema, e.g. s.union(s.string(), s.number()) or s.union([s.string(), s.number()]).',
+          )
+        }
+      }
+    }
     this.members = members
   }
 
@@ -55,11 +76,25 @@ export class UnionSchema<T extends readonly AnySchema[]> extends SchemaBase<Infe
   }
 }
 
-// Self-registers the 2-arg `.or()` factory from this initializer (tree-shake-safe).
-export const union = registerUnionFactory(
-  <T extends readonly [AnySchema, AnySchema, ...AnySchema[]]>(...members: T): UnionSchema<T> =>
-    new UnionSchema(members),
-)
+// `s.union` accepts BOTH the rest-args form (`s.union(a, b)` — also the
+// `.or()` path) AND the array form (`s.union([a, b])` — matching Zod /
+// Valibot / ArkType, and consistent with `s.tuple([...])` / `s.enum([...])`).
+// A single array argument is treated as the member list; otherwise the args
+// ARE the members. Unambiguous: a schema is never an array, and the ≥2
+// constraint holds for both forms. The array overload is additive — the prior
+// rest-only signature made `s.union([a, b])` a type error, so no valid call
+// breaks.
+export interface UnionFactory {
+  <T extends readonly [AnySchema, AnySchema, ...AnySchema[]]>(...members: T): UnionSchema<T>
+  <T extends readonly [AnySchema, AnySchema, ...AnySchema[]]>(members: T): UnionSchema<T>
+}
+
+// Self-registers the factory from this initializer (tree-shake-safe).
+export const union: UnionFactory = registerUnionFactory(((...args: unknown[]) => {
+  const members =
+    args.length === 1 && Array.isArray(args[0]) ? (args[0] as readonly AnySchema[]) : args
+  return new UnionSchema(members as readonly [AnySchema, AnySchema, ...AnySchema[]])
+}) as UnionFactory)
 
 // ─── Discriminated union ───────────────────────────────────────────────
 
