@@ -29,9 +29,10 @@ import { withSilent } from '@pyreon/reactivity'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
 import { resolveConfig } from './config'
-import { parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
+import { isApiRoute } from './api-routes'
+import { collectFileRouteModes, detectRouteExports, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
-import { assertModesSupported } from './route-modes'
+import { assertModesSupported, formatRouteModeTable } from './route-modes'
 import {
   extractStylerStyleTag,
   hashCss,
@@ -435,6 +436,37 @@ export function expandUrlPattern(pattern: string, params: Record<string, string>
  * routes are silently skipped (the user must hand-list them in
  * `ssg.paths`).
  */
+/**
+ * Loud, mode-aware warning for a dynamic route that SSG cannot enumerate.
+ * Deduped per source file (i18n fan-out produces one FileRoute per locale).
+ */
+async function warnUnenumeratedDynamicRoute(
+  routesDir: string,
+  filePath: string,
+  pattern: string,
+  warned: Set<string>,
+): Promise<void> {
+  if (warned.has(filePath)) return
+  warned.add(filePath)
+  if (isApiRoute(filePath)) return // runtime-only by definition
+  try {
+    const source = await readFile(join(routesDir, filePath), 'utf-8')
+    const literal = detectRouteExports(source).renderModeLiteral
+    const declared = literal?.replace(/['"]/g, '')
+    // Declared non-static mode → the skip is intentional, not a footgun.
+    if (declared === 'spa' || declared === 'ssr' || declared === 'isr') return
+  } catch {
+    // unreadable file → fall through to the warning (better loud than silent)
+  }
+  console.warn(
+    `[Pyreon] SSG: dynamic route "${filePath}" (${pattern}) has no \`getStaticPaths\` — no page will be emitted for it.\n`
+      + `  Fix one of:\n`
+      + `    • export const getStaticPaths = () => [{ params: { … } }]  (enumerate the pages)\n`
+      + `    • zero({ ssg: { paths: [...] } })                          (hand-list concrete URLs)\n`
+      + `    • export const renderMode = 'spa'                          (client-rendered shell is intended)`,
+  )
+}
+
 async function autoDetectStaticPaths(
   routesDir: string,
   registry?: GetStaticPathsRegistry,
@@ -457,6 +489,7 @@ async function autoDetectStaticPaths(
   const fileRoutes = i18n ? expandRoutesForLocales(baseRoutes, i18n) : baseRoutes
 
   const out: string[] = []
+  const warnedDynamicFiles = new Set<string>()
   for (const r of fileRoutes) {
     if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
     const path = r.urlPath
@@ -470,7 +503,17 @@ async function autoDetectStaticPaths(
 
     // Dynamic path — expand via getStaticPaths if available.
     const enumerator = registry?.get(path)
-    if (!enumerator) continue // no getStaticPaths → skip silently
+    if (!enumerator) {
+      // A dynamic route with no getStaticPaths cannot be enumerated — NO
+      // page will exist for it in dist. Historically this skip was SILENT
+      // (the sharpest DX failure in the mode system: the user thinks the
+      // route is prerendered; production 404s). Warn loudly with the fix,
+      // unless the route file explicitly declares a non-static renderMode
+      // ('spa' gets the CSR shell; 'ssr'/'isr' are served by the hybrid
+      // server) or is an API route (runtime-only by definition).
+      await warnUnenumeratedDynamicRoute(routesDir, r.filePath, path, warnedDynamicFiles)
+      continue
+    }
 
     try {
       const result = await enumerator()
@@ -1924,6 +1967,23 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       for (const { path: errPath, error } of errors) {
         // oxlint-disable-next-line no-console
         console.error(`[zero:ssg] Failed to prerender "${errPath}":`, error)
+      }
+
+      // Per-route mode table (Tier-1 DX): which route ships in which mode,
+      // at a glance, on every build. Informational — never fails the build.
+      // Only under app-mode 'ssg' — hybrid ssr/isr builds ALSO run this
+      // plugin (for the static-first routes) and the ssr-plugin already
+      // prints the table there; printing from both would duplicate it.
+      if (config.mode === 'ssg') {
+        try {
+          const modeEntries = await collectFileRouteModes(routesDir, config.mode)
+          for (const line of formatRouteModeTable(modeEntries, config.mode)) {
+            // oxlint-disable-next-line no-console
+            console.log(line)
+          }
+        } catch {
+          /* table is informational only */
+        }
       }
       } finally {
         // PR-S13: ensure the per-build mkdir cache is cleared even if the

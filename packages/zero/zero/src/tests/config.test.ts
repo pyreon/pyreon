@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defineConfig, resolveConfig } from '../config'
+import { defineConfig, detectPlatformAdapter, resolveConfig } from '../config'
 
 describe('defineConfig', () => {
   it('returns the config as-is', () => {
@@ -49,5 +49,43 @@ describe('resolveConfig', () => {
   it('preserves isr config', () => {
     const config = resolveConfig({ isr: { revalidate: 120 } })
     expect(config.isr?.revalidate).toBe(120)
+  })
+})
+
+describe('detectPlatformAdapter', () => {
+  it('detects vercel / netlify / cloudflare from build env vars', () => {
+    expect(detectPlatformAdapter({ VERCEL: '1' })).toBe('vercel')
+    expect(detectPlatformAdapter({ NETLIFY: 'true' })).toBe('netlify')
+    expect(detectPlatformAdapter({ CF_PAGES: '1' })).toBe('cloudflare')
+  })
+
+  it('returns null when no platform env is present', () => {
+    expect(detectPlatformAdapter({})).toBe(null)
+    expect(detectPlatformAdapter({ CI: 'true', NODE_ENV: 'production' })).toBe(null)
+  })
+
+  it('prefers vercel when multiple are somehow set (stable order)', () => {
+    expect(detectPlatformAdapter({ VERCEL: '1', NETLIFY: 'true' })).toBe('vercel')
+  })
+})
+
+describe('resolveConfig adapter auto-detection', () => {
+  it('uses the detected platform adapter when adapter is unset', () => {
+    vi.stubEnv('VERCEL', '1')
+    try {
+      expect(resolveConfig().adapter).toBe('vercel')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('an explicit adapter always wins over detection', () => {
+    vi.stubEnv('VERCEL', '1')
+    try {
+      expect(resolveConfig({ adapter: 'node' }).adapter).toBe('node')
+      expect(resolveConfig({ adapter: 'netlify' }).adapter).toBe('netlify')
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

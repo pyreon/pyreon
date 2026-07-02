@@ -103,12 +103,36 @@ export function formatRouteTable(
 export function renderRouteBanner(
   pages: readonly RouteSummaryInput[],
   apiPatterns: readonly string[],
-  opts: { verbose: boolean; color?: boolean },
+  opts: { verbose: boolean; color?: boolean; appMode?: string },
 ): string[] {
   if (pages.length === 0 && apiPatterns.length === 0) return []
   const color = opts.color ?? true
-  if (opts.verbose) return formatRouteTable(pages, apiPatterns, color)
-  return ['', formatRouteSummary(countRoutes(pages, apiPatterns.length), color)]
+  const head = opts.appMode ? [formatModeLine(opts.appMode, pages, color)] : []
+  if (opts.verbose) return [...head, ...formatRouteTable(pages, apiPatterns, color)]
+  return ['', ...head, formatRouteSummary(countRoutes(pages, apiPatterns.length), color)]
+}
+
+/**
+ * The app-mode header line, e.g. `Mode    ssr` — or, when routes declare
+ * modes that differ from the app default, `Mode    ssr (hybrid: 4 ssg, 1 isr)`
+ * so a hybrid setup is visible before the first request is ever served.
+ */
+export function formatModeLine(
+  appMode: string,
+  pages: readonly RouteSummaryInput[],
+  color = true,
+): string {
+  const c = style(color)
+  const overrides: Record<string, number> = {}
+  for (const r of pages) {
+    const m = r.renderMode.toLowerCase()
+    if (m !== appMode.toLowerCase()) overrides[m] = (overrides[m] ?? 0) + 1
+  }
+  const parts = Object.entries(overrides)
+    .sort(([, a], [, b]) => b - a)
+    .map(([m, n]) => `${n} ${m}`)
+  const hybrid = parts.length > 0 ? ` ${c.dim(`(hybrid: ${parts.join(', ')})`)}` : ''
+  return `  ${c.cyan('Mode')}    ${c.bold(appMode)}${hybrid}`
 }
 
 /** The closing `➜  ready in 234ms` line — printed last, in the visible tail. */

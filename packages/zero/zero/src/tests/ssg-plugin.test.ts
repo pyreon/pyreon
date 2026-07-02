@@ -209,6 +209,60 @@ describe('ssgPlugin', () => {
   })
 
   describe('autoDetectStaticPaths with getStaticPaths', () => {
+    it('warns loudly for a dynamic route with no getStaticPaths (silent-missing-page fix)', async () => {
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'posts/[id].tsx': 'export default () => null',
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const paths = await _internal.autoDetectStaticPaths(f.routesDir, new Map() as any, [])
+        expect(paths).not.toContain('/posts/:id')
+        const messages = warn.mock.calls.map((c) => String(c[0]))
+        const hit = messages.find((m) => m.includes('posts/[id].tsx'))
+        expect(hit).toBeDefined()
+        expect(hit).toContain('no page will be emitted')
+        expect(hit).toContain('getStaticPaths')
+        expect(hit).toContain("renderMode = 'spa'")
+      } finally {
+        warn.mockRestore()
+        f.cleanup()
+      }
+    })
+
+    it("does NOT warn when the route declares renderMode 'spa' (intentional CSR shell)", async () => {
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'app/[id].tsx': "export default () => null\nexport const renderMode = 'spa'",
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        await _internal.autoDetectStaticPaths(f.routesDir, new Map() as any, [])
+        const messages = warn.mock.calls.map((c) => String(c[0]))
+        expect(messages.find((m) => m.includes('app/[id].tsx'))).toBeUndefined()
+      } finally {
+        warn.mockRestore()
+        f.cleanup()
+      }
+    })
+
+    it('does NOT warn for dynamic API routes (runtime-only by definition)', async () => {
+      const f = makeFixture({
+        'index.tsx': 'export default () => null',
+        'api/items/[id].ts': 'export function GET() { return new Response("ok") }',
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        await _internal.autoDetectStaticPaths(f.routesDir, new Map() as any, [])
+        const messages = warn.mock.calls.map((c) => String(c[0]))
+        expect(messages.find((m) => m.includes('api/items'))).toBeUndefined()
+      } finally {
+        warn.mockRestore()
+        f.cleanup()
+      }
+    })
+
+
     // We exercise autoDetectStaticPaths against a fixture directory built
     // on-the-fly with mkdtempSync. Each test writes a minimal route tree,
     // optionally a getStaticPaths registry, and asserts the expanded paths.

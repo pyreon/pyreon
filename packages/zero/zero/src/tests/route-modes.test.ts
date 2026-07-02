@@ -9,7 +9,7 @@ import type { ComponentFn } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { RouteRecord } from '@pyreon/router'
 import { describe, expect, it } from 'vitest'
-import {
+import { formatRouteModeTable,
   assertModesSupported,
   collectRouteModes,
   resolveRenderModeForPath,
@@ -133,5 +133,41 @@ describe('assertModesSupported', () => {
     )
     expect(() => assertModesSupported(entries, 'ssr')).not.toThrow()
     expect(() => assertModesSupported(entries, 'isr')).not.toThrow()
+  })
+})
+
+describe('formatRouteModeTable', () => {
+  const entries = [
+    { pattern: '/', mode: 'ssg' as const, declared: false },
+    { pattern: '/dash', mode: 'ssr' as const, declared: true },
+    { pattern: '/posts/:id', mode: 'isr' as const, declared: true },
+  ]
+
+  it('renders counts header + one glyph line per route', () => {
+    const lines = formatRouteModeTable(entries, 'ssg')
+    expect(lines[0]).toContain('Route modes (app: ssg)')
+    expect(lines[0]).toContain('1 ssg ○')
+    expect(lines[0]).toContain('1 ssr λ')
+    expect(lines[0]).toContain('1 isr ⟳')
+    expect(lines).toHaveLength(4)
+    expect(lines.find((l) => l.includes('/dash'))).toContain('λ')
+    expect(lines.find((l) => l.includes('/dash'))).toContain('(declared)')
+    // matching the app mode → no declared marker even when declared
+    expect(lines.find((l) => l.includes('/posts/:id'))).toContain('⟳')
+  })
+
+  it('collapses to the counts line above maxRows', () => {
+    const many = Array.from({ length: 50 }, (_, i) => ({
+      pattern: `/p${i}`,
+      mode: 'ssg' as const,
+      declared: false,
+    }))
+    const lines = formatRouteModeTable(many, 'ssg', 40)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('50 ssg')
+  })
+
+  it('returns [] for no entries', () => {
+    expect(formatRouteModeTable([], 'ssr')).toEqual([])
   })
 })

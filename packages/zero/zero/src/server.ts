@@ -25,7 +25,9 @@ export { defineConfig, resolveConfig } from "./config";
 // ─── File-system routing ────────────────────────────────────────────────────
 
 export type { GenerateRouteModuleOptions, GetStaticPaths } from './fs-router'
+export type { FileRouteModeEntry } from './fs-router'
 export {
+	collectFileRouteModes,
 	filePathToUrlPath,
 	generateMiddlewareModule,
 	generateRouteModule,
@@ -39,6 +41,7 @@ export type { RouteModeEntry } from "./route-modes";
 export {
 	assertModesSupported,
 	collectRouteModes,
+	formatRouteModeTable,
 	resolveRenderModeForPath,
 } from "./route-modes";
 export type { ISRCacheEntry, ISRStore } from "./isr";
