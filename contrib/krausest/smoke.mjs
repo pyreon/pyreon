@@ -1,25 +1,29 @@
 import { createServer } from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
-import { join, resolve, sep } from 'node:path'
+import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
 
 // usage: bun contrib/krausest/smoke.mjs [dir-with-built-dist]  (defaults to ./pyreon-keyed)
 const root = process.argv[2] ?? new URL('./pyreon-keyed', import.meta.url).pathname
 const resolvedRoot = resolve(root)
+// Allowlist (CodeQL js/path-injection, structurally closed): the harness
+// serves exactly the two files the krausest page needs — the request URL is
+// only ever a LOOKUP KEY, never a path segment, so no user-controlled data
+// reaches the filesystem at all.
+const FILES = new Map([
+  ['/', { path: join(resolvedRoot, 'index.html'), type: 'text/html' }],
+  ['/index.html', { path: join(resolvedRoot, 'index.html'), type: 'text/html' }],
+  ['/dist/main.js', { path: join(resolvedRoot, 'dist', 'main.js'), type: 'text/javascript' }],
+])
 const server = createServer((req, res) => {
-  // Containment check (CodeQL js/path-injection): the joined path must stay
-  // inside the served root — separator-terminated prefix test, same pattern
-  // as ssg-plugin's isInsideDist. Localhost-only harness, but correct anyway.
-  const p = resolve(join(resolvedRoot, req.url === '/' ? 'index.html' : req.url.split('?')[0]))
-  if (p !== resolvedRoot && !p.startsWith(resolvedRoot + sep)) {
-    res.writeHead(403)
+  const entry = FILES.get((req.url ?? '/').split('?')[0])
+  if (!entry || !existsSync(entry.path)) {
+    res.writeHead(404)
     res.end()
     return
   }
-  if (!existsSync(p)) { res.writeHead(404); res.end(); return }
-  const type = p.endsWith('.js') ? 'text/javascript' : p.endsWith('.html') ? 'text/html' : 'text/plain'
-  res.writeHead(200, { 'content-type': type })
-  res.end(readFileSync(p))
+  res.writeHead(200, { 'content-type': entry.type })
+  res.end(readFileSync(entry.path))
 })
 await new Promise((r) => server.listen(4599, r))
 
