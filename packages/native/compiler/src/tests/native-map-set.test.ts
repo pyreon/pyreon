@@ -111,9 +111,14 @@ describe('P1 — Map/Set vocabulary (both targets)', () => {
     expect(rs.code).not.toContain('{ x in "" }')
     expect(rs.warnings).toHaveLength(0)
   })
-  it('Kotlin: a return-bearing multi-statement callback warns NAMED (was a SILENT sentinel drop)', () => {
+  it('Kotlin: a return-bearing multi-statement callback now LOWERS via labeled return (#1994 superseded the warn)', () => {
+    // #1991 warn-dropped a return-bearing multi-statement plain callback on
+    // Kotlin; #1994's labeled-return wiring (return@filter) lowers it, so it
+    // no longer warns. This is the documented #1991×#1994 supersession — the
+    // second-merged reconciles the codified spec.
     const rk = transform(DEDUP, { target: 'kotlin' })
-    expect(rk.warnings.some((w) => w.includes('early returns'))).toBe(true)
+    expect(rk.warnings.some((w) => w.includes('early returns'))).toBe(false)
+    expect(rk.code).toContain('return@filter')
   })
   it('new Set(arr) seeds from the array on both targets', () => {
     const src = A(`  const out = computed(() => new Set(nums()).size)`)

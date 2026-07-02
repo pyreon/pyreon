@@ -4211,6 +4211,30 @@ function markReassignedLocalsMutable(stmts: StatementIR[]): void {
       )
         collect(s.body)
       else if (s.kind === 'switch') for (const c of s.cases) collect(c.body)
+      // Assignments inside CALLBACK arrows (`nums.forEach(x => { acc = acc +
+      // x })` — the accumulate idiom) live in EXPRESSION trees, which the
+      // per-kind statement walk above never enters — the outer `let acc`
+      // stayed immutable and Kotlin rejected "'val' cannot be reassigned"
+      // (Swift the same). A generic structural walk finds every nested
+      // arrow's statement list. Over-marking is harmless (a same-named
+      // arrow-LOCAL assignment promotes the outer local to var — a
+      // never-mutated var is a compiler warning, not an error).
+      walkForNestedArrows(s)
+    }
+  }
+  const walkForNestedArrows = (n: unknown): void => {
+    if (Array.isArray(n)) {
+      for (const x of n) walkForNestedArrows(x)
+      return
+    }
+    if (n === null || typeof n !== 'object') return
+    const node = n as Record<string, unknown> & { kind?: string; stmts?: StatementIR[] }
+    if (node.kind === 'arrow' && Array.isArray(node.stmts) && node.stmts.length > 0) {
+      collect(node.stmts)
+    }
+    for (const k of Object.keys(node)) {
+      if (k === 'then' || k === 'elseBody' || k === 'body' || k === 'cases') continue // already walked per-kind
+      walkForNestedArrows(node[k])
     }
   }
   collect(stmts)
