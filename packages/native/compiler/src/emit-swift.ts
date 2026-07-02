@@ -2394,6 +2394,34 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         e.callee.object.kind === 'identifier' &&
         e.callee.object.name === 'Math'
       ) {
+        // `Math.max(...arr)` / `Math.min(...arr)` — the SPREAD form bypassed
+        // the fixed-arity mapping and emitted the raw `Math.max(arr)`
+        // ("cannot find 'Math' in scope" — a SILENT fail; the idiom-sweep
+        // canary caught it). Lower to the collection max()/min() with the
+        // JS empty-array sentinel (`Math.max() === -Infinity`): Int arrays
+        // use Int.min/Int.max (no Int infinity — the ergonomic analog,
+        // noted in the emitted expression's doc), Double arrays the real
+        // ±infinity.
+        if (
+          (e.callee.property === 'max' || e.callee.property === 'min') &&
+          e.args.length === 1 &&
+          e.args[0]!.kind === 'spread'
+        ) {
+          const spreadArg = (e.args[0]! as { kind: 'spread'; argument: ExprIR }).argument
+          const arrT = inferType(spreadArg, _activeInferCtx)
+          const isFloat =
+            arrT.kind === 'array' && arrT.element.kind === 'number' && arrT.element.float === true
+          const arrStr = emitSwiftExpr(spreadArg, indent)
+          const isMax = e.callee.property === 'max'
+          const sentinel = isFloat
+            ? isMax
+              ? '-Double.infinity'
+              : 'Double.infinity'
+            : isMax
+              ? 'Int.min'
+              : 'Int.max'
+          return `(${arrStr}.${isMax ? 'max' : 'min'}() ?? ${sentinel})`
+        }
         const args = e.args.map((a) => emitSwiftExpr(a, indent))
         switch (e.callee.property) {
           // DOUBLE-DOMAIN functions (`.rounded()` is a Double method;
@@ -2489,6 +2517,29 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             '`Array.from({ length: n })` without an `(_, index) => expr` map callback is not supported on native — this call keeps the raw `Array.from(` emit (a swiftc error at the site). Use `Array.from({ length: n }, (_, i) => …)`, `Array(0..<n).map { … }`, or a numeric loop.',
           )
         }
+      }
+      // `Number.isInteger(x)` — no `Number` namespace exists natively (raw
+      // emit was a SILENT fail). By the arg's INFERRED type: Int → `true`
+      // (statically integral); Double → the remainder check; unknown →
+      // NAMED warning + raw emit (loud).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        e.callee.object.name === 'Number' &&
+        e.callee.property === 'isInteger' &&
+        e.args.length === 1
+      ) {
+        const nt = inferType(e.args[0]!, _activeInferCtx)
+        const argStr = emitSwiftExpr(e.args[0]!, indent)
+        if (nt.kind === 'number' && nt.float !== true) return 'true'
+        if (nt.kind === 'number') {
+          // Parenthesize — a compound arg (`a / b`) would bind the method
+          // to its LAST term only.
+          return `((${argStr}).truncatingRemainder(dividingBy: 1) == 0)`
+        }
+        _emitWarnings.push(
+          `Number.isInteger(${argStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively. Give the argument a resolvable number type.`,
+        )
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
@@ -2810,6 +2861,21 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
               return `${obj}.contains(${argExprs[0]!})`
             }
             break
+          case 'lastIndexOf':
+            // JS `.lastIndexOf(x)` → Swift `lastIndex(of:) ?? -1` (ARRAY form —
+            // the mirror of indexOf's array branch). The raw emit was a
+            // SILENT fail ("no dynamic member 'lastIndexOf'"). String
+            // receivers keep the generic emit + a named warning below.
+            if (e.args.length === 1) {
+              const liT = inferType(e.callee.object, _activeInferCtx)
+              if (liT.kind === 'array') {
+                return `(${obj}.lastIndex(of: ${argExprs[0]!}) ?? -1)`
+              }
+              _emitWarnings.push(
+                `.lastIndexOf on a non-array receiver has no Swift lowering yet — emitting the raw call, which fails to compile. Use a supported shape or compute the index differently.`,
+              )
+            }
+            break
           case 'indexOf': {
             // JS `.indexOf(x)` returns an Int index, or -1 when not found.
             // ARRAY: Swift `firstIndex(of:)` returns `Int?` — wrap `?? -1` to
@@ -2850,7 +2916,17 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // omitted. (Requires the array element to be String, as Swift
             // `joined` does — map non-string arrays to strings first.)
             if (e.args.length <= 1) {
-              return `${obj}.joined(separator: ${e.args.length === 1 ? argExprs[0]! : '","'})`
+              const sep = e.args.length === 1 ? argExprs[0]! : '","'
+              // Swift `joined(separator:)` exists ONLY on [String] — JS join
+              // stringifies elements, so a non-String element array maps
+              // through `String.init` first (the emit's own long-documented
+              // gap: it compiled clean in tests with String arrays and
+              // failed SILENT on [Int] — caught by the idiom-sweep canary).
+              const jt = inferType(e.callee.object, _activeInferCtx)
+              if (jt.kind === 'array' && jt.element.kind !== 'string') {
+                return `${obj}.map { String($0) }.joined(separator: ${sep})`
+              }
+              return `${obj}.joined(separator: ${sep})`
             }
             break
           case 'split':

@@ -816,6 +816,17 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       ) {
         return { kind: 'number', float: true }
       }
+      // `Number.isInteger(x)` → boolean (paired with the per-target
+      // remainder-check emit; without this the computed annotated `Any`).
+      if (
+        expr.callee.kind === 'member' &&
+        expr.callee.object.kind === 'identifier' &&
+        expr.callee.object.name === 'Number' &&
+        expr.callee.property === 'isInteger' &&
+        expr.args.length === 1
+      ) {
+        return { kind: 'boolean' }
+      }
       // Math.* numeric builtins — see `inferMathCall`.
       {
         const m = inferMathCall(expr, ctx)
@@ -942,9 +953,18 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
               return { kind: 'union', branches: [objType.element, { kind: 'undefined' }] }
             case 'indexOf':
             case 'findIndex':
+            case 'lastIndexOf':
               return { kind: 'number' }
             case 'join':
               return { kind: 'string' }
+            case 'flat':
+              // `arr.flat()` (depth 1) — array-of-array → the inner array.
+              // Without this the computed degraded to `Any` and the emitted
+              // `flatMap { $0 }` couldn't type its receiver LITERAL.
+              if (expr.args.length === 0 && objType.element.kind === 'array') {
+                return objType.element
+              }
+              return { kind: 'unknown' }
             case 'reduce': {
               // `arr.reduce((acc, x) => body, seed)` → the accumulator type.
               // Infer the reducer body with `acc` bound to the seed's type
