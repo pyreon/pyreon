@@ -33,6 +33,7 @@ import {
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
+  typeContainsFunction,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -966,7 +967,14 @@ function emitKotlinStruct(s: StructIR): string {
   const params = s.fields
     .map((f) => `var ${kotlinIdent(f.name)}: ${kotlinType(f.type, undefined, f.name)}`)
     .join(', ')
-  return `@Serializable\ndata class ${kotlinIdent(s.name)}(${params})`
+  // A FUNCTION-typed property can't be @Serializable — the kotlinx
+  // serialization plugin hard-errors on the REAL Compose build
+  // ("Serializer has not been found for type '() -> Unit'"); the kotlinc
+  // validate stubs MASK it (no plugin runs there), so this was a
+  // device-gate-only failure. Emit the plain data class instead.
+  // Function-free structs keep @Serializable byte-identically.
+  const ser = s.fields.some((f) => typeContainsFunction(f.type)) ? '' : '@Serializable\n'
+  return `${ser}data class ${kotlinIdent(s.name)}(${params})`
 }
 
 /**
@@ -1214,7 +1222,10 @@ function emitKotlinDataClass(synth: {
   // kotlinc validate stubs but FAILS a real Compose build ("Serializer
   // for class 'AppData' not found" — the serialization plugin only
   // generates serializers for annotated classes).
-  return `@Serializable\ndata class ${synth.name}(${params})`
+  const ser = synth.fields.some((f) => typeContainsFunction(f.type))
+    ? ''
+    : '@Serializable\n'
+  return `${ser}data class ${synth.name}(${params})`
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
@@ -1836,7 +1847,12 @@ function kotlinUnionType(
   )
   const hasNullish = branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
   if (nonNullBranches.length === 1 && hasNullish) {
-    return `${kotlinType(nonNullBranches[0]!, ctx, signalName)}?`
+    // A FUNCTION branch must be parenthesized before the `?` — a bare
+    // `(Int) -> Unit?` is a function RETURNING `Unit?`, not a nullable
+    // function. `((Int) -> Unit)?` is the nullable-function type.
+    const only = nonNullBranches[0]!
+    const inner = kotlinType(only, ctx, signalName)
+    return only.kind === 'function' ? `(${inner})?` : `${inner}?`
   }
   if (nonNullBranches.length === 0) return 'Any?'
   return 'Any'
