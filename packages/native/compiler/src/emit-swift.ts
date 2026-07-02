@@ -188,6 +188,9 @@ let _formNamesSwift: Set<string> = new Set()
  * (real method).
  */
 let _fetchNamesSwift: Set<string> = new Set()
+// websocket decl name → url, so `ws.connect()` (the 0-arg TS surface — the
+// hook carries the url) lowers to the runtime's `connect(to: URL)`.
+let _websocketUrlsSwift: Map<string, string> = new Map()
 /** Per-component: i18n instance names — `i18n.t(key, {…})` lowers the
  *  object-literal values arg to a dictionary at this call shape. */
 let _i18nNames: Set<string> = new Set()
@@ -1238,6 +1241,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _i18nNames = new Set()
   _formNamesSwift = new Set()
   _fetchNamesSwift = new Set()
+  _websocketUrlsSwift = new Map()
   // C4: reset router-usage tracking. Set during decl-pass if any
   // useNavigate/useParams binding is present.
   _usesRouter = false
@@ -1273,6 +1277,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
+    if (d.kind === 'websocket') _websocketUrlsSwift.set(d.name, d.url)
     // C4: router-instance decls (`const r = createRouter({...})`) map to
     // `@State` properties, so the identifier reads bare like a signal —
     // add to `_signalNames` so `router` in JSX (e.g. `<RouterProvider
@@ -1381,6 +1386,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 5b: value consts are body-local `let`s (a stored `let` property
     // can't reference @State at init), emitted just below — skip here.
     if (d.kind === 'value') continue
+    // on-mount decls emit at the HARNESS level (.onAppear after the body,
+    // on the stable-identity host) — no stored property.
+    if (d.kind === 'on-mount') continue
     lines.push(`  ${emitSwiftDecl(d, inferCtx, synth)}`)
   }
   lines.push(`  var body: some View {`)
@@ -1406,7 +1414,11 @@ function emitSwiftComponent(c: ComponentIR): string {
   // flips no longer touch the ZStack's identity. (Non-fetch components
   // keep the bare body — no `.task`, no restart hazard.)
   const _hasFetchDecl = c.decls.some((d) => d.kind === 'fetch')
-  if (_hasFetchDecl) {
+  // on-mount shares the stable-identity requirement: .onAppear on a
+  // transparent Group is redistributed onto conditional branches and
+  // RE-FIRES per flip — the same device-found class as .task.
+  const _hasOnMount = c.decls.some((d) => d.kind === 'on-mount')
+  if (_hasFetchDecl || _hasOnMount) {
     lines.push(`    ZStack {`)
     lines.push(`      ${emitSwiftExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
@@ -1430,6 +1442,18 @@ function emitSwiftComponent(c: ComponentIR): string {
     lines.push(`        ${name}.onSubmit = { ${swiftIdent(d.onSubmit.param)} in`)
     lines.push(bodyLines)
     lines.push(`        }`)
+    lines.push(`      }`)
+  }
+  // onMount bodies → .onAppear on the stable host (sync statements; the
+  // async-on-mount hook stays .task/useFetch). Multiple onMount calls emit
+  // in source order.
+  for (const d of c.decls) {
+    if (d.kind !== 'on-mount') continue
+    const savedLocals = seedHandlerLocals(d.body, _exprInferCtx)
+    const bodyLines = d.body.map((st) => `        ${emitSwiftStatement(st, 8)}`).join('\n')
+    _exprInferCtx.locals = savedLocals
+    lines.push(`      .onAppear {`)
+    lines.push(bodyLines)
     lines.push(`      }`)
   }
   for (const d of c.decls) {
@@ -1569,6 +1593,9 @@ function emitSwiftDecl(
   inferCtx: ReturnType<typeof buildInferenceCtx>,
   synth?: SwiftSynthCtx,
 ): string {
+  // on-mount emits at the harness level (see emitSwiftComponent) — the
+  // caller skips it; this defensive return keeps the union narrowed.
+  if (d.kind === 'on-mount') return ''
   // Phase 5b: a plain value const. Normally emitted as a body-local `let` by
   // emitSwiftComponent (a stored property can't reference @State at init);
   // this defensive case keeps the emit total if reached elsewhere.
@@ -1725,8 +1752,11 @@ function emitSwiftDecl(
   // Swift containers expose reactive fields via @Observable (read bare, no
   // rewrite) + default (or generic-only) constructors. The lifecycle
   // auto-start (geolocation.start / websocket.connect / push.start) is a
-  // documented follow-up — the binding + reactive reads ship now; call
-  // `.start()` / `.connect(...)` from an onMount/effect or native host today.
+  // tracked follow-up — the binding + reactive reads ship now; the
+  // `onMount(() => ws.connect())` escape hatch LOWERS (see the on-mount
+  // decl harness) — Swift threads the url into connect(to:); Kotlin's
+  // connect needs a host transport (named warning) until the default-
+  // OkHttp-transport follow-up lands.
   if (d.kind === 'geolocation') {
     return `@State private var ${swiftIdent(d.name)} = PyreonGeolocation()`
   }
@@ -2769,6 +2799,19 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       // Each rewrite preserves the semantic intent. Methods with the
       // same name AND semantics on both targets (`.filter`, `.map`,
       // `.reduce`) pass through unchanged.
+      // `ws.connect()` — the TS hook surface is 0-arg (useWebSocket(url)
+      // carries the url); the Swift runtime's signature is
+      // `connect(to: URL)`. Thread the decl's url through. The bare
+      // 0-arg emit failed "missing argument for parameter 'to'".
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'connect' &&
+        e.callee.object.kind === 'identifier' &&
+        _websocketUrlsSwift.has(e.callee.object.name) &&
+        e.args.length === 0
+      ) {
+        return `${swiftIdent(e.callee.object.name)}.connect(to: URL(string: ${JSON.stringify(_websocketUrlsSwift.get(e.callee.object.name)!)})!)`
+      }
       if (e.callee.kind === 'member') {
         const obj = emitSwiftExpr(e.callee.object, indent)
         const prop = e.callee.property

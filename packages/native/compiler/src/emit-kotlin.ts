@@ -87,6 +87,10 @@ let _synthExprStructKeys: Map<string, string> = new Map()
 // non-literal field (`{ id: count() }`) can have its type inferred for
 // data-class synthesis. Set per `emitKotlinComponent`; empty otherwise.
 let _kotlinExprInferCtx: ReturnType<typeof buildInferenceCtx> = buildInferenceCtx([])
+// websocket decl names — `ws.connect()` cannot lower on Kotlin (the runtime's
+// `connect(register: (WebSocketHandlers) -> WebSocketSender)` needs a
+// HOST-SUPPLIED transport) → NAMED warning + raw emit (kotlinc fails loud).
+let _websocketNamesKotlin: Set<string> = new Set()
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
@@ -1115,12 +1119,16 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Expose the component's inference ctx to the object-literal emit so a
   // non-literal field (`{ id: count() }`) gets its data-class field type
   // inferred (mirrors the Swift `_exprInferCtx`).
+  _websocketNamesKotlin = new Set(
+    c.decls.filter((d) => d.kind === 'websocket').map((d) => (d as { name: string }).name),
+  )
   _kotlinExprInferCtx = inferCtx
   // Pass 1: walk decls — emits decl bodies AND discovers synthesized
   // types from decl annotations. The actual decl text is buffered into
   // `declTexts` so it can be emitted later inside the function body
   // (after the signature line).
-  const declTexts = c.decls.map((d) => emitKotlinDecl(d, ctx))
+  // on-mount decls emit at the harness level (LaunchedEffect(Unit), below).
+  const declTexts = c.decls.filter((d) => d.kind !== 'on-mount').map((d) => emitKotlinDecl(d, ctx))
   // Pass 2: walk props — formats prop annotations AND ALSO discovers
   // synthesized types from PROP annotations. This pass must run BEFORE
   // emitting synth-class declarations: a prop like
@@ -1166,6 +1174,17 @@ function emitKotlinComponent(c: ComponentIR): string {
   // first composition (Compose's async-on-mount hook), driving the
   // PyreonFetch state machine begin → resolve|reject. The suspendable HTTP
   // runs off the main thread; decode goes through kotlinx-serialization.
+  // onMount bodies → LaunchedEffect(Unit) (Compose's run-once-on-mount
+  // hook — keyed by the stable Unit, not cancelled by recomposition).
+  for (const d of c.decls) {
+    if (d.kind !== 'on-mount') continue
+    const saved = seedHandlerLocals(d.body, _kotlinExprInferCtx)
+    const bodyLines = d.body.map((st) => `    ${emitKotlinStatement(st, 4, ctx)}`).join('\n')
+    _kotlinExprInferCtx.locals = saved
+    lines.push(`  LaunchedEffect(Unit) {`)
+    lines.push(bodyLines)
+    lines.push(`  }`)
+  }
   for (const d of c.decls) {
     if (d.kind !== 'fetch') continue
     const name = kotlinIdent(d.name)
@@ -1218,6 +1237,8 @@ function emitKotlinDataClass(synth: {
 }
 
 function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
+  // on-mount emits at the harness level (LaunchedEffect) — defensive narrow.
+  if (d.kind === 'on-mount') return ''
   // Phase 5b: a plain value const → a composable-body `val` (captures-once).
   if (d.kind === 'value') {
     return `val ${kotlinIdent(d.name)} = ${emitKotlinExpr(d.expr, 0)}`
@@ -2088,6 +2109,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
         _emitWarnings.push(
           `Number.isInteger(${argStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively. Give the argument a resolvable number type.`,
+        )
+      }
+      // `ws.connect()` on Kotlin — the runtime's connect takes a
+      // HOST-SUPPLIED transport lambda (OkHttp etc.); the compiler cannot
+      // synthesize one. NAMED warning + raw emit (kotlinc rejects it loud —
+      // the stub deliberately mirrors the real surface, which has no 0-arg
+      // connect). The Swift side DOES lower (connect(to: URL)).
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.property === 'connect' &&
+        e.callee.object.kind === 'identifier' &&
+        _websocketNamesKotlin.has(e.callee.object.name) &&
+        e.args.length === 0
+      ) {
+        _emitWarnings.push(
+          `${e.callee.object.name}.connect(): Android's PyreonWebSocket.connect requires a host-supplied transport (connect(register = { handlers -> sender })) — the compiler cannot synthesize one. Wire the transport in the host shell, or track the default-OkHttp-transport follow-up. iOS lowers this call.`,
         )
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin

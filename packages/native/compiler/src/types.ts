@@ -209,6 +209,17 @@ export type DeclIR =
    */
   | { kind: 'network-status'; name: string }
   /**
+   * A component-body `onMount(() => { … })` call — the documented lifecycle
+   * escape hatch ("call .start()/.connect() from an onMount"). Lowers to a
+   * mount-time harness: SwiftUI `.onAppear { … }` on the stable-identity
+   * host (the fetch-arc ZStack — a transparent Group redistributes the
+   * modifier onto conditional branches and re-fires it per flip); Compose
+   * `LaunchedEffect(Unit) { … }`. A returned cleanup fn is NOT emitted in
+   * v1 (named warning). Pre-fix the whole call was a SILENT drop — the
+   * component-body walker only handled declarations + return.
+   */
+  | { kind: 'on-mount'; body: StatementIR[] }
+  /**
    * Phase 3 — destructured router params via `const { id } = useParams()` (or
    * `const { id: userId } = useParams<{ id: string }>()`). The web-idiomatic
    * destructure shape; emits one local binding per field, each reading the
