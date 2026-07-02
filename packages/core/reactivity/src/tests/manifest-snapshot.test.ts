@@ -78,9 +78,11 @@ describe('gen-docs — reactivity snapshot', () => {
     // reactive-devtools bridge (activateReactiveDevtools, getReactiveGraph)
     // + 2 environment flags (isServer, isClient) + 3 Reactive Coverage
     // (startReactiveCoverage, takeReactiveCoverage, formatReactiveCoverage)
-    // + 1 describeReactiveGraph (graph behavioral description).
-    expect(Object.keys(record).length).toBe(36)
+    // + 1 describeReactiveGraph (graph behavioral description)
+    // + 1 "why did this update?" (getUpdateCause / formatUpdateCause).
+    expect(Object.keys(record).length).toBe(37)
     expect(Object.keys(record)).toContain('reactivity/describeReactiveGraph')
+    expect(Object.keys(record)).toContain('reactivity/getUpdateCause')
     expect(Object.keys(record)).toContain('reactivity/isServer')
     expect(Object.keys(record)).toContain('reactivity/isClient')
     expect(Object.keys(record)).toContain('reactivity/wrapSignal')

@@ -1665,6 +1665,37 @@ Insights (1):
 
 Pure over the graph snapshot; dev/test only (the registry is tree-shaken in production, so an unactivated graph yields an empty summary). Pairs with `getUpdateCause` — `describe` explains the whole graph's behaviour, `getUpdateCause` explains one specific update.
 
+## Why Did This Update?
+
+React DevTools' "why did this render?" is whole-component, in a panel, and imprecise. Pyreon answers the question **per node, at the source line, along the exact causal chain** — because it holds both a precise dependency graph and a timestamped fire timeline. `getUpdateCause(nodeId)` reconstructs the chain that led to a node's most recent update:
+
+```ts
+import { activateReactiveDevtools, getReactiveGraph, getUpdateCause, formatUpdateCause } from '@pyreon/reactivity'
+
+activateReactiveDevtools()
+// … your app runs; the user clicks something …
+
+const effectId = getReactiveGraph().nodes.find((n) => n.kind === 'effect')!.id
+console.log(formatUpdateCause(getUpdateCause(effectId)!))
+```
+
+```text
+Why did effect#4 (effect) update?
+  qty (signal) changed  src/Cart.tsx:7:13
+  → total (derived) recomputed  src/Cart.tsx:9:9
+  → effect#4 (effect) ran   ← explained
+```
+
+`getUpdateCause` returns an `UpdateCause` — `{ target, chain, rootReached }`, where `chain` is **root-first** (`chain[0]` is the originating change, usually a signal write) and each `CauseLink` carries `{ id, kind, name, loc, ts }`. It's also on the devtools hook: `window.__PYREON_DEVTOOLS__.reactive.getUpdateCause(id)` / `.formatUpdateCause(cause)`.
+
+### How it works (and its limits)
+
+The **dependency graph** is the causal structure; the **fire timeline** only says which nodes participated. It has to be this way — a *lazy* computed recomputes DURING its subscriber's read, so an effect's fire precedes the fire of the dependency that caused it (temporal order ≠ causal order). So `getUpdateCause` walks the graph from the target through its dependencies, following only the deps that fired in the **same synchronous cascade** (clustered within ~one animation frame of the target's last fire).
+
+- **Exact** for a synchronous update — the "I just interacted, why did this change?" case.
+- **Best-effort** if unrelated updates interleave within the cluster window, and the chain is `rootReached: false` (truncated) when earlier fires have aged out of the bounded ring buffer.
+- **Dev/test only** (the registry is tree-shaken in production); source locations are exact under `@pyreon/vite-plugin`, best-effort otherwise.
+
 ## Exports Summary
 
 ### Core Primitives

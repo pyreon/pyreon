@@ -107,6 +107,7 @@ effect(() => {
 | [`activateReactiveDevtools`](#activatereactivedevtools) | function | Opt-in lifecycle for the reactive-devtools bridge — the live signal/computed/effect graph the `@pyreon/devtools` Signals |
 | [`getReactiveGraph`](#getreactivegraph) | function | Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for the reactive-devtools tabs. |
 | [`describeReactiveGraph`](#describereactivegraph) | function | Auto-generated BEHAVIORAL description of the reactive graph — what a change to each signal actually DOES, in English, pl |
+| [`getUpdateCause`](#getupdatecause) | function | Answers "why did this node just update?" at the SOURCE LINE, along the exact causal chain — the thing React DevTools' wh |
 | [`wrapSignal`](#wrapsignal) | function | Create a signal facade over a base signal with custom write behavior. |
 | [`WrapSignalOptions`](#wrapsignaloptions) | type | Configuration object for `wrapSignal()`. |
 | [`startReactiveCoverage`](#startreactivecoverage) | function | Begin a Reactive Coverage session (from the `@pyreon/reactivity/coverage` subpath). |
@@ -1120,6 +1121,40 @@ console.log(formatGraphDescription(describeReactiveGraph()))
 - Expecting it to describe a component from SOURCE without running — it reads the LIVE graph (`getReactiveGraph()`), so the reactive nodes must have been created + subscribed first.
 
 **See also:** `getReactiveGraph` · `getUpdateCause` · `activateReactiveDevtools`
+
+---
+
+### getUpdateCause `function`
+
+```ts
+getUpdateCause(nodeId: number): UpdateCause | null  ·  formatUpdateCause(cause: UpdateCause): string
+```
+
+Answers "why did this node just update?" at the SOURCE LINE, along the exact causal chain — the thing React DevTools' whole-component "why did this render?" can't. `getUpdateCause` reconstructs the chain that led to a node's most recent fire by walking the dependency graph from the target through the deps that fired in the SAME synchronous cascade (clustered within ~one animation frame). Returns `{ target, chain, rootReached }` where `chain` is ROOT-FIRST (`chain[0]` is the originating signal write) and each `CauseLink` is `{ id, kind, name, loc, ts }`. `formatUpdateCause` renders it as a source-anchored trace. Purely READ-time over `getReactiveGraph()` + `getReactiveFires()` — zero hot-path cost. The graph (not the timeline) is the causal structure: a lazy computed recomputes DURING its subscriber's read, so temporal order ≠ causal order. Also on `window.__PYREON_DEVTOOLS__.reactive`. Requires `activateReactiveDevtools()`.
+
+**Example**
+
+```tsx
+activateReactiveDevtools()
+const qty = signal(2, { name: 'qty' })
+const total = computed(() => qty() * 9.99)
+effect(() => { void total() })
+qty.set(5)
+const effectId = getReactiveGraph().nodes.find(n => n.kind === 'effect').id
+console.log(formatUpdateCause(getUpdateCause(effectId)))
+// Why did effect#4 update?
+//   qty (signal) changed  Cart.tsx:2:13
+//   → total (derived) recomputed
+//   → effect#4 (effect) ran   ← explained
+```
+
+**Common mistakes**
+
+- Trusting the chain across UNRELATED rapid interactions — reconstruction is exact for one synchronous cascade; interactions within the ~16ms cluster window can blur. `rootReached: false` means older fires aged out of the ring buffer.
+- Calling it in production — the reactive registry is tree-shaken when `NODE_ENV === "production"`, so `getUpdateCause` returns null (nothing tracked).
+- Expecting timeline order to be causal order — it is NOT (a lazy computed recomputes during its subscriber's read). `getUpdateCause` uses the dependency graph as the causal structure on purpose.
+
+**See also:** `getReactiveGraph` · `activateReactiveDevtools` · `getReactiveTrace`
 
 ---
 
