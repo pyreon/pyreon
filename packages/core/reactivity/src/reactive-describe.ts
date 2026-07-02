@@ -65,6 +65,16 @@ function namesOrCount(names: string[], max = 3): string {
  * the live `getReactiveGraph()`.
  */
 export function describeReactiveGraph(graph: ReactiveGraph = getReactiveGraph()): GraphDescription {
+  // Prod early-return: the registry only fills under dev gates, so the graph
+  // is always empty in a production build — the description is vacuously
+  // empty. The static gate lets the minifier drop the graph-walk body.
+  if (process.env.NODE_ENV === 'production') {
+    return {
+      summary: { signals: 0, derived: 0, effects: 0, edges: 0 },
+      nodes: [],
+      insights: [],
+    }
+  }
   const { nodes, edges } = graph
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
 
