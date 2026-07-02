@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/machine",
-  "version": "0.38.0",
-  "description": "Reactive state machines for Pyreon \u2014 constrained signals with type-safe transitions",
+  "version": "0.39.0",
+  "description": "Reactive state machines for Pyreon — constrained signals with type-safe transitions",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/machine#readme",
   "bugs": {

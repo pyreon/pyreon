@@ -1,5 +1,32 @@
 # @pyreon/mcp
 
+## 0.39.0
+
+### Minor Changes
+
+- [#1970](https://github.com/pyreon/pyreon/pull/1970) [`1e8ed00`](https://github.com/pyreon/pyreon/commit/1e8ed002acdeb4b1abfd7a5f5469f7077dd9b318) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(mcp): `explain_reactivity` tool — the compiler's per-expression reactivity verdict for AI agents
+
+  New MCP tool `explain_reactivity({ code, filename? })`. The Pyreon compiler already decides, while emitting codegen, whether each JSX expression is reactive or baked static — this surfaces that ground truth (via `analyzeReactivity`) so an AI coding agent sees the map BEFORE it commits. Every expression is classified `live` / `live prop` / `live attr` / `baked once` / `hoisted static`, merged with the `detectPyreonPatterns` footguns, over an annotated source view.
+
+  Where `validate` reports _bugs_, `explain_reactivity` reports the whole _map_: an agent sees that `<div>{qty}</div>` (from destructured props) compiled to `baked once` (dead) right at the source — so it can't ship the stale-closure / destructured-props / static-when-meant-reactive bug even when no footgun fires. The reactivity "type-check" surface for agents.
+
+  Brings the MCP server to 17 tools (15 manifest-listed).
+
+- [#1971](https://github.com/pyreon/pyreon/pull/1971) [`2444405`](https://github.com/pyreon/pyreon/commit/244440585f0066759a0f1bc4aec087e44b131466) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat: `migrate_pyreon` — auto-fix the mechanically-safe Pyreon footguns
+
+  Closes the documented gap that kept every `detectPyreonPatterns` diagnostic `fixable: false` ("no migrate_pyreon tool yet"). New `migratePyreonCode(source, filename?)` in `@pyreon/compiler` + the `migrate_pyreon` MCP tool (parallel to `migrate_react`) rewrite Pyreon-footgun → correct-Pyreon for the three UNAMBIGUOUS, purely-mechanical codes:
+
+  - `signal-write-as-call` — `sig(v)` → `sig.set(v)`
+  - `for-with-key` — `<For key={k}>` → `<For by={k}>`
+  - `as-unknown-as-vnodechild` — `x as unknown as VNodeChild` → `x`
+
+  Every other footgun (props-destructured, on-click-undefined, raw-add-event-listener, …) needs human judgement and is returned in `remaining`, untouched. The codemod is span-based (exact `getStart`/`getEnd`), applied back-to-front, non-overlapping, and idempotent — so an agent can apply the result verbatim. This makes those three `detectPyreonPatterns` codes report `fixable: true` (kept in sync via the new `AUTO_FIXABLE_PYREON_CODES` set); every other code stays `fixable: false`.
+
+### Patch Changes
+
+- Updated dependencies [[`514f28d`](https://github.com/pyreon/pyreon/commit/514f28da2c442e9fffd694a88a2b8fd8c9a48088), [`2444405`](https://github.com/pyreon/pyreon/commit/244440585f0066759a0f1bc4aec087e44b131466), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31)]:
+  - @pyreon/compiler@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

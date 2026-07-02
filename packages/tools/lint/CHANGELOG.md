@@ -1,5 +1,28 @@
 # @pyreon/lint
 
+## 0.39.0
+
+### Minor Changes
+
+- [#2011](https://github.com/pyreon/pyreon/pull/2011) [`0b3e65c`](https://github.com/pyreon/pyreon/commit/0b3e65c49ff2d6245d4e9e56d49140d4abe87773) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Two render-mode DX rules (Tier 2/3 of the zero-modes roadmap):
+
+  - `pyreon/missing-get-static-paths` is now renderMode-aware: a dynamic route declaring `export const renderMode = 'ssr' | 'isr' | 'spa'` (literal) is runtime-only/CSR by declaration, so the rule no longer fires on it — killing the false positive in hybrid and SSR apps. A declared `'ssg'` or a computed mode still fires.
+  - New `pyreon/island-import-from-client` (architecture, warn): flags `import { island } from '@pyreon/server'` — the barrel drags `node:*` + the server singleton into client bundles (duplicate-singleton throw + dual `@pyreon/core` context split at hydration). Fix is universally safe: import from `'@pyreon/server/client'` (or `'@pyreon/zero'`). Server-only files by naming convention (`entry-server.*`, `*.server.*`) are exempt.
+
+  Rule count 92 → 93.
+
+- [#2023](https://github.com/pyreon/pyreon/pull/2023) [`74bbc94`](https://github.com/pyreon/pyreon/commit/74bbc9423245e0596872c9a7fb230bacdc411cca) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Zero render-modes DX — the final three roadmap gaps:
+
+  - **Build-time ISR auth-read warning** (`@pyreon/zero`): an ISR-mode route whose loader/middleware/guard reads `headers.get('cookie'|'authorization')` without a custom `isr.cacheKey` FUNCTION now gets a loud build/dev warning naming the file and the fix (the runtime already refuses to cache such responses, but only per-request in prod logs). Effective-mode resolution mirrors the file/layout/routeRules/app cascade; a custom `cacheKey` function suppresses it.
+  - **Scaffolder ISR + typed routes** (`@pyreon/create-zero`): `--mode isr` (and the interactive ISR choice) scaffolds `mode: 'isr', isr: { revalidate: 60 }` and filters the `static` adapter (ISR needs a server); new `--typed-routes` / `--no-typed-routes` flags + prompt (default ON) wire `zero({ typedRoutes: true })` with the generated `src/pyreon-routes.d.ts` gitignored by the template.
+  - **`pyreon/missing-get-static-paths` is now app-mode-aware** (`@pyreon/lint`): new `appMode` option — `["warn", { "appMode": "ssr" }]` flips the polarity for server apps: undeclared dynamic routes are quiet (they render per-request), and only explicit `renderMode = 'ssg'` declarations (which join the prerender pass) still require `getStaticPaths`.
+
+### Patch Changes
+
+- Updated dependencies [[`514f28d`](https://github.com/pyreon/pyreon/commit/514f28da2c442e9fffd694a88a2b8fd8c9a48088), [`a401811`](https://github.com/pyreon/pyreon/commit/a40181170cad2c71efa66244aa9306b4b3f8527f), [`2444405`](https://github.com/pyreon/pyreon/commit/244440585f0066759a0f1bc4aec087e44b131466), [`8a1feb0`](https://github.com/pyreon/pyreon/commit/8a1feb07faca643488c98e89db7bfc08d6867a31)]:
+  - @pyreon/compiler@0.39.0
+  - @pyreon/sized-map@0.39.0
+
 ## 0.38.0
 
 ### Minor Changes
