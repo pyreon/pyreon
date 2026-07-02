@@ -233,7 +233,7 @@ function applyKeyedMoves(
     if (key === undefined) continue
     const entry = cache.get(key)
     if (!entry) continue
-    if (!stay[i]) moveEntryBefore(parent, entry.anchor, cursor)
+    if (!stay[i]) moveEntryBefore(parent, entry.anchor, cursor, tailMarker)
     cursor = entry.anchor
   }
 }
@@ -499,7 +499,7 @@ function applyForMoves(
   for (let i = n - 1; i >= 0; i--) {
     const entry = entries[i]
     if (!entry) continue
-    if (!stay[i]) moveEntryBefore(liveParent, entry.anchor, cursor)
+    if (!stay[i]) moveEntryBefore(liveParent, entry.anchor, cursor, tailMarker)
     cursor = entry.anchor
   }
 }
@@ -895,7 +895,7 @@ function smallKPlace(
       prevDiffIdx = i
       continue
     }
-    moveEntryBefore(parent, entry.anchor, cursor)
+    moveEntryBefore(parent, entry.anchor, cursor, tailMarker)
     cursor = entry.anchor
     prevDiffIdx = i
   }
@@ -908,28 +908,45 @@ function smallKPlace(
  * Fast path: if the next sibling is already a boundary (another entry or tail),
  * this entry is a single node — skip the toMove array entirely.
  */
-function moveEntryBefore(parent: Node, startNode: Node, before: Node): void {
+function moveEntryBefore(
+  parent: Node,
+  startNode: Node,
+  before: Node,
+  tailMarker: Comment,
+): void {
   const next = startNode.nextSibling
   // Single-node fast path (covers all createTemplate rows — the common case)
   if (
     !next ||
     next === before ||
+    next === tailMarker ||
     (next.parentNode === parent && (_forAnchors.has(next) || _keyedAnchors.has(next)))
   ) {
     parent.insertBefore(startNode, before)
     return
   }
-  // Multi-node slow path (fragments, components with multiple root nodes)
+  // Multi-node slow path (fragments, components with multiple root nodes).
+  //
+  // The tailMarker bound is LOAD-BEARING (fuzz-found, 2026-07): the DOM-last
+  // entry's `next` is the tailMarker — a comment that is neither a registered
+  // anchor nor `before` — so without the explicit stop the walk DRAGGED THE
+  // TAILMARKER (and anything the caller placed after it) along with the row.
+  // A misplaced tailMarker silently corrupts every subsequent operation:
+  // appended rows insert at the marker's stranded position ("sort a table,
+  // then add a row → it lands in the middle"), clearBetween misses rows left
+  // outside the marker pair, and the canSwap fast paths stop applying. The
+  // doc contract above always SAID "stops at ... the tail marker" — this
+  // implements it.
   const toMove: Node[] = [startNode]
   let cur: Node | null = next
-  while (cur && cur !== before) {
+  while (cur && cur !== before && cur !== tailMarker) {
     const nextNode: Node | null = cur.nextSibling
     toMove.push(cur)
     cur = nextNode
     if (
       cur &&
       cur.parentNode === parent &&
-      (cur === before || _forAnchors.has(cur) || _keyedAnchors.has(cur))
+      (cur === before || cur === tailMarker || _forAnchors.has(cur) || _keyedAnchors.has(cur))
     )
       break
   }
