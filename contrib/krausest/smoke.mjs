@@ -1,12 +1,21 @@
 import { createServer } from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { chromium } from 'playwright'
 
 // usage: bun contrib/krausest/smoke.mjs [dir-with-built-dist]  (defaults to ./pyreon-keyed)
 const root = process.argv[2] ?? new URL('./pyreon-keyed', import.meta.url).pathname
+const resolvedRoot = resolve(root)
 const server = createServer((req, res) => {
-  const p = join(root, req.url === '/' ? 'index.html' : req.url.split('?')[0])
+  // Containment check (CodeQL js/path-injection): the joined path must stay
+  // inside the served root — separator-terminated prefix test, same pattern
+  // as ssg-plugin's isInsideDist. Localhost-only harness, but correct anyway.
+  const p = resolve(join(resolvedRoot, req.url === '/' ? 'index.html' : req.url.split('?')[0]))
+  if (p !== resolvedRoot && !p.startsWith(resolvedRoot + sep)) {
+    res.writeHead(403)
+    res.end()
+    return
+  }
   if (!existsSync(p)) { res.writeHead(404); res.end(); return }
   const type = p.endsWith('.js') ? 'text/javascript' : p.endsWith('.html') ? 'text/html' : 'text/plain'
   res.writeHead(200, { 'content-type': type })
