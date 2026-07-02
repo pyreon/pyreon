@@ -7071,7 +7071,7 @@ resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
 <Col size={[12, 6, 4]}>Mobile-first array</Col>
 <Col size={{ xs: 0, md: 6 }}>Hidden on xs</Col>
 <Col>Auto column — shares leftover space</Col>
-<Col component="article" css={{ textAlign: 'center' }}>Custom element + extra CSS</Col>`,
+<Col component="article" css="text-align: center;">Custom element + extra CSS</Col>`,
     notes: `Individual column. Reads \`columns\` / \`gap\` / default \`size\` / \`padding\` from the Row context and computes its width as \`calc(size / columns · 100% − gap)\` (plain percentage when no gap). Without a \`size\` it is an auto column (\`flex-grow: 1; flex-basis: 0\`) sharing the leftover space. \`gap\` and \`padding\` are HALVED and applied as per-side margin / padding (the Row's negative margin cancels the outer halves). \`size: 0\` hides the column at that breakpoint. See also: Row, Container.`,
     mistakes: `- \`size: 0\` hides the column by moving it off-screen (\`position: fixed; left: -9999px\`), NOT \`display: none\` — the element stays mounted and its children stay alive
 - A mobile-first array is positional \`[xs, sm, md, lg, xl]\` and values CASCADE upward — \`size={[12, 6, 4]}\` leaves lg/xl at the md value (4), it does not reset them

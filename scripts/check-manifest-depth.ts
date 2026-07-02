@@ -59,6 +59,16 @@ const LOCKED: Record<string, { minEntries: number; minWithMistakes: number }> = 
   // (the same loader `get_api` uses), not a source grep.
   '@pyreon/query': { minEntries: 25, minWithMistakes: 18 },
   '@pyreon/form': { minEntries: 7, minWithMistakes: 7 },
+  // 2026-07 manifest-completion pass — the final 8 real-API migrations,
+  // locked at their achieved density (authoritative findManifests counts).
+  '@pyreon/sized-map': { minEntries: 2, minWithMistakes: 1 },
+  '@pyreon/dnd': { minEntries: 5, minWithMistakes: 5 },
+  '@pyreon/attrs': { minEntries: 7, minWithMistakes: 7 },
+  '@pyreon/rocketstyle': { minEntries: 13, minWithMistakes: 13 },
+  '@pyreon/coolgrid': { minEntries: 5, minWithMistakes: 5 },
+  '@pyreon/kinetic': { minEntries: 9, minWithMistakes: 5 },
+  '@pyreon/kinetic-presets': { minEntries: 12, minWithMistakes: 5 },
+  '@pyreon/connector-document': { minEntries: 10, minWithMistakes: 7 },
 }
 
 interface Finding {
