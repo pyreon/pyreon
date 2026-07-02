@@ -1700,6 +1700,9 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
     case 'switch': {
       const pad = ' '.repeat(indent)
       const disc = emitKotlinExpr(s.discriminant, indent)
+      const discT = inferType(s.discriminant, _kotlinExprInferCtx)
+      const discEnumName =
+        discT.kind === 'typeRef' && _enumNames.has(discT.name) ? discT.name : undefined
       const caseLines = s.cases
         .map((c) => {
           const bodyLines = c.body
@@ -1707,7 +1710,15 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
             .join('\n')
           const body = bodyLines.length > 0 ? `{\n${bodyLines}\n${pad}  }` : '{}'
           if (c.tests.length === 0) return `${pad}  else -> ${body}`
+          // ENUM-typed discriminant: emit the case LABELS with the
+          // active-enum context set so string-literal tests rewrite to
+          // `Status.case` — a raw `"busy" ->` against an enum subject is
+          // a kotlinc "incompatible types" error. Labels ONLY — case
+          // BODIES must keep string literals as strings.
+          const prevEnum = _activeEnumType
+          if (discEnumName !== undefined) _activeEnumType = discEnumName
           const labels = c.tests.map((t) => emitKotlinExpr(t, indent)).join(', ')
+          _activeEnumType = prevEnum
           return `${pad}  ${labels} -> ${body}`
         })
         .join('\n')
@@ -3658,6 +3669,34 @@ function mapJsxTagToCompose(tag: string): string {
  * Read a static attribute as a literal, ignoring spreads + dynamic exprs.
  * Returns undefined when absent or not a static literal.
  */
+/**
+ * Read an attr as an emitted Kotlin STRING EXPRESSION — the dynamic
+ * companion to `readStaticAttrKotlin` for string-slot modifiers
+ * (`Modifier.testTag(...)` / `semantics { contentDescription = ... }`
+ * accept any String expr). A literal / resolvable const emits the
+ * quoted literal; a TEMPLATE emits the native interpolated string; any
+ * other expression interpolates (`"${expr}"` — matches JS string
+ * coercion). Pre-fix these attrs were static-only, so a dynamic
+ * testid/label (`data-testid={\`row-\${i}\`}`) was SILENTLY DROPPED —
+ * the a11y/e2e-critical shape inside For rows. Mirror of emit-swift's
+ * `readStringAttrExpr`.
+ */
+function readStringAttrExprKotlin(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+  indent: number,
+): string | undefined {
+  const stat = readStaticAttrKotlin(e, name)
+  if (stat !== undefined) return JSON.stringify(String(stat))
+  for (const a of e.attrs) {
+    if (a.kind === 'attr' && a.name === name) {
+      if (a.value.kind === 'template') return emitKotlinExpr(a.value, indent)
+      return `"\${${emitKotlinExpr(a.value, indent)}}"`
+    }
+  }
+  return undefined
+}
+
 function readStaticAttrKotlin(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   name: string,
@@ -3721,9 +3760,9 @@ function emitKotlinLayoutModifier(
   // androidx.compose.ui.platform). Same string the web e2e selects
   // on (`getByTestId`) reaches Android UIAutomator / Espresso via
   // testTag. Other `data-*` attrs are silently dropped.
-  const testid = readStaticAttrKotlin(e, 'data-testid')
-  if (typeof testid === 'string') {
-    parts.push(`.testTag(${JSON.stringify(testid)})`)
+  const testid = readStringAttrExprKotlin(e, 'data-testid', 0)
+  if (testid !== undefined) {
+    parts.push(`.testTag(${testid})`)
   }
   // Cross-platform a11y vocabulary (`@pyreon/primitives` AccessibilityProps)
   // → Compose semantics — the Android lowering of the same neutral props the
@@ -3732,9 +3771,9 @@ function emitKotlinLayoutModifier(
   //
   // `accessibilityLabel` → `.semantics { contentDescription = … }` (TalkBack
   // content description — icon-only buttons, images).
-  const a11yLabel = readStaticAttrKotlin(e, 'accessibilityLabel')
-  if (typeof a11yLabel === 'string') {
-    parts.push(`.semantics { contentDescription = ${JSON.stringify(a11yLabel)} }`)
+  const a11yLabel = readStringAttrExprKotlin(e, 'accessibilityLabel', 0)
+  if (a11yLabel !== undefined) {
+    parts.push(`.semantics { contentDescription = ${a11yLabel} }`)
   }
   // `accessibilityRole` → Compose semantics. button/image map to the `Role`
   // enum; header to `heading()` (Compose has no `Role.Header`). Constrained to
