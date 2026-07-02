@@ -47,6 +47,20 @@ describe('alignContent', () => {
       )
     })
 
+    it('maps spaceEvenly (typed-but-unimplemented regression — coolgrid contentAlignX)', () => {
+      // Pre-fix: ContentAlignX advertised 'spaceEvenly' but the shared map
+      // had no entry — the declaration emitted `justify-content: undefined`
+      // and was silently dropped.
+      const result = alignContent({
+        direction: 'inline',
+        alignX: 'spaceEvenly',
+        alignY: 'spaceEvenly',
+      })
+      expect(result).toBe(
+        'flex-direction: row; align-items: space-evenly; justify-content: space-evenly;',
+      )
+    })
+
     it('maps block/block', () => {
       const result = alignContent({ direction: 'inline', alignX: 'block', alignY: 'block' })
       expect(result).toBe('flex-direction: row; align-items: stretch; justify-content: stretch;')

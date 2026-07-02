@@ -206,7 +206,7 @@ Individual column. Reads `columns` / `gap` / default `size` / `padding` from the
 <Col size={[12, 6, 4]}>Mobile-first array</Col>
 <Col size={{ xs: 0, md: 6 }}>Hidden on xs</Col>
 <Col>Auto column — shares leftover space</Col>
-<Col component="article" css={{ textAlign: 'center' }}>Custom element + extra CSS</Col>
+<Col component="article" css="text-align: center;">Custom element + extra CSS</Col>
 ```
 
 **Common mistakes**

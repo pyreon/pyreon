@@ -8,6 +8,10 @@ const ALIGN_CONTENT_MAP_SHARED = {
   center: 'center',
   spaceBetween: 'space-between',
   spaceAround: 'space-around',
+  // coolgrid's ContentAlignX advertised spaceEvenly from inception, but the
+  // map lacked the entry — `contentAlignX="spaceEvenly"` silently emitted
+  // `justify-content: undefined` (dropped). Typed-but-unimplemented class.
+  spaceEvenly: 'space-evenly',
   block: 'stretch',
 }
 
