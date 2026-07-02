@@ -199,6 +199,8 @@ export function isReReadableExpr(expr: ExprIR): boolean {
  */
 export function exprReferencesIdent(expr: ExprIR, name: string): boolean {
   switch (expr.kind) {
+    case 'new-collection':
+      return expr.seed !== undefined ? exprReferencesIdent(expr.seed, name) : false
     case 'literal':
       return false
     case 'identifier':
@@ -293,6 +295,12 @@ export function substituteIdentifier(
   replacement: ExprIR,
 ): ExprIR | null {
   switch (expr.kind) {
+    case 'new-collection': {
+      if (expr.seed === undefined) return expr
+      const seed = substituteIdentifier(expr.seed, name, replacement)
+      if (seed === null) return null // bail-propagation, like every other case
+      return { ...expr, seed }
+    }
     case 'literal':
       return expr
     case 'identifier':
@@ -497,6 +505,8 @@ function walkLowerParams(
 ): ExprIR {
   const rec = (e: ExprIR): ExprIR => walkLowerParams(e, ctxName, flags)
   switch (expr.kind) {
+    case 'new-collection':
+      return expr.seed !== undefined ? { ...expr, seed: rec(expr.seed) } : expr
     case 'literal':
       return expr
     case 'identifier':

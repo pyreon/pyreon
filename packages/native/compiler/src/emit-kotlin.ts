@@ -1866,6 +1866,10 @@ export function kotlinType(t: TypeIR, ctx?: KotlinCtx, signalName?: string): str
       return 'String'
     case 'boolean':
       return 'Boolean'
+    case 'map':
+      return `MutableMap<${kotlinType(t.key, ctx)}, ${kotlinType(t.value, ctx)}>`
+    case 'set':
+      return `MutableSet<${kotlinType(t.element, ctx)}>`
     case 'array':
       return `List<${kotlinType(t.element, ctx, signalName)}>`
     case 'object': {
@@ -2388,7 +2392,8 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         }
       }
       // `signal.set(x)` → `signal = x` (Kotlin's `by mutableStateOf` is a var).
-      if (e.callee.kind === 'member' && e.callee.property === 'set') {
+      // Gated to ONE argument — a 2-arg `.set(k, v)` is a Map write.
+      if (e.callee.kind === 'member' && e.callee.property === 'set' && e.args.length === 1) {
         const target = emitKotlinExpr(e.callee.object, indent)
         // Enum-aware: when the target signal is enum-typed, set the
         // active-enum context so a string-literal arg rewrites to a
@@ -2445,6 +2450,24 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const obj = emitKotlinExpr(e.callee.object, indent)
         const prop = e.callee.property
         const argExprs = e.args.map((a) => emitKotlinExpr(a, indent))
+        // Map/Set method vocabulary — mirror of the Swift rewrites, typed
+        // off the receiver's inferred kind.
+        {
+          const recvT = inferType(e.callee.object, _kotlinExprInferCtx)
+          if (recvT.kind === 'map') {
+            if (prop === 'set' && e.args.length === 2) return `${obj}[${argExprs[0]!}] = ${argExprs[1]!}`
+            if (prop === 'get' && e.args.length === 1) return `${obj}[${argExprs[0]!}]`
+            if (prop === 'has' && e.args.length === 1) return `${obj}.containsKey(${argExprs[0]!})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}.remove(${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}.clear()`
+          }
+          if (recvT.kind === 'set') {
+            if (prop === 'add' && e.args.length === 1) return `${obj}.add(${argExprs[0]!})`
+            if (prop === 'has' && e.args.length === 1) return `${obj}.contains(${argExprs[0]!})`
+            if (prop === 'delete' && e.args.length === 1) return `${obj}.remove(${argExprs[0]!})`
+            if (prop === 'clear' && e.args.length === 0) return `${obj}.clear()`
+          }
+        }
         switch (prop) {
           case 'some': {
             // 2-param INDEX callback `.some((el, idx) => …)`: `withIndex()`
@@ -3030,9 +3053,47 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       //   2. Drops the side-effect entirely — `nextId` never
       //      incremented. Every new Todo got id=2 forever.
       return `${emitKotlinExpr(e.argument, indent)}${e.op}`
-    case 'arrow':
+    case 'arrow': {
+      // A BLOCK body carries `stmts` — mirror of the Swift plain-path fix
+      // (the sentinel `""` silently dropped multi-statement 1-param
+      // callbacks). Kotlin lambdas return the LAST expression; explicit
+      // `return` inside a lambda needs a label — emitKotlinStatement's
+      // return handling covers the shapes the statement parser produces.
+      if (e.stmts !== undefined && e.stmts.length > 0) {
+        // A body containing RETURN statements needs Kotlin's labeled-return
+        // form (`return@filter`), and the generic arrow emit can't know its
+        // enclosing method label (only call sites can — the indexed path
+        // threads it via emitKotlinIndexedBody). Return-free bodies are
+        // safe: a Kotlin lambda yields its LAST expression. Return-bearing
+        // bodies get a NAMED warning (previously a SILENT sentinel drop) —
+        // the labeled-callback call-site wiring is the tracked follow-up.
+        const hasReturn = JSON.stringify(e.stmts).includes('"kind":"return"')
+        if (hasReturn) {
+          _emitWarnings.push(
+            `a multi-statement callback with early returns is not lowered on Kotlin at this call site yet (labeled-return wiring) — the body was DROPPED; restructure as an expression body or a single trailing value.`,
+          )
+          return `{ ${e.params.map(kotlinIdent).join(', ')} -> Unit }`
+        }
+        const pad = ' '.repeat(indent + 2)
+        const saved = seedHandlerLocals(e.stmts, _kotlinExprInferCtx)
+        const stmtCtx: KotlinCtx = { synthesizedDataClasses: [], componentName: '' }
+        const lines = e.stmts.map((st) => pad + emitKotlinStatement(st, indent + 2, stmtCtx)).join('\n')
+        _kotlinExprInferCtx.locals = saved
+        const params = e.params.length > 0 ? `${e.params.map(kotlinIdent).join(', ')} ->` : ''
+        return `{ ${params}\n${lines}\n${' '.repeat(indent)}}`
+      }
       if (e.params.length === 0) return `{ ${emitKotlinExpr(e.body, indent)} }`
       return `{ ${e.params.map(kotlinIdent).join(', ')} -> ${emitKotlinExpr(e.body, indent)} }`
+    }
+    case 'new-collection': {
+      // Mirror of the Swift emit. `val` is fine on Kotlin (the reference is
+      // final; contents mutate through it).
+      if (e.collection === 'map') {
+        return `mutableMapOf<${kotlinType(e.keyType!)}, ${kotlinType(e.valueType!)}>()`
+      }
+      if (e.seed !== undefined) return `(${emitKotlinExpr(e.seed, indent)}).toMutableSet()`
+      return `mutableSetOf<${kotlinType(e.elementType!)}>()`
+    }
     case 'rx-call':
       return emitKotlinRxCall(e, indent)
     case 'jsx-element':
