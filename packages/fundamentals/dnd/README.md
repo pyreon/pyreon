@@ -175,7 +175,7 @@ useDraggable({
 ## Gotchas
 
 - **Hooks are SSR-safe** — they return zero-state accessors when `document` is undefined. Real registration happens at first browser tick.
-- **`element: () => el` must return the SAME element across reads** until the component unmounts. Reassigning `el` to a new node mid-life re-registers but stale closures from `onDragStart` callbacks fire against the OLD node.
+- **`element: () => el` must return the SAME element across reads** until the component unmounts. Setup is single-shot (deferred via `queueMicrotask`, never re-invoked) — reassigning `el` to a new node mid-life is NOT re-registered; the hook stays bound to the original node. Unmount and remount to bind a new element.
 - **`useSortable` requires `items` to be reactive** (a getter or signal call) — the hook needs to re-derive on insert / remove. Passing a captured array snapshot breaks reordering.
 - **`canMonitor` / `canDrop` run on every drag event** — keep them cheap. For expensive checks, derive a flag in a `computed` upstream.
 - **`useFileDrop` only fires on REAL file drags from the OS** — not from `useDraggable` (those go through pdnd's element adapter). The two adapters are isolated.

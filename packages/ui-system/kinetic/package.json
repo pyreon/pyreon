@@ -50,6 +50,7 @@
     "@pyreon/sized-map": "workspace:*"
   },
   "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",

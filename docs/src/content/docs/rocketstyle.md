@@ -218,7 +218,7 @@ Every `.attrs()` value is a **default**, not a required prop — the consumer ca
 
 ```tsx
 .attrs(callback, {
-  priority: true,                  // run this attrs callback last (override-wins)
+  priority: true,                  // lowest-precedence defaults — normal attrs and explicit props both override
   filter: ['someInternalKey'],     // strip these keys before they reach the DOM
 })
 ```

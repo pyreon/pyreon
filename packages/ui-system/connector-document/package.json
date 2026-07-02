@@ -48,6 +48,7 @@
     "@pyreon/document": "workspace:^"
   },
   "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",

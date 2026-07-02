@@ -20,7 +20,7 @@ const FadeDiv = kinetic('div').preset(fade)
 const SlideSection = kinetic('section').preset(slideUp)
 
 const show = signal(true)
-<FadeDiv show={show()}>Hello, world!</FadeDiv>
+<FadeDiv show={() => show()}>Hello, world!</FadeDiv>
 ```
 
 ## How it compares

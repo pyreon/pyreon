@@ -38,6 +38,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "vitest": "^4.1.8"
   },

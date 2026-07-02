@@ -1260,6 +1260,7 @@
       "name": "@pyreon/sized-map",
       "version": "0.38.0",
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",
         "vitest": "^4.1.8",
       },
@@ -1356,6 +1357,7 @@
         "@atlaskit/pragmatic-drag-and-drop-hitbox": "^2.0.0",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
@@ -2096,6 +2098,7 @@
         "@pyreon/ui-core": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-rolldown": "^2.5.0",
@@ -2111,6 +2114,7 @@
         "@pyreon/document": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
@@ -2131,6 +2135,7 @@
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
@@ -2198,6 +2203,7 @@
         "@pyreon/sized-map": "workspace:*",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
@@ -2215,6 +2221,7 @@
       "name": "@pyreon/kinetic-presets",
       "version": "0.38.0",
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-rolldown": "^2.5.0",
@@ -2229,6 +2236,7 @@
         "@pyreon/ui-core": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",

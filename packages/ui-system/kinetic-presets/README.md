@@ -124,7 +124,7 @@ Every factory accepts `duration` / `leaveDuration` / `easing` / `leaveEasing` ov
 
 ### `compose(...presets)`
 
-Merge multiple presets. Styles are merged; transitions are comma-joined.
+Merge multiple presets. Styles are merged (shallow); for the transition fields the LAST preset that sets one wins (replacement, not joining).
 
 ```ts
 const fadeSlideUp = compose(presets.fade, presets.slideUp)
@@ -191,9 +191,9 @@ Both forms can be passed directly to `kinetic(...).preset(myPreset)`.
 
 ## Gotchas
 
-- **`compose()` style merge is shallow**, transition is comma-joined. If two presets set the same CSS property in `enterToStyle`, the LATER preset wins. Mixing factory output with hand-crafted styles is fine — just don't expect property-level deep merge.
+- **`compose()` style merge is shallow**, and the transition fields are last-preset-wins replacements (not comma-joined). If two presets set the same CSS property in `enterToStyle`, the LATER preset wins. Mixing factory output with hand-crafted styles is fine — just don't expect property-level deep merge.
 - **Class-based and style-based fields are mutually exclusive per preset** — `kinetic` picks the active set at chain time. Composing a class preset with a style preset works but produces both surfaces; the runtime applies whichever one your `kinetic(...)` chain consumed first.
-- **`reverse()` swaps enter↔leave only on the same preset shape** — style or class. Mixed-shape presets are left untouched.
+- **`reverse()` swaps ALL 12 enter↔leave fields** — style, class, AND `enterTransition`/`leaveTransition` — so asymmetric enter/leave timing swaps too, and mixed-shape presets get both surfaces swapped.
 - **No peer dependencies, no Pyreon coupling.** Presets are plain objects; you can use them with any animation runtime that accepts the same field shape (or your own).
 
 ## Documentation

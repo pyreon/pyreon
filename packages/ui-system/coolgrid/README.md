@@ -79,7 +79,7 @@ Width is calculated as `(size / columns)` of the parent Row.
 ```tsx
 <Col size={4}>1/3 width on every breakpoint</Col>
 <Col size={{ xs: 12, sm: 6, lg: 4 }}>Responsive</Col>
-<Col size={{ xs: 0, md: 6 }}>Hidden on xs (size 0 → display:none)</Col>
+<Col size={{ xs: 0, md: 6 }}>Hidden on xs (size 0 → moved off-screen)</Col>
 ```
 
 | Prop | Type | Description |
@@ -168,7 +168,7 @@ Swap any layer's root element via `component`:
 ## Gotchas
 
 - **`Provider` is the unistyle provider** under the hood. If you already render `<PyreonUI>` (from `@pyreon/ui-core`) at your app root, it sets up unistyle context — you only need a fresh `<Provider>` if you want different breakpoints in a subtree.
-- **`size: 0` is meaningful** — it sets the column to `display: none` at that breakpoint (hidden), not "zero-width but still in flow".
+- **`size: 0` is meaningful** — it hides the column at that breakpoint by moving it off-screen (`position: fixed; left: -9999px` — not `display: none`), not "zero-width but still in flow".
 - **`gutter` is negative-margin on the Row** + matching padding on each Col. Setting `gutter` and `padding` independently is fine but be aware of the visual offset.
 - **`columns` MUST be set on a Container** if you want a non-default count. Setting it on a Row works for that Row only, but the visual cascade is harder to reason about — keep it at Container level.
 - **Context is per-Provider.** If you nest two `<Provider>` blocks, the inner one starts fresh from its own theme — not from the outer Provider's overrides.
