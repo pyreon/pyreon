@@ -28,6 +28,7 @@ import {
   setContextOwner,
   setCurrentScope,
 } from '@pyreon/reactivity'
+import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
 import { mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps } from './props'
@@ -196,6 +197,17 @@ export function mountChild(
           'Use document.getElementById() or a ref to get the target element.',
       )
     }
+    // Portal content lives OUTSIDE the app's mount container, so delegated
+    // events (onClick etc.) bubbling from it never reach the app root's
+    // delegation listener — every delegated handler inside a portal was
+    // silently dead unless the consumer manually delegated the target. Make
+    // the Portal own its delegation root (the anti-patterns catalog's
+    // "fundamentally-correct fix ... tracked separately", now shipped).
+    // Safe when the target is an ANCESTOR of the app root (document.body):
+    // the per-dispatch DELEGATED_ELEMENTS invoked-set in setupDelegation's
+    // handler makes an outer root skip elements an inner root already
+    // handled — no double-fire. Idempotent via the `_delegated` WeakSet.
+    if (target instanceof Element) setupDelegation(target)
     return mountChild(children, target, null)
   }
 
