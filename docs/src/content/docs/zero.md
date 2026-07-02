@@ -695,6 +695,16 @@ import { Meta } from '@pyreon/zero'
 
 `buildMetaTags(props)` returns the tag list directly if you need to compose head output yourself.
 
+**Auto-canonical.** Give `<Meta>` an `origin` and it derives the canonical URL (and therefore `og:url`) from the **current route path** — every page carries `<link rel="canonical">` with zero per-route boilerplate (missing canonicals are the classic duplicate-content SEO footgun):
+
+```tsx
+<Meta title="Post" origin="https://example.com" />
+// on /blog/my-post → <link rel="canonical" href="https://example.com/blog/my-post">
+//                  + <meta property="og:url" content="https://example.com/blog/my-post">
+```
+
+An explicit `canonical` prop always wins; pass `autoCanonical={false}` to suppress derivation.
+
 ## Theme System
 
 Built-in dark/light theme with FOUC prevention. All theme APIs are client-safe.
@@ -736,6 +746,17 @@ function Header() {
 | `setSSRThemeDefault` | `(t) => void`                                | Set the theme used during SSR render                     |
 
 Add `themeScript` to your HTML `<head>` and call `initTheme()` on startup to prevent FOUC.
+
+**Strict CSP.** The pre-paint script is inline, which a strict `script-src` (no `'unsafe-inline'`) would block — silently reintroducing FOUC. Allow it by **hash**, which works for SSR *and* static SSG HTML (where per-request nonces are impossible):
+
+```ts
+import { themeScriptCspHash } from '@pyreon/zero'
+import { cspMiddleware } from '@pyreon/zero/csp'
+
+cspMiddleware({ directives: { scriptSrc: ["'self'", themeScriptCspHash] } })
+```
+
+The constant is drift-locked by a test (any edit to `themeScript` fails CI until the hash is regenerated). For **parametrized** inline scripts — e.g. `@pyreon/ui-core`'s `cssVariablesPrePaintScript(opts)`, whose content varies with options — compute the hash with `cspHashForInlineScript(script)` from `@pyreon/zero/csp` (Web Crypto, works in Node/Bun/edge).
 
 ## Middleware
 
@@ -854,6 +875,8 @@ export default {
 ```
 
 The standalone form (`import { seoPlugin } from '@pyreon/zero/seo'` + a separate `seoPlugin({...})` plugin entry) keeps working — `zero({ seo })` is the same config object, auto-wired.
+
+**`lastmod`.** Set `sitemap: { lastmod: 'build-time' }` to stamp every entry with the build date (`YYYY-MM-DD`), or pass an explicit ISO date. Per-entry `additionalPaths[].lastmod` always wins. `'build-time'` is the honest automated choice — file mtimes are unreliable in CI (a git checkout stamps checkout time on every file), so "when did this deploy happen" is the strongest truthful freshness signal.
 
 `generateSitemap(paths, config)`, `generateRobots(config)`, and `jsonLd(data)` are also exported for manual use. `seoMiddleware(config)` serves sitemap/robots in development. In SSG mode, the sitemap can be driven by the actual prerendered path set including dynamic and per-locale variants — see [SSG → Sitemap](/docs/ssg#sitemap-from-resolved-paths).
 
@@ -1000,6 +1023,46 @@ bun add -D sharp   # or: npm i -D sharp
 In **dev**, a missing `sharp` is a one-time console warning (favicons just don't appear locally — iteration isn't blocked). In a **production `vite build`**, a configured `source` with `sharp` missing is a **hard, actionable build error** — the build fails rather than silently shipping a site with zero favicons. To intentionally build without favicons, remove `faviconPlugin()` from your Vite plugins.
 
 **Cache-busting.** Browsers cache favicons extremely aggressively (often per-session / effectively forever), so a stable URL means a changed icon is never re-fetched by returning visitors. The injected `<link>` hrefs therefore carry a `?v=<hash>` query derived from the **source file content** (FNV-1a): identical bytes → identical query (no needless cache churn), changed bytes → new query → the browser re-downloads. This is orthogonal to light/dark switching (the theme swap toggles each link's `media` attribute, not its `href`). **Caveat:** only `<link>`/manifest-referenced assets are versioned. The bare `/favicon.ico` convention request (browsers fetch it with no link tag) and the `site.webmanifest`'s internal icon entries keep stable URLs — those rely on your host's cache headers / are re-resolved on PWA (re)install.
+
+In dev, editing a source icon **invalidates the on-the-fly cache automatically** — the next request re-renders from the new bytes (no dev-server restart).
+
+## Social-Share Images (og:image)
+
+Zero generates social-share preview images at build time from **templates** — a background (image file or solid color) plus positioned text layers, per locale. Declare on `zero()`:
+
+```ts title="vite.config.ts"
+zero({
+  og: {
+    locales: ['en', 'de'], // optional — one image per template × locale
+    templates: [
+      {
+        name: 'default', // → /og/default.png (+ /og/default-de.png)
+        background: './src/og-bg.jpg', // or { color: '#111827', width: 1200, height: 630 }
+        layers: [
+          {
+            text: { en: 'Build faster', de: 'Schneller bauen' }, // string | per-locale record | (locale) => string
+            x: '50%', y: '45%', textAnchor: 'middle',
+            fontSize: 64, fontWeight: 700, color: '#ffffff',
+            maxWidth: 900, // word-wrap boundary (default 80% of image width)
+          },
+        ],
+      },
+    ],
+  },
+})
+```
+
+Defaults: 1200×630 (the OG-standard size), `png` (set `format: 'jpeg'` + `quality` for photos). All template × locale variants render **in parallel** at build; in dev they're generated on demand at `/og/<template>[-<locale>].<ext>` and the cache invalidates when a background file changes.
+
+Wire the generated image into a page with `<Meta>`'s `ogTemplate` prop (resolves the locale-correct path for you) or the `ogImagePath()` helper:
+
+```tsx
+import { Meta } from '@pyreon/zero'
+
+<Meta title="Docs" description="…" origin="https://example.com" ogTemplate="default" />
+```
+
+**Font note:** text layers render via SVG → sharp, which resolves `fontFamily` against fonts installed on the **build machine** (no webfont loading). Stick to widely-available families or install your brand font into the CI image.
 
 ## Environment Validation
 

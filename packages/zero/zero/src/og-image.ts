@@ -311,6 +311,19 @@ export function ogImagePlugin(config: OgImagePluginConfig): Plugin {
     configureServer(server) {
       const devCache = new Map<string, Uint8Array>()
 
+      // Invalidate the dev cache when a template's background image changes —
+      // the cache key is template name + locale, which doesn't change when
+      // the background file's CONTENT does.
+      const watchedBackgrounds = config.templates
+        .map((t) => (typeof t.background === 'string' ? join(root, t.background) : null))
+        .filter((p): p is string => p !== null)
+      if (watchedBackgrounds.length > 0) {
+        server.watcher.add(watchedBackgrounds)
+        server.watcher.on('change', (file) => {
+          if (watchedBackgrounds.includes(file)) devCache.clear()
+        })
+      }
+
       server.middlewares.use(async (req, res, next) => {
         const url = req.url ?? ''
         if (!url.startsWith(`/${outDir}/`)) return next()
