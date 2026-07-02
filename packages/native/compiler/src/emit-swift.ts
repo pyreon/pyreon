@@ -1594,6 +1594,9 @@ function inlineValueConstsInStmts(stmts: StatementIR[]): StatementIR[] {
         return s.expr ? { ...s, expr: inlineValueConsts(s.expr) } : s
       case 'expr':
         return { ...s, expr: inlineValueConsts(s.expr) }
+      case 'break':
+      case 'continue':
+        return s
       case 'while':
         return { ...s, cond: inlineValueConsts(s.cond), body: s.body.map(mapStmt) }
       case 'for-of':
@@ -2068,7 +2071,9 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const lines = s.body
         .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
         .join('\n')
-      return `while ${cond} {\n${lines}\n${pad}}`
+      // Loop label — Swift spells it `outer: while … { break outer }`.
+      const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
+      return `${lbl}while ${cond} {\n${lines}\n${pad}}`
     }
     case 'for-of': {
       const pad = ' '.repeat(indent)
@@ -2076,8 +2081,15 @@ function emitSwiftStatement(s: StatementIR, indent: number): string {
       const lines = s.body
         .map((t) => `${pad}  ${emitSwiftStatement(t, indent + 2)}`)
         .join('\n')
-      return `for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
+      const lbl = s.label !== undefined ? `${swiftIdent(s.label)}: ` : ''
+      return `${lbl}for ${swiftIdent(s.item)} in ${iter} {\n${lines}\n${pad}}`
     }
+    case 'break':
+      // Plain or labeled — pre-fix these warn-DROPPED (a semantic
+      // mis-emit: the loop ran every iteration where JS would exit).
+      return s.label !== undefined ? `break ${swiftIdent(s.label)}` : 'break'
+    case 'continue':
+      return s.label !== undefined ? `continue ${swiftIdent(s.label)}` : 'continue'
     case 'switch': {
       const pad = ' '.repeat(indent)
       const disc = emitSwiftExpr(s.discriminant, indent)

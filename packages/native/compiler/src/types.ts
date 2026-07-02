@@ -561,14 +561,23 @@ export type StatementIR =
    * `while (cond) { … }` — Swift `while cond { … }` / Kotlin
    * `while (cond) { … }`. Multi-statement handler control-flow.
    */
-  | { kind: 'while'; cond: ExprIR; body: StatementIR[] }
+  | { kind: 'while'; cond: ExprIR; body: StatementIR[]; label?: string }
   /**
    * `for (const item of iterable) { … }` — Swift `for item in iterable`
    * / Kotlin `for (item in iterable)`. Only the `const`/`let`
    * single-identifier binding form lowers; destructured / C-style `for`
    * fall through to warn-drop.
    */
-  | { kind: 'for-of'; item: string; iterable: ExprIR; body: StatementIR[] }
+  | { kind: 'for-of'; item: string; iterable: ExprIR; body: StatementIR[]; label?: string }
+  /**
+   * `break` / `continue` — plain or LABELED (`break outer`). Both targets
+   * support loop labels natively: Swift `outer: for … { break outer }`,
+   * Kotlin `outer@ for … { break@outer }`. Pre-fix these statements were
+   * warn-DROPPED, which is a SEMANTIC mis-emit (the loop runs every
+   * iteration where JS would exit/skip).
+   */
+  | { kind: 'break'; label?: string }
+  | { kind: 'continue'; label?: string }
   /**
    * `switch (x) { case 'a': …; default: … }` — Swift `switch x { case
    * "a": … }` / Kotlin `when (x) { "a" -> { … } }`. Each entry groups

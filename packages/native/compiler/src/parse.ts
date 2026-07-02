@@ -4158,6 +4158,18 @@ function parseStatementBlock(block: AnyNode, ctx: ParseCtx): StatementIR[] {
       )
       continue
     }
+    // Statement-position comma operator (`a.set(1), b.set(2);`) — expand
+    // each sub-expression into its own statement (the sequence value is
+    // discarded here; only VALUE-position sequences keep the warning).
+    if (
+      stmt.type === 'ExpressionStatement' &&
+      (stmt.expression as AnyNode | undefined)?.type === 'SequenceExpression'
+    ) {
+      for (const x of ((stmt.expression as AnyNode).expressions as AnyNode[]) ?? []) {
+        out.push({ kind: 'expr', expr: parseExpr(x, ctx) })
+      }
+      continue
+    }
     const parsed = parseStatement(stmt, ctx)
     if (parsed) out.push(parsed)
   }
@@ -4283,6 +4295,39 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         body: parseLoopBody(node.body, ctx),
       }
     }
+    case 'BreakStatement':
+      // Plain or labeled. Pre-fix this warn-DROPPED — a SEMANTIC mis-emit:
+      // the emitted loop ran every iteration where JS would exit.
+      return node.label?.name
+        ? { kind: 'break', label: node.label.name as string }
+        : { kind: 'break' }
+    case 'ContinueStatement':
+      return node.label?.name
+        ? { kind: 'continue', label: node.label.name as string }
+        : { kind: 'continue' }
+    case 'LabeledStatement': {
+      // `outer: for (…) { … break outer … }` — both targets support loop
+      // labels natively (Swift `outer: for`; Kotlin `outer@ for`). Only a
+      // LOOP body lowers; a labeled non-loop statement (rare) warns.
+      const labelName = node.label?.name as string | undefined
+      const inner = node.body as AnyNode | undefined
+      if (
+        labelName &&
+        inner &&
+        (inner.type === 'ForOfStatement' || inner.type === 'WhileStatement')
+      ) {
+        const loop = parseStatement(inner, ctx)
+        if (loop && (loop.kind === 'for-of' || loop.kind === 'while')) {
+          loop.label = labelName
+          return loop
+        }
+        return loop
+      }
+      ctx.warnings.push(
+        `A labeled statement is only supported on a LOOP (\`outer: for (…)\` / \`outer: while (…)\`) — other labeled statements have no native lowering.`,
+      )
+      return null
+    }
     case 'ForOfStatement': {
       // `for (const x of items) { … }` — only the single-identifier
       // `const`/`let` binding lowers. Destructured (`for (const {a} of …)`)
@@ -4329,7 +4374,7 @@ function parseStatement(node: AnyNode, ctx: ParseCtx): StatementIR | null {
         if (consequent.length === 0) continue // empty label — share next body
         const body: StatementIR[] = []
         for (const st of consequent) {
-          if (st.type === 'BreakStatement') continue // strip (no fall-through)
+          if (st.type === 'BreakStatement' && !st.label) continue // strip (no fall-through)
           const parsed = parseStatement(st, ctx)
           if (parsed) body.push(parsed)
         }
@@ -4793,6 +4838,25 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const body = node.body
       const isExpressionBody = body.type !== 'BlockStatement'
       if (isExpressionBody) {
+        // Comma-operator arrow body — `() => (a.set(1), b.set(2))`, the
+        // compact multi-write handler idiom. A SequenceExpression has no
+        // native VALUE lowering, but in an ARROW BODY the value is
+        // discarded — lower each sub-expression to its own STATEMENT
+        // (pre-fix this warned + emitted a `("")` junk body, dropping
+        // BOTH writes). Value-position sequences still warn.
+        const seqBody =
+          body.type === 'ParenthesizedExpression' &&
+          (body.expression as AnyNode | undefined)?.type === 'SequenceExpression'
+            ? (body.expression as AnyNode)
+            : body.type === 'SequenceExpression'
+              ? body
+              : undefined
+        if (seqBody !== undefined) {
+          const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
+            (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
+          )
+          return { kind: 'arrow', params, body: { kind: 'literal', value: '' }, stmts }
+        }
         return { kind: 'arrow', params, body: parseExpr(body, ctx) }
       }
       // Block body. The common compact case — a single expression/return
