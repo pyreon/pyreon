@@ -134,6 +134,10 @@ export default defineConfig({
 | `middleware` | `Middleware[]`                                                                | `[]`    | Global server middleware                                     |
 | `port`       | `number`                                                                      | `3000`  | Dev/preview server port                                     |
 | `typedRoutes`| `boolean`                                                                     | `false` | Generate `src/pyreon-routes.d.ts` so `<Link href>` autocompletes your routes — see **[Typed routes](#typed-routes)** |
+| `seo`        | `SeoPluginConfig`                                                             | —       | Auto-wires `seoPlugin` (sitemap.xml, robots.txt, RSS) — same shape as the plugin config, no manual import. See **[SEO](#seo)** |
+| `favicon`    | `FaviconPluginConfig`                                                         | —       | Auto-wires `faviconPlugin` (source SVG/PNG → full favicon set) — see **[Favicons](#favicons)** |
+| `og`         | `OgImagePluginConfig`                                                         | —       | Auto-wires `ogImagePlugin` (templates + text layers → per-locale social-share images) |
+| `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). When no `ssr.mode` is set, the server picks the effective default at runtime: `'stream'` for `mode: 'ssr'`, `'string'` for every other mode — pass `ssr: { mode: 'string' }` to opt an SSR app back into buffered rendering.
 
@@ -833,20 +837,23 @@ The `ActionContext` exposes `request`, `json` (parsed JSON body), `formData` (fo
 
 ## SEO
 
-`seoPlugin` (from `@pyreon/zero/seo` or `@pyreon/zero/server`) auto-generates `sitemap.xml` and `robots.txt` at build time:
+Zero auto-generates `sitemap.xml` and `robots.txt` at build time. Declare it directly on `zero()` — no separate plugin import:
 
 ```ts title="vite.config.ts"
-import { seoPlugin } from '@pyreon/zero/seo'
-
 export default {
   plugins: [
-    seoPlugin({
-      sitemap: { origin: 'https://example.com', changefreq: 'weekly', priority: 0.8 },
-      robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://example.com/sitemap.xml' },
+    pyreon(),
+    zero({
+      seo: {
+        sitemap: { origin: 'https://example.com', changefreq: 'weekly', priority: 0.8 },
+        robots: { rules: [{ userAgent: '*', allow: ['/'] }], sitemap: 'https://example.com/sitemap.xml' },
+      },
     }),
   ],
 }
 ```
+
+The standalone form (`import { seoPlugin } from '@pyreon/zero/seo'` + a separate `seoPlugin({...})` plugin entry) keeps working — `zero({ seo })` is the same config object, auto-wired.
 
 `generateSitemap(paths, config)`, `generateRobots(config)`, and `jsonLd(data)` are also exported for manual use. `seoMiddleware(config)` serves sitemap/robots in development. In SSG mode, the sitemap can be driven by the actual prerendered path set including dynamic and per-locale variants — see [SSG → Sitemap](/docs/ssg#sitemap-from-resolved-paths).
 
@@ -959,23 +966,26 @@ This makes `import hero from './x.jpg?optimize'` resolve to `ProcessedImage` (an
 
 ## Favicons
 
-`faviconPlugin` (`@pyreon/zero/favicon`) generates the full favicon set from a **single source** (SVG or PNG) and injects every `<head>` tag automatically — no manual `<link>`/`<meta>` wiring. Like `imagePlugin`, it uses [sharp](https://sharp.pixelplumbing.com/) for image generation.
+Zero generates the full favicon set from a **single source** (SVG or PNG) and injects every `<head>` tag automatically — no manual `<link>`/`<meta>` wiring. Declare it directly on `zero()`; like `imagePlugin`, it uses [sharp](https://sharp.pixelplumbing.com/) for image generation.
 
 ```ts title="vite.config.ts"
-import { faviconPlugin } from '@pyreon/zero/favicon'
-
 export default {
   plugins: [
-    faviconPlugin({
-      source: './src/assets/icon.svg', // required
-      darkSource: './src/assets/icon-dark.svg', // optional — light/dark variants
-      themeColor: '#6d28d9',
-      name: 'My App', // web-manifest app name
-      locales: { de: { source: './icon-de.svg' } }, // optional per-locale sets
+    pyreon(),
+    zero({
+      favicon: {
+        source: './src/assets/icon.svg', // required
+        darkSource: './src/assets/icon-dark.svg', // optional — light/dark variants
+        themeColor: '#6d28d9',
+        name: 'My App', // web-manifest app name
+        locales: { de: { source: './icon-de.svg' } }, // optional per-locale sets
+      },
     }),
   ],
 }
 ```
+
+(The standalone `import { faviconPlugin } from '@pyreon/zero/favicon'` form keeps working — same config shape.) All PNG sizes and per-locale sets are generated **in parallel** at build time.
 
 Generated at build time and emitted into `dist/`: `favicon.ico` (16+32), `favicon.svg`, `favicon-16x16.png`, `favicon-32x32.png`, `apple-touch-icon.png` (180), `icon-192.png`, `icon-512.png`, `site.webmanifest`. The plugin injects the matching `<link rel="icon">` (SVG + PNG), `apple-touch-icon`, `manifest`, and `<meta name="theme-color">` into every page's `<head>`, plus media-conditioned light/dark links and a no-flash blocking script when `darkSource` is set. In dev the assets are served on the fly.
 

@@ -28,28 +28,31 @@ export function generateViteConfig(config: ProjectConfig): string {
 
   return `import pyreon from '@pyreon/vite-plugin'
 import zero from '@pyreon/zero/server'${adapterImport}
-import { fontPlugin } from '@pyreon/zero/font'
-import { seoPlugin } from '@pyreon/zero/seo'
 
+// One config surface: fonts, SEO, favicons, og-images, and AI discoverability
+// are all fields on zero() — no separate plugin imports needed.
 export default {
   plugins: [
     pyreon(${pyreonOpts}),
-    zero({ ${MODE_MAP[config.renderMode]}${adapterArg} }),
+    zero({
+      ${MODE_MAP[config.renderMode]}${adapterArg},
 
-    // Google Fonts — self-hosted at build time, CDN in dev
-    fontPlugin({
-      google: ['Inter:wght@400;500;600;700;800', 'JetBrains Mono:wght@400'],
-      fallbacks: {
-        Inter: { fallback: 'Arial', sizeAdjust: 1.07, ascentOverride: 90 },
+      // Google Fonts — self-hosted at build time (CDN in dev), preloaded,
+      // with auto size-adjusted fallbacks that eliminate font-swap CLS
+      // (use \`font-family: var(--pyreon-font-inter)\` in your CSS/theme).
+      font: {
+        google: ['Inter:wght@400;500;600;700;800', 'JetBrains Mono:wght@400'],
+        subsets: ['latin'],
+        fallbackAdjust: true,
       },
-    }),
 
-    // Generate sitemap.xml and robots.txt at build time
-    seoPlugin({
-      sitemap: { origin: 'https://example.com' },
-      robots: {
-        rules: [{ userAgent: '*', allow: ['/'] }],
-        sitemap: 'https://example.com/sitemap.xml',
+      // sitemap.xml + robots.txt at build time — set your real origin once.
+      seo: {
+        sitemap: { origin: 'https://example.com' },
+        robots: {
+          rules: [{ userAgent: '*', allow: ['/'] }],
+          sitemap: 'https://example.com/sitemap.xml',
+        },
       },
     }),
   ],

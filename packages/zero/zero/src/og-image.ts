@@ -342,36 +342,41 @@ export function ogImagePlugin(config: OgImagePluginConfig): Plugin {
       })
     },
 
-    // Build: generate all variants
+    // Build: generate all template × locale variants IN PARALLEL — each is an
+    // independent sharp composite (previously awaited sequentially, so 3
+    // templates × 5 locales paid 15× the single-image wall clock).
     async generateBundle() {
       if (!isBuild) return
 
+      const jobs: Promise<{ fileName: string; buffer: Uint8Array | null }>[] = []
       for (const template of config.templates) {
         const locales = config.locales ?? [undefined]
         const format = template.format ?? 'png'
         const ext = format === 'jpeg' ? 'jpg' : 'png'
 
-        for (const locale of locales) {
-          // Validate background exists if it's a file path
-          if (typeof template.background === 'string') {
-            const bgPath = join(root, template.background)
-            if (!existsSync(bgPath)) {
-              // oxlint-disable-next-line no-console
-              console.warn(`[Pyreon] Background not found: ${bgPath}`)
-              continue
-            }
+        // Validate background exists if it's a file path (once per template,
+        // not per locale — the path doesn't vary by locale).
+        if (typeof template.background === 'string') {
+          const bgPath = join(root, template.background)
+          if (!existsSync(bgPath)) {
+            // oxlint-disable-next-line no-console
+            console.warn(`[Pyreon] Background not found: ${bgPath}`)
+            continue
           }
-
-          const buffer = await renderOgImage(template, locale ?? 'en', root)
-          if (!buffer) continue
-
-          const suffix = locale ? `-${locale}` : ''
-          this.emitFile({
-            type: 'asset',
-            fileName: `${outDir}/${template.name}${suffix}.${ext}`,
-            source: buffer,
-          })
         }
+
+        for (const locale of locales) {
+          const suffix = locale ? `-${locale}` : ''
+          const fileName = `${outDir}/${template.name}${suffix}.${ext}`
+          jobs.push(
+            renderOgImage(template, locale ?? 'en', root).then((buffer) => ({ fileName, buffer })),
+          )
+        }
+      }
+
+      for (const { fileName, buffer } of await Promise.all(jobs)) {
+        if (!buffer) continue
+        this.emitFile({ type: 'asset', fileName, source: buffer })
       }
     },
   }

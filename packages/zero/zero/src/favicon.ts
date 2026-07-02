@@ -458,15 +458,16 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
         )
       }
 
-      // Generate favicons for the base (default) source
-      await generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest)
-
-      // Generate locale-specific favicon sets
-      if (config.locales) {
-        for (const [locale, localeConfig] of Object.entries(config.locales)) {
-          await generateFaviconSet.call(this, root, localeConfig.source, localeConfig.darkSource, `${locale}/`, config, themeColor, backgroundColor, generateManifest)
-        }
-      }
+      // Generate the base set + every locale set IN PARALLEL — each locale is
+      // an independent source → independent sharp pipelines (previously each
+      // locale was awaited sequentially, so a 5-locale build paid 6× the
+      // single-set wall clock).
+      await Promise.all([
+        generateFaviconSet.call(this, root, config.source, config.darkSource, '', config, themeColor, backgroundColor, generateManifest),
+        ...Object.entries(config.locales ?? {}).map(([locale, localeConfig]) =>
+          generateFaviconSet.call(this, root, localeConfig.source, localeConfig.darkSource, `${locale}/`, config, themeColor, backgroundColor, generateManifest),
+        ),
+      ])
     },
   }
 }
@@ -582,43 +583,46 @@ async function generateFaviconSet(
     })
   }
 
-  // Generate PNG sizes via sharp
+  // Generate PNG sizes via sharp — all sizes resized IN PARALLEL (each is an
+  // independent sharp pipeline; the previous serial `await`-in-loop shape made
+  // a 5-locale dual-variant build pay every resize sequentially). The light
+  // buffer is REUSED for the standard names (same source + size ⇒ identical
+  // bytes) instead of re-rendering a third time.
   if (darkSource) {
-    // Dual-variant: generate light + dark PNGs with prefixed names
+    // Dual-variant: light + dark PNGs with prefixed names + standard names.
     const darkPath = join(rootDir, darkSource)
     const darkExists = existsSync(darkPath)
 
-    for (const { size, name } of SIZES) {
-      // Light variant
+    const lightPngs = await Promise.all(
+      SIZES.map(async ({ size, name }) => ({ name, png: await resizeToPng(sourcePath, size) })),
+    )
+    const darkPngs = darkExists
+      ? await Promise.all(
+          SIZES.map(async ({ size, name }) => ({ name, png: await resizeToPng(darkPath, size) })),
+        )
+      : []
+
+    for (const { name, png } of lightPngs) {
+      if (!png) continue
       const lightName = name.replace(/^(favicon-)/, '$1light-').replace(/^(apple-touch-icon)/, '$1-light').replace(/^(icon-)/, '$1light-')
-      const lightPng = await resizeToPng(sourcePath, size)
-      if (lightPng) {
-        this.emitFile({ type: 'asset', fileName: `${prefix}${lightName}`, source: lightPng })
-      }
-
-      // Dark variant
-      if (darkExists) {
-        const darkName = name.replace(/^(favicon-)/, '$1dark-').replace(/^(apple-touch-icon)/, '$1-dark').replace(/^(icon-)/, '$1dark-')
-        const darkPng = await resizeToPng(darkPath, size)
-        if (darkPng) {
-          this.emitFile({ type: 'asset', fileName: `${prefix}${darkName}`, source: darkPng })
-        }
-      }
+      this.emitFile({ type: 'asset', fileName: `${prefix}${lightName}`, source: png })
+      // Standard name (used by manifest + external references) — identical
+      // bytes to the light variant; emit the same buffer, no re-render.
+      this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: png })
     }
-
-    // Also generate standard names (used by manifest + external references)
-    for (const { size, name } of SIZES) {
-      const pngBuffer = await resizeToPng(sourcePath, size)
-      if (pngBuffer) {
-        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
-      }
+    for (const { name, png } of darkPngs) {
+      if (!png) continue
+      const darkName = name.replace(/^(favicon-)/, '$1dark-').replace(/^(apple-touch-icon)/, '$1-dark').replace(/^(icon-)/, '$1dark-')
+      this.emitFile({ type: 'asset', fileName: `${prefix}${darkName}`, source: png })
     }
   } else {
     // Single-variant
-    for (const { size, name } of SIZES) {
-      const pngBuffer = await resizeToPng(sourcePath, size)
-      if (pngBuffer) {
-        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: pngBuffer })
+    const pngs = await Promise.all(
+      SIZES.map(async ({ size, name }) => ({ name, png: await resizeToPng(sourcePath, size) })),
+    )
+    for (const { name, png } of pngs) {
+      if (png) {
+        this.emitFile({ type: 'asset', fileName: `${prefix}${name}`, source: png })
       }
     }
   }
