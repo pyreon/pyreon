@@ -492,6 +492,25 @@ console.log(formatGraphDescription(describeReactiveGraph()))
 - Expecting it to describe a component from SOURCE without running — it reads the LIVE graph (\`getReactiveGraph()\`), so the reactive nodes must have been created + subscribed first.`,
   },
 
+  'reactivity/getUpdateCause': {
+    signature: 'getUpdateCause(nodeId: number): UpdateCause | null  ·  formatUpdateCause(cause: UpdateCause): string',
+    example: `activateReactiveDevtools()
+const qty = signal(2, { name: 'qty' })
+const total = computed(() => qty() * 9.99)
+effect(() => { void total() })
+qty.set(5)
+const effectId = getReactiveGraph().nodes.find(n => n.kind === 'effect').id
+console.log(formatUpdateCause(getUpdateCause(effectId)))
+// Why did effect#4 update?
+//   qty (signal) changed  Cart.tsx:2:13
+//   → total (derived) recomputed
+//   → effect#4 (effect) ran   ← explained`,
+    notes: `Answers "why did this node just update?" at the SOURCE LINE, along the exact causal chain — the thing React DevTools' whole-component "why did this render?" can't. \`getUpdateCause\` reconstructs the chain that led to a node's most recent fire by walking the dependency graph from the target through the deps that fired in the SAME synchronous cascade (clustered within ~one animation frame). Returns \`{ target, chain, rootReached }\` where \`chain\` is ROOT-FIRST (\`chain[0]\` is the originating signal write) and each \`CauseLink\` is \`{ id, kind, name, loc, ts }\`. \`formatUpdateCause\` renders it as a source-anchored trace. Purely READ-time over \`getReactiveGraph()\` + \`getReactiveFires()\` — zero hot-path cost. The graph (not the timeline) is the causal structure: a lazy computed recomputes DURING its subscriber's read, so temporal order ≠ causal order. Also on \`window.__PYREON_DEVTOOLS__.reactive\`. Requires \`activateReactiveDevtools()\`. See also: getReactiveGraph, activateReactiveDevtools, getReactiveTrace.`,
+    mistakes: `- Trusting the chain across UNRELATED rapid interactions — reconstruction is exact for one synchronous cascade; interactions within the ~16ms cluster window can blur. \`rootReached: false\` means older fires aged out of the ring buffer.
+- Calling it in production — the reactive registry is tree-shaken when \`NODE_ENV === "production"\`, so \`getUpdateCause\` returns null (nothing tracked).
+- Expecting timeline order to be causal order — it is NOT (a lazy computed recomputes during its subscriber's read). \`getUpdateCause\` uses the dependency graph as the causal structure on purpose.`,
+  },
+
   'reactivity/wrapSignal': {
     signature: '<T>(base: Signal<T>, options: WrapSignalOptions<T>) => Signal<T>',
     example: `const base = signal(0)

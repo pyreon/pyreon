@@ -34,7 +34,7 @@
   "@pyreon/primitives": 4096,
   "@pyreon/query": 3840,
   "@pyreon/react-compat": 3584,
-  "@pyreon/reactivity": 9216,
+  "@pyreon/reactivity": 9472,
   "@pyreon/rich-text": 1536,
   "@pyreon/rocketstyle": 5120,
   "@pyreon/router": 12288,
