@@ -25,7 +25,7 @@ const Button = attrs({ name: 'Button', component: Element })
 // Renders Element with the accumulated defaults
 <Button label="Click me" />
 
-// Explicit props override .attrs() defaults (unless `priority: true`)
+// Explicit props override .attrs() defaults (including `priority: true` ones)
 <Button tag="a" href="/x" label="Link button" />
 ```
 
@@ -48,7 +48,7 @@ Button.attrs<{ label: string }>((props) => ({
   'aria-label': props.label,
 }))
 
-// Priority — wins over EXPLICIT props at the call site
+// Priority — lowest-precedence DEFAULTS (normal attrs and explicit props both override)
 Button.attrs({ tag: 'button' }, { priority: true })
 
 // Filter — strip these prop names before forwarding to the base
@@ -61,7 +61,7 @@ Button.attrs({}, { filter: ['internalFlag', 'variant'] })
 priorityAttrs  →  attrs  →  explicit props  →  filterAttrs strips → base component
 ```
 
-For regular `attrs`, explicit props win. For `priorityAttrs`, the priority value wins (used by `rocketstyle` to lock structural props like `tag`).
+Merging is last-wins: explicit props override normal `attrs`, which override `priorityAttrs`. Priority attrs are the lowest-precedence defaults (used by `rocketstyle` to seed structural props like `tag` that later `.attrs()` calls and explicit props can still override).
 
 ### `.config({ name?, component?, DEBUG? })`
 
@@ -71,7 +71,7 @@ Swap the underlying component, rename, or toggle dev debugging. Returns a new in
 const Anchor = Button.config({ component: 'a', name: 'Anchor' })
 ```
 
-**Gotcha**: swapping `component` resets the `attrs` / `priorityAttrs` / `filterAttrs` / `compose` chains because they were tailored to the previous component's prop shape (applying them blindly leaks invalid attrs to the DOM). `theme` / `styles` / dimension chains are preserved. Re-chain shared attrs explicitly if you need them.
+**Gotcha**: swapping `component` PRESERVES the `attrs` / `priorityAttrs` / `filterAttrs` / `compose` chains — they are re-applied against the new base (the chain-reset-on-swap behaviour is `@pyreon/rocketstyle`-only). If the accumulated attrs were tailored to the previous component's prop shape, filter or re-chain them explicitly so invalid attrs don't leak to the new base.
 
 ### `.compose({ hocName: hocFn })`
 
@@ -131,7 +131,7 @@ Use `ExtractProps<typeof Button>` from `@pyreon/core` to recover the union when 
 
 ## Gotchas
 
-- **`.config({ component })` resets the prop chains.** Re-chain shared attrs explicitly if you swap the base. `theme` / `styles` / dimension chains survive.
+- **`.config({ component })` preserves the prop chains.** The accumulated `attrs` / `priorityAttrs` / `filterAttrs` / `compose` chains are re-applied to the new base (the reset-on-swap behaviour is `@pyreon/rocketstyle`-only) — filter out props the new base doesn't understand.
 - **Defaults are merged, not deep-merged.** Object-valued props (e.g. `style={{ color: 'red' }}`) get replaced, not combined.
 - **The dev `data-attrs` attribute is added in dev builds** to aid debugging. Tree-shaken in production (gated on `process.env.NODE_ENV !== 'production'`).
 - **`hoistNonReactStatics`** copies non-React statics from the base onto the wrapper, so `MyComponent.someStaticMethod` survives the HOC chain.

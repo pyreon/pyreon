@@ -262,7 +262,7 @@ Per-definition WeakMap caches keep per-mount cost flat as instance count grows:
 - **`_reservedKeysCache`** — `Object.keys(reservedPropNames)` keyed on keywords identity
 - **`_omitSetCache`** — pre-built `Set<string>` for `omit()` (avoids per-mount Set allocation)
 - **`LocalThemeManager`** — WeakMap tiers for baseTheme, dimensionThemes, and per-mode resolved themes
-- **`_rsMemo`** — dimension-prop memo keyed by `mode|dimensionPropTuple|pseudoState`, LRU-bounded at 32 entries per theme. Hit returns identity-stable `{ rocketstyle, rocketstate }` so the downstream styler `classCache` skips resolve entirely. Real-app E2 benchmark: 200 Buttons × 5 runs, baseline dropped from 8.80ms to 4.80ms (-45%); per-Button `styler.resolve` from 22 to 6 (-73%).
+- **`_rsMemo`** — dimension-prop memo keyed by `mode|dimensionPropTuple|pseudoState`, LRU-bounded at 128 entries per theme. Hit returns identity-stable `{ rocketstyle, rocketstate }` so the downstream styler `classCache` skips resolve entirely. Real-app E2 benchmark: 200 Buttons × 5 runs, baseline dropped from 8.80ms to 4.80ms (-45%); per-Button `styler.resolve` from 22 to 6 (-73%).
 
 Real apps MUST mount one shared `<PyreonUI>` provider for the memo to span instances — each provider mount creates a fresh `enrichedTheme` via `computed()`, which produces a different WeakMap key.
 

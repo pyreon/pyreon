@@ -6513,4 +6513,986 @@ const relay = await createSyncServer({
     notes: `Context passed to the relay's \`authorize\` hook: the \`room\` parsed from the URL path, the \`token\` query-string param (browser WebSockets can't set headers, so auth rides the query string), and the raw HTTP upgrade \`req\` (read cookies / headers here if you prefer). See also: createSyncServer.`,
   },
   // <gen-docs:api-reference:end @pyreon/sync>
+
+  // <gen-docs:api-reference:start @pyreon/sized-map>
+
+  'sized-map/SizedMap': {
+    signature: 'new SizedMap<K, V>(opts: SizedMapOptions)',
+    example: `import { SizedMap } from '@pyreon/sized-map'
+
+// FIFO (default) — hot path: get() never touches ordering
+const tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 })
+tplCache.set('key', tpl)
+tplCache.get('key')      // pure read — no recency bump
+
+// LRU-on-read — frequently-read entries survive small caps
+const memo = new SizedMap<string, Entry>({ maxEntries: 128, lru: true })
+memo.get('hot')          // re-inserted at the tail — evicted last
+
+// Map-shaped surface
+memo.has('hot')          // true
+memo.size                // number (getter, not a method)
+for (const [k, v] of memo) { /* insertion/recency order */ }`,
+    notes: 'Bounded `Map<K, V>` that evicts the oldest entry when `maxEntries` is exceeded, relying on the native Map insertion-order guarantee (the first key is always the oldest). Default mode is FIFO: `.get()` is a pure read. Pass `lru: true` for LRU-on-read: `.get()` re-inserts the touched entry at the tail (a delete + set pair) so eviction drops the least-recently-USED entry. `.set()` on an existing key removes the old entry and appends the new one at the tail in BOTH modes — a just-written entry is never the next eviction victim. The constructor floors `maxEntries` at 1. See also: SizedMapOptions.',
+    mistakes: `- Expecting \`.get()\` to bump recency by default — the default mode is FIFO (a pure read); pass \`lru: true\` at construction for LRU-on-read semantics
+- Passing \`maxEntries: 0\` to disable storage — the constructor floors the cap at 1 (\`Math.max(1, maxEntries)\`); there is no "always evict" configuration
+- Storing \`undefined\` as a value — \`.get()\` treats a stored \`undefined\` as a miss (early return before the LRU touch), so \`has(key)\` can be \`true\` while \`get(key)\` never bumps recency; store a sentinel instead
+- Expecting eviction when \`.set()\` hits an EXISTING key at cap — a key collision refreshes the entry in place (delete + re-append) without evicting anything; only a NEW key at cap evicts the oldest
+- Treating it as a \`Map\` subclass — it wraps a private Map, so it is not \`instanceof Map\` and has no \`forEach\`; iterate via \`entries()\` / \`[Symbol.iterator]\``,
+  },
+
+  'sized-map/SizedMapOptions': {
+    signature: 'interface SizedMapOptions { maxEntries: number; lru?: boolean }',
+    example: `const opts: SizedMapOptions = { maxEntries: 256, lru: true }
+const cache = new SizedMap<string, string>(opts)`,
+    notes: 'Constructor options. `maxEntries` is the size cap before the oldest entry is evicted (floored at 1). `lru` (default `false`) selects LRU-on-read mode — `.get()` moves the entry to the tail; when `false` the map is pure FIFO and `.get()` does not touch ordering. See also: SizedMap.',
+  },
+  // <gen-docs:api-reference:end @pyreon/sized-map>
+
+  // <gen-docs:api-reference:start @pyreon/dnd>
+
+  'dnd/useDraggable': {
+    signature: '<T extends DragData = DragData>(options: UseDraggableOptions<T>) => UseDraggableResult',
+    example: `let el: HTMLElement | null = null
+const { isDragging } = useDraggable({
+  element: () => el,
+  data: () => ({ id: card.id, position: position() }), // getter → resolved per drag start
+  handle: () => handleEl,        // only this sub-element starts a drag
+  disabled: () => isSaving(),    // reactive — checked on every drag attempt
+  onDragEnd: () => console.log('released (drop OR cancel)'),
+})
+
+;<div ref={(node) => (el = node)} class={() => (isDragging() ? 'opacity-50' : '')}>
+  {card.title}
+</div>`,
+    notes: `Make an element draggable with signal-driven state. \`element\` is a GETTER (\`() => el\`) captured on the next microtask, so the element only has to exist by mount time — not at hook-call time. \`data\` is the transferred payload: pass a plain object for static payloads or a function for dynamic ones (resolved fresh at each drag start via pdnd's \`getInitialData\`). \`handle\` scopes drag initiation to a sub-element; \`disabled\` accepts a reactive \`() => boolean\` re-evaluated on every drag attempt via \`canDrag\`. Returns \`{ isDragging }\` — a signal accessor that is \`true\` while THIS element is dragged. \`onDragEnd\` fires on both drop and cancel. See also: useDroppable, useSortable, useDragMonitor.`,
+    mistakes: `- Passing the element itself instead of a getter — \`element: el\` captures \`null\` (refs are not populated at hook-call time); pass \`element: () => el\` so the deferred microtask setup reads the mounted node
+- Passing an object \`data\` and expecting it to track current state — the object form is captured once at hook-call time; use the function form \`data: () => ({ id: item.id(), position: position() })\` for dynamic payloads (resolved fresh at each drag start)
+- Passing a captured boolean for \`disabled\` when you want live toggling — \`disabled: isSaving()\` snapshots once; \`disabled: () => isSaving()\` is re-evaluated on every drag attempt
+- Swapping the ref to a NEW DOM node after mount — registration happens exactly once on the next microtask; a later element change is not re-registered (unmount/remount the component instead)
+- Treating \`onDragEnd\` as drop-only — it fires on BOTH a successful drop and a cancelled drag`,
+  },
+
+  'dnd/useDroppable': {
+    signature: '<T extends DragData = DragData>(options: UseDroppableOptions<T>) => UseDroppableResult',
+    example: `let el: HTMLElement | null = null
+const { isOver } = useDroppable({
+  element: () => el,
+  data: { columnId: props.id },                 // readable by useDragMonitor's onDrop target arg
+  canDrop: (source) => source.type === 'card',  // reject anything that isn't a card
+  onDrop: (source) => props.onAdd(source.id as string),
+})
+
+;<div ref={(node) => (el = node)} class={() => (isOver() ? 'bg-blue-50' : '')}>
+  Drop a card here
+</div>`,
+    notes: `Make an element a drop target with signal-driven hover state. \`canDrop(sourceData)\` filters incoming drags — when it returns \`false\` the target won't highlight, \`onDragEnter\` won't fire, and a drop won't land. \`data\` (value or getter) is attached to the target so a \`useDragMonitor\`'s \`onDrop\` can read target metadata. Returns \`{ isOver }\` — \`true\` only while an ACCEPTED draggable hovers this target. All callbacks receive the source's \`data\` as the wide \`DragData\` (\`Record<string, unknown>\`) — pdnd erases the source's generic across the drag boundary. See also: useDraggable, useDragMonitor.`,
+    mistakes: `- Trusting \`sourceData\` as your draggable's typed \`T\` — it arrives as \`DragData\` (\`Record<string, unknown>\`); narrow with a discriminant (\`source.type === 'card'\`, \`typeof source.id === 'string'\`) before reading fields
+- Expensive \`canDrop\` predicates — it runs on every drag event; derive a cheap flag in an upstream \`computed\` for costly checks
+- Expecting \`isOver\` to flip for rejected drags — it only tracks ACCEPTED draggables; when \`canDrop\` returns \`false\`, \`onDragEnter\` never fires and there's no highlight`,
+  },
+
+  'dnd/useSortable': {
+    signature: '<T>(options: UseSortableOptions<T>) => UseSortableResult',
+    example: `const items = signal([{ id: '1', name: 'Alice' }, { id: '2', name: 'Bob' }])
+
+const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
+  items,                              // reactive getter — signals are callable
+  by: (item) => item.id,              // MUST match the <For by> key
+  onReorder: (next) => items.set(next), // hook hands you a NEW array; you commit
+  axis: 'vertical',                   // 'horizontal' flips edges + arrow keys
+})
+
+;<ul ref={containerRef}>
+  <For each={items()} by={(item) => item.id}>
+    {(item) => (
+      <li
+        ref={itemRef(item.id)}
+        class={activeId() === item.id ? 'dragging' : ''}
+        style={() => (overId() === item.id ? \`border-\${overEdge()}: 2px solid blue\` : '')}
+      >
+        {item.name}
+      </li>
+    )}
+  </For>
+</ul>`,
+    notes: `Full reorderable list — pointer dragging, auto-scroll near container edges, closest-edge detection, Alt+Arrow keyboard reordering, and ARIA wiring (\`role="listitem"\`, \`aria-roledescription\`, \`tabindex\`) — driven from a reactive \`items()\` getter. \`by\` extracts the stable key and MUST match your \`<For by>\` key. On drop the hook computes the reordered array and calls \`onReorder(next)\` — it never mutates your list; you commit it. \`groupId\` opts two sortables into one cross-list drop universe (Trello-style boards): the destination's \`onCrossListReceive(item, index)\` inserts, the source's \`onCrossListDrop(item)\` removes. Returns \`containerRef\` (scroll container), \`itemRef(key)\` (per-row ref factory), and the \`activeId\` / \`overId\` / \`overEdge\` signal accessors. See also: useDraggable, useDragMonitor.`,
+    mistakes: `- Passing a captured array snapshot as \`items\` — the hook re-derives on every drop / keypress, so \`items\` must be a reactive getter (\`items: () => cols()\` or the signal itself); a snapshot breaks reordering
+- Mismatched keys — \`by\` must return the same stable key your \`<For by>\` uses, or the list tears on reorder
+- Expecting the hook to mutate your list — \`onReorder(next)\` hands you a NEW array; commit it yourself (\`items.set(next)\`) or nothing visibly reorders
+- Expecting cross-list drops without \`groupId\` — \`onCrossListDrop\` / \`onCrossListReceive\` only fire when \`groupId\` is set; without it each sortable is a private universe that rejects drags from other sortables
+- Forgetting \`containerRef\` on the scroll container — auto-scroll, the reorder-finalizing drop target, and the Alt+Arrow keyboard handler all register there
+- Calling \`itemRef\` with a different key than \`by\` returns — the drop-time reorder lookup finds items by that key (\`findIndex\` against \`by(item)\`), so a mismatch makes reorders silently no-op and mistracks per-key disposal`,
+  },
+
+  'dnd/useFileDrop': {
+    signature: '(options: UseFileDropOptions) => UseFileDropResult',
+    example: `let zone: HTMLElement | null = null
+const { isOver, isDraggingFiles } = useFileDrop({
+  element: () => zone,
+  accept: ['image/*', '.pdf'],   // MIME glob OR extension
+  maxFiles: 5,                   // silently truncates to the first 5
+  onDrop: (files) => upload(files),
+})
+
+;<div
+  ref={(node) => (zone = node)}
+  class={() => (isOver() ? 'drop-active' : isDraggingFiles() ? 'drop-ready' : '')}
+>
+  Drop files here
+</div>`,
+    notes: `Native-file drop zone over pdnd's external/file adapter — accepts files dragged in from the OS, not in-page draggables. \`accept\` filters like \`<input accept>\`: leading \`.\` matches the extension (case-insensitive), trailing \`/*\` is a MIME glob, anything else is an exact MIME type. \`maxFiles\` truncates to the first N. Returns TWO signal accessors: \`isOver\` (files hovering THIS zone) and \`isDraggingFiles\` (files dragged anywhere on the page — for a page-wide 'drop ready' affordance). \`onDrop\` receives the filtered, truncated files and only fires when at least one file survives. See also: useDroppable, useDragMonitor.`,
+    mistakes: `- Expecting it to catch in-page draggables — \`useFileDrop\` uses pdnd's external/file adapter and only fires for REAL file drags from the OS; \`useDraggable\` items go through the isolated element adapter
+- Relying on \`onDrop\` for rejection feedback — files rejected by \`accept\` / \`maxFiles\` are silently filtered, and \`onDrop\` does not fire at all when zero files survive; check counts inside \`onDrop\` (or pair with \`isOver\`) to surface errors
+- Writing \`accept: ['pdf']\` — extensions need the leading dot (\`'.pdf'\`); a bare string is treated as an exact MIME type and matches nothing
+- Expecting \`maxFiles\` to reject an over-count drop — it TRUNCATES to the first N and discards the rest; enforce hard limits inside \`onDrop\` yourself`,
+  },
+
+  'dnd/useDragMonitor': {
+    signature: '(options?: UseDragMonitorOptions) => UseDragMonitorResult',
+    example: `const { isDragging, dragData } = useDragMonitor({
+  canMonitor: (data) => data.type === 'card',
+  onDrop: (source, target) => track('reorder', { from: source.id, to: target.columnId }),
+})
+
+;<Show when={isDragging()}>
+  <div class="global-drag-overlay">Dragging: {() => String(dragData()?.id ?? '')}</div>
+</Show>`,
+    notes: `Observe every element drag on the page without owning a draggable or drop target — for global overlays, analytics, or coordinating multiple drag areas. \`canMonitor(data)\` filters which drags this monitor reacts to (a \`false\` return means \`isDragging\` / \`dragData\` don't flip and no callback fires). \`onDrop(sourceData, targetData)\` receives the dragged source's data plus the drop target's \`data\` — \`targetData\` is an empty object \`{}\` (not \`undefined\`) when the drag ends with no drop target. Unlike the element-bound hooks, the monitor registers immediately (no microtask defer). See also: useDraggable, useDroppable, useSortable.`,
+    mistakes: `- Expecting \`targetData\` to be \`undefined\` on a cancelled drag — it is an empty object \`{}\` when there was no drop target, so destructuring is always safe but truthiness checks are not
+- Expensive \`canMonitor\` predicates — they run on every drag event; keep them cheap or derive a flag upstream
+- Expecting \`dragData()\` to survive after the drop — it resets to \`null\` the moment the drag ends; capture what you need inside \`onDrop\``,
+  },
+  // <gen-docs:api-reference:end @pyreon/dnd>
+
+  // <gen-docs:api-reference:start @pyreon/attrs>
+
+  'attrs/attrs': {
+    signature: '<C extends ElementType>({ name, component }: { name: string; component: C }) => AttrsComponent',
+    example: `import attrs from '@pyreon/attrs'
+import { Element } from '@pyreon/elements'
+
+const Button = attrs({ name: 'Button', component: Element })
+  .attrs({ tag: 'button', alignX: 'center' })
+  .attrs<{ primary?: boolean }>(({ primary }) => ({
+    backgroundColor: primary ? 'blue' : 'gray',
+  }))
+
+<Button label="Click me" />
+<Button tag="a" href="/x" />   // explicit props override the defaults`,
+    notes: 'Factory entry (default + named export). Wraps `component` in a Pyreon `ComponentFn` enhanced with the chain methods (`.attrs()` / `.config()` / `.compose()` / `.statics()` / `.getDefaultAttrs()`). `name` becomes the `displayName` and, in dev builds, a `data-attrs` attribute on the rendered output for debugging. Both fields are required — dev mode throws a descriptive error on a missing one. Non-React statics from the base are hoisted onto the wrapper so `Base.someStatic` survives the chain; the component carries the `IS_ATTRS: true` marker. See also: isAttrsComponent, @pyreon/rocketstyle, @pyreon/core.',
+    mistakes: `- Calling the factory with a bare component — \`attrs(Element)\` is wrong; the argument is the object \`{ name, component }\` and both keys are required (dev mode throws)
+- Expecting chain calls to mutate — every method returns a NEW component; \`Button.attrs({...})\` without assigning the return value changes nothing
+- Expecting deep merges — defaults are shallow-merged; an object-valued prop (\`style={{ color: "red" }}\`) from the call site REPLACES the default object, it does not combine with it
+- Stacking very deep \`.attrs<P>()\` generic chains — TypeScript's recursive conditional-type inference caps at roughly 24-50 levels depending on the host; past that, narrow the generics or split the component
+- Forwarding props onward with a plain spread inside a composed HOC — \`{ ...props }\` fires reactive getter props once and collapses them to static values; pass by reference or merge with \`mergeProps\` from \`@pyreon/core\`
+- Relying on the \`data-attrs\` debug attribute in production — it is dev-only (\`process.env.NODE_ENV !== "production"\`) and tree-shaken from production builds`,
+  },
+
+  'attrs/.attrs()': {
+    signature: '<P>(attrs: object | ((props) => object), opts?: { priority?: boolean; filter?: string[] }) => AttrsComponent',
+    example: `const Input = attrs({ name: 'Input', component: Element })
+  // Callback form — reads the resolved props
+  .attrs<{ error?: boolean }>((props) => ({
+    'aria-invalid': props.error ? 'true' : undefined,
+  }))
+  // Keep the control prop off the DOM
+  .attrs({}, { filter: ['error'] })
+
+// Later calls override earlier ones
+const Base = attrs({ name: 'Base', component: Element }).attrs({ size: 'md' })
+const Small = Base.attrs({ size: 'sm' })     // → size: 'sm'`,
+    notes: `Add default props. Object form for static defaults; callback form receives the CURRENT resolved props (priority attrs + explicit props) and returns a partial. Calls stack — later \`.attrs()\` calls override earlier ones for the same key. Render-time merge precedence is \`priorityAttrs < attrs < explicit call-site props\` (last wins); explicit \`undefined\` values are stripped first so they never shadow a default. \`{ priority: true }\` routes the entry to the priority chain — resolved FIRST and visible as input to later \`.attrs()\` callbacks, but LOWEST precedence in the final merge. \`{ filter: [...] }\` strips those prop names before they reach the base component; filter lists accumulate across the chain. The \`<P>\` generic widens the component's prop type. See also: .config(), .getDefaultAttrs().`,
+    mistakes: `- Assuming \`{ priority: true }\` means highest precedence — despite the name, priority attrs are resolved EARLY (so normal \`.attrs()\` callbacks can read them as input) but sit at the LOWEST precedence in the final merge: \`priorityAttrs < attrs < explicit props\`
+- Expecting an explicit \`undefined\` at the call site to defeat a default — \`undefined\`-valued props are stripped before merging, so the \`.attrs()\` default still applies
+- Expecting the callback to re-run reactively — \`.attrs()\` callbacks run once per mount during the HOC's prop resolution; reactive getter props flowing THROUGH the merge stay live for downstream JSX, but a value the callback READS is a one-shot snapshot
+- Forgetting \`filter\` accumulates — every name listed in any \`.attrs(..., { filter })\` call along the chain is stripped; a later call cannot un-filter an earlier name
+- Confusing this chain method with rocketstyle's \`.attrs()\` — the rocketstyle variant passes extra callback arguments \`(props, theme, helpers)\`; the plain attrs callback receives only the resolved props`,
+  },
+
+  'attrs/.config()': {
+    signature: '(opts: { name?: string; component?: ElementType; DEBUG?: boolean }) => AttrsComponent',
+    example: `const Button = attrs({ name: 'Button', component: Element }).attrs({ tag: 'button' })
+
+const Renamed = Button.config({ name: 'PrimaryButton' })
+Renamed.displayName   // 'PrimaryButton'
+Button.displayName    // 'Button' — original untouched
+
+// Base swap — the .attrs() chain still applies to the new base
+const Anchor = Button.config({ component: 'a', name: 'Anchor' })`,
+    notes: `Reconfigure the builder: rename (\`name\` → new \`displayName\`), swap the underlying base component (\`component\`), or toggle dev debugging (\`DEBUG\`). Returns a new component; the original keeps its own name/base. Unlike \`@pyreon/rocketstyle\`, swapping \`component\` at this layer PRESERVES the accumulated \`.attrs()\` / \`priorityAttrs\` / \`filter\` / \`.compose()\` / \`.statics()\` chains and re-applies them to the new base — reconciling the new base's prop shape is the caller's responsibility. See also: attrs, .attrs(), @pyreon/rocketstyle.`,
+    mistakes: `- Expecting the rocketstyle chain-reset behavior — \`@pyreon/attrs\`' \`.config({ component })\` KEEPS the accumulated chains across a base swap (test-locked); only \`@pyreon/rocketstyle\`'s \`.config()\` resets prop-shape-coupled chains. If the new base has a different prop shape, stale defaults can leak invalid props — audit them yourself
+- Passing dimension or theme options — this \`.config()\` accepts only \`name\` / \`component\` / \`DEBUG\`; dimensions/provider/consumer/inversed are \`@pyreon/rocketstyle\` \`.config()\` surface
+- Reading \`displayName\` off the original after renaming — \`.config()\` is immutable; the rename lands on the RETURNED component`,
+  },
+
+  'attrs/.compose()': {
+    signature: '(hocs: Record<string, ((c: ComponentFn) => ComponentFn) | null | false>) => AttrsComponent',
+    example: `const withTheme = (Component) => (props) => Component(props)
+const withTracking = (Component) => (props) => Component(props)
+
+const Enhanced = attrs({ name: 'Button', component: Element })
+  .compose({ withTheme, withTracking })
+
+// Remove one by its name
+const NoTracking = Enhanced.compose({ withTracking: null })`,
+    notes: `Attach named higher-order components. The argument is a RECORD of \`{ name: hoc }\` — the name is the removal handle: a later \`.compose({ name: null })\` (or \`undefined\` / \`false\`) removes that HOC from the chain; only function values are kept. Application order: the record's values are reversed so the LAST-defined HOC wraps innermost, and the built-in attrs HOC (which resolves the \`.attrs()\` chain) is always the outermost wrapper — default props are computed before any user HOC runs. See also: attrs, .config().`,
+    mistakes: `- Passing an array of HOCs — \`.compose()\` takes a named record; the names are what make falsy-removal possible
+- A composed HOC that value-copies props (\`const next = { ...props }\`) — fires reactive getter props at setup and collapses them to static values; copy descriptors (\`mergeProps\` / \`splitProps\` from \`@pyreon/core\`) or pass by reference
+- Assuming record order equals wrap order outside-in — values are REVERSED before composition, so the last-defined HOC runs closest to the component; the attrs HOC always stays outermost regardless`,
+  },
+
+  'attrs/.statics()': {
+    signature: '(meta: Record<string, unknown>) => AttrsComponent',
+    example: `const Btn = attrs({ name: 'Btn', component: Element }).statics({
+  category: 'action',
+  sizes: ['sm', 'md', 'lg'],
+})
+
+Btn.meta.category   // 'action'
+Btn.meta.sizes      // ['sm', 'md', 'lg']`,
+    notes: `Attach arbitrary metadata, readable on the component's \`.meta\` object. Successive \`.statics()\` calls merge (later keys win). Used by systems that need post-construction component introspection — e.g. \`@pyreon/document-primitives\` reads \`_documentType\` this way. See also: .compose(), isAttrsComponent.`,
+    mistakes: `- Reading statics directly off the component — in \`@pyreon/attrs\` they land on \`Component.meta\`, NOT on the component object itself (rocketstyle's \`.statics()\` additionally assigns onto the component; this layer does not)
+- Using \`.statics()\` for per-instance data — statics are definition-level metadata shared by every instance`,
+  },
+
+  'attrs/.getDefaultAttrs()': {
+    signature: '(props: TObj) => TObj',
+    example: `const Button = attrs({ name: 'Button', component: Element })
+  .attrs({ tag: 'button', alignX: 'center' })
+  .attrs<{ primary?: boolean }>(({ primary }) => ({ kind: primary ? 'primary' : 'plain' }))
+
+Button.getDefaultAttrs({})                  // { tag: 'button', alignX: 'center', kind: 'plain' }
+Button.getDefaultAttrs({ primary: true })   // { ..., kind: 'primary' }`,
+    notes: 'Resolve the accumulated `.attrs()` chain for a given props bag — every callback in the chain runs against `props` and the results merge left-to-right (later calls win). Useful for introspection and testing the resolved defaults without mounting. See also: .attrs().',
+    mistakes: `- Expecting priority attrs in the result — \`getDefaultAttrs\` resolves only the normal \`.attrs()\` chain, not \`priorityAttrs\`
+- Calling with no argument when callbacks destructure props — pass at least \`{}\` so \`({ primary }) => ...\` callbacks don't destructure \`undefined\``,
+  },
+
+  'attrs/isAttrsComponent': {
+    signature: '<T>(component: T) => boolean',
+    example: `import { isAttrsComponent } from '@pyreon/attrs'
+
+isAttrsComponent(Button)      // true
+isAttrsComponent('div')       // false
+isAttrsComponent(() => null)  // false — plain functions lack the marker`,
+    notes: 'Runtime type guard — `true` when a value was created by `attrs()` (checks the own `IS_ATTRS` marker). Use it to discriminate attrs-wrapped components from plain functions; `typeof value === "function"` cannot tell them apart because an attrs component IS callable. See also: attrs, @pyreon/rocketstyle.',
+    mistakes: `- Discriminating with \`typeof value === "function"\` — attrs components are callable, so use the marker guard instead
+- Testing a rocketstyle component — rocketstyle components carry \`IS_ROCKETSTYLE\`, not \`IS_ATTRS\`; use \`isRocketComponent\` from \`@pyreon/rocketstyle\` for those`,
+  },
+  // <gen-docs:api-reference:end @pyreon/attrs>
+
+  // <gen-docs:api-reference:start @pyreon/rocketstyle>
+
+  'rocketstyle/rocketstyle': {
+    signature: '(config?: { dimensions?: Dimensions; useBooleans?: boolean }) => <C>({ name, component }: { name: string; component: C }) => RocketStyleComponent',
+    example: `import rocketstyle from '@pyreon/rocketstyle'
+
+const rs = rocketstyle()                       // useBooleans: false (default)
+const Button = rs({ name: 'Button', component: 'button' })
+  .theme((t) => ({ borderRadius: 4, cursor: 'pointer' }))
+  .states({ primary: { backgroundColor: '#0d6efd', color: '#fff' } })
+
+<Button state="primary">Save</Button>          // string dimension props
+
+// Custom dimensions — keys become chain methods, propNames become props
+const rsCustom = rocketstyle({
+  dimensions: { tones: 'tone', decorations: { propName: 'decoration', multi: true } },
+})`,
+    notes: 'Factory initializer (default + named export). `rocketstyle(config?)` returns a component factory; call THAT with `{ name, component }` to get the chainable builder. `config.dimensions` overrides the dimension map (default: `states: "state"`, `sizes: "size"`, `variants: "variant"`, `multiple: { propName: "multiple", multi: true }`, `modifiers: { propName: "modifier", multi: true, transform: true }`) — each key becomes a chain method, each propName a consumer prop. `config.useBooleans` (default `false`) switches dimension props from strings (`state="primary"`) to boolean shorthands (`<Button primary />`). Dev mode throws on missing `name`/`component`/`dimensions` and on dimension names colliding with reserved keys. See also: Provider, isRocketComponent, @pyreon/attrs, @pyreon/styler.',
+    mistakes: `- Calling the factory with a tag string — \`rs('button')\` is not a valid form. The factory takes \`{ name, component }\` and BOTH are required (dev mode throws on a missing one)
+- Passing boolean shorthand props under the default \`useBooleans: false\` — \`<Button primary />\` is an UNKNOWN prop that silently does nothing; write \`<Button state="primary" />\` or opt into \`rocketstyle({ useBooleans: true })\`
+- Passing a function accessor to a dimension prop — \`state={() => expr}\` is the wrong shape; dimension props take plain string values (\`state={expr}\`) and the compiler handles reactivity via \`_rp()\` wrapping
+- Using a reserved key as a custom dimension name — \`light\`, \`dark\`, \`provider\`, \`consumer\`, \`DEBUG\`, \`name\`, \`component\`, \`inversed\`, \`passProps\`, \`styled\`, \`theme\`, \`styles\`, \`compose\`, \`attrs\` all throw at factory init in dev mode
+- Calling a dimension method with the singular prop name — \`.state({...})\` is not a method; DEFINITION methods are plural (\`.states()\`), the consumer PROP is singular (\`state="primary"\`)
+- Mounting each rocketstyle-heavy view under its own theme provider — the \`_rsMemo\` dimension-prop memo is keyed by theme identity, so real apps need ONE shared \`<PyreonUI>\` provider for the memo to span component instances
+- Expecting the chain to mutate — every chain method returns a NEW component; \`Button.states({...})\` without assigning the return value does nothing to \`Button\``,
+  },
+
+  'rocketstyle/.config()': {
+    signature: '(opts: { name?; component?; provider?: boolean; consumer?: ConsumerCb; inversed?: boolean; passProps?: string[]; DEBUG?: boolean; styled?: boolean }) => RocketStyleComponent',
+    example: `// Parent provides its pseudo-state; child derives its own state from it
+const ButtonGroup = Button.config({ provider: true })
+const ButtonIcon = rs({ name: 'ButtonIcon', component: Element })
+  .config({
+    consumer: (ctx) => ctx(({ pseudo }) => ({ state: pseudo.hover ? 'active' : 'default' })),
+  })
+  .states({ default: { color: '#666' }, active: { color: '#fff' } })
+
+<ButtonGroup state="primary"><ButtonIcon />Label</ButtonGroup>
+
+// Swap the base — resets attrs/compose chains (see mistakes)
+const Anchor = Button.config({ component: 'a', name: 'Anchor' }).attrs({ href: '#' })`,
+    notes: `Reconfigure the builder: rename (\`name\` → \`displayName\`), swap the base (\`component\`), wire parent-child pseudo-state context (\`provider: true\` exposes this component's hover/focus/pressed state to descendants; \`consumer\` reads a parent provider's state into this component's props), flip dark/light for the subtree (\`inversed: true\`), re-forward normally-consumed props to the base (\`passProps\`), and toggle dev-only debug logging (\`DEBUG\`). Accepted keys are exactly the CONFIG_KEYS set — anything else is ignored. See also: rocketstyle, Provider.`,
+    mistakes: `- \`.config({ component: NewBase })\` with a DIFFERENT component RESETS the accumulated \`attrs\` / \`priorityAttrs\` / \`filterAttrs\` / \`compose\` chains — they were tailored to the previous component's prop shape and would leak invalid props to the DOM (e.g. \`disabled\` on an \`<a>\`). \`theme\` / \`styles\` / dimension chains ARE preserved. Re-chain shared attrs explicitly after the swap
+- Expecting \`.config({ inversed: true })\` to set a mode — it INVERTS whatever mode the surrounding provider resolves (light↔dark) for this subtree; it does not force dark
+- \`DEBUG: true\` logging is dev-only (\`process.env.NODE_ENV !== "production"\`) — it is tree-shaken from production builds, so don't rely on it for runtime diagnostics
+- Using \`provider\`/\`consumer\` for theme data — they propagate live PSEUDO-STATE (hover/focus/pressed) between parent and child rocketstyle components; theme/mode flow through the theme provider (\`PyreonUI\` or rocketstyle \`Provider\`), not this channel`,
+  },
+
+  'rocketstyle/.attrs()': {
+    signature: '(attrs: object | ((props, theme, helpers) => object), opts?: { priority?: boolean; filter?: string[] }) => RocketStyleComponent',
+    example: `const SubmitButton = rs({ name: 'SubmitButton', component: Element })
+  // Layout / structural props belong here (tag, direction, alignX, gap...)
+  .attrs({ tag: 'button', type: 'submit' })
+  // Callback form — helpers carries the resolved mode
+  .attrs((props, theme, { mode, isDark }) => ({
+    'data-mode': mode,                        // 'light' | 'dark'
+    title: props.disabled ? 'Disabled' : 'Submit',
+  }))
+  // Strip an internal control prop before it reaches the DOM
+  .attrs({}, { filter: ['internalFlag'] })
+
+<SubmitButton />                 // type="submit" applies
+<SubmitButton type="button" />   // explicit prop wins over the default`,
+    notes: 'Inject default props into the wrapped component. Object form for static defaults; callback form receives `(props, theme, helpers)` where `helpers = { render, mode, isDark, isLight }` (`mode` is the resolved `"light" | "dark"` string here, unlike `.theme()` where it is a helper function). Merge precedence at render time is `priorityAttrs < attrs < explicit call-site props` — explicit props always win; `undefined` explicit values are stripped so they never shadow defaults. `{ priority: true }` puts the entry on the priority chain (resolved FIRST, visible as input to later `.attrs()` callbacks, LOWEST final precedence); `{ filter: [...] }` strips prop names before they reach the base (accumulates across the chain). See also: .theme(), .config(), @pyreon/attrs.',
+    mistakes: `- Putting CSS in \`.attrs()\` — the convention with Element-based bases is LAYOUT props in \`.attrs()\` (\`tag\`, \`direction\`, \`alignX\`, \`alignY\`, \`gap\`, \`block\`) and visual CSS in \`.theme()\` (colors, spacing, borders, shadows)
+- Assuming \`{ priority: true }\` means "wins over explicit props" — priority attrs are resolved FIRST and feed later \`.attrs()\` callbacks as input, but they sit at the LOWEST precedence in the final merge (\`priorityAttrs < attrs < explicit props\`)
+- Expecting \`.attrs()\` callback prop reads to be reactive — callbacks legitimately read prop VALUES one-shot at mount time by design (\`({ href }) => ({ tag: href ? "a" : "button" })\`); reactive getter props survive the merge for downstream JSX, but the callback body itself is not a tracked scope
+- Passing \`undefined\` explicitly to defeat a default — \`<Button type={undefined} />\` does NOT shadow the \`.attrs()\` default; undefined values are stripped before merging
+- Confusing \`.attrs()\` (per-component default props) with the \`@pyreon/attrs\` package factory — rocketstyle builds on the same chaining engine but adds theme/dimension resolution on top`,
+  },
+
+  'rocketstyle/.theme()': {
+    signature: '(theme: object | ((theme, mode, css) => object)) => RocketStyleComponent',
+    example: `const Card = rs({ name: 'Card', component: 'div' })
+  .theme((t, mode, css) => ({
+    borderRadius: 8,
+    // mode(light, dark) picks per active mode — one definition, both modes
+    backgroundColor: mode('#ffffff', '#1a1a1a'),
+    color: mode('#1a1a1a', '#e0e0e0'),
+    borderWidthTop: 1,                        // unistyle naming, NOT borderTopWidth
+    hover: { boxShadow: mode('0 2px 8px rgba(0,0,0,0.1)', '0 2px 8px rgba(0,0,0,0.6)') },
+    disabled: { opacity: 0.5 },
+  }))`,
+    notes: 'Always-applied base styles, merged under every dimension slice. The callback receives `(theme, mode, css)`: `theme` is the app theme from context, `mode` is the `mode(light, dark)` HELPER function (returns the value matching the active mode — NOT a string), `css` is the styler helper. Chaining `.theme()` multiple times is additive (results deep-merge in chain order). Pseudo-state styles nest as objects (`hover` / `focus` / `active` / `pressed` / `disabled` / `readOnly`) and compile to CSS pseudo-selectors. Property names follow the unistyle convention. See also: .states() / .sizes() / .variants(), .styles(), resolveModeVar.',
+    mistakes: `- Chaining an empty \`.theme({})\` — a no-op that merges nothing; skip \`.theme()\` entirely when a component has no base styles
+- Treating the second callback argument as a string — in \`.theme()\` and dimension callbacks \`mode\` is the \`mode(light, dark)\` HELPER function (\`backgroundColor: mode("#fff", "#333")\`), not \`"light" | "dark"\`; the resolved string form lives on \`.attrs()\` callbacks' \`helpers.mode\`
+- Using CSS-spec property order — rocketstyle themes use the unistyle convention (\`borderWidthTop\`, \`borderColorLeft\`), NOT \`borderTopWidth\` / \`borderLeftColor\`
+- Expecting \`:hover\` styles to apply only to interactive components — \`hover\` theme compiles to an UNCONDITIONAL \`:hover\` rule on every component that defines it; only \`cursor: pointer\` is gated on \`onClick\` / \`href\`
+- Passing unitless numbers to \`mode()\` under \`init({ cssVariables: true })\` — \`mode(8, 12)\` is emitted verbatim into the CSS var with no unit applied (dev warns); pass unit-complete values (\`mode("8px", "12px")\`)`,
+  },
+
+  'rocketstyle/.states() / .sizes() / .variants()': {
+    signature: '(values: Record<string, object> | ((theme, mode, css) => Record<string, object>)) => RocketStyleComponent',
+    example: `const Button = rs({ name: 'Button', component: 'button' })
+  .theme((t) => ({ borderRadius: 4, cursor: 'pointer' }))
+  .states((t, mode) => ({
+    primary: { backgroundColor: '#0d6efd', color: '#fff', hover: { backgroundColor: '#0b5ed7' } },
+    danger: { backgroundColor: '#dc3545', color: '#fff' },
+  }))
+  .sizes({
+    sm: { fontSize: 14, paddingX: 12, paddingY: 6 },
+    lg: { fontSize: 18, paddingX: 20, paddingY: 10 },
+  })
+
+<Button state="primary" size="lg">Save</Button>
+<Button>plain — dimensions are optional</Button>`,
+    notes: `Single-value dimension definition methods (from the default dimension map). Each declares every valid value for its consumer prop — \`.states({...})\` drives \`state="..."\`, \`.sizes({...})\` drives \`size="..."\`, \`.variants({...})\` drives \`variant="..."\`. The active value's style slice merges over the \`.theme()\` base; a dimension prop with no matching value contributes nothing (every dimension is optional at the call site). The callback form receives \`(theme, mode, css)\` for theme-token-driven values. Custom dimensions declared at factory init get an identically-shaped method named after each dimension key. See also: .multiple() / .modifiers(), .theme(), rocketstyle.`,
+    mistakes: `- Method/prop name confusion — DEFINITION methods are plural (\`.states()\`, \`.sizes()\`, \`.variants()\`), consumer PROPS are singular (\`state\`, \`size\`, \`variant\`)
+- Using a dimension prop the component never defined — e.g. \`variant="outlined"\` on a component with no \`.variants()\` chain is invalid and surfaces as a type error (\`never[]\`); check the component definition first
+- Nesting pseudo-state at the wrong level — \`hover\` nests INSIDE a value slice (\`primary: { hover: {...} }\`), where it overrides the \`.theme()\`-level \`hover\` for that state
+- Expecting per-instance style overrides through dimension props — dimension values are a closed set declared at definition time; arbitrary one-off styles go through the base component's style props or a new dimension value`,
+  },
+
+  'rocketstyle/.multiple() / .modifiers()': {
+    signature: '(values: Record<string, object | ((theme) => object)> | ((theme, mode, css) => Record<string, object>)) => RocketStyleComponent',
+    example: `const Box = rs({ name: 'Box', component: Element })
+  .multiple({
+    rounded: { borderRadius: 999 },
+    shadow: { boxShadow: '0 2px 8px rgba(0,0,0,0.15)' },
+  })
+<Box multiple={['rounded', 'shadow']} />       // both slices compose
+
+// Transform dimension — value fn receives the ACCUMULATED theme
+const Button2 = rs({ name: 'Button2', component: Element })
+  .theme({ backgroundColor: '#0d6efd', color: '#fff' })
+  .states({ danger: { backgroundColor: '#dc3545' } })
+  .modifiers({
+    outlined: (t) => ({ color: t.backgroundColor, backgroundColor: 'transparent' }),
+  })
+<Button2 state="danger" modifier="outlined" />  // outlined sees danger's red`,
+    notes: `Multi-value dimension definition methods (from the default dimension map). \`.multiple({...})\` drives the \`multiple\` prop, \`.modifiers({...})\` drives \`modifier\` — both accept an ARRAY of active values at the call site (\`multiple={["rounded", "shadow"]}\`), all of which compose onto the theme. \`modifiers\` is additionally a TRANSFORM dimension: its value functions receive the theme ACCUMULATED from all prior dimensions, so a modifier can derive from the active state (e.g. \`outlined\` reading the current state's \`backgroundColor\`). Custom dimensions opt into the same behaviors via \`{ multi: true }\` / \`{ transform: true }\`. See also: .states() / .sizes() / .variants(), rocketstyle.`,
+    mistakes: `- Passing a single string to a multi dimension and expecting array semantics — \`multiple="rounded"\` and \`multiple={["rounded"]}\` both work, but composing several values requires the array form
+- Expecting a transform value fn to see the raw app theme — transform-dimension value functions receive the theme accumulated from PRIOR dimensions (base + active state/size/variant), which is the whole point; read app-theme tokens in a dimension-level callback instead
+- Declaring a custom multi dimension as a bare string — \`{ decorations: "decoration" }\` is single-value; multi needs the object form \`{ propName: "decoration", multi: true }\``,
+  },
+
+  'rocketstyle/.styles()': {
+    signature: '(cb: (css) => CSSResult) => RocketStyleComponent',
+    example: `const Button = rs({ name: 'Button', component: 'button' })
+  .theme((t) => ({ background: '#eee', hover: { background: '#ddd' } }))
+  .styles(
+    (css) => css\`
+      transition: background 0.15s ease;
+      border: none;
+      \${({ $rocketstyle }) => css\`
+        background: \${resolveTheme($rocketstyle).background};
+      \`}
+    \`,
+  )`,
+    notes: `Raw-CSS escape hatch for what the dimension model can't express. The callback receives the styler's tagged-template \`css\` helper; interpolation functions inside the template receive the component's styled-props, notably \`$rocketstyle\` (the fully resolved theme — base + active dimension slices merged, identity-cached per dimension-prop combo) and \`$rocketstate\` (active dimension values + \`pseudo: { hover, focus, pressed, active, disabled, readOnly }\` flags). See also: resolveTheme, .theme(), @pyreon/styler.`,
+    mistakes: `- Reading \`$rocketstyle\` as a plain object in interpolations — it may be a function ACCESSOR (reactive) or a plain object depending on the render path; resolve it with \`resolveTheme($rocketstyle)\` from \`@pyreon/rocketstyle\`
+- Reaching for \`.styles()\` for things the dimension model expresses — colors/spacing per state belong in \`.states()\` / \`.theme()\` where they get the mode helper, caching, and CSS-variables support; \`.styles()\` is for selectors and interpolation the object model can't say
+- Driving pseudo-state visuals from \`$rocketstate.pseudo\` when a CSS pseudo-selector would do — the nested \`hover: {...}\` theme object already compiles to \`:hover\`; the JS flags are for components that track interaction state in JavaScript (via \`.config({ provider: true })\` wiring)`,
+  },
+
+  'rocketstyle/.compose()': {
+    signature: '(hocs: Record<string, ((c: ComponentFn) => ComponentFn) | null | false>) => RocketStyleComponent',
+    example: `const withTooltip = (Component) => (props) => Component(props)
+
+const Button = rs({ name: 'Button', component: 'button' })
+  .states({ primary: { background: 'royalblue' } })
+  .compose({ withTooltip })
+
+// Remove a previously composed HOC by name
+const Plain = Button.compose({ withTooltip: null })`,
+    notes: 'Wrap the component in named higher-order components. The argument is a RECORD of `{ name: hoc }` (not an array) so later chain calls can remove a previously composed HOC by setting its name to a falsy value. The built-in rocketstyle attrs HOC is always the outermost wrapper, so default props are resolved before any user HOC runs. See also: .config(), @pyreon/attrs.',
+    mistakes: `- Passing an array of HOCs — \`.compose()\` takes a named record (\`{ withTooltip }\`), which is what makes falsy-removal (\`{ withTooltip: null }\`) possible
+- Composing a HOC that value-copies props (\`{ ...props }\` into a new object at setup) — that fires reactive getter props once and collapses them to static values; forward props by reference or merge with \`mergeProps\` from \`@pyreon/core\`
+- Forgetting that \`.config({ component: NewBase })\` RESETS the compose chain along with the attrs chains — re-chain HOCs after a base swap`,
+  },
+
+  'rocketstyle/.statics()': {
+    signature: '(meta: Record<string, unknown>) => RocketStyleComponent',
+    example: `const Button = rs({ name: 'Button', component: 'button' })
+  .statics({ category: 'action', version: '1.0' })
+
+Button.meta.category   // 'action'
+'category' in Button   // true — also assigned onto the component`,
+    notes: `Attach arbitrary static metadata. Values land on the component's \`.meta\` object AND directly on the component itself (so \`"key" in Component\` checks work — \`@pyreon/document-primitives\` uses this for \`_documentType\`). Successive \`.statics()\` calls merge. See also: .compose(), isRocketComponent.`,
+    mistakes: `- Using \`.statics()\` for per-instance data — statics are definition-level metadata shared by every instance; per-instance values are props
+- Colliding with the builder surface — static keys land on the component object, so names like \`attrs\` / \`config\` / \`theme\` would shadow the chain methods; pick namespaced keys`,
+  },
+
+  'rocketstyle/Provider': {
+    signature: '(props: TProvider) => VNodeChild',
+    example: `import { Provider } from '@pyreon/rocketstyle'
+
+<Provider theme={myTheme} mode="dark">
+  <Button state="primary">Dark mode button</Button>
+</Provider>
+
+// Invert a subtree (dark island in a light page)
+<Provider inversed>
+  <Card>Resolves mode() as the opposite mode</Card>
+</Provider>`,
+    notes: `Tree-level theme + mode provider. Props are \`{ children, theme?, mode?, inversed?, provider? }\` — \`mode\` is \`"light" | "dark"\`, \`inversed: true\` flips the resolved mode for the subtree, and values merge over any parent rocketstyle context. Most apps use the higher-level \`<PyreonUI>\` from \`@pyreon/ui-core\` (theme + mode + config in one) and reach for rocketstyle's \`Provider\` only for fine-grained subtree overrides. The raw context object backing it is exported as \`context\`. See also: rocketstyle, .config(), @pyreon/ui-core.`,
+    mistakes: `- Passing a \`value\` prop (React-context muscle memory) — there is no \`value\`; \`Provider\` takes \`theme\` / \`mode\` / \`inversed\` directly
+- Mounting a fresh \`Provider\`/\`PyreonUI\` per view — the \`_rsMemo\` cache keys on theme identity, so per-view providers defeat cross-instance memoization; share ONE app-level provider
+- Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,
+  },
+
+  'rocketstyle/isRocketComponent': {
+    signature: '<T>(component: T) => boolean',
+    example: `import { isRocketComponent } from '@pyreon/rocketstyle'
+
+isRocketComponent(Button)   // true
+isRocketComponent('div')    // false
+isRocketComponent(() => null) // false — plain functions lack the marker`,
+    notes: 'Runtime type guard — `true` when a value was created by `rocketstyle()` (checks the own `IS_ROCKETSTYLE` marker). Use it wherever code must discriminate rocketstyle components from plain functions/components — a `typeof value === "function"` check cannot tell them apart because a rocketstyle component IS a callable function. See also: rocketstyle, @pyreon/attrs.',
+    mistakes: '- Discriminating with `typeof value === "function"` — rocketstyle components are callable, so the typeof check matches both; use the marker guard',
+  },
+
+  'rocketstyle/resolveTheme': {
+    signature: '<T = Record<string, unknown>>(value: (() => T) | T) => T',
+    example: `import { resolveTheme } from '@pyreon/rocketstyle'
+
+styled(Component)\`
+  color: \${(props) => resolveTheme(props.$rocketstyle).color};
+\``,
+    notes: 'Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the function-accessor (reactive) shape and the plain-object shape, returning the resolved theme object either way. See also: .styles(), @pyreon/styler.',
+    mistakes: '- Calling `props.$rocketstyle()` unconditionally — it is only sometimes a function; `resolveTheme` normalizes both shapes',
+  },
+
+  'rocketstyle/resolveModeVar': {
+    signature: `(value: unknown, mode?: 'light' | 'dark') => unknown`,
+    example: `import { resolveModeVar } from '@pyreon/rocketstyle'
+
+// after <X color={mode('#000', '#fff')} /> under cssVariables:
+resolveModeVar('var(--px-m-abc123)', 'dark')   // '#fff'
+resolveModeVar('#ff0000', 'dark')              // '#ff0000' — passthrough`,
+    notes: 'Under `init({ cssVariables: true })`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties (`var(--px-m-<hash>)`). `resolveModeVar(value, mode)` resolves such a mode-pair reference back to its raw light/dark value — needed by non-CSS render targets (PDF / DOCX / email document export). Defaults to `mode: "light"`; non-strings and strings without a `var(` reference pass through unchanged. See also: .theme(), @pyreon/unistyle.',
+    mistakes: `- Expecting it to resolve theme-leaf variables — it only resolves \`--px-m-*\` MODE-PAIR vars allocated by the mode factory; theme-token vars (\`--px-spacing-small\`) live in \`themeToCssVars\`'s registry and need \`resolveCssVarReferences\` from \`@pyreon/unistyle\``,
+  },
+  // <gen-docs:api-reference:end @pyreon/rocketstyle>
+
+  // <gen-docs:api-reference:start @pyreon/coolgrid>
+
+  'coolgrid/Container': {
+    signature: '(props: { columns?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; width?: ContainerWidth; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild',
+    example: `import { Container, Row, Col } from '@pyreon/coolgrid'
+
+<Container columns={12} gap={16} gutter={24} padding={16} width={{ xs: '100%', lg: 1140 }}>
+  <Row>
+    <Col size={{ xs: 12, md: 8 }}>Main</Col>
+    <Col size={{ xs: 12, md: 4 }}>Sidebar</Col>
+  </Row>
+</Container>
+
+// width as a function of the theme's resolved container widths:
+<Container width={(widths) => ({ ...widths, xl: 1320 })}>…</Container>
+
+// Swap the underlying element:
+<Container component="main">…</Container>`,
+    notes: 'Outermost grid boundary. Renders a centered flex column (`width: 100%`, auto horizontal margins) with a responsive `max-width` resolved from the `width` prop → `theme.grid.container` → `theme.coolgrid.container`, and provides the grid config (`columns`, `size`, `gap`, `padding`, `gutter`, `colCss`/`colComponent`, `rowCss`/`rowComponent`, `contentAlignX`) to descendant Row / Col via context. `ValueType` = `number | number[] | { [breakpoint]: number }` (responsive); `width` also accepts a function that receives the theme-resolved container-width record and returns the final `ContainerWidth`. `columns` defaults to the theme value (12 in the default theme). See also: Row, Col, Provider, theme.',
+    mistakes: `- Setting a non-default \`columns\` on a Row instead of the Container — it works for that Row only, but the visual cascade gets hard to reason about; keep \`columns\` at Container level
+- Expecting \`gutter\` to be horizontal container padding — \`gutter\` feeds the Row's VERTICAL margins (\`spacingY = gutter − gap/2\`); the Container itself only sets a responsive max-width + auto horizontal centering
+- Rendering without a theme context — grid defaults (\`columns\`, container widths) resolve from \`theme.grid.*\` / \`theme.coolgrid.*\`, so mount \`<PyreonUI>\` (or coolgrid \`Provider\`) above the Container
+- Using CSS keyword values for \`contentAlignX\` ('space-between') — the accepted keys are camelCase: 'spaceAround' / 'spaceBetween' / 'spaceEvenly' (plus 'center' / 'left' / 'right')`,
+  },
+
+  'coolgrid/Row': {
+    signature: '(props: { size?: ValueType; columns?: ValueType; gap?: ValueType; gutter?: ValueType; padding?: ValueType; contentAlignX?: ContentAlignX; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild',
+    example: `<Row contentAlignX="center" gap={[8, 16, 24]}>
+  <Col size={4}>One</Col>
+  <Col size={4}>Two</Col>
+</Row>
+
+// size on Row = default span for every Col inside:
+<Row size={6}>
+  <Col>Half</Col>
+  <Col>Half</Col>
+</Row>
+
+// Swap the rendered element:
+<Row component="section">…</Row>`,
+    notes: 'Flex-wrap row. Reads the Container config from context, merges its own props over it, and re-provides the result (`columns`, `gap`, `gutter`, `size`, `padding`, `colCss`, `colComponent`) for Col children. Applies the classic negative-margin gutter technique: horizontal margin `-gap/2` on each side cancels the per-Col gap margins at the row edges; vertical margin is `gutter − gap/2` when `gutter` is set, else `gap/2`. `size` on a Row becomes the DEFAULT span for every Col inside. `contentAlignX` maps to `justify-content`. See also: Container, Col.',
+    mistakes: `- Expecting \`size\` on a Row to size the Row itself — it is the default \`size\` for every Col child (each Col can still override with its own \`size\`)
+- Setting \`gutter\` without \`gap\` — in classic (non-cssVariables) mode the Row spacing block early-returns unless \`gap\` is a number, so the gutter silently does nothing; set \`gap\` too (\`gap={0}\` works)
+- Passing CSS keyword values to \`contentAlignX\` ('space-between') — keys are camelCase ('spaceBetween'); the map resolves them to the real justify-content values
+- Trying to set \`gap\` / \`columns\` / \`gutter\` on an individual Col — Col's typed props deliberately omit them; the values resolve at Row/Container level so the Row's negative margins and the Col's width math agree`,
+  },
+
+  'coolgrid/Col': {
+    signature: '(props: { size?: ValueType; padding?: ValueType; component?: ComponentFn; css?: ExtraStyles }) => VNodeChild',
+    example: `<Col size={4}>1/3 width on every breakpoint</Col>
+<Col size={{ xs: 12, sm: 6, lg: 4 }}>Responsive</Col>
+<Col size={[12, 6, 4]}>Mobile-first array</Col>
+<Col size={{ xs: 0, md: 6 }}>Hidden on xs</Col>
+<Col>Auto column — shares leftover space</Col>
+<Col component="article" css={{ textAlign: 'center' }}>Custom element + extra CSS</Col>`,
+    notes: `Individual column. Reads \`columns\` / \`gap\` / default \`size\` / \`padding\` from the Row context and computes its width as \`calc(size / columns · 100% − gap)\` (plain percentage when no gap). Without a \`size\` it is an auto column (\`flex-grow: 1; flex-basis: 0\`) sharing the leftover space. \`gap\` and \`padding\` are HALVED and applied as per-side margin / padding (the Row's negative margin cancels the outer halves). \`size: 0\` hides the column at that breakpoint. See also: Row, Container.`,
+    mistakes: `- \`size: 0\` hides the column by moving it off-screen (\`position: fixed; left: -9999px\`), NOT \`display: none\` — the element stays mounted and its children stay alive
+- A mobile-first array is positional \`[xs, sm, md, lg, xl]\` and values CASCADE upward — \`size={[12, 6, 4]}\` leaves lg/xl at the md value (4), it does not reset them
+- Expecting \`padding={16}\` to render 16px of padding — grid padding (like gap) is halved per side, so it renders \`padding: 8px\`
+- Setting \`size\` greater than the resolved \`columns\` — the width math produces >100% and the column overflows its row`,
+  },
+
+  'coolgrid/Provider': {
+    signature: '(props: { theme: PyreonTheme; children?: VNode | null }) => VNode | null',
+    example: `import { Provider, Container, Row, Col, theme } from '@pyreon/coolgrid'
+
+// Standalone (no PyreonUI at the root):
+<Provider theme={theme}>
+  <Container>…</Container>
+</Provider>
+
+// Preferred in real apps — PyreonUI provides the same context:
+import { PyreonUI } from '@pyreon/ui-core'
+<PyreonUI theme={appTheme} mode="light">
+  <Container>…</Container>
+</PyreonUI>`,
+    notes: `Re-export of \`@pyreon/unistyle\`'s low-level theme provider — enriches the theme (pre-computed sorted breakpoints + media-query helpers) and provides it to BOTH the ui-core context and the styler \`ThemeContext\`. Marked \`@deprecated\` in source: prefer \`<PyreonUI theme={theme} mode="light">\` from \`@pyreon/ui-core\`, which handles all three context layers (styler, core, mode) in one component. The remaining legitimate use is scoping DIFFERENT breakpoints / grid defaults to a subtree. See also: theme, @pyreon/ui-core.`,
+    mistakes: `- Wrapping a fresh \`<Provider>\` inside an app that already renders \`<PyreonUI>\` at the root — PyreonUI sets up the unistyle context already; only add a nested Provider to scope DIFFERENT breakpoints to a subtree
+- Expecting a nested \`<Provider>\` to inherit the outer Provider's overrides — context is per-Provider; the inner one starts fresh from its own \`theme\`
+- Reaching for \`Provider\` in new code — it is deprecated in favor of \`PyreonUI\` from \`@pyreon/ui-core\``,
+  },
+
+  'coolgrid/theme': {
+    signature: `{ rootSize: 16; breakpoints: { xs: 0; sm: 576; md: 768; lg: 992; xl: 1200 }; grid: { columns: 12; container: { xs: '100%'; sm: 540; md: 720; lg: 960; xl: 1140 } } }`,
+    example: `import { Provider, theme } from '@pyreon/coolgrid'
+
+<Provider theme={theme}>…</Provider>
+
+// Custom theme — same shape, your own breakpoint names:
+<Provider
+  theme={{
+    rootSize: 16,
+    breakpoints: { phone: 0, tablet: 600, desktop: 1024 },
+    grid: { columns: 24, container: { phone: '100%', tablet: 540, desktop: 960 } },
+  }}
+>…</Provider>`,
+    notes: 'Default Bootstrap-4-style grid theme: 5 breakpoints (xs–xl), a 12-column grid, and responsive container max-widths. Pass it to `Provider` / `PyreonUI`, or ship your own theme with the same shape (`rootSize`, `breakpoints`, `grid.columns`, `grid.container`) for custom breakpoint names and column counts. See also: Provider, Container.',
+    mistakes: `- Custom themes missing \`grid.container\` — the Container has no max-width source and renders full-width at every breakpoint
+- Keying \`grid.container\` by breakpoint names that don't match \`breakpoints\` — the responsive engine resolves widths per breakpoint name, so the keys must agree`,
+  },
+  // <gen-docs:api-reference:end @pyreon/coolgrid>
+
+  // <gen-docs:api-reference:start @pyreon/kinetic>
+
+  'kinetic/kinetic': {
+    signature: `<Tag extends string>(tag: Tag) => KineticComponent<Tag, 'transition'>`,
+    example: `const FadeBox = kinetic('div').preset(fade)                     // transition
+const Accordion = kinetic('div').collapse({ transition: 'height 400ms ease-in-out' })
+const StaggerList = kinetic('ul').preset(slideUp).stagger({ interval: 80, reverseLeave: true })
+const AnimatedList = kinetic('ul').preset(fade).group()          // keyed list
+
+<FadeBox show={() => visible()} onAfterLeave={() => console.warn('gone')}>
+  <p>Content</p>
+</FadeBox>
+
+// Group mode — keyed children via accessor, no show prop:
+<AnimatedList>{() => todos().map((t) => <li key={t.id}>{t.text}</li>)}</AnimatedList>`,
+    notes: `Create a renderable, chainable animated component in transition mode. Every chain method returns a NEW component (immutable) — define once at module scope and reuse. Style methods (\`.enter\`/\`.enterTo\`/\`.enterTransition\` + \`leave\` siblings) set inline-style phases; \`.enterClass\`/\`.leaveClass({ active, from, to })\` set class phases (Tailwind-friendly); \`.preset(p)\` spreads a \`Preset\`'s fields; \`.on(callbacks)\` attaches lifecycle callbacks; \`.config(opts)\` sets mode-scoped options. Mode switches: \`.collapse(opts?)\` (height 0 ↔ auto, measures \`scrollHeight\`), \`.stagger({ interval?, reverseLeave? })\` (sequenced children), \`.group()\` (keyed-list enter/exit, no \`show\` prop). Rendered props: \`show: () => boolean\` (reactive accessor; not in group mode), \`appear\` (default false), \`timeout\` (default 5000ms), mode extras (\`unmount\` transition-only default true, \`transition\` collapse-only default "height 300ms ease", \`interval\` stagger-only default 50, \`reverseLeave\` stagger-only), the four callbacks, plus any HTML attr — forwarded to the rendered tag with reactivity preserved. See also: KineticComponent, presets, useTransitionState, @pyreon/kinetic-presets.`,
+    mistakes: `- Passing \`show={visible()}\` (a static boolean) — \`show\` is a reactive accessor \`() => boolean\`; kinetic subscribes to it and runs enter/leave on flips. Write \`show={() => visible()}\`
+- Building \`kinetic('div').preset(...)\` inside a render body — chaining is immutable and re-creates the component on every call; define animated components once at module scope
+- Passing a \`show\` prop in group mode — group has NO \`show\`; visibility is driven by which keys are present in the children
+- Group-mode children without a unique \`key\` — the enter/exit diff is keyed; children without a key are skipped (no animation)
+- Passing a plain snapshot \`{todos().map(...)}\` to a group and expecting later additions to animate — pass a reactive accessor \`{() => todos().map(...)}\` so the group re-evaluates and diffs keys on data change
+- Using stagger mode for a list whose entries are added/removed at runtime — stagger snapshots its children once at render; use group mode for runtime add/remove
+- Setting \`unmount\` outside transition mode — it is a transition-mode option only; collapse keeps content in the DOM and animates height, stagger/group manage per-child lifecycle
+- Expecting \`.config()\` to accept every option in every mode — it takes only the current mode's set: \`{ appear, unmount, timeout }\` (transition), \`{ appear, timeout, transition }\` (collapse), \`{ appear, timeout, interval, reverseLeave }\` (stagger), \`{ appear, timeout }\` (group)
+- Treating stagger \`interval\` as a total duration — it is the per-CHILD delay: five children at 75ms = 375ms stagger window
+- Animating \`width\` / \`height\` / \`top\` / \`left\` in a preset — those run on the main thread and can jank; animate \`transform\` / \`opacity\` / \`filter\` for compositor-thread work, and use collapse mode for height
+- Expecting an INITIALLY-HIDDEN transition with \`unmount: true\` to be removed from the DOM after a later leave — the SSR-structural contract keeps it in the DOM with the leave-to class applied; initially-visible transitions keep the true-unmount semantic (drive mount/unmount yourself if you need removal)
+- Relying on the animation completing under \`prefers-reduced-motion: reduce\` — visuals are skipped instantly but callbacks (\`onEnter\` → \`onAfterEnter\`, \`onLeave\` → \`onAfterLeave\`) still fire; drive dependent logic from callbacks, not timing`,
+  },
+
+  'kinetic/presets': {
+    signature: `Record<'fade' | 'scaleIn' | 'slideUp' | 'slideDown' | 'slideLeft' | 'slideRight', Preset>`,
+    example: `import { kinetic, fade, presets } from '@pyreon/kinetic'
+
+const FadeBox = kinetic('div').preset(fade)
+const SlideBox = kinetic('div').preset(presets.slideUp)   // map access for dynamic selection`,
+    notes: 'The six built-in presets as one map — `fade`, `scaleIn`, `slideUp`, `slideDown`, `slideLeft`, `slideRight` — each also available as a named export. All are style-form presets (opacity/transform with 300ms ease-out enter, 200ms ease-in leave). Pass one to `.preset(...)`. For the full 122-preset catalog plus factories and composition utilities, use `@pyreon/kinetic-presets`. See also: kinetic, Preset, @pyreon/kinetic-presets.',
+    mistakes: '- Looking for `fadeUp` / `bounceIn` / `zoomIn` etc. here — the core package ships only 6 presets; the 122-preset catalog is `@pyreon/kinetic-presets`',
+  },
+
+  'kinetic/useTransitionState': {
+    signature: '(options: { show: () => boolean; appear?: boolean }) => TransitionStateResult',
+    example: `const { stage, ref, shouldMount, complete } = useTransitionState({
+  show: () => visible(),
+  appear: true,
+})
+// stage()       -> 'hidden' | 'entering' | 'entered' | 'leaving'
+// shouldMount() -> false only while 'hidden'
+useAnimationEnd({ ref: elementRef, active: () => stage() === 'entering' || stage() === 'leaving', onEnd: complete })`,
+    notes: 'Low-level enter/leave state machine that powers the transition renderer — exported for building custom animated primitives. Returns `stage` (a `Signal<TransitionStage>`: `hidden | entering | entered | leaving`), a `ref` callback to attach to the transitioning element (it triggers the `appear` animation once wired), a reactive `shouldMount()` accessor (false only while `hidden`), and `complete()` which advances `entering → entered` / `leaving → hidden`. Its signature type is exported as `UseTransitionState`. See also: useAnimationEnd, TransitionStage, TransitionStateResult.',
+    mistakes: `- Never calling \`complete()\` — the stage stays \`entering\`/\`leaving\` forever; wire \`useAnimationEnd\`'s \`onEnd\` (or your own end detection) to \`complete\`
+- Not attaching the returned \`ref\` to the element — \`appear\` is triggered by the ref callback once the node is wired; without it the appear animation never fires
+- Reading \`shouldMount()\` outside a reactive scope — it is an accessor; read it inside JSX expression thunks / effects to track stage changes`,
+  },
+
+  'kinetic/useAnimationEnd': {
+    signature: '(options: { ref: Ref<HTMLElement>; onEnd: () => void; active: () => boolean; timeout?: number }) => void',
+    example: `useAnimationEnd({
+  ref: elementRef,                     // Ref<HTMLElement> object, read via .current
+  active: () => stage() === 'entering' || stage() === 'leaving',
+  timeout: 5000,
+  onEnd: () => complete(),
+})`,
+    notes: 'Listens for `transitionend` / `animationend` on `ref.current` while `active()` is true and calls `onEnd` exactly once when the animation finishes — or after `timeout` ms (default 5000) as a safety fallback if the event never fires. Events bubbling from child elements are ignored (`e.target` must be the element itself). Listeners attach when `active` flips true and are cleaned up when it flips false. Its signature type is exported as `UseAnimationEnd`. See also: useTransitionState.',
+    mistakes: `- Passing a callback ref — the option is a \`Ref<HTMLElement>\` OBJECT; the hook reads \`ref.current\` when \`active\` flips true
+- Setting \`timeout\` shorter than the actual transition duration — the fallback timer calls \`onEnd\` early, before the animation finishes
+- Expecting \`onEnd\` for a child element's transition — bubbled events where \`e.target !== el\` are deliberately ignored
+- Passing a static boolean for \`active\` — it is a reactive accessor; the listeners attach/detach as it flips`,
+  },
+
+  'kinetic/KineticComponent': {
+    signature: `type KineticComponent<Tag extends string, Mode extends KineticMode = 'transition'> = ComponentFn<KineticComponentProps<Tag, Mode>> & KineticChain<Tag, Mode>`,
+    example: `import type { KineticComponent } from '@pyreon/kinetic'
+
+const FadeBox: KineticComponent<'div', 'transition'> = kinetic('div').preset(fade)
+const List: KineticComponent<'ul', 'group'> = kinetic('ul').preset(fade).group()`,
+    notes: 'The value `kinetic(tag)` returns — a renderable component intersected with the chain methods. The `Mode` parameter switches the accepted prop set (`show`/`unmount` in transition, `transition` in collapse, `interval`/`reverseLeave` in stagger, no `show` in group) and narrows what `.config(opts)` accepts. See also: kinetic.',
+    mistakes: `- Annotating a \`.collapse()\` / \`.stagger()\` / \`.group()\` result with the default \`'transition'\` mode parameter — mode switches change the type: \`kinetic('ul').group()\` is \`KineticComponent<'ul', 'group'>\``,
+  },
+
+  'kinetic/Preset': {
+    signature: 'type Preset = StyleTransitionProps & ClassTransitionProps',
+    example: `import type { Preset } from '@pyreon/kinetic'
+
+const myPreset: Preset = {
+  enterStyle: { opacity: 0, transform: 'translateY(20px)' },
+  enterToStyle: { opacity: 1, transform: 'translateY(0)' },
+  enterTransition: 'all 400ms ease-out',
+  leaveStyle: { opacity: 1, transform: 'translateY(0)' },
+  leaveToStyle: { opacity: 0, transform: 'translateY(20px)' },
+  leaveTransition: 'all 250ms ease-in',
+}
+const Box = kinetic('div').preset(myPreset)`,
+    notes: 'A plain object holding the style-form fields (`enterStyle`/`enterToStyle`/`enterTransition` + leave siblings) and/or the class-form fields (`enter`/`enterFrom`/`enterTo` + leave siblings) that `.preset(...)` spreads into the chain config. Structurally identical to the `Preset` type in `@pyreon/kinetic-presets`, so factory results from that package pass straight to `.preset(...)`. See also: StyleTransitionProps, ClassTransitionProps, @pyreon/kinetic-presets.',
+  },
+
+  'kinetic/StyleTransitionProps': {
+    signature: 'type StyleTransitionProps = { enterStyle?: CSSProperties; enterToStyle?: CSSProperties; enterTransition?: string; leaveStyle?: CSSProperties; leaveToStyle?: CSSProperties; leaveTransition?: string }',
+    example: `const SlidePanel = kinetic('aside')
+  .enter({ opacity: 0, transform: 'translateX(-100%)' })   // enterStyle
+  .enterTo({ opacity: 1, transform: 'translateX(0)' })     // enterToStyle
+  .enterTransition('all 300ms ease-out')`,
+    notes: 'Style-form transition definition (the zero-CSS path). `enterStyle` applies on the first frame of enter, `enterToStyle` on the second frame (kept until complete), `enterTransition` is the CSS transition shorthand active during enter; the `leave*` trio mirrors it. Set via `.enter()` / `.enterTo()` / `.enterTransition()` and the leave siblings. See also: ClassTransitionProps, Preset.',
+  },
+
+  'kinetic/ClassTransitionProps': {
+    signature: 'type ClassTransitionProps = { enter?: string; enterFrom?: string; enterTo?: string; leave?: string; leaveFrom?: string; leaveTo?: string }',
+    example: `const TailwindFade = kinetic('div')
+  .enterClass({ active: 'transition-opacity duration-300', from: 'opacity-0', to: 'opacity-100' })
+  .leaveClass({ active: 'transition-opacity duration-200', from: 'opacity-100', to: 'opacity-0' })`,
+    notes: 'Class-form transition definition for utility-class CSS (Tailwind, CSS modules). `enter` stays on the element for the whole enter phase, `enterFrom` applies on the first frame and is removed on the next, `enterTo` applies on the second frame and is kept until complete; the `leave*` trio mirrors it. Set via `.enterClass({ active, from, to })` / `.leaveClass(...)` — `active` maps to `enter`/`leave`, `from` to `enterFrom`/`leaveFrom`, `to` to `enterTo`/`leaveTo`. The SSR hidden-state class is `leaveTo` when defined, else `enterFrom`. See also: StyleTransitionProps, Preset.',
+  },
+
+  'kinetic/TransitionCallbacks': {
+    signature: 'type TransitionCallbacks = { onEnter?: () => void; onAfterEnter?: () => void; onLeave?: () => void; onAfterLeave?: () => void }',
+    example: `const Notice = kinetic('div').preset(fade).on({
+  onEnter: () => console.warn('entering'),
+  onAfterLeave: () => console.warn('left'),
+})`,
+    notes: `Lifecycle callbacks — attach via \`.on(callbacks)\` on the chain or pass as props on the rendered component (props override the chain's). \`onEnter\` fires when the enter phase begins, \`onAfterEnter\` when the enter animation completes, \`onLeave\` / \`onAfterLeave\` mirror for leave. Under reduced motion the pairs fire back-to-back with no visual animation. See also: kinetic.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/kinetic>
+
+  // <gen-docs:api-reference:start @pyreon/kinetic-presets>
+
+  'kinetic-presets/presets': {
+    signature: 'Record<string, Preset>',
+    example: `import { fadeUp, bounceIn } from '@pyreon/kinetic-presets'   // tree-shakeable
+import { presets } from '@pyreon/kinetic-presets'             // dynamic access
+
+const Hero = kinetic('div').preset(fadeUp)
+const Dynamic = kinetic('div').preset(presets[userChoice])    // 'fadeUp' | 'scaleIn' | ...`,
+    notes: 'The full catalog as one `as const` map — 122 entries, every one also available as a named export (`fadeUp`, `bounceIn`, `zoomInLeft`, ...). Use the map for dynamic selection (`presets[name]`); use named imports for tree-shaking (a single named preset ships ~300 bytes thanks to per-call pure annotations). Categories: fades (14), slides (8), scales (8), zooms (10), flips (6), rotations (8), bounce/spring/pop (10), blur (6), puff (2), clip-path (8), perspective (4), tilt (4), swing (4), slit (2), swirl (2), back (4), light-speed (2), roll (2), fly (4), float (4), push (2), expand (2), skew (4), drop/rise (2). All are style-form presets built on `all <duration> <easing>` transitions (default enter 300ms ease-out / leave 200ms ease-in; spring/bounce presets override the easing with cubic-bezier curves). See also: Preset, compose, @pyreon/kinetic.',
+    mistakes: `- Indexing \`presets[name]\` with a misspelled name — it returns \`undefined\`, and \`kinetic(...).preset(undefined)\` silently applies nothing (spreading undefined is a no-op); there's no runtime error, the element just doesn't animate
+- Importing the whole \`presets\` map when you use one or two presets — the map pins all 122 entries; named imports tree-shake to just what you use`,
+  },
+
+  'kinetic-presets/createFade': {
+    signature: '(options?: FadeOptions) => Preset',
+    example: `createFade()                                    // pure opacity fade
+createFade({ direction: 'up', distance: 24 })   // fade with movement
+createFade({ duration: 500, easing: 'ease-in-out' })`,
+    notes: `Factory for fade presets. With no \`direction\` it is a pure opacity fade (0 → 1); with a \`direction\` it adds movement — the element enters traveling in that direction (\`'up'\` starts \`translateY(distance)\` below and moves to 0). Options: \`direction?: 'up' | 'down' | 'left' | 'right'\`, \`distance?: number\` (px, default 16), plus the timing options every factory shares: \`duration?: number\` (ms, default 300), \`leaveDuration?: number\` (default 200), \`easing?: string\` (default 'ease-out'), \`leaveEasing?: string\` (default 'ease-in'). See also: createSlide, createScale, createRotate, createBlur.`,
+  },
+
+  'kinetic-presets/createSlide': {
+    signature: '(options?: SlideOptions) => Preset',
+    example: `createSlide({ direction: 'left', distance: 32 })
+createSlide({ duration: 400, leaveDuration: 250 })`,
+    notes: `Factory for slide presets — same shape as \`createFade\` but \`direction\` defaults to \`'up'\` (always includes movement). The generated preset fades opacity alongside the translate. Options: \`direction?\` (default 'up'), \`distance?\` (px, default 16), plus the shared \`duration\` / \`leaveDuration\` / \`easing\` / \`leaveEasing\`. See also: createFade.`,
+  },
+
+  'kinetic-presets/createScale': {
+    signature: '(options?: ScaleOptions) => Preset',
+    example: `createScale({ from: 0.5, duration: 400 })
+createScale({ from: 0.8, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' })  // spring bounce`,
+    notes: 'Factory for scale presets — enters from `scale(from)` + opacity 0 to `scale(1)` + opacity 1; leave reverses. `from` defaults to 0.9. Pair with a spring cubic-bezier easing for bouncy pop-ins. Shares the `duration` / `leaveDuration` / `easing` / `leaveEasing` timing options. See also: createFade, createBlur.',
+  },
+
+  'kinetic-presets/createRotate': {
+    signature: '(options?: RotateOptions) => Preset',
+    example: `createRotate({ degrees: 30, duration: 400 })
+createRotate({ degrees: -90 })  // counter-clockwise enter`,
+    notes: 'Factory for rotation presets — enters from `rotate(-degrees)` + opacity 0 to `rotate(0)`; the leave ends at `rotate(+degrees)` (opposite spin on the way out). `degrees` defaults to 15; pass a negative value for counter-clockwise enter. Shares the timing options. See also: createFade.',
+  },
+
+  'kinetic-presets/createBlur': {
+    signature: '(options?: BlurOptions) => Preset',
+    example: `createBlur({ amount: 12, duration: 400 })
+createBlur({ amount: 8, scale: 0.95 })  // blur + scale`,
+    notes: 'Factory for blur presets — enters from `blur(amount)` + opacity 0 to `blur(0px)` + opacity 1. `amount` defaults to 8 (px). Optional `scale` adds a `transform: scale(scale)` to the hidden state for a combined blur-and-scale reveal. Shares the timing options. Note `filter` animates on the compositor thread, so blur presets stay smooth. See also: createScale.',
+  },
+
+  'kinetic-presets/compose': {
+    signature: '(...items: Preset[]) => Preset',
+    example: `const fancy = compose(fade, scaleIn, blurIn)
+// enterStyle:      { opacity: 0, transform: 'scale(0.9)', filter: 'blur(8px)' }
+// enterTransition: 'all 300ms ease-out'  (from blurIn — the LAST preset wins)`,
+    notes: 'Merge multiple presets into one. Style objects (`enterStyle` / `enterToStyle` / `leaveStyle` / `leaveToStyle`) are shallow-merged — a later preset wins per CSS property. Transition strings (`enterTransition` / `leaveTransition`) are LAST-preset-wins (replaced, not comma-joined). Class fields (`enter` / `enterFrom` / ... ) are concatenated with a space. Style-form and class-form fields merge independently, so composing an inline preset with a class preset yields both surfaces. See also: withDuration, withEasing, withDelay, reverse.',
+    mistakes: `- Expecting transition strings to be comma-joined — \`enterTransition\` / \`leaveTransition\` are taken from the LAST preset that defines them; the built-in presets all use \`all ...\` transitions so the last one still animates every merged property
+- Expecting property-level deep merge — style merge is shallow: if two presets both set \`transform\` in \`enterToStyle\`, the later one replaces it entirely`,
+  },
+
+  'kinetic-presets/withDuration': {
+    signature: '(preset: Preset, enterMs: number, leaveMs?: number) => Preset',
+    example: `const slow = withDuration(fadeUp, 600, 400)
+// enterTransition: 'all 600ms ease-out'
+// leaveTransition: 'all 400ms ease-in'`,
+    notes: 'Return a copy of the preset with new durations — replaces the FIRST duration token (e.g. `300ms`) in `enterTransition` and `leaveTransition` via regex. `leaveMs` defaults to `enterMs`. Only affects the style-form transition STRINGS: a class-form preset (Tailwind `duration-300` classes) is untouched — change the classes instead. See also: withEasing, withDelay, compose.',
+    mistakes: `- Applying it to a class-form preset — there is no transition string to rewrite, so the Tailwind \`duration-*\` classes keep their own timing
+- Expecting every duration in a multi-property transition string to change — only the FIRST duration token is replaced (the built-in presets use single \`all <duration> <easing>\` shorthands, where this is exact)`,
+  },
+
+  'kinetic-presets/withEasing': {
+    signature: '(preset: Preset, enterEasing: string, leaveEasing?: string) => Preset',
+    example: `const springy = withEasing(scaleIn, 'cubic-bezier(0.34, 1.56, 0.64, 1)')
+// enterTransition: 'all 300ms cubic-bezier(0.34, 1.56, 0.64, 1)'`,
+    notes: 'Return a copy of the preset with new easing — replaces the TRAILING easing token (`ease`, `ease-in`, `ease-out`, `ease-in-out`, `linear`, or `cubic-bezier(...)`) at the end of `enterTransition` / `leaveTransition`. `leaveEasing` defaults to `enterEasing`. Style-form transition strings only, same caveat as `withDuration`. See also: withDuration, withDelay.',
+    mistakes: '- Using it on a transition string whose easing is not one of the recognized trailing patterns (`ease*` / `linear` / `cubic-bezier(...)`) — the regex will not match and the string is returned unchanged',
+  },
+
+  'kinetic-presets/withDelay': {
+    signature: '(preset: Preset, enterDelayMs: number, leaveDelayMs?: number) => Preset',
+    example: `const delayed = withDelay(fadeUp, 150, 0)
+// enterTransition: 'all 300ms 150ms ease-out'
+// leaveTransition: 'all 200ms 0ms ease-in'`,
+    notes: `Return a copy of the preset with a transition delay — inserts the delay after the first duration in the transition string, following the CSS shorthand order \`property duration delay easing\` (\`all 300ms ease-out\` → \`all 300ms 150ms ease-out\`). \`leaveDelayMs\` defaults to \`enterDelayMs\`; pass \`0\` for no leave delay. Useful for hand-rolled staggering when you are not using kinetic's stagger mode. See also: withDuration, compose.`,
+  },
+
+  'kinetic-presets/reverse': {
+    signature: '(preset: Preset) => Preset',
+    example: `const flipped = reverse(fadeUp)
+// enterStyle:   { opacity: 1, transform: 'translateY(0)' }     (was leaveStyle)
+// enterToStyle: { opacity: 0, transform: 'translateY(16px)' }  (was leaveToStyle)`,
+    notes: 'Swap the enter and leave phases of a preset — ALL fields are swapped, style-form (`enterStyle` ↔ `leaveStyle`, `enterToStyle` ↔ `leaveToStyle`, `enterTransition` ↔ `leaveTransition`) and class-form (`enter` ↔ `leave`, `enterFrom` ↔ `leaveFrom`, `enterTo` ↔ `leaveTo`) alike. A preset that entered from below now enters from where it used to leave to. See also: compose.',
+    mistakes: '- Expecting the reversed enter to look like "the same animation backwards" — `reverse` swaps the phase FIELDS wholesale, so timing asymmetry swaps too (the 200ms leave transition becomes the enter transition)',
+  },
+
+  'kinetic-presets/Preset': {
+    signature: 'type Preset = { enterStyle?: CSSProperties; enterToStyle?: CSSProperties; enterTransition?: string; leaveStyle?: CSSProperties; leaveToStyle?: CSSProperties; leaveTransition?: string; enter?: string; enterFrom?: string; enterTo?: string; leave?: string; leaveFrom?: string; leaveTo?: string }',
+    example: `import type { Preset } from '@pyreon/kinetic-presets'
+
+const twPreset: Preset = {
+  enter: 'transition-all duration-300 ease-out',
+  enterFrom: 'opacity-0 translate-y-4',
+  enterTo: 'opacity-100 translate-y-0',
+  leave: 'transition-all duration-200 ease-in',
+  leaveFrom: 'opacity-100 translate-y-0',
+  leaveTo: 'opacity-0 -translate-y-2',
+}`,
+    notes: `A preset is a plain object with up to 12 optional fields: six style-form (\`enterStyle\` / \`enterToStyle\` : \`CSSProperties\`, \`enterTransition\` : \`string\`, + leave siblings) and six class-form strings (\`enter\` / \`enterFrom\` / \`enterTo\` + leave siblings, Tailwind-friendly). Structurally identical to \`@pyreon/kinetic\`'s own \`Preset\` type, so hand-written objects and factory results interoperate. Supporting option types are also exported: \`Direction\`, \`FadeOptions\`, \`SlideOptions\`, \`ScaleOptions\`, \`RotateOptions\`, \`BlurOptions\`, \`CSSProperties\`. See also: presets, @pyreon/kinetic.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/kinetic-presets>
+
+  // <gen-docs:api-reference:start @pyreon/connector-document>
+
+  'connector-document/extractDocumentTree': {
+    signature: '(vnode: unknown, options?: ExtractOptions) => DocNode',
+    example: `import { extractDocumentTree } from '@pyreon/connector-document'
+import { render } from '@pyreon/document'
+import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
+
+const vnode = (
+  <DocDocument title={() => reportTitle()} author="Acme Inc.">
+    <DocHeading level={1}>Summary</DocHeading>
+    <DocText>{() => summaryText()}</DocText>
+  </DocDocument>
+)
+
+// Snapshot extraction — accessors read LIVE values at this moment
+const tree = extractDocumentTree(vnode, { rootSize: 16, includeStyles: true })
+const pdf = await render(tree, 'pdf')
+
+// After a signal change, extract again for a fresh tree:
+reportTitle.set('Q4 Report (final)')
+const freshTree = extractDocumentTree(vnode)`,
+    notes: 'Walk a Pyreon VNode tree and extract a `DocNode` tree for `@pyreon/document`. For each vnode whose component carries a `_documentType` marker it reads the marker → `DocNode.type`, resolves `_documentProps` → `DocNode.props` (pre-resolved vnode props → rocketstyle `__rs_attrs` fast path → full component invocation as legacy fallback), resolves `$rocketstyle` via `resolveStyles` → `DocNode.styles`, and recurses into children. Unmarked components are transparent (invoked; their children flatten into the parent); DOM elements (`div`, `span`) are transparent too. Function values in `_documentProps` and reactive accessor children are resolved (called) at extraction time. ALWAYS returns a `DocNode` — loose children are wrapped in `{ type: "document" }`. See also: resolveStyles, ExtractOptions, DocumentMarker, @pyreon/document, @pyreon/document-primitives.',
+    mistakes: `- Testing the extraction pipeline ONLY with hand-constructed mock vnodes that pre-attach \`_documentProps\` (the pre-resolved path) — the real rocketstyle path (\`__rs_attrs\` hoisted-attrs chain) is bypassed entirely. PR #197's silent metadata drop hid for the package's whole lifetime because no test ran a real \`h()\` primitive through extraction; always pair a mock-vnode test with a real-\`h()\` test
+- Expecting extraction to SUBSCRIBE to signals — reactive accessor children and function-valued \`_documentProps\` are resolved ONCE per call; call \`extractDocumentTree\` again after a signal change to get a fresh tree
+- Under \`init({ cssVariables: true })\`, forgetting \`resolveVar\` — \`$rocketstyle\` values are \`var(--…)\` reference strings PDF/DOCX/email cannot evaluate; compose \`resolveModeVar\` (\`@pyreon/rocketstyle\`) with \`resolveCssVarReferences\` (\`@pyreon/unistyle\`)
+- Expecting a \`DocNode | DocChild[] | null\` return — the internal walker produces that union, but the public function ALWAYS returns a \`DocNode\`, wrapping loose children in \`{ type: "document", props: {}, children }\`
+- Marking a non-rocketstyle component with \`_documentType\` and relying on side effects in its body — the legacy fallback path INVOKES the component to find \`_documentProps\`; keep marked components pure
+- Expecting browser-only CSS (\`transition\`, \`cursor\`, \`display\`, animations) to reach the document — \`resolveStyles\` extracts only the properties \`ResolvedStyles\` supports and silently drops the rest`,
+  },
+
+  'connector-document/resolveStyles': {
+    signature: '(source: Record<string, unknown>, rootSize?: number, resolveVar?: VarResolver) => ResolvedStyles',
+    example: `import { resolveStyles } from '@pyreon/connector-document'
+
+const styles = resolveStyles(
+  {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#222',
+    padding: '12px 16px',
+    transition: 'all 0.2s', // silently dropped — not a document property
+  },
+  16,
+)
+// → { fontSize: 24, fontWeight: 'bold', color: '#222', padding: [12, 16] }`,
+    notes: 'Convert a rocketstyle `$rocketstyle` theme object into a `ResolvedStyles` object compatible with `@pyreon/document`. Extracts typography (fontSize/fontFamily/fontWeight/fontStyle/textDecoration/color/backgroundColor/textAlign/lineHeight/letterSpacing), box model (padding/margin as tuples), border (radius/width/color/style), sizing (width/height/maxWidth — numeric when parseable, raw string like `"100%"` otherwise), and opacity. Everything else (transitions, cursor, display) is silently dropped. Dimensions parse via `parseCssDimension` (rem/em × rootSize, pt × 4/3). `resolveVar` inlines `var(--…)` string values up front for cssVariables-mode apps. See also: extractDocumentTree, VarResolver, parseCssDimension, parseBoxModel.',
+    mistakes: `- Expecting \`fontWeight: 'bold'\` to resolve to \`700\` — \`parseFontWeight\` passes \`'normal'\` / \`'bold'\` through as string literals (both valid \`ResolvedStyles\` values); only numeric strings become numbers
+- Expecting \`em\` to track the element's own font size — at extraction time there is no cascade, so \`em\` is treated like \`rem\` (multiplied by \`rootSize\`)
+- Passing enum values outside the supported sets — \`textAlign\` accepts only left/center/right/justify, \`borderStyle\` only solid/dashed/dotted, \`fontStyle\` only normal/italic, \`textDecoration\` only none/underline/line-through; anything else is dropped
+- Assuming percentage sizing parses to a number — \`width: "100%"\` is kept as the raw string (only px/rem/em/pt/unitless parse to numbers)`,
+  },
+
+  'connector-document/parseCssDimension': {
+    signature: '(value: string | number | null | undefined, rootSize?: number) => number | undefined',
+    example: `parseCssDimension(14)          // 14
+parseCssDimension('14px')      // 14
+parseCssDimension('1.5rem', 16) // 24
+parseCssDimension('12pt')      // 16
+parseCssDimension('auto')      // undefined
+parseCssDimension('50%')       // undefined`,
+    notes: 'Parse a CSS dimension to a number: numbers pass through, `"14px"` → 14, `"1.5rem"` / `"1.5em"` → 1.5 × rootSize, `"12pt"` → 16 (pt × 4/3), unitless numeric strings parse. Anything else (`"auto"`, percentages, calc/var expressions) returns `undefined`. See also: parseBoxModel, resolveStyles.',
+    mistakes: '- Feeding a `var(--…)` / `calc(…)` string — returns `undefined`; inline it first via a `VarResolver`',
+  },
+
+  'connector-document/parseBoxModel': {
+    signature: '(value: string | number | undefined, rootSize?: number) => number | [number, number] | [number, number, number, number] | undefined',
+    example: `parseBoxModel(8)                  // 8
+parseBoxModel('8px 16px')          // [8, 16]
+parseBoxModel('8px 16px 12px')     // [8, 16, 12, 16]
+parseBoxModel('0.5rem 1rem', 16)   // [8, 16]`,
+    notes: 'Parse a CSS padding/margin shorthand to the document tuple format: `8` → `8`, `"8px 16px"` → `[8, 16]`, the 3-value shorthand `"8px 16px 12px"` expands to the CSS-equivalent 4-tuple `[8, 16, 12, 16]`, and 4 values map 1:1. Each segment parses via `parseCssDimension`. See also: parseCssDimension, resolveStyles.',
+    mistakes: '- One unparseable segment (`"8px auto"`) invalidates the WHOLE shorthand — the function returns `undefined`, not a partial tuple',
+  },
+
+  'connector-document/parseFontWeight': {
+    signature: `(value: string | number | undefined) => 'normal' | 'bold' | number | undefined`,
+    example: `parseFontWeight(600)      // 600
+parseFontWeight('600')    // 600
+parseFontWeight('bold')   // 'bold' (string, NOT 700)
+parseFontWeight('bolder') // undefined`,
+    notes: 'Parse a CSS font-weight: numbers pass through, the keywords `"normal"` / `"bold"` pass through AS STRINGS, numeric strings (`"600"`) parse to numbers. Other keywords (`"lighter"`, `"bolder"`) return `undefined`. See also: resolveStyles.',
+    mistakes: `- Expecting \`'bold'\` → \`700\` / \`'normal'\` → \`400\` — the keywords pass through unchanged as \`ResolvedStyles\`-valid string literals`,
+  },
+
+  'connector-document/parseLineHeight': {
+    signature: '(value: string | number | undefined, rootSize?: number) => number | undefined',
+    example: `parseLineHeight(1.5)          // 1.5 (ratio, passes through)
+parseLineHeight('1.5')        // 1.5
+parseLineHeight('24px')       // 24
+parseLineHeight('1.5rem', 16) // 24
+parseLineHeight('normal')     // undefined`,
+    notes: 'Parse a CSS line-height to a plain number: numbers pass through (a unitless ratio like `1.5` stays `1.5`), dimension strings parse via `parseCssDimension` (`"24px"` → 24, `"1.5rem"` → 24 with rootSize 16), and `"normal"` returns `undefined`. Note the return is a bare number — a unitless ratio and a px value are not distinguished in the type. See also: parseCssDimension, resolveStyles.',
+    mistakes: '- Expecting a discriminated `{ ratio }` / `{ px }` result — the return is a plain `number | undefined`; callers must know which semantic they fed in',
+  },
+
+  'connector-document/ExtractOptions': {
+    signature: 'interface ExtractOptions { rootSize?: number; includeStyles?: boolean; resolveVar?: VarResolver }',
+    example: `import { resolveModeVar } from '@pyreon/rocketstyle'
+import { resolveCssVarReferences, themeToCssVars } from '@pyreon/unistyle'
+
+const { registry } = themeToCssVars(theme)
+const tree = extractDocumentTree(vnode, {
+  rootSize: 16,
+  includeStyles: true,
+  resolveVar: (v) => resolveCssVarReferences(resolveModeVar(v, mode), registry),
+})`,
+    notes: 'Options for `extractDocumentTree`. `rootSize` (default 16) is the rem→px base for style resolution; `includeStyles` (default true) toggles resolving `$rocketstyle` into `DocNode.styles`; `resolveVar` inlines `var(--…)` style values to raw values during extraction — required when the app runs under `init({ cssVariables: true })`, since PDF/DOCX/email targets cannot evaluate CSS custom properties. See also: extractDocumentTree, VarResolver.',
+  },
+
+  'connector-document/VarResolver': {
+    signature: 'type VarResolver = (value: unknown) => unknown',
+    example: `const resolveVar: VarResolver = (v) =>
+  resolveCssVarReferences(resolveModeVar(v, 'light'), registry)
+
+const styles = resolveStyles(rocketstyleTheme, 16, resolveVar)`,
+    notes: 'Maps a style value to a render-target-evaluable one. Under cssVariables theming, `$rocketstyle` values can be `var(--…)` reference strings; a resolver (compose `resolveModeVar` from `@pyreon/rocketstyle` with `resolveCssVarReferences` from `@pyreon/unistyle`) inlines them to raw values at extraction time. Only own STRING values are remapped; non-strings pass through unchanged. See also: ExtractOptions, resolveStyles.',
+  },
+
+  'connector-document/DocumentMarker': {
+    signature: 'interface DocumentMarker { _documentType: NodeType }',
+    example: `// Plain-function marked component (non-rocketstyle):
+function Callout(props: { children?: unknown }) {
+  return <div _documentProps={{}}>{props.children}</div>
+}
+Callout._documentType = 'section'`,
+    notes: `Marker interface: components carrying \`_documentType\` are extractable. Rocketstyle primitives set it via \`.statics({ _documentType: "heading" })\` (the extractor reads it from the component's \`.meta\`); plain function components set it as a direct static property. \`@pyreon/document-primitives\` ships 18 pre-marked primitives; follow the same convention for custom ones. See also: extractDocumentTree, @pyreon/document-primitives.`,
+    mistakes: '- Forgetting the marker — an unmarked component is TRANSPARENT: the extractor invokes it and flattens its children into the parent instead of producing a node',
+  },
+
+  'connector-document/DocNode': {
+    signature: 'interface DocNode { type: NodeType; props: Record<string, unknown>; children: DocChild[]; styles?: ResolvedStyles }',
+    example: `import type { DocChild, DocNode, NodeType, ResolvedStyles } from '@pyreon/connector-document'
+
+const node: DocNode = {
+  type: 'heading',
+  props: { level: 1 },
+  children: ['Summary'],
+}`,
+    notes: 'The format-agnostic document node — re-exported from `@pyreon/document` (along with `DocChild = DocNode | string`, the `NodeType` union of 18 node kinds, and `ResolvedStyles`) so extracted trees stay assignment-compatible across the package boundary without a duplicate type identity. See also: extractDocumentTree, @pyreon/document.',
+  },
+  // <gen-docs:api-reference:end @pyreon/connector-document>
 }

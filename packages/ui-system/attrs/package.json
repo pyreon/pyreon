@@ -47,6 +47,7 @@
     "@pyreon/ui-core": "workspace:^"
   },
   "devDependencies": {
+    "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-rolldown": "^2.5.0"

@@ -216,7 +216,7 @@ mount(<App />, document.getElementById("app")!)
 - `onMount(() => { doStuff() })` → can optionally return a cleanup function
 - `onClick={maybeUndefined}` → safe (runtime bails), but be aware the handler is checked at assignment time
 
-## Core Framework (9 packages)
+## Core Framework (10 packages)
 
 - @pyreon/reactivity — Fine-grained reactivity: signal, computed, effect, batch, onCleanup, createStore, watch, createResource, untrack. Pyreon signals are NOT `.value` getters (Vue ref) or `[state, setState]` tuples (React useState). The signal IS the function: `count()` reads, `count.set(v)` writes, `count.update(fn)` derives. This is the #1 confusion for developers coming from other frameworks.
 - @pyreon/core — VNode, h(), Fragment, lifecycle, context, JSX runtime, Suspense, ErrorBoundary, lazy(), Dynamic, cx(), splitProps, mergeProps, createUniqueId. Pyreon components are plain functions that execute a single time. Reactivity comes from reading signals inside reactive scopes (JSX expression thunks, `effect()`, `computed()`), not from re-running the component function. `if (!cond()) return null` at the top level runs once and is static — use `return (() => { if (!cond()) return null; return <div /> })` for reactive conditional rendering.
@@ -227,20 +227,21 @@ mount(<App />, document.getElementById("app")!)
 - @pyreon/head — Reactive `<head>` tag management — useHead(), HeadProvider, renderWithHead() for SSR. Tags with the same key replace each other (innermost wins). Meta keys: `name` → `property` → index. Link keys: `href + rel` → `rel` → index. Script keys: `src` → index. Style and noscript are unkeyed and always accumulated.
 - @pyreon/server — SSR + SSG + island architecture — createHandler(), prerender(), island(), serverIsland(), middleware chain. `mode: "stream"` uses `renderToStream` with shell + app + tail emission; Suspense boundaries resolve out-of-order. The `<head>` collected via `@pyreon/head` is flushed in the shell before any Suspense boundaries resolve, so async-loaded data does not contribute to it.
 - @pyreon/primitives — 15 cross-platform UI primitives that compile to DOM + SwiftUI + Compose from one .tsx: Stack, Inline, Layer, Scroll, Spacer (layout); Text, Heading, Image, Icon (content); Button, Press, Link (interaction); Field, Toggle, Modal (input). Plus <WebView> (host a web-only component natively, bidirectional bridge) and <Web>/<NativeIOS>/<NativeAndroid> escape hatches.
+- @pyreon/sized-map — Bounded Map<K, V> — evicts the oldest entry at a maxEntries cap; FIFO (default) or LRU-on-read mode. FIFO fits hot paths where a per-read recency bump (a `delete` + `set` pair) would dominate the real work (runtime-dom `_tplCache`, router loader/component caches). LRU-on-read fits caches where frequently-read entries must survive small caps (rocketstyle `_rsMemo`, `@pyreon/lint` AstCache, `@pyreon/zero` ISR `createMemoryStore`).
 
-## UI System (12 packages)
+## UI System (18 packages)
 
 - @pyreon/ui-core — Unified `PyreonUI` provider (theme + mode + config), `useMode()` hook, init() escape hatch. The legacy split (separate theme / mode / config providers) is removed. `PyreonUI` is the only correct mount; calling `init()` directly is the escape hatch for SSR or test environments where the provider tree is unavailable.
 - @pyreon/styler — CSS-in-JS — styled() / css / keyframes / createGlobalStyle, reactive theming, FNV-1a-deduped StyleSheet (SSR-safe). The `css` tagged template yields a `CSSResult` (resolved on use); `keyframes` stringifies to an animation NAME; `createGlobalStyle` returns a `ComponentFn` that must be MOUNTED. None of them inject CSS at call time — only on resolution/mount.
 - @pyreon/unistyle — Responsive breakpoints, CSS property mappings, unit utilities, theme enrichment. Every visual package (`elements`, `rocketstyle`, `coolgrid`, `kinetic`) reads breakpoints / spacing / unit conventions from this package. Override defaults via `enrichTheme()` once at the app root rather than per-component.
 - @pyreon/hooks — 36 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useDialog/useKeyboard/useOnline), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect). `useControllableState({ value, defaultValue, onChange })` is the canonical controlled/uncontrolled pattern. Every primitive in `@pyreon/ui-primitives` uses it. Reimplementing the `isControlled + signal + getter` shape by hand was the #1 anti-pattern across primitives before the helper landed. Pass `value` and `defaultValue` as FUNCTIONS so signal reads track reactively — a plain value loses prop-driven controlled/uncontrolled detection.
 - @pyreon/elements — Five foundational layout primitives — Element, Text, List, Overlay, Portal — plus the useOverlay positioning hook and the Iterator data helper. Element/Text/List layout props (`direction`, `alignX`, `alignY`, `gap`, `block`, `tag`) are primitive ATTRS — they target the inner flex wrapper. Colors / spacing / borders / shadows belong in the styler or rocketstyle `.theme()` layer. `direction` accepts `inline` / `rows` / `reverseInline` / `reverseRows` — `row` is invalid.
-- @pyreon/attrs — Chainable HOC factory (.attrs(), .config())
-- @pyreon/rocketstyle — Multi-state styling (states, sizes, variants, themes, dark mode)
-- @pyreon/coolgrid — 12-column responsive grid (Container, Row, Col)
-- @pyreon/kinetic — CSS-transition animations (Transition, Stagger, Collapse)
-- @pyreon/kinetic-presets — 120+ animation presets
-- @pyreon/connector-document — Bridge to @pyreon/document
+- @pyreon/attrs — Chainable HOC factory — default props (.attrs), base swaps (.config), HOC composition (.compose), statics (.statics). 'priority' does NOT mean 'highest precedence' — priorityAttrs resolve FIRST (so later .attrs() callbacks can read them as input) but sit at the LOWEST precedence in the final merge: priorityAttrs < attrs < explicit props. @pyreon/rocketstyle uses the slot to seed structural base props the dimension layer can still override.
+- @pyreon/rocketstyle — Multi-dimensional component styling — states, sizes, variants, custom dimensions, dark/light mode, all cached. useBooleans defaults to FALSE — dimension props take strings (state="primary"), not boolean shorthands. Historically the TYPE default said true while the runtime was false, so boolean props typechecked but were silently dropped; the runtime default (false) is now authoritative in both.
+- @pyreon/coolgrid — Context-cascading responsive grid — Container, Row, Col with custom columns and breakpoints. Every numeric grid prop (size/gap/gutter/padding/columns) is responsive — a single number, a mobile-first array ([12, 6, 4]), or a breakpoint-keyed object ({ xs: 12, md: 6 }); size 0 hides the column at that breakpoint.
+- @pyreon/kinetic — CSS-transition animations — kinetic(tag) chainable factory, 4 modes (transition/collapse/stagger/group), SSR-safe (peer: @pyreon/core, @pyreon/reactivity, @pyreon/runtime-dom). A transition whose `show` is false at server render still emits its children with the hidden-state class/style inlined (`leaveTo` if defined, else `enterFrom`) — content is structural, animation is visual (Framer Motion / react-transition-group norm). Load-bearing for SSG scroll-reveal where IntersectionObserver can't fire server-side. Trade-off: an INITIALLY-HIDDEN transition with `unmount: true` stays in the DOM (leave-to class applied) after a later leave; initially-visible transitions keep the true-unmount semantic.
+- @pyreon/kinetic-presets — 122 animation presets + 5 configurable factories + 5 composition utilities for @pyreon/kinetic. Tree-shaking is first-class: an internal #__NO_SIDE_EFFECTS__ annotation on the preset factory plus sideEffects: false means importing one named preset ships ~300 bytes — importing the `presets` map pins all 122.
+- @pyreon/connector-document — Bridge between ui-system JSX trees and @pyreon/document — extracts a DocNode tree for multi-format export. Extraction is a snapshot — reactive accessor children and function-valued `_documentProps` are resolved (called) at extraction time, not subscribed; re-run `extractDocumentTree` after a signal change to export the live state.
 - @pyreon/document-primitives — 18 rocketstyle document components — render in browser AND export to 14+ formats via the same tree. `DocDocument` `title` / `author` / `subject` accept either strings or `() => string` accessors. Function values are stored in `_documentProps` and resolved by `extractDocumentTree` at extraction time, so each export click reads the LIVE value from any underlying signal — no `const initial = get()` workaround needed.
 
 ```typescript
@@ -259,8 +260,14 @@ const App = () => (
 // Read resolved mode anywhere:
 const mode = useMode()  // "light" | "dark" (reactive signal)
 ```
+- @pyreon/attrs — placeholder
+- @pyreon/rocketstyle — placeholder
+- @pyreon/coolgrid — placeholder
+- @pyreon/kinetic — placeholder
+- @pyreon/kinetic-presets — placeholder
+- @pyreon/connector-document — placeholder
 
-## Ecosystem Packages (20)
+## Ecosystem Packages (21)
 
 - @pyreon/store — Global state management — Pinia-inspired composition stores returning StoreApi<T>. Stores are singletons by ID — the setup function runs once. Calling the returned hook multiple times returns the same StoreApi instance. Use `resetStore(id)` or `resetAllStores()` to force re-creation.
 - @pyreon/state-tree — Structured reactive state tree — composable models with snapshots, patches, and middleware. State mutations must go through actions — direct `.set()` calls on state signals bypass middleware and patch recording. The model enforces this in dev mode.
@@ -289,6 +296,7 @@ const mode = useMode()  // "light" | "dark" (reactive signal)
 - @pyreon/storybook — Storybook renderer for Pyreon components
 - @pyreon/mcp — Model Context Protocol server — discoverability map, live API lookup, validation, migration, anti-pattern catalog, changelog, test-environment audit. Each `createServer()` instance maintains its own cached context (routes, components, islands). The cache auto-resets when `process.cwd()` changes between tool invocations, so the same server can operate across multiple projects in one session.
 - @pyreon/lint — Pyreon-specific linter — 93 rules across 18 categories, config files, watch mode, AST cache, CLI + LSP
+- @pyreon/dnd — Signal-driven drag and drop over @atlaskit/pragmatic-drag-and-drop — draggable, droppable, sortable, file drop, monitor. The element-bound hooks (`useDraggable` / `useDroppable` / `useFileDrop`) defer pdnd registration to the next microtask so `ref` callbacks are populated first — call the hook in the component body and let the ref land. `useDragMonitor` registers immediately (it has no element to wait for).
 
 ## Zero (Full-Stack Framework)
 

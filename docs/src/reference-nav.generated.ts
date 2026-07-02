@@ -9,6 +9,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
     "collapsed": true,
     "items": [
       {
+        "text": "attrs",
+        "slug": "reference/attrs"
+      },
+      {
         "text": "compiler",
         "slug": "reference/compiler"
       },
@@ -41,6 +45,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/i18n"
       },
       {
+        "text": "kinetic-presets",
+        "slug": "reference/kinetic-presets"
+      },
+      {
         "text": "machine",
         "slug": "reference/machine"
       },
@@ -59,6 +67,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
       {
         "text": "rx",
         "slug": "reference/rx"
+      },
+      {
+        "text": "sized-map",
+        "slug": "reference/sized-map"
       },
       {
         "text": "state-tree",
@@ -116,6 +128,18 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/code"
       },
       {
+        "text": "connector-document",
+        "slug": "reference/connector-document"
+      },
+      {
+        "text": "coolgrid",
+        "slug": "reference/coolgrid"
+      },
+      {
+        "text": "dnd",
+        "slug": "reference/dnd"
+      },
+      {
         "text": "document-primitives",
         "slug": "reference/document-primitives"
       },
@@ -132,12 +156,20 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/head"
       },
       {
+        "text": "kinetic",
+        "slug": "reference/kinetic"
+      },
+      {
         "text": "primitives",
         "slug": "reference/primitives"
       },
       {
         "text": "rich-text",
         "slug": "reference/rich-text"
+      },
+      {
+        "text": "rocketstyle",
+        "slug": "reference/rocketstyle"
       },
       {
         "text": "router",

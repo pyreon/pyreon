@@ -45,7 +45,7 @@ const tree = extractDocumentTree(vnode, {
 })
 ```
 
-Returns `DocNode | DocChild[] | null` (re-exported from `@pyreon/document`). String/number children are inlined as text; reactive accessors (`() => signal()`) are resolved at extraction time, so calling `extractDocumentTree` again after a signal change produces a fresh tree reflecting the live values.
+Always returns a `DocNode` (the type is re-exported from `@pyreon/document`) — loose children and non-extractable input are wrapped in a `{ type: 'document' }` root. String/number children are inlined as text; reactive accessors (`() => signal()`) are resolved at extraction time, so calling `extractDocumentTree` again after a signal change produces a fresh tree reflecting the live values.
 
 **Extraction resolution order for `_documentProps`** (per primitive):
 
@@ -66,7 +66,7 @@ const styles = resolveStyles({
   color: '#222',
   padding: '12px 16px',
 }, 16)
-// → { fontSize: 24, fontWeight: 700, color: '#222', paddingTop: 12, paddingRight: 16, ... }
+// → { fontSize: 24, fontWeight: 'bold', color: '#222', paddingTop: 12, paddingRight: 16, ... }
 ```
 
 ### CSS value parsers
@@ -77,8 +77,8 @@ Low-level helpers that `resolveStyles` uses internally. Useful when you need to 
 import {
   parseCssDimension,    // '1.5rem' → 24 (with rootSize=16)
   parseBoxModel,        // '12px 16px' → { top: 12, right: 16, bottom: 12, left: 16 }
-  parseFontWeight,      // 'bold' → 700; 'normal' → 400; numeric strings → number
-  parseLineHeight,      // '1.5' → { ratio: 1.5 }; '24px' → { px: 24 }
+  parseFontWeight,      // 'bold' / 'normal' pass through as strings; numeric strings → number
+  parseLineHeight,      // returns a plain number: '1.5' → 1.5; '24px' → 24
 } from '@pyreon/connector-document'
 ```
 
