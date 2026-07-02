@@ -43,10 +43,9 @@ describe('optional chaining', () => {
     expect(transform(app(body), { target: 'kotlin' }).code).toContain('p?.name')
   })
 
-  it('propagates `?.` down a multi-level chain (a?.b.c → a?.b?.c)', () => {
+  it('multi-level chain: Kotlin propagates ?. (required); Swift does NOT (auto-propagates — a redundant ?. on a chain-unwrapped non-optional field is an ERROR)', () => {
     const body = `  const c = computed(() => p()?.addr.city)`
-    // Kotlin REQUIRES the propagation; Swift accepts it. Both emit the same.
-    expect(transform(app(body), { target: 'swift' }).code).toContain('p?.addr?.city')
+    expect(transform(app(body), { target: 'swift' }).code).toContain('p?.addr.city')
     expect(transform(app(body), { target: 'kotlin' }).code).toContain('p?.addr?.city')
   })
 
