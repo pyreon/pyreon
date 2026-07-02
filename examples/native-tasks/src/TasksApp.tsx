@@ -209,6 +209,9 @@ function TasksPage() {
         <Button onPress={() => navigate('/lifecycle')} data-testid="tasks-lifecycle">
           Lifecycle
         </Button>
+        <Button onPress={() => navigate('/stats')} data-testid="tasks-stats">
+          Stats
+        </Button>
         <Button onPress={logout} data-testid="tasks-logout">
           Logout
         </Button>
@@ -365,6 +368,40 @@ function TaskDetailPage(props: { params: { id: string } }) {
   )
 }
 
+// Stats screen — the 2026-07 P1-sprint vocabulary, device-proven in one
+// realistic page: Object.keys/values over a DECLARED struct (the typeRef
+// resolution), a seeded reduce, JS `/` → Double division, the conditional
+// filter-map idiom (`flatMap(v => cond ? [v] : [])`), and a 2-param
+// index-callback with Int×Double coercion + a mixed comparison. The device
+// smokes assert the Int-derived texts ("247" / "2" / "3") — Double TEXT is
+// deliberately not asserted (Swift/Kotlin stringify Doubles differently);
+// the average rendering AT ALL proves the Double pipeline.
+type Scores = { math: number; art: number; gym: number }
+
+function StatsPage() {
+  const navigate = useNavigate()
+  const scores = signal<Scores>({ math: 82, art: 91, gym: 74 })
+  const subjects = computed(() => Object.keys(scores()))
+  const total = computed(() => Object.values(scores()).reduce((a: number, b: number) => a + b, 0))
+  const average = computed(() => total() / subjects().length)
+  const high = computed(() => Object.values(scores()).flatMap((v: number) => v > 80 ? [v] : []))
+  const curved = computed(() => Object.values(scores()).filter((v: number, i: number) => v * 1.05 > i + 75))
+  return (
+    <Stack gap={3} padding={4} data-testid="stats-page">
+      <Text data-testid="stats-total">{String(total())}</Text>
+      <Text data-testid="stats-average">{String(average())}</Text>
+      <Text data-testid="stats-high">{String(high().length)}</Text>
+      <Text data-testid="stats-curved">{String(curved().length)}</Text>
+      <For each={subjects} by={(name: string) => name}>
+        {(name: string) => <Text>{name}</Text>}
+      </For>
+      <Button onPress={() => navigate('/tasks')} data-testid="stats-back">
+        Back to tasks
+      </Button>
+    </Stack>
+  )
+}
+
 // ── App root ──
 
 export function TasksApp() {
@@ -404,6 +441,11 @@ export function TasksApp() {
       {
         path: '/lifecycle',
         component: LifecycleScreen,
+        beforeEnter: () => useApp().store.isAuthed(),
+      },
+      {
+        path: '/stats',
+        component: StatsPage,
         beforeEnter: () => useApp().store.isAuthed(),
       },
     ],

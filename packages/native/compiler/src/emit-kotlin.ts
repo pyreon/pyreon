@@ -3253,10 +3253,26 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   ) as Extract<ChildIR, { kind: 'expr' }> | undefined
 
   const items = each ? emitKotlinSignalRead(each.value) : 'items'
-  const idPath = by && by.value.kind === 'arrow' ? extractMemberPath(by.value.body) : 'id'
+  // `by` keying — mirror of the Swift resolver: identity ((n) => n) →
+  // `key = { it }`; member ((i) => i.id) → `key = { it.id }`; anything else →
+  // NAMED warning + the `it.id` fallback (never a silent mis-emit).
+  let kotlinKey = 'it.id'
+  if (by && by.value.kind === 'arrow') {
+    const b = by.value
+    if (b.body !== undefined && b.body.kind === 'identifier' && b.params[0] === b.body.name) {
+      kotlinKey = 'it'
+    } else if (b.body !== undefined && b.body.kind === 'member') {
+      kotlinKey = `it.${b.body.property}`
+    } else {
+      _emitWarnings.push(
+        `<For by={…}>: only an identity key ((x) => x) or a member key ((x) => x.field) lowers to a Compose items() key — this by-callback matches neither; emitting key = { it.id } which likely fails to compile. Key on a field or the element itself.`,
+      )
+    }
+  }
+  const idPath = kotlinKey
 
   if (!renderArrow || renderArrow.expr.kind !== 'arrow') {
-    return `LazyColumn {\n${' '.repeat(indent + 2)}items(${items}, key = { it.${idPath} }) {}\n${' '.repeat(indent)}}`
+    return `LazyColumn {\n${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) {}\n${' '.repeat(indent)}}`
   }
   const arrow = renderArrow.expr as Extract<ExprIR, { kind: 'arrow' }>
   const param = arrow.params[0] ?? 'item'
@@ -3266,7 +3282,7 @@ function emitKotlinFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const outerClose = ' '.repeat(indent)
   return (
     `LazyColumn {\n` +
-    `${' '.repeat(indent + 2)}items(${items}, key = { it.${idPath} }) { ${param} ->\n` +
+    `${' '.repeat(indent + 2)}items(${items}, key = { ${idPath} }) { ${param} ->\n` +
     `${pad}${emitKotlinExpr(body, indent + 4)}\n` +
     `${close}}\n` +
     `${outerClose}}`
@@ -4951,11 +4967,6 @@ function extractStaticText(children: ChildIR[]): string | null {
   if (children.length === 0) return ''
   if (children.length === 1 && children[0]!.kind === 'text') return children[0]!.value
   return null
-}
-
-function extractMemberPath(expr: ExprIR): string {
-  if (expr.kind === 'member') return expr.property
-  return 'id'
 }
 
 function escapeKotlinInterp(s: string): string {

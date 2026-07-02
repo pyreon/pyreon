@@ -284,6 +284,40 @@ final class PyreonTasksUITests: XCTestCase {
             "Did not return to tasks after lifecycle Back"
         )
 
+        // Phase 5.6: stats — the 2026-07 P1-sprint vocabulary in one page:
+        // Object.keys/values over a DECLARED struct (typeRef resolution),
+        // seeded reduce, Double division, the filter-map flatMap idiom, a
+        // 2-param indexed filter with Int×Double coercion + mixed
+        // comparison, and an identity-keyed <For> over a string list
+        // (id: \.self — the For-by fix this page surfaced). Int-derived
+        // texts are asserted exactly ("247" / "2"); Double TEXT is not
+        // (Swift/Kotlin stringify Doubles differently) — the average
+        // rendering at all proves the Double pipeline.
+        let statsNav = app.buttons["tasks-stats"].firstMatch
+        XCTAssertTrue(statsNav.exists, "Stats button missing on tasks page")
+        statsNav.tap()
+
+        let statsPage = app.otherElements["stats-page"].firstMatch
+        XCTAssertTrue(
+            statsPage.waitForExistence(timeout: 15),
+            "Stats page did not render"
+        )
+        let statsTotal = app.staticTexts["stats-total"].firstMatch
+        XCTAssertTrue(statsTotal.waitForExistence(timeout: 10), "Stats total missing")
+        XCTAssertEqual(statsTotal.label, "247", "Object.values reduce total wrong")
+        let statsHigh = app.staticTexts["stats-high"].firstMatch
+        XCTAssertTrue(statsHigh.exists, "Stats high-count missing")
+        XCTAssertEqual(statsHigh.label, "2", "filter-map high count wrong")
+        let statsAvg = app.staticTexts["stats-average"].firstMatch
+        XCTAssertTrue(statsAvg.exists, "Stats average (Double pipeline) missing")
+        let statsBack = app.buttons["stats-back"].firstMatch
+        XCTAssertTrue(statsBack.exists, "Back button missing on stats page")
+        statsBack.tap()
+        XCTAssertTrue(
+            tasksPage.waitForExistence(timeout: 15),
+            "Did not return to tasks after stats Back"
+        )
+
         // Phase 6: logout — flips the store flag back; lands on /login.
         let logout = app.buttons["tasks-logout"].firstMatch
         XCTAssertTrue(logout.exists, "Logout button missing on tasks page")
