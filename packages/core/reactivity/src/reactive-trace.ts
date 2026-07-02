@@ -120,6 +120,9 @@ export function _recordSignalWrite(name: string | undefined, prev: unknown, next
  * to the error context.
  */
 export function getReactiveTrace(): ReactiveTraceEntry[] {
+  // Prod early-return: `_recordSignalWrite` call sites are NODE_ENV-gated, so
+  // the ring buffer never fills in a production build — always [].
+  if (process.env.NODE_ENV === 'production') return []
   if (_buf === null || _count === 0) return []
   if (_count <= CAP) {
     // Buffer not yet wrapped — entries 0.._count-1 are in order.
