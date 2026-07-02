@@ -60,6 +60,11 @@ dependencies {
     // Deps required by the runtime-kotlin srcDir sources + M2 material
     // for the emit header's `import androidx.compose.material.*`.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // PyreonWebSocketOkHttp.kt (in the runtime-kotlin srcDir above) imports
+    // okhttp3 — the default websocket transport backing the TS-side
+    // ws.connect(). Every app compiling the runtime srcDir needs the dep,
+    // websockets used or not (the srcDir compiles all runtime sources).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // <Icon> emit references Icons.Filled.* at compile time — the small
     // core set only (never -extended; PR-1.3's curated map is core-only).
     implementation("androidx.compose.material:material-icons-core")
