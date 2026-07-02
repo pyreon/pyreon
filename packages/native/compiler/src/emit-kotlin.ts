@@ -33,6 +33,7 @@ import {
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
+  typeIsOptional,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -2090,6 +2091,20 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
           `Number.isInteger(${argStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively. Give the argument a resolvable number type.`,
         )
       }
+      // `isNaN(x)` — mirror of the Swift lowering (SILENT fail).
+      if (
+        e.callee.kind === 'identifier' &&
+        e.callee.name === 'isNaN' &&
+        e.args.length === 1
+      ) {
+        const nT = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const nStr = emitKotlinExpr(e.args[0]!, indent)
+        if (nT.kind === 'number' && nT.float !== true) return 'false'
+        if (nT.kind === 'number') return `(${nStr}).isNaN()`
+        _emitWarnings.push(
+          `isNaN(${nStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
+        )
+      }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
       // NaN on failure; the `?:` default keeps a non-null Int/Double.
@@ -2421,6 +2436,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // end. Kotlin `getOrNull` is null-safe but not negative-aware, so
             // resolve the index first. (Swift mirror: indices.contains check.)
             if (e.args.length === 1) {
+              // ARRAY receivers only — String.getOrNull returns Char? (JS
+              // returns a STRING) and .size doesn't exist on String — a
+              // SILENT fail. String `.at` warns NAMED (mirror of Swift).
+              const atT = inferType(e.callee.object, _kotlinExprInferCtx)
+              if (atT.kind === 'string') {
+                _emitWarnings.push(
+                  `${obj}.at(...): String.at has no Kotlin lowering yet (Char-vs-String mismatch) — emitting the raw call, which fails to compile. Use string slicing or restructure.`,
+                )
+                break
+              }
               const i = argExprs[0]!
               return `${obj}.getOrNull(if ((${i}) < 0) ${obj}.size + (${i}) else (${i}))`
             }
@@ -2546,6 +2571,16 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
             // comparator with an expression body; else falls through.
             const cmp = e.args[0]
             if (e.args.length === 1 && cmp!.kind === 'arrow' && cmp!.params.length === 2) {
+              // Multi-statement comparator — the Comparator lambda COULD
+              // take a labeled block, but the Swift side can't (Bool
+              // conversion), so both targets warn for cross-target parity
+              // (never silent; was the block-body sentinel drop).
+              if (cmp!.stmts !== undefined && cmp!.stmts.length > 0) {
+                _emitWarnings.push(
+                  `.sort with a multi-statement comparator is not lowered — use an expression-body comparator ((a, b) => a - b) or precompute the key.`,
+                )
+                break
+              }
               const ps = cmp!.params.map((p) => kotlinIdent(p)).join(', ')
               return `${obj}.sortedWith(Comparator { ${ps} -> ${emitKotlinExpr(cmp!.body, indent)} })`
             }
@@ -2775,9 +2810,22 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       return `${leftStr} ${e.op} ${rightStr}`
     }
-    case 'unary':
-      // Parser-B: prefix unary. Kotlin accepts `!x`, `-x`, `+x` verbatim.
+    case 'unary': {
+      // Mirror of the Swift truthiness lowering — JS `!x` / `!!x` on
+      // non-Boolean args were SILENT fails ("argument type mismatch").
+      if (e.op === '!') {
+        const inner = e.argument
+        const isDoubleNeg = inner.kind === 'unary' && inner.op === '!'
+        const target = isDoubleNeg ? (inner as { argument: ExprIR }).argument : inner
+        const tT = inferType(target, _kotlinExprInferCtx)
+        const tStr = emitKotlinExpr(target, indent)
+        if (tT.kind === 'number') return isDoubleNeg ? `(${tStr} != 0)` : `(${tStr} == 0)`
+        if (tT.kind === 'string') return isDoubleNeg ? `(${tStr}).isNotEmpty()` : `(${tStr}).isEmpty()`
+        if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitKotlinExpr(inner, indent)}`
+        if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != null)` : `(${tStr} == null)`
+      }
       return `${e.op}${emitKotlinExpr(e.argument, indent)}`
+    }
     case 'logical':
       // Parser-C: short-circuit logical. Kotlin `&&` / `||` semantics
       // match JS. `??` lowers to the Elvis operator — parenthesized
