@@ -62,7 +62,17 @@ export interface ISRConfig {
    * } }
    */
   tagsForRequest?: (req: Request) => string[] | Promise<string[]>
-  /** Revalidation interval in seconds. */
+  /**
+   * Revalidation interval in seconds — the RUNTIME stale-while-revalidate
+   * TTL applied by `createISRHandler` to every ISR-served route.
+   *
+   * NOT the same knob as a route file's `export const revalidate` — that
+   * export feeds the BUILD-TIME platform manifest (`_pyreon-revalidate.json`,
+   * consumed by `Adapter.revalidate()` for platform-driven rebuild-on-stale)
+   * and does not change this runtime TTL. The two layers coexist; same name
+   * because both mean "how stale may this page get", different enforcement
+   * points.
+   */
   revalidate: number
   /**
    * Maximum number of distinct URL paths to keep in the in-memory cache.
@@ -138,8 +148,26 @@ export interface ISRConfig {
    *     return `${url.pathname}?sort=${url.searchParams.get('sort') ?? ''}`
    *   },
    * }
+   *
+   * @example
+   * // Shorthand: key by pathname only — strips EVERY query param, the
+   * // one-liner fix for analytics-param cache explosion (utm_*, fbclid).
+   * // NOTE: does NOT make cookie-varying pages safe to cache — responses
+   * // with `Vary: Cookie`/`Authorization` are still refused unless a
+   * // custom cacheKey FUNCTION varies by user identity.
+   * isr: { revalidate: 60, cacheKey: 'path-only' }
    */
-  cacheKey?: (req: Request) => string
+  cacheKey?: ((req: Request) => string) | 'path-only'
+  /**
+   * On background-revalidation TIMEOUT, drop the stale cache entry so the
+   * NEXT request renders fresh (a cache miss) instead of serving the stale
+   * copy forever. Default `false` = keep serving stale — safest under load
+   * (one hung render doesn't turn into a thundering herd), but a handler
+   * that hangs PERMANENTLY (dead upstream, deadlocked loader) leaves the
+   * entry stale until a manual `revalidateNow()`. Enable when you prefer
+   * eventual freshness over guaranteed availability for timed-out entries.
+   */
+  expireOnTimeout?: boolean
   /**
    * Pluggable cache backing for multi-instance / horizontally-scaled
    * production. Default: in-memory `Map` per-process (capped by
@@ -301,7 +329,17 @@ export interface ZeroConfig {
 
   /** SSG options — only used when mode is "ssg". */
   ssg?: {
-    /** Paths to prerender (or function returning paths). */
+    /**
+     * Paths to prerender (or a function returning them).
+     *
+     * PRECEDENCE — this option REPLACES auto-detection entirely: when set,
+     * the route tree is NOT walked, so static routes are not auto-listed
+     * and route-level `getStaticPaths` exports are IGNORED (the build
+     * warns when it detects both). Use it to take full manual control of
+     * the prerender list; for the common "enumerate my dynamic route"
+     * case prefer `export const getStaticPaths` in the route file, which
+     * composes with auto-detection.
+     */
     paths?: string[] | (() => string[] | Promise<string[]>)
     /**
      * On-disk output format for prerendered routes — controls which file(s)

@@ -171,3 +171,17 @@ describe('formatRouteModeTable', () => {
     expect(formatRouteModeTable([], 'ssr')).toEqual([])
   })
 })
+
+describe('assertModesSupported per-route fix lines (Tier-2 E)', () => {
+  it('each offender line carries a pasteable fix', () => {
+    expect(() =>
+      assertModesSupported(
+        [
+          { pattern: '/live', mode: 'ssr', declared: true },
+          { pattern: '/feed', mode: 'isr', declared: true },
+        ],
+        'ssg',
+      ),
+    ).toThrow(/\/live \(renderMode: 'ssr'\) → change to `export const renderMode = 'ssg'`/)
+  })
+})

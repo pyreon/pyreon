@@ -421,10 +421,17 @@ export function createISRHandler(
   //      entry per click variant). Strip them with `cacheKey: (req) =>
   //      new URL(req.url).pathname` if your route doesn't depend on
   //      any query params.
+  // `'path-only'` shorthand: key by pathname, stripping every query param
+  // (the one-liner fix for analytics-param cache explosion). Deliberately
+  // does NOT count as a custom key for the auth-safety checks below — it
+  // varies by NOTHING user-specific, so Vary: Cookie responses must still
+  // be refused exactly like the default key.
   const deriveKey: (req: Request, url: URL) => string
     = typeof config.cacheKey === 'function'
       ? (req, _url) => (config.cacheKey as (r: Request) => string)(req)
-      : (_req, url) => url.pathname + url.search
+      : config.cacheKey === 'path-only'
+        ? (_req, url) => url.pathname
+        : (_req, url) => url.pathname + url.search
 
   // One-time dev warning when the default cacheKey is in effect. Mirrors
   // the M2.4 adapter env-var warning pattern: warn ONCE per handler
@@ -442,7 +449,7 @@ export function createISRHandler(
   // See .claude/rules/anti-patterns.md → "Local `__DEV__` const alias".
   if (
     process.env.NODE_ENV !== 'production'
-    && !hasCacheKey
+    && config.cacheKey === undefined
     && !_warnedDefaultCacheKeyHandlers.has(deriveKey)
   ) {
     _warnedDefaultCacheKeyHandlers.add(deriveKey)
@@ -577,8 +584,22 @@ export function createISRHandler(
         await store.set(key, { html, headers, timestamp: Date.now() })
         await recordTags(key, originalReq)
       }
-    } catch {
-      // Revalidation failed / timed out — stale cache entry remains valid
+    } catch (err) {
+      // Revalidation failed / timed out — stale cache entry remains valid,
+      // UNLESS the user opted into expire-on-timeout: then a TIMED-OUT
+      // entry is dropped so the next request is a fresh miss instead of
+      // serving stale forever (see ISRConfig.expireOnTimeout trade-off).
+      if (
+        config.expireOnTimeout === true
+        && err instanceof Error
+        && err.message.includes('revalidation timeout')
+      ) {
+        try {
+          await store.delete?.(key)
+        } catch {
+          /* best-effort — a failing delete keeps the stale entry */
+        }
+      }
     } finally {
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId)
