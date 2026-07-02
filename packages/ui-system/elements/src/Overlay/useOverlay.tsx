@@ -9,6 +9,7 @@
  * nested overlay blocking is coordinated through the overlay context.
  */
 
+import { onMount } from '@pyreon/core'
 import { batch, isServer, signal } from '@pyreon/reactivity'
 import { throttle } from '@pyreon/ui-core'
 import { value } from '@pyreon/unistyle'
@@ -238,6 +239,19 @@ const useOverlay = ({
   const setUnblocked = () => blockedCount.update((c) => Math.max(0, c - 1))
 
   const showContent = () => {
+    // Targeted misuse signal: opening with listeners never attached means
+    // positioning, click-outside, ESC, and hover-close are all dead — the
+    // historical raw-consumer foot-gun (the hook auto-attaches in component
+    // setup now, so this fires only for outside-setup usage that skipped
+    // manual `setupListeners()`).
+    if (IS_DEVELOPMENT && !isServer && !_listenersAttached) {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        '[Pyreon] useOverlay.showContent() called but setupListeners() was never attached — ' +
+          'positioning, click-outside, ESC, and hover-close will not work. ' +
+          'Call useOverlay() during component setup (auto-attaches on mount) or call setupListeners() manually.',
+      )
+    }
     // Capture the element to return focus to on close (typically the trigger).
     if (!isServer) {
       _prevFocusEl = document.activeElement as HTMLElement | null
@@ -392,11 +406,45 @@ const useOverlay = ({
   const handleVisibility = throttle((e: Event) => handleVisibilityByEventType(e), throttleDelay)
 
   // --------------------------------------------------------------------------
-  // Set up all event listeners on mount, clean up on unmount
+  // Set up all event listeners on mount, clean up on unmount.
+  //
+  // IDEMPOTENT: the hook auto-attaches via `onMount` below AND the built-in
+  // Overlay component historically calls `setupListeners()` in its own
+  // onMount — the second call must return the FIRST call's cleanup instead of
+  // attaching everything twice (anti-patterns class D: re-push the cached
+  // cleanup). The cleanup itself is also idempotent (both registered cleanups
+  // run on unmount) and resets the flag so a re-mount (KeepAlive) re-attaches.
   // --------------------------------------------------------------------------
+  let _listenersAttached = false
+  let _listenersCleanup: (() => void) | null = null
   const setupListeners = () => {
     if (isServer) return () => {}
+    if (_listenersAttached && _listenersCleanup) return _listenersCleanup
+    _listenersAttached = true
     const cleanups: (() => void)[] = []
+
+    // Position-on-open: reposition when the overlay opens AND when the
+    // portaled content actually mounts (`isContentLoaded` flips as the
+    // content ref registers — a beat after `active`). Without this, nothing
+    // ever positioned the content on open — `setContentPosition` was only
+    // reachable through the throttled resize/scroll handlers, so every
+    // dropdown/tooltip rendered at the document origin until the window
+    // scrolled or resized. Plain signal subscriptions (not `effect()`): the
+    // deps are exactly these two signals, and the disposers ride the same
+    // cleanup path as the listeners. The rAF defers measurement one frame so
+    // layout settles after the Portal mount; the inner re-check guards
+    // against a close (or unmount) racing the frame.
+    const repositionOnOpen = () => {
+      if (!active() || !isContentLoaded()) return
+      requestAnimationFrame(() => {
+        if (active() && isContentLoaded()) setContentPosition()
+      })
+    }
+    cleanups.push(active.subscribe(repositionOnOpen))
+    cleanups.push(isContentLoaded.subscribe(repositionOnOpen))
+    // Content may already be open+mounted when listeners attach late
+    // (manual setupListeners after showContent) — position it now.
+    repositionOnOpen()
 
     // Click-based open/close
     const enabledClick = openOn === 'click' || CLICK_CLOSE_KINDS.has(closeOn)
@@ -554,11 +602,27 @@ const useOverlay = ({
       })
     }
 
-    // Cleanup function
-    return () => {
+    // Cleanup function — idempotent (may be invoked twice: once via the
+    // hook's auto-attach onMount, once via a component's own onMount that
+    // received the cached reference) and resets the attach flag so a
+    // re-mount re-attaches.
+    _listenersCleanup = () => {
+      if (!_listenersAttached) return
+      _listenersAttached = false
+      _listenersCleanup = null
       for (const cleanup of cleanups) cleanup()
     }
+    return _listenersCleanup
   }
+
+  // Auto-attach: inside component setup (the overwhelmingly common case) the
+  // listeners wire themselves on mount — raw `useOverlay` consumers no longer
+  // ship dead triggers because they didn't know about `setupListeners()`.
+  // `setupListeners` stays returned for manual control (idempotent, so the
+  // built-in Overlay component's explicit call is a no-op after this) and for
+  // outside-setup usage, where `onMount` is a no-op and manual wiring remains
+  // required.
+  onMount(() => setupListeners())
 
   // Handle disabled state
   if (disabled) {
@@ -578,6 +642,9 @@ const useOverlay = ({
     setBlocked,
     setUnblocked,
     setupListeners,
+    // Manual reposition — for content whose SIZE changes while open (async
+    // option lists, images loading) where no resize/scroll event fires.
+    setContentPosition,
     Provider,
   }
 }
