@@ -640,7 +640,14 @@ export type ExprIR =
    * `property: undefined` — the emit produced `tasks.undefined`
    * (the broken shape the original tasks scaffold shipped).
    */
-  | { kind: 'index'; object: ExprIR; index: ExprIR }
+  /**
+   * `xs[i]` — plain computed access (native index; OOB traps, the documented
+   * simplification). `optional: true` = the `xs?.[i]` SAFE form: JS returns
+   * undefined out-of-bounds, so it lowers to the guarded native idiom
+   * (Swift `indices.contains ? xs[i] : nil` / Kotlin `getOrNull(i)`) and
+   * infers `element | undefined` so `?? fallback` collapses.
+   */
+  | { kind: 'index'; object: ExprIR; index: ExprIR; optional?: boolean }
   | {
       kind: 'binary'
       // Arithmetic + bitwise + exponent. Bitwise ops (`& | ^ << >>`) emit

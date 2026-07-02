@@ -156,7 +156,29 @@ export function synthLiteralStructName(
  * it twice would re-run that work. Used by the seedless-`.reduce(fn)` Swift
  * lowering (`obj.dropFirst().reduce(obj[0], fn)` names `obj` twice).
  */
+/**
+ * Does this access chain contain an OPTIONAL link (`a?.b` / `a?.[i]`)?
+ * Syntactic — no inference dependency (the type layer doesn't yet wrap
+ * optional-member results in a union, so a type-based check under-detects).
+ * Used by the safe-index emit to route optional-RECEIVER chains: Kotlin
+ * composes fully (`?.getOrNull`); Swift's guarded idiom can't (a `Bool?`
+ * condition) and falls back to the warned nil-propagating subscript.
+ */
+export function exprHasOptionalLink(expr: ExprIR): boolean {
+  if (expr.kind === 'member') {
+    return expr.optional === true || exprHasOptionalLink(expr.object)
+  }
+  if (expr.kind === 'index') {
+    return expr.optional === true || exprHasOptionalLink(expr.object)
+  }
+  if (expr.kind === 'call') return exprHasOptionalLink(expr.callee)
+  if (expr.kind === 'paren') return exprHasOptionalLink(expr.inner)
+  return false
+}
+
 export function isReReadableExpr(expr: ExprIR): boolean {
+  // A scalar literal named twice is free — trivially re-readable.
+  if (expr.kind === 'literal') return true
   if (expr.kind === 'identifier') return true
   // zero-arg call = signal / store / hook read — re-reading is free
   if (expr.kind === 'call' && expr.args.length === 0) return isReReadableExpr(expr.callee)

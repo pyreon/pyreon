@@ -1027,9 +1027,16 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       return { kind: 'unknown' }
     }
     case 'index': {
-      // `xs[i]` on an array-typed object → the element type.
+      // `xs[i]` on an array-typed object → the element type. The OPTIONAL
+      // form (`xs?.[i]`, the safe-index lowering) → `element | undefined` so
+      // a chained `?? fallback` collapses to the non-optional type (#1957).
       const idxObj = inferType(expr.object, ctx)
-      if (idxObj.kind === 'array') return idxObj.element
+      if (idxObj.kind === 'array') {
+        if (expr.optional === true) {
+          return { kind: 'union', branches: [idxObj.element, { kind: 'undefined' }] }
+        }
+        return idxObj.element
+      }
       return { kind: 'unknown' }
     }
     case 'member': {
