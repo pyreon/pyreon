@@ -37,9 +37,9 @@ describe('mountFor — multi-node entry range moves', () => {
     const container = document.createElement('div')
     const cleanup = mount(
       () =>
-        h(For, { each: () => items(), by: (it: Item) => it.id }, (it: Item) =>
+        h(For, { each: () => items(), by: (it: Item) => it.id, children: (it: Item) =>
           h(Fragment, null, h('span', null, `s${it.id}`), h('em', null, `e${it.id}`)),
-        ),
+        }),
       container,
     )
     return { items, container, cleanup }
@@ -75,11 +75,11 @@ describe('mountFor — multi-node entry range moves', () => {
     // Odd ids render ONE node (end === null fast path), even ids render TWO.
     const cleanup = mount(
       () =>
-        h(For, { each: () => items(), by: (it: Item) => it.id }, (it: Item) =>
+        h(For, { each: () => items(), by: (it: Item) => it.id, children: (it: Item) =>
           it.id % 2 === 1
             ? h('b', null, `s${it.id}e${it.id}`)
             : h(Fragment, null, h('span', null, `s${it.id}`), h('em', null, `e${it.id}`)),
-        ),
+        }),
       container,
     )
     expect(domText(container)).toBe(expectedText([1, 2, 3, 4]))
@@ -106,13 +106,14 @@ describe('mountKeyedList — multi-node entry range moves', () => {
     const ids = signal([1, 2, 3, 4, 5])
     const container = document.createElement('div')
     // A reactive accessor returning keyed vnodes routes through mountKeyedList.
-    const cleanup = mount(
-      () => () =>
-        ids().map((id) =>
-          h(Fragment, { key: id } as never, h('span', null, `s${id}`), h('em', null, `e${id}`)),
-        ),
-      container,
-    )
+    // The nested accessor (`() => VNode[]` returned from the mount child) is
+    // the runtime shape that routes into mountKeyedList — a framework-
+    // primitive cast per test-environment-parity's type-normalization rule.
+    const keyedAccessor = (() => () =>
+      ids().map((id) =>
+        h(Fragment, { key: id } as never, h('span', null, `s${id}`), h('em', null, `e${id}`)),
+      )) as unknown as import('@pyreon/core').VNodeChild
+    const cleanup = mount(keyedAccessor, container)
     expect(domText(container)).toBe(expectedText([1, 2, 3, 4, 5]))
 
     ids.set([5, 4, 3, 2, 1])
