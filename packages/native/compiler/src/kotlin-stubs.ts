@@ -900,6 +900,12 @@ class PyreonWebSocket {
   fun close() {}
 }
 
+// Mirror of the REAL runtime surface: PyreonWebSocketOkHttp.kt declares
+// connect(url) as a top-level EXTENSION (the core container stays
+// dependency-free; the extension is the OkHttp default transport). The stub
+// mirrors that exact shape — not a member — per the exact-surface rule.
+fun PyreonWebSocket.connect(url: String) {}
+
 class PyreonRecord(val id: String, val fields: Map<String, String> = emptyMap())
 class PyreonDatabase {
   fun insert(collection: String, record: PyreonRecord) {}

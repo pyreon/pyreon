@@ -210,6 +210,40 @@ object ContextCompat {
 }
 `
 
+// PyreonWebSocketOkHttp-specific stubs — the okhttp3 4.x surface the
+// transport file uses, mirrored EXACTLY (no superset — a superset stub
+// masks; the same rule the compiler's kotlin-stubs.ts documents 4×).
+// Gated behind --service=PyreonWebSocketOkHttp.
+const OKHTTP3_STUBS = `package okhttp3
+
+open class OkHttpClient {
+    fun newWebSocket(request: Request, listener: WebSocketListener): WebSocket =
+        throw UnsupportedOperationException("stub")
+}
+
+class Request private constructor() {
+    class Builder {
+        fun url(url: String): Builder = this
+        fun build(): Request = throw UnsupportedOperationException("stub")
+    }
+}
+
+class Response
+
+interface WebSocket {
+    fun send(text: String): Boolean
+    fun close(code: Int, reason: String?): Boolean
+}
+
+abstract class WebSocketListener {
+    open fun onOpen(webSocket: WebSocket, response: Response) {}
+    open fun onMessage(webSocket: WebSocket, text: String) {}
+    open fun onClosing(webSocket: WebSocket, code: Int, reason: String) {}
+    open fun onClosed(webSocket: WebSocket, code: Int, reason: String) {}
+    open fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {}
+}
+`
+
 const KOTLINX_COROUTINES_STUBS = `package kotlinx.coroutines
 
 import kotlin.coroutines.CoroutineContext
@@ -275,6 +309,10 @@ try {
     writeFileSync(androidxCoreContentPath, ANDROIDX_CORE_CONTENT_STUBS, 'utf8')
     writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
   }
+  const okhttpPath = join(tempDir, 'OkHttp3.kt')
+  if (SERVICE === 'PyreonWebSocketOkHttp') {
+    writeFileSync(okhttpPath, OKHTTP3_STUBS, 'utf8')
+  }
 
   const jarPath = join(tempDir, 'pyreon-runtime.jar')
 
@@ -299,6 +337,12 @@ try {
     SERVICE === 'PyreonClipboard'
       ? [androidContentPath, androidxCoreContentPath, kotlinxCoroutinesPath]
       : []
+  // The OkHttp transport is an EXTENSION over the core container — its
+  // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
+  const okhttpExtras =
+    SERVICE === 'PyreonWebSocketOkHttp'
+      ? [okhttpPath, resolve(PACKAGE_ROOT, 'src/main/kotlin/com/pyreon/runtime/PyreonWebSocket.kt')]
+      : []
 
   const kotlincArgs = typecheckOnly
     ? [
@@ -307,6 +351,7 @@ try {
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
+        ...okhttpExtras,
         SOURCE_FILE,
       ]
     : [
@@ -316,6 +361,7 @@ try {
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
+        ...okhttpExtras,
         SOURCE_FILE,
         TEST_FILE,
       ]
