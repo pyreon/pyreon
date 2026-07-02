@@ -47,27 +47,27 @@ function App() {
 }`
 
 describe('Object.keys on native — lowering + degrade-and-warn', () => {
-  it('Swift: Object.keys(inline literal) → static [String]; Object.values degrades to a typed empty array', () => {
+  it('Swift: Object.keys(inline literal) → static [String]; Object.values(homogeneous literal) → the value array', () => {
     const out = transform(SRC, { target: 'swift' })
     // POSITIVE: the three keys lower to a literal string array (declaration order).
     expect(out.code).toContain('["alpha", "beta", "gamma"]')
     // `.length` maps to Swift `.count`.
     expect(out.code).toContain('["alpha", "beta", "gamma"].count')
-    // DEGRADE: Object.values → typed empty (not the invalid `Object.values(...)`).
-    expect(out.code).toContain('[Any]()')
+    // Object.values on a HOMOGENEOUS literal now LOWERS to the value array
+    // (was degrade-warn before the values-lowering PR).
+    expect(out.code).toContain('[1, 2].count')
     expect(out.code).not.toContain('Object.keys')
     expect(out.code).not.toContain('Object.values')
-    // The degrade is LOUD.
-    expect(out.warnings.some((w) => w.includes('Object.values'))).toBe(true)
+    expect(out.warnings).toHaveLength(0)
   })
 
-  it('Kotlin: Object.keys(inline literal) → listOf(...); Object.values degrades to emptyList<Any>()', () => {
+  it('Kotlin: Object.keys(inline literal) → listOf(...); Object.values(homogeneous literal) → listOf of the values', () => {
     const out = transform(SRC, { target: 'kotlin' })
     expect(out.code).toContain('listOf("alpha", "beta", "gamma")')
-    expect(out.code).toContain('emptyList<Any>()')
+    expect(out.code).toContain('listOf(1, 2)')
     expect(out.code).not.toContain('Object.keys')
     expect(out.code).not.toContain('Object.values')
-    expect(out.warnings.some((w) => w.includes('Object.values'))).toBe(true)
+    expect(out.warnings).toHaveLength(0)
   })
 
   // The signal/computed-of-struct path. On main a `signal({...})` still infers

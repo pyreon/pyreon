@@ -31,6 +31,7 @@ import {
   objectLengthRangeForm,
   optionalMemberTernary,
   rewriteObjectKeys,
+  rewriteObjectValues,
   seedHandlerLocals,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
@@ -1920,6 +1921,12 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const rw = rewriteObjectKeys(e, _kotlinExprInferCtx)
         if (rw !== null) return emitKotlinExpr(rw, indent)
       }
+      // `Object.values(<object-typed expr>)` → a static member-access array
+      // (listOf(p.a, p.b)) — mirror of the Swift lowering.
+      {
+        const rw = rewriteObjectValues(e, _kotlinExprInferCtx)
+        if (rw !== null) return emitKotlinExpr(rw, indent)
+      }
       // Any other `Object.<method>(...)` — `keys` on a non-data-class arg,
       // `values` / `entries` (heterogeneous → `List<Any>`), `assign` /
       // `fromEntries` — has no native analog: a Kotlin data class carries no
@@ -1932,7 +1939,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.callee.object.name === 'Object'
       ) {
         _emitWarnings.push(
-          `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() on a statically-known object shape is supported (it lowers to a literal key list). Emitting an empty list; restructure to avoid runtime object reflection on native.`,
+          `Object.${e.callee.property}(...) has no native equivalent — only Object.keys() / Object.values() on a statically-known HOMOGENEOUS object shape are supported (it lowers to a literal key list). Emitting an empty list; restructure to avoid runtime object reflection on native.`,
         )
         return e.callee.property === 'keys' ? 'emptyList<String>()' : 'emptyList<Any>()'
       }

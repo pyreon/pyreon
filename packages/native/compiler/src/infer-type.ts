@@ -18,7 +18,7 @@
 // that would require a real type checker. It covers the shapes the
 // emitter actually emits, which is a fixed-and-growing surface.
 
-import { exprReferencesIdent } from './expr-utils'
+import { exprReferencesIdent, isReReadableExpr } from './expr-utils'
 import type { DeclIR, ExprIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 
 export interface InferenceCtx {
@@ -764,6 +764,13 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         const rw = rewriteObjectKeys(expr, ctx)
         if (rw !== null) return inferType(rw, ctx)
       }
+      // `Object.values(<object-typed expr>)` → same one-source-of-truth
+      // shape: infer the rewritten member-access array (its element type
+      // is the struct's homogeneous field type).
+      {
+        const rw = rewriteObjectValues(expr, ctx)
+        if (rw !== null) return inferType(rw, ctx)
+      }
       // Zero-arg call on a bare identifier is the canonical signal /
       // computed read shape: `count()` reads signal `count`. Walk the
       // callee identifier and look up the type.
@@ -1319,9 +1326,78 @@ export function rewriteObjectKeys(expr: ExprIR, ctx: InferenceCtx): ExprIR | nul
   // object-literal *type* inference (signal → struct type) is in place;
   // until then such a signal infers as `Any` and the call degrade-warns.
   const argType = inferType(arg, ctx)
-  if (argType.kind !== 'object') return null
+  const fields = objectFieldsOf(argType, ctx)
+  if (fields === null) return null
   return {
     kind: 'array',
-    elements: argType.fields.map((f) => ({ kind: 'literal', value: f.name })),
+    elements: fields.map((f) => ({ kind: 'literal', value: f.name })),
+  }
+}
+
+/**
+ * Resolve an object-shaped type to its FIELD list — an inline `object` type
+ * carries them directly; a `typeRef` (the dominant declared-struct shape,
+ * `signal<P>`) resolves through the module's struct registry. Null for
+ * anything else. Shared by the `Object.keys` / `Object.values` rewrites —
+ * pre-fix, keys() only handled the inline shape, so `Object.keys(p())` on a
+ * DECLARED type silently degrade-warned.
+ */
+function objectFieldsOf(
+  t: TypeIR,
+  ctx: InferenceCtx,
+): { name: string; type: TypeIR }[] | null {
+  if (t.kind === 'object') return t.fields
+  if (t.kind === 'typeRef') {
+    const m = ctx.structs.get(t.name)
+    if (m !== undefined) {
+      return [...m.entries()].map(([name, type]) => ({ name, type }))
+    }
+  }
+  return null
+}
+
+/**
+ * `Object.values(<object-typed expr>)` → a static member-access array
+ * (`[p.a, p.b]` — field order = declaration order, matching JS's
+ * insertion-order guarantee for string keys). Two gates keep it faithful:
+ *   - ALL field types must be IDENTICAL (JSON.stringify equality — JS's
+ *     mixed `(string|number)[]` values array has no native analog), and
+ *   - the arg must be RE-READABLE (`isReReadableExpr` — it's named once per
+ *     field; a chained method receiver would re-run work).
+ * The inline-literal form (`Object.values({a: 1, b: 2})`) lowers to the
+ * value exprs directly under the same homogeneity gate. Anything else
+ * returns null → the emitters' existing degrade-warn (never a silent drop).
+ * `Object.entries` stays degrade-warn: tuple arrays don't map cleanly to
+ * either target's idioms.
+ */
+export function rewriteObjectValues(expr: ExprIR, ctx: InferenceCtx): ExprIR | null {
+  if (expr.kind !== 'call') return null
+  const callee = expr.callee
+  if (
+    callee.kind !== 'member' ||
+    callee.object.kind !== 'identifier' ||
+    callee.object.name !== 'Object' ||
+    callee.property !== 'values'
+  ) {
+    return null
+  }
+  if (expr.args.length !== 1) return null
+  const arg = expr.args[0]!
+  const homogeneous = (types: TypeIR[]): boolean => {
+    if (types.length === 0) return false
+    const first = JSON.stringify(types[0])
+    return types.every((t) => JSON.stringify(t) === first)
+  }
+  if (arg.kind === 'object' && 'fields' in arg && (arg.spreads?.length ?? 0) === 0) {
+    const valueTypes = arg.fields.map((f) => inferType(f.value, ctx))
+    if (!homogeneous(valueTypes)) return null
+    return { kind: 'array', elements: arg.fields.map((f) => f.value) }
+  }
+  const fields = objectFieldsOf(inferType(arg, ctx), ctx)
+  if (fields === null || !homogeneous(fields.map((f) => f.type))) return null
+  if (!isReReadableExpr(arg)) return null
+  return {
+    kind: 'array',
+    elements: fields.map((f) => ({ kind: 'member', object: arg, property: f.name })),
   }
 }
