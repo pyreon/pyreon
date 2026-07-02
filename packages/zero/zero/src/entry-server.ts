@@ -410,7 +410,7 @@ export function wirePerRouteModes(
 	builtTemplate: string | undefined,
 	makeBufferedHandler?: () => RequestHandler,
 ): RequestHandler {
-	const entries = collectRouteModes(routes, appMode);
+	const entries = collectRouteModes(routes, appMode, config.routeRules);
 	const divergent = entries.some((e) => e.declared && e.mode !== appMode);
 	if (!divergent) return wireRenderMode(appMode, baseHandler, config);
 
@@ -439,7 +439,7 @@ export function wirePerRouteModes(
 
 	return async (req: Request) => {
 		const url = new URL(req.url);
-		const mode = resolveRenderModeForPath(routes, url.pathname, appMode);
+		const mode = resolveRenderModeForPath(routes, url.pathname, appMode, config.routeRules);
 		if (mode === "spa" && spaShell !== undefined && req.method === "GET") {
 			return new Response(spaShell, {
 				status: 200,

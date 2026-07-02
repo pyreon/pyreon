@@ -1565,7 +1565,9 @@ export interface FileRouteModeEntry {
 export async function collectFileRouteModes(
   routesDir: string,
   appMode: RenderMode = 'ssr',
+  rules?: import('./route-modes').RouteRules,
 ): Promise<FileRouteModeEntry[]> {
+  const { matchRouteRules } = await import('./route-modes')
   const { isApiRoute } = await import('./api-routes')
   const routes = await scanRouteFilesWithExports(routesDir, appMode)
 
@@ -1603,6 +1605,13 @@ export async function collectFileRouteModes(
         const i = dir.lastIndexOf('/')
         dir = i === -1 ? '' : dir.slice(0, i)
       }
+    }
+    // Central overrides: file/layout declaration > routeRules > app mode
+    // (same precedence as the runtime resolver).
+    const ruleMode = mode === undefined ? matchRouteRules(rules, r.urlPath) : undefined
+    if (ruleMode !== undefined) {
+      mode = ruleMode
+      declared = true
     }
     out.push({ pattern: r.urlPath, mode: mode ?? appMode, declared, filePath: r.filePath })
   }

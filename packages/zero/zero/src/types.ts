@@ -327,6 +327,28 @@ export interface ZeroConfig {
    */
   perfAdvisor?: boolean | { jsBudget?: number }
 
+  /**
+   * Central per-path render-mode overrides (glob keys: `*` = one segment,
+   * `**` = any depth). Applies to routes WITHOUT their own `renderMode`
+   * export — precedence: route-file export > routeRules > app `mode`.
+   * Ideal for retrofitting a mode policy without touching route files:
+   *
+   * ```ts
+   * zero({
+   *   mode: 'ssr',
+   *   routeRules: {
+   *     '/blog/**': { renderMode: 'isr' },
+   *     '/admin/**': { renderMode: 'spa' },
+   *   },
+   * })
+   * ```
+   *
+   * Impossible combos fail the build exactly like route-file declarations
+   * (e.g. a rule declaring 'ssr' inside a `mode: 'ssg'` app), with the
+   * offending rule named. The build mode table marks rule-sourced modes.
+   */
+  routeRules?: import('./route-modes').RouteRules
+
   /** SSG options — only used when mode is "ssg". */
   ssg?: {
     /**

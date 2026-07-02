@@ -414,6 +414,20 @@ Resolution is leaf-first along the matched chain: a page's own declaration beats
 
 When no route declares a divergent mode, the pipeline is byte-identical to the app-level mode — existing apps are unaffected.
 
+**Central overrides — `routeRules`.** When you'd rather declare a mode policy in ONE place than touch route files (retrofits, monorepo conventions), `zero({ routeRules })` maps path globs to modes — `*` matches one segment, `**` any depth, most-specific key wins:
+
+```ts
+zero({
+  mode: 'ssr',
+  routeRules: {
+    '/blog/**': { renderMode: 'isr' },
+    '/admin/**': { renderMode: 'spa' },
+  },
+})
+```
+
+Precedence is always: route-file `export const renderMode` (closest to the code) > `routeRules` > app `mode`. Rule-sourced modes appear in the build mode table and count as declarations for the impossible-combo build errors (the error names the offending rule).
+
 **You can always SEE the resolved modes.** Every production build prints a per-route mode table — `○ ssg`, `λ ssr`, `⟳ isr`, `⚡ spa`, with `(declared)` marking per-route overrides — and `zero dev`'s banner shows the app mode plus any hybrid overrides (`Mode  ssr (hybrid: 2 ssg, 1 isr)`); `zero dev --routes` lists each route with its true resolved mode. Apps above 40 routes collapse the build table to the counts line.
 
 **No silent missing pages.** Under SSG, a dynamic route (`[id].tsx`) with no `getStaticPaths` cannot be enumerated — the build now warns loudly, naming the file and the three fixes (add `getStaticPaths`, hand-list `ssg.paths`, or declare `renderMode = 'spa'` if a client-rendered shell is intended). Routes that declare a non-static mode and API routes are exempt.

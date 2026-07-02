@@ -34,6 +34,78 @@ function recordRenderMode(record: RouteRecord): RenderMode | undefined {
     : undefined
 }
 
+
+// ─── routeRules — central glob overrides ─────────────────────────────────────
+
+/**
+ * Central per-path mode overrides (Nuxt's routeRules idiom, scoped v1:
+ * renderMode only). Keys are path globs: `*` matches exactly one segment,
+ * `**` matches any depth (including zero segments). Values apply to every
+ * matching route that does NOT declare its own `renderMode` (route-file
+ * declarations are closest to the code and always win):
+ *
+ *   route-file `export const renderMode` > routeRules > app mode.
+ *
+ * Matching is most-specific-first and deterministic: exact keys beat
+ * wildcard keys; among wildcards, more segments beat fewer; `*` beats `**`
+ * at equal segment count.
+ */
+export type RouteRules = Record<string, { renderMode?: RenderMode }>
+
+/** One segment (`*`) / any-depth (`**`) glob match against a path. Pure. */
+export function matchesRouteGlob(glob: string, path: string): boolean {
+  const g = glob.split('/').filter(Boolean)
+  const p = path.split('/').filter(Boolean)
+  const walk = (gi: number, pi: number): boolean => {
+    if (gi === g.length) return pi === p.length
+    const seg = g[gi] as string
+    if (seg === '**') {
+      // any depth including zero
+      for (let skip = pi; skip <= p.length; skip++) {
+        if (walk(gi + 1, skip)) return true
+      }
+      return false
+    }
+    if (pi >= p.length) return false
+    if (seg === '*' || seg === p[pi]) return walk(gi + 1, pi + 1)
+    // A route-pattern param segment (`:slug`) is a concrete segment for
+    // matching purposes — only wildcards match it.
+    return false
+  }
+  return walk(0, 0)
+}
+
+/** Specificity sort: exact > more segments > `*` over `**`. Pure. */
+function ruleSpecificity(glob: string): number {
+  const segs = glob.split('/').filter(Boolean)
+  let score = segs.length * 100
+  for (const s of segs) {
+    if (s === '**') score -= 50
+    else if (s === '*') score -= 10
+  }
+  return score
+}
+
+/**
+ * Resolve the most-specific matching rule's renderMode for a path (or a
+ * route URL pattern — `:param` segments only match wildcards). Undefined
+ * when no rule matches or the matching rules carry no renderMode.
+ */
+export function matchRouteRules(
+  rules: RouteRules | undefined,
+  path: string,
+): RenderMode | undefined {
+  if (!rules) return undefined
+  const keys = Object.keys(rules).sort((a, b) => ruleSpecificity(b) - ruleSpecificity(a))
+  for (const key of keys) {
+    if (matchesRouteGlob(key, path)) {
+      const mode = rules[key]?.renderMode
+      if (mode !== undefined) return mode
+    }
+  }
+  return undefined
+}
+
 /**
  * Resolve the effective render mode for a concrete path against the route
  * tree. Walks the matched chain LEAF-FIRST so a page's own `renderMode`
@@ -46,6 +118,7 @@ export function resolveRenderModeForPath(
   routes: RouteRecord[],
   path: string,
   appMode: RenderMode,
+  rules?: RouteRules,
 ): RenderMode {
   const resolved = resolveRoute(path, routes)
   const matched = resolved?.matched ?? []
@@ -53,7 +126,9 @@ export function resolveRenderModeForPath(
     const mode = recordRenderMode(matched[i] as RouteRecord)
     if (mode !== undefined) return mode
   }
-  return appMode
+  // Central overrides sit between the file declaration and the app mode:
+  // file (closest to the code) > routeRules > app default.
+  return matchRouteRules(rules, path) ?? appMode
 }
 
 /** One enumerated page route with its effective mode (build-time walk). */
@@ -62,8 +137,10 @@ export interface RouteModeEntry {
   pattern: string
   /** Effective render mode after layout cascade + app default. */
   mode: RenderMode
-  /** True when the route itself (or an ancestor) DECLARED a mode. */
+  /** True when the route itself (or an ancestor / a routeRule) DECLARED a mode. */
   declared: boolean
+  /** Where the declaration came from — absent when the app default applied. */
+  via?: 'file' | 'rule'
 }
 
 /**
@@ -76,6 +153,7 @@ export interface RouteModeEntry {
 export function collectRouteModes(
   routes: RouteRecord[],
   appMode: RenderMode,
+  rules?: RouteRules,
 ): RouteModeEntry[] {
   const out: RouteModeEntry[] = []
   const walk = (records: RouteRecord[], inherited: RenderMode | undefined): void => {
@@ -89,10 +167,16 @@ export function collectRouteModes(
       }
       const path = (record as { path?: string }).path
       if (typeof path !== 'string') continue
+      const ruleMode = effective === undefined ? matchRouteRules(rules, path) : undefined
       out.push({
         pattern: path,
-        mode: effective ?? appMode,
-        declared: effective !== undefined,
+        mode: effective ?? ruleMode ?? appMode,
+        declared: effective !== undefined || ruleMode !== undefined,
+        ...(effective !== undefined
+          ? { via: 'file' as const }
+          : ruleMode !== undefined
+            ? { via: 'rule' as const }
+            : {}),
       })
     }
   }
@@ -124,9 +208,10 @@ export function assertModesSupported(
   // Each offender line carries its own one-line fix — the reader should be
   // able to paste the fix without reconstructing it from prose.
   const list = offenders
-    .map(
-      (o) =>
-        `  ${o.pattern} (renderMode: '${o.mode}') → change to \`export const renderMode = '${appMode === 'ssg' ? 'ssg' : 'spa'}'\` in its route file, or remove the export`,
+    .map((o) =>
+      o.via === 'rule'
+        ? `  ${o.pattern} (renderMode: '${o.mode}' via routeRules) → change or remove the matching zero({ routeRules }) entry`
+        : `  ${o.pattern} (renderMode: '${o.mode}') → change to \`export const renderMode = '${appMode === 'ssg' ? 'ssg' : 'spa'}'\` in its route file, or remove the export`,
     )
     .join('\n')
   throw new Error(

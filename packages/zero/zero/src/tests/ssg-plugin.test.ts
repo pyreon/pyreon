@@ -1732,3 +1732,33 @@ describe("format 'both' auto-canonical (Tier-2 H)", () => {
     }
   })
 })
+
+describe('SSG completeness warning — routeRules exemption (Tier-4)', () => {
+  it('does NOT warn when a routeRule declares the dynamic route non-static', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+    const root = mkdtempSync(path.join(tmpdir(), 'pyreon-rules-warn-'))
+    for (const [rel, body] of Object.entries({
+      'index.tsx': 'export default () => null',
+      'app/[id].tsx': 'export default () => null',
+    })) {
+      const full = path.join(root, rel)
+      mkdirSync(path.dirname(full), { recursive: true })
+      writeFileSync(full, body)
+    }
+    const f = { routesDir: root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await _internal.autoDetectStaticPaths(f.routesDir, new Map() as never, [], undefined, {
+        '/app/**': { renderMode: 'spa' },
+      })
+      expect(
+        warn.mock.calls.map((c) => String(c[0])).find((m) => m.includes('app/[id].tsx')),
+      ).toBeUndefined()
+    } finally {
+      warn.mockRestore()
+      f.cleanup()
+    }
+  })
+})

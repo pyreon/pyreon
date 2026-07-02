@@ -1089,3 +1089,31 @@ describe('computed renderMode warning (Tier-2 D)', () => {
     }
   })
 })
+
+describe('collectFileRouteModes — routeRules integration (Tier-4)', () => {
+  it('rule applies when no file/layout declaration; file declaration wins over rule', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs')
+    const { tmpdir } = require('node:os')
+    const path = require('node:path')
+    const dir = mkdtempSync(path.join(tmpdir(), 'pyreon-rules-'))
+    try {
+      const write = (rel: string, body: string) => {
+        const full = path.join(dir, rel)
+        mkdirSync(path.dirname(full), { recursive: true })
+        writeFileSync(full, body)
+      }
+      write('blog/post.tsx', 'export default () => null')
+      write('blog/live.tsx', "export default () => null\nexport const renderMode = 'ssr'")
+      write('about.tsx', 'export default () => null')
+      const entries = await collectFileRouteModes(dir, 'ssr', {
+        '/blog/**': { renderMode: 'isr' },
+      })
+      const by = new Map(entries.map((e) => [e.pattern, e]))
+      expect(by.get('/blog/post')).toMatchObject({ mode: 'isr', declared: true }) // rule
+      expect(by.get('/blog/live')).toMatchObject({ mode: 'ssr', declared: true }) // file wins
+      expect(by.get('/about')).toMatchObject({ mode: 'ssr', declared: false }) // app default
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
