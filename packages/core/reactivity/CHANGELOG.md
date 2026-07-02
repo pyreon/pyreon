@@ -1,5 +1,67 @@
 # @pyreon/reactivity
 
+## 0.39.0
+
+### Minor Changes
+
+- [#1968](https://github.com/pyreon/pyreon/pull/1968) [`fa95aba`](https://github.com/pyreon/pyreon/commit/fa95aba3aebc24d0178093cd89870b8807beca72) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(reactivity): Reactive Coverage — "which reactive edges never fired?"
+
+  New `@pyreon/reactivity/coverage` subpath. Code coverage tells you a _line_ ran; Reactive Coverage tells you a _reactive update fired_. Run your tests, then see every signal / computed / effect whose reactive behaviour was **never exercised** — dead reactivity (a signal nobody changes, an effect that only runs at mount) or an untested reactive path. No other framework has a name for this; Pyreon can measure it because the runtime already holds a precise model of the reactive graph (the always-on dev registry that powers LPIH).
+
+  **API** (dev/test only — tree-shaken in production):
+
+  - `startReactiveCoverage()` / `takeReactiveCoverage(): ReactiveCoverageReport` / `stopReactiveCoverage()` — session helpers. `start` resets a clean baseline, pins nodes so an unmounting component isn't GC-pruned out of the denominator, and enables reads.
+  - `computeReactiveCoverage(nodes)` — the pure function behind the report (feed it `getReactiveGraph().nodes`); `classifyReactiveNode(node)` — the single-node classifier; `formatReactiveCoverage(report, opts?)` — a dependency-free text renderer.
+
+  **Coverage is kind-aware.** A "fire" is a value-changing signal write / computed recompute / effect run (the initial run counts): signals are covered when they change (`fires ≥ 1`); effects and computeds are covered only when they RE-run past their mount run (`fires ≥ 2`). The `ran-once` reason flags a mounted effect/computed whose reactive re-run was never triggered — a reactive behaviour your suite never exercised, which a line-coverage tool reports as 100%.
+
+  Try it: `bun scripts/demo-reactive-coverage.ts`.
+
+- [#1975](https://github.com/pyreon/pyreon/pull/1975) [`794fb27`](https://github.com/pyreon/pyreon/commit/794fb27e6fa67e71608b603cd627cf4eff61a102) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(reactivity): describeReactiveGraph — auto-generated behavioral docs from the reactive graph
+
+  No framework auto-generates _behavioral_ (not API) docs from the reactive graph. Pyreon can — `describeReactiveGraph()` turns the live dependency graph into an English summary of what each change actually _does_, plus health insights only the graph shape can surface.
+
+  ```text
+  Reactive graph — 3 signals · 1 derived · 1 effect · 3 edges
+
+  Signals:
+    qty            changing it re-derives 1 value and runs 1 effect
+    unitPrice      changing it re-derives 1 value and runs 1 effect
+    shippingFlat   nothing reacts to it (no dependents)
+  Derived:
+    total          recomputes when qty, unitPrice change
+  Effects:
+    effect#5       runs when total changes
+
+  Insights (1):
+    ⚠ orphan-signal nothing depends on `shippingFlat` — dead reactivity or an unused signal
+  ```
+
+  `describeReactiveGraph(graph?)` returns `{ summary, nodes, insights }` — each `nodes[]` entry has an English `behavior` one-liner, and `insights` flag behavioral smells: `orphan-signal` (nothing depends on it), `high-fanout` (a change re-runs many effects — a hot signal), `deep-chain` (end of a long dependency chain). `formatGraphDescription(desc)` renders the block above. Pure over `getReactiveGraph()`; dev/test only (tree-shaken in production). Pairs with `getUpdateCause` — this describes the whole graph, that explains one update.
+
+- [#1974](https://github.com/pyreon/pyreon/pull/1974) [`f7083e5`](https://github.com/pyreon/pyreon/commit/f7083e5a56768fb67e097ec9bc6ee6d1bc6e0d09) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(reactivity): "why did this update?" — source-anchored causal traces
+
+  `getUpdateCause(nodeId)` + `formatUpdateCause(cause)` reconstruct the exact causal chain that led to a reactive node's most recent update, at the source line — the thing React DevTools' whole-component "why did this render?" can't do. Pyreon can, because it holds both a precise dependency graph and a timestamped fire timeline.
+
+  ```text
+  Why did effect#4 (effect) update?
+    qty (signal) changed  src/Cart.tsx:7:13
+    → total (derived) recomputed  src/Cart.tsx:9:9
+    → effect#4 (effect) ran   ← explained
+  ```
+
+  `getUpdateCause` returns `{ target, chain, rootReached }` — `chain` is root-first (`chain[0]` is the originating signal write), each `CauseLink` carries `{ id, kind, name, loc, ts }`. Also surfaced on `window.__PYREON_DEVTOOLS__.reactive.getUpdateCause` / `.formatUpdateCause`.
+
+  **Zero hot-path cost** — purely read-time reconstruction over the existing `getReactiveGraph()` + `getReactiveFires()`. The dependency graph is the causal structure (not the fire timeline: a lazy computed recomputes DURING its subscriber's read, so temporal order ≠ causal order); reconstruction walks the graph from the target through the deps that fired in the same synchronous cascade. Exact for a synchronous update, best-effort across interleaved interactions, `rootReached: false` when earlier fires aged out of the ring buffer. Dev/test only (the registry is tree-shaken in production).
+
+### Patch Changes
+
+- [#1999](https://github.com/pyreon/pyreon/pull/1999) [`c82687c`](https://github.com/pyreon/pyreon/commit/c82687c07a2b2ba976787dea74bc891f72a1165a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(reactivity): −24% production bundle (9,254 → 7,014 B gz) — dev-tools machinery now fully tree-shakes
+
+  The public dev-tools readers (`getReactiveGraph`, `getFireSummaries`, `getReactiveFires`, `getUpdateCause`, `describeReactiveGraph`, `getReactiveTrace`) are provably empty in production (the registry only fills under dev gates) — but as public exports they pinned ~2.2 KB gz of registry/stack-parse machinery into every whole-entry production bundle. Their bodies are now wrapped in dev-block guards that bundlers drop at parse time (an early prod-return only kills the bytes at minify time, AFTER tree-shaking's symbol-usage analysis — the machinery survived), and the `FinalizationRegistry` is `/* @__PURE__ */`-annotated so it DCEs once its dev-gated `register` call sites fold.
+
+  Zero behavior change: in dev everything works exactly as before (675-test suite green); in production the readers return the same vacuous values they always did (`{nodes: [], edges: []}` / `[]` / `null`) — they just no longer ship the dead machinery behind them. Pure formatters (`formatUpdateCause`, `formatGraphDescription`) stay available in prod (a dev-captured cause can legitimately be formatted in a prod process, e.g. error-report tooling). Bundle budget ratcheted down 9,472 → 7,232 B so the win can't silently regress.
+
 ## 0.38.0
 
 ### Patch Changes

@@ -1,5 +1,23 @@
 # zero-cli
 
+## 0.39.0
+
+### Patch Changes
+
+- [#1973](https://github.com/pyreon/pyreon/pull/1973) [`fad3226`](https://github.com/pyreon/pyreon/commit/fad3226d42f4767c869bdc71d5ba58bc920ad500) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero dev`: honor `NO_COLOR` / `FORCE_COLOR` / `isTTY` in the startup banner, so piped output (`bun run dev > log`, CI, `bun run --filter`'s boxed capture) stays clean plain text instead of leaking raw ANSI escape codes.
+
+- [#1967](https://github.com/pyreon/pyreon/pull/1967) [`1572afd`](https://github.com/pyreon/pyreon/commit/1572afd8891f022b45bbff10575500feb89d6e9e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero dev`: collapse the route list to a one-line summary by default and always print the Local URL + ready time last.
+
+  The startup banner previously printed the full route table (one line per route) with the Local URL first. Under `bun run --filter <app> dev` — whose runner elides the _middle_ of long child output and keeps only the tail — a large app's route table pushed the Local URL and startup time off the top, so you couldn't see where to open the app or how long it took.
+
+  Now the banner is collapsed to a compact summary (`Routes  SSR 15 · SSG 4 · API 1`), and the Local URL + `ready in <ms>` are printed last so they survive in the visible tail. Pass `--routes` to expand the full table.
+
+- Updated dependencies [[`8e8a0de`](https://github.com/pyreon/pyreon/commit/8e8a0de48a1c4aba4e09fc8e72fb72bc0c1ec68e)]:
+  - @pyreon/zero@0.39.0
+  - @pyreon/cli@0.39.0
+  - @pyreon/server@0.39.0
+  - @pyreon/create-zero@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes
