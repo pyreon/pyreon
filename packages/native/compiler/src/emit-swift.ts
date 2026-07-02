@@ -23,6 +23,7 @@ import {
   isReReadableExpr,
   substituteIdentifier,
   synthLiteralStructName,
+  exprHasOptionalLink,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -39,6 +40,7 @@ import {
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
+  typeIsOptional,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -3241,7 +3243,33 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `${callee}(${args})`
     }
     case 'index': {
-      // `xs[i]` — Swift arrays share the subscript syntax verbatim.
+      // `xs[i]` — Swift arrays share the subscript syntax verbatim. The
+      // OPTIONAL form `xs?.[i]` (JS: undefined out-of-bounds) lowers to the
+      // guarded idiom `(xs.indices.contains(i) ? xs[i] : nil)` — both
+      // operands are named TWICE, so both must be RE-READABLE
+      // (isReReadableExpr — the seedless-reduce rule); and the receiver
+      // must be NON-optional (an optional receiver would need flatMap
+      // plumbing — named warning, tracked). Non-qualifying shapes warn
+      // NAMED + emit the unguarded native index (compiles; OOB traps —
+      // the warning says so). Kotlin needs none of this (getOrNull is
+      // single-eval).
+      if (e.optional === true) {
+        const objT = inferType(e.object, _activeInferCtx)
+        const objStr = emitSwiftExpr(e.object, indent)
+        const idxStr = emitSwiftExpr(e.index, indent)
+        if (
+          isReReadableExpr(e.object) &&
+          isReReadableExpr(e.index) &&
+          !exprHasOptionalLink(e.object) &&
+          !typeIsOptional(objT)
+        ) {
+          return `(${objStr}.indices.contains(${idxStr}) ? ${objStr}[${idxStr}] : nil)`
+        }
+        _emitWarnings.push(
+          `${objStr}?.[${idxStr}]: the safe-index lowering needs a re-readable, non-optional receiver and index (each is named twice) — emitting the UNGUARDED native index, which TRAPS out-of-bounds instead of returning nil. Bind the receiver/index to a const first, or guard the bounds explicitly.`,
+        )
+        return `${objStr}[${idxStr}]`
+      }
       return `${emitSwiftExpr(e.object, indent)}[${emitSwiftExpr(e.index, indent)}]`
     }
     case 'member': {
