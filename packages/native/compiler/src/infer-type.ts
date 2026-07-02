@@ -221,6 +221,20 @@ function findFirstReturnExpr(
         if (e) return e
       }
     }
+    // SWITCH + loop bodies carry returns too — a switch-in-computed
+    // (`switch (x) { case 1: return "one"; … }`) previously typed `Any`
+    // because the walk never entered case bodies (a SILENT fail once a
+    // typed consumer touched the result).
+    if (s.kind === 'switch') {
+      for (const c of s.cases) {
+        const r = findFirstReturnExpr(c.body, ctx)
+        if (r) return r
+      }
+    }
+    if (s.kind === 'while' || s.kind === 'for-of') {
+      const r = findFirstReturnExpr(s.body, ctx)
+      if (r) return r
+    }
   }
   return undefined
 }

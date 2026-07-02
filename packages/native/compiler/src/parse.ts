@@ -4589,6 +4589,18 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       return { kind: 'update', op, argument: parseExpr(node.argument, ctx) }
     }
     case 'ArrowFunctionExpression': {
+      // A DESTRUCTURED param ((`{name}`) => …) is silently FILTERED below —
+      // the closure then references unbound names (`{ name }` → "cannot
+      // find 'name' in scope", a SILENT fail). Warn NAMED; the binding
+      // prelude is a tracked follow-up. (Handlers have a destructure
+      // prelude; callback arrows don't yet.)
+      for (const p of node.params as AnyNode[]) {
+        if (p.type === 'ObjectPattern' || p.type === 'ArrayPattern') {
+          ctx.warnings.push(
+            `[${locOf(node, ctx)}] a destructured callback parameter ((${p.type === 'ObjectPattern' ? '{…}' : '[…]'}) => …) is not lowered natively — the emitted closure references unbound names. Take the whole param and access fields (\`(item) => item.field\`).`,
+          )
+        }
+      }
       const params = (node.params as AnyNode[])
         .filter((p) => p.type === 'Identifier')
         .map((p) => p.name as string)
