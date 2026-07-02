@@ -1886,6 +1886,25 @@ function emitKotlinIndexedBody(
   return ` ${emitKotlinExpr(cb.body, indent)} `
 }
 
+/**
+ * Emit a PLAIN (1-param) callback arg with Kotlin's labeled-return support —
+ * the plain-path sibling of `emitKotlinIndexedBody`. A multi-statement body
+ * with early returns needs `return@<label>` (a bare `return` inside a lambda
+ * is prohibited); the label is the EMITTED Kotlin method name, which only
+ * the call site knows. Expression bodies + non-arrows fall through to the
+ * generic emit. Pre-fix the multi-statement plain callback silently dropped
+ * its body (the block-body `""` sentinel — the dedup idiom
+ * `filter(x => { if (seen.has(x)) return false; seen.add(x); return true })`
+ * emitted `{ x -> "" }`).
+ */
+function emitKotlinPlainCallback(arg: ExprIR, indent: number, label: string): string {
+  if (arg.kind !== 'arrow' || arg.stmts === undefined || arg.stmts.length === 0) {
+    return emitKotlinExpr(arg, indent)
+  }
+  const head = arg.params.length > 0 ? `${arg.params.map(kotlinIdent).join(', ')} ->` : ''
+  return `{ ${head}${emitKotlinIndexedBody(arg, indent, label)}}`
+}
+
 function emitKotlinExpr(e: ExprIR, indent: number): string {
   switch (e.kind) {
     case 'literal':
@@ -2285,6 +2304,36 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         const obj = emitKotlinExpr(e.callee.object, indent)
         const prop = e.callee.property
         const argExprs = e.args.map((a) => emitKotlinExpr(a, indent))
+        // Labeled-return wiring for MULTI-STATEMENT plain (1-param)
+        // callbacks — the call site knows the emitted Kotlin method name
+        // (the return label). 2-param INDEX callbacks keep their own
+        // dedicated paths (emitKotlinIndexedBody call sites below); this
+        // block only fires for 1-param arrows with statement bodies.
+        {
+          const PLAIN_CALLBACK_LABELS: Record<string, string> = {
+            filter: 'filter',
+            map: 'map',
+            forEach: 'forEach',
+            flatMap: 'flatMap',
+            find: 'find',
+            findLast: 'findLast',
+            some: 'any',
+            every: 'all',
+          }
+          const label = PLAIN_CALLBACK_LABELS[prop]
+          const cb = e.args[0]
+          if (
+            label !== undefined &&
+            e.args.length === 1 &&
+            cb !== undefined &&
+            cb.kind === 'arrow' &&
+            cb.params.length === 1 &&
+            cb.stmts !== undefined &&
+            cb.stmts.length > 0
+          ) {
+            return `${obj}.${label}(${emitKotlinPlainCallback(cb, indent, label)})`
+          }
+        }
         switch (prop) {
           case 'some': {
             // 2-param INDEX callback `.some((el, idx) => …)`: `withIndex()`
