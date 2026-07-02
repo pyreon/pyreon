@@ -260,3 +260,21 @@ export function ThemeToggle(props: { class?: string; style?: string }): VNodeChi
  * </head>
  */
 export const themeScript = `(function(){try{var t=localStorage.getItem("${STORAGE_KEY}");var r=t==="light"?"light":t==="dark"?"dark":window.matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light";document.documentElement.dataset.theme=r;document.querySelectorAll("[data-favicon-theme]").forEach(function(l){l.media=l.dataset.faviconTheme===r?"":"not all"})}catch(e){}})()`
+
+/**
+ * CSP `script-src` source expression for {@link themeScript} — lets the
+ * pre-paint theme script run under a STRICT Content-Security-Policy without
+ * `'unsafe-inline'` and without threading per-request nonces (which static
+ * SSG HTML cannot do at all — a baked nonce defeats CSP):
+ *
+ * ```ts
+ * import { themeScriptCspHash } from '@pyreon/zero'
+ * cspMiddleware({ directives: { scriptSrc: ["'self'", themeScriptCspHash] } })
+ * ```
+ *
+ * Precomputed literal (this module is client-safe — no runtime crypto).
+ * Drift-locked by `theme-script-csp-hash.test.ts`, which recomputes
+ * sha256(themeScript) and fails if this constant goes stale after a script
+ * edit.
+ */
+export const themeScriptCspHash = "'sha256-Ap7M0nE22mu+9jah54cqkMHrYAa1HnD4k2I486YGnqo='"

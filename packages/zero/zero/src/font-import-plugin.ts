@@ -225,9 +225,15 @@ export function parseFontQueryOverrides(query: string): {
   family?: string
   weight?: number
   style?: 'normal' | 'italic' | 'oblique'
+  display?: 'auto' | 'block' | 'swap' | 'fallback' | 'optional'
 } {
   const params = new URLSearchParams(query)
-  const result: { family?: string; weight?: number; style?: 'normal' | 'italic' | 'oblique' } = {}
+  const result: {
+    family?: string
+    weight?: number
+    style?: 'normal' | 'italic' | 'oblique'
+    display?: 'auto' | 'block' | 'swap' | 'fallback' | 'optional'
+  } = {}
   const f = params.get('family')
   if (f) result.family = f
   const w = params.get('weight')
@@ -237,6 +243,13 @@ export function parseFontQueryOverrides(query: string): {
   }
   const s = params.get('style')
   if (s === 'italic' || s === 'normal' || s === 'oblique') result.style = s
+  // `?font&display=optional` — per-import font-display override (the default
+  // is `swap`; display faces / decorative fonts often want `optional` so a
+  // slow load skips the font entirely instead of swapping late).
+  const d = params.get('display')
+  if (d === 'auto' || d === 'block' || d === 'swap' || d === 'fallback' || d === 'optional') {
+    result.display = d
+  }
   return result
 }
 
@@ -417,7 +430,9 @@ export function fontImportPlugin(config: FontImportPluginConfig = {}): Plugin {
       const style = overrides.style ?? inferred.style
       const mime = fontMimeType(ext)
       const fmt = fontFormat(ext)
-      const display = 'swap'
+      // `swap` default (never FOIT); overridable per-import via
+      // `?font&display=optional` for decorative/display faces.
+      const display = overrides.display ?? 'swap'
 
       let src: string
       if (isBuild) {

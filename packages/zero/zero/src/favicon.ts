@@ -204,6 +204,22 @@ export function faviconPlugin(config: FaviconPluginConfig): Plugin {
       const autoDevBadge = config.devSource === true
       const devCache = new Map<string, Uint8Array>()
 
+      // Invalidate the dev cache when any source icon changes — otherwise an
+      // edit to `src/favicon.svg` keeps serving the stale rendered PNGs until
+      // a dev-server restart (the cache key is source PATH + size, which does
+      // not change when the file's CONTENT does).
+      const watchedSources = [sourcePath, darkPath, devSourcePath].filter(
+        (p): p is string => p !== null,
+      )
+      for (const localeConfig of Object.values(config.locales ?? {})) {
+        watchedSources.push(join(root, localeConfig.source))
+        if (localeConfig.darkSource) watchedSources.push(join(root, localeConfig.darkSource))
+      }
+      server.watcher.add(watchedSources)
+      server.watcher.on('change', (file) => {
+        if (watchedSources.includes(file)) devCache.clear()
+      })
+
       /** Resolve source path for a request — handles dark variants and dev badge. */
       function resolveSourceForDev(baseName: string, defaultSource: string): string {
         // Dark variant: favicon-dark-32x32.png → use darkSource

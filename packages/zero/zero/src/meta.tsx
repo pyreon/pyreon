@@ -1,6 +1,7 @@
 import type { VNodeChild } from '@pyreon/core'
 import type { UseHeadInput } from '@pyreon/head'
 import { useHead } from '@pyreon/head'
+import { useRoute } from '@pyreon/router'
 import type { I18nRoutingConfig } from './i18n-routing'
 import { extractLocaleFromPath } from './i18n-routing'
 
@@ -110,6 +111,16 @@ export interface MetaProps {
   /** Base URL for building absolute hreflang URLs. e.g. "https://example.com" */
   origin?: string
   /**
+   * Auto-derive the canonical URL (and therefore `og:url`) from `origin` +
+   * the current route's path when no explicit `canonical` is given.
+   * Default `true` — providing `origin` is the opt-in signal; every page
+   * then carries `<link rel="canonical">` without per-route boilerplate
+   * (missing canonicals are the classic duplicate-content SEO footgun).
+   * Set `false` to suppress. An explicit `canonical` prop always wins.
+   * No-op outside a router context (e.g. isolated component tests).
+   */
+  autoCanonical?: boolean
+  /**
    * Favicon plugin config — when provided, injects locale-aware favicon
    * `<link>` tags into `<head>`. Uses the current locale to select
    * the correct favicon set.
@@ -153,13 +164,41 @@ export function Meta(props: MetaProps): VNodeChild {
   const hasReactiveTitle = typeof props.title === 'function'
   const hasReactiveDescription = typeof props.description === 'function'
 
+  // Auto-canonical: with an `origin` and no explicit `canonical`, derive
+  // `${origin}${route.path}` so every page carries `<link rel="canonical">`
+  // (+ `og:url`, which buildMetaTags reads from `canonical`) without
+  // per-route boilerplate. Guarded — `useRoute()` throws outside a router
+  // context (isolated component tests), where auto-canonical simply
+  // degrades to the prior no-canonical behaviour.
+  let routeAccessor: (() => { path: string }) | null = null
+  if (props.autoCanonical !== false && props.origin && !props.canonical) {
+    try {
+      routeAccessor = useRoute()
+    } catch {
+      routeAccessor = null
+    }
+  }
+  const deriveCanonical = (): string | undefined => {
+    if (props.canonical) return props.canonical
+    if (!routeAccessor || !props.origin) return undefined
+    // Strip a trailing slash from origin so `https://x.com/` + `/about`
+    // doesn't produce a double slash; route paths always start with `/`.
+    const origin = props.origin.endsWith('/') ? props.origin.slice(0, -1) : props.origin
+    return `${origin}${routeAccessor().path}`
+  }
+
   // If title or description are reactive accessors, pass a getter to useHead
   // so it re-evaluates when the signals change.
   if (hasReactiveTitle || hasReactiveDescription) {
     useHead((): UseHeadInput => {
       const title = resolveStr(props.title)
       const description = resolveStr(props.description)
-      const resolved = { ...props, title, description } as Parameters<typeof buildMetaTags>[0]
+      const resolved = {
+        ...props,
+        title,
+        description,
+        canonical: deriveCanonical(),
+      } as Parameters<typeof buildMetaTags>[0]
       const tags = buildMetaTags(resolved)
       const input: UseHeadInput = { meta: tags.meta, link: tags.link, script: tags.script }
       if (title) input.title = title
@@ -168,7 +207,12 @@ export function Meta(props: MetaProps): VNodeChild {
   } else {
     const title = resolveStr(props.title)
     const description = resolveStr(props.description)
-    const resolved = { ...props, title, description } as Parameters<typeof buildMetaTags>[0]
+    const resolved = {
+      ...props,
+      title,
+      description,
+      canonical: deriveCanonical(),
+    } as Parameters<typeof buildMetaTags>[0]
     const tags = buildMetaTags(resolved)
     const input: UseHeadInput = { meta: tags.meta, link: tags.link, script: tags.script }
     if (title) input.title = title

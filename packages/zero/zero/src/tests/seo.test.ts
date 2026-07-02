@@ -691,3 +691,41 @@ describe('generateRssFeed', () => {
     expect(xml).not.toContain('https://x.com//p')
   })
 })
+
+describe('generateSitemap — lastmod default', () => {
+  const files = ['index.tsx', 'about.tsx']
+
+  it("lastmod: 'build-time' stamps today's date (YYYY-MM-DD) on every entry", () => {
+    const sitemap = generateSitemap(files, {
+      origin: 'https://example.com',
+      lastmod: 'build-time',
+    })
+    const today = new Date().toISOString().slice(0, 10)
+    const count = (sitemap.match(/<lastmod>/g) ?? []).length
+    expect(count).toBe(2)
+    expect(sitemap).toContain(`<lastmod>${today}</lastmod>`)
+  })
+
+  it('an explicit ISO string passes through verbatim', () => {
+    const sitemap = generateSitemap(files, {
+      origin: 'https://example.com',
+      lastmod: '2026-01-15',
+    })
+    expect(sitemap).toContain('<lastmod>2026-01-15</lastmod>')
+  })
+
+  it('a per-entry lastmod (additionalPaths) wins over the config default', () => {
+    const sitemap = generateSitemap(['index.tsx'], {
+      origin: 'https://example.com',
+      lastmod: '2026-01-15',
+      additionalPaths: [{ path: '/posts/1', lastmod: '2025-12-31' }],
+    })
+    expect(sitemap).toContain('<lastmod>2025-12-31</lastmod>') // per-entry
+    expect(sitemap).toContain('<lastmod>2026-01-15</lastmod>') // default on index
+  })
+
+  it('omitted lastmod emits none (prior behaviour unchanged)', () => {
+    const sitemap = generateSitemap(files, { origin: 'https://example.com' })
+    expect(sitemap).not.toContain('<lastmod>')
+  })
+})

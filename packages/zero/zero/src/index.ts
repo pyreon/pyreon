@@ -86,6 +86,7 @@ export {
 	ThemeToggle,
 	theme,
 	themeScript,
+	themeScriptCspHash,
 	toggleTheme,
 } from "./theme";
 
