@@ -315,10 +315,16 @@ export function expandRoutesForLocales(
       // Under `prefix` strategy this skip does NOT apply: there is no
       // unprefixed default to inherit from, so every locale needs its
       // own root layout (`/en/_layout`, `/de/_layout`, …).
+      // Root-ness is keyed on `dirPath === ''`, NOT `urlPath === '/'`: a
+      // route-GROUP layout (`(app)/_layout.tsx`) also has urlPath `/`
+      // (groups are URL-invisible) but lives at dirPath `(app)` — it is a
+      // real subtree boundary and MUST be duplicated per locale like any
+      // non-root layout, else the `de/(app)/…` subtree has no layout node
+      // and the group layout silently vanishes for non-default locales.
       if (
         strategy === 'prefix-except-default'
         && route.isLayout
-        && route.urlPath === '/'
+        && route.dirPath === ''
       ) {
         continue
       }

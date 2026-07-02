@@ -174,6 +174,26 @@ src/routes/
     pricing.tsx  → /pricing
 ```
 
+Groups are URL-invisible but they are **real route-tree boundaries** — a group can
+carry its own `_layout.tsx` / `_error.tsx` / `_loading.tsx` that scope to exactly
+the group's routes, nested under the root layout:
+
+```
+src/routes/
+  _layout.tsx          → wraps everything
+  index.tsx            → /          (root layout only)
+  (app)/
+    _layout.tsx        → wraps only the group's routes
+    dashboard.tsx      → /dashboard (root layout → app layout → page)
+  (marketing)/
+    pricing.tsx        → /pricing   (root layout only — no group layout here)
+```
+
+This is the canonical "different chrome per section, same URL space" shape: an
+authenticated `(app)` shell and a public `(marketing)` shell without `/app/` or
+`/marketing/` URL prefixes. Sibling groups are fully isolated — each group's
+specials apply only to its own subtree.
+
 ### Virtual Modules
 
 The plugin generates three virtual modules you import in your entry files:
