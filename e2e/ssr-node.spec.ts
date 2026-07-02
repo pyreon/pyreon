@@ -96,7 +96,7 @@ test.describe('SSR node deploy artifact', () => {
     const first = await (await page.request.get('/hybrid-static')).text()
     const second = await (await page.request.get('/hybrid-static')).text()
     const stampOf = (html: string) =>
-      html.match(/data-testid="hybrid-static-stamp">(\d+)</)?.[1]
+      html.match(/data-testid="hybrid-static-stamp">(?:<!--\$-->)?(\d+)/)?.[1]
     const a = stampOf(first)
     const b = stampOf(second)
     expect(a, 'expected the build-time stamp in the response').toBeTruthy()
@@ -172,7 +172,8 @@ test.describe('SSR node deploy artifact', () => {
     })
     const html = await resp.text()
     expect(html).toContain('SERVER_ONLY_SENTINEL_q7x9')
-    expect(html).toContain('cookie-flag">yes')
+    // Reactive/loader values are wrapped in `<!--$-->` hydration range markers.
+    expect(html).toMatch(/cookie-flag">(?:<!--\$-->)?yes/)
     // The hydration blob carries the data (no client refetch on first load).
     expect(html).toContain('__PYREON_LOADER_DATA__')
   })

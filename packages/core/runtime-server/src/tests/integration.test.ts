@@ -35,7 +35,7 @@ describe('SSR integration — renderToString', () => {
     const count = signal(42)
     const Counter = () => h('span', null, () => count())
     const html = await renderToString(h(Counter, null))
-    expect(html).toBe('<span>42</span>')
+    expect(html).toBe('<span><!--$-->42<!--/$--></span>')
   })
 
   test('nested components render correct nesting in output', async () => {
@@ -256,8 +256,8 @@ describe('SSR integration — context isolation', () => {
       renderToString(h(makeApp('request-2'), null)),
     ])
 
-    expect(html1).toBe('<span>request-1</span>')
-    expect(html2).toBe('<span>request-2</span>')
+    expect(html1).toBe('<span><!--$-->request-1<!--/$--></span>')
+    expect(html2).toBe('<span><!--$-->request-2<!--/$--></span>')
   })
 
   test('concurrent renders with async components stay isolated', async () => {

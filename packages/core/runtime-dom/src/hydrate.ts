@@ -29,14 +29,13 @@ import {
 import {
   effectScope,
   getContextOwner,
-  renderEffect,
   runUntracked,
   setContextOwner,
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
 import { warnHydrationMismatch } from './hydration-debug'
-import { mountChild } from './mount'
+import { bindPolymorphicText, mountChild } from './mount'
 import { mountReactive } from './nodes'
 import { applyProps } from './props'
 
@@ -105,6 +104,8 @@ function firstReal(initialNode: ChildNode | null): ChildNode | null {
       // Structural markers — return as-is so the caller can handle them.
       if (data === ASYNC_START_MARKER || data === ASYNC_END_MARKER) return node
       if (data.startsWith('k:')) return node
+      if (data === 'pyreon-for' || data === '/pyreon-for') return node
+      if (data === '$' || data === '/$') return node
       node = node.nextSibling
       continue
     }
@@ -159,6 +160,83 @@ function hydrateReactiveChild(
 ): [Cleanup, ChildNode | null] {
   const initial = runUntracked(child)
 
+  // Range-marked accessor output: the SSR renderer wraps every function
+  // child's output in `<!--$-->…<!--/$-->` (see renderNode's fn arm). The
+  // markers give this accessor's EXACT DOM extent — zero nodes (empty
+  // string / null initial), one, or many (fragment / <For> / component
+  // subtree). Pre-markers, this path removed exactly ONE node before
+  // re-mounting: a multi-root initial left the rest of its SSR output
+  // DUPLICATED in the DOM, and an empty initial mis-anchored the binding
+  // at the parent's anchor, corrupting sibling order (fuzz-found, 2026-07).
+  if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === '$') {
+    // Find the matching end marker, depth-aware (accessors nest).
+    let end: ChildNode | null = null
+    let depth = 0
+    let n: ChildNode | null = domNode.nextSibling
+    while (n) {
+      if (n.nodeType === Node.COMMENT_NODE) {
+        const d = (n as Comment).data
+        if (d === '$') depth++
+        else if (d === '/$') {
+          if (depth === 0) {
+            end = n
+            break
+          }
+          depth--
+        }
+      }
+      n = n.nextSibling
+    }
+    if (end) {
+      const after = end.nextSibling
+      // Single-text-node range + text-ish initial → ADOPT the node and bind
+      // directly (the dominant reactive-text case — no remount). We do NOT
+      // gate on `data === String(initial)`: a genuine server/client value
+      // divergence (SSR "Alice", client "Bob") still adopts the SAME text
+      // node — the renderEffect writes the client value on its first run —
+      // so recovery is in-place, not a double-mount. Only the value is
+      // corrected; a mismatch is reported for telemetry.
+      const only = domNode.nextSibling
+      if (
+        (typeof initial === 'string' || typeof initial === 'number' || typeof initial === 'boolean') &&
+        only &&
+        only.nodeType === Node.TEXT_NODE &&
+        only.nextSibling === end
+      ) {
+        const bound = only as Text
+        if (bound.data !== String(initial)) {
+          warnHydrationMismatch('text', String(initial), bound.data, `${path} > reactive`)
+        }
+        // Polymorphic binding: the accessor may later yield a VNode
+        // (`() => loading() ? 'Loading…' : <Table/>`) — the shared helper
+        // upgrades the adopted text node to a subtree mount when it does.
+        const dispose = bindPolymorphicText(child, bound, parent)
+        domNode.remove()
+        end.remove()
+        return [dispose, after ? firstReal(after) : null]
+      }
+      // NOTE: an EMPTY range (initial rendered nothing) or a multi-node
+      // range falls through to the general swap below. An empty/null
+      // initial does NOT imply a text binding — the accessor can produce a
+      // VNode subtree on a later flip (ternary with a null arm), so only
+      // `mountReactive` handles the general case correctly. (A first cut
+      // bound a text node here; the parity fuzzer's post-flip oracle caught
+      // 217/3000 divergences — VNodes stringified into the text node.)
+      // General case — correctness-first swap: mount the live binding at the
+      // range position, then remove the SSR range (markers included).
+      const marker = insertMarker(parent, domNode, 'pyreon')
+      const cleanup = mountReactive(child, parent, marker, mountChild)
+      let cur: ChildNode | null = domNode
+      while (cur) {
+        const nx: ChildNode | null = cur === end ? null : cur.nextSibling
+        cur.remove()
+        cur = nx
+      }
+      return [cleanup, after ? firstReal(after) : null]
+    }
+  }
+
+  // Legacy SSR output (no range markers — older @pyreon/runtime-server).
   if (initial == null || initial === false) {
     const marker = insertMarker(parent, domNode, 'pyreon')
     const cleanup = mountReactive(child, parent, marker, mountChild)
@@ -193,17 +271,48 @@ function hydrateReactiveText(
   anchor: Node | null,
   path: string,
 ): [Cleanup, ChildNode | null] {
+  const initial = runUntracked(child)
+  const expected = initial == null ? '' : String(initial)
+
+  // Empty initial value: SSR emitted NOTHING, so there is no text node to
+  // adopt. Bind a fresh text node inserted at the CURSOR (client parity —
+  // the client renderer creates one), consuming nothing. Pre-fix this fell
+  // through to the mismatch branch, whose `mountChild(child, parent,
+  // anchor)` appended at the PARENT's anchor — corrupting sibling order for
+  // every element after it.
+  if (expected === '') {
+    const tn = document.createTextNode('')
+    parent.insertBefore(tn, domNode ?? anchor)
+    const dispose = bindPolymorphicText(child as () => VNodeChild, tn, parent)
+    return [dispose, domNode]
+  }
+
   if (domNode?.nodeType === Node.TEXT_NODE) {
-    const textNode = domNode as Text
-    const dispose = renderEffect(() => {
-      const v = child()
-      textNode.data = v == null ? '' : String(v)
-    })
-    return [dispose, nextReal(domNode)]
+    let textNode = domNode as Text
+    let next: ChildNode | null = null
+    const data = textNode.data
+    if (data === expected) {
+      next = nextReal(domNode)
+    } else if (data.startsWith(expected)) {
+      // Merged adjacent text (see the static-text twin above): adopt this
+      // binding's prefix; the remainder stays for the next sibling.
+      next = textNode.splitText(expected.length)
+    } else {
+      warnHydrationMismatch('text', expected, data, `${path} > reactive`)
+      textNode = document.createTextNode(expected)
+      parent.insertBefore(textNode, domNode)
+      next = domNode
+    }
+    const bound = textNode
+    const dispose = bindPolymorphicText(child as () => VNodeChild, bound, parent)
+    return [dispose, next]
   }
   warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > reactive`)
-  const cleanup = mountChild(child, parent, anchor)
-  return [cleanup, domNode]
+  // Recover AT THE CURSOR so sibling order survives.
+  const tn = document.createTextNode(expected)
+  parent.insertBefore(tn, domNode ?? anchor)
+  const dispose = bindPolymorphicText(child as () => VNodeChild, tn, parent)
+  return [dispose, domNode]
 }
 
 /** Hydrate a VNode (fragment, For, Portal, component, element). */
@@ -219,6 +328,50 @@ function hydrateVNode(
   }
 
   if (vnode.type === ForSymbol) {
+    // The SSR renderer emits a fully-bounded block for a <For>:
+    //   <!--pyreon-for-->  <!--k:KEY-->row…  ×N  <!--/pyreon-for-->
+    // (both string and streaming modes). Correctness-first swap, matching
+    // the _tpl/__isNative precedent: mount the fresh keyed list before the
+    // block, then REMOVE the SSR block and hand the node AFTER it back as
+    // the sibling cursor. Pre-fix this path mounted fresh rows but LEFT the
+    // SSR rows in the DOM (every hydrated <For> duplicated its list) and
+    // returned a null cursor (cascading mismatches for every following
+    // sibling). True keyed ADOPTION via the <!--k:KEY--> markers is the
+    // perf follow-up — this is the correctness fix.
+    if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === 'pyreon-for') {
+      // Find the matching end marker, depth-aware (nested <For> blocks).
+      let end: ChildNode | null = null
+      let depth = 0
+      let n: ChildNode | null = domNode.nextSibling
+      while (n) {
+        if (n.nodeType === Node.COMMENT_NODE) {
+          const d = (n as Comment).data
+          if (d === 'pyreon-for') depth++
+          else if (d === '/pyreon-for') {
+            if (depth === 0) {
+              end = n
+              break
+            }
+            depth--
+          }
+        }
+        n = n.nextSibling
+      }
+      if (end) {
+        const after = end.nextSibling
+        const marker = insertMarker(parent, domNode, 'pyreon-for')
+        const cleanup = mountChild(vnode, parent, marker)
+        // Remove the SSR block [start..end] inclusive.
+        let cur: ChildNode | null = domNode
+        while (cur) {
+          const nx: ChildNode | null = cur === end ? null : cur.nextSibling
+          cur.remove()
+          cur = nx
+        }
+        return [cleanup, after ? firstReal(after) : null]
+      }
+    }
+    // Legacy SSR output (no block markers) — previous behavior.
     const marker = insertMarker(parent, domNode, 'pyreon-for')
     const cleanup = mountChild(vnode, parent, marker)
     return [cleanup, null]
@@ -270,12 +423,43 @@ function hydrateChild(
   }
 
   if (typeof child === 'string' || typeof child === 'number') {
+    const expected = String(child)
+    // Empty static text: SSR emitted NOTHING for it, so there is no node to
+    // adopt. Insert the empty text node the client renderer would have
+    // created (DOM parity) at the CURSOR — consuming nothing keeps every
+    // following sibling aligned.
+    if (expected === '') {
+      const tn = document.createTextNode('')
+      parent.insertBefore(tn, domNode ?? anchor)
+      return [() => tn.remove(), domNode]
+    }
     if (domNode?.nodeType === Node.TEXT_NODE) {
-      return [() => (domNode as Text).remove(), nextReal(domNode)]
+      const data = (domNode as Text).data
+      if (data === expected) {
+        return [() => (domNode as Text).remove(), nextReal(domNode)]
+      }
+      // MERGED adjacent text: the HTML parser joins text-producing siblings
+      // that SSR emitted back-to-back ('23' + 'hello' parses as ONE
+      // '23hello' node). Adopt exactly this child's prefix via splitText —
+      // the remainder node stays at the cursor for the NEXT sibling.
+      // Prefix matching is exact by construction (the SSR output came from
+      // the same tree), so this is not a heuristic.
+      if (data.startsWith(expected)) {
+        const rest = (domNode as Text).splitText(expected.length)
+        return [() => (domNode as Text).remove(), rest]
+      }
+      // Genuine content mismatch (server/client divergence).
+      warnHydrationMismatch('text', expected, data, `${path} > text`)
+      const tn = document.createTextNode(expected)
+      parent.insertBefore(tn, domNode)
+      return [() => tn.remove(), domNode]
     }
     warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > text`)
-    const cleanup = mountChild(child, parent, anchor)
-    return [cleanup, domNode]
+    // Recover AT THE CURSOR (not at the parent-level anchor) so sibling
+    // order survives the mismatch.
+    const tn = document.createTextNode(expected)
+    parent.insertBefore(tn, domNode ?? anchor)
+    return [() => tn.remove(), domNode]
   }
 
   // NativeItem — output of the compiler's `_tpl()` template fast path. The
