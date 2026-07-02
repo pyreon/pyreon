@@ -40,13 +40,14 @@ import {
   URL_ATTRS,
 } from '@pyreon/core'
 
-const __DEV__ = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
-
 // Dev-mode perf counter sink. Zero coupling to @pyreon/perf-harness — we just
-// call the global if it's installed. Guarded on __DEV__ so NODE_ENV=production
-// short-circuits at runtime; @pyreon/runtime-server is a server package, so the
-// `typeof process` gate is correct here (not `import.meta.env.DEV`, which is a
-// browser-bundler concern). See .claude/rules/test-environment-parity.md.
+// call the global if it's installed. Dev gates are the BARE INLINE
+// `process.env.NODE_ENV !== 'production'` at every site — never a local
+// `__DEV__` const alias and never a `typeof process` prefix: the alias/prefix
+// make the expression non-constant under a bundler's define, so edge/workerd
+// SSR bundles (which minify this file) shipped every counter + dev warning.
+// Bare inline folds (process is always real in Node/Bun where this runs, and
+// nodejs_compat provides it on workerd). See anti-patterns: __DEV__ alias.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // ─── Streaming Suspense context ───────────────────────────────────────────────
@@ -124,7 +125,7 @@ function withStoreContext<T>(fn: () => T): T {
 /** Render a VNode tree to an HTML string. Supports async component functions. */
 export async function renderToString(root: VNode | null): Promise<string> {
   if (root === null) return ''
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.render')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.render')
   // Inside an active request context (`runWithRequestContext`), INHERIT it —
   // request-level `provide()` frames (middleware locals via
   // `provideRequestLocals`, request-scoped DI) must be visible to the
@@ -204,7 +205,7 @@ export function renderToStream(
   root: VNode | null,
   options: RenderToStreamOptions = {},
 ): ReadableStream<string> {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.stream')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.stream')
   // Internal AbortController — fires when EITHER the caller's signal
   // aborts (upstream cancellation, e.g. `Request.signal`) OR the consumer
   // of the stream calls `.cancel()` (client closed the fetch reader).
@@ -345,7 +346,7 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
     const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
     for (const item of items) {
       const key = by(item)
-      if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
+      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
       enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
       await streamNode(children(item) as VNodeChild, enqueue)
     }
@@ -366,7 +367,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     await streamSuspenseBoundary(vnode, enqueue)
     return
   }
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.component')
   // Snapshot the context stack BEFORE the component renders so we can pop
   // any frames pushed via `provide()` after children stream. We do NOT run
   // user-registered unmount hooks during SSR — that would clear state still
@@ -393,7 +394,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
       await streamNode(output, enqueue)
     }
   } catch (err) {
-    if (__DEV__) {
+    if (process.env.NODE_ENV !== 'production') {
       const name = (vnode.type as ComponentFn).name || 'Anonymous'
       console.error(`[Pyreon SSR] Error rendering <${name}>:`, err)
     }
@@ -489,7 +490,7 @@ const SUSPENSE_SWAP_FN =
  * main stream enqueue so it always arrives after the fallback placeholder.
  */
 async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.suspense.boundary')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.suspense.boundary')
   const ctx = _streamCtxAls.getStore()
   const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
 
@@ -574,7 +575,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         }
 
         if (result === 'timeout') {
-          if (__DEV__) {
+          if (process.env.NODE_ENV !== 'production') {
             _countSink.__pyreon_count__?.('runtime-server.suspense.fallback')
             console.warn(
               `[Pyreon SSR] Suspense boundary timed out after ${suspenseTimeoutMs}ms — fallback will remain.`,
@@ -613,7 +614,7 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
         mainEnqueue(`<template id="pyreon-t-${id}">${content}</template>`)
         mainEnqueue(`<script>__NS("pyreon-s-${id}","pyreon-t-${id}")</script>`)
       } catch (err) {
-        if (__DEV__) {
+        if (process.env.NODE_ENV !== 'production') {
           console.error(
             `[Pyreon SSR] Suspense boundary caught an error — fallback will remain:`,
             err,
@@ -734,7 +735,7 @@ function renderForItems(
   for (let i = start; i < items.length; i++) {
     const item = items[i]
     const key = by(item)
-    if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
+    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
     acc += `<!--k:${safeKeyForMarker(key)}-->`
     const r = renderNode(children(item) as VNodeChild)
     if (typeof r === 'string') {
@@ -749,7 +750,7 @@ function renderForItems(
 }
 
 function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.component')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.component')
   // Snapshot the context stack length BEFORE the component renders. After
   // children render, trim back to this length — that pops every frame the
   // component pushed via `provide(ctx, value)` (which calls `pushContext` +
@@ -1299,7 +1300,7 @@ export function decodeKeyFromMarker(encoded: string): string {
 // alphanumerics + hyphens).
 const SAFE_TAG_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/
 function warnIfUnsafeTag(tag: string): void {
-  if (!__DEV__) return
+  if (process.env.NODE_ENV === 'production') return
   if (SAFE_TAG_RE.test(tag)) return
   // oxlint-disable-next-line no-console
   console.warn(
@@ -1314,7 +1315,7 @@ const NEEDS_ESCAPE_RE = /[&<>"']/
 
 function escapeHtml(str: string): string {
   if (!NEEDS_ESCAPE_RE.test(str)) return str
-  if (__DEV__) _countSink.__pyreon_count__?.('runtime-server.escape')
+  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.escape')
   // Dirty path: manual charCode scan with lazy slicing. The previous
   // `.replace(/g, callback)` paid a function call + map lookup PER MATCH —
   // the scan emits contiguous clean runs via slice and appends the entity

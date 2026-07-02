@@ -20,7 +20,6 @@ import {
 //
 // All zero-cost at runtime; only `defineComponents` validates in dev.
 
-const __DEV__ = process.env.NODE_ENV !== 'production'
 
 /**
  * Top-level config entrypoint. Users put this in `content.config.ts`
