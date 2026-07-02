@@ -33,6 +33,7 @@ import {
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
+  typeIsOptional,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -963,8 +964,16 @@ function emitKotlinEnum(e: EnumIR): string {
  * import-emission step if real-app shape surfaces drift.
  */
 function emitKotlinStruct(s: StructIR): string {
+  // Optional field (`label?: string` → union-with-undefined) gets an
+  // explicit `= null` default so a literal that skips the field compiles
+  // (`P(qty = 3)`) — and kotlinx.serialization decodes a missing JSON key
+  // to the default for defaulted properties. Mirrors emit-swift's
+  // `var label: String? = nil`.
   const params = s.fields
-    .map((f) => `var ${kotlinIdent(f.name)}: ${kotlinType(f.type, undefined, f.name)}`)
+    .map((f) => {
+      const suffix = typeIsOptional(f.type) ? ' = null' : ''
+      return `var ${kotlinIdent(f.name)}: ${kotlinType(f.type, undefined, f.name)}${suffix}`
+    })
     .join(', ')
   return `@Serializable\ndata class ${kotlinIdent(s.name)}(${params})`
 }
@@ -1106,7 +1115,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
   }
-  const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs, _kotlinStructDefs)
+  const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs, _kotlinStructDefs, c.props, c.propsParamName)
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],
     componentName: c.name,
@@ -1138,8 +1147,13 @@ function emitKotlinComponent(c: ComponentIR): string {
   // commonly accepts `class` as a prop name (React/HTML attr leakage)
   // or names functions colliding with `fun` / `val` / etc. — Kotlin
   // accepts ``\`class\`: String`` etc. as a normal identifier.
-  const propsParts = c.props.map(
-    (p) => `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`,
+  // Optional props (`label?: string` → union-with-undefined) get an
+  // explicit `= null` default so call sites can omit them — mirrors the
+  // Swift emit's `var label: String? = nil` memberwise default.
+  const propsParts = c.props.map((p) =>
+    typeIsOptional(p.type)
+      ? `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)} = null`
+      : `${kotlinIdent(p.name)}: ${kotlinType(p.type, ctx, p.name)}`,
   )
   // Pass 3: emit ALL synthesized data classes (from BOTH decl pass +
   // prop pass) at the top of the output, ahead of the @Composable
@@ -1206,7 +1220,9 @@ function emitKotlinDataClass(synth: {
   name: string
   fields: { name: string; type: TypeIR }[]
 }): string {
-  const params = synth.fields.map((f) => `val ${f.name}: ${kotlinType(f.type)}`).join(', ')
+  const params = synth.fields
+    .map((f) => `val ${f.name}: ${kotlinType(f.type)}${typeIsOptional(f.type) ? ' = null' : ''}`)
+    .join(', ')
   // `@Serializable` for consistency with emitKotlinStruct (named `type X
   // = {...}` structs always carry it). Without it, a synthesized class
   // reachable from a fetch decode (`useFetch<{ name: string }[]>(url)`
@@ -3137,10 +3153,25 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
         if (i < t.exprs.length) parts.push(`\${${emitKotlinExpr(t.exprs[i]!, indent)}}`)
       }
     } else {
-      parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
+      parts.push(kotlinInterpSegment(c.expr, indent))
     }
   }
   return `Text(text = "${parts.join('')}"${fontArg}${modArg})`
+}
+
+/**
+ * Interpolation segment for a VALUE expression inside a Text string. An
+ * OPTIONAL-typed expr (an optional prop, a `.find` result) renders EMPTY
+ * when null — matching JSX, where `{undefined}` renders nothing — instead
+ * of Kotlin's literal `"null"`. Mirror of emit-swift's
+ * `swiftInterpSegment`.
+ */
+function kotlinInterpSegment(e: ExprIR, indent: number): string {
+  const emitted = emitKotlinExpr(e, indent)
+  if (typeIsOptional(inferType(e, _kotlinExprInferCtx))) {
+    return `\${${emitted} ?: ""}`
+  }
+  return `\${${emitted}}`
 }
 
 /** Android resource-name sanitize (mirror of the fonts materializer). */
@@ -4970,7 +5001,7 @@ function emitKotlinChild(c: ChildIR, indent: number): string {
     if (c.expr.kind === 'template') {
       return `Text(text = ${emitKotlinExpr(c.expr, indent)})`
     }
-    return `Text(text = "\${${emitKotlinExpr(c.expr, indent)}}")`
+    return `Text(text = "${kotlinInterpSegment(c.expr, indent)}")`
   }
   // `{cond && <View/>}` — the dominant React/Solid conditional-render
   // idiom. A raw `cond && View` is `Boolean && Unit`, which won't compile
