@@ -39,6 +39,7 @@ import {
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
+  typeIsOptional,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import {
@@ -2541,6 +2542,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           `Number.isInteger(${argStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively. Give the argument a resolvable number type.`,
         )
       }
+      // `isNaN(x)` — no global exists natively (a SILENT fail). Int-typed
+      // arg → statically `false`; Double → the native `.isNaN`; unknown →
+      // NAMED warning + raw emit (loud).
+      if (
+        e.callee.kind === 'identifier' &&
+        e.callee.name === 'isNaN' &&
+        e.args.length === 1
+      ) {
+        const nT = inferType(e.args[0]!, _activeInferCtx)
+        const nStr = emitSwiftExpr(e.args[0]!, indent)
+        if (nT.kind === 'number' && nT.float !== true) return 'false'
+        if (nT.kind === 'number') return `(${nStr}).isNaN`
+        _emitWarnings.push(
+          `isNaN(${nStr}): the argument's numeric type could not be inferred — emitting the raw call, which does not compile natively.`,
+        )
+      }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Swift `Int(s) ?? 0`
       // / `Double(s) ?? 0`. JS returns NaN on failure; the `?? 0` default
       // keeps the result a non-optional Int/Double (NaN has no native
@@ -3020,6 +3037,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // index expr are pure (signal reads / literals), so repeating
             // them is safe.
             if (e.args.length === 1) {
+              // ARRAY receivers only — Swift String indices aren't Int, so
+              // the same lowering on a string emitted uncompilable garbage
+              // (a SILENT fail). String `.at` warns NAMED.
+              const atT = inferType(e.callee.object, _activeInferCtx)
+              if (atT.kind === 'string') {
+                _emitWarnings.push(
+                  `${obj}.at(...): String.at has no Swift lowering yet (String indices are not integers) — emitting the raw call, which fails to compile. Use string slicing or restructure.`,
+                )
+                break
+              }
               const i = argExprs[0]!
               const resolved = `(${i} < 0 ? ${obj}.count + (${i}) : (${i}))`
               return `(${obj}.indices.contains(${resolved}) ? ${obj}[${resolved}] : nil)`
@@ -3208,6 +3235,15 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
             // falls through to the generic emit.
             const cmp = e.args[0]
             if (e.args.length === 1 && cmp!.kind === 'arrow' && cmp!.params.length === 2) {
+              // A MULTI-STATEMENT comparator can't wrap in the `< 0` Bool
+              // conversion (the block-body sentinel made it a SILENT drop —
+              // idiom-sweep batch 2). NAMED warning; expression bodies only.
+              if (cmp!.stmts !== undefined && cmp!.stmts.length > 0) {
+                _emitWarnings.push(
+                  `.sort with a multi-statement comparator is not lowered — Swift's sorted(by:) needs a Bool expression; use an expression-body comparator ((a, b) => a - b) or precompute the key.`,
+                )
+                break
+              }
               const ps = cmp!.params.map((p) => swiftIdent(p)).join(', ')
               return `${obj}.sorted(by: { ${ps} in (${emitSwiftExpr(cmp!.body, indent)}) < 0 })`
             }
@@ -3452,9 +3488,26 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       }
       return `${leftStr} ${e.op} ${rightStr}`
     }
-    case 'unary':
-      // Parser-B: prefix unary. Swift accepts `!x`, `-x`, `+x` verbatim.
+    case 'unary': {
+      // Parser-B: prefix unary. `-x` / `+x` verbatim. JS `!x` is TRUTHINESS
+      // negation — on a non-Bool it needs the typed lowering ("type 'Int'
+      // cannot be used as a boolean"), and `!!x` (truthiness→Bool) is
+      // doubly broken (juxtaposed unary is a Swift parse error). Both were
+      // SILENT fails (idiom-sweep batch 2). By the arg's inferred type;
+      // unknown args keep the raw emit (loud).
+      if (e.op === '!') {
+        const inner = e.argument
+        const isDoubleNeg = inner.kind === 'unary' && inner.op === '!'
+        const target = isDoubleNeg ? (inner as { argument: ExprIR }).argument : inner
+        const tT = inferType(target, _activeInferCtx)
+        const tStr = emitSwiftExpr(target, indent)
+        if (tT.kind === 'number') return isDoubleNeg ? `(${tStr} != 0)` : `(${tStr} == 0)`
+        if (tT.kind === 'string') return isDoubleNeg ? `!(${tStr}).isEmpty` : `(${tStr}).isEmpty`
+        if (tT.kind === 'boolean') return isDoubleNeg ? tStr : `!${emitSwiftExpr(inner, indent)}`
+        if (typeIsOptional(tT)) return isDoubleNeg ? `(${tStr} != nil)` : `(${tStr} == nil)`
+      }
       return `${e.op}${emitSwiftExpr(e.argument, indent)}`
+    }
     case 'logical':
       // Parser-C: short-circuit logical. Swift `&&` / `||` semantics
       // match JS for the value types Pyreon signals carry. `??` is

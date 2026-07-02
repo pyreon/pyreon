@@ -827,6 +827,14 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       ) {
         return { kind: 'boolean' }
       }
+      // `isNaN(x)` → boolean (paired with the per-target lowering).
+      if (
+        expr.callee.kind === 'identifier' &&
+        expr.callee.name === 'isNaN' &&
+        expr.args.length === 1
+      ) {
+        return { kind: 'boolean' }
+      }
       // Math.* numeric builtins — see `inferMathCall`.
       {
         const m = inferMathCall(expr, ctx)
