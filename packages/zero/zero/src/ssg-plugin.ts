@@ -32,7 +32,7 @@ import { resolveConfig } from './config'
 import { isApiRoute } from './api-routes'
 import { collectFileRouteModes, detectRouteExports, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
-import { assertModesSupported, formatRouteModeTable } from './route-modes'
+import { assertModesSupported, formatRouteModeTable, matchRouteRules, type RouteRules } from './route-modes'
 import {
   extractStylerStyleTag,
   hashCss,
@@ -120,9 +120,11 @@ const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 const renderSsgEntrySource = (
   locales: readonly string[] = [],
   appMode: string = 'ssg',
+  routeRules?: Record<string, { renderMode?: string }>,
 ): string => {
   const i18nLocalesLiteral = JSON.stringify(locales)
   const appModeLiteral = JSON.stringify(appMode)
+  const routeRulesLiteral = routeRules ? JSON.stringify(routeRules) : 'undefined'
   return `
 import { routes } from "virtual:zero/routes"
 // h / renderWithHead / runWithRequestContext serve ONLY the legacy
@@ -140,9 +142,10 @@ import { collectRouteModes, createApp, resolveRenderModeForPath } from "@pyreon/
 // layout cascade, app-mode default) as the runtime dispatch in
 // entry-server.ts — one implementation, no drift.
 const __appMode = ${appModeLiteral}
-export const __routeModeEntries = collectRouteModes(routes, __appMode)
+const __routeRules = ${routeRulesLiteral}
+export const __routeModeEntries = collectRouteModes(routes, __appMode, __routeRules)
 export function __resolveRenderMode(path) {
-  return resolveRenderModeForPath(routes, path, __appMode)
+  return resolveRenderModeForPath(routes, path, __appMode, __routeRules)
 }
 
 // Lazy-imported styler integration. Projects that don't depend on
@@ -445,10 +448,15 @@ async function warnUnenumeratedDynamicRoute(
   filePath: string,
   pattern: string,
   warned: Set<string>,
+  rules?: RouteRules,
 ): Promise<void> {
   if (warned.has(filePath)) return
   warned.add(filePath)
   if (isApiRoute(filePath)) return // runtime-only by definition
+  // A routeRules glob declaring the route non-static is as intentional as
+  // a file-level declaration — same exemption.
+  const ruleMode = matchRouteRules(rules, pattern)
+  if (ruleMode === 'spa' || ruleMode === 'ssr' || ruleMode === 'isr') return
   try {
     const source = await readFile(join(routesDir, filePath), 'utf-8')
     const literal = detectRouteExports(source).renderModeLiteral
@@ -472,6 +480,7 @@ async function autoDetectStaticPaths(
   registry?: GetStaticPathsRegistry,
   errors: { path: string; error: unknown }[] = [],
   i18n?: I18nRoutingConfig,
+  rules?: RouteRules,
 ): Promise<string[]> {
   // Routes dir missing → fall back to "/" anyway. A project that doesn't
   // expose routes via fs-routing (custom routes module, single-page app
@@ -511,7 +520,7 @@ async function autoDetectStaticPaths(
       // unless the route file explicitly declares a non-static renderMode
       // ('spa' gets the CSR shell; 'ssr'/'isr' are served by the hybrid
       // server) or is an API route (runtime-only by definition).
-      await warnUnenumeratedDynamicRoute(routesDir, r.filePath, path, warnedDynamicFiles)
+      await warnUnenumeratedDynamicRoute(routesDir, r.filePath, path, warnedDynamicFiles, rules)
       continue
     }
 
@@ -570,7 +579,7 @@ async function resolvePaths(
     return Array.isArray(result) ? result : []
   }
   if (Array.isArray(explicit)) return explicit
-  return autoDetectStaticPaths(routesDir, registry, errors, config.i18n)
+  return autoDetectStaticPaths(routesDir, registry, errors, config.i18n, config.routeRules)
 }
 
 // `writeFileAtomic`, `mkdirOnce`, `_resetMkdirCache` are imported from
@@ -1253,7 +1262,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // per-locale 404 walker can detect which RouteRecord serves which
       // locale at module-eval time inside the SSR sub-build.
       const i18nLocales = config.i18n?.locales ?? []
-      await materializeEntry(entryPath, renderSsgEntrySource(i18nLocales, config.mode ?? 'ssg'))
+      await materializeEntry(entryPath, renderSsgEntrySource(i18nLocales, config.mode ?? 'ssg', config.routeRules))
 
       // Inner SSR sub-build via the shared helper. Owns the env-flag
       // set/clear recipe — see `ssr-build-shared.ts:buildSsrBundle`.
@@ -2019,8 +2028,9 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // prints the table there; printing from both would duplicate it.
       if (config.mode === 'ssg') {
         try {
-          const modeEntries = await collectFileRouteModes(routesDir, config.mode)
-          for (const line of formatRouteModeTable(modeEntries, config.mode)) {
+          const tableMode = config._autoMode ? ('auto' as const) : config.mode
+          const modeEntries = await collectFileRouteModes(routesDir, tableMode, config.routeRules)
+          for (const line of formatRouteModeTable(modeEntries, tableMode)) {
             // oxlint-disable-next-line no-console
             console.log(line)
           }

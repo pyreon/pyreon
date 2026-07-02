@@ -1542,6 +1542,133 @@ export async function scanRouteFiles(routesDir: string): Promise<string[]> {
  *   • Direct property access for components with metadata (no _pick)
  *   • No spurious IMPORT_IS_UNDEFINED warnings
  */
+
+// ─── mode: 'auto' — inference (EXPERIMENTAL) ─────────────────────────────────
+
+/**
+ * Infer a page route's render mode from its exports — the conservative
+ * "static unless the code says otherwise" model:
+ *
+ *   revalidate export        → 'isr'  (the route asked for staleness control)
+ *   getStaticPaths export    → 'ssg'  (an enumerator is a static-intent signal,
+ *                                      even alongside a loader — SSG runs loaders
+ *                                      at build)
+ *   loader / serverLoader /
+ *   guard / middleware       → 'ssr'  (request-coupled work; a loader COULD be
+ *                                      build-safe, but inference can't prove it —
+ *                                      declare `renderMode = 'ssg'` to opt in)
+ *   otherwise                → 'ssg'
+ *
+ * Explicit declarations (file export or routeRules) always win — inference
+ * only fills the undeclared gaps.
+ */
+export function inferRouteMode(exp: RouteFileExports): RenderMode {
+  if (exp.hasRevalidate) return 'isr'
+  if (exp.hasGetStaticPaths) return 'ssg'
+  if (exp.hasLoader || exp.serverLoaderFile !== undefined || exp.hasGuard || exp.hasMiddleware) return 'ssr'
+  return 'ssg'
+}
+
+/**
+ * Inference-as-declaration: rewrite undeclared PAGE routes so their inferred
+ * mode becomes a literal `renderModeLiteral` — the generator then inlines it
+ * exactly like a hand-written `export const renderMode`, and the runtime
+ * dispatch / build filtering / mode errors need ZERO auto-awareness.
+ */
+export function applyModeInference(routes: FileRoute[]): FileRoute[] {
+  return routes.map((r) => {
+    if (r.isLayout || r.isError || r.isLoading || r.isNotFound) return r
+    const exp = r.exports
+    if (exp?.hasRenderMode) return r
+    const inferred = inferRouteMode(exp ?? ({} as RouteFileExports))
+    return {
+      ...r,
+      exports: {
+        ...(exp ?? ({} as RouteFileExports)),
+        hasRenderMode: true,
+        renderModeLiteral: JSON.stringify(inferred),
+      },
+    }
+  })
+}
+
+/**
+ * The app-level pipeline a `mode: 'auto'` project needs: 'ssr' when ANY page
+ * (declared or inferred) requires a server, else pure-static 'ssg'.
+ */
+export function resolveAutoAppMode(
+  routes: FileRoute[],
+  rules?: import('./route-modes').RouteRules,
+): 'ssr' | 'ssg' {
+  const serverModes = new Set(['ssr', 'isr'])
+  if (rules && Object.values(rules).some((v) => v.renderMode && serverModes.has(v.renderMode))) {
+    return 'ssr'
+  }
+  for (const r of routes) {
+    if (r.isLayout || r.isError || r.isLoading || r.isNotFound) continue
+    const lit = r.exports?.renderModeLiteral?.replace(/['"]/g, '')
+    if (lit !== undefined) {
+      if (serverModes.has(lit)) return 'ssr'
+      continue
+    }
+    if (r.exports?.hasRenderMode) {
+      // computed renderMode — can't prove static; a server keeps every
+      // declared mode honorable.
+      return 'ssr'
+    }
+    if (serverModes.has(inferRouteMode(r.exports ?? ({} as RouteFileExports)))) return 'ssr'
+  }
+  return 'ssg'
+}
+
+/**
+ * Synchronous auto-mode resolution for plugin-factory time (Vite plugin
+ * arrays are built before any async hook runs). Reads the routes dir with
+ * sync fs — same walk shape as scanRouteFiles. Missing dir → 'ssg'.
+ */
+export function resolveAutoModeSync(
+  routesDir: string,
+  rules?: import('./route-modes').RouteRules,
+): { mode: 'ssr' | 'ssg'; pages: number } {
+  const fs = require('node:fs') as typeof import('node:fs')
+  if (!fs.existsSync(routesDir)) return { mode: 'ssg', pages: 0 }
+  const files: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir)) {
+      const full = `${dir}/${entry}`
+      try {
+        if (fs.statSync(full).isDirectory()) walk(full)
+        else if (
+          ROUTE_EXTENSIONS.some((ext) => entry.endsWith(ext))
+          && !/\.server\.[jt]sx?$/.test(entry)
+        ) {
+          files.push(full.slice(routesDir.length + 1))
+        }
+      } catch {
+        /* unreadable entry */
+      }
+    }
+  }
+  try {
+    walk(routesDir)
+  } catch {
+    return { mode: 'ssg', pages: 0 }
+  }
+  const routes = parseFileRoutes(files)
+  const withExports = routes.map((r) => {
+    try {
+      const source = fs.readFileSync(`${routesDir}/${r.filePath}`, 'utf-8')
+      return { ...r, exports: detectRouteExports(source) }
+    } catch {
+      return r
+    }
+  })
+  const pages = withExports.filter(
+    (r) => !r.isLayout && !r.isError && !r.isLoading && !r.isNotFound,
+  ).length
+  return { mode: resolveAutoAppMode(withExports, rules), pages }
+}
+
 /** One page route with its file-level effective render mode. */
 export interface FileRouteModeEntry {
   /** URL pattern (`/posts/:id`). */
@@ -1564,10 +1691,14 @@ export interface FileRouteModeEntry {
  */
 export async function collectFileRouteModes(
   routesDir: string,
-  appMode: RenderMode = 'ssr',
+  appMode: RenderMode | 'auto' = 'ssr',
+  rules?: import('./route-modes').RouteRules,
 ): Promise<FileRouteModeEntry[]> {
+  const { matchRouteRules } = await import('./route-modes')
   const { isApiRoute } = await import('./api-routes')
-  const routes = await scanRouteFilesWithExports(routesDir, appMode)
+  const infer = appMode === 'auto'
+  const scanMode: RenderMode = infer ? 'ssg' : appMode
+  const routes = await scanRouteFilesWithExports(routesDir, scanMode)
 
   const parseDeclared = (r: FileRoute): RenderMode | undefined => {
     const lit = r.exports?.renderModeLiteral?.replace(/['"]/g, '')
@@ -1604,7 +1735,24 @@ export async function collectFileRouteModes(
         dir = i === -1 ? '' : dir.slice(0, i)
       }
     }
-    out.push({ pattern: r.urlPath, mode: mode ?? appMode, declared, filePath: r.filePath })
+    // Central overrides: file/layout declaration > routeRules > app mode
+    // (same precedence as the runtime resolver).
+    const ruleMode = mode === undefined ? matchRouteRules(rules, r.urlPath) : undefined
+    if (ruleMode !== undefined) {
+      mode = ruleMode
+      declared = true
+    }
+    // mode: 'auto' — undeclared routes resolve by inference (same helper the
+    // generator uses, so this view matches the built modes exactly).
+    if (mode === undefined && infer) {
+      mode = inferRouteMode(r.exports ?? ({} as RouteFileExports))
+    }
+    out.push({
+      pattern: r.urlPath,
+      mode: mode ?? (appMode as RenderMode),
+      declared,
+      filePath: r.filePath,
+    })
   }
   return out
 }
