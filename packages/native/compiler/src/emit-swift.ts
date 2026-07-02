@@ -4043,9 +4043,27 @@ function emitSwiftFor(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   ) as Extract<ChildIR, { kind: 'expr' }> | undefined
 
   const items = each ? emitSwiftSignalRead(each.value) : 'items'
-  const idPath = by && by.value.kind === 'arrow'
-    ? extractMemberPath(by.value.body)
-    : 'id'
+  // `by` keying: a member body ((i) => i.id) → key path \.id; an IDENTITY
+  // body ((n) => n, the plain-string-list shape) → \.self (String/Int are
+  // Hashable) — pre-fix extractMemberPath silently fell back to \.id for
+  // the identity lambda, an uncompilable SILENT mis-emit ("value of type
+  // 'String' has no member 'id'"). Any OTHER by-shape (computed keys) has
+  // no Swift KeyPath analog → NAMED warning + the \.id fallback so swiftc
+  // names the site (never silent).
+  let idKey = 'id'
+  if (by && by.value.kind === 'arrow') {
+    const b = by.value
+    if (b.body !== undefined && b.body.kind === 'identifier' && b.params[0] === b.body.name) {
+      idKey = 'self'
+    } else if (b.body !== undefined && b.body.kind === 'member') {
+      idKey = b.body.property
+    } else {
+      _emitWarnings.push(
+        `<For by={…}>: only an identity key ((x) => x) or a member key ((x) => x.field) lowers to a SwiftUI ForEach id — this by-callback matches neither; emitting id: \\.id which likely fails to compile. Key on a field or the element itself.`,
+      )
+    }
+  }
+  const idPath = idKey
 
   if (!renderArrow || renderArrow.expr.kind !== 'arrow') {
     return `ForEach(${items}, id: \\.${idPath}) { _ in EmptyView() }`
@@ -6087,11 +6105,6 @@ function extractStaticText(children: ChildIR[]): string | null {
 }
 
 /** Walk an arrow body `(i) => i.id` → return the property name 'id'. */
-function extractMemberPath(expr: ExprIR): string {
-  if (expr.kind === 'member') return expr.property
-  return 'id'
-}
-
 function escapeSwiftInterp(s: string): string {
   // Escape backslashes + double-quotes + the `\(` interpolation marker.
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\\\(/g, '\\\\(')

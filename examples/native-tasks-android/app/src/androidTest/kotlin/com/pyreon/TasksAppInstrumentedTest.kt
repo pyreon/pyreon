@@ -31,6 +31,7 @@
 package com.pyreon
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -265,6 +266,36 @@ class TasksAppInstrumentedTest {
         }
         composeRule
             .onNodeWithTag("lifecycle-back")
+            .performClick()
+        composeRule
+            .onNodeWithTag("tasks-page")
+            .assertIsDisplayed()
+
+        // Phase 5.6: stats — the 2026-07 P1-sprint vocabulary in one page
+        // (Object.keys/values over a declared struct, seeded reduce, Double
+        // division, the filter-map flatMap idiom, a 2-param indexed filter
+        // with Int×Double coercion, an identity-keyed <For> over strings —
+        // key = { it }, the For-by fix this page surfaced). Int-derived
+        // texts asserted exactly; Double TEXT deliberately not (Swift and
+        // Kotlin stringify Doubles differently) — the average node
+        // existing at all proves the Double pipeline.
+        composeRule
+            .onNodeWithTag("tasks-stats")
+            .performClick()
+        composeRule
+            .onNodeWithTag("stats-page")
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("stats-total")
+            .assertTextEquals("247")
+        composeRule
+            .onNodeWithTag("stats-high")
+            .assertTextEquals("2")
+        composeRule
+            .onNodeWithTag("stats-average")
+            .assertIsDisplayed()
+        composeRule
+            .onNodeWithTag("stats-back")
             .performClick()
         composeRule
             .onNodeWithTag("tasks-page")
