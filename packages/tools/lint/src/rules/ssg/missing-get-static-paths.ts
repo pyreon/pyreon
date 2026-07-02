@@ -55,6 +55,7 @@ export const missingGetStaticPaths: Rule = {
 
     let hasGetStaticPaths = false
     let hasDefaultExport = false
+    let declaresRuntimeMode = false
     let programSpan: { start: number; end: number } | null = null
 
     const callbacks: VisitorCallbacks = {
@@ -70,6 +71,20 @@ export const missingGetStaticPaths: Rule = {
             const id = declarator.id
             if (id?.type === 'Identifier' && id.name === 'getStaticPaths') {
               hasGetStaticPaths = true
+            }
+            // `export const renderMode = 'ssr' | 'isr' | 'spa'` declares the
+            // route runtime-only (or CSR-shelled) — getStaticPaths doesn't
+            // apply, exactly mirroring the zero build's exemption. Only a
+            // literal counts (a computed mode gets its own build warning).
+            if (id?.type === 'Identifier' && id.name === 'renderMode') {
+              const init = declarator.init
+              const value
+                = init?.type === 'Literal' || init?.type === 'StringLiteral'
+                  ? (init as { value?: unknown }).value
+                  : undefined
+              if (value === 'ssr' || value === 'isr' || value === 'spa') {
+                declaresRuntimeMode = true
+              }
             }
           }
         } else if (decl.type === 'FunctionDeclaration') {
@@ -88,10 +103,11 @@ export const missingGetStaticPaths: Rule = {
         // method handlers (`GET` / `POST` / etc.) without a default are
         // API routes wherever they sit in the tree.
         if (!hasDefaultExport) return
+        if (declaresRuntimeMode) return
         if (hasGetStaticPaths || !programSpan) return
         context.report({
           message:
-            'Dynamic route file is missing `export const getStaticPaths` — under `mode: "ssg"` the SSG plugin silently skips this route, so the dist won\'t contain prerendered HTML. Either add `export const getStaticPaths = () => [{ params: { ... } }, ...]` enumerating the concrete values, OR declare the route as runtime-only by switching to `mode: "ssr"` / `mode: "isr"`.',
+            'Dynamic route file is missing `export const getStaticPaths` — under `mode: "ssg"` the SSG plugin silently skips this route, so the dist won\'t contain prerendered HTML. Either add `export const getStaticPaths = () => [{ params: { ... } }, ...]` enumerating the concrete values, OR declare the route\'s own mode: `export const renderMode = \'ssr\'` (server-rendered) / `\'spa\'` (client shell) — or switch the app to `mode: "ssr"` / `mode: "isr"`.',
           // Report at the start of the file so the diagnostic is visible
           // in editor gutters without scrolling.
           span: { start: programSpan.start, end: Math.min(programSpan.start + 1, programSpan.end) },

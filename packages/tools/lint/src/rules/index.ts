@@ -7,6 +7,7 @@ import { devGuardWarnings } from './architecture/dev-guard-warnings'
 // Architecture
 import { noCircularImport } from './architecture/no-circular-import'
 import { noCrossLayerImport } from './architecture/no-cross-layer-import'
+import { islandImportFromClient } from './architecture/island-import-from-client'
 import { noDeepImport } from './architecture/no-deep-import'
 import { noErrorWithoutPrefix } from './architecture/no-error-without-prefix'
 import { noModuleSignalInServerPackage } from './architecture/no-module-signal-in-server-package'
@@ -158,9 +159,10 @@ export const allRules: Rule[] = [
   noMismatchRisk,
   preferRequestContext,
   preferIsServer,
-  // Architecture (8)
+  // Architecture (9)
   noCircularImport,
   noDeepImport,
+  islandImportFromClient,
   noCrossLayerImport,
   devGuardWarnings,
   noErrorWithoutPrefix,
@@ -238,6 +240,7 @@ export {
   noContextDestructure,
   noChildrenAccess,
   // Architecture
+  islandImportFromClient,
   noCircularImport,
   noClassName,
   noCrossLayerImport,

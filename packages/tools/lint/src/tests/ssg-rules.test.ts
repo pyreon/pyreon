@@ -209,3 +209,34 @@ export default function Page() { return null }`
     expect(diagIds(result)).not.toContain('pyreon/invalid-loader-export')
   })
 })
+
+describe('pyreon/missing-get-static-paths — renderMode-aware skip (Tier-2 I)', () => {
+  it("does NOT fire when the route declares renderMode 'ssr'", () => {
+    const source = `export const renderMode = 'ssr'
+export default function Page() { return null }`
+    const result = lintRoute(source, 'src/routes/posts/[id].tsx')
+    expect(diagIds(result)).not.toContain('pyreon/missing-get-static-paths')
+  })
+
+  it("does NOT fire when the route declares renderMode 'spa'", () => {
+    const source = `export const renderMode = 'spa'
+export default function Page() { return null }`
+    const result = lintRoute(source, 'src/routes/app/[id].tsx')
+    expect(diagIds(result)).not.toContain('pyreon/missing-get-static-paths')
+  })
+
+  it("STILL fires when the route declares renderMode 'ssg' without getStaticPaths", () => {
+    const source = `export const renderMode = 'ssg'
+export default function Page() { return null }`
+    const result = lintRoute(source, 'src/routes/posts/[id].tsx')
+    expect(diagIds(result)).toContain('pyreon/missing-get-static-paths')
+  })
+
+  it('STILL fires for a computed renderMode (cannot be proven runtime-only)', () => {
+    const source = `const m = 'ssr'
+export const renderMode = m
+export default function Page() { return null }`
+    const result = lintRoute(source, 'src/routes/posts/[id].tsx')
+    expect(diagIds(result)).toContain('pyreon/missing-get-static-paths')
+  })
+})
