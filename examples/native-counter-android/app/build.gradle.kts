@@ -68,6 +68,11 @@ dependencies {
     // PyreonFetch/NetworkStatus use coroutines) + M2 material for the
     // emit header's `import androidx.compose.material.*`.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // PyreonWebSocketOkHttp.kt (in the runtime-kotlin srcDir above) imports
+    // okhttp3 — the default websocket transport backing the TS-side
+    // ws.connect(). Every app compiling the runtime srcDir needs the dep,
+    // websockets used or not (the srcDir compiles all runtime sources).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.compose.material:material")
