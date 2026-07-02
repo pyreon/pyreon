@@ -18,6 +18,7 @@ import {
   isCompoundExpr,
   substituteIdentifier,
   synthLiteralStructName,
+  classifyDynamicStylingAttr,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -3658,6 +3659,33 @@ function mapJsxTagToCompose(tag: string): string {
  * Read a static attribute as a literal, ignoring spreads + dynamic exprs.
  * Returns undefined when absent or not a static literal.
  */
+/**
+ * Resolve a STYLING attr to emitted Kotlin source — mirror of
+ * emit-swift's `swiftStylingValue`. Static → resolved token; TERNARY OF
+ * TWO LITERALS → `(if (cond) 8 else 16)` with both branches
+ * compile-resolved; other dynamic → NAMED warning + undefined (pre-fix
+ * the whole modifier was SILENTLY dropped).
+ */
+function kotlinStylingValue(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+  resolve: (v: string | number) => string | number,
+): string | undefined {
+  const stat = readStaticAttrKotlin(e, name)
+  if (typeof stat === 'number' || typeof stat === 'string') return String(resolve(stat))
+  const dyn = classifyDynamicStylingAttr(e, name)
+  if (dyn.kind === 'ternary') {
+    const cond = kotlinCondition(dyn.cond, (x) => emitKotlinExpr(x, 0))
+    return `(if (${cond}) ${resolve(dyn.a)} else ${resolve(dyn.b)})`
+  }
+  if (dyn.kind === 'dynamic') {
+    _emitWarnings.push(
+      `<${e.tag} ${name}={…}>: styling tokens resolve at COMPILE time — a fully-dynamic ${name} has no native lowering (it was silently dropped before). Use a fixed token, or a ternary of two literal tokens (${name}={cond ? "sm" : "lg"}).`,
+    )
+  }
+  return undefined
+}
+
 function readStaticAttrKotlin(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   name: string,
@@ -3694,28 +3722,30 @@ function emitKotlinLayoutModifier(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
 ): string {
   const parts: string[] = []
-  const padding = readStaticAttrKotlin(e, 'padding')
-  if (typeof padding === 'number' || typeof padding === 'string') {
-    parts.push(`.padding(${resolveSpace(padding)}.dp)`)
+  const padding = kotlinStylingValue(e, 'padding', resolveSpace)
+  if (padding !== undefined) {
+    parts.push(`.padding(${padding}.dp)`)
   }
-  const paddingX = readStaticAttrKotlin(e, 'paddingX')
-  if (typeof paddingX === 'number' || typeof paddingX === 'string') {
-    parts.push(`.padding(horizontal = ${resolveSpace(paddingX)}.dp)`)
+  const paddingX = kotlinStylingValue(e, 'paddingX', resolveSpace)
+  if (paddingX !== undefined) {
+    parts.push(`.padding(horizontal = ${paddingX}.dp)`)
   }
-  const paddingY = readStaticAttrKotlin(e, 'paddingY')
-  if (typeof paddingY === 'number' || typeof paddingY === 'string') {
-    parts.push(`.padding(vertical = ${resolveSpace(paddingY)}.dp)`)
+  const paddingY = kotlinStylingValue(e, 'paddingY', resolveSpace)
+  if (paddingY !== undefined) {
+    parts.push(`.padding(vertical = ${paddingY}.dp)`)
   }
-  const background = readStaticAttrKotlin(e, 'background')
-  if (typeof background === 'string') {
-    parts.push(`.background(${resolveColor(background, 'kotlin')})`)
+  const background = kotlinStylingValue(e, 'background', (v) =>
+    resolveColor(String(v), 'kotlin'),
+  )
+  if (background !== undefined) {
+    parts.push(`.background(${background})`)
   }
-  const radius = readStaticAttrKotlin(e, 'radius')
-  if (typeof radius === 'string') {
+  const radius = kotlinStylingValue(e, 'radius', (v) => resolveRadius(String(v)))
+  if (radius !== undefined) {
     // Bare `RoundedCornerShape` — consumer imports from
     // androidx.compose.foundation.shape. Same convention as Color +
     // @Serializable.
-    parts.push(`.clip(RoundedCornerShape(${resolveRadius(radius)}.dp))`)
+    parts.push(`.clip(RoundedCornerShape(${radius}.dp))`)
   }
   // E3.1 — `data-testid` becomes Compose's `Modifier.testTag()` (from
   // androidx.compose.ui.platform). Same string the web e2e selects
@@ -3794,10 +3824,10 @@ function emitKotlinStack(
 
   const initArgs: string[] = []
   // gap → arrangement
-  const gap = readStaticAttrKotlin(e, 'gap')
-  if (typeof gap === 'number' || typeof gap === 'string') {
+  const gap = kotlinStylingValue(e, 'gap', resolveSpace)
+  if (gap !== undefined) {
     const arrangementSlot = isRow ? 'horizontalArrangement' : 'verticalArrangement'
-    initArgs.push(`${arrangementSlot} = Arrangement.spacedBy(${resolveSpace(gap)}.dp)`)
+    initArgs.push(`${arrangementSlot} = Arrangement.spacedBy(${gap}.dp)`)
   }
   // align → cross-axis alignment
   const align = readStaticAttrKotlin(e, 'align')
