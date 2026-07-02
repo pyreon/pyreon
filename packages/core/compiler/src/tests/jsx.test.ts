@@ -966,10 +966,15 @@ describe('JSX transform — template emission', () => {
     expect(result).not.toContain('hidden')
   })
 
-  test('emits setAttribute for undefined keyword attr', () => {
+  test('undefined keyword attr is OMITTED (JSX semantics)', () => {
+    // Historical behavior emitted `setAttribute("hidden", undefined)`, which
+    // coerces to the STRING "undefined" → `hidden="undefined"` is truthy and
+    // the element rendered hidden. JSX semantics (and the runtime's own
+    // applyStaticProp) treat null/undefined as attribute-absent.
     const result = t('<div hidden={undefined}><span /></div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('setAttribute("hidden", undefined)')
+    expect(result).not.toContain('setAttribute("hidden"')
+    expect(result).not.toContain('hidden')
   })
 
   test('one-time set for non-class static expression attribute', () => {
