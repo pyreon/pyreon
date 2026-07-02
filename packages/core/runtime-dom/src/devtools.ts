@@ -32,8 +32,17 @@ import {
 export interface DevtoolsComponentEntry {
   id: string
   name: string
-  /** First DOM element produced by this component, if any */
-  el: Element | null
+  /**
+   * First DOM element produced by this component, if any. Backed by a
+   * `WeakRef` internally — reads `null` once the element has been garbage
+   * collected. The registry is introspection metadata and must never act as
+   * a GC root for DOM: the element is captured ONCE at mount, so if the
+   * component's DOM is later replaced by a reactive re-render (while the
+   * component itself stays mounted), a strong ref here would pin the
+   * detached original subtree for the component's whole lifetime — the
+   * heap-snapshot "detached `<div>` retained by `_components`" signature.
+   */
+  readonly el: Element | null
   parentId: string | null
   childIds: string[]
 }
@@ -83,7 +92,17 @@ export function registerComponent(
   el: Element | null,
   parentId: string | null,
 ): void {
-  const entry: DevtoolsComponentEntry = { id, name, el, parentId, childIds: [] }
+  // WeakRef, not a strong ref — see the DevtoolsComponentEntry.el JSDoc.
+  const elRef = el ? new WeakRef(el) : null
+  const entry: DevtoolsComponentEntry = {
+    id,
+    name,
+    get el() {
+      return elRef?.deref() ?? null
+    },
+    parentId,
+    childIds: [],
+  }
   _components.set(id, entry)
   if (parentId) {
     const parent = _components.get(parentId)
