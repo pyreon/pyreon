@@ -36,6 +36,7 @@ import {
   seedHandlerLocals,
   typeContainsFunction,
   typeIsOptional,
+  unwrapOptionalType,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -2214,6 +2215,35 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         _emitWarnings.push(
           `${e.callee.object.name}.connect(): Android's PyreonWebSocket.connect requires a host-supplied transport (connect(register = { handlers -> sender })) — the compiler cannot synthesize one. Wire the transport in the host shell, or track the default-OkHttp-transport follow-up. iOS lowers this call.`,
         )
+      }
+      // `Boolean(x)` — JS truthiness coercion as a VALUE. Kotlin has no
+      // `Boolean(x)` function (the raw emit fails "unresolved reference"),
+      // so lower by the arg's INFERRED type — the mirror of the Swift
+      // lowering (see emit-swift.ts): bool → identity; number → `!= 0`;
+      // string → `.isNotEmpty()`; optional number/string → check the inner
+      // value ((x ?: 0) != 0 — JS Boolean(undefined)=Boolean(0)=false);
+      // other optionals → `!= null`. Unresolvable arg type → raw emit + a
+      // NAMED warning (kotlinc names the site — never a silent drop).
+      if (
+        e.callee.kind === 'identifier' &&
+        e.callee.name === 'Boolean' &&
+        e.args.length === 1
+      ) {
+        const t = inferType(e.args[0]!, _kotlinExprInferCtx)
+        const arg = emitKotlinExpr(e.args[0]!, indent)
+        if (t.kind === 'boolean') return arg
+        if (t.kind === 'number') return `(${arg} != 0)`
+        if (t.kind === 'string') return `(${arg}).isNotEmpty()`
+        if (typeIsOptional(t)) {
+          const inner = unwrapOptionalType(t)
+          if (inner.kind === 'number') return `((${arg} ?: 0) != 0)`
+          if (inner.kind === 'string') return `(${arg} ?: "").isNotEmpty()`
+          return `(${arg} != null)`
+        }
+        _emitWarnings.push(
+          `Boolean(${arg}): the argument's type could not be inferred, so the JS-truthiness lowering (!= 0 / isNotEmpty / != null) cannot be chosen — emitting the raw call, which does not compile on Kotlin. Give the argument a resolvable type (signal<T>, a typed param, a declared struct field).`,
+        )
+        return `Boolean(${arg})`
       }
       // `parseInt(s)` / `parseFloat(s)` / `Number(s)` → Kotlin
       // `(s).toIntOrNull() ?: 0` / `(s).toDoubleOrNull() ?: 0.0`. JS returns
