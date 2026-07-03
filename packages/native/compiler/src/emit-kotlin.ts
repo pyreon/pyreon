@@ -1755,6 +1755,27 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       return s.label !== undefined ? `break@${kotlinIdent(s.label)}` : 'break'
     case 'continue':
       return s.label !== undefined ? `continue@${kotlinIdent(s.label)}` : 'continue'
+    case 'for-range': {
+      // Canonical count-loop. Step 1 → `F until T` / `F..T` (inclusive);
+      // a literal step > 1 appends `step K`. Ranges keep break/continue.
+      const pad = ' '.repeat(indent)
+      const from = emitKotlinExpr(s.from, indent)
+      const to = emitKotlinExpr(s.to, indent)
+      const lines = s.body
+        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
+        .join('\n')
+      const range = s.inclusive === true ? `${from}..${to}` : `${from} until ${to}`
+      const stepPart = s.step !== undefined ? ` step ${emitKotlinExpr(s.step, indent)}` : ''
+      return `for (${kotlinIdent(s.item)} in ${range}${stepPart}) {\n${lines}\n${pad}}`
+    }
+    case 'do-while': {
+      const pad = ' '.repeat(indent)
+      const cond = kotlinCondition(s.cond, (x) => emitKotlinExpr(x, indent))
+      const lines = s.body
+        .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
+        .join('\n')
+      return `do {\n${lines}\n${pad}} while (${cond})`
+    }
     case 'switch': {
       const pad = ' '.repeat(indent)
       const disc = emitKotlinExpr(s.discriminant, indent)
