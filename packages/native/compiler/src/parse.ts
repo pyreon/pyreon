@@ -5131,6 +5131,53 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
     case 'TSNonNullExpression':
       // `x satisfies T` / `x!` — transparent; the value is the inner expression.
       return parseExpr(node.expression, ctx)
+    case 'NewExpression': {
+      // `new Map<K, V>()` / `new Set<T>()` / `new Set(arr)` — the supported
+      // collection constructors. Generic args carry the element types (a
+      // bare `new Map()` has none — the local's USE sites can't type it, so
+      // it stays a named warning: annotate the generics). Other `new X`
+      // falls through to the default unsupported warning.
+      const calleeName = node.callee?.type === 'Identifier' ? (node.callee.name as string) : ''
+      const typeArgs = (node.typeArguments?.params ?? node.typeParameters?.params ?? []) as AnyNode[]
+      if (calleeName === 'Map' && (node.arguments?.length ?? 0) === 0 && typeArgs.length === 2) {
+        return {
+          kind: 'new-collection',
+          collection: 'map',
+          keyType: parseTypeAnnotation(typeArgs[0]!, ctx),
+          valueType: parseTypeAnnotation(typeArgs[1]!, ctx),
+        }
+      }
+      if (calleeName === 'Set') {
+        if ((node.arguments?.length ?? 0) === 0 && typeArgs.length === 1) {
+          return {
+            kind: 'new-collection',
+            collection: 'set',
+            elementType: parseTypeAnnotation(typeArgs[0]!, ctx),
+          }
+        }
+        if ((node.arguments?.length ?? 0) === 1) {
+          return {
+            kind: 'new-collection',
+            collection: 'set',
+            seed: parseExpr(node.arguments[0], ctx),
+          }
+        }
+      }
+      if (calleeName === 'Map' || calleeName === 'Set') {
+        return unsupportedExpr(
+          ctx,
+          node,
+          `\`new ${calleeName}\` without explicit generic type arguments`,
+          `annotate the element types — \`new ${calleeName}<...>()\` — so the native collection can be typed.`,
+        )
+      }
+      return unsupportedExpr(
+        ctx,
+        node,
+        `\`new ${calleeName || (node.callee?.type ?? '?')}()\``,
+        'class construction is outside the supported declarative subset — model data with plain object/array signals.',
+      )
+    }
     case 'AwaitExpression':
       return unsupportedExpr(
         ctx,
