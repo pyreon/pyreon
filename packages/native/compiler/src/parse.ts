@@ -4383,6 +4383,13 @@ function parseTypeAnnotation(node: AnyNode, ctx: ParseCtx): TypeIR {
       return { kind: 'unknown' }
     case 'TSArrayType':
       return { kind: 'array', element: parseTypeAnnotation(node.elementType, ctx) }
+    case 'TSParenthesizedType':
+      // `(() => void) | undefined` — TS wraps the function type in parens
+      // inside the union. The parens are purely syntactic: unwrap to the
+      // inner type. Without this the case fell to the `unknown` default and
+      // the WHOLE union degraded to `Any?` — silently compilable for
+      // assignment, uncompilable the moment the callback is CALLED.
+      return parseTypeAnnotation(node.typeAnnotation, ctx)
     case 'TSTypeLiteral': {
       const fields = (node.members as AnyNode[])
         .filter((m) => m.type === 'TSPropertySignature' && m.key?.name && m.typeAnnotation)

@@ -316,6 +316,23 @@ function resolveStoreReadType(
  * — Swift/Kotlin reject an optional/nullable as a Bool condition (where JS
  * coerces null→false, non-null→true).
  */
+/**
+ * Does this type CONTAIN a function anywhere a serializer would visit it
+ * (directly, in a union branch, or as an array element)? Drives the
+ * struct-conformance gate: a function-typed field can't derive Swift
+ * Codable (closures aren't Codable — hard swiftc error) or kotlinx
+ * @Serializable (the serialization plugin rejects function properties on
+ * the REAL build; the kotlinc validate stubs mask it). Object-kind fields
+ * are NOT walked — a nested anonymous object degrades separately in the
+ * struct emit and its own synthesized struct gets its own gate.
+ */
+export function typeContainsFunction(t: TypeIR): boolean {
+  if (t.kind === 'function') return true
+  if (t.kind === 'union') return t.branches.some(typeContainsFunction)
+  if (t.kind === 'array') return typeContainsFunction(t.element)
+  return false
+}
+
 export function typeIsOptional(t: TypeIR): boolean {
   if (t.kind === 'null' || t.kind === 'undefined') return true
   return (

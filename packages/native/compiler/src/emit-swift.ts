@@ -39,6 +39,7 @@ import {
   rewriteObjectKeys,
   rewriteObjectValues,
   seedHandlerLocals,
+  typeContainsFunction,
   typeIsOptional,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
@@ -1149,7 +1150,14 @@ function emitSwiftEnum(e: EnumIR): string {
  */
 function emitSwiftStruct(s: StructIR): string {
   const lines: string[] = []
-  lines.push(`struct ${swiftIdent(s.name)}: Codable {`)
+  // A FUNCTION-typed field can't derive Codable — closures aren't
+  // Codable, so `struct X: Codable { var cb: () -> Void }` is a hard
+  // swiftc error ("does not conform to protocol 'Decodable'"). Emit the
+  // plain struct instead: it still works as a value type everywhere
+  // except JSON decode — which a type carrying functions can't do in ANY
+  // language. Function-free structs keep Codable byte-identically.
+  const codable = s.fields.some((f) => typeContainsFunction(f.type)) ? '' : ': Codable'
+  lines.push(`struct ${swiftIdent(s.name)}${codable} {`)
   for (const f of s.fields) {
     // Optional field (`label?: string` → union-with-undefined) gets an
     // explicit `= nil` default so the memberwise initializer's parameter
@@ -2282,10 +2290,15 @@ function swiftUnionType(
   )
   const hasNullish = branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
   if (nonNullBranches.length === 1 && hasNullish) {
-    // Thread synth/declName so an OPTIONAL anonymous-object type
-    // (`config?: { a: number }`) still synthesizes a named struct
-    // (`Config?`) instead of degrading.
-    return `${swiftType(nonNullBranches[0]!, synth, declName)}?`
+    // A FUNCTION branch must be parenthesized before the `?` — a bare
+    // `() -> Void?` is a function RETURNING `Void?`, not an optional
+    // function. `(() -> Void)?` is the optional-closure type. For a
+    // non-function branch, thread synth/declName so an OPTIONAL
+    // anonymous-object type (`config?: { a: number }`) still synthesizes
+    // a named struct (`Config?`) instead of degrading.
+    const only = nonNullBranches[0]!
+    const inner = swiftType(only, synth, declName)
+    return only.kind === 'function' ? `(${inner})?` : `${inner}?`
   }
   if (nonNullBranches.length === 0) return 'Any?'
   // Mixed-type union — Swift can't express it structurally; degrade.
