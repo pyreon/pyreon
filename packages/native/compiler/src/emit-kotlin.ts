@@ -37,6 +37,7 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
+  widenFloatSignals,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
@@ -1129,6 +1130,9 @@ function emitKotlinComponent(c: ComponentIR): string {
     if (d.kind === 'map') _mapNames.add(d.name)
     if (d.kind === 'auth') _authNames.add(d.name)
   }
+  // Write-site float widening — mirror of the Swift emitter's call; see
+  // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
+  widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs)
   const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs, _kotlinStructDefs, c.props, c.propsParamName)
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],

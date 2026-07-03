@@ -19,7 +19,7 @@
 // emitter actually emits, which is a fixed-and-growing surface.
 
 import { exprReferencesIdent, isReReadableExpr } from './expr-utils'
-import type { DeclIR, ExprIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
+import type { ComponentIR, DeclIR, ExprIR, StatementIR, StoreDefnIR, StructIR, TypeIR } from './types'
 
 export interface InferenceCtx {
   /** Signal name → declared type. Filled from the component's decls. */
@@ -105,6 +105,98 @@ export function emptyInferenceCtx(): InferenceCtx {
     fetches: new Map(),
     stores: new Map(),
     structs: new Map(),
+  }
+}
+
+/**
+ * Write-site float WIDENING — JS has ONE number type; PMTC splits Int /
+ * Double from the declared generic + initializer, so a signal declared
+ * `signal<number>(0)` types Int even when every WRITE is fractional:
+ * `start.set(Date.now())` (the stopwatch shape) / `price.set(1.5)` emitted an
+ * Int @State / mutableStateOf receiving a Double — a LOUD native type error
+ * on both targets. A signal's Int/Double split must be driven by ALL its
+ * writes, not just the initializer.
+ *
+ * This pass walks the whole component IR (a GENERIC structural walk — no
+ * node-kind enumeration, so no shape can be missed) for `X.set(arg)` /
+ * `X.update(fn)` calls against Int-typed number signals; when the written
+ * value infers `float: true`, the DECL's type widens to Double and an
+ * integer-literal initializer gains `float: true` (the existing literal
+ * mechanism emits `0.0` — Kotlin's `mutableStateOf(0)` carries no type
+ * annotation, so the initializer IS the type there; Swift's annotated
+ * `@State var x: Double = 0` would be fine either way). Runs to FIXPOINT
+ * (a widened signal can make another signal's write float — capped, ≥1
+ * candidate consumed per pass). Conservative by design: a write this pass
+ * can't prove float keeps today's loud native error — fail-safe, never a
+ * silent truncation.
+ *
+ * Called at the top of BOTH emitters' component walk (idempotent — the
+ * mutation converges) so every entry point (transform, direct emit calls
+ * in tests) sees the widened decls.
+ */
+export function widenFloatSignals(
+  c: ComponentIR,
+  storeDefs: StoreDefnIR[] = [],
+  structDefs: StructIR[] = [],
+): void {
+  const maxPasses = 8
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const ctx = buildInferenceCtx(c.decls, storeDefs, structDefs)
+    const candidates = new Map<string, Extract<DeclIR, { kind: 'signal' }>>()
+    for (const d of c.decls) {
+      if (d.kind === 'signal' && d.type.kind === 'number' && d.type.float !== true) {
+        candidates.set(d.name, d)
+      }
+    }
+    if (candidates.size === 0) return
+    let widened = false
+    const widen = (d: Extract<DeclIR, { kind: 'signal' }>): void => {
+      d.type = { kind: 'number', float: true }
+      if (
+        d.initial.kind === 'literal' &&
+        typeof d.initial.value === 'number' &&
+        Number.isInteger(d.initial.value)
+      ) {
+        d.initial = { ...d.initial, float: true }
+      }
+      candidates.delete(d.name)
+      widened = true
+    }
+    const visit = (n: unknown): void => {
+      if (Array.isArray(n)) {
+        for (const x of n) visit(x)
+        return
+      }
+      if (n === null || typeof n !== 'object') return
+      const node = n as Record<string, unknown> & { kind?: string }
+      if (node.kind === 'call') {
+        const callee = node.callee as
+          | { kind?: string; property?: string; object?: { kind?: string; name?: string } }
+          | undefined
+        if (
+          callee?.kind === 'member' &&
+          (callee.property === 'set' || callee.property === 'update') &&
+          callee.object?.kind === 'identifier' &&
+          typeof callee.object.name === 'string'
+        ) {
+          const d = candidates.get(callee.object.name)
+          const args = node.args as ExprIR[] | undefined
+          if (d !== undefined && args !== undefined && args.length >= 1) {
+            const arg = args[0]!
+            const written =
+              callee.property === 'set'
+                ? inferType(arg, ctx)
+                : arg.kind === 'arrow' && arg.body !== undefined
+                  ? inferType(arg.body, ctx)
+                  : ({ kind: 'unknown' } as TypeIR)
+            if (written.kind === 'number' && written.float === true) widen(d)
+          }
+        }
+      }
+      for (const k of Object.keys(node)) visit(node[k])
+    }
+    visit(c)
+    if (!widened) return
   }
 }
 
