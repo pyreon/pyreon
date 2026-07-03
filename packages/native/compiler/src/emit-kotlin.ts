@@ -19,6 +19,7 @@ import {
   substituteIdentifier,
   synthLiteralStructName,
   classifyDynamicStylingAttr,
+  exprHasOptionalLink,
 } from './expr-utils'
 import {
   buildArraySpreadConcat,
@@ -2748,7 +2749,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `${callee}(${args})`
     }
     case 'index': {
-      // `xs[i]` — Kotlin lists share the subscript syntax verbatim.
+      // `xs[i]` — Kotlin lists share the subscript syntax verbatim. The
+      // OPTIONAL form `xs?.[i]` → `getOrNull(i)` (stdlib, single-eval — no
+      // re-readability guard needed, unlike the Swift idiom).
+      if (e.optional === true) {
+        // An optional-typed object (an upstream `?.` chain — `sel?.tags` is
+        // `List<String>?`) needs the SAFE call: `?.getOrNull`. Kotlin handles
+        // the optional-receiver case fully (nil-propagating + OOB-safe);
+        // Swift's idiom can't and warns there.
+        const dot =
+          exprHasOptionalLink(e.object) ||
+          typeIsOptional(inferType(e.object, _kotlinExprInferCtx))
+            ? '?.'
+            : '.'
+        return `${emitKotlinExpr(e.object, indent)}${dot}getOrNull(${emitKotlinExpr(e.index, indent)})`
+      }
       return `${emitKotlinExpr(e.object, indent)}[${emitKotlinExpr(e.index, indent)}]`
     }
     case 'member': {
