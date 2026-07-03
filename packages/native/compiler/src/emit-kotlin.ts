@@ -1736,7 +1736,9 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const lines = s.body
         .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
         .join('\n')
-      return `while (${cond}) {\n${lines}\n${pad}}`
+      // Loop label — Kotlin spells it `outer@ while … { break@outer }`.
+      const lbl = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
+      return `${lbl}while (${cond}) {\n${lines}\n${pad}}`
     }
     case 'for-of': {
       const pad = ' '.repeat(indent)
@@ -1744,8 +1746,15 @@ function emitKotlinStatement(s: StatementIR, indent: number, ctx: KotlinCtx): st
       const lines = s.body
         .map((t) => `${pad}  ${emitKotlinStatement(t, indent + 2, ctx)}`)
         .join('\n')
-      return `for (${kotlinIdent(s.item)} in ${iter}) {\n${lines}\n${pad}}`
+      const lbl2 = s.label !== undefined ? `${kotlinIdent(s.label)}@ ` : ''
+      return `${lbl2}for (${kotlinIdent(s.item)} in ${iter}) {\n${lines}\n${pad}}`
     }
+    case 'break':
+      // Plain or labeled — pre-fix these warn-DROPPED (a semantic
+      // mis-emit: the loop ran every iteration where JS would exit).
+      return s.label !== undefined ? `break@${kotlinIdent(s.label)}` : 'break'
+    case 'continue':
+      return s.label !== undefined ? `continue@${kotlinIdent(s.label)}` : 'continue'
     case 'switch': {
       const pad = ' '.repeat(indent)
       const disc = emitKotlinExpr(s.discriminant, indent)
