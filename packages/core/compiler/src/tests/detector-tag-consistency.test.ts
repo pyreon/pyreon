@@ -42,6 +42,7 @@ const COMPILER_CODES = [
   'as-unknown-as-vnodechild',
   'island-never-with-registry-entry',
   'query-options-as-function',
+  'signal-in-conditional-uncalled',
 ] as const
 type CompilerCode = (typeof COMPILER_CODES)[number]
 

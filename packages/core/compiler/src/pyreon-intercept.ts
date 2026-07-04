@@ -99,6 +99,7 @@ export type PyreonDiagnosticCode =
   | 'as-unknown-as-vnodechild'
   | 'island-never-with-registry-entry'
   | 'query-options-as-function'
+  | 'signal-in-conditional-uncalled'
 
 export interface PyreonDiagnostic {
   /** Machine-readable code for filtering + programmatic handling */
@@ -655,14 +656,20 @@ function detectOnClickUndefined(ctx: DetectContext, node: ts.JsxAttribute): void
  * (2) the detector message points at exactly the wrong-shape call so a
  * human reviewer can dismiss the rare false positive in seconds.
  */
+/**
+ * True when `init` is a `signal(...)` or `computed(...)` factory call — the
+ * shape whose binding produces a reactive callable. Shared by
+ * `collectSignalBindings` and `resolvesToSignalBinding`.
+ */
+function isSignalFactoryCall(init: ts.Expression | undefined): boolean {
+  if (!init || !ts.isCallExpression(init)) return false
+  const callee = init.expression
+  if (!ts.isIdentifier(callee)) return false
+  return callee.text === 'signal' || callee.text === 'computed'
+}
+
 export function collectSignalBindings(sf: ts.SourceFile): Set<string> {
   const names = new Set<string>()
-  function isSignalFactoryCall(init: ts.Expression | undefined): boolean {
-    if (!init || !ts.isCallExpression(init)) return false
-    const callee = init.expression
-    if (!ts.isIdentifier(callee)) return false
-    return callee.text === 'signal' || callee.text === 'computed'
-  }
   function walk(node: ts.Node): void {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
       // Only `const` — find the parent VariableDeclarationList to check.
@@ -679,6 +686,170 @@ export function collectSignalBindings(sf: ts.SourceFile): Set<string> {
   }
   walk(sf)
   return names
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: signal/computed used UNCALLED in a conditional (always-truthy)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** True if binding pattern `bn` binds `name` (Identifier or nested destructure). */
+function bindingBinds(bn: ts.BindingName, name: string): boolean {
+  if (ts.isIdentifier(bn)) return bn.text === name
+  for (const el of bn.elements) {
+    if (ts.isBindingElement(el) && bindingBinds(el.name, name)) return true
+  }
+  return false
+}
+
+/**
+ * Resolve `name` at `useSite` to its NEAREST lexical binding and report
+ * whether that binding is a `const X = signal()/computed()`. Walks enclosing
+ * scopes outward; the first scope that binds `name` decides — a parameter or a
+ * non-signal local SHADOWS an outer signal (→ false, so no false positive on a
+ * boolean prop/local that merely shares a signal's name). Returns false when
+ * no local binding is found: imported / cross-module signals aren't confirmable
+ * without a type checker, so we stay silent (conservative by design).
+ *
+ * This is deliberately stricter than the flat `signalBindings.has(name)`
+ * membership test (which is scope-BLIND — see `collectSignalBindings`): a
+ * conditional-position warning has a zero-false-positive bar, so it must see
+ * shadowing.
+ */
+function resolvesToSignalBinding(name: string, useSite: ts.Node): boolean {
+  let node: ts.Node | undefined = useSite.parent
+  while (node) {
+    // Function boundary — parameters shadow outer names.
+    if (
+      ts.isArrowFunction(node) ||
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node)
+    ) {
+      for (const p of node.parameters) {
+        if (bindingBinds(p.name, name)) return false
+      }
+    }
+    // Block / source / module / switch-case scope — variable declarations.
+    let stmts: ts.NodeArray<ts.Statement> | undefined
+    if (ts.isSourceFile(node) || ts.isBlock(node) || ts.isModuleBlock(node)) {
+      stmts = node.statements
+    } else if (ts.isCaseClause(node) || ts.isDefaultClause(node)) {
+      stmts = node.statements
+    }
+    if (stmts) {
+      for (const stmt of stmts) {
+        if (!ts.isVariableStatement(stmt)) continue
+        for (const decl of stmt.declarationList.declarations) {
+          if (bindingBinds(decl.name, name)) {
+            // A destructured binding (`const { x } = …`) is never itself a
+            // signal callable; only a simple `const x = signal()` is.
+            return ts.isIdentifier(decl.name) && isSignalFactoryCall(decl.initializer)
+          }
+        }
+      }
+    }
+    // for (const x of …) / for (let x = …) loop-variable scope.
+    if (ts.isForStatement(node) || ts.isForOfStatement(node) || ts.isForInStatement(node)) {
+      const init = node.initializer
+      if (init && ts.isVariableDeclarationList(init)) {
+        for (const decl of init.declarations) {
+          if (bindingBinds(decl.name, name)) {
+            return ts.isIdentifier(decl.name) && isSignalFactoryCall(decl.initializer)
+          }
+        }
+      }
+    }
+    // catch (x) — a signal is never a catch binding.
+    if (
+      ts.isCatchClause(node) &&
+      node.variableDeclaration &&
+      bindingBinds(node.variableDeclaration.name, name)
+    ) {
+      return false
+    }
+    node = node.parent
+  }
+  return false
+}
+
+/**
+ * A bare `ts.Identifier` reached through transparent parentheses, or
+ * `undefined` when the expression is anything else — a call (`sig()`, the
+ * CORRECT form), a member access (`sig.length`), a literal, etc. Only a bare
+ * identifier in a truthiness-test position is the always-truthy footgun.
+ */
+function bareConditionIdentifier(expr: ts.Expression): ts.Identifier | undefined {
+  let e: ts.Expression = expr
+  while (ts.isParenthesizedExpression(e)) e = e.expression
+  return ts.isIdentifier(e) ? e : undefined
+}
+
+/**
+ * `{sig ? a : b}` / `sig && x` / `sig ?? x` / `!sig` / `if (sig)` where `sig`
+ * is a signal/computed used UNCALLED in a truthiness-test position. A signal
+ * is a FUNCTION value — always truthy, never nullish — so the branch is chosen
+ * once by the function's identity, the reactive read never subscribes, and the
+ * value is never tested. The compiler auto-calls a bare `{sig}` JSX child but
+ * NOT a `sig` inside a conditional, so this shape slips through to runtime.
+ * Fix: call it — `sig()`.
+ *
+ * Scope-resolved via {@link resolvesToSignalBinding} so a boolean parameter or
+ * local that merely shares a signal's name is never flagged (zero-FP bar).
+ */
+function detectSignalInConditionalUncalled(ctx: DetectContext, node: ts.Node): void {
+  if (ctx.signalBindings.size === 0) return
+  let candidate: ts.Identifier | undefined
+  let position = ''
+  if (ts.isConditionalExpression(node)) {
+    candidate = bareConditionIdentifier(node.condition)
+    position = 'the condition of a ternary'
+  } else if (ts.isBinaryExpression(node)) {
+    const op = node.operatorToken.kind
+    if (
+      op === ts.SyntaxKind.AmpersandAmpersandToken ||
+      op === ts.SyntaxKind.BarBarToken ||
+      op === ts.SyntaxKind.QuestionQuestionToken
+    ) {
+      candidate = bareConditionIdentifier(node.left)
+      const opText =
+        op === ts.SyntaxKind.AmpersandAmpersandToken
+          ? '&&'
+          : op === ts.SyntaxKind.BarBarToken
+            ? '||'
+            : '??'
+      position = `the left operand of \`${opText}\``
+    }
+  } else if (
+    ts.isPrefixUnaryExpression(node) &&
+    node.operator === ts.SyntaxKind.ExclamationToken
+  ) {
+    candidate = bareConditionIdentifier(node.operand)
+    position = 'a `!` negation'
+  } else if (ts.isIfStatement(node)) {
+    candidate = bareConditionIdentifier(node.expression)
+    position = 'an `if` condition'
+  } else if (ts.isWhileStatement(node) || ts.isDoStatement(node)) {
+    candidate = bareConditionIdentifier(node.expression)
+    position = 'a loop condition'
+  }
+  if (!candidate) return
+  const name = candidate.text
+  if (!ctx.signalBindings.has(name)) return
+  if (!resolvesToSignalBinding(name, candidate)) return
+  pushDiag(
+    ctx,
+    candidate,
+    'signal-in-conditional-uncalled',
+    `\`${name}\` is a signal/computed used UNCALLED in ${position} — a signal is a function value, always truthy and never nullish. The branch is decided once by the function's identity (never its value) and the reactive read never subscribes, so the condition can't update. Call it: \`${name}()\`. The compiler auto-calls a bare \`{${name}}\` JSX child, but NOT a \`${name}\` inside a conditional.`,
+    name,
+    `${name}()`,
+    // The mechanical auto-fix (append `()`) ships in the `@pyreon/lint` rule,
+    // not `migratePyreonCode`, so this reports as human-fix for now.
+    false,
+  )
 }
 
 function detectSignalWriteAsCall(ctx: DetectContext, node: ts.CallExpression): void {
@@ -941,6 +1112,16 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
   if (ts.isBinaryExpression(node)) {
     detectProcessDevGate(ctx, node)
     detectDateMathRandomId(ctx, node)
+    detectSignalInConditionalUncalled(ctx, node)
+  }
+  if (
+    ts.isConditionalExpression(node) ||
+    ts.isPrefixUnaryExpression(node) ||
+    ts.isIfStatement(node) ||
+    ts.isWhileStatement(node) ||
+    ts.isDoStatement(node)
+  ) {
+    detectSignalInConditionalUncalled(ctx, node)
   }
   if (ts.isTemplateExpression(node)) {
     detectDateMathRandomId(ctx, node)
