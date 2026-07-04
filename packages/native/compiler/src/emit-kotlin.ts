@@ -140,6 +140,26 @@ let _netStatusNames: Set<string> = new Set()
  */
 let _geoNames: Set<string> = new Set()
 let _wsNames: Set<string> = new Set()
+
+/**
+ * Is `obj.prop` a Phase-5 native-container reactive field backed by a Compose
+ * `MutableState` (read `.value`)? Shared by the member-read emit (`ws.error`)
+ * AND the CALL-read emit (`ws.lastMessage()` — the web signal-read idiom: the
+ * TS call reads the value; on Kotlin the field is a PROPERTY, so the call's
+ * parens must be dropped, not turned into `.value()` which invokes the value).
+ */
+function isContainerMutableStateField(obj: string, p: string): boolean {
+  return (
+    (_geoNames.has(obj) &&
+      ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'].includes(p)) ||
+    (_wsNames.has(obj) && ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
+    (_pushNames.has(obj) &&
+      ['token', 'lastNotification', 'notifications', 'isAuthorized', 'error'].includes(p)) ||
+    (_payNames.has(obj) && ['products', 'ownedProductIds', 'purchasing', 'error'].includes(p)) ||
+    (_mapNames.has(obj) && ['camera', 'markers', 'selectedMarkerId'].includes(p)) ||
+    (_authNames.has(obj) && ['status', 'user', 'error'].includes(p))
+  )
+}
 let _pushNames: Set<string> = new Set()
 let _payNames: Set<string> = new Set()
 let _mapNames: Set<string> = new Set()
@@ -2307,6 +2327,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       ) {
         return `${kotlinIdent(e.callee.object.name)}.${e.callee.property}.value`
       }
+      // Phase-5 native-container reactive FIELD read via the web signal-read
+      // idiom `ws.lastMessage()` → `ws.lastMessage.value` (drop the call parens
+      // — the field is a Compose MutableState property, so `.value()` would
+      // invoke the value as a function). Method calls (`ws.send(...)`, args
+      // present) and Bool getters read bare via the generic emit below.
+      if (
+        e.args.length === 0 &&
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        isContainerMutableStateField(e.callee.object.name, e.callee.property)
+      ) {
+        return `${kotlinIdent(e.callee.object.name)}.${kotlinIdent(e.callee.property)}.value`
+      }
       // Store METHOD call — `useX().store.M(args…)` →
       // `PyreonStore_id.M(args…)`. Mirror of emit-swift's rewrite;
       // must precede the zero-arg READ rewrite (a zero-arg method call
@@ -2932,17 +2965,7 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       if (e.object.kind === 'identifier') {
         const obj = e.object.name
         const p = e.property
-        const isMutableStateField =
-          (_geoNames.has(obj) &&
-            ['latitude', 'longitude', 'accuracy', 'isAuthorized', 'error'].includes(p)) ||
-          (_wsNames.has(obj) &&
-            ['lastMessage', 'messages', 'isConnected', 'error'].includes(p)) ||
-          (_pushNames.has(obj) &&
-            ['token', 'lastNotification', 'notifications', 'isAuthorized', 'error'].includes(p)) ||
-          (_payNames.has(obj) &&
-            ['products', 'ownedProductIds', 'purchasing', 'error'].includes(p)) ||
-          (_mapNames.has(obj) && ['camera', 'markers', 'selectedMarkerId'].includes(p)) ||
-          (_authNames.has(obj) && ['status', 'user', 'error'].includes(p))
+        const isMutableStateField = isContainerMutableStateField(obj, p)
         if (isMutableStateField) {
           return `${kotlinIdent(obj)}.${kotlinIdent(p)}.value`
         }
