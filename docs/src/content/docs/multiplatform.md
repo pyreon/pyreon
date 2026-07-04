@@ -621,19 +621,20 @@ Kotlin runtime the emitted code drives):
   at the compile rung: an archetype component using all seven emits
   typecheck-clean Swift (`swiftc`) **and** Kotlin (`kotlinc`).
   **Two honest limits:**
-  (1) **Lifecycle auto-start is not fully emitted yet** — the binding +
-  reactive reads ship, and an EXPLICIT `onMount(() => ws.connect())` /
-  `geolocation.start()` / `push.start()` LOWERS on both targets (the
-  documented lifecycle escape hatch). `websocket.connect()` now threads the
-  decl url on BOTH targets — Swift `connect(to: URL(string: …)!)`, Kotlin
-  `connect("wss://…")` via the `@pyreon/native-runtime-kotlin` OkHttp
-  transport extension (`fun PyreonWebSocket.connect(url: String)`) — so the
-  Kotlin host-transport warning is gone. What's still NOT synthesized is the
-  IMPLICIT auto-connect the web hooks do on mount: `useWebSocket(url)` on
-  native creates the binding but you must call `.connect()` yourself (from
-  `onMount`); the zero-call auto-start-on-mount synthesis is a tracked
-  follow-up. `geolocation.start()` / `push.start()` on Kotlin still need an
-  app-injected source (`FusedLocationProvider`) and keep the host-wiring note.
+  (1) **WebSocket lifecycle auto-start is EMITTED** — `useWebSocket(url)`
+  now auto-connects on mount on BOTH targets, matching the web hook: the
+  compiler synthesizes a mount-time `ws.connect()` (Swift `.onAppear` on the
+  stable host / Kotlin `LaunchedEffect(Unit)`), url-threaded to the faithful
+  `connect(to: URL(string: …)!)` (Swift) / `connect("wss://…")` via the
+  `@pyreon/native-runtime-kotlin` OkHttp transport extension (`fun
+  PyreonWebSocket.connect(url: String)`, Kotlin). An EXPLICIT
+  `onMount(() => ws.connect())` is respected — the auto-connect is skipped
+  when the component already calls `.connect()`, so there's no double-connect.
+  Both auto-connect shapes are proven by real `swiftc -typecheck` + `kotlinc`.
+  `geolocation.start()` / `push.start()` still LOWER only via the EXPLICIT
+  `onMount(() => …)` escape hatch (their Kotlin containers need an
+  app-injected source — `FusedLocationProvider` — that the compiler can't
+  synthesize, so their zero-call auto-start stays a host-wiring follow-up).
   (2) **`useSecureStorage()` is deferred** (warns + drops) — the Kotlin
   secret store needs an app-injected `EncryptedSharedPreferences` backend, so
   auto-instantiation isn't clean cross-target. Use the runtime container from

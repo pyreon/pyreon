@@ -38,6 +38,7 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
+  synthesizeWebSocketAutoConnect,
   widenFloatSignals,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
@@ -1135,6 +1136,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Write-site float widening — mirror of the Swift emitter's call; see
   // infer-type.ts:widenFloatSignals. Idempotent (safe if Swift ran first).
   widenFloatSignals(c, _kotlinStoreDefs, _kotlinStructDefs)
+  // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
+  // decls with no explicit .connect() — reuses the on-mount harness +
+  // connect url-threading. Mutates c.decls (idempotent).
+  synthesizeWebSocketAutoConnect(c)
   const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs, _kotlinStructDefs, c.props, c.propsParamName)
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],

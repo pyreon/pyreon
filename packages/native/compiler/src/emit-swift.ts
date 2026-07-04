@@ -43,6 +43,7 @@ import {
   typeContainsFunction,
   typeIsOptional,
   unwrapOptionalType,
+  synthesizeWebSocketAutoConnect,
   widenFloatSignals,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
@@ -1214,6 +1215,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   // are fractional (`start.set(Date.now())`) must DECLARE Double. Mutates
   // the decls in place (idempotent). See infer-type.ts:widenFloatSignals.
   widenFloatSignals(c, _storeDefs, _structDefs)
+  // Synthesize the implicit auto-connect-on-mount for useWebSocket(url)
+  // decls with no explicit .connect() — reuses the on-mount harness +
+  // connect url-threading. Mutates c.decls (idempotent).
+  synthesizeWebSocketAutoConnect(c)
   const inferCtx = buildInferenceCtx(c.decls, _storeDefs, _structDefs, c.props, c.propsParamName)
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.
