@@ -4739,27 +4739,6 @@ function unsupportedExpr(
   return fallback
 }
 
-/**
- * Walk a ChainExpression's inner AST for optional links that DON'T lower
- * cleanly: an optional CALL (`fn?.()` — diverges per target, keeps the
- * explicit-guard warning). Optional plain members (`a?.b`) and optional
- * COMPUTED members (`a?.[i]` — the safe-index idiom) both lower and are
- * NOT flagged. Walks only the access chain (object / callee spine).
- */
-function chainHasUnsupportedOptional(node: AnyNode): boolean {
-  if (node === null || node === undefined || typeof node !== 'object') return false
-  if (node.type === 'CallExpression') {
-    if (node.optional === true) return true
-    return chainHasUnsupportedOptional(node.callee)
-  }
-  if (node.type === 'MemberExpression') {
-    // Optional COMPUTED members (`a?.[i]`) now lower (the safe-index idiom)
-    // — only optional CALLS (`fn?.()`) keep the explicit-guard warning.
-    return chainHasUnsupportedOptional(node.object)
-  }
-  return false
-}
-
 function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
   switch (node.type) {
     case 'Literal':
@@ -4828,7 +4807,13 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       }
       const callee = parseExpr(node.callee, ctx)
       const args = (node.arguments as AnyNode[]).map((a) => parseExpr(a, ctx))
-      return { kind: 'call', callee, args }
+      // `node.optional` is set for the `f?.()` link of an optional chain
+      // (oxc wraps the chain in a ChainExpression; each call carries its own
+      // optional flag). Threaded to the emit → Swift `f?(args)` / Kotlin
+      // `f?.invoke(args)`.
+      return node.optional === true
+        ? { kind: 'call', callee, args, optional: true }
+        : { kind: 'call', callee, args }
     }
     case 'MemberExpression': {
       const object = parseExpr(node.object, ctx)
@@ -5116,21 +5101,15 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       )
     case 'ChainExpression': {
       // Optional chaining `a?.b` — oxc wraps the chain in a ChainExpression.
-      // Optional MEMBER access lowers cleanly: Swift & Kotlin both spell it
-      // `?.`, with identical short-circuit semantics, and the member emit
-      // PROPAGATES `?.` down the chain (`a?.b.c` → `a?.b?.c`) so Kotlin's
-      // nullable-access requirement is met (and Swift accepts the redundant
-      // `?.`). Optional INDEX (`a?.[i]`) and optional CALL (`fn?.()`) diverge
-      // per target (Swift `a?[i]`/`fn?()` vs Kotlin `a?.get(i)`/`fn?.invoke()`)
-      // — keep the explicit-guard warning for those rarer shapes.
-      if (chainHasUnsupportedOptional(node.expression)) {
-        return unsupportedExpr(
-          ctx,
-          node,
-          'Optional chaining on an index/call (`a?.[i]` / `fn?.()`)',
-          'use an explicit guard — `a && a[i]`.',
-        )
-      }
+      // All three optional shapes LOWER now, each carrying its own `optional`
+      // flag from its own parseExpr case to a per-target emit:
+      //   MEMBER (`a?.b`)  → Swift `a?.b`      / Kotlin `a?.b`  (propagated
+      //                      down the chain so Kotlin's nullable-access holds;
+      //                      Swift accepts the redundant `?.`)
+      //   INDEX  (`a?.[i]`)→ Swift `a?[i]` (or the guarded safe-index idiom)
+      //                      / Kotlin `getOrNull(i)`
+      //   CALL   (`f?.()`) → Swift `f?(args)`  / Kotlin `f?.invoke(args)`
+      // so there's nothing to reject here — just unwrap and recurse.
       return parseExpr(node.expression, ctx)
     }
     case 'TSAsExpression':

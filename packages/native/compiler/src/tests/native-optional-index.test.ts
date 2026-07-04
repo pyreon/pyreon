@@ -113,10 +113,14 @@ export function App(){
     expect(rk.code).toContain('.getOrNull(0)')
     expect(rk.warnings).toHaveLength(0)
   })
-  it('controls: plain `a[0]` unchanged; `fn?.()` keeps the explicit-guard warning', () => {
+  it('controls: plain `a[0]` unchanged; optional CALL `fn?.()` now lowers too (no warning)', () => {
     const plain = transform(A(`  const out = computed(() => nums()[0])`), { target: 'swift' })
     expect(plain.code).toContain('var out: Int { nums[0] }')
     expect(plain.warnings).toHaveLength(0)
+    // Optional CALL used to warn-fall-back (the explicit-guard "index/call"
+    // diagnostic) — the contrasting control to optional-index's lowering. It
+    // now ALSO lowers (Swift `fn?()`; the dedicated contract is
+    // native-optional-call.test.ts), so no optional shape warns anymore.
     const call = transform(
       `import { signal } from '@pyreon/reactivity'
 import { Stack, Text, Button } from '@pyreon/primitives'
@@ -127,7 +131,8 @@ export function App(p: P){
 }`,
       { target: 'swift' },
     )
-    expect(call.warnings.length).toBeGreaterThan(0)
+    expect(call.warnings.some((w) => w.includes('index/call'))).toBe(false)
+    expect(call.code).toContain('onDone?()')
   })
 
   // Compile proof — literal + signal-index + string-array shapes end-to-end.
