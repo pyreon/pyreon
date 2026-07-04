@@ -621,14 +621,19 @@ Kotlin runtime the emitted code drives):
   at the compile rung: an archetype component using all seven emits
   typecheck-clean Swift (`swiftc`) **and** Kotlin (`kotlinc`).
   **Two honest limits:**
-  (1) **Lifecycle auto-start is NOT yet emitted** — the binding + reactive
-  reads ship, but `geolocation.start()` / `websocket.connect()` /
-  `push.start()` on mount do not. The web hooks auto-start; on native today
-  you call `.start()` / `.connect()` from an effect or native host. Full
-  auto-start is **blocked on the real Kotlin transport backends** (the
-  Kotlin containers take an app-injected source — `FusedLocationProvider` /
-  OkHttp — which the compiler can't synthesize), so it lands with that
-  Android-CI backend work, not before.
+  (1) **Lifecycle auto-start is not fully emitted yet** — the binding +
+  reactive reads ship, and an EXPLICIT `onMount(() => ws.connect())` /
+  `geolocation.start()` / `push.start()` LOWERS on both targets (the
+  documented lifecycle escape hatch). `websocket.connect()` now threads the
+  decl url on BOTH targets — Swift `connect(to: URL(string: …)!)`, Kotlin
+  `connect("wss://…")` via the `@pyreon/native-runtime-kotlin` OkHttp
+  transport extension (`fun PyreonWebSocket.connect(url: String)`) — so the
+  Kotlin host-transport warning is gone. What's still NOT synthesized is the
+  IMPLICIT auto-connect the web hooks do on mount: `useWebSocket(url)` on
+  native creates the binding but you must call `.connect()` yourself (from
+  `onMount`); the zero-call auto-start-on-mount synthesis is a tracked
+  follow-up. `geolocation.start()` / `push.start()` on Kotlin still need an
+  app-injected source (`FusedLocationProvider`) and keep the host-wiring note.
   (2) **`useSecureStorage()` is deferred** (warns + drops) — the Kotlin
   secret store needs an app-injected `EncryptedSharedPreferences` backend, so
   auto-instantiation isn't clean cross-target. Use the runtime container from
