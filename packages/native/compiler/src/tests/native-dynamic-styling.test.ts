@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import {
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateKotlin,
+  validateSwiftTypecheck,
+} from '../validate'
 
 // Dynamic STYLING attr values (iter46, sweep batch 5's find). Pre-fix, a
 // non-static value in `gap` / `padding(X/Y)` / `background` / `radius`
@@ -69,5 +75,68 @@ describe('static styling values keep their byte-shape', () => {
     const kt = transform(APP, { target: 'kotlin' }).code
     expect(kt).toContain('Arrangement.spacedBy(12.dp)')
     expect(kt).toContain('.padding(8.dp)')
+  })
+})
+
+// `<Icon color size>` — the state-driven icon (`color={active() ? "primary" :
+// "muted"}`) is a VERY common shape. Pre-fix the Icon emit read color/size
+// STATIC-only (readStaticAttr), so a dynamic value SILENTLY DROPPED the
+// modifier (no `.foregroundColor`/`.imageScale` on Swift, no `tint`/`.size` on
+// Kotlin, zero warnings). Now routed through the same swiftStylingValue /
+// kotlinStylingValue machinery as gap/padding: static byte-identical, a
+// ternary of two literal tokens → a native conditional, any other dynamic →
+// a NAMED warning (never silent).
+const ICON = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Icon } from '@pyreon/primitives'
+export function App() {
+  const on = signal<boolean>(true)
+  return (
+    <Stack>
+      <Icon name="star" color={on() ? "primary" : "muted"} size={on() ? "lg" : "sm"} />
+      <Icon name="heart" color="primary" size="md" />
+    </Stack>
+  )
+}`
+
+describe('Icon dynamic color/size — ternary lowers, static byte-identical, fully-dynamic warns', () => {
+  it('Swift: dynamic color/size lower to native conditionals; static unchanged', () => {
+    const out = transform(ICON, { target: 'swift' }).code
+    expect(out).toMatch(/\.foregroundColor\(\(on \? Color\(.+\) : Color\(.+\)\)\)/)
+    expect(out).toContain('.imageScale((on ? .large : .small))')
+    // the static second icon keeps its byte-shape
+    expect(out).toContain('.imageScale(.medium)')
+    expect(out).toMatch(/\.foregroundColor\(Color\(.+\)\)/)
+  })
+  it('Kotlin: dynamic tint/size lower to if-expressions; static unchanged', () => {
+    const out = transform(ICON, { target: 'kotlin' }).code
+    expect(out).toMatch(/tint = \(if \(on\) Color\(.+\) else Color\(.+\)\)/)
+    expect(out).toContain('.size((if (on) 24.dp else 16.dp))')
+    // static second icon
+    expect(out).toContain('.size(20.dp)')
+    expect(out).toMatch(/tint = Color\(/)
+  })
+  it('a fully-dynamic Icon color warns NAMED on both targets (never silent)', () => {
+    const src = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Icon } from '@pyreon/primitives'
+export function App() {
+  const pick = signal<string>("primary")
+  return <Stack><Icon name="star" color={pick()} /></Stack>
+}`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const out = transform(src, { target })
+      expect((out.warnings ?? []).some((w) => w.includes('<Icon color={…}>'))).toBe(true)
+    }
+  })
+
+  // Compile proof — the ternary color+size emit typechecks end-to-end.
+  it.skipIf(!isSwiftUIAvailable())('iOS: the dynamic-Icon component TYPECHECKS against real SwiftUI', () => {
+    const r = validateSwiftTypecheck(transform(ICON, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('Android: the same compiles via kotlinc', () => {
+    const r = validateKotlin(transform(ICON, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
   })
 })
