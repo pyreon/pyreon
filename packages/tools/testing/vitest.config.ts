@@ -11,6 +11,14 @@ export default mergeConfig(
     category: 'tools',
     environment: 'happy-dom',
     excludeBrowserTests: true,
+    // --expose-gc so `globalThis.gc` is available to the GC/leak matchers
+    // (expectGarbageCollected / expectNoReactiveLeak) — same harness as
+    // @pyreon/runtime-dom.
+    overrides: {
+      test: {
+        execArgv: ['--expose-gc'],
+      },
+    },
   }),
   {
     oxc: {

@@ -67,7 +67,21 @@ expectEffect(logEffect).notToReRunWhen(() => theme.set('dark')) // fine-grained:
 
 `toReRunWhen`'s negative form (`notToReRunWhen`) verifies fine-grained precision — that an unrelated write does **not** re-run the effect — which a whole-component re-render model fundamentally can't assert. These require a dev/test build (the reactive graph is tree-shaken in production; the matchers throw a clear error rather than silently pass).
 
-`expectGarbageCollected(factory)` + `expectNoReactiveLeak(action)` (GC/leak matchers) arrive in the next PR.
+## GC / leak matchers
+
+Collapse the hand-rolled `WeakRef` + two-pass-`gc()` ceremony (and catch subscription leaks) — require `--expose-gc`:
+
+```ts
+import { expectGarbageCollected, expectNoReactiveLeak } from '@pyreon/testing'
+
+await expectGarbageCollected(() => makeRow(data))            // GC-eligible after the ref drops?
+await expectNoReactiveLeak(() => {                            // mount+unmount leaves no net graph growth
+  const { unmount } = render(<List rows={rows} />)
+  unmount()
+})
+```
+
+Run the suite with `--expose-gc` (`execArgv: ['--expose-gc']` in the vitest config's pool options); without it these throw an actionable error rather than silently pass — a leak test that no-ops is worse than none.
 
 ## Environment
 
