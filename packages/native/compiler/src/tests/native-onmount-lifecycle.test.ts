@@ -75,11 +75,15 @@ describe('P2 — onMount lifecycle lowering (both targets)', () => {
     expect(rs.code).toContain('ws.connect(to: URL(string: "wss://example.com/feed")!)')
     expect(rs.warnings).toHaveLength(0)
   })
-  it('Kotlin: `ws.connect()` warns NAMED (host transport required) + keeps the loud raw emit', () => {
+  it('Kotlin: `ws.connect()` threads the decl url → `connect("…")` (OkHttp transport, #1987)', () => {
+    // The default-OkHttp-transport follow-up: `ws.connect()` now lowers to the
+    // runtime extension `PyreonWebSocket.connect(url)` (from
+    // @pyreon/native-runtime-kotlin, #1987) — the Kotlin mirror of the Swift
+    // `connect(to: URL(...))` lowering. No more host-transport warning.
     const rk = transform(WS, { target: 'kotlin' })
-    expect(rk.warnings.some((w) => w.includes('ws.connect()'))).toBe(true)
+    expect(rk.warnings).toHaveLength(0)
     expect(rk.code).toContain('LaunchedEffect(Unit) {')
-    expect(rk.code).toContain('ws.connect()')
+    expect(rk.code).toContain('ws.connect("wss://example.com/feed")')
   })
 
   it('guard: a returned cleanup fn warns NAMED; the mount body is still emitted', () => {
@@ -140,6 +144,21 @@ export function App(){
   })
   it.skipIf(!isKotlincAvailable())('Android: the same compiles via kotlinc', () => {
     const r = validateKotlin(transform(SIG, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('Android: `ws.connect(url)` compiles against the OkHttp extension stub', () => {
+    // The #1987 runtime ships `fun PyreonWebSocket.connect(url: String)`; the
+    // kotlin-stubs mirror it, so the flipped emit `ws.connect("wss://…")`
+    // validates. `lastMessage` read omitted (the reactive-field-call `.value()`
+    // shape is a separate pre-existing gap, tracked as a follow-up).
+    const src = `import { useWebSocket } from '@pyreon/hooks'
+import { Stack, Text } from '@pyreon/primitives'
+export function App() {
+  const ws = useWebSocket("wss://example.com/feed")
+  onMount(() => { ws.connect() })
+  return (<Stack><Text>x</Text></Stack>)
+}`
+    const r = validateKotlin(transform(src, { target: 'kotlin' }).code)
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })

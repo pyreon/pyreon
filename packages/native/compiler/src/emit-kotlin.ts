@@ -93,10 +93,11 @@ let _synthExprStructKeys: Map<string, string> = new Map()
 // non-literal field (`{ id: count() }`) can have its type inferred for
 // data-class synthesis. Set per `emitKotlinComponent`; empty otherwise.
 let _kotlinExprInferCtx: ReturnType<typeof buildInferenceCtx> = buildInferenceCtx([])
-// websocket decl names — `ws.connect()` cannot lower on Kotlin (the runtime's
-// `connect(register: (WebSocketHandlers) -> WebSocketSender)` needs a
-// HOST-SUPPLIED transport) → NAMED warning + raw emit (kotlinc fails loud).
-let _websocketNamesKotlin: Set<string> = new Set()
+// websocket decl name → url. `ws.connect()` (the 0-arg TS surface — the web
+// hook auto-connects) lowers to the OkHttp transport extension shipped in
+// `@pyreon/native-runtime-kotlin` (`fun PyreonWebSocket.connect(url: String)`),
+// threading the registered url. Mirror of emit-swift's `_websocketUrlsSwift`.
+let _websocketUrlsKotlin: Map<string, string> = new Map()
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
@@ -1143,8 +1144,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   // Expose the component's inference ctx to the object-literal emit so a
   // non-literal field (`{ id: count() }`) gets its data-class field type
   // inferred (mirrors the Swift `_exprInferCtx`).
-  _websocketNamesKotlin = new Set(
-    c.decls.filter((d) => d.kind === 'websocket').map((d) => (d as { name: string }).name),
+  _websocketUrlsKotlin = new Map(
+    c.decls
+      .filter((d) => d.kind === 'websocket')
+      .map((d) => [(d as { name: string }).name, (d as { url: string }).url] as const),
   )
   _kotlinExprInferCtx = inferCtx
   // Pass 1: walk decls — emits decl bodies AND discovers synthesized
@@ -2229,20 +2232,19 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         )
       }
       // `ws.connect()` on Kotlin — the runtime's connect takes a
-      // HOST-SUPPLIED transport lambda (OkHttp etc.); the compiler cannot
-      // synthesize one. NAMED warning + raw emit (kotlinc rejects it loud —
-      // the stub deliberately mirrors the real surface, which has no 0-arg
-      // connect). The Swift side DOES lower (connect(to: URL)).
+      // `ws.connect()` (0-arg TS surface) → the OkHttp transport extension
+      // `PyreonWebSocket.connect(url)` (from @pyreon/native-runtime-kotlin,
+      // #1987), threading the registered url. Mirror of the Swift
+      // `connect(to: URL(...))` lowering — the default-OkHttp-transport
+      // follow-up that closes the Kotlin side of the lifecycle auto-start.
       if (
         e.callee.kind === 'member' &&
         e.callee.property === 'connect' &&
         e.callee.object.kind === 'identifier' &&
-        _websocketNamesKotlin.has(e.callee.object.name) &&
+        _websocketUrlsKotlin.has(e.callee.object.name) &&
         e.args.length === 0
       ) {
-        _emitWarnings.push(
-          `${e.callee.object.name}.connect(): Android's PyreonWebSocket.connect requires a host-supplied transport (connect(register = { handlers -> sender })) — the compiler cannot synthesize one. Wire the transport in the host shell, or track the default-OkHttp-transport follow-up. iOS lowers this call.`,
-        )
+        return `${kotlinIdent(e.callee.object.name)}.connect(${JSON.stringify(_websocketUrlsKotlin.get(e.callee.object.name)!)})`
       }
       // `Boolean(x)` — JS truthiness coercion as a VALUE. Kotlin has no
       // `Boolean(x)` function (the raw emit fails "unresolved reference"),
