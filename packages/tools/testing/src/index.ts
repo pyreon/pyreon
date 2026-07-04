@@ -4,18 +4,20 @@
  * A thin adapter over `@testing-library/dom` (the shared foundation under
  * React/Vue/Solid/Svelte testing) — so the whole Testing-Library API works
  * exactly as you know it — PLUS Pyreon-native additions: a `render` that mounts
- * a Pyreon component, `cleanup`, and (in the reactive-matcher tiers) assertions
- * that read Pyreon's fine-grained reactive graph.
+ * a Pyreon component, `renderHook`, `cleanup`, and (in the reactive-matcher
+ * tiers) assertions that read Pyreon's fine-grained reactive graph.
  *
- *   Pyreon-native : render, cleanup.
+ *   Pyreon-native : render, cleanup, renderHook.
  *   Re-exported    : screen, fireEvent, waitFor, within, all queries, prettyDOM,
  *                    … straight from @testing-library/dom.
  */
 
-// ── Pyreon-native: mount + lifecycle ──────────────────────────────────────
+// ── Pyreon-native: mount + lifecycle + hooks ──────────────────────────────
 export { render } from './render'
 export type { RenderOptions, RenderResult } from './render'
 export { cleanup } from './cleanup'
+export { renderHook } from './render-hook'
+export type { RenderHookOptions, RenderHookResult } from './render-hook'
 
 // ── The full @testing-library/dom surface, verbatim ───────────────────────
 // screen / fireEvent / waitFor / within / queries / getByRole (real ARIA +

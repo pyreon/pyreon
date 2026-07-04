@@ -22,6 +22,16 @@
       "import": "./lib/index.js",
       "types": "./lib/index.d.ts"
     },
+    "./matchers": {
+      "bun": "./src/matchers-register.ts",
+      "import": "./lib/matchers-register.js",
+      "types": "./lib/matchers-register.d.ts"
+    },
+    "./vitest": {
+      "bun": "./src/vitest.ts",
+      "import": "./lib/vitest.js",
+      "types": "./lib/vitest.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
