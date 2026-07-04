@@ -5513,14 +5513,34 @@ function dynamicWebViewAttr(
   return undefined
 }
 
+/**
+ * A `<Image width|height>` dimension — RAW pixels, not a compile-time token.
+ * Static number → the bare literal (`.frame(width: 100)`). Any DYNAMIC value
+ * (a ternary of two literals OR a runtime signal/expr) lowers to a runtime
+ * `CGFloat(<expr>)` — SwiftUI's `.frame(width:)` takes `CGFloat?`, and an
+ * Int/Double runtime value (or an Int-literal ternary) needs the explicit
+ * init. Pre-fix these read STATIC-only, so a dynamic dim was SILENTLY dropped.
+ * A string literal (`"50%"`, web-only) is skipped, matching the old gate.
+ */
+function swiftImageDim(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+): string | undefined {
+  const stat = readStaticAttr(e, name)
+  if (typeof stat === 'number') return String(stat)
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+  if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
+    return `CGFloat(${emitSwiftExpr(attr.value, 0)})`
+  }
+  return undefined
+}
+
 function emitSwiftImage(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
   const src = readStaticAttr(e, 'src')
   const srcAttr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'src')
-  const width = readStaticAttr(e, 'width')
-  const height = readStaticAttr(e, 'height')
   const alt = readStaticAttr(e, 'alt')
   const fit = readStaticAttr(e, 'fit')
   let result: string
@@ -5559,8 +5579,10 @@ function emitSwiftImage(
     return emitSwiftGeneric(e, indent)
   }
   const frameArgs: string[] = []
-  if (typeof width === 'number') frameArgs.push(`width: ${width}`)
-  if (typeof height === 'number') frameArgs.push(`height: ${height}`)
+  const width = swiftImageDim(e, 'width')
+  if (width !== undefined) frameArgs.push(`width: ${width}`)
+  const height = swiftImageDim(e, 'height')
+  if (height !== undefined) frameArgs.push(`height: ${height}`)
   if (frameArgs.length > 0) {
     result += `.frame(${frameArgs.join(', ')})`
   }
