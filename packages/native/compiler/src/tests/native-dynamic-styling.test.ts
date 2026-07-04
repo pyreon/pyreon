@@ -187,3 +187,64 @@ describe('Image dynamic width/height — runtime-numeric lowering (ternary + sig
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+// `<Stack align>` / `<Layer align>` — the cross-axis alignment lives in the
+// container CONSTRUCTOR arg (`VStack(alignment:)` / `Column(horizontalAlignment
+// =)` / `ZStack(alignment:)` / `Box(contentAlignment =)`), not the modifier
+// chain. Pre-fix it read STATIC-only (readStaticAttr), so a dynamic value
+// (`align={rtl() ? "end" : "start"}`) SILENTLY dropped the alignment (a bare
+// `VStack {` / `Column {`, zero warnings). Routed through the same
+// swiftStylingValue / kotlinStylingValue machinery: static byte-identical, a
+// ternary of two literal tokens → a native conditional INSIDE the constructor
+// arg, any other dynamic → a NAMED warning (never silent).
+const ALIGN = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Layer, Text } from '@pyreon/primitives'
+export function App() {
+  const rtl = signal<boolean>(false)
+  return (
+    <Stack align={rtl() ? "end" : "start"}>
+      <Layer align={rtl() ? "start" : "end"}><Text>overlay</Text></Layer>
+      <Stack align="center"><Text>static</Text></Stack>
+    </Stack>
+  )
+}`
+
+describe('Stack/Layer dynamic align — ternary lowers in the constructor arg, static byte-identical, fully-dynamic warns', () => {
+  it('Swift: dynamic Stack/Layer align lower to a native conditional; static unchanged', () => {
+    const out = transform(ALIGN, { target: 'swift' }).code
+    expect(out).toContain('VStack(alignment: (rtl ? .trailing : .leading))')
+    expect(out).toContain('ZStack(alignment: (rtl ? .topLeading : .bottomTrailing))')
+    // the static inner Stack keeps its byte-shape
+    expect(out).toContain('VStack(alignment: .center)')
+  })
+  it('Kotlin: dynamic align lowers to an if-expression in the constructor arg; static unchanged', () => {
+    const out = transform(ALIGN, { target: 'kotlin' }).code
+    expect(out).toContain('Column(horizontalAlignment = (if (rtl) Alignment.End else Alignment.Start))')
+    expect(out).toContain('Box(contentAlignment = (if (rtl) Alignment.TopStart else Alignment.BottomEnd))')
+    expect(out).toContain('Column(horizontalAlignment = Alignment.CenterHorizontally)')
+  })
+  it('a fully-dynamic align warns NAMED on both targets (never silent)', () => {
+    const src = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Text } from '@pyreon/primitives'
+export function App() {
+  const pick = signal<string>("center")
+  return <Stack align={pick()}><Text>x</Text></Stack>
+}`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const out = transform(src, { target })
+      expect((out.warnings ?? []).some((w) => w.includes('<Stack align={…}>'))).toBe(true)
+    }
+  })
+
+  // Compile proof — the ternary align emit typechecks end-to-end.
+  it.skipIf(!isSwiftUIAvailable())('iOS: the dynamic-align component TYPECHECKS against real SwiftUI', () => {
+    const r = validateSwiftTypecheck(transform(ALIGN, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('Android: the same compiles via kotlinc', () => {
+    const r = validateKotlin(transform(ALIGN, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})

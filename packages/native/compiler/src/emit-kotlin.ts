@@ -4225,13 +4225,17 @@ function emitKotlinStack(
     const arrangementSlot = isRow ? 'horizontalArrangement' : 'verticalArrangement'
     initArgs.push(`${arrangementSlot} = Arrangement.spacedBy(${gap}.dp)`)
   }
-  // align → cross-axis alignment
-  const align = readStaticAttrKotlin(e, 'align')
-  if (typeof align === 'string') {
+  // align → cross-axis alignment. Static token OR a ternary of two literal
+  // tokens (`align={rtl() ? "end" : "start"}`) — pre-fix static-only, so a
+  // dynamic value SILENTLY dropped the alignment. kotlinStylingValue reuses
+  // the #2005 machinery (static byte-identical, ternary → a Kotlin
+  // if-expression, other dynamic → a NAMED warning).
+  const align = kotlinStylingValue(e, 'align', (v) =>
+    resolveAlign(String(v), 'kotlin', isRow ? 'vertical' : 'horizontal'),
+  )
+  if (align !== undefined) {
     const alignSlot = isRow ? 'verticalAlignment' : 'horizontalAlignment'
-    initArgs.push(
-      `${alignSlot} = ${resolveAlign(align, 'kotlin', isRow ? 'vertical' : 'horizontal')}`,
-    )
+    initArgs.push(`${alignSlot} = ${align}`)
   }
   // Modifier chain
   const modifier = emitKotlinLayoutModifier(e)
@@ -4592,9 +4596,9 @@ function emitKotlinLayer(
   indent: number,
 ): string {
   const initArgs: string[] = []
-  const align = readStaticAttrKotlin(e, 'align')
-  if (typeof align === 'string') {
-    initArgs.push(`contentAlignment = ${BOX_ALIGNMENT[align] ?? 'Alignment.Center'}`)
+  const align = kotlinStylingValue(e, 'align', (v) => BOX_ALIGNMENT[String(v)] ?? 'Alignment.Center')
+  if (align !== undefined) {
+    initArgs.push(`contentAlignment = ${align}`)
   }
   const modifier = emitKotlinLayoutModifier(e)
   if (modifier !== '') initArgs.push(`modifier = ${modifier}`)

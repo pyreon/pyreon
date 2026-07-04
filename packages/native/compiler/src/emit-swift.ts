@@ -5161,11 +5161,16 @@ function emitSwiftStack(
   const viewName = isRow ? 'HStack' : 'VStack'
 
   const initArgs: string[] = []
-  const align = readStaticAttr(e, 'align')
-  if (typeof align === 'string') {
-    initArgs.push(
-      `alignment: ${resolveAlign(align, 'swift', isRow ? 'vertical' : 'horizontal')}`,
-    )
+  // `align` accepts a static token OR a ternary of two literal tokens
+  // (`align={rtl() ? "end" : "start"}`). Pre-fix static-only (readStaticAttr),
+  // so a dynamic value SILENTLY dropped the alignment. swiftStylingValue
+  // reuses the #2005 machinery (static byte-identical, ternary → a native
+  // conditional inside the constructor arg, other dynamic → a NAMED warning).
+  const align = swiftStylingValue(e, 'align', (v) =>
+    resolveAlign(String(v), 'swift', isRow ? 'vertical' : 'horizontal'),
+  )
+  if (align !== undefined) {
+    initArgs.push(`alignment: ${align}`)
   }
   const gap = swiftStylingValue(e, 'gap', resolveSpace)
   if (gap !== undefined) {
@@ -5208,11 +5213,8 @@ function emitSwiftLayer(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
-  const align = readStaticAttr(e, 'align')
-  const initSignature =
-    typeof align === 'string'
-      ? `(alignment: ${ZSTACK_ALIGNMENT[align] ?? '.center'})`
-      : ''
+  const align = swiftStylingValue(e, 'align', (v) => ZSTACK_ALIGNMENT[String(v)] ?? '.center')
+  const initSignature = align !== undefined ? `(alignment: ${align})` : ''
   const modifiers = emitSwiftLayoutModifiers(e)
   const pad = ' '.repeat(indent + 2)
   if (e.children.length === 0) {
