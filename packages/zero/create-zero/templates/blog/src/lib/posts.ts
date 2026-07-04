@@ -9,12 +9,12 @@ export interface PostMeta {
 
 export interface Post extends PostMeta {
   slug: string
-  Component: ComponentFn<unknown>
+  Component: ComponentFn
 }
 
 interface PostModule {
   meta: PostMeta
-  default: ComponentFn<unknown>
+  default: ComponentFn
 }
 
 /**

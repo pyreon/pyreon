@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 import { extractDocNode } from '@pyreon/document-primitives'
 import { render } from '@pyreon/document'
-import type { ComponentFn } from '@pyreon/core'
+import type { ComponentFn, Props } from '@pyreon/core'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = process.env.EMAIL_FROM ?? 'noreply@example.com'
@@ -12,7 +12,7 @@ const FROM = process.env.EMAIL_FROM ?? 'noreply@example.com'
  * to email HTML — that is the headline Pyreon angle: one component tree,
  * many output formats.
  */
-export async function sendEmail<TProps>(opts: {
+export async function sendEmail<TProps extends Props>(opts: {
   to: string | string[]
   subject: string
   template: ComponentFn<TProps>

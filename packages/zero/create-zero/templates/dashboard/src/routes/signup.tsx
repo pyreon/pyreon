@@ -21,7 +21,9 @@ export default function Signup() {
     error.set(null)
     submitting.set(true)
 
-    const result = signUp(email(), password())
+    // `await` works for BOTH the in-memory stub (sync) and the Supabase
+    // integration override (async) — see login.tsx for the same pattern.
+    const result = await signUp(email(), password())
     submitting.set(false)
 
     if ("error" in result) {

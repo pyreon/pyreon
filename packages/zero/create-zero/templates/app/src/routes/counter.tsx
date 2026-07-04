@@ -57,7 +57,10 @@ export default function Counter() {
             doubled → <strong>{doubled}</strong>
           </div>
           <div>
-            isEven → <strong>{isEven ? "true" : "false"}</strong>
+            {/* Inside a ternary the signal must be CALLED — auto-call only
+                rewrites a bare `{isEven}` child, not `isEven` used as a
+                condition. `{() => isEven() ? ...}` keeps it reactive. */}
+            isEven → <strong>{() => (isEven() ? "true" : "false")}</strong>
           </div>
         </div>
       </div>
