@@ -18,7 +18,6 @@ import {
 } from './canonical-primitives'
 import {
   buildComponentConstMap,
-  chainHasOptional,
   isCompoundExpr,
   isReReadableExpr,
   substituteIdentifier,
@@ -2999,6 +2998,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           }
         }
         switch (prop) {
+          case 'toString':
+            // JS `x.toString()` on a NUMBER → Swift `String(x)` (Int has no
+            // `toString` member — a SILENT fail). Kotlin's `toString()` is
+            // native on every type — no Kotlin change. Non-number
+            // receivers keep the generic emit (loud if unsupported).
+            if (e.args.length === 0) {
+              const tsT = inferType(e.callee.object, _activeInferCtx)
+              if (tsT.kind === 'number') return `String(${obj})`
+            }
+            break
           case 'trim':
             if (e.args.length === 0) {
               return `${obj}.trimmingCharacters(in: .whitespacesAndNewlines)`
@@ -3609,8 +3618,16 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           recvType.kind === 'union' &&
           recvType.branches.some((b) => b.kind === 'null' || b.kind === 'undefined')
         )
-      const dot =
-        (e.optional === true && !recvProvablyNonNull) || chainHasOptional(e.object) ? '?.' : '.'
+      // NO chain propagation on Swift (unlike Kotlin, which REQUIRES it):
+      // after the first `?.`, Swift auto-propagates — member access inside a
+      // chain continues with `.`, and a redundant `?.` on a chain-unwrapped
+      // NON-optional field is an ERROR ("cannot use optional chaining on
+      // non-optional value of type 'String'" — `find()?.name?.length` was a
+      // SILENT fail; the codified `p?.addr?.city` spec was itself broken,
+      // masked by an emit-shape-only assertion with no Swift compile
+      // proof). Genuinely-optional MID-chain fields still get `?.` via the
+      // recvProvablyNonNull arm (their declared union type is visible).
+      const dot = e.optional === true && !recvProvablyNonNull ? '?.' : '.'
       if (e.property === 'length') {
         return `${emitSwiftExpr(e.object, indent)}${dot}count`
       }
