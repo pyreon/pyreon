@@ -21,7 +21,11 @@ export default function Login() {
     error.set(null)
     submitting.set(true)
 
-    const result = signIn(email(), password())
+    // `await` works for BOTH the in-memory stub (sync) and the Supabase
+    // integration override (async) — awaiting a non-Promise returns the
+    // value unchanged, so this stays correct when `--integrations supabase`
+    // swaps in the async auth implementation.
+    const result = await signIn(email(), password())
     submitting.set(false)
 
     if ("error" in result) {

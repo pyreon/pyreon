@@ -105,12 +105,12 @@ export function generatePackageJson(
       deps[dep] = pyreonVersion(dep)
     } else if (dep.startsWith('@tanstack/')) {
       deps[dep] = dep.includes('query')
-        ? '^5.90.0'
+        ? '^5.101.2'
         : dep.includes('table')
-          ? '^8.21.0'
-          : '^3.13.0'
+          ? '^8.21.3'
+          : '^3.17.3'
     } else if (dep === 'zod') {
-      deps[dep] = '^4.0.0'
+      deps[dep] = '^4.4.3'
     }
   }
 
@@ -139,10 +139,19 @@ export function generatePackageJson(
   }
 
   const devDeps: Record<string, string> = {
+    // The generated tsconfig declares `types: ["bun", "vite/client"]` — Bun's
+    // ambient types provide `process` / `Bun` globals that the scaffolded
+    // server + integration code (supabase/email use `process.env`) rely on.
+    // Without this dep a STANDALONE (non-workspace) scaffold fails `tsc` +
+    // editor tsserver with TS2688 "Cannot find type definition file for 'bun'"
+    // — the repo's own example apps only compile because the monorepo hoists
+    // `@types/bun` from root; a fresh app has no such hoist. See the
+    // matching entry on the monorepo `ui`/`types` package templates.
+    '@types/bun': '^1.3.14',
     '@pyreon/vite-plugin': pyreonVersion('@pyreon/vite-plugin'),
     '@pyreon/zero-cli': pyreonVersion('@pyreon/zero-cli'),
-    typescript: '^6.0.2',
-    vite: '^8.0.3',
+    typescript: '^6.0.3',
+    vite: '^8.0.16',
   }
   if (config.aiTools.includes('mcp')) {
     devDeps['@pyreon/mcp'] = pyreonVersion('@pyreon/mcp')
@@ -155,6 +164,10 @@ export function generatePackageJson(
     dev: 'zero dev',
     build: 'zero build',
     preview: 'zero preview',
+    // Runnable now that `@types/bun` is a devDep — `zero build` uses the
+    // Pyreon compiler (not tsc), so a standalone typecheck script is what
+    // surfaces type errors + gives editors/CI a first-class entry point.
+    typecheck: 'tsc --noEmit',
     doctor: 'zero doctor',
     'doctor:fix': 'zero doctor --fix',
     'doctor:ci': 'zero doctor --ci',

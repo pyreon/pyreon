@@ -2,7 +2,7 @@
  * Branch-coverage tests for scaffold + integrations + package-json
  * generation edge cases.
  */
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -92,10 +92,10 @@ describe('package-json — tanstack dep version branches', () => {
 })
 
 describe('package-json — tanstack non-query non-table dep (virtual)', () => {
-  it("uses '^3.13.0' for @tanstack/virtual-core (else of query/table ternary)", () => {
+  it("uses '^3.17.3' for @tanstack/virtual-core (else of query/table ternary)", () => {
     const config = base({ features: ['virtual'] })
     const pkg = JSON.parse(generatePackageJson(config))
-    expect(pkg.dependencies?.['@tanstack/virtual-core']).toBe('^3.13.0')
+    expect(pkg.dependencies?.['@tanstack/virtual-core']).toBe('^3.17.3')
   })
 })
 
@@ -139,5 +139,54 @@ describe('package-json — zod feature dep branch', () => {
     const pkg = JSON.parse(generatePackageJson(config))
     // forms feature pulls validation deps including zod
     expect(Object.keys(pkg.dependencies ?? {}).length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * Regression guard for the TS2688 bug class (fixed 2026-07): every scaffolded
+ * project's tsconfig declares `types: ["bun", ...]`, so the package.json MUST
+ * ship `@types/bun` — otherwise a STANDALONE (non-workspace) scaffold fails
+ * `tsc` + editor tsserver with "Cannot find type definition file for 'bun'".
+ * The repo's own example apps only compiled because the monorepo hoists the
+ * dep from root; a fresh app has no such hoist. The invariant: any @types/*
+ * package a template tsconfig references in `types` must be a declared dep.
+ */
+describe('tsconfig `types` ↔ @types dep coherence (TS2688 regression)', () => {
+  let tmp: string
+  afterEach(async () => {
+    if (tmp) await rm(tmp, { recursive: true, force: true })
+  })
+
+  it('generated flat package.json ships @types/bun + a runnable typecheck script', () => {
+    const pkg = JSON.parse(generatePackageJson(base()))
+    expect(pkg.devDependencies?.['@types/bun']).toBeTruthy()
+    expect(pkg.scripts?.typecheck).toBe('tsc --noEmit')
+  })
+
+  it('every base template ships @types/bun for its `types: ["bun"]` tsconfig', async () => {
+    for (const template of ['app', 'blog', 'dashboard'] as const) {
+      tmp = await mkdtemp(join(tmpdir(), `cz-types-${template}-`))
+      await scaffold(base({ targetDir: tmp, template }))
+      const tsconfig = JSON.parse(await readFile(join(tmp, 'tsconfig.json'), 'utf-8'))
+      const pkg = JSON.parse(await readFile(join(tmp, 'package.json'), 'utf-8'))
+      const types: string[] = tsconfig.compilerOptions?.types ?? []
+      if (types.includes('bun')) {
+        expect(pkg.devDependencies?.['@types/bun'], `${template}: types:["bun"] but no @types/bun dep`).toBeTruthy()
+      }
+      await rm(tmp, { recursive: true, force: true })
+      tmp = ''
+    }
+  })
+
+  it('monorepo shared packages (ui/types) ship @types/bun (they run `tsc --noEmit`)', async () => {
+    tmp = await mkdtemp(join(tmpdir(), 'cz-mono-types-'))
+    await scaffold(base({ targetDir: tmp, template: 'monorepo' }))
+    for (const p of ['packages/ui', 'packages/types']) {
+      const pkg = JSON.parse(await readFile(join(tmp, p, 'package.json'), 'utf-8'))
+      const tsconfig = JSON.parse(await readFile(join(tmp, p, 'tsconfig.json'), 'utf-8'))
+      if ((tsconfig.compilerOptions?.types ?? []).includes('bun')) {
+        expect(pkg.devDependencies?.['@types/bun'], `${p}: types:["bun"] but no @types/bun dep`).toBeTruthy()
+      }
+    }
   })
 })
