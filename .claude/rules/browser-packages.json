@@ -27,6 +27,7 @@
     "@pyreon/preact-compat",
     "@pyreon/vue-compat",
     "@pyreon/solid-compat",
-    "@pyreon/svelte-compat"
+    "@pyreon/svelte-compat",
+    "@pyreon/testing"
   ]
 }

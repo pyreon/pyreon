@@ -1,0 +1,61 @@
+{
+  "name": "@pyreon/testing",
+  "version": "0.39.0",
+  "description": "Official testing utilities for Pyreon — Testing-Library-style render/screen/fireEvent plus reactive-native matchers",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/testing#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pyreon/pyreon.git",
+    "directory": "packages/tools/testing"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE",
+    "src"
+  ],
+  "scripts": {
+    "prepublish": "bun run build",
+    "build": "bun run vl_rolldown_build",
+    "build:watch": "bun run vl_rolldown_build-watch",
+    "lint": "oxlint .",
+    "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^"
+  },
+  "devDependencies": {
+    "@pyreon/typescript": "workspace:^",
+    "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^4.1.8",
+    "@vitus-labs/tools-rolldown": "^2.5.0"
+  },
+  "engines": {
+    "node": ">= 22"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

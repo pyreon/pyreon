@@ -2049,6 +2049,21 @@
         "@pyreon/runtime-dom": "workspace:^",
       },
     },
+    "packages/tools/testing": {
+      "name": "@pyreon/testing",
+      "version": "0.39.0",
+      "devDependencies": {
+        "@pyreon/typescript": "workspace:^",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitest/browser-playwright": "^4.1.8",
+        "@vitus-labs/tools-rolldown": "^2.5.0",
+      },
+      "peerDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+      },
+    },
     "packages/tools/typescript": {
       "name": "@pyreon/typescript",
       "version": "0.39.0",
@@ -3368,6 +3383,8 @@
     "@pyreon/table": ["@pyreon/table@workspace:packages/fundamentals/table"],
 
     "@pyreon/test-utils": ["@pyreon/test-utils@workspace:packages/internals/test-utils"],
+
+    "@pyreon/testing": ["@pyreon/testing@workspace:packages/tools/testing"],
 
     "@pyreon/toast": ["@pyreon/toast@workspace:packages/fundamentals/toast"],
 

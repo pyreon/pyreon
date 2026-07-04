@@ -56,6 +56,7 @@
       "@pyreon/react-compat",
       "@pyreon/solid-compat",
       "@pyreon/storybook",
+      "@pyreon/testing",
       "@pyreon/typescript",
       "@pyreon/vite-plugin",
       "@pyreon/vue-compat",
