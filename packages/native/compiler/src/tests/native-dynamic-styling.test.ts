@@ -307,3 +307,60 @@ export function App() {
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+// `<Heading color>` — a state-driven heading (`color={err() ? "danger" :
+// "text"}`) is a common shape. Pre-fix the Heading emit read `color`
+// STATIC-only (readStaticAttr), so a dynamic value SILENTLY dropped the
+// `.foregroundColor` (Swift) / `color =` (Compose) — the same class as Icon
+// color (#2032). Now routed through the same swiftStylingValue /
+// kotlinStylingValue machinery: static byte-identical, a ternary of two
+// literal tokens → a native conditional, any other dynamic → a NAMED warning.
+const HEADING = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Heading } from '@pyreon/primitives'
+export function App() {
+  const err = signal<boolean>(false)
+  return (
+    <Stack>
+      <Heading level={1} color={err() ? "danger" : "text"}>Title</Heading>
+      <Heading level={2} color="primary">Sub</Heading>
+    </Stack>
+  )
+}`
+
+describe('Heading dynamic color — ternary lowers, static byte-identical, fully-dynamic warns', () => {
+  it('Swift: dynamic color lowers to a native conditional; static unchanged', () => {
+    const out = transform(HEADING, { target: 'swift' }).code
+    expect(out).toMatch(/\.foregroundColor\(\(err \? Color\(.+\) : Color\(.+\)\)\)/)
+    // the static second heading keeps its byte-shape
+    expect(out).toMatch(/Text\("Sub"\).+\.foregroundColor\(Color\(.+\)\)/)
+  })
+  it('Kotlin: dynamic color lowers to an if-expression; static unchanged', () => {
+    const out = transform(HEADING, { target: 'kotlin' }).code
+    expect(out).toMatch(/color = \(if \(err\) Color\(.+\) else Color\(.+\)\)/)
+    expect(out).toContain('color = Color(0xFF2563EB)') // static "primary"
+  })
+  it('a fully-dynamic Heading color warns NAMED on both targets (never silent)', () => {
+    const src = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Heading } from '@pyreon/primitives'
+export function App() {
+  const pick = signal<string>("danger")
+  return <Stack><Heading level={1} color={pick()}>x</Heading></Stack>
+}`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const out = transform(src, { target })
+      expect((out.warnings ?? []).some((w) => w.includes('<Heading color={…}>'))).toBe(true)
+    }
+  })
+
+  // Compile proof — the ternary color emit typechecks end-to-end.
+  it.skipIf(!isSwiftUIAvailable())('iOS: the dynamic-Heading component TYPECHECKS against real SwiftUI', () => {
+    const r = validateSwiftTypecheck(transform(HEADING, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('Android: the same compiles via kotlinc', () => {
+    const r = validateKotlin(transform(HEADING, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})

@@ -5327,9 +5327,14 @@ function emitSwiftHeading(
       (v) => HEADING_FONT[(typeof v === 'number' ? v : 1) as 1 | 2 | 3 | 4 | 5 | 6] ?? '.largeTitle',
     ) ?? '.largeTitle'
   let result = `${emitSwiftTextCore(e, indent)}.font(${font}).bold()`
-  const color = readStaticAttr(e, 'color')
-  if (typeof color === 'string') {
-    result += `.foregroundColor(${resolveColor(color, 'swift')})`
+  // Heading `color` accepts a static token OR a ternary of two literal tokens
+  // (`color={err() ? "danger" : "text"}` — a state-driven heading). Pre-fix
+  // static-only (readStaticAttr), so a dynamic value SILENTLY dropped the
+  // color (same class as Icon color, #2032). swiftStylingValue → static
+  // byte-identical, ternary → a native conditional, other dynamic → NAMED warn.
+  const color = swiftStylingValue(e, 'color', (v) => resolveColor(String(v), 'swift'))
+  if (color !== undefined) {
+    result += `.foregroundColor(${color})`
   }
   return result + emitSwiftLayoutModifiers(e)
 }
