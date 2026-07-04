@@ -134,6 +134,83 @@ export function emptyInferenceCtx(): InferenceCtx {
  * mutation converges) so every entry point (transform, direct emit calls
  * in tests) sees the widened decls.
  */
+/**
+ * Synthesize the IMPLICIT auto-connect-on-mount that the web `useWebSocket(url)`
+ * hook does — on native the binding (`PyreonWebSocket()`) is created but never
+ * connects unless the user writes `onMount(() => ws.connect())`. For each
+ * websocket decl with NO explicit `.connect()` call anywhere in the component,
+ * append a synthetic `on-mount` decl calling `ws.connect()`. That reuses the
+ * whole lifecycle machinery: the #1986 mount harness (Swift `.onAppear` on the
+ * stable host / Kotlin `LaunchedEffect(Unit)`) emits it, and the connect
+ * url-threading (`_websocketUrlsSwift` / `_websocketUrlsKotlin`) lowers the
+ * 0-arg call to the faithful `connect(to: URL(...))` / `connect(url)`.
+ *
+ * Skips a decl that already has an explicit `.connect()` (avoids double-connect
+ * — the explicit call already runs on its own mount/handler path). Idempotent:
+ * a decl that already owns a synthetic on-mount connect is not re-appended.
+ * Websocket-only — geolocation/push auto-start still needs the host-injected
+ * Kotlin backends (a separate follow-up), so those keep the manual escape hatch.
+ */
+export function synthesizeWebSocketAutoConnect(c: ComponentIR): void {
+  const wsNames = c.decls
+    .filter((d) => d.kind === 'websocket')
+    .map((d) => (d as Extract<DeclIR, { kind: 'websocket' }>).name)
+  if (wsNames.length === 0) return
+  // Collect names that ALREADY have an explicit `.connect()` call anywhere in
+  // the component IR (decls + return tree). A generic recursive walk mirroring
+  // widenFloatSignals — find a `call` whose callee is `member(identifier(ws),
+  // 'connect')`.
+  const explicit = new Set<string>()
+  const visit = (n: unknown): void => {
+    if (Array.isArray(n)) {
+      for (const x of n) visit(x)
+      return
+    }
+    if (n === null || typeof n !== 'object') return
+    const node = n as Record<string, unknown> & { kind?: string }
+    if (node.kind === 'call') {
+      const callee = node.callee as
+        | { kind?: string; object?: { kind?: string; name?: string }; property?: string }
+        | undefined
+      if (
+        callee?.kind === 'member' &&
+        callee.property === 'connect' &&
+        callee.object?.kind === 'identifier' &&
+        typeof callee.object.name === 'string' &&
+        wsNames.includes(callee.object.name)
+      ) {
+        explicit.add(callee.object.name)
+      }
+    }
+    for (const key of Object.keys(node)) {
+      if (key === 'kind') continue
+      visit(node[key])
+    }
+  }
+  visit(c.decls)
+  visit(c.returnExpr)
+  for (const name of wsNames) {
+    if (explicit.has(name)) continue
+    c.decls.push({
+      kind: 'on-mount',
+      body: [
+        {
+          kind: 'expr',
+          expr: {
+            kind: 'call',
+            callee: {
+              kind: 'member',
+              object: { kind: 'identifier', name },
+              property: 'connect',
+            },
+            args: [],
+          },
+        },
+      ],
+    })
+  }
+}
+
 export function widenFloatSignals(
   c: ComponentIR,
   storeDefs: StoreDefnIR[] = [],
