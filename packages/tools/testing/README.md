@@ -53,7 +53,21 @@ expect(result.current.pageCount()).toBe(3)
 
 `renderHook` runs the hook once in a probe component (Pyreon hooks run once); props are a reactive accessor and `rerender` updates the backing signal so `computed`/`effect` derivations re-run. jest-dom-style matchers (`toBeInTheDocument`, `toHaveTextContent`, `toHaveAttribute`, `toHaveClass`, `toBeDisabled`, `toBeChecked`, `toHaveValue`, `toBeVisible`, `toContainElement`, `toHaveFocus`, …) register via `@pyreon/testing/matchers` or the `/vitest` setup file.
 
-The reactive matchers (`expectSignal(sig).toHaveChangedTimes(n)`, `expectEffect(e).toReRunWhen(...)`, `expectGarbageCollected(...)`) arrive in the following PRs.
+## Reactive-native matchers
+
+The differentiator — assertions no DOM-only testing library can express, because they read Pyreon's reactive graph:
+
+```ts
+import { expectSignal, expectEffect } from '@pyreon/testing'
+
+expectSignal(total).toHaveRecomputedTimes(1)          // recomputed once, no thrash
+expectEffect(logEffect).toReRunWhen(() => qty.set(3))
+expectEffect(logEffect).notToReRunWhen(() => theme.set('dark')) // fine-grained: NOT re-run by an unrelated write
+```
+
+`toReRunWhen`'s negative form (`notToReRunWhen`) verifies fine-grained precision — that an unrelated write does **not** re-run the effect — which a whole-component re-render model fundamentally can't assert. These require a dev/test build (the reactive graph is tree-shaken in production; the matchers throw a clear error rather than silently pass).
+
+`expectGarbageCollected(factory)` + `expectNoReactiveLeak(action)` (GC/leak matchers) arrive in the next PR.
 
 ## Environment
 

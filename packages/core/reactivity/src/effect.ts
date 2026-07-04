@@ -289,12 +289,13 @@ export function effect(
     isFirstRun = false
   }
 
+  let _effectId: number | undefined
   if (process.env.NODE_ENV !== 'production')
     // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
     // Prefer build-time-injected location over the ~2.2µs stack-capture
     // fallback. @pyreon/vite-plugin's `injectSignalNames` rewrites
     // `effect(() => …)` to `effect(() => …, { __sourceLocation: {…} })`.
-    _rdRegister(
+    _effectId = _rdRegister(
       run,
       'effect',
       null,
@@ -311,6 +312,22 @@ export function effect(
       disposed = true
       cleanupLocalDeps(deps, run)
     },
+  }
+
+  // Dev-only: stash the reactive-graph node id on the returned Effect handle
+  // so `@pyreon/testing`'s `expectEffect(e)` can target this effect's fire
+  // count. The internal `run` closure carries `__pxRdId` (from `_rdRegister`)
+  // but is not returned — the Effect handle is the user-facing one. Mirror
+  // the id onto it. Tree-shaken in production with the rest of the dev gate.
+  // (`_effectId` is always the number from the dev-gated `_rdRegister` above
+  // in this branch; a stray `undefined` would make `_rdNodeId` return
+  // undefined, so no defensive check — which would be an uncoverable arm.)
+  if (process.env.NODE_ENV !== 'production') {
+    Object.defineProperty(e, '__pxRdId', {
+      value: _effectId,
+      enumerable: false,
+      configurable: true,
+    })
   }
 
   // If we're inside another effect's run, register with it so the outer

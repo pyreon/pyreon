@@ -35,6 +35,7 @@ export type {
 } from './reactive-devtools'
 export {
   __resetReactiveDevtoolsForTesting,
+  _rdNodeId,
   activateReactiveDevtools,
   deactivateReactiveDevtools,
   formatUpdateCause,

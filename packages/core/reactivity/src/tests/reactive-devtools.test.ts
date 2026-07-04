@@ -3,6 +3,7 @@ import { computed } from '../computed'
 import { effect } from '../effect'
 import {
   __resetReactiveDevtoolsForTesting,
+  _rdNodeId,
   _rdPrune,
   activateReactiveDevtools,
   deactivateReactiveDevtools,
@@ -337,6 +338,30 @@ describe('reactive-devtools — preview() edge branches (coverage lock)', () => 
     const s = signal<unknown>(new Box(), { name: 'boxObj' })
     void s()
     expect(valueOf('boxObj')).toBe('Box {x}')
+  })
+
+  describe('_rdNodeId (the @pyreon/testing matcher accessor)', () => {
+    it('returns the graph node id for a signal, computed, and effect() handle', () => {
+      const s = signal(0)
+      const c = computed(() => s() + 1)
+      void c()
+      const e = effect(() => {
+        void s()
+      })
+      expect(typeof _rdNodeId(s)).toBe('number')
+      expect(typeof _rdNodeId(c)).toBe('number')
+      // The effect() handle carries the id mirrored from its internal run
+      // closure (the stash `@pyreon/testing`'s expectEffect targets).
+      expect(typeof _rdNodeId(e)).toBe('number')
+      e.dispose()
+    })
+
+    it('returns undefined for a non-reactive value', () => {
+      expect(_rdNodeId({})).toBeUndefined()
+      expect(_rdNodeId(null)).toBeUndefined()
+      expect(_rdNodeId(undefined)).toBeUndefined()
+      expect(_rdNodeId(42)).toBeUndefined()
+    })
   })
 
   it('records the Date.now fallback when performance is unavailable', () => {
