@@ -3492,10 +3492,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // (`.map(x => x * 1.5)` → `.map({ x in Double(x) * 1.5 })`) that the
         // plain, unscoped `e.args` re-emit below misses. Byte-identical to
         // the generic emit otherwise (same callee emit; scoped args).
+        //
+        // Optional invocation `props.onDone?.()` / `props.fmt?.(5)` — the
+        // callee is a MEMBER (a function-typed field/prop), so it short-
+        // circuits here BEFORE the bare-identifier generic tail below. Mirror
+        // that tail's optional-call lowering (`f?(args)`) or the `?` is
+        // silently dropped and the emit invokes a nil closure at runtime.
+        if (e.optional === true)
+          return `${emitSwiftExpr(e.callee, indent)}?(${argExprs.join(', ')})`
         return `${emitSwiftExpr(e.callee, indent)}(${argExprs.join(', ')})`
       }
       const callee = emitSwiftExpr(e.callee, indent)
       const args = e.args.map((a) => emitSwiftExpr(a, indent)).join(', ')
+      // Optional call `f?.()` → Swift's optional-call syntax `f?(args)`
+      // (short-circuits to nil if the callee is nil). The optional-function
+      // field type already parenthesizes `(() -> Void)?`, so `f?()` is valid.
+      if (e.optional === true) return `${callee}?(${args})`
       return `${callee}(${args})`
     }
     case 'index': {

@@ -63,11 +63,13 @@ function App() {
     expect(out).not.toContain('o?.a')
   })
 
-  it('optional CALL still warn-falls-back; optional INDEX now lowers (safe-index)', () => {
-    // #1989 lowers optional INDEX (`a?.[i]`) to the guarded safe-index idiom
-    // for a re-readable receiver (see native-optional-index.test.ts), so it no
-    // longer warns. Optional CALL (`fn?.()`) still diverges per target (Swift
-    // `fn?()` vs Kotlin `fn?.invoke()`) and warn-falls-back.
+  it('optional CALL now lowers too — no longer warns (see native-optional-call.test.ts)', () => {
+    // #1989 lowered optional INDEX (`a?.[i]`) to the guarded safe-index idiom
+    // (native-optional-index.test.ts). Optional CALL (`fn?.()`) now ALSO
+    // lowers — Swift `fn?()` / Kotlin `fn?.invoke()` — closing the last
+    // still-warning optional shape (native-optional-call.test.ts is the
+    // dedicated emit contract). So no optional construct produces an
+    // index/call warning anymore.
     const call = transform(
       `import { Stack, Text } from '@pyreon/primitives'
 function App() {
@@ -77,7 +79,7 @@ function App() {
 }`,
       { target: 'swift' },
     )
-    expect(call.warnings.some((w) => w.includes('index/call'))).toBe(true)
+    expect(call.warnings.some((w) => w.includes('index/call'))).toBe(false)
   })
 
   it.skipIf(!isSwiftcAvailable())('Swift: optional-chain emit parses via swiftc -parse', () => {

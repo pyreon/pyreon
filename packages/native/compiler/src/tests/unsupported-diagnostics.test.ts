@@ -43,18 +43,20 @@ describe('unsupported-construct diagnostics — located + actionable', () => {
     expect(result.code).toContain('Text("hi \\(name)")')
   })
 
-  it('optional chaining on an index/call: names the site + the explicit-guard rewrite', () => {
-    // Plain optional MEMBER access (`obj?.field`) now LOWERS to native `?.`
-    // (see native-optional-chaining.test.ts) and optional INDEX (`obj?.[i]`)
-    // now lowers to the guarded safe-index idiom (see
-    // native-optional-index.test.ts). Optional CALL (`fn?.()`) still warns —
-    // it diverges per target (Swift `fn?()` vs Kotlin `fn?.invoke()`) — so it
-    // exercises the located-diagnostic contract here.
-    const w = warningsFor('obj.field?.()')
-    const hit = w.find((m) => m.includes('Optional chaining'))
+  it('a destructured callback param: names the site + the plain-parameter rewrite', () => {
+    // Optional chaining is now fully lowered on all three shapes — MEMBER
+    // (`obj?.field` → native `?.`, native-optional-chaining.test.ts), INDEX
+    // (`obj?.[i]` → guarded safe-index, native-optional-index.test.ts), and
+    // CALL (`fn?.()` → Swift `fn?()` / Kotlin `fn?.invoke()`,
+    // native-optional-call.test.ts) — so none of them produce an
+    // unsupported-construct warning anymore. A destructured callback parameter
+    // (#2002) is a still-unsupported construct that carries the located +
+    // actionable-rewrite contract this test locks.
+    const w = warningsFor('[[1, 2]].map(([a, b]) => a)')
+    const hit = w.find((m) => m.includes('destructured callback parameter'))
     expect(hit).toBeDefined()
     expect(hit!).toMatch(/^\[\d+:\d+\]/)
-    expect(hit!).toContain('a && a[i]')
+    expect(hit!).toContain('(pair) => pair.a')
   })
 
   it('unsupported unary operator is located + actionable (not a silent "")', () => {
@@ -67,11 +69,11 @@ describe('unsupported-construct diagnostics — located + actionable', () => {
   it('the location line number is ACCURATE (points at the real line, not 1)', () => {
     // The <Text> sits on line 7 of wrapJsx — a construct there must report a
     // line > 1, proving locOf reads the real byte offset, not a constant.
-    // (Template literals, plain optional member access AND optional index now
-    // lower, so use a still-unsupported construct — optional CALL — to
-    // exercise the located-warning contract.)
-    const w = warningsFor('obj.field?.()')
-    const hit = w.find((m) => m.includes('Optional chaining'))!
+    // (Template literals AND every optional-chaining shape — member, index,
+    // call — now lower, so use a still-unsupported construct — an unsupported
+    // unary operator — to exercise the located-warning contract.)
+    const w = warningsFor('typeof obj')
+    const hit = w.find((m) => m.includes('Unary operator'))!
     const line = Number(hit.match(/^\[(\d+):/)![1])
     expect(line).toBeGreaterThan(1)
   })

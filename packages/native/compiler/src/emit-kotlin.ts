@@ -2861,6 +2861,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       }
       const callee = emitKotlinExpr(e.callee, indent)
       const args = e.args.map((a) => emitKotlinExpr(a, indent)).join(', ')
+      // Optional call `f?.()` → Kotlin's nullable-function invocation
+      // `f?.invoke(args)` (a bare `f?()` is not Kotlin syntax — a nullable
+      // function is invoked via `.invoke` under `?.`).
+      if (e.optional === true) return `${callee}?.invoke(${args})`
       return `${callee}(${args})`
     }
     case 'index': {

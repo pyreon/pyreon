@@ -669,7 +669,12 @@ export type ExprIR =
   // — absent/false renders the literal verbatim (the existing behaviour).
   | { kind: 'literal'; value: string | number | boolean | null; float?: boolean }
   | { kind: 'identifier'; name: string }
-  | { kind: 'call'; callee: ExprIR; args: ExprIR[] }
+  /**
+   * `f(args)` — a plain call, OR `f?.(args)` when `optional: true` (the
+   * optional-call form: JS short-circuits to undefined if the callee is
+   * nullish). Lowers to Swift `f?(args)` / Kotlin `f?.invoke(args)`.
+   */
+  | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
   | {
       kind: 'member'
       object: ExprIR
