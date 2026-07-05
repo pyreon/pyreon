@@ -4687,6 +4687,69 @@ describe('View Transitions API', () => {
     router.destroy()
   })
 
+  // WCAG 2.3.3 — respect `prefers-reduced-motion: reduce`. The route still
+  // navigates (DOM swaps via the non-VT path); only the animation is skipped.
+  const mockMatchMedia = (prefersReduce: boolean) => {
+    const prev = (globalThis as { matchMedia?: unknown }).matchMedia
+    ;(globalThis as { matchMedia?: unknown }).matchMedia = vi.fn((q: string) => ({
+      matches: /prefers-reduced-motion:\s*reduce/.test(q) ? prefersReduce : false,
+      media: q,
+      onchange: null,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      dispatchEvent: () => false,
+    }))
+    return () => {
+      if (prev === undefined) delete (globalThis as { matchMedia?: unknown }).matchMedia
+      else (globalThis as { matchMedia?: unknown }).matchMedia = prev
+    }
+  }
+
+  it('does NOT call startViewTransition when prefers-reduced-motion is set (still navigates)', async () => {
+    const restore = mockMatchMedia(true)
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const vtRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+    ]
+    const router = createRouter({ routes: vtRoutes, url: '/' })
+    await router.push('/about')
+
+    expect(startViewTransition).not.toHaveBeenCalled() // animation skipped
+    expect(router.currentRoute().path).toBe('/about') // but the route DID change
+
+    delete (document as any).startViewTransition
+    router.destroy()
+    restore()
+  })
+
+  it('DOES call startViewTransition when reduced-motion is not set (control)', async () => {
+    const restore = mockMatchMedia(false)
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const vtRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+    ]
+    const router = createRouter({ routes: vtRoutes, url: '/' })
+    await router.push('/about')
+
+    expect(startViewTransition).toHaveBeenCalled()
+
+    delete (document as any).startViewTransition
+    router.destroy()
+    restore()
+  })
+
   it('navigates normally when startViewTransition is not available', async () => {
     // Ensure startViewTransition is not on document
     delete (document as any).startViewTransition
