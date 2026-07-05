@@ -5314,9 +5314,19 @@ function emitSwiftHeading(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
-  const levelRaw = readStaticAttr(e, 'level')
-  const level = (typeof levelRaw === 'number' ? levelRaw : 1) as 1 | 2 | 3 | 4 | 5 | 6
-  let result = `${emitSwiftTextCore(e, indent)}.font(${HEADING_FONT[level] ?? '.largeTitle'}).bold()`
+  // `level` maps to a font size. Static number OR a ternary of two literal
+  // levels (`level={compact() ? 3 : 1}`). Pre-fix a dynamic level SILENTLY
+  // defaulted to level 1 (`typeof levelRaw === 'number' ? … : 1`) — a silent
+  // MIS-emit (the heading rendered `.largeTitle` regardless). swiftStylingValue
+  // resolves each branch's level→font; a fully-dynamic level warns + falls back
+  // to `.largeTitle` (the font map is not runtime-indexable).
+  const font =
+    swiftStylingValue(
+      e,
+      'level',
+      (v) => HEADING_FONT[(typeof v === 'number' ? v : 1) as 1 | 2 | 3 | 4 | 5 | 6] ?? '.largeTitle',
+    ) ?? '.largeTitle'
+  let result = `${emitSwiftTextCore(e, indent)}.font(${font}).bold()`
   const color = readStaticAttr(e, 'color')
   if (typeof color === 'string') {
     result += `.foregroundColor(${resolveColor(color, 'swift')})`

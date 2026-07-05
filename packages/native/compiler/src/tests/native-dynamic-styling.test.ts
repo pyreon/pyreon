@@ -248,3 +248,62 @@ export function App() {
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+// `<Heading level>` — the level maps to a font/typography size. Pre-fix a
+// DYNAMIC level SILENTLY DEFAULTED to level 1 (`typeof levelRaw === 'number' ?
+// … : 1`) — a silent MIS-emit (`level={compact() ? 3 : 1}` rendered largeTitle
+// regardless of `compact`). The level is a compile-time token (a font-map
+// index), so the faithful dynamic form is a ternary of two literal levels —
+// each branch resolves to its font; a fully-dynamic level warns + falls back
+// (the map isn't runtime-indexable). Routed through the same swiftStylingValue
+// / kotlinStylingValue machinery as the other token props.
+const LEVEL = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Heading } from '@pyreon/primitives'
+export function App() {
+  const compact = signal<boolean>(false)
+  return (
+    <Stack>
+      <Heading level={compact() ? 3 : 1}>Title</Heading>
+      <Heading level={2}>Sub</Heading>
+    </Stack>
+  )
+}`
+
+describe('Heading dynamic level — ternary lowers per branch, static byte-identical, fully-dynamic warns', () => {
+  it('Swift: dynamic level lowers to a native conditional of fonts; static unchanged', () => {
+    const out = transform(LEVEL, { target: 'swift' }).code
+    expect(out).toContain('.font((compact ? .title2 : .largeTitle)).bold()')
+    expect(out).toContain('.font(.title).bold()') // static level 2
+  })
+  it('Kotlin: dynamic level lowers to an if-expression of typography styles; static unchanged', () => {
+    const out = transform(LEVEL, { target: 'kotlin' }).code
+    expect(out).toContain(
+      'style = (if (compact) MaterialTheme.typography.h6 else MaterialTheme.typography.h4)',
+    )
+    expect(out).toContain('style = MaterialTheme.typography.h5') // static level 2
+  })
+  it('a fully-dynamic level warns NAMED + falls back (no longer a silent default to level 1)', () => {
+    const src = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Heading } from '@pyreon/primitives'
+export function App() {
+  const lvl = signal<number>(2)
+  return <Stack><Heading level={lvl()}>x</Heading></Stack>
+}`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const out = transform(src, { target })
+      expect((out.warnings ?? []).some((w) => w.includes('<Heading level={…}>'))).toBe(true)
+    }
+  })
+
+  // Compile proof — the ternary font/typography emit typechecks end-to-end.
+  it.skipIf(!isSwiftUIAvailable())('iOS: the dynamic-level Heading TYPECHECKS against real SwiftUI', () => {
+    const r = validateSwiftTypecheck(transform(LEVEL, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('Android: the same compiles via kotlinc', () => {
+    const r = validateKotlin(transform(LEVEL, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})

@@ -4305,12 +4305,19 @@ function emitKotlinHeading(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
 ): string {
-  const levelRaw = readStaticAttrKotlin(e, 'level')
-  const level = (typeof levelRaw === 'number' ? levelRaw : 1) as 1 | 2 | 3 | 4 | 5 | 6
-  const args = [
-    `text = ${kotlinTextArg(e, indent)}`,
-    `style = MaterialTheme.typography.${HEADING_TYPOGRAPHY[level] ?? 'h4'}`,
-  ]
+  // `level` maps to a typography style. Static number OR a ternary of two
+  // literal levels (`level={compact() ? 3 : 1}`). Pre-fix a dynamic level
+  // SILENTLY defaulted to level 1 — a silent mis-emit. kotlinStylingValue
+  // resolves each branch's level→style; a fully-dynamic level warns + falls
+  // back to `h4` (the map is not runtime-indexable).
+  const style =
+    kotlinStylingValue(
+      e,
+      'level',
+      (v) =>
+        `MaterialTheme.typography.${HEADING_TYPOGRAPHY[(typeof v === 'number' ? v : 1) as 1 | 2 | 3 | 4 | 5 | 6] ?? 'h4'}`,
+    ) ?? 'MaterialTheme.typography.h4'
+  const args = [`text = ${kotlinTextArg(e, indent)}`, `style = ${style}`]
   const color = readStaticAttrKotlin(e, 'color')
   if (typeof color === 'string') args.push(`color = ${resolveColor(color, 'kotlin')}`)
   // Same data-testid threading as Text (device-found bug class).
