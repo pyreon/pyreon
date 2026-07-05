@@ -5,11 +5,13 @@ import {
   ErrorBoundary,
   h,
   nativeCompat,
+  onMount,
   onUnmount,
   provide,
   useContext,
 } from '@pyreon/core'
 import { computed, isClient, signal } from '@pyreon/reactivity'
+import { announceRouteChange } from './announcer'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { _setDefaultChromeLayout } from './match'
 import { isLazy, RouterContext, setActiveRouter } from './router'
@@ -48,6 +50,14 @@ export const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
 export interface RouterViewProps extends Props {
   /** Explicitly pass a router (optional — uses the active router by default) */
   router?: Router
+  /**
+   * Announce route changes to screen readers via a visually-hidden
+   * `aria-live` region (the new page's `document.title`, falling back to the
+   * pathname). Default `true`. Only the ROOT `<RouterView>` announces — nested
+   * (layout) views ignore this. Set `false` to opt out (e.g. if you run your
+   * own route announcer).
+   */
+  announceRouteChanges?: boolean
 }
 
 /**
@@ -85,6 +95,23 @@ export const RouterView: ComponentFn<RouterViewProps> = (props) => {
   onUnmount(() => {
     router._viewDepth--
   })
+
+  // Root-only, client-only route announcer (a11y — WAI-ARIA / Next.js-style):
+  // tell screen-reader users the page changed on each navigation. Registered
+  // in `onMount`, so the INITIAL page load is NOT announced (the SR already
+  // reads the freshly-loaded page) — only genuine path changes from here on
+  // fire. `afterEach` returns its own unsubscribe, which `onMount` treats as
+  // the cleanup. Opt out via `<RouterView announceRouteChanges={false}>`.
+  if (depth === 0 && isClient && props.announceRouteChanges !== false) {
+    onMount(() => {
+      let prevPath = router.currentRoute().path
+      return router.afterEach((to) => {
+        if (to.path === prevPath) return // same-path (query/hash) — not a page change
+        prevPath = to.path
+        announceRouteChange(to.path)
+      })
+    })
+  }
 
   // ── Structure / data decoupling ───────────────────────────────────────────
   //

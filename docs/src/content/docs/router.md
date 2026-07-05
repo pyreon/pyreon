@@ -2387,6 +2387,23 @@ function App() {
 
 `useTransition()` returns `() => boolean` directly (not an object). The accessor is `true` from the start of navigation (guard evaluation, loader fetching) until the route component is mounted.
 
+## Accessibility — route announcements
+
+In a single-page app, navigation swaps content without a full page load, so screen readers are never told the "page" changed — a click on a link can appear to do nothing to a screen-reader user. The router closes this gap automatically: on every navigation, the **root** `<RouterView>` writes the new page's name into a visually-hidden `aria-live="polite"` region, so assistive tech announces it (the same pattern Next.js, Remix and gov.uk ship).
+
+- **Zero config** — it's on by default; nothing to mount or wire.
+- **What's announced** — the new `document.title` (which `@pyreon/head` has updated by the time navigation commits), falling back to the pathname when there's no title.
+- **When** — only on genuine **path** changes. The initial page load isn't announced (the screen reader already reads the freshly-loaded page), and same-path query/hash changes are ignored.
+- **Only the root view** announces — nested `<RouterView>`s (layouts) don't double-announce.
+
+Opt out (e.g. if you run your own announcer) on the root view:
+
+```tsx
+<RouterView announceRouteChanges={false} />
+```
+
+For focus management on route change (moving keyboard focus to the new content), place your own focus target — a framework-level default is a separate, opt-in concern so it never fights an app that manages focus itself.
+
 ## View Transitions API
 
 Route navigations are automatically wrapped in `document.startViewTransition()` when the browser supports the View Transitions API. This provides smooth CSS-driven transitions between pages with zero configuration.
