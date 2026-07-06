@@ -494,6 +494,18 @@ export function _rdRegister(
 }
 
 /**
+ * Read the reactive-graph node id stashed on a signal / computed callable or
+ * `effect()` handle (`__pxRdId`). Returns `undefined` for a non-reactive value
+ * or a production build (where the registry is tree-shaken). The public,
+ * name-stable accessor `@pyreon/testing`'s reactive matchers target — so they
+ * never reach for the internal property directly.
+ */
+export function _rdNodeId(x: unknown): number | undefined {
+  const id = (x as { __pxRdId?: unknown } | null | undefined)?.__pxRdId
+  return typeof id === 'number' ? id : undefined
+}
+
+/**
  * Record that a node fired (signal write / computed recompute / effect
  * run). Bumps counters + appends to the bounded fire buffer.
  *
