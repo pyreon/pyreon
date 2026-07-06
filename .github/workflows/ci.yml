@@ -1627,6 +1627,6 @@ jobs:
           done
           echo "::error::trufflehog image pull failed after 4 attempts — genuine ghcr.io outage, not a transient flake"
           exit 1
-      - uses: trufflesecurity/trufflehog@30d5bb91af1a771378349dbbb0c82129392acf70 # v3.95.6
+      - uses: trufflesecurity/trufflehog@00155c9dc586f34d189adc83d3ac2698c2ec551f # v3.95.8
         with:
           extra_args: --only-verified
