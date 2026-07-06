@@ -532,6 +532,18 @@ struct Ctx<'a> {
     /// only cost of imprecision is skipping the text fast path, never a wrong
     /// render.
     element_vars: FxHashSet<String>,
+    /// PZ-02 fix: in-file function bindings that RETURN JSX (`const cell =
+    /// (v) => <b>{v}</b>`, `function cell(v) { return <b>{v}</b> }`). A call
+    /// child of such a binding under a DOM-element parent (`{cell(x)}`, incl.
+    /// the accessor form `{() => cell(x)}`) must MOUNT via `_mountSlot`, not
+    /// bind as reactive TEXT (which stringifies the returned VNode to
+    /// "[object Object]"; SSR mounted the shape correctly — a guaranteed
+    /// SSR↔client mismatch). Mirrors the JS backend's `jsxFnVars` exactly.
+    /// Cross-file callees are out of scope (no type info at this seam).
+    jsx_fn_vars: FxHashSet<String>,
+    /// Scope-aware shadowing for `jsx_fn_vars` — same discipline as
+    /// `shadowed_signals` (mirrors JS `shadowedJsxFns`).
+    shadowed_jsx_fns: FxHashSet<String>,
 
     /// Reactivity-lens sidecar (opt-in via `transform_jsx`'s 5th arg).
     /// Mirrors `src/jsx.ts`'s `collectLens` / `reactivityLens` exactly:
@@ -614,6 +626,8 @@ impl<'a> Ctx<'a> {
             selector_vars: FxHashSet::default(),
             shadowed_selectors: FxHashSet::default(),
             element_vars: FxHashSet::default(),
+            jsx_fn_vars: FxHashSet::default(),
+            shadowed_jsx_fns: FxHashSet::default(),
             collect_lens,
             reactivity_lens: Vec::new(),
         }
@@ -1247,6 +1261,233 @@ fn find_shadowing_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<
                             }
                         } else {
                             shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    shadows
+}
+
+/// Check if an identifier name is an active (non-shadowed) JSX-returning fn.
+/// Mirrors JS `isActiveJsxFn` (PZ-02).
+fn is_active_jsx_fn(name: &str, ctx: &Ctx) -> bool {
+    ctx.jsx_fn_vars.contains(name) && !ctx.shadowed_jsx_fns.contains(name)
+}
+
+/// Value shape that IS JSX after unwrapping value-transparent layers — a
+/// direct element/fragment, or a conditional/logical whose branch is
+/// (`cond ? <b/> : v`, `flag && <b/>`). Deliberately narrow — mirrors JS
+/// `returnsJsxValue` 1:1 (PZ-02).
+fn returns_jsx_value(expr: &Expression) -> bool {
+    let u = unwrap_type_layers(expr);
+    match u {
+        Expression::JSXElement(_) | Expression::JSXFragment(_) => true,
+        Expression::ConditionalExpression(c) => {
+            returns_jsx_value(&c.consequent) || returns_jsx_value(&c.alternate)
+        }
+        Expression::LogicalExpression(l) => {
+            returns_jsx_value(&l.left) || returns_jsx_value(&l.right)
+        }
+        _ => false,
+    }
+}
+
+/// Any `return` statement in this statement subtree whose argument
+/// `returns_jsx_value` — statement-recursive, does NOT descend into nested
+/// functions (an inner closure's return is not this function's return).
+/// Mirrors JS `fnReturnsJsx`'s block-body scan (PZ-02).
+fn stmt_has_jsx_return(stmt: &Statement) -> bool {
+    match stmt {
+        Statement::ReturnStatement(ret) => ret
+            .argument
+            .as_ref()
+            .map_or(false, |a| returns_jsx_value(a)),
+        Statement::IfStatement(s) => {
+            stmt_has_jsx_return(&s.consequent)
+                || s.alternate.as_ref().map_or(false, |a| stmt_has_jsx_return(a))
+        }
+        Statement::BlockStatement(b) => b.body.iter().any(stmt_has_jsx_return),
+        Statement::ForStatement(f) => stmt_has_jsx_return(&f.body),
+        Statement::ForInStatement(f) => stmt_has_jsx_return(&f.body),
+        Statement::ForOfStatement(f) => stmt_has_jsx_return(&f.body),
+        Statement::WhileStatement(w) => stmt_has_jsx_return(&w.body),
+        Statement::DoWhileStatement(d) => stmt_has_jsx_return(&d.body),
+        Statement::SwitchStatement(s) => s
+            .cases
+            .iter()
+            .any(|c| c.consequent.iter().any(stmt_has_jsx_return)),
+        Statement::TryStatement(t) => {
+            t.block.body.iter().any(stmt_has_jsx_return)
+                || t
+                    .handler
+                    .as_ref()
+                    .map_or(false, |h| h.body.body.iter().any(stmt_has_jsx_return))
+                || t
+                    .finalizer
+                    .as_ref()
+                    .map_or(false, |f| f.body.iter().any(stmt_has_jsx_return))
+        }
+        Statement::LabeledStatement(l) => stmt_has_jsx_return(&l.body),
+        _ => false,
+    }
+}
+
+/// Does this function DECLARATION/EXPRESSION return JSX on any path?
+fn fn_returns_jsx(func: &oxc_ast::ast::Function) -> bool {
+    func.body
+        .as_ref()
+        .map_or(false, |b| b.statements.iter().any(stmt_has_jsx_return))
+}
+
+/// Does this arrow return JSX? Concise body, or any block-body return.
+fn arrow_returns_jsx(arrow: &ArrowFunctionExpression) -> bool {
+    if let Some(expr) = arrow.get_expression() {
+        return returns_jsx_value(expr);
+    }
+    arrow.body.statements.iter().any(stmt_has_jsx_return)
+}
+
+/// Is this declarator init (parens-unwrapped) a JSX-returning fn value?
+/// Mirrors JS `isJsxFnInit` (PZ-02).
+fn is_jsx_fn_init(init: &Expression) -> bool {
+    let mut e = init;
+    while let Expression::ParenthesizedExpression(p) = e {
+        e = &p.expression;
+    }
+    match e {
+        Expression::ArrowFunctionExpression(a) => arrow_returns_jsx(a),
+        Expression::FunctionExpression(f) => fn_returns_jsx(f),
+        _ => false,
+    }
+}
+
+/// PZ-02: is this (type-layer-unwrapped) child expression a call to an
+/// in-file JSX-returning helper? Accepts the bare call (`{cell(x)}`) and the
+/// concise-arrow accessor form (`{() => cell(x)}`, body type-layer
+/// transparent). Member calls and block-body arrows bail. Mirrors JS
+/// `isJsxHelperCall` 1:1.
+fn is_jsx_helper_call(expr: &Expression, ctx: &Ctx) -> bool {
+    let mut inner = expr;
+    if let Expression::ArrowFunctionExpression(arrow) = inner {
+        match arrow.get_expression() {
+            Some(body) => inner = unwrap_type_layers(body),
+            None => return false,
+        }
+    }
+    if let Expression::CallExpression(call) = inner {
+        if let Expression::Identifier(id) = &call.callee {
+            return is_active_jsx_fn(id.name.as_str(), ctx);
+        }
+    }
+    false
+}
+
+/// PZ-02: register a named function DECLARATION returning JSX as a
+/// JSX-returning helper binding — registered at its statement position (a
+/// helper declared AFTER the JSX that calls it is NOT tracked; both backends
+/// agree on this source-order boundary). Mirrors the JS walkNode arm.
+fn maybe_register_jsx_fn_decl(func: &oxc_ast::ast::Function, ctx: &mut Ctx) {
+    if let Some(id) = &func.id {
+        if fn_returns_jsx(func) {
+            ctx.jsx_fn_vars.insert(id.name.to_string());
+        }
+    }
+}
+
+/// `find_shadowing_names` applied to `jsx_fn_vars` (params + body-top-level
+/// variable declarations; a same-named re-decl that is ITSELF a
+/// JSX-returning fn is not a shadow — mirrors the `is_signal_call_expr`
+/// carve-out). Mirrors JS `findShadowingJsxFnNames` (PZ-02).
+fn find_shadowing_jsx_fn_names(node: &oxc_ast::ast::Function, ctx: &Ctx) -> Vec<String> {
+    let mut shadows = Vec::new();
+    for param in &node.params.items {
+        match &param.pattern {
+            BindingPattern::BindingIdentifier(id) => {
+                if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                    shadows.push(id.name.to_string());
+                }
+            }
+            BindingPattern::ObjectPattern(obj) => {
+                for prop in &obj.properties {
+                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
+                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            BindingPattern::ArrayPattern(arr) => {
+                for el in arr.elements.iter().flatten() {
+                    if let BindingPattern::BindingIdentifier(id) = el {
+                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(body) = &node.body {
+        for stmt in &body.statements {
+            if let Statement::VariableDeclaration(decl) = stmt {
+                for declarator in &decl.declarations {
+                    if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                            match &declarator.init {
+                                Some(init) if is_jsx_fn_init(init) => {}
+                                _ => shadows.push(id.name.to_string()),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    shadows
+}
+
+/// Arrow variant of `find_shadowing_jsx_fn_names`.
+fn find_shadowing_jsx_fn_names_arrow(node: &ArrowFunctionExpression, ctx: &Ctx) -> Vec<String> {
+    let mut shadows = Vec::new();
+    for param in &node.params.items {
+        match &param.pattern {
+            BindingPattern::BindingIdentifier(id) => {
+                if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                    shadows.push(id.name.to_string());
+                }
+            }
+            BindingPattern::ObjectPattern(obj) => {
+                for prop in &obj.properties {
+                    if let BindingPattern::BindingIdentifier(id) = &prop.value {
+                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            BindingPattern::ArrayPattern(arr) => {
+                for el in arr.elements.iter().flatten() {
+                    if let BindingPattern::BindingIdentifier(id) = el {
+                        if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                            shadows.push(id.name.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for stmt in &node.body.statements {
+        if let Statement::VariableDeclaration(decl) = stmt {
+            for declarator in &decl.declarations {
+                if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                    if ctx.jsx_fn_vars.contains(id.name.as_str()) {
+                        match &declarator.init {
+                            Some(init) if is_jsx_fn_init(init) => {}
+                            _ => shadows.push(id.name.to_string()),
                         }
                     }
                 }
@@ -3365,9 +3606,15 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
         }
         Statement::FunctionDeclaration(func) => {
             maybe_register_component_props_fn(func, ctx);
+            maybe_register_jsx_fn_decl(func, ctx);
             let shadows = if !ctx.signal_vars.is_empty() {
                 let s = find_shadowing_names(func, ctx);
                 for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                s
+            } else { vec![] };
+            let jsx_fn_shadows = if !ctx.jsx_fn_vars.is_empty() {
+                let s = find_shadowing_jsx_fn_names(func, ctx);
+                for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
                 s
             } else { vec![] };
             if let Some(body) = &func.body {
@@ -3376,6 +3623,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                 }
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
+            for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
         }
         Statement::ReturnStatement(ret) => {
             if let Some(arg) = &ret.argument {
@@ -3405,12 +3653,18 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                             for name in &s { ctx.shadowed_signals.insert(name.clone()); }
                             s
                         } else { vec![] };
+                        let jsx_fn_shadows = if !ctx.jsx_fn_vars.is_empty() {
+                            let s = find_shadowing_jsx_fn_names(&method.value, ctx);
+                            for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
+                            s
+                        } else { vec![] };
                         if let Some(body) = &method.value.body {
                             for stmt in &body.statements {
                                 walk_statement(stmt, ctx);
                             }
                         }
                         for name in &shadows { ctx.shadowed_signals.remove(name); }
+                        for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
                     }
                     ClassElement::PropertyDefinition(prop) => {
                         if let Some(value) = &prop.value {
@@ -3486,9 +3740,15 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
             match &exp.declaration {
                 ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
                     maybe_register_component_props_fn(func, ctx);
+                    maybe_register_jsx_fn_decl(func, ctx);
                     let shadows = if !ctx.signal_vars.is_empty() {
                         let s = find_shadowing_names(func, ctx);
                         for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                        s
+                    } else { vec![] };
+                    let jsx_fn_shadows = if !ctx.jsx_fn_vars.is_empty() {
+                        let s = find_shadowing_jsx_fn_names(func, ctx);
+                        for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
                         s
                     } else { vec![] };
                     if let Some(body) = &func.body {
@@ -3497,6 +3757,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                         }
                     }
                     for name in &shadows { ctx.shadowed_signals.remove(name); }
+                    for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
                 }
                 _ => {
                     if let Some(expr) = exp.declaration.as_expression() {
@@ -3518,9 +3779,15 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                     }
                     Declaration::FunctionDeclaration(func) => {
                         maybe_register_component_props_fn(func, ctx);
+                        maybe_register_jsx_fn_decl(func, ctx);
                         let shadows = if !ctx.signal_vars.is_empty() {
                             let s = find_shadowing_names(func, ctx);
                             for name in &s { ctx.shadowed_signals.insert(name.clone()); }
+                            s
+                        } else { vec![] };
+                        let jsx_fn_shadows = if !ctx.jsx_fn_vars.is_empty() {
+                            let s = find_shadowing_jsx_fn_names(func, ctx);
+                            for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
                             s
                         } else { vec![] };
                         if let Some(body) = &func.body {
@@ -3529,6 +3796,7 @@ fn walk_statement(stmt: &Statement, ctx: &mut Ctx) {
                             }
                         }
                         for name in &shadows { ctx.shadowed_signals.remove(name); }
+                        for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
                     }
                     _ => {}
                 }
@@ -3596,8 +3864,14 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
                 for name in &s { ctx.shadowed_signals.insert(name.clone()); }
                 s
             } else { vec![] };
+            let jsx_fn_shadows = if !ctx.jsx_fn_vars.is_empty() {
+                let s = find_shadowing_jsx_fn_names_arrow(arrow, ctx);
+                for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
+                s
+            } else { vec![] };
             walk_arrow_body(arrow, ctx);
             for name in &shadows { ctx.shadowed_signals.remove(name); }
+            for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
             ctx.parent_is_jsx = old;
         }
         Expression::FunctionExpression(func) => {
@@ -3622,12 +3896,18 @@ fn walk_expression(expr: &Expression, ctx: &mut Ctx) {
                 for name in &s { ctx.shadowed_signals.insert(name.clone()); }
                 s
             } else { vec![] };
+            let jsx_fn_shadows = if !ctx.jsx_fn_vars.is_empty() {
+                let s = find_shadowing_jsx_fn_names(func, ctx);
+                for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
+                s
+            } else { vec![] };
             if let Some(body) = &func.body {
                 for stmt in &body.statements {
                     walk_statement(stmt, ctx);
                 }
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
+            for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
             ctx.parent_is_jsx = old;
         }
         Expression::CallExpression(call) => {
@@ -5162,6 +5442,14 @@ fn emit_attr_expression(
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> String {
+    // PZ-05 fix: TS type-only layers/parens are value-transparent — unwrap
+    // BEFORE classification (mirrors the JS backend's emitAttrExpression) so
+    // `title={(() => x()) as never}` classifies (and emits) identically to
+    // `title={() => x()}`. Pre-fix the wrapped accessor fell through to the
+    // static arm and setAttribute'd the function SOURCE string.
+    // `static_attr_to_html` already unwraps internally — double unwrap is a
+    // no-op.
+    let expr_node = unwrap_type_layers(expr_node);
     if let Some(static_html) = static_attr_to_html(expr_node, html_attr_name, tag) {
         return static_html;
     }
@@ -5427,8 +5715,16 @@ fn process_one_child(
             };
             process_element(el, &child_accessor, tb, ctx)
         }
-        FlatChild::Expression(expr) => {
+        FlatChild::Expression(raw_expr) => {
             let needs_placeholder = use_mixed || use_multi_expr;
+            // PZ-05 fix: TS type-only layers (`as T` / `satisfies T` / `!`)
+            // and parens are value-transparent — unwrap BEFORE classification
+            // so `{(() => x()) as never}` classifies (and emits) identically
+            // to `{() => x()}`. Pre-fix the wrapped accessor fell through to
+            // the STATIC bake arm and stringified the function SOURCE into
+            // the DOM. Mirrors the JS backend's processOneChild exactly.
+            let expr = unwrap_type_layers(raw_expr);
+            let was_type_wrapped = !std::ptr::eq(expr as *const _, *raw_expr as *const _);
             let (expr_text, is_reactive) = unwrap_accessor(expr, ctx);
             let is_element_valued_ident = matches!(
                 expr,
@@ -5444,6 +5740,23 @@ fn process_one_child(
                 ));
                 return Some("<!>".to_string());
             }
+            // PZ-02 fix: a call to an in-file JSX-returning helper
+            // (`{cell(x)}`, incl. the accessor form `{() => cell(x)}`) must
+            // MOUNT via `_mountSlot`, not bind as reactive TEXT — pre-fix it
+            // emitted `_bind(() => { __t0.data = cell(x) })`, stringifying
+            // the returned VNode to "[object Object]". Always wrapped in an
+            // accessor so args reading signals re-render the slot. Mirrors
+            // the JS backend exactly; cross-file callees are NOT routed.
+            if is_jsx_helper_call(expr, ctx) {
+                tb.needs_mount_slot = true;
+                let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
+                let d = tb.next_disp();
+                tb.bind_lines.push(format!(
+                    "const {} = _mountSlot(() => ({}), {}, {})",
+                    d, expr_text, parent_ref, placeholder
+                ));
+                return Some("<!>".to_string());
+            }
             // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
             // `{n() && <List/>}`, `.map(x => <li/>)`): route through `_mountSlot`
             // so the wrapper keeps the `_tpl` fast path. `_mountSlot` →
@@ -5451,10 +5764,13 @@ fn process_one_child(
             // accessor (disposal + swap on signal change). Reactive bodies are
             // re-wrapped into an accessor; a static element-conditional is passed
             // bare (mounts once). Direct JSX element/fragment children
-            // (`{<span/>}`) are excluded — they keep the static-hoist path.
+            // (`{<span/>}`) are excluded — they keep the static-hoist path (the
+            // count gate bails the template upstream) — but the TYPE-WRAPPED
+            // form (`{(<span/>) as never}`) reaches here and routes through
+            // `_mountSlot` on the unwrapped slice (PZ-05).
             let expr_is_direct_jsx =
                 matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
-            if contains_jsx_in_expr(expr) && !expr_is_direct_jsx {
+            if contains_jsx_in_expr(expr) && (!expr_is_direct_jsx || was_type_wrapped) {
                 tb.needs_mount_slot = true;
                 let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
@@ -5662,6 +5978,21 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                 }
                 if matches!(e, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
                     ctx.element_vars.insert(id.name.to_string());
+                }
+            }
+        }
+    }
+
+    // PZ-02: track JSX-returning function bindings (const-only — a `let` can
+    // be reassigned to a non-JSX fn). Mirrors the JS backend's
+    // `collectPropDerivedFromDecl` jsx-fn arm exactly.
+    if decl.kind == VariableDeclarationKind::Const {
+        for declarator in &decl.declarations {
+            if let BindingPattern::BindingIdentifier(id) = &declarator.id {
+                if let Some(init) = &declarator.init {
+                    if is_jsx_fn_init(init) {
+                        ctx.jsx_fn_vars.insert(id.name.to_string());
+                    }
                 }
             }
         }

@@ -61,6 +61,8 @@ interface Ctx {
   props: boolean
   depth: number
   idc: { n: number }
+  /** In-file JSX-returning helper names (PZ-02 — `{helper(expr)}` mounts). */
+  helpers: string[]
 }
 
 const pick = <T,>(rnd: () => number, arr: T[]): T => arr[Math.floor(rnd() * arr.length)]!
@@ -104,7 +106,9 @@ function genAttrs(c: Ctx): string {
     else if (r < 0.68) parts.push(`data-x={${genExpr(c)}}`)
     else if (r < 0.74) parts.push(`style={{ color: ${genExpr(c)} }}`)
     else if (r < 0.8) parts.push('id={`x`}')
-    else if (r < 0.86) parts.push(`tabIndex={-1}`)
+    else if (r < 0.84) parts.push(`tabIndex={-1}`)
+    // PZ-05: cast-wrapped attr values must classify identically to bare ones.
+    else if (r < 0.9) parts.push(`title={(${genExpr(c)}) as string}`)
     else parts.push(`title="${'t' + Math.floor(c.rnd() * 10)}"`)
   }
   return parts.length ? ' ' + parts.join(' ') : ''
@@ -113,7 +117,20 @@ function genAttrs(c: Ctx): string {
 function genChild(c: Ctx): string {
   const r = c.rnd()
   if (c.depth > 4 || r < 0.3) {
-    if (c.rnd() < 0.5) return `text${Math.floor(c.rnd() * 100)}`
+    const rr = c.rnd()
+    if (rr < 0.4) return `text${Math.floor(c.rnd() * 100)}`
+    // PZ-05: TS type-only layers + parens are value-transparent at the child
+    // classification seam — cast/paren-wrapped children must classify (and
+    // emit) identically to the bare form on BOTH backends.
+    if (rr < 0.5) return `{(${genExpr(c)}) as never}`
+    if (rr < 0.56) return `{(${genExpr(c)})!}`
+    if (rr < 0.62) return `{(() => ${genExpr(c)}) as never}`
+    // PZ-02: in-file JSX-returning helper calls mount via _mountSlot.
+    if (rr < 0.74 && c.helpers.length) {
+      const h = pick(c.rnd, c.helpers)
+      const call = `${h}(${genExpr(c)})`
+      return c.rnd() < 0.5 ? `{${call}}` : `{() => ${call}}`
+    }
     return `{${genExpr(c)}}`
   }
   if (r < 0.4 && c.signals.length) {
@@ -148,12 +165,35 @@ function genComponent(seed: number): string {
   const nSignals = Math.floor(rnd() * 3)
   const signals = Array.from({ length: nSignals }, (_, i) => `s${i}`)
   const props = rnd() < 0.6
-  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 } }
+  // PZ-02: sometimes declare module-scope JSX-returning helpers (arrow +
+  // function-declaration forms; one conditional string|VNode variant) that
+  // genChild then calls as `{helper(expr)}` / `{() => helper(expr)}`.
+  const helpers: string[] = []
+  const helperLines: string[] = []
+  if (rnd() < 0.5) {
+    helpers.push('cellA')
+    helperLines.push(
+      rnd() < 0.5
+        ? `const cellA = (v) => <b>{v}</b>`
+        : `const cellA = (v) => v ? <b>{v}</b> : "none"`,
+    )
+    if (rnd() < 0.4) {
+      helpers.push('cellB')
+      helperLines.push(`function cellB(v) { return <i>{v}</i> }`)
+    }
+  }
+  const c: Ctx = { rnd, signals, props, depth: 0, idc: { n: 0 }, helpers }
   const lines: string[] = [`import { signal, computed } from "@pyreon/reactivity"`]
+  lines.push(...helperLines)
   const body: string[] = []
   for (const s of signals) body.push(`  const ${s} = signal(${Math.floor(rnd() * 10)})`)
   if (props && rnd() < 0.5) body.push(`  const derived = props.x + "-d"`)
   if (rnd() < 0.3) body.push(`  const el = <b>static</b>`)
+  // PZ-02 scope-awareness: occasionally SHADOW a helper with a non-JSX fn —
+  // calls inside App must then stay on the reactive-text path (both backends).
+  if (helpers.length && rnd() < 0.25) {
+    body.push(`  const ${helpers[0]} = (v) => String(v)`)
+  }
   lines.push(`function App(${props ? 'props' : ''}) {`)
   lines.push(...body)
   lines.push(`  return ${genElement(c)}`)
