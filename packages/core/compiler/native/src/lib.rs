@@ -4293,12 +4293,26 @@ fn template_fragment_count(frag: &JSXFragment) -> i32 {
 
 // ─── Build template call ─────────────────────────────────────────────────────
 
+// Two-phase emission (PZ-08 fix; mirrors `jsx.ts:buildTemplateCall`
+// byte-for-byte). `ref_lines` (phase 1) holds every PRISTINE-CLONE node
+// capture: element ref walks (`const __eN = …`), sole-text captures
+// (`const __tN = X.firstChild`), and hoisted placeholder consts
+// (`const __pN = <walk>`) for `_mountSlot` placeholder args +
+// `replaceChild` targets. `bind_lines` (phase 2) holds every MUTATION/
+// binding in source order. The body emits ref_lines THEN bind_lines, so
+// every DOM position is captured before any mutation runs — `_mountSlot`
+// removes its `<!>` placeholder and inserts content + a `<!--pyreon-->`
+// marker (net sibling-count delta ≠ 0), so a walk evaluated AFTER it
+// landed on the wrong node. Phase-2 ops are identity-based, hence
+// order-independent w.r.t. sibling structure.
 struct TemplateBuilder {
+    ref_lines: Vec<String>,
     bind_lines: Vec<String>,
     disposer_names: Vec<String>,
     reactive_bind_exprs: Vec<String>,
     var_idx: u32,
     disp_idx: u32,
+    placeholder_idx: u32,
     needs_bind_text: bool,
     needs_bind_direct: bool,
     needs_apply_props: bool,
@@ -4311,11 +4325,13 @@ struct TemplateBuilder {
 impl TemplateBuilder {
     fn new() -> Self {
         TemplateBuilder {
+            ref_lines: Vec::new(),
             bind_lines: Vec::new(),
             disposer_names: Vec::new(),
             reactive_bind_exprs: Vec::new(),
             var_idx: 0,
             disp_idx: 0,
+            placeholder_idx: 0,
             needs_bind_text: false,
             needs_bind_direct: false,
             needs_apply_props: false,
@@ -4343,6 +4359,26 @@ impl TemplateBuilder {
         let name = format!("__t{}", self.var_idx);
         self.var_idx += 1;
         name
+    }
+
+    fn next_placeholder_var(&mut self) -> String {
+        let name = format!("__p{}", self.placeholder_idx);
+        self.placeholder_idx += 1;
+        name
+    }
+
+    /// Capture a placeholder/replace-target walk as a phase-1 const so the
+    /// walk resolves against the pristine clone (before any `_mountSlot`
+    /// mutated the child list). Returns the const name for the phase-2 op.
+    /// Mirrors `jsx.ts:hoistPlaceholderRef`.
+    fn hoist_placeholder_ref(&mut self, parent_ref: &str, child_node_idx: usize) -> String {
+        let p = self.next_placeholder_var();
+        self.ref_lines.push(format!(
+            "const {} = {}",
+            p,
+            child_node_accessor(parent_ref, child_node_idx, true)
+        ));
+        p
     }
 }
 
@@ -4389,11 +4425,14 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
         ctx.needs_bind_import = true;
     }
 
-    if tb.bind_lines.is_empty() && tb.disposer_names.is_empty() {
+    if tb.ref_lines.is_empty() && tb.bind_lines.is_empty() && tb.disposer_names.is_empty() {
         return Some(format!("_tpl(\"{}\", () => null)", escaped));
     }
 
-    // Append `;` to every bind line so ASI can't merge consecutive
+    // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/
+    // bindings) — see the TemplateBuilder header comment.
+    //
+    // Append `;` to every line so ASI can't merge consecutive
     // statements when the next line starts with `(`, `[`, etc. Mirror of
     // the JS-fallback fix in `src/jsx.ts`. Concrete bug shape pre-fix:
     // a child element with `has_dynamic=true` emits
@@ -4406,8 +4445,9 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     // and self-referencing `__e0` before assignment. Adding the `;`
     // terminates each statement deterministically.
     let mut body = tb
-        .bind_lines
+        .ref_lines
         .iter()
+        .chain(tb.bind_lines.iter())
         .map(|l| format!("  {};", l))
         .collect::<Vec<_>>()
         .join("\n");
@@ -4444,7 +4484,8 @@ fn resolve_element_var(
     }
     if has_dynamic {
         let v = tb.next_var();
-        tb.bind_lines.push(format!("const {} = {}", v, accessor));
+        // Pristine-clone capture — phase 1 (see TemplateBuilder header).
+        tb.ref_lines.push(format!("const {} = {}", v, accessor));
         v
     } else {
         accessor.to_string()
@@ -5141,14 +5182,14 @@ fn emit_reactive_text_child(
     // never renders. Mixed-content keeps comment+replaceChild — adjacent
     // baked text runs would merge during parsing.
     if needs_placeholder {
+        let p_var = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
         tb.bind_lines
             .push(format!("const {} = document.createTextNode(\"\")", t_var));
-        tb.bind_lines.push(format!(
-            "{}.replaceChild({}, {})",
-            parent_ref, t_var, child_node_accessor(parent_ref, child_node_idx, true)
-        ));
-    } else {
         tb.bind_lines
+            .push(format!("{}.replaceChild({}, {})", parent_ref, t_var, p_var));
+    } else {
+        // Pristine-clone capture — phase 1 (see TemplateBuilder header).
+        tb.ref_lines
             .push(format!("const {} = {}.firstChild", t_var, var_name));
     }
     // text-child path keeps existing bare-signal emission (allow_bare_signal=false).
@@ -5206,12 +5247,11 @@ fn emit_static_text_child(
 ) -> String {
     if needs_placeholder {
         let t_var = tb.next_text_var();
+        let p_var = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
         tb.bind_lines
             .push(format!("const {} = document.createTextNode({})", t_var, expr_text));
-        tb.bind_lines.push(format!(
-            "{}.replaceChild({}, {})",
-            parent_ref, t_var, child_node_accessor(parent_ref, child_node_idx, true)
-        ));
+        tb.bind_lines
+            .push(format!("{}.replaceChild({}, {})", parent_ref, t_var, p_var));
         "<!>".to_string()
     } else {
         tb.bind_lines
@@ -5274,7 +5314,7 @@ fn process_one_child(
             );
             if is_children_expression(expr, &expr_text) || is_element_valued_ident {
                 tb.needs_mount_slot = true;
-                let placeholder = child_node_accessor(parent_ref, child_node_idx, true);
+                let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
                 tb.bind_lines.push(format!(
                     "const {} = _mountSlot({}, {}, {})",
@@ -5294,7 +5334,7 @@ fn process_one_child(
                 matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
             if contains_jsx_in_expr(expr) && !expr_is_direct_jsx {
                 tb.needs_mount_slot = true;
-                let placeholder = child_node_accessor(parent_ref, child_node_idx, true);
+                let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
                 let slot_arg = if is_reactive {
                     format!("() => ({})", expr_text)

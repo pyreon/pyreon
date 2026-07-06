@@ -19,10 +19,10 @@ import type { Signal } from '@pyreon/reactivity'
  * side by side. (Auto-layout + the full marker vocabulary get their own
  * interactive demo in the Flow playground further down the page.)
  *
- * Note the overlay order: `<MiniMap>` is placed BEFORE `<Controls>`.
- * See the "Overlay child order" note in docs/flow.md — a `<Controls>`
- * mounted before a sibling `<MiniMap>` currently fails to render
- * (a known framework slot-ordering limitation).
+ * Overlay order no longer matters on current compilers (the template
+ * ref-hoist fix) — `<MiniMap>` is kept before `<Controls>` here only for
+ * continuity with the e2e assertions. See the "Overlay child order" note
+ * in docs/flow.md.
  *
  * The `shared` prop is part of the `<Example>` contract; this example
  * has no cross-mount signal to bridge, so it's accepted and ignored.
