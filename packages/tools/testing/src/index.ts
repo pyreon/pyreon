@@ -65,3 +65,5 @@ export type {
 // ── Pyreon-native: reactive graph matchers (the differentiator) ───────────
 export { expectEffect, expectSignal } from './reactive'
 export type { EffectAssertions, SignalAssertions } from './reactive'
+
+export { expectGarbageCollected, expectNoReactiveLeak } from './gc'
