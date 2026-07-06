@@ -57,8 +57,13 @@ export function render(ui: VNodeChild, options: RenderOptions = {}): RenderResul
   const result: RenderResult = {
     container,
     baseElement,
-    // The full @testing-library/dom query set, scoped to this container.
-    ...getQueriesForElement(container),
+    // Bind the @testing-library/dom query set to `baseElement` (document.body
+    // by default), NOT `container` — matching @testing-library/react. This is
+    // load-bearing for Pyreon: `<Portal>` / Overlay / Modal / Toast / Dropdown
+    // render OUTSIDE the container (into document.body), so container-scoped
+    // queries would silently fail to find any modal/overlay/tooltip. Scope to
+    // a single tree with `within(result.container)` when needed.
+    ...getQueriesForElement(baseElement),
     debug: () => container.innerHTML,
     unmount() {
       dispose()

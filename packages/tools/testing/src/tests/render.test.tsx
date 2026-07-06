@@ -4,6 +4,7 @@
  * vnodes) per test-environment-parity.
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import { Portal } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { cleanup, render, screen } from '../index'
 
@@ -51,6 +52,22 @@ describe('render', () => {
     expect(document.body.querySelectorAll('[data-testid]')).toHaveLength(2)
     cleanup()
     expect(document.body.querySelectorAll('[data-testid]')).toHaveLength(0)
+  })
+
+  it('queries find PORTALED content (bound to baseElement, not container)', () => {
+    // Regression: Pyreon <Portal>/Overlay/Modal/Toast render OUTSIDE the
+    // container (into document.body). render() queries must still find them —
+    // bind to baseElement like @testing-library/react, not the container.
+    const r = render(
+      <div>
+        <button>trigger</button>
+        <Portal target={document.body}>
+          {/* oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- exercising role resolution */}
+          <div role="dialog">the modal</div>
+        </Portal>
+      </div>,
+    )
+    expect(r.getByRole('dialog').textContent).toBe('the modal')
   })
 
   it('unmount removes only its own tree', () => {
