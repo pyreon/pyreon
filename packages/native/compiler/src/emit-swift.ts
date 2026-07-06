@@ -5552,6 +5552,27 @@ function swiftImageDim(
   return undefined
 }
 
+/**
+ * A `<Field placeholder>` — a RUNTIME String, not a compile-time token. Static
+ * string literal → the quoted literal (`TextField("name", …)`). Any DYNAMIC
+ * value (a ternary of two literals OR a runtime signal/expr) lowers to the raw
+ * expression (`TextField(hint, …)`) — SwiftUI's `TextField(_:text:)` accepts a
+ * `LocalizedStringKey` (literal) OR a `StringProtocol` (runtime String), so both
+ * shapes compile. Pre-fix this read STATIC-only, so a dynamic placeholder was
+ * SILENTLY dropped to `""`. Returns a ready-to-emit expression string (already
+ * quoted for the static case); `""` when absent. Mirrors `swiftImageDim` — a
+ * runtime value lowers with no warning (unlike the compile-time token props).
+ */
+function swiftFieldPlaceholder(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
+  const stat = readStaticAttr(e, 'placeholder')
+  if (typeof stat === 'string') return JSON.stringify(stat)
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'placeholder')
+  if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
+    return emitSwiftExpr(attr.value, 0)
+  }
+  return '""'
+}
+
 function emitSwiftImage(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -5752,8 +5773,7 @@ function emitSwiftField(
   const valueAttr = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'value',
   )
-  const placeholderAttr = readStaticAttr(e, 'placeholder')
-  const placeholder = typeof placeholderAttr === 'string' ? placeholderAttr : ''
+  const placeholder = swiftFieldPlaceholder(e)
 
   const kind = readStaticAttr(e, 'kind')
   const viewName = kind === 'password' ? 'SecureField' : 'TextField'
@@ -5827,7 +5847,7 @@ function emitSwiftField(
     return emitSwiftGeneric(e, indent)
   }
 
-  let result = `${viewName}(${JSON.stringify(placeholder)}, text: ${textArg})`
+  let result = `${viewName}(${placeholder}, text: ${textArg})`
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(

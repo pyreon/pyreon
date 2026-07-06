@@ -4744,6 +4744,29 @@ function emitKotlinPress(
 }
 
 /**
+/**
+ * A `<Field placeholder>` — a RUNTIME String, not a compile-time token. Static
+ * string literal → the quoted literal (`Text("name")`). Any DYNAMIC value (a
+ * ternary of two literals OR a runtime signal/expr) lowers to the raw expression
+ * (`Text(hint)`) — Compose's `Text(text: String)` takes any runtime String.
+ * Pre-fix this read STATIC-only, so a dynamic placeholder was SILENTLY dropped
+ * (no `placeholder =` arg at all). Returns a ready-to-emit expression string
+ * (already quoted for the static case); `undefined` when absent (→ no arg).
+ * Mirrors `swiftFieldPlaceholder` — a runtime value lowers with no warning.
+ */
+function kotlinFieldPlaceholder(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string | undefined {
+  const stat = readStaticAttrKotlin(e, 'placeholder')
+  if (typeof stat === 'string') return JSON.stringify(stat)
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'placeholder')
+  if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
+    return emitKotlinExpr(attr.value, 0)
+  }
+  return undefined
+}
+
+/**
  * Emit `<Field value={signal} onChangeText={fn} kind?>` as Compose
  * `TextField(value = signal, onValueChange = { ... })`.
  *
@@ -4828,11 +4851,9 @@ function emitKotlinField(
     `onValueChange = ${onValueChange}`,
   ]
 
-  const placeholderAttr = readStaticAttrKotlin(e, 'placeholder')
-  if (typeof placeholderAttr === 'string') {
-    args.push(
-      `placeholder = { Text(${JSON.stringify(placeholderAttr)}) }`,
-    )
+  const placeholderExpr = kotlinFieldPlaceholder(e)
+  if (placeholderExpr !== undefined) {
+    args.push(`placeholder = { Text(${placeholderExpr}) }`)
   }
   const kind = readStaticAttrKotlin(e, 'kind')
   if (kind === 'password') {
