@@ -76,11 +76,11 @@ describe('MCP server — get_anti_patterns tool', () => {
       // The index tells the agent how to drill in.
       expect(text).toContain('get_anti_patterns({ name:')
       expect(text).toContain('get_anti_patterns({ full: true })')
-      // Token budget: the index must stay far under the old full dump.
-      // ~4 chars/token; old default was ≈13,976 tokens. Raised 5,000 →
-      // 5,500 for catalog-count growth (see token-budget.test.ts) — bump
-      // only for entry-count growth, never for verbosity.
-      expect(Math.round(text.length / 4)).toBeLessThan(5500)
+      // Token budgets live in ONE place — token-budget.test.ts (density
+      // caps + design-boundary tripwire). This spec is structural only.
+      // The duplicated absolute ceiling that used to sit here made every
+      // catalog addition fail TWO files in lockstep (the 2026-07-06
+      // three-PR collision) — never re-add a number here.
     } finally {
       await close()
     }

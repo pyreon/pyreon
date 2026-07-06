@@ -58,17 +58,46 @@ describe('MCP token budgets', () => {
     })
   })
 
-  it('get_anti_patterns({}) default index stays under 5,500 tokens', async () => {
+  it('get_anti_patterns({}) index stays DENSE — entry-count-relative budget', async () => {
     await withServer(async (client) => {
       const text = await callText(client, 'get_anti_patterns', {})
-      // Pre-PR full dump ≈13,976. Post-PR index ≈3,292. The ceiling is a
-      // hard ratchet: reverting to the full-dump default (or making the
-      // index verbose) trips it. Raised 5,000 → 5,500 when legitimate
-      // catalog growth (116 entries × ~44 tokens/index-line) consumed the
-      // original slack — still ~2.6× under the full dump it guards
-      // against. Bump ONLY for entry-count growth, never for verbosity
-      // (per-entry cost is capped by INDEX_HOOK_MAX + the title).
-      expect(tok(text)).toBeLessThan(5500)
+      // HISTORY / WHY THIS SHAPE. This used to be an absolute ceiling
+      // (5,000 → 5,500). An absolute number couples the gate to ENTRY
+      // COUNT, so every legitimate anti-patterns.md addition tripped CI
+      // and forced a manual bump — on 2026-07-06 THREE parallel PRs each
+      // hit it and each carried an identical ratchet commit. The absolute
+      // form also guarded nothing the ratio test below doesn't already
+      // guard (a full-dump regression fails ≥60%-smaller immediately).
+      //
+      // The redesigned budget gates what a PR actually controls — the
+      // DENSITY of the index — and scales freely with legitimate catalog
+      // growth:
+      //   • average tokens/entry — catches systematic verbosity creep
+      //     (measured 42.9 at 116 entries; cap 55 ≈ 28% headroom)
+      //   • max single index line — catches one bloated title (measured
+      //     max 75, p95 62; cap 100; hooks are already clamped to
+      //     INDEX_HOOK_MAX=100 chars ≈ 25 tokens in anti-patterns.ts)
+      // Adding a normally-dense entry can NEVER trip these. If one DOES
+      // fire, tighten the entry's title/hook — do not raise the caps.
+      const entryCount = Number(text.match(/\((\d+) total/)?.[1] ?? NaN)
+      expect(entryCount).toBeGreaterThan(0) // header shape is load-bearing
+      const lines = text.split('\n').filter((l) => l.startsWith('- '))
+      expect(lines.length).toBe(entryCount) // one index line per entry
+      expect(tok(text) / entryCount).toBeLessThan(55)
+      const maxLine = Math.max(...lines.map((l) => tok(l)))
+      expect(maxLine).toBeLessThan(100)
+    })
+  })
+
+  it('get_anti_patterns({}) index has not outgrown the single-response form', async () => {
+    await withServer(async (client) => {
+      const text = await callText(client, 'get_anti_patterns', {})
+      // DESIGN-BOUNDARY tripwire, not a ratchet. Density can be perfect
+      // and the index still become huge through sheer entry count (e.g.
+      // 300 entries × 43 ≈ 12.9K tokens). At that scale the fix is a
+      // STRUCTURAL one — paginate get_anti_patterns / return category
+      // indexes by default — NOT a bigger number here. Do not bump this.
+      expect(tok(text)).toBeLessThan(12000)
     })
   })
 

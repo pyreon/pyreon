@@ -73,6 +73,7 @@ not a gate failure.
 | **Diagnose Catalog** | Source change in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` without an `ERROR_PATTERNS` entry | Add entry to `packages/core/compiler/src/react-intercept.ts:ERROR_PATTERNS` OR add `skip-diagnose-catalog` label if genuinely catalog-irrelevant |
 | **Docs Sync (gen-docs)** | Edited a `manifest.ts` without running `bun run gen-docs` to regenerate llms / api-reference | `bun run gen-docs && bun run gen-docs --check` |
 | **Scaffold Smoke (monorepo-vercel)** | Workspace version ahead of npm (release in flight) | Auto-skipped by `shouldSkipIsolatedCell`; if it still fails, the npm-version check failed or your branch is named `changeset-release/*` |
+| **Test (tools) — mcp `token-budget.test.ts` density caps** | Your new `anti-patterns.md` entry's index line is too DENSE (avg tokens/entry ≥ 55 or one line ≥ 100 tokens) — the budget is entry-count-relative, so a normally-dense new entry can never trip it; only verbosity does | Tighten the entry's TITLE + hook to catalog density (the index line is `- **title** [detector] — hook`). Do NOT raise the caps. If the 12,000-token design-boundary tripwire fires instead, the index has outgrown single-response form — paginate `get_anti_patterns`, don't bump |
 
 When CI fails on a gate not in this list, ADD IT here in the same PR.
 The list is the institutional memory; missing entries mean the trap
