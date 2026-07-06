@@ -4845,9 +4845,11 @@ function emitKotlinField(
       `keyboardActions = KeyboardActions(onDone = ${emitKotlinAction(onSubmit.handler, indent + 2)})`,
     )
   }
-  const disabled = readStaticAttrKotlin(e, 'disabled')
-  if (disabled === true) {
-    args.push('enabled = false')
+  // Shared helper (like Button) — a DYNAMIC `disabled={busy()}` lowers to
+  // `enabled = !<expr>` instead of being silently dropped by readStaticAttrKotlin.
+  const enabledArg = kotlinEnabledArg(e)
+  if (enabledArg) {
+    args.push(enabledArg)
   }
   // Layout modifier chain INCLUDING `data-testid` → Modifier.testTag —
   // the Field was dropping its tag (latent device failure: the Android
@@ -4919,9 +4921,11 @@ function emitKotlinToggle(
     // Signal shape with no onChange — auto-derive write-back.
     args.push(`onCheckedChange = { ${checkedExpr} = it }`)
   }
-  const disabled = readStaticAttrKotlin(e, 'disabled')
-  if (disabled === true) {
-    args.push('enabled = false')
+  // Shared helper (like Button) — a DYNAMIC `disabled={busy()}` lowers to
+  // `enabled = !<expr>` instead of being silently dropped by readStaticAttrKotlin.
+  const enabledArg = kotlinEnabledArg(e)
+  if (enabledArg) {
+    args.push(enabledArg)
   }
   return `Switch(${args.join(', ')})`
 }

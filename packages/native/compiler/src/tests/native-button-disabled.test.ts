@@ -22,6 +22,12 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import {
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateKotlin,
+  validateSwiftTypecheck,
+} from '../validate'
 
 describe('Round-1 audit fix — <Button disabled={...}> emit (Swift + Kotlin)', () => {
   describe('Swift — .disabled(<bool-expr>) modifier appended', () => {
@@ -129,5 +135,57 @@ describe('Round-1 audit fix — <Button disabled={...}> emit (Swift + Kotlin)', 
       expect(out).toContain('enabled = !isLoading')
       expect(out).not.toContain('enabled = !isLoading.value')
     })
+  })
+})
+
+// The SAME disabled handling now extends to <Field> + <Toggle>. Pre-fix ONLY
+// Button used the shared `swiftDisabledModifier` / `kotlinEnabledArg` helper;
+// Field + Toggle read `disabled` via readStaticAttr (static-only), so a DYNAMIC
+// `disabled={busy()}` (disable a form control during submit/loading — a very
+// common shape) was SILENTLY DROPPED on both targets. All three primitives now
+// route through the shared helper.
+describe('dynamic disabled extends to <Field> + <Toggle> (were static-only)', () => {
+  const FIELD = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Field } from '@pyreon/primitives'
+export function App() {
+  const v = signal<string>('')
+  const busy = signal<boolean>(false)
+  return <Stack><Field value={v} disabled={busy()} /></Stack>
+}`
+  const TOGGLE = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Toggle } from '@pyreon/primitives'
+export function App() {
+  const on = signal<boolean>(false)
+  const busy = signal<boolean>(false)
+  return <Stack><Toggle value={on} disabled={busy()} /></Stack>
+}`
+
+  it('Swift: dynamic disabled lowers to .disabled(busy) on Field + Toggle', () => {
+    expect(transform(FIELD, { target: 'swift' }).code).toContain('.disabled(busy)')
+    expect(transform(TOGGLE, { target: 'swift' }).code).toContain('.disabled(busy)')
+  })
+  it('Kotlin: dynamic disabled lowers to enabled = !busy on Field + Toggle', () => {
+    expect(transform(FIELD, { target: 'kotlin' }).code).toContain('enabled = !busy')
+    expect(transform(TOGGLE, { target: 'kotlin' }).code).toContain('enabled = !busy')
+  })
+  it('static disabled stays byte-identical (Field + Toggle, both targets)', () => {
+    const sf = FIELD.replace('disabled={busy()}', 'disabled={true}')
+    const st = TOGGLE.replace('disabled={busy()}', 'disabled={true}')
+    expect(transform(sf, { target: 'swift' }).code).toContain('.disabled(true)')
+    expect(transform(sf, { target: 'kotlin' }).code).toContain('enabled = false')
+    expect(transform(st, { target: 'swift' }).code).toContain('.disabled(true)')
+    expect(transform(st, { target: 'kotlin' }).code).toContain('enabled = false')
+  })
+
+  // Compile proof — the runtime-bool disabled emit typechecks end-to-end.
+  it.skipIf(!isSwiftUIAvailable())('iOS: the dynamic-disabled Field + Toggle TYPECHECK against real SwiftUI', () => {
+    expect(validateSwiftTypecheck(transform(FIELD, { target: 'swift' }).code).ok).toBe(true)
+    expect(validateSwiftTypecheck(transform(TOGGLE, { target: 'swift' }).code).ok).toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('Android: the same compile via kotlinc', () => {
+    expect(validateKotlin(transform(FIELD, { target: 'kotlin' }).code).ok).toBe(true)
+    expect(validateKotlin(transform(TOGGLE, { target: 'kotlin' }).code).ok).toBe(true)
   })
 })

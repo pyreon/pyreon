@@ -5832,9 +5832,11 @@ function emitSwiftField(
   if (onSubmit) {
     result += `\n${' '.repeat(indent + 2)}.onSubmit ${emitSwiftAction(onSubmit.handler, indent + 2)}`
   }
-  const disabled = readStaticAttr(e, 'disabled')
-  if (disabled === true) {
-    result += `\n${' '.repeat(indent + 2)}.disabled(true)`
+  // Use the shared helper (like Button) so a DYNAMIC `disabled={busy()}` lowers
+  // to `.disabled(<expr>)` instead of being silently dropped by readStaticAttr.
+  const disabledMod = swiftDisabledModifier(e)
+  if (disabledMod) {
+    result += `\n${' '.repeat(indent + 2)}${disabledMod}`
   }
   result += emitSwiftLayoutModifiers(e)
   return result
@@ -5889,9 +5891,9 @@ function emitSwiftToggle(
     // Shape 1 — signal binding projection.
     const sig = swiftIdent(valueAttr.value.name)
     let result = `Toggle("", isOn: $${sig})`
-    const disabled = readStaticAttr(e, 'disabled')
-    if (disabled === true) {
-      result += `\n${' '.repeat(indent + 2)}.disabled(true)`
+    const disabledMod = swiftDisabledModifier(e)
+    if (disabledMod) {
+      result += `\n${' '.repeat(indent + 2)}${disabledMod}`
     }
     result += emitSwiftLayoutModifiers(e)
     return result
@@ -5930,9 +5932,9 @@ function emitSwiftToggle(
     `${inner}get: { ${valueExpr} },\n` +
     `${inner}set: { ${handlerParam} in ${writeBody} }\n` +
     `${pad}))`
-  const disabled = readStaticAttr(e, 'disabled')
-  if (disabled === true) {
-    result += `\n${pad}.disabled(true)`
+  const disabledMod = swiftDisabledModifier(e)
+  if (disabledMod) {
+    result += `\n${pad}${disabledMod}`
   }
   result += emitSwiftLayoutModifiers(e)
   return result
