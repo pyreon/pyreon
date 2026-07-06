@@ -12,7 +12,7 @@ Pyreon's JSX-to-reactive transform. `transformJSX` dispatches to a Rust native b
 ## Features
 
 - Dual-backend transformJSX — Rust native (napi-rs) with automatic per-call JS fallback, byte-identical output
-- Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s reactive-vs-static decision (experimental)
+- Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s per-expression reactive-vs-static verdict (live/static/hoisted), served as editor inlay hints via `@pyreon/lint --lsp`
 - Scope-aware signal auto-call: bare &#123;count&#125; → &#123;() =&gt; count()&#125;, shadowing-correct, knownSignals seeds cross-module
 - detectReactPatterns + migrateReactCode — "coming from React" diagnostics + one-shot codemod
 - detectPyreonPatterns — 14 "using Pyreon wrong" anti-pattern codes (the MCP validate detector); migratePyreonCode auto-fixes the 3 mechanically-safe ones
