@@ -245,6 +245,7 @@ export const SIDEBAR: SidebarGroup[] = [
     collapsed: true,
     items: [
       { text: 'DevTools', slug: 'devtools' },
+      { text: 'Reactivity Lens', slug: 'reactivity-lens' },
       { text: 'Live Program Inlay Hints', slug: 'lpih' },
       { text: 'Sized Map (bounded cache)', slug: 'sized-map' },
     ],
