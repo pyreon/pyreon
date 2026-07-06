@@ -3219,6 +3219,21 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return `listOf(${e.elements.map((el) => emitKotlinExpr(el, indent)).join(', ')})`
     }
     case 'spread':
+      // A bare spread node reaching the expr emitter is a CALL-ARGUMENT
+      // spread (`f(...xs)` / `o.h(...xs)`). Every legitimate spread
+      // consumer — array-literal concat (`[...a, x]` → `a + listOf(x)`),
+      // object partial-update (`{...t, b}` → `.copy(...)`), and
+      // `Math.max(...arr)` / `Math.min(...arr)` — extracts its spread
+      // BEFORE emitting, so it never routes through here. A call-arg
+      // spread has no faithful native lowering (Kotlin calls take a fixed
+      // argument list, not a variadic spread) — degrading to the bare
+      // argument silently passed the LIST as one scalar arg (`f(xs)`), an
+      // uncompilable mis-emit. Mirror of the Swift emitter's guard; the
+      // emitter is the correct layer to warn (parse can't tell a call-arg
+      // spread from an array-element spread — both are `SpreadElement`).
+      _emitWarnings.push(
+        'Spread arguments (`f(...args)`) aren\'t supported in native (PMTC) — a Swift/Kotlin call takes a fixed argument list, not a variadic spread. Pass arguments explicitly, e.g. `f(a, b)`.',
+      )
       return emitKotlinExpr(e.argument, indent)
     case 'object': {
       // G4 — partial-update form. When the object has EXACTLY ONE
