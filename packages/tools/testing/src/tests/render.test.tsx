@@ -1,7 +1,7 @@
 /**
- * Node (happy-dom) tests for render / screen / cleanup — structural
- * assertions that don't need a real browser. Uses real `h()` from
- * @pyreon/core (not mock vnodes) per test-environment-parity.
+ * Node (happy-dom) tests for render + cleanup + the re-exported
+ * @testing-library/dom query surface. Real `h()` from @pyreon/core (not mock
+ * vnodes) per test-environment-parity.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { signal } from '@pyreon/reactivity'
@@ -17,39 +17,26 @@ describe('render', () => {
     expect(container.querySelector('[data-testid=root]')?.textContent).toBe('hi')
   })
 
-  it('bound getByText matches an element by its own text', () => {
-    const { getByText } = render(
+  it('binds the @testing-library/dom query set to the container', () => {
+    const { getByText, getByRole, getByTestId } = render(
       <div>
         <span>outer</span>
         <button>Click me</button>
+        <p data-testid="para">x</p>
       </div>,
     )
     expect(getByText('Click me').tagName).toBe('BUTTON')
-  })
-
-  it('getByTestId finds by data-testid; queryByTestId returns null when absent', () => {
-    const { getByTestId, queryByTestId } = render(<p data-testid="para">x</p>)
+    expect(getByRole('button')).toBeTruthy() // real ARIA role resolution from TL
     expect(getByTestId('para').tagName).toBe('P')
-    expect(queryByTestId('missing')).toBeNull()
   })
 
-  it('getByText throws a helpful error when nothing matches', () => {
-    render(<div>present</div>)
-    expect(() => screen.getByText('absent')).toThrow(/Unable to find an element by text/)
+  it('screen queries the whole document', () => {
+    render(<button>Sign in</button>)
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy()
+    expect(screen.queryByText('absent')).toBeNull()
   })
 
-  it('getByText throws on multiple matches, pointing at getAllByText', () => {
-    render(
-      <ul>
-        <li>dup</li>
-        <li>dup</li>
-      </ul>,
-    )
-    expect(() => screen.getByText('dup')).toThrow(/multiple elements by text/)
-    expect(screen.getAllByText('dup')).toHaveLength(2)
-  })
-
-  it('screen queries the live document; reactive text updates are visible after a write', async () => {
+  it('reactive text updates are visible after a signal write', async () => {
     const label = signal('a')
     render(<div data-testid="live">{() => label()}</div>)
     expect(screen.getByTestId('live').textContent).toBe('a')
