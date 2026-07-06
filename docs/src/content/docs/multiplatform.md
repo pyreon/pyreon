@@ -673,7 +673,7 @@ every warning; treat any warning as "this construct is outside v1."
 | `useStorage<T>('key', default)` | literal string key required |
 | `createRouter({ routes })` / `useNavigate()` / `useParams()` / `useLoaderData<T>()` | literal route arrays; guards as expression-body arrows |
 | `useFetch<T>(url)` / `usePermissions([...])` / `useOnline()` / `useClipboard()` / `useColorScheme()` | see the services section for per-hook status |
-| `useAuth<User>()` / `useDatabase()` / `useGeolocation()` / `useMap()` / `useWebSocket('wss://…')` / `usePush()` / `usePayments()` | Phase 5 (#1689) — container + reactive reads; `useWebSocket` needs a literal URL; lifecycle auto-start + `useSecureStorage` deferred (services section) |
+| `useAuth<User>()` / `useDatabase()` / `useGeolocation()` / `useMap()` / `useWebSocket('wss://…')` / `usePush()` / `usePayments()` | Phase 5 (#1689) — container + reactive reads; `useWebSocket` needs a literal URL; `useWebSocket` auto-connects on mount (both targets, synthesized — no `.connect()` call needed); `useGeolocation`/`usePush`/`usePayments` auto-start still deferred (their Kotlin `start(register:)`/`connect(register:)` needs a default per-hook transport, the OkHttp-for-WebSocket pattern) + `useSecureStorage` deferred (services section) |
 | `createI18n({...})` / `createMachine({...})` / `defineStore(id, setup)` / `model({...}).create()` | literal configs; store v2 setup bodies take signals + expression-body computeds + arrow methods |
 | `rx.METHOD(source, …)` | 21 collection methods (Strategy-A lowering) |
 
