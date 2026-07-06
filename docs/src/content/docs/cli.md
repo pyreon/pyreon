@@ -144,6 +144,19 @@ It **auto-detects your package manager** from the lockfile (`bun.lock` → bun, 
 
 Curated recipes exist for the flagship packages (query, toast, i18n, permissions, form, store, router, head); any other `@pyreon/*` package still installs, with a generic docs pointer. The recipes live in the CLI itself (hand-authored + verified against each package's real API) rather than being generated from manifests — published packages don't ship their manifests, and reaching across packages for them would bloat the CLI's install.
 
+## `pyreon new`
+
+Scaffold a new Pyreon project — a single front door alongside the rest of the `pyreon` commands, instead of a separately-remembered `npm create @pyreon/zero`.
+
+```bash
+pyreon new my-app              # web / full-stack app (delegates to @pyreon/create-zero)
+pyreon new my-app --native     # multiplatform (SwiftUI + Compose) via @pyreon/create-multiplatform
+pyreon new my-app --template blog   # any other flag passes straight through
+pyreon new my-app --dry-run    # print the npx command without running it
+```
+
+It's a thin, dependency-free delegator: it `npx`-runs the appropriate `create-*` scaffolder (which owns the interactive prompts and templates), pinned to `@latest` so a new project always starts on the freshest templates regardless of how old your globally-installed `@pyreon/cli` is. Your project name and any extra flags pass through untouched.
+
 ## `pyreon doctor`
 
 ### How it works
@@ -530,6 +543,7 @@ console.log(context.components.length, 'components')
 | --- | --- |
 | `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
 | `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
+| `pyreon new [name] [--native]` | Scaffold a new Pyreon project (delegates to `@pyreon/create-zero`, or `-multiplatform` with `--native`). |
 | `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 12 fast gates by default; `--full` enables 2 slow gates. |
 | `pyreon context [--out <path>]` | Generate `.pyreon/context.json` for AI tools. |
 | `pyreon --help` / `-h` | Show usage. |

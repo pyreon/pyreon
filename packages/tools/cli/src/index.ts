@@ -6,6 +6,7 @@
  * Commands:
  *   pyreon check    — fast, file-scoped Pyreon/React anti-pattern scan with inline fixes
  *   pyreon add      — install @pyreon/* packages + print how to wire each one in
+ *   pyreon new      — scaffold a new Pyreon project (delegates to create-zero / -multiplatform)
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
  *   pyreon info      — environment + installed @pyreon versions + version-skew check
@@ -38,6 +39,7 @@ function printUsage(): void {
     check [paths] [--fix] [--json]   Fast Pyreon/React anti-pattern scan (compiler detectors) with
                                      inline fixes. No paths → git-changed files. Exits non-zero on findings.
     add <pkg...> [--dry-run] [--json] Install @pyreon/* packages (PM auto-detected) + print how to wire each in
+    new [name] [--native]            Scaffold a new Pyreon project (create-zero, or -multiplatform with --native)
     doctor [options]                 Project-wide health audit with 0-100 score.
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
@@ -156,6 +158,20 @@ async function main(): Promise<void> {
       cwd: process.cwd(),
       dryRun: args.includes('--dry-run'),
       json: args.includes('--json'),
+    })
+    process.exit(exitCode)
+  }
+
+  if (command === 'new') {
+    const { runNew } = await import('./new')
+    // Everything after `new` passes through to the scaffolder, except our own
+    // flags (`--native` picks the multiplatform scaffolder; `--dry-run` prints
+    // the command instead of running it).
+    const passthrough = args.slice(1).filter((a) => a !== '--native' && a !== '--dry-run')
+    const exitCode = runNew({
+      args: passthrough,
+      native: args.includes('--native'),
+      dryRun: args.includes('--dry-run'),
     })
     process.exit(exitCode)
   }
