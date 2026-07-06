@@ -1857,6 +1857,34 @@ function inferTypeFromInitial(initial: ExprIR): TypeIR {
       const elemType = inferFlatObjectType(els[0]!)
       if (elemType !== null) return { kind: 'array', element: elemType }
     }
+    // Array of ARRAYS → recurse into the element type. `signal([[1, 2], [3, 4]])`
+    // (no generic) degraded to `Any` — the value `[[1, 2], …]` is valid Swift but
+    // the `Any` annotation fails swiftc (`grid[0][1]` then also degrades). Infer
+    // the element from the FIRST inner array (the first-element convention the
+    // object case above uses); recursive, so `[[[1]]]` → `[[[Int]]]`. Swift-only
+    // in effect — Kotlin infers `List<List<…>>` on its own.
+    if (els.every((e) => e.kind === 'array')) {
+      const elemType = inferTypeFromInitial(els[0]!)
+      if (elemType.kind !== 'unknown') {
+        // If the leaf element is fractional, flag EVERY nested integer literal
+        // float — the number-array branch only float-flagged els[0]'s, so
+        // sibling inner arrays keep bare Ints that Kotlin's `List<List<Double>>`
+        // rejects (and Swift renders `2` not `2.0`). Recursive over the nesting.
+        const leafFloat = (t: TypeIR): boolean =>
+          (t.kind === 'number' && t.float === true) || (t.kind === 'array' && leafFloat(t.element))
+        if (leafFloat(elemType)) {
+          const flagInts = (e: ExprIR): void => {
+            if (e.kind === 'array') {
+              for (const x of e.elements) flagInts(x)
+            } else if (e.kind === 'literal' && typeof e.value === 'number' && Number.isInteger(e.value)) {
+              e.float = true
+            }
+          }
+          for (const inner of els) flagInts(inner)
+        }
+        return { kind: 'array', element: elemType }
+      }
+    }
   }
   // FLAT object literal → an object TypeIR. The emit synthesizes a struct from
   // the shape and annotates the signal with it (instead of `Any`, which can't
