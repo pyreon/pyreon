@@ -44,7 +44,9 @@ const SKIP_DIR = /(?:^|\/)(?:node_modules|lib|dist|build|\.git|coverage)(?:\/|$)
 const isSource = (f: string): boolean => /\.(?:tsx?|jsx?)$/.test(f) && !f.endsWith('.d.ts')
 
 const useColor = (): boolean => !!process.stdout.isTTY && !process.env.NO_COLOR
-const paint = (s: string, code: string): string => (useColor() ? `[${code}m${s}[0m` : s)
+// ESC computed so the SOURCE carries no raw C0 control byte (source-hygiene gate).
+const ESC = String.fromCharCode(27)
+const paint = (s: string, code: string): string => (useColor() ? `${ESC}[${code}m${s}${ESC}[0m` : s)
 const bold = (s: string) => paint(s, '1')
 const dim = (s: string) => paint(s, '2')
 const red = (s: string) => paint(s, '31')
