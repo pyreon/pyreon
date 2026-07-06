@@ -1,8 +1,10 @@
 /**
- * Reactive-health overlay (`__PYREON_DEVTOOLS__.reactive.showOverlay()` /
- * Ctrl+Shift+R) — the zero-install in-app dev panel that surfaces
- * `describeReactiveGraph` health insights (orphan signals, high-fanout hubs,
- * deep chains).
+ * Reactive dev overlay (`__PYREON_DEVTOOLS__.reactive.showOverlay()` /
+ * Ctrl+Shift+R) — the zero-install in-app dev panel. Two tabs:
+ *   • Health   — `describeReactiveGraph` insights (orphan signals, high-fanout
+ *                hubs, deep chains).
+ *   • Activity — recent reactive fires + the "why did X update?" causal chain
+ *                (`getReactiveFires` + `getUpdateCause`/`formatUpdateCause`).
  *
  * Graph nodes are held by `WeakRef` in the always-on registry, so every test
  * keeps its signals/effects alive in a `keepAlive` bag for the duration of the
@@ -125,5 +127,99 @@ describe('reactive health overlay', () => {
     refresh.click()
 
     expect(document.getElementById(BODY_ID)?.textContent).not.toBe(before)
+  })
+})
+
+const HEALTH_TAB = '__pyreon-rx-tab-health'
+const ACTIVITY_TAB = '__pyreon-rx-tab-activity'
+
+function clickTab(id: string): void {
+  ;(document.getElementById(id) as HTMLButtonElement).click()
+}
+
+function bodyText(): string {
+  return document.getElementById(BODY_ID)?.textContent ?? ''
+}
+
+describe('reactive overlay — Activity view ("why did X update?")', () => {
+  let keepAlive: unknown[] = []
+
+  beforeAll(() => {
+    installDevTools()
+  })
+
+  beforeEach(() => {
+    __resetReactiveDevtoolsForTesting()
+    keepAlive = []
+  })
+
+  afterEach(() => {
+    reactive().hideOverlay()
+    __resetReactiveDevtoolsForTesting()
+    keepAlive = []
+  })
+
+  it('opens on the Health tab; the Activity tab switches the body', () => {
+    const s = signal(0)
+    keepAlive.push(s)
+    reactive().showOverlay()
+
+    // Health is the default view — the graph summary header is present.
+    expect(bodyText()).toMatch(/signal.*·.*edges/)
+
+    clickTab(ACTIVITY_TAB)
+    // Activity view no longer shows the health header.
+    expect(bodyText()).not.toMatch(/·.*derived.*·/)
+  })
+
+  it('Activity with no fires shows the interact-then-refresh hint', () => {
+    reactive().showOverlay()
+    clickTab(ACTIVITY_TAB)
+    expect(bodyText()).toContain('No reactive updates recorded yet')
+  })
+
+  it('after a signal write, Activity lists the fire + a "why did X update?" chain', () => {
+    // A real signal → computed → effect chain, then fire it.
+    const count = signal(0, { name: 'count' })
+    const doubled = computed(() => count() * 2)
+    const dispose = effect(() => void doubled())
+    keepAlive.push(count, doubled, dispose)
+
+    count.set(1) // fires count → doubled → effect (all recorded in the ring buffer)
+
+    reactive().showOverlay()
+    clickTab(ACTIVITY_TAB)
+
+    const text = bodyText()
+    expect(text).toContain('Recent updates (newest first):')
+    // The named signal shows up in the recent-fires list.
+    expect(text).toContain('count')
+    // The causal-chain explainer (formatUpdateCause) is rendered.
+    expect(text).toContain('Why did')
+  })
+
+  it('switching back to the Health tab restores the health view', () => {
+    const s = signal(0)
+    keepAlive.push(s)
+    reactive().showOverlay()
+
+    clickTab(ACTIVITY_TAB)
+    expect(bodyText()).not.toMatch(/·.*derived.*·/)
+
+    clickTab(HEALTH_TAB)
+    expect(bodyText()).toMatch(/signal.*·.*edges/)
+  })
+
+  it('reopening the overlay resets to the Health tab', () => {
+    const s = signal(0)
+    keepAlive.push(s)
+    reactive().showOverlay()
+    clickTab(ACTIVITY_TAB)
+    expect(bodyText()).not.toMatch(/·.*derived.*·/)
+
+    reactive().hideOverlay()
+    reactive().showOverlay()
+    // Fresh open is back on Health.
+    expect(bodyText()).toMatch(/signal.*·.*edges/)
   })
 })

@@ -121,9 +121,9 @@ This is the Foundation the extension's **Signals**, **Graph**, **Effects**, **Pr
 
 Only user `signal()` / `computed()` / `effect()` are tracked — compiler-emitted DOM-binding plumbing (`renderEffect` / `_bind`) is intentionally excluded so the graph stays meaningful and the hottest path untouched. The extension consumes `reactive` defensively: a page running an older `@pyreon/runtime-dom` (no Foundation) shows an explicit "needs the Foundation" notice rather than a fake/empty surface — Components works regardless, and polling runs only while a reactive tab is open.
 
-### Reactive-health overlay — zero-install, `Ctrl+Shift+R`
+### Reactive dev overlay — zero-install, `Ctrl+Shift+R`
 
-The reactive bridge also drives a **zero-install in-app panel**: press `Ctrl+Shift+R` in any dev build (or call `__PYREON_DEVTOOLS__.reactive.showOverlay()`) and a floating panel appears with a health readout of the live graph — no Chrome extension, no wiring.
+The reactive bridge also drives a **zero-install in-app panel**: press `Ctrl+Shift+R` in any dev build (or call `__PYREON_DEVTOOLS__.reactive.showOverlay()`) and a floating panel appears over the live graph — no Chrome extension, no wiring.
 
 ```ts
 __PYREON_DEVTOOLS__.reactive.showOverlay() // mount the panel (also: Ctrl+Shift+R)
@@ -132,10 +132,31 @@ __PYREON_DEVTOOLS__.reactive.hideOverlay() // remove it
 $p.reactivity() // toggle
 ```
 
-The panel renders the summary header (`N signals · M derived · K effects · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/reactivity#describe-a-reactive-graph) computes:
+The panel has two tabs:
+
+#### Health
+
+The graph-wiring readout: a summary header (`N signals · M derived · K effects · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/reactivity#describe-a-reactive-graph) computes:
 
 - **`orphan-signal`** — nothing depends on this signal: dead reactivity or an unused signal.
 - **`high-fanout`** — changing this signal re-runs many effects; a hot hub worth auditing.
 - **`deep-chain`** — this node sits at the end of a long dependency chain.
 
-Opening the panel **auto-activates** graph tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read the graph after interacting with the app. This is the graph-health complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/reactivity-lens) editor hints (compiler-side static analysis).
+#### Activity — "why did X update?"
+
+The runtime **causal** view, powered by [`getReactiveFires`](/reactivity) + [`getUpdateCause` / `formatUpdateCause`](/reactivity). Interact with the app, switch to **Activity**, and the panel shows the recent reactive fires (newest first) plus the causal chain that explains the *most recent* one:
+
+```text
+Recent updates (newest first):
+• total (derived)
+• price (signal)
+• qty (signal)
+
+Why did total (derived) update?
+  qty (signal) changed
+  → total (derived) recomputed   ← explained
+```
+
+This is the **inverse of React DevTools' "why did this render?"** — instead of a whole-component re-render reason, it reconstructs the exact signal→computed→effect chain from the dependency graph. (React DevTools can't do this; nobody else's in-browser panel does either.)
+
+Opening the panel **auto-activates** graph/fire tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read after interacting with the app. This is the runtime complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/reactivity-lens) editor hints (compiler-side static analysis).

@@ -264,21 +264,28 @@ function disableOverlay(): void {
   _currentHighlight = null
 }
 
-// ─── Reactive health overlay (zero-install in-app dev panel) ─────────────────
-// A floating panel surfacing the compiler-independent REACTIVE graph health
-// (orphan signals, high-fanout hubs, deep chains) that `describeReactiveGraph`
-// computes — the data that answers "is my reactivity wired the way I think?".
+// ─── Reactive dev overlay (zero-install in-app dev panel) ────────────────────
+// A floating panel with two views:
+//   • Health   — orphan signals / high-fanout hubs / deep chains that
+//                `describeReactiveGraph` computes ("is my reactivity wired the
+//                way I think?").
+//   • Activity — the recent reactive fires + a "why did X update?" causal chain
+//                (`getReactiveFires` + `getUpdateCause` / `formatUpdateCause`),
+//                the inverse of React DevTools' "why did this render?" — it
+//                explains a specific value's most recent update from the graph.
 // Distinct from the component-inspect overlay above (`enableOverlay`, hover to
 // inspect DOM/components) and from the Chrome extension (separate install):
 // this is zero-install, mounted by the always-on dev devtools, toggled with
-// Ctrl+Shift+R. Reading the graph auto-activates reactive tracking if it wasn't
-// already on. Node-oriented (not DOM-click) — see the loop ledger for the
-// deferred DOM→node correlation follow-up.
+// Ctrl+Shift+R. Reading the graph/fires auto-activates reactive tracking if it
+// wasn't already on. Node-oriented (not DOM-click) — see the loop ledger for
+// the deferred DOM→node correlation follow-up.
 
+type ReactiveView = 'health' | 'activity'
 let _reactivePanelActive = false
 let _reactivePanelEl: HTMLDivElement | null = null
+let _reactiveView: ReactiveView = 'health'
 
-function reactivePanelBody(): string {
+function reactiveHealthBody(): string {
   // Reading the graph requires tracking to be active; turn it on lazily so the
   // panel works even if the app never called `reactive.activate()`.
   activateReactiveDevtools()
@@ -297,6 +304,43 @@ function reactivePanelBody(): string {
   }
   const lines = desc.insights.map((i) => `• [${i.kind}] ${i.detail}`)
   return `${header}\n\n${desc.insights.length} insight${desc.insights.length === 1 ? '' : 's'}:\n${lines.join('\n')}`
+}
+
+function reactiveActivityBody(): string {
+  activateReactiveDevtools()
+  let fires: ReactiveFire[]
+  let nodes: ReactiveGraph['nodes']
+  try {
+    fires = getReactiveFires()
+    nodes = getReactiveGraph().nodes
+  } catch {
+    return 'Reactive activity unavailable.'
+  }
+  if (fires.length === 0) {
+    return 'No reactive updates recorded yet.\n\nInteract with the app (click, type…) to make signals fire, then press ⟳.'
+  }
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const label = (id: number): string => {
+    const n = byId.get(id)
+    return n ? `${n.name} (${n.kind})` : `#${id}`
+  }
+  // Recent fires, newest first (the tail of the bounded ring buffer).
+  const recentLines = fires
+    .slice(-10)
+    .reverse()
+    .map((f) => `• ${label(f.id)}`)
+  // "Why did X update?" — the causal chain for the most-recent fire.
+  // Non-null: the `fires.length === 0` early return above guarantees a last item.
+  const latestId = fires[fires.length - 1]!.id
+  const cause = getUpdateCause(latestId)
+  const causeText = cause
+    ? formatUpdateCause(cause)
+    : `Why did ${label(latestId)} update?\n  (no causal chain — it fired with no earlier dependency, or the cause aged out of the ring buffer)`
+  return `Recent updates (newest first):\n${recentLines.join('\n')}\n\n${causeText}`
+}
+
+function reactivePanelBody(): string {
+  return _reactiveView === 'activity' ? reactiveActivityBody() : reactiveHealthBody()
 }
 
 function renderReactivePanel(): void {
@@ -332,10 +376,41 @@ function createReactivePanel(): void {
   close.addEventListener('click', disableReactiveOverlay)
   btns.append(refresh, close)
   bar.append(title, btns)
+
+  // Tabs: Health (graph wiring) · Activity (recent fires + "why did X update?").
+  const tabs = document.createElement('div')
+  tabs.style.cssText = 'display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid #33334d;'
+  const healthTab = document.createElement('button')
+  healthTab.id = '__pyreon-rx-tab-health'
+  healthTab.textContent = 'Health'
+  const activityTab = document.createElement('button')
+  activityTab.id = '__pyreon-rx-tab-activity'
+  activityTab.textContent = 'Activity'
+  const paintTabs = (): void => {
+    for (const [tab, view] of [
+      [healthTab, 'health'],
+      [activityTab, 'activity'],
+    ] as const) {
+      const active = _reactiveView === view
+      tab.style.cssText =
+        `background:${active ? '#c026d3' : 'transparent'};color:${active ? '#fff' : '#a0a0b8'};` +
+        'border:1px solid #33334d;border-radius:4px;cursor:pointer;font:11px ui-monospace,monospace;padding:2px 10px;'
+    }
+  }
+  const selectView = (view: ReactiveView): void => {
+    _reactiveView = view
+    paintTabs()
+    renderReactivePanel()
+  }
+  healthTab.addEventListener('click', () => selectView('health'))
+  activityTab.addEventListener('click', () => selectView('activity'))
+  paintTabs()
+  tabs.append(healthTab, activityTab)
+
   const body = document.createElement('pre')
   body.id = '__pyreon-rx-body'
   body.style.cssText = 'margin:0;padding:10px;white-space:pre-wrap;word-break:break-word;'
-  el.append(bar, body)
+  el.append(bar, tabs, body)
   document.body.appendChild(el)
   _reactivePanelEl = el
 }
@@ -350,6 +425,7 @@ function enableReactiveOverlay(): void {
 function disableReactiveOverlay(): void {
   if (!_reactivePanelActive) return
   _reactivePanelActive = false
+  _reactiveView = 'health' // reopen starts on the Health tab
   if (_reactivePanelEl) {
     _reactivePanelEl.remove()
     _reactivePanelEl = null
