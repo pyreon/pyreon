@@ -4475,6 +4475,26 @@ function dynamicWebViewAttrKotlin(
   return undefined
 }
 
+/**
+ * A `<Image width|height>` dimension — RAW pixels, not a compile-time token.
+ * Static number → `N.dp`; any DYNAMIC value (a ternary of literals OR a runtime
+ * signal/expr) → the runtime `(<expr>).dp` (Compose's `.dp` extension applies
+ * to Int/Double). Pre-fix static-only → a dynamic dim was SILENTLY dropped. A
+ * string literal (web-only) is skipped.
+ */
+function kotlinImageDim(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  name: string,
+): string | undefined {
+  const stat = readStaticAttrKotlin(e, name)
+  if (typeof stat === 'number') return `${stat}.dp`
+  const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === name)
+  if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
+    return `(${emitKotlinExpr(attr.value, 0)}).dp`
+  }
+  return undefined
+}
+
 function emitKotlinImage(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -4488,15 +4508,15 @@ function emitKotlinImage(
   }
   const alt = readStaticAttrKotlin(e, 'alt')
   const fit = readStaticAttrKotlin(e, 'fit')
-  const width = readStaticAttrKotlin(e, 'width')
-  const height = readStaticAttrKotlin(e, 'height')
   // Layout modifier FIRST in the chain so data-testid threads (the
   // Text/Heading lesson — its absence is device-invisible until a tag
   // query fails), then explicit sizes.
   const layoutMod = emitKotlinLayoutModifier(e)
   const modParts: string[] = []
-  if (typeof width === 'number') modParts.push(`.width(${width}.dp)`)
-  if (typeof height === 'number') modParts.push(`.height(${height}.dp)`)
+  const width = kotlinImageDim(e, 'width')
+  if (width !== undefined) modParts.push(`.width(${width})`)
+  const height = kotlinImageDim(e, 'height')
+  if (height !== undefined) modParts.push(`.height(${height})`)
   const modifier =
     layoutMod !== ''
       ? `${layoutMod}${modParts.join('')}`

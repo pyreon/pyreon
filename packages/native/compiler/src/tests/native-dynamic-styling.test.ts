@@ -140,3 +140,50 @@ export function App() {
     expect(r.ok, r.error ?? '').toBe(true)
   })
 })
+
+// `<Image width|height>` — RAW pixels, NOT compile-time tokens. Pre-fix the
+// Image emit read width/height STATIC-only, so a dynamic dim (a ternary OR a
+// runtime signal) SILENTLY dropped the `.frame` / `.width` modifier. UNLIKE
+// the token props (gap/color/align — a fully-dynamic value can't map to a
+// compile-time token so it WARNS), a pixel dim IS a runtime value: SwiftUI's
+// `.frame(width:)` takes `CGFloat?` and Compose's `.width` takes `Dp`, so ANY
+// dynamic value lowers to a runtime expr (Swift `CGFloat(<expr>)`, Compose
+// `(<expr>).dp`) — no warning, ternary AND signal-read both lower.
+const IMG = `
+import { signal } from '@pyreon/reactivity'
+import { Stack, Image } from '@pyreon/primitives'
+export function App() {
+  const big = signal<boolean>(false)
+  const h = signal<number>(80)
+  return (
+    <Stack>
+      <Image src="logo.png" alt="a" width={big() ? 200 : 100} height={h()} />
+      <Image src="logo.png" alt="b" width={64} height={64} />
+    </Stack>
+  )
+}`
+
+describe('Image dynamic width/height — runtime-numeric lowering (ternary + signal), static byte-identical', () => {
+  it('Swift: dynamic width/height lower to CGFloat(<expr>); static bare', () => {
+    const rs = transform(IMG, { target: 'swift' })
+    expect(rs.code).toContain('.frame(width: CGFloat(big ? 200 : 100), height: CGFloat(h))')
+    expect(rs.code).toContain('.frame(width: 64, height: 64)')
+    expect(rs.warnings).toHaveLength(0)
+  })
+  it('Kotlin: dynamic width/height lower to (<expr>).dp; static bare', () => {
+    const rk = transform(IMG, { target: 'kotlin' })
+    expect(rk.code).toContain('.width((if (big) 200 else 100).dp).height((h).dp)')
+    expect(rk.code).toContain('.width(64.dp).height(64.dp)')
+    expect(rk.warnings).toHaveLength(0)
+  })
+
+  // Compile proof — the runtime-numeric dims (CGFloat + Dp) typecheck.
+  it.skipIf(!isSwiftUIAvailable())('iOS: the dynamic-dims Image TYPECHECKS against real SwiftUI', () => {
+    const r = validateSwiftTypecheck(transform(IMG, { target: 'swift' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('Android: the same compiles via kotlinc', () => {
+    const r = validateKotlin(transform(IMG, { target: 'kotlin' }).code)
+    expect(r.ok, r.error ?? '').toBe(true)
+  })
+})
