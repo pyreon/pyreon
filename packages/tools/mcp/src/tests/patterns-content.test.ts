@@ -34,6 +34,7 @@ const KNOWN_DETECTOR_CODES = new Set([
   'for-missing-by',
   'for-with-key',
   'props-destructured',
+  'props-destructured-body',
   'process-dev-gate',
   'empty-theme',
   'raw-add-event-listener',
@@ -42,8 +43,10 @@ const KNOWN_DETECTOR_CODES = new Set([
   'on-click-undefined',
   'signal-write-as-call',
   'static-return-null-conditional',
+  'static-early-return-conditional',
   'as-unknown-as-vnodechild',
   'island-never-with-registry-entry',
+  'query-options-as-function',
 ])
 
 describe('patterns content — structural shape', () => {

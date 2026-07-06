@@ -189,6 +189,14 @@ Use `useControllableState` from `@pyreon/hooks` instead of manual `isControlled 
 
 ---
 
+### Static early-return with a signal condition
+
+`if (loading()) return <Skeleton/>` at the top of a component body is evaluated exactly ONCE at mount — the component is pinned to that branch forever (`loading.set(false)` never re-evaluates it). The compiler emits the shape unchanged with zero warnings and TS2774 does NOT cover it (the signal IS called), so this is a pure silent pin. Use `<Show when={() => loading()} fallback={<Skeleton/>}>` or return a reactive accessor: `return (() => loading() ? <Skeleton/> : <Content/>)`. The detector is signal-binding-gated (fires only when the condition reads a tracked `const x = signal(...)`/`computed(...)` binding — helper-call/props/env conditions are legitimate setup guards and stay unflagged); the `return null` shape stays with `static-return-null-conditional` (different fix-path message), so the two never double-fire.
+
+**Detected by:** `static-early-return-conditional` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
+
+---
+
 ### Empty `.theme({})`
 
 Never chain `.theme({})` as a no-op. If a component needs no base theme, skip `.theme()` entirely.

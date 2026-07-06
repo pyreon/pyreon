@@ -13,7 +13,7 @@ export default defineManifest({
     'Reactivity-Lens: analyzeReactivity / formatReactivityLens surface the compiler’s reactive-vs-static decision (experimental)',
     'Scope-aware signal auto-call: bare {count} → {() => count()}, shadowing-correct, knownSignals seeds cross-module',
     'detectReactPatterns + migrateReactCode — "coming from React" diagnostics + one-shot codemod',
-    'detectPyreonPatterns — 14 "using Pyreon wrong" anti-pattern codes (the MCP validate detector); migratePyreonCode auto-fixes the 3 mechanically-safe ones',
+    'detectPyreonPatterns — 16 "using Pyreon wrong" anti-pattern codes (the MCP validate detector); migratePyreonCode auto-fixes the 3 mechanically-safe ones',
     'Project audits: auditTestEnvironment / auditIslands / auditSsg (power pyreon doctor)',
     'transformDeferInline — <Defer> namespace-import inlining pass',
     'generateContext — project scanner producing the AI .pyreon/context.json',
@@ -182,7 +182,7 @@ if (d) console.log(d.cause, d.fix)`,
       signature:
         "detectPyreonPatterns(code: string, filename?: string): PyreonDiagnostic[]",
       summary:
-        'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 14 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Every diagnostic reports `fixable: false` (invariant — no `migrate_pyreon` codemod ships yet).',
+        'AST-based (TypeScript compiler API) detector for "using Pyreon wrong" mistakes — 16 codes today (`for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`). The detector arm behind the MCP `validate` tool and `pyreon doctor --check-pyreon-patterns`. Diagnostics report `fixable: true` ONLY for the 3 codes `migratePyreonCode` can auto-fix mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild` — kept in sync via `AUTO_FIXABLE_PYREON_CODES`); every other code is `fixable: false`.',
       example: `import { detectPyreonPatterns } from "@pyreon/compiler"
 
 const diags = detectPyreonPatterns(
@@ -313,7 +313,7 @@ console.log(ctx.routes.length, ctx.islands.length)`,
     },
     {
       label: 'Detectors are not codemods',
-      note: '`detectPyreonPatterns` always reports `fixable: false` (enforced invariant). `detectReactPatterns` is paired with the real `migrateReactCode` codemod; the Pyreon detector has no companion codemod yet, so consumers must not wire auto-fix UX off its `fixable` flag.',
+      note: '`detectPyreonPatterns` reports `fixable: true` ONLY for the 3 codes `migratePyreonCode` auto-fixes mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild`); every other code — including judgement-requiring reactivity fixes like `props-destructured` and `static-early-return-conditional` — stays `fixable: false`. Do not wire auto-fix UX off the flag for anything outside `AUTO_FIXABLE_PYREON_CODES`.',
     },
   ],
 })

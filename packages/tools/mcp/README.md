@@ -93,7 +93,7 @@ Returns signature + usage example + common mistakes. Covers every `@pyreon/*` pa
 validate({ code: 'const { x } = props; return <div>{x}</div>' })
 ```
 
-Merges two detectors (React anti-patterns + Pyreon-specific patterns), sorts by source line. `detectPyreonPatterns` ships 15 codes today: `for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`.
+Merges two detectors (React anti-patterns + Pyreon-specific patterns), sorts by source line. `detectPyreonPatterns` ships 16 codes today: `for-missing-by`, `for-with-key`, `props-destructured`, `props-destructured-body`, `process-dev-gate`, `empty-theme`, `raw-add-event-listener`, `raw-remove-event-listener`, `date-math-random-id`, `on-click-undefined`, `signal-write-as-call`, `static-return-null-conditional`, `static-early-return-conditional`, `as-unknown-as-vnodechild`, `island-never-with-registry-entry`, `query-options-as-function`.
 
 `query-options-as-function` is **proactive**: the same rule ships as the opt-in `pyreon/query-options-as-function` lint rule AND as a `validate` detector — an AI agent calling `validate` sees the fix BEFORE commit, not just after running lint.
 
