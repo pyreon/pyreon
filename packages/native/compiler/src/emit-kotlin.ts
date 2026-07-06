@@ -4318,8 +4318,11 @@ function emitKotlinHeading(
         `MaterialTheme.typography.${HEADING_TYPOGRAPHY[(typeof v === 'number' ? v : 1) as 1 | 2 | 3 | 4 | 5 | 6] ?? 'h4'}`,
     ) ?? 'MaterialTheme.typography.h4'
   const args = [`text = ${kotlinTextArg(e, indent)}`, `style = ${style}`]
-  const color = readStaticAttrKotlin(e, 'color')
-  if (typeof color === 'string') args.push(`color = ${resolveColor(color, 'kotlin')}`)
+  // Heading `color` — static token OR a ternary of two literal tokens
+  // (`color={err() ? "danger" : "text"}`); pre-fix static-only, so a dynamic
+  // value SILENTLY dropped the color (same class as Icon color, #2032).
+  const color = kotlinStylingValue(e, 'color', (v) => resolveColor(String(v), 'kotlin'))
+  if (color !== undefined) args.push(`color = ${color}`)
   // Same data-testid threading as Text (device-found bug class).
   const mod = emitKotlinLayoutModifier(e)
   if (mod !== '') args.push(`modifier = ${mod}`)
