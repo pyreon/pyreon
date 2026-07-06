@@ -85,4 +85,31 @@ test.describe('reactive health overlay (real browser)', () => {
     await dispatch()
     await expect(page.locator('#__pyreon-reactive-overlay')).toHaveCount(0)
   })
+
+  test('Activity tab shows recent fires + a "why did X update?" chain after a real interaction', async ({
+    page,
+  }) => {
+    await bootWithGraph(page)
+    // Fire the live chain in the real app: count.set -> doubled -> effect,
+    // all recorded in the always-on ring buffer.
+    await page.evaluate(() => {
+      const w = window as any
+      w.__rxKeepAlive.count.set(1)
+      w.__PYREON_DEVTOOLS__.reactive.showOverlay()
+    })
+
+    await expect(page.locator('#__pyreon-reactive-overlay')).toBeVisible()
+
+    // Switch to the Activity view.
+    await page.locator('#__pyreon-rx-tab-activity').click()
+
+    const body = page.locator('#__pyreon-rx-body')
+    await expect(body).toContainText('Recent updates (newest first):')
+    // The causal-chain explainer is rendered for the most-recent fire.
+    await expect(body).toContainText('Why did')
+
+    // Back to Health restores the graph summary.
+    await page.locator('#__pyreon-rx-tab-health').click()
+    await expect(body).toContainText('edges')
+  })
 })
