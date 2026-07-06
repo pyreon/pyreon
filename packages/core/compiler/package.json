@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./diagnose": {
+      "bun": "./src/diagnose.ts",
+      "import": "./lib/diagnose.js",
+      "types": "./lib/types/diagnose.d.ts"
     }
   },
   "files": [
