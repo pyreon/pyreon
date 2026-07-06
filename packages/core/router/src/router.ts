@@ -968,9 +968,19 @@ export function createRouter<TNames extends string = string>(
     }
 
     // Use View Transitions API when available and not explicitly disabled.
-    // Route meta can opt out: meta: { viewTransition: false }
+    // Route meta can opt out: meta: { viewTransition: false }. We ALSO skip
+    // the animation when the user has asked for reduced motion (WCAG 2.3.3
+    // "Animation from Interactions") — the DOM still swaps synchronously via
+    // the non-VT `else` path below; only the fade/slide is suppressed. This is
+    // read per-navigation (not cached) so a user toggling the OS preference
+    // mid-session is respected on the next route change.
+    const reducedMotion =
+      isClient &&
+      typeof matchMedia === 'function' &&
+      matchMedia('(prefers-reduced-motion: reduce)').matches
     const useVT =
       isClient &&
+      !reducedMotion &&
       to.meta.viewTransition !== false &&
       typeof (document as any).startViewTransition === 'function'
 
