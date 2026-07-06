@@ -58,13 +58,17 @@ describe('MCP token budgets', () => {
     })
   })
 
-  it('get_anti_patterns({}) default index stays under 5,000 tokens', async () => {
+  it('get_anti_patterns({}) default index stays under 5,500 tokens', async () => {
     await withServer(async (client) => {
       const text = await callText(client, 'get_anti_patterns', {})
-      // Pre-PR full dump ≈13,976. Post-PR index ≈3,292. A 5,000 ceiling
-      // is a hard ratchet: reverting to the full-dump default (or making
-      // the index verbose) trips it. Catalog growth has ~1.7K of slack.
-      expect(tok(text)).toBeLessThan(5000)
+      // Pre-PR full dump ≈13,976. Post-PR index ≈3,292. The ceiling is a
+      // hard ratchet: reverting to the full-dump default (or making the
+      // index verbose) trips it. Raised 5,000 → 5,500 when legitimate
+      // catalog growth (116 entries × ~44 tokens/index-line) consumed the
+      // original slack — still ~2.6× under the full dump it guards
+      // against. Bump ONLY for entry-count growth, never for verbosity
+      // (per-entry cost is capped by INDEX_HOOK_MAX + the title).
+      expect(tok(text)).toBeLessThan(5500)
     })
   })
 

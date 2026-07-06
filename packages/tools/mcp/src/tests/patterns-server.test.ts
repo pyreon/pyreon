@@ -77,8 +77,10 @@ describe('MCP server — get_anti_patterns tool', () => {
       expect(text).toContain('get_anti_patterns({ name:')
       expect(text).toContain('get_anti_patterns({ full: true })')
       // Token budget: the index must stay far under the old full dump.
-      // ~4 chars/token; old default was ≈13,976 tokens. Lock it < 5,000.
-      expect(Math.round(text.length / 4)).toBeLessThan(5000)
+      // ~4 chars/token; old default was ≈13,976 tokens. Raised 5,000 →
+      // 5,500 for catalog-count growth (see token-budget.test.ts) — bump
+      // only for entry-count growth, never for verbosity.
+      expect(Math.round(text.length / 4)).toBeLessThan(5500)
     } finally {
       await close()
     }
