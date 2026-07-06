@@ -58,7 +58,7 @@ const TabExample = () => (
     'SVG/MathML — 67 tags auto-detected, correct namespace URI, setAttribute-only',
     'Custom elements — props set as properties on hyphenated tag names',
     'Event delegation — synthetic event system for performance',
-    'Dev-mode warnings — container validation, output validation, duplicate keys',
+    'Dev-mode warnings — container validation, output validation, duplicate keys, text-binding coercion ("[object Object]" / function-source), reactive-prop-call setup diagnosis',
   ],
   api: [
     {
@@ -231,8 +231,8 @@ window.__PYREON_DEVTOOLS__.reactive.getGraph()  // { nodes, edges }`,
       note: 'If `transitionend` or `animationend` never fires (missing CSS, display:none, zero-duration), the transition completes automatically after 5 seconds to prevent stuck UI.',
     },
     {
-      label: 'Dev warnings use import.meta.env.DEV',
-      note: 'All dev-mode warnings (`mount()` null container, duplicate keys, raw signal children) use `import.meta.env.DEV` — NOT `typeof process`. Vite/Rolldown literal-replaces it at build time; production bundles contain zero warning bytes. Tests run in vitest which sets DEV=true automatically.',
+      label: 'Dev warnings use bare process.env.NODE_ENV',
+      note: 'All dev-mode diagnostics — the `mount()` null-container error, invalid component-output warning, duplicate `<For>` keys, the text-binding coercion warnings (a VNode or raw function String()-coerced by `_bindText` → the "[object Object]" / function-source silent-render shapes), and the setup-throw diagnosis for a compiler-wrapped reactive prop called as a function — are gated on the bundler-agnostic bare `process.env.NODE_ENV !== "production"` (NOT `typeof process`, NOT `import.meta.env.DEV`). Every modern bundler literal-replaces it at consumer build time; production bundles contain zero warning bytes.',
     },
     {
       label: 'Event delegation',

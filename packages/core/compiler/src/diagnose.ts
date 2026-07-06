@@ -121,6 +121,36 @@ function Body({ html }) {
     }),
   },
   {
+    // PZ-02 — a VNode String()-coerced into a text binding renders the
+    // literal "[object Object]". The dominant shape: a JSX-returning helper
+    // called inline in a text position (`<td>{cell(row.status)}</td>`) — the
+    // compiler binds a bare call child under a DOM parent as reactive TEXT,
+    // not a mount. SSR renders the subtree correctly, so it also surfaces as
+    // a hydration mismatch. Placed AFTER the dangerouslySetInnerHTML entry
+    // (innerHTML-mentioning reports route there first) and BEFORE the
+    // SSR↔hydration parity entry at the end (whose `[object Object]` arm
+    // targets OLD-version polymorphic-text bugs; on current versions the
+    // inline-helper shape is the likely cause). The first alternative matches
+    // runtime-dom's dev warning text verbatim; the second is scoped to
+    // text/render context words to avoid over-broad matching.
+    pattern:
+      /VNode was coerced to "?\[object Object\]"?|\[object Object\][^\n]{0,80}(text binding|text position|instead of|as (plain )?text|in (a |the )?(table |list )?(cell|text))/i,
+    diagnose: () => ({
+      cause:
+        'A VNode was String()-coerced into a TEXT binding — rendering the literal "[object Object]". The usual shape: a JSX-returning helper called inline under a DOM element (`<td>{cell(row.status)}</td>`). The compiler treats a bare call child under a DOM parent as a reactive TEXT expression, so the returned VNode is stringified instead of mounted. SSR renders the subtree correctly, so the client shows "[object Object]" plus a hydration mismatch.',
+      fix: 'Extract a real component and render it as a JSX element — an uppercase tag is MOUNTED, never stringified: `<Cell x={x} />` instead of `{cell(x)}`. (PascalCase does not save a bare CALL — `{Cell(x)}` still stringifies; only the JSX element form mounts.) In dev, `@pyreon/runtime-dom` warns at the binding with this guidance.',
+      fixCode: `// ✗ stringifies the returned VNode → "[object Object]":
+const cell = (s) => <span class="badge">{s}</span>
+<td>{cell(row.status)}</td>
+
+// ✓ extract a component — JSX element form is mounted:
+function Cell(props) { return <span class="badge">{props.s}</span> }
+<td><Cell s={row.status} /></td>`,
+      related:
+        'If the value comes from a reactive accessor that only LATER yields a VNode (`{() => loading() ? "…" : <Table/>}`) and you are on an older @pyreon/runtime-dom, upgrade — the SSR↔hydration parity release added the polymorphic text→subtree upgrade.',
+    }),
+  },
+  {
     // Phase 1 render-pipeline unification — the shipped-broken
     // `useRequestLocals` (renderToString/renderToStream opened a FRESH ALS
     // context stack, discarding request-level provide() frames). Users on
@@ -193,11 +223,14 @@ const { nonce } = useRequestLocals()`,
     }),
   },
   {
+    // TWO distinct Pyreon causes share this message shape — teaching only the
+    // signal one was actively wrong for the reactive-prop variant (PZ-10),
+    // where the fix is the OPPOSITE direction (stop calling it).
     pattern: /(\w+) is not a function/,
     diagnose: (m) => ({
-      cause: `'${m[1]}' is not callable. If this is a signal, you need to call it: ${m[1]}()`,
-      fix: 'Pyreon signals are callable functions. Read: signal(), Write: signal.set(value)',
-      fixCode: `// Read value:\nconst value = ${m[1]}()\n// Set value:\n${m[1]}.set(newValue)`,
+      cause: `'${m[1]}' is not callable. Two common Pyreon causes: (1) it is a signal you meant to call — signals are callable functions: ${m[1]}(). (2) it is a component PROP the child typed as an accessor (\`${m[1]}: () => T\`) — but \`${m[1]}={expr}\` with a compiler-visible signal compiles to a reactive prop that Pyreon auto-unwraps, so \`props.${m[1]}\` is already the current VALUE and calling it throws. The prop variant is intermittent across call sites: raw arrows and hook-returned callables pass through un-wrapped and work.`,
+      fix: `If '${m[1]}' is a signal: read with ${m[1]}(), write with ${m[1]}.set(value). If '${m[1]}' is a component prop: type it as the VALUE (not \`() => T\`) and read props.${m[1]} in a reactive scope (JSX accessor / effect / computed); if you genuinely need a lazy accessor, have the CALLER pass an explicit arrow: ${m[1]}={() => value}. In dev, Pyreon's setup-catch prints a "compiler-wrapped reactive prop" diagnosis when the throwing name matches a getter-backed prop.`,
+      fixCode: `// (1) Signal — read / write:\nconst value = ${m[1]}()\n${m[1]}.set(newValue)\n\n// (2) Reactive prop — type as the value, read reactively:\nfunction Child(props: { ${m[1]}: Item[] }) {\n  return <ul><For each={props.${m[1]}} by={i => i.id}>{i => <li>{i.name}</li>}</For></ul>\n}\n// Need laziness? The caller passes an explicit arrow:\n<Child ${m[1]}={() => items()} />`,
     }),
   },
   {
