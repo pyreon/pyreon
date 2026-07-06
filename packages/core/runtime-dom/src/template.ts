@@ -50,6 +50,75 @@ export function createTemplate<T>(
   }
 }
 
+// ─── Dev-only text-coercion diagnostics ──────────────────────────────────────
+//
+// Both `_bindText` paths String()-coerce the bound value into `Text.data`.
+// Two silent-failure shapes ship real bugs through that coercion:
+//
+//  • PZ-02 — a VNode / NativeItem (or an array containing one) renders the
+//    literal "[object Object]". The classic shape: a JSX-returning helper
+//    called inline in a text position (`<td>{props.getContent()}</td>` —
+//    the compiler binds a bare call child as reactive TEXT, not a mount).
+//    SSR renders the subtree correctly, so this is ALSO a hydration mismatch.
+//  • PZ-05 — a raw FUNCTION renders its SOURCE text (e.g. an accessor
+//    neutralized by an `as never` cast, which the compiler treats as static).
+//
+// The check targets the RESULT value only — `_bindText`'s SOURCE is
+// legitimately a callable that gets CALLED (fallback path) or read via `._v`
+// (fast path); neither position is checked.
+//
+// Warn ONCE per text node: the flag lives on the node itself (an expando set
+// only in dev, only when a warning fires) — no module-level registry (see
+// anti-patterns "module-level WeakSet registries"), no allocation on the prod
+// path. Every call site sits inside the bare `process.env.NODE_ENV` gate, so
+// the whole helper (strings included) tree-shakes out of production bundles —
+// locked by `dev-gate-treeshake.test.ts`.
+//
+// Coverage note: only the `_bindText` sinks are hookable at runtime. The
+// compiler's `_bind(() => { __t0.data = expr })` emit performs the coercion
+// via a RAW assignment inside user bundles, and `_bindDirect` updaters are
+// likewise raw compiler-emitted DOM writes — neither can be intercepted here
+// without changing compiler emit (out of scope for this layer).
+
+/** Structural VNode check — VNode has no symbol brand (see core/types.ts),
+ *  so `{ type, props, children }` is the discriminator; `__isNative` covers
+ *  NativeItems from `_tpl()`/`createTemplate()`. */
+function _looksLikeVNode(v: unknown): boolean {
+  return (
+    v !== null &&
+    typeof v === 'object' &&
+    (((v as { __isNative?: boolean }).__isNative === true) ||
+      ('type' in v && 'props' in v && 'children' in v))
+  )
+}
+
+function _warnTextCoercion(v: unknown, node: Text): void {
+  // Belt-and-braces: every call site is already inside the bare dev gate
+  // (which is what makes this helper tree-shakeable); this early return is
+  // the in-function guard `pyreon/dev-guard-warnings` recognises.
+  if (process.env.NODE_ENV === 'production') return
+  if (v == null || (typeof v !== 'object' && typeof v !== 'function')) return
+  const flagged = node as Text & { __pyreonWarnedCoercion?: boolean }
+  if (flagged.__pyreonWarnedCoercion) return
+  if (typeof v === 'function') {
+    flagged.__pyreonWarnedCoercion = true
+    console.warn(
+      '[Pyreon] A function was coerced to its source string in a text position. ' +
+        "If you cast an accessor with 'as never', remove the cast — the compiler treats " +
+        'the cast expression as static. Accessor-typed JSX attributes accept the function form directly.',
+    )
+    return
+  }
+  if (_looksLikeVNode(v) || (Array.isArray(v) && v.some(_looksLikeVNode))) {
+    flagged.__pyreonWarnedCoercion = true
+    console.warn(
+      '[Pyreon] A VNode was coerced to "[object Object]" in a text binding. ' +
+        'A JSX-returning helper called inline under a DOM element ({cell(x)}) compiles as ' +
+        'reactive TEXT, not a mount. Extract a component and render <Cell x={x}/> instead.',
+    )
+  }
+}
+
 // ─── Direct text binding (bypasses effect system) ────────────────────────────
 
 /**
@@ -81,6 +150,7 @@ export function _bindText(
   if (source.direct) {
     const textUpdate = () => {
       const v = source._v
+      if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
       const next = v == null || v === false ? '' : String(v as string | number)
       if (next !== node.data) node.data = next
     }
@@ -92,6 +162,7 @@ export function _bindText(
   const fn = caller ?? (source as unknown as () => unknown)
   return renderEffect(() => {
     const v = fn()
+    if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
     const next = v == null || v === false ? '' : String(v as string | number)
     if (next !== node.data) node.data = next
   })

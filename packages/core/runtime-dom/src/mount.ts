@@ -438,6 +438,42 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
+/**
+ * Dev-only (PZ-10): diagnose the `props.X is not a function` setup throw
+ * caused by Pyreon's reactive-prop auto-unwrap.
+ *
+ * `foo={expr}` with a compiler-visible signal compiles to `_rp(() => expr)`;
+ * `makeReactiveProps` converts the branded thunk into a property GETTER, so
+ * `props.foo` is already the current VALUE. A child that types the prop as
+ * `() => T` and calls `props.foo()` throws — and the failure is INTERMITTENT
+ * across call sites (raw arrows / hook-returned callables pass through
+ * un-wrapped and work), which makes it the worst-DX variant of this class.
+ *
+ * The diagnosis requires BOTH signals to agree: the TypeError message names
+ * the prop AND the merged props object carries a GETTER descriptor for that
+ * exact name — a plain data prop (or an unrelated identifier that happens to
+ * match) never triggers it. Only called inside the bare
+ * `process.env.NODE_ENV` dev gate, so it tree-shakes out of production
+ * bundles (locked by `dev-gate-treeshake.test.ts`).
+ */
+function diagnoseReactivePropCall(
+  err: unknown,
+  props: Record<string, unknown>,
+  componentName: string,
+): string | null {
+  if (!(err instanceof TypeError)) return null
+  const m = /(\w+) is not a function/.exec(err.message)
+  if (!m) return null
+  const propName = m[1] as string
+  if (!Object.getOwnPropertyDescriptor(props, propName)?.get) return null
+  return (
+    `[Pyreon] <${componentName}> called props.${propName} as a function, but '${propName}' is a ` +
+    `compiler-wrapped reactive prop — Pyreon auto-unwraps it to its current VALUE. Type the prop ` +
+    `as the value and read props.${propName} in a reactive scope; if you need a lazy accessor, ` +
+    `have the caller pass an explicit arrow (${propName}={() => value}).`
+  )
+}
+
 function mountComponent(
   vnode: VNode & { type: ComponentFn },
   parent: Node,
@@ -531,14 +567,28 @@ function mountComponent(
     if (!handled) {
       console.error(`[Pyreon] <${componentName}> threw during setup:`, err)
     }
-    if (process.env.NODE_ENV !== 'production' && !handled) {
-      const overlay = document.createElement('pre')
-      overlay.style.cssText =
-        'color:#e53e3e;background:#fff5f5;padding:12px;border:2px solid #e53e3e;border-radius:6px;font-size:12px;margin:4px;font-family:monospace;white-space:pre-wrap;word-break:break-word'
-      const e = err as Error
-      overlay.textContent = `[${componentName}] ${e.message ?? err}\n${e.stack ?? ''}`
-      parent.insertBefore(overlay, anchor)
-      return () => overlay.remove()
+    if (process.env.NODE_ENV !== 'production') {
+      // PZ-10: "props.X is not a function" caused by the reactive-prop
+      // auto-unwrap. Printed even when an ErrorBoundary handled the throw —
+      // the boundary's fallback can't explain the root cause, and the
+      // diagnosis fires at most once per mount attempt.
+      const diagnosis = diagnoseReactivePropCall(
+        err,
+        mergedProps as Record<string, unknown>,
+        componentName,
+      )
+      if (diagnosis) console.error(diagnosis)
+      if (!handled) {
+        const overlay = document.createElement('pre')
+        overlay.style.cssText =
+          'color:#e53e3e;background:#fff5f5;padding:12px;border:2px solid #e53e3e;border-radius:6px;font-size:12px;margin:4px;font-family:monospace;white-space:pre-wrap;word-break:break-word'
+        const e = err as Error
+        overlay.textContent = `[${componentName}] ${e.message ?? err}\n${
+          diagnosis ? `${diagnosis}\n` : ''
+        }${e.stack ?? ''}`
+        parent.insertBefore(overlay, anchor)
+        return () => overlay.remove()
+      }
     }
     return noop
   } finally {

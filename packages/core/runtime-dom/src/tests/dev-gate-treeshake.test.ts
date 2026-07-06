@@ -60,6 +60,19 @@ const FILES_UNDER_TEST: FileContract[] = [
       '[Pyreon] <Portal> target must be a DOM node',
       '[Pyreon] Invalid VNode type',
       'is a void element and cannot have children',
+      // PZ-10 setup-throw diagnosis (diagnoseReactivePropCall) — the whole
+      // helper is referenced only inside the dev gate, so both its strings
+      // AND the function body must fold out of prod bundles.
+      'compiler-wrapped reactive prop',
+    ],
+  },
+  {
+    // PZ-02 / PZ-05 text-coercion warnings (_warnTextCoercion) — helper +
+    // strings referenced only inside the dev-gated branches of _bindText.
+    file: 'template.ts',
+    devWarningStrings: [
+      'A VNode was coerced to',
+      'A function was coerced to its source string',
     ],
   },
   {
