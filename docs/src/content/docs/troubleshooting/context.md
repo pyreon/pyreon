@@ -7,6 +7,12 @@ description: "Common context & provider mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.claude/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A framework COMPONENT resolving a shared resource from context BARE while the sibling HOOKS use `context ?? module-fallback` (asymmetric resolution)
+
+every `@pyreon/router` hook resolves `useContext(RouterContext) ?? _activeRouter`, but `RouterLinkImpl` read the context bare from package inception — after `setActiveRouter(router)` (no provider component), `useRouter()`/`useNavigate()` worked while `<RouterLink>` silently rendered a hash-fallback `#/path` href and swallowed clicks (`handleClick` called `preventDefault()` BEFORE the no-router bail → dead link). Invisible to provider-based tests (the dominant harness shape); surfaces only in fallback-only usage. **Rules**: (1) when a package exposes hooks AND components over the same context+singleton pair, route every consumer through the ONE resolver (`getActiveRouter()`) — never re-derive `useContext(...) ?? fallback` per call site (a bare read WILL slip in); (2) a component that can't resolve its dependency must degrade to the closest NATIVE behavior (here: plain-path `href` + un-intercepted click = full-load anchor, plus a dev warning), not a half-dead hybrid — which means guard-bails run BEFORE `preventDefault()`, never after. Reference: `packages/core/router/src/components.tsx:RouterLinkImpl`; regression `packages/core/router/src/tests/link-dx.test.ts` (bisect-verified).
+
+---
+
 ### Destructuring context values
 
 `const { mode } = useContext(ctx)` captures the value once at setup time. If the provider uses getters (`get mode()`), destructuring evaluates the getter immediately — the value becomes static. Instead, keep the context object reference and access properties lazily: `const ctx = useContext(Ctx)` then read `ctx.mode` inside reactive scopes.

@@ -790,6 +790,35 @@ The active class is segment-aware. `/admin` is a prefix of `/admin/users` but NO
 - Hash mode: `href="#/about"`
 - History mode: `href="/about"`
 
+The router is resolved the same way every router hook resolves it — the nearest `<RouterProvider>` context first, falling back to the active router (`setActiveRouter()`), so links rendered outside the provider subtree (portals, detached trees) still client-navigate when a router is active.
+
+**Without any router** (no `<RouterProvider>` ancestor and no active router), `RouterLink` degrades to a **plain anchor**: the `href` is the plain path (`/about` — no hash fallback) and clicks are NOT intercepted, so the browser performs a full-load navigation instead of the link being dead. In development it also warns once per destination:
+
+```
+[Pyreon] <RouterLink to="/about"> rendered without a RouterProvider — falling back
+to a plain anchor (full page load on click). Wrap the tree in <RouterProvider router={…}>.
+```
+
+#### Full-reload warning for plain `<a href>` (dev only)
+
+A plain internal `<a href="/about">` in a router app triggers a full page reload — almost never what you want. In development, the router registers a document-level click listener (removed by `router.destroy()`) that warns when a plain internal anchor is about to full-reload:
+
+```
+[Pyreon] internal <a href="/about"> triggers a full page reload — use
+<RouterLink to="/about"> for client-side navigation. (Deliberate full-load
+link? add target/download, or data-allow-reload.)
+```
+
+`<RouterLink>` clicks never warn (the link `preventDefault()`s the internal clicks it handles, which is the discriminator). External URLs, `mailto:`/`tel:`, `#hash` anchors, and modifier/middle clicks are skipped. The warning applies in **both** history and hash mode — a path-style href full-reloads a hash-mode app too, while valid `#/x` hrefs are skipped.
+
+For a **deliberate** full-load link, opt out with any of:
+
+```html
+<a href="/legacy-page" data-allow-reload>Old server-rendered page</a>
+<a href="/report.pdf" download>Download</a>
+<a href="/print-view" target="_blank">Print view</a>
+```
+
 #### External links
 
 `RouterLink` inspects `to` at runtime and only intercepts **internal** navigations. Anything else is left to the browser, with the right `<a>` attributes applied automatically:

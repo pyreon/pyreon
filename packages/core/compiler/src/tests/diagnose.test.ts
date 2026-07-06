@@ -81,6 +81,19 @@ describe('diagnoseError (browser-safe error catalog)', () => {
       expect(result).toBeNull()
     })
   })
+
+  it('diagnoses the RouterLink-without-provider shape (dev warning + old-behavior symptoms)', () => {
+    // The exact dev warning @pyreon/router emits:
+    const warned = diagnoseError(
+      '[Pyreon] <RouterLink to="/settings"> rendered without a RouterProvider — falling back to a plain anchor (full page load on click). Wrap the tree in <RouterProvider router={…}>.',
+    )
+    expect(warned).not.toBeNull()
+    expect(warned!.fix).toContain('RouterProvider')
+    // A user-described symptom of the PRE-fix behavior (hash-fallback href):
+    const symptom = diagnoseError('RouterLink renders #/settings href in history mode')
+    expect(symptom).not.toBeNull()
+    expect(symptom!.cause).toContain('RouterProvider')
+  })
 })
 
 describe('@pyreon/compiler/diagnose is browser-safe (no TypeScript compiler API)', () => {

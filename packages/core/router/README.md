@@ -99,6 +99,10 @@ router.push({ name: 'typo' }) // ❌ TypeScript error
 
 `activeClass` is **merged** with the user-provided `class` via `cx` (not overridden). `aria-current="page"` is set automatically on active links.
 
+`RouterLink` resolves its router the same way the hooks do — the nearest `<RouterProvider>` context, falling back to the active router (`setActiveRouter`). Without ANY router it degrades to a **plain anchor** (plain-path `href`, no click interception → full-load navigation) and warns once per `to` in dev.
+
+**Dev-only full-reload warning:** a plain internal `<a href="/x">` in a router app warns on click (`use <RouterLink to="/x">…`) — `RouterLink` clicks never warn (it `preventDefault()`s the internal clicks it handles). Deliberate full-load links opt out via `target`, `download`, or `data-allow-reload`; the listener is removed by `router.destroy()`.
+
 ## Data loaders
 
 ```ts

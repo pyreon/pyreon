@@ -74,6 +74,31 @@ h('select', { value: 'b' }, h('option', { value: 'a' }, 'A'), h('option', { valu
     }),
   },
   {
+    // RouterLink without a resolvable router (PZ-07): matches the dev warning
+    // the fixed @pyreon/router emits, AND the symptom descriptions of the OLD
+    // behavior (hash-fallback `#/path` href in a history-mode app; click
+    // swallowed by an early preventDefault → dead link).
+    pattern:
+      /RouterLink.*(without|no|missing).*(RouterProvider|router provider|provider)|RouterLink.*(#\/|hash).*(history|href|wrong)|RouterLink.*(click|link).*(nothing|dead|inert|not navigat|swallow)/i,
+    diagnose: () => ({
+      cause:
+        'A `<RouterLink>` rendered with NO resolvable router — no `<RouterProvider>` ancestor and no `setActiveRouter()` fallback. On `@pyreon/router` versions before the link-DX release, this was broken three ways: the link read the context BARE (ignoring the active-router fallback every hook uses), the `href` fell back to a hash URL (`#/path` — wrong for history-mode apps, the dominant mode), and `handleClick` called `preventDefault()` BEFORE the no-router bail, swallowing the click entirely (dead link). The fixed version resolves the router like the hooks do, degrades to a plain anchor (plain-path `href`, full-load navigation on click), and warns once per `to` in dev.',
+      fix: 'Wrap the tree in `<RouterProvider router={router}>` (the standard fix — RouterLink then client-navigates). If you deliberately render links outside the provider tree (e.g. a portal), call `setActiveRouter(router)` or accept the plain-anchor degradation. Upgrade `@pyreon/router` if you are seeing the hash-fallback `#/path` href or dead-click symptoms.',
+      fixCode: `import { createRouter, RouterProvider, RouterView, RouterLink } from "@pyreon/router"
+
+const router = createRouter({ routes, mode: "history" })
+mount(
+  <RouterProvider router={router}>
+    <nav><RouterLink to="/settings">Settings</RouterLink></nav>
+    <RouterView />
+  </RouterProvider>,
+  document.getElementById("app")!,
+)`,
+      related:
+        'Companion dev warning: a plain internal `<a href="/x">` in a router app warns "triggers a full page reload — use <RouterLink to=\\"/x\\">" at the document level. Deliberate full-load links opt out via `target`, `download`, or `data-allow-reload`.',
+    }),
+  },
+  {
     // Auto-call reachability fix (2026-07 fuzz campaign): symptoms of the
     // OLD emit — a signal function leaking into DOM output / handler math.
     pattern: /(\(\.\.\.args\) =>|function\s*\(\)).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|s\w*\.set\(.*=>.*\+/i,

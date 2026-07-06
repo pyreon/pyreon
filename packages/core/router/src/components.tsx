@@ -14,7 +14,7 @@ import { computed, isClient, signal } from '@pyreon/reactivity'
 import { announceRouteChange } from './announcer'
 import { LoaderDataContext, prefetchLoaderData } from './loader'
 import { _setDefaultChromeLayout } from './match'
-import { isLazy, RouterContext, setActiveRouter } from './router'
+import { getActiveRouter, isLazy, RouterContext, setActiveRouter } from './router'
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 import { type CheckHref, classifyHref, toRouterPath } from './typed-routes'
 
@@ -318,15 +318,41 @@ export interface RouterLinkProps<T extends string = string> extends Props {
   children?: VNodeChild | null
 }
 
+// Dev-only once-per-`to` dedupe for the no-provider warning below. A missing
+// provider typically breaks EVERY link on the page — one warning per distinct
+// destination is signal, N-per-row-list is noise.
+const _warnedNoRouterLinks = new Set<string>()
+
 /**
  * Runtime implementation. Typed against the WIDENED props (`RouterLinkProps` =
  * `RouterLinkProps<string>`, so `to` is `string`); the exported `RouterLink`
  * carries the generic `<const T>` signature for compile-time `to` validation.
  */
 const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
-  const router = useContext(RouterContext)
+  // Resolve the router the SAME way every router hook does (router.ts:
+  // `useContext(RouterContext) ?? _activeRouter`) — context first (per-request
+  // in SSR, per-tree in CSR), falling back to the module-level active router.
+  // Pre-fix this read the context BARE, so a link outside a <RouterProvider>
+  // subtree ignored a router that `setActiveRouter()` had made visible to
+  // every hook, and rendered a hash-fallback href.
+  const router = getActiveRouter()
   const prefetchMode = props.prefetch ?? 'intent'
   const inst = router as RouterInstance | null
+
+  // Dev-only (client-only) warning: with NO router resolvable the link
+  // degrades to a plain anchor (full page load on click) — almost always a
+  // missing provider, so make it visible. Client-only on purpose: SSR/SSG
+  // resolves context via the request stack and prerender pipelines
+  // legitimately render link-bearing trees the CSR provider re-establishes.
+  if (process.env.NODE_ENV !== 'production' && isClient && !router) {
+    const to = String(props.to)
+    if (!_warnedNoRouterLinks.has(to)) {
+      _warnedNoRouterLinks.add(to)
+      console.warn(
+        `[Pyreon] <RouterLink to="${to}"> rendered without a RouterProvider — falling back to a plain anchor (full page load on click). Wrap the tree in <RouterProvider router={…}>.`,
+      )
+    }
+  }
 
   // Resolve the effective navigation kind, honouring the per-link `external`
   // override (true → external, false → internal) over the auto-classification.
@@ -348,8 +374,11 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     // to the browser's native open-in-new-tab behaviour.
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
     if (!isInternal()) return // external / hash / mailto → let the browser navigate
-    e.preventDefault()
+    // No router resolvable — bail BEFORE preventDefault so the link degrades
+    // to a NATIVE anchor (full-load navigation to the plain-path href below).
+    // Pre-fix preventDefault ran first, swallowing the click → dead link.
     if (!router) return
+    e.preventDefault()
     const path = toRouterPath(props.to)
     if (props.replace) {
       router.replace(path)
@@ -381,7 +410,12 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   const href = (): string => {
     if (!isInternal()) return props.to
     const path = toRouterPath(props.to)
-    return inst?.mode === 'history' ? `${inst._base}${path}` : `#${path}`
+    // No router — emit the PLAIN path (native-anchor semantics, pairing with
+    // the no-preventDefault click bail above). Pre-fix this fell back to
+    // `#${path}`, which is wrong for history-mode apps (the dominant mode)
+    // and a dead destination without a router to interpret the hash.
+    if (!inst) return path
+    return inst.mode === 'history' ? `${inst._base}${path}` : `#${path}`
   }
 
   // Auto target/rel for external links (overridable per-link). `_blank` gets a
