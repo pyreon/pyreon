@@ -9,7 +9,7 @@
  * does NOT re-run an effect — a claim a whole-component re-render model can't
  * even express.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, it } from 'vitest'
 import { effect, signal, __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity'
 import { expectEffect, expectSignal } from '@pyreon/testing'
 import { useCounter } from '../demos/StoreDemo'
