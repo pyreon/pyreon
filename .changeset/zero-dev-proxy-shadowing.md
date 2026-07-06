@@ -1,0 +1,5 @@
+---
+"@pyreon/zero": patch
+---
+
+Fix `zero dev` middlewares shadowing Vite's `server.proxy` (PZ-11). The dev SSR catch-all (mode: 'ssr') and the 404 handler register in `configureServer` — BEFORE Vite's internal proxy middleware — and both accept wildcard-Accept requests (fetch's default), so with a reachable `_404.tsx` any proxied request (`/api/backend/*`, `/graphql`, …) was silently swallowed with 404 HTML before the proxy ever saw it. Both middlewares now yield URLs owned by a `server.proxy` context (matched with Vite's own `doesProxyContextMatchUrl` semantics — `^`-RegExp or prefix, against the full `req.url` including query) and log `[Pyreon] zero dev: honoring vite server.proxy for: <contexts>` on boot. Companion fix: the SSR middleware now skips unmatched `/api/*` paths like the 404 handler already did (W24), so user dev middleware under `/api/*` is no longer shadowed in `mode: 'ssr'` even without a proxy; a page route under `/api/` (an `api/*.tsx` file) still SSRs. Dev precedence: fs api routes > `server.proxy` > SSR/404.

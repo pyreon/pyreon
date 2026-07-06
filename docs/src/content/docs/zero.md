@@ -872,6 +872,32 @@ import { createServer } from '@pyreon/zero/server'
 export default createServer({ routes, apiRoutes })
 ```
 
+### Using a backend proxy in dev
+
+Vite's [`server.proxy`](https://vite.dev/config/server-options#server-proxy) works in `zero dev` — zero's dev middlewares yield any URL owned by a proxy context to Vite's proxy middleware instead of handling it themselves:
+
+```ts title="vite.config.ts"
+import pyreon from '@pyreon/vite-plugin'
+import zero from '@pyreon/zero'
+
+export default {
+  plugins: [pyreon(), zero({ mode: 'ssr' })],
+  server: {
+    proxy: {
+      // Prefix contexts and ^-RegExp contexts both work (Vite semantics).
+      '/api/backend': 'http://localhost:8080',
+      '/graphql': 'http://localhost:8080',
+    },
+  },
+}
+```
+
+When a proxy is configured, the dev server logs `[Pyreon] zero dev: honoring vite server.proxy for: <contexts>` on boot.
+
+**Dev request precedence**: fs API routes (`src/routes/api/*`) > `server.proxy` > SSR / 404 handling. A file-system API route always wins over a proxy context covering the same path — matching production, where `server.proxy` doesn't exist. Unmatched `/api/*` requests also fall through zero's SSR/404 handling entirely (proxy or not), so user-registered dev middleware is never shadowed.
+
+**Production note**: `server.proxy` is dev-only by Vite's design. In production, put a real reverse proxy (nginx, Caddy, your platform's rewrites) in front of the app, or expose the backend through [API routes](#api-routes).
+
 ## Server Actions
 
 Server-side mutations callable from the client, mounted at `/_zero/actions/*`.
