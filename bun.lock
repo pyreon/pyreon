@@ -582,9 +582,14 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
+        "@pyreon/testing": "workspace:*",
         "@pyreon/vite-plugin": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "@vitus-labs/tools-vitest": "^2.5.0",
+        "happy-dom": "^20.9.0",
         "typescript": "^6.0.3",
         "vite": "^8.0.16",
+        "vitest": "^4.1.8",
       },
     },
     "examples/hn-clone": {
