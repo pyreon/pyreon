@@ -1,3 +1,4 @@
+import { h } from '@pyreon/core'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _reset, _setDefaultDuration, _toasts, toast } from '../toast'
 
@@ -42,8 +43,11 @@ describe('description + icon', () => {
     expect(at(0).description).toBe('3 files')
   })
 
-  it('stores a custom icon', () => {
-    const icon = { type: 'svg', props: {}, children: [], key: null }
+  it('stores a custom icon (real h() vnode — parity with what apps pass)', () => {
+    // Real h() construction, not a hand-built vnode literal: the store must
+    // carry the exact VNode reference apps create via JSX (test-environment
+    // parity — mock-vnode-only coverage misses real-shape drift, PR #197 class).
+    const icon = h('svg', { 'aria-hidden': 'true' }, h('path', { d: 'M0 0h4' }))
     toast('With icon', { icon })
     expect(at(0).icon).toBe(icon)
   })
@@ -61,7 +65,7 @@ describe('description + icon', () => {
   })
 
   it('toast.update preserves description + icon when not in the update', () => {
-    const icon = { type: 'svg', props: {}, children: [], key: null }
+    const icon = h('svg', { 'aria-hidden': 'true' })
     const id = toast('Loading', { duration: 0, description: 'keep me', icon })
     toast.update(id, { message: 'Done', type: 'success' })
     expect(at(0).message).toBe('Done')
