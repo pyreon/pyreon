@@ -13,6 +13,7 @@
           "packages/core/compiler/",
           "-compat/",
           "packages/tools/devtools/",
+          "packages/tools/testing/",
           "packages/internals/perf-harness/",
           "packages/internals/test-utils/",
           "__tests__/",
@@ -35,7 +36,8 @@
       {
         "exemptPaths": [
           "packages/zero/create-zero/",
-          "packages/zero/create-multiplatform/"
+          "packages/zero/create-multiplatform/",
+          "packages/tools/testing/"
         ]
       }
     ],
