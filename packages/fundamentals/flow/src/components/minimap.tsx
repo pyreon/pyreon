@@ -7,10 +7,12 @@ import { FlowContext } from './flow-context'
  * and the current viewport position. Click to navigate.
  *
  * @remarks
- * When using both `<MiniMap>` and `<Controls>`, place `<MiniMap>`
- * FIRST — a `<Controls>` mounted before a sibling `<MiniMap>` fails to
- * render (a known framework slot-ordering limitation). See `<Controls>`
- * and `.claude/rules/anti-patterns.md` → "Flow overlay child order".
+ * Sibling order vs `<Controls>` no longer matters on current
+ * `@pyreon/compiler` versions (the template ref-hoist fix). On OLDER
+ * compilers, place `<MiniMap>` FIRST — a `<Controls>` mounted before a
+ * sibling `<MiniMap>` silently failed to render (a compiler
+ * slot-ordering bug, since fixed). See `<Controls>` and
+ * `.claude/rules/anti-patterns.md` → "Flow overlay child order".
  *
  * @example
  * ```tsx

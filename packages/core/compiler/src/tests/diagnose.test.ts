@@ -109,3 +109,25 @@ describe('@pyreon/compiler/diagnose is browser-safe (no TypeScript compiler API)
     expect(out.length).toBeLessThan(200_000)
   })
 })
+
+describe('diagnoseError — <select value> symptom entry (PZ-09)', () => {
+  it('matches the words a user would paste for the select-value symptom', () => {
+    for (const text of [
+      'my select always shows the first option',
+      'select value not working after upgrade',
+      "the select value isn't selected on load",
+      'select is stuck on first option',
+      'wrong option selected in my select on SSR page',
+    ]) {
+      const r = diagnoseError(text)
+      expect(r, text).not.toBeNull()
+      expect(r!.cause).toContain('select')
+      expect(r!.fix).toContain('Upgrade')
+    }
+  })
+
+  it('does not fire on unrelated select/option text', () => {
+    expect(diagnoseError('how do I select text in an input')).toBeNull()
+    expect(diagnoseError('querySelector returns the first option element')).toBeNull()
+  })
+})

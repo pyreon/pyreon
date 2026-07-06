@@ -229,6 +229,34 @@ fn escape_html_attr(s: &str) -> String {
     s.replace('&', "&amp;").replace('"', "&quot;")
 }
 
+/// Serialize a string as a double-quoted JS string literal — mirrors the JS
+/// backend's `escapeJsString` (= `JSON.stringify(s)`) byte-for-byte: `"`/`\`
+/// escaped, named C0 escapes for \b \t \n \f \r, other control chars as
+/// lowercase `\u00XX`, non-ASCII passed through raw (JSON.stringify does not
+/// unicode-escape). Used to emit a parsed JSX attribute string value into a
+/// bind line independent of the JSX quote style — today only the
+/// `<select value="…">` deferred property set (PZ-09). The
+/// native-equivalence suite is the parity oracle.
+fn escape_js_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{8}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{c}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 // Mirrors the JS `escapeHtmlText` entity-validity rule EXACTLY (jsx.ts):
 //   &(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)  →  &amp;
 // i.e. the run between `&` and `;` is a valid char-ref iff it is:
@@ -4293,12 +4321,26 @@ fn template_fragment_count(frag: &JSXFragment) -> i32 {
 
 // ─── Build template call ─────────────────────────────────────────────────────
 
+// Two-phase emission (PZ-08 fix; mirrors `jsx.ts:buildTemplateCall`
+// byte-for-byte). `ref_lines` (phase 1) holds every PRISTINE-CLONE node
+// capture: element ref walks (`const __eN = …`), sole-text captures
+// (`const __tN = X.firstChild`), and hoisted placeholder consts
+// (`const __pN = <walk>`) for `_mountSlot` placeholder args +
+// `replaceChild` targets. `bind_lines` (phase 2) holds every MUTATION/
+// binding in source order. The body emits ref_lines THEN bind_lines, so
+// every DOM position is captured before any mutation runs — `_mountSlot`
+// removes its `<!>` placeholder and inserts content + a `<!--pyreon-->`
+// marker (net sibling-count delta ≠ 0), so a walk evaluated AFTER it
+// landed on the wrong node. Phase-2 ops are identity-based, hence
+// order-independent w.r.t. sibling structure.
 struct TemplateBuilder {
+    ref_lines: Vec<String>,
     bind_lines: Vec<String>,
     disposer_names: Vec<String>,
     reactive_bind_exprs: Vec<String>,
     var_idx: u32,
     disp_idx: u32,
+    placeholder_idx: u32,
     needs_bind_text: bool,
     needs_bind_direct: bool,
     needs_apply_props: bool,
@@ -4311,11 +4353,13 @@ struct TemplateBuilder {
 impl TemplateBuilder {
     fn new() -> Self {
         TemplateBuilder {
+            ref_lines: Vec::new(),
             bind_lines: Vec::new(),
             disposer_names: Vec::new(),
             reactive_bind_exprs: Vec::new(),
             var_idx: 0,
             disp_idx: 0,
+            placeholder_idx: 0,
             needs_bind_text: false,
             needs_bind_direct: false,
             needs_apply_props: false,
@@ -4343,6 +4387,26 @@ impl TemplateBuilder {
         let name = format!("__t{}", self.var_idx);
         self.var_idx += 1;
         name
+    }
+
+    fn next_placeholder_var(&mut self) -> String {
+        let name = format!("__p{}", self.placeholder_idx);
+        self.placeholder_idx += 1;
+        name
+    }
+
+    /// Capture a placeholder/replace-target walk as a phase-1 const so the
+    /// walk resolves against the pristine clone (before any `_mountSlot`
+    /// mutated the child list). Returns the const name for the phase-2 op.
+    /// Mirrors `jsx.ts:hoistPlaceholderRef`.
+    fn hoist_placeholder_ref(&mut self, parent_ref: &str, child_node_idx: usize) -> String {
+        let p = self.next_placeholder_var();
+        self.ref_lines.push(format!(
+            "const {} = {}",
+            p,
+            child_node_accessor(parent_ref, child_node_idx, true)
+        ));
+        p
     }
 }
 
@@ -4389,11 +4453,14 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
         ctx.needs_bind_import = true;
     }
 
-    if tb.bind_lines.is_empty() && tb.disposer_names.is_empty() {
+    if tb.ref_lines.is_empty() && tb.bind_lines.is_empty() && tb.disposer_names.is_empty() {
         return Some(format!("_tpl(\"{}\", () => null)", escaped));
     }
 
-    // Append `;` to every bind line so ASI can't merge consecutive
+    // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/
+    // bindings) — see the TemplateBuilder header comment.
+    //
+    // Append `;` to every line so ASI can't merge consecutive
     // statements when the next line starts with `(`, `[`, etc. Mirror of
     // the JS-fallback fix in `src/jsx.ts`. Concrete bug shape pre-fix:
     // a child element with `has_dynamic=true` emits
@@ -4406,8 +4473,9 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     // and self-referencing `__e0` before assignment. Adding the `;`
     // terminates each statement deterministically.
     let mut body = tb
-        .bind_lines
+        .ref_lines
         .iter()
+        .chain(tb.bind_lines.iter())
         .map(|l| format!("  {};", l))
         .collect::<Vec<_>>()
         .join("\n");
@@ -4444,25 +4512,36 @@ fn resolve_element_var(
     }
     if has_dynamic {
         let v = tb.next_var();
-        tb.bind_lines.push(format!("const {} = {}", v, accessor));
+        // Pristine-clone capture — phase 1 (see TemplateBuilder header).
+        tb.ref_lines.push(format!("const {} = {}", v, accessor));
         v
     } else {
         accessor.to_string()
     }
 }
 
-fn attr_is_dynamic(attr: &JSXAttributeItem) -> bool {
+fn attr_is_dynamic(attr: &JSXAttributeItem, tag: &str) -> bool {
     match attr {
         JSXAttributeItem::SpreadAttribute(_) => true,
         JSXAttributeItem::Attribute(a) => {
+            let mut attr_name = "";
             if let JSXAttributeName::Identifier(id) = &a.name {
-                let name = id.name.as_str();
-                if name == "ref" {
+                attr_name = id.name.as_str();
+                if attr_name == "ref" {
                     return true;
                 }
-                if is_event_handler(name) {
+                if is_event_handler(attr_name) {
                     return true;
                 }
+            }
+            // `<select value="…">` (plain string form, PZ-09): always emitted
+            // as a deferred property bind line (never baked) — the element
+            // needs a phase-1 ref. Mirrors jsx.ts:attrIsDynamic.
+            if tag == "select"
+                && attr_name == "value"
+                && matches!(&a.value, Some(JSXAttributeValue::StringLiteral(_)))
+            {
+                return true;
             }
             match &a.value {
                 Some(JSXAttributeValue::ExpressionContainer(c)) => {
@@ -4474,10 +4553,18 @@ fn attr_is_dynamic(attr: &JSXAttributeItem) -> bool {
                                 // backend's attrIsDynamic): any shape
                                 // static_attr_to_html bakes into the template
                                 // (or semantically omits) needs NO element
-                                // ref. The attr name doesn't affect the
-                                // Some/None classification.
-                                if static_attr_to_html(e, "x").is_some() {
+                                // ref. Only `<select value>` affects the
+                                // Some/None classification by name, so the
+                                // real attr name + tag are threaded through.
+                                if static_attr_to_html(e, attr_name, tag).is_some() {
                                     return false;
+                                }
+                                // `<select value={…}>` (PZ-09): every
+                                // non-omitted shape emits a (deferred)
+                                // property bind line — the element needs a
+                                // ref even when the expression is static.
+                                if tag == "select" && attr_name == "value" {
+                                    return true;
                                 }
                                 !is_static(e)
                             })
@@ -4491,7 +4578,13 @@ fn attr_is_dynamic(attr: &JSXAttributeItem) -> bool {
 }
 
 fn element_has_dynamic(el: &JSXElement) -> bool {
-    if el.opening_element.attributes.iter().any(attr_is_dynamic) {
+    let tag = jsx_tag_name(el);
+    if el
+        .opening_element
+        .attributes
+        .iter()
+        .any(|a| attr_is_dynamic(a, tag))
+    {
         return true;
     }
     if !is_self_closing(el) {
@@ -4515,12 +4608,18 @@ fn process_element(
     }
     let has_dyn = element_has_dynamic(el);
     let var_name = resolve_element_var(accessor, has_dyn, tb);
-    let html_attrs = process_attrs(el, &var_name, tb, ctx);
+    // Bind lines deferred past this element's children lines (today only
+    // `<select value>` — see process_attrs). Appended AFTER process_children
+    // so a `_mountSlot`-mounted option list exists before `el.value` runs.
+    // Mirrors jsx.ts:processElement.
+    let mut deferred_lines: Vec<String> = Vec::new();
+    let html_attrs = process_attrs(el, &var_name, tag, &mut deferred_lines, tb, ctx);
     let mut html = format!("<{}{}>", tag, html_attrs);
     if !is_self_closing(el) {
         let child_html = process_children(el, &var_name, accessor, tb, ctx)?;
         html.push_str(&child_html);
     }
+    tb.bind_lines.append(&mut deferred_lines);
     if !is_void_element(tag) {
         html.push_str(&format!("</{}>", tag));
     }
@@ -4530,6 +4629,8 @@ fn process_element(
 fn process_attrs(
     el: &JSXElement,
     var_name: &str,
+    tag: &str,
+    deferred_lines: &mut Vec<String>,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> String {
@@ -4565,9 +4666,29 @@ fn process_attrs(
                     });
                     continue;
                 }
+                // `<select value>` (PZ-09; mirrors jsx.ts:processAttrs):
+                // capture the bind lines this attr emits (static one-time
+                // `el.value = …` set, `_bindDirect`, or selector-subscribe)
+                // and DEFER them until after the element's children lines.
+                // `select.value` is a PROPERTY whose assignment selects a
+                // matching <option> — assigned before the options exist
+                // (`_bindDirect`'s eager initial update ran before the
+                // children `_mountSlot`), the value was silently dropped and
+                // the first option won. With static options (baked into the
+                // template HTML) the move is a no-op. The general-reactive
+                // form (`reactive_bind_exprs` → the end-of-template combined
+                // `_bind`) is structurally last already and needs no deferral.
+                if tag == "select" && id.name.as_str() == "value" {
+                    let before = tb.bind_lines.len();
+                    html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
+                    if tb.bind_lines.len() > before {
+                        deferred_lines.extend(tb.bind_lines.drain(before..));
+                    }
+                    continue;
+                }
             }
         }
-        html_attrs.push_str(&process_one_attr(attr, var_name, tb, ctx));
+        html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
     }
     html_attrs
 }
@@ -4575,6 +4696,7 @@ fn process_attrs(
 fn process_one_attr(
     attr: &JSXAttributeItem,
     var_name: &str,
+    tag: &str,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> String {
@@ -4609,7 +4731,7 @@ fn process_one_attr(
                 return String::new();
             }
             let html_attr_name = jsx_to_html_attr(attr_name);
-            attr_initializer_to_html(a, html_attr_name, var_name, tb, ctx)
+            attr_initializer_to_html(a, html_attr_name, var_name, tag, tb, ctx)
         }
     }
 }
@@ -4697,7 +4819,7 @@ fn emit_event_listener(
     }
 }
 
-fn static_attr_to_html(expr: &Expression, html_attr_name: &str) -> Option<String> {
+fn static_attr_to_html(expr: &Expression, html_attr_name: &str, tag: &str) -> Option<String> {
     // Parens + TS type layers are value-transparent: `id={("a")}` /
     // `id={"a" as const}` IS the static literal — unwrap before classifying.
     // No `is_static` pre-gate and NO silent catch-all: the arms below are
@@ -4705,6 +4827,15 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str) -> Option<String
     // the dynamic path emits a one-time setAttribute. The historical
     // `_ => Some(String::new())` catch-all silently DROPPED attributes
     // (`title={1+2}`, `tabIndex={-1}`, `data-x={("t69")}` — fuzz-found).
+    //
+    // `<select value>` (PZ-09; mirrors jsx.ts): <select> has NO `value`
+    // CONTENT attribute — the parser ignores it, so baking is a DEAD
+    // attribute. Value-PRODUCING static shapes return None so the dynamic
+    // path emits a one-time `el.value = …` PROPERTY set (deferred past the
+    // children lines by process_attrs). Omit-semantic arms
+    // (false/null/undefined → "") are unchanged. NOT a silent catch-all:
+    // None falls through to the dynamic path; nothing is dropped.
+    let is_select_value = tag == "select" && html_attr_name == "value";
     let mut e = expr;
     loop {
         match e {
@@ -4718,13 +4849,22 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str) -> Option<String
     }
     match e {
         Expression::StringLiteral(s) => {
+            if is_select_value {
+                return None;
+            }
             Some(format!(" {}=\"{}\"", html_attr_name, escape_html_attr(&s.value)))
         }
         Expression::NumericLiteral(n) => {
+            if is_select_value {
+                return None;
+            }
             Some(format!(" {}=\"{}\"", html_attr_name, n.value))
         }
         Expression::BooleanLiteral(b) => {
             if b.value {
+                if is_select_value {
+                    return None;
+                }
                 Some(format!(" {}", html_attr_name))
             } else {
                 Some(String::new()) // false → omit (semantic)
@@ -4733,6 +4873,9 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str) -> Option<String
         Expression::NullLiteral(_) => Some(String::new()), // null → omit
         Expression::Identifier(id) if id.name == "undefined" => Some(String::new()), // undefined → omit
         Expression::TemplateLiteral(t) if t.expressions.is_empty() => {
+            if is_select_value {
+                return None;
+            }
             // No-substitution template literal: use the raw text
             if let Some(quasi) = t.quasis.first() {
                 Some(format!(
@@ -4752,6 +4895,9 @@ fn static_attr_to_html(expr: &Expression, html_attr_name: &str) -> Option<String
             ) =>
         {
             if let Expression::NumericLiteral(n) = &u.argument {
+                if is_select_value {
+                    return None;
+                }
                 let sign = if matches!(u.operator, UnaryOperator::UnaryNegation) { "-" } else { "" };
                 Some(format!(" {}=\"{}{}\"", html_attr_name, sign, n.value))
             } else {
@@ -5012,10 +5158,11 @@ fn emit_attr_expression(
     expr_node: &Expression,
     html_attr_name: &str,
     var_name: &str,
+    tag: &str,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> String {
-    if let Some(static_html) = static_attr_to_html(expr_node, html_attr_name) {
+    if let Some(static_html) = static_attr_to_html(expr_node, html_attr_name, tag) {
         return static_html;
     }
     // Static object style (no signal reads) — apply once at mount. A dynamic
@@ -5040,17 +5187,33 @@ fn attr_initializer_to_html(
     attr: &JSXAttribute,
     html_attr_name: &str,
     var_name: &str,
+    tag: &str,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> String {
     match &attr.value {
         None => format!(" {}", html_attr_name),
         Some(JSXAttributeValue::StringLiteral(s)) => {
+            // `<select value="b">` (plain string form, PZ-09): never baked —
+            // the value CONTENT attribute is dead on <select> (see
+            // static_attr_to_html). Emit a one-time property set instead;
+            // process_attrs defers it past the element's children lines.
+            // `escape_js_string` serializes the parsed value as a
+            // double-quoted JS literal (quote/backslash/control-safe,
+            // independent of the JSX quote style). Mirrors jsx.ts.
+            if tag == "select" && html_attr_name == "value" {
+                tb.bind_lines.push(attr_setter(
+                    html_attr_name,
+                    var_name,
+                    &escape_js_string(&s.value),
+                ));
+                return String::new();
+            }
             format!(" {}=\"{}\"", html_attr_name, escape_html_attr(&s.value))
         }
         Some(JSXAttributeValue::ExpressionContainer(c)) => {
             match jsx_expr_as_expression(&c.expression) {
-                Some(expr) => emit_attr_expression(expr, html_attr_name, var_name, tb, ctx),
+                Some(expr) => emit_attr_expression(expr, html_attr_name, var_name, tag, tb, ctx),
                 None => String::new(),
             }
         }
@@ -5141,14 +5304,14 @@ fn emit_reactive_text_child(
     // never renders. Mixed-content keeps comment+replaceChild — adjacent
     // baked text runs would merge during parsing.
     if needs_placeholder {
+        let p_var = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
         tb.bind_lines
             .push(format!("const {} = document.createTextNode(\"\")", t_var));
-        tb.bind_lines.push(format!(
-            "{}.replaceChild({}, {})",
-            parent_ref, t_var, child_node_accessor(parent_ref, child_node_idx, true)
-        ));
-    } else {
         tb.bind_lines
+            .push(format!("{}.replaceChild({}, {})", parent_ref, t_var, p_var));
+    } else {
+        // Pristine-clone capture — phase 1 (see TemplateBuilder header).
+        tb.ref_lines
             .push(format!("const {} = {}.firstChild", t_var, var_name));
     }
     // text-child path keeps existing bare-signal emission (allow_bare_signal=false).
@@ -5206,12 +5369,11 @@ fn emit_static_text_child(
 ) -> String {
     if needs_placeholder {
         let t_var = tb.next_text_var();
+        let p_var = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
         tb.bind_lines
             .push(format!("const {} = document.createTextNode({})", t_var, expr_text));
-        tb.bind_lines.push(format!(
-            "{}.replaceChild({}, {})",
-            parent_ref, t_var, child_node_accessor(parent_ref, child_node_idx, true)
-        ));
+        tb.bind_lines
+            .push(format!("{}.replaceChild({}, {})", parent_ref, t_var, p_var));
         "<!>".to_string()
     } else {
         tb.bind_lines
@@ -5274,7 +5436,7 @@ fn process_one_child(
             );
             if is_children_expression(expr, &expr_text) || is_element_valued_ident {
                 tb.needs_mount_slot = true;
-                let placeholder = child_node_accessor(parent_ref, child_node_idx, true);
+                let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
                 tb.bind_lines.push(format!(
                     "const {} = _mountSlot({}, {}, {})",
@@ -5294,7 +5456,7 @@ fn process_one_child(
                 matches!(expr, Expression::JSXElement(_) | Expression::JSXFragment(_));
             if contains_jsx_in_expr(expr) && !expr_is_direct_jsx {
                 tb.needs_mount_slot = true;
-                let placeholder = child_node_accessor(parent_ref, child_node_idx, true);
+                let placeholder = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
                 let d = tb.next_disp();
                 let slot_arg = if is_reactive {
                     format!("() => ({})", expr_text)

@@ -37,7 +37,7 @@ import { setupDelegation } from './delegate'
 import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
 import { mountReactive } from './nodes'
-import { applyProps } from './props'
+import { applyProps, applySelectValueProp } from './props'
 
 type Cleanup = () => void
 const noop: Cleanup = () => {
@@ -507,14 +507,25 @@ function hydrateElement(
     const el = domNode as Element
     const cleanups: Cleanup[] = []
 
-    // Attach props (events + reactive effects) — don't set static attrs (SSR already did)
-    const propCleanup = applyProps(el, vnode.props)
+    // Attach props (events + reactive effects) — don't set static attrs (SSR already did).
+    // `<select value>` is deferred until after children hydrate (PZ-09):
+    // the SSR DOM carries the options already, but a child hydration
+    // mismatch can re-mount them — applying value AFTER hydrateChildren
+    // guarantees the assignment (and a reactive accessor's eager initial
+    // renderEffect run) sees the FINAL option list.
+    const isSelect = vnode.type === 'select'
+    const propCleanup = applyProps(el, vnode.props, isSelect ? 'value' : undefined)
     if (propCleanup) cleanups.push(propCleanup)
 
     // Hydrate children
     const firstChild = firstReal(el.firstChild as ChildNode | null)
     const [childCleanup] = hydrateChildren(vnode.children ?? [], firstChild, el, null, elPath)
     cleanups.push(childCleanup)
+
+    if (isSelect && 'value' in vnode.props) {
+      const valueCleanup = applySelectValueProp(el, vnode.props)
+      if (valueCleanup) cleanups.push(valueCleanup)
+    }
 
     // Set ref
     const ref = vnode.props.ref as RefProp<Element> | undefined

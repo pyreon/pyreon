@@ -1025,6 +1025,59 @@ describeNative('Native vs JS equivalence — DOM properties', () => {
   })
 })
 
+describeNative('Native vs JS equivalence — select value binding (PZ-09)', () => {
+  // <select value> is never baked (dead content attribute) and its bind
+  // line — static one-time property set AND `_bindDirect` — is deferred
+  // past the element's children lines. Both backends must agree on the
+  // skip, the deferral, AND the `escapeJsString`/`escape_js_string`
+  // serialization of the plain-string form.
+  test('static plain-string value + static options', () => {
+    compare('<select value="b"><option value="a">A</option><option value="b">B</option></select>')
+  })
+  test('static expression-container values (string/number/template/signed/as-const)', () => {
+    compare('<select value={"b"}><option/></select>')
+    compare('<select value={3}><option/></select>')
+    compare('<select value={`b`}><option/></select>')
+    compare('<select value={-1}><option/></select>')
+    compare('<select value={"b" as const}><option/></select>')
+  })
+  test('omit-semantic shapes emit nothing', () => {
+    compare('<select value={undefined}><option/></select>')
+    compare('<select value={null}><option/></select>')
+    compare('<select value={false}><option/></select>')
+  })
+  test('reactive value + dynamic options — deferred _bindDirect after _mountSlot', () => {
+    compareWithSignals(
+      'const sig = signal("b"); const x = <select value={() => sig()}>{items.map((i) => <option value={i}>{i}</option>)}</select>',
+      ['sig'],
+    )
+  })
+  test('reactive value + static options (control — single-binding fast path)', () => {
+    compareWithSignals(
+      'const sig = signal("b"); const x = <select value={() => sig()}><option value="a">A</option></select>',
+      ['sig'],
+    )
+  })
+  test('quote-carrying plain-string value (escapeJsString parity)', () => {
+    compare(`<select value='a"b'><option/></select>`)
+  })
+  test('nested select needs a phase-1 element ref', () => {
+    compare('<div><span>x</span><select value="b"><option/></select></div>')
+  })
+  test('mixed attrs: id bakes, listener + value keep their relative slots', () => {
+    compare(
+      '<select id="s" value="b" onChange={(e) => f(e)}>{items.map((i) => <option value={i}>{i}</option>)}</select>',
+    )
+  })
+  test('control: input/textarea value untouched', () => {
+    compare('<div><input value="b" /></div>')
+    compare('<div><textarea value="b"></textarea></div>')
+  })
+  test('SSR mode is unaffected (no template emit)', () => {
+    compareSsr('<select value="b"><option value="a">A</option></select>')
+  })
+})
+
 // ─── Reactivity-lens parity (Phase 3) ───────────────────────────────────────
 // The Rust binary must emit the SAME sidecar as the JS oracle so the
 // ~80% of users on the native path get the Lens too. Each fixture is

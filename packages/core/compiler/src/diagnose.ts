@@ -29,6 +29,51 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // <select value> fix (PZ-09): no exception fires — the symptom is
+    // behavioral ("select always shows the first option", "select value
+    // not working / ignored / not selected"), so the pattern matches the
+    // words a user would paste into `pyreon doctor diagnose` / the MCP
+    // `diagnose` tool rather than an error message.
+    pattern:
+      /select.*(value.*(ignored|not (work|select|appl|set|updat)|isn'?t (work|select|appl|set|updat)|doesn'?t (work|select|appl|set|updat))|(shows?|stuck (on|at)|always).*(first|wrong) option)|(first|wrong) option.*(selected|shows?).*select/i,
+    diagnose: () => ({
+      cause:
+        'On versions before the PZ-09 release, `<select value>` was applied BEFORE the option children existed (and SSR serialized it as a `value="…"` content attribute, which the HTML parser ignores on <select>) — `HTMLSelectElement.value` is a PROPERTY whose setter selects a matching <option>, so an assignment with no options present is silently dropped and the first option stays selected. The drop hit compiled templates with static values, compiled templates with reactive values + dynamic (`.map`/`<For>`) options, the h()/component path, and SSR output.',
+      fix: 'Upgrade `@pyreon/compiler`, `@pyreon/runtime-dom`, and `@pyreon/runtime-server` — the compiler defers select-value bind lines past the children lines, the runtime applies `value` after children mount/hydrate, and SSR marks the matching `<option selected>` instead of the dead attribute. No app code change needed. If you cannot upgrade, set the value imperatively after mount (`onMount(() => { selectRef.value = current() })`) or put `selected` on the matching option.',
+      fixCode: `// All of these now select "b" correctly:
+<select value="b"><option value="a">A</option><option value="b">B</option></select>
+<select value={() => choice()}>{items().map((i) => <option value={i}>{i}</option>)}</select>
+h('select', { value: 'b' }, h('option', { value: 'a' }, 'A'), h('option', { value: 'b' }, 'B'))`,
+      related:
+        'Known gaps: spread value (`<select {...props}>`) on the compiled template path still applies before DYNAMIC options; array values on `multiple` selects are unsupported (String()-coerced, matching the DOM .value setter).',
+    }),
+  },
+  {
+    // Template ref-hoist fix (PZ-08): a reactive/conditional slot
+    // (`{cond() ? <A/> : <B/>}`, `{cond && <el/>}`) BEFORE static siblings
+    // broke the compiled template's sibling ref-walk — `_mountSlot` mounts
+    // content + a `<!--pyreon-->` marker and REMOVES its `<!>` placeholder,
+    // so `const __eN = __root.firstChild.nextSibling…` walks emitted AFTER
+    // it landed on the marker comment (TypeError reading 'setProperty' via
+    // `_setStyle`), on null (setAttribute / .data), or — with TWO sibling
+    // slots — on the FIRST slot's reactive marker, which the second
+    // `_mountSlot` then removed (a later falsy→truthy re-flip of slot 0
+    // crashed `insertBefore` and SILENTLY LOST the subtree).
+    pattern:
+      /reading ['"]setProperty['"]|(reading ['"](setAttribute|data|setProperty)['"]|insertBefore.*not a child of this node).*(_mountSlot|_tpl|_setStyle|pyreon|slot|marker|template)|(_mountSlot|<!--pyreon-->).*(sibling|marker|wrong node|null|missing|lost)/i,
+    diagnose: () => ({
+      cause:
+        "On `@pyreon/compiler` versions before the template ref-hoist release, a reactive/conditional slot child (`{cond() ? <A/> : <B/>}`, `{cond && <el/>}`, `{arr.map(…)}`) placed BEFORE static siblings broke the compiled template's sibling ref-walk: `_mountSlot` mounts content + a `<!--pyreon-->` marker and removes its `<!>` placeholder (net sibling-count change), and the sibling refs / second-slot placeholder walks were emitted AFTER that mutation — so they resolved to the marker comment (TypeError: Cannot read properties of undefined (reading 'setProperty') from a style binding), to null (setAttribute / text .data), or to a sibling slot's marker, which was then removed — making that slot's next falsy→truthy re-flip throw `insertBefore … is not a child of this node` and silently lose its subtree. The failure was initial-state-dependent (some states accidentally correct).",
+      fix: 'Upgrade `@pyreon/compiler` — templates now capture EVERY pristine-clone node reference (element walks, text captures, placeholder consts) BEFORE any `_mountSlot`/`replaceChild` mutation runs, in both backends. No app code change needed. If you cannot upgrade, wrap the dynamic child in its own static element (`<div style="display:contents">{cond && <X/>}</div>`) or move it after the static siblings.',
+      fixCode: `// All of these now compile + run correctly:
+<div>{banner() ? <Banner/> : <Fallback/>}<div style={styles.card}>card</div></div>
+<div>{loading() && <Spinner/>}{items().length && <List/>}</div>
+<div>{show && <em>badge</em>}<span id={dynamicId}>after</span></div>`,
+      related:
+        'Same fix family: @pyreon/flow MiniMap/Controls overlay child-order workaround and @pyreon/zero-content CodeBlock always-rendered-wrapper workaround existed because of this compiler bug.',
+    }),
+  },
+  {
     // Auto-call reachability fix (2026-07 fuzz campaign): symptoms of the
     // OLD emit — a signal function leaking into DOM output / handler math.
     pattern: /(\(\.\.\.args\) =>|function\s*\(\)).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|s\w*\.set\(.*=>.*\+/i,
