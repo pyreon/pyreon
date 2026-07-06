@@ -1,0 +1,168 @@
+# ── Docs Freshness Guard (post-merge self-heal) ────────────────────────────
+#
+# WHY THIS EXISTS. The `Docs Sync` + `Docs Generated Fresh` required checks
+# validate a PR's committed GENERATED docs against its merge ref AT CI TIME.
+# Branch protection runs with `strict: false` (PRs don't have to be up to
+# date with main), so when two in-flight PRs both touch generator INPUTS
+# (`.claude/rules/anti-patterns.md`, package `manifest.ts` files, docs
+# examples), whichever merges LAST lands generated output computed from a
+# stale snapshot — main's committed generated docs silently drift from what
+# the generators produce. This has happened repeatedly (see c9f71685d, a
+# manual cleanup commit, and the 2026-07-06 PZ-fix train where three PRs
+# invalidated each other). Requiring up-to-date branches / a merge queue
+# would prevent it but costs a full ~8-min CI re-run per queued PR — a
+# policy trade-off deliberately not taken.
+#
+# WHAT IT DOES. On every push to main: re-run BOTH generator sets (gen-docs
+# → llms.txt / llms-full.txt / mcp api-reference.ts; gen-all → docs
+# reference/troubleshooting/examples + nav files) and diff the generated
+# paths.
+#   - No drift → green, done (runtime is seconds; the generators are
+#     lib-free — they read package source via the bun condition).
+#   - Drift → this run FAILS (an honest red signal on the offending main
+#     commit: "main's generated docs are stale right now") AND it
+#     force-pushes an `auto/docs-regen` branch + opens/updates a fix PR
+#     containing exactly the regeneration a human would commit. When
+#     `api-reference.ts` (published @pyreon/mcp source) drifted, a patch
+#     changeset is included so the Changeset gate passes. Auto-merge is
+#     armed on the fix PR when the token supports it.
+#
+# SELF-CONVERGING. Merging the fix PR pushes main → the guard re-runs →
+# clean → green. A second drift while the fix PR is open just force-updates
+# the same branch from the newer main state.
+#
+# TOKEN. Mirrors release.yml's documented pattern: prefer `RELEASE_PAT`
+# (fine-grained PAT — PRs it creates DO trigger CI, so required checks run
+# and auto-merge can complete), fall back to `GITHUB_TOKEN` (fix PR is still
+# created, but GitHub suppresses CI events for it — close & reopen the PR to
+# trigger checks, or configure RELEASE_PAT).
+#
+# This workflow never blocks PR merges — it is a main-health signal plus
+# self-heal, not a required check.
+
+name: Docs Freshness Guard
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: docs-freshness-guard
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  guard:
+    name: Docs Freshness Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+
+      - name: Regenerate all generated docs from main's sources
+        run: |
+          bun run gen-docs
+          bun docs/scripts/gen-all.ts
+
+      - name: Detect drift
+        id: drift
+        run: |
+          # Exactly the paths the two generator pipelines own. Scoped diff so
+          # incidental workspace noise can't false-fire the guard.
+          GENERATED=(
+            llms.txt
+            llms-full.txt
+            packages/tools/mcp/src/api-reference.ts
+            docs/src/content/docs/reference
+            docs/src/content/docs/troubleshooting
+            docs/src/content/docs/troubleshooting.md
+            docs/src/content/docs/examples.md
+            docs/src/reference-nav.generated.ts
+            docs/src/troubleshooting-nav.generated.ts
+          )
+          DRIFTED=$(git status --porcelain -- "${GENERATED[@]}" | awk '{print $2}')
+          if [ -z "$DRIFTED" ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+            echo "✓ main's generated docs are in sync with source" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### ✗ main's generated docs drifted (concurrent-merge staleness)"
+              echo ""
+              echo '```'
+              echo "$DRIFTED"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "$DRIFTED" > /tmp/drifted-files.txt
+          fi
+
+      - name: Open / update the auto-regen fix PR
+        if: steps.drift.outputs.fresh == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # @pyreon/mcp is a published package whose src/api-reference.ts is
+          # generated — a drift there is consumer-affecting, so the Changeset
+          # required check demands a changeset. Include one automatically.
+          if grep -q 'packages/tools/mcp/src/api-reference.ts' /tmp/drifted-files.txt; then
+            cat > .changeset/auto-docs-regen.md <<'EOF'
+          ---
+          "@pyreon/mcp": patch
+          ---
+
+          Regenerate api-reference from manifests (post-merge docs-freshness guard — concurrent-merge staleness on main).
+          EOF
+            git add .changeset/auto-docs-regen.md
+          fi
+
+          git checkout -B auto/docs-regen
+          git add -A -- llms.txt llms-full.txt packages/tools/mcp/src/api-reference.ts \
+            docs/src/content/docs/reference docs/src/content/docs/troubleshooting \
+            docs/src/content/docs/troubleshooting.md docs/src/content/docs/examples.md \
+            docs/src/reference-nav.generated.ts docs/src/troubleshooting-nav.generated.ts
+          git commit -m "docs: regenerate stale generated docs (freshness guard, main@${GITHUB_SHA::9})"
+          git push --force origin auto/docs-regen
+
+          BODY=$(cat <<EOF
+          Automated regeneration: main's committed generated docs drifted from what the generators produce (concurrent-merge staleness — two PRs touching generator inputs merged without seeing each other; branch protection is non-strict so checks don't re-run on base movement).
+
+          Drifted files:
+          \`\`\`
+          $(cat /tmp/drifted-files.txt)
+          \`\`\`
+
+          Produced by the **Docs Freshness Guard** workflow from \`main@${GITHUB_SHA::9}\` — the diff is exactly \`bun run gen-docs && bun docs/scripts/gen-all.ts\`.
+
+          > If the checks below show "Expected — waiting" forever, this PR was created with \`GITHUB_TOKEN\` (GitHub suppresses CI events for it). Close & reopen it to trigger CI, or configure the \`RELEASE_PAT\` secret (see release.yml).
+          EOF
+          )
+          EXISTING=$(gh pr list --head auto/docs-regen --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh pr edit "$EXISTING" --body "$BODY"
+            echo "Updated existing fix PR #$EXISTING" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh pr create --base main --head auto/docs-regen \
+              --title "docs: regenerate stale generated docs (freshness guard)" \
+              --body "$BODY"
+            echo "Opened fix PR for the drift" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          # Arm auto-merge when the token/plan supports it; harmless no-op otherwise.
+          gh pr merge auto/docs-regen --auto --squash || echo "auto-merge not armed (token/plan limitation) — merge the fix PR manually" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail loudly while main is stale
+        if: steps.drift.outputs.fresh == 'false'
+        run: |
+          echo "::error::main's generated docs are STALE (concurrent-merge staleness). A fix PR has been opened/updated on branch auto/docs-regen — merge it to heal. This red run is the visibility signal, not a merge blocker."
+          exit 1
