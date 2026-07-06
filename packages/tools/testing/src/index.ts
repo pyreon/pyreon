@@ -1,18 +1,60 @@
 /**
  * `@pyreon/testing` — official testing utilities for Pyreon.
  *
- * Tier 1 (this + PRs 2–3): Testing-Library-style `render` / `screen` /
- * `fireEvent` / `waitFor` / `cleanup` / `renderHook`.
- * Tier 2 (PRs 4–5): reactive-native matchers (`expectSignal` / `expectEffect`
- * / `expectGarbageCollected`) that read Pyreon's reactive graph — assertions
- * impossible in DOM-only testing libraries.
+ * A thin adapter over `@testing-library/dom` (the shared foundation under
+ * React/Vue/Solid/Svelte testing) — so the whole Testing-Library API works
+ * exactly as you know it — PLUS Pyreon-native additions: a `render` that mounts
+ * a Pyreon component, `cleanup`, and (in the reactive-matcher tiers) assertions
+ * that read Pyreon's fine-grained reactive graph.
+ *
+ *   Pyreon-native : render, cleanup.
+ *   Re-exported    : screen, fireEvent, waitFor, within, all queries, prettyDOM,
+ *                    … straight from @testing-library/dom.
  */
+
+// ── Pyreon-native: mount + lifecycle ──────────────────────────────────────
 export { render } from './render'
 export type { RenderOptions, RenderResult } from './render'
-export { screen } from './screen'
 export { cleanup } from './cleanup'
-export { fireEvent } from './events'
-export { waitFor } from './wait'
-export type { WaitForOptions } from './wait'
-export { accessibleName, implicitRole, roleOf } from './roles'
-export type { BoundQueries, ByRoleOptions, TextMatch, WaitOptions } from './queries'
+
+// ── The full @testing-library/dom surface, verbatim ───────────────────────
+// screen / fireEvent / waitFor / within / queries / getByRole (real ARIA +
+// accessible-name) / prettyDOM / etc. — the exact API a Testing-Library user
+// already knows, with the ecosystem's battle-tested edge-case handling.
+export {
+  buildQueries,
+  configure,
+  createEvent,
+  fireEvent,
+  getByAltText,
+  getByDisplayValue,
+  getByLabelText,
+  getByPlaceholderText,
+  getByRole,
+  getByTestId,
+  getByText,
+  getByTitle,
+  getConfig,
+  getDefaultNormalizer,
+  getNodeText,
+  getQueriesForElement,
+  getRoles,
+  isInaccessible,
+  logRoles,
+  prettyDOM,
+  queries,
+  queryHelpers,
+  screen,
+  waitFor,
+  waitForElementToBeRemoved,
+  within,
+} from '@testing-library/dom'
+export type {
+  BoundFunctions,
+  ByRoleMatcher,
+  ByRoleOptions,
+  Matcher,
+  MatcherOptions,
+  Queries,
+  waitForOptions,
+} from '@testing-library/dom'

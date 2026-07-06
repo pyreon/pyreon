@@ -41,14 +41,24 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@testing-library/dom": "^10.4.1"
+  },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
+    "@pyreon/runtime-dom": "workspace:^",
+    "@testing-library/jest-dom": "^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@testing-library/jest-dom": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
+    "@testing-library/jest-dom": "^6.9.1",
     "@vitest/browser-playwright": "^4.1.8",
     "@vitus-labs/tools-rolldown": "^2.5.0"
   },

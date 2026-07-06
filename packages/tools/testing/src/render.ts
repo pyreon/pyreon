@@ -1,15 +1,20 @@
 /**
- * `render()` — mount a Pyreon VNode into an isolated container appended to
- * `document.body`, returning bound queries + an `unmount`. The Testing-Library
- * entry point users reach for first.
+ * `render()` — mount a Pyreon VNode into an isolated container and bind the
+ * full `@testing-library/dom` query set to it.
  *
- * Isolation is by construction: each call creates its own container so there
- * is no shared root, no leftover listeners between tests. `cleanup()` (auto-
- * registered when a test runner is present) unmounts every rendered tree.
+ * This is the ONLY Pyreon-specific piece of the query/interaction layer: it
+ * knows how to mount a Pyreon component. Everything downstream — `screen`,
+ * every `getBy*`/`queryBy*`/`findBy*` query (with real ARIA role + accessible-
+ * name resolution), `fireEvent`, `waitFor` — comes from `@testing-library/dom`,
+ * the same battle-tested foundation under React/Vue/Solid/Svelte testing. So a
+ * Pyreon dev's Testing-Library knowledge transfers exactly, and edge cases the
+ * ecosystem already solved come for free. (This mirrors how every Pyreon
+ * adapter package is built: `@pyreon/query` wraps TanStack, `@pyreon/dnd` wraps
+ * pragmatic-drag-and-drop — `@pyreon/testing` wraps testing-library.)
  */
 import type { VNodeChild } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
-import { type BoundQueries, bindQueries } from './queries'
+import { type BoundFunctions, getQueriesForElement, type queries } from '@testing-library/dom'
 
 export interface RenderOptions {
   /**
@@ -18,20 +23,20 @@ export interface RenderOptions {
    */
   container?: HTMLElement
   /**
-   * Root the container is appended to + queries are scoped from when no
-   * explicit `container` is given. Defaults to `document.body`.
+   * Root the container is appended to + `screen`-style queries resolve from
+   * when no explicit `container` is given. Defaults to `document.body`.
    */
   baseElement?: HTMLElement
 }
 
-export interface RenderResult extends BoundQueries {
+export type RenderResult = BoundFunctions<typeof queries> & {
   /** The container the tree was mounted into. */
   container: HTMLElement
   /** The base element queries fall back to (`document.body` by default). */
   baseElement: HTMLElement
   /** Unmount the tree, run cleanups, and remove the container. */
   unmount: () => void
-  /** `container.innerHTML` — handy for snapshot assertions. */
+  /** `container.innerHTML` — handy for quick assertions. */
   debug: () => string
 }
 
@@ -52,7 +57,8 @@ export function render(ui: VNodeChild, options: RenderOptions = {}): RenderResul
   const result: RenderResult = {
     container,
     baseElement,
-    ...bindQueries(container),
+    // The full @testing-library/dom query set, scoped to this container.
+    ...getQueriesForElement(container),
     debug: () => container.innerHTML,
     unmount() {
       dispose()
