@@ -29,7 +29,7 @@ description: "Common context & provider mistakes in Pyreon and how to fix them."
 
 ### onClick=&#123;undefined&#125;
 
-In production, `undefined` gets wrapped as an event listener and crashes. Always guard: `onClick={condition ? handler : undefined}` is safe (runtime bails on non-functions), but `onClick={maybeUndefined}` from props needs checking.
+`undefined`/`null` event handlers do NOT crash — the runtime explicitly treats a nullish handler as legitimate and silently bails (`applyEventProp` in `runtime-dom/src/props.ts` early-returns on `typeof value !== 'function'`, warning only for actually-wrong types like strings/objects). So `onClick={condition ? handler : undefined}` is the intended conditional-handler pattern. The real risk is a **silent dead control**: a handler that resolves to `undefined` when you meant to pass one (e.g. `onClick={maybeUndefined}` from props) leaves the button rendering fine but doing nothing — no error to trace it by. The detector fires only on an EXPLICIT literal `onClick={undefined}` (a code smell — just omit the attribute); a possibly-undefined value from props is the harder, un-detectable shape to guard by hand. (Corrected 2026-07 from an earlier "gets wrapped as an event listener and crashes" claim, which the runtime code disproves.)
 
 **Detected by:** `on-click-undefined` — surfaced by `@pyreon/lint` / `pyreon doctor` / MCP `validate`.
 
