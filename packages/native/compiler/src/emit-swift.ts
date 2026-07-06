@@ -3913,10 +3913,22 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return `[${e.elements.map((el) => emitSwiftExpr(el, indent)).join(', ')}]`
     }
     case 'spread':
-      // Bare spread outside an ArrayExpression — the parser produces
-      // this for `{...obj}`-style usage which Swift doesn't have a
-      // direct emit for. Degrades to the argument; warn at parse time
-      // would be ideal but the IR doesn't carry context.
+      // A bare spread node reaching the expr emitter is a CALL-ARGUMENT
+      // spread (`f(...xs)` / `o.h(...xs)`). Every legitimate spread
+      // consumer — array-literal concat (`[...a, x]` → `a + [x]`),
+      // object partial-update (`{...t, b}` → copy/mutate), and
+      // `Math.max(...arr)` / `Math.min(...arr)` — extracts its spread
+      // BEFORE emitting, so it never routes through here. A call-arg
+      // spread has no faithful native lowering (Swift/Kotlin calls take
+      // a fixed argument list, no variadic spread) — degrading to the
+      // bare argument silently passed the ARRAY as one scalar arg
+      // (`f(xs)`), an uncompilable mis-emit. The emitter is the correct
+      // layer to warn: parse can't distinguish a call-arg spread from an
+      // array-element spread (both are `SpreadElement`), so the IR only
+      // carries the disambiguating context down here.
+      _emitWarnings.push(
+        'Spread arguments (`f(...args)`) aren\'t supported in native (PMTC) — a Swift/Kotlin call takes a fixed argument list, not a variadic spread. Pass arguments explicitly, e.g. `f(a, b)`.',
+      )
       return emitSwiftExpr(e.argument, indent)
     case 'object': {
       // G4 — partial-update form. When the object has EXACTLY ONE
