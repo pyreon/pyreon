@@ -974,10 +974,15 @@ export function createRouter<TNames extends string = string>(
     // the non-VT `else` path below; only the fade/slide is suppressed. This is
     // read per-navigation (not cached) so a user toggling the OS preference
     // mid-session is respected on the next route change.
-    const reducedMotion =
-      isClient &&
-      typeof matchMedia === 'function' &&
-      matchMedia('(prefers-reduced-motion: reduce)').matches
+    // The early-return `typeof` guard makes the whole helper SSR-safe and is
+    // the form `@pyreon/lint`'s `no-window-in-ssr` recognises (an inline
+    // `typeof matchMedia === 'function' && matchMedia(...)` is NOT — the rule
+    // wants an early-return guard at the function entry).
+    const prefersReducedMotion = (): boolean => {
+      if (typeof matchMedia === 'undefined') return false
+      return matchMedia('(prefers-reduced-motion: reduce)').matches
+    }
+    const reducedMotion = isClient && prefersReducedMotion()
     const useVT =
       isClient &&
       !reducedMotion &&
