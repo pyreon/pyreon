@@ -1624,6 +1624,146 @@ export function transformJSX_JS(
   // is skipping the createTextNode fast path, never a correctness regression.
   const elementVars = new Set<string>()
 
+  // PZ-02 fix: names of in-file function bindings that RETURN JSX — `const
+  // cell = (v) => <b>{v}</b>`, `function cell(v) { return <b>{v}</b> }`. A
+  // call child of such a binding under a DOM-element parent
+  // (`<td>{cell(x)}</td>`, incl. the accessor form `{() => cell(x)}`) must be
+  // MOUNTED via `_mountSlot`, not bound as reactive TEXT — pre-fix it emitted
+  // `_bind(() => { __t0.data = cell(x) })`, which stringifies the returned
+  // VNode to "[object Object]" (SSR mounted it correctly, so the shape was
+  // ALSO a guaranteed SSR↔client mismatch). Scope-aware via `shadowedJsxFns`
+  // (same discipline as the signal auto-call pass). CROSS-FILE callees are
+  // out of scope — no type info at this seam — they keep the reactive-text
+  // path (+ runtime dev diagnostics). Same imprecision trade-off as
+  // `elementVars`: `_mountSlot` renders string/number returns correctly too,
+  // so a helper that conditionally returns non-VNodes stays correct — the
+  // only cost is skipping the reactive-text fast path.
+  const jsxFnVars = new Set<string>()
+  const shadowedJsxFns = new Set<string>()
+
+  /** Check if an identifier name is an active (non-shadowed) JSX-returning fn. */
+  function isActiveJsxFn(name: string): boolean {
+    return jsxFnVars.has(name) && !shadowedJsxFns.has(name)
+  }
+
+  /**
+   * Value shape that IS JSX after unwrapping value-transparent layers —
+   * a direct element/fragment, or a conditional/logical whose branch is
+   * (`cond ? <b/> : v`, `flag && <b/>`). Deliberately narrow (mirrored 1:1
+   * in the Rust backend's `returns_jsx_value`) — anything else returns
+   * false and the binding keeps its existing classification.
+   */
+  function returnsJsxValue(expr: N): boolean {
+    const u = unwrapTypeLayers(expr)
+    if (u.type === 'JSXElement' || u.type === 'JSXFragment') return true
+    if (u.type === 'ConditionalExpression')
+      return returnsJsxValue(u.consequent) || returnsJsxValue(u.alternate)
+    if (u.type === 'LogicalExpression') return returnsJsxValue(u.left) || returnsJsxValue(u.right)
+    return false
+  }
+
+  /**
+   * Does this function VALUE return JSX on any path? Concise arrow body, or
+   * any `return` statement in the block body (statement-recursive, does NOT
+   * descend into nested functions — an inner closure's return is not this
+   * function's return). Conservative: if ANY return path returns JSX, the
+   * binding classifies as JSX-returning.
+   */
+  function fnReturnsJsx(fn: N): boolean {
+    if (fn.type === 'ArrowFunctionExpression' && fn.body && fn.body.type !== 'BlockStatement') {
+      return returnsJsxValue(fn.body)
+    }
+    const body = fn.body
+    if (!body) return false
+    let found = false
+    function visitStmt(n: N): void {
+      if (found) return
+      if (
+        n.type === 'FunctionDeclaration' ||
+        n.type === 'FunctionExpression' ||
+        n.type === 'ArrowFunctionExpression'
+      )
+        return
+      if (n.type === 'ReturnStatement' && n.argument && returnsJsxValue(n.argument)) {
+        found = true
+        return
+      }
+      forEachChildFast(n, visitStmt)
+    }
+    visitStmt(body)
+    return found
+  }
+
+  /** Is this declarator init (parens-unwrapped) a JSX-returning fn value? */
+  function isJsxFnInit(init: N | undefined | null): boolean {
+    let node = init
+    while (node?.type === 'ParenthesizedExpression') node = node.expression
+    if (!node) return false
+    if (node.type !== 'ArrowFunctionExpression' && node.type !== 'FunctionExpression') return false
+    return fnReturnsJsx(node)
+  }
+
+  /**
+   * Find declarations/params in a function that shadow JSX-returning fn
+   * names — the `findShadowingNames` discipline applied to `jsxFnVars`
+   * (params + body-top-level variable declarations; a same-named re-decl
+   * that is ITSELF a JSX-returning fn is not a shadow, mirroring the
+   * `isSignalCall` carve-out).
+   */
+  function findShadowingJsxFnNames(node: N): string[] {
+    const shadows: string[] = []
+    for (const param of node.params ?? []) {
+      if (param.type === 'Identifier' && jsxFnVars.has(param.name)) {
+        shadows.push(param.name)
+      }
+      if (param.type === 'ObjectPattern') {
+        for (const prop of param.properties ?? []) {
+          const val = prop.value ?? prop.key
+          if (val?.type === 'Identifier' && jsxFnVars.has(val.name)) {
+            shadows.push(val.name)
+          }
+        }
+      }
+      if (param.type === 'ArrayPattern') {
+        for (const el of param.elements ?? []) {
+          if (el?.type === 'Identifier' && jsxFnVars.has(el.name)) {
+            shadows.push(el.name)
+          }
+        }
+      }
+    }
+    const body = node.body
+    const stmts = body?.body ?? body?.statements
+    if (!Array.isArray(stmts)) return shadows
+    for (const stmt of stmts) {
+      if (stmt.type === 'VariableDeclaration') {
+        for (const decl of stmt.declarations ?? []) {
+          if (decl.id?.type === 'Identifier' && jsxFnVars.has(decl.id.name)) {
+            if (!isJsxFnInit(decl.init)) shadows.push(decl.id.name)
+          }
+        }
+      }
+    }
+    return shadows
+  }
+
+  /**
+   * PZ-02: is this (type-layer-unwrapped) child expression a call to an
+   * in-file JSX-returning helper? Accepts the bare call (`{cell(x)}`) and
+   * the concise-arrow accessor form (`{() => cell(x)}`, body type-layer
+   * transparent). Member calls (`utils.cell(x)`) and block-body arrows bail
+   * — they keep their existing classification.
+   */
+  function isJsxHelperCall(node: N): boolean {
+    let inner = node
+    if (inner.type === 'ArrowFunctionExpression' && inner.body?.type !== 'BlockStatement') {
+      inner = unwrapTypeLayers(inner.body)
+    }
+    if (inner.type !== 'CallExpression') return false
+    const callee = inner.callee
+    return callee?.type === 'Identifier' && isActiveJsxFn(callee.name)
+  }
+
   // ── Signal variable tracking (for auto-call in JSX) ──────────────────────
   // Tracks `const x = signal(...)` declarations. In JSX expressions, bare
   // references to these identifiers are auto-called: `{x}` → `{x()}`.
@@ -1766,6 +1906,11 @@ export function transformJSX_JS(
         if (initNode?.type === 'JSXElement' || initNode?.type === 'JSXFragment') {
           elementVars.add(decl.id.name)
         }
+      }
+      // PZ-02: track JSX-returning function bindings (const-only — a `let`
+      // can be reassigned to a non-JSX fn). See `jsxFnVars`.
+      if (node.kind === 'const' && decl.id?.type === 'Identifier' && isJsxFnInit(decl.init)) {
+        jsxFnVars.add(decl.id.name)
       }
       if (node.kind !== 'const') continue
       if (callbackDepth > 0) continue
@@ -2126,6 +2271,7 @@ export function transformJSX_JS(
       node.type === 'ArrowFunctionExpression' ||
       node.type === 'FunctionExpression'
     let scopeShadows: string[] | null = null
+    let scopeJsxFnShadows: string[] | null = null
     if (isFunction) {
       // Track callback nesting for prop-derived var exclusion
       const parent = findParent(node)
@@ -2134,10 +2280,22 @@ export function transformJSX_JS(
       if (isCallbackArg) _callbackDepth++
       // Register component props (only for non-callback functions with JSX)
       maybeRegisterComponentProps(node)
+      // PZ-02: a named function DECLARATION returning JSX is a JSX-returning
+      // helper binding (registered at its statement position — a helper
+      // hoisted-above-use, i.e. declared AFTER the JSX that calls it, is NOT
+      // tracked; both backends agree on this source-order boundary).
+      if (node.type === 'FunctionDeclaration' && node.id?.type === 'Identifier' && fnReturnsJsx(node)) {
+        jsxFnVars.add(node.id.name)
+      }
       // Track signal name shadowing for scope awareness
       if (signalVars.size > 0) {
         scopeShadows = findShadowingNames(node)
         for (const name of scopeShadows) shadowedSignals.add(name)
+      }
+      // PZ-02: parallel shadow tracking for JSX-returning fn names
+      if (jsxFnVars.size > 0) {
+        scopeJsxFnShadows = findShadowingJsxFnNames(node)
+        for (const name of scopeJsxFnShadows) shadowedJsxFns.add(name)
       }
     }
 
@@ -2186,6 +2344,8 @@ export function transformJSX_JS(
     }
     // Restore signal shadowing
     if (scopeShadows) for (const name of scopeShadows) shadowedSignals.delete(name)
+    // Restore JSX-returning fn shadowing
+    if (scopeJsxFnShadows) for (const name of scopeJsxFnShadows) shadowedJsxFns.delete(name)
   }
 
   walkNode(program)
@@ -2877,6 +3037,16 @@ export function transformJSX_JS(
       varName: string,
       tag: string,
     ): string {
+      // PZ-05 fix: TS type-only layers/parens are value-transparent — unwrap
+      // BEFORE classification (mirrors processOneChild) so
+      // `title={(() => x()) as never}` classifies (and emits) identically to
+      // `title={() => x()}`. Pre-fix the wrapped accessor fell through to the
+      // static arm and setAttribute'd the function SOURCE string. Also lets
+      // the static object-style check + the downstream `_bindDirect` /
+      // selector promotions see through casts (`style={{…} as CSSProperties}`,
+      // `title={(() => x()) satisfies unknown}`). `staticAttrToHtml` already
+      // unwraps internally — the double unwrap is a no-op.
+      exprNode = unwrapTypeLayers(exprNode)
       const staticHtml = staticAttrToHtml(exprNode, htmlAttrName, tag)
       if (staticHtml !== null) return staticHtml
       if (
@@ -3241,19 +3411,44 @@ export function transformJSX_JS(
         return processElement(child.node, childAccessor)
       }
       const needsPlaceholder = useMixed || useMultiExpr
-      const { expr, isReactive } = unwrapAccessor(child.expression)
+      // PZ-05 fix: TS type-only layers (`as T` / `satisfies T` / `!`) and
+      // parens are value-transparent — unwrap BEFORE classification so
+      // `{(() => x()) as never}` classifies (and emits) identically to
+      // `{() => x()}`. Pre-fix the wrapped accessor fell through to the
+      // STATIC bake arm and stringified the function SOURCE into the DOM
+      // (`textContent = (() => x()) as never`). Same helper the signal
+      // auto-call pass uses for its "parens/TS-layer transparent" contract.
+      const childExpr = unwrapTypeLayers(child.expression)
+      const { expr, isReactive } = unwrapAccessor(childExpr)
       // Round 9 fix: a bare `{el}` where `el` is an element-valued binding
       // (`const el = <X/>`) must be MOUNTED via _mountSlot, not text-coerced
       // via createTextNode (which stringifies the NativeItem). Same emission
       // as the children-slot path; _mountSlot handles every child type.
       const isElementValuedIdent =
-        (child.expression?.type === 'Identifier' && elementVars.has(child.expression.name)) ||
+        (childExpr.type === 'Identifier' && elementVars.has(childExpr.name)) ||
         (!isReactive && /^[A-Za-z_$][\w$]*$/.test(expr) && elementVars.has(expr))
-      if (isChildrenExpression(child.expression, expr) || isElementValuedIdent) {
+      if (isChildrenExpression(childExpr, expr) || isElementValuedIdent) {
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
         bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
+        return '<!>'
+      }
+      // PZ-02 fix: a call to an in-file JSX-returning helper (`{cell(x)}`,
+      // incl. the accessor form `{() => cell(x)}`) must be MOUNTED via
+      // `_mountSlot`, not bound as reactive TEXT — pre-fix it emitted
+      // `_bind(() => { __t0.data = cell(x) })`, stringifying the returned
+      // VNode to "[object Object]" (SSR mounts the shape correctly, so this
+      // also removes a guaranteed SSR↔client mismatch). Always wrapped in an
+      // accessor: args reading signals re-render the slot
+      // (`_mountSlot(() => cell(sig()), …)` re-runs like any reactive slot),
+      // and a call is always dynamic. Cross-file callees are NOT routed —
+      // see `jsxFnVars`.
+      if (isJsxHelperCall(childExpr)) {
+        needsMountSlotImport = true
+        const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
+        const d = nextDisp()
+        bindLines.push(`const ${d} = _mountSlot(() => (${expr}), ${parentRef}, ${placeholder})`)
         return '<!>'
       }
       // Element-conditional / inline-JSX child (`{cond() ? <A/> : <B/>}`,
@@ -3263,9 +3458,14 @@ export function transformJSX_JS(
       // signal change), same machinery the element-valued-const path uses.
       // Reactive bodies are wrapped back into an accessor so the boundary is
       // reactive; a static element-conditional is passed bare (mounts once).
-      const exprIsDirectJSX =
-        child.expression?.type === 'JSXElement' || child.expression?.type === 'JSXFragment'
-      if (containsJSXInExpr(child.expression) && !exprIsDirectJSX) {
+      // Direct JSX in a container (`{<span/>}`) bails the template upstream
+      // (countChildForTemplate) and keeps the static-hoist path — but the
+      // TYPE-WRAPPED form (`{(<span/>) as never}`) reaches here (the count
+      // sees the wrapper node) and routes through `_mountSlot` on the
+      // unwrapped slice.
+      const exprIsDirectJSX = childExpr.type === 'JSXElement' || childExpr.type === 'JSXFragment'
+      const wasTypeWrapped = childExpr !== child.expression
+      if (containsJSXInExpr(childExpr) && (!exprIsDirectJSX || wasTypeWrapped)) {
         needsMountSlotImport = true
         const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
@@ -3273,7 +3473,7 @@ export function transformJSX_JS(
         bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder})`)
         return '<!>'
       }
-      const cx = child.expression
+      const cx = childExpr
       if (isReactive) {
         lens(
           cx.start as number,
@@ -3283,7 +3483,7 @@ export function transformJSX_JS(
         )
         return emitReactiveTextChild(
           expr,
-          child.expression,
+          childExpr,
           varName,
           parentRef,
           childNodeIdx,

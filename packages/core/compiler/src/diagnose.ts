@@ -99,17 +99,26 @@ mount(
     }),
   },
   {
-    // Auto-call reachability fix (2026-07 fuzz campaign): symptoms of the
-    // OLD emit — a signal function leaking into DOM output / handler math.
-    pattern: /(\(\.\.\.args\) =>|function\s*\(\)).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|s\w*\.set\(.*=>.*\+/i,
+    // Auto-call reachability fix (2026-07 fuzz campaign) + template
+    // classification TS-transparency fix (PZ-05): symptoms of the OLD emit —
+    // a function's SOURCE leaking into DOM output / handler math. Two
+    // historical causes, one symptom family: (a) bare signal reads not
+    // auto-called in nested handler/callback/JSX positions; (b) TS
+    // type-layers (`as never` / `satisfies` / `!` / parens) opaque to the
+    // template child/attr classifier, so a cast accessor fell through to a
+    // STATIC bake (`textContent = (() => x()) as never`).
+    pattern: /(\(\.\.\.args\) =>|function\s*\(\)|\(\)\s*=>).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|(as never|satisfies).*(textContent|attribute|source|rendered|literal text)|s\w*\.set\(.*=>.*\+/i,
     diagnose: () => ({
       cause:
-        'On `@pyreon/compiler` versions before the auto-call reachability release, bare signal reads inside event-handler bodies, `.map`/callback re-emits, and nested JSX under conditional slots were NOT auto-called on one or both backends — the signal FUNCTION leaked into the emitted code, so string contexts rendered its source (`id="v(...args) => {…"`), boolean contexts were always truthy (`title={sig ? "a" : "b"}` stuck), and the canonical counter (`count.set(count + 1)`) concatenated the function.',
-      fix: 'Upgrade `@pyreon/compiler` — the auto-call pass now walks nested function bodies (shadow-aware) and nested JSX uniformly in BOTH backends, locked by a seeded differential-fuzz gate. No app code change needed; explicit `sig()` calls always worked and continue to.',
-      fixCode: `// All of these now compile correctly with BARE signal reads:
+        'A function\'s SOURCE text is rendering into the DOM. Two known causes: (1) on `@pyreon/compiler` versions before the auto-call reachability release, bare signal reads inside event-handler bodies, `.map`/callback re-emits, and nested JSX under conditional slots were NOT auto-called on one or both backends — the signal FUNCTION leaked into the emitted code, so string contexts rendered its source (`id="v(...args) => {…"`), boolean contexts were always truthy (`title={sig ? "a" : "b"}` stuck), and the canonical counter (`count.set(count + 1)`) concatenated the function. (2) On versions before the template-classification TS-transparency release, a TS-cast accessor child/attr (`{(() => x()) as never}`, `title={(() => x()) satisfies unknown}`, or even plain parens `{(() => x())}`) was OPAQUE to the template classifier and fell through to a STATIC bake — rendering the function source as literal text / attribute value.',
+      fix: 'First, remove the cast: accessor-typed children and attrs accept the function form directly (`{() => x()}`, `title={() => x()}`) — an `as never` around an accessor is never needed and hides type errors. Then upgrade `@pyreon/compiler` if you are on an older release — the auto-call pass walks nested function bodies (shadow-aware) and nested JSX uniformly in BOTH backends, and the template classifier now unwraps TS type-layers/parens at the child + attr seams, so `(expr) as never` compiles byte-identically to `expr`. Both are locked by a seeded differential-fuzz gate.',
+      fixCode: `// All of these now compile correctly:
 <button onClick={() => count.set(count + 1)}>+</button>
 <ul>{items().map((it) => <li title={flag ? "a" : "b"}>{it}</li>)}</ul>
-{cond() ? <span id={\`v\${sig}\`}>x</span> : null}`,
+{cond() ? <span id={\`v\${sig}\`}>x</span> : null}
+// TS-layer wrappers are value-transparent (but prefer the bare form):
+<div>{(() => name()) as never}</div>  // ≡ <div>{() => name()}</div>
+<div title={(() => tip())!}>hi</div>  // ≡ <div title={() => tip()}>hi</div>`,
       related: 'duplicate-jsx-attr warning: duplicate JSX attributes now dedupe last-wins (JSX object semantics) with a compiler warning.',
     }),
   },

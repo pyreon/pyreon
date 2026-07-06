@@ -35,9 +35,13 @@ describe('<select value> — static bake is skipped (dead content attribute)', (
     expect(compile('<select value={3}><option/></select>')).toContain('__root.value = 3')
     expect(compile('<select value={`b`}><option/></select>')).toContain('__root.value = `b`')
     expect(compile('<select value={-1}><option/></select>')).toContain('__root.value = -1')
+    // PZ-05: TS type-layers unwrap at the attr classification seam, so the
+    // cast form emits byte-identically to the bare literal (the cast is
+    // runtime-erased anyway) — still the property set, never a baked attr.
     expect(compile('<select value={"b" as const}><option/></select>')).toContain(
-      '__root.value = "b" as const',
+      '__root.value = "b"',
     )
+    expect(compile('<select value={"b" as const}><option/></select>')).not.toContain('as const')
     for (const c of [
       compile('<select value={"b"}><option/></select>'),
       compile('<select value={3}><option/></select>'),
