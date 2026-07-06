@@ -91,6 +91,34 @@ pyreon doctor
 
 By default `pyreon doctor` runs the **12 fast gates** (~2-5s on a warm cache). The 2 slow gates are opt-in via `--full`.
 
+## `pyreon check`
+
+A **fast, file-scoped** scan for Pyreon/React anti-patterns — the terminal-native twin of the MCP `validate` tool. It runs the compiler's two static detectors (`detectPyreonPatterns` for "using Pyreon wrong" footguns, `detectReactPatterns` for "from React" mistakes) over source files and prints each finding **with its inline fix**. It exits non-zero on any finding, so it doubles as a pre-commit / CI gate.
+
+```bash
+pyreon check                    # scan git-changed .ts/.tsx files (the pre-commit inner loop)
+pyreon check src/              # scan a directory (recursive; skips node_modules/lib/dist)
+pyreon check src/App.tsx        # scan specific files
+pyreon check --fix              # apply the mechanically-safe auto-fixes in place
+pyreon check --json             # machine-readable findings for tooling
+```
+
+Example output:
+
+```
+  src/Counter.tsx
+    4:2  [signal-write-as-call] (auto-fixable — run with --fix)
+      `count(value)` does NOT write the signal — use `count.set(value)` …
+      → count.set(5)
+    5:9  [for-missing-by]
+      <For each={...}> requires a `by` prop so the keyed reconciler can preserve identity …
+      → <For each={items} by={(item) => item.id}>
+
+  2 findings in 1 file  ·  some are auto-fixable with --fix
+```
+
+**How it differs from the neighbours:** `pyreon doctor` is the whole-project health audit (all gates + a 0-100 score, slower); `pyreon lint` runs the `@pyreon/lint` **rule set** (a different engine). `pyreon check` is the fast, file-scoped **compiler-detector** pass — the quickest way to answer "did I introduce a Pyreon anti-pattern in this file / my diff?" `--fix` applies `migratePyreonCode` + `migrateReactCode` (only the mechanically-safe fixes; anything else stays reported so it still gates).
+
 ## `pyreon doctor`
 
 ### How it works
@@ -475,6 +503,7 @@ console.log(context.components.length, 'components')
 
 | Command | Description |
 | --- | --- |
+| `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
 | `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 12 fast gates by default; `--full` enables 2 slow gates. |
 | `pyreon context [--out <path>]` | Generate `.pyreon/context.json` for AI tools. |
 | `pyreon --help` / `-h` | Show usage. |

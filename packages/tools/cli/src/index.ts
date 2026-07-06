@@ -4,6 +4,7 @@
  * @pyreon/cli — Developer tools for Pyreon
  *
  * Commands:
+ *   pyreon check    — fast, file-scoped Pyreon/React anti-pattern scan with inline fixes
  *   pyreon doctor   — project-wide health audit (score + per-category bars + findings)
  *   pyreon context  — generate .pyreon/context.json for AI tools
  *   pyreon info      — environment + installed @pyreon versions + version-skew check
@@ -33,6 +34,8 @@ function printUsage(): void {
   pyreon <command> [options]
 
   Commands:
+    check [paths] [--fix] [--json]   Fast Pyreon/React anti-pattern scan (compiler detectors) with
+                                     inline fixes. No paths → git-changed files. Exits non-zero on findings.
     doctor [options]                 Project-wide health audit with 0-100 score.
                                      Runs ${FAST_GATES.length} fast gates by default; --full enables ${SLOW_GATES.length} slow gates.
     context [--out <path>]           Generate .pyreon/context.json for AI tools
@@ -129,6 +132,18 @@ async function main(): Promise<void> {
     })
     if (exitCode > 0) process.exit(exitCode)
     return
+  }
+
+  if (command === 'check') {
+    const { check } = await import('./check')
+    const paths = args.slice(1).filter((a) => !a.startsWith('-'))
+    const exitCode = await check({
+      paths,
+      cwd: process.cwd(),
+      json: args.includes('--json'),
+      fix: args.includes('--fix'),
+    })
+    process.exit(exitCode)
   }
 
   if (command === 'lint') {
