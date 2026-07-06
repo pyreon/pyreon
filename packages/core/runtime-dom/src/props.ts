@@ -175,12 +175,16 @@ const EVENT_RE = /^on[A-Z]/
  * Apply all props to a DOM element.
  * Returns a single chained cleanup (or null if no props need teardown).
  * Uses for-in instead of Object.keys() to avoid allocating a keys array.
+ *
+ * `skipKey` excludes ONE prop from this pass — used by mountElement /
+ * hydrateElement to defer `<select value>` until after children exist
+ * (see `applySelectValueProp`).
  */
-export function applyProps(el: Element, props: Props): Cleanup | null {
+export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup | null {
   let first: Cleanup | null = null
   let cleanups: Cleanup[] | null = null
   for (const key in props) {
-    if (key === 'key' || key === 'ref' || key === 'children') continue
+    if (key === 'key' || key === 'ref' || key === 'children' || key === skipKey) continue
     // Getter-shaped descriptors are produced by `makeReactiveProps` from
     // compiler-emitted `_rp(() => signal())` wrappers. A plain
     // `props[key]` read fires the getter once at mount time and stores
@@ -213,6 +217,30 @@ export function applyProps(el: Element, props: Props): Cleanup | null {
       for (const c of cleanups) c()
     }
   return first
+}
+
+/**
+ * Deferred `<select value>` application (PZ-09) — applies the `value` prop
+ * with the SAME descriptor-aware reactive dispatch `applyProps` uses, as a
+ * separate POST-CHILDREN pass. `select.value` is a DOM property whose
+ * assignment selects a matching <option>; assigned before the options exist
+ * (the pre-fix order — applyProps ran before mountChildren) the value is
+ * silently dropped and the first option stays selected. A reactive accessor
+ * gets its `renderEffect` created here so the EAGER INITIAL run also sees
+ * the options. mountElement / hydrateElement exclude `value` from the main
+ * applyProps pass for <select> (via `skipKey`) and call this after children
+ * are in place. Matches React's `postMountWrapper` / Solid's `Properties`
+ * handling. `value == null` keeps applyStaticProp's removeAttribute no-op —
+ * an option's own `selected` attribute is never clobbered by an absent value.
+ */
+export function applySelectValueProp(el: Element, props: Props): Cleanup | null {
+  const descriptor = Object.getOwnPropertyDescriptor(props, 'value')
+  if (descriptor?.get) {
+    return renderEffect(() =>
+      applyStaticProp(el, 'value', (props as Record<string, unknown>).value),
+    )
+  }
+  return applyProp(el, 'value', props.value)
 }
 
 /**

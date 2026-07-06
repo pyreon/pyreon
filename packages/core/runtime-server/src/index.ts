@@ -120,6 +120,98 @@ function withStoreContext<T>(fn: () => T): T {
   return _storeAls.run(new Map(), fn)
 }
 
+// ─── <select value> SSR support (PZ-09) ─────────────────────────────────────
+// <select> has NO `value` CONTENT attribute — serializing `value="…"` emits a
+// DEAD attribute the parser ignores, so SSR'd pages shipped with the FIRST
+// option selected regardless of the value prop. Instead the selection intent
+// is carried the way HTML expresses it: the matching <option> gets a
+// `selected` attribute (renderProp drops the dead attr from the <select> open
+// tag). The nearest-enclosing-select frame flows to option rendering via
+// AsyncLocalStorage — the context follows the async continuation graph, so
+// concurrent renders / streams can never observe each other's frame (no
+// shared mutable stack, no cleanup contract — the scope ends with the run).
+// Hydration parity: the client applies `select.value` AFTER children mount
+// (runtime-dom PZ-09 fix), selecting the same option the SSR markup marked.
+
+interface SelectValueFrame {
+  /** String-coerced select value — HTMLSelectElement.value setter semantics. */
+  value: string
+  /** The `.value` setter selects only the FIRST matching option. */
+  matched: boolean
+}
+
+const _selectValueAls = new AsyncLocalStorage<SelectValueFrame>()
+
+/**
+ * Build the frame for a `<select>` about to render its children. `null` when
+ * the select carries no usable value: absent, null/undefined (no selection
+ * intent — an option's own `selected` attribute stays authoritative, matching
+ * the client where applyStaticProp's null branch never assigns the property),
+ * or boolean (the client's boolean branch is presence-attr semantics, never a
+ * property set). Function values (compiler-emitted signal thunks) are called
+ * once — SSR is one-shot. Array values (a `multiple` idiom Pyreon does NOT
+ * support client-side either — `select.value = arr` coerces to a string)
+ * String()-coerce the same way the client property assignment would.
+ */
+function makeSelectFrame(props: Record<string, unknown>): SelectValueFrame | null {
+  if (!('value' in props)) return null
+  let v: unknown = props.value
+  if (typeof v === 'function') v = (v as () => unknown)()
+  if (v == null || typeof v === 'boolean') return null
+  return { value: String(v), matched: false }
+}
+
+/**
+ * ` selected` when this `<option>` matches the nearest enclosing `<select>`'s
+ * value prop; `''` otherwise. The option's comparison value comes from its
+ * `value` prop (function values called once), falling back to the option's
+ * TEXT per HTML semantics (HTMLOptionElement.value → `.text`: descendant
+ * text, ASCII-whitespace stripped and collapsed); a non-text child makes the
+ * fallback unknowable → no match. Options that declare their OWN `selected`
+ * prop are skipped (author-controlled selection — note the CLIENT `.value`
+ * setter would deselect them post-hydration; passing both `value` on the
+ * select and `selected` on a different option is contradictory input).
+ * First match only — mirrors the `.value` setter.
+ */
+function optionSelectedAttr(props: Record<string, unknown>, children: VNodeChild[]): string {
+  const frame = _selectValueAls.getStore()
+  if (!frame || frame.matched) return ''
+  if ('selected' in props) return ''
+  let v: unknown = 'value' in props ? props.value : undefined
+  if (typeof v === 'function') v = (v as () => unknown)()
+  let optValue: string
+  if (v == null || typeof v === 'boolean') {
+    const acc = { text: '' }
+    if (!collectOptionText(children, acc)) return ''
+    optValue = acc.text.replace(/\s+/g, ' ').trim()
+  } else {
+    optValue = String(v)
+  }
+  if (optValue !== frame.value) return ''
+  frame.matched = true
+  return ' selected'
+}
+
+/**
+ * Accumulate an option's descendant text; `false` when a non-text child
+ * (component, element, function) makes the fallback value unknowable.
+ */
+function collectOptionText(children: VNodeChild[], acc: { text: string }): boolean {
+  for (const child of children) {
+    if (child == null || typeof child === 'boolean') continue
+    if (typeof child === 'string' || typeof child === 'number') {
+      acc.text += String(child)
+      continue
+    }
+    if (Array.isArray(child)) {
+      if (!collectOptionText(child, acc)) return false
+      continue
+    }
+    return false
+  }
+  return true
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /** Render a VNode tree to an HTML string. Supports async component functions. */
@@ -418,6 +510,8 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
     const attr = renderProp(tag, key, props[key])
     if (attr) open += ` ${attr}`
   }
+  // `<option>` inside a `<select value>` frame — see renderElement (PZ-09).
+  if (tag === 'option') open += optionSelectedAttr(props, vnode.children)
   if (isVoidElement(tag)) {
     enqueue(`${open} />`)
     return
@@ -444,7 +538,18 @@ async function streamElementNode(vnode: VNode, enqueue: (s: string) => void): Pr
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
     enqueue(String(plainInnerHtml))
   } else {
-    for (const child of vnode.children) await streamNode(child, enqueue)
+    // `<select value>` frame — ALS scope, same as renderElement (PZ-09).
+    // Load-bearing for streams: chunks of CONCURRENT streams interleave at
+    // every await, so a module-level stack would cross-contaminate; the
+    // ALS context sticks to this stream's continuation graph.
+    const frame = tag === 'select' ? makeSelectFrame(props) : null
+    if (frame) {
+      await _selectValueAls.run(frame, async () => {
+        for (const child of vnode.children) await streamNode(child, enqueue)
+      })
+    } else {
+      for (const child of vnode.children) await streamNode(child, enqueue)
+    }
   }
   enqueue(`</${tag}>`)
 }
@@ -861,6 +966,10 @@ function renderElement(vnode: VNode): MaybeAsync {
     if (attr) html += ` ${attr}`
   }
 
+  // `<option>` inside a `<select value>` frame: mark the matching option
+  // `selected` — the HTML carrier for the select's value prop (PZ-09).
+  if (tag === 'option') html += optionSelectedAttr(props, vnode.children)
+
   if (isVoidElement(tag)) {
     html += ' />'
     return html
@@ -888,7 +997,14 @@ function renderElement(vnode: VNode): MaybeAsync {
   } else if (plainInnerHtml != null && plainInnerHtml !== '') {
     html += String(plainInnerHtml)
   } else {
-    const inner = renderChildList(vnode.children, 0, '')
+    // `<select value>`: render children inside the frame's ALS scope so the
+    // option renderer sees the nearest enclosing select's value (PZ-09).
+    // The context follows async continuations, so an async subtree keeps
+    // its frame without any pop/cleanup discipline.
+    const frame = tag === 'select' ? makeSelectFrame(props) : null
+    const inner = frame
+      ? _selectValueAls.run(frame, () => renderChildList(vnode.children, 0, ''))
+      : renderChildList(vnode.children, 0, '')
     if (typeof inner !== 'string') {
       const open = html
       return inner.then((s) => `${open}${s}</${tag}>`)
@@ -953,6 +1069,13 @@ function renderPropValue(key: string, value: unknown): string | null {
 
 function renderProp(tag: string, key: string, value: unknown): string | null {
   if (renderPropSkipped(key)) return null
+
+  // `<select value>` is NOT serialized (PZ-09): <select> has no `value`
+  // CONTENT attribute — the parser ignores it, so the attribute is dead
+  // bytes AND a false signal to snapshot tests. The selection intent is
+  // carried by marking the matching `<option selected>` instead — see
+  // renderElement / streamElementNode.
+  if (key === 'value' && tag === 'select') return null
 
   if (typeof value === 'function') {
     return renderProp(tag, key, (value as () => unknown)())

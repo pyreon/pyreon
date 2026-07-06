@@ -29,6 +29,26 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // <select value> fix (PZ-09): no exception fires — the symptom is
+    // behavioral ("select always shows the first option", "select value
+    // not working / ignored / not selected"), so the pattern matches the
+    // words a user would paste into `pyreon doctor diagnose` / the MCP
+    // `diagnose` tool rather than an error message.
+    pattern:
+      /select.*(value.*(ignored|not (work|select|appl|set|updat)|isn'?t (work|select|appl|set|updat)|doesn'?t (work|select|appl|set|updat))|(shows?|stuck (on|at)|always).*(first|wrong) option)|(first|wrong) option.*(selected|shows?).*select/i,
+    diagnose: () => ({
+      cause:
+        'On versions before the PZ-09 release, `<select value>` was applied BEFORE the option children existed (and SSR serialized it as a `value="…"` content attribute, which the HTML parser ignores on <select>) — `HTMLSelectElement.value` is a PROPERTY whose setter selects a matching <option>, so an assignment with no options present is silently dropped and the first option stays selected. The drop hit compiled templates with static values, compiled templates with reactive values + dynamic (`.map`/`<For>`) options, the h()/component path, and SSR output.',
+      fix: 'Upgrade `@pyreon/compiler`, `@pyreon/runtime-dom`, and `@pyreon/runtime-server` — the compiler defers select-value bind lines past the children lines, the runtime applies `value` after children mount/hydrate, and SSR marks the matching `<option selected>` instead of the dead attribute. No app code change needed. If you cannot upgrade, set the value imperatively after mount (`onMount(() => { selectRef.value = current() })`) or put `selected` on the matching option.',
+      fixCode: `// All of these now select "b" correctly:
+<select value="b"><option value="a">A</option><option value="b">B</option></select>
+<select value={() => choice()}>{items().map((i) => <option value={i}>{i}</option>)}</select>
+h('select', { value: 'b' }, h('option', { value: 'a' }, 'A'), h('option', { value: 'b' }, 'B'))`,
+      related:
+        'Known gaps: spread value (`<select {...props}>`) on the compiled template path still applies before DYNAMIC options; array values on `multiple` selects are unsupported (String()-coerced, matching the DOM .value setter).',
+    }),
+  },
+  {
     // Template ref-hoist fix (PZ-08): a reactive/conditional slot
     // (`{cond() ? <A/> : <B/>}`, `{cond && <el/>}`) BEFORE static siblings
     // broke the compiled template's sibling ref-walk — `_mountSlot` mounts

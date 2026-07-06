@@ -2465,13 +2465,26 @@ export function transformJSX_JS(
       }
     }
 
-    function staticAttrToHtml(exprNode: N, htmlAttrName: string): string | null {
+    function staticAttrToHtml(exprNode: N, htmlAttrName: string, tag?: string): string | null {
       // Parens + TS type layers are value-transparent: `id={("a")}` /
       // `id={"a" as const}` IS the static literal — unwrap before
       // classifying so it bakes into the template instead of paying a
       // runtime setAttribute (JS) or being dropped entirely (the historical
       // Rust behavior — silent attribute loss, fuzz-found).
       exprNode = unwrapTypeLayers(exprNode)
+      // `<select value>` (PZ-09): <select> has NO `value` CONTENT attribute —
+      // the HTML parser ignores `value="…"` on <select> entirely, so baking
+      // it into the template HTML is a DEAD attribute (the select silently
+      // shows its first option). Every value-PRODUCING static shape returns
+      // null so the dynamic path emits a one-time `el.value = …` PROPERTY
+      // set instead, which `processAttrs` defers until AFTER the element's
+      // children lines (the matching <option> must exist before the
+      // assignment can select it). The omit-semantic arms below
+      // (false/null/undefined → '') are unchanged — they emit nothing on
+      // the client either, so an option's own `selected` attribute isn't
+      // clobbered. NOT a silent catch-all: null falls through to the
+      // dynamic path; nothing is dropped.
+      const isSelectValue = tag === 'select' && htmlAttrName === 'value'
       // No `isStatic` pre-gate: the arms below are self-evidently-static
       // shapes, and the two backends' static classifiers disagreed on the
       // margins (JS said `-5` was dynamic → runtime setAttribute; Rust said
@@ -2484,23 +2497,24 @@ export function transformJSX_JS(
         (exprNode.type === 'Literal' || exprNode.type === 'StringLiteral') &&
         typeof exprNode.value === 'string'
       )
-        return ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.value)}"`
+        return isSelectValue ? null : ` ${htmlAttrName}="${escapeHtmlAttr(exprNode.value)}"`
       // Numeric literal
       if (
         (exprNode.type === 'Literal' || exprNode.type === 'NumericLiteral') &&
         typeof exprNode.value === 'number'
       )
-        return ` ${htmlAttrName}="${exprNode.value}"`
+        return isSelectValue ? null : ` ${htmlAttrName}="${exprNode.value}"`
       // Boolean true
       if (
         (exprNode.type === 'Literal' || exprNode.type === 'BooleanLiteral') &&
         exprNode.value === true
       )
-        return ` ${htmlAttrName}`
+        return isSelectValue ? null : ` ${htmlAttrName}`
       // No-substitution template literal: `id={\`x\`}` — bake the raw text
       // (parity with the Rust backend, which always baked this; the JS
       // fallthrough used to DROP the attribute entirely).
       if (exprNode.type === 'TemplateLiteral' && (exprNode.expressions?.length ?? 0) === 0) {
+        if (isSelectValue) return null
         const quasi = exprNode.quasis?.[0]
         if (quasi) return ` ${htmlAttrName}="${escapeHtmlAttr(quasi.value?.raw ?? '')}"`
         return ''
@@ -2513,7 +2527,9 @@ export function transformJSX_JS(
         ((exprNode.argument?.type === 'Literal' && typeof exprNode.argument.value === 'number') ||
           exprNode.argument?.type === 'NumericLiteral')
       )
-        return ` ${htmlAttrName}="${exprNode.operator === '-' ? '-' : ''}${exprNode.argument.value}"`
+        return isSelectValue
+          ? null
+          : ` ${htmlAttrName}="${exprNode.operator === '-' ? '-' : ''}${exprNode.argument.value}"`
       if (
         (exprNode.type === 'Literal' && (exprNode.value === false || exprNode.value === null)) ||
         exprNode.type === 'BooleanLiteral' ||
@@ -2855,8 +2871,13 @@ export function transformJSX_JS(
       reactiveBindExprs.push(attrSetter(htmlAttrName, varName, expr))
     }
 
-    function emitAttrExpression(exprNode: N, htmlAttrName: string, varName: string): string {
-      const staticHtml = staticAttrToHtml(exprNode, htmlAttrName)
+    function emitAttrExpression(
+      exprNode: N,
+      htmlAttrName: string,
+      varName: string,
+      tag: string,
+    ): string {
+      const staticHtml = staticAttrToHtml(exprNode, htmlAttrName, tag)
       if (staticHtml !== null) return staticHtml
       if (
         htmlAttrName === 'style' &&
@@ -2887,23 +2908,40 @@ export function transformJSX_JS(
       return false
     }
 
-    function attrInitializerToHtml(attr: N, htmlAttrName: string, varName: string): string {
+    function attrInitializerToHtml(
+      attr: N,
+      htmlAttrName: string,
+      varName: string,
+      tag: string,
+    ): string {
       if (!attr.value) return ` ${htmlAttrName}`
       // JSX string attribute: class="foo"
       if (
         attr.value.type === 'StringLiteral' ||
         (attr.value.type === 'Literal' && typeof attr.value.value === 'string')
-      )
+      ) {
+        // `<select value="b">` (plain string form, PZ-09): never baked — the
+        // value CONTENT attribute is dead on <select> (see staticAttrToHtml).
+        // Emit a one-time property set instead; processAttrs defers it past
+        // the element's children lines. `escapeJsString` serializes the
+        // parsed `.value` as a double-quoted JS literal (quote/backslash/
+        // control-safe, independent of the JSX quote style) — the same
+        // `.value` the bake path reads.
+        if (tag === 'select' && htmlAttrName === 'value') {
+          bindLines.push(attrSetter(htmlAttrName, varName, escapeJsString(attr.value.value)))
+          return ''
+        }
         return ` ${htmlAttrName}="${escapeHtmlAttr(attr.value.value)}"`
+      }
       if (attr.value.type === 'JSXExpressionContainer') {
         const expr = attr.value.expression
         if (expr && expr.type !== 'JSXEmptyExpression')
-          return emitAttrExpression(expr, htmlAttrName, varName)
+          return emitAttrExpression(expr, htmlAttrName, varName, tag)
       }
       return ''
     }
 
-    function processOneAttr(attr: N, varName: string): string {
+    function processOneAttr(attr: N, varName: string, tag: string): string {
       if (attr.type === 'JSXSpreadAttribute') {
         const expr = sliceExpr(attr.argument)
         needsApplyPropsImport = true
@@ -2918,10 +2956,10 @@ export function transformJSX_JS(
       const attrName = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
       if (attrName === 'key') return ''
       if (tryEmitSpecialAttr(attr, attrName, varName)) return ''
-      return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName)
+      return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName, tag)
     }
 
-    function processAttrs(el: N, varName: string): string {
+    function processAttrs(el: N, varName: string, tag: string, deferredLines: string[]): string {
       // Duplicate plain attributes: JSX object semantics — the LAST value
       // wins (`<p id="a" id="b">` ≡ props `{id:"a", id:"b"}` → "b"). The
       // template path must dedupe explicitly: baking both into the HTML
@@ -2949,8 +2987,26 @@ export function transformJSX_JS(
             )
             continue
           }
+          // `<select value>` (PZ-09): capture the bind lines this attr emits
+          // (static one-time `el.value = …` set, `_bindDirect`, or
+          // selector-subscribe) and DEFER them until after the element's
+          // children lines. `select.value` is a PROPERTY whose assignment
+          // selects a matching <option> — assigned before the options exist
+          // (`_bindDirect`'s eager initial update ran before the children
+          // `_mountSlot`), the value was silently dropped and the first
+          // option won. With static options (baked into the template HTML)
+          // the move is a no-op — the clone already contains them at bind
+          // time. The general-reactive form (`reactiveBindExprs` → the
+          // end-of-template combined `_bind`) is structurally last already
+          // and needs no deferral.
+          if (tag === 'select' && name === 'value') {
+            const before = bindLines.length
+            htmlAttrs += processOneAttr(a, varName, tag)
+            if (bindLines.length > before) deferredLines.push(...bindLines.splice(before))
+            continue
+          }
         }
-        htmlAttrs += processOneAttr(a, varName)
+        htmlAttrs += processOneAttr(a, varName, tag)
       }
       return htmlAttrs
     }
@@ -3105,11 +3161,23 @@ export function transformJSX_JS(
       return { useMixed: present > 1, useMultiExpr: exprCount > 1 }
     }
 
-    function attrIsDynamic(attr: N): boolean {
+    function attrIsDynamic(attr: N, tag: string): boolean {
       if (attr.type !== 'JSXAttribute') return false
       const name = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
       if (name === 'ref') return true
       if (EVENT_RE.test(name)) return true
+      // `<select value="…">` (plain string form, PZ-09): always emitted as a
+      // deferred property bind line (never baked) — the element needs a
+      // phase-1 ref so the deferred line doesn't re-walk a mutated sibling
+      // chain.
+      if (
+        tag === 'select' &&
+        name === 'value' &&
+        attr.value &&
+        (attr.value.type === 'StringLiteral' ||
+          (attr.value.type === 'Literal' && typeof attr.value.value === 'string'))
+      )
+        return true
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return false
       const expr = attr.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return false
@@ -3117,12 +3185,17 @@ export function transformJSX_JS(
       // template HTML (or semantically omits) needs NO element ref. A
       // misaligned prescan allocated vestigial `__eN` refs for shapes the
       // emitter then baked (`id={(231)}`), shifting sibling ref-chains.
-      if (staticAttrToHtml(expr, name) !== null) return false
+      if (staticAttrToHtml(expr, name, tag) !== null) return false
+      // `<select value={…}>` (PZ-09): every non-omitted shape — including
+      // static ones staticAttrToHtml routed to null above — emits a deferred
+      // property bind line, so the element needs a ref.
+      if (tag === 'select' && name === 'value') return true
       return !isStatic(expr)
     }
 
     function elementHasDynamic(node: N): boolean {
-      if (jsxAttrs(node).some(attrIsDynamic)) return true
+      const nodeTag = jsxTagName(node)
+      if (jsxAttrs(node).some((a: N) => attrIsDynamic(a, nodeTag))) return true
       if (!isSelfClosing(node)) {
         return jsxChildren(node).some(
           (c: N) =>
@@ -3252,13 +3325,18 @@ export function transformJSX_JS(
       const tag = jsxTagName(el)
       if (!tag) return null
       const varName = resolveElementVar(accessor, elementHasDynamic(el))
-      const htmlAttrs = processAttrs(el, varName)
+      // Bind lines deferred past this element's children lines (today only
+      // `<select value>` — see processAttrs). Appended AFTER processChildren
+      // so a `_mountSlot`-mounted option list exists before `el.value` runs.
+      const deferredLines: string[] = []
+      const htmlAttrs = processAttrs(el, varName, tag, deferredLines)
       let html = `<${tag}${htmlAttrs}>`
       if (!isSelfClosing(el)) {
         const childHtml = processChildren(el, varName, accessor)
         if (childHtml === null) return null
         html += childHtml
       }
+      if (deferredLines.length > 0) bindLines.push(...deferredLines)
       if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
       return html
     }
@@ -3696,6 +3774,18 @@ function containsJSXInExpr(node: N): boolean {
 
 function escapeHtmlAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+}
+
+/**
+ * Serialize a string as a double-quoted JS string literal (JSON semantics:
+ * `"`/`\` escaped, named C0 escapes for \b \t \n \f \r, other control chars
+ * as \u00XX). Used to emit a parsed JSX attribute string `.value` into a
+ * bind line independent of the JSX quote style — today only the
+ * `<select value="…">` deferred property set (PZ-09). The Rust backend's
+ * `escape_js_string` mirrors this byte-for-byte (native-equivalence oracle).
+ */
+function escapeJsString(s: string): string {
+  return JSON.stringify(s)
 }
 
 function escapeHtmlText(s: string): string {

@@ -31,7 +31,7 @@ import {
 import { setupDelegation } from './delegate'
 import { registerComponent, unregisterComponent } from './devtools'
 import { mountFor, mountKeyedList, mountReactive } from './nodes'
-import { applyProps } from './props'
+import { applyProps, applySelectValueProp } from './props'
 
 // Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
 // uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
@@ -380,7 +380,11 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
 
   // Skip applyProps entirely when props is the shared empty sentinel (identity check — no allocation)
   const props = vnode.props
-  const propCleanup: Cleanup | null = props !== EMPTY_PROPS ? applyProps(el, props) : null
+  // `<select value>` is excluded from the pre-children pass and applied
+  // AFTER mountChildren below (PZ-09) — see applySelectValueProp.
+  const isSelect = tag === 'select'
+  let propCleanup: Cleanup | null =
+    props !== EMPTY_PROPS ? applyProps(el, props, isSelect ? 'value' : undefined) : null
 
   // Mount children inside element context — nested elements can skip DOM removal closures
   _elementDepth++
@@ -388,6 +392,24 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   _elementDepth--
   if (isSvg) _svgDepth--
   if (isMathml) _mathmlDepth--
+
+  // `<select value>` — deferred until after children (PZ-09): the property
+  // assignment selects a matching <option>, so the options must exist
+  // first. Runs while the element is still detached (before insertBefore) —
+  // property assignment works on detached elements. The cleanup chains into
+  // propCleanup so every downstream branch below handles it unchanged.
+  if (isSelect && props !== EMPTY_PROPS && 'value' in props) {
+    const valueCleanup = applySelectValueProp(el, props)
+    if (valueCleanup) {
+      const prior = propCleanup
+      propCleanup = prior
+        ? () => {
+            prior()
+            valueCleanup()
+          }
+        : valueCleanup
+    }
+  }
 
   parent.insertBefore(el, anchor)
 
