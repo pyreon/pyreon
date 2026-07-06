@@ -252,9 +252,14 @@ describe('setup-catch reactive-prop diagnosis (PZ-10)', () => {
 
   it('a genuine unrelated "x is not a function" (no getter descriptor) gets NO prop diagnosis', () => {
     const Broken: ComponentFn = () => {
-      const x = 5 as unknown as () => void
-      x()
-      return null
+      // Thrown directly with the exact message shape V8 produces for calling
+      // a non-function (`const x = 5; x()` → "x is not a function") — a real
+      // TypeError instance whose message MATCHES the diagnosis regex, while
+      // props.x carries a plain DATA descriptor (no getter). This exercises
+      // the "regex matches but no getter descriptor" negative path without a
+      // literal non-function invocation (code-quality finding on the old
+      // `(5 as unknown as () => void)()` form; behavior-identical).
+      throw new TypeError('x is not a function')
     }
     const el = document.createElement('div')
     document.body.appendChild(el)
