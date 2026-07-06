@@ -118,6 +118,31 @@ Example output:
 ```
 
 **How it differs from the neighbours:** `pyreon doctor` is the whole-project health audit (all gates + a 0-100 score, slower); `pyreon lint` runs the `@pyreon/lint` **rule set** (a different engine). `pyreon check` is the fast, file-scoped **compiler-detector** pass — the quickest way to answer "did I introduce a Pyreon anti-pattern in this file / my diff?" `--fix` applies `migratePyreonCode` + `migrateReactCode` (only the mechanically-safe fixes; anything else stays reported so it still gates).
+## `pyreon add`
+
+Install one or more `@pyreon/*` packages **and print exactly how to wire each one in** — the root provider to add plus a usage snippet, tailored per package.
+
+```bash
+pyreon add query              # installs @pyreon/query (bare name → @pyreon/query)
+pyreon add query toast i18n   # several at once
+pyreon add @pyreon/form --dry-run   # show the plan + recipe without installing
+pyreon add query --json       # machine-readable plan
+```
+
+It **auto-detects your package manager** from the lockfile (`bun.lock` → bun, `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, else npm), walking up from the current directory — so you don't have to remember which `add` command this project uses. Then it prints the setup:
+
+```
+  @pyreon/query — TanStack Query adapter …
+  1. Add the provider near your app root:
+      import { QueryClient, QueryClientProvider } from '@pyreon/query'
+      const queryClient = new QueryClient()
+      <QueryClientProvider client={queryClient}> <App /> </QueryClientProvider>
+  2. Use it:
+      const todos = useQuery(() => ({ queryKey: ['todos', id()], queryFn: fetchTodos }))
+  Docs: https://pyreon.dev/docs/query
+```
+
+Curated recipes exist for the flagship packages (query, toast, i18n, permissions, form, store, router, head); any other `@pyreon/*` package still installs, with a generic docs pointer. The recipes live in the CLI itself (hand-authored + verified against each package's real API) rather than being generated from manifests — published packages don't ship their manifests, and reaching across packages for them would bloat the CLI's install.
 
 ## `pyreon doctor`
 
@@ -504,6 +529,7 @@ console.log(context.components.length, 'components')
 | Command | Description |
 | --- | --- |
 | `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
+| `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
 | `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 12 fast gates by default; `--full` enables 2 slow gates. |
 | `pyreon context [--out <path>]` | Generate `.pyreon/context.json` for AI tools. |
 | `pyreon --help` / `-h` | Show usage. |
