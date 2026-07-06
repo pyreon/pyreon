@@ -16,6 +16,10 @@ export default definePlaywrightConfig({
   testDir: '../e2e',
   projects: [
     { name: 'ui-showcase', testMatch: /ui-showcase-regression\.spec\.ts$/, port: 5174 },
+    // Dev throw-time fix printer (6.1b/6.1c) — reuses the ui-showcase dev
+    // server (it uses `pyreon()`, so the printer is injected). Proves the
+    // injected module loads + prints a fix on a known error end-to-end.
+    { name: 'dev-error-printer', testMatch: /dev-error-printer\.spec\.ts$/, port: 5174 },
   ],
   webServer: [viteDevServer('@pyreon/example-ui-showcase', 5174)],
 })

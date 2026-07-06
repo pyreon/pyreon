@@ -32,14 +32,22 @@ export const DEV_ERROR_PRINTER_IMPORT = 'virtual:pyreon/dev-error-printer'
 export const DEV_ERROR_PRINTER_ID = '\0pyreon/dev-error-printer'
 
 /**
- * The `<script type="module">` injected into `<head>` (dev only). An inline
- * module script whose sole `import` is the virtual module — Vite resolves the
- * `virtual:` id via this plugin's `resolveId`/`load`, so the browser runs the
- * bootstrap below.
+ * The `<script type="module" src=…>` injected into `<head>` (dev only).
+ *
+ * It references the virtual module by its Vite **dev URL** (`/@id/` + the
+ * `\0`-id with the null byte encoded as `__x00__`), NOT an inline
+ * `import 'virtual:…'`. Critical: a `transformIndexHtml`-injected *inline*
+ * module script is NOT import-analysed by Vite, so a bare `virtual:` specifier
+ * reaches the browser un-rewritten → `net::ERR_FAILED` (unsupported URL
+ * scheme). A `src`-based script makes the browser FETCH the URL, which Vite
+ * serves via this plugin's `load` hook with all imports resolved. `/@id/` is
+ * served at the origin root regardless of the app's `base`. (Verified against a
+ * real dev server: the inline form CORS-errored; the src form loads 200.)
  */
-export const DEV_ERROR_PRINTER_SCRIPT_TAG = `<script type="module">import ${JSON.stringify(
-  DEV_ERROR_PRINTER_IMPORT,
-)}</script>`
+export const DEV_ERROR_PRINTER_SCRIPT_TAG = `<script type="module" src="/@id/${DEV_ERROR_PRINTER_ID.replace(
+  '\0',
+  '__x00__',
+)}"></script>`
 
 /**
  * The virtual module's source — runs in the browser (dev only). Self-contained

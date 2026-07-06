@@ -67,10 +67,19 @@ describe('dev-error-printer constants', () => {
     expect(DEV_ERROR_PRINTER_SOURCE).toMatch(/catch\s*\{/)
   })
 
-  it('the script tag is an inline module importing the virtual module', () => {
+  it('the script tag loads the virtual module by its /@id/ dev URL via src (NOT an inline import)', () => {
+    // REGRESSION LOCK: a transformIndexHtml-injected INLINE `import 'virtual:…'`
+    // is not import-analysed by Vite → the bare `virtual:` specifier reaches the
+    // browser and CORS/scheme-errors (net::ERR_FAILED), breaking every dev app.
+    // The `src`-based form makes the browser fetch the /@id/ URL, which Vite
+    // serves with imports resolved. `\0` is URL-encoded as `__x00__`.
     expect(DEV_ERROR_PRINTER_SCRIPT_TAG).toBe(
-      `<script type="module">import "${DEV_ERROR_PRINTER_IMPORT}"</script>`,
+      `<script type="module" src="/@id/${DEV_ERROR_PRINTER_ID.replace('\0', '__x00__')}"></script>`,
     )
+    // Must be a SRC script, and must NOT be an inline `import 'virtual:…'`.
+    expect(DEV_ERROR_PRINTER_SCRIPT_TAG).toContain('src="/@id/')
+    expect(DEV_ERROR_PRINTER_SCRIPT_TAG).not.toContain(`import "${DEV_ERROR_PRINTER_IMPORT}"`)
+    expect(DEV_ERROR_PRINTER_SCRIPT_TAG).not.toContain(`import '${DEV_ERROR_PRINTER_IMPORT}'`)
   })
 })
 
@@ -101,11 +110,13 @@ describe('transformIndexHtml injection (dev-only)', () => {
   it('does NOT inject in a production build (command=build) — no compiler ships client-side', () => {
     const out = callTransformIndexHtml(createPlugin(undefined, 'build'), HTML)
     // Build returns undefined (no transform) OR at minimum never injects the tag.
-    expect(out === undefined || !out.includes(DEV_ERROR_PRINTER_IMPORT)).toBe(true)
+    // (Assert on the URL substring, not DEV_ERROR_PRINTER_IMPORT — the src form
+    // does not put the `virtual:` string in the HTML, so that check false-passes.)
+    expect(out === undefined || !out.includes('dev-error-printer')).toBe(true)
   })
 
   it('does NOT inject when devErrorPrinter: false', () => {
     const out = callTransformIndexHtml(createPlugin({ devErrorPrinter: false }, 'serve'), HTML)
-    expect(out === undefined || !out.includes(DEV_ERROR_PRINTER_IMPORT)).toBe(true)
+    expect(out === undefined || !out.includes('dev-error-printer')).toBe(true)
   })
 })
