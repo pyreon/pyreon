@@ -29,6 +29,31 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Template ref-hoist fix (PZ-08): a reactive/conditional slot
+    // (`{cond() ? <A/> : <B/>}`, `{cond && <el/>}`) BEFORE static siblings
+    // broke the compiled template's sibling ref-walk — `_mountSlot` mounts
+    // content + a `<!--pyreon-->` marker and REMOVES its `<!>` placeholder,
+    // so `const __eN = __root.firstChild.nextSibling…` walks emitted AFTER
+    // it landed on the marker comment (TypeError reading 'setProperty' via
+    // `_setStyle`), on null (setAttribute / .data), or — with TWO sibling
+    // slots — on the FIRST slot's reactive marker, which the second
+    // `_mountSlot` then removed (a later falsy→truthy re-flip of slot 0
+    // crashed `insertBefore` and SILENTLY LOST the subtree).
+    pattern:
+      /reading ['"]setProperty['"]|(reading ['"](setAttribute|data|setProperty)['"]|insertBefore.*not a child of this node).*(_mountSlot|_tpl|_setStyle|pyreon|slot|marker|template)|(_mountSlot|<!--pyreon-->).*(sibling|marker|wrong node|null|missing|lost)/i,
+    diagnose: () => ({
+      cause:
+        "On `@pyreon/compiler` versions before the template ref-hoist release, a reactive/conditional slot child (`{cond() ? <A/> : <B/>}`, `{cond && <el/>}`, `{arr.map(…)}`) placed BEFORE static siblings broke the compiled template's sibling ref-walk: `_mountSlot` mounts content + a `<!--pyreon-->` marker and removes its `<!>` placeholder (net sibling-count change), and the sibling refs / second-slot placeholder walks were emitted AFTER that mutation — so they resolved to the marker comment (TypeError: Cannot read properties of undefined (reading 'setProperty') from a style binding), to null (setAttribute / text .data), or to a sibling slot's marker, which was then removed — making that slot's next falsy→truthy re-flip throw `insertBefore … is not a child of this node` and silently lose its subtree. The failure was initial-state-dependent (some states accidentally correct).",
+      fix: 'Upgrade `@pyreon/compiler` — templates now capture EVERY pristine-clone node reference (element walks, text captures, placeholder consts) BEFORE any `_mountSlot`/`replaceChild` mutation runs, in both backends. No app code change needed. If you cannot upgrade, wrap the dynamic child in its own static element (`<div style="display:contents">{cond && <X/>}</div>`) or move it after the static siblings.',
+      fixCode: `// All of these now compile + run correctly:
+<div>{banner() ? <Banner/> : <Fallback/>}<div style={styles.card}>card</div></div>
+<div>{loading() && <Spinner/>}{items().length && <List/>}</div>
+<div>{show && <em>badge</em>}<span id={dynamicId}>after</span></div>`,
+      related:
+        'Same fix family: @pyreon/flow MiniMap/Controls overlay child-order workaround and @pyreon/zero-content CodeBlock always-rendered-wrapper workaround existed because of this compiler bug.',
+    }),
+  },
+  {
     // Auto-call reachability fix (2026-07 fuzz campaign): symptoms of the
     // OLD emit — a signal function leaking into DOM output / handler math.
     pattern: /(\(\.\.\.args\) =>|function\s*\(\)).*(setAttribute|attribute|title=|id=|textContent)|signal.*(function|source).*(attribute|DOM|rendered)|s\w*\.set\(.*=>.*\+/i,

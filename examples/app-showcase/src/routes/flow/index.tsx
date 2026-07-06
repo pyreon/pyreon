@@ -54,9 +54,9 @@ export default function FlowRoute() {
         <CanvasFrame>
           <Flow instance={flow.instance} nodeTypes={{ workflow: WorkflowNode }}>
             <Background variant="dots" gap={20} size={1} color="#e2e8f0" />
-            {/* MiniMap is placed before Controls deliberately — see the flow
-                "overlay child order" note: a <Controls> mounted before a
-                <MiniMap> as sibling <Flow> children currently fails to render. */}
+            {/* Overlay order no longer matters on current compilers (template
+                ref-hoist fix) — MiniMap kept first for e2e continuity; see the
+                flow "overlay child order" note. */}
             <MiniMap
               width={180}
               height={120}

@@ -53,7 +53,6 @@ const flow = createFlow({
 
 function WorkflowBuilder() {
   return (
-    // MiniMap is placed before Controls — see "Overlay child order" below.
     <Flow instance={flow}>
       <Background />
       <MiniMap />
@@ -656,18 +655,18 @@ Props (all optional): `showZoomIn` (default `true`), `showZoomOut` (default `tru
 
 ### Overlay child order
 
-Place `<MiniMap>` **before** `<Controls>` in the `<Flow>` children:
+Overlay order no longer matters on current Pyreon versions — `<Controls>`, `<MiniMap>`, `<Background>`, `<Panel>`, `<NodeResizer>`, and `<NodeToolbar>` can sit in any position:
 
 ```tsx
 <Flow instance={flow}>
   <Background />
-  <MiniMap />     {/* before Controls */}
   <Controls />
+  <MiniMap />
 </Flow>
 ```
 
-:::warning
-A `<Controls>` mounted as a sibling **before** a `<MiniMap>` currently fails to render — it resolves the flow instance fine, but its DOM is never mounted. This is a known framework slot-ordering limitation (an earlier reactive sibling shifts the dynamic-slot element-ref walk). Ordering MiniMap first sidesteps it. `<Background>`, `<Panel>`, `<NodeResizer>`, and `<NodeToolbar>` are unaffected and can sit in any position.
+:::note
+On **older `@pyreon/compiler` versions** (before the template ref-hoist release), a `<Controls>` mounted as a sibling **before** a `<MiniMap>` silently failed to render — its DOM was never mounted (a compiler slot-ordering bug: an earlier dynamic slot shifted the sibling element-ref walk). If you're pinned to an older version, place `<MiniMap>` before `<Controls>` to sidestep it. The bug is fixed in current versions — templates capture all sibling refs before any slot mounts.
 :::
 
 ### `<Handle>`

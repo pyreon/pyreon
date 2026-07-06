@@ -75,11 +75,13 @@ const LockIcon = () => (
  * Shows zoom in, zoom out, fit view, and optional lock button.
  *
  * @remarks
- * Place `<Controls>` AFTER `<MiniMap>` in the `<Flow>` children. A
- * `<Controls>` mounted as a sibling *before* a `<MiniMap>` currently
- * fails to render (it resolves the flow instance fine, but its DOM is
- * never mounted) — a known framework slot-ordering limitation where an
- * earlier reactive sibling shifts the dynamic-slot element-ref walk.
+ * Sibling order vs `<MiniMap>` no longer matters on current
+ * `@pyreon/compiler` versions (the template ref-hoist fix —
+ * bisect-verified in real Chromium). On OLDER compilers, place
+ * `<Controls>` AFTER `<MiniMap>`: a `<Controls>` mounted as a sibling
+ * *before* a `<MiniMap>` silently failed to render (its DOM was never
+ * mounted) — a compiler slot-ordering bug where an earlier dynamic slot
+ * shifted the sibling element-ref walk, since fixed at the root.
  * See `.claude/rules/anti-patterns.md` → "Flow overlay child order".
  *
  * @example

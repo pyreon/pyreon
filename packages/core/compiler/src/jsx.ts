@@ -2355,10 +2355,27 @@ export function transformJSX_JS(
   }
 
   function buildTemplateCall(node: N): string | null {
+    // Two-phase emission (PZ-08 fix). `refLines` (phase 1) holds every
+    // PRISTINE-CLONE node capture: element ref walks (`const __eN = …`),
+    // sole-text captures (`const __tN = X.firstChild`), and hoisted
+    // placeholder consts (`const __pN = <walk>`) for `_mountSlot`
+    // placeholder args + `replaceChild` targets. `bindLines` (phase 2)
+    // holds every MUTATION/binding (`_mountSlot`, `replaceChild`, attr
+    // setters, `_bind*`, listeners, refs) in source order. The body emits
+    // refLines THEN bindLines, so every DOM position is captured before
+    // any mutation runs — `_mountSlot` removes its `<!>` placeholder and
+    // inserts content + a `<!--pyreon-->` marker (net sibling-count delta
+    // ≠ 0), so a `firstChild.nextSibling…` walk evaluated AFTER it landed
+    // on the wrong node (marker comment / null / a sibling slot's marker,
+    // which the next `_mountSlot` then removed — losing that slot's
+    // subtree on its next re-flip). Phase-2 ops are identity-based, hence
+    // order-independent w.r.t. sibling structure.
+    const refLines: string[] = []
     const bindLines: string[] = []
     const disposerNames: string[] = []
     let varIdx = 0
     let dispIdx = 0
+    let placeholderIdx = 0
     const reactiveBindExprs: string[] = []
     let needsBindTextImport = false
     let needsBindDirectImport = false
@@ -2378,12 +2395,26 @@ export function transformJSX_JS(
     function nextTextVar(): string {
       return `__t${varIdx++}`
     }
+    function nextPlaceholderVar(): string {
+      return `__p${placeholderIdx++}`
+    }
+
+    /**
+     * Capture a placeholder/replace-target walk as a phase-1 const so the
+     * walk resolves against the pristine clone (before any `_mountSlot`
+     * mutated the child list). Returns the const name for the phase-2 op.
+     */
+    function hoistPlaceholderRef(parentRef: string, childNodeIdx: number): string {
+      const p = nextPlaceholderVar()
+      refLines.push(`const ${p} = ${childNodeAccessor(parentRef, childNodeIdx, true)}`)
+      return p
+    }
 
     function resolveElementVar(accessor: string, hasDynamic: boolean): string {
       if (accessor === '__root') return '__root'
       if (hasDynamic) {
         const v = nextVar()
-        bindLines.push(`const ${v} = ${accessor}`)
+        refLines.push(`const ${v} = ${accessor}`)
         return v
       }
       return accessor
@@ -2948,12 +2979,12 @@ export function transformJSX_JS(
       // shape — adjacent baked text runs would MERGE into one node during
       // parsing and break childNodes indexing.
       if (needsPlaceholder) {
+        const pVar = hoistPlaceholderRef(parentRef, childNodeIdx)
         bindLines.push(`const ${tVar} = document.createTextNode("")`)
-        bindLines.push(
-          `${parentRef}.replaceChild(${tVar}, ${childNodeAccessor(parentRef, childNodeIdx, true)})`,
-        )
+        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${pVar})`)
       } else {
-        bindLines.push(`const ${tVar} = ${varName}.firstChild`)
+        // Pristine-clone capture — phase 1 (see buildTemplateCall header).
+        refLines.push(`const ${tVar} = ${varName}.firstChild`)
       }
       const directRef = tryDirectSignalRef(exprNode)
       if (directRef) {
@@ -3006,10 +3037,9 @@ export function transformJSX_JS(
     ): string {
       if (needsPlaceholder) {
         const tVar = nextTextVar()
+        const pVar = hoistPlaceholderRef(parentRef, childNodeIdx)
         bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
-        bindLines.push(
-          `${parentRef}.replaceChild(${tVar}, ${childNodeAccessor(parentRef, childNodeIdx, true)})`,
-        )
+        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${pVar})`)
         return '<!>'
       }
       bindLines.push(`${varName}.textContent = ${expr}`)
@@ -3148,7 +3178,7 @@ export function transformJSX_JS(
         (!isReactive && /^[A-Za-z_$][\w$]*$/.test(expr) && elementVars.has(expr))
       if (isChildrenExpression(child.expression, expr) || isElementValuedIdent) {
         needsMountSlotImport = true
-        const placeholder = childNodeAccessor(parentRef, childNodeIdx, true)
+        const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
         bindLines.push(`const ${d} = _mountSlot(${expr}, ${parentRef}, ${placeholder})`)
         return '<!>'
@@ -3164,7 +3194,7 @@ export function transformJSX_JS(
         child.expression?.type === 'JSXElement' || child.expression?.type === 'JSXFragment'
       if (containsJSXInExpr(child.expression) && !exprIsDirectJSX) {
         needsMountSlotImport = true
-        const placeholder = childNodeAccessor(parentRef, childNodeIdx, true)
+        const placeholder = hoistPlaceholderRef(parentRef, childNodeIdx)
         const d = nextDisp()
         const slotArg = isReactive ? `() => (${expr})` : expr
         bindLines.push(`const ${d} = _mountSlot(${slotArg}, ${parentRef}, ${placeholder})`)
@@ -3252,12 +3282,15 @@ export function transformJSX_JS(
       bindLines.push(`const ${combinedName} = _bind(() => { ${combinedBody} })`)
     }
 
-    if (bindLines.length === 0 && disposerNames.length === 0) {
+    if (refLines.length === 0 && bindLines.length === 0 && disposerNames.length === 0) {
       return `_tpl("${escaped}", () => null)`
     }
 
-    // Append `;` to every bind line so ASI can't merge consecutive
-    // statements when the next line starts with `(`, `[`, etc.
+    // Phase 1 (pristine-clone ref captures) BEFORE phase 2 (mutations/
+    // bindings) — see the buildTemplateCall header comment.
+    //
+    // Append `;` to every line so ASI can't merge consecutive statements
+    // when the next line starts with `(`, `[`, etc.
     // Concrete bug shape (pre-fix): a child element with `hasDynamic=true`
     // emits `const __e0 = __root.children[N]` followed by a ref-callback
     // line `((el) => { x = el })(__e0)`. JS does NOT insert ASI here
@@ -3268,19 +3301,7 @@ export function transformJSX_JS(
     // and self-referencing `__e0` before assignment. Adding the `;`
     // terminates each statement deterministically. Trailing `;` after
     // a `{...}` block is a harmless empty statement.
-    // Append `;` to every bind line so ASI can't merge consecutive
-    // statements when the next line starts with `(`, `[`, etc.
-    // Concrete bug shape (pre-fix): a child element with `hasDynamic=true`
-    // emits `const __e0 = __root.children[N]` followed by a ref-callback
-    // line `((el) => { x = el })(__e0)`. JS does NOT insert ASI here
-    // because `__root.children[N]((el) => ...)` is a valid expression,
-    // so the parser merges them into a single function call:
-    //   `const __e0 = __root.children[N]((el) => ...)(__e0)`
-    // — calling `children[N]` as a function with the arrow as argument,
-    // and self-referencing `__e0` before assignment. Adding the `;`
-    // terminates each statement deterministically. Trailing `;` after
-    // a `{...}` block is a harmless empty statement.
-    let body = bindLines.map((l) => `  ${l};`).join('\n')
+    let body = [...refLines, ...bindLines].map((l) => `  ${l};`).join('\n')
     if (disposerNames.length === 1) {
       // Single-binding fast path: return the disposer DIRECTLY instead of
       // allocating a wrapper closure `() => { d() }` per template instance.
