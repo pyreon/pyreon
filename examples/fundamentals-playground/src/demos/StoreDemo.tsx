@@ -1,7 +1,7 @@
 import { signal } from '@pyreon/reactivity'
 import { computed, defineStore, signal as storeSignal } from '@pyreon/store'
 
-const useCounter = defineStore('playground-counter', () => {
+export const useCounter = defineStore('playground-counter', () => {
   const count = storeSignal(0)
   const doubled = computed(() => count() * 2)
   const increment = () => count.update((n) => n + 1)
