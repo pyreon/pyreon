@@ -4767,6 +4767,38 @@ function kotlinFieldPlaceholder(
 }
 
 /**
+ * The `<Field kind>` → Compose `visualTransformation` arg. `kind="password"`
+ * masks the text via `PasswordVisualTransformation()`; other kinds leave it
+ * unmasked. UNLIKE Swift (where kind switches the view TYPE), Compose keeps ONE
+ * `TextField` and toggles a PARAMETER — so the show/hide-password toggle
+ * `kind={reveal() ? "text" : "password"}` lowers cleanly to a runtime
+ * conditional `if (reveal) VisualTransformation.None else
+ * PasswordVisualTransformation()` (pre-fix `readStaticAttrKotlin` dropped the
+ * dynamic value → the password rendered in CLEARTEXT). A ternary of two literal
+ * kinds where one branch is "password" lowers to that conditional; a
+ * fully-dynamic (non-ternary) kind → a NAMED warning; a static/plain kind →
+ * `undefined` (no arg). Returns the full `visualTransformation = …` arg string.
+ */
+function kotlinFieldVisualTransformation(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+): string | undefined {
+  const vtFor = (k: string | number): string =>
+    k === 'password' ? 'PasswordVisualTransformation()' : 'VisualTransformation.None'
+  const dyn = classifyDynamicStylingAttr(e, 'kind')
+  if (dyn.kind === 'ternary' && (dyn.a === 'password' || dyn.b === 'password')) {
+    const cond = kotlinCondition(dyn.cond, (x) => emitKotlinExpr(x, 0))
+    return `visualTransformation = if (${cond}) ${vtFor(dyn.a)} else ${vtFor(dyn.b)}`
+  }
+  if (dyn.kind === 'dynamic') {
+    _emitWarnings.push(
+      `<Field kind={…}>: a fully-dynamic kind has no native lowering. Use a static kind, or a ternary of two literal kinds (kind={reveal ? "text" : "password"}). Rendered as a plain text field.`,
+    )
+  }
+  const kind = readStaticAttrKotlin(e, 'kind')
+  return kind === 'password' ? 'visualTransformation = PasswordVisualTransformation()' : undefined
+}
+
+/**
  * Emit `<Field value={signal} onChangeText={fn} kind?>` as Compose
  * `TextField(value = signal, onValueChange = { ... })`.
  *
@@ -4855,9 +4887,9 @@ function emitKotlinField(
   if (placeholderExpr !== undefined) {
     args.push(`placeholder = { Text(${placeholderExpr}) }`)
   }
-  const kind = readStaticAttrKotlin(e, 'kind')
-  if (kind === 'password') {
-    args.push('visualTransformation = PasswordVisualTransformation()')
+  const vtArg = kotlinFieldVisualTransformation(e)
+  if (vtArg !== undefined) {
+    args.push(vtArg)
   }
   const onSubmit = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>

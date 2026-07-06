@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { transform } from '@pyreon/native-compiler'
-import { build, findTsxFiles, isWebOnlyEntry } from '../build'
+import { build, conditionalKotlinImports, findTsxFiles, isWebOnlyEntry } from '../build'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 // Compiler fixtures live in the native-compiler package — reach them via
@@ -266,6 +266,35 @@ describe('@pyreon/native-cli build', () => {
       expect(output.code).not.toContain('import kotlinx.coroutines.withContext')
       expect(output.code).not.toContain('import kotlinx.serialization.json.Json')
     }
+  })
+
+  it('Kotlin conditional imports: <Field kind> pulls PasswordVisualTransformation + VisualTransformation', () => {
+    // <Field kind="password"> emits `PasswordVisualTransformation()`; the
+    // dynamic show/hide toggle also emits `VisualTransformation.None`. Both live
+    // in androidx.compose.ui.text.input (only `ImeAction` from that package is
+    // unconditionally imported), so both are stub-masked on the kotlinc validate
+    // loop but need a real import on a gradle build. No example had used a
+    // password field, so the STATIC path shipped with a latent unresolved
+    // reference — this closes it alongside the dynamic-kind lowering. Direct
+    // unit test (no example produces this yet, so the fixture-build tests can't
+    // reach it). Bisect site: the PasswordVisualTransformation / VisualTransformation
+    // branches in conditionalKotlinImports.
+    const staticPw = conditionalKotlinImports('visualTransformation = PasswordVisualTransformation()')
+    expect(staticPw).toContain('import androidx.compose.ui.text.input.PasswordVisualTransformation')
+    // static password does NOT reference VisualTransformation.None → no base-type
+    // import (the `input.` prefix disambiguates from PasswordVisualTransformation).
+    expect(staticPw).not.toContain('import androidx.compose.ui.text.input.VisualTransformation')
+
+    const dynamicPw = conditionalKotlinImports(
+      'visualTransformation = if (reveal) VisualTransformation.None else PasswordVisualTransformation()',
+    )
+    expect(dynamicPw).toContain('import androidx.compose.ui.text.input.PasswordVisualTransformation')
+    expect(dynamicPw).toContain('import androidx.compose.ui.text.input.VisualTransformation')
+
+    // a plain field pulls neither
+    const plain = conditionalKotlinImports('TextField(value = draft, onValueChange = { draft = it })')
+    expect(plain).not.toContain('PasswordVisualTransformation')
+    expect(plain).not.toContain('text.input.VisualTransformation')
   })
 
   it('Kotlin conditional imports: Color() / RoundedCornerShape() pull their graphics imports', () => {

@@ -5573,6 +5573,46 @@ function swiftFieldPlaceholder(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   return '""'
 }
 
+/**
+ * Build the `<Field>` view expression, resolving `kind`. `kind="password"` →
+ * `SecureField`, else `TextField`. STRUCTURAL (the view TYPE changes), so a
+ * DYNAMIC kind — the show/hide-password toggle `kind={reveal() ? "text" :
+ * "password"}` — can't just swap a param: pre-fix it read STATIC-only, so the
+ * dynamic form SILENTLY fell back to `TextField` (the password rendered in
+ * CLEARTEXT regardless of the toggle — a SECURITY silent-drop).
+ *
+ * SecureField and TextField are different View types, so a bare ternary of the
+ * two won't typecheck ("mismatching types"); the branches are erased through
+ * `AnyView` so the conditional is a single well-typed expression the caller can
+ * still chain modifiers onto (parenthesised). A ternary of two literal kinds
+ * where one branch is "password" lowers to that conditional; a fully-dynamic
+ * (non-ternary) kind can't map a runtime string to a structural view choice →
+ * a NAMED warning + a plain `TextField` fallback (never silent). A ternary with
+ * NEITHER branch "password" is plain either way → a bare `TextField`.
+ */
+function swiftFieldViewExpr(
+  e: Extract<ExprIR, { kind: 'jsx-element' }>,
+  placeholder: string,
+  textArg: string,
+): string {
+  const viewFor = (k: string | number): string =>
+    k === 'password'
+      ? `SecureField(${placeholder}, text: ${textArg})`
+      : `TextField(${placeholder}, text: ${textArg})`
+  const dyn = classifyDynamicStylingAttr(e, 'kind')
+  if (dyn.kind === 'ternary' && (dyn.a === 'password' || dyn.b === 'password')) {
+    const cond = swiftCondition(dyn.cond, (x) => emitSwiftExpr(x, 0))
+    return `(${cond} ? AnyView(${viewFor(dyn.a)}) : AnyView(${viewFor(dyn.b)}))`
+  }
+  if (dyn.kind === 'dynamic') {
+    _emitWarnings.push(
+      `<Field kind={…}>: a fully-dynamic kind has no native lowering (the password/plain distinction is the view TYPE — SecureField vs TextField). Use a static kind, or a ternary of two literal kinds (kind={reveal ? "text" : "password"}). Rendered as a plain text field.`,
+    )
+  }
+  const kind = readStaticAttr(e, 'kind')
+  return viewFor(typeof kind === 'string' ? kind : '')
+}
+
 function emitSwiftImage(
   e: Extract<ExprIR, { kind: 'jsx-element' }>,
   indent: number,
@@ -5775,9 +5815,6 @@ function emitSwiftField(
   )
   const placeholder = swiftFieldPlaceholder(e)
 
-  const kind = readStaticAttr(e, 'kind')
-  const viewName = kind === 'password' ? 'SecureField' : 'TextField'
-
   // v2 (form-binding arc) — `value={form.values.email}` binds through
   // the runtime's `binding(_:)` helper (a SwiftUI Binding<String> whose
   // setter routes through setValue → re-validation). The user's
@@ -5847,7 +5884,7 @@ function emitSwiftField(
     return emitSwiftGeneric(e, indent)
   }
 
-  let result = `${viewName}(${placeholder}, text: ${textArg})`
+  let result = swiftFieldViewExpr(e, placeholder, textArg)
 
   // onSubmit modifier (Pyreon canonical event for keyboard "done").
   const onSubmit = e.attrs.find(

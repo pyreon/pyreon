@@ -133,7 +133,7 @@ function sourceMapHeader(target: TargetLanguage, originalPath: string): string {
  * `withContext` / `Dispatchers` / `Json` imports only surfaced on the
  * first REAL `gradle assembleDebug` of a useFetch screen.
  */
-function conditionalKotlinImports(emitted: string): string {
+export function conditionalKotlinImports(emitted: string): string {
   const imports: string[] = []
   if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
   if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
@@ -161,6 +161,21 @@ function conditionalKotlinImports(emitted: string): string {
   }
   if (emitted.includes('RoundedCornerShape(')) {
     imports.push('import androidx.compose.foundation.shape.RoundedCornerShape')
+  }
+  // <Field kind="password"> / dynamic kind: PasswordVisualTransformation +
+  // VisualTransformation.None both live in androidx.compose.ui.text.input — the
+  // unconditional set only imports `ImeAction` from that package (Kotlin star
+  // imports are single-package). Same stub-masked class as Color /
+  // RoundedCornerShape: the kotlinc validate stub provides both, so a REAL
+  // gradle build was the only thing that would surface the missing import —
+  // and no example had used `kind="password"` yet, so the STATIC-password path
+  // shipped with a latent unresolved-reference bug this closes alongside the
+  // dynamic-kind lowering.
+  if (emitted.includes('PasswordVisualTransformation(')) {
+    imports.push('import androidx.compose.ui.text.input.PasswordVisualTransformation')
+  }
+  if (emitted.includes('VisualTransformation.')) {
+    imports.push('import androidx.compose.ui.text.input.VisualTransformation')
   }
   // A11y emit (<… accessibilityLabel>): the `.semantics { contentDescription
   // = … }` modifier + the `contentDescription` semantics property both live in
