@@ -115,7 +115,7 @@ describe('plugin wiring', () => {
       id: string,
       importer?: string,
     ) => Promise<string | undefined>
-    const calls: Array<{ id: string; skipSelf?: boolean }> = []
+    const calls: Array<{ id: string; skipSelf: boolean | undefined }> = []
     const out = await hook.call(
       {
         resolve: async (id, _importer, opts) => {
