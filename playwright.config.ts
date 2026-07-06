@@ -94,6 +94,11 @@ export default definePlaywrightConfig({
       port: 5173,
     },
     { name: 'ssr-showcase', testMatch: /ssr-showcase\.spec\.ts$/, port: 5175 },
+    // Reactive-health overlay (Ctrl+Shift+R). Runs against the playground
+    // (5173) because it exposes signal/computed/effect on `window.__pyreon`
+    // and auto-installs devtools on its real `mount()` — so this proves the
+    // auto-install + live-graph-populate path a happy-dom unit test can't.
+    { name: 'reactive-overlay', testMatch: /reactive-overlay\.spec\.ts$/, port: 5173 },
     { name: 'fundamentals', testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/, port: 5176 },
     // Dev throw-time fix printer (6.1b/6.1c) — runs against fundamentals-
     // playground on 5176 BECAUSE that app does NOT declare `@pyreon/compiler`,

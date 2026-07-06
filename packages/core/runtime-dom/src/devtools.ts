@@ -19,7 +19,9 @@
 import {
   activateReactiveDevtools,
   deactivateReactiveDevtools,
+  describeReactiveGraph,
   formatUpdateCause,
+  type GraphDescription,
   getReactiveFires,
   getReactiveGraph,
   getUpdateCause,
@@ -78,6 +80,13 @@ export interface PyreonReactiveDevtools {
   getUpdateCause(nodeId: number): UpdateCause | null
   /** Render an {@link UpdateCause} as a source-anchored trace. */
   formatUpdateCause(cause: UpdateCause): string
+  /**
+   * Show the zero-install in-app reactive-health overlay (orphan signals,
+   * high-fanout hubs, deep chains). Also toggled with `Ctrl+Shift+R`.
+   */
+  showOverlay(): void
+  /** Hide the reactive-health overlay. */
+  hideOverlay(): void
 }
 
 // ─── Internal registry ────────────────────────────────────────────────────────
@@ -255,6 +264,98 @@ function disableOverlay(): void {
   _currentHighlight = null
 }
 
+// ─── Reactive health overlay (zero-install in-app dev panel) ─────────────────
+// A floating panel surfacing the compiler-independent REACTIVE graph health
+// (orphan signals, high-fanout hubs, deep chains) that `describeReactiveGraph`
+// computes — the data that answers "is my reactivity wired the way I think?".
+// Distinct from the component-inspect overlay above (`enableOverlay`, hover to
+// inspect DOM/components) and from the Chrome extension (separate install):
+// this is zero-install, mounted by the always-on dev devtools, toggled with
+// Ctrl+Shift+R. Reading the graph auto-activates reactive tracking if it wasn't
+// already on. Node-oriented (not DOM-click) — see the loop ledger for the
+// deferred DOM→node correlation follow-up.
+
+let _reactivePanelActive = false
+let _reactivePanelEl: HTMLDivElement | null = null
+
+function reactivePanelBody(): string {
+  // Reading the graph requires tracking to be active; turn it on lazily so the
+  // panel works even if the app never called `reactive.activate()`.
+  activateReactiveDevtools()
+  let desc: GraphDescription
+  try {
+    desc = describeReactiveGraph(getReactiveGraph())
+  } catch {
+    return 'Reactive graph unavailable.'
+  }
+  const s = desc.summary
+  const header =
+    `${s.signals} signal${s.signals === 1 ? '' : 's'} · ` +
+    `${s.derived} derived · ${s.effects} effect${s.effects === 1 ? '' : 's'} · ${s.edges} edges`
+  if (desc.insights.length === 0) {
+    return `${header}\n\nNo health issues detected — no orphan signals, no runaway fan-out, no deep chains.`
+  }
+  const lines = desc.insights.map((i) => `• [${i.kind}] ${i.detail}`)
+  return `${header}\n\n${desc.insights.length} insight${desc.insights.length === 1 ? '' : 's'}:\n${lines.join('\n')}`
+}
+
+function renderReactivePanel(): void {
+  if (!_reactivePanelEl) return
+  const body = _reactivePanelEl.querySelector('#__pyreon-rx-body')
+  if (body) body.textContent = reactivePanelBody()
+}
+
+function createReactivePanel(): void {
+  if (_reactivePanelEl) return
+  const el = document.createElement('div')
+  el.id = '__pyreon-reactive-overlay'
+  el.style.cssText =
+    'position:fixed;top:12px;right:12px;width:340px;max-height:70vh;overflow:auto;pointer-events:auto;background:#1a1a2e;color:#e0e0e0;font:12px/1.5 ui-monospace,monospace;border:1px solid #c026d3;border-radius:6px;z-index:1000000;box-shadow:0 4px 16px rgba(0,0,0,0.4);'
+  const bar = document.createElement('div')
+  bar.style.cssText =
+    'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid #33334d;position:sticky;top:0;background:#1a1a2e;'
+  const title = document.createElement('strong')
+  title.textContent = 'Pyreon · Reactivity Lens'
+  title.style.color = '#e879f9'
+  const btns = document.createElement('div')
+  const refresh = document.createElement('button')
+  refresh.textContent = '⟳'
+  refresh.title = 'Refresh'
+  const close = document.createElement('button')
+  close.textContent = '✕'
+  close.title = 'Close (Ctrl+Shift+R)'
+  for (const b of [refresh, close]) {
+    b.style.cssText =
+      'background:transparent;border:none;color:#e0e0e0;cursor:pointer;font:14px ui-monospace,monospace;padding:0 4px;'
+  }
+  refresh.addEventListener('click', renderReactivePanel)
+  close.addEventListener('click', disableReactiveOverlay)
+  btns.append(refresh, close)
+  bar.append(title, btns)
+  const body = document.createElement('pre')
+  body.id = '__pyreon-rx-body'
+  body.style.cssText = 'margin:0;padding:10px;white-space:pre-wrap;word-break:break-word;'
+  el.append(bar, body)
+  document.body.appendChild(el)
+  _reactivePanelEl = el
+}
+
+function enableReactiveOverlay(): void {
+  if (_reactivePanelActive) return
+  _reactivePanelActive = true
+  createReactivePanel()
+  renderReactivePanel()
+}
+
+function disableReactiveOverlay(): void {
+  if (!_reactivePanelActive) return
+  _reactivePanelActive = false
+  if (_reactivePanelEl) {
+    _reactivePanelEl.remove()
+    _reactivePanelEl = null
+  }
+}
+
 // ─── Installation ─────────────────────────────────────────────────────────────
 
 let _installed = false
@@ -313,18 +414,25 @@ export function installDevTools(): void {
       getFires: getReactiveFires,
       getUpdateCause,
       formatUpdateCause,
+      showOverlay: enableReactiveOverlay,
+      hideOverlay: disableReactiveOverlay,
     },
   }
 
   // Attach to window — compatible with browser devtools extensions
   ;(window as unknown as Record<string, unknown>).__PYREON_DEVTOOLS__ = devtools
 
-  // Ctrl+Shift+P toggles the component inspector overlay
+  // Ctrl+Shift+P toggles the component inspector overlay;
+  // Ctrl+Shift+R toggles the reactive-health overlay.
   window.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'P') {
       e.preventDefault()
       if (_overlayActive) disableOverlay()
       else enableOverlay()
+    } else if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+      e.preventDefault()
+      if (_reactivePanelActive) disableReactiveOverlay()
+      else enableReactiveOverlay()
     }
   })
 
@@ -342,6 +450,11 @@ export function installDevTools(): void {
     inspect: () => {
       if (_overlayActive) disableOverlay()
       else enableOverlay()
+    },
+    /** Toggle the reactive-health overlay (or Ctrl+Shift+R) */
+    reactivity: () => {
+      if (_reactivePanelActive) disableReactiveOverlay()
+      else enableReactiveOverlay()
     },
     /** Print component count */
     stats: () => {
