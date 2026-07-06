@@ -208,7 +208,31 @@ export function mountChild(
     // handler makes an outer root skip elements an inner root already
     // handled — no double-fire. Idempotent via the `_delegated` WeakSet.
     if (target instanceof Element) setupDelegation(target)
-    return mountChild(children, target, null)
+    // Portal content mounts into `target` (e.g. document.body) — a LIVE parent
+    // that is NOT removed as a unit, so mountChild's cleanup does not remove
+    // the DOM (the "noop cleanup is valid only when the node is removed as
+    // part of a freshly-built element" rule). Without an explicit remover, a
+    // portaled modal / toast / tooltip / dropdown LEAKS into the target
+    // forever once its owner unmounts (route change, `<Show>` flip, etc.).
+    // Bracket the content with comment markers and remove everything between
+    // them on dispose; mounting before `portalEnd` keeps reactive content
+    // (which grows/shrinks over time) inside the bracket.
+    const portalStart = document.createComment('portal')
+    const portalEnd = document.createComment('/portal')
+    target.appendChild(portalStart)
+    target.appendChild(portalEnd)
+    const disposePortal = mountChild(children, target, portalEnd)
+    return () => {
+      disposePortal()
+      let node: ChildNode | null = portalStart.nextSibling
+      while (node && node !== portalEnd) {
+        const next = node.nextSibling
+        node.remove()
+        node = next
+      }
+      portalStart.remove()
+      portalEnd.remove()
+    }
   }
 
   if (typeof vnode.type === 'function') {
