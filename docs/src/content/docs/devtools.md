@@ -29,6 +29,7 @@ window.__PYREON_DEVTOOLS__
 //                  enableOverlay() · disableOverlay()   (also Ctrl+Shift+P)
 // reactive bridge: reactive.activate() · reactive.deactivate()
 //                  reactive.getGraph() · reactive.getFires()
+//                  reactive.showOverlay() · reactive.hideOverlay()  (also Ctrl+Shift+R)
 ```
 
 `$p` is a console helper for the same data (`$p.tree()`, `$p.components()`, `$p.help()`).
@@ -119,3 +120,22 @@ interface ReactiveFire {
 This is the Foundation the extension's **Signals**, **Graph**, **Effects**, **Profiler**, and **Console** tabs consume. The Profiler tab buckets fire timestamps into 100 ms frames; a true per-frame _duration_ flamegraph additionally needs run-duration instrumentation in the Foundation (deferred).
 
 Only user `signal()` / `computed()` / `effect()` are tracked — compiler-emitted DOM-binding plumbing (`renderEffect` / `_bind`) is intentionally excluded so the graph stays meaningful and the hottest path untouched. The extension consumes `reactive` defensively: a page running an older `@pyreon/runtime-dom` (no Foundation) shows an explicit "needs the Foundation" notice rather than a fake/empty surface — Components works regardless, and polling runs only while a reactive tab is open.
+
+### Reactive-health overlay — zero-install, `Ctrl+Shift+R`
+
+The reactive bridge also drives a **zero-install in-app panel**: press `Ctrl+Shift+R` in any dev build (or call `__PYREON_DEVTOOLS__.reactive.showOverlay()`) and a floating panel appears with a health readout of the live graph — no Chrome extension, no wiring.
+
+```ts
+__PYREON_DEVTOOLS__.reactive.showOverlay() // mount the panel (also: Ctrl+Shift+R)
+__PYREON_DEVTOOLS__.reactive.hideOverlay() // remove it
+// or, from the console shorthand:
+$p.reactivity() // toggle
+```
+
+The panel renders the summary header (`N signals · M derived · K effects · E edges`) followed by the insights that only the graph can surface — the same ones [`describeReactiveGraph`](/reactivity#describe-a-reactive-graph) computes:
+
+- **`orphan-signal`** — nothing depends on this signal: dead reactivity or an unused signal.
+- **`high-fanout`** — changing this signal re-runs many effects; a hot hub worth auditing.
+- **`deep-chain`** — this node sits at the end of a long dependency chain.
+
+Opening the panel **auto-activates** graph tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read the graph after interacting with the app. This is the graph-health complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/reactivity-lens) editor hints (compiler-side static analysis).
