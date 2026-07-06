@@ -42,6 +42,12 @@ import {
   transformJSX,
 } from '@pyreon/compiler'
 import { buildCompiledVerdicts } from './compiled-verdicts'
+import {
+  DEV_ERROR_PRINTER_ID,
+  DEV_ERROR_PRINTER_IMPORT,
+  DEV_ERROR_PRINTER_SCRIPT_TAG,
+  DEV_ERROR_PRINTER_SOURCE,
+} from './dev-error-printer'
 import { injectIslandNames } from './island-auto-name'
 import { optimizeValidators } from './optimize-validators'
 import type { CollapseResolver } from './rocketstyle-collapse'
@@ -163,6 +169,21 @@ export interface PyreonPluginOptions {
    * pyreon({ lpih: { cachePath: '/tmp/x.json' } })  // custom path
    */
   lpih?: boolean | PyreonLpihOptions
+
+  /**
+   * Dev throw-time fix printer. When a component/effect throws in DEV and the
+   * message matches a known Pyreon foot-gun (`@pyreon/compiler/diagnose`'s
+   * catalog), print its cause + fix + fix-code to the console right at throw
+   * time. Injected as a tiny dev-only `<script type="module">`; the runtime
+   * never imports the compiler (the plugin owns the wiring). Zero cost in
+   * production — the script is never injected for builds.
+   *
+   * Default `true` in dev; `false` to opt out.
+   *
+   * @example
+   * pyreon({ devErrorPrinter: false })  // opt out
+   */
+  devErrorPrinter?: boolean
 
   /**
    * P0 — opt-in compile-time rocketstyle wrapper collapse. `true` uses
@@ -556,6 +577,8 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   const lpihOpt = options?.lpih
   const lpihEnabled = lpihOpt !== false
   const lpihUserCfg: PyreonLpihOptions = lpihOpt && lpihOpt !== true ? lpihOpt : {}
+  // Dev throw-time fix printer (Theme 6.1b) — on by default in dev.
+  const devErrorPrinterEnabled = options?.devErrorPrinter !== false
   const lpihIntervalMs = lpihUserCfg.intervalMs ?? 250
 
   // ── Compiled-validator emission config (opt-in, build-only) ───────────────
@@ -882,6 +905,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
     async resolveId(id, importer) {
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
       if (id === ISLANDS_REGISTRY_IMPORT) return ISLANDS_REGISTRY_ID
+      if (id === DEV_ERROR_PRINTER_IMPORT) return DEV_ERROR_PRINTER_ID
 
       // `@pyreon/core/jsx-runtime` resolves to the compat package only for
       // user code — never for `@pyreon/*` framework files (zero, router,
@@ -913,6 +937,9 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       }
       if (id === ISLANDS_REGISTRY_ID) {
         return renderIslandsRegistry(islandRegistry, islandsEnabled)
+      }
+      if (id === DEV_ERROR_PRINTER_ID) {
+        return DEV_ERROR_PRINTER_SOURCE
       }
     },
 
@@ -1231,14 +1258,24 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
 
     // ── LPIH auto-bridge client injection ────────────────────────────────────
     transformIndexHtml(html: string): string | undefined {
-      if (isBuild || !lpihEnabled) return undefined
-      // Inject a tiny <script type="module"> that activates devtools + polls
+      // DEV-only injections. Production builds never inject either script, so
+      // neither the LPIH poller nor the error-printer (nor its compiler-diagnose
+      // import) ships client-side.
+      if (isBuild) return undefined
+      const scripts: string[] = []
+      // Dev throw-time fix printer (Theme 6.1b): an inline module script whose
+      // sole import is `virtual:pyreon/dev-error-printer` — the load hook wires
+      // registerErrorHandler → diagnoseError. Injected FIRST so the handler is
+      // registered before the app entry mounts (and thus before it can throw).
+      if (devErrorPrinterEnabled) scripts.push(DEV_ERROR_PRINTER_SCRIPT_TAG)
+      // LPIH: injects a <script type="module"> that activates devtools + polls
       // getFireSummaries() and POSTs to /__pyreon_lpih__. The dev server
       // middleware (above) writes the body to <projectRoot>/.pyreon-lpih.json
       // using @pyreon/reactivity's atomic-rename pattern. The LSP
       // auto-discovers that file (R2, #777) so the user wires NOTHING.
-      const script = buildLpihClientScript(lpihIntervalMs)
-      return html.replace('</head>', `${script}\n</head>`)
+      if (lpihEnabled) scripts.push(buildLpihClientScript(lpihIntervalMs))
+      if (scripts.length === 0) return undefined
+      return html.replace('</head>', `${scripts.join('\n')}\n</head>`)
     },
   }
 }
