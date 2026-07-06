@@ -5066,6 +5066,20 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const fields: { name: string; value: ExprIR }[] = []
       const spreads: ExprIR[] = []
       for (const p of properties) {
+        // A COMPUTED key (`{ [k]: v }`) has `computed: true`; its `key` is the
+        // key EXPRESSION, not a static name. Pre-fix the `p.key?.name` check
+        // below matched an identifier-keyed computed prop (`{ [k]: 1 }` where
+        // `k` is a var) and used the VARIABLE NAME `k` as the struct field —
+        // a silent mis-emit (`__Obj0(k: 1)`, and a downstream `o[k]` / `o.a`
+        // read misses). A native struct/data-class needs static field names, so
+        // a computed key has no faithful lowering → a NAMED warning (never the
+        // silent wrong field).
+        if (p.type === 'Property' && p.computed === true) {
+          ctx.warnings.push(
+            `[${locOf(p, ctx)}] Computed object keys (\`{ [expr]: … }\`) aren't supported in native (PMTC) — a struct/data-class needs static field names. Use static keys, or build a dictionary with \`new Map()\`.`,
+          )
+          continue
+        }
         if (p.type === 'Property' && p.key?.name) {
           fields.push({ name: p.key.name as string, value: parseExpr(p.value, ctx) })
         } else if (p.type === 'SpreadElement') {
