@@ -384,7 +384,7 @@ ${CATALOG_MARKER}
   it('counts the real CATALOG_FILE shape (smoke)', () => {
     // Constants are exported so tests can also assert the marker is present
     // — protects against accidental refactor that breaks the parser.
-    expect(CATALOG_FILE).toBe('packages/core/compiler/src/react-intercept.ts')
+    expect(CATALOG_FILE).toBe('packages/core/compiler/src/diagnose.ts')
     expect(CATALOG_MARKER).toMatch(/ERROR_PATTERNS/)
   })
 })

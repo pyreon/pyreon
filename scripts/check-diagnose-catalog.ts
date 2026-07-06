@@ -3,7 +3,7 @@
  * CI guard: PRs touching framework error-surface SOURCE CODE in
  * `runtime-dom/`, `runtime-server/`, `core/`, `compiler/`, `router/` must
  * grow the `ERROR_PATTERNS` catalog in
- * `packages/core/compiler/src/react-intercept.ts` — or carry a
+ * `packages/core/compiler/src/diagnose.ts` — or carry a
  * `skip-diagnose-catalog` label.
  *
  * ## Why
@@ -67,7 +67,7 @@
  * 3. If `HAS_SKIP_LABEL=true` → exit 0 (deliberate bypass).
  * 4. If `HEAD_REF` matches `changeset-release/*` → exit 0 (release PR).
  * 5. Count `ERROR_PATTERNS` entries in both `origin/${BASE_REF}` and HEAD
- *    versions of `react-intercept.ts`. If HEAD count > base count → pass.
+ *    versions of `diagnose.ts`. If HEAD count > base count → pass.
  * 6. Otherwise → fail with a clear "add a new entry, or label to bypass"
  *    message.
  */
@@ -77,7 +77,10 @@ import { isTestPath } from './test-paths'
 
 // ─── Pure exports (testable) ────────────────────────────────────────────────
 
-export const CATALOG_FILE = 'packages/core/compiler/src/react-intercept.ts'
+// The `ERROR_PATTERNS` catalog lives in the browser-safe `diagnose.ts` module
+// (extracted from `react-intercept.ts` so it loads without the TypeScript
+// compiler API). This gate counts entries there.
+export const CATALOG_FILE = 'packages/core/compiler/src/diagnose.ts'
 export const CATALOG_MARKER = 'const ERROR_PATTERNS: ErrorPattern[] = ['
 
 /** Packages whose source files form the framework's error surface. */
@@ -145,7 +148,7 @@ export function sensitivePackagesTouched(files: string[]): string[] {
 }
 
 /**
- * Count `ERROR_PATTERNS` entries in a snapshot of `react-intercept.ts`.
+ * Count `ERROR_PATTERNS` entries in a snapshot of `diagnose.ts`.
  * Strategy: find the marker, then count `pattern:` keys inside the
  * array literal. Each `ErrorPattern` entry has exactly one `pattern:`
  * key by the type contract `{ pattern; diagnose; }`.
