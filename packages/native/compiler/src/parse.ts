@@ -4744,8 +4744,24 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
     case 'Literal':
     case 'NumericLiteral':
     case 'StringLiteral':
-    case 'BooleanLiteral':
+    case 'BooleanLiteral': {
+      // A regex literal (`/pat/flags`) is a `Literal` node carrying a `regex`
+      // field. Neither target has JS regex-literal syntax + `.match`/`.test`/
+      // regex-`.replace` (Swift uses `Regex`/`.firstMatch(of:)`, Kotlin
+      // `Regex(...)`), so pre-fix it emitted the raw `/pat/flags` VERBATIM —
+      // uncompilable Swift/Kotlin with ZERO warnings (a silent-drop). Faithful
+      // regex lowering is a large semantics undertaking (flags, capture groups,
+      // match-API shape); for now turn the silent mis-emit into a NAMED warning
+      // + a safe `""` fallback (never the uncompilable verbatim regex).
+      const regexNode = node as { regex?: { pattern: string; flags: string }; raw?: string }
+      if (regexNode.regex !== undefined) {
+        ctx.warnings.push(
+          `[${locOf(node, ctx)}] Regex literals aren't supported in native (PMTC) — \`${regexNode.raw ?? '/…/'}\` has no Swift/Kotlin equivalent (it was emitted verbatim and uncompilable before). Rewrite string work without a RegExp, or keep regex logic in a web-only helper.`,
+        )
+        return { kind: 'literal', value: '' }
+      }
       return { kind: 'literal', value: node.value }
+    }
     case 'Identifier':
       // `undefined` as a VALUE expression (`x !== undefined`) lowers to
       // the nullish literal — Swift/Kotlin have one nullish value (nil/
