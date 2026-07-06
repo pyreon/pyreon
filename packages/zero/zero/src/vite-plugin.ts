@@ -190,6 +190,42 @@ export function argvHasBaseFlag(argv: readonly string[] = process.argv): boolean
 }
 
 /**
+ * PZ-11 — does `url` fall under one of the configured `server.proxy`
+ * context keys? Mirrors Vite's own `doesProxyContextMatchUrl` semantics
+ * exactly (vite/src/node/server/middlewares/proxy.ts): a context starting
+ * with `^` is a RegExp tested against the URL; any other context is a
+ * plain prefix match. Vite matches on `req.url` — the FULL url INCLUDING
+ * the query string — so callers must pass `req.url`, not a stripped
+ * pathname, or the guard and the downstream proxy middleware could
+ * disagree on ownership.
+ *
+ * The one deliberate divergence: an invalid `^…` RegExp is treated as
+ * non-matching instead of throwing — a throw here would 500 the request
+ * from INSIDE zero's middleware, pointing the stack at the wrong owner
+ * (the config error is the user's proxy key, which Vite's own middleware
+ * will surface on its first matching request).
+ *
+ * @internal exported for testing
+ */
+export function matchesProxyContext(
+	url: string,
+	contexts: readonly string[],
+): boolean {
+	for (const context of contexts) {
+		if (context[0] === "^") {
+			try {
+				if (new RegExp(context).test(url)) return true;
+			} catch {
+				// Invalid RegExp context — see JSDoc.
+			}
+		} else if (url.startsWith(context)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Zero Vite plugin — adds file-based routing and zero-config conventions
  * on top of @pyreon/vite-plugin.
  *
@@ -245,6 +281,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	const config = resolveConfig(userConfig);
 	let routesDir: string;
 	let root: string;
+	// PZ-11 — `server.proxy` context keys, captured in configResolved. The
+	// dev middlewares below register during `configureServer` (which runs
+	// BEFORE Vite installs its internal middlewares, proxy included), so
+	// they sit UPSTREAM of the proxy. Any URL owned by a proxy context must
+	// fall through (`next()`) or zero's SSR/404 catch-alls swallow it.
+	let proxyContexts: string[] = [];
 
 	const mainPlugin: Plugin = {
 		name: "pyreon-zero",
@@ -253,6 +295,7 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 		configResolved(resolvedConfig) {
 			root = resolvedConfig.root;
 			routesDir = `${root}/src/routes`;
+			proxyContexts = Object.keys(resolvedConfig.server?.proxy ?? {});
 			// Sync `__ZERO_BASE__` to the FINAL resolved base. The config()
 			// hook above seeds it with `config.base` (the zero({base})
 			// value), but when `vite --base=/X/` wins precedence (because
@@ -400,6 +443,16 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 		},
 
 		configureServer(server) {
+			// PZ-11 — visibility: when the user configures `server.proxy`,
+			// zero's dev middlewares yield matching URLs to Vite's proxy
+			// (registered downstream). Say so once — the original bug report
+			// was a SILENT swallow, so the honoring must be discoverable.
+			if (proxyContexts.length > 0) {
+				server.config.logger.info(
+					`[Pyreon] zero dev: honoring vite server.proxy for: ${proxyContexts.join(", ")}`,
+				);
+			}
+
 			// Dev-mode API-route middleware — production wires `createApiMiddleware`
 			// via `createServer`, but dev had no equivalent. API requests fell
 			// through to Vite's default 404. This middleware loads the
@@ -442,64 +495,105 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 					if (pathname.startsWith("/@") || pathname.startsWith("/__"))
 						return next();
 					if (/\.\w+$/.test(pathname)) return next();
+					// PZ-11 — honor vite `server.proxy`. This catch-all accepts
+					// `Accept: */*` (fetch's default!), so without this guard a
+					// proxied `GET /api/backend/x` from client code was swallowed
+					// with 404 HTML (renderSsr renders the `_404.tsx` chain for
+					// unmatched paths) before Vite's proxy middleware ever saw it.
+					// Matched on the FULL `req.url` (incl. query string) with
+					// Vite's own context semantics — see `matchesProxyContext`.
+					// Dev precedence: fs api routes > server.proxy > SSR/404.
+					if (
+						proxyContexts.length > 0 &&
+						matchesProxyContext(req.url ?? "/", proxyContexts)
+					)
+						return next();
 
-					// Build a Web Request from the Node IncomingMessage so loaders
-					// can read cookies / auth headers via `ctx.request` and call
-					// `redirect()` from a server-side context.
-					const reqHost = req.headers.host ?? "localhost";
-					const reqUrl = new URL(req.url ?? "/", `http://${reqHost}`);
-					const reqHeaders = new Headers();
-					for (const [key, value] of Object.entries(req.headers)) {
-						if (value !== undefined) {
-							reqHeaders.set(
-								key,
-								Array.isArray(value) ? value.join(", ") : String(value),
-							);
+					const runSsr = () => {
+						// Build a Web Request from the Node IncomingMessage so loaders
+						// can read cookies / auth headers via `ctx.request` and call
+						// `redirect()` from a server-side context.
+						const reqHost = req.headers.host ?? "localhost";
+						const reqUrl = new URL(req.url ?? "/", `http://${reqHost}`);
+						const reqHeaders = new Headers();
+						for (const [key, value] of Object.entries(req.headers)) {
+							if (value !== undefined) {
+								reqHeaders.set(
+									key,
+									Array.isArray(value) ? value.join(", ") : String(value),
+								);
+							}
 						}
-					}
-					const webReq = new Request(reqUrl.href, {
-						method: req.method ?? "GET",
-						headers: reqHeaders,
-					});
+						const webReq = new Request(reqUrl.href, {
+							method: req.method ?? "GET",
+							headers: reqHeaders,
+						});
 
-					renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
-						(result) => {
-							if (result === null) return next();
-							if (result.kind === "redirect") {
-								// Loader-thrown `redirect()` — real HTTP redirect, same
-								// contract as the production handler (302/307/308 +
-								// Location). renderSsr surfaces it as data now that the
-								// shared renderPage catches the throw internally.
+						renderSsr(server, root, req.originalUrl ?? pathname, pathname, webReq).then(
+							(result) => {
+								if (result === null) return next();
+								if (result.kind === "redirect") {
+									// Loader-thrown `redirect()` — real HTTP redirect, same
+									// contract as the production handler (302/307/308 +
+									// Location). renderSsr surfaces it as data now that the
+									// shared renderPage catches the throw internally.
+									res.statusCode = result.status;
+									res.setHeader("Location", result.to);
+									res.end();
+									return;
+								}
 								res.statusCode = result.status;
-								res.setHeader("Location", result.to);
-								res.end();
-								return;
-							}
-							res.statusCode = result.status;
-							res.setHeader("Content-Type", "text/html; charset=utf-8");
-							res.setHeader("Content-Length", Buffer.byteLength(result.html));
-							res.end(result.html);
-						},
-						(err: unknown) => {
-							// Loader-thrown `redirect()` — convert to a real HTTP redirect
-							// (302/307/308) BEFORE the layout renders. This is the dev-mode
-							// equivalent of the production handler's redirect catch.
-							const info = getRedirectInfo(err);
-							if (info) {
-								res.statusCode = info.status;
-								res.setHeader("Location", info.url);
-								res.end();
-								return;
-							}
-							const error = err instanceof Error ? err : new Error(String(err));
-							server.ssrFixStacktrace(error);
-							const html = renderErrorOverlay(error);
-							res.statusCode = 500;
-							res.setHeader("Content-Type", "text/html; charset=utf-8");
-							res.setHeader("Content-Length", Buffer.byteLength(html));
-							res.end(html);
-						},
-					);
+								res.setHeader("Content-Type", "text/html; charset=utf-8");
+								res.setHeader("Content-Length", Buffer.byteLength(result.html));
+								res.end(result.html);
+							},
+							(err: unknown) => {
+								// Loader-thrown `redirect()` — convert to a real HTTP redirect
+								// (302/307/308) BEFORE the layout renders. This is the dev-mode
+								// equivalent of the production handler's redirect catch.
+								const info = getRedirectInfo(err);
+								if (info) {
+									res.statusCode = info.status;
+									res.setHeader("Location", info.url);
+									res.end();
+									return;
+								}
+								const error = err instanceof Error ? err : new Error(String(err));
+								server.ssrFixStacktrace(error);
+								const html = renderErrorOverlay(error);
+								res.statusCode = 500;
+								res.setHeader("Content-Type", "text/html; charset=utf-8");
+								res.setHeader("Content-Length", Buffer.byteLength(html));
+								res.end(html);
+							},
+						);
+					};
+
+					// PZ-11 companion — `/api/*` skip, same W24 rationale as the
+					// 404 handler below. The W24 fix landed ONLY on the 404
+					// handler, but in mode:'ssr' THIS middleware runs first and is
+					// what actually swallows `/api/*` (unmatched → `_404.tsx`
+					// chain → 404 HTML), shadowing user dev middleware and
+					// `server.proxy` contexts alike. fs api routes were already
+					// dispatched by the API middleware above (fs wins); the
+					// remaining `/api/*` traffic belongs downstream. One
+					// carve-out: a PAGE route under `/api/` is possible —
+					// `isApiRoute` only claims `.ts`/`.js` files, so an
+					// `api/*.tsx` file scans as a page route — so only skip when
+					// no page route matches; a matching page keeps dev SSR
+					// (production parity, where the SSR handler has no /api skip).
+					if (pathname.startsWith("/api/")) {
+						pageRouteMatches(server, pathname).then(
+							(matches) => {
+								if (matches) runSsr();
+								else next();
+							},
+							() => next(),
+						);
+						return;
+					}
+
+					runSsr();
 				});
 			}
 
@@ -528,6 +622,16 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				// through to user middleware OR to Vite's terminal 404 — both
 				// of which are correct outcomes.
 				if (pathname.startsWith("/api/")) return next();
+				// PZ-11 — honor vite `server.proxy` (see the SSR middleware
+				// above): NON-/api proxy prefixes (`/graphql`, `/backend`, …)
+				// were swallowed by this 404 handler in ALL modes — the W24
+				// skip only covers `/api/*`. Fall through so Vite's downstream
+				// proxy middleware can forward them.
+				if (
+					proxyContexts.length > 0 &&
+					matchesProxyContext(req.url ?? "/", proxyContexts)
+				)
+					return next();
 
 				handle404(
 					server,
@@ -983,6 +1087,23 @@ async function dispatchApiRoute(
 }
 
 /**
+ * Does `pathname` match any PAGE route pattern in the routes tree?
+ * Shared by the dev SSR middleware's `/api/*` carve-out (PZ-11 — a page
+ * route under `/api/` must keep dev SSR) and `handle404`'s "is this
+ * actually a 404?" pre-check, so the two can never drift.
+ */
+async function pageRouteMatches(
+	server: ViteDevServer,
+	pathname: string,
+): Promise<boolean> {
+	const mod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
+	const routes = mod.routes as Array<{ path?: string; children?: unknown[] }>;
+	return flattenRoutePatterns(routes).some((pattern) =>
+		matchPattern(pattern, pathname),
+	);
+}
+
+/**
  * 404 handler for unmatched URLs in dev. Three behaviours:
  *
  *   1. If the URL matches a real route pattern, return false (caller falls
@@ -1025,11 +1146,7 @@ async function handle404(
 	root: string,
 	originalUrl: string,
 ): Promise<boolean> {
-	const mod = await ssrLoadModuleQuiet(server, VIRTUAL_ROUTES_ID);
-	const routes = mod.routes as Array<{ path?: string; children?: unknown[] }>;
-	const patterns = flattenRoutePatterns(routes);
-
-	if (patterns.some((pattern) => matchPattern(pattern, pathname))) {
+	if (await pageRouteMatches(server, pathname)) {
 		return false; // Route matches — not a 404
 	}
 
