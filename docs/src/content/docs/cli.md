@@ -157,6 +157,20 @@ pyreon new my-app --dry-run    # print the npx command without running it
 
 It's a thin, dependency-free delegator: it `npx`-runs the appropriate `create-*` scaffolder (which owns the interactive prompts and templates), pinned to `@latest` so a new project always starts on the freshest templates regardless of how old your globally-installed `@pyreon/cli` is. Your project name and any extra flags pass through untouched.
 
+## `pyreon mcp`
+
+Launch the Pyreon **MCP server** — the [Model Context Protocol](https://modelcontextprotocol.io) server (`@pyreon/mcp`) that serves Pyreon's API reference, pattern catalog, `validate`, `diagnose`, and changelog to AI coding assistants. A single front door alongside the other `pyreon` commands, instead of a separately-remembered package invocation.
+
+```bash
+pyreon mcp                 # launch the stdio MCP server (blocks; the client talks over stdin/stdout)
+pyreon mcp --dry-run       # print the npx command without launching
+pyreon mcp <args>          # any extra flags pass straight through to the server
+```
+
+It's a thin, dependency-free delegator: it `npx`-runs `@pyreon/mcp`. Unlike `pyreon new`, it is deliberately **not** pinned to `@latest` — `npx @pyreon/mcp` prefers the **project-local** `@pyreon/mcp` when it's installed, so the served API reference matches *your* installed Pyreon version, and only fetches it on demand when the project doesn't have it. It inherits stdio, so the AI client that spawned `pyreon mcp` communicates with the server directly.
+
+Point your assistant's MCP config at `pyreon mcp` (e.g. as the `command`) to get Pyreon-aware `validate` / `get_api` / `get_pattern` / `diagnose` tools.
+
 ## `pyreon doctor`
 
 ### How it works
@@ -544,6 +558,7 @@ console.log(context.components.length, 'components')
 | `pyreon check [paths] [--fix] [--json]` | Fast, file-scoped Pyreon/React anti-pattern scan (compiler detectors) with inline fixes. No paths → git-changed files. Exits non-zero on findings. |
 | `pyreon add <pkg...> [--dry-run] [--json]` | Install `@pyreon/*` packages (PM auto-detected) and print a tailored setup recipe for each. |
 | `pyreon new [name] [--native]` | Scaffold a new Pyreon project (delegates to `@pyreon/create-zero`, or `-multiplatform` with `--native`). |
+| `pyreon mcp [args]` | Launch the Pyreon MCP server (delegates to `@pyreon/mcp`; prefers the project-local install). |
 | `pyreon doctor [options]` | Project-wide health audit with a 0-100 score. Runs 12 fast gates by default; `--full` enables 2 slow gates. |
 | `pyreon context [--out <path>]` | Generate `.pyreon/context.json` for AI tools. |
 | `pyreon --help` / `-h` | Show usage. |
