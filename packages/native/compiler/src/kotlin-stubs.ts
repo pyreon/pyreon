@@ -222,7 +222,7 @@ fun TextField(
   modifier: Modifier = Modifier,
   enabled: Boolean = true,
   placeholder: (@Composable () -> Unit)? = null,
-  visualTransformation: PasswordVisualTransformation? = null,
+  visualTransformation: VisualTransformation = VisualTransformation.None,
   keyboardOptions: KeyboardOptions = KeyboardOptions(),
   keyboardActions: KeyboardActions = KeyboardActions(),
 ) {
@@ -551,9 +551,20 @@ interface Shape
 @Suppress("UNUSED_PARAMETER")
 class RoundedCornerShape(corner: Dp) : Shape
 
+// VisualTransformation — the base type for a text visual mask. Mirrors the
+// real Compose surface EXACTLY (an interface with a None companion) so the
+// stub can't mask a wrong reference: the dynamic-kind Field emit produces
+// visualTransformation = if (reveal) VisualTransformation.None else
+// PasswordVisualTransformation(). PasswordVisualTransformation implements it;
+// None is the no-mask default.
+interface VisualTransformation {
+  companion object {
+    val None: VisualTransformation = object : VisualTransformation {}
+  }
+}
 // PasswordVisualTransformation — Compose Material's visual-mask
 // for password-field text. Phase B Field emit uses it for kind="password".
-class PasswordVisualTransformation
+class PasswordVisualTransformation : VisualTransformation
 
 // --- Phase C5.3: nav-compose stubs for NavHost emit ---
 //
