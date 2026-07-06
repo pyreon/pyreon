@@ -7,6 +7,8 @@ import { registerSingleton } from '@pyreon/reactivity'
 // aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
+export type { BoundReactiveNode } from './binding-registry'
+export { nodesForElement } from './binding-registry'
 export { DELEGATED_EVENTS, delegatedPropName, setupDelegation } from './delegate'
 export type { DevtoolsComponentEntry, PyreonDevtools } from './devtools'
 export { hydrateRoot } from './hydrate'

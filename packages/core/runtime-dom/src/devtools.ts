@@ -30,6 +30,7 @@ import {
   type ReactiveGraph,
   type UpdateCause,
 } from '@pyreon/reactivity'
+import { type BoundReactiveNode, nodesForElement } from './binding-registry'
 
 export interface DevtoolsComponentEntry {
   id: string
@@ -81,12 +82,19 @@ export interface PyreonReactiveDevtools {
   /** Render an {@link UpdateCause} as a source-anchored trace. */
   formatUpdateCause(cause: UpdateCause): string
   /**
-   * Show the zero-install in-app reactive-health overlay (orphan signals,
-   * high-fanout hubs, deep chains). Also toggled with `Ctrl+Shift+R`.
+   * Show the zero-install in-app reactive dev overlay (Health / Activity /
+   * Inspect). Also toggled with `Ctrl+Shift+R`.
    */
   showOverlay(): void
-  /** Hide the reactive-health overlay. */
+  /** Hide the reactive dev overlay. */
   hideOverlay(): void
+  /**
+   * The signals / computeds whose values are displayed as text inside `el`
+   * (from the exact `_bindText` text-node→source tag). Powers the overlay's
+   * Inspect picker — "which signal drives this on-screen value?". Returns `[]`
+   * in production.
+   */
+  nodesForElement(el: Element): BoundReactiveNode[]
 }
 
 // ─── Internal registry ────────────────────────────────────────────────────────
@@ -265,7 +273,7 @@ function disableOverlay(): void {
 }
 
 // ─── Reactive dev overlay (zero-install in-app dev panel) ────────────────────
-// A floating panel with two views:
+// A floating panel with three views:
 //   • Health   — orphan signals / high-fanout hubs / deep chains that
 //                `describeReactiveGraph` computes ("is my reactivity wired the
 //                way I think?").
@@ -273,17 +281,26 @@ function disableOverlay(): void {
 //                (`getReactiveFires` + `getUpdateCause` / `formatUpdateCause`),
 //                the inverse of React DevTools' "why did this render?" — it
 //                explains a specific value's most recent update from the graph.
+//   • Inspect  — DOM→signal correlation: press 🎯 Pick, click any element, and
+//                see the signals whose values its text displays + each one's
+//                causal chain. Powered by `nodesForElement` (the exact
+//                `_bindText` text-node→source tag). Point at the wrong pixel,
+//                get the signal responsible.
 // Distinct from the component-inspect overlay above (`enableOverlay`, hover to
 // inspect DOM/components) and from the Chrome extension (separate install):
 // this is zero-install, mounted by the always-on dev devtools, toggled with
 // Ctrl+Shift+R. Reading the graph/fires auto-activates reactive tracking if it
-// wasn't already on. Node-oriented (not DOM-click) — see the loop ledger for
-// the deferred DOM→node correlation follow-up.
+// wasn't already on.
 
-type ReactiveView = 'health' | 'activity'
+type ReactiveView = 'health' | 'activity' | 'inspect'
 let _reactivePanelActive = false
 let _reactivePanelEl: HTMLDivElement | null = null
 let _reactiveView: ReactiveView = 'health'
+// Element-picker (Inspect view) state.
+let _pickActive = false
+let _pickedEl: Element | null = null
+let _pickHighlightEl: HTMLDivElement | null = null
+const _reactiveTabs: { view: ReactiveView; el: HTMLButtonElement }[] = []
 
 function reactiveHealthBody(): string {
   // Reading the graph requires tracking to be active; turn it on lazily so the
@@ -339,14 +356,137 @@ function reactiveActivityBody(): string {
   return `Recent updates (newest first):\n${recentLines.join('\n')}\n\n${causeText}`
 }
 
+function reactiveInspectBody(): string {
+  if (!_pickedEl || !_pickedEl.isConnected) {
+    return 'No element selected.\n\nClick “🎯 Pick”, then click any element to see the signals whose values its text displays — and why each last updated.'
+  }
+  const tag = `<${_pickedEl.tagName.toLowerCase()}>`
+  let bound: BoundReactiveNode[]
+  try {
+    bound = nodesForElement(_pickedEl)
+  } catch {
+    return `${tag} — reactive correlation unavailable.`
+  }
+  if (bound.length === 0) {
+    return `${tag} displays no tracked reactive text.\n\nText driven by a single signal/computed (e.g. {count()}) is correlated; static text, attributes, and multi-signal expressions are not.`
+  }
+  const parts = bound.map((b) => {
+    const cause = getUpdateCause(b.id)
+    const causeText = cause
+      ? '\n' +
+        formatUpdateCause(cause)
+          .split('\n')
+          .map((l) => `  ${l}`)
+          .join('\n')
+      : ''
+    return `• ${b.name} (${b.kind})${causeText}`
+  })
+  return `${tag} displays ${bound.length} reactive value${bound.length === 1 ? '' : 's'}:\n\n${parts.join('\n\n')}`
+}
+
 function reactivePanelBody(): string {
-  return _reactiveView === 'activity' ? reactiveActivityBody() : reactiveHealthBody()
+  if (_reactiveView === 'activity') return reactiveActivityBody()
+  if (_reactiveView === 'inspect') return reactiveInspectBody()
+  return reactiveHealthBody()
 }
 
 function renderReactivePanel(): void {
   if (!_reactivePanelEl) return
   const body = _reactivePanelEl.querySelector('#__pyreon-rx-body')
   if (body) body.textContent = reactivePanelBody()
+}
+
+function paintReactiveTabs(): void {
+  for (const { view, el } of _reactiveTabs) {
+    const active = _reactiveView === view
+    el.style.cssText =
+      `background:${active ? '#c026d3' : 'transparent'};color:${active ? '#fff' : '#a0a0b8'};` +
+      'border:1px solid #33334d;border-radius:4px;cursor:pointer;font:11px ui-monospace,monospace;padding:2px 10px;'
+  }
+}
+
+function selectReactiveView(view: ReactiveView): void {
+  _reactiveView = view
+  paintReactiveTabs()
+  renderReactivePanel()
+}
+
+// ── Element picker (DOM → reactive-node) ─────────────────────────────────────
+// A lightweight hover-highlight + capture-phase click that resolves the clicked
+// element to the signals driving its text. Ignores clicks inside the overlay so
+// its own buttons keep working; Escape cancels.
+
+function showPickHighlight(el: Element): void {
+  if (!_pickHighlightEl) {
+    _pickHighlightEl = document.createElement('div')
+    _pickHighlightEl.id = '__pyreon-rx-pick-highlight'
+    _pickHighlightEl.style.cssText =
+      'position:fixed;pointer-events:none;z-index:999999;border:2px solid #e879f9;background:rgba(232,121,249,0.12);border-radius:2px;'
+    document.body.appendChild(_pickHighlightEl)
+  }
+  const r = el.getBoundingClientRect()
+  const s = _pickHighlightEl.style
+  s.top = `${r.top}px`
+  s.left = `${r.left}px`
+  s.width = `${r.width}px`
+  s.height = `${r.height}px`
+  s.display = 'block'
+}
+
+function isInsideOverlay(el: Element | null): boolean {
+  return !!el && !!_reactivePanelEl && _reactivePanelEl.contains(el)
+}
+
+function onPickMove(e: MouseEvent): void {
+  const el = e.target as Element | null
+  if (!el || isInsideOverlay(el)) return
+  showPickHighlight(el)
+}
+
+function onPickClick(e: MouseEvent): void {
+  const el = e.target as Element | null
+  if (!el || isInsideOverlay(el)) return // overlay's own buttons keep working
+  e.preventDefault()
+  e.stopPropagation()
+  _pickedEl = el
+  exitPickMode()
+  selectReactiveView('inspect')
+}
+
+function onPickKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    exitPickMode()
+  }
+}
+
+function enterPickMode(): void {
+  if (_pickActive) return
+  _pickActive = true
+  document.addEventListener('mousemove', onPickMove, true)
+  document.addEventListener('click', onPickClick, true)
+  document.addEventListener('keydown', onPickKeydown, true)
+  document.body.style.cursor = 'crosshair'
+}
+
+function exitPickMode(): void {
+  if (!_pickActive) return
+  _pickActive = false
+  document.removeEventListener('mousemove', onPickMove, true)
+  document.removeEventListener('click', onPickClick, true)
+  document.removeEventListener('keydown', onPickKeydown, true)
+  document.body.style.cursor = ''
+  if (_pickHighlightEl) {
+    _pickHighlightEl.remove()
+    _pickHighlightEl = null
+  }
+}
+
+/** Enter the Inspect view and start element-picking. Exposed for `$p.pick()`. */
+function startReactivePick(): void {
+  enableReactiveOverlay()
+  selectReactiveView('inspect')
+  enterPickMode()
 }
 
 function createReactivePanel(): void {
@@ -362,50 +502,48 @@ function createReactivePanel(): void {
   title.textContent = 'Pyreon · Reactivity Lens'
   title.style.color = '#e879f9'
   const btns = document.createElement('div')
+  const pick = document.createElement('button')
+  pick.id = '__pyreon-rx-pick'
+  pick.textContent = '🎯'
+  pick.title = 'Pick an element to see the signals driving its text'
   const refresh = document.createElement('button')
   refresh.textContent = '⟳'
   refresh.title = 'Refresh'
   const close = document.createElement('button')
   close.textContent = '✕'
   close.title = 'Close (Ctrl+Shift+R)'
-  for (const b of [refresh, close]) {
+  for (const b of [pick, refresh, close]) {
     b.style.cssText =
       'background:transparent;border:none;color:#e0e0e0;cursor:pointer;font:14px ui-monospace,monospace;padding:0 4px;'
   }
+  pick.addEventListener('click', () => {
+    selectReactiveView('inspect')
+    enterPickMode()
+  })
   refresh.addEventListener('click', renderReactivePanel)
   close.addEventListener('click', disableReactiveOverlay)
-  btns.append(refresh, close)
+  btns.append(pick, refresh, close)
   bar.append(title, btns)
 
-  // Tabs: Health (graph wiring) · Activity (recent fires + "why did X update?").
+  // Tabs: Health (graph wiring) · Activity (recent fires + "why did X update?")
+  // · Inspect (DOM→signal picker).
   const tabs = document.createElement('div')
   tabs.style.cssText = 'display:flex;gap:4px;padding:6px 10px;border-bottom:1px solid #33334d;'
-  const healthTab = document.createElement('button')
-  healthTab.id = '__pyreon-rx-tab-health'
-  healthTab.textContent = 'Health'
-  const activityTab = document.createElement('button')
-  activityTab.id = '__pyreon-rx-tab-activity'
-  activityTab.textContent = 'Activity'
-  const paintTabs = (): void => {
-    for (const [tab, view] of [
-      [healthTab, 'health'],
-      [activityTab, 'activity'],
-    ] as const) {
-      const active = _reactiveView === view
-      tab.style.cssText =
-        `background:${active ? '#c026d3' : 'transparent'};color:${active ? '#fff' : '#a0a0b8'};` +
-        'border:1px solid #33334d;border-radius:4px;cursor:pointer;font:11px ui-monospace,monospace;padding:2px 10px;'
-    }
+  _reactiveTabs.length = 0
+  const tabDefs: { id: string; label: string; view: ReactiveView }[] = [
+    { id: '__pyreon-rx-tab-health', label: 'Health', view: 'health' },
+    { id: '__pyreon-rx-tab-activity', label: 'Activity', view: 'activity' },
+    { id: '__pyreon-rx-tab-inspect', label: 'Inspect', view: 'inspect' },
+  ]
+  for (const def of tabDefs) {
+    const tab = document.createElement('button')
+    tab.id = def.id
+    tab.textContent = def.label
+    tab.addEventListener('click', () => selectReactiveView(def.view))
+    _reactiveTabs.push({ view: def.view, el: tab })
+    tabs.append(tab)
   }
-  const selectView = (view: ReactiveView): void => {
-    _reactiveView = view
-    paintTabs()
-    renderReactivePanel()
-  }
-  healthTab.addEventListener('click', () => selectView('health'))
-  activityTab.addEventListener('click', () => selectView('activity'))
-  paintTabs()
-  tabs.append(healthTab, activityTab)
+  paintReactiveTabs()
 
   const body = document.createElement('pre')
   body.id = '__pyreon-rx-body'
@@ -426,6 +564,9 @@ function disableReactiveOverlay(): void {
   if (!_reactivePanelActive) return
   _reactivePanelActive = false
   _reactiveView = 'health' // reopen starts on the Health tab
+  exitPickMode()
+  _pickedEl = null
+  _reactiveTabs.length = 0
   if (_reactivePanelEl) {
     _reactivePanelEl.remove()
     _reactivePanelEl = null
@@ -492,6 +633,7 @@ export function installDevTools(): void {
       formatUpdateCause,
       showOverlay: enableReactiveOverlay,
       hideOverlay: disableReactiveOverlay,
+      nodesForElement,
     },
   }
 
@@ -527,11 +669,13 @@ export function installDevTools(): void {
       if (_overlayActive) disableOverlay()
       else enableOverlay()
     },
-    /** Toggle the reactive-health overlay (or Ctrl+Shift+R) */
+    /** Toggle the reactive dev overlay (or Ctrl+Shift+R) */
     reactivity: () => {
       if (_reactivePanelActive) disableReactiveOverlay()
       else enableReactiveOverlay()
     },
+    /** Open the overlay's Inspect view and pick an element (DOM→signal). */
+    pick: () => startReactivePick(),
     /** Print component count */
     stats: () => {
       const all = devtools.getAllComponents()

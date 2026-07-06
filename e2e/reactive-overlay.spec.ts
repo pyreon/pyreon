@@ -113,3 +113,42 @@ test.describe('reactive health overlay (real browser)', () => {
     await expect(body).toContainText('edges')
   })
 })
+
+test.describe('reactive overlay — Inspect picker (real compiled app)', () => {
+  // The playground's Home (/) renders <Counter/>, whose `<p class="value">
+  // {() => count()}</p>` compiles to a real `_bindText(count, __t)` — the exact
+  // path the DOM→signal tag records. NB: do NOT wipe #app here (unlike
+  // bootWithGraph) — the compiled Counter must stay in the DOM.
+  test('nodesForElement correlates a compiled {count()} element to its signal', async ({ page }) => {
+    await page.goto('/')
+    await page.waitForSelector('.value', { timeout: 10_000 })
+
+    const bound = await page.evaluate(() => {
+      const el = document.querySelector('.value')!
+      return (window as any).__PYREON_DEVTOOLS__.reactive
+        .nodesForElement(el)
+        .map((b: any) => ({ name: b.name, kind: b.kind }))
+    })
+    // The <p class="value"> displays exactly one reactive value — a signal.
+    expect(bound.length).toBeGreaterThanOrEqual(1)
+    expect(bound[0].kind).toBe('signal')
+  })
+
+  test('🎯 pick → clicking a compiled element shows its driving signal in Inspect', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    await page.waitForSelector('.value')
+
+    await page.evaluate(() => (window as any).__PYREON_DEVTOOLS__.reactive.showOverlay())
+    await expect(page.locator('#__pyreon-reactive-overlay')).toBeVisible()
+
+    // Enter pick mode, then click the compiled value element.
+    await page.locator('#__pyreon-rx-pick').click()
+    await page.locator('.value').click()
+
+    const body = page.locator('#__pyreon-rx-body')
+    await expect(body).toContainText('displays')
+    await expect(body).toContainText('(signal)')
+  })
+})

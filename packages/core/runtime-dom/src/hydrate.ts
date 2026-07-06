@@ -34,6 +34,7 @@ import {
   setCurrentScope,
 } from '@pyreon/reactivity'
 import { setupDelegation } from './delegate'
+import { installDevTools } from './devtools'
 import { warnHydrationMismatch } from './hydration-debug'
 import { bindPolymorphicText, mountChild } from './mount'
 import { mountReactive } from './nodes'
@@ -797,6 +798,11 @@ function hydrateComponent(
  * const unmount = hydrateRoot(document.getElementById("app")!, h(App, null))
  */
 export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
+  // Install the devtools hook on hydration too, not just `mount()` — otherwise
+  // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
+  // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent
+  // + dev-gated (tree-shaken in production), mirroring `mount()`.
+  if (process.env.NODE_ENV !== 'production') installDevTools()
   setupDelegation(container)
   const firstChild = firstReal(container.firstChild as ChildNode | null)
   const [cleanup] = hydrateChild(vnode, firstChild, container, null)
