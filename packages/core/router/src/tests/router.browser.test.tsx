@@ -11,6 +11,7 @@ import {
   useSearchParams,
 } from '../index'
 import { setActiveRouter } from '../router'
+import { clearRouteAnnouncer } from '../announcer'
 
 // Real-Chromium smoke suite for @pyreon/router.
 //
@@ -505,5 +506,68 @@ describe('router in real browser', () => {
 
     expect(unhandledRejections).toEqual([])
     unmount()
+  })
+
+  // ─── Route announcer (a11y) ────────────────────────────────────────────────
+  describe('route announcer (a11y)', () => {
+    afterEach(() => clearRouteAnnouncer())
+
+    const region = () => document.querySelector('[data-pyreon-route-announcer]')
+    const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+    it('announces the new page to a polite live region on navigation', async () => {
+      document.title = '' // force the pathname fallback for a deterministic assertion
+      const router = createRouter({ routes, mode: 'hash' })
+      const { unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
+      await flush()
+
+      await router.push('/about')
+      await flush()
+      await nextFrame() // the announcer writes on the next frame
+
+      const el = region()
+      expect(el).not.toBeNull()
+      expect(el?.getAttribute('aria-live')).toBe('polite')
+      expect(el?.getAttribute('role')).toBe('status')
+      expect(el?.textContent).toBe('/about')
+      unmount()
+    })
+
+    it('does NOT announce the initial page load', async () => {
+      document.title = ''
+      const router = createRouter({ routes, mode: 'hash' })
+      const { unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
+      await flush()
+      await nextFrame()
+      // No navigation → the region is never created (lazy on first announce).
+      expect(region()).toBeNull()
+      unmount()
+    })
+
+    it('does NOT announce a same-path (query-only) change', async () => {
+      document.title = ''
+      const router = createRouter({ routes, mode: 'hash' })
+      const { unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
+      await flush()
+      await router.push('/?q=1') // path is still '/'
+      await flush()
+      await nextFrame()
+      expect(region()).toBeNull()
+      unmount()
+    })
+
+    it('opts out with announceRouteChanges={false}', async () => {
+      document.title = ''
+      const router = createRouter({ routes, mode: 'hash' })
+      const { unmount } = mountInBrowser(
+        h(RouterProvider, { router }, h(RouterView, { announceRouteChanges: false })),
+      )
+      await flush()
+      await router.push('/about')
+      await flush()
+      await nextFrame()
+      expect(region()).toBeNull()
+      unmount()
+    })
   })
 })

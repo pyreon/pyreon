@@ -2,6 +2,6 @@
   "@pyreon/reactivity::signals": 3300,
   "@pyreon/runtime-dom::mount": 8384,
   "@pyreon/runtime-dom::mount+hydrate": 10293,
-  "@pyreon/router::basic": 3518,
+  "@pyreon/router::basic": 3843,
   "@pyreon/core::jsx": 1002
 }
