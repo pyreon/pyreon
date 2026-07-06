@@ -98,6 +98,55 @@ describe('plugin wiring', () => {
     const plugin = createPlugin()
     expect(callLoad(plugin, '\0some/other')).toBeUndefined()
   })
+
+  it('resolves @pyreon/compiler/diagnose from the PLUGIN when the printer module imports it', async () => {
+    // Apps rarely declare @pyreon/compiler (a build-tool dep), so a bare import
+    // 500s ("Failed to resolve @pyreon/compiler/diagnose") in those apps. The
+    // plugin resolves it from its own location instead. Regression lock.
+    const plugin = createPlugin()
+    const hook = plugin.resolveId as unknown as (
+      this: {
+        resolve: (
+          id: string,
+          importer?: string,
+          opts?: { skipSelf: boolean },
+        ) => Promise<{ id: string } | null>
+      },
+      id: string,
+      importer?: string,
+    ) => Promise<string | undefined>
+    const calls: Array<{ id: string; skipSelf?: boolean }> = []
+    const out = await hook.call(
+      {
+        resolve: async (id, _importer, opts) => {
+          calls.push({ id, skipSelf: opts?.skipSelf })
+          return { id: '/abs/compiler/lib/diagnose.js' }
+        },
+      },
+      '@pyreon/compiler/diagnose',
+      DEV_ERROR_PRINTER_ID,
+    )
+    expect(out).toBe('/abs/compiler/lib/diagnose.js')
+    expect(calls[0]?.id).toBe('@pyreon/compiler/diagnose')
+    expect(calls[0]?.skipSelf).toBe(true)
+  })
+
+  it('does NOT plugin-resolve @pyreon/compiler/diagnose from an unrelated importer', async () => {
+    // Only the printer virtual module gets the plugin-side resolution — a normal
+    // app import of the same specifier is left to Vite's default resolution.
+    const plugin = createPlugin()
+    const hook = plugin.resolveId as unknown as (
+      this: { resolve: () => Promise<{ id: string } | null> },
+      id: string,
+      importer?: string,
+    ) => Promise<string | undefined>
+    const out = await hook.call(
+      { resolve: async () => ({ id: '/SHOULD_NOT_BE_RETURNED' }) },
+      '@pyreon/compiler/diagnose',
+      '/some/app/component.tsx',
+    )
+    expect(out).not.toBe('/SHOULD_NOT_BE_RETURNED')
+  })
 })
 
 describe('transformIndexHtml injection (dev-only)', () => {

@@ -95,6 +95,12 @@ export default definePlaywrightConfig({
     },
     { name: 'ssr-showcase', testMatch: /ssr-showcase\.spec\.ts$/, port: 5175 },
     { name: 'fundamentals', testMatch: /e2e\/fundamentals\/.*\.spec\.ts$/, port: 5176 },
+    // Dev throw-time fix printer (6.1b/6.1c) — runs against fundamentals-
+    // playground on 5176 BECAUSE that app does NOT declare `@pyreon/compiler`,
+    // so it exercises the plugin-side resolution of `@pyreon/compiler/diagnose`
+    // (an app WITH the dep would resolve it natively and hide that bug). Catches
+    // both the inline-vs-src CORS regression AND the cross-app resolution one.
+    { name: 'dev-error-printer', testMatch: /dev-error-printer\.spec\.ts$/, port: 5176 },
   ],
   webServer: [
     viteDevServer('@pyreon/example-playground', 5173),

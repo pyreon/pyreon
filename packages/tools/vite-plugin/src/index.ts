@@ -34,6 +34,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   type CollapsibleSite,
   generateContext,
@@ -906,6 +907,22 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       if (id === HMR_RUNTIME_IMPORT) return HMR_RUNTIME_ID
       if (id === ISLANDS_REGISTRY_IMPORT) return ISLANDS_REGISTRY_ID
       if (id === DEV_ERROR_PRINTER_IMPORT) return DEV_ERROR_PRINTER_ID
+
+      // The dev-error-printer virtual module imports `@pyreon/compiler/diagnose`,
+      // but the APP may not depend on `@pyreon/compiler` (most don't — it's a
+      // build-tool dep, not a runtime one). Resolve it from the PLUGIN's own
+      // location, which DOES depend on the compiler, so the printer works in
+      // every dev app. `diagnoseError` is a pure function → instance identity is
+      // irrelevant (unlike `@pyreon/core`, which stays a bare import so the
+      // app's dedupe keeps it the same instance the runtime uses). Without this,
+      // Vite 500s the virtual module with "Failed to resolve import
+      // @pyreon/compiler/diagnose" in any app that doesn't declare the compiler.
+      if (importer === DEV_ERROR_PRINTER_ID && id === '@pyreon/compiler/diagnose') {
+        const resolved = await this.resolve(id, fileURLToPath(import.meta.url), {
+          skipSelf: true,
+        })
+        return resolved?.id
+      }
 
       // `@pyreon/core/jsx-runtime` resolves to the compat package only for
       // user code — never for `@pyreon/*` framework files (zero, router,
