@@ -4,6 +4,7 @@ import { SizedMap } from '@pyreon/sized-map'
 import { buildNameIndex, buildPath, resolveRoute, stringifyQuery } from './match'
 import { getRedirectInfo } from './redirect'
 import { ScrollManager } from './scroll'
+import { classifyHref } from './typed-routes'
 import {
   type AfterEachHook,
   type Blocker,
@@ -548,6 +549,44 @@ export function createRouter<TNames extends string = string>(
 
   if (_popstateHandler) window.addEventListener('popstate', _popstateHandler)
   if (_hashchangeHandler) window.addEventListener('hashchange', _hashchangeHandler)
+
+  // Dev-only full-reload-link warning: a plain internal `<a href>` in a
+  // router app triggers a full page reload the author almost never wants.
+  // Warn at the document bubble phase — `<RouterLink>` (and zero's `<Link>`)
+  // call `preventDefault()` on the internal clicks they handle, so
+  // `e.defaultPrevented` here uniquely discriminates framework-handled
+  // anchors from plain ones. Deliberate full-load links opt out via
+  // `target` / `download` / `data-allow-reload`. Applies in BOTH modes —
+  // a path-style href full-reloads a hash-mode app too, while valid `#/x`
+  // hrefs classify as 'hash' and are skipped. Registered ONCE per router
+  // (the router owns global listeners — never per RouterView/RouterLink);
+  // removed by identity in `destroy()` (leak class D).
+  const _devAnchorWarn: ((e: MouseEvent) => void) | null =
+    process.env.NODE_ENV !== 'production' && isClient
+      ? (e: MouseEvent) => {
+          if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          // `closest?.` — e.target can be a non-Element (a Text node from a
+          // programmatic dispatch; real browser clicks target Elements).
+          const a = (e.target as Element | null)?.closest?.('a[href]')
+          if (
+            !a ||
+            a.hasAttribute('download') ||
+            a.hasAttribute('target') ||
+            a.hasAttribute('data-allow-reload')
+          ) {
+            return
+          }
+          // getAttribute, NOT `.href` — an SVG `<a>`'s `.href` is an
+          // SVGAnimatedString, and HTMLAnchorElement.href is absolutized.
+          const hrefAttr = a.getAttribute('href')
+          // Empty href (`<a href="">`) is a deliberate same-page pattern — skip.
+          if (!hrefAttr || classifyHref(hrefAttr, opts.links) !== 'internal') return
+          console.warn(
+            `[Pyreon] internal <a href="${hrefAttr}"> triggers a full page reload — use <RouterLink to="${hrefAttr}"> for client-side navigation. (Deliberate full-load link? add target/download, or data-allow-reload.)`,
+          )
+        }
+      : null
+  if (_devAnchorWarn) document.addEventListener('click', _devAnchorWarn)
 
   // FIFO-bounded — eviction handled by SizedMap.set on overflow. Cap mirrors
   // _loaderCache (via `maxCacheSize`); both caches grow under the same shape
@@ -1397,6 +1436,7 @@ export function createRouter<TNames extends string = string>(
     destroy() {
       if (_popstateHandler) window.removeEventListener('popstate', _popstateHandler)
       if (_hashchangeHandler) window.removeEventListener('hashchange', _hashchangeHandler)
+      if (_devAnchorWarn) document.removeEventListener('click', _devAnchorWarn)
       guards.length = 0
       afterHooks.length = 0
       // Release beforeunload for any remaining blockers
