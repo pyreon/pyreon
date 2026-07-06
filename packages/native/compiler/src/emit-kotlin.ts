@@ -4355,13 +4355,18 @@ function emitKotlinIcon(
     `imageVector = Icons.Filled.${mapped ? mapped.material : 'Warning'}`,
     `contentDescription = ${JSON.stringify(name)}`,
   ]
-  const color = readStaticAttrKotlin(e, 'color')
-  if (typeof color === 'string') args.push(`tint = ${resolveColor(color, 'kotlin')}`)
+  // `color` (tint) / `size` accept a static token OR a ternary of two literal
+  // tokens (`color={on() ? "primary" : "muted"}`) — pre-fix static-only, so a
+  // dynamic value was SILENTLY dropped. kotlinStylingValue reuses the #2005
+  // machinery (static byte-identical, ternary → a Kotlin if-expression, any
+  // other dynamic → a NAMED warning; never silent).
+  const tint = kotlinStylingValue(e, 'color', (v) => resolveColor(String(v), 'kotlin'))
+  if (tint !== undefined) args.push(`tint = ${tint}`)
   // Layout modifier FIRST so data-testid threads (the Text/Heading
   // lesson — the size-only modifier used to drop the tag entirely).
   const layoutMod = emitKotlinLayoutModifier(e)
-  const size = readStaticAttrKotlin(e, 'size')
-  const sizeMod = typeof size === 'string' ? `.size(${ICON_SIZE_DP[size] ?? 20}.dp)` : ''
+  const size = kotlinStylingValue(e, 'size', (v) => `${ICON_SIZE_DP[String(v)] ?? 20}.dp`)
+  const sizeMod = size !== undefined ? `.size(${size})` : ''
   const modifier =
     layoutMod !== '' ? `${layoutMod}${sizeMod}` : sizeMod !== '' ? `Modifier${sizeMod}` : ''
   if (modifier !== '') args.push(`modifier = ${modifier}`)

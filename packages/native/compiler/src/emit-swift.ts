@@ -5356,13 +5356,19 @@ function emitSwiftIcon(
     )
   }
   let result = `Image(systemName: ${JSON.stringify(mapped ? mapped.sf : name)})`
-  const size = readStaticAttr(e, 'size')
-  if (typeof size === 'string') {
-    result += `.imageScale(${ICON_SCALE[size] ?? '.medium'})`
+  // `size` / `color` accept a static token OR a ternary of two literal tokens
+  // (`color={on() ? "primary" : "muted"}` — the common state-driven icon).
+  // Pre-fix these read STATIC-only (readStaticAttr), so a dynamic value was
+  // SILENTLY dropped (the modifier vanished, no warning). swiftStylingValue
+  // reuses the #2005 machinery — static byte-identical, ternary → a native
+  // conditional, any other dynamic → a NAMED warning (never silent).
+  const size = swiftStylingValue(e, 'size', (v) => ICON_SCALE[String(v)] ?? '.medium')
+  if (size !== undefined) {
+    result += `.imageScale(${size})`
   }
-  const color = readStaticAttr(e, 'color')
-  if (typeof color === 'string') {
-    result += `.foregroundColor(${resolveColor(color, 'swift')})`
+  const color = swiftStylingValue(e, 'color', (v) => resolveColor(String(v), 'swift'))
+  if (color !== undefined) {
+    result += `.foregroundColor(${color})`
   }
   return result + emitSwiftLayoutModifiers(e)
 }
