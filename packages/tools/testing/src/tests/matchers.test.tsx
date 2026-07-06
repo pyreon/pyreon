@@ -1,37 +1,16 @@
 /**
- * jest-dom-style matchers — registered via `@pyreon/testing/matchers`.
- * Node (happy-dom) is sufficient: these assert on element structure/attributes,
- * not real layout.
+ * jest-dom matchers via `@pyreon/testing/matchers` (re-exports
+ * @testing-library/jest-dom). Node (happy-dom) is sufficient — these assert on
+ * element structure/attributes against Pyreon-rendered DOM.
  */
 import { afterEach, describe, expect, it } from 'vitest'
+import '@testing-library/jest-dom/vitest'
 import { cleanup, render, screen } from '../index'
-import { pyreonDomMatchers } from '../matchers'
-
-expect.extend(pyreonDomMatchers)
-
-// Local type augmentation so the custom matchers typecheck in this file.
-interface DomMatchers<R = unknown> {
-  toBeInTheDocument(): R
-  toHaveTextContent(text: string | RegExp): R
-  toHaveAttribute(name: string, value?: string): R
-  toHaveClass(...classes: string[]): R
-  toBeDisabled(): R
-  toBeChecked(): R
-  toHaveValue(value: string | number): R
-  toBeVisible(): R
-  toBeEmptyDOMElement(): R
-  toContainElement(child: Element | null): R
-  toHaveFocus(): R
-}
-declare module 'vitest' {
-  interface Assertion<T = any> extends DomMatchers<T> {}
-  interface AsymmetricMatchersContaining extends DomMatchers {}
-}
 
 afterEach(cleanup)
 
-describe('pyreonDomMatchers', () => {
-  it('toBeInTheDocument / toHaveTextContent / toHaveAttribute', () => {
+describe('@testing-library/jest-dom matchers against Pyreon-rendered DOM', () => {
+  it('toBeInTheDocument / toHaveTextContent / toHaveAttribute / toHaveClass', () => {
     render(
       <a href="/x" data-testid="lnk" class="btn primary">
         Go home
@@ -41,7 +20,6 @@ describe('pyreonDomMatchers', () => {
     expect(link).toBeInTheDocument()
     expect(link).toHaveTextContent('Go home')
     expect(link).toHaveTextContent(/go/i)
-    expect(link).toHaveAttribute('href')
     expect(link).toHaveAttribute('href', '/x')
     expect(link).toHaveClass('btn', 'primary')
   })
@@ -71,8 +49,7 @@ describe('pyreonDomMatchers', () => {
         <span data-testid="child">c</span>
       </div>,
     )
-    const parent = screen.getByTestId('parent')
-    expect(parent).toContainElement(screen.getByTestId('child'))
+    expect(screen.getByTestId('parent')).toContainElement(screen.getByTestId('child'))
     expect(screen.getByTestId('child')).not.toBeEmptyDOMElement()
   })
 })

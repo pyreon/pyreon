@@ -1,23 +1,17 @@
 /**
- * `@pyreon/testing/matchers` — side-effect entry that registers the jest-dom-
- * style matchers with vitest's `expect`. Add to your test's imports:
+ * `@pyreon/testing/matchers` — registers the jest-dom matchers with the test
+ * runner's `expect`. We re-export `@testing-library/jest-dom` (an optional
+ * peer) rather than ship our own: it's the complete, battle-tested matcher set
+ * every Testing-Library user already knows (`toBeInTheDocument`,
+ * `toHaveTextContent`, `toBeVisible` with real visibility computation,
+ * `toHaveAccessibleName`, `toBeChecked`, …), and it operates on the same real
+ * DOM elements `render()` produces.
  *
- *   import '@pyreon/testing/matchers'
+ *   import '@pyreon/testing/matchers'   // side-effect: expect.extend
  *
- * or a vitest `setupFiles` entry. Falls back gracefully (no-op) when a global
- * `expect.extend` isn't present, so importing it outside a test runner won't
- * throw.
+ * Prefer the vitest entry when you use vitest — it also wires auto-cleanup:
+ *
+ *   // vitest.config.ts
+ *   test: { setupFiles: ['@pyreon/testing/vitest'] }
  */
-import { pyreonDomMatchers } from './matchers'
-
-interface ExtendableExpect {
-  extend: (matchers: Record<string, unknown>) => void
-}
-
-const maybeExpect = (globalThis as { expect?: ExtendableExpect }).expect
-if (maybeExpect && typeof maybeExpect.extend === 'function') {
-  maybeExpect.extend(pyreonDomMatchers)
-}
-
-export { pyreonDomMatchers } from './matchers'
-export type { PyreonDomMatchers } from './matchers'
+import '@testing-library/jest-dom/vitest'
