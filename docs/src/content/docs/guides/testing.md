@@ -1,70 +1,137 @@
 ---
 title: "Testing Pyreon Apps"
-description: "How to test Pyreon components and logic — vitest setup, happy-dom vs real-browser smoke tests, the test-environment-parity rule, and bisect-verifying regression tests."
+description: "How to test Pyreon apps — @pyreon/testing (render, screen, fireEvent, waitFor, renderHook), reactive-native matchers, happy-dom vs real-browser, and bisect-verifying regression tests."
 ---
 
 # Testing Pyreon Apps
 
-Pyreon tests run on **vitest**, with one guiding rule: **tests must run in the same environment as production**. A test that passes only because vitest provided something production doesn't (a `process` global, a hand-built vnode, a mocked API) gives false confidence.
+Pyreon ships an official test kit, **`@pyreon/testing`** — a thin adapter over **[`@testing-library/dom`](https://testing-library.com/docs/dom-testing-library/intro)** (the same foundation under the React, Vue, Solid, and Svelte testing libraries), so the entire Testing-Library API works exactly as you already know it. On top of that it adds a Pyreon-aware `render`/`renderHook` and **reactive-native matchers** that read Pyreon's fine-grained reactive graph — assertions no DOM-only testing library can express. It runs on **vitest**.
 
-## When to use what
-
-- **Logic, reactivity, universal code** → vitest in Node (Node *is* production for these).
-- **DOM components** → vitest with `environment: 'happy-dom'` for fast unit coverage.
-- **Anything that runs in a real browser in production** (renderers, the router, UI/styling, compat layers) → **also** a real-Chromium smoke test, because happy-dom is a polyfill, not a browser.
-
-## Vitest config
-
-Every package uses the shared helper — never a hand-rolled `mergeConfig`:
-
-```ts
-import { defineNodeConfig } from '@pyreon/vitest-config'
-
-export default defineNodeConfig({ category: 'fundamentals', environment: 'happy-dom' })
+```bash
+bun add -d @pyreon/testing @testing-library/jest-dom
 ```
 
-Browser configs use `defineBrowserConfig`. The helpers bake the canonical merge order, the 20s timeout, CI retries, and per-category coverage defaults.
+> `@pyreon/testing` is the public, app-facing kit. The `@pyreon/test-utils` package is framework-internal (used to test Pyreon's own packages) — you don't install it. `@testing-library/jest-dom` is an optional peer for the DOM matchers.
 
-## Real-browser smoke tests
+## Render + query
 
-Browser-running packages must ship at least one `*.browser.test.tsx` under `src/` (enforced by the `require-browser-smoke-test` lint rule). They run in real Chromium via `@vitest/browser` + Playwright:
+`screen`, `fireEvent`, `waitFor`, `within`, `prettyDOM`, and every query are re-exported verbatim from `@testing-library/dom` — so any Testing-Library guide or matcher applies directly. `render` is the one Pyreon-specific piece: it mounts a Pyreon component and binds the full query set to it.
 
 ```tsx
-import { mountInBrowser, flush } from '@pyreon/test-utils/browser'
+import { render, screen, cleanup } from '@pyreon/testing'
+import { afterEach } from 'vitest'
 
-it('increments', async () => {
-  const { container } = mountInBrowser(() => <Counter />)
-  container.querySelector('button')!.click()
-  await flush()
-  expect(container.querySelector('button')!.textContent).toBe('1')
+afterEach(cleanup) // or add '@pyreon/testing/vitest' to setupFiles
+
+test('renders the greeting', () => {
+  render(<Greeting name="Ada" />)
+  expect(screen.getByText('Hello, Ada')).toBeTruthy()
 })
 ```
 
-## Test-environment parity
+`render(ui, options?)` mounts into an isolated container and returns bound queries + `container` / `unmount` / `debug`. `screen` exposes the same queries scoped to the whole document. Query kinds: `getByText`, `getByTestId`, `getByRole` (implicit + explicit ARIA roles, narrow by accessible `name`), `getByLabelText`, `getByPlaceholderText` — each with `queryBy` / `getAllBy` / `findBy` variants.
 
-The recurring bug class is "passes in test, breaks in production":
+## Interaction
 
-- **Mock-vnode tests need a parallel real-`h()` test.** A hand-built `{ type, props, children }` object bypasses the real component pipeline. The mock test is the fast path; the real-`h()` test is the safety net. Have both.
-- **happy-dom is not a browser.** It won't catch real `IntersectionObserver` timing, CSS rendering, or Vite `import.meta.env` browser behavior. Use Playwright for those.
-- **Dev-mode warnings use bare `process.env.NODE_ENV !== 'production'`.** Not `typeof process` (dead in Vite browser bundles), not `import.meta.env.DEV` (Vite-only).
+```tsx
+import { render, screen, fireEvent, waitFor } from '@pyreon/testing'
+
+render(<LoginForm />)
+fireEvent.input(screen.getByLabelText('Email'), { target: { value: 'a@b.co' } })
+fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+await waitFor(() => expect(screen.getByText('Welcome')).toBeTruthy())
+```
+
+`fireEvent` dispatches **bubbling** events so they reach Pyreon's event-delegation root — a non-bubbling event would never fire a delegated handler. `waitFor(cb, { timeout, interval })` polls until `cb` stops throwing.
+
+## Hooks
+
+```tsx
+import { renderHook } from '@pyreon/testing'
+
+const { result, rerender } = renderHook((size) => usePagination(size), { initialProps: 10 })
+expect(result.current.pageCount()).toBe(5)
+rerender(20) // updates the REACTIVE prop signal — the hook is NOT re-invoked (Pyreon runs hooks once)
+expect(result.current.pageCount()).toBe(3)
+```
+
+Unlike React's `renderHook`, the hook runs **once** (Pyreon semantics); `rerender` updates a reactive props signal so `computed`/`effect` derivations re-run.
+
+## DOM matchers
+
+`@pyreon/testing/matchers` registers the full [`@testing-library/jest-dom`](https://github.com/testing-library/jest-dom) matcher set (or use the `/vitest` setup file, which also wires auto-cleanup):
+
+```ts
+import '@pyreon/testing/matchers'
+
+expect(screen.getByRole('button')).toBeInTheDocument()
+expect(screen.getByTestId('email')).toHaveValue('a@b.co')
+expect(screen.getByRole('checkbox')).toBeChecked()
+expect(screen.getByRole('dialog')).toBeVisible()
+```
+
+The complete jest-dom set applies (`toBeInTheDocument`, `toHaveTextContent`, `toBeVisible`, `toHaveAccessibleName`, `toBeChecked`, `toHaveValue`, `toHaveClass`, …) — the same matchers you'd use in any Testing-Library project.
+
+## Reactive-native matchers
+
+The part no DOM-only testing library can do — assert on **fire counts** and **fine-grained re-run behavior** by reading the reactive graph:
+
+```ts
+import { expectSignal, expectEffect } from '@pyreon/testing'
+
+expectSignal(total).toHaveRecomputedTimes(1)                    // recomputed once — no thrash
+expectEffect(logEffect).toReRunWhen(() => qty.set(3))
+expectEffect(logEffect).notToReRunWhen(() => theme.set('dark')) // fine-grained: NOT re-run by an unrelated write
+```
+
+`notToReRunWhen` verifies fine-grained precision — that an unrelated write does **not** re-run an effect — which a whole-component re-render model can't assert. These read the reactive graph and require a dev/test build (they throw a clear error under a production build rather than silently pass).
+
+## GC / leak matchers
+
+Collapse the hand-rolled `WeakRef` + double-`gc()` ceremony, and catch subscription leaks — require `--expose-gc`:
+
+```ts
+import { expectGarbageCollected, expectNoReactiveLeak } from '@pyreon/testing'
+
+await expectGarbageCollected(() => makeRow(data))
+await expectNoReactiveLeak(() => {
+  const { unmount } = render(<List rows={rows} />)
+  unmount()
+})
+```
+
+Run the suite with `--expose-gc` (`execArgv: ['--expose-gc']` in the vitest config); without it these throw an actionable error rather than silently passing.
+
+## The guiding rule: test-environment parity
+
+**Tests must run in the same environment as production.** A test that passes only because vitest provided something production doesn't (a `process` global, a hand-built vnode, a mocked API) gives false confidence.
+
+- **Logic, reactivity, universal code** → vitest in Node (Node *is* production for these).
+- **DOM components** → vitest with `environment: 'happy-dom'` for fast unit coverage.
+- **Anything that runs in a real browser in production** (renderers, the router, UI/styling, compat layers) → **also** a real-Chromium smoke test, because happy-dom is a polyfill, not a browser. Interaction tests (`fireEvent`-driven) belong in a real browser — Pyreon's event delegation only fires for bubbling events in a real event loop.
+
+Every package uses the shared vitest helper — never a hand-rolled `mergeConfig`:
+
+```ts
+import { defineNodeConfig } from '@pyreon/vitest-config'
+export default defineNodeConfig({ category: 'fundamentals', environment: 'happy-dom' })
+```
+
+Browser configs use `defineBrowserConfig`.
 
 ## Bisect-verify regression tests
 
 A regression test is only load-bearing if it fails against the broken code:
 
-1. Save the fix.
-2. Revert the fix.
-3. Run the test — assert it **fails** with the right message.
-4. Restore the fix.
-5. Run the test — assert it **passes**.
+1. Save the fix. 2. Revert it. 3. Run the test — assert it **fails** with the right message. 4. Restore the fix. 5. Run the test — assert it **passes**.
 
 Document the result in the PR. A test that passes both ways covers nothing.
 
 ## Common pitfalls
 
-- **Stale DOM references after re-render in compat-layer tests.** Compat layers do full DOM replacement on state change — re-query the DOM after the change, don't hold a pre-click element handle.
-- **Mocking the framework.** Mocking `@pyreon/core` tests the mock, not the integration. Use the real package.
-- **Cross-tab Playwright specs reloading via Vite HMR.** Suppress `@vite/client` per-context for multi-tab listener specs.
+- **happy-dom is not a browser.** It won't catch real `IntersectionObserver` timing, CSS rendering, or `import.meta.env` browser behavior. Use a real-browser smoke for those.
+- **Dev-mode warnings use bare `process.env.NODE_ENV !== 'production'`** — not `typeof process` (dead in Vite browser bundles), not `import.meta.env.DEV` (Vite-only).
+- **Cross-tab Playwright specs reloading via Vite HMR** — suppress `@vite/client` per-context for multi-tab listener specs.
 
 ## Related
 
