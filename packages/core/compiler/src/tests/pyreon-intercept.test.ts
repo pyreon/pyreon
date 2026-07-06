@@ -583,6 +583,214 @@ describe('detectPyreonPatterns', () => {
     })
   })
 
+  describe('static-early-return-conditional', () => {
+    it('flags `if (sig()) return <JSX/>` at the top of a component body', () => {
+      const code = `
+        import { signal } from '@pyreon/reactivity'
+        const loading = signal(true)
+        function Card() {
+          if (loading()) return <div id="skeleton">skeleton</div>
+          return <div id="content">content</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      const hits = diags.filter((d) => d.code === 'static-early-return-conditional')
+      expect(hits).toHaveLength(1)
+      expect(hits[0]!.message).toContain('run ONCE')
+      expect(hits[0]!.message).toContain('<Show')
+      expect(hits[0]!.fixable).toBe(false)
+    })
+
+    it('flags a compound condition — `if (sig() && other) return <JSX/>`', () => {
+      const code = `
+        const loading = signal(true)
+        function Card(props) {
+          if (loading() && props.showFallback) return <Spinner />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-early-return-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('flags the negated + block forms — `if (!sig()) { return <JSX/> }`', () => {
+      const code = `
+        const ready = signal(false)
+        function Panel() {
+          if (!ready()) {
+            return <Spinner />
+          }
+          return <div>panel</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-early-return-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('flags a tracked `computed(...)` binding read in the condition', () => {
+      const code = `
+        const isEmpty = computed(() => items().length === 0)
+        function List() {
+          if (isEmpty()) return <Empty />
+          return <ul>…</ul>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-early-return-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('does NOT fire without a tracked signal read — props access', () => {
+      const code = `
+        function Card(props) {
+          if (props.loading) return <Spinner />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('does NOT fire on a non-signal function call in the condition', () => {
+      const code = `
+        const loading = signal(true)
+        function helperFn() { return false }
+        function Card() {
+          if (helperFn()) return <Spinner />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('does NOT fire on env-gated early returns — `if (import.meta.env.DEV)`', () => {
+      const code = `
+        const loading = signal(true)
+        function DebugPanel() {
+          if (import.meta.env.DEV) return <div>debug</div>
+          return <div>prod</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('does NOT fire on early returns inside nested functions (handlers)', () => {
+      const code = `
+        const loading = signal(true)
+        function Card() {
+          const onClick = () => {
+            if (loading()) return <Spinner />
+            return <Content />
+          }
+          return <button onClick={onClick}>go</button>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('does NOT fire inside a returned reactive accessor (the recommended fix)', () => {
+      const code = `
+        const loading = signal(true)
+        function Card() {
+          return (() => {
+            if (loading()) return <Spinner />
+            return <Content />
+          })
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('does NOT fire in non-component (lowercase) functions', () => {
+      const code = `
+        const loading = signal(true)
+        function pickView() {
+          if (loading()) return <Spinner />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+    })
+
+    it('leaves `if (sig()) return null` to static-return-null-conditional (no double-fire)', () => {
+      // Precedence: the `return null` shape stays with the OLDER code
+      // (different message + fix path); the new code fires ONLY for
+      // non-null early returns. The two are mutually exclusive on the
+      // then-statement shape by construction.
+      const code = `
+        const isOpen = signal(false)
+        function Modal() {
+          if (!isOpen()) return null
+          return <div class="modal">…</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(diags.filter((d) => d.code === 'static-early-return-conditional')).toEqual([])
+      expect(
+        diags.filter((d) => d.code === 'static-return-null-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('fires alongside static-return-null-conditional when a component has BOTH shapes', () => {
+      const code = `
+        const a = signal(false)
+        const b = signal(true)
+        function Both() {
+          if (a()) return null
+          if (b()) return <Spinner />
+          return <Content />
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-return-null-conditional'),
+      ).toHaveLength(1)
+      expect(
+        diags.filter((d) => d.code === 'static-early-return-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('only flags ONCE per component body even when chained', () => {
+      const code = `
+        const a = signal(false)
+        const b = signal(false)
+        function MultiGuard() {
+          if (a()) return <SpinnerA />
+          if (b()) return <SpinnerB />
+          return <div>ok</div>
+        }
+      `
+      const diags = detectPyreonPatterns(code)
+      expect(
+        diags.filter((d) => d.code === 'static-early-return-conditional'),
+      ).toHaveLength(1)
+    })
+
+    it('passes the hasPyreonPatterns pre-filter (rides the signal-declaration line)', () => {
+      // The detector requires a tracked `const x = signal(...)` binding in
+      // the SAME file, so the existing `signal(`/`computed(` pre-filter
+      // line already admits every file this detector could fire on.
+      const code = `
+        const loading = signal(true)
+        function Card() {
+          if (loading()) return <Spinner />
+          return <Content />
+        }
+      `
+      expect(hasPyreonPatterns(code)).toBe(true)
+    })
+  })
+
   describe('as-unknown-as-vnodechild', () => {
     it('flags `expr as unknown as VNodeChild`', () => {
       const code = `

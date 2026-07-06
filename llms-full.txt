@@ -330,7 +330,7 @@ console.log(ctx.routes.length, ctx.islands.length)
 >
 > **Reactivity-Lens is editor-only**: `analyzeReactivity` / `formatReactivityLens` are authoring-time tools (LSP inlay hints via `@pyreon/lint --lsp`, CLI debug). They are NOT consumed at production bundle time and force the JS backend — they never affect emitted code (`reactivityLens` is an additive, byte-neutral sidecar).
 >
-> **Detectors are not codemods**: `detectPyreonPatterns` always reports `fixable: false` (enforced invariant). `detectReactPatterns` is paired with the real `migrateReactCode` codemod; the Pyreon detector has no companion codemod yet, so consumers must not wire auto-fix UX off its `fixable` flag.
+> **Detectors are not codemods**: `detectPyreonPatterns` reports `fixable: true` ONLY for the 3 codes `migratePyreonCode` auto-fixes mechanically (`signal-write-as-call`, `for-with-key`, `as-unknown-as-vnodechild`); every other code — including judgement-requiring reactivity fixes like `props-destructured` and `static-early-return-conditional` — stays `fixable: false`. Do not wire auto-fix UX off the flag for anything outside `AUTO_FIXABLE_PYREON_CODES`.
 
 ## @pyreon/runtime-server — SSR Renderer
 

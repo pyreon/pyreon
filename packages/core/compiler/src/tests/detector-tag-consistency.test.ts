@@ -39,6 +39,7 @@ const COMPILER_CODES = [
   'on-click-undefined',
   'signal-write-as-call',
   'static-return-null-conditional',
+  'static-early-return-conditional',
   'as-unknown-as-vnodechild',
   'island-never-with-registry-entry',
   'query-options-as-function',

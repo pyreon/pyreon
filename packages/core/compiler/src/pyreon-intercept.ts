@@ -44,6 +44,13 @@
  *                       top of a component body runs ONCE; signal changes
  *                       in `cond` never re-evaluate the early-return.
  *                       Wrap in a returned reactive accessor.
+ *  - `static-early-return-conditional` — `if (loading()) return <Skeleton/>`
+ *                       at the top of a component body, where the condition
+ *                       reads a tracked signal/computed binding. Evaluated
+ *                       exactly once at mount — the component is pinned to
+ *                       that branch forever. Use `<Show>` or a returned
+ *                       reactive accessor. (The `return null` shape stays
+ *                       with `static-return-null-conditional`.)
  *  - `as-unknown-as-vnodechild` — defensive `as unknown as VNodeChild`
  *                       cast on JSX returns is unnecessary (`JSX.Element`
  *                       is already assignable to `VNodeChild`).
@@ -55,6 +62,11 @@
  *                       client bundle graph (the runtime short-circuits
  *                       and never calls the loader, but the bundler still
  *                       includes the import). Drop the registry entry.
+ *  - `query-options-as-function` — `useQuery({ ... })` with an object
+ *                       literal captures the options ONCE. `@pyreon/query`
+ *                       hooks take options as a FUNCTION so `queryKey` can
+ *                       read signals and refetch reactively — wrap it:
+ *                       `useQuery(() => ({ ... }))`.
  *
  * Two-mode surface mirrors `react-intercept.ts`:
  *  - `detectPyreonPatterns(code)` — diagnostics only
@@ -96,6 +108,7 @@ export type PyreonDiagnosticCode =
   | 'on-click-undefined'
   | 'signal-write-as-call'
   | 'static-return-null-conditional'
+  | 'static-early-return-conditional'
   | 'as-unknown-as-vnodechild'
   | 'island-never-with-registry-entry'
   | 'query-options-as-function'
@@ -793,6 +806,120 @@ function detectStaticReturnNullConditional(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Pattern: static-early-return-conditional in component bodies
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * `if (loading()) return <Skeleton/>` at the top of a component body is the
+ * signal-conditioned sibling of `static-return-null-conditional`. Components
+ * run ONCE — the condition is evaluated exactly once at mount, so a later
+ * `loading.set(false)` never re-evaluates the branch; the component is
+ * pinned to the mount-time branch forever. Verified end-to-end (PZ-01):
+ * the compiler emits the shape unchanged with zero warnings, and TS2774
+ * does NOT cover it (the signal IS called).
+ *
+ * Detection (deliberately narrow — signal-binding-gated ONLY):
+ *  - Component-shaped function (PascalCase + contains JSX), same walk as
+ *    `detectStaticReturnNullConditional`
+ *  - Top-level `if` whose then-statement is a NON-null early return
+ *    (`return <JSX/>`, `return expr`, bare `return`, or the
+ *    single-statement block forms)
+ *  - The condition contains a zero-arg CallExpression whose callee is a
+ *    TRACKED signal/computed binding (`ctx.signalBindings`). A broader
+ *    "any zero-arg call" tier was deliberately rejected — helper calls in
+ *    setup guards are legitimate and would be a false-positive factory.
+ *
+ * PRECEDENCE vs `static-return-null-conditional`: the `return null` shape
+ * stays with the OLDER code (its message points at the accessor fix for
+ * the hide/show idiom); this detector fires ONLY for non-null early
+ * returns. The two are mutually exclusive on the then-statement shape by
+ * construction, so `if (sig()) return null` never double-fires.
+ *
+ * Runtime-warning alternative was evaluated and rejected: signals are
+ * legitimately read at component setup constantly (deciding initial
+ * config, seeding local state), so a "signal read outside tracking scope"
+ * runtime warning would drown users in false positives. Static detection
+ * of the specific early-return shape is the precise version.
+ */
+function nonNullEarlyReturn(stmt: ts.Statement): ts.ReturnStatement | null {
+  if (ts.isReturnStatement(stmt)) {
+    // `return null` belongs to static-return-null-conditional — skip it
+    // here so the two codes never double-fire on the same statement.
+    if (stmt.expression && stmt.expression.kind === ts.SyntaxKind.NullKeyword) return null
+    return stmt
+  }
+  if (ts.isBlock(stmt)) {
+    if (stmt.statements.length !== 1) return null
+    return nonNullEarlyReturn(stmt.statements[0]!)
+  }
+  return null
+}
+
+/**
+ * Walks `cond` for a zero-arg CallExpression whose callee is an identifier
+ * tracked in `signalBindings` (a `const x = signal(...)` / `computed(...)`
+ * declaration in the same file). Returns the FIRST matching signal name,
+ * or null. Zero-arg only: `sig(value)` is the write-misuse shape owned by
+ * `signal-write-as-call`, and `sig.peek()` deliberately opts out of
+ * tracking (a peeking author knows the read is untracked).
+ */
+function findSignalReadInCondition(
+  cond: ts.Expression,
+  signalBindings: Set<string>,
+): string | null {
+  let found: string | null = null
+  function walk(node: ts.Node): void {
+    if (found) return
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.arguments.length === 0 &&
+      signalBindings.has(node.expression.text)
+    ) {
+      found = node.expression.text
+      return
+    }
+    ts.forEachChild(node, walk)
+  }
+  walk(cond)
+  return found
+}
+
+function detectStaticEarlyReturnConditional(
+  ctx: DetectContext,
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): void {
+  // Fast exit: without a tracked signal binding in the file, no condition
+  // can qualify. (This also means the `hasPyreonPatterns` pre-filter's
+  // existing `signal(`/`computed(` line already admits every file this
+  // detector could fire on — no new pre-filter line needed.)
+  if (ctx.signalBindings.size === 0) return
+  if (!isComponentShapedFunction(node)) return
+  if (!containsJsx(node)) return
+  const body = node.body
+  if (!body || !ts.isBlock(body)) return
+
+  for (const stmt of body.statements) {
+    if (!ts.isIfStatement(stmt)) continue
+    if (!nonNullEarlyReturn(stmt.thenStatement)) continue
+    const sigName = findSignalReadInCondition(stmt.expression, ctx.signalBindings)
+    if (!sigName) continue
+    pushDiag(
+      ctx,
+      stmt,
+      'static-early-return-conditional',
+      `Pyreon components run ONCE — this early return is evaluated exactly once at mount; the signal read \`${sigName}()\` in the condition never re-evaluates the branch, so the component is pinned to whichever branch the first run picked. Use \`<Show when={() => ${sigName}()} fallback={<Fallback/>}>…</Show>\` or return a reactive accessor: \`return (() => ${sigName}() ? <Fallback/> : <Content/>)\` — the accessor re-runs whenever its tracked signals change.`,
+      getNodeText(ctx, stmt),
+      `return (() => ${sigName}() ? <Fallback /> : <Content />)`,
+      false,
+    )
+    // Only flag the FIRST occurrence per component — chained early
+    // returns are usually one mistake, not three (mirrors the sibling).
+    return
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Pattern: `expr as unknown as VNodeChild`
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -937,6 +1064,7 @@ function visitNode(ctx: DetectContext, node: ts.Node): void {
     detectPropsDestructured(ctx, node)
     detectPropsDestructuredBody(ctx, node)
     detectStaticReturnNullConditional(ctx, node)
+    detectStaticEarlyReturnConditional(ctx, node)
   }
   if (ts.isBinaryExpression(node)) {
     detectProcessDevGate(ctx, node)
