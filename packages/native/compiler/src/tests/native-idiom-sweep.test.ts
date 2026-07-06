@@ -32,7 +32,35 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
-import { isSwiftUIAvailable, validateSwiftTypecheck } from '../validate'
+import {
+  isKotlincAvailable,
+  isSwiftUIAvailable,
+  validateKotlin,
+  validateSwiftTypecheck,
+} from '../validate'
+
+// LOUD-OR-TYPECHECKS — the structural invariant the canary enforces: an emit
+// is acceptable IFF it is either loudly WARNED (a named "unsupported"
+// diagnostic) OR warning-free AND passes the real toolchain. A warning-free
+// emit the toolchain REJECTS is a silent MIS-EMIT (the class this whole
+// sprint closed). Runs per target so a Swift-clean / Kotlin-broken emit (or
+// vice-versa) can't slip through. NOTE this catches silent MIS-EMITS
+// (warning-free + uncompilable); a silent DROP (warning-free + compiles but
+// does nothing) is not caught here — those need EFFECT-PRESENT assertions in
+// the per-construct suites above.
+type Validate = (code: string) => { ok: boolean; error?: string }
+function expectLoudOrClean(
+  code: string,
+  warnings: readonly string[],
+  validate: Validate,
+  label: string,
+): void {
+  if (warnings.length > 0) return // loud — acceptable
+  const r = validate(code)
+  expect(r.ok, `SILENT MIS-EMIT — no warning AND ${label} rejects:\n${r.error?.slice(0, 400)}`).toBe(
+    true,
+  )
+}
 
 const A = (body: string, read = 'String(out())') =>
   `import { signal, computed } from '@pyreon/reactivity'\n` +
@@ -129,20 +157,63 @@ const CORPUS: Array<[string, string, string?]> = [
   ['str.padEnd', `  const out = computed(() => s().padEnd(8, "."))`, 'out()'],
   ['includes ternary', `  const out = computed(() => s().includes("he") ? "y" : "n")`, 'out()'],
   ['nested template', `  const out = computed(() => \`a\${\`b\${s()}\`}c\`)`, 'out()'],
+  // This-session silent-drop fixes — LOCKED loud: each now emits a NAMED
+  // warning (was a silent mis-emit). If a future change makes any of them
+  // warning-free AND uncompilable (a naive re-attempt), the canary fails.
+  ['computed object key', `  const k = "a"; const out = computed(() => { const o = { [k]: 1 }; return String(o) })`, 'out()'],
+  ['regex literal test', `  const out = computed(() => /he/.test(s()))`],
+  ['call-arg spread', `  function f(a: number, b: number) { return a + b }; const out = computed(() => { const xs = [1, 2]; return f(...xs) })`],
 ]
 
-describe.skipIf(!isSwiftUIAvailable())('P1 — idiom-sweep canary (loud-or-lowered, never silent+broken)', () => {
+// Statement-context idioms (handler body). A separate wrapper because these
+// are statements, not computed expressions. The logical-assignment entries
+// are the load-bearing lock: a naive parse-time desugar `a ||= b` → `a = a ||
+// b` is UNSOUND (JS truthiness ≠ native Bool ops — `n &&= 5` → `n = n && 5`
+// fails swiftc/kotlinc), so these MUST stay loud until a type-aware emitter
+// lowering exists. This corpus makes that regression fail loudly.
+const H = (body: string) =>
+  `import { signal } from '@pyreon/reactivity'\n` +
+  `import { Button } from '@pyreon/primitives'\n` +
+  `export function App(){
+  const s = signal<number>(0)
+  const on = () => {
+${body}
+  }
+  return (<Button onPress={on}>{String(s())}</Button>)
+}`
+
+const STMT_CORPUS: Array<[string, string]> = [
+  ['logical-assign ||=', `    let a = false\n    a ||= true\n    s.set(a ? 1 : 0)`],
+  ['logical-assign &&= numeric', `    let n = 1\n    n &&= 5\n    s.set(n)`],
+  ['logical-assign ??=', `    let name: string | null = null\n    name ??= "x"\n    s.set(name === "x" ? 1 : 0)`],
+]
+
+describe.skipIf(!isSwiftUIAvailable())('P1 — idiom-sweep canary · Swift (loud-or-typechecks)', () => {
   for (const [name, body, read] of CORPUS) {
-    it(`canary: ${name}`, () => {
+    it(`canary swift: ${name}`, () => {
       const rs = transform(A(body, read), { target: 'swift' })
-      if (rs.warnings.length === 0) {
-        const sw = validateSwiftTypecheck(rs.code)
-        expect(
-          sw.ok,
-          `SILENT FAIL — no warning AND swiftc rejects:\n${sw.error?.slice(0, 400)}`,
-        ).toBe(true)
-      }
-      // warned idioms are acceptable (loud) — nothing to assert further.
+      expectLoudOrClean(rs.code, rs.warnings, validateSwiftTypecheck, 'swiftc')
+    })
+  }
+  for (const [name, body] of STMT_CORPUS) {
+    it(`canary swift (stmt): ${name}`, () => {
+      const rs = transform(H(body), { target: 'swift' })
+      expectLoudOrClean(rs.code, rs.warnings, validateSwiftTypecheck, 'swiftc')
+    })
+  }
+})
+
+describe.skipIf(!isKotlincAvailable())('P1 — idiom-sweep canary · Kotlin (loud-or-typechecks)', () => {
+  for (const [name, body, read] of CORPUS) {
+    it(`canary kotlin: ${name}`, () => {
+      const rs = transform(A(body, read), { target: 'kotlin' })
+      expectLoudOrClean(rs.code, rs.warnings, validateKotlin, 'kotlinc')
+    })
+  }
+  for (const [name, body] of STMT_CORPUS) {
+    it(`canary kotlin (stmt): ${name}`, () => {
+      const rs = transform(H(body), { target: 'kotlin' })
+      expectLoudOrClean(rs.code, rs.warnings, validateKotlin, 'kotlinc')
     })
   }
 })
