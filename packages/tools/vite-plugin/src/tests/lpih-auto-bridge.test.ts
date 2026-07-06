@@ -231,11 +231,21 @@ describe('LPIH transformIndexHtml — injection gating', () => {
     expect(scriptStart).toBeLessThan(headEnd)
   })
 
-  it('does NOT inject when lpih:false', () => {
+  it('does NOT inject the LPIH poller when lpih:false', () => {
     const plugin = bootstrap({ lpih: false })
     const transform = plugin.transformIndexHtml as unknown as TransformIndexHtmlHook
     const out = transform('<html><head></head><body></body></html>')
-    // Plugin returns undefined → Vite uses the original HTML.
+    // The LPIH poller specifically is not injected. (The dev throw-time fix
+    // printer is a SEPARATE default-on dev injection, so the result may still
+    // contain that script — hence we assert on the LPIH marker, not undefined.)
+    expect(out === undefined || !out.includes('/__pyreon_lpih__')).toBe(true)
+  })
+
+  it('injects nothing (undefined) when both lpih AND devErrorPrinter are off', () => {
+    const plugin = bootstrap({ lpih: false, devErrorPrinter: false })
+    const transform = plugin.transformIndexHtml as unknown as TransformIndexHtmlHook
+    const out = transform('<html><head></head><body></body></html>')
+    // Nothing to inject → undefined → Vite uses the original HTML.
     expect(out).toBeUndefined()
   })
 
