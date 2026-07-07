@@ -1,5 +1,22 @@
 # @pyreon/flow
 
+## 0.40.0
+
+### Patch Changes
+
+- [#2073](https://github.com/pyreon/pyreon/pull/2073) [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(compiler): hoist ALL template node-ref captures above `_mountSlot`/`replaceChild` mutations (two-phase template binds, both backends byte-identical)
+
+  A reactive/conditional slot child (`{cond() ? <A/> : <B/>}`, `{cond && <el/>}`, `{arr.map(…)}`) placed BEFORE static siblings broke the compiled template's sibling ref-walk: `_mountSlot` removes its `<!>` placeholder and inserts content + a `<!--pyreon-->` marker (net sibling-count delta ≠ 0), and sibling refs / later placeholder walks were emitted AFTER that mutation. Symptoms (initial-state-dependent): `Cannot read properties of undefined (reading 'setProperty')` (style binding hit the marker comment), `null (reading 'setAttribute')` / `null (reading 'data')` (walk past the end), and — with TWO adjacent slots — the second slot's stale walk resolved to the FIRST slot's reactive marker, which `_mountSlot` then removed, so slot 0's next falsy→truthy re-flip threw `insertBefore … is not a child of this node` and SILENTLY lost the subtree (fired on client mount AND post-hydration; single flips were accidentally correct).
+
+  Template-bind emission is now two-phase: phase 1 (`refLines`) captures every pristine-clone node reference — element walks (`const __eN = …`), sole-text captures (`const __tN = X.firstChild`), and new hoisted placeholder consts (`const __pN = <walk>`) for `_mountSlot` placeholder args + `replaceChild` targets — before phase 2 (`bindLines`) runs any mutation. Phase-2 ops are identity-based, hence order-independent w.r.t. sibling structure. No runtime-dom change; template HTML / hydration markers unchanged.
+
+  This fixes the long-documented `@pyreon/flow` overlay child-order limitation at the root (bisect-verified in real Chromium): `<Controls>` before `<MiniMap>` now renders — the MiniMap-before-Controls ordering constraint is no longer required on current compiler versions. `@pyreon/flow`'s Controls/MiniMap JSDoc is updated accordingly (older compilers still need MiniMap first). Also adds a `pyreon doctor diagnose` catalog entry for the old-version error signatures.
+
+- Updated dependencies [[`e6d3905`](https://github.com/pyreon/pyreon/commit/e6d390586944b903ee8d9c97a71cbaf26eca63d6), [`a5021f6`](https://github.com/pyreon/pyreon/commit/a5021f631729add83b2808a18288a2c48f81c233), [`ea835ad`](https://github.com/pyreon/pyreon/commit/ea835ad364e3dcf0de8337fceed382e9f6762285), [`4958096`](https://github.com/pyreon/pyreon/commit/4958096c01f4ed4f031cc65bf9ff7c26c93d3449), [`e859638`](https://github.com/pyreon/pyreon/commit/e859638a4c382051d5fa6f2605a8c383207f6e66), [`c184330`](https://github.com/pyreon/pyreon/commit/c184330594a7726c4f1f1095cc3a785cfe9ef3f7), [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d), [`ed364d2`](https://github.com/pyreon/pyreon/commit/ed364d2a34f4b74df94c02f3c2e630b96a4f2e7f)]:
+  - @pyreon/runtime-dom@0.40.0
+  - @pyreon/reactivity@0.40.0
+  - @pyreon/core@0.40.0
+
 ## 0.39.0
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-finance",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Phase-5 finance-tracker showcase. SINGLE source compiles to web + iOS + Android, exercising the data/services hook emit (#1689): useAuth<User> auth-state container, useDatabase persistence, a cross-screen defineStore reactive ledger, computed balance, validated useForm, multi-screen routing + store-backed auth-gate, and canonical primitives. The verified mirror lives at packages/native/compiler/src/fixtures/showcase-finance.tsx (swiftc + kotlinc gated).",
   "license": "MIT",

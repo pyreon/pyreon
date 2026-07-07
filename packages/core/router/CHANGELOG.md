@@ -1,5 +1,35 @@
 # @pyreon/router
 
+## 0.40.0
+
+### Minor Changes
+
+- [#2046](https://github.com/pyreon/pyreon/pull/2046) [`0dc1f13`](https://github.com/pyreon/pyreon/commit/0dc1f1379434bbc855ee4e7a7a585759dfc2836e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Respect `prefers-reduced-motion` for route View Transitions (WCAG 2.3.3 "Animation from Interactions"). When the user's OS is set to reduce motion, the router now skips `document.startViewTransition()` and swaps the DOM synchronously via the existing non-VT path — the navigation still happens, only the fade/slide animation is suppressed. The preference is read per-navigation (not cached), so toggling it mid-session takes effect on the next route change. No configuration needed; `meta.viewTransition: false` still opts a route out entirely.
+
+- [#2047](https://github.com/pyreon/pyreon/pull/2047) [`8a7bff0`](https://github.com/pyreon/pyreon/commit/8a7bff0dda93f15afbee9a0d9ab040e2e8969ff0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Announce route changes to screen readers (accessibility). In an SPA, navigation swaps content without a full page load, so assistive tech is never told the page changed. The root `<RouterView>` now writes the new page's name into a visually-hidden `aria-live="polite"` region on every navigation (the new `document.title`, falling back to the pathname) — the same pattern Next.js / Remix / gov.uk ship. Zero config, on by default.
+
+  Only genuine path changes announce (the initial load and same-path query/hash changes don't), and only the root view announces (nested layout views don't double-announce). Opt out with `<RouterView announceRouteChanges={false}>`. SSR-safe (no-op on the server). Layer-safe — mirrors `@pyreon/a11y`'s live-region pattern inline rather than importing it (router is a core-layer package).
+
+### Patch Changes
+
+- [#2068](https://github.com/pyreon/pyreon/pull/2068) [`d61d3d9`](https://github.com/pyreon/pyreon/commit/d61d3d9e3acb483b1b5fa8b79f23c03c309ab2c5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - RouterLink/anchor link-DX fixes (PZ-07 + PZ-06).
+
+  **PZ-07 — `<RouterLink>` without a provider was broken three ways.** `RouterLink` now resolves its router exactly like every router hook does (`useContext(RouterContext) ?? activeRouter` via `getActiveRouter()`), so `setActiveRouter(router)` without a `<RouterProvider>` component renders correct hrefs and client-navigates. With NO router resolvable at all, the link degrades to a **plain anchor**: the `href` is the plain path and clicks are no longer intercepted, so the browser performs a full-load navigation. A dev-only (client-only) warning fires once per `to`: `[Pyreon] <RouterLink to="…"> rendered without a RouterProvider — falling back to a plain anchor…`.
+
+  **BREAKING (pre-1.0, deliberate):** the no-router fallback behavior changed — previously the `href` fell back to a hash URL (`#/path`) and `handleClick` called `preventDefault()` before bailing, leaving a dead link that swallowed clicks. If you relied on the hash-fallback `href` from provider-less links, pass a real router (provider or `setActiveRouter`).
+
+  **PZ-06 — dev-mode warning for full-reload internal anchors.** In dev (client only), `createRouter()` registers ONE document-level click listener that warns when a plain internal `<a href="/x">` is about to trigger a full page reload, with the `<RouterLink to="/x">` replacement in the message. `RouterLink`/framework links never warn (they `preventDefault()` the internal clicks they handle — the discriminator). External/`mailto:`/`#hash` hrefs, modifier/middle clicks, and anchors with `target`/`download` are skipped; deliberate full-load links can also opt out with a `data-allow-reload` attribute. Applies in both history and hash mode; the listener is removed by `router.destroy()` and is dev-only (tree-shaken from production bundles).
+
+  `@pyreon/compiler`: new `diagnoseError` catalog entry teaching the RouterLink-without-provider shape (the dev warning text + the old hash-fallback/dead-click symptoms) with the `<RouterProvider>` fix.
+
+- [#2048](https://github.com/pyreon/pyreon/pull/2048) [`0ea9c60`](https://github.com/pyreon/pyreon/commit/0ea9c6006f19489eb42af9146b790ff826f2a0a3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal: satisfy `@pyreon/lint`'s `no-window-in-ssr` for the reduced-motion `matchMedia` guard added in the previous release. The inline `typeof matchMedia === 'function' && matchMedia(...)` check is refactored into a `prefersReducedMotion()` helper with an `if (typeof matchMedia === 'undefined') return false` entry guard (the form the rule recognises). No behavior change — SSR still returns false; the browser still reads `prefers-reduced-motion` per-navigation.
+
+- Updated dependencies [[`e6d3905`](https://github.com/pyreon/pyreon/commit/e6d390586944b903ee8d9c97a71cbaf26eca63d6), [`a5021f6`](https://github.com/pyreon/pyreon/commit/a5021f631729add83b2808a18288a2c48f81c233), [`ea835ad`](https://github.com/pyreon/pyreon/commit/ea835ad364e3dcf0de8337fceed382e9f6762285), [`4958096`](https://github.com/pyreon/pyreon/commit/4958096c01f4ed4f031cc65bf9ff7c26c93d3449), [`e859638`](https://github.com/pyreon/pyreon/commit/e859638a4c382051d5fa6f2605a8c383207f6e66), [`c184330`](https://github.com/pyreon/pyreon/commit/c184330594a7726c4f1f1095cc3a785cfe9ef3f7), [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d), [`ed364d2`](https://github.com/pyreon/pyreon/commit/ed364d2a34f4b74df94c02f3c2e630b96a4f2e7f)]:
+  - @pyreon/runtime-dom@0.40.0
+  - @pyreon/reactivity@0.40.0
+  - @pyreon/core@0.40.0
+  - @pyreon/sized-map@0.40.0
+
 ## 0.39.0
 
 ### Minor Changes

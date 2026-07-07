@@ -1,5 +1,14 @@
 # @pyreon/mcp
 
+## 0.40.0
+
+### Patch Changes
+
+- [#2070](https://github.com/pyreon/pyreon/pull/2070) [`80c19ac`](https://github.com/pyreon/pyreon/commit/80c19ac234888ab08b0aea198c87548debebcf18) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `detectPyreonPatterns` code `static-early-return-conditional`: flags `if (loading()) return <Skeleton/>` at the top of a component body when the condition reads a tracked `signal()`/`computed()` binding. Components run ONCE — the branch is evaluated exactly once at mount and the component is pinned to it forever (verified end-to-end: the compiler emits the shape unchanged with zero warnings, and TS2774 does not cover it because the signal IS called). The message prescribes `<Show when={() => loading()} fallback={…}>` or a returned reactive accessor. Signal-binding-gated only (helper-call / props / env conditions stay unflagged); the `return null` shape stays with `static-return-null-conditional`, so the two codes never double-fire. Surfaced automatically by MCP `validate`, `pyreon check`, and `pyreon doctor`. Also fixes stale manifest prose (detector count 14 → 16; the "every diagnostic reports `fixable: false`" invariant claim, superseded when `migratePyreonCode` shipped).
+
+- Updated dependencies [[`ee8cd71`](https://github.com/pyreon/pyreon/commit/ee8cd7184fa439b3fe5bc60cf45d783439707a5c), [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d), [`80c19ac`](https://github.com/pyreon/pyreon/commit/80c19ac234888ab08b0aea198c87548debebcf18), [`32e1c66`](https://github.com/pyreon/pyreon/commit/32e1c660b4d1da33c592ef5165774981843f8180), [`e6d3905`](https://github.com/pyreon/pyreon/commit/e6d390586944b903ee8d9c97a71cbaf26eca63d6), [`d61d3d9`](https://github.com/pyreon/pyreon/commit/d61d3d9e3acb483b1b5fa8b79f23c03c309ab2c5), [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d)]:
+  - @pyreon/compiler@0.40.0
+
 ## 0.39.0
 
 ### Minor Changes
