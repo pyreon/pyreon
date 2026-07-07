@@ -172,6 +172,34 @@ data.set([defaultData[0]])
 rowCount() // 1
 ```
 
+### Binding per-cell values that change (column width, sort indicators)
+
+When a table value changes on a **state-only** update — a column resize (`getSize()`), a sort direction indicator, a visibility flag — bind it **reactively at the point of use**, not as a static prop.
+
+`table()` *does* re-notify on these changes (it's a live signal-backed accessor). But a keyed `<For>` reuses each cell by key and does **not** re-run the cell's body on a state change — that's how keyed reconciliation stays fast. So a value captured once at first mount (a static prop or a static style) freezes:
+
+```tsx
+// ❌ Frozen on resize — width is captured once when the cell first mounts,
+//    and the keyed <For> never re-runs this cell body.
+<For each={() => table().getHeaderGroups()[0].headers} by={(h) => h.id}>
+  {(header) => <th style={{ width: header.getSize() + 'px' }}>…</th>}
+</For>
+```
+
+```tsx
+// ✅ Tracks the resize — the width is read inside a reactive style closure,
+//    so it re-subscribes and updates when column sizing changes.
+<For each={() => table().getHeaderGroups()[0].headers} by={(h) => h.id}>
+  {(header) => (
+    <th style={() => ({ width: `${table().getColumn(header.column.id)!.getSize()}px` })}>
+      …
+    </th>
+  )}
+</For>
+```
+
+This is fundamental fine-grained reactivity (the same as Solid's `<For>`): read reactive values **inside** a reactive scope at the point they're used. A value passed as a static prop through a keyed list is captured once. The same applies to any per-cell value that changes without the row identity changing.
+
 ### State Change Callbacks
 
 The adapter automatically manages internal state via `onStateChange`. When you provide your own state and change handlers (e.g., `onSortingChange`, `onPaginationChange`), they are called **in addition to** the adapter's internal state management. The adapter merges your provided state with its internal state.
