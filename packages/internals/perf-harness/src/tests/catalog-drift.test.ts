@@ -68,10 +68,26 @@ const LAYER_PREFIX_OVERRIDE: Record<string, string> = {
   zero: 'ssg',
 }
 
-// Matches any `<ident>.__pyreon_count__?.('<name>')` call.
-// Framework packages use a locally-bound `_countSink = globalThis as { ... }`
-// instead of re-declaring `globalThis` (which would shadow the global).
+// Matches any `<ident>.__pyreon_count__?.('<name>')` call — the direct emit
+// shape, where the literal sits inside the `__pyreon_count__` call (a locally
+// bound `_countSink = globalThis as { ... }` forwarding it straight through).
 const COUNT_CALL_RE = /\.__pyreon_count__\??\.?\(\s*['"]([^'"]+)['"](?:\s*,[^)]*)?\)/g
+
+// A package may route its emits through a tiny TDZ-immune forwarder that reads
+// `globalThis` at call time instead of a module-const sink — e.g.
+//   function _count(name) { (globalThis as …).__pyreon_count__?.(name) }
+// then `_count('island.scheduled')` at each site (introduced by #2096 to fix
+// an intermittent module-const TDZ crash). The literal then lives at the
+// FORWARDER call, and the `__pyreon_count__` call takes a variable — so
+// COUNT_CALL_RE sees neither. Match a `function <fwd>(<param>…)` whose body
+// forwards that FIRST PARAMETER into `.__pyreon_count__?.(<param>)` (the `\2`
+// backref) — this is what distinguishes a forwarder from an ordinary emitter,
+// which passes a string LITERAL (and whose own name must NOT be treated as a
+// forwarder, else its non-counter string-arg calls become phantom counters).
+// Then `<fwd>('<name>')` calls are attributed as emit sites. Bounded
+// lookaheads keep the match inside one small function body.
+const FORWARDER_DECL_RE =
+  /function\s+(\w+)\s*\(\s*(\w+)[^)]*\)[^{]{0,80}\{[\s\S]{0,300}?\.__pyreon_count__\??\.?\(\s*\2\b/g
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -90,16 +106,27 @@ function walk(dir: string, out: string[] = []): string[] {
 
 function extractEmittedNames(): Map<string, string[]> {
   const byName = new Map<string, string[]>()
+  const record = (name: string | undefined, file: string): void => {
+    if (!name) return
+    const list = byName.get(name) ?? []
+    list.push(file.replace(`${REPO_ROOT}/`, ''))
+    byName.set(name, list)
+  }
   for (const rootRel of INSTRUMENTED_PACKAGE_ROOTS) {
     const root = resolve(REPO_ROOT, rootRel)
     for (const file of walk(root)) {
       const src = readFileSync(file, 'utf8')
-      for (const match of src.matchAll(COUNT_CALL_RE)) {
-        const name = match[1]
-        if (!name) continue
-        const list = byName.get(name) ?? []
-        list.push(file.replace(`${REPO_ROOT}/`, ''))
-        byName.set(name, list)
+      // Direct `.__pyreon_count__?.('<name>')` emits.
+      for (const match of src.matchAll(COUNT_CALL_RE)) record(match[1], file)
+      // Forwarder-indirection emits: find local counter forwarders in this
+      // file, then attribute their `<fwd>('<name>')` call sites (same file —
+      // a forwarder is module-local). A non-forwarder name never has such a
+      // string-literal call, so this only ever ADDS real emit sites.
+      const forwarders = new Set<string>()
+      for (const m of src.matchAll(FORWARDER_DECL_RE)) if (m[1]) forwarders.add(m[1])
+      for (const fwd of forwarders) {
+        const callRe = new RegExp(String.raw`\b${fwd}\(\s*['"]([^'"]+)['"]`, 'g')
+        for (const m of src.matchAll(callRe)) record(m[1], file)
       }
     }
   }
