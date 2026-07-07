@@ -1,5 +1,27 @@
 # @pyreon/cli
 
+## 0.40.0
+
+### Minor Changes
+
+- [#2049](https://github.com/pyreon/pyreon/pull/2049) [`78048c1`](https://github.com/pyreon/pyreon/commit/78048c1e6563388bdd6d5e28d2e56481c43cb3c9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `pyreon add <pkg...>` — install one or more `@pyreon/*` packages and print exactly how to wire each one in. It auto-detects the project's package manager from the lockfile (bun / pnpm / yarn / npm, walking up from the current directory), accepts bare names (`pyreon add query` == `@pyreon/query`), and prints a tailored, verified setup recipe per package: the root provider to add (e.g. `<QueryClientProvider>`), a usage snippet, and a docs link. `--dry-run` shows the plan without installing; `--json` emits it machine-readably.
+
+  Curated recipes ship for the flagship packages (query, toast, i18n, permissions, form, store, router, head); any other `@pyreon/*` package still installs with a generic docs pointer. Recipes are hand-authored in the CLI (verified against each package's real public API) rather than generated from manifests — published packages don't ship their manifests.
+
+- [#2045](https://github.com/pyreon/pyreon/pull/2045) [`798a385`](https://github.com/pyreon/pyreon/commit/798a38572f4cf5657f67b28e5ef5b8291ba11d3b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `pyreon check [paths]` — a fast, file-scoped anti-pattern scan that runs the compiler's static detectors (`detectPyreonPatterns` + `detectReactPatterns`) over source files and prints each finding with its inline fix. With no path args it scans the git-changed `.ts`/`.tsx` files (the pre-commit inner loop); pass explicit files/dirs to scope it anywhere. Exits non-zero on findings, so it doubles as a pre-commit / CI gate. `--fix` applies the mechanically-safe auto-fixes (`migratePyreonCode` + `migrateReactCode`) in place; `--json` emits machine-readable findings.
+
+  It's the terminal-native twin of the MCP `validate` tool — distinct from `pyreon doctor` (whole-project health + gates, slower) and `pyreon lint` (the `@pyreon/lint` rule set).
+
+- [#2051](https://github.com/pyreon/pyreon/pull/2051) [`6650d81`](https://github.com/pyreon/pyreon/commit/6650d815118968b6dd7f565b0e9424c0cfff50e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `pyreon mcp` — launch the Pyreon MCP server from the unified CLI. A thin, dependency-free delegator that `npx`-runs `@pyreon/mcp` (the stdio Model-Context-Protocol server serving Pyreon's API reference / patterns / `validate` / `diagnose` to AI coding assistants). Deliberately **not** pinned to `@latest`: it prefers the project-local `@pyreon/mcp` when installed, so the served API reference matches your installed Pyreon version, fetching on demand only when absent. Extra args and `--dry-run` pass through; it inherits stdio so the spawning AI client talks to the server directly.
+
+- [#2050](https://github.com/pyreon/pyreon/pull/2050) [`2012730`](https://github.com/pyreon/pyreon/commit/2012730a58b462955e54629c9afebfc61095690a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `pyreon new [name] [--native]` — scaffold a new Pyreon project from the unified `pyreon` CLI instead of a separately-remembered `npm create @pyreon/zero`. A thin, dependency-free delegator: it `npx`-runs `@pyreon/create-zero@latest` (or `@pyreon/create-multiplatform@latest` with `--native`), passing the project name and any other flags straight through to the scaffolder's interactive flow. Pinned to `@latest` so a new project always starts on the freshest templates regardless of the installed cli version. `--dry-run` prints the npx command without running it.
+
+### Patch Changes
+
+- Updated dependencies [[`ee8cd71`](https://github.com/pyreon/pyreon/commit/ee8cd7184fa439b3fe5bc60cf45d783439707a5c), [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d), [`80c19ac`](https://github.com/pyreon/pyreon/commit/80c19ac234888ab08b0aea198c87548debebcf18), [`32e1c66`](https://github.com/pyreon/pyreon/commit/32e1c660b4d1da33c592ef5165774981843f8180), [`e6d3905`](https://github.com/pyreon/pyreon/commit/e6d390586944b903ee8d9c97a71cbaf26eca63d6), [`d61d3d9`](https://github.com/pyreon/pyreon/commit/d61d3d9e3acb483b1b5fa8b79f23c03c309ab2c5), [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d)]:
+  - @pyreon/compiler@0.40.0
+  - @pyreon/lint@0.40.0
+
 ## 0.39.0
 
 ### Patch Changes

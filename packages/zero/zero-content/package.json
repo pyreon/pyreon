@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/zero-content",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "description": "Pyreon Zero — content layer for markdown-driven Pyreon sites. Compile-time .md/.mdx → Pyreon JSX, typed content collections (zod), convention-scanned MDX components.",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/zero-content#readme",

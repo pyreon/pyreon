@@ -1,5 +1,24 @@
 # cpa-pw-app
 
+## 0.0.26
+
+### Patch Changes
+
+- Updated dependencies [[`e6d3905`](https://github.com/pyreon/pyreon/commit/e6d390586944b903ee8d9c97a71cbaf26eca63d6), [`a5021f6`](https://github.com/pyreon/pyreon/commit/a5021f631729add83b2808a18288a2c48f81c233), [`ea835ad`](https://github.com/pyreon/pyreon/commit/ea835ad364e3dcf0de8337fceed382e9f6762285), [`4958096`](https://github.com/pyreon/pyreon/commit/4958096c01f4ed4f031cc65bf9ff7c26c93d3449), [`e859638`](https://github.com/pyreon/pyreon/commit/e859638a4c382051d5fa6f2605a8c383207f6e66), [`c184330`](https://github.com/pyreon/pyreon/commit/c184330594a7726c4f1f1095cc3a785cfe9ef3f7), [`d61d3d9`](https://github.com/pyreon/pyreon/commit/d61d3d9e3acb483b1b5fa8b79f23c03c309ab2c5), [`0ea9c60`](https://github.com/pyreon/pyreon/commit/0ea9c6006f19489eb42af9146b790ff826f2a0a3), [`0dc1f13`](https://github.com/pyreon/pyreon/commit/0dc1f1379434bbc855ee4e7a7a585759dfc2836e), [`8a7bff0`](https://github.com/pyreon/pyreon/commit/8a7bff0dda93f15afbee9a0d9ab040e2e8969ff0), [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d), [`9098141`](https://github.com/pyreon/pyreon/commit/9098141d9ffc00d5ff247aa85575ee32d9b2680f), [`ed364d2`](https://github.com/pyreon/pyreon/commit/ed364d2a34f4b74df94c02f3c2e630b96a4f2e7f), [`92f00c2`](https://github.com/pyreon/pyreon/commit/92f00c2912cdfdd1ea75013a137d227c1ba3c1fe)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/zero@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.0.25
 
 ### Patch Changes

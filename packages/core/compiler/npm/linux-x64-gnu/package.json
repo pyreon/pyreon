@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/compiler-linux-x64-gnu",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "description": "Linux x64 glibc prebuilt native binary for @pyreon/compiler",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/compiler#readme",

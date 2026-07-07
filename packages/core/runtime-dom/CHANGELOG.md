@@ -1,5 +1,84 @@
 # @pyreon/runtime-dom
 
+## 0.40.0
+
+### Minor Changes
+
+- [#2077](https://github.com/pyreon/pyreon/pull/2077) [`ea835ad`](https://github.com/pyreon/pyreon/commit/ea835ad364e3dcf0de8337fceed382e9f6762285) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add a zero-install in-app reactive-health overlay. Press `Ctrl+Shift+R` in any
+  dev build (or call `__PYREON_DEVTOOLS__.reactive.showOverlay()` / `$p.reactivity()`)
+  to open a floating panel that renders the live reactive graph's summary
+  (`N signals · M derived · K effects · E edges`) plus the health insights
+  `describeReactiveGraph` surfaces — `orphan-signal` (dead reactivity), `high-fanout`
+  (a hot hub), and `deep-chain`. It rides the auto-installed devtools hook (no Chrome
+  extension, no vite-plugin wiring) and tree-shakes out of production via the
+  `process.env.NODE_ENV` gate. Reading the graph auto-activates tracking, so it works
+  even if the app never called `reactive.activate()`.
+
+- [#2079](https://github.com/pyreon/pyreon/pull/2079) [`4958096`](https://github.com/pyreon/pyreon/commit/4958096c01f4ed4f031cc65bf9ff7c26c93d3449) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add an **Activity ("why did X update?") tab** to the reactive dev overlay
+  (`Ctrl+Shift+R`). Alongside the existing **Health** view (graph-wiring insights),
+  the overlay now surfaces the runtime causal view: the recent reactive fires
+  (newest first, from `getReactiveFires`) plus the causal chain that explains the
+  most recent one (`getUpdateCause` / `formatUpdateCause`) — e.g.
+
+  ```text
+  Why did total (derived) update?
+    qty (signal) changed
+    → total (derived) recomputed   ← explained
+  ```
+
+  This is the inverse of React DevTools' "why did this render?": instead of a
+  whole-component re-render reason, it reconstructs the exact
+  signal→computed→effect chain from the dependency graph. Reading the fires
+  auto-activates tracking; the overlay reopens on the Health tab.
+
+- [#2081](https://github.com/pyreon/pyreon/pull/2081) [`e859638`](https://github.com/pyreon/pyreon/commit/e859638a4c382051d5fa6f2605a8c383207f6e66) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add an **Inspect (DOM→signal) picker** to the reactive dev overlay, and a new
+  `nodesForElement(el)` primitive. Press **🎯 Pick** (or `$p.pick()`), click any
+  element, and the overlay shows the signals whose values that element's text
+  displays — plus each one's causal chain. Point at the wrong pixel, get the
+  signal responsible (the on-screen inverse of "why did this render?").
+
+  The correlation is **exact, not a heuristic**: `_bindText`'s fast path tags the
+  text node with its source signal's graph-node id at bind time (a dev-only
+  `WeakMap`, tree-shaken in production), and `nodesForElement` — exported from
+  `@pyreon/runtime-dom` and on `__PYREON_DEVTOOLS__.reactive` — TreeWalks an
+  element's tagged descendant text nodes. Scope: text bindings (the dominant
+  "displayed value" case); attribute/class/multi-signal bindings aren't
+  correlated (their owner element isn't in scope at bind time). Returns `[]` in
+  production.
+
+  Also fixes a real bug this surfaced: **`hydrateRoot` now installs the devtools
+  hook** like `mount()` already did. Previously it did not, so the reactive dev
+  overlay (and `window.__PYREON_DEVTOOLS__`) silently didn't exist in SSR/hydrated
+  apps — i.e. most real Pyreon apps.
+
+### Patch Changes
+
+- [#2069](https://github.com/pyreon/pyreon/pull/2069) [`e6d3905`](https://github.com/pyreon/pyreon/commit/e6d390586944b903ee8d9c97a71cbaf26eca63d6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dev-mode diagnostics for three silent-failure shapes reported from a production app:
+
+  - **`_bindText` VNode-coercion warning (PZ-02)**: a VNode / NativeItem (or an array containing one) String()-coerced into a text binding — the `[object Object]` inline-JSX-helper shape (`<td>{props.getContent()}</td>`), which SSR renders correctly (so it's also a hydration mismatch) — now warns ONCE per binding in dev with extract-a-component guidance. Covers both `_bindText` paths (signal fast path + bare-callable fallback); compiler-emitted raw `__t0.data = expr` assignments are not hookable at runtime.
+  - **`_bindText` function-coercion warning (PZ-05)**: a raw FUNCTION about to be stringified to its source text in a text position (e.g. an accessor neutralized by an `as never` cast) now warns in dev. The check targets the RESULT value only — legitimate callable sources are untouched.
+  - **Setup-throw reactive-prop diagnosis (PZ-10)**: when a component setup throws `TypeError: X is not a function` AND `X` is a getter-backed (compiler-auto-unwrapped) reactive prop, the mount catch appends a dev diagnosis explaining that `props.X` is already the VALUE, with the explicit-arrow escape hatch. Printed to the console and the dev error overlay.
+  - **Diagnose catalog** (`@pyreon/compiler/diagnose`): the generic `"X is not a function"` entry now teaches BOTH causes (signal-not-called AND reactive-prop auto-unwrap — the old entry's "call it: X()" advice was actively wrong for the prop shape); new entry for `[object Object]`-in-text reports teaching the extract-a-component fix.
+
+  All warnings use the bare `process.env.NODE_ENV !== 'production'` gate and tree-shake to zero bytes in production bundles (locked by the bundle-level tree-shake gate). Zero prod-path allocations. Also fixes the stale `@pyreon/runtime-dom` manifest claim that a "raw-signal-as-child" warning exists (it never did) and that dev warnings use `import.meta.env.DEV` (they use the bundler-agnostic bare gate).
+
+- [#2059](https://github.com/pyreon/pyreon/pull/2059) [`a5021f6`](https://github.com/pyreon/pyreon/commit/a5021f631729add83b2808a18288a2c48f81c233) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `<Portal>` leaking its content on unmount. Portal content mounts into a live parent (e.g. `document.body`) that is never removed as a unit, so the mount cleanup left the portaled DOM behind — a modal / toast / tooltip / dropdown stayed in the document forever once its owner unmounted (route change, `<Show>` flip, conditional render). The Portal now brackets its content with markers and removes everything between them on dispose (reactive content that grew after mount included). No effect on portal rendering or event delegation.
+
+- [#2073](https://github.com/pyreon/pyreon/pull/2073) [`85d4a91`](https://github.com/pyreon/pyreon/commit/85d4a91c5e015af7348ebdd312e0ba5523950a3d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix: `<select value>` binding applied after option children exist, as a property (PZ-09)
+
+  `HTMLSelectElement` has no `value` content attribute and its `.value` property setter selects a matching `<option>` — so the value must be applied AFTER the options exist. Four broken cells fixed:
+
+  - **compiler** (both backends, byte-identical): static `value="b"` is never baked into the `_tpl` HTML (dead attribute the parser ignores) — a one-time `el.value = …` property set is emitted instead; and EVERY select-value bind line (static set and reactive `_bindDirect`) is deferred past the element's children lines, so the eager initial update sees `_mountSlot`-mounted dynamic options. Omit-semantic shapes (`undefined`/`null`/`false`) still emit nothing.
+  - **runtime-dom**: `mountElement` and `hydrateElement` exclude `value` from the pre-children `applyProps` pass for `<select>` and apply it post-children via the new `applySelectValueProp` (descriptor-aware — reactive accessors get their initial run post-children too). Fixes both static and reactive initials on the `h()` path, and hydration across child-mismatch re-mounts.
+  - **runtime-server**: SSR no longer serializes the dead `value` attribute on `<select>` — the matching `<option>` is marked `selected` instead (String()-coerced first-match; option value falls back to its text per HTML semantics; options with their own `selected` prop stay author-controlled). String and streaming renderers agree; the select frame flows via `AsyncLocalStorage` so concurrent renders/streams can't cross-contaminate.
+
+  Known gaps (documented): spread `value` (`<select {...props}>`) on the compiled template path still applies before dynamic options; array values on `multiple` selects are unsupported on both client and server (String()-coerced, matching the DOM property setter).
+
+- Updated dependencies [[`c184330`](https://github.com/pyreon/pyreon/commit/c184330594a7726c4f1f1095cc3a785cfe9ef3f7), [`ed364d2`](https://github.com/pyreon/pyreon/commit/ed364d2a34f4b74df94c02f3c2e630b96a4f2e7f)]:
+  - @pyreon/reactivity@0.40.0
+  - @pyreon/core@0.40.0
+  - @pyreon/sized-map@0.40.0
+
 ## 0.39.0
 
 ### Minor Changes

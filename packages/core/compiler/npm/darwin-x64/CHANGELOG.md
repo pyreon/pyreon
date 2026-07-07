@@ -1,5 +1,7 @@
 # @pyreon/compiler-darwin-x64
 
+## 0.40.0
+
 ## 0.39.0
 
 ## 0.38.0
