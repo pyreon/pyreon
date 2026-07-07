@@ -14,6 +14,7 @@ import { build } from './build'
 import { check, watchCheck, type CheckFinding, type CheckResult } from './check'
 import { materializeAssets, type AssetTarget } from './assets'
 import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-bundle'
+import { startLspServer } from './lsp'
 import { scanFontDir } from './fonts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -35,6 +36,8 @@ interface ParsedArgs {
   watch?: boolean
   /** `check` only: emit machine-readable JSON instead of text. */
   json?: boolean
+  /** `check` only: run as a stdio LSP server (editor diagnostics). */
+  lsp?: boolean
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -51,6 +54,10 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (a === '--watch') {
       out.watch = true
+      continue
+    }
+    if (a === '--lsp') {
+      out.lsp = true
       continue
     }
     if (a === '--json') {
@@ -89,6 +96,7 @@ function printUsage(): void {
 Usage:
   pyreon-native build  --target=<ios|android|all> --source=<dir> --out=<dir>
   pyreon-native check  [--target=<ios|android>] [--typecheck] [--watch] [--json] --source=<file|dir>
+  pyreon-native check  --lsp   (stdio LSP server — editor diagnostics)
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
   pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
 
@@ -99,8 +107,10 @@ reports per file — transform errors + unsupported-TS-subset warnings.
 --typecheck to ALSO run 'swiftc -typecheck' against the real SwiftUI SDK
 (macOS-only; skips elsewhere), catching type-corruption that the subset
 warnings + a -parse check miss. --watch re-checks on every source change
-(mtime poll). --json emits machine-readable findings (editor/CI). Exit 0
-on clean-or-warnings, 2 on errors.
+(mtime poll). --json emits machine-readable findings (editor/CI). --lsp
+runs a stdio LSP server that publishes those findings as live editor
+diagnostics on open/change (no --source needed — documents arrive over
+JSON-RPC). Exit 0 on clean-or-warnings, 2 on errors.
 
 assets materializes a shared assets/ directory of images
 (name.png, name@2x.png, name@3x.png) into the platform's bundled
@@ -247,7 +257,15 @@ interface BunImportMeta {
 }
 const meta = import.meta as ImportMeta & BunImportMeta
 if (meta.main === true) {
-  process.exit(main(process.argv.slice(2)))
+  const argv = process.argv.slice(2)
+  const code = main(argv)
+  // Long-running feedback modes stay alive via their own listeners (the
+  // LSP's stdin reader; `--watch`'s mtime poll). Calling process.exit
+  // here would tear those down — the LSP would die before serving a
+  // single request, and `--watch` would run one check then quit.
+  if (!argv.includes('--lsp') && !argv.includes('--watch')) {
+    process.exit(code)
+  }
 }
 
 
@@ -367,6 +385,14 @@ function reportCheck(
 }
 
 function runCheck(parsed: ParsedArgs): number {
+  // `--lsp` runs a stdio LSP server (editor diagnostics). It reads
+  // documents over JSON-RPC, not from `--source`, so it's handled before
+  // the source check. The server stays alive on stdin (see the bin entry,
+  // which skips process.exit for long-running modes).
+  if (parsed.lsp) {
+    startLspServer()
+    return 0
+  }
   if (!parsed.source) {
     console.error('error: check requires --source (a .tsx file or a directory)')
     printUsage()

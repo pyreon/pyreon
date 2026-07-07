@@ -943,10 +943,23 @@ are target-agnostic by construction.
   squiggles on the errors that carry a location. **Honest scope:**
   unsupported-subset WARNINGS are still position-less (rendered as a
   `file`-level diagnostic — threading source spans through the ~110
-  compiler warn sites is a tracked follow-up), and a full **stdio LSP
-  server** (`didOpen`/`didChange` → `publishDiagnostics`, mirroring
-  `@pyreon/lint --lsp`) is the next DX PR — this one ships the reusable
-  in-memory core + position model it will consume.
+  compiler warn sites is a tracked follow-up).
+- **`pyreon-native check --lsp` — a stdio LSP server.** Publishes those
+  findings as **live editor diagnostics** on open / change (a
+  `textDocument/didOpen` / `didChange` → `publishDiagnostics` loop over
+  the in-memory `checkSource` core), so the authoring loop no longer
+  needs a manual CLI run — squiggles appear as you type in any
+  LSP-speaking editor (VS Code, Neovim, …). The JSON-RPC framing is
+  hand-rolled, mirroring `@pyreon/lint --lsp` (no `vscode-languageserver`
+  dependency); the pure core (finding→diagnostic mapper + message
+  handler) is unit-tested without the transport, and the end-to-end
+  server is proven by spawning it and round-tripping a real
+  `initialize` + `didOpen`. **Honest v1 scope:** diagnostics only (no
+  inlay hints — native has no reactivity-lens surface to project), a
+  synchronous re-check on change (debounce is a follow-up — the
+  in-memory transform is fast), and no `swiftc -typecheck` on the
+  keystroke path (slow / macOS-only). Warnings stay file-level until the
+  compiler warn sites carry spans.
 
 ### Web-only by structural design (❌ — not coming to native)
 
