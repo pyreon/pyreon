@@ -232,6 +232,13 @@ targets:
       - path: generated
         type: group
         optional: true
+      # WebView viz bundle (\`web/\` → \`pyreon-native stage-web\`). A
+      # \`type: group\` flattens the staged html/js/css into the app
+      # bundle's resource root, so PyreonWebView's
+      # \`Bundle.main.url(forResource:)\` resolves \`<WebView src="…">\`.
+      - path: WebContent
+        type: group
+        optional: true
     info:
       path: Info.plist
       properties:
@@ -325,6 +332,10 @@ npx pyreon-native build --target=ios --source="\${PROJECT_DIR}/src" --out="\${PR
 # Asset pipeline: shared assets/ → Assets.xcassets (skipped when empty).
 if [[ -d "\${PROJECT_DIR}/assets" ]]; then
   npx pyreon-native assets --target=ios --source="\${PROJECT_DIR}/assets" --out="\${PROJECT_DIR}/ios"
+fi
+# WebView viz bundle: shared web/ → ios/WebContent (skipped when empty).
+if [[ -d "\${PROJECT_DIR}/web" ]]; then
+  npx pyreon-native stage-web --target=ios --source="\${PROJECT_DIR}/web" --out="\${PROJECT_DIR}/ios"
 fi
 `,
   )
@@ -526,6 +537,10 @@ npx pyreon-native build --target=android --source="\${PROJECT_DIR}/src" --out="\
 # Asset pipeline: shared assets/ → res/drawable-* (skipped when empty).
 if [[ -d "\${PROJECT_DIR}/assets" ]]; then
   npx pyreon-native assets --target=android --source="\${PROJECT_DIR}/assets" --out="\${PROJECT_DIR}/android/app/src/main"
+fi
+# WebView viz bundle: shared web/ → android assets/ (skipped when empty).
+if [[ -d "\${PROJECT_DIR}/web" ]]; then
+  npx pyreon-native stage-web --target=android --source="\${PROJECT_DIR}/web" --out="\${PROJECT_DIR}/android/app/src/main"
 fi
 `,
   )

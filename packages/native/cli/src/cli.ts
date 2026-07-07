@@ -13,6 +13,7 @@
 import { build } from './build'
 import { check, watchCheck, type CheckFinding, type CheckResult } from './check'
 import { materializeAssets, type AssetTarget } from './assets'
+import { stageWebBundle, webBundleOutSubdir, type WebBundleTarget } from './web-bundle'
 import { scanFontDir } from './fonts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -89,6 +90,7 @@ Usage:
   pyreon-native build  --target=<ios|android|all> --source=<dir> --out=<dir>
   pyreon-native check  [--target=<ios|android>] [--typecheck] [--watch] [--json] --source=<file|dir>
   pyreon-native assets --target=<ios|android|web> --source=<dir> --out=<dir>
+  pyreon-native stage-web --target=<ios|android> --source=<dir> --out=<dir>
 
 check is the fast authoring-loop command: it runs the PMTC compiler for
 both targets IN MEMORY (no build, no xcodegen/gradle, no file writes) and
@@ -104,6 +106,12 @@ assets materializes a shared assets/ directory of images
 (name.png, name@2x.png, name@3x.png) into the platform's bundled
 format: Assets.xcassets (ios), res/drawable-* density buckets
 (android), or a plain assets/ copy for the web host's public dir.
+
+stage-web copies a flat local web bundle (an index HTML + sibling
+js/css) into the exact app location the PyreonWebView runtime resolves
+a <WebView src="..."> against — ios/WebContent (bundle resources) or
+android assets/ (file:///android_asset/). Flat-only: nested
+subdirectories are skipped with a warning.
 
 Targets:
   ios        emit Swift / SwiftUI
@@ -129,6 +137,9 @@ export function main(argv: string[]): number {
   const parsed = parseArgs(argv)
   if (parsed.command === 'assets') {
     return runAssets(parsed)
+  }
+  if (parsed.command === 'stage-web') {
+    return runStageWeb(parsed)
   }
   if (parsed.command === 'check') {
     return runCheck(parsed)
@@ -264,6 +275,43 @@ function runAssets(parsed: ParsedArgs): number {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[pyreon-native] assets failed: ${message}`)
+    return 2
+  }
+}
+
+/**
+ * `stage-web` — copy a flat local web bundle into the app location the
+ * PyreonWebView runtime resolves `<WebView src="…">` against. Only the
+ * two NATIVE targets (`ios` | `android`) apply — the web host serves its
+ * own files directly, so there is nothing to stage there.
+ */
+function runStageWeb(parsed: ParsedArgs): number {
+  const target: WebBundleTarget | undefined =
+    parsed.rawTarget === 'ios' ? 'ios' : parsed.rawTarget === 'android' ? 'android' : undefined
+  if (!target) {
+    console.error('error: stage-web --target must be ios | android')
+    printUsage()
+    return 1
+  }
+  if (!parsed.source || !parsed.out) {
+    console.error('error: stage-web requires --source and --out')
+    printUsage()
+    return 1
+  }
+  try {
+    const result = stageWebBundle(parsed.source, target, parsed.out)
+    console.log(
+      `[pyreon-native] staged ${result.files} web-bundle file(s) → ${join(parsed.out, webBundleOutSubdir(target))}`,
+    )
+    for (const dir of result.skippedDirs) {
+      console.warn(
+        `[pyreon-native] stage-web: skipped nested directory '${dir}' (flat-only v1 — the runtime resolves 'src' by bare name; nested support is a follow-up)`,
+      )
+    }
+    return 0
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[pyreon-native] stage-web failed: ${message}`)
     return 2
   }
 }

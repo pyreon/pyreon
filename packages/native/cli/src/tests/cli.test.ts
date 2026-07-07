@@ -3,7 +3,7 @@
 // directly with a mocked argv. Output goes via console.error /
 // console.log; tests capture both.
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
@@ -157,5 +157,29 @@ describe('@pyreon/native-cli main()', () => {
     expect(android.length).toBeGreaterThanOrEqual(7)
     const first = readFileSync(join(tempOut, 'android', android[0]!), 'utf8').split('\n')[0]
     expect(first).toBe('package com.example.allgen')
+  })
+
+  it('stage-web requires a native --target (ios | android)', () => {
+    const webSrc = mkdtempSync(join(tmpdir(), 'pyreon-cli-web-'))
+    // `web` is a valid `assets` target but NOT a stage-web target.
+    expect(main(['stage-web', '--target=web', `--source=${webSrc}`, `--out=${tempOut}`])).toBe(1)
+    expect(main(['stage-web', `--source=${webSrc}`, `--out=${tempOut}`])).toBe(1)
+    rmSync(webSrc, { recursive: true, force: true })
+  })
+
+  it('stage-web requires --source and --out', () => {
+    expect(main(['stage-web', '--target=ios', `--out=${tempOut}`])).toBe(1)
+    expect(main(['stage-web', '--target=ios', `--source=./web`])).toBe(1)
+  })
+
+  it('stage-web copies a flat bundle into WebContent (ios) and returns 0', () => {
+    const webSrc = mkdtempSync(join(tmpdir(), 'pyreon-cli-web-'))
+    writeFileSync(join(webSrc, 'chart.html'), '<html></html>')
+    writeFileSync(join(webSrc, 'chart.js'), 'x')
+    const code = main(['stage-web', '--target=ios', `--source=${webSrc}`, `--out=${tempOut}`])
+    expect(code).toBe(0)
+    const staged = readdirSync(join(tempOut, 'WebContent')).sort()
+    expect(staged).toEqual(['chart.html', 'chart.js'])
+    rmSync(webSrc, { recursive: true, force: true })
   })
 })
