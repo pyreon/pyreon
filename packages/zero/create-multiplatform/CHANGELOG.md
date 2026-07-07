@@ -1,5 +1,13 @@
 # @pyreon/create-multiplatform
 
+## 0.41.0
+
+### Patch Changes
+
+- [#2107](https://github.com/pyreon/pyreon/pull/2107) [`e6fa77c`](https://github.com/pyreon/pyreon/commit/e6fa77c514bf017cb71f6cc08bd93e0cb81fb307) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Scaffold WebView viz-bundle staging so `<WebView src="…">` resolves a local multi-file bundle from on-device app resources.
+
+  The generated build scripts now run `pyreon-native stage-web` (gated on a `web/` project directory, so it's a no-op when absent), which copies a flat web bundle (an `index.html` + sibling `js`/`css`) into the exact location the shipped PyreonWebView runtime resolves `src` against — iOS `WebContent/` (included as an XcodeGen `type: group` so the files flatten to the app bundle's resource root for `Bundle.main.url(forResource:)`) and Android `assets/` (`file:///android_asset/`). This keeps the whole bundle on-device (the policy-safe path) and lets the html's relative asset refs resolve. Flat-only in v1; nested subdirectories are skipped with a warning.
+
 ## 0.40.0
 
 ## 0.39.0

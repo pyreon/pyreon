@@ -1,5 +1,62 @@
 # @pyreon/zero
 
+## 0.41.0
+
+### Minor Changes
+
+- [#2104](https://github.com/pyreon/pyreon/pull/2104) [`850a76d`](https://github.com/pyreon/pyreon/commit/850a76d33296059ff9c0d03d12c8092208b3bf81) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add a `zero({ env })` build-time gate for public env vars.
+
+  Declare your public (`ZERO_PUBLIC_*`) env schema in the plugin config and the
+  **build fails** when a declared var is missing or invalid — so you catch "forgot
+  to set `ZERO_PUBLIC_API_URL`" before it ships to the browser as `undefined`. In
+  dev it warns instead (an incomplete local `.env` doesn't block iteration).
+
+  ```ts
+  zero({ env: { API_URL: url(), ANALYTICS_ID: String } });
+  ```
+
+  Keys are un-prefixed (matching `publicEnv()`); values are any env schema entry
+  (a default, `String`/`Number`/`Boolean`, `url()`/`oneOf()`, or a Standard
+  Schema). This is the safety net for the "works in dev, undefined in prod" trap.
+
+- [#2101](https://github.com/pyreon/pyreon/pull/2101) [`89457f6`](https://github.com/pyreon/pyreon/commit/89457f6a68984ca29158b8728f605b1f54f2f243) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Make `publicEnv()` work in the browser, and accept any Standard Schema for env
+  validation (zero-dependency).
+
+  **Isomorphic `publicEnv()`.** Previously `publicEnv()` read `process.env`, which
+  is `undefined` in the browser — so it silently returned `{}` client-side despite
+  being documented "client-safe." Now `@pyreon/zero`'s vite-plugin reads
+  `ZERO_PUBLIC_*` vars from your `.env*` files at build time and inlines the
+  (prefix-stripped) snapshot as a `define` into **both** the client and SSR
+  bundles, so `publicEnv()` works in server AND browser code, and a value rendered
+  during SSR matches after hydration (no mismatch).
+
+  **Security boundary.** Only `ZERO_PUBLIC_`-prefixed vars are ever inlined — a
+  secret without the prefix (`DATABASE_URL`, `STRIPE_SECRET_KEY`) is structurally
+  unable to reach the client bundle.
+
+  **Bring-your-own validation.** `validateEnv` and `publicEnv` now accept any
+  [Standard Schema](https://standardschema.dev) directly — zod / valibot / arktype
+  / `@pyreon/validate`'s `s` — duck-typed, so `@pyreon/zero` depends on no schema
+  library. The raw env string is handed to the schema, so use a coercing schema
+  (`z.coerce.number()`, `s.stringbool()`); async schemas are rejected.
+
+  Note: public values are inlined at build time — changing one requires a rebuild,
+  not just a redeploy.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.41.0
+  - @pyreon/head@0.41.0
+  - @pyreon/reactivity@0.41.0
+  - @pyreon/router@0.41.0
+  - @pyreon/runtime-dom@0.41.0
+  - @pyreon/runtime-server@0.41.0
+  - @pyreon/server@0.41.0
+  - @pyreon/vite-plugin@0.41.0
+  - @pyreon/meta@0.41.0
+  - @pyreon/sized-map@0.41.0
+
 ## 0.40.0
 
 ### Patch Changes
