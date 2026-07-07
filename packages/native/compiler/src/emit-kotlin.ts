@@ -167,6 +167,14 @@ let _mapNames: Set<string> = new Set()
 let _authNames: Set<string> = new Set()
 /** G2: every function decl name (Parser-A). Mirrors emit-swift's set. */
 let _functionNames: Set<string> = new Set()
+/** File-scope helper-function names (persists across the whole emit) — seeded
+ * into each component's `_functionNames` so a `dbl(21)` call resolves as a
+ * free-function call regardless of which component emits it. */
+let _helperFnNames: Set<string> = new Set()
+/** File-scope helper name → return type (parity with the Swift path; Kotlin's
+ * `derivedStateOf` mostly self-infers, but a helper call in a typed position
+ * still benefits). */
+let _helperReturns: Map<string, TypeIR> = new Map()
 /**
  * Per-component: every machine decl name (DeclIR.machine — Gap 4
  * PR-2). PyreonMachine has `operator fun invoke()` so `m()` reads
@@ -261,8 +269,14 @@ export function emitKotlin(
   // fonts: Android resolves at runtime via pyreonFont(res/font), so
   // the map is accepted for signature symmetry but unused here.
   _fonts: Record<string, string> = {},
+  helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  // File-scope pure-logic helper names — seeded into every component's
+  // per-component `_functionNames` reset so a `dbl(21)` call resolves as a
+  // free-function call in ANY component.
+  _helperFnNames = new Set(helperFns.map((h) => h.name))
+  _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
   _constStringMapKotlin = new Map()
   _kotlinStoreDefs = stores
   // Declared structs for per-component inference (typed object-array
@@ -345,6 +359,21 @@ export function emitKotlin(
   for (const md of moduleDecls) parts.push(emitKotlinModuleDecl(md))
   // Gap 4 v1: emit per-store singleton class.
   for (const s of stores) parts.push(emitKotlinStore(s))
+  // Shape A: emit top-level pure-logic HELPER functions at file scope (free
+  // `fun`s), AFTER stores + BEFORE components so both store methods and
+  // component bodies can call them. Reuses the same `emitKotlinFunction` store
+  // methods use; any anonymous-object data classes the body synthesizes are
+  // flushed to module scope (mirroring the component path).
+  for (const h of helperFns) {
+    const helperCtx: KotlinCtx = {
+      synthesizedDataClasses: [],
+      componentName: 'PyreonHelpers',
+    }
+    parts.push(emitKotlinFunction(h, helperCtx))
+    for (const synth of helperCtx.synthesizedDataClasses) {
+      parts.push(emitKotlinStruct({ name: synth.name, fields: synth.fields }))
+    }
+  }
   // Gap 4 v2 follow-up: emit per-model singleton object.
   for (const m of models) parts.push(emitKotlinModel(m))
   // Gap 4 follow-up — withField metadata data classes.
@@ -1090,7 +1119,9 @@ function emitKotlinComponent(c: ComponentIR): string {
   // enum context.
   _signalEnumTypes = new Map()
   _signalNames = new Set()
-  _functionNames = new Set()
+  // Seed with file-scope helper names so a `dbl(21)` call in this component
+  // resolves as a free function.
+  _functionNames = new Set(_helperFnNames)
   _machineNames = new Set()
   _i18nNamesKotlin = new Set()
   _fetchNames = new Set()
@@ -1160,7 +1191,14 @@ function emitKotlinComponent(c: ComponentIR): string {
   // decls with no explicit .connect() — reuses the on-mount harness +
   // connect url-threading. Mutates c.decls (idempotent).
   synthesizeWebSocketAutoConnect(c)
-  const inferCtx = buildInferenceCtx(c.decls, _kotlinStoreDefs, _kotlinStructDefs, c.props, c.propsParamName)
+  const inferCtx = buildInferenceCtx(
+    c.decls,
+    _kotlinStoreDefs,
+    _kotlinStructDefs,
+    c.props,
+    c.propsParamName,
+    _helperReturns,
+  )
   const ctx: KotlinCtx = {
     synthesizedDataClasses: [],
     componentName: c.name,

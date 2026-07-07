@@ -208,6 +208,13 @@ let _i18nNames: Set<string> = new Set()
  * `call(callee=identifier, args=[])` in the IR.
  */
 let _functionNames: Set<string> = new Set()
+/** File-scope helper-function names (module-level, persists across the whole
+ * emit) — seeded into each component's `_functionNames` so a `dbl(21)` call
+ * resolves as a free-function call regardless of which component emits it. */
+let _helperFnNames: Set<string> = new Set()
+/** File-scope helper name → return type, assigned onto each component's infer
+ * ctx so a computed over a helper call infers its return type (not `Any`). */
+let _helperReturns: Map<string, TypeIR> = new Map()
 /**
  * Per-component: set to true when the component declares any router
  * hook (`useNavigate()` / `useParams()`). When set, the View struct
@@ -432,8 +439,16 @@ export function emitSwift(
   features: FeatureDefnIR[] = [],
   zodSchemas: ZodSchemaDefnIR[] = [],
   fonts: Record<string, string> = {},
+  helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  // File-scope pure-logic helper names — seeded into every component's
+  // per-component `_functionNames` reset so a call `dbl(21)` resolves as a
+  // free-function call in ANY component (not a signal read / unknown ref).
+  _helperFnNames = new Set(helperFns.map((h) => h.name))
+  // Helper name → return type, so a computed over a helper call
+  // (`computed(() => dbl(21))`) infers `Int` instead of `Any`.
+  _helperReturns = new Map(helperFns.map((h) => [h.name, h.returnType]))
   _fontMap = fonts
   _constStringMap = new Map()
   for (const md of moduleDecls) {
@@ -511,6 +526,11 @@ export function emitSwift(
   // Gap 4 v1: emit per-store @Observable singleton class BEFORE
   // components so call sites can reference the type.
   for (const s of stores) parts.push(emitSwiftStore(s))
+  // Shape A: emit top-level pure-logic HELPER functions at file scope (free
+  // `func`s), AFTER stores + BEFORE components so both store methods and
+  // component bodies can call them. Reuses the same `emitSwiftFunction` store
+  // methods use ('internal' visibility → Swift's default, no `private`).
+  for (const h of helperFns) parts.push(emitSwiftFunction(h, 'internal'))
   // Gap 4 v2 follow-up: emit per-model singleton class BEFORE components
   // so `<instance>.<field>` use sites resolve to PyreonModel_<id>.shared.
   for (const m of models) parts.push(emitSwiftModel(m))
@@ -1219,7 +1239,17 @@ function emitSwiftComponent(c: ComponentIR): string {
   // decls with no explicit .connect() — reuses the on-mount harness +
   // connect url-threading. Mutates c.decls (idempotent).
   synthesizeWebSocketAutoConnect(c)
-  const inferCtx = buildInferenceCtx(c.decls, _storeDefs, _structDefs, c.props, c.propsParamName)
+  // Shape A: pass file-scope helper return types so the computeds pre-inference
+  // resolves `computed(() => dbl(21))` to `Int`, not `Any` (assigning after the
+  // build would be too late — the computed type is already cached).
+  const inferCtx = buildInferenceCtx(
+    c.decls,
+    _storeDefs,
+    _structDefs,
+    c.props,
+    c.propsParamName,
+    _helperReturns,
+  )
   // Expose it to the object-literal emit so a non-literal field
   // (`{ id: count() }`) gets its struct-field type inferred.
   _exprInferCtx = inferCtx
@@ -1260,8 +1290,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   _signalNames = new Set()
   // G2 (related correctness): track every function decl name so the
   // call-emit keeps parens for `addTodo()` (function call) and drops
-  // them only for `count()` (signal read).
-  _functionNames = new Set()
+  // them only for `count()` (signal read). Seed with the file-scope helper
+  // names so a `dbl(21)` call in this component resolves as a free function.
+  _functionNames = new Set(_helperFnNames)
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).
   _machineNames = new Set()

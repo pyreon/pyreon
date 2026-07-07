@@ -55,6 +55,18 @@ export interface InferenceCtx {
    */
   objectLocals: Map<string, Extract<ExprIR, { kind: 'object' }>>
   /**
+   * File-scope pure-logic HELPER name → its return type. A call to a helper
+   * (`dbl(21)`) infers the helper's return type instead of degrading to `Any`
+   * — without this a Swift computed over a helper call emitted
+   * `private var g: Any { dbl(21) }` and a downstream `String(g())` failed
+   * ("no exact matches in call to initializer"). Kotlin's `derivedStateOf`
+   * infers on its own so it needs no annotation, but Swift's explicit computed
+   * annotation comes from here. Optional: only the per-component ctxs the
+   * emitters build carry it (assigned after `buildInferenceCtx`), so the many
+   * other ctx literals don't need to construct it.
+   */
+  helperReturns?: Map<string, TypeIR> | undefined
+  /**
    * Fetch decl name → decoded result type T (from `useFetch<T>(url)`).
    * `x.data` / `x.data()` infer T; `x.isPending` infers boolean —
    * without this, a computed over fetch state (`computed(() =>
@@ -295,6 +307,7 @@ export function buildInferenceCtx(
   structDefs: StructIR[] = [],
   props: { name: string; type: TypeIR }[] = [],
   propsParamName?: string,
+  helperReturns?: Map<string, TypeIR> | undefined,
 ): InferenceCtx {
   const ctx: InferenceCtx = {
     signals: new Map(),
@@ -302,6 +315,11 @@ export function buildInferenceCtx(
     valueConsts: new Map(),
     locals: new Map(),
     objectLocals: new Map(),
+    // Shape A: available DURING the computeds pre-inference (Pass 2) below, so
+    // `computed(() => dbl(21))` infers the helper's return type — assigning it
+    // AFTER buildInferenceCtx returns would be too late (the computed type is
+    // already cached as `Any`).
+    helperReturns,
     props: new Map(props.map((p) => [p.name, p.type])),
     propsParamName,
     structs: new Map(
@@ -1041,6 +1059,11 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // arithmetic / typed positions). `Number` coerces to a float-capable
       // number, so it maps to the Double (float) shape like parseFloat.
       if (expr.callee.kind === 'identifier' && expr.args.length >= 1) {
+        // A call to a file-scope pure-logic HELPER (`dbl(21)`) infers the
+        // helper's declared return type — so a Swift computed over it gets a
+        // precise annotation instead of `Any` (`String(dbl(21))` typechecks).
+        const helperRet = ctx.helperReturns?.get(expr.callee.name)
+        if (helperRet) return helperRet
         if (expr.callee.name === 'parseInt') return { kind: 'number' }
         if (expr.callee.name === 'parseFloat' || expr.callee.name === 'Number') {
           return { kind: 'number', float: true }
