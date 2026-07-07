@@ -96,16 +96,11 @@ function firstT<T>(xs: T[]): T { return xs[0] }
 export function App(){ const g = computed(() => firstT([1, 2, 3])); return (<Stack><Text>{String(g())}</Text></Stack>) }`,
       'firstT',
     ],
-    [
-      'FRACTIONAL body helper',
-      `${HDR}
-function scale(x: number): number { return x * 1.5 }
-export function App(){ const g = computed(() => scale(4)); return (<Stack><Text>{String(g())}</Text></Stack>) }`,
-      'scale',
-    ],
-    // NOTE: a helper with NO return annotation used to be deferred here; the
-    // infer-return-from-body follow-up now EMITS it (its return type is
-    // inferred from the body) — see native-helper-infer-return.test.ts.
+    // NOTE: two shapes used to be deferred here and now EMIT — a helper with
+    // NO return annotation (return inferred from body, #2093) and a FRACTIONAL
+    // body (Int×Double body coercion + Double-return refinement — see
+    // native-helper-fractional.test.ts). Only GENERIC stays deferred (the IR
+    // can't represent `<T>`).
   ] as const) {
     it(`${name} keeps a NAMED warning and is NOT emitted, on both targets`, () => {
       for (const target of ['swift', 'kotlin'] as const) {

@@ -2044,30 +2044,50 @@ function emitSwiftFunction(
   }
   const retType = returnType.kind === 'unknown' ? '' : ` -> ${swiftType(returnType)}`
   // Single-statement single-return concise form.
-  if (
-    d.body.length === 1 &&
-    d.body[0]!.kind === 'return' &&
-    d.body[0]!.expr !== undefined
-  ) {
-    const concise = emitSwiftExpr(inlineValueConsts((d.body[0]! as { expr: ExprIR }).expr), 0)
-    const vis = visibility === 'private' ? 'private ' : ''
-    return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
+  // Seed this function's PARAM types into the infer ctx `numericFloatness`
+  // reads (`_activeInferCtx`), so an Int-typed param used in fractional
+  // arithmetic inside the body COERCES: `x * 1.5` on an `Int` param →
+  // `Double(x) * 1.5` (Swift has no implicit Int→Double). This is the same
+  // element-callback coercion (a `.map((x) => x * 1.5)` param is bound to the
+  // receiver element type), extended to a top-level helper / function body —
+  // WITHOUT it, a helper param is neither a signal nor a const, so it infers
+  // `unknown` and the coercion never fires. Restored in `finally` (scoped to
+  // this body), mirroring the element-callback seed+restore.
+  const paramSaved = d.params.map((p) => ({
+    name: p.name,
+    had: _activeInferCtx.locals.has(p.name),
+    prev: _activeInferCtx.locals.get(p.name),
+  }))
+  for (const p of d.params) _activeInferCtx.locals.set(p.name, p.type)
+  try {
+    if (
+      d.body.length === 1 &&
+      d.body[0]!.kind === 'return' &&
+      d.body[0]!.expr !== undefined
+    ) {
+      const concise = emitSwiftExpr(inlineValueConsts((d.body[0]! as { expr: ExprIR }).expr), 0)
+      const vis = visibility === 'private' ? 'private ' : ''
+      return `${vis}func ${swiftIdent(d.name)}(${params})${retType} { ${concise} }`
+    }
+    // Inline component value-consts into the body — a `private func` handler,
+    // like a struct-level computed, can't reference the body-local `let`s the
+    // value-consts emit as (`if step < steps.count` where `const steps = […]`
+    // → "cannot find 'steps' in scope"). Same inline the computed path uses.
+    const inlinedBody = inlineValueConstsInStmts(d.body)
+    // Seed this function's LOCAL `const`/`let` types into the infer ctx so a
+    // later type-dependent emit in the body resolves them — the named-handler
+    // analog of the inline-handler seeding in emitSwiftAction. Restored after.
+    const savedLocals = seedHandlerLocals(inlinedBody, _exprInferCtx)
+    const bodyLines = inlinedBody.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
+    _exprInferCtx.locals = savedLocals
+    const vis2 = visibility === 'private' ? 'private ' : ''
+    return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
+  } finally {
+    for (const s of paramSaved) {
+      if (s.had) _activeInferCtx.locals.set(s.name, s.prev!)
+      else _activeInferCtx.locals.delete(s.name)
+    }
   }
-  // Inline component value-consts into the body — a `private func` handler,
-  // like a struct-level computed, can't reference the body-local `let`s the
-  // value-consts emit as (`if step < steps.count` where `const steps = […]`
-  // → "cannot find 'steps' in scope"). Same inline the computed path uses.
-  const inlinedBody = inlineValueConstsInStmts(d.body)
-  // Seed this function's LOCAL `const`/`let` types into the infer ctx so a
-  // later type-dependent emit in the body resolves them — the named-handler
-  // analog of the inline-handler seeding in emitSwiftAction (`const onTap = ()
-  // => { const t = todos.find(…); if (t) { … } }` → `if t != nil`). Restored
-  // after (scoped to this body).
-  const savedLocals = seedHandlerLocals(inlinedBody, _exprInferCtx)
-  const bodyLines = inlinedBody.map((s) => `    ${emitSwiftStatement(s, 4)}`).join('\n')
-  _exprInferCtx.locals = savedLocals
-  const vis2 = visibility === 'private' ? 'private ' : ''
-  return `${vis2}func ${swiftIdent(d.name)}(${params})${retType} {\n${bodyLines}\n  }`
 }
 
 /**

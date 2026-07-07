@@ -2552,26 +2552,18 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     // integer-literal call site needs no Kotlin numeric coercion.)
     const decl = tryFunctionDecl(name, fn, ctx)
     if (decl && decl.kind === 'function') {
-      // ONE deferred shape keeps a NAMED warning here (never a broken emit — no
-      // regression from #2090): a FRACTIONAL body (a non-integer literal /
-      // division / `Math.*`) → the `number`→Int param + Int-return emit is a
-      // Double mismatch inside the body (`x * 1.5` on an `Int` param), which
-      // needs the element-callback-style Int×Double coercion threaded into the
-      // helper body — a tracked follow-up.
-      //
-      // A missing return-type annotation is NO LONGER gated here: a
-      // post-parse refine pass (`refineHelperReturns`) infers the return type
-      // from the body (via `inferReturnType`, the same util the emitters use),
-      // so `function dbl(x: number) { return x * 2 }` — no `: number` — emits.
-      // Only a genuinely-un-inferable body (return type stays `unknown` after
-      // inference) is warned + dropped there.
-      if (helperBodyIsFractional(decl.body)) {
-        ctx.warnings.push(
-          `${name} is a top-level helper function whose body does fractional math (a non-integer literal / division / \`Math.*\`) — PMTC's \`number\`→\`Int\` params don't yet coerce to \`Double\` inside a helper body, so \`${name}\` was skipped rather than mis-emitted. Inline the logic into the component (where Int×Double coercion is supported), or track the follow-up.`,
-        )
-      } else {
-        ctx.helperFns.push(decl)
-      }
+      // Collect every non-generic helper. Two shapes previously deferred here
+      // are now HANDLED downstream, so there is no per-collect gate:
+      //   - a missing return annotation → `refineHelperReturns` infers the
+      //     return type from the body (drops the annotation requirement);
+      //   - a FRACTIONAL body (`x * 1.5`, `x / 2`, `Math.sqrt`) → the emitter
+      //     now seeds the helper's Int params into the coercion ctx so the body
+      //     coerces (`Double(x) * 1.5`) AND `refineHelperReturns` refines the
+      //     `number` return to `Double`, so the signature matches (proven on
+      //     both toolchains). Kotlin auto-promotes Int×Double, needing only the
+      //     Double return. A genuinely-un-inferable body is warned + dropped by
+      //     `refineHelperReturns`.
+      ctx.helperFns.push(decl)
     }
     return null
   }
@@ -2607,103 +2599,6 @@ function returnContainsJsx(expr: ExprIR): boolean {
 }
 
 /**
- * Does a helper body produce a `Double` (fractional) value anywhere PMTC would
- * need Int→Double coercion the helper-body emit doesn't yet apply? A `number`
- * param maps to `Int`, so a helper doing `x * 1.5` (Int × Double literal) or
- * `x / 2` (division → Double) emits an uncompilable body — so such helpers are
- * DEFERRED (kept as a NAMED warning, never a broken emit). The known
- * Double-producing sources: a non-integer numeric literal, a `/` division, a
- * `Math.*` reference, and `parseFloat` / `Number(...)`. Conservative by
- * construction — a false positive over-warns (a helper isn't emitted, which is
- * safe); a false negative (a Double path this misses) is caught by the
- * real-toolchain corpus (`native-helper-fn-emit.test.ts`) before merge, since
- * the emit would fail `swiftc -typecheck` / `kotlinc`.
- */
-function helperBodyIsFractional(stmts: StatementIR[]): boolean {
-  const exprFrac = (e: ExprIR | undefined): boolean => {
-    if (!e) return false
-    switch (e.kind) {
-      case 'literal':
-        return typeof e.value === 'number' && !Number.isInteger(e.value)
-      case 'binary':
-        return e.op === '/' || exprFrac(e.left) || exprFrac(e.right)
-      case 'comparison':
-        return exprFrac(e.left) || exprFrac(e.right)
-      case 'logical':
-        return exprFrac(e.left) || exprFrac(e.right)
-      case 'ternary':
-        return exprFrac(e.cond) || exprFrac(e.then) || exprFrac(e.otherwise)
-      case 'paren':
-        return exprFrac(e.inner)
-      case 'unary':
-        return exprFrac(e.argument)
-      case 'update':
-        return exprFrac(e.argument)
-      case 'index':
-        return exprFrac(e.object) || exprFrac(e.index)
-      case 'array':
-        return e.elements.some((el) => exprFrac(el))
-      case 'spread':
-        return exprFrac(e.argument)
-      case 'member':
-        // `Math.PI` etc. — a Math member reference is Double-valued.
-        return (
-          (e.object.kind === 'identifier' && e.object.name === 'Math') ||
-          exprFrac(e.object)
-        )
-      case 'call': {
-        // `parseFloat(...)` / `Number(...)` → Double; a `Math.*(...)` call →
-        // Double (conservatively — floor/round wrap but a follow-up handles
-        // that). Any fractional argument also taints the call.
-        if (e.callee.kind === 'identifier') {
-          if (e.callee.name === 'parseFloat' || e.callee.name === 'Number') return true
-        }
-        if (
-          e.callee.kind === 'member' &&
-          e.callee.object.kind === 'identifier' &&
-          e.callee.object.name === 'Math'
-        ) {
-          return true
-        }
-        return exprFrac(e.callee) || e.args.some((a) => exprFrac(a))
-      }
-      default:
-        return false
-    }
-  }
-  const stmtFrac = (s: StatementIR): boolean => {
-    switch (s.kind) {
-      case 'return':
-        return exprFrac(s.expr)
-      case 'let':
-        return exprFrac(s.expr)
-      case 'expr':
-        return exprFrac(s.expr)
-      case 'assign':
-        return exprFrac(s.value)
-      case 'if':
-        return (
-          exprFrac(s.cond) ||
-          s.then.some(stmtFrac) ||
-          (s.elseBody?.some(stmtFrac) ?? false)
-        )
-      case 'while':
-      case 'do-while':
-        return exprFrac(s.cond) || s.body.some(stmtFrac)
-      case 'for-of':
-        return exprFrac(s.iterable) || s.body.some(stmtFrac)
-      case 'for-range':
-        return s.body.some(stmtFrac)
-      case 'switch':
-        return exprFrac(s.discriminant) || s.cases.some((c) => c.body.some(stmtFrac))
-      default:
-        return false
-    }
-  }
-  return stmts.some(stmtFrac)
-}
-
-/**
  * Shape-A follow-up (B): infer the return type of any collected helper function
  * that was declared WITHOUT an explicit `: T` annotation (`returnType: unknown`),
  * so it can be emitted natively — dropping the v1 annotation requirement.
@@ -2733,9 +2628,17 @@ function refineHelperReturns(
   const ctx = buildInferenceCtx([], [], structs)
   for (let i = helperFns.length - 1; i >= 0; i--) {
     const h = helperFns[i]!
-    if (h.returnType.kind !== 'unknown') continue
+    // Infer from the body when the return is UNKNOWN (no annotation), OR when
+    // it's `number` — a `: number` annotation maps to `Int`, but a FRACTIONAL
+    // body (`x * 1.5`, `x / 2`, `Math.sqrt`) actually returns `Double`, so the
+    // Int annotation is wrong. Re-inferring a number-typed return refines it
+    // Int↔Double from the body so the emitted signature matches the (now
+    // Int×Double-coerced) body. A non-number annotation (string/boolean/struct)
+    // is unambiguous → kept as-is.
+    if (h.returnType.kind !== 'unknown' && h.returnType.kind !== 'number') continue
     const inferred = inferReturnType(h.params, h.body, ctx)
     if (inferred.kind === 'unknown') {
+      if (h.returnType.kind === 'number') continue // keep the `number` annotation
       warnings.push(
         `${h.name} is a top-level helper function whose return type couldn't be inferred from its body — add an explicit return-type annotation (e.g. \`function ${h.name}(…): number\`), or inline the logic into the component. Skipped rather than mis-emitted.`,
       )
