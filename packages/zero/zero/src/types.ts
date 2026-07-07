@@ -328,6 +328,21 @@ export interface ZeroConfig {
   perfAdvisor?: boolean | { jsBudget?: number }
 
   /**
+   * Declare the PUBLIC (`ZERO_PUBLIC_*`) env schema. When set, the build
+   * VALIDATES the public env at build time — a missing or invalid declared var
+   * FAILS the build (in dev it warns instead), so you catch "forgot to set
+   * `ZERO_PUBLIC_API_URL`" before it ships to the browser as `undefined`.
+   *
+   * Keys are UN-prefixed (matching `publicEnv()`); values are any env schema
+   * entry — a default, `String`/`Number`/`Boolean`, a validator (`url()`), or a
+   * Standard Schema (zod / valibot / `@pyreon/validate`).
+   *
+   * @example
+   * zero({ env: { API_URL: url(), ANALYTICS_ID: String } })
+   */
+  env?: Record<string, import('./env').SchemaEntry>
+
+  /**
    * Central per-path render-mode overrides (glob keys: `*` = one segment,
    * `**` = any depth). Applies to routes WITHOUT their own `renderMode`
    * export — precedence: route-file export > routeRules > app `mode`.

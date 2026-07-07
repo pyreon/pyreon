@@ -1196,6 +1196,29 @@ const pub = publicEnv({
 
 The raw env **string** is handed to the schema, so use a *coercing* schema for non-string values (`z.coerce.number()`, `s.coerce.number()`, `s.stringbool()`). Async schemas are rejected — env resolves synchronously.
 
+### Fail the build on a missing public var — `zero({ env })`
+
+Declare your public env schema in the plugin config and the **build fails** if a declared `ZERO_PUBLIC_*` var is missing or invalid — so you catch it before it ships to the browser as `undefined` (in dev it warns instead, so an incomplete local `.env` doesn't block you):
+
+```ts
+// vite.config.ts
+import { url } from '@pyreon/zero/env'
+import { zero } from '@pyreon/zero'
+
+export default {
+  plugins: [
+    zero({
+      env: {
+        API_URL: url(), // build FAILS if ZERO_PUBLIC_API_URL is unset/invalid
+        ANALYTICS_ID: String,
+      },
+    }),
+  ],
+}
+```
+
+Keys are un-prefixed (matching `publicEnv()`); values are any env schema entry (a default, `String`/`Number`/`Boolean`, `url()`/`oneOf()`, or a Standard Schema). This is the safety net for the **"works in dev, `undefined` in prod"** trap.
+
 ## App Assembly APIs
 
 These come from `@pyreon/zero/server` (`createApp`, `createServer`) and `@pyreon/zero/client` (`startClient`).

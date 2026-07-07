@@ -11,7 +11,7 @@ import {
   matchApiRoute,
 } from './api-routes'
 import { resolveConfig } from './config'
-import { loadPublicEnvVars } from './public-env'
+import { assertPublicEnv, loadPublicEnvVars } from './public-env'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
 // `redirect()` errors into real HTTP redirects (302/307/308).
 import { getRedirectInfo } from '@pyreon/router'
@@ -735,6 +735,12 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			// once here from `.env*` + shell env; both client and SSR bundles get
 			// the SAME values so `publicEnv()` is hydration-consistent.
 			const publicEnvVars = loadPublicEnvVars(configEnv?.mode ?? 'production', cwd)
+
+			// Build-time gate: if the app declared `zero({ env })`, validate the
+			// PUBLIC env NOW — a missing/invalid declared var FAILS the build (warns
+			// in dev), catching "forgot to set ZERO_PUBLIC_X" before it ships to the
+			// browser as `undefined`.
+			assertPublicEnv(config.env, publicEnvVars, configEnv?.command)
 
 			// `@pyreon/runtime-server` and `@pyreon/server` are only imported by
 			// zero's dev SSR middleware and the production server entry — apps

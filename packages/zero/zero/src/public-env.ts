@@ -6,7 +6,7 @@
  * graph (router / sized-map / sub-plugins) into the test.
  */
 import { loadEnv } from 'vite'
-import { PUBLIC_ENV_PREFIX } from './env'
+import { PUBLIC_ENV_PREFIX, type SchemaEntry, validateEnv } from './env'
 
 /**
  * Load `ZERO_PUBLIC_*` vars (from `.env*` files + shell env, via Vite's
@@ -22,4 +22,25 @@ export function loadPublicEnvVars(mode: string, root: string): Record<string, st
     if (key.startsWith(PUBLIC_ENV_PREFIX)) out[key.slice(PUBLIC_ENV_PREFIX.length)] = value
   }
   return out
+}
+
+/**
+ * Build-time gate for a declared `zero({ env })` public-env schema. Validates
+ * the loaded public snapshot against the schema: on a `build` command a
+ * missing/invalid var THROWS (fails the build); in dev (`serve`) it warns
+ * instead so an incomplete local `.env` doesn't block iteration. No-op when no
+ * schema is declared.
+ */
+export function assertPublicEnv(
+  envSchema: Record<string, SchemaEntry> | undefined,
+  publicEnvVars: Record<string, string>,
+  command: 'build' | 'serve' | undefined,
+): void {
+  if (!envSchema || Object.keys(envSchema).length === 0) return
+  try {
+    validateEnv(envSchema, publicEnvVars)
+  } catch (err) {
+    if (command === 'build') throw err
+    console.warn((err as Error).message)
+  }
 }
