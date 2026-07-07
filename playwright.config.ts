@@ -94,6 +94,9 @@ export default definePlaywrightConfig({
       port: 5173,
     },
     { name: 'ssr-showcase', testMatch: /ssr-showcase\.spec\.ts$/, port: 5175 },
+    // Public env inlining — reuses the ssr-showcase app (5175), whose `.env`
+    // carries the ZERO_PUBLIC_ fixtures the probe route renders.
+    { name: 'public-env', testMatch: /public-env\.spec\.ts$/, port: 5175 },
     // Reactive-health overlay (Ctrl+Shift+R). Runs against the playground
     // (5173) because it exposes signal/computed/effect on `window.__pyreon`
     // and auto-installs devtools on its real `mount()` — so this proves the
@@ -109,7 +112,17 @@ export default definePlaywrightConfig({
   ],
   webServer: [
     viteDevServer('@pyreon/example-playground', 5173),
-    viteDevServer('@pyreon/example-ssr-showcase', 5175),
+    // ssr-showcase carries the public-env e2e fixtures via env (a ZERO_PUBLIC_
+    // var the probe renders + a non-public var proving the boundary — set here
+    // rather than a gitignored `.env`). `loadEnv(…, 'ZERO_PUBLIC_')` picks the
+    // prefixed one out of process.env; the non-public one never reaches the client.
+    {
+      ...viteDevServer('@pyreon/example-ssr-showcase', 5175),
+      env: {
+        ZERO_PUBLIC_TEST_VAR: 'hello-from-public-env',
+        ZERO_PRIVATE_MESSAGE: 'only-on-server-never-in-browser',
+      },
+    },
     viteDevServer('@pyreon/example-fundamentals-playground', 5176),
   ],
 })
