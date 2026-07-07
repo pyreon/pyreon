@@ -119,6 +119,7 @@ const table = useTable(() => ({
 - Reading `table` without calling it — `table` is a Computed, you must call `table()` to get the Table instance
 - Forgetting getCoreRowModel() — TanStack Table requires at least getCoreRowModel in options or it throws
 - Using `.map()` on rows instead of `<For>` — loses Pyreon's keyed reconciliation and fine-grained DOM updates
+- Binding a value that CHANGES (column width from `getSize()`, a sort indicator) as a STATIC prop/attr through a keyed `<For>` — the keyed cell is reused on state change and its body never re-runs, so the value freezes. `table()` DOES re-notify; the fix is to read the value inside a reactive closure at the point of use: `style={() => ({ width: table().getColumn(id).getSize() + "px" })}`
 
 **See also:** `flexRender`
 
