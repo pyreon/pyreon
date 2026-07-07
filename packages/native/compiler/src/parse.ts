@@ -89,6 +89,14 @@ interface ParseCtx {
    * (`__pyHook0`, `__pyHook1`, …). Reset per top-level node alongside
    * `hookFieldAliases`, so names are unique within one component. */
   hookDestructureCounter: number
+  /**
+   * Top-level pure-logic HELPER functions collected during the main pass —
+   * a value-parameter function returning a non-JSX value, which
+   * `tryComponentFromTopLevel` routes here (instead of the old warn+skip)
+   * to be emitted at file scope. Non-generic only (a generic helper keeps
+   * the NAMED warning — the IR has no generic-parameter representation).
+   */
+  helperFns: Extract<DeclIR, { kind: 'function' }>[]
 }
 
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
@@ -100,6 +108,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     storeAliases: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
+    helperFns: [],
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
@@ -263,6 +272,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     fieldMetas,
     features,
     zodSchemas,
+    helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
 }
@@ -2317,6 +2327,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     storeAliases: new Map(),
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
+    helperFns: [],
   }
   for (const node of body) {
     let alias: AnyNode | null = null
@@ -2485,12 +2496,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // component and emitted as a broken `struct dbl: View { x * 2 }` (its value
   // params dropped, the body referencing an unbound name) with NO warning — a
   // SILENT mis-emit that swiftc/kotlinc reject with a cryptic `cannot find 'x'
-  // in scope`. PMTC does not emit standalone helper functions yet (a tracked
-  // follow-up: they map cleanly to Swift `func` / Kotlin `fun`, but need
-  // typed-param emission + Kotlin call-site numeric coercion — `dbl(21)` must
-  // become `dbl(21.0)` because Kotlin literals aren't polymorphic). Until
-  // then: NAMED-warn + skip, so the footgun is never silent and no broken view
-  // struct reaches the emit.
+  // in scope`. PMTC now EMITS a non-generic helper at file scope (Swift `func`
+  // / Kotlin `fun`, via the same `DeclIR{kind:'function'}` shape store methods
+  // use) instead of skipping it — the fundamentally-correct fix. A GENERIC
+  // helper still NAMED-warns (the IR can't represent `<T>`).
   //
   // The gate is deliberately NARROW — a HELPER is a function OF ITS INPUTS:
   //   (1) it takes >=1 parameter, and `props.length === 0` (those params are
@@ -2511,9 +2520,51 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   const hasValueParams =
     ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0 && props.length === 0
   if (hasValueParams && !returnContainsJsx(returnExpr)) {
-    ctx.warnings.push(
-      `${name} looks like a helper function, not a component — it takes value parameters and its return contains no JSX. PMTC compiles COMPONENTS (functions that return JSX) and does not emit standalone top-level helper functions yet, so \`${name}\` was skipped (rather than silently mis-emitted as a broken view). Inline the logic into the component that uses it, or track the follow-up for native helper-function emission.`,
-    )
+    // A GENERIC helper (`function first<T>(xs: T[]): T`) can NOT be emitted:
+    // the IR has no generic-parameter representation, so a referenced `T`
+    // degrades to `unknown` and the emitted signature is uncompilable. Keep
+    // it a NAMED warning (the #2090 behavior for the shape helper-emission
+    // doesn't yet cover).
+    const isGeneric =
+      ((fn.typeParameters?.params as AnyNode[] | undefined)?.length ?? 0) > 0
+    if (isGeneric) {
+      ctx.warnings.push(
+        `${name} looks like a GENERIC helper function — PMTC now emits non-generic top-level helper functions natively (Swift \`func\` / Kotlin \`fun\`), but generic type parameters aren't representable in the native IR yet, so \`${name}\` was skipped rather than mis-emitted with unresolved \`${'<T>'}\` types. Drop the generic, or inline the logic into the component that uses it.`,
+      )
+      return null
+    }
+    // A non-generic pure-logic helper: parse it into the same
+    // `DeclIR{kind:'function'}` shape store methods use and collect it — the
+    // parse return threads `helperFns` to both emitters, which emit it at file
+    // scope via the reusable `emitSwiftFunction` / `emitKotlinFunction`. This
+    // REPLACES the #2090 warn+skip: the silent-mis-emit-as-broken-view is now
+    // a faithful native `func`/`fun`. (`number` params map to `Int` — TS has
+    // no `Double` type + no param-level fractional refinement — so an
+    // integer-literal call site needs no Kotlin numeric coercion.)
+    const decl = tryFunctionDecl(name, fn, ctx)
+    if (decl && decl.kind === 'function') {
+      // v1 emittability gate. Two deferred shapes keep a NAMED warning (never
+      // a broken emit — no regression from #2090):
+      //   (a) NO return-type annotation → the native `func`/`fun` has no
+      //       return type (a Swift single-expr func without `->` is Void, and
+      //       a helper CALL can't be inferred), so require the annotation.
+      //   (b) a FRACTIONAL body (a non-integer literal / division / `Math.*`)
+      //       → the `number`→Int param + Int-return emit is a Double mismatch
+      //       inside the body (`x * 1.5` on an `Int` param), which needs the
+      //       element-callback-style Int×Double coercion threaded into the
+      //       helper body — a tracked follow-up.
+      if (decl.returnType.kind === 'unknown') {
+        ctx.warnings.push(
+          `${name} is a top-level helper function but has no return-type annotation — PMTC emits helpers natively (Swift \`func\` / Kotlin \`fun\`) but needs the return type to declare the signature, so \`${name}\` was skipped. Add it (e.g. \`function ${name}(…): number\`), or inline the logic into the component.`,
+        )
+      } else if (helperBodyIsFractional(decl.body)) {
+        ctx.warnings.push(
+          `${name} is a top-level helper function whose body does fractional math (a non-integer literal / division / \`Math.*\`) — PMTC's \`number\`→\`Int\` params don't yet coerce to \`Double\` inside a helper body, so \`${name}\` was skipped rather than mis-emitted. Inline the logic into the component (where Int×Double coercion is supported), or track the follow-up.`,
+        )
+      } else {
+        ctx.helperFns.push(decl)
+      }
+    }
     return null
   }
 
@@ -2545,6 +2596,103 @@ function returnContainsJsx(expr: ExprIR): boolean {
     default:
       return false
   }
+}
+
+/**
+ * Does a helper body produce a `Double` (fractional) value anywhere PMTC would
+ * need Int→Double coercion the helper-body emit doesn't yet apply? A `number`
+ * param maps to `Int`, so a helper doing `x * 1.5` (Int × Double literal) or
+ * `x / 2` (division → Double) emits an uncompilable body — so such helpers are
+ * DEFERRED (kept as a NAMED warning, never a broken emit). The known
+ * Double-producing sources: a non-integer numeric literal, a `/` division, a
+ * `Math.*` reference, and `parseFloat` / `Number(...)`. Conservative by
+ * construction — a false positive over-warns (a helper isn't emitted, which is
+ * safe); a false negative (a Double path this misses) is caught by the
+ * real-toolchain corpus (`native-helper-fn-emit.test.ts`) before merge, since
+ * the emit would fail `swiftc -typecheck` / `kotlinc`.
+ */
+function helperBodyIsFractional(stmts: StatementIR[]): boolean {
+  const exprFrac = (e: ExprIR | undefined): boolean => {
+    if (!e) return false
+    switch (e.kind) {
+      case 'literal':
+        return typeof e.value === 'number' && !Number.isInteger(e.value)
+      case 'binary':
+        return e.op === '/' || exprFrac(e.left) || exprFrac(e.right)
+      case 'comparison':
+        return exprFrac(e.left) || exprFrac(e.right)
+      case 'logical':
+        return exprFrac(e.left) || exprFrac(e.right)
+      case 'ternary':
+        return exprFrac(e.cond) || exprFrac(e.then) || exprFrac(e.otherwise)
+      case 'paren':
+        return exprFrac(e.inner)
+      case 'unary':
+        return exprFrac(e.argument)
+      case 'update':
+        return exprFrac(e.argument)
+      case 'index':
+        return exprFrac(e.object) || exprFrac(e.index)
+      case 'array':
+        return e.elements.some((el) => exprFrac(el))
+      case 'spread':
+        return exprFrac(e.argument)
+      case 'member':
+        // `Math.PI` etc. — a Math member reference is Double-valued.
+        return (
+          (e.object.kind === 'identifier' && e.object.name === 'Math') ||
+          exprFrac(e.object)
+        )
+      case 'call': {
+        // `parseFloat(...)` / `Number(...)` → Double; a `Math.*(...)` call →
+        // Double (conservatively — floor/round wrap but a follow-up handles
+        // that). Any fractional argument also taints the call.
+        if (e.callee.kind === 'identifier') {
+          if (e.callee.name === 'parseFloat' || e.callee.name === 'Number') return true
+        }
+        if (
+          e.callee.kind === 'member' &&
+          e.callee.object.kind === 'identifier' &&
+          e.callee.object.name === 'Math'
+        ) {
+          return true
+        }
+        return exprFrac(e.callee) || e.args.some((a) => exprFrac(a))
+      }
+      default:
+        return false
+    }
+  }
+  const stmtFrac = (s: StatementIR): boolean => {
+    switch (s.kind) {
+      case 'return':
+        return exprFrac(s.expr)
+      case 'let':
+        return exprFrac(s.expr)
+      case 'expr':
+        return exprFrac(s.expr)
+      case 'assign':
+        return exprFrac(s.value)
+      case 'if':
+        return (
+          exprFrac(s.cond) ||
+          s.then.some(stmtFrac) ||
+          (s.elseBody?.some(stmtFrac) ?? false)
+        )
+      case 'while':
+      case 'do-while':
+        return exprFrac(s.cond) || s.body.some(stmtFrac)
+      case 'for-of':
+        return exprFrac(s.iterable) || s.body.some(stmtFrac)
+      case 'for-range':
+        return s.body.some(stmtFrac)
+      case 'switch':
+        return exprFrac(s.discriminant) || s.cases.some((c) => c.body.some(stmtFrac))
+      default:
+        return false
+    }
+  }
+  return stmts.some(stmtFrac)
 }
 
 /** Parse the function's first parameter as Pyreon props (object type or interface). */

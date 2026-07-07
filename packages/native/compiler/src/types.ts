@@ -1216,6 +1216,19 @@ export interface ParseResult {
    * per-binding struct + module-scope const.
    */
   zodSchemas: ZodSchemaDefnIR[]
+  /**
+   * Top-level pure-logic HELPER functions — a function that takes value
+   * parameters and returns a non-JSX value (`function dbl(x: number) { return
+   * x * 2 }`, CLAUDE.md's L1 "shared pure logic"). Emitted at file scope as a
+   * Swift `func` / Kotlin `fun` (a sibling of enums / structs / stores, BEFORE
+   * the component View structs so components + store methods can call them).
+   * A GENERIC helper (`function first<T>(…)`) is NOT collected here — the IR
+   * has no generic-parameter representation, so it stays a NAMED warning (see
+   * `tryComponentFromTopLevel`). Distinct from `StoreDefnIR.methods` (same
+   * `DeclIR{kind:'function'}` shape, but those emit as CLASS methods on the
+   * store singleton, these emit free at file scope).
+   */
+  helperFns: Extract<DeclIR, { kind: 'function' }>[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }
