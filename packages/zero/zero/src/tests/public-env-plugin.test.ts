@@ -8,7 +8,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { loadPublicEnvVars } from '../public-env'
+import { str, url } from '../env'
+import { assertPublicEnv, loadPublicEnvVars } from '../public-env'
 
 describe('loadPublicEnvVars — the ZERO_PUBLIC_ security boundary', () => {
   let dir: string
@@ -53,5 +54,43 @@ describe('loadPublicEnvVars — the ZERO_PUBLIC_ security boundary', () => {
   it('returns an empty object when no public vars are set', () => {
     writeFileSync(join(dir, '.env'), 'DATABASE_URL=postgres://secret')
     expect(loadPublicEnvVars('production', dir)).toEqual({})
+  })
+})
+
+// ─── zero({ env }) build-time gate ────────────────────────────────────────────
+describe('assertPublicEnv — build-time gate', () => {
+  it('passes when all declared vars are present + valid', () => {
+    expect(() =>
+      assertPublicEnv({ API_URL: url(), NAME: str() }, { API_URL: 'https://x.com', NAME: 'app' }, 'build'),
+    ).not.toThrow()
+  })
+
+  it('FAILS the build on a missing declared var', () => {
+    expect(() => assertPublicEnv({ API_URL: url() }, {}, 'build')).toThrow(/API_URL/)
+  })
+
+  it('FAILS the build on an invalid declared var', () => {
+    expect(() => assertPublicEnv({ API_URL: url() }, { API_URL: 'not-a-url' }, 'build')).toThrow(
+      /API_URL/,
+    )
+  })
+
+  it('only WARNS in dev (serve) — does not block iteration', () => {
+    const warn = console.warn
+    let warned = ''
+    console.warn = (m: string) => {
+      warned = String(m)
+    }
+    try {
+      expect(() => assertPublicEnv({ API_URL: url() }, {}, 'serve')).not.toThrow()
+      expect(warned).toMatch(/API_URL/)
+    } finally {
+      console.warn = warn
+    }
+  })
+
+  it('is a no-op when no schema is declared', () => {
+    expect(() => assertPublicEnv(undefined, {}, 'build')).not.toThrow()
+    expect(() => assertPublicEnv({}, {}, 'build')).not.toThrow()
   })
 })

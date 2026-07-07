@@ -266,7 +266,7 @@ function standardSchemaValidator(stdSchema: StandardSchemaLike): EnvValidator<un
 // ─── Type inference ─────────────────────────────────────────────────────────
 
 /** Schema entry: plain value, constructor, explicit validator, or Standard Schema. */
-type SchemaEntry =
+export type SchemaEntry =
   | string | number | boolean
   | StringConstructor | NumberConstructor | BooleanConstructor
   | EnvValidator<any>
