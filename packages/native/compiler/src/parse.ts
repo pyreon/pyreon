@@ -2450,6 +2450,24 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         ctx.warnings.push(
           `Component ${name}: a bare component-body statement (${callee}) is not lowered natively and was DROPPED — only declarations, onMount(fn), and the return JSX run on native. Move side effects into onMount or a handler.`,
         )
+      } else if (
+        call?.type === 'AssignmentExpression' ||        call?.type === 'UpdateExpression'
+      ) {
+        // A top-level REASSIGNMENT (`a = 5`, `a += 2`, `a++`) has a real
+        // mutating effect, but the component body emits only declarations +
+        // the return JSX — components run ONCE, and threading a setup-time
+        // statement into the SwiftUI `var body` / Compose fn body needs a
+        // ComponentIR body-statement field (a larger change). So it was
+        // silently dropped here (it's an ExpressionStatement whose expression
+        // is NOT a CallExpression, so it fell past the call branch above into
+        // the intentional no-op drop meant for harmless `void x` discards) —
+        // a SEMANTIC drop: the reassignment vanished and the render used the
+        // initial value. NAMED-warn so it's never silent. (`void x` / unary /
+        // logical discards stay silent — they carry no effect; only genuine
+        // reassignments warn.)
+        ctx.warnings.push(
+          `Component ${name}: a top-level reassignment isn't emitted on native (PMTC) — a component body emits declarations + the return JSX, not setup-time statements. Compute the final value directly (\`const x = …\`) or use a signal.`,
+        )
       }
     }
   }
