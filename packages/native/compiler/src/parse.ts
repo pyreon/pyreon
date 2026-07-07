@@ -2477,7 +2477,74 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     return null
   }
 
+  // A top-level function that takes VALUE PARAMETERS and returns a NON-JSX
+  // value is a pure-logic HELPER (`function dbl(x: number) { return x * 2 }`,
+  // a generic `function first<T>(xs: T[]): T`), NOT a UI component. But
+  // tryComponentFromTopLevel runs for EVERY top-level FunctionDeclaration with
+  // no "is this a component?" gate — so such a helper was misclassified as a
+  // component and emitted as a broken `struct dbl: View { x * 2 }` (its value
+  // params dropped, the body referencing an unbound name) with NO warning — a
+  // SILENT mis-emit that swiftc/kotlinc reject with a cryptic `cannot find 'x'
+  // in scope`. PMTC does not emit standalone helper functions yet (a tracked
+  // follow-up: they map cleanly to Swift `func` / Kotlin `fun`, but need
+  // typed-param emission + Kotlin call-site numeric coercion — `dbl(21)` must
+  // become `dbl(21.0)` because Kotlin literals aren't polymorphic). Until
+  // then: NAMED-warn + skip, so the footgun is never silent and no broken view
+  // struct reaches the emit.
+  //
+  // The gate is deliberately NARROW — a HELPER is a function OF ITS INPUTS:
+  //   (1) it takes >=1 parameter, and `props.length === 0` (those params are
+  //       NOT component props — a real component's props param is object-typed
+  //       / destructured, so parseProps would have populated `props`); AND
+  //   (2) its return resolves to NO JSX (recursed through ternary / `&&` /
+  //       `||` / `??` / parens so a `cond ? <A/> : <B/>` conditional-root
+  //       COMPONENT is never misread as a helper).
+  // The value-parameter requirement is what keeps a NO-PARAM function that
+  // returns a value — `function C() { const out = computed(…); return out }`,
+  // the ubiquitous test-harness / component-returning-a-value shape — OUT of
+  // the warning (it emits unchanged). A no-param helper / hook is a deliberate
+  // false-negative (rarer, and indistinguishable from that harness shape).
+  // NOTE `propsParamName` is deliberately NOT checked: parseProps sets it to
+  // the bare param NAME even for a value param (`function dbl(x: number)` →
+  // `propsParamName: 'x'`), so gating on it would wrongly exclude every real
+  // helper. `props.length === 0` is the sound "not a props component" signal.
+  const hasValueParams =
+    ((fn.params as AnyNode[] | undefined)?.length ?? 0) > 0 && props.length === 0
+  if (hasValueParams && !returnContainsJsx(returnExpr)) {
+    ctx.warnings.push(
+      `${name} looks like a helper function, not a component — it takes value parameters and its return contains no JSX. PMTC compiles COMPONENTS (functions that return JSX) and does not emit standalone top-level helper functions yet, so \`${name}\` was skipped (rather than silently mis-emitted as a broken view). Inline the logic into the component that uses it, or track the follow-up for native helper-function emission.`,
+    )
+    return null
+  }
+
   return { name, props, propsParamName, decls, returnExpr }
+}
+
+/**
+ * Does an expression contain JSX — directly, or nested through a
+ * ternary / `&&` / `||` / `??` / parens? A Pyreon component's return
+ * expression always resolves to JSX; a pure-logic helper's never does. Used
+ * to discriminate a top-level helper function from a component so the helper
+ * isn't misclassified and mis-emitted as a broken view struct. Conservative:
+ * any unrecognized expression kind returns `false` (treated as no-JSX) — but
+ * every JSX-bearing component-return shape in the native subset (bare element,
+ * fragment, conditional root) IS recognized, so a real component can never be
+ * misclassified as a helper.
+ */
+function returnContainsJsx(expr: ExprIR): boolean {
+  switch (expr.kind) {
+    case 'jsx-element':
+    case 'jsx-fragment':
+      return true
+    case 'paren':
+      return returnContainsJsx(expr.inner)
+    case 'ternary':
+      return returnContainsJsx(expr.then) || returnContainsJsx(expr.otherwise)
+    case 'logical':
+      return returnContainsJsx(expr.left) || returnContainsJsx(expr.right)
+    default:
+      return false
+  }
 }
 
 /** Parse the function's first parameter as Pyreon props (object type or interface). */
