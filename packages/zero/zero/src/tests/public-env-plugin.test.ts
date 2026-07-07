@@ -93,4 +93,11 @@ describe('assertPublicEnv — build-time gate', () => {
     expect(() => assertPublicEnv(undefined, {}, 'build')).not.toThrow()
     expect(() => assertPublicEnv({}, {}, 'build')).not.toThrow()
   })
+
+  it('the failure message names the ZERO_PUBLIC_ prefix fix (not just "not set")', () => {
+    // A bare "API_URL is required but not set" leaves a user who set `API_URL`
+    // (no prefix) confused — the gate reads the PREFIX-STRIPPED public snapshot,
+    // so the var must be `ZERO_PUBLIC_API_URL`. The hint must say so.
+    expect(() => assertPublicEnv({ API_URL: url() }, {}, 'build')).toThrow(/ZERO_PUBLIC_/)
+  })
 })

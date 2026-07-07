@@ -50,6 +50,25 @@ describe('pyreon/no-private-env-in-client (ssr, opt-in, warn)', () => {
     expect(hits(r)[0]!.message).toContain('ZERO_PUBLIC_API_URL')
   })
 
+  it('FIRES on destructuring `const { X } = process.env`', () => {
+    const r = lintIn(dir, 'const { API_URL } = process.env\nexport { API_URL }')
+    expect(hits(r)).toHaveLength(1)
+    expect(hits(r)[0]!.message).toContain('ZERO_PUBLIC_')
+  })
+
+  it('FIRES on capturing `const e = import.meta.env`', () => {
+    const r = lintIn(dir, 'export const e = import.meta.env')
+    expect(hits(r)).toHaveLength(1)
+    expect(hits(r)[0]!.message).toContain('ZERO_PUBLIC_')
+  })
+
+  it('does NOT double-report on `const u = process.env.API_URL` (direct access, one hit)', () => {
+    // The `.API_URL` member access fires once; the bare-base VariableDeclarator
+    // visit must NOT also fire (init is `.API_URL`, not the bare `process.env`).
+    const r = lintIn(dir, 'export const u = process.env.API_URL')
+    expect(hits(r)).toHaveLength(1)
+  })
+
   it('does NOT fire on `process.env.NODE_ENV` (universal)', () => {
     const r = lintIn(dir, "export const dev = process.env.NODE_ENV !== 'production'")
     expect(hits(r)).toHaveLength(0)
@@ -60,9 +79,10 @@ describe('pyreon/no-private-env-in-client (ssr, opt-in, warn)', () => {
     expect(hits(r)).toHaveLength(0)
   })
 
-  it('does NOT fire in a server-only file (*.server.ts, api/, entry-server)', () => {
+  it('does NOT fire in a server-only file (*.server.ts, api/, server/, entry-server)', () => {
     expect(hits(lintIn(dir, 'export const k = process.env.SECRET', 'db.server.ts'))).toHaveLength(0)
     expect(hits(lintIn(dir, 'export const k = process.env.SECRET', join('api', 'x.ts')))).toHaveLength(0)
+    expect(hits(lintIn(dir, 'export const k = process.env.SECRET', join('server', 'db.ts')))).toHaveLength(0)
     expect(hits(lintIn(dir, 'export const k = process.env.SECRET', 'entry-server.ts'))).toHaveLength(0)
   })
 
