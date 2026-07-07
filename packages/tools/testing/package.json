@@ -23,9 +23,9 @@
       "types": "./lib/index.d.ts"
     },
     "./matchers": {
-      "bun": "./src/matchers-register.ts",
-      "import": "./lib/matchers-register.js",
-      "types": "./lib/matchers-register.d.ts"
+      "bun": "./src/matchers.ts",
+      "import": "./lib/matchers.js",
+      "types": "./lib/matchers.d.ts"
     },
     "./vitest": {
       "bun": "./src/vitest.ts",
