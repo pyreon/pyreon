@@ -324,7 +324,11 @@ function printFinding(f: CheckFinding): void {
       : f.kind === 'typecheck-skipped'
         ? 'ℹ'
         : '!'
-  const line = `  ${glyph} ${f.file} [${f.target}] ${f.message}`
+  // Show the precise source position when the message carried one
+  // (transform / type-check errors) — `file:line:col` is the editor-
+  // clickable form; warnings have no position and print the bare file.
+  const loc = f.position ? `${f.file}:${f.position.line}:${f.position.column}` : f.file
+  const line = `  ${glyph} ${loc} [${f.target}] ${f.message}`
   if (f.kind === 'error' || f.kind === 'typecheck-error') console.error(line)
   else console.warn(line)
 }

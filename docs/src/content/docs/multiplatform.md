@@ -932,6 +932,21 @@ are target-agnostic by construction.
   `audit_islands`). All operate on source / repo metadata, not the
   runtime. An AI agent driving a native source through `validate`
   gets the same anti-pattern catalog as it would for a web file.
+- **`pyreon-native check` editor-ready diagnostics.** The fast
+  authoring-loop command exposes an in-memory `checkSource(code,
+  fileName, opts)` core — no disk read, so it checks an *unsaved*
+  editor buffer, the case a linter plugin needs — and attaches a
+  `position` (`{ line, column }`) to transform + type-check-error
+  findings, parsed from the `file:line:col` the toolchains embed. So
+  `check --json` is consumable by an editor linter integration (null-ls,
+  a generic-linter extension) or a CI annotation matcher, with precise
+  squiggles on the errors that carry a location. **Honest scope:**
+  unsupported-subset WARNINGS are still position-less (rendered as a
+  `file`-level diagnostic — threading source spans through the ~110
+  compiler warn sites is a tracked follow-up), and a full **stdio LSP
+  server** (`didOpen`/`didChange` → `publishDiagnostics`, mirroring
+  `@pyreon/lint --lsp`) is the next DX PR — this one ships the reusable
+  in-memory core + position model it will consume.
 
 ### Web-only by structural design (❌ — not coming to native)
 
