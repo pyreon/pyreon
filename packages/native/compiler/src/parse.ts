@@ -5,7 +5,7 @@
 // either passed through as unknown or surfaces a warning.
 
 import { parseSync } from 'oxc-parser'
-import { buildInferenceCtx, inferType, type InferenceCtx } from './infer-type'
+import { buildInferenceCtx, inferReturnType, inferType, type InferenceCtx } from './infer-type'
 import type {
   AttrIR,
   ChildIR,
@@ -261,6 +261,15 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // Refine the signal's number type to Double from its fractional literal
   // initializer — additive (only flips number→float on a fractional).
   refineSignalNumberFloats(components)
+
+  // Shape-A follow-up: a top-level helper function declared WITHOUT a return
+  // annotation (`function dbl(x: number) { return x * 2 }`) is collected with
+  // `returnType: unknown`. Infer it from the body (params seeded), so the emit
+  // signature AND the call-site `helperReturns` registry both get the real
+  // type — dropping the v1 annotation requirement. Runs after all structs are
+  // built (a helper param/return can reference a declared struct). A body whose
+  // type still can't be determined is warned + dropped (never a broken emit).
+  refineHelperReturns(ctx.helperFns, structs, ctx.warnings)
 
   return {
     components,
@@ -2543,21 +2552,20 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     // integer-literal call site needs no Kotlin numeric coercion.)
     const decl = tryFunctionDecl(name, fn, ctx)
     if (decl && decl.kind === 'function') {
-      // v1 emittability gate. Two deferred shapes keep a NAMED warning (never
-      // a broken emit — no regression from #2090):
-      //   (a) NO return-type annotation → the native `func`/`fun` has no
-      //       return type (a Swift single-expr func without `->` is Void, and
-      //       a helper CALL can't be inferred), so require the annotation.
-      //   (b) a FRACTIONAL body (a non-integer literal / division / `Math.*`)
-      //       → the `number`→Int param + Int-return emit is a Double mismatch
-      //       inside the body (`x * 1.5` on an `Int` param), which needs the
-      //       element-callback-style Int×Double coercion threaded into the
-      //       helper body — a tracked follow-up.
-      if (decl.returnType.kind === 'unknown') {
-        ctx.warnings.push(
-          `${name} is a top-level helper function but has no return-type annotation — PMTC emits helpers natively (Swift \`func\` / Kotlin \`fun\`) but needs the return type to declare the signature, so \`${name}\` was skipped. Add it (e.g. \`function ${name}(…): number\`), or inline the logic into the component.`,
-        )
-      } else if (helperBodyIsFractional(decl.body)) {
+      // ONE deferred shape keeps a NAMED warning here (never a broken emit — no
+      // regression from #2090): a FRACTIONAL body (a non-integer literal /
+      // division / `Math.*`) → the `number`→Int param + Int-return emit is a
+      // Double mismatch inside the body (`x * 1.5` on an `Int` param), which
+      // needs the element-callback-style Int×Double coercion threaded into the
+      // helper body — a tracked follow-up.
+      //
+      // A missing return-type annotation is NO LONGER gated here: a
+      // post-parse refine pass (`refineHelperReturns`) infers the return type
+      // from the body (via `inferReturnType`, the same util the emitters use),
+      // so `function dbl(x: number) { return x * 2 }` — no `: number` — emits.
+      // Only a genuinely-un-inferable body (return type stays `unknown` after
+      // inference) is warned + dropped there.
+      if (helperBodyIsFractional(decl.body)) {
         ctx.warnings.push(
           `${name} is a top-level helper function whose body does fractional math (a non-integer literal / division / \`Math.*\`) — PMTC's \`number\`→\`Int\` params don't yet coerce to \`Double\` inside a helper body, so \`${name}\` was skipped rather than mis-emitted. Inline the logic into the component (where Int×Double coercion is supported), or track the follow-up.`,
         )
@@ -2693,6 +2701,49 @@ function helperBodyIsFractional(stmts: StatementIR[]): boolean {
     }
   }
   return stmts.some(stmtFrac)
+}
+
+/**
+ * Shape-A follow-up (B): infer the return type of any collected helper function
+ * that was declared WITHOUT an explicit `: T` annotation (`returnType: unknown`),
+ * so it can be emitted natively — dropping the v1 annotation requirement.
+ *
+ * Uses `inferReturnType` (the same util `emitSwiftFunction` / `emitKotlinFunction`
+ * already use for un-annotated function signatures) against a ctx carrying the
+ * module's declared struct field types (a helper param/return can reference a
+ * `type X = { … }`). Seeds the helper's params as locals, walks the body for the
+ * first `return`, infers that expr's type, and SETS `h.returnType` — so BOTH the
+ * emit signature AND the call-site `helperReturns` registry (built from
+ * `helperFns[].returnType`) get the real type.
+ *
+ * A body whose type still can't be determined (a void body, a destructured-param
+ * member read `inferReturnType` can't resolve, an exotic shape) keeps a NAMED
+ * warning and is DROPPED from `helperFns` — never a signature-less broken `func`,
+ * so this can only ever ADD coverage, never regress. Mutates `helperFns` in place
+ * (splices the un-inferable ones); iterates in reverse so the splice is safe.
+ */
+function refineHelperReturns(
+  helperFns: Extract<DeclIR, { kind: 'function' }>[],
+  structs: StructIR[],
+  warnings: string[],
+): void {
+  if (helperFns.length === 0) return
+  // Structs available so a typed-struct param / return resolves; no
+  // signals/computeds (a pure helper reads only its own params).
+  const ctx = buildInferenceCtx([], [], structs)
+  for (let i = helperFns.length - 1; i >= 0; i--) {
+    const h = helperFns[i]!
+    if (h.returnType.kind !== 'unknown') continue
+    const inferred = inferReturnType(h.params, h.body, ctx)
+    if (inferred.kind === 'unknown') {
+      warnings.push(
+        `${h.name} is a top-level helper function whose return type couldn't be inferred from its body — add an explicit return-type annotation (e.g. \`function ${h.name}(…): number\`), or inline the logic into the component. Skipped rather than mis-emitted.`,
+      )
+      helperFns.splice(i, 1)
+    } else {
+      h.returnType = inferred
+    }
+  }
 }
 
 /** Parse the function's first parameter as Pyreon props (object type or interface). */

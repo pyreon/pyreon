@@ -103,13 +103,9 @@ function scale(x: number): number { return x * 1.5 }
 export function App(){ const g = computed(() => scale(4)); return (<Stack><Text>{String(g())}</Text></Stack>) }`,
       'scale',
     ],
-    [
-      'NO return annotation',
-      `${HDR}
-function twice(x: number) { return x + x }
-export function App(){ const g = computed(() => twice(3)); return (<Stack><Text>{String(g())}</Text></Stack>) }`,
-      'twice',
-    ],
+    // NOTE: a helper with NO return annotation used to be deferred here; the
+    // infer-return-from-body follow-up now EMITS it (its return type is
+    // inferred from the body) — see native-helper-infer-return.test.ts.
   ] as const) {
     it(`${name} keeps a NAMED warning and is NOT emitted, on both targets`, () => {
       for (const target of ['swift', 'kotlin'] as const) {
