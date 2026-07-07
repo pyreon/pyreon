@@ -99,6 +99,7 @@ import { missingGetStaticPaths } from './ssg/missing-get-static-paths'
 import { revalidateNotPureLiteral } from './ssg/revalidate-not-pure-literal'
 import { noMismatchRisk } from './ssr/no-mismatch-risk'
 // SSR
+import { noPrivateEnvInClient } from './ssr/no-private-env-in-client'
 import { noWindowInSsr } from './ssr/no-window-in-ssr'
 import { preferIsServer } from './ssr/prefer-isserver'
 import { preferRequestContext } from './ssr/prefer-request-context'
@@ -159,6 +160,7 @@ export const allRules: Rule[] = [
   noMismatchRisk,
   preferRequestContext,
   preferIsServer,
+  noPrivateEnvInClient,
   // Architecture (9)
   noCircularImport,
   noDeepImport,

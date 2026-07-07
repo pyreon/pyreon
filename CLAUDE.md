@@ -54,7 +54,7 @@ Key reactivity optimizations: `_tpl()` (cloneNode), `_bind()` static-dep trackin
 | `@pyreon/react-compat` | Full hooks + forwardRef, memo, lazy, Suspense, createContext, createPortal shims. Companion compat layers: `preact-compat`, `vue-compat`, `solid-compat`, `svelte-compat` — each at near-full public-API parity |
 | `@pyreon/storybook` | Storybook renderer — mount, render, interact with Pyreon components |
 | `@pyreon/typescript` | TypeScript config presets: base, app (noEmit), lib (declarations) |
-| `@pyreon/lint` | Pyreon-specific linter — 93 rules, 18 categories (incl. opt-in best-practices: frontend/query/rx/i18n/storage + router/form), config files, watch mode, AST cache, LSP server |
+| `@pyreon/lint` | Pyreon-specific linter — 94 rules, 18 categories (incl. opt-in best-practices: frontend/query/rx/i18n/storage + router/form), config files, watch mode, AST cache, LSP server |
 | `@pyreon/testing` | PUBLIC test kit — Testing-Library-style `render`/`screen`/`cleanup` + `getByText`/`getByTestId` families (fireEvent/waitFor/renderHook + reactive-native matchers landing across follow-up PRs). Browser package. Distinct from the private `@pyreon/test-utils` (framework-internal) |
 | `@pyreon/test-utils` | Private framework-internal testing utilities — initTestConfig, withThemeContext, getComputedTheme, renderProps, resolveRocketstyle, mountReactive, mountAndExpectOnce, accessInternal, callInternal, mockAdapter |
 | `@pyreon/manifest` | Private: type + `defineManifest` helper feeding doc + MCP generators |
