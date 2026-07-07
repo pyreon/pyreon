@@ -69,18 +69,11 @@ describe('column-resize reactivity', () => {
     const Cell = (props: { width: number }) =>
       h('span', { class: 'cell', 'data-w': String(props.width) })
     mount(
-      h(
-        'div',
-        null,
-        h(
-          For as never,
-          {
-            each: () => table().getHeaderGroups()[0]!.headers,
-            by: (hd: { id: string }) => hd.id,
-          },
-          (hd: { column: { getSize(): number } }) => h(Cell, { width: hd.column.getSize() }),
-        ),
-      ),
+      <div>
+        <For each={() => table().getHeaderGroups()[0]!.headers} by={(hd) => hd.id}>
+          {(hd) => h(Cell, { width: hd.column.getSize() })}
+        </For>
+      </div>,
       el,
     )
     const before = el.querySelector('.cell')?.getAttribute('data-w')
@@ -105,18 +98,11 @@ describe('column-resize reactivity', () => {
         'data-w': () => String(table().getColumn(props.id)!.getSize()),
       })
     mount(
-      h(
-        'div',
-        null,
-        h(
-          For as never,
-          {
-            each: () => table().getHeaderGroups()[0]!.headers,
-            by: (hd: { id: string }) => hd.id,
-          },
-          (hd: { column: { id: string } }) => h(Cell, { id: hd.column.id }),
-        ),
-      ),
+      <div>
+        <For each={() => table().getHeaderGroups()[0]!.headers} by={(hd) => hd.id}>
+          {(hd) => h(Cell, { id: hd.column.id })}
+        </For>
+      </div>,
       el,
     )
     const before = el.querySelector('.cell')?.getAttribute('data-w')
