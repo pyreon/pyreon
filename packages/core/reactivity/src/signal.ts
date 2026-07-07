@@ -28,6 +28,25 @@ export interface Signal<T> {
   set(value: T): void
   update(fn: (current: T) => T): void
   /**
+   * Force subscribers to re-run WITHOUT changing the value.
+   *
+   * Signals compare with `Object.is`, so `set(sameReference)` is a no-op — which
+   * means mutating a held object IN PLACE (a `Map`, a class instance, an
+   * external store like a TanStack table) and re-setting the same reference
+   * never re-renders. `trigger()` is the escape hatch: mutate the object, then
+   * call `trigger()` to re-run everything that read the signal.
+   *
+   * Prefer immutable updates (`set(newObject)`) when you can — they're clearer
+   * and comparison-friendly. Reach for `trigger()` only when you deliberately
+   * own a mutable value (store adapters, perf-critical in-place mutation).
+   *
+   * @example
+   * const items = signal(new Map<string, number>())
+   * items.peek().set('a', 1) // mutate in place — set() would be a no-op here
+   * items.trigger()          // now subscribers re-run
+   */
+  trigger(): void
+  /**
    * Subscribe a static listener directly — no effect overhead (no withTracking,
    * no cleanupEffect, no effectDeps WeakMap). Use when the dependency is fixed
    * and dynamic re-tracking is not needed.
@@ -81,6 +100,7 @@ interface SignalFn<T> {
   peek(): T
   set(value: T): void
   update(fn: (current: T) => T): void
+  trigger(): void
   subscribe(listener: () => void): () => void
   direct(updater: () => void): () => void
   label: string | undefined
@@ -193,6 +213,38 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
 
 function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
   _set.call(this, fn(this._v))
+}
+
+function _trigger(this: SignalFn<unknown>) {
+  if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
+  // The SAME batch-aware notify as `_set` (lines above), minus the value write
+  // and the `Object.is` gate. Deliberately DUPLICATED rather than extracted into
+  // a shared helper: `_set`'s inline dispatch is perf-tuned and must stay
+  // byte-identical (see the long `_set` comment on why the inline path exists);
+  // wrapping it in a call would tax the hottest write path for a rare escape
+  // hatch's benefit.
+  if (isBatching()) {
+    if (this._d1) enqueuePendingNotification(this._d1)
+    else if (this._d) notifyDirect(this._d)
+    if (this._s) notifySubscribers(this._s)
+  } else {
+    openInlineBatch()
+    try {
+      if (this._d1) {
+        this._d1()
+      } else if (this._d) notifyDirect(this._d)
+      if (this._s) {
+        if (this._s.size === 1) {
+          const sub = this._s.values().next().value as () => void
+          sub()
+        } else {
+          notifySubscribers(this._s)
+        }
+      }
+    } finally {
+      closeInlineBatch()
+    }
+  }
 }
 
 function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
@@ -320,6 +372,7 @@ const SignalProto = {
   peek: _peek,
   set: _set,
   update: _update,
+  trigger: _trigger,
   subscribe: _subscribe,
   direct: _directFn,
   debug: _debug,
