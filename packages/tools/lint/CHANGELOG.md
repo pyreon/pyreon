@@ -1,5 +1,13 @@
 # @pyreon/lint
 
+## 0.41.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.41.1
+  - @pyreon/sized-map@0.41.1
+
 ## 0.41.0
 
 ### Minor Changes

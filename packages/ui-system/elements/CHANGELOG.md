@@ -1,5 +1,14 @@
 # @pyreon/elements
 
+## 0.41.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/ui-core@0.41.1
+  - @pyreon/unistyle@0.41.1
+  - @pyreon/sized-map@0.41.1
+
 ## 0.41.0
 
 ### Patch Changes
