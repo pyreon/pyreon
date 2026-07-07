@@ -293,9 +293,9 @@ describe('api-reference', () => {
       expect(entry!.notes).toBeTruthy()
     })
 
-    it('signal carries 6 mistakes covering the callable-function contract', () => {
+    it('signal carries 7 mistakes covering the callable-function contract', () => {
       const entry = API_REFERENCE['reactivity/signal']
-      expect(entry?.mistakes?.split('\n').length).toBe(6)
+      expect(entry?.mistakes?.split('\n').length).toBe(7)
       expect(entry?.notes).toContain('CALLABLE FUNCTION')
     })
 

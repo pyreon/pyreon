@@ -42,6 +42,10 @@ export function wrapSignal<T>(base: Signal<T>, options: WrapSignalOptions<T>): S
   facade.subscribe = (listener: () => void) => base.subscribe(listener)
   facade.direct = (updater: () => void) => base.direct(updater)
   facade.debug = () => base.debug()
+  // Forward `.trigger()` to the base — subscribers/direct-updaters live on the
+  // base (`.subscribe`/`.direct` delegate there), so the base's force-notify is
+  // what re-runs them. Without this a wrapped signal would be missing the method.
+  facade.trigger = () => base.trigger()
 
   Object.defineProperty(facade, 'label', {
     get: () => base.label,

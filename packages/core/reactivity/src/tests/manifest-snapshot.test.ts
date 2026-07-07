@@ -91,7 +91,7 @@ describe('gen-docs — reactivity snapshot', () => {
     expect(Object.keys(record)).toContain('reactivity/startReactiveCoverage')
     // Spot-check the flagship API — signal is the core primitive
     const signal = record['reactivity/signal']!
-    expect(signal.mistakes?.split('\n').length).toBe(6)
+    expect(signal.mistakes?.split('\n').length).toBe(7)
     expect(signal.notes).toContain('CALLABLE FUNCTION')
     // Spot-check createResource has the dispose mistake (regression for H3)
     const resource = record['reactivity/createResource']!

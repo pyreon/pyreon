@@ -47,7 +47,7 @@ effect(() => {
   const other = untrack(() => otherSignal())  // won't re-run when otherSignal changes
 })`,
   features: [
-    'signal<T>() — callable function with .set() and .update()',
+    'signal<T>() — callable function with .set(), .update(), .trigger()',
     'computed<T>() — auto-tracked memoized derivation',
     'effect() / renderEffect() — side-effects with auto-tracking',
     'batch() / nextTick() — write-grouping + flush awaiter',
@@ -80,15 +80,20 @@ effect(() => {
       returns: {
         type: 'Signal<T>',
         description:
-          'A callable signal — call it to read (and subscribe); `.set(v)` / `.update(fn)` to write; `.peek()` to read without subscribing.',
+          'A callable signal — call it to read (and subscribe); `.set(v)` / `.update(fn)` to write; `.trigger()` to force-notify after an in-place mutation; `.peek()` to read without subscribing.',
       },
       summary:
-        'Create a reactive signal. The returned value is a CALLABLE FUNCTION — `count()` reads (and subscribes), `count.set(v)` writes, `count.update(fn)` derives, `count.peek()` reads without subscribing. This is NOT a `.value` getter/setter pattern (React/Vue) — Pyreon signals are functions. Optional `{ name }` for debugging; auto-injected by `@pyreon/vite-plugin` in dev mode.',
+        'Create a reactive signal. The returned value is a CALLABLE FUNCTION — `count()` reads (and subscribes), `count.set(v)` writes, `count.update(fn)` derives, `count.peek()` reads without subscribing. This is NOT a `.value` getter/setter pattern (React/Vue) — Pyreon signals are functions. Writes gate on `Object.is`, so `set(sameReference)` is a no-op; when you hold a MUTABLE value and mutate it in place, `count.trigger()` force-notifies subscribers without a value change (Vue `triggerRef` semantic). Optional `{ name }` for debugging; auto-injected by `@pyreon/vite-plugin` in dev mode.',
       example: `const count = signal(0)
 count()              // 0 (subscribes to updates)
 count.set(5)         // sets to 5
 count.update(n => n + 1)  // 6
-count.peek()         // 6 (does NOT subscribe)`,
+count.peek()         // 6 (does NOT subscribe)
+
+// Mutable value held in a signal:
+const items = signal(new Map())
+items.peek().set('a', 1)  // mutate in place — set(sameRef) would be a no-op
+items.trigger()           // force subscribers to re-run`,
       mistakes: [
         '`count.value` — does not exist. Use `count()` to read',
         '`count = 5` — reassigning the variable replaces the signal, does not write to it. Use `count.set(5)`',
@@ -96,6 +101,7 @@ count.peek()         // 6 (does NOT subscribe)`,
         '`const [val, setVal] = signal(0)` — signals are not destructurable tuples. The whole return value IS the signal',
         '`{count}` in JSX — renders the signal function itself, not its value. Use `{count()}` or `{() => count()}`',
         '`.peek()` inside `effect()` / `computed()` — bypasses tracking, creates stale reads. Only use `.peek()` for loop-prevention guards',
+        'Mutating a held object in place then `set(sameReference)` — a no-op (Object.is gate), subscribers never re-run. Prefer an immutable `set(newObject)`; if you deliberately own a mutable value, mutate then `.trigger()`',
       ],
       seeAlso: ['computed', 'effect', 'batch'],
     },

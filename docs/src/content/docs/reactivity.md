@@ -62,6 +62,8 @@ interface Signal<T> {
   set(value: T): void
   /** Update the value based on the current value. */
   update(fn: (current: T) => T): void
+  /** Force subscribers to re-run WITHOUT changing the value (see below). */
+  trigger(): void
   /** Subscribe a static listener directly. Returns a disposer function. */
   subscribe(listener: () => void): () => void
   /** Debug name for devtools and logging. */
@@ -76,6 +78,25 @@ interface SignalDebugInfo<T> {
   subscriberCount: number
 }
 ```
+
+### Mutable values — `trigger()`
+
+Signals decide whether to notify with `Object.is`, so `set(sameReference)` is a **no-op**. That's the right default (immutable updates are clear and cheap to compare) — but it means if you hold a **mutable** value and change it *in place*, nothing re-renders:
+
+```ts
+const items = signal(new Map<string, number>())
+items.peek().set('a', 1) // mutate in place…
+items.set(items.peek()) // …same reference → no-op, subscribers DON'T re-run
+```
+
+`trigger()` is the escape hatch — mutate, then force the notification:
+
+```ts
+items.peek().set('a', 1)
+items.trigger() // subscribers re-run now
+```
+
+This is Vue's `triggerRef` semantic, and the signal-side counterpart to `computed(fn, { equals })`. **Prefer immutable updates** (`set(newObject)`) when you can — reach for `trigger()` only when you *deliberately* own a mutable value: an external-store adapter (a TanStack table/query instance), a large structure you mutate for performance, or a class instance. `wrapSignal` facades forward `trigger()` to their base, so persistence/validation wrappers keep it.
 
 ### Signal Options
 
