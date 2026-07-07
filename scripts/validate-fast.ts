@@ -10,6 +10,7 @@
  *   - check-changeset-required (no changeset for published-pkg source change)
  *   - check-bundle-budgets   (new publishable package missing entry)
  *   - check-distribution    (sideEffects / source-map invariants)
+ *   - check-export-entries  (subpath export has a build entry — release-build guard)
  *   - check-release-readiness (publishConfig.access / fixed-group coverage)
  *   - check-manifest-depth  (LOCKED package density regressed)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
@@ -56,6 +57,7 @@ const GATES: Gate[] = [
   { name: 'check-changeset-required', cmd: 'bun scripts/check-changeset-required.ts' },
   { name: 'check-bundle-budgets', cmd: 'bun scripts/check-bundle-budgets.ts' },
   { name: 'check-distribution', cmd: 'bun scripts/check-distribution.ts' },
+  { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },
   { name: 'check-release-readiness', cmd: 'bun scripts/check-release-readiness.ts' },
   { name: 'check-manifest-depth', cmd: 'bun scripts/check-manifest-depth.ts' },
   {

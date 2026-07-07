@@ -1228,6 +1228,56 @@ jobs:
       - name: Verify no node:* imports leak into client-safe packages
         run: bun run check-client-bundle-node-imports
 
+  # ── Check export entries: release-build convention guard ──────────────
+  # The shared build tool derives every entry from the package.json `exports`
+  # KEY by convention (`"./X"` → `src/X.ts`) and ignores the bun/import/types
+  # targets. A subpath export whose source file doesn't match (e.g. "./matchers"
+  # with only `src/matchers-register.ts`) builds fine on INCREMENTAL/cached CI
+  # builds but fails the RELEASE's clean `build-batched` with UNRESOLVED_ENTRY —
+  # aborting the publish of EVERY package (this is what blocked the 0.40.0
+  # release). Reproduces the tool's derivation statically in <1s so the mismatch
+  # fails the PR, not the release weeks later. Lib-free. See
+  # scripts/check-export-entries.ts. Also runs in `validate-fast` (pre-push).
+  check-export-entries:
+    name: Check Export Entries
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Verify every subpath export has a build entry
+        run: bun run check-export-entries
+
+  # ── Release Build: the release's clean build + pack, run as a PR gate ──
+  # THE structural fix for release-only build failures. The release runs
+  # `build-batched.ts` (a CLEAN full build of every published package) then
+  # `publish.ts`. Per-PR CI builds are INCREMENTAL + cached, so a broken build
+  # config never gets rebuilt in CI and only fails at release, aborting the
+  # publish of EVERY package. This job runs the EXACT release build path +
+  # `publish.ts --dry-run` (pack + manifest-validate, no upload), so if it is
+  # green the release's build+pack step cannot fail. Clean build (no bootstrap
+  # restore). Gated on code changes — skips docs-only PRs (fail-closed: still
+  # runs if `changes` itself failed). No npm auth / id-token needed (the
+  # dry-run does not request provenance). See scripts/{build-batched,publish}.ts.
+  release-build:
+    name: Release Build
+    needs: [install, changes]
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+      - name: Clean full build of every published package (release path)
+        run: bun scripts/build-batched.ts
+      - name: Pack + validate every manifest (publish dry-run, no upload)
+        run: bun scripts/publish.ts --dry-run
+
   # ── Check doc claims: numeric drift gate ──────────────────────────────
   # Asserts every numeric claim in human-written docs (hooks count in
   # README/manifest/CLAUDE.md, docs page count in CLAUDE.md) matches the
