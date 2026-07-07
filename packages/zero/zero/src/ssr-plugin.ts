@@ -70,6 +70,16 @@ import type { ZeroConfig } from './types'
  */
 const SSR_BUILD_FLAG = 'PYREON_ZERO_SSR_INNER_BUILD'
 
+// Mirrors `SSG_BUILD_FLAG` in ssg-plugin.ts. In `mode: 'ssr'|'isr'` the SSG
+// plugin runs a nested prerender sub-build to `<dist>/.zero-ssg-server` (for
+// static routes). That sub-build's `closeBundle` must NOT trigger the SSR
+// post-step — its outDir has no client `index.html`, so the check would warn
+// a misleading "Skipping SSR build" even though the real (outer) SSR build
+// succeeds. The ssg-plugin already skips on OUR flag (ssr-plugin.ts's own
+// recursive build); this makes the guard symmetric. Keep the literal in sync
+// with ssg-plugin.ts:SSG_BUILD_FLAG.
+const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
+
 /**
  * Filename for the synthetic entry materialized at the project root.
  * Double-underscore prefix avoids any chance of colliding with user
@@ -125,8 +135,12 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // Capture inner-build state once at plugin instantiation. The inner
   // build re-loads zero's plugin chain (same as SSG); without this gate
   // the inner plugin instance would re-enter its own closeBundle.
-  // Mirrors `ssg-plugin.ts:1028`.
-  const isInnerBuild = process.env[SSR_BUILD_FLAG] === '1'
+  // Mirrors `ssg-plugin.ts:1028`. Also skip during the SSG prerender
+  // sub-build (mode:'ssr'|'isr' runs it) — its outDir is `.zero-ssg-server`
+  // with no client index.html, so the SSR post-step would spuriously warn
+  // "Skipping SSR build" even though the outer SSR build succeeds.
+  const isInnerBuild =
+    process.env[SSR_BUILD_FLAG] === '1' || process.env[SSG_BUILD_FLAG] === '1'
 
   return {
     name: 'pyreon-zero-ssr',
@@ -312,6 +326,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
 
 export const _internal = {
   SSR_BUILD_FLAG,
+  SSG_BUILD_FLAG,
   SSR_ENTRY_FILENAME,
   SSR_OUTPUT_FILENAME,
   SSR_OUT_SUBDIR,
