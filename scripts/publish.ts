@@ -265,7 +265,11 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of plan) {
   try {
     const isCI = !!process.env.CI
     const args = ['bunx', 'npm', 'publish', '--access', 'public', '--ignore-scripts']
-    if (isCI) args.push('--provenance')
+    // Provenance attests a real published artifact — it is meaningless for a
+    // `--dry-run` (nothing is uploaded to attest) and requires an OIDC token
+    // the dry-run gate (Release Build CI job) deliberately does NOT grant.
+    // Gate it on a real publish so the dry-run stays auth-free.
+    if (isCI && !dryRun) args.push('--provenance')
     if (otp) args.push(`--otp=${otp}`)
     if (dryRun) args.push('--dry-run')
     if (tag) args.push('--tag', tag)
