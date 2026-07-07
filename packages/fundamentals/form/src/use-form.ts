@@ -750,7 +750,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const setFieldValue = <K extends keyof TValues>(field: K, value: TValues[K]) => {
     if (!fields[field]) {
       throw new Error(
-        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}`,
+        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
+          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].setValue(value)
@@ -759,7 +760,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const setFieldError = (field: keyof TValues, error: ValidationError) => {
     if (!fields[field]) {
       throw new Error(
-        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}`,
+        `[@pyreon/form] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
+          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].error.set(error)
