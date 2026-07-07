@@ -1343,6 +1343,26 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
       // ("no exact matches in call to initializer"). The find-then-field idiom
       // is the dominant master-detail shape; the EMIT lowers it to
       // optional-chaining (`optionalMemberTernary`), and this resolves its TYPE.
+      // Field access on an INLINE object literal — `({ count: nums().length,
+      // label: s() }).count`. Resolve the field's type directly from the
+      // literal's own fields: we don't need the (nameless, counter-synthesized
+      // `__ObjN`) struct TYPE, only the field's. This deliberately does NOT add
+      // a general `expr.kind === 'object'` return to inferType — that would flow
+      // into the computed-return-annotation path, which renders `{kind:'object'}`
+      // as a tuple and would mismatch the `__ObjN` struct VALUE the emitter
+      // produces. A spread (`{ ...base, x }`) can't be field-typed without the
+      // spread's own type, so it bails (→ falls through to the safe `unknown`).
+      // `({ … }).count` wraps the literal in a `paren` node, so unwrap parens
+      // to reach the object literal.
+      let objLit = expr.object
+      while (objLit.kind === 'paren') objLit = objLit.inner
+      if (objLit.kind === 'object' && (objLit.spreads?.length ?? 0) === 0) {
+        const f = objLit.fields.find((fld) => fld.name === expr.property)
+        if (f) {
+          const t = inferType(f.value, ctx)
+          if (t.kind !== 'unknown') return t
+        }
+      }
       const objType = unwrapOptionalType(inferType(expr.object, ctx))
       if (objType.kind === 'object') {
         const field = objType.fields.find((f) => f.name === expr.property)
