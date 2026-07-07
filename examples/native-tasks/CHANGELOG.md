@@ -1,5 +1,12 @@
 # @pyreon/example-native-tasks
 
+## 0.0.12
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/hooks@0.41.1
+
 ## 0.0.11
 
 ### Patch Changes

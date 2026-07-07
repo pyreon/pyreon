@@ -1,5 +1,19 @@
 # @pyreon/example-native-tasks-web
 
+## 0.0.12
+
+### Patch Changes
+
+- Updated dependencies [[`12ce8e7`](https://github.com/pyreon/pyreon/commit/12ce8e72ffeff8b692db698301431674f7f87c40)]:
+  - @pyreon/form@0.41.1
+  - @pyreon/core@0.41.1
+  - @pyreon/reactivity@0.41.1
+  - @pyreon/router@0.41.1
+  - @pyreon/runtime-dom@0.41.1
+  - @pyreon/hooks@0.41.1
+  - @pyreon/store@0.41.1
+  - @pyreon/primitives@0.41.1
+
 ## 0.0.11
 
 ### Patch Changes
