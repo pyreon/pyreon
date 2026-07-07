@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
-import type { Plugin, ViteDevServer } from 'vite'
+import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiRouteEntry } from './api-routes'
 import {
@@ -11,6 +11,7 @@ import {
   matchApiRoute,
 } from './api-routes'
 import { resolveConfig } from './config'
+import { loadPublicEnvVars } from './public-env'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
 // `redirect()` errors into real HTTP redirects (302/307/308).
 import { getRedirectInfo } from '@pyreon/router'
@@ -723,12 +724,17 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			});
 		},
 
-		config(viteUserConfig) {
+		config(viteUserConfig, configEnv: ConfigEnv) {
 			// Discover all @pyreon/* packages installed in node_modules.
 			// The "bun" export condition points to TS source — esbuild's
 			// dep optimizer would compile them with the wrong JSX runtime.
 			const cwd = viteUserConfig.root ?? process.cwd()
 			const pyreonExclude = scanPyreonPackages(cwd)
+
+			// Snapshot public (ZERO_PUBLIC_*) env for build-time inlining — read
+			// once here from `.env*` + shell env; both client and SSR bundles get
+			// the SAME values so `publicEnv()` is hydration-consistent.
+			const publicEnvVars = loadPublicEnvVars(configEnv?.mode ?? 'production', cwd)
 
 			// `@pyreon/runtime-server` and `@pyreon/server` are only imported by
 			// zero's dev SSR middleware and the production server entry — apps
@@ -838,6 +844,9 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				define: {
 					__ZERO_MODE__: JSON.stringify(config.mode),
 					__ZERO_BASE__: JSON.stringify(config.base),
+					// Public env snapshot — inlined into client + SSR bundles so
+					// `publicEnv()` works in the browser. Only ZERO_PUBLIC_* vars.
+					__ZERO_PUBLIC_ENV__: JSON.stringify(publicEnvVars),
 				},
 			};
 		},

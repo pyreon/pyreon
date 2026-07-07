@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { bool, num, oneOf, publicEnv, str, url, validateEnv } from '../env'
 
 describe('plain value inference', () => {
@@ -204,5 +204,78 @@ describe('publicEnv', () => {
     } finally {
       process.env = saved
     }
+  })
+})
+
+// ─── The isomorphic fix: publicEnv reads the build-time inlined snapshot ──────
+// `__ZERO_PUBLIC_ENV__` is a `declare const` fed by the vite-plugin `define`.
+// In vitest there's no Vite define, so we simulate the build by setting the
+// global; this is the SAME value the browser bundle sees. This proves the fix:
+// before it, publicEnv had no way to read build-inlined values and returned {}
+// in the browser (no process.env there).
+declare const __ZERO_PUBLIC_ENV__: Record<string, string> | undefined
+
+describe('publicEnv — build-inlined (browser/isomorphic)', () => {
+  const G = globalThis as { __ZERO_PUBLIC_ENV__?: Record<string, string> }
+  afterEach(() => {
+    delete G.__ZERO_PUBLIC_ENV__
+  })
+
+  it('reads the inlined snapshot (the value the browser bundle gets)', () => {
+    G.__ZERO_PUBLIC_ENV__ = { API_URL: 'https://api.example.com', APP_NAME: 'MyApp' }
+    const result = publicEnv()
+    expect(result.API_URL).toBe('https://api.example.com')
+    expect(result.APP_NAME).toBe('MyApp')
+  })
+
+  it('the snapshot is the source of truth — takes precedence over process.env', () => {
+    const saved = process.env
+    process.env = { ZERO_PUBLIC_API_URL: 'https://from-process' }
+    G.__ZERO_PUBLIC_ENV__ = { API_URL: 'https://from-snapshot' }
+    try {
+      // Both server and client read the snapshot → no hydration mismatch.
+      expect(publicEnv().API_URL).toBe('https://from-snapshot')
+    } finally {
+      process.env = saved
+    }
+  })
+
+  it('validates the inlined snapshot against a schema', () => {
+    G.__ZERO_PUBLIC_ENV__ = { PORT: '8080', DEBUG: 'true' }
+    const result = publicEnv({ PORT: Number, DEBUG: Boolean })
+    expect(result.PORT).toBe(8080)
+    expect(result.DEBUG).toBe(true)
+  })
+})
+
+// ─── Zero-dependency Standard Schema support (zod / valibot / s / arktype) ─────
+describe('validateEnv — Standard Schema (duck-typed, no hard dep)', () => {
+  // A minimal Standard Schema — the exact contract zod/valibot/@pyreon-validate expose.
+  const stdSchema = <T>(fn: (v: unknown) => { value: T } | { issues: { message: string }[] }) => ({
+    '~standard': { version: 1 as const, vendor: 'test', validate: fn },
+  })
+
+  it('runs a Standard Schema and returns its (coerced) output', () => {
+    const numeric = stdSchema((v) => {
+      const n = Number(v)
+      return Number.isNaN(n) ? { issues: [{ message: `not a number: ${String(v)}` }] } : { value: n }
+    })
+    const result = validateEnv({ PORT: numeric }, { PORT: '3000' })
+    expect(result.PORT).toBe(3000)
+  })
+
+  it('surfaces schema issues as env validation errors', () => {
+    const numeric = stdSchema((v) => {
+      const n = Number(v)
+      return Number.isNaN(n) ? { issues: [{ message: `not a number: ${String(v)}` }] } : { value: n }
+    })
+    expect(() => validateEnv({ PORT: numeric }, { PORT: 'abc' })).toThrow(/not a number: abc/)
+  })
+
+  it('rejects an async schema (env resolves synchronously)', () => {
+    const asyncSchema = {
+      '~standard': { version: 1 as const, vendor: 'test', validate: () => Promise.resolve({ value: 'x' }) },
+    }
+    expect(() => validateEnv({ X: asyncSchema }, { X: 'v' })).toThrow(/async validation is not supported/)
   })
 })

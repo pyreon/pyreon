@@ -20,6 +20,15 @@
  * ```
  */
 
+import { isServer } from '@pyreon/reactivity'
+
+/**
+ * Prefix marking an env var as PUBLIC (safe to inline into the client bundle).
+ * Only `ZERO_PUBLIC_*` vars are ever exposed to the browser — anything without
+ * it (e.g. `DATABASE_URL`) is structurally unable to reach the client.
+ */
+export const PUBLIC_ENV_PREFIX = 'ZERO_PUBLIC_'
+
 export interface EnvValidatorOptions<T = string> {
   /** Whether this variable is required. Default: true */
   required?: boolean
@@ -193,20 +202,80 @@ function toValidator(value: unknown): EnvValidator<unknown> {
   if (typeof value === 'boolean') return bool({ default: value })
   if (typeof value === 'string') return str({ default: value })
 
-  throw new Error(`[Pyreon] Invalid schema value: ${String(value)}. Use a default value, String/Number/Boolean, or a validator like url().`)
+  // Standard Schema (zod / valibot / arktype / @pyreon/validate `s`) — duck-typed
+  if (isStandardSchema(value)) return standardSchemaValidator(value)
+
+  throw new Error(`[Pyreon] Invalid schema value: ${String(value)}. Use a default value, String/Number/Boolean, a validator like url(), or a Standard Schema (zod / valibot / @pyreon/validate).`)
+}
+
+// ─── Standard Schema support (zero-dependency) ───────────────────────────────
+// https://standardschema.dev — a tiny shared contract exposed via a `~standard`
+// property that zod, valibot, arktype, AND @pyreon/validate's `s` all implement.
+// Duck-typing it means users bring their OWN schema and @pyreon/zero depends on
+// no validation library.
+
+interface StandardSchemaLike<Output = unknown> {
+  readonly '~standard': {
+    readonly types?: { readonly output: Output }
+    readonly validate: (
+      value: unknown,
+    ) =>
+      | { readonly value: unknown }
+      | { readonly issues: ReadonlyArray<{ readonly message: string }> }
+      | Promise<unknown>
+  }
+}
+
+function isStandardSchema(value: unknown): value is StandardSchemaLike {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    '~standard' in value &&
+    typeof (value as StandardSchemaLike)['~standard']?.validate === 'function'
+  )
+}
+
+/**
+ * Wrap any Standard Schema as an env validator. The raw env STRING is handed to
+ * the schema, so use a coercing schema for non-string values
+ * (`z.coerce.number()`, `s.coerce.number()`, `s.stringbool()`). Required /
+ * optional / default are delegated to the schema itself (e.g. zod `.optional()`
+ * / `.default(...)`). Async schemas are rejected — env resolves synchronously.
+ */
+function standardSchemaValidator(stdSchema: StandardSchemaLike): EnvValidator<unknown> {
+  return {
+    __type: 'env-validator',
+    required: true,
+    defaultValue: undefined,
+    parse(raw, key) {
+      const result = stdSchema['~standard'].validate(raw)
+      if (result instanceof Promise) {
+        throw new EnvError(
+          key,
+          'async validation is not supported for env vars — use a synchronous schema',
+        )
+      }
+      if ('issues' in result && result.issues) {
+        throw new EnvError(key, result.issues.map((i) => i.message).join('; '))
+      }
+      return (result as { value: unknown }).value
+    },
+  }
 }
 
 // ─── Type inference ─────────────────────────────────────────────────────────
 
-/** Schema entry: plain value, constructor, or explicit validator. */
+/** Schema entry: plain value, constructor, explicit validator, or Standard Schema. */
 type SchemaEntry =
   | string | number | boolean
   | StringConstructor | NumberConstructor | BooleanConstructor
   | EnvValidator<any>
+  | StandardSchemaLike<any>
 
 /** Infer the output type from a schema entry. */
 type InferEntry<T> =
   T extends EnvValidator<infer V> ? V :
+  T extends StandardSchemaLike<infer O> ? O :
   T extends StringConstructor ? string :
   T extends NumberConstructor ? number :
   T extends BooleanConstructor ? boolean :
@@ -269,41 +338,59 @@ export function validateEnv<T extends Record<string, SchemaEntry>>(
   return result as InferEnvSchema<T>
 }
 
-// ─── Public env (client-safe) ────────────────────────────────────────────────
+// ─── Public env (isomorphic — works in the browser) ──────────────────────────
 
 /**
- * Extract public environment variables (prefixed with `ZERO_PUBLIC_`).
+ * Build-time snapshot of `ZERO_PUBLIC_*` vars (keys prefix-stripped), injected
+ * by `@pyreon/zero`'s vite-plugin as a `define` constant into BOTH the client
+ * and SSR bundles — so server-render and client-hydrate read the SAME values
+ * (no hydration mismatch). `undefined` when the plugin isn't present (tests,
+ * raw node, non-zero builds), in which case we fall back to a live `process.env`
+ * scan. The `typeof` guard is safe on an undeclared identifier.
+ */
+declare const __ZERO_PUBLIC_ENV__: Record<string, string> | undefined
+
+function publicEnvSource(): Record<string, string | undefined> {
+  // The build-time snapshot is the source of truth — identical on server +
+  // client, so a public value rendered during SSR matches after hydration.
+  if (typeof __ZERO_PUBLIC_ENV__ !== 'undefined') return __ZERO_PUBLIC_ENV__
+
+  // Fallback (no zero build inlined the values): scan live `process.env` on the
+  // server; the browser legitimately gets `{}` (it has no `process.env`).
+  if (isServer && typeof process !== 'undefined') {
+    const out: Record<string, string> = {}
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.startsWith(PUBLIC_ENV_PREFIX) && value !== undefined) {
+        out[key.slice(PUBLIC_ENV_PREFIX.length)] = value
+      }
+    }
+    return out
+  }
+  return {}
+}
+
+/**
+ * Read public environment variables (prefixed with `ZERO_PUBLIC_`). Works
+ * **isomorphically** — in server code AND in the browser, where the values are
+ * inlined at build time by `@pyreon/zero`'s vite-plugin (only `ZERO_PUBLIC_*`
+ * vars ever reach the client bundle; a secret without the prefix cannot leak).
  *
  * @example
  * ```ts
+ * // .env:  ZERO_PUBLIC_API_URL=https://api.example.com
  * const pub = publicEnv()
- * // → { API_URL: "https://...", APP_NAME: "MyApp" }
+ * // → { API_URL: "https://api.example.com" }
  *
- * const pub = publicEnv({ API_URL: url(), APP_NAME: "Default" })
- * // → validated against ZERO_PUBLIC_API_URL, ZERO_PUBLIC_APP_NAME
+ * // Validated + typed (any Standard Schema — zod / valibot / @pyreon/validate):
+ * const pub = publicEnv({ API_URL: url(), PORT: z.coerce.number() })
  * ```
  */
 export function publicEnv(): Record<string, string>
 export function publicEnv<T extends Record<string, SchemaEntry>>(envSchema: T): InferEnvSchema<T>
 export function publicEnv(envSchema?: Record<string, SchemaEntry>): Record<string, unknown> {
-  const prefix = 'ZERO_PUBLIC_'
-  const env = typeof process !== 'undefined' ? process.env : {}
-
-  if (!envSchema) {
-    const result: Record<string, string> = {}
-    for (const [key, value] of Object.entries(env)) {
-      if (key.startsWith(prefix) && value !== undefined) {
-        result[key.slice(prefix.length)] = value
-      }
-    }
-    return result
-  }
-
-  const prefixedSource: Record<string, string | undefined> = {}
-  for (const key of Object.keys(envSchema)) {
-    prefixedSource[key] = env[`${prefix}${key}`]
-  }
-  return validateEnv(envSchema, prefixedSource)
+  const source = publicEnvSource()
+  if (!envSchema) return source as Record<string, string>
+  return validateEnv(envSchema, source)
 }
 
 // ─── Custom validator escape hatch ──────────────────────────────────────────

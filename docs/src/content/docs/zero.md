@@ -1137,7 +1137,11 @@ import { Meta } from '@pyreon/zero'
 
 **Font note:** text layers render via SVG → sharp, which resolves `fontFamily` against fonts installed on the **build machine** (no webfont loading). Stick to widely-available families or install your brand font into the CI image.
 
-## Environment Validation
+## Environment Variables
+
+### Server env — `validateEnv`
+
+Server-only (reads live `process.env`). Types are inferred from defaults; explicit validators cover the rest.
 
 ```ts
 import { validateEnv, schema, publicEnv } from '@pyreon/zero/env'
@@ -1148,9 +1152,49 @@ const env = validateEnv({
   API_KEY: String, // required string
   ALLOWED_ORIGINS: schema((v) => v.split(',')), // custom parser
 })
-
-const pub = publicEnv() // only PUBLIC_-prefixed vars (safe for client bundles)
 ```
+
+### Public env — `publicEnv()` (works in the browser)
+
+Prefix a variable with **`ZERO_PUBLIC_`** to expose it to client code. `publicEnv()` is **isomorphic** — it works in server *and* browser code:
+
+```ts
+// .env
+//   ZERO_PUBLIC_API_URL=https://api.example.com
+//   DATABASE_URL=postgres://…            ← NOT public, never reaches the client
+
+import { publicEnv } from '@pyreon/zero/env'
+
+const pub = publicEnv() // → { API_URL: "https://api.example.com" }  (DATABASE_URL absent)
+```
+
+Under the hood, `@pyreon/zero`'s vite-plugin reads `ZERO_PUBLIC_*` from your `.env*` files at build time and **inlines them into both the client and SSR bundles** — so a value rendered during SSR matches after hydration (no mismatch), and it's available in the browser (where there is no `process.env`).
+
+**Security:** only `ZERO_PUBLIC_`-prefixed vars are ever inlined. A secret without the prefix (`DATABASE_URL`, `STRIPE_SECRET_KEY`) is structurally unable to reach the client bundle — but note the prefix is the *only* guard, so **never name a secret `ZERO_PUBLIC_*`**.
+
+**Build-time constraint:** public values are baked into the bundle at build. Changing one requires a **rebuild**, not just a redeploy. If you need runtime-configurable client env, fetch it (e.g. a `/config.json`) instead.
+
+### Validating env with any schema (zod / valibot / `@pyreon/validate`)
+
+Both `validateEnv` and `publicEnv` accept any **[Standard Schema](https://standardschema.dev)** directly — no schema library is a dependency of `@pyreon/zero`; you bring your own:
+
+```ts
+import { z } from 'zod'
+import { s } from '@pyreon/validate'
+import { publicEnv, validateEnv } from '@pyreon/zero/env'
+
+const env = validateEnv({
+  PORT: z.coerce.number().int().min(0), // raw env string → coerced number
+  NODE_ENV: z.enum(['dev', 'prod']),
+})
+
+const pub = publicEnv({
+  API_URL: z.string().url(),
+  ANALYTICS: s.stringbool(), // @pyreon/validate: "true"/"1"/"on" → boolean
+})
+```
+
+The raw env **string** is handed to the schema, so use a *coercing* schema for non-string values (`z.coerce.number()`, `s.coerce.number()`, `s.stringbool()`). Async schemas are rejected — env resolves synchronously.
 
 ## App Assembly APIs
 
