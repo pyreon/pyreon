@@ -8,17 +8,28 @@
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
 
+/** A single `@layer <name>{ <inner> }` block spanning the whole string. */
+const OUTER_LAYER_RE = /^\s*@layer\s+[A-Za-z0-9_.-]+\s*\{([\s\S]*)\}\s*$/
+
 /**
- * Unwrap a single outer `@layer <name>{ … }` block to its inner rules.
+ * Flatten every `@layer <name>{ … }` block to its inner rules, recursively.
  * Used by `insertGlobal` when @layer is unsupported (happy-dom / older
- * engines) so pre-wrapped global CSS still lands in the DOM via source
- * order instead of being dropped. Returns the input unchanged when it
- * isn't exactly one outer @layer block (nested/sibling blocks fall
- * through to the normal insert + its existing warn).
+ * engines) so pre-wrapped global CSS (e.g. a user-authored
+ * `createGlobalStyle` reset written into `@layer rocketstyle{…}`) still
+ * lands in the DOM via source order instead of being dropped with a
+ * per-rule DOMException. Handles multiple SIBLING blocks (split at the top
+ * level first) and NESTED blocks (recurse into each block's inner content).
+ * A `split` fn is injected so this reuses the sheet's own rule splitter.
+ * Bounded by real CSS nesting depth (≤ a handful in practice).
  */
-function stripOuterLayer(cssText: string): string {
-  const m = /^\s*@layer\s+[A-Za-z0-9_-]+\s*\{([\s\S]*)\}\s*$/.exec(cssText)
-  return m ? m[1]! : cssText
+function unwrapLayers(cssText: string, split: (s: string) => string[]): string[] {
+  const out: string[] = []
+  for (const rule of split(cssText)) {
+    const m = OUTER_LAYER_RE.exec(rule)
+    if (m) out.push(...unwrapLayers(m[1]!, split))
+    else out.push(rule)
+  }
+  return out
 }
 
 // Dev-time counter sink — see styler/resolve.ts for the contract.
@@ -503,14 +514,16 @@ export class StyleSheet {
       // When @layer isn't supported (e.g. happy-dom in tests, older engines),
       // the init probe leaves `supportsLayer` false. The scoped `insert()` path
       // already skips the @layer wrap in that case; `insertGlobal` receives
-      // PRE-wrapped content from the caller, so unwrap a single outer
-      // `@layer name{…}` block here too — otherwise the inner rules (e.g. a
-      // global reset) are silently dropped AND every insert warns a
-      // DOMException. Source order is a correct fallback (that's why @layer
-      // exists — to make ordering explicit; without support the cascade uses
-      // source order, which the reset already relies on).
-      const toInsert = this.supportsLayer ? cssText : stripOuterLayer(cssText)
-      const rules = this.splitRules(toInsert)
+      // PRE-wrapped content from the caller (user-authored `createGlobalStyle`
+      // CSS), so flatten every `@layer name{…}` block — sibling AND nested —
+      // here too. Otherwise the inner rules (e.g. a global reset) are silently
+      // dropped AND every insert warns a DOMException. Source order is a
+      // correct fallback (that's why @layer exists — to make ordering explicit;
+      // without support the cascade uses source order, which the reset already
+      // relies on).
+      const rules = this.supportsLayer
+        ? this.splitRules(cssText)
+        : unwrapLayers(cssText, (s) => this.splitRules(s))
       for (const rule of rules) {
         try {
           const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)

@@ -116,7 +116,18 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Extract validator from TypedSchemaAdapter if provided, otherwise use as-is
   const schema = schemaInput && '_infer' in schemaInput ? schemaInput.validator : schemaInput
 
-  // Build field states
+  // Build field states.
+  //
+  // STATIC FIELD MODEL — do NOT add auto-registration here. `fieldEntries` is
+  // captured ONCE from `initialValues` and is the fixed shape the whole form
+  // is built on: `values()`/`getValues()` iterate it (epoch-cached), the submit
+  // payload is assembled from it, and dirty/touched aggregation keys on it. A
+  // field registered lazily on first `useField`/`register` would NOT be in
+  // `fieldEntries`, so its value would never reach `onSubmit` and it would be
+  // invisible to `values()` — a silent data-loss bug. That's why using an
+  // undeclared field THROWS (with actionable guidance) instead of
+  // auto-registering the way react-hook-form does. Declare every field in
+  // `useForm({ initialValues })` (or the `fields` array).
   const fieldEntries = Object.entries(initialValues) as [
     keyof TValues & string,
     TValues[keyof TValues],
