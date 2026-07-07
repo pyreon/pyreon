@@ -50,15 +50,22 @@ concurrency:
   group: docs-freshness-guard
   cancel-in-progress: true
 
+# Least-privilege default: every job is read-only unless it opts into more.
+# The single `guard` job below scopes the write it needs (see its own block).
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   guard:
     name: Docs Freshness Guard
     runs-on: ubuntu-latest
     timeout-minutes: 6
+    # Needed to push the auto-regen branch + open/update the fix PR when
+    # main's generated docs have drifted. Scoped here (not top-level) so a
+    # future added job doesn't inherit write it doesn't need.
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
