@@ -44,6 +44,17 @@ export interface InferenceCtx {
    */
   locals: Map<string, TypeIR>
   /**
+   * Body-local `const`s whose initializer is a spread-free OBJECT LITERAL,
+   * inside the currently-walked computed body. Keyed by name → the literal.
+   * Lets a member access on the local (`o.count` where `let o = { count }`)
+   * resolve the FIELD's type directly from the literal — WITHOUT seeding the
+   * local's own type as `{kind:'object'}` in `locals` (which the
+   * computed-return-annotation path would render as a tuple, mismatching the
+   * `__ObjN` struct value). Populated in `findFirstReturnExpr`; reset per
+   * computed alongside `locals`.
+   */
+  objectLocals: Map<string, Extract<ExprIR, { kind: 'object' }>>
+  /**
    * Fetch decl name → decoded result type T (from `useFetch<T>(url)`).
    * `x.data` / `x.data()` infer T; `x.isPending` infers boolean —
    * without this, a computed over fetch state (`computed(() =>
@@ -102,6 +113,7 @@ export function emptyInferenceCtx(): InferenceCtx {
     computeds: new Map(),
     valueConsts: new Map(),
     locals: new Map(),
+    objectLocals: new Map(),
     fetches: new Map(),
     stores: new Map(),
     structs: new Map(),
@@ -289,6 +301,7 @@ export function buildInferenceCtx(
     computeds: new Map(),
     valueConsts: new Map(),
     locals: new Map(),
+    objectLocals: new Map(),
     props: new Map(props.map((p) => [p.name, p.type])),
     propsParamName,
     structs: new Map(
@@ -309,6 +322,7 @@ export function buildInferenceCtx(
             computeds: new Map(),
             valueConsts: new Map(),
             locals: new Map(),
+            objectLocals: new Map(),
             fetches: new Map(),
             stores: new Map(),
             structs: new Map(
@@ -350,6 +364,7 @@ export function buildInferenceCtx(
   for (const d of decls) {
     if (d.kind === 'computed') {
       ctx.locals = new Map()
+      ctx.objectLocals = new Map()
       ctx.computeds.set(d.name, inferComputedReturnType(d, ctx))
     }
   }
@@ -396,6 +411,14 @@ function findFirstReturnExpr(
   for (const s of stmts) {
     if (s.kind === 'let') {
       ctx.locals.set(s.name, inferType(s.expr, ctx))
+      // Also record an object-literal const so a downstream `o.count` resolves
+      // the FIELD's type from the literal (see `objectLocals`). Paren-unwrap
+      // the initializer; spread objects bail.
+      let initExpr = s.expr
+      while (initExpr.kind === 'paren') initExpr = initExpr.inner
+      if (initExpr.kind === 'object' && (initExpr.spreads?.length ?? 0) === 0) {
+        ctx.objectLocals.set(s.name, initExpr)
+      }
       continue
     }
     if (s.kind === 'return' && s.expr !== undefined) return s.expr
@@ -451,6 +474,7 @@ export function inferReturnType(
     computeds: ctx.computeds,
     valueConsts: ctx.valueConsts,
     locals: new Map(ctx.locals),
+    objectLocals: new Map(ctx.objectLocals),
     fetches: ctx.fetches,
     stores: ctx.stores,
     structs: ctx.structs,
@@ -1361,6 +1385,22 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         if (f) {
           const t = inferType(f.value, ctx)
           if (t.kind !== 'unknown') return t
+        }
+      }
+      // Field access on a body-local object-literal const — `const o = { count:
+      // … }; return o.count`. Resolve the FIELD's type from the recorded literal
+      // (see `objectLocals`), so the intermediate-const shape (the common
+      // `const o = compute(); return o.field`) types like the inline form. A
+      // bare `return o` is unaffected — `o`'s own type stays whatever `locals`
+      // holds (never the nameless object type).
+      if (objLit.kind === 'identifier') {
+        const rec = ctx.objectLocals.get(objLit.name)
+        if (rec) {
+          const f = rec.fields.find((fld) => fld.name === expr.property)
+          if (f) {
+            const t = inferType(f.value, ctx)
+            if (t.kind !== 'unknown') return t
+          }
         }
       }
       // Field access on a TERNARY of two object literals — `(cond ? { v: 1 } :
