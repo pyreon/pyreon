@@ -1363,6 +1363,34 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
           if (t.kind !== 'unknown') return t
         }
       }
+      // Field access on a TERNARY of two object literals — `(cond ? { v: 1 } :
+      // { v: 2 }).v`. Both branches synthesize the SAME struct (the emit is
+      // `(cond ? __Obj0(v:1) : __Obj0(v:2)).v`), so resolve the field from a
+      // branch (paren-unwrapping each). The field must exist in BOTH branches —
+      // a mixed ternary (`cond ? {v:1} : {w:2}`) bails to the safe `Any`. Same
+      // surgical shape as the object-literal case above (field type, not name).
+      if (objLit.kind === 'ternary') {
+        const unwrap = (e: ExprIR): ExprIR => {
+          let x = e
+          while (x.kind === 'paren') x = x.inner
+          return x
+        }
+        const th = unwrap(objLit.then)
+        const ot = unwrap(objLit.otherwise)
+        if (
+          th.kind === 'object' &&
+          ot.kind === 'object' &&
+          (th.spreads?.length ?? 0) === 0 &&
+          (ot.spreads?.length ?? 0) === 0
+        ) {
+          const tf = th.fields.find((fld) => fld.name === expr.property)
+          const of = ot.fields.find((fld) => fld.name === expr.property)
+          if (tf && of) {
+            const t = inferType(tf.value, ctx)
+            if (t.kind !== 'unknown') return t
+          }
+        }
+      }
       const objType = unwrapOptionalType(inferType(expr.object, ctx))
       if (objType.kind === 'object') {
         const field = objType.fields.find((f) => f.name === expr.property)
