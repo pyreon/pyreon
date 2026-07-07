@@ -233,6 +233,14 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       zodSchemas.push(as)
       continue
     }
+    // Shape-A follow-up: a top-level ARROW-CONST helper
+    // (`const dbl = (x: number) => x * 2`). Without this it fell through to
+    // tryModuleDeclsFromTopLevel and emitted a mis-scoped `private let dbl =
+    // { x in x * 2 }` closure + `Any` inference (silent, uncompilable) — the
+    // same silent-mis-emit class the `function dbl(){}` helper form closed, for
+    // the arrow-const declaration form. Routes it to `helperFns` so the shared
+    // helper emission + return-inference + Int×Double coercion all apply.
+    if (tryHelperFnFromArrowConst(node, ctx)) continue
     // Phase 2 follow-up: module-level mutable / immutable bindings.
     // `let nextId = 1`, `const APP_VERSION = '1.0.0'` etc. Closes the
     // TodoMVC `nextId undefined` typecheck blocker by emitting these
@@ -2359,6 +2367,57 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
       ctx.objectTypeAliases.set(name, parsed)
     }
   }
+}
+
+/**
+ * Route a top-level ARROW-CONST helper (`const dbl = (x: number) => x * 2`,
+ * `export const dbl = …`) into `ctx.helperFns` so it emits as a native `func`
+ * / `fun`, the same as a `function dbl(){}` helper. Returns `true` when it
+ * routed the node (the caller then `continue`s, so it does NOT also become a
+ * `private let` moduleDecl). A HELPER is a function OF ITS INPUTS: it takes
+ * value parameters and its body returns NO JSX. Falls through (returns `false`,
+ * UNCHANGED behavior) for:
+ *   - a JSX-returning arrow (an arrow-const COMPONENT — a separate, pre-existing
+ *     gap; not a helper);
+ *   - a NO-param arrow (the const-thunk / component-returning-value shape);
+ *   - a non-arrow const (`const APP = '1.0'` — a real module binding);
+ *   - a multi-declarator const (`const a = …, b = …` — left as moduleDecls).
+ */
+function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
+  let varDecl: AnyNode | null = null
+  if (node.type === 'VariableDeclaration' && node.kind === 'const') {
+    varDecl = node
+  } else if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration' &&
+    node.declaration.kind === 'const'
+  ) {
+    varDecl = node.declaration
+  }
+  if (!varDecl) return false
+  const declarators = (varDecl.declarations as AnyNode[] | undefined) ?? []
+  // Only the single-declarator shape is routed — a multi-declarator const
+  // stays a moduleDecl (unchanged).
+  if (declarators.length !== 1) return false
+  const d = declarators[0]!
+  if (d.id?.type !== 'Identifier') return false
+  const arrow = d.init as AnyNode | undefined
+  if (arrow?.type !== 'ArrowFunctionExpression') return false
+  // A helper takes value parameters. A no-param arrow is not routed.
+  if (((arrow.params as AnyNode[] | undefined)?.length ?? 0) === 0) return false
+  const decl = tryFunctionDecl(d.id.name as string, arrow, ctx)
+  if (!decl || decl.kind !== 'function') return false
+  // A COMPONENT arrow returns JSX (directly or through a conditional root) —
+  // NOT a helper. If ANY top-level return in the body resolves to JSX, leave it.
+  const topLevelReturns = decl.body.filter(
+    (s): s is Extract<StatementIR, { kind: 'return' }> => s.kind === 'return',
+  )
+  if (topLevelReturns.length === 0) return false // void body — not a clear helper
+  if (topLevelReturns.some((r) => r.expr !== undefined && returnContainsJsx(r.expr))) {
+    return false
+  }
+  ctx.helperFns.push(decl)
+  return true
 }
 
 /** Extract a component from `export function NAME(...) { ... }`. */
