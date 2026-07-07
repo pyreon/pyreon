@@ -18,6 +18,10 @@ import {
 } from '@pyreon/reactivity'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { installDevTools } from '../devtools'
+import { _bindText } from '../template'
+
+// _bindText's structural source param — a signal satisfies it via a widening cast.
+type TextSource = Parameters<typeof _bindText>[0]
 
 interface RxBridge {
   showOverlay(): void
@@ -221,5 +225,87 @@ describe('reactive overlay — Activity view ("why did X update?")', () => {
     reactive().showOverlay()
     // Fresh open is back on Health.
     expect(bodyText()).toMatch(/signal.*·.*edges/)
+  })
+})
+
+const INSPECT_TAB = '__pyreon-rx-tab-inspect'
+const PICK_BTN = '__pyreon-rx-pick'
+
+/** Mount an element whose text node is driven by a real `_bindText` binding. */
+function mountBoundElement(name: string): { el: HTMLElement; dispose: () => void } {
+  const sig = signal(0, { name })
+  const el = document.createElement('span')
+  const text = document.createTextNode('')
+  el.appendChild(text)
+  document.body.appendChild(el)
+  const dispose = _bindText(sig as unknown as TextSource, text)
+  return { el, dispose }
+}
+
+describe('reactive overlay — Inspect view (DOM→signal picker)', () => {
+  let keepAlive: unknown[] = []
+  let cleanups: (() => void)[] = []
+
+  beforeAll(() => {
+    installDevTools()
+  })
+
+  beforeEach(() => {
+    __resetReactiveDevtoolsForTesting()
+    keepAlive = []
+    cleanups = []
+  })
+
+  afterEach(() => {
+    reactive().hideOverlay()
+    for (const c of cleanups) c()
+    __resetReactiveDevtoolsForTesting()
+    keepAlive = []
+    cleanups = []
+  })
+
+  it('has an Inspect tab that shows the pick hint when nothing is selected', () => {
+    reactive().showOverlay()
+    clickTab(INSPECT_TAB)
+    expect(bodyText()).toContain('No element selected')
+  })
+
+  it('🎯 Pick → clicking a bound element names the signal driving its text', () => {
+    const { el, dispose } = mountBoundElement('count')
+    cleanups.push(dispose, () => el.remove())
+
+    reactive().showOverlay()
+    // Enter pick mode.
+    ;(document.getElementById(PICK_BTN) as HTMLButtonElement).click()
+    // Click the target element (caught by the document capture-phase picker).
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    const text = bodyText()
+    expect(text).toContain('displays 1 reactive value')
+    expect(text).toContain('count (signal)')
+  })
+
+  it('picking an element with only static text reports no tracked bindings', () => {
+    const el = document.createElement('div')
+    el.textContent = 'static'
+    document.body.appendChild(el)
+    cleanups.push(() => el.remove())
+
+    reactive().showOverlay()
+    ;(document.getElementById(PICK_BTN) as HTMLButtonElement).click()
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(bodyText()).toContain('no tracked reactive text')
+  })
+
+  it('clicks inside the overlay do not get picked (own buttons keep working)', () => {
+    const { el, dispose } = mountBoundElement('count')
+    cleanups.push(dispose, () => el.remove())
+
+    reactive().showOverlay()
+    ;(document.getElementById(PICK_BTN) as HTMLButtonElement).click()
+    // A click inside the overlay (a tab) must NOT be treated as a pick target.
+    clickTab(INSPECT_TAB)
+    expect(bodyText()).toContain('No element selected')
   })
 })

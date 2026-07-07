@@ -1,6 +1,7 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { renderEffect } from '@pyreon/reactivity'
+import { _rdNodeId, renderEffect } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
+import { _tagTextBinding } from './binding-registry'
 import { mountChild } from './mount'
 import { _bindEvent } from './props'
 
@@ -155,6 +156,14 @@ export function _bindText(
       if (next !== node.data) node.data = next
     }
     textUpdate()
+    // Dev-only: correlate this text node with the signal/computed it displays,
+    // so devtools can answer "which signal drives this on-screen value?". Both
+    // the node and the registered source are in scope here — an exact tag, not
+    // a heuristic. Tree-shaken in production (nothing tags → nothing correlates).
+    if (process.env.NODE_ENV !== 'production') {
+      const sourceId = _rdNodeId(source)
+      if (sourceId !== undefined) _tagTextBinding(node, sourceId)
+    }
     return source.direct(textUpdate)
   }
   // Fallback: bare callable. Use caller if compiler provided one (preserves

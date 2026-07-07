@@ -30,6 +30,7 @@ window.__PYREON_DEVTOOLS__
 // reactive bridge: reactive.activate() · reactive.deactivate()
 //                  reactive.getGraph() · reactive.getFires()
 //                  reactive.showOverlay() · reactive.hideOverlay()  (also Ctrl+Shift+R)
+//                  reactive.nodesForElement(el)   (DOM→signal — overlay Inspect / 🎯)
 ```
 
 `$p` is a console helper for the same data (`$p.tree()`, `$p.components()`, `$p.help()`).
@@ -132,7 +133,7 @@ __PYREON_DEVTOOLS__.reactive.hideOverlay() // remove it
 $p.reactivity() // toggle
 ```
 
-The panel has two tabs:
+The panel has three tabs:
 
 #### Health
 
@@ -158,5 +159,21 @@ Why did total (derived) update?
 ```
 
 This is the **inverse of React DevTools' "why did this render?"** — instead of a whole-component re-render reason, it reconstructs the exact signal→computed→effect chain from the dependency graph. (React DevTools can't do this; nobody else's in-browser panel does either.)
+
+#### Inspect — point at the pixel, get the signal
+
+The **DOM→signal picker**. Press the **🎯 Pick** button, then click any element in your app, and the panel shows the signals whose values that element's text displays — plus each one's causal chain:
+
+```text
+<span> displays 1 reactive value:
+
+• count (signal)
+  Why did count (signal) update?
+    count was updated directly (no upstream dependency fired before it).
+```
+
+The correlation is **exact, not a heuristic**: it's captured at bind time in `_bindText`, where both the text node and its source signal are in scope — so clicking a `{count()}` element resolves to exactly `count`, never a guess. Available programmatically as `__PYREON_DEVTOOLS__.reactive.nodesForElement(el)` (also exported from `@pyreon/runtime-dom`) and via the console shorthand `$p.pick()`. `Escape` cancels picking.
+
+Scope: text bindings only — the dominant "I see a wrong value" case. Attribute / class / style bindings and multi-signal text expressions aren't correlated (their owner element isn't in scope at bind time). Returns `[]` in production (nothing is tagged).
 
 Opening the panel **auto-activates** graph/fire tracking, so it works even if the app never called `reactive.activate()`. It's build-only in effect: the whole devtools module (overlay included) is tree-shaken from production by the `process.env.NODE_ENV !== 'production'` gate, so there is nothing to ship or disable. Use the `⟳` button to re-read after interacting with the app. This is the runtime complement to the component-inspect overlay (`Ctrl+Shift+P`, hover-to-inspect DOM) and the [Reactivity Lens](/reactivity-lens) editor hints (compiler-side static analysis).
