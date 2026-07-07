@@ -1,5 +1,14 @@
 # @pyreon/vite-plugin
 
+## 0.41.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.41.0
+  - @pyreon/reactivity@0.41.0
+  - @pyreon/runtime-dom@0.41.0
+
 ## 0.40.0
 
 ### Minor Changes
