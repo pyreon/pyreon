@@ -1487,8 +1487,8 @@ describe('hydrateIslands', () => {
  * and ship silently dead.
  *
  * Each test bisect-verifies its specific counter — remove the matching
- * `_countSink.__pyreon_count__?.('X')` line in client.ts and the assertion
- * here flips from `1` to `0` (or the matching count).
+ * `_count('X')` line in client.ts and the assertion here flips from `1` to `0`
+ * (or the matching count).
  */
 describe('island.* counter emissions', () => {
   let counts: Map<string, number>

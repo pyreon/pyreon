@@ -49,7 +49,19 @@ export { island } from './island'
 // every modern bundler (Vite, Webpack/Next.js, Rolldown, esbuild, Rollup,
 // Parcel, Bun) when consumers ship a production bundle. The optional-chain
 // short-circuits in dev when no consumer has called perfHarness.install().
-const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
+// Perf-counter sink — read `globalThis` lazily via a HOISTED helper, NOT a
+// module-level `const`. A `const` snapshot participates in the temporal dead
+// zone: `hydrateIsland` (a hoisted async fn) can be invoked by a deferred /
+// concurrently-raced module evaluation BEFORE the const line runs, throwing
+// `ReferenceError: Cannot access '_countSink' before initialization` (an
+// intermittent `test (core)` failure). A function declaration hoists with its
+// body and reads the always-present `globalThis` at call time, so it is
+// TDZ-immune. Still tree-shaken in production — every call site stays behind
+// the `process.env.NODE_ENV !== 'production'` gate, which folds to `if (false)`.
+function _count(name: string): void {
+  const sink = globalThis as { __pyreon_count__?: (n: string, c?: number) => void }
+  sink.__pyreon_count__?.(name)
+}
 
 // ─── Full app hydration ──────────────────────────────────────────────────────
 
@@ -190,7 +202,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
           `outer island's tree, or fold them into a single component.`,
       )
       el.setAttribute('data-island-error', 'nested')
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.skipped.nested')
+      if (process.env.NODE_ENV !== 'production') _count('island.skipped.nested')
       continue
     }
 
@@ -201,7 +213,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     // imported. Skip the missing-loader warning for never-strategy islands;
     // any other strategy without a loader IS a real misconfiguration.
     if (strategy === 'never') {
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.skipped.never')
+      if (process.env.NODE_ENV !== 'production') _count('island.skipped.never')
       continue
     }
 
@@ -209,7 +221,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     if (!loader) {
       console.warn(`No loader registered for island "${componentId}"`)
       el.setAttribute('data-island-error', 'no-loader')
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.skipped.no-loader')
+      if (process.env.NODE_ENV !== 'production') _count('island.skipped.no-loader')
       continue
     }
 
@@ -223,7 +235,7 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     const prefetchCleanup = schedulePrefetch(el as HTMLElement, loader, prefetch)
     if (prefetchCleanup) cleanups.push(prefetchCleanup)
 
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.scheduled')
+    if (process.env.NODE_ENV !== 'production') _count('island.scheduled')
     const cleanup = scheduleHydration(el as HTMLElement, loader, propsJson, strategy)
     if (cleanup) cleanups.push(cleanup)
   }
@@ -257,7 +269,7 @@ export function schedulePrefetch(
   // resolves to the same module via JS's import-promise dedup).
   const prime = () => {
     if (cancelled) return
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.prefetch')
+    if (process.env.NODE_ENV !== 'production') _count('island.prefetch')
     loader().catch(() => {
       // Silent — hydration will surface the failure with its own error path.
       // Prefetch is a hint, not a contract.
@@ -671,7 +683,7 @@ async function hydrateIsland(
     } catch (parseErr) {
       console.error(`Invalid island props JSON for "${name}"`, parseErr)
       el.setAttribute('data-island-error', 'invalid-props')
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.error')
+      if (process.env.NODE_ENV !== 'production') _count('island.error')
       return
     }
 
@@ -682,11 +694,11 @@ async function hydrateIsland(
     // letting the component's `useContext()` reach ancestor providers
     // (PyreonUI theme, etc.). `null` owner → detached root (static islands).
     runWithContextOwner(owner ?? null, () => hydrateRoot(el, h(Comp, props)))
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.hydrated')
+    if (process.env.NODE_ENV !== 'production') _count('island.hydrated')
   } catch (err) {
     console.error(`Failed to hydrate island "${name}"`, err)
     el.setAttribute('data-island-error', 'hydration-failed')
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('island.error')
+    if (process.env.NODE_ENV !== 'production') _count('island.error')
   }
 }
 
