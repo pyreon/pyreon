@@ -8,6 +8,19 @@
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
 
+/**
+ * Unwrap a single outer `@layer <name>{ … }` block to its inner rules.
+ * Used by `insertGlobal` when @layer is unsupported (happy-dom / older
+ * engines) so pre-wrapped global CSS still lands in the DOM via source
+ * order instead of being dropped. Returns the input unchanged when it
+ * isn't exactly one outer @layer block (nested/sibling blocks fall
+ * through to the normal insert + its existing warn).
+ */
+function stripOuterLayer(cssText: string): string {
+  const m = /^\s*@layer\s+[A-Za-z0-9_-]+\s*\{([\s\S]*)\}\s*$/.exec(cssText)
+  return m ? m[1]! : cssText
+}
+
 // Dev-time counter sink — see styler/resolve.ts for the contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
@@ -487,7 +500,17 @@ export class StyleSheet {
     if (this.isSSR) {
       this.ssrBuffer.push(cssText)
     } else if (this.sheet) {
-      const rules = this.splitRules(cssText)
+      // When @layer isn't supported (e.g. happy-dom in tests, older engines),
+      // the init probe leaves `supportsLayer` false. The scoped `insert()` path
+      // already skips the @layer wrap in that case; `insertGlobal` receives
+      // PRE-wrapped content from the caller, so unwrap a single outer
+      // `@layer name{…}` block here too — otherwise the inner rules (e.g. a
+      // global reset) are silently dropped AND every insert warns a
+      // DOMException. Source order is a correct fallback (that's why @layer
+      // exists — to make ordering explicit; without support the cascade uses
+      // source order, which the reset already relies on).
+      const toInsert = this.supportsLayer ? cssText : stripOuterLayer(cssText)
+      const rules = this.splitRules(toInsert)
       for (const rule of rules) {
         try {
           const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)
