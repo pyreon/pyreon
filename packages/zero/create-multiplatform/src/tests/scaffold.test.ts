@@ -82,6 +82,22 @@ describe('buildScaffold — file tree', () => {
     expect(get('src/entry-web.tsx')).toContain('mount(App, root)')
   })
 
+  it('wires WebView viz-bundle staging (web/ → app resources on both native targets)', () => {
+    // iOS: WebContent must be an included group so staged html/js/css
+    // flatten to the bundle-resource root PyreonWebView resolves against.
+    const projectYml = get('ios/project.yml')
+    expect(projectYml).toContain('path: WebContent')
+    // Both build scripts invoke stage-web, gated on a `web/` dir so it's
+    // a no-op when the app ships no viz bundle.
+    const buildIos = get('scripts/build-ios.sh')
+    expect(buildIos).toContain('pyreon-native stage-web --target=ios')
+    expect(buildIos).toContain('${PROJECT_DIR}/web')
+    const buildAndroid = get('scripts/build-android.sh')
+    expect(buildAndroid).toContain('pyreon-native stage-web --target=android')
+    // Android stages into app/src/main → assets/ (file:///android_asset/).
+    expect(buildAndroid).toContain('${PROJECT_DIR}/android/app/src/main')
+  })
+
   it('rejects an empty name', () => {
     expect(() => buildScaffold({ name: '   ' })).toThrow()
   })
