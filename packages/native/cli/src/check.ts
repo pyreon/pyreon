@@ -48,6 +48,44 @@ export interface CheckFinding {
   target: TargetLanguage
   kind: CheckFindingKind
   message: string
+  /**
+   * 1-based source position parsed from the message when the compiler /
+   * toolchain embedded one — transform (oxc) parse errors carry a
+   * `╭─[ file:line:col ]` frame and swiftc / kotlinc type-check errors
+   * carry `file:line:col:`. Absent for unsupported-subset WARNINGS: those
+   * are position-less strings today (threading spans through the ~110
+   * warn sites is a tracked follow-up), so an editor surface renders a
+   * precise squiggle when `position` is present and a file-level
+   * diagnostic otherwise.
+   */
+  position?: { line: number; column: number }
+}
+
+/**
+ * Best-effort 1-based source position parsed out of a compiler /
+ * toolchain error message. Two formats carry one:
+ *   - oxc parse frame:   `╭─[ <path>:<line>:<col> ]`
+ *   - swiftc / kotlinc:  `<path>:<line>:<col>: error: …`
+ * Returns the FIRST match, or `undefined` when the message carries no
+ * position (the common warning case). Pure — the unit-testable core of
+ * the editor-diagnostic surface.
+ */
+export function extractPosition(
+  message: string,
+): { line: number; column: number } | undefined {
+  // Check the framed form first — a bare `:L:C:` scan could otherwise
+  // match digits inside the frame's own path.
+  const frame = message.match(/\[\s*[^\]\n]*?:(\d+):(\d+)\s*\]/)
+  if (frame) return { line: Number(frame[1]), column: Number(frame[2]) }
+  const colon = message.match(/:(\d+):(\d+):/)
+  if (colon) return { line: Number(colon[1]), column: Number(colon[2]) }
+  return undefined
+}
+
+/** Attach a parsed source position to a finding when its message carries one. */
+function withPosition(finding: CheckFinding): CheckFinding {
+  const position = extractPosition(finding.message)
+  return position ? { ...finding, position } : finding
 }
 
 export interface CheckResult {
@@ -86,6 +124,89 @@ function isRuntimeModuleMiss(error: string): boolean {
   return errorLines.every((l) => /cannot find '?Pyreon\w+'? in scope/.test(l))
 }
 
+export interface CheckSourceOptions {
+  /** Targets to check (e.g. `['swift', 'kotlin']`). */
+  targets: TargetLanguage[]
+  /** Also run `swiftc -typecheck` on the Swift emit (macOS-only). */
+  typecheck?: boolean
+}
+
+export interface CheckSourceResult {
+  /**
+   * True when the source is a web-only entry (imports the DOM / SSR
+   * runtime) — the caller should skip it, exactly as `check()` does
+   * file-wise. `findings` is empty in that case.
+   */
+  webEntry: boolean
+  findings: CheckFinding[]
+}
+
+/**
+ * Check ONE source string IN MEMORY — no disk read. This is the reusable
+ * core an editor surface / future LSP calls on an unsaved buffer;
+ * `check()` is the disk-reading, tree-walking wrapper around it. Error +
+ * type-check-error findings carry a parsed source `position` when the
+ * message embeds one (see `extractPosition`).
+ */
+export function checkSource(
+  code: string,
+  fileName: string,
+  options: CheckSourceOptions,
+): CheckSourceResult {
+  if (isWebOnlyEntry(code)) return { webEntry: true, findings: [] }
+
+  const findings: CheckFinding[] = []
+  // Probe SwiftUI once per call (the compiler caches the result).
+  const canTypecheck = options.typecheck === true && isSwiftUIAvailable()
+  const typecheckRequestedButUnavailable =
+    options.typecheck === true && !isSwiftUIAvailable()
+
+  for (const target of options.targets) {
+    let emitted: string | undefined
+    try {
+      const result = transform(code, { target })
+      emitted = result.code
+      for (const w of result.warnings) {
+        findings.push({ file: fileName, target, kind: 'warning', message: w })
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      findings.push(withPosition({ file: fileName, target, kind: 'error', message }))
+      continue
+    }
+    // Opt-in deep type-check (Swift only — SwiftUI SDK).
+    if (target === 'swift' && options.typecheck === true) {
+      if (typecheckRequestedButUnavailable) {
+        findings.push({
+          file: fileName,
+          target,
+          kind: 'typecheck-skipped',
+          message: 'SwiftUI SDK unavailable (non-macOS) — type-check skipped',
+        })
+      } else if (canTypecheck) {
+        const res = validateSwiftTypecheck(emitted)
+        if (!res.ok) {
+          const error = res.error ?? 'swiftc -typecheck failed'
+          if (isRuntimeModuleMiss(error)) {
+            findings.push({
+              file: fileName,
+              target,
+              kind: 'typecheck-skipped',
+              message:
+                'references PyreonRuntime/PyreonRouter — type-check skipped (module not on search path)',
+            })
+          } else {
+            findings.push(
+              withPosition({ file: fileName, target, kind: 'typecheck-error', message: error }),
+            )
+          }
+        }
+      }
+    }
+  }
+  return { webEntry: false, findings }
+}
+
 export function check(options: CheckOptions): CheckResult {
   const targets = options.targets ?? (['swift', 'kotlin'] as TargetLanguage[])
   const inputs = resolveCheckInputs(options.source)
@@ -93,60 +214,18 @@ export function check(options: CheckOptions): CheckResult {
   const skippedWebEntries: string[] = []
   let filesChecked = 0
 
-  // Probe SwiftUI once (cached in the compiler), only when needed.
-  const canTypecheck = options.typecheck === true && isSwiftUIAvailable()
-  const typecheckRequestedButUnavailable =
-    options.typecheck === true && !isSwiftUIAvailable()
-
   for (const file of inputs) {
     const code = readFileSync(file, 'utf8')
-    if (isWebOnlyEntry(code)) {
+    const result = checkSource(code, file, {
+      targets,
+      ...(options.typecheck ? { typecheck: true } : {}),
+    })
+    if (result.webEntry) {
       skippedWebEntries.push(file)
       continue
     }
     filesChecked++
-    for (const target of targets) {
-      let emitted: string | undefined
-      try {
-        const result = transform(code, { target })
-        emitted = result.code
-        for (const w of result.warnings) {
-          findings.push({ file, target, kind: 'warning', message: w })
-        }
-      } catch (err) {
-        findings.push({
-          file,
-          target,
-          kind: 'error',
-          message: err instanceof Error ? err.message : String(err),
-        })
-        continue
-      }
-      // Opt-in deep type-check (Swift only — SwiftUI SDK).
-      if (target === 'swift' && options.typecheck === true) {
-        if (typecheckRequestedButUnavailable) {
-          findings.push({
-            file,
-            target,
-            kind: 'typecheck-skipped',
-            message: 'SwiftUI SDK unavailable (non-macOS) — type-check skipped',
-          })
-        } else if (canTypecheck) {
-          const res = validateSwiftTypecheck(emitted)
-          if (!res.ok) {
-            const error = res.error ?? 'swiftc -typecheck failed'
-            findings.push({
-              file,
-              target,
-              kind: isRuntimeModuleMiss(error) ? 'typecheck-skipped' : 'typecheck-error',
-              message: isRuntimeModuleMiss(error)
-                ? 'references PyreonRuntime/PyreonRouter — type-check skipped (module not on search path)'
-                : error,
-            })
-          }
-        }
-      }
-    }
+    findings.push(...result.findings)
   }
 
   const errorCount = findings.filter(
