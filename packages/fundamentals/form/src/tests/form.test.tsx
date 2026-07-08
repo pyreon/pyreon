@@ -1286,6 +1286,33 @@ describe('useForm nonexistent field operations', () => {
     unmount()
   })
 
+  it('field-not-found error names the remedy (declare it; no auto-register)', () => {
+    // Regression-locks the actionable guidance appended to the three
+    // "field does not exist" throws. @pyreon/form is a STATIC field model —
+    // it does NOT auto-register on first use (unlike react-hook-form), so a
+    // missing field is a real error and the message must tell the consumer
+    // how to fix it. Substring match keeps it robust to wording tweaks.
+    const { result: form, unmount } = mountWith(() =>
+      useForm({
+        initialValues: { name: 'Alice' },
+        onSubmit: () => {
+          /* noop */
+        },
+      }),
+    )
+
+    expect(() => form.setFieldValue('missing' as any, 'v')).toThrow(
+      'does not auto-register fields',
+    )
+    expect(() => form.setFieldValue('missing' as any, 'v')).toThrow(
+      'useForm({ initialValues })',
+    )
+    expect(() => form.setFieldError('missing' as any, 'e')).toThrow(
+      'does not auto-register fields',
+    )
+    unmount()
+  })
+
   it('resetField with nonexistent field is a no-op', () => {
     const { result: form, unmount } = mountWith(() =>
       useForm({
