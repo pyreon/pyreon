@@ -35,7 +35,7 @@ import { valibotSchema } from '@pyreon/validation/valibot'
 import { zodSchema } from '@pyreon/validation/zod'
 import { type } from 'arktype'
 import * as v from 'valibot'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { z } from 'zod'
 
 afterEach(() => {
@@ -344,7 +344,7 @@ describe('schema-driven defineStore — Standard Schema (Tier A.2)', () => {
     age: z.number(),
   })
 
-  it('auto-detects raw zod schema via ~standard', () => {
+  it('auto-detects raw zod schema via ~standard — STRICTLY TYPED (no cast)', () => {
     // Confirm the schema actually carries the ~standard property
     expect('~standard' in (RawZodSchema as object)).toBe(true)
 
@@ -353,24 +353,29 @@ describe('schema-driven defineStore — Standard Schema (Tier A.2)', () => {
       initial: { name: 'Alice', age: 30 },
     })
     const u = useUser()
-    // Standard Schema inference still has a TODO — zod's `~standard.types.output`
-    // resolves to a partial / optional shape in the conditional-type. Behavior
-    // is correct; runtime works end-to-end. Type-inference for the Standard
-    // Schema path is the follow-up. For now, cast at the call site.
-    const s = u.store as Record<string, { (): unknown }>
-    expect(s.name!()).toBe('Alice')
-    expect(s.age!()).toBe(30)
+    // Raw Standard Schema now infers its field types via `~standard.types.output`
+    // (the `types?`-optional InferSchema fix) — no cast needed, and these reads
+    // are type-checked (`u.store.name()` is `string`, `u.store.age()` is `number`).
+    expect(u.store.name()).toBe('Alice')
+    expect(u.store.age()).toBe(30)
+    expectTypeOf(u.store.name()).toEqualTypeOf<string>()
+    expectTypeOf(u.store.age()).toEqualTypeOf<number>()
+    expectTypeOf(u.state.age).toEqualTypeOf<number>()
   })
 
-  it('Standard Schema path validates set/patch', () => {
+  it('Standard Schema path validates set/patch (typed)', () => {
     const useUser = defineStore('std-user-2', {
       schema: RawZodSchema,
       initial: { name: 'Alice', age: 30 },
     })
     const u = useUser()
     u.set({ name: 'Bob', age: 40 })
-    const s = u.store as Record<string, { (): unknown }>
-    expect(s.name!()).toBe('Bob')
+    expect(u.store.name()).toBe('Bob')
+    u.update('age', (n) => {
+      expectTypeOf(n).toEqualTypeOf<number>()
+      return n + 1
+    })
+    expect(u.store.age()).toBe(41)
     expect(() => u.set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
   })
 })
