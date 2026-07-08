@@ -214,6 +214,14 @@ export interface FormState<TValues extends Record<string, unknown>> {
    * Clears all errors, touched, and dirty state.
    */
   setInitialValues: (values: Partial<TValues>) => void
+  /**
+   * Move DOM focus to the first field (in declaration order) that currently
+   * has an error AND was bound via `register()` (so it has a known id). Called
+   * automatically by `handleSubmit` on a failed submit unless
+   * `focusOnError: false`; also exposed for custom submit flows. No-op on the
+   * server / when no errored+registered field exists.
+   */
+  focusFirstError: () => void
   /** Whether the entire form is disabled (signal). Disabled fields are excluded from submit values. */
   disabled: Signal<boolean>
   /** Whether the entire form is read-only (signal). Read-only fields are included in submit values. */
@@ -250,4 +258,10 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
   validateOn?: 'blur' | 'change' | 'submit'
   /** Debounce delay in ms for validators (useful for async validators). */
   debounceMs?: number
+  /**
+   * On a failed `handleSubmit`, move focus to the first errored+registered
+   * field (accessible error recovery — react-hook-form's `shouldFocusError`,
+   * defaulted on). Set `false` to opt out. Default `true`.
+   */
+  focusOnError?: boolean
 }
