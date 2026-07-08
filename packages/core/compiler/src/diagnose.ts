@@ -531,6 +531,27 @@ rows.set(filtered50)        // shrink — removed rows are now GC-eligible`,
 {() => loading() ? 'Loading…' : <Table/>}                                 // text→VNode OK`,
     }),
   },
+  {
+    // VNode-array-child fix: a VNode[] interpolated as a bare `{arr}` child of
+    // a DOM element renders "[object Object],[object Object]". No exception —
+    // behavioral, so match the pasted symptom words.
+    pattern:
+      /\[object Object\](,\[object Object\])+|\[object Object\].*(array|list|map|children|render)|(array|list|\.map|vnode).*renders?.*\[object Object\]/i,
+    diagnose: () => ({
+      cause:
+        'A VNode ARRAY interpolated as a bare `{arr}` child of a DOM element — `const arr = [<a/>, <b/>]` or `const rows = items.map(i => <li/>)` then `<div>{arr}</div>` — was baked to `element.textContent = arr`, which stringifies the array to "[object Object],[object Object]". The single-VNode case (`const v = <x/>; {v}`) already mounted; array/map const children did not, because the compiler only tracked a DIRECT JSX-element initializer as mountable.',
+      fix: 'Upgrade `@pyreon/compiler` (+ `@pyreon/runtime-dom`) — the compiler now classifies array-of-JSX and map-of-JSX const initializers as VNODE COLLECTIONS and mounts them via `_mountSlot` → `mountChild` (which renders arrays element-by-element). No app code change needed for an array LITERAL or a `.map()` const. If the array comes from a function call the compiler cannot statically see (`const arr = getVNodes()`), inline the `.map()` at the JSX site (`<div>{items.map(i => <li/>)}</div>` — already mounted) or use `<For each={items} by={i => i.id}>`.',
+      fixCode: `// Fixed by upgrade (statically visible array/map consts):
+const arr = [<span>a</span>, <span>b</span>]; // -> mounts both spans
+const rows = items.map((i) => <li>{i}</li>);  // -> mounts each <li>
+<div>{arr}</div>; <ul>{rows}</ul>;
+// For a function-returned array, inline the map or use <For>:
+<div>{getItems().map((i) => <li>{i}</li>)}</div>
+<ul><For each={items} by={(i) => i.id}>{(i) => <li>{i.name}</li>}</For></ul>`,
+      related:
+        'A bare `h()`-call const (`const v = h("span")`) is also not tracked (write JSX, or wrap in a JSX element). A single primitive/string const stays on the text fast path (correct).',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
