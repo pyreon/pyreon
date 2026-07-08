@@ -1,6 +1,6 @@
 import { createUniqueId, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, computed, effect, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isServer, signal } from '@pyreon/reactivity'
 import type { SchemaValidateFn, StandardSchemaLike } from '@pyreon/validation'
 import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 import type { FieldDefinition, InferFieldValues } from './field'
@@ -105,6 +105,8 @@ export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<str
   validateOn?: 'blur' | 'change' | 'submit'
   /** Debounce delay in ms for validators. */
   debounceMs?: number
+  /** Focus the first errored field on a failed submit (default true). */
+  focusOnError?: boolean
 }
 
 /**
@@ -169,12 +171,13 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       schema: options.schema,
       validateOn: options.validateOn,
       debounceMs: options.debounceMs,
+      focusOnError: options.focusOnError,
     } as unknown as UseFormOptions<TValues>) as FormState<TValues>
   }
 
   // ── Legacy path ───────────────────────────────────────────────────────
   const opts = options as UseFormOptions<Record<string, unknown>>
-  const { initialValues: rawInitialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs } = opts
+  const { initialValues: rawInitialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs, focusOnError = true } = opts
 
   // Resolve initialValues — static object or reactive accessor
   const initialValues = typeof rawInitialValues === 'function'
@@ -838,7 +841,12 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     })
 
     const valid = await validate()
-    if (!valid) return
+    if (!valid) {
+      // Accessible error recovery — move focus to the first errored field
+      // (unless opted out). react-hook-form's `shouldFocusError` default.
+      if (focusOnError) focusFirstError()
+      return
+    }
 
     isSubmitting.set(true)
     try {
@@ -923,6 +931,23 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     return id
   }
   const errorIdOf = (field: string): string => `${baseId(field)}-error`
+
+  // Focus the first errored + registered field (declaration order). Uses
+  // `_fieldIds.get` (NOT `baseId`, which would generate an id) so it only
+  // targets fields actually bound via register(). SSR-safe.
+  const focusFirstError = (): void => {
+    if (isServer) return
+    for (const [name] of fieldEntries) {
+      if (fields[name].error.peek() === undefined) continue
+      const id = _fieldIds.get(name)
+      if (id === undefined) continue
+      const el = document.getElementById(id)
+      if (el && typeof (el as HTMLElement).focus === 'function') {
+        ;(el as HTMLElement).focus()
+        return
+      }
+    }
+  }
 
   // Memoized register props per field+type combo. Cache value type is
   // the union of both shapes since checkbox returns `FieldRegisterCheckboxProps`
@@ -1102,6 +1127,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     trigger,
     getFieldState,
     setInitialValues,
+    focusFirstError,
     disabled: formDisabled,
     readOnly: formReadOnly,
   }
