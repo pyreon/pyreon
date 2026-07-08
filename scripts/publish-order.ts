@@ -56,3 +56,33 @@ export function topoSortByWorkspaceDeps<T extends OrderNode>(nodes: readonly T[]
   for (const node of nodes) visit(node) // original order = stable tiebreak
   return sorted
 }
+
+/**
+ * Given the leaf-first publish `order`, each package's intra-plan workspace
+ * deps (`depsOf`), and a seed set of packages that did NOT publish this run
+ * (`seedNotLive` = failed ∪ needs-bootstrap), return the FULL set of packages
+ * that must be SKIPPED to avoid shipping an unresolvable `^X.Y.Z` range on a
+ * dep that isn't on npm. A package is blocked if any of its deps is not-live,
+ * and blocking PROPAGATES transitively (a blocked dep blocks its dependents).
+ *
+ * This is the pure model of the in-loop guard in `publish.ts` — the loop
+ * discovers failures as it publishes and applies the same rule
+ * (`deps ∩ (failed ∪ needsBootstrap ∪ blocked) ≠ ∅`) incrementally in `order`.
+ */
+export function computeBlockedPackages(
+  order: readonly string[],
+  depsOf: ReadonlyMap<string, readonly string[]>,
+  seedNotLive: ReadonlySet<string>,
+): Set<string> {
+  const notLive = new Set<string>(seedNotLive)
+  const blocked = new Set<string>()
+  for (const name of order) {
+    if (seedNotLive.has(name)) continue // a seed failure itself, not a block
+    const deps = depsOf.get(name) ?? []
+    if (deps.some((d) => notLive.has(d))) {
+      blocked.add(name)
+      notLive.add(name) // propagate to this package's own dependents
+    }
+  }
+  return blocked
+}

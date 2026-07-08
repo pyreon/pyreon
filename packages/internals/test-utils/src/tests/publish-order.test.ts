@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { topoSortByWorkspaceDeps } from '../../../../../scripts/publish-order'
+import {
+  computeBlockedPackages,
+  topoSortByWorkspaceDeps,
+} from '../../../../../scripts/publish-order'
 
 /**
  * Regression: publish leaf-first so a dependent is never published carrying a
@@ -70,5 +73,33 @@ describe('topoSortByWorkspaceDeps — leaf-first publish order', () => {
     const out = topoSortByWorkspaceDeps(input).map((n) => n.name)
     expect(out).toHaveLength(2)
     expect(new Set(out)).toEqual(new Set(['@pyreon/a', '@pyreon/b']))
+  })
+})
+
+describe('computeBlockedPackages — skip dependents of a failed/unpublished dep', () => {
+  const depsOf = new Map<string, string[]>([
+    ['@pyreon/reactivity', []],
+    ['@pyreon/form', ['@pyreon/reactivity']],
+    ['@pyreon/feature', ['@pyreon/form']],
+    ['@pyreon/unrelated', []],
+  ])
+  const order = ['@pyreon/reactivity', '@pyreon/form', '@pyreon/feature', '@pyreon/unrelated']
+
+  it('blocks a direct dependent of a failed dep', () => {
+    const blocked = computeBlockedPackages(order, depsOf, new Set(['@pyreon/form']))
+    expect(blocked.has('@pyreon/feature')).toBe(true) // depends on form
+    expect(blocked.has('@pyreon/unrelated')).toBe(false)
+    expect(blocked.has('@pyreon/reactivity')).toBe(false)
+  })
+
+  it('propagates transitively (root failure blocks the whole chain)', () => {
+    const blocked = computeBlockedPackages(order, depsOf, new Set(['@pyreon/reactivity']))
+    expect(blocked.has('@pyreon/form')).toBe(true) // depends on reactivity
+    expect(blocked.has('@pyreon/feature')).toBe(true) // depends on form (blocked)
+    expect(blocked.has('@pyreon/unrelated')).toBe(false)
+  })
+
+  it('blocks nothing when all deps are live', () => {
+    expect(computeBlockedPackages(order, depsOf, new Set()).size).toBe(0)
   })
 })
