@@ -20,6 +20,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { resolveBundledContentPath } from './content-bundle'
 
 export interface PatternFile {
   /** Slug (filename without extension) — the value consumers pass to get_pattern */
@@ -152,16 +153,23 @@ function extractFirstHeading(body: string): string | null {
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function loadPatternRegistry(startDir: string = process.cwd()): PatternRegistry {
-  const root = findPatternsDir(startDir)
-  if (!root) return { root: null, patterns: [] }
-
+/**
+ * Read every `<slug>.md` from a patterns directory into `PatternFile`s.
+ * The directory must be the patterns dir itself (not a repo root to walk).
+ * Shared by the cwd-walk loader and the bundled-fallback loader.
+ */
+export function readPatternsFromDir(patternsDir: string): PatternFile[] {
   const patterns: PatternFile[] = []
-  const entries = readdirSync(root).sort()
+  let entries: string[]
+  try {
+    entries = readdirSync(patternsDir).sort()
+  } catch {
+    return patterns
+  }
   for (const entry of entries) {
     if (!entry.endsWith('.md')) continue
     if (entry.startsWith('.') || entry === 'README.md' || entry === 'index.md') continue
-    const filePath = join(root, entry)
+    const filePath = join(patternsDir, entry)
     let source: string
     try {
       source = readFileSync(filePath, 'utf8')
@@ -180,8 +188,33 @@ export function loadPatternRegistry(startDir: string = process.cwd()): PatternRe
       seeAlso: meta.seeAlso ?? [],
     })
   }
+  return patterns
+}
 
-  return { root, patterns }
+export function loadPatternRegistry(startDir: string = process.cwd()): PatternRegistry {
+  const root = findPatternsDir(startDir)
+  if (!root) return { root: null, patterns: [] }
+  return { root, patterns: readPatternsFromDir(root) }
+}
+
+/**
+ * Like `loadPatternRegistry` but falls back to the package's bundled
+ * `content/patterns/` snapshot when the cwd walk finds no live monorepo
+ * source (the `bunx @pyreon/mcp` consumer case). Prefers the live source so
+ * in-repo dev always sees the latest patterns.
+ *
+ * `bundledPatternsDir` is injectable for tests; production auto-resolves it.
+ */
+export function loadPatternRegistryWithFallback(
+  startDir: string = process.cwd(),
+  bundledPatternsDir: string | null = resolveBundledContentPath('patterns'),
+): PatternRegistry {
+  const live = loadPatternRegistry(startDir)
+  if (live.patterns.length > 0) return live
+  if (bundledPatternsDir && existsSync(bundledPatternsDir)) {
+    return { root: bundledPatternsDir, patterns: readPatternsFromDir(bundledPatternsDir) }
+  }
+  return live
 }
 
 /**

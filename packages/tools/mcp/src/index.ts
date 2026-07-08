@@ -44,14 +44,14 @@ import {
   migratePyreonCode,
   migrateReactCode,
 } from '@pyreon/compiler'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { relative } from 'node:path'
 import { z } from 'zod'
 import packageJson from '../package.json' with { type: 'json' }
 import {
   type AntiPatternCategory,
   formatAntiPatterns,
   formatAntiPatternsIndex,
+  loadAntiPatternsDoc,
   parseAntiPatterns,
 } from './anti-patterns'
 import { API_REFERENCE } from './api-reference'
@@ -61,7 +61,7 @@ import {
   findChangelog,
   formatChangelog,
   formatChangelogIndex,
-  loadChangelogRegistry,
+  loadChangelogRegistryWithFallback,
   suggestChangelogs,
 } from './changelog'
 import {
@@ -73,7 +73,7 @@ import {
   findPattern,
   formatPatternBody,
   formatPatternIndex,
-  loadPatternRegistry,
+  loadPatternRegistryWithFallback,
   suggestPatterns,
 } from './patterns'
 import { enrichDiagnosis, formatEnrichedDiagnosis } from './diagnose-enrich'
@@ -746,7 +746,7 @@ server.tool(
         .describe('Pattern slug. Omit to list available patterns.'),
     },
     async ({ name }) => {
-      const registry = loadPatternRegistry()
+      const registry = loadPatternRegistryWithFallback()
       if (!name) return textResult(formatPatternIndex(registry))
 
       const pattern = findPattern(registry, name)
@@ -863,7 +863,7 @@ server.tool(
         .describe('Only versions strictly newer than this (e.g. "0.12.0").'),
     },
     async ({ package: pkg, limit, includeDependencyUpdates, since }) => {
-      const registry = loadChangelogRegistry()
+      const registry = loadChangelogRegistryWithFallback()
       if (!pkg) return textResult(formatChangelogIndex(registry))
 
       const changelog = findChangelog(registry, pkg)
@@ -963,30 +963,6 @@ server.tool(
   })
 
   return server
-}
-
-/**
- * Locate `.claude/rules/anti-patterns.md` by walking up from cwd.
- * Returns the file contents or null if not found within 30 levels.
- * Separate from the patterns loader because the doc path is fixed
- * (`.claude/rules/`) — no glob needed.
- */
-function loadAntiPatternsDoc(startDir: string = process.cwd()): string | null {
-  let dir = resolve(startDir)
-  for (let i = 0; i < 30; i++) {
-    const candidate = join(dir, '.claude', 'rules', 'anti-patterns.md')
-    if (existsSync(candidate)) {
-      try {
-        return readFileSync(candidate, 'utf8')
-      } catch {
-        return null
-      }
-    }
-    const parent = dirname(dir)
-    if (parent === dir) return null
-    dir = parent
-  }
-  return null
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

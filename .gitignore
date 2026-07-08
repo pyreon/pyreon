@@ -14,6 +14,9 @@ lib
 !examples/*/src/lib
 !examples/*/src/lib/**
 analysis
+# @pyreon/mcp bundled content snapshot — generated at build time by
+# scripts/copy-content.ts (shipped in the tarball via `files`, not committed).
+packages/tools/mcp/content
 .turbo
 *.tsbuildinfo
 .env

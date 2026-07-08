@@ -786,9 +786,9 @@ The server speaks JSON-RPC over stdio. If the client connected but `tools/list` 
 - Look for `[mcp]` stderr lines in the client's log directory (Claude Code: `~/Library/Logs/Claude/`, Cursor: settings → output panel → "MCP Logs").
 - Test the server in isolation with `bunx pyreon-mcp` and send a JSON-RPC `initialize` frame. If `initialize` succeeds but `tools/list` is empty, file an issue with the stderr output.
 
-### `get_pattern` / `get_anti_patterns` return "could not locate"
+### `get_pattern` / `get_anti_patterns` / `get_changelog` in a consumer project
 
-Both tools read files from the host Pyreon monorepo (`docs/patterns/*.md` and `.claude/rules/anti-patterns.md`). When the server runs from a **consumer project** (not the monorepo), those files aren't reachable — the tools degrade gracefully with a "could not locate" message. By design, the tools walk the working directory's ancestor tree, so adding the same `.claude/rules/anti-patterns.md` to a consumer project surfaces the entries.
+These tools read from Pyreon-monorepo files (`docs/src/content/docs/patterns/*.md`, `.claude/rules/anti-patterns.md`, `packages/**/CHANGELOG.md`). When the server runs from a **consumer project** (`bunx @pyreon/mcp`), those files aren't reachable in the working tree — so the published package **bundles a snapshot** of them (a `content/` dir shipped in the tarball, regenerated on every build). The loaders prefer the live monorepo source when present (so in-repo dev always sees the latest) and fall back to the bundled snapshot otherwise, so the tools return real content in consumers. The bundled changelogs / patterns / anti-patterns reflect the version of `@pyreon/mcp` you installed — upgrade the package to refresh them. The "could not locate" message now only appears if BOTH the live source and the bundled snapshot are missing (a broken install).
 
 ### `audit_test_environment` / `audit_islands` report zero findings in a known-broken codebase
 
@@ -808,7 +808,7 @@ The content tools work with `@pyreon/zero-content`-shaped apps. They look for a 
 
 ### `get_changelog` returns "not found" for a known package
 
-The lookup walks up from cwd for `packages/**/CHANGELOG.md`. If you renamed a package directory but kept the npm name, the walker won't find it. The tool accepts both `query` and `@pyreon/query` — try both forms.
+The lookup walks up from cwd for `packages/**/CHANGELOG.md`, falling back to the package's bundled changelog snapshot when no live `@pyreon/*` package is found (the consumer case). If you renamed a package directory but kept the npm name, the walker won't find the live file (the bundled snapshot still resolves it). The tool accepts both `query` and `@pyreon/query` — try both forms.
 
 ### The server hangs on first connection
 

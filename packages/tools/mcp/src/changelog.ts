@@ -29,6 +29,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { resolveBundledContentPath } from './content-bundle'
 
 export interface ChangelogEntry {
   /** Version string as it appears in the heading (`0.13.0`, `1.0.0-alpha.3`, etc.) */
@@ -236,6 +237,72 @@ export function loadChangelogRegistry(startDir: string = process.cwd()): Changel
     })
   }
   return { root, byName }
+}
+
+/**
+ * Load the package's bundled `content/changelogs/` snapshot (shipped in the
+ * published tarball; see `scripts/copy-content.ts`). Each `*.md` file carries
+ * the source CHANGELOG verbatim, whose first `# @pyreon/x` heading re-derives
+ * the package name — so no separate index file is needed.
+ *
+ * `bundledDir` is injectable for tests; production auto-resolves it.
+ */
+export function loadBundledChangelogRegistry(
+  bundledDir: string | null = resolveBundledContentPath('changelogs'),
+): ChangelogRegistry {
+  if (!bundledDir || !existsSync(bundledDir)) return { root: null, byName: new Map() }
+  const byName = new Map<string, PackageChangelog>()
+  let files: string[]
+  try {
+    files = readdirSync(bundledDir)
+  } catch {
+    return { root: null, byName }
+  }
+  for (const file of files) {
+    if (!file.endsWith('.md')) continue
+    const path = join(bundledDir, file)
+    let source: string
+    try {
+      source = readFileSync(path, 'utf8')
+    } catch {
+      continue
+    }
+    // The package name is the file's first `# <name>` H1 heading.
+    const nameMatch = /^#\s+(.+?)\s*$/m.exec(source)
+    const name = nameMatch ? nameMatch[1]!.trim() : file.replace(/\.md$/, '')
+    byName.set(name, {
+      packageName: name,
+      path,
+      dir: bundledDir,
+      entries: parseChangelog(source),
+    })
+  }
+  return { root: bundledDir, byName }
+}
+
+/**
+ * Like `loadChangelogRegistry` but falls back to the bundled snapshot when
+ * the live cwd walk yields no Pyreon packages (the `bunx @pyreon/mcp`
+ * consumer case — either no monorepo at all, or a consumer's OWN monorepo
+ * whose packages aren't `@pyreon/*`). Prefers the live source so in-repo dev
+ * always sees the latest release notes.
+ *
+ * `bundledDir` is injectable for tests; production auto-resolves it.
+ */
+export function loadChangelogRegistryWithFallback(
+  startDir: string = process.cwd(),
+  bundledDir: string | null = resolveBundledContentPath('changelogs'),
+): ChangelogRegistry {
+  const live = loadChangelogRegistry(startDir)
+  // "Live pyreon source present" = the walk found at least one @pyreon/*
+  // package. A consumer's own monorepo populates byName with non-pyreon
+  // names, which should still fall back to the bundled Pyreon snapshot.
+  for (const name of live.byName.keys()) {
+    if (name.startsWith('@pyreon/')) return live
+  }
+  const bundled = loadBundledChangelogRegistry(bundledDir)
+  if (bundled.byName.size > 0) return bundled
+  return live
 }
 
 export function findChangelog(
