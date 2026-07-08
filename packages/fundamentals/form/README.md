@@ -85,11 +85,12 @@ function EmailInput() {
 | `fields`         | `FieldDefinition[]`                          | Required when using the composable form. Drives `TValues` via inference. |
 | `onSubmit`       | `(values: TValues) => void \| Promise<void>` | Submit handler — receives validated values                              |
 | `validators`     | `Partial<Record<keyof TValues, ValidateFn>>` | Per-field validators; signature `(value, allValues) => string \| undefined` |
-| `schema`         | `SchemaValidateFn<TValues>`                  | Whole-form schema validator (from `@pyreon/validation` adapters)         |
+| `schema`         | `SchemaValidateFn` \| Standard Schema \| typed adapter | Whole-form schema validator — a raw Standard Schema (zod / valibot / arktype / `@pyreon/validate`'s `s`) directly, a plain `SchemaValidateFn`, or a `@pyreon/validation` typed adapter |
 | `validateOn`     | `'blur' \| 'change' \| 'submit'`             | When to validate. **Default: `'blur'`**                                   |
 | `debounceMs`     | `number`                                     | Debounce delay for validators (especially async)                         |
+| `focusOnError`   | `boolean`                                    | Focus the first errored + `register()`-bound field on a failed submit. **Default: `true`** |
 
-Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touched`, `dirty`), form-level signals (`isSubmitting`, `isValidating`, `submitCount`, `isSubmitted`, `isSubmitSuccessful`, `submitError`), computed accessors (`isValid()`, `isDirty()`, `values()`, `getValues(name?)`, `errors()`, `dirtyFields()`, `touchedFields()`), and handlers (`handleSubmit`, `register`, `validate`, `trigger`, `reset`, `setFieldValue`, `setFieldError`, `setErrors`, `clearErrors`, `resetField`, `getFieldState`).
+Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touched`, `dirty`), form-level signals (`isSubmitting`, `isValidating`, `submitCount`, `isSubmitted`, `isSubmitSuccessful`, `submitError`), computed accessors (`isValid()`, `isDirty()`, `values()`, `getValues(name?)`, `errors()`, `dirtyFields()`, `touchedFields()`), and handlers (`handleSubmit`, `register`, `validate`, `trigger`, `reset`, `setFieldValue`, `setFieldError`, `setErrors`, `clearErrors`, `resetField`, `getFieldState`, `focusFirstError`, `registerField`, `unregisterField`).
 
 react-hook-form-parity accessors (all strictly typed against `TValues`):
 
@@ -109,6 +110,9 @@ react-hook-form-parity accessors (all strictly typed against `TValues`):
 
 // Bind number input (auto-parses to number):
 <input type="number" {...form.register('age', { type: 'number' })} />
+
+// Bind file input (value-less — writes the FileList to the field):
+<input type="file" {...form.register('avatar', { type: 'file' })} />
 ```
 
 ## `useField(name)` / `useField(form, name)`
@@ -219,22 +223,97 @@ const form = useForm({
 
 `setFieldError` / `setErrors` do NOT touch `touched` state — server errors display immediately regardless of blur status.
 
-## Schema validation
+## File inputs
 
-Pair with `@pyreon/validation` adapters. Per-field validators run first; schema errors merge after.
+`register(field, { type: 'file' })` returns a **value-less** props bag — a file input can't be value-controlled (`<input type="file" value=…>` is a no-op the browser rejects). Its `onInput` writes the input's `FileList` (`target.files`) to the field, so `field.value()` is `FileList | null` — read `files?.[0]` for a single file:
+
+```tsx
+const form = useForm({
+  initialValues: { avatar: null as FileList | null },
+  onSubmit: async (values) => {
+    const file = values.avatar?.[0]
+    if (file) await upload(file)
+  },
+})
+
+;<input type="file" {...form.register('avatar', { type: 'file' })} />
+```
+
+The value flows into `values()` / `onSubmit` like any other field. This sits alongside the other `register` type variants: `{ type: 'checkbox' }` → `checked`, `{ type: 'number' }` → `valueAsNumber`.
+
+## Dynamic fields — `registerField` / `unregisterField`
+
+Add or remove fields at runtime for data-driven forms (a server-defined schema, an "add another section" button). A dynamically-registered field is fully first-class — it reaches `values()` / `onSubmit` and participates in validity — and unregistering cleanly removes its invalid / dirty contribution:
 
 ```ts
-import { zodSchema } from '@pyreon/validation/zod'
+form.registerField('phone', '', (v) => (v ? undefined : 'Required'))
+form.setFieldValue('phone', '555-0100')
+form.getValues() // { …, phone: '555-0100' }
+
+form.unregisterField('phone') // gone from values() + validity recovers
+```
+
+`registerField(name, initialValue?, validator?)` is idempotent — re-registering an existing field keeps its current value and just refreshes the validator. This is the **only** way to add a field after creation; `@pyreon/form` never lazily auto-registers (that would silently drop data). Dynamic fields are runtime-typed (not in the static `TValues`), so read them via `getValues()[name]` / `fields[name]`.
+
+## Focus on error
+
+On a failed `handleSubmit`, focus moves to the first errored **and** `register()`-bound field (in declaration order) — accessible error recovery (react-hook-form's `shouldFocusError`). On by default; opt out with `focusOnError: false`. `form.focusFirstError()` is also exposed for custom submit flows. SSR-safe; a field never bound via `register()` (no known id) is skipped.
+
+```ts
+const form = useForm({
+  initialValues: { email: '', name: '' },
+  validators: { email: (v) => (v ? undefined : 'Required') },
+  focusOnError: true, // default — set false to opt out
+  onSubmit: async () => {},
+})
+
+// Custom flow:
+if (!(await form.validate())) form.focusFirstError()
+```
+
+## Reset ergonomics
+
+`reset(values?, options?)` and `resetField(field, options?)` cover the common "reset to freshly-saved server data" and "keep some state across a reset" flows:
+
+```ts
+// Reset every field to its original initial value (unchanged behavior):
+form.reset()
+
+// Reset TO new baseline values — named fields become the NEW baseline,
+// unnamed fields revert to their original initial. isDirty() → false.
+form.reset(await fetchLatest()) // { name: 'server', email: 'a@b.com' }
+
+// Preserve selected state across the reset:
+form.reset(undefined, { keepErrors: true })      // also keepTouched / keepDirty / keepSubmitCount
+
+// Single field:
+form.resetField('email')                          // revert value + clear error/touched
+form.resetField('email', { keepError: true })     // also keepTouched
+```
+
+## Schema validation
+
+`schema` accepts a **raw Standard Schema** (zod ≥ 3.24 / valibot ≥ 1 / arktype ≥ 2 / `@pyreon/validate`'s `s`) **directly** — no `zodSchema()` adapter and no `as never` cast:
+
+```ts
 import { z } from 'zod'
 
 const form = useForm({
   initialValues: { email: '', age: 0 },
-  schema: zodSchema(z.object({ email: z.string().email(), age: z.number().min(13) })),
+  schema: z.object({ email: z.string().email(), age: z.number().min(13) }),
   onSubmit: async (values) => {
     /* ... */
   },
 })
 ```
+
+It also still accepts a plain `SchemaValidateFn` (`(values) => Partial<Record<key, string>>`) and a `@pyreon/validation` typed adapter (`zodSchema` / `valibotSchema` / `arktypeSchema` — the compile-time-typed form). Per-field validators run first; schema errors merge after.
+
+The `~standard` contract + bridge live in `@pyreon/validation`; `@pyreon/form` depends on it and re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn`, so the historical `import { ValidationError } from '@pyreon/form'` keeps working.
+
+### Nested schema errors
+
+A whole-form schema error keyed by a nested dot-path — `{ 'address.city': 'Required' }`, the shape the zod / valibot / arktype adapters produce — routes to its top-level ancestor field (`address`). A schema error whose key matches **no** field marks the form invalid, sets `submitError`, and dev-warns — rather than being silently dropped (which previously let `onSubmit` fire with invalid data). Both the submit and blur paths honor this. Known limitation: the field model is flat in v1, so a nested error surfaces on the **ancestor** field, not a per-leaf field.
 
 ## Devtools
 
@@ -250,7 +329,9 @@ import { formRegistry } from '@pyreon/form/devtools'
 - **Mutating `initialValues` after creation has no effect** — they're read once at setup. Use `setFieldValue` for programmatic updates.
 - **`form.fields[name].value` is `Signal<T>`** — call it: `form.fields.email.value()`. Reading without calling captures the signal reference, not the value.
 - **`handleSubmit` calls `preventDefault()`** — wire it as `<form onSubmit={form.handleSubmit}>` or call with no argument for programmatic submit.
-- **`schema` runs AFTER per-field `validators`** — both error sources merge; a schema error can override a field-level error on the same key.
+- **`schema` runs AFTER per-field `validators`, but field-level errors win** — the schema only fills fields that have no field-level error. A raw Standard Schema needs no `zodSchema()` wrapper or `as never` cast. A nested `{ 'address.city': ... }` error routes to the ancestor `address` field; a key matching no field invalidates the form + sets `submitError` (never silently dropped).
+- **File inputs are value-less** — `register(field, { type: 'file' })` omits `value`; its `onInput` writes the `FileList`, so `field.value()` is `FileList | null` (read `files?.[0]`).
+- **Dynamic fields need `registerField`** — `@pyreon/form` never auto-registers; add runtime fields with `form.registerField(name, initial?, validator?)` and read them via `getValues()[name]` (they're not in the static `TValues`).
 - **`FormProvider` doesn't support nesting** — the inner shadows the outer. For multi-form pages use separate sibling providers.
 - **`register()` results are memoized per field+type combo** — calling `register('email')` twice returns the same object.
 - **`useFormState(form)` without a selector** re-derives on every state change. Always pass a selector.

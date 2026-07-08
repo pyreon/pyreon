@@ -100,10 +100,10 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 
 | Package | Description |
 |---|---|
-| [`@pyreon/store`](packages/fundamentals/store/) | Composition stores — `defineStore`, patch, subscribe, plugins |
+| [`@pyreon/store`](packages/fundamentals/store/) | Composition stores — `defineStore`, patch, subscribe, plugins; schema-driven stores strictly typed from any Standard Schema |
 | [`@pyreon/state-tree`](packages/fundamentals/state-tree/) | Structured reactive state — models, snapshots, patches, middleware |
-| [`@pyreon/form`](packages/fundamentals/form/) | Signal-based forms — fields, validation, submission, arrays, context |
-| [`@pyreon/validation`](packages/fundamentals/validation/) | Schema adapters (Zod, Valibot, ArkType) |
+| [`@pyreon/form`](packages/fundamentals/form/) | Signal-based forms — fields, validation, submission, arrays, context, dynamic + file fields, focus-on-error, raw Standard Schema |
+| [`@pyreon/validation`](packages/fundamentals/validation/) | Universal validation gate — owns the validation contract + Standard Schema bridge (`standardSchemaToValidator`, `InferSchema`); adapters for Zod / Valibot / ArkType; zero pyreon deps |
 | [`@pyreon/query`](packages/fundamentals/query/) | TanStack Query adapter with Suspense, SSE, WebSocket subscriptions |
 | [`@pyreon/table`](packages/fundamentals/table/) | TanStack Table adapter with reactive state sync |
 | [`@pyreon/virtual`](packages/fundamentals/virtual/) | TanStack Virtual adapter — element and window virtualizers |

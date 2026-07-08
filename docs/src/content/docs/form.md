@@ -240,6 +240,24 @@ Important behaviors with `debounceMs`:
 - **`reset()` clears pending debounce timers**
 - Debounce timers are cleaned up on component unmount
 
+### `focusOnError`
+
+On a failed `handleSubmit`, move DOM focus to the first errored field — accessible error recovery (react-hook-form's `shouldFocusError`). Defaults to `true`. Set `false` to opt out.
+
+```ts
+const form = useForm({
+  initialValues: { email: '', name: '' },
+  validators: {
+    email: (v) => (v ? undefined : 'Required'),
+    name: (v) => (v ? undefined : 'Required'),
+  },
+  focusOnError: true, // default — set false to disable
+  onSubmit: async () => {},
+})
+```
+
+Only fields bound via `register()` (which have a stable auto-generated `id`) are focusable — a field never passed through `register()` is skipped. Focus lands on the first errored field in declaration order. This is SSR-safe (a no-op on the server). See [`focusFirstError()`](#focusfirsterror) for triggering it from a custom submit flow.
+
 ## Binding Inputs with `register()`
 
 The `register()` method returns props for binding an input element to a field. It provides a reactive `value` signal, an `onInput` handler that updates the field value and dirty state, and an `onBlur` handler that marks the field as touched (which triggers blur validation if configured).
@@ -279,6 +297,33 @@ Pass `&#123; type: 'number' &#125;` to `register()` to use `valueAsNumber` on th
 
 ```tsx
 <input type="number" {...form.register('age', { type: 'number' })} />
+```
+
+### File Inputs
+
+Pass `&#123; type: 'file' &#125;` to `register()` for a file input. A file input **cannot be value-controlled** — `<input type="file" value=…>` is a no-op the browser rejects for security — so the returned props bag omits `value` (and `checked`). Its `onInput` writes the input's `FileList` (`target.files`) to the field, so `field.value()` is `FileList | null`. Read `files?.[0]` for a single file:
+
+```tsx
+const form = useForm({
+  initialValues: { avatar: null as FileList | null },
+  onSubmit: async (values) => {
+    const file = values.avatar?.[0]
+    if (file) {
+      const body = new FormData()
+      body.append('avatar', file)
+      await fetch('/api/upload', { method: 'POST', body })
+    }
+  },
+})
+
+// The spread type-checks cleanly — no cast needed:
+;<input type="file" {...form.register('avatar', { type: 'file' })} />
+```
+
+The file value flows into `values()` / `onSubmit` like any other field. Register a `multiple` input the same way — `field.value()` then carries every selected file, so iterate the `FileList`:
+
+```tsx
+<input type="file" multiple {...form.register('docs', { type: 'file' })} />
 ```
 
 ### How register() Works Internally
@@ -413,7 +458,11 @@ const form = useForm({
 
 ### Schema Validation
 
-The `schema` validator runs after all field-level validators:
+The `schema` validator runs after all field-level validators. It accepts three shapes:
+
+1. A plain `SchemaValidateFn` — a function that receives all values and returns a partial error record.
+2. A **raw Standard Schema** — a zod / valibot / arktype / `@pyreon/validate` `s` schema passed directly (see below).
+3. A `@pyreon/validation` typed adapter (`zodSchema` / `valibotSchema` / `arktypeSchema`) — for compile-time field-name typing.
 
 ```ts
 type SchemaValidateFn<TValues> = (
@@ -423,7 +472,50 @@ type SchemaValidateFn<TValues> = (
   | Promise<Partial<Record<keyof TValues, string | undefined>>>
 ```
 
-If both field validators and schema validator report errors for the same field, the schema validator's error takes precedence (it runs last).
+If both field validators and schema validator report errors for the same field, the field-level error takes precedence.
+
+### Raw Standard Schema
+
+`schema` accepts a raw [Standard Schema](https://standardschema.dev) — zod (≥ 3.24), valibot (≥ 1), arktype (≥ 2), or `@pyreon/validate`'s `s` — **directly**, with no `zodSchema()` adapter and no `as never` cast:
+
+```ts
+import { z } from 'zod'
+
+const form = useForm({
+  initialValues: { email: '', age: 0 },
+  // No wrapper, no cast — the raw schema is accepted:
+  schema: z.object({
+    email: z.string().email(),
+    age: z.number().min(13),
+  }),
+  onSubmit: async (values) => {
+    /* runs only when the schema passes */
+  },
+})
+```
+
+The `~standard` contract and the schema-to-validator bridge live in `@pyreon/validation` (the universal, stack-wide validation gate); `@pyreon/form` depends on it and re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn`, so the historical `import { ValidationError } from '@pyreon/form'` still works. Reach for a typed adapter (`zodSchema(...)`) instead of the raw schema when you want the schema's field names checked against `TValues` at compile time.
+
+### Nested Schema Errors
+
+Standard Schema adapters report nested-field errors under a dot-path key — `{ 'address.city': 'Required' }`. `@pyreon/form` routes such an error to its **top-level ancestor field**, so an object-valued `address` field carries the message:
+
+```ts
+const form = useForm({
+  initialValues: { address: { city: '' } },
+  schema: z.object({ address: z.object({ city: z.string().min(1) }) }),
+  onSubmit: async () => {},
+})
+
+await form.validate() // false
+form.errors() // { address: 'City is required' } — surfaced on the ancestor field
+```
+
+A schema error whose key matches **no** field (a real shape mismatch, or the path-less whole-form `""` key) marks the form invalid, sets `submitError`, and logs a dev warning — rather than being silently dropped (which previously let `onSubmit` fire with data the schema had rejected). Both the submit path and the blur path honor this.
+
+:::note
+The field model is flat in v1 — a nested schema error surfaces on the **ancestor** field (`address`), not on a per-leaf field (`address.city`).
+:::
 
 ### Async Validators
 
@@ -658,9 +750,9 @@ if (isValid) {
 }
 ```
 
-### `reset()`
+### `reset(values?, options?)`
 
-Reset the entire form:
+Reset the entire form. With no arguments:
 
 - Restores all fields to their initial values
 - Clears all errors, touched, and dirty states
@@ -670,6 +762,30 @@ Reset the entire form:
 
 ```ts
 form.reset()
+```
+
+**Reset to a new baseline.** Pass `values` to reset _to_ new values — the named fields become the new baseline (so they read as clean / not dirty), while any field NOT named reverts to its original initial value. This is the idiomatic "reset the form to the freshly-saved server response" flow:
+
+```ts
+async function save() {
+  const saved = await api.save(form.values())
+  form.reset(saved) // e.g. { name: 'Ada', email: 'ada@example.com' }
+  form.isDirty() // false — `saved` is the new clean baseline
+}
+
+// Partial — only the named fields change baseline; the rest revert to initial:
+form.reset({ name: 'Ada' })
+```
+
+**Preserve state across the reset.** The second `options` argument keeps selected slices of state instead of wiping them (react-hook-form parity):
+
+```ts
+form.reset(undefined, {
+  keepErrors: true, // leave field errors in place
+  keepTouched: true, // leave touched flags in place
+  keepDirty: true, // leave dirty flags in place
+  keepSubmitCount: true, // don't reset submitCount to 0
+})
 ```
 
 ### `values()`
@@ -739,7 +855,7 @@ form.clearErrors()
 // form.isValid() returns true
 ```
 
-### `resetField(field)`
+### `resetField(field, options?)`
 
 Reset a single field to its initial value without affecting other fields:
 
@@ -750,6 +866,13 @@ form.fields.password.setValue('changed')
 form.resetField('email')
 // email is reset: value='', dirty=false, touched=false, error=undefined
 // password is unchanged: value='changed', dirty=true
+```
+
+Pass `options` to keep the field's error or touched state across the reset:
+
+```ts
+form.resetField('email', { keepError: true }) // value reverts, error stays
+form.resetField('email', { keepTouched: true }) // value reverts, touched stays
 ```
 
 ### `trigger(field?)`
@@ -802,6 +925,59 @@ const email = form.getFieldState('email')
 email.value() // reactive read
 email.setValue('new@example.com')
 ```
+
+### `focusFirstError()`
+
+Move DOM focus to the first field (in declaration order) that currently has an error AND was bound via `register()`. `handleSubmit` calls this automatically on a failed submit unless [`focusOnError: false`](#focusonerror); it's also exposed for custom submit flows:
+
+```ts
+async function submitStep() {
+  if (!(await form.validate())) {
+    form.focusFirstError() // focus the first invalid input
+    return
+  }
+  // ...proceed
+}
+```
+
+No-op on the server, or when no errored-and-registered field exists.
+
+### `registerField(name, initialValue?, validator?)`
+
+Add a field to the form at runtime — for data-driven forms (a server-defined schema, an "add another section" button). The new field is fully first-class: it reaches `values()` / `getValues()` / `onSubmit` and participates in validity.
+
+```ts
+const form = useForm<Record<string, unknown>>({
+  initialValues: { name: '' },
+  onSubmit: async (values) => {
+    /* values includes any dynamically-registered fields */
+  },
+})
+
+// Add a field with an initial value and an optional validator:
+form.registerField('phone', '', (v) => (v ? undefined : 'Required'))
+
+form.setFieldValue('phone', '555-0100')
+form.getValues() // { name: '', phone: '555-0100' }
+```
+
+`registerField` is **idempotent** — re-registering an existing field keeps its current value and only refreshes the validator (it never clobbers user input). This is the only way to add a field after creation; `@pyreon/form` never lazily auto-registers a field, because that would silently drop data. Dynamic fields are runtime-typed (they are not part of the static `TValues`), so read them via `getValues()[name]` or `form.fields[name]` rather than a statically-typed accessor.
+
+### `unregisterField(name)`
+
+Remove a field registered at runtime, cleaning up its value, validator, and — importantly — its contribution to `isValid()` and `isDirty()`:
+
+```ts
+form.registerField('phone', '', () => 'Required')
+await form.validate()
+form.isValid() // false — phone is required and empty
+
+form.unregisterField('phone')
+form.isValid() // true — phone's error contribution is removed cleanly
+form.getValues() // { name: '' } — phone is gone
+```
+
+Unregistering an unknown field is a no-op.
 
 ## Field Arrays
 
@@ -1381,9 +1557,10 @@ Create a signal-based form.
 <APICard name="initialValues" type="property" signature="initialValues: TValues" description="Initial values for each field. Required." />
 <APICard name="onSubmit" type="property" signature={"onSubmit: (values: TValues) => void | Promise<void>"} description="Submit handler called with validated values. Required." />
 <APICard name="validators" type="property" signature={"validators?: Partial<{ [K in keyof TValues]: ValidateFn }>"} description="Per-field validator functions. Each receives the field value and all form values, returning an error string or undefined." />
-<APICard name="schema" type="property" signature={"schema?: SchemaValidateFn<TValues>"} description="Schema-level validator that runs after all field-level validators. Returns a partial record of field names to error messages." />
+<APICard name="schema" type="property" signature={"schema?: SchemaValidateFn<TValues> | StandardSchema | TypedAdapter"} description="Schema-level validator that runs after all field-level validators. Accepts a plain SchemaValidateFn, a raw Standard Schema (zod / valibot / arktype / @pyreon/validate) directly, or a @pyreon/validation typed adapter. Field-level errors win over schema errors on the same field." />
 <APICard name="validateOn" type="property" signature="validateOn?: 'blur' | 'change' | 'submit'" description="Controls when field-level validation runs. Defaults to 'blur'." />
 <APICard name="debounceMs" type="property" signature="debounceMs?: number" description="Debounce delay in milliseconds for field validators. When set, rapid changes only trigger one validation after the delay." />
+<APICard name="focusOnError" type="property" signature="focusOnError?: boolean" description="Focus the first errored + register()-bound field on a failed handleSubmit. Defaults to true; set false to opt out." />
 
 **Returns `FormState<TValues>`:**
 
@@ -1400,11 +1577,14 @@ Create a signal-based form.
 <APICard name="setFieldError" type="function" signature="setFieldError(field: keyof TValues, error: string | undefined): void" description="Programmatically set a single field's error. Pass undefined to clear." />
 <APICard name="setErrors" type="function" signature={"setErrors(errors: Partial<Record<keyof TValues, string | undefined>>): void"} description="Set multiple field errors at once." />
 <APICard name="clearErrors" type="function" signature="clearErrors(): void" description="Clear all field errors at once." />
-<APICard name="resetField" type="function" signature="resetField(field: keyof TValues): void" description="Reset a single field to its initial value without affecting other fields." />
-<APICard name="register" type="function" signature="register(field: keyof TValues, opts?: { type: 'checkbox' | 'number' }): FieldRegisterProps" description="Get input binding props for a field. Returns value, onInput, onBlur. Pass { type: 'checkbox' } for a checked accessor, or { type: 'number' } to use valueAsNumber." />
-<APICard name="handleSubmit" type="function" signature={"handleSubmit(event?: Event): Promise<void>"} description="Submit the form. Prevents default, validates all fields, and calls onSubmit if valid." />
-<APICard name="reset" type="function" signature="reset(): void" description="Reset the entire form to initial values, clearing all errors, touched, dirty states, submit count, and submit error." />
+<APICard name="resetField" type="function" signature="resetField(field: keyof TValues, options?: { keepError?: boolean; keepTouched?: boolean }): void" description="Reset a single field to its initial value without affecting other fields. Pass keepError / keepTouched to preserve those across the reset." />
+<APICard name="register" type="function" signature="register(field: keyof TValues, opts?: { type: 'checkbox' | 'number' | 'file' }): FieldRegisterProps" description="Get input binding props for a field. Returns id, value, onInput, onBlur (+ auto-wired aria). Pass { type: 'checkbox' } for a checked accessor (no value), { type: 'number' } for valueAsNumber, or { type: 'file' } for a value-less bag whose onInput writes the FileList." />
+<APICard name="handleSubmit" type="function" signature={"handleSubmit(event?: Event): Promise<void>"} description="Submit the form. Prevents default, validates all fields, calls onSubmit if valid, and focuses the first errored field on failure (unless focusOnError: false)." />
+<APICard name="reset" type="function" signature="reset(values?: Partial<TValues>, options?: { keepErrors?: boolean; keepTouched?: boolean; keepDirty?: boolean; keepSubmitCount?: boolean }): void" description="Reset the form. With no args, reverts every field to its initial value and clears errors/touched/dirty + submitCount. Pass values to reset to a new baseline (named fields become the new baseline; the rest revert to their original initial). options preserves selected state across the reset." />
 <APICard name="validate" type="function" signature={"validate(): Promise<boolean>"} description="Manually validate all fields. Returns whether the form is valid. Bypasses debounce." />
+<APICard name="focusFirstError" type="function" signature="focusFirstError(): void" description="Move focus to the first errored + register()-bound field (declaration order). Called automatically by handleSubmit on failure unless focusOnError: false. SSR-safe no-op." />
+<APICard name="registerField" type="function" signature="registerField(name: string, initialValue?: unknown, validator?: ValidateFn): void" description="Add a field at runtime for data-driven forms. Becomes first-class (values / onSubmit / validity). Idempotent — re-registering keeps the current value and refreshes the validator. Dynamic fields are runtime-typed; read via getValues()[name] / fields[name]." />
+<APICard name="unregisterField" type="function" signature="unregisterField(name: string): void" description="Remove a runtime-registered field, cleaning up its value, validator, and its contribution to isValid() / isDirty(). Unknown field is a no-op." />
 
 ### `useFieldArray(initial?)`
 

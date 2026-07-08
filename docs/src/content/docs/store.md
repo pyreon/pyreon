@@ -517,7 +517,7 @@ defineStore('user', { schema: yupSchema(yupUserSchema), initial })
 
 ### Mutation methods
 
-The schema-driven `defineStore` overload returns a `SchemaStoreApi<T>` with four validated mutation methods covering the common state-update patterns:
+The schema-driven `defineStore` overload returns a `SchemaStoreApi<TRaw, TStore>` — where `TRaw` is the schema's inferred field values and `TStore` is `.store` (the per-field signals + any `setup` actions/computeds). It exposes four validated mutation methods, all strictly typed from the schema (a wrong-typed value, an unknown field, or an `update` on a non-field key fails typecheck — zero casts):
 
 ```ts
 const useStore = defineStore('s', {
@@ -552,12 +552,12 @@ s.deepPatch({ items: [{ id: 2, label: 'replaced' }] })  // array REPLACES
 
 // `update` — transform a single top-level field via callback. Covers
 // add / remove / filter / map / object-key-delete patterns in one method.
-// The transformer receives `unknown` — cast at the call site if you want
-// stronger inference (future versions will narrow this automatically).
-s.update('count', n => (n as number) + 1)                            // increment
-s.update('items', items => (items as Item[]).filter(x => x.id !== 1))  // remove
-s.update('items', items => [...(items as Item[]), newItem])           // append
-s.update('prefs', prefs => ({ ...(prefs as Prefs), theme: 'dark' }))  // edit nested
+// `key` is constrained to the schema field names, and the transformer's
+// argument + return are typed as that field's exact type — no casts.
+s.update('count', n => n + 1)                            // n: number
+s.update('items', items => items.filter(x => x.id !== 1))  // items: { id: number; label: string }[]
+s.update('items', items => [...items, { id: 2, label: 'two' }])  // append
+s.update('prefs', prefs => ({ ...prefs, theme: 'dark' }))  // prefs: { theme: string; density: string }
 ```
 
 All four methods validate the merged result against the schema and either throw or invoke `onValidationError` if configured. The choice between them:
@@ -593,8 +593,7 @@ defineStore('user', {
 ### Limitations
 
 - **Top-level fields only get signals.** Nested objects (e.g. `prefs: { theme: 'light' }`) remain as values inside the parent signal. To update `prefs.theme` without spreading the parent, use `deepPatch({ prefs: { theme: 'dark' } })` — recursive signal-ization is intentionally not supported (it would require library-specific schema introspection).
-- **Reserved StoreApi keys.** Schema field names cannot collide with `StoreApi` methods (`set`, `patch`, `deepPatch`, `update`, etc.) — defineStore throws at construction with a clear message.
-- **`update`'s transformer is currently `(current: unknown) => unknown`.** The key is constrained to `keyof T & string` (typos fail typecheck), but the value type is not yet inferred from the schema — cast at the call site. A future refinement will narrow the transformer signature to the schema-inferred field type.
+- **Reserved StoreApi keys.** A schema field named `set` collides with the `StoreApi` method — defineStore throws at construction with a clear message. Rename the field.
 
 ## Composing Stores
 

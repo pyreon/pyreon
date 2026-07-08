@@ -7,7 +7,7 @@ description: "Signal-based form management with fields, validation, arrays, and 
 
 > **Generated** from `form`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [form](/docs/form).
 
-Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`, `dirty`) is its own `Signal<T>` so templates only re-run for the slice they read. First-class schema validation (plug in `zodSchema` / `valibotSchema` / `arktypeSchema` from `@pyreon/validation`), per-field `validateOn: blur | change | submit`, async validators with optional `debounceMs` and version-based stale-result discarding, cross-field validation via `(value, allValues) => …`, dynamic `useFieldArray` with stable keys for keyed rendering, and typed `useWatch` overloads for single / multi / all-field reactive watchers.
+Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`, `dirty`) is its own `Signal<T>` so templates only re-run for the slice they read. First-class schema validation — pass a RAW Standard Schema (zod / valibot / arktype / `@pyreon/validate`) straight to `schema` with no adapter and no cast, or a `zodSchema` / `valibotSchema` / `arktypeSchema` typed adapter from `@pyreon/validation`; nested schema errors route to their ancestor field, and a key matching no field invalidates rather than being silently dropped. Per-field `validateOn: blur | change | submit`, async validators with optional `debounceMs` and version-based stale-result discarding, cross-field validation via `(value, allValues) => …`, type-aware input bindings (`register({ type: "checkbox" | "number" | "file" })`), runtime field registration (`registerField` / `unregisterField`) for data-driven forms, focus-first-error on failed submit (`focusOnError`, default on), reset ergonomics (`reset(values, { keep* })` + `resetField(field, { keepError })`), dynamic `useFieldArray` with stable keys for keyed rendering, and typed `useWatch` overloads for single / multi / all-field reactive watchers.
 
 ## Features
 
@@ -20,7 +20,12 @@ Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`
 - Cross-field validation — validator receives `(value, allValues)`
 - useFieldArray: append / prepend / insert / remove / update / move / swap / replace with stable keys
 - Server-side errors: setFieldError / setErrors / clearErrors
-- `register({ type: "checkbox" | "number" })` — type-aware input bindings
+- `register({ type: "checkbox" | "number" | "file" })` — type-aware input bindings (file writes the FileList)
+- Raw Standard Schema in `schema` (zod / valibot / arktype / `@pyreon/validate`) — no adapter, no cast
+- Dynamic runtime fields — `registerField` / `unregisterField` for data-driven forms
+- Focus-first-error on failed submit (`focusOnError`, default on) + `focusFirstError()`
+- Reset ergonomics — `reset(values, { keep* })` new baseline + `resetField(field, { keepError })`
+- Schema-error routing — nested `address.city` → ancestor field; orphan key invalidates (no silent drop)
 
 ## Complete example
 
@@ -102,6 +107,31 @@ const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.is
 //    failed submit. Does NOT touch touched state, so the error shows
 //    regardless of blur status.
 form.setErrors({ email: 'Already registered' })
+
+// 9. Raw Standard Schema — pass zod/valibot/arktype straight to `schema`,
+//    no zodSchema() adapter and no `as never` cast.
+import { z } from 'zod'
+const typed = useForm({
+  initialValues: { email: '', age: 0 },
+  schema: z.object({ email: z.string().email(), age: z.number().min(13) }),
+  onSubmit: async (v) => { await api.save(v) },
+})
+
+// 10. File input — a value-less bag; onInput writes the FileList.
+//     field.value() is `FileList | null`; read `files?.[0]` for one file.
+<input type="file" {...form.register('avatar', { type: 'file' })} />
+
+// 11. Dynamic fields — add/remove first-class fields at runtime.
+form.registerField('phone', '', (v) => (v ? undefined : 'Required'))
+form.setFieldValue('phone', '555-0100')   // reaches values()/onSubmit/validity
+form.unregisterField('phone')             // cleanly drops its invalid/dirty contribution
+
+// 12. Reset to freshly-saved server data + keep-options.
+form.reset(await api.save(form.values()))          // named fields = new baseline; isDirty() → false
+form.reset(undefined, { keepErrors: true })        // also keepTouched / keepDirty / keepSubmitCount
+
+// 13. Focus-first-error — on by default on a failed submit; also manual.
+if (!(await form.validate())) form.focusFirstError()
 ```
 
 ## Exports
@@ -124,7 +154,7 @@ form.setErrors({ email: 'Already registered' })
 <TValues extends Record<string, unknown>>(options: UseFormOptions<TValues>) => FormState<TValues>
 ```
 
-Create a signal-based form. `initialValues` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (`useField` field name, `useWatch` keys, validator signatures) are fully typed without annotation. Returns `FormState<TValues>` with per-field signals, form-level signals (`isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `isSubmitted`, `isSubmitSuccessful`, `submitError`), and handlers (`handleSubmit`, `reset`, `validate`, `trigger`). react-hook-form-parity accessors: `trigger(name?)` validates a field/subset/whole-form on demand; `getValues(name?)` reads one value or all; `dirtyFields()` / `touchedFields()` return the changed/visited fields as records; `getFieldState(name)` returns a field's live signals; `isSubmitted` / `isSubmitSuccessful` track submit lifecycle. `validateOn` defaults to `"blur"` (not `"change"`) so users aren't scolded mid-keystroke; optional `schema` integrates with `@pyreon/validation` adapters (`zodSchema`, `valibotSchema`, `arktypeSchema`) for whole-form validation after per-field validators run.
+Create a signal-based form. `initialValues` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (`useField` field name, `useWatch` keys, validator signatures) are fully typed without annotation. Returns `FormState<TValues>` with per-field signals, form-level signals (`isSubmitting`, `isValidating`, `isValid`, `isDirty`, `submitCount`, `isSubmitted`, `isSubmitSuccessful`, `submitError`), and handlers (`handleSubmit`, `reset`, `validate`, `trigger`, `focusFirstError`, `registerField`, `unregisterField`). react-hook-form-parity accessors: `trigger(name?)` validates a field/subset/whole-form on demand; `getValues(name?)` reads one value or all; `dirtyFields()` / `touchedFields()` return the changed/visited fields as records; `getFieldState(name)` returns a field's live signals; `isSubmitted` / `isSubmitSuccessful` track submit lifecycle. `validateOn` defaults to `"blur"` (not `"change"`) so users aren't scolded mid-keystroke. `schema` accepts a RAW Standard Schema (zod / valibot / arktype / `@pyreon/validate`'s `s`) directly — no adapter, no `as never` cast — as well as a plain `SchemaValidateFn` or a `@pyreon/validation` typed adapter (`zodSchema` / `valibotSchema` / `arktypeSchema`); it runs after per-field validators, field-level errors win on the same field, a nested `address.city` error routes to its ancestor `address` field, and a key matching no field invalidates the form (never silently dropped). `register(field, { type })` binds an input per type — `"checkbox"` → `checked`, `"number"` → `valueAsNumber`, `"file"` → a value-less bag whose `onInput` writes the `FileList`. `registerField(name, initial?, validator?)` / `unregisterField(name)` add or remove first-class fields at runtime for data-driven forms (idempotent; no silent auto-registration; dynamic fields are runtime-typed). On a failed submit, focus moves to the first errored + `register()`-bound field unless `focusOnError: false` (also exposed as `focusFirstError()`). `reset(values?, { keepErrors?, keepTouched?, keepDirty?, keepSubmitCount? })` resets to a new baseline (named fields become the new baseline; the rest revert to initial); `resetField(field, { keepError?, keepTouched? })` resets one field.
 
 **Example**
 
@@ -149,7 +179,7 @@ const form = useForm({
 - Reading `form.fields[name].value` as a plain value — it is `Signal<T>`, call it: `form.fields.email.value()`
 - Passing `validateOn: "change"` without `debounceMs` on async validators — fires a network request on every keystroke
 - Calling `form.handleSubmit()` without attaching it as a form `onSubmit` handler — it calls `preventDefault()` so it must receive the form event, or be called with no argument for programmatic submit
-- Forgetting that `schema` runs AFTER per-field `validators` — errors from both sources merge; if a field validator already set an error, the schema can override it
+- Assuming `schema` errors override field validators — it is the reverse: `schema` runs AFTER per-field `validators` but a field that already has a field-level error KEEPS it; the schema only fills fields with no field-level error. Also: a raw Standard Schema needs NO `zodSchema()` wrapper or `as never` cast — pass zod/valibot/arktype directly
 
 **See also:** `useField` · `FormProvider` · `useFormState`
 
@@ -333,3 +363,13 @@ const field = useField(form, 'email')
 > **Async validators + stale results:** Async validators are version-tracked: if the user types faster than the validator resolves, the stale result is discarded when it finally returns. Combine with `debounceMs` to also cut down the number of in-flight requests. The `isValidating` signal is true while any field has a pending async validation — use it to gate the submit button.
 
 > **Server errors via `setFieldError` / `setErrors`:** After a failed submit, attach server-side errors with `form.setFieldError(name, msg)` or `form.setErrors({ email: "Taken" })`. These do NOT touch `touched` state, so errors display immediately regardless of blur status. `clearErrors()` wipes them on the next keystroke if `validateOn: "change"` is set, or on next submit otherwise.
+
+> **Raw Standard Schema — no adapter, no cast:** `schema` accepts a raw Standard Schema (zod ≥ 3.24 / valibot ≥ 1 / arktype ≥ 2 / `@pyreon/validate`'s `s`) DIRECTLY — pass `z.object({...})` with no `zodSchema()` wrapper and no `as never` cast. It also still accepts a plain `SchemaValidateFn` and a `@pyreon/validation` typed adapter (reach for the adapter when you want the schema's field names checked against `TValues` at compile time). The `~standard` contract + bridge live in `@pyreon/validation`; form re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn` so the historical `import { ValidationError } from "@pyreon/form"` keeps working.
+
+> **Nested schema errors route to the ancestor field:** Standard Schema adapters key nested errors by dot-path (`{ "address.city": "Required" }`). The error routes to its TOP-LEVEL ancestor field (`address`), which surfaces the message — the field model is flat in v1, so there is no per-leaf `address.city` field. A schema-error key matching NO field (a shape mismatch, or the path-less `""` whole-form key) marks the form invalid, sets `submitError`, and dev-warns — it is NOT silently dropped (which previously let `onSubmit` fire with schema-rejected data). Field-level errors win over schema errors on the same field.
+
+> **File inputs are value-less:** `register(field, { type: "file" })` returns a bag WITHOUT `value` or `checked` — a file input can't be value-controlled (`<input type="file" value=…>` is rejected). Its `onInput` writes the input's `FileList` (`target.files`) to the field, so `field.value()` is `FileList | null` — read `files?.[0]` for a single file, or iterate for a `multiple` input. The value flows into `values()` / `onSubmit` like any field.
+
+> **Dynamic fields need explicit `registerField` — no auto-registration:** `@pyreon/form` never lazily registers a field on first `setFieldValue` / `register` — that would silently drop data. Add a runtime field with `form.registerField(name, initial?, validator?)` (idempotent: re-registering keeps the current value, refreshes the validator) and remove it with `form.unregisterField(name)` (cleanly zeroes its `isValid()` / `isDirty()` contribution). Dynamic fields are runtime-typed — not part of the static `TValues` — so read them via `getValues()[name]` / `fields[name]`.
+
+> **Focus-first-error is on by default:** On a failed `handleSubmit`, focus moves to the first errored field (declaration order) that was bound via `register()` — accessible error recovery. Opt out with `focusOnError: false`. A field never passed through `register()` has no known id and is skipped. `form.focusFirstError()` is exposed for custom submit flows; both are SSR-safe no-ops on the server.
