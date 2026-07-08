@@ -18,6 +18,19 @@ describe('diagnoseError (browser-safe error catalog)', () => {
     expect(diagnoseError('ENOTFOUND some.host — network unreachable')).toBeNull()
   })
 
+  it('diagnoses a VNode array rendered as "[object Object]"', () => {
+    for (const symptom of [
+      '[object Object],[object Object]',
+      'my list renders [object Object]',
+      'array of vnodes renders [object Object]',
+    ]) {
+      const r = diagnoseError(symptom)
+      expect(r, symptom).not.toBeNull()
+      expect(r!.cause.toLowerCase()).toContain('array')
+      expect(r!.fix).toMatch(/mountChild|_mountSlot|<For|\.map/)
+    }
+  })
+
   describe('"X is not a function" teaches BOTH causes (signal-not-called + reactive-prop auto-unwrap)', () => {
     // The pre-amendment entry diagnosed ONLY "if this is a signal, call it" —
     // actively wrong for the PZ-10 shape, where the compiler auto-unwrapped a
