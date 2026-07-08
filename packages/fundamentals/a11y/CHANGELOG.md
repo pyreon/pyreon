@@ -1,5 +1,14 @@
 # @pyreon/a11y
 
+## 0.42.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/router@0.42.0
+  - @pyreon/core@0.42.0
+  - @pyreon/reactivity@0.42.0
+
 ## 0.41.2
 
 ## 0.41.1

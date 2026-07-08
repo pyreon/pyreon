@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/store",
-  "version": "0.41.2",
+  "version": "0.42.0",
   "description": "Global state management for Pyreon — Pinia-inspired composition stores",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/store#readme",
