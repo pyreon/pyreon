@@ -2420,6 +2420,52 @@ function tryHelperFnFromArrowConst(node: AnyNode, ctx: ParseCtx): boolean {
   return true
 }
 
+/**
+ * Statement types that appear at a component-body top level but carry no
+ * emittable runtime effect — type-only declarations + true no-ops. These
+ * stay SILENT (no warning). Everything else the component-body walker
+ * doesn't explicitly lower gets a named "dropped" warning (zero-silent-
+ * drop — see the catch-all in `tryComponentFromTopLevel`).
+ */
+const SILENTLY_OK_COMPONENT_STMT_TYPES = new Set([
+  'EmptyStatement',
+  'DebuggerStatement',
+  'ImportDeclaration',
+  'TSTypeAliasDeclaration',
+  'TSInterfaceDeclaration',
+  'TSEnumDeclaration',
+  'TSModuleDeclaration',
+  'TSDeclareFunction',
+])
+
+/** A human keyword for a dropped statement type, for the diagnostic. */
+function componentStmtKeyword(type: string): string {
+  switch (type) {
+    case 'ForStatement':
+    case 'ForOfStatement':
+    case 'ForInStatement':
+      return 'for'
+    case 'WhileStatement':
+      return 'while'
+    case 'DoWhileStatement':
+      return 'do…while'
+    case 'SwitchStatement':
+      return 'switch'
+    case 'IfStatement':
+      return 'if'
+    case 'TryStatement':
+      return 'try'
+    case 'ThrowStatement':
+      return 'throw'
+    case 'LabeledStatement':
+      return 'labeled'
+    case 'BlockStatement':
+      return 'block'
+    default:
+      return type
+  }
+}
+
 /** Extract a component from `export function NAME(...) { ... }`. */
 function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | null {
   // Walk through `ExportNamedDeclaration` → `FunctionDeclaration`.
@@ -2455,6 +2501,12 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
 
   const decls: DeclIR[] = []
   let returnExpr: ExprIR | null = null
+  // Dropped-statement warnings are DEFERRED: this same walker runs for a
+  // param-taking HELPER (`function clamp(x) { if (…) … }`), whose control
+  // flow DOES lower via the helper path (see the carve-out below) — so we
+  // only emit these once the function is confirmed a genuine component
+  // (right before the component return), never for a helper.
+  const droppedStmtWarnings: string[] = []
 
   for (const stmt of body) {
     if (stmt.type === 'VariableDeclaration') {
@@ -2548,6 +2600,23 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
           `Component ${name}: a top-level reassignment isn't emitted on native (PMTC) — a component body emits declarations + the return JSX, not setup-time statements. Compute the final value directly (\`const x = …\`) or use a signal.`,
         )
       }
+    } else if (!SILENTLY_OK_COMPONENT_STMT_TYPES.has(stmt.type)) {
+      // ZERO-SILENT-DROP catch-all. Any statement type the walker above
+      // doesn't lower — control flow (`for` / `for…of` / `for…in` /
+      // `while` / `do…while` / `switch` / labeled), plus `if` / `try` /
+      // `throw` / a bare block — previously VANISHED from the emit with
+      // NO diagnostic: the loop/branch never ran on device and the render
+      // used stale values (the exact trust hole the "zero silent failures"
+      // pass targets). A component body emits declarations + the return
+      // JSX (it runs ONCE); imperative control flow has no body-statement
+      // slot yet — but `parseStatement` DOES lower loops/switch inside a
+      // helper-function / store-method body, so the guidance points there.
+      // Type-only decls + true no-ops (see the allowlist) stay silent.
+      // DEFERRED (see droppedStmtWarnings) so a param-taking helper whose
+      // body lowers this exact statement doesn't warn spuriously.
+      droppedStmtWarnings.push(
+        `Component ${name}: a top-level \`${componentStmtKeyword(stmt.type)}\` statement has no native lowering and was DROPPED — a component body emits declarations + the return JSX, not imperative control flow. Move loops/switch into a helper function that takes parameters (they DO lower there) and call it, compute values with array methods (\`.map\`/\`.reduce\`/\`.filter\`), or render conditionally/iteratively in JSX (\`<Show>\` / \`<For>\`).`,
+      )
     }
   }
 
@@ -2626,6 +2695,10 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
     }
     return null
   }
+
+  // Confirmed a genuine component (past the helper carve-out) — NOW emit the
+  // deferred dropped-control-flow warnings.
+  for (const w of droppedStmtWarnings) ctx.warnings.push(w)
 
   return { name, props, propsParamName, decls, returnExpr }
 }
