@@ -2466,6 +2466,56 @@ function componentStmtKeyword(type: string): string {
   }
 }
 
+/** A branch that is exactly `return <JSX>` (directly, or a one-statement block
+ *  wrapping it) → its parsed JSX expr; else null. */
+function jsxReturnBranch(branch: AnyNode | undefined, ctx: ParseCtx): ExprIR | null {
+  let ret: AnyNode | null = null
+  if (branch?.type === 'ReturnStatement') {
+    ret = branch
+  } else if (branch?.type === 'BlockStatement') {
+    const stmts = (branch.body as AnyNode[] | undefined) ?? []
+    if (stmts.length === 1 && stmts[0]?.type === 'ReturnStatement') ret = stmts[0]!
+  }
+  if (!ret?.argument) return null
+  const expr = parseExpr(ret.argument, ctx)
+  // Conditional RENDERING only — the branch must resolve to JSX. An imperative
+  // value early-return (`if (x) return 0`) is a different, unsupported shape.
+  return returnContainsJsx(expr) ? expr : null
+}
+
+/**
+ * Detect an EARLY-RETURN conditional render — `if (cond) return <A>` (the
+ * consequent is a single `return <jsx>`, directly or in a one-statement
+ * block), with an OPTIONAL `else return <B>` — the ubiquitous
+ * conditional-rendering pattern. Returns the branches so the component walker
+ * can FOLD them into a ternary return (`cond ? <A> : <B>`), which the emitter
+ * already lowers to a result-builder `if`/`else` view. Returns null for any
+ * other `if` shape (decls in the branch, an imperative / non-JSX return) —
+ * those keep the NAMED "dropped" warning, because imperative control flow
+ * can't sit in a SwiftUI `var body` result builder (`swiftc`: "closure
+ * containing control flow statement cannot be used with result builder
+ * 'ViewBuilder'"), only a conditional VIEW can.
+ */
+function tryEarlyReturnConditional(
+  ifStmt: AnyNode,
+  ctx: ParseCtx,
+): { cond: ExprIR; thenExpr: ExprIR; elseExpr?: ExprIR } | null {
+  const thenExpr = jsxReturnBranch(ifStmt.consequent as AnyNode | undefined, ctx)
+  if (!thenExpr) return null
+  const cond = parseExpr(ifStmt.test, ctx)
+  // `if (c) return <A> else return <B>` — a self-contained conditional (both
+  // branches render). Without an else it's an early return: the subsequent
+  // top-level return is the fallthrough branch.
+  if (ifStmt.alternate) {
+    const elseExpr = jsxReturnBranch(ifStmt.alternate as AnyNode, ctx)
+    // An `else` that ISN'T a clean JSX return (decls / imperative) → not a
+    // pure conditional render; fall through to the warning.
+    if (!elseExpr) return null
+    return { cond, thenExpr, elseExpr }
+  }
+  return { cond, thenExpr }
+}
+
 /** Extract a component from `export function NAME(...) { ... }`. */
 function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | null {
   // Walk through `ExportNamedDeclaration` → `FunctionDeclaration`.
@@ -2507,6 +2557,20 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
   // only emit these once the function is confirmed a genuine component
   // (right before the component return), never for a helper.
   const droppedStmtWarnings: string[] = []
+  // Early-return conditional renders (`if (cond) return <JSX>`) collected in
+  // source order — folded into a nested ternary at the final return.
+  const pendingConditionals: { cond: ExprIR; thenExpr: ExprIR }[] = []
+  // Wrap `base` in the collected early-return conditionals, innermost-last:
+  // `if a return A; if b return B; return C` → `a ? A : (b ? B : C)`.
+  const foldPending = (base: ExprIR): ExprIR => {
+    let re = base
+    for (let i = pendingConditionals.length - 1; i >= 0; i--) {
+      const pc = pendingConditionals[i]!
+      re = { kind: 'ternary', cond: pc.cond, then: pc.thenExpr, otherwise: re }
+    }
+    pendingConditionals.length = 0
+    return re
+  }
 
   for (const stmt of body) {
     if (stmt.type === 'VariableDeclaration') {
@@ -2528,7 +2592,9 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
       const decl = tryFunctionDecl(fnName, stmt, ctx)
       if (decl) decls.push(decl)
     } else if (stmt.type === 'ReturnStatement' && stmt.argument) {
-      returnExpr = parseExpr(stmt.argument, ctx)
+      // Fold any early-return conditionals collected before this final return
+      // into a nested ternary the emitter lowers to a result-builder view.
+      returnExpr = foldPending(parseExpr(stmt.argument, ctx))
     } else if (stmt.type === 'ExpressionStatement') {
       // A bare component-body statement. `onMount(fn)` — the documented
       // lifecycle escape hatch — LOWERS to a mount-time harness decl.
@@ -2598,6 +2664,29 @@ function tryComponentFromTopLevel(node: AnyNode, ctx: ParseCtx): ComponentIR | n
         // reassignments warn.)
         ctx.warnings.push(
           `Component ${name}: a top-level reassignment isn't emitted on native (PMTC) — a component body emits declarations + the return JSX, not setup-time statements. Compute the final value directly (\`const x = …\`) or use a signal.`,
+        )
+      }
+    } else if (stmt.type === 'IfStatement') {
+      // Early-return conditional render — the ONE control-flow shape a result
+      // builder accepts (as a conditional VIEW). `if (c) return <A> else
+      // return <B>` folds now (self-contained); `if (c) return <A>` collects,
+      // and the subsequent top-level return supplies the else branch.
+      const c = tryEarlyReturnConditional(stmt, ctx)
+      if (c && c.elseExpr !== undefined) {
+        returnExpr = foldPending({
+          kind: 'ternary',
+          cond: c.cond,
+          then: c.thenExpr,
+          otherwise: c.elseExpr,
+        })
+      } else if (c) {
+        pendingConditionals.push({ cond: c.cond, thenExpr: c.thenExpr })
+      } else {
+        // A non-conditional-render `if` (decls in a branch, imperative body, an
+        // `else` that isn't a JSX return) has no result-builder lowering —
+        // keep the deferred NAMED "dropped" warning.
+        droppedStmtWarnings.push(
+          `Component ${name}: a top-level \`if\` statement has no native lowering and was DROPPED — an early-return conditional render (\`if (cond) return <JSX>\`, optionally \`else return <JSX>\`) DOES lower to a native conditional view, but other \`if\` shapes (imperative body, decls in the branch) don't. Render conditionally in JSX (a ternary / \`<Show>\`), or move the logic into a helper.`,
         )
       }
     } else if (!SILENTLY_OK_COMPONENT_STMT_TYPES.has(stmt.type)) {
