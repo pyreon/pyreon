@@ -1,5 +1,15 @@
 # @pyreon/lint
 
+## 0.41.2
+
+### Patch Changes
+
+- [#2112](https://github.com/pyreon/pyreon/pull/2112) [`93ee46b`](https://github.com/pyreon/pyreon/commit/93ee46b03f7c13a55abd018ec27376b2b722dbea) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon/no-private-env-in-client` now catches the destructuring / base-capture leak shapes (`const { X } = process.env`, `const e = import.meta.env`) — the direct-access-only visitor previously missed them — and skips `server/` dirs (parity with `api/`) so legit server code isn't falsely warned.
+
+- Updated dependencies [[`72770bb`](https://github.com/pyreon/pyreon/commit/72770bbf4453be41332f595a1aa6fa191315199e)]:
+  - @pyreon/compiler@0.41.2
+  - @pyreon/sized-map@0.41.2
+
 ## 0.41.1
 
 ### Patch Changes

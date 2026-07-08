@@ -1,5 +1,7 @@
 # @pyreon/compiler-linux-x64-gnu
 
+## 0.41.2
+
 ## 0.41.1
 
 ## 0.41.0
