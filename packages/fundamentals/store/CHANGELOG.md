@@ -1,5 +1,25 @@
 # @pyreon/store
 
+## 0.42.0
+
+### Minor Changes
+
+- [#2130](https://github.com/pyreon/pyreon/pull/2130) [`0a76111`](https://github.com/pyreon/pyreon/commit/0a76111189ea80ed676f898f0c8c1b08b320ca23) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Schema-driven stores are now **strictly typed from the schema end-to-end.** The consumer-facing `SchemaStoreApi` previously degraded to `Record<string, unknown>` / `unknown` on `set` / `patch` / `deepPatch` / `update` / `state`; it now infers every field type from the schema (`InferSchema<S>`), with zero manual annotations and no casts:
+
+  - `state` — the typed field-value snapshot (`InferSchema<S>`).
+  - `set(next)` — requires the full schema shape.
+  - `patch(partial)` — a typed `Partial`.
+  - `deepPatch(partial)` — a typed `DeepPartial`.
+  - `update(key, current => next)` — `key` is constrained to the schema FIELD names (setup-returned actions/computeds are rejected), and the transformer receives + returns the field's exact type `TRaw[K]`.
+
+  This is a **types-only** change — the runtime already validated every write through the schema; only the compile-time surface got stricter. `SchemaStoreApi` now takes two type params, `SchemaStoreApi<TRaw, TStore = SignalsOf<TRaw>>`. Code that relied on the old loose types (e.g. `update`'s `unknown` transformer, or `update`-ing a computed key) will now fail typecheck — that's the point; remove the now-unneeded casts.
+
+### Patch Changes
+
+- Updated dependencies [[`f2a5a26`](https://github.com/pyreon/pyreon/commit/f2a5a262b5b497e735c825678c2b7a86d55ec87a), [`1a29fc3`](https://github.com/pyreon/pyreon/commit/1a29fc3d761b4facfe5e77d1503ffc3fd4f036e3), [`707e1be`](https://github.com/pyreon/pyreon/commit/707e1bee8455d0347dc13dd0f6845dd60971588e)]:
+  - @pyreon/validation@0.42.0
+  - @pyreon/reactivity@0.42.0
+
 ## 0.41.2
 
 ### Patch Changes

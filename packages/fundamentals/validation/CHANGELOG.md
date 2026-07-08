@@ -1,5 +1,19 @@
 # @pyreon/validation
 
+## 0.42.0
+
+### Minor Changes
+
+- [#2132](https://github.com/pyreon/pyreon/pull/2132) [`f2a5a26`](https://github.com/pyreon/pyreon/commit/f2a5a262b5b497e735c825678c2b7a86d55ec87a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/validation` is now the single canonical home for the Standard Schema contract. It owns `StandardSchemaV1<In,Out>` (the strict, spec-accurate type — promoted from `@pyreon/validate`'s superior definition), the lax `StandardSchemaLike` accept-type, `StandardSchemaResult<Out>`, and `StandardSchemaIssue` — and `@pyreon/validate` + `@pyreon/state-tree` now IMPORT them instead of re-declaring their own copies (which could drift). `@pyreon/validation`'s `InferSchema` is also now universal across strategies: it resolves the `~standard.types` phantom (zod/valibot/arktype/`s`) AND, for a schema that omits that optional phantom, the `validate` return — so `@pyreon/state-tree`'s `InferSchemaState` delegates to it with no regression. The legacy `StandardSchemaShape` is kept as a deprecated alias. (`@pyreon/zero` + `@pyreon/zero-content` keep their inline duck-typing — they sit above the fundamentals layer and can't depend on a fundamentals package.)
+
+- [#2123](https://github.com/pyreon/pyreon/pull/2123) [`707e1be`](https://github.com/pyreon/pyreon/commit/707e1bee8455d0347dc13dd0f6845dd60971588e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/validation` is now the universal, library-agnostic validation gate. It **owns** the validation contract types (`ValidationError` / `ValidateFn` / `SchemaValidateFn`) and the Standard Schema bridge (`isStandardSchema`, `wrapStandardSchema`, and the new **`standardSchemaToValidator`**), and **no longer depends on `@pyreon/form`** — it has zero pyreon deps. The consumers (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) depend on validation, not the reverse. New exports: `standardSchemaToValidator` (raw Standard Schema → whole-object validator) plus `StandardSchemaLike` / `StandardSchemaResult` / `StandardSchemaIssue` types.
+
+### Patch Changes
+
+- [#2131](https://github.com/pyreon/pyreon/pull/2131) [`1a29fc3`](https://github.com/pyreon/pyreon/commit/1a29fc3d761b4facfe5e77d1503ffc3fd4f036e3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `InferSchema<S>` now resolves the field types of a **raw Standard Schema** (a `zod` / `valibot` / `arktype` object passed directly, without a `zodSchema()`-style wrapper). Standard Schema's `types` phantom is optional per the spec (`types?: { input; output }`), and the conditional matched a _required_ `types` — so it never hit for any real schema and every raw-schema consumer silently collapsed to the `Record<string, unknown>` fallback.
+
+  This makes the universal-schema path in `@pyreon/store` and `@pyreon/state-tree` actually **strictly typed**: `defineStore(id, { schema: z.object({ … }), initial })` (raw schema, any Standard-Schema library) now infers its field types end-to-end, with no cast. The Pyreon-adapter path (`zodSchema(…)` via `_infer`) was already correct and is unchanged. Locked by `schema-infer.types.test.ts` (raw zod/valibot/arktype all infer their exact shape).
+
 ## 0.41.2
 
 ### Patch Changes

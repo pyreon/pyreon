@@ -1,5 +1,24 @@
 # @pyreon/compiler
 
+## 0.42.0
+
+### Minor Changes
+
+- [#2134](https://github.com/pyreon/pyreon/pull/2134) [`35139f6`](https://github.com/pyreon/pyreon/commit/35139f6e6bf68cac5a268fd5fa148144f4c397d3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Project scanner (`generateContext`, powering `pyreon`/`zero context` and MCP `get_routes`) now detects **file-based routes** and **auto-named islands** — the dominant `@pyreon/zero` shapes it previously missed entirely.
+
+  - **Routes**: scans `src/routes/` (or `app/routes/` / `routes/`) and derives each URL from the file path using the zero fs-router convention (`index` → `/`, `[param]` → `:param`, `[...param]` → `:param*`, `(group)` segments URL-invisible, `_layout`/`_error`/`_loading`/`_404` skipped). API routes (`.ts`/`.js` under `api/`, or method-handler files) are marked `isApi: true` and keep their `/api/` prefix. `hasLoader`/`hasGuard`/`params` are detected per file. The existing manual-`createRouter([...])` array detection is kept for non-zero apps; when both exist, fs-routes win on path conflicts. Previously a zero app (file-based routing, no manual array) produced `routes: []`.
+  - **Islands**: `island(() => import(...), { hydrate: 'visible' })` bound to a `const <Name> = …` (zero's auto-naming, no explicit `name:`) is now detected via the TS AST, deriving the name from the binding identifier. Explicit `name:` still wins; the loader-argument shape is no longer over-constrained. Previously only islands with an explicit `name:` were found, so modern islands produced `islands: []`.
+
+- [#2121](https://github.com/pyreon/pyreon/pull/2121) [`39051db`](https://github.com/pyreon/pyreon/commit/39051dbcec2aa5f3aa9db79c5ac0a9f9197cc1e9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Universal VNode[] child mounting — a `VNode[]` (or single VNode) interpolated as a bare `{value}` child now mounts as real elements regardless of its source (prop, param, const-from-call, function return, literal, map), instead of stringifying to `[object Object]`.
+
+  Previously only an inline array-literal or a `.map()` const mounted; every other source hit the raw `textContent`/`_bind(.data =)` text path and stringified. The compiler now lowers general text children through three runtime helpers that detect a VNode/VNode[] value and mount it (falling back to text for primitives):
+
+  - static sole child → `_setChild(el, value)`
+  - static mixed/placeholder child → `_setChildAt(parent, placeholder, value)`
+  - general reactive child → `bindPolymorphicText(() => value, textNode, parent)`
+
+  Single-signal fast paths (`_bindText`/`_bindDirect` for `{sig()}`) are unchanged, so the common reactive-text case pays no new cost — verified perf-neutral against the krausest-style benchmark. Both compiler backends (JS + Rust native) emit byte-identical output.
+
 ## 0.41.2
 
 ### Patch Changes

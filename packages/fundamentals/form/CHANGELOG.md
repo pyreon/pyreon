@@ -1,5 +1,28 @@
 # @pyreon/form
 
+## 0.42.0
+
+### Minor Changes
+
+- [#2127](https://github.com/pyreon/pyreon/pull/2127) [`6c03a11`](https://github.com/pyreon/pyreon/commit/6c03a118d2c2ee35e1ac76b9962e11f98f52077d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add explicit runtime field registration for dynamic / data-driven forms: `form.registerField(name, initialValue?, validator?)` and `form.unregisterField(name)`. A registered field is fully first-class — it reaches `values()` / `onSubmit` and participates in validity — and unregistering cleanly removes its contribution to the invalid/dirty counts. This is the explicit escape hatch from the static-by-default model (there is still no _silent_ auto-registration, which would drop data). Dynamic fields are runtime-typed (not in the static `TValues`); read them via `getValues()[name]` / `fields[name]`. Internally the per-field setup was extracted into a reusable `createFieldState` so registered fields get identical wiring.
+
+- [#2125](https://github.com/pyreon/pyreon/pull/2125) [`b1479a5`](https://github.com/pyreon/pyreon/commit/b1479a57a83d860fc1c738d2fcfb6850c9304c88) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add file input support: `register(field, { type: 'file' })` returns a value-less props bag (a file input can't be value-controlled) whose `onInput` writes the input's `FileList` (`target.files`) to the field — so `field.value()` is a `FileList | null` (read `files?.[0]` for a single file). The file value flows into `values()` / `onSubmit` like any other field.
+
+- [#2124](https://github.com/pyreon/pyreon/pull/2124) [`6376915`](https://github.com/pyreon/pyreon/commit/63769159fb169209278845b0e6e607879faf54ba) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Accessible error recovery: on a failed `handleSubmit`, focus now moves to the first errored + `register()`-bound field (react-hook-form's `shouldFocusError`, defaulted on). Opt out with `useForm({ focusOnError: false })`. Also exposes `form.focusFirstError()` for custom submit flows. SSR-safe; skips fields not bound via `register()`.
+
+- [#2123](https://github.com/pyreon/pyreon/pull/2123) [`707e1be`](https://github.com/pyreon/pyreon/commit/707e1bee8455d0347dc13dd0f6845dd60971588e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useForm({ schema })` now accepts a **raw Standard Schema** (zod ≥3.24 / valibot ≥1 / arktype ≥2 / `@pyreon/validate`'s `s`) directly — no `zodSchema()` adapter and no `as never` cast. The validation contract and Standard Schema bridge moved to `@pyreon/validation` (the universal validation gate); `@pyreon/form` depends on it and re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn` for back-compat, so existing `import { ValidationError } from '@pyreon/form'` keeps working.
+
+- [#2126](https://github.com/pyreon/pyreon/pull/2126) [`fda03d2`](https://github.com/pyreon/pyreon/commit/fda03d2c023d5aebbcb5abc1ae5908b051e418df) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Reset ergonomics (react-hook-form parity): `reset(values?, options?)` now accepts new `values` to reset TO (the named fields become the new baseline; the rest revert to their original initial — the idiomatic "reset to freshly-saved server data" flow), plus `options` to preserve state across the reset — `keepErrors` / `keepTouched` / `keepDirty` / `keepSubmitCount`. `resetField(field, options?)` gains `keepError` / `keepTouched`.
+
+### Patch Changes
+
+- [#2120](https://github.com/pyreon/pyreon/pull/2120) [`538c92a`](https://github.com/pyreon/pyreon/commit/538c92a651bcf55f2b97dbdeab45c4099fd8c2dc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a silent validation bypass: a whole-form schema error keyed by a path that didn't match a top-level field was dropped, so `validate()` reported the form valid and `onSubmit` fired with invalid data. The zod/valibot/arktype adapters flatten a nested issue to a dot-path key (`address.city`) and path-less errors land under `""` — neither matched a top-level field. Now a nested error routes to its ancestor object field (`address.city` → `address`), and any key matching no field marks the form invalid + sets `submitError` + dev-warns. Both the submit and blur validation paths are fixed.
+
+- Updated dependencies [[`f2a5a26`](https://github.com/pyreon/pyreon/commit/f2a5a262b5b497e735c825678c2b7a86d55ec87a), [`1a29fc3`](https://github.com/pyreon/pyreon/commit/1a29fc3d761b4facfe5e77d1503ffc3fd4f036e3), [`707e1be`](https://github.com/pyreon/pyreon/commit/707e1bee8455d0347dc13dd0f6845dd60971588e)]:
+  - @pyreon/validation@0.42.0
+  - @pyreon/core@0.42.0
+  - @pyreon/reactivity@0.42.0
+
 ## 0.41.2
 
 ### Patch Changes

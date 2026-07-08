@@ -1,5 +1,19 @@
 # @pyreon/mcp
 
+## 0.42.0
+
+### Minor Changes
+
+- [#2136](https://github.com/pyreon/pyreon/pull/2136) [`88f2815`](https://github.com/pyreon/pyreon/commit/88f281514bd34a700191fda8a6d8131288df184c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Make `@pyreon/mcp` fully usable in a consumer project via `bunx @pyreon/mcp` (the shipped `.mcp.json` config). Two fixes:
+
+  - **`typescript` is now a runtime dependency (was a peer).** The code-analysis tools (`validate`, `explain_reactivity`, `diagnose`, `migrate_react`, `migrate_pyreon`) call into `@pyreon/compiler`, which uses the TypeScript compiler API. In a `bunx` isolated env the peer wasn't installed, so those tools threw (`Cannot find package 'typescript'` / `Cannot read properties of undefined (reading 'ESNext')`). Declaring `typescript` as a dependency makes `bunx` install it alongside the compiler.
+  - **Doc/content tools now ship a bundled snapshot.** `get_pattern`, `get_anti_patterns`, and `get_changelog` read from monorepo files (`docs/src/content/docs/patterns/*.md`, `.claude/rules/anti-patterns.md`, `packages/**/CHANGELOG.md`) that don't exist in a consumer checkout — so they returned empty. The published package now includes a `content/` snapshot of those files (regenerated on every build via `scripts/copy-content.ts`). The loaders prefer the live monorepo source when present (in-repo dev sees the latest) and fall back to the bundled snapshot otherwise, so the tools return real content in consumers.
+
+### Patch Changes
+
+- Updated dependencies [[`35139f6`](https://github.com/pyreon/pyreon/commit/35139f6e6bf68cac5a268fd5fa148144f4c397d3), [`39051db`](https://github.com/pyreon/pyreon/commit/39051dbcec2aa5f3aa9db79c5ac0a9f9197cc1e9)]:
+  - @pyreon/compiler@0.42.0
+
 ## 0.41.2
 
 ### Patch Changes

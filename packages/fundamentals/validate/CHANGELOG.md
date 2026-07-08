@@ -1,5 +1,15 @@
 # @pyreon/validate
 
+## 0.42.0
+
+### Patch Changes
+
+- [#2132](https://github.com/pyreon/pyreon/pull/2132) [`f2a5a26`](https://github.com/pyreon/pyreon/commit/f2a5a262b5b497e735c825678c2b7a86d55ec87a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/validation` is now the single canonical home for the Standard Schema contract. It owns `StandardSchemaV1<In,Out>` (the strict, spec-accurate type — promoted from `@pyreon/validate`'s superior definition), the lax `StandardSchemaLike` accept-type, `StandardSchemaResult<Out>`, and `StandardSchemaIssue` — and `@pyreon/validate` + `@pyreon/state-tree` now IMPORT them instead of re-declaring their own copies (which could drift). `@pyreon/validation`'s `InferSchema` is also now universal across strategies: it resolves the `~standard.types` phantom (zod/valibot/arktype/`s`) AND, for a schema that omits that optional phantom, the `validate` return — so `@pyreon/state-tree`'s `InferSchemaState` delegates to it with no regression. The legacy `StandardSchemaShape` is kept as a deprecated alias. (`@pyreon/zero` + `@pyreon/zero-content` keep their inline duck-typing — they sit above the fundamentals layer and can't depend on a fundamentals package.)
+
+- Updated dependencies [[`f2a5a26`](https://github.com/pyreon/pyreon/commit/f2a5a262b5b497e735c825678c2b7a86d55ec87a), [`1a29fc3`](https://github.com/pyreon/pyreon/commit/1a29fc3d761b4facfe5e77d1503ffc3fd4f036e3), [`707e1be`](https://github.com/pyreon/pyreon/commit/707e1bee8455d0347dc13dd0f6845dd60971588e)]:
+  - @pyreon/validation@0.42.0
+  - @pyreon/reactivity@0.42.0
+
 ## 0.41.2
 
 ## 0.41.1
