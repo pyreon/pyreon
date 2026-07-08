@@ -23,6 +23,47 @@ import type {
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
+ * Match a schema-error record to a top-level field: an exact key match, else
+ * the first NESTED key whose top-level segment is this field (e.g.
+ * `"address.city"` → field `"address"`). The zod/valibot/arktype adapters
+ * flatten a nested issue to a dot-path key (`issuesToRecord`), so without this
+ * the error for an object-valued field would match no top-level field and be
+ * silently dropped — the form would report valid while the schema rejected.
+ * Pure + exported for unit testing.
+ */
+export function matchSchemaErrorForField(
+  schemaErrors: Record<string, ValidationError | undefined>,
+  name: string,
+): ValidationError | undefined {
+  if (schemaErrors[name] !== undefined) return schemaErrors[name]
+  const prefix = `${name}.`
+  for (const key in schemaErrors) {
+    if (key.startsWith(prefix) && schemaErrors[key] !== undefined) return schemaErrors[key]
+  }
+  return undefined
+}
+
+/**
+ * Schema-error keys whose top-level segment matches NO registered field — a
+ * genuine schema/field shape mismatch (typo, an extra schema rule, or a
+ * path-less whole-form error under the `""` key). These must NOT be silently
+ * dropped: the form is treated as invalid and the keys are surfaced. Pure +
+ * exported for unit testing.
+ */
+export function orphanSchemaErrorKeys(
+  schemaErrors: Record<string, ValidationError | undefined>,
+  fieldNames: ReadonlySet<string>,
+): string[] {
+  const orphans: string[] = []
+  for (const key in schemaErrors) {
+    if (schemaErrors[key] === undefined) continue
+    const top = key.split('.', 1)[0]!
+    if (!fieldNames.has(top)) orphans.push(key)
+  }
+  return orphans
+}
+
+/**
  * Options for the field-definition-based useForm overload.
  * Types are inferred from the field definitions array.
  */
@@ -133,6 +174,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     TValues[keyof TValues],
   ][]
 
+  // Registered top-level field names — used to match/route schema errors so a
+  // nested (`address.city`) or path-less schema error is never silently dropped.
+  const fieldNames: ReadonlySet<string> = new Set(fieldEntries.map(([n]) => String(n)))
+
   const fields = {} as { [K in keyof TValues]: FieldState<TValues[K]> }
 
   // Abort controller for cancelling in-flight validators on unmount.
@@ -235,7 +280,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const field = fields[name]
     /* v8 ignore next — `name` always comes from the registered `fields` map; defensive guard. */
     if (!field) return
-    field.error.set(result[name])
+    // Match exact OR nested (`address.city` → `address`) so an object-valued
+    // field surfaces its schema error on blur instead of silently passing.
+    field.error.set(matchSchemaErrorForField(result as Record<string, ValidationError | undefined>, name))
   }
 
   // Clear all pending debounce timers
@@ -656,15 +703,48 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       // schema validation, not N times.
       if (schema) {
         try {
-          const schemaErrors = await schema(allValues)
+          const schemaErrors = (await schema(allValues)) as Record<
+            string,
+            ValidationError | undefined
+          >
+          let hadOrphanSchemaError = false
           batch(() => {
             for (const [name] of fieldEntries) {
-              const schemaError = schemaErrors[name]
-              if (schemaError !== undefined && fields[name].error.peek() === undefined) {
-                fields[name].error.set(schemaError)
+              if (fields[name].error.peek() !== undefined) continue
+              // Match exact OR nested (`address.city` → object field `address`),
+              // so a nested schema rejection surfaces on its ancestor field
+              // instead of being silently dropped.
+              const schemaError = matchSchemaErrorForField(schemaErrors, name)
+              if (schemaError !== undefined) fields[name].error.set(schemaError)
+            }
+            // Any schema-error key whose top-level segment is NOT a registered
+            // field (a typo, an extra rule, or a path-less `""` whole-form
+            // error) must NOT be silently dropped — the schema rejected, so the
+            // form is invalid. Surface it as a form-level submitError + dev-warn.
+            const orphans = orphanSchemaErrorKeys(schemaErrors, fieldNames)
+            if (orphans.length > 0) {
+              hadOrphanSchemaError = true
+              const first = schemaErrors[orphans[0]!]
+              submitError.set(
+                new Error(
+                  `[@pyreon/form] Schema validation failed for key(s) matching no field: ${orphans.join(', ')}${
+                    first ? ` — ${first}` : ''
+                  }`,
+                ),
+              )
+              if (process.env.NODE_ENV !== 'production') {
+                // oxlint-disable-next-line no-console
+                console.warn(
+                  `[@pyreon/form] Schema returned validation error(s) for key(s) that match no registered field: ${orphans.join(
+                    ', ',
+                  )}. Registered fields: ${[...fieldNames].join(', ')}. The form is treated as INVALID so the ` +
+                    `rejection is not silently dropped. For a nested schema, either declare the object as a field ` +
+                    `(its nested error routes to it) or align the schema shape with the form's fields.`,
+                )
               }
             }
           })
+          if (hadOrphanSchemaError) return false
         } catch (err) {
           // Schema validator threw — set as submitError rather than losing it
           submitError.set(err)
