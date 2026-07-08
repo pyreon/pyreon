@@ -17,8 +17,12 @@ import { isProjectDependency } from '../../utils/project-deps'
  * Conservative by design (opt-in, `@pyreon/zero`-gated): `process.env.NODE_ENV`
  * and Vite's `import.meta.env` built-ins (`DEV`/`PROD`/`MODE`/`SSR`/`BASE_URL`)
  * are universal and never flagged; obviously server-only files (`.server.*`,
- * `api/` dirs, `entry-server`, `.config.*`, `scripts/`) are skipped so a
- * legitimate server-side `process.env.SECRET` isn't touched.
+ * `api/` + `server/` dirs, `entry-server`, `.config.*`, `scripts/`) are skipped
+ * so a legitimate server-side `process.env.SECRET` isn't touched.
+ *
+ * Both the direct-access shape (`process.env.X` / `import.meta.env.X`) AND the
+ * base-capture / destructuring shape (`const { X } = process.env`, `const e =
+ * import.meta.env`) are caught — the latter is a common real leak form.
  */
 
 // Vite's own `import.meta.env` built-ins — always safe, never a leak signal.
@@ -29,33 +33,42 @@ function isServerOnlyFile(path: string): boolean {
   return (
     /\.server\.[jt]sx?$/.test(path) ||
     /[\\/]api[\\/]/.test(path) ||
+    /[\\/]server[\\/]/.test(path) ||
     /entry-server\.[jt]sx?$/.test(path) ||
     /\.config\.[jt]s$/.test(path) ||
     /[\\/]scripts?[\\/]/.test(path)
   )
 }
 
-/** True when `node.object` is the member chain `process.env`. */
-function isProcessEnvBase(node: any): boolean {
-  const obj = node?.object
+/** True when `n` is itself the member chain `process.env`. */
+function isProcessEnvNode(n: any): boolean {
   return (
-    obj?.type === 'MemberExpression' &&
-    obj.object?.type === 'Identifier' &&
-    obj.object.name === 'process' &&
-    obj.property?.type === 'Identifier' &&
-    obj.property.name === 'env'
+    n?.type === 'MemberExpression' &&
+    n.object?.type === 'Identifier' &&
+    n.object.name === 'process' &&
+    n.property?.type === 'Identifier' &&
+    n.property.name === 'env'
   )
 }
 
-/** True when `node.object` is the member chain `import.meta.env`. */
-function isImportMetaEnvBase(node: any): boolean {
-  const obj = node?.object
+/** True when `n` is itself the member chain `import.meta.env`. */
+function isImportMetaEnvNode(n: any): boolean {
   return (
-    obj?.type === 'MemberExpression' &&
-    obj.object?.type === 'MetaProperty' &&
-    obj.property?.type === 'Identifier' &&
-    obj.property.name === 'env'
+    n?.type === 'MemberExpression' &&
+    n.object?.type === 'MetaProperty' &&
+    n.property?.type === 'Identifier' &&
+    n.property.name === 'env'
   )
+}
+
+/** True when `node.object` is `process.env` (i.e. `node` is `process.env.X`). */
+function isProcessEnvBase(node: any): boolean {
+  return isProcessEnvNode(node?.object)
+}
+
+/** True when `node.object` is `import.meta.env` (i.e. `node` is `import.meta.env.X`). */
+function isImportMetaEnvBase(node: any): boolean {
+  return isImportMetaEnvNode(node?.object)
 }
 
 export const noPrivateEnvInClient: Rule = {
@@ -97,6 +110,28 @@ export const noPrivateEnvInClient: Rule = {
           context.report({
             message: `\`import.meta.env.${key}\` is bundler-specific (Vite-only) — prefer @pyreon/zero's portable, zero-branded env: prefix the var \`ZERO_PUBLIC_${key.replace(/^VITE_/, '')}\` and read it with \`publicEnv()\` from \`@pyreon/zero/env\`. (Vite built-ins \`DEV\`/\`PROD\`/\`MODE\`/\`SSR\`/\`BASE_URL\` are fine.)`,
             span: getSpan(node),
+          })
+        }
+      },
+
+      // Base-capture shape: `const { X } = process.env` / `const e = import.meta.env`.
+      // The `MemberExpression` handler only sees `process.env.X` (property `.X`),
+      // never the bare `process.env` base — so destructuring / whole-object
+      // capture (a common leak form) needs its own visit. No double-report:
+      // `const u = process.env.API_URL` has a `.API_URL` init (not the bare base).
+      VariableDeclarator(node: any) {
+        const init = node.init
+        if (isProcessEnvNode(init)) {
+          context.report({
+            message:
+              'Reading `process.env` in client-reachable code is `undefined` in the browser — these values are dead client-side. Expose browser-visible vars by prefixing them `ZERO_PUBLIC_` and reading with `publicEnv()` from `@pyreon/zero/env` (zero inlines them into the client bundle at build). Keep secrets server-side (never prefix them `ZERO_PUBLIC_`).',
+            span: getSpan(init),
+          })
+        } else if (isImportMetaEnvNode(init)) {
+          context.report({
+            message:
+              "Capturing `import.meta.env` in client code is bundler-specific (Vite-only) — prefer @pyreon/zero's portable env: read `publicEnv()` from `@pyreon/zero/env` with `ZERO_PUBLIC_`-prefixed vars.",
+            span: getSpan(init),
           })
         }
       },

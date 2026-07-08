@@ -40,7 +40,18 @@ export function assertPublicEnv(
   try {
     validateEnv(envSchema, publicEnvVars)
   } catch (err) {
-    if (command === 'build') throw err
-    console.warn((err as Error).message)
+    // `zero({ env })` validates PUBLIC vars, and the schema keys omit the
+    // `ZERO_PUBLIC_` prefix (they're matched against the prefix-STRIPPED
+    // snapshot). A common failure is setting the var WITHOUT the prefix (so it
+    // stays private and never reaches this gate), or putting a genuinely-secret
+    // var here at all — the bare "required but not set" doesn't say either.
+    // Append the prefix hint so the fix is unambiguous.
+    const hint =
+      '\n[Pyreon] zero({ env }) validates PUBLIC env vars. In your .env set each with the ' +
+      "`ZERO_PUBLIC_` prefix (e.g. `ZERO_PUBLIC_API_URL=…`) — the schema key omits it. Secrets don't " +
+      'belong here: keep them server-side and validate at runtime with `validateEnv()`.\n'
+    const augmented = new Error((err as Error).message + hint)
+    if (command === 'build') throw augmented
+    console.warn(augmented.message)
   }
 }
