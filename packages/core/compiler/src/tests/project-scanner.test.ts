@@ -137,6 +137,123 @@ const router = createRouter([
   })
 })
 
+describe('project-scanner — extractRoutes (file-based / @pyreon/zero)', () => {
+  // Regression: a zero app uses FILE-based routing (route files under
+  // src/routes/**), so no manual `createRouter([...])` array exists. Before
+  // this fix the scanner only matched manual arrays → `routes: []` for every
+  // real zero app (the AI-context generator + MCP get_routes emitted nothing).
+  function zeroApp(): string {
+    return createTempProject({
+      'package.json': JSON.stringify({
+        name: 'test',
+        dependencies: { '@pyreon/zero': '^0.40.0' },
+      }),
+      'src/routes/index.tsx': 'export default function Home() { return <h1/> }',
+      'src/routes/about.tsx':
+        'export const loader = () => ({}); export default function About() { return <h1/> }',
+      'src/routes/posts/[id].tsx':
+        'export const loader = (c) => c; export default function Post() { return <article/> }',
+      'src/routes/(marketing)/pricing.tsx':
+        'export const guard = () => true; export default function Pricing() { return <div/> }',
+      'src/routes/api/posts.ts':
+        'export function GET() { return new Response("ok") }\nexport function POST() { return new Response("x") }',
+      'src/routes/_layout.tsx':
+        'export function layout() { return <RouterView /> }',
+      'src/routes/_404.tsx': 'export default function NotFound() { return <div/> }',
+    })
+  }
+
+  test('detects fs-routes, deriving URLs from file paths', () => {
+    const dir = zeroApp()
+    try {
+      const ctx = generateContext(dir)
+      const paths = ctx.routes.map((r) => r.path)
+      expect(paths).toContain('/')
+      expect(paths).toContain('/about')
+      expect(paths).toContain('/posts/:id')
+      // route group `(marketing)` is URL-invisible
+      expect(paths).toContain('/pricing')
+      // API route keeps its `/api/` prefix
+      expect(paths).toContain('/api/posts')
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('skips special files (_layout / _404) from the route list', () => {
+    const dir = zeroApp()
+    try {
+      const ctx = generateContext(dir)
+      const paths = ctx.routes.map((r) => r.path)
+      for (const p of paths) {
+        expect(p).not.toContain('_layout')
+        expect(p).not.toContain('_404')
+      }
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('marks API routes and detects loader / guard / params exports', () => {
+    const dir = zeroApp()
+    try {
+      const ctx = generateContext(dir)
+      const api = ctx.routes.find((r) => r.path === '/api/posts')
+      expect(api?.isApi).toBe(true)
+
+      const post = ctx.routes.find((r) => r.path === '/posts/:id')
+      expect(post?.isApi).toBeFalsy()
+      expect(post?.hasLoader).toBe(true)
+      expect(post?.params).toEqual(['id'])
+
+      const about = ctx.routes.find((r) => r.path === '/about')
+      expect(about?.hasLoader).toBe(true)
+
+      const pricing = ctx.routes.find((r) => r.path === '/pricing')
+      expect(pricing?.hasGuard).toBe(true)
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('finds a routes dir under app/routes and plain routes as well', () => {
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'app/routes/index.tsx': 'export default function Home() { return <h1/> }',
+      'app/routes/dashboard.tsx': 'export default function Dash() { return <div/> }',
+    })
+    try {
+      const ctx = generateContext(dir)
+      const paths = ctx.routes.map((r) => r.path)
+      expect(paths).toContain('/')
+      expect(paths).toContain('/dashboard')
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('merges fs-routes with manual arrays, fs winning on path conflict', () => {
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'src/routes/index.tsx': 'export default function Home() { return <h1/> }',
+      // A stray manual array declares "/" too plus a unique "/legacy".
+      'src/legacy-router.ts':
+        'const routes = [{ path: "/", name: "manual-home" }, { path: "/legacy" }]',
+    })
+    try {
+      const ctx = generateContext(dir)
+      const roots = ctx.routes.filter((r) => r.path === '/')
+      // "/" is deduped — the fs route wins (no manual name leaks through).
+      expect(roots).toHaveLength(1)
+      expect(roots[0]?.name).toBeUndefined()
+      // The non-conflicting manual route survives.
+      expect(ctx.routes.map((r) => r.path)).toContain('/legacy')
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+})
+
 describe('project-scanner — extractComponents', () => {
   test('extracts component with signals', () => {
     const dir = createTempProject({
@@ -199,6 +316,36 @@ const Nav = island(() => import("./Nav"), { name: "Nav" })
       // name first, so hydrate is only captured when it follows name directly
       const nav = ctx.islands.find((i) => i.name === 'Nav')
       expect(nav?.hydrate).toBe('load') // default when hydrate not specified
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  // Regression: zero AUTO-NAMES const-bound islands (no `name:` option) — the
+  // dominant modern shape. The old regex required an explicit `name:` and
+  // missed these entirely → `islands: []` for every modern zero app.
+  test('detects auto-named islands from the const binding (no explicit name)', () => {
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'src/components/widgets.tsx': `
+import { island } from '@pyreon/server/client'
+export const Widget = island(() => import('./w'), { hydrate: 'visible' })
+const Sidebar = island(() => import('./sidebar'))
+const Nav = island(() => import('./nav'), { name: 'MainNav', hydrate: 'idle' })
+`,
+    })
+    try {
+      const ctx = generateContext(dir)
+      const names = ctx.islands.map((i) => i.name)
+      // auto-named from binding, hydrate captured
+      expect(names).toContain('Widget')
+      expect(ctx.islands.find((i) => i.name === 'Widget')?.hydrate).toBe('visible')
+      // auto-named, no-options form → default hydrate
+      expect(names).toContain('Sidebar')
+      expect(ctx.islands.find((i) => i.name === 'Sidebar')?.hydrate).toBe('load')
+      // explicit name wins over the binding
+      expect(names).toContain('MainNav')
+      expect(ctx.islands.find((i) => i.name === 'MainNav')?.hydrate).toBe('idle')
     } finally {
       cleanupDir(dir)
     }

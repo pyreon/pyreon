@@ -4,6 +4,7 @@
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import ts from 'typescript'
 
 export interface RouteInfo {
   path: string
@@ -12,6 +13,12 @@ export interface RouteInfo {
   hasLoader: boolean
   hasGuard: boolean
   params: string[]
+  /**
+   * True when this is a file-based API route — a `.ts`/`.js` file under an
+   * `api/` segment (or a `.ts`/`.js` route file that exports HTTP method
+   * handlers instead of a default component). Absent for page routes.
+   */
+  isApi?: boolean | undefined
 }
 
 export interface ComponentInfo {
@@ -79,7 +86,33 @@ function collectSourceFiles(cwd: string): string[] {
   return results
 }
 
-function extractRoutes(files: string[], _cwd: string): RouteInfo[] {
+/**
+ * Extract every route the project declares. Two sources, in priority order:
+ *
+ *  1. **File-based routes** (`@pyreon/zero`) — the dominant modern shape. Route
+ *     files live under `src/routes/` (or `app/routes/` / `routes/`) and the URL
+ *     is derived from the file path via the zero fs-router convention. This is
+ *     replicated here (NOT imported — `@pyreon/compiler` is a lower layer than
+ *     `@pyreon/zero`), mirroring `filePathToUrlPath` / `isApiRoute` /
+ *     `apiFilePathToPattern` in `packages/zero/zero/src/{fs-router,api-routes}.ts`.
+ *  2. **Manual route arrays** — `createRouter([...])` / `const routes = [...]`
+ *     with `path:` keys. Kept for non-zero apps that wire the router by hand.
+ *
+ * When both exist, file-based routes are the zero truth: a manual array route
+ * is added only if its URL isn't already covered by a file-based route.
+ */
+function extractRoutes(files: string[], cwd: string): RouteInfo[] {
+  const routes = extractFileRoutes(cwd)
+  const seen = new Set(routes.map((r) => r.path))
+  for (const manual of extractManualRoutes(files)) {
+    if (seen.has(manual.path)) continue
+    seen.add(manual.path)
+    routes.push(manual)
+  }
+  return routes
+}
+
+function extractManualRoutes(files: string[]): RouteInfo[] {
   const routes: RouteInfo[] = []
 
   for (const file of files) {
@@ -115,6 +148,191 @@ function extractRoutes(files: string[], _cwd: string): RouteInfo[] {
   }
 
   return routes
+}
+
+/** Route-file extensions, in the same precedence order the zero fs-router uses. */
+const ROUTE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js']
+
+/**
+ * Special (non-navigable) file names. These configure the route tree
+ * (`_layout` wraps children; `_error`/`_loading`/`_404` are fallbacks) but
+ * are not themselves URL routes — the context generator emits only navigable
+ * page/api routes, so all of these are skipped.
+ */
+const SPECIAL_ROUTE_FILES = new Set(['_layout', '_error', '_loading', '_404', '_not-found'])
+
+/** Locate the fs-router routes directory, checking each convention in order. */
+function findRoutesDir(cwd: string): string | undefined {
+  for (const candidate of ['src/routes', 'app/routes', 'routes']) {
+    const full = path.join(cwd, candidate)
+    try {
+      if (fs.statSync(full).isDirectory()) return full
+    } catch {
+      // not present — try the next candidate
+    }
+  }
+  return undefined
+}
+
+/** Enumerate route files under `routesDir`, returned as forward-slash paths relative to it. */
+function enumerateRouteFiles(routesDir: string): string[] {
+  const out: string[] = []
+  const exts = new Set(ROUTE_EXTENSIONS)
+
+  function walk(dir: string, prefix: string): void {
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules') continue
+        walk(full, rel)
+      } else if (entry.isFile() && exts.has(path.extname(entry.name))) {
+        // Skip test/spec/story fixtures + serverLoader (`*.server.ts`) siblings —
+        // none are navigable routes.
+        if (/\.(test|spec|stories)\.(tsx?|jsx?)$/.test(entry.name)) continue
+        if (/\.server\.(tsx?|jsx?)$/.test(entry.name)) continue
+        out.push(rel)
+      }
+    }
+  }
+
+  walk(routesDir, '')
+  return out
+}
+
+function extractFileRoutes(cwd: string): RouteInfo[] {
+  const routesDir = findRoutesDir(cwd)
+  if (!routesDir) return []
+
+  const routes: RouteInfo[] = []
+  for (const rel of enumerateRouteFiles(routesDir)) {
+    const noExt = stripRouteExt(rel)
+    const fileName = noExt.split('/').pop() ?? ''
+    if (SPECIAL_ROUTE_FILES.has(fileName)) continue
+
+    let source = ''
+    try {
+      source = fs.readFileSync(path.join(routesDir, rel), 'utf-8')
+    } catch {
+      // unreadable — still emit the path (empty source ⇒ no loader/guard flags)
+    }
+
+    const api = isApiRouteFile(rel, source)
+    const urlPath = api ? apiFilePathToUrlPath(rel) : fileRouteToUrlPath(noExt)
+
+    routes.push({
+      path: urlPath,
+      hasLoader: detectFileExport(source, 'loader') || detectFileExport(source, 'serverLoader'),
+      hasGuard: detectFileExport(source, 'guard') || detectFileExport(source, 'middleware'),
+      params: extractParams(urlPath),
+      ...(api ? { isApi: true } : {}),
+    })
+  }
+
+  // Stable, human-friendly ordering for the generated context.json.
+  routes.sort((a, b) => a.path.localeCompare(b.path))
+  return routes
+}
+
+/** Strip the first matching route extension from a path. */
+function stripRouteExt(filePath: string): string {
+  for (const ext of ROUTE_EXTENSIONS) {
+    if (filePath.endsWith(ext)) return filePath.slice(0, -ext.length)
+  }
+  return filePath
+}
+
+/**
+ * Convert an extension-stripped file-route path to its URL pattern. Mirrors
+ * `filePathToUrlPath` in `packages/zero/zero/src/fs-router.ts`:
+ *   `index` → `/` · `[param]` → `:param` · `[...param]` → `:param*` ·
+ *   `(group)` segments are URL-invisible · special files are skipped upstream.
+ */
+function fileRouteToUrlPath(routeNoExt: string): string {
+  const urlSegments: string[] = []
+  for (const seg of routeNoExt.split('/')) {
+    if (seg.startsWith('(') && seg.endsWith(')')) continue // route group — URL-invisible
+    if (SPECIAL_ROUTE_FILES.has(seg)) continue
+    if (seg === 'index') continue
+
+    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
+    if (catchAll) {
+      urlSegments.push(`:${catchAll[1]}*`)
+      continue
+    }
+    const dynamic = seg.match(/^\[(\w+)\]$/)
+    if (dynamic) {
+      urlSegments.push(`:${dynamic[1]}`)
+      continue
+    }
+    urlSegments.push(seg)
+  }
+  // Empty segment list (root `index`) already yields "/".
+  return `/${urlSegments.join('/')}`
+}
+
+/**
+ * Convert an API route file path to its URL pattern. Mirrors
+ * `apiFilePathToPattern` in `packages/zero/zero/src/api-routes.ts` — the
+ * `api/` prefix is preserved (it IS part of the URL), `index` collapses,
+ * and `[param]` / `[...param]` become `:param` / `:param*`.
+ */
+function apiFilePathToUrlPath(rel: string): string {
+  const noExt = stripRouteExt(rel)
+  const urlSegments: string[] = []
+  for (const seg of noExt.split('/')) {
+    if (seg === 'index') continue
+    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
+    if (catchAll) {
+      urlSegments.push(`:${catchAll[1]}*`)
+      continue
+    }
+    const dynamic = seg.match(/^\[(\w+)\]$/)
+    if (dynamic) {
+      urlSegments.push(`:${dynamic[1]}`)
+      continue
+    }
+    urlSegments.push(seg)
+  }
+  return `/${urlSegments.join('/')}`
+}
+
+/**
+ * True for a file-based API route. Mirrors `isApiRoute` (path under `api/`,
+ * `.ts`/`.js` only) and additionally accepts a `.ts`/`.js` route file that
+ * exports HTTP method handlers with no default component (method-handler shape).
+ */
+function isApiRouteFile(rel: string, source: string): boolean {
+  const normalized = rel.replace(/\\/g, '/')
+  const isTsJs =
+    (normalized.endsWith('.ts') || normalized.endsWith('.js')) &&
+    !normalized.endsWith('.tsx') &&
+    !normalized.endsWith('.jsx')
+  if (!isTsJs) return false
+  if (normalized.startsWith('api/') || normalized.includes('/api/')) return true
+
+  const hasMethodHandler =
+    /export\s+(?:async\s+)?(?:const|let|var|function)\s+(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/.test(
+      source,
+    ) ||
+    /export\s*\{[^}]*\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b[^}]*\}/.test(source)
+  const hasDefault = /export\s+default\b/.test(source)
+  return hasMethodHandler && !hasDefault
+}
+
+/** Detect a top-level `export const|let|var|function NAME` or `export { NAME }`. */
+function detectFileExport(source: string, name: string): boolean {
+  const decl = new RegExp(`export\\s+(?:async\\s+)?(?:const|let|var|function)\\s+${name}\\b`)
+  if (decl.test(source)) return true
+  const list = new RegExp(`export\\s*\\{[^}]*\\b${name}\\b[^}]*\\}`)
+  return list.test(source)
 }
 
 function extractComponents(files: string[], cwd: string): ComponentInfo[] {
@@ -162,6 +380,18 @@ function extractComponents(files: string[], cwd: string): ComponentInfo[] {
   return components
 }
 
+/**
+ * Extract `island()` declarations via the TS AST. Handles BOTH shapes:
+ *   • explicit name — `island(() => import('./x'), { name: 'X', hydrate: 'load' })`
+ *   • auto-named    — `const Widget = island(() => import('./w'), { hydrate: 'visible' })`
+ *     (zero auto-names const-bound islands off the binding identifier — the #1
+ *     modern shape the old `name:`-requiring regex missed entirely)
+ *
+ * The name is resolved in priority order: explicit `name:` option → enclosing
+ * `const/let/var <Name> = island(...)` binding → file basename fallback (for a
+ * bindingless nameless call). The loader-argument shape is NOT constrained, so
+ * `island(loader, opts)` with a hoisted loader is captured too.
+ */
 function extractIslands(files: string[], cwd: string): IslandInfo[] {
   const islands: IslandInfo[] = []
 
@@ -172,22 +402,72 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
     } catch {
       continue
     }
+    // Cheap pre-filter so we only pay for AST parsing on files that could
+    // contain an island() call.
+    if (!code.includes('island')) continue
 
-    const islandRe =
-      /island\s*\(\s*\(\)\s*=>\s*import\(.+?\)\s*,\s*\{[^}]*name\s*:\s*["']([^"']+)["'][^}]*?(?:hydrate\s*:\s*["']([^"']+)["'])?[^}]*\}/g
-    let match: RegExpExecArray | null
-    for (match = islandRe.exec(code); match; match = islandRe.exec(code)) {
-      if (match[1]) {
-        islands.push({
-          name: match[1],
-          file: path.relative(cwd, file),
-          hydrate: match[2] ?? 'load',
-        })
-      }
+    let sf: ts.SourceFile
+    try {
+      sf = ts.createSourceFile(file, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
+    } catch {
+      continue
     }
+
+    const relFile = path.relative(cwd, file)
+
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'island' &&
+        node.arguments.length >= 1
+      ) {
+        let nameVal: string | undefined
+        let hydrateVal: string | undefined
+
+        const optsArg = node.arguments[1]
+        if (optsArg && ts.isObjectLiteralExpression(optsArg)) {
+          for (const prop of optsArg.properties) {
+            if (!ts.isPropertyAssignment(prop)) continue
+            const key = ts.isIdentifier(prop.name)
+              ? prop.name.text
+              : ts.isStringLiteral(prop.name)
+                ? prop.name.text
+                : ''
+            if (key === 'name') nameVal = stringLiteralValue(prop.initializer)
+            else if (key === 'hydrate') hydrateVal = stringLiteralValue(prop.initializer)
+          }
+        }
+
+        // Fall back to the enclosing const-binding identifier (zero's
+        // auto-naming source), then to the file basename.
+        if (!nameVal) nameVal = bindingNameOf(node)
+        if (!nameVal) nameVal = path.basename(relFile).replace(/\.(tsx?|jsx?)$/, '') || 'island'
+
+        islands.push({ name: nameVal, file: relFile, hydrate: hydrateVal ?? 'load' })
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(sf)
   }
 
   return islands
+}
+
+/** The identifier of an enclosing `const/let/var <Name> = <call>` binding, if any. */
+function bindingNameOf(call: ts.CallExpression): string | undefined {
+  const parent = call.parent
+  if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+    return parent.name.text
+  }
+  return undefined
+}
+
+/** Read a string-literal / no-substitution-template value, else undefined. */
+function stringLiteralValue(node: ts.Expression | undefined): string | undefined {
+  if (!node) return undefined
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text
+  return undefined
 }
 
 function extractParams(routePath: string): string[] {
