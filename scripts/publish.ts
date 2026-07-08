@@ -13,6 +13,7 @@
 
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { topoSortByWorkspaceDeps } from './publish-order'
 import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
 
 const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
@@ -253,12 +254,63 @@ if (resolveErrors.length > 0) {
   process.exit(1)
 }
 
-// ── Phase 2 — publish the fully-validated plan. Every manifest here is
-// guaranteed `workspace:`-free. The only failures possible now are
-// network / npm-side (transient) — reported via `failed[]` + exit 1,
-// and a re-run resumes (skip-if-published). The deterministic
-// manifest-resolution bug class can no longer cause a partial release.
-for (const { dirPath, pkgPath, raw, pkg, resolved } of plan) {
+// ── Phase 2 — publish the fully-validated plan LEAF-FIRST. A package is
+// published only AFTER every intra-workspace `@pyreon/*` package it depends
+// on, so a dependent is never on npm carrying a `^X.Y.Z` range on a sibling
+// that hasn't published yet (which made `bun install` unresolvable in the
+// window — see scripts/publish-order.ts). Directory/alphabetical order was
+// NOT dependency-safe (e.g. `@pyreon/feature` sorts before its dep
+// `@pyreon/form`). Only `dependencies` + `peerDependencies` gate the order
+// (install-time requirements); devDependencies are stripped from the tarball
+// and never affect a consumer's resolution.
+const planNames = new Set(plan.map((e) => e.pkg.name))
+// Per package: the intra-PLAN workspace deps (being released this run) whose
+// range must resolve at install time. Used by the dangling-constraint guard
+// in the loop below.
+const workspaceDepsOf = new Map<string, string[]>()
+const publishOrder = topoSortByWorkspaceDeps(
+  plan.map((entry) => {
+    const r = entry.resolved as {
+      dependencies?: Record<string, string>
+      peerDependencies?: Record<string, string>
+    }
+    const deps = [...Object.keys(r.dependencies ?? {}), ...Object.keys(r.peerDependencies ?? {})]
+    workspaceDepsOf.set(
+      entry.pkg.name,
+      deps.filter((d) => planNames.has(d)),
+    )
+    return { name: entry.pkg.name, deps, entry }
+  }),
+).map((node) => node.entry)
+
+// Packages skipped because a workspace dep did NOT publish this run — see the
+// guard at the top of the loop.
+const blocked: string[] = []
+
+// Phase 2 (continued). Every manifest here is guaranteed `workspace:`-free.
+// The only failures possible now are network / npm-side (transient) —
+// reported via `failed[]` + exit 1, and a re-run resumes (skip-if-published).
+// The deterministic manifest-resolution bug class can no longer cause a
+// partial release.
+for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
+  // Dangling-constraint guard. Topo order guarantees every workspace dep was
+  // PROCESSED before this package — so if a dep landed in `failed` /
+  // `needsBootstrap` / `blocked`, it is NOT (yet) on npm. Publishing this
+  // package would ship a `^X.Y.Z` range on a version that can't resolve — the
+  // exact failure the leaf-first order exists to prevent (which topo order
+  // alone can't stop once a dep FAILS mid-run). Skip it instead; a re-run
+  // after the dep is fixed/bootstrapped publishes it. Propagates transitively
+  // (a blocked dep blocks its own dependents).
+  const unmetDeps = (workspaceDepsOf.get(pkg.name) ?? []).filter(
+    (d) => failed.includes(d) || needsBootstrap.includes(d) || blocked.includes(d),
+  )
+  if (unmetDeps.length > 0) {
+    console.error(
+      `⛔ Skipping ${pkg.name}@${pkg.version} — workspace dep(s) not published this run: ${unmetDeps.join(', ')}. Publishing would leave an unresolvable ^-range. Fix/bootstrap the dep(s) and re-run.`,
+    )
+    blocked.push(pkg.name)
+    continue
+  }
   console.log(`📦 ${pkg.name}@${pkg.version}`)
   await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
 
@@ -349,8 +401,16 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of plan) {
 }
 
 console.log(
-  `\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}, Needs bootstrap: ${needsBootstrap.length}`,
+  `\n📊 Published: ${published.length}, Skipped: ${skipped.length}, Failed: ${failed.length}, Needs bootstrap: ${needsBootstrap.length}, Blocked (unmet dep): ${blocked.length}`,
 )
+
+if (blocked.length > 0) {
+  console.warn(
+    `\n⛔ Skipped (a workspace dep did not publish this run — would leave an unresolvable ^-range):`,
+  )
+  for (const name of blocked) console.warn(`   - ${name}`)
+  console.warn('   Re-run the release after the blocking dep(s) are published/bootstrapped.')
+}
 
 // `needsBootstrap` is non-blocking — surface as a WARNING so the
 // maintainer sees the actionable list, but exit 0 (or fall through to
