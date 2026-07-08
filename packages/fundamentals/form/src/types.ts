@@ -222,6 +222,23 @@ export interface FormState<TValues extends Record<string, unknown>> {
    * server / when no errored+registered field exists.
    */
   focusFirstError: () => void
+  /**
+   * Explicitly register a NEW field at runtime — for dynamic / data-driven
+   * forms (a server-defined schema, "add another section"). The field becomes
+   * fully first-class: it reaches `values()` / `onSubmit` and participates in
+   * validity. Idempotent (re-registering an existing field just refreshes its
+   * validator). This is the ONLY way to add a field after creation — @pyreon/
+   * form never lazily auto-registers (that would silently drop data). Dynamic
+   * fields are runtime-typed (not in the static `TValues`), so read them via
+   * `getValues()[name]` / `fields[name]`.
+   */
+  registerField: (
+    name: string,
+    initialValue?: unknown,
+    validator?: ValidateFn<unknown, TValues>,
+  ) => void
+  /** Remove a field registered at runtime, cleaning up its state + validators. */
+  unregisterField: (name: string) => void
   /** Whether the entire form is disabled (signal). Disabled fields are excluded from submit values. */
   disabled: Signal<boolean>
   /** Whether the entire form is read-only (signal). Read-only fields are included in submit values. */
