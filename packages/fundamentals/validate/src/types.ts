@@ -16,67 +16,19 @@
  *      params, fallback }` and `formatErrors(issues, t)` resolves them.
  */
 
-/**
- * Inline copy of the Standard Schema v1 protocol shape. We don't `import`
- * from `@standard-schema/spec` to keep this package zero-dep at the type
- * level — the protocol is small and stable. Any StdSchema-compliant
- * validator (Zod / Valibot / ArkType / typia / etc.) satisfies this
- * structural type.
- *
- * The `validate` return type is intentionally LOOSER than the spec's
- * formal discriminated union (`SuccessResult | FailureResult`) — real
- * library types (Zod's, Valibot's, ArkType's) have subtly different
- * Issue shapes that don't structurally match a strict union. Using the
- * looser duck-typed shape here (mirroring `@pyreon/validation`'s proven
- * adapter contract) lets `withField` accept any StdSchema-compliant
- * validator without per-lib type casts.
- *
- * See https://github.com/standard-schema/standard-schema for the canonical
- * spec.
- */
-export interface StandardSchemaV1<TInput = unknown, TOutput = TInput> {
-  readonly '~standard': {
-    readonly version: 1
-    readonly vendor: string
-    readonly validate: (value: unknown) =>
-      | { readonly value: TOutput; readonly issues?: undefined }
-      | { readonly value?: undefined; readonly issues: ReadonlyArray<StandardSchemaIssue> }
-      | Promise<
-          | { readonly value: TOutput; readonly issues?: undefined }
-          | { readonly value?: undefined; readonly issues: ReadonlyArray<StandardSchemaIssue> }
-        >
-    // `| undefined` (not bare optional) under exactOptionalPropertyTypes
-    // — Valibot's emitted shape is `types: StandardTypes | undefined`.
-    readonly types?: { readonly input: TInput; readonly output: TOutput } | undefined
-  }
-}
-
-/**
- * Standard Schema's success-or-failure result shape. A success has a
- * `value` and `issues` is absent. A failure has `issues` and `value` is
- * absent. The mutual-undefined-discriminator lets TypeScript narrow on
- * `result.issues === undefined` (matches the official spec shape).
- */
-export type StandardSchemaResult<T> =
-  | { readonly value: T; readonly issues?: undefined }
-  | { readonly value?: undefined; readonly issues: ReadonlyArray<StandardSchemaIssue> }
-
-/**
- * Standard Schema's per-issue shape. Pyreon extends this with optional
- * i18n fields via {@link PyreonIssue}.
- *
- * `path`'s `| undefined` is intentional (not just optional `?`) — under
- * `exactOptionalPropertyTypes: true`, Valibot's issue type explicitly
- * declares `path: ... | undefined` and a bare `path?: ...` would
- * reject it. The wider form accepts both Zod's absent-path issues and
- * Valibot's explicit-undefined-path issues.
- */
-export interface StandardSchemaIssue {
-  readonly message: string
-  readonly path?:
-    | ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
-    | undefined
-}
+// The Standard Schema contract (`StandardSchemaV1` / `StandardSchemaResult` /
+// `StandardSchemaIssue`) is owned by @pyreon/validation — the SINGLE canonical
+// source of truth for the whole @pyreon stack. @pyreon/validate imports and
+// re-exports it (preserving this package's public API) instead of re-declaring
+// its own copy, so the two can never drift. `import type` binds them for local
+// use by `PyreonIssue` / `Output` / `WithFieldMeta` below; `export type`
+// re-exports them.
+import type {
+  StandardSchemaIssue,
+  StandardSchemaResult,
+  StandardSchemaV1,
+} from '@pyreon/validation'
+export type { StandardSchemaIssue, StandardSchemaResult, StandardSchemaV1 }
 
 /**
  * Pyreon-flavoured issue. Extends `StandardSchemaIssue` with optional

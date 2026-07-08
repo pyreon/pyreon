@@ -1733,10 +1733,12 @@
     "packages/fundamentals/validate": {
       "name": "@pyreon/validate",
       "version": "0.39.0",
+      "dependencies": {
+        "@pyreon/validation": "workspace:^",
+      },
       "devDependencies": {
         "@pyreon/compiler": "workspace:*",
         "@pyreon/manifest": "workspace:*",
-        "@pyreon/validation": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
         "@vitus-labs/tools-lint": "^2.6.3",
         "arktype": "^2.2.0",

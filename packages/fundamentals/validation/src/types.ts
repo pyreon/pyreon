@@ -36,17 +36,68 @@ export type SchemaValidateFn<TValues> = (
 // `s` all expose. Owning it here lets any consumer accept a raw schema with no
 // adapter and no cast.
 
+/**
+ * A single Standard Schema issue. `path`'s `| undefined` (not a bare optional)
+ * is intentional under `exactOptionalPropertyTypes` — Valibot's issue type
+ * declares `path: … | undefined` explicitly, and a bare `path?` would reject it.
+ */
 export interface StandardSchemaIssue {
   readonly message: string
-  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
+  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }> | undefined
 }
-export type StandardSchemaResult =
-  | { readonly value: unknown }
-  | { readonly issues: ReadonlyArray<StandardSchemaIssue> }
+
+/**
+ * Standard Schema's success-or-failure result: a success carries `value` and
+ * omits `issues`; a failure carries `issues` and omits `value`. The mutual
+ * `?: undefined` discriminator lets TS narrow on `result.issues === undefined`.
+ */
+export type StandardSchemaResult<Output = unknown> =
+  | { readonly value: Output; readonly issues?: undefined }
+  | { readonly value?: undefined; readonly issues: ReadonlyArray<StandardSchemaIssue> }
+
+/**
+ * The canonical Standard Schema (https://standardschema.dev) type — the strict,
+ * spec-accurate `~standard` contract (`version`/`vendor` required) that zod
+ * ≥3.24 / valibot ≥1 / arktype ≥2 / `@pyreon/validate`'s `s` all implement.
+ * This is @pyreon's SINGLE source of truth for the contract: `@pyreon/validate`
+ * and `@pyreon/state-tree` import it instead of re-declaring their own.
+ * (`types?: … | undefined` matches Valibot's emitted shape under
+ * `exactOptionalPropertyTypes`.)
+ */
+export interface StandardSchemaV1<Input = unknown, Output = Input> {
+  readonly '~standard': {
+    readonly version: 1
+    readonly vendor: string
+    readonly validate: (
+      value: unknown,
+    ) => StandardSchemaResult<Output> | Promise<StandardSchemaResult<Output>>
+    readonly types?: { readonly input: Input; readonly output: Output } | undefined
+  }
+}
+
+/**
+ * LAX accept-type: any value carrying a `~standard.validate` (version/vendor
+ * NOT required). This is what `isStandardSchema` narrows to and what consumers
+ * accept when they only need to duck-type "is this a Standard Schema?" — a real
+ * `StandardSchemaV1` is assignable to it. Prefer `StandardSchemaV1` when TYPING
+ * a concrete schema; use `StandardSchemaLike` at accept/guard boundaries.
+ */
 export interface StandardSchemaLike<Output = unknown> {
   readonly '~standard': {
-    readonly types?: { readonly output: Output }
-    readonly validate: (value: unknown) => StandardSchemaResult | Promise<StandardSchemaResult>
+    readonly types?: { readonly output: Output } | undefined
+    // Loose result (`value: unknown`) — a lax accept-type doesn't constrain the
+    // parsed output, so any `~standard`-bearing value satisfies it. A strict
+    // `StandardSchemaV1<_, Output>` (whose validate yields `value: Output`) is
+    // assignable to this (Output → unknown).
+    readonly validate: (
+      value: unknown,
+    ) =>
+      | { readonly value: unknown; readonly issues?: undefined }
+      | { readonly value?: undefined; readonly issues: ReadonlyArray<StandardSchemaIssue> }
+      | Promise<
+          | { readonly value: unknown; readonly issues?: undefined }
+          | { readonly value?: undefined; readonly issues: ReadonlyArray<StandardSchemaIssue> }
+        >
   }
 }
 

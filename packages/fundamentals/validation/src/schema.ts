@@ -74,31 +74,13 @@ export interface PyreonAdapterShape<T extends Record<string, unknown>> {
 }
 
 /**
- * Duck-typed Standard Schema shape (Tier A.2). Cross-library spec
- * implemented by zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema
- * 0.66+, and any future spec-compliant library. Detected via the
- * `'~standard'` property.
- *
- * See https://standardschema.dev/ for the full spec.
+ * @deprecated Historical name for the Standard Schema shape. Use
+ * `StandardSchemaV1` (strict spec type) or `StandardSchemaLike` (lax accept
+ * type) from `./types` — the canonical, single-source contract. Kept as a lax
+ * alias so existing `isStandardSchema` / `wrapStandardSchema` consumers compile
+ * unchanged.
  */
-export interface StandardSchemaShape<T> {
-  readonly '~standard': {
-    readonly version: 1
-    readonly vendor: string
-    readonly validate: (value: unknown) =>
-      | { readonly value: T }
-      | {
-          readonly issues: ReadonlyArray<{
-            readonly message: string
-            readonly path?: ReadonlyArray<
-              string | number | symbol | { readonly key: PropertyKey }
-            >
-          }>
-        }
-      | Promise<unknown>
-    readonly types?: { readonly input?: unknown; readonly output?: T }
-  }
-}
+export type StandardSchemaShape<T> = StandardSchemaLike<T>
 
 /**
  * Extract the inferred output type from either adapter shape.
@@ -124,8 +106,32 @@ export type InferSchema<S> = S extends {
         readonly output: infer O extends Record<string, unknown>
       }
       ? O
+      : // No usable `types` phantom (e.g. `@pyreon/validate`'s `s.object`
+        // OMITS it) — recover the output from the `validate` RETURN's success
+        // branch instead, so inference is UNIVERSAL across every schema lib.
+        InferFromValidate<S>
+    : InferFromValidate<S>
+
+/**
+ * Fallback inference: read the output type from a Standard Schema's `validate`
+ * RETURN (`{ value: O }` success branch, unwrapping a possible `Promise`) —
+ * the strategy that works even when the `~standard.types` phantom is absent
+ * (`@pyreon/validate`'s `s`). Falls back to `Record<string, unknown>`.
+ */
+type InferFromValidate<S> = S extends {
+  readonly '~standard': {
+    // oxlint-disable-next-line typescript/no-explicit-any -- loose param matches every validator's `validate` shape
+    readonly validate: (value: any) => infer R
+  }
+}
+  ? Extract<Awaited<R>, { readonly value: unknown }> extends {
+      readonly value: infer O
+    }
+    ? O extends Record<string, unknown>
+      ? O
       : Record<string, unknown>
     : Record<string, unknown>
+  : Record<string, unknown>
 
 /**
  * Detect a Pyreon `TypedSchemaAdapter` (Tier A.1). The `_infer` field is
