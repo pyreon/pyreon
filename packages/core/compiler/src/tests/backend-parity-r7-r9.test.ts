@@ -85,7 +85,7 @@ describe('Round 9 — element-valued binding child mounts (1:1 JS≡Rust)', () =
   })
   it('CONTROL: string-valued const still text-coerced (fast path intact) + identical', () => {
     expect(rust(R9_STR_CTRL)).toBe(js(R9_STR_CTRL))
-    expect(js(R9_STR_CTRL)).toContain('createTextNode(t)')
+    expect(js(R9_STR_CTRL)).toContain('_setChildAt(__root, __p0, t)')
     expect(js(R9_STR_CTRL)).not.toContain('_mountSlot')
   })
 })

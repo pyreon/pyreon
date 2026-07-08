@@ -24,7 +24,7 @@ export {
 } from './hydration-debug'
 export type { KeepAliveProps } from './keep-alive'
 export { KeepAlive } from './keep-alive'
-export { mountChild } from './mount'
+export { bindPolymorphicText, mountChild } from './mount'
 export type { SanitizeFn } from './props'
 export {
   applyProp,
@@ -38,6 +38,8 @@ export {
   _bindDirect,
   _bindText,
   _mountSlot,
+  _setChild,
+  _setChildAt,
   _rsCollapse,
   _rsCollapseDyn,
   _rsCollapseDynH,

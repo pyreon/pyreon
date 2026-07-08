@@ -44,6 +44,6 @@ describe('Round 6 — transform state is per-call isolated (leak/contamination g
     // br stays verbatim (VOID/self-closing contract) and Math.max with a
     // dynamic arg stays reactive (PURE_CALLS not corrupted to "always pure").
     expect(emit(`function C(){ return <br /> }`)).toContain('<br />')
-    expect(emit(`function C(p){ return <div>{Math.max(p.x,0)}</div> }`)).toContain('_bind(')
+    expect(emit(`function C(p){ return <div>{Math.max(p.x,0)}</div> }`)).toContain('bindPolymorphicText(')
   })
 })

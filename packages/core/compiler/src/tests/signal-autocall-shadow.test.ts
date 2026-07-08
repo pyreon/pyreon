@@ -69,7 +69,9 @@ describe('Round 11 — signal auto-call respects lexical shadowing', () => {
 
   // ── CONTROL: legitimate signal reads MUST still auto-call ──
   it('CONTROL: a direct non-shadowed signal child still auto-calls', () => {
-    expect(emit(`function C(){ const s = signal(0); return <div>{s}</div> }`)).toContain('__t0.data = s()')
+    expect(emit(`function C(){ const s = signal(0); return <div>{s}</div> }`)).toContain(
+      'bindPolymorphicText(() => (s()), __t0, __root)',
+    )
   })
 
   it('CONTROL: a non-shadowed signal SIBLING of a shadowing callback still auto-calls', () => {
@@ -78,12 +80,12 @@ describe('Round 11 — signal auto-call respects lexical shadowing', () => {
     // The real signal sibling auto-calls. (Text-node index is no longer __t0:
     // the .map element-conditional child now routes through _mountSlot, which
     // precedes the <b> text node — so the binding is index-robust here.)
-    expect(out).toContain('.data = s()')
+    expect(out).toContain('bindPolymorphicText(() => (s())')
   })
 
   it('CONTROL: signal.set in a handler is not auto-called but its arg is', () => {
     const out = emit(`function C(){ const s = signal(0); return <button onClick={() => s.set(s() + 1)}>{s}</button> }`)
     expect(out).toContain('s.set(s() + 1)')
-    expect(out).toContain('__t0.data = s()')
+    expect(out).toContain('bindPolymorphicText(() => (s()), __t0, __root)')
   })
 })

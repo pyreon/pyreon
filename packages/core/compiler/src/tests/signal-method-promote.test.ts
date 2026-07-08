@@ -130,7 +130,7 @@ describe('Compiler: signal-method-call auto-promotion in text children', () => {
       `
       const out = transform(src).code
       expect(out).not.toContain('_bindDirect(arr,')
-      expect(out).toContain('_bind(')
+      expect(out).toContain('bindPolymorphicText(')
     })
 
     it('bails when receiver is not a known signal', () => {

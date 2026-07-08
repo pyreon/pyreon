@@ -30,15 +30,18 @@ describe('compiler JSX transform efficiency', () => {
   it('static reactive text with destructured prop → compiler treats as static', () => {
     // Note: destructured prop `name` is ambiguous to the compiler — it
     // could be a static value or a signal accessor. Current compiler
-    // treats it as static by default (emits direct textContent assignment).
-    // Users explicitly write `{() => name()}` for reactive prop-driven
-    // text. This test freezes current behavior; if the compiler gains
-    // signal-detection across prop boundaries, flip to expect `_bind`.
+    // treats it as static by default (emits the static `_setChild` setter —
+    // the polymorphic helper that text-sets a primitive and mounts a
+    // VNode/VNode[], NOT the reactive `bindPolymorphicText`). Users
+    // explicitly write `{() => name()}` for reactive prop-driven text. This
+    // test freezes current behavior; if the compiler gains signal-detection
+    // across prop boundaries, flip to expect `bindPolymorphicText`.
     const code = transform(
       `export default ({name}) => <div>Hello <b>{name}</b>!</div>`,
     )
     expect(code).toMatch(/_tpl\s*\(/)
-    expect(code).toMatch(/textContent\s*=\s*name/)
+    expect(code).toMatch(/_setChild\s*\(\s*__e0\s*,\s*name\s*\)/)
+    expect(code).not.toMatch(/bindPolymorphicText/)
   })
 
   it('list (.map) — wrapper templatized, map routed through _mountSlot accessor', () => {

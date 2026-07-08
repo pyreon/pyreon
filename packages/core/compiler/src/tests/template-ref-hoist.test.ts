@@ -150,7 +150,7 @@ export function App() {
     const slot = idx(code, '_mountSlot(')
     const p1 = idx(code, 'const __p1 = __root.firstChild.nextSibling.nextSibling;')
     expect(p1).toBeLessThan(slot)
-    idx(code, '.replaceChild(__t0, __p1);')
+    idx(code, '_setChildAt(__root, __p1, title);')
   })
 
   it('slot-free templates are unchanged (no __p consts, no ordering churn)', () => {

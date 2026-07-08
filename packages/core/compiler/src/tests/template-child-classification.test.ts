@@ -98,13 +98,13 @@ const x = signal('a')
   it('cast bare-signal child auto-calls like the uncast form', () => {
     const uncast = js(`${SIG}const App = () => <div>{name}</div>`)
     expect(js(`${SIG}const App = () => <div>{(name) as never}</div>`)).toBe(uncast)
-    expect(uncast).toContain('__t0.data = name()')
+    expect(uncast).toContain('bindPolymorphicText(() => (name()), __t0, __root)')
   })
 
   it('cast static literal child bakes byte-identically to the plain literal', () => {
     const uncast = js(`const App = () => <div>{"hello"}</div>`)
     expect(js(`const App = () => <div>{("hello") as string}</div>`)).toBe(uncast)
-    expect(uncast).toContain('textContent = "hello"')
+    expect(uncast).toContain('_setChild(__root, "hello")')
   })
 
   it('cast static object style applies once via _setStyle like the uncast form', () => {
@@ -173,7 +173,7 @@ const App = (props: { s: string }) => <td>{cell(props.s)}</td>`)
   it('SHADOWED callee is NOT routed (scope-aware, mirrors the auto-call discipline)', () => {
     const out = js(`const cell = (v: string) => <b>{v}</b>
 const App = (props: { s: string }) => { const cell = (v: string) => v.toUpperCase(); return <td>{cell(props.s)}</td> }`)
-    expect(out).toContain('__t0.data = cell(props.s)')
+    expect(out).toContain('bindPolymorphicText(() => (cell(props.s)), __t0, __root)')
     expect(out).not.toContain('_mountSlot')
   })
 
@@ -186,14 +186,14 @@ const App = (cell: (v: string) => string) => <td>{cell('x')}</td>`)
   it('CROSS-FILE callee is NOT routed (no type info — documented boundary)', () => {
     const out = js(`import { cell } from './cells'
 const App = (props: { s: string }) => <td>{cell(props.s)}</td>`)
-    expect(out).toContain('__t0.data = cell(props.s)')
+    expect(out).toContain('bindPolymorphicText(() => (cell(props.s)), __t0, __root)')
     expect(out).not.toContain('_mountSlot')
   })
 
   it('helper declared AFTER use is NOT tracked (source-order boundary, both backends agree)', () => {
     const out = js(`const App = (props: { s: string }) => <td>{cell(props.s)}</td>
 function cell(v: string) { return <b>{v}</b> }`)
-    expect(out).toContain('__t0.data = cell(props.s)')
+    expect(out).toContain('bindPolymorphicText(() => (cell(props.s)), __t0, __root)')
     expect(out).not.toContain('_mountSlot')
   })
 

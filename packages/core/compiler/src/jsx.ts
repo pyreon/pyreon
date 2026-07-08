@@ -1077,6 +1077,9 @@ export function transformJSX_JS(
   let needsBindTextImportGlobal = false
   let needsBindDirectImportGlobal = false
   let needsBindImportGlobal = false
+  let needsBindPolyImportGlobal = false
+  let needsSetChildImportGlobal = false
+  let needsSetChildAtImportGlobal = false
   let needsApplyPropsImportGlobal = false
   let needsMountSlotImportGlobal = false
   let needsCxImportGlobal = false
@@ -2430,6 +2433,9 @@ export function transformJSX_JS(
     if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
     if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
+    if (needsBindPolyImportGlobal) runtimeDomImports.push('bindPolymorphicText')
+    if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
+    if (needsSetChildAtImportGlobal) runtimeDomImports.push('_setChildAt')
     if (needsSetStyleImportGlobal) runtimeDomImports.push('_setStyle')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
@@ -3291,9 +3297,16 @@ export function transformJSX_JS(
         )
         return needsPlaceholder ? '<!>' : ' '
       }
-      needsBindImportGlobal = true
+      // General reactive text child — polymorphic: primitives take the text
+      // fast path (data in-place), a VNode/VNode[] value MOUNTS a subtree
+      // (so `{props.items}` / `{() => arr()}` render an array instead of
+      // "[object Object]"). `bindPolymorphicText`'s textish check is a cheap
+      // typeof, so the dominant string/number case pays the historical cost.
+      // The single-signal fast paths (`_bindText`/`_bindDirect`) above stay
+      // text-only — a signal that yields a VNode uses the `{() => sig()}` form.
+      needsBindPolyImportGlobal = true
       const d = nextDisp()
-      bindLines.push(`const ${d} = _bind(() => { ${tVar}.data = ${expr} })`)
+      bindLines.push(`const ${d} = bindPolymorphicText(() => (${expr}), ${tVar}, ${parentRef})`)
       return needsPlaceholder ? '<!>' : ' '
     }
 
@@ -3305,13 +3318,20 @@ export function transformJSX_JS(
       needsPlaceholder: boolean,
     ): string {
       if (needsPlaceholder) {
-        const tVar = nextTextVar()
         const pVar = hoistPlaceholderRef(parentRef, childNodeIdx)
-        bindLines.push(`const ${tVar} = document.createTextNode(${expr})`)
-        bindLines.push(`${parentRef}.replaceChild(${tVar}, ${pVar})`)
+        // Mixed-content static child — `_setChildAt` mounts a VNode/VNode[]
+        // value at the placeholder position, else replaces it with a text
+        // node (the historical shape). Covers `<div>a{items}b</div>` where
+        // `items` is a VNode array.
+        needsSetChildAtImportGlobal = true
+        bindLines.push(`_setChildAt(${parentRef}, ${pVar}, ${expr})`)
         return '<!>'
       }
-      bindLines.push(`${varName}.textContent = ${expr}`)
+      // Sole static child — `_setChild` mounts a VNode/VNode[] value into the
+      // element (so `<div>{items}</div>` with a VNode[] prop/param/return
+      // renders the elements), else sets `textContent` exactly as before.
+      needsSetChildImportGlobal = true
+      bindLines.push(`_setChild(${varName}, ${expr})`)
       return ''
     }
 
