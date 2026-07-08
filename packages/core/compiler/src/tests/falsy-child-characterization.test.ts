@@ -11,7 +11,7 @@
  * and the null/boolean is filtered by runtime `mountChild`, so nothing renders
  * (Pyreon's documented `VNodeChildAtom` `&&` contract holds). Only a CONTRIVED
  * bare literal child (`<div>{false}</div>` — never
- * written in practice) takes the static path and emits `textContent = false`
+ * written in practice) takes the static path and emits `_setChild(__root, false)`
  * → the DOM stringifies to "false". This is a spec divergence on input no one
  * writes; fixing it would touch the hot child-emission path for zero
  * real-world benefit, so the behavior is pinned here instead (any future
@@ -40,12 +40,12 @@ describe('Round 3 — conditional/short-circuit children are accessor-wrapped (t
 
 describe('Round 3 — bare literal falsy children: pinned current behavior (contrived input)', () => {
   it('numeric 0 child renders "0" (JSX-correct)', () => {
-    expect(emit(`function C(){ return <div>{0}</div> }`)).toContain('__root.textContent = 0')
+    expect(emit(`function C(){ return <div>{0}</div> }`)).toContain('_setChild(__root, 0)')
   })
 
-  // Pinned divergence: a bare `{false}` literal stringifies via textContent.
-  // Documented, not fixed — see file header for the rationale.
-  it('bare {false} literal takes the static textContent path (known, contrived)', () => {
-    expect(emit(`function C(){ return <div>{false}</div> }`)).toContain('__root.textContent = false')
+  // Pinned divergence: a bare `{false}` literal stringifies via the static
+  // child fast path (`_setChild`). Documented, not fixed — see file header.
+  it('bare {false} literal takes the static child path (known, contrived)', () => {
+    expect(emit(`function C(){ return <div>{false}</div> }`)).toContain('_setChild(__root, false)')
   })
 })

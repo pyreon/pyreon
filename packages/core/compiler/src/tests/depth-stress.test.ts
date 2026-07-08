@@ -10,7 +10,7 @@ describe('T0.2 — chain depth stress test', () => {
       const code = `function Comp(props) { ${lines.join('; ')}; return <div>{v${depth}}</div> }`
       const result = t(code)
       expect(result).toContain('props.x')
-      expect(result).toContain('_bind')
+      expect(result).toContain('bindPolymorphicText')
     })
   }
 })

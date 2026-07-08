@@ -230,6 +230,34 @@ function Cell(props) { return <span class="badge">{props.s}</span> }
     }),
   },
   {
+    // Universal VNode[] child mounting — before the polymorphic-child release,
+    // a VNode ARRAY interpolated as a bare `{value}` child from a source the
+    // compiler could not resolve to a literal/map (a prop, a param, a
+    // const-from-call, a function return) hit the raw text path and stringified.
+    // An array's `.toString()` comma-joins, so the tell-tale signature is
+    // `[object Object],[object Object]` (a single VNode renders one
+    // `[object Object]`). Distinct from the PZ-02 bare-call entry above (which
+    // is scoped to text/cell/render context words and the runtime dev-warning
+    // text) — this arm keys on the comma-joined ARRAY signature + the array/prop
+    // source words, so the two never double-match.
+    pattern:
+      /\[object Object\],\[object Object\]|\[object Object\][^\n]{0,80}(VNode array|array of (elements|nodes|VNodes|children)|children prop|\{props\.\w+\}|\{items\}|list of elements)/i,
+    diagnose: () => ({
+      cause:
+        'A `VNode[]` (or single VNode) interpolated as a bare `{value}` child stringified to "[object Object]" (an array shows the comma-joined "[object Object],[object Object]"). On `@pyreon/compiler`/`@pyreon/runtime-dom` versions before universal VNode[] child mounting, only an INLINE array literal or a `.map()` const was mounted — a VNode array reaching the child from a PROP, a function PARAM, a const bound to a call, or a function RETURN hit the raw `textContent`/`_bind(.data =)` text path and was String()-coerced instead of mounted.',
+      fix: 'Upgrade `@pyreon/compiler` + `@pyreon/runtime-dom` to the release with universal VNode[] child mounting — a bare `{value}` child then MOUNTS a VNode/VNode[] from any source (prop, param, const, return), text-setting only primitives. If you cannot upgrade: wrap the value in an accessor `{() => value}`, render it with `<For each={value} by={…}>`, or inline the array literal / `.map()` at the JSX site.',
+      fixCode: `// ✗ on pre-universal-mount versions, a VNode[] prop/param stringifies:
+function List({ items }) { return <ul>{items}</ul> }        // "[object Object],[object Object]"
+
+// ✓ upgrade — a bare {items} now mounts the array as real <li> elements.
+// Or, without upgrading, force the mount path:
+function List({ items }) { return <ul>{() => items}</ul> }  // accessor → subtree mount
+// or:  <For each={items} by={i => i.key}>{i => <li>{i.label}</li>}</For>`,
+      related:
+        'The compiler lowers these children to `_setChild` (static sole), `_setChildAt` (static mixed), or `bindPolymorphicText` (general reactive) — each detects a VNode/VNode[] value and mounts it. A bare VNode-returning CALL child (`<td>{cell(x)}</td>`) is a DIFFERENT shape — see the PZ-02 "[object Object]" entry.',
+    }),
+  },
+  {
     // Phase 1 render-pipeline unification — the shipped-broken
     // `useRequestLocals` (renderToString/renderToStream opened a FRESH ALS
     // context stack, discarding request-level provide() frames). Users on

@@ -10,8 +10,8 @@
 import { transformJSX } from '@pyreon/compiler'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
-import { _tpl, _bindText, _bindDirect } from '../template'
-import { _applyProps, _setStyle, mount, mountChild } from '../index'
+import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
+import { _applyProps, _setStyle, bindPolymorphicText, mount, mountChild } from '../index'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -26,6 +26,9 @@ const RUNTIME_DEPS = {
   _bind,
   _bindText,
   _bindDirect,
+  _setChild,
+  _setChildAt,
+  bindPolymorphicText,
   _applyProps,
   _setStyle,
   _rp,
@@ -327,13 +330,16 @@ describe('compiler integration — compiler output structure', () => {
     expect(code).toContain('_bindText(count,')
   })
 
-  it('props.name emits _bind import from @pyreon/reactivity', () => {
+  it('props.name emits a general reactive bindPolymorphicText from @pyreon/runtime-dom', () => {
     const { code } = transformJSX(
       'const Comp = (props) => <div>{props.name}</div>',
       'test.tsx',
     )
-    expect(code).toContain('import { _bind } from "@pyreon/reactivity"')
-    expect(code).toContain('_bind(() => { __t0.data = props.name })')
+    // General reactive text (member access) lowers to bindPolymorphicText — the
+    // polymorphic text↔mount helper — imported from runtime-dom (NOT the raw
+    // _bind from reactivity, which was the pre-universal-mount emit).
+    expect(code).toContain('bindPolymorphicText')
+    expect(code).toContain('bindPolymorphicText(() => (props.name), __t0, __root)')
   })
 
   it('class={cls()} emits _bindDirect', () => {
@@ -352,8 +358,8 @@ describe('compiler integration — compiler output structure', () => {
       'const Comp = (props) => { const x = props.y; return <div>{x}</div> }',
       'test.tsx',
     )
-    // Compiler inlines: const x = props.y → uses props.y directly in _bind
-    expect(code).toContain('__t0.data = (props.y)')
+    // Compiler inlines: const x = props.y → uses props.y directly in the binding
+    expect(code).toContain('bindPolymorphicText(() => ((props.y)), __t0, __root)')
   })
 
   it('let from props does NOT get inlined — uses captured value', () => {
@@ -361,9 +367,13 @@ describe('compiler integration — compiler output structure', () => {
       'const Comp = (props) => { let x = props.y; return <div>{x}</div> }',
       'test.tsx',
     )
-    // let is not inlined — uses static textContent assignment
-    expect(code).toContain('__root.textContent = x')
-    expect(code).not.toContain('_bind')
+    // let is not inlined — the JSX binding uses the captured `x` (not props.y)
+    // on the STATIC path (_setChild), never the reactive bindPolymorphicText.
+    // (`props.y` still appears in the `let x = props.y` declaration itself — the
+    // contract is that it isn't inlined into the binding.)
+    expect(code).toContain('_setChild(__root, x)')
+    expect(code).not.toContain('_setChild(__root, props.y)')
+    expect(code).not.toContain('bindPolymorphicText')
   })
 
   it('static JSX emits _tpl with null bind function', () => {
@@ -595,5 +605,102 @@ describe('compiler integration — dangerouslySetInnerHTML (template path)', () 
     expect(pre.querySelector('pre')?.textContent).toBe('one')
     html.set({ __html: '<pre>two</pre>' })
     expect(pre.querySelector('pre')?.textContent).toBe('two')
+  })
+})
+
+// ─── Universal VNode[] child mounting ─────────────────────────────────────────
+// A `VNode[]` (or single VNode) interpolated as a bare `{value}` child MOUNTS as
+// real elements regardless of its source — prop (reactive), param / const-from-
+// call (static), literal, map. Historically only the array-literal + map-const
+// shapes mounted; every other source stringified to "[object Object]". The
+// compiler now emits `_setChild` (static sole), `_setChildAt` (static mixed),
+// and `bindPolymorphicText` (general reactive) — each of which detects a
+// VNode/VNode[] value at runtime and mounts it, else falls back to text.
+describe('compiler integration — universal VNode[] child mounting', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('STATIC param {items} (VNode[]) mounts real elements, not [object Object]', () => {
+    // `function C({ items }) { return <ul>{items}</ul> }` — `items` is a plain
+    // param of unknown type → static sole child → `_setChild(__root, items)`.
+    const { container, code } = compileComponent(
+      `const C = ({ items }) => (<ul>{items}</ul>)`,
+      { items: [h('li', null, 'a'), h('li', null, 'b'), h('li', null, 'c')] },
+    )
+    expect(code).toContain('_setChild(')
+    const ul = container.querySelector('ul')!
+    expect(ul.querySelectorAll('li').length).toBe(3)
+    expect(ul.textContent).toBe('abc')
+    expect(ul.textContent).not.toContain('[object Object]')
+  })
+
+  it('STATIC const-from-call {arr} (VNode[]) mounts real elements', () => {
+    // `const arr = build(); return <div>{arr}</div>` — `arr` is a const bound to
+    // a call result of unknown type → static sole child → `_setChild`.
+    const build = () => [h('span', null, '1'), h('span', null, '2')]
+    const { container, code } = compileComponent(
+      `const C = () => { const arr = build(); return <div>{arr}</div> }`,
+      {},
+      { build },
+    )
+    expect(code).toContain('_setChild(')
+    const div = container.querySelector('div')!
+    expect(div.querySelectorAll('span').length).toBe(2)
+    expect(div.textContent).toBe('12')
+  })
+
+  it('REACTIVE prop {props.items} (VNode[]) mounts + swaps on signal change', () => {
+    // `<ul>{props.items}</ul>` — member access → general reactive child →
+    // `bindPolymorphicText`. A signal-driven prop re-mounts on change.
+    const items = signal([h('li', null, 'x'), h('li', null, 'y')])
+    const { container, code } = compileComponent(
+      `const C = (props) => (<ul>{props.items}</ul>)`,
+      { items },
+    )
+    expect(code).toContain('bindPolymorphicText(')
+    const ul = container.querySelector('ul')!
+    expect(ul.querySelectorAll('li').length).toBe(2)
+    expect(ul.textContent).toBe('xy')
+
+    items.set([h('li', null, 'p'), h('li', null, 'q'), h('li', null, 'r')])
+    expect(ul.querySelectorAll('li').length).toBe(3)
+    expect(ul.textContent).toBe('pqr')
+  })
+
+  it('STATIC mixed child a{items}b (VNode[]) mounts at the placeholder position', () => {
+    // Text siblings force the placeholder path → `_setChildAt`.
+    const { container, code } = compileComponent(
+      `const C = ({ items }) => (<div>before{items}after</div>)`,
+      { items: [h('b', null, 'X'), h('b', null, 'Y')] },
+    )
+    expect(code).toContain('_setChildAt(')
+    const div = container.querySelector('div')!
+    expect(div.querySelectorAll('b').length).toBe(2)
+    expect(div.textContent).toBe('beforeXYafter')
+  })
+
+  it('STATIC primitive param {label} still renders as text (fallback path intact)', () => {
+    // The polymorphic helpers must NOT regress the common string case — a plain
+    // string value text-sets exactly as before.
+    const { container } = compileComponent(
+      `const C = ({ label }) => (<span>{label}</span>)`,
+      { label: 'hello' },
+    )
+    const span = container.querySelector('span')!
+    expect(span.textContent).toBe('hello')
+    expect(span.children.length).toBe(0)
+  })
+
+  it('REACTIVE primitive prop {props.name} still text-sets on change', () => {
+    const name = signal('one')
+    const { container } = compileComponent(
+      `const C = (props) => (<span>{props.name}</span>)`,
+      { name },
+    )
+    const span = container.querySelector('span')!
+    expect(span.textContent).toBe('one')
+    name.set('two')
+    expect(span.textContent).toBe('two')
   })
 })

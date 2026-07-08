@@ -36,8 +36,8 @@ const ELEMENT_CONST = `function C(){ const header = <h1>T</h1>; return <div>{hea
 
 describe('Round 9 — element-valued const used as a bare JSX child', () => {
   it('CONTROL: string/number const child still uses the correct text fast path', () => {
-    expect(emit(`function C(){ const t = 'T'; return <div>{t}<p>x</p></div> }`)).toContain('createTextNode(t)')
-    expect(emit(`function C(){ const n = 5; return <div>{n}</div> }`)).toContain('textContent = n')
+    expect(emit(`function C(){ const t = 'T'; return <div>{t}<p>x</p></div> }`)).toContain('_setChildAt(__root, __p0, t)')
+    expect(emit(`function C(){ const n = 5; return <div>{n}</div> }`)).toContain('_setChild(__root, n)')
   })
 
   it('CONTROL: an INLINE element child is correctly hoisted (not text-coerced)', () => {

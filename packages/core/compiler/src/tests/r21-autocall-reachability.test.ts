@@ -160,10 +160,10 @@ describe('R21 — template-path bindings unaffected by the bare-skip', () => {
   const t = (src: string) => transformJSX_JS(src, 'r21.tsx').code
 
   test('bare signal text child still emits a VALUE binding (auto-called)', () => {
-    // The template path assigns the value raw (`t.data = s1()`) — the
+    // The template path binds the value auto-called (`s1()`) — the
     // bare-skip applies ONLY to re-emitted (h-composed) regions.
     const out = t(wrap(`<div>{s1}</div>`))
-    expect(out).toContain('__t0.data = s1()')
+    expect(out).toContain('bindPolymorphicText(() => (s1()), __t0')
   })
 
   test('bare signal class attr keeps _bindDirect', () => {

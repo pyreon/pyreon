@@ -36,7 +36,7 @@ describe('JSX transform — children', () => {
   test('does NOT wrap a function expression child', () => {
     const result = t('<div>{function() { return x }}</div>')
     // Function expression body should be unwrapped by template emission
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('does NOT wrap plain identifier (no call = not reactive)', () => {
@@ -50,7 +50,7 @@ describe('JSX transform — children', () => {
   test('wraps ternary that contains a call', () => {
     const result = t('<div>{a() ? b : c}</div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('.data = a() ? b : c')
+    expect(result).toContain('bindPolymorphicText(() => (a() ? b : c)')
   })
 
   test('does NOT wrap logical expression without calls', () => {
@@ -110,7 +110,7 @@ describe('JSX transform — children', () => {
   test('wraps binary expression containing a call', () => {
     const result = t('<div>{count() + 1}</div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('.data = count() + 1')
+    expect(result).toContain('bindPolymorphicText(() => (count() + 1)')
   })
 
   test('does NOT wrap binary expression without calls', () => {
@@ -498,7 +498,7 @@ describe('JSX transform — edge cases', () => {
     // reference could be different each evaluation). Fall back to _bind.
     const result = t('const a = () => <div>{row[key]()}</div>')
     expect(result).not.toContain('_bindText(')
-    expect(result).toContain('_bind(')
+    expect(result).toContain('bindPolymorphicText(')
   })
 
   test('member-expression _bindText: bails when root identifier IS a tracked signal (count.peek())', () => {
@@ -506,7 +506,7 @@ describe('JSX transform — edge cases', () => {
     // create a tracking subscription contradicting user intent.
     const result = t('const count = signal(0); const a = () => <div>{count.peek()}</div>')
     expect(result).not.toContain('_bindText(count.peek,')
-    expect(result).toContain('_bind(')
+    expect(result).toContain('bindPolymorphicText(')
   })
 
   test('member-expression _bindText: bails on chained call count().toLocaleString()', () => {
@@ -517,15 +517,15 @@ describe('JSX transform — edge cases', () => {
       'const count = signal(0); const a = () => <div>{() => count().toLocaleString()}</div>',
     )
     expect(result).not.toContain('_bindText(')
-    expect(result).toContain('_bind(')
+    expect(result).toContain('bindPolymorphicText(')
   })
 
   test('toLocaleString on signal read preserves this context', () => {
     // {() => count().toLocaleString()} should NOT detach .toLocaleString
     const result = t('<div>{() => count().toLocaleString()}</div>')
     expect(result).not.toContain('_bindText(count,')
-    // The arrow wraps a chained call — it should use _bind, not _bindText
-    expect(result).toContain('_bind')
+    // The arrow wraps a chained call — it should use bindPolymorphicText, not _bindText
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('wraps nested call in array expression', () => {
@@ -541,7 +541,9 @@ describe('JSX transform — edge cases', () => {
 
   test('does NOT wrap arrow function with params', () => {
     const result = t('<div>{(x: number) => x + 1}</div>')
-    expect(result).not.toContain('() => (x')
+    // The arrow-with-params is unwrapped to its body (x + 1); the typed param
+    // signature must NOT survive as a retained wrapper.
+    expect(result).not.toContain('(x: number)')
   })
 
   test('handles .jsx file extension', () => {
@@ -654,7 +656,7 @@ describe('JSX transform — template emission', () => {
 
   test('generates one-time set for static expression text', () => {
     const result = t('<div><span>{label}</span></div>')
-    expect(result).toContain('textContent = label')
+    expect(result).toContain('_setChild(__e0, label)')
     expect(result).not.toContain('_bind(')
   })
 
@@ -847,7 +849,7 @@ describe('JSX transform — template emission', () => {
     // String(row.id) — pure coercion call with non-signal arg → static emit
     // (textContent = ... assigned ONCE at row mount; no _bind chain). Matches
     // the hand-tuned reference template in examples/benchmark/src/impl/pyreon-tpl.ts.
-    expect(result).toContain('textContent = String(row.id)')
+    expect(result).toContain('_setChild(__e0, String(row.id))')
     // row.label() — member-expression call still goes through _bind here in
     // isolation (a separate PR widens member-expr to _bindText). Verify the
     // expression survives in the emitted code.
@@ -859,17 +861,17 @@ describe('JSX transform — template emission', () => {
     // referentially transparent and route to emitStaticTextChild — saves the
     // _bind chain on every per-row template instantiation.
     const result = t('const a = () => <td>{String(row.id)}</td>')
-    expect(result).toContain('textContent = String(row.id)')
+    expect(result).toContain('_setChild(__root, String(row.id))')
     expect(result).not.toContain('_bind')
   })
 
   test('PURE_COERCIONS: Number and Boolean route to static (parallel to String)', () => {
     const num = t('const a = () => <td>{Number(row.value)}</td>')
-    expect(num).toContain('textContent = Number(row.value)')
+    expect(num).toContain('_setChild(__root, Number(row.value))')
     expect(num).not.toContain('_bind')
 
     const bool = t('const a = () => <td>{Boolean(row.active)}</td>')
-    expect(bool).toContain('textContent = Boolean(row.active)')
+    expect(bool).toContain('_setChild(__root, Boolean(row.active))')
     expect(bool).not.toContain('_bind')
   })
 
@@ -877,7 +879,7 @@ describe('JSX transform — template emission', () => {
     // The pure-coercion gate falls through to recurse — a signal call inside
     // the arg makes the OVERALL expression dynamic, preserving reactivity.
     const result = t('const count = signal(0); const a = () => <td>{String(count())}</td>')
-    expect(result).toContain('_bind(')
+    expect(result).toContain('bindPolymorphicText(')
     expect(result).toContain('String(count())')
     expect(result).not.toContain('textContent = String')
   })
@@ -885,7 +887,7 @@ describe('JSX transform — template emission', () => {
   test('PURE_COERCIONS: props access in arg stays reactive (String(props.x))', () => {
     // Props access in arg → dynamic via recurse → preserves reactive _bind.
     const result = t('const a = (props) => <td>{String(props.x)}</td>')
-    expect(result).toContain('_bind(')
+    expect(result).toContain('bindPolymorphicText(')
     expect(result).toContain('String(props.x)')
     expect(result).not.toContain('textContent = String')
   })
@@ -893,7 +895,7 @@ describe('JSX transform — template emission', () => {
   test('PURE_COERCIONS: spread arg bails (String(...args))', () => {
     // Spread elements bail — can't statically know cardinality / dynamism.
     const result = t('const a = () => <td>{String(...args)}</td>')
-    expect(result).toContain('_bind(')
+    expect(result).toContain('bindPolymorphicText(')
     expect(result).not.toContain('textContent = String')
   })
 
@@ -901,7 +903,7 @@ describe('JSX transform — template emission', () => {
     // Only String/Number/Boolean are in the allowlist. fetch() and arbitrary
     // user calls stay dynamic.
     const result = t('const a = () => <td>{fetch(row.url)}</td>')
-    expect(result).toContain('_bind(')
+    expect(result).toContain('bindPolymorphicText(')
     expect(result).not.toContain('textContent = fetch')
   })
 
@@ -939,7 +941,7 @@ describe('JSX transform — template emission', () => {
     const result = t('<div><span />{label}</div>')
     expect(result).toContain('_tpl(')
     expect(result).toContain('firstChild')
-    expect(result).toContain('createTextNode(label)')
+    expect(result).toContain('_setChildAt(__root, __p0, label)')
   })
 
   test('bakes static numeric literal attr into HTML', () => {
@@ -1552,20 +1554,20 @@ describe('JSX transform — pure call detection', () => {
   test('JSON.stringify with object arg IS wrapped (object not static)', () => {
     const result = t('<div>{JSON.stringify({a: 1})}</div>')
     // Object literals are not considered static by the compiler
-    expect(result).toContain('.data =')
+    expect(result).toContain('bindPolymorphicText(')
   })
 
   test('Math.max with dynamic arg (signal call) IS wrapped', () => {
     const result = t('<div>{Math.max(count(), 10)}</div>')
     // Dynamic argument means the result depends on a signal
     expect(result).toContain('Math.max(count(), 10)')
-    expect(result).toContain('.data =')
+    expect(result).toContain('bindPolymorphicText(')
   })
 
   test('unknown function call IS wrapped', () => {
     const result = t('<div>{unknownFn(5)}</div>')
     // Unknown function is not in PURE_CALLS, so it gets wrapped
-    expect(result).toContain('.data =')
+    expect(result).toContain('bindPolymorphicText(')
   })
 
   test('Math.floor with static arg is not wrapped', () => {
@@ -1607,7 +1609,7 @@ describe('JSX transform — per-text-node bind', () => {
 describe('JSX transform — reactive props detection', () => {
   test('props.x in text child is reactive (wrapped in _bind)', () => {
     const result = t('function Comp(props) { return <div>{props.name}</div> }')
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('bindPolymorphicText(() => (')
     expect(result).toContain('props.name')
   })
 
@@ -1621,7 +1623,7 @@ describe('JSX transform — reactive props detection', () => {
     const result = t(
       'function Comp(props) { const x = props.name ?? "anon"; return <div>{x}</div> }',
     )
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('bindPolymorphicText(() => (')
     expect(result).toContain('props.name ?? "anon"')
     // x should be inlined, not used directly
     expect(result).not.toMatch(/__t\d+\.data = x\b/)
@@ -1639,7 +1641,7 @@ describe('JSX transform — reactive props detection', () => {
     const result = t(
       'function Comp(props) { const [own, rest] = splitProps(props, ["x"]); const v = own.x ?? 5; return <div>{v}</div> }',
     )
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('bindPolymorphicText(() => (')
     expect(result).toContain('own.x ?? 5')
   })
 
@@ -1662,7 +1664,7 @@ describe('JSX transform — reactive props detection', () => {
 
   test('arrow function component detected', () => {
     const result = t('const Comp = (props) => <div>{props.x}</div>')
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('bindPolymorphicText(() => (')
     expect(result).toContain('props.x')
   })
 })
@@ -1674,7 +1676,7 @@ describe('JSX transform — transitive prop derivation', () => {
     const result = t(
       'function Comp(props) { const a = props.x; const b = a + 1; return <div>{b}</div> }',
     )
-    expect(result).toContain('_bind(() => {')
+    expect(result).toContain('bindPolymorphicText(() => (')
     expect(result).toContain('props.x')
     // b should be inlined transitively
     expect(result).not.toMatch(/__t\d+\.data = b\b/)
@@ -1686,7 +1688,7 @@ describe('JSX transform — transitive prop derivation', () => {
     )
     expect(result).toContain('props.x')
     // Full chain inlined
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('non-prop-derived variable NOT inlined', () => {
@@ -1700,7 +1702,7 @@ describe('JSX transform — transitive prop derivation', () => {
       'function Comp(props) { let x = props.y; x = "override"; return <div>{x}</div> }',
     )
     // let is excluded — x is NOT inlined, set statically
-    expect(result).toContain('textContent = x')
+    expect(result).toContain('_setChild(__root, x)')
     expect(result).not.toContain('_bind')
   })
 
@@ -1720,7 +1722,7 @@ describe('JSX transform — transitive prop derivation', () => {
     expect(result).toContain('console.log(x)')
     // JSX usage is inlined
     expect(result).toContain('props.y')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('.map() callback params NOT treated as props', () => {
@@ -1747,7 +1749,7 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
   test('template literal with prop-derived var is inlined', () => {
     const result = t('function C(props) { const x = props.name; return <div>{`hello ${x}`}</div> }')
     expect(result).toContain('props.name')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('ternary with prop-derived var is inlined', () => {
@@ -1787,7 +1789,7 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
     )
     expect(result).toContain('props.x')
     // Full chain resolved via AST visitor
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('array destructuring NOT tracked (only simple identifier)', () => {
@@ -1890,7 +1892,7 @@ describe('JSX transform — AST inlining (template literals, ternaries)', () => 
   test('non-children prop access still uses text node binding', () => {
     const result = t('function C(props) { return <div>{props.name}</div> }')
     expect(result).not.toContain('_mountSlot')
-    expect(result).toContain('.data')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('signal() calls are NOT inlined as prop-derived vars', () => {
@@ -1987,7 +1989,7 @@ describe('JSX transform — circular prop-derived var cycles do not crash', () =
     `)
     // Non-cyclic part (props.x) is still inlined reactively
     expect(result.code).toContain('props.x')
-    expect(result.code).toContain('_bind')
+    expect(result.code).toContain('bindPolymorphicText')
     // Cyclic identifier `b` is left as-is (not further resolved)
     // The _bind should reference `b` directly since it's the cycle-break point
     expect(result.code).toMatch(/\bb\b/)
@@ -2005,7 +2007,7 @@ describe('JSX transform — circular prop-derived var cycles do not crash', () =
       }
     `)
     expect(result.code).toContain('props.x')
-    expect(result.code).toContain('_bind')
+    expect(result.code).toContain('bindPolymorphicText')
     // c should be fully inlined — not left as a static reference
     expect(result.code).not.toMatch(/__t\d+\.data = c\b/)
     // No cycle warnings on a non-cyclic chain
@@ -2104,7 +2106,7 @@ describe('JSX transform — signal auto-call', () => {
   test('bare signal in text child is auto-called', () => {
     const result = t('function C() { const name = signal("Vít"); return <div>{name}</div> }')
     expect(result).toContain('name()')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('signal in attribute expression is auto-called', () => {
@@ -2166,7 +2168,7 @@ describe('JSX transform — signal auto-call', () => {
       'function C() { const doubled = computed(() => 2); return <div>{doubled}</div> }',
     )
     expect(result).toContain('doubled()')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('computed already called is NOT double-called', () => {
@@ -2180,8 +2182,8 @@ describe('JSX transform — signal auto-call', () => {
     const result = t(
       'function C() { const count = signal(0); const doubled = computed(() => count() * 2); return <div>{count} + {doubled}</div> }',
     )
-    expect(result).toContain('.data = count()')
-    expect(result).toContain('.data = doubled()')
+    expect(result).toContain('bindPolymorphicText(() => (count()')
+    expect(result).toContain('bindPolymorphicText(() => (doubled()')
   })
 
   test('signal in arrow function child is NOT auto-called (already reactive)', () => {
@@ -2195,7 +2197,7 @@ describe('JSX transform — signal auto-call', () => {
     // console.log(x) should keep bare x, only JSX usage gets auto-called
     expect(result).toContain('console.log(x)')
     // But JSX usage gets auto-called
-    expect(result).toContain('.data = x()')
+    expect(result).toContain('bindPolymorphicText(() => (x()')
   })
 
   test('signal as event handler value IS auto-called (unwraps to the handler fn)', () => {
@@ -2217,7 +2219,7 @@ describe('JSX transform — signal auto-call', () => {
     const code = 'import { count } from "./store"; function App() { return <div>{count}</div> }'
     const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
     expect(result).toContain('count()')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('knownSignals with alias — local name is used', () => {
@@ -2347,7 +2349,7 @@ describe('JSX transform — signal auto-call', () => {
     // Inner's show is a plain string, NOT a signal — should NOT be auto-called
     // But App's show IS a signal — should be auto-called
     expect(result).toContain('show()') // App's usage
-    expect(result).toContain('textContent = show') // Inner's usage (static)
+    expect(result).toContain('_setChild(__root, show)') // Inner's usage (static)
   })
 
   test('function parameter shadowing signal is NOT auto-called', () => {
@@ -2361,8 +2363,8 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // Display's count is a parameter, not the signal
-    expect(result).toContain('textContent = count') // Display: static
-    expect(result).toContain('.data = count()') // App: auto-called
+    expect(result).toContain('_setChild(__root, count)') // Display: static
+    expect(result).toContain('bindPolymorphicText(() => (count()') // App: auto-called
   })
 
   test('destructured parameter shadowing signal is NOT auto-called', () => {
@@ -2376,8 +2378,8 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // Greet's name is destructured from props — shadows the signal
-    expect(result).toContain('textContent = name') // Greet: static
-    expect(result).toContain('.data = name()') // App: auto-called
+    expect(result).toContain('_setChild(__root, name)') // Greet: static
+    expect(result).toContain('bindPolymorphicText(() => (name()') // App: auto-called
   })
 
   test('signal in outer scope is auto-called when NOT shadowed', () => {
@@ -2406,8 +2408,8 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // Inner's item is array-destructured — shadows the signal
-    expect(result).toContain('textContent = item') // Inner: static
-    expect(result).toContain('.data = item()') // App: auto-called
+    expect(result).toContain('_setChild(__root, item)') // Inner: static
+    expect(result).toContain('bindPolymorphicText(() => (item()') // App: auto-called
   })
 
   test('signal re-declared as signal in inner scope is still auto-called', () => {
@@ -2441,7 +2443,7 @@ describe('JSX transform — signal auto-call', () => {
       }
     `)
     // A shadows show — static
-    expect(result).toContain('textContent = show')
+    expect(result).toContain('_setChild(__root, show)')
     // B does NOT shadow — auto-called
     // App does NOT shadow — auto-called
     const autoCallCount = (result.match(/show\(\)/g) || []).length
@@ -2467,7 +2469,7 @@ describe('JSX transform — signal auto-call', () => {
     )
     expect(result).toContain('x()')
     expect(result).toContain('props.label')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('signal with no init (const x = signal()) tracked', () => {
@@ -2492,7 +2494,7 @@ describe('JSX transform — signal auto-call', () => {
       'function C() { const x = signal(0); function Inner() { let x; return <div>{x}</div> } return <div>{x}</div> }',
     )
     // Inner's x is let, not tracked. App's x is signal
-    expect(result).toContain('.data = x()')
+    expect(result).toContain('bindPolymorphicText(() => (x()')
   })
 
   test('signal shadowed by let declaration in inner scope', () => {
@@ -2510,7 +2512,7 @@ describe('JSX transform — signal auto-call', () => {
     // (let is not const so it's not in signalVars, but it's also not tracked as shadow)
     // Actually findShadowingNames only checks top-level VariableDeclaration declarations
     // let is VariableDeclaration kind=let — it should shadow
-    expect(result).toContain('.data = show()') // outer: auto-called
+    expect(result).toContain('bindPolymorphicText(() => (show()') // outer: auto-called
   })
 
   test('knownSignals with empty array does not crash', () => {
@@ -2533,7 +2535,7 @@ describe('JSX transform — signal auto-call', () => {
     const code = 'import count from "./store"; function App() { return <div>{count}</div> }'
     const result = transformJSX(code, 'test.tsx', { knownSignals: ['count'] }).code
     expect(result).toContain('count()')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 })
 
@@ -2647,7 +2649,7 @@ describe('JSX transform — template static expression string attr via JSX expre
 describe('JSX transform — isPureStaticCall edge cases', () => {
   test('pure call with spread argument IS wrapped (not pure)', () => {
     const result = t('<div>{Math.max(...nums)}</div>')
-    expect(result).toContain('.data =')
+    expect(result).toContain('bindPolymorphicText(')
   })
 
   test('Array.isArray with static arg is not wrapped', () => {
@@ -2679,7 +2681,7 @@ describe('JSX transform — isStatic edge cases', () => {
 
   test('template literal with substitution is dynamic', () => {
     const result = t('<div>{`${x()}`}</div>')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 })
 
@@ -2721,7 +2723,7 @@ describe('JSX transform — walkNode edge cases for scope cleanup', () => {
         return <div>{x}</div>
       }
     `)
-    expect(result).toContain('.data = x()')
+    expect(result).toContain('bindPolymorphicText(() => (x()')
   })
 
   test('template emit within scoped function with signal shadowing', () => {
@@ -2736,9 +2738,9 @@ describe('JSX transform — walkNode edge cases for scope cleanup', () => {
       }
     `)
     // Nested: count is shadowed, static
-    expect(result).toContain('textContent = count')
+    expect(result).toContain('_setChild(__e0, count)')
     // App: count is signal, auto-called
-    expect(result).toContain('.data = count()')
+    expect(result).toContain('bindPolymorphicText(() => (count()')
   })
 })
 
@@ -2775,7 +2777,7 @@ describe('JSX transform — signalVars.size > shadowedSignals.size check', () =>
     // cx-normalizing class setter)
     expect(result).toContain('const _cv = (x + " extra")')
     // App's x IS auto-called
-    expect(result).toContain('.data = x()')
+    expect(result).toContain('bindPolymorphicText(() => (x()')
   })
 })
 
@@ -3008,7 +3010,7 @@ describe('JSX transform — additional branch coverage paths', () => {
   test('prop-derived var used inside a nested function arg but NOT as callback', () => {
     const result = t('function C(props) { const x = props.y; return <div>{x + other(x)}</div> }')
     expect(result).toContain('props.y')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('mixed static and dynamic props on template element', () => {
@@ -3028,7 +3030,7 @@ describe('JSX transform — additional branch coverage paths', () => {
   test('signal auto-call works inside template _bind for text', () => {
     const result = t('function C() { const x = signal(1); return <div>{x + 1}</div> }')
     expect(result).toContain('x() + 1')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('signal auto-call inside template attribute _bind', () => {
@@ -3090,7 +3092,7 @@ describe('JSX transform — additional branch coverage paths', () => {
   test('signal auto-call with binary and unary expressions', () => {
     const result = t('function C() { const x = signal(5); return <div>{-x}</div> }')
     expect(result).toContain('x()')
-    expect(result).toContain('_bind')
+    expect(result).toContain('bindPolymorphicText')
   })
 
   test('signal in computed property access is auto-called', () => {
@@ -3127,7 +3129,7 @@ describe('JSX transform — additional branch coverage paths', () => {
   test('variable declaration kind is let — not tracked for prop-derived', () => {
     const result = t('function C(props) { let x = props.y; return <div>{x}</div> }')
     // let is not tracked — x is static
-    expect(result).toContain('textContent = x')
+    expect(result).toContain('_setChild(__root, x)')
   })
 
   test('FunctionDeclaration with JSX detected as component', () => {

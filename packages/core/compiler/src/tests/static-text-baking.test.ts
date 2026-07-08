@@ -1,7 +1,7 @@
 import { transformJSX } from '../jsx'
 
 const t = (code: string) => transformJSX(code, 'input.tsx').code
-const hasBind = (out: string) => /\b_bindText\(|\b_bind\(/.test(out)
+const hasBind = (out: string) => /\b_bindText\(|\b_bind\(|\bbindPolymorphicText\(/.test(out)
 
 // ── Static-text baking contract (perf-correctness regression gate) ──────────
 //
@@ -87,7 +87,7 @@ describe('<For> render-callback item params: bare property reads bake static', (
       `export const C=()=> <table><tbody><For each={rows} by={(r)=>r.id}>{(row)=> <tr><td>{String(row.id)}</td></tr>}</For></tbody></table>`,
     )
     expect(out).toContain('_tpl(')
-    expect(out).toContain('textContent = String(row.id)')
+    expect(out).toContain('_setChild(__e0, String(row.id))')
     expect(/_bind\(\(\) => \{[^}]*String\(row\.id\)/.test(out)).toBe(false)
   })
 
@@ -102,7 +102,7 @@ describe('<For> render-callback item params: bare property reads bake static', (
     const out = t(
       `export const C=()=> <For each={rows} by={(r)=>r.id}>{(row)=> <tr><td>{String(row.id)}</td><td>{() => row.label()}</td></tr>}</For>`,
     )
-    expect(out).toContain('textContent = String(row.id)')
+    expect(out).toContain('_setChild(__e0, String(row.id))')
     expect(out).toContain('_bindText(row.label')
   })
 

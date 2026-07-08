@@ -27,9 +27,15 @@ describe('VNode array/map const as a bare child', () => {
     expect(out).not.toContain('textContent = rows')
   })
 
-  it('plain string const stays on the text fast path (no over-classification)', () => {
+  it('plain string const stays on the static text fast path (no over-classification)', () => {
     const out = code("const s = 'hi'; export const X = () => <div>{s}</div>")
-    expect(out).toContain('textContent = s')
+    // A plain non-signal string const is STATIC — it uses the `_setChild` fast
+    // path (text-sets a string at runtime), NOT a reactive binding and NOT a
+    // VNode[] mount. `_setChild` is the static-child codegen; asserting it (and
+    // the absence of `bindPolymorphicText` + `_mountSlot`) preserves the
+    // original "not over-classified as reactive / not a slot mount" intent.
+    expect(out).toContain('_setChild(__root, s)')
+    expect(out).not.toContain('bindPolymorphicText')
     expect(out).not.toContain('_mountSlot(s')
   })
 

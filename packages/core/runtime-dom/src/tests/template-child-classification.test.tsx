@@ -28,8 +28,15 @@ import { transformSync } from 'esbuild'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { renderToString } from '@pyreon/runtime-server'
-import { _tpl, _bindText, _bindDirect, _mountSlot } from '../template'
-import { _applyProps, _setStyle, hydrateRoot, mountChild, onHydrationMismatch } from '../index'
+import { _tpl, _bindText, _bindDirect, _mountSlot, _setChild, _setChildAt } from '../template'
+import {
+  _applyProps,
+  _setStyle,
+  bindPolymorphicText,
+  hydrateRoot,
+  mountChild,
+  onHydrationMismatch,
+} from '../index'
 
 const strip = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '')
 
@@ -58,6 +65,9 @@ const RUNTIME_DEPS = {
   _applyProps,
   _setStyle,
   _mountSlot,
+  _setChild,
+  _setChildAt,
+  bindPolymorphicText,
   _rp,
   _cx: cx,
   h,
@@ -299,5 +309,85 @@ export function App() {
     capturingErrors(errors, () => s.set('done'))
     expect(errors, 'post-hydrate update errors').toEqual([])
     expect(strip(container.innerHTML)).toBe('<div><b>done</b></div>')
+  })
+
+  it('SSR → hydrate parity: a STATIC {items} VNode[] child mounts without DUPLICATING the SSR nodes', async () => {
+    // The duplication-risk case: `_setChild(el, items)` calls mountChild which
+    // APPENDS. During hydration the SSR `<ul>` already holds the `<li>` nodes,
+    // so a naive append would double them. `_tpl` hydration REPLACES the SSR
+    // subtree with the fresh mount (no adopt), so the count must stay exact.
+    const items = [h('li', null, 'a'), h('li', null, 'b'), h('li', null, 'c')]
+    const ssrTree = h('ul', null, items)
+    const html = await renderToString(ssrTree as never)
+    expect(strip(html)).toBe('<ul><li>a</li><li>b</li><li>c</li></ul>')
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = html
+
+    const full = transformJSX(
+      `export function App({ items }) { return <ul>{items}</ul> }`,
+      'test.tsx',
+    )
+    expect(full.code).toContain('_setChild(')
+    const body = lowerResidualTsx(stripImports(full.code).replace(/^export\s+/gm, ''))
+    const fn = new Function(...DEP_NAMES, 'items', `${body}\nreturn App`)
+    const App = fn(...DEP_VALUES, items) as (p: unknown) => unknown
+
+    const mismatches: unknown[] = []
+    const offMismatch = onHydrationMismatch((ctx) => mismatches.push(ctx))
+    const errors: unknown[] = []
+    capturingErrors(errors, () => {
+      hydrateRoot(container, h(App as never, { items }))
+    })
+    offMismatch()
+    expect(errors, 'hydration errors').toEqual([])
+    expect(mismatches, 'hydration mismatches').toEqual([])
+    // EXACT count — 3, not 6 (no duplication of the SSR-rendered nodes).
+    expect(container.querySelectorAll('li').length, 'no duplication').toBe(3)
+    expect(strip(container.innerHTML), 'post-hydrate DOM matches SSR').toBe(
+      '<ul><li>a</li><li>b</li><li>c</li></ul>',
+    )
+    expect(container.innerHTML).not.toContain('[object Object]')
+  })
+
+  it('SSR → hydrate parity: a REACTIVE {props.items} VNode[] child matches SSR + swaps', async () => {
+    const items = signal([h('li', null, 'x'), h('li', null, 'y')])
+    // SSR renders the accessor-called array (the h()-composed SSR shape).
+    const ssrTree = h('ul', null, (() => items()) as never)
+    const html = await renderToString(ssrTree as never)
+    expect(strip(html)).toBe('<ul><li>x</li><li>y</li></ul>')
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    container.innerHTML = html
+
+    const full = transformJSX(
+      `export function App(props) { return <ul>{props.items}</ul> }`,
+      'test.tsx',
+    )
+    expect(full.code).toContain('bindPolymorphicText(')
+    const body = lowerResidualTsx(stripImports(full.code).replace(/^export\s+/gm, ''))
+    const fn = new Function(...DEP_NAMES, `${body}\nreturn App`)
+    const App = fn(...DEP_VALUES) as (p: unknown) => unknown
+
+    const mismatches: unknown[] = []
+    const offMismatch = onHydrationMismatch((ctx) => mismatches.push(ctx))
+    const errors: unknown[] = []
+    capturingErrors(errors, () => {
+      hydrateRoot(container, h(App as never, { items }))
+    })
+    offMismatch()
+    expect(errors, 'hydration errors').toEqual([])
+    expect(mismatches, 'hydration mismatches').toEqual([])
+    expect(container.querySelectorAll('li').length, 'no duplication').toBe(2)
+    expect(strip(container.innerHTML)).toBe('<ul><li>x</li><li>y</li></ul>')
+
+    capturingErrors(errors, () =>
+      items.set([h('li', null, 'p'), h('li', null, 'q'), h('li', null, 'r')]),
+    )
+    expect(errors, 'post-hydrate update errors').toEqual([])
+    expect(container.querySelectorAll('li').length).toBe(3)
+    expect(strip(container.innerHTML)).toBe('<ul><li>p</li><li>q</li><li>r</li></ul>')
   })
 })

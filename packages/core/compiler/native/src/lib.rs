@@ -461,6 +461,9 @@ struct Ctx<'a> {
     needs_bind_text_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
+    needs_bind_poly_import: bool,
+    needs_set_child_import: bool,
+    needs_set_child_at_import: bool,
     needs_apply_props_import: bool,
     needs_mount_slot_import: bool,
 
@@ -608,6 +611,9 @@ impl<'a> Ctx<'a> {
             needs_bind_text_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
+            needs_bind_poly_import: false,
+            needs_set_child_import: false,
+            needs_set_child_at_import: false,
             needs_apply_props_import: false,
             needs_mount_slot_import: false,
             props_names: FxHashSet::default(),
@@ -727,6 +733,15 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_mount_slot_import {
                 imports.push("_mountSlot");
+            }
+            if self.needs_bind_poly_import {
+                imports.push("bindPolymorphicText");
+            }
+            if self.needs_set_child_import {
+                imports.push("_setChild");
+            }
+            if self.needs_set_child_at_import {
+                imports.push("_setChildAt");
             }
             if self.needs_set_style_import {
                 imports.push("_setStyle");
@@ -4663,6 +4678,9 @@ struct TemplateBuilder {
     needs_apply_props: bool,
     needs_mount_slot: bool,
     needs_bind: bool,
+    needs_bind_poly: bool,
+    needs_set_child: bool,
+    needs_set_child_at: bool,
     needs_cx: bool,
     needs_set_style: bool,
 }
@@ -4682,6 +4700,9 @@ impl TemplateBuilder {
             needs_apply_props: false,
             needs_mount_slot: false,
             needs_bind: false,
+            needs_bind_poly: false,
+            needs_set_child: false,
+            needs_set_child_at: false,
             needs_cx: false,
             needs_set_style: false,
         }
@@ -4754,6 +4775,15 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     }
     if tb.needs_mount_slot {
         ctx.needs_mount_slot_import = true;
+    }
+    if tb.needs_bind_poly {
+        ctx.needs_bind_poly_import = true;
+    }
+    if tb.needs_set_child {
+        ctx.needs_set_child_import = true;
+    }
+    if tb.needs_set_child_at {
+        ctx.needs_set_child_at_import = true;
     }
 
     let escaped = html.replace('\\', "\\\\").replace('"', "\\\"");
@@ -5670,11 +5700,14 @@ fn emit_reactive_text_child(
             d, sig_method.signal_ref, t_var, sig_method.method_call
         ));
     } else {
-        tb.needs_bind = true;
+        // General reactive text child — polymorphic (text fast path for
+        // primitives, MOUNT for a VNode/VNode[] value). Mirrors JS. See the
+        // jsx.ts comment for the perf trade-off (single-signal stays text-only).
+        tb.needs_bind_poly = true;
         let d = tb.next_disp();
         tb.bind_lines.push(format!(
-            "const {} = _bind(() => {{ {}.data = {} }})",
-            d, t_var, expr_text
+            "const {} = bindPolymorphicText(() => ({}), {}, {})",
+            d, expr_text, t_var, parent_ref
         ));
     }
     if needs_placeholder {
@@ -5693,16 +5726,20 @@ fn emit_static_text_child(
     tb: &mut TemplateBuilder,
 ) -> String {
     if needs_placeholder {
-        let t_var = tb.next_text_var();
         let p_var = tb.hoist_placeholder_ref(parent_ref, child_node_idx);
+        // Mixed-content static child — `_setChildAt` mounts a VNode/VNode[]
+        // value at the placeholder position, else replaces it with a text
+        // node (the historical shape). Mirrors JS.
+        tb.needs_set_child_at = true;
         tb.bind_lines
-            .push(format!("const {} = document.createTextNode({})", t_var, expr_text));
-        tb.bind_lines
-            .push(format!("{}.replaceChild({}, {})", parent_ref, t_var, p_var));
+            .push(format!("_setChildAt({}, {}, {})", parent_ref, p_var, expr_text));
         "<!>".to_string()
     } else {
+        // Sole static child — `_setChild` mounts a VNode/VNode[] value into the
+        // element, else sets textContent exactly as before. Mirrors JS.
+        tb.needs_set_child = true;
         tb.bind_lines
-            .push(format!("{}.textContent = {}", var_name, expr_text));
+            .push(format!("_setChild({}, {})", var_name, expr_text));
         String::new()
     }
 }

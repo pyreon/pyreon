@@ -13,15 +13,15 @@
  * specs fail (the exact stale-render bug that optimization would introduce).
  *
  * Bisect: make `isPureStaticCall` short-circuit `shouldWrap` regardless of
- * args → every spec here fails (emit becomes `textContent = Math.max(n(),0)`,
- * no `_bind`). Restore → all pass. The fully-static control proves the gate
- * does not just assert "always reactive".
+ * args → every spec here fails (emit becomes `_setChild(__root,
+ * Math.max(n(),0))`, no `bindPolymorphicText`). Restore → all pass. The
+ * fully-static control proves the gate does not just assert "always reactive".
  */
 import { describe, expect, it } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
 const emit = (c: string): string => transformJSX_JS(c, 'c.tsx').code ?? ''
-const isReactive = (o: string): boolean => /_bind\(|_bindText\(/.test(o)
+const isReactive = (o: string): boolean => /bindPolymorphicText\(|_bindText\(/.test(o)
 
 describe('Round 4 — pure call with a DYNAMIC argument must stay reactive', () => {
   it('Math.max(signal(), 0) is reactively wrapped', () => {
@@ -45,6 +45,6 @@ describe('Round 4 — pure call with a DYNAMIC argument must stay reactive', () 
   it('Math.max(1,2,3) with only static args is NOT wrapped', () => {
     const o = emit(`function C(){ return <div>{Math.max(1,2,3)}</div> }`)
     expect(isReactive(o)).toBe(false)
-    expect(o).toContain('textContent = Math.max(1,2,3)')
+    expect(o).toContain('_setChild(__root, Math.max(1,2,3))')
   })
 })

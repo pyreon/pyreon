@@ -54,7 +54,7 @@ describe('prop-derived inlining — lexical shadowing is respected', () => {
     const out = emit(`function C(props){ const x = props.x; function row(x){ return <td>{x}</td> } return <table>{props.rows.map(row)}</table> }`)
     expect(parses(out)).toBe(true)
     expect(out).toContain('function row(x)')
-    expect(out).toMatch(/__t0\.data = x\b/) // the row PARAM, not (props.x)
+    expect(out).toContain('bindPolymorphicText(() => (x),') // the row PARAM, not (props.x)
   })
 
   it('nested const shadowing a prop-derived const is not clobbered', () => {

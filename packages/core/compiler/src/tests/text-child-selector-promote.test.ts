@@ -71,7 +71,7 @@ describe('Compiler: text-child selector.subscribe auto-promotion', () => {
       `
       const out = transform(src).code
       expect(out).not.toContain('someFn.subscribe(')
-      expect(out).toContain('_bind(')
+      expect(out).toContain('bindPolymorphicText(')
     })
 
     it('bails when key argument contains a reactive read', () => {

@@ -93,6 +93,41 @@ function _looksLikeVNode(v: unknown): boolean {
   )
 }
 
+/**
+ * Compiler-emitted STATIC child setter for a bare `{x}` child whose type the
+ * compiler could not statically resolve (a function param, a custom prop, a
+ * function-return const). Primitives take the historical `textContent` fast
+ * path; a VNode or a VNode-array is MOUNTED — so `<div>{items}</div>` where
+ * `items` is a `VNode[]` from any source renders the elements instead of the
+ * "[object Object]" text coercion. Same VNode/array detection as the dev
+ * coercion warning; everything else stringifies exactly as `textContent = x`
+ * did (no behavior change for non-VNode values). The reactive counterpart is
+ * `bindPolymorphicText` (a reactive child can also swap text↔VNode).
+ */
+export function _setChild(node: Element, value: unknown): void {
+  if (_looksLikeVNode(value) || (Array.isArray(value) && value.some(_looksLikeVNode))) {
+    mountChild(value as VNodeChild, node, null)
+  } else {
+    node.textContent = value as string
+  }
+}
+
+/**
+ * Mixed-content sibling of `_setChild` — sets a static `{x}` child that shares
+ * its parent with other nodes, at the compiler-emitted `<!>` placeholder
+ * position. A VNode/VNode[] value MOUNTS before the placeholder (then the
+ * placeholder is removed); everything else replaces the placeholder with a
+ * text node — the historical `document.createTextNode(x) + replaceChild` shape.
+ */
+export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown): void {
+  if (_looksLikeVNode(value) || (Array.isArray(value) && value.some(_looksLikeVNode))) {
+    mountChild(value as VNodeChild, parent, placeholder)
+    placeholder.remove()
+  } else {
+    parent.replaceChild(document.createTextNode(value as string), placeholder)
+  }
+}
+
 function _warnTextCoercion(v: unknown, node: Text): void {
   // Belt-and-braces: every call site is already inside the bare dev gate
   // (which is what makes this helper tree-shakeable); this early return is
