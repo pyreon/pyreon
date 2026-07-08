@@ -17,6 +17,10 @@
  *    doc-only.
  */
 
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { resolveBundledContentPath } from './content-bundle'
+
 export type AntiPatternCategory =
   | 'reactivity'
   | 'jsx'
@@ -140,6 +144,55 @@ function parseBullet(bullet: string): {
   description = description.replace(/^[\s:]+/, '').trim()
 
   return { name, description, detectorCodes }
+}
+
+/**
+ * Locate `.claude/rules/anti-patterns.md` by walking up from `startDir`.
+ * Returns the file contents or null if not found within 30 levels.
+ */
+function findAntiPatternsFile(startDir: string): string | null {
+  let dir = resolve(startDir)
+  for (let i = 0; i < 30; i++) {
+    const candidate = join(dir, '.claude', 'rules', 'anti-patterns.md')
+    if (existsSync(candidate)) {
+      try {
+        return readFileSync(candidate, 'utf8')
+      } catch {
+        return null
+      }
+    }
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+  return null
+}
+
+/**
+ * Load the anti-patterns catalog doc. Prefers the live monorepo source found
+ * by walking up from `startDir` (so in-repo dev sees the latest), but only
+ * when that file is actually Pyreon's catalog (it parses to ≥1 entry — a
+ * consumer's own unrelated `.claude/rules/anti-patterns.md` parses to zero
+ * and MUST NOT shadow the bundled Pyreon snapshot). Falls back to the
+ * package's bundled `content/anti-patterns.md` (the `bunx @pyreon/mcp`
+ * consumer case). Returns null only when neither source exists.
+ *
+ * `bundledFile` is injectable for tests; production auto-resolves it.
+ */
+export function loadAntiPatternsDoc(
+  startDir: string = process.cwd(),
+  bundledFile: string | null = resolveBundledContentPath('anti-patterns.md'),
+): string | null {
+  const live = findAntiPatternsFile(startDir)
+  if (live !== null && parseAntiPatterns(live).length > 0) return live
+  if (bundledFile && existsSync(bundledFile)) {
+    try {
+      return readFileSync(bundledFile, 'utf8')
+    } catch {
+      // fall through to the last-resort live doc
+    }
+  }
+  return live
 }
 
 export function parseAntiPatterns(doc: string): AntiPatternEntry[] {

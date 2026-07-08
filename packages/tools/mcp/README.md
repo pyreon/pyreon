@@ -79,6 +79,13 @@ bunx @pyreon/mcp     # starts stdio MCP server
 | `audit_test_environment`   | Scan test files for mock-vnode patterns (PR #197 bug class)                              |
 | `audit_islands`            | Project-wide islands audit (5 cross-file foot-guns)                                      |
 
+## Consumer usage (`bunx @pyreon/mcp`)
+
+The server is designed to run standalone in a consumer project. Two things make that work:
+
+- **`typescript` is a runtime dependency.** The code-analysis tools (`validate`, `explain_reactivity`, `diagnose`, `migrate_react`, `migrate_pyreon`) call into `@pyreon/compiler`, which needs the TypeScript compiler API. A `bunx` isolated install therefore pulls `typescript` in automatically — no peer-dependency setup required.
+- **Doc/content tools ship a bundled snapshot.** `get_pattern`, `get_anti_patterns`, and `get_changelog` normally read from the Pyreon monorepo (`docs/src/content/docs/patterns/*.md`, `.claude/rules/anti-patterns.md`, `packages/**/CHANGELOG.md`). Those files don't exist in a consumer checkout, so the published package includes a `content/` snapshot of them (regenerated on every build). The loaders prefer the live monorepo source when present and fall back to the bundled snapshot otherwise — so the tools return real content in a consumer. The snapshot reflects the installed `@pyreon/mcp` version; upgrade the package to refresh it.
+
 ### `get_api`
 
 ```ts
@@ -116,7 +123,7 @@ A `token-budget.test.ts` regression gate pins `tools/list` < 1,300 tokens and `g
 get_pattern({ name: 'reactive-spread' })
 ```
 
-Serves `docs/patterns/<name>.md` from the monorepo. Foundational patterns today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Add a new pattern by dropping a new `docs/patterns/<slug>.md` file.
+Serves `docs/patterns/<name>.md` from the monorepo, or the package's **bundled snapshot** when run in a consumer (see "Consumer usage" below). Foundational patterns today: `controllable-state`, `data-fetching`, `dev-warnings`, `dynamic-fields`, `event-listeners`, `form-fields`, `imperative-toasts`, `islands`, `keyed-lists`, `reactive-context`, `reactive-spread`, `routing-setup`, `signal-writes`, `ssr-safe-hooks`, `state-management`, `styler-theming`. Add a new pattern by dropping a new `docs/patterns/<slug>.md` file.
 
 ### `migrate_react`
 
@@ -132,7 +139,7 @@ One-shot codemod — `useState` → `signal`, `useEffect` → `effect`, `useMemo
 get_changelog({ package: 'query', limit: 5, since: '0.12.0', includeDependencyUpdates: false })
 ```
 
-Parses `packages/**/CHANGELOG.md` into structured version entries. Default `limit: 5`, `includeDependencyUpdates: false` (filters out ceremonial dep-bump-only releases). Accepts both `"query"` and `"@pyreon/query"`.
+Parses `packages/**/CHANGELOG.md` into structured version entries — or the package's **bundled snapshot** when run in a consumer (see "Consumer usage" below). Default `limit: 5`, `includeDependencyUpdates: false` (filters out ceremonial dep-bump-only releases). Accepts both `"query"` and `"@pyreon/query"`.
 
 ### `audit_test_environment`
 

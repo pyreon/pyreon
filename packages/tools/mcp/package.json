@@ -30,23 +30,22 @@
   "files": [
     "lib",
     "src",
+    "content",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "vl_rolldown_build",
+    "build": "vl_rolldown_build && bun run scripts/copy-content.ts",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
     "prepublishOnly": "bun run build"
   },
-  "peerDependencies": {
-    "typescript": ">=5.0.0"
-  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@pyreon/compiler": "workspace:^",
+    "typescript": ">=5.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
