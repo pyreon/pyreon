@@ -225,10 +225,37 @@ export type DeepPartial<T> =
       ? { readonly [K in keyof T]?: DeepPartial<T[K]> }
       : T
 
-/** `StoreApi` extended with schema-mode mutation methods. */
-export interface SchemaStoreApi<T> extends StoreApi<T> {
+/**
+ * `StoreApi` extended with schema-mode mutation methods — strictly typed
+ * from the schema. Two type params:
+ *
+ * - `TRaw` = the schema's inferred field VALUES (`InferSchema<S>`). Drives
+ *   `set` / `patch` / `deepPatch` / `update` / `state` — so every mutation
+ *   is checked against the real field types at compile time (a wrong-typed
+ *   value, an unknown field, or an `update` on a non-field key all fail
+ *   typecheck), with zero manual annotations.
+ * - `TStore` = the shape exposed at `.store` — the per-field `Signal`s
+ *   (`SignalsOf<TRaw>`) merged with any actions/computeds the `setup`
+ *   function returns. Defaults to `SignalsOf<TRaw>` when there's no setup.
+ *
+ * `state`/`patch` are re-declared (not inherited) because the base
+ * `StoreApi` types them loosely as `Record<string, unknown>`.
+ */
+export interface SchemaStoreApi<
+  TRaw extends Record<string, unknown>,
+  TStore extends Record<string, unknown> = SignalsOf<TRaw>,
+> extends Omit<StoreApi<TStore>, 'state' | 'patch'> {
+  /** Read-only snapshot of the validated field VALUES (schema-typed). */
+  readonly state: TRaw
   /** Replace the whole state. Validates input via schema; throws on failure. */
-  set(next: Record<string, unknown>): void
+  set(next: TRaw): void
+  /** Shallow per-field merge. Validates the merged result; throws on failure. */
+  patch(partial: Partial<TRaw>): void
+  /**
+   * Functional escape hatch — direct signal access, NOT schema-validated.
+   * Use the object form (`patch(partial)`) for validated writes.
+   */
+  patch(fn: (state: TStore) => void): void
   /**
    * Deep-merge a partial state. Nested plain objects merge recursively;
    * arrays / class instances / primitives REPLACE. Validates the merged
@@ -237,29 +264,30 @@ export interface SchemaStoreApi<T> extends StoreApi<T> {
    * `deepPatch({ prefs: { theme: 'dark' } })` preserves other `prefs` keys.
    * For a shallow per-field replace, use `patch`.
    */
-  deepPatch(partial: Record<string, unknown>): void
+  deepPatch(partial: DeepPartial<TRaw>): void
   /**
-   * Transform a single top-level field via a callback. The current
-   * value is passed to the transformer; the return value replaces it
-   * (after validating the resulting merged state). Useful for
-   * array filter / append, object key delete / add, primitive math —
-   * one call covers all remove / add / transform patterns.
+   * Transform a single top-level field via a callback. The current value
+   * is passed to the transformer; the return value replaces it (after
+   * validating the resulting merged state). Useful for array filter /
+   * append, object key delete / add, primitive math — one call covers all
+   * remove / add / transform patterns.
    *
-   * The `key` is constrained to keys of the store's exposed shape (signal
-   * fields + setup-returned keys); typos fail typecheck. The transformer
-   * receives / returns `unknown` — narrow at the call site if you want
-   * stronger inference. (Full unwrap-to-raw-value typing is a future
-   * refinement; current shape favors interface simplicity.)
+   * `key` is constrained to the schema FIELD names (not setup-returned
+   * actions/computeds), and the transformer receives + returns the field's
+   * exact type `TRaw[K]` — no casts needed.
    *
    * @example
    * ```ts
-   * u.update('items', items => (items as Item[]).filter(x => x.id !== id))
-   * u.update('items', items => [...(items as Item[]), newItem])
-   * u.update('prefs', prefs => ({ ...(prefs as Prefs), theme: 'dark' }))
-   * u.update('count', n => (n as number) + 1)
+   * u.update('items', items => items.filter(x => x.id !== id))
+   * u.update('items', items => [...items, newItem])
+   * u.update('prefs', prefs => ({ ...prefs, theme: 'dark' }))
+   * u.update('count', n => n + 1)
    * ```
    */
-  update<K extends keyof T & string>(key: K, transformer: (current: unknown) => unknown): void
+  update<K extends keyof TRaw & string>(
+    key: K,
+    transformer: (current: TRaw[K]) => TRaw[K],
+  ): void
 }
 
 // ─── Schema dispatch helpers ─────────────────────────────────────────────────
@@ -353,7 +381,7 @@ function deepMerge(target: unknown, source: unknown): unknown {
 export function defineStore<S, U extends Record<string, unknown> = Record<string, unknown>>(
   id: string,
   config: SchemaStoreConfig<S, U>,
-): () => SchemaStoreApi<SignalsOf<InferSchema<S>> & U>
+): () => SchemaStoreApi<InferSchema<S>, SignalsOf<InferSchema<S>> & U>
 
 /**
  * Define a store with a unique id and a setup function.
@@ -388,7 +416,7 @@ export function defineStore(
 function defineSchemaStore(
   id: string,
   config: SchemaStoreConfig<unknown>,
-): () => SchemaStoreApi<Record<string, unknown>> {
+): () => SchemaStoreApi<Record<string, unknown>, Record<string, unknown>> {
   const { schema, initial, setup: userSetup, onValidationError } = config
 
   // Resolve sync parse function (Tier A.1, A.2, or throw).
@@ -486,9 +514,9 @@ function defineSchemaStore(
 
   // ── Validated `set` + `patch` wrappers ──────────────────────────────────
   let cachedInner: StoreApi<Record<string, unknown>> | null = null
-  let apiRef: SchemaStoreApi<Record<string, unknown>> | null = null
+  let apiRef: SchemaStoreApi<Record<string, unknown>, Record<string, unknown>> | null = null
 
-  return function useSchemaStore(): SchemaStoreApi<Record<string, unknown>> {
+  return function useSchemaStore(): SchemaStoreApi<Record<string, unknown>, Record<string, unknown>> {
     // Identity-stability + reset-safety. `useInner()` is a cheap registry
     // lookup that returns the SAME `StoreApi` identity until `resetStore(id)`
     // (or `resetAllStores()`) drops the entry; the next call then rebuilds
@@ -573,7 +601,7 @@ function defineSchemaStore(
           inner.reset()
         }
       },
-    } as SchemaStoreApi<Record<string, unknown>>
+    } as SchemaStoreApi<Record<string, unknown>, Record<string, unknown>>
 
     return apiRef
   }

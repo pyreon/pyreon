@@ -142,9 +142,9 @@ u.store.age.set(-1)                         // direct write — bypasses validat
       name: 'SchemaStoreApi',
       kind: 'type',
       signature:
-        'interface SchemaStoreApi<T> extends StoreApi<T> { set(next): void; deepPatch(partial): void; update<K extends keyof T>(key: K, fn): void }',
+        'interface SchemaStoreApi<TRaw, TStore = SignalsOf<TRaw>> extends Omit<StoreApi<TStore>, "state" | "patch"> { readonly state: TRaw; set(next: TRaw): void; patch(partial: Partial<TRaw>): void; deepPatch(partial: DeepPartial<TRaw>): void; update<K extends keyof TRaw>(key: K, fn: (current: TRaw[K]) => TRaw[K]): void }',
       summary:
-        'Return type of the schema-driven `defineStore` overload. Extends `StoreApi<T>` with four validated mutation methods: `set(next)` REPLACES the whole state atomically; `patch(partial)` SHALLOW-merges top-level fields (inherited from StoreApi, wrapped to validate the merged result); `deepPatch(partial)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, transformer)` transforms a single field via callback (covers add / remove / map / filter / object-key-delete in one method). All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Direct signal writes (`store.field.set(v)`) bypass validation by design — the documented escape hatch.',
+        'Return type of the schema-driven `defineStore` overload — STRICTLY TYPED from the schema. Two type params: `TRaw` = the schema-inferred field VALUES (`InferSchema<S>`), and `TStore` = the `.store` shape (per-field `Signal`s + setup-returned actions/computeds). Extends `StoreApi<TStore>` with four validated mutation methods, every one checked against the real field types at compile time (no manual annotations, no casts): `set(next: TRaw)` REPLACES the whole state atomically; `patch(partial: Partial<TRaw>)` SHALLOW-merges top-level fields; `deepPatch(partial: DeepPartial<TRaw>)` recursively merges nested plain objects while REPLACING arrays / class instances / primitives; `update(key, current => next)` transforms a single field via callback whose value is typed `TRaw[K]` (covers add / remove / map / filter / object-key-delete in one method). `state` is the typed field-value snapshot `TRaw`. All four validate the merged result against the schema and throw on failure (or invoke `onValidationError` if configured). Escape hatches (unvalidated by design): the FUNCTIONAL `patch(fn)` form and direct signal writes (`store.field.set(v)`).',
       example: `const u = useUser()  // SchemaStoreApi<{ name: Signal<string>; prefs: Signal<{theme: string}> }>
 u.set({ name: 'Alice', prefs: { theme: 'dark' } })   // full replace, validated
 u.patch({ name: 'Bob' })                              // shallow per-field replace, validated
@@ -156,7 +156,8 @@ u.update('items', items => items.filter(x => x.id !== 1))  // transform single f
         'Using `patch({ prefs: { theme: "dark" } })` expecting other `prefs` keys to survive — `patch` is SHALLOW, the whole `prefs` object is replaced. Use `deepPatch` for nested-object merging',
         '`deepPatch` REPLACES arrays / class instances / Dates — it only recurses into PLAIN objects. To merge an array, use `update` with a callback',
         'Using `update` for multi-field changes — it transforms ONE top-level field at a time. For multi-field updates, use `patch` / `deepPatch` / `set`',
-        'Expecting `update`\'s transformer to receive a strongly-typed value — current signature passes `unknown`. Cast at the call site (`(n as number) + 1`); future versions will infer from the schema',
+        'Calling `update` on a setup-returned action/computed key — `update`\'s key is constrained to the schema FIELD names only (typos and non-field keys fail typecheck). Actions/computeds are not writable state',
+        'Expecting the FUNCTIONAL `patch(fn)` form to validate — only the OBJECT form (`patch({ … })`) runs through the schema. The `patch(state => …)` callback is a raw-signal escape hatch, unvalidated by design (same as direct `store.field.set(v)`)',
       ],
       seeAlso: ['defineStore (schema mode)', 'DeepPartial', 'StoreApi'],
     },
