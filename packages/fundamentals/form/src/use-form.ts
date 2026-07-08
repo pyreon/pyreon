@@ -91,6 +91,43 @@ export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
 }
 
 /**
+ * Assemble a flat field-key map into a nested object / array structure: a dotted
+ * key becomes a nested path, and a numeric segment becomes an array index
+ * (`items.0.qty` → `{ items: [{ qty }] }`, `address.city` → `{ address: { city } }`).
+ * Keys WITHOUT a `.` pass through unchanged — so a flat form (the default) is
+ * byte-identical to before; assembly only kicks in for the dotted keys that
+ * `registerField('items.0.qty', …)` / `useFieldArray` create. Pure + exported.
+ */
+export function assembleNested(flat: Record<string, unknown>): Record<string, unknown> {
+  let hasDotted = false
+  for (const k in flat) {
+    if (k.includes('.')) {
+      hasDotted = true
+      break
+    }
+  }
+  if (!hasDotted) return flat // fast path: flat form unchanged
+  const result: Record<string, unknown> = {}
+  for (const key in flat) {
+    const value = flat[key]
+    if (!key.includes('.')) {
+      result[key] = value
+      continue
+    }
+    const segs = key.split('.')
+    let cur = result as Record<string, unknown>
+    for (let i = 0; i < segs.length - 1; i++) {
+      const seg = segs[i]!
+      const nextIsIndex = /^\d+$/.test(segs[i + 1]!)
+      if (cur[seg] === undefined || cur[seg] === null) cur[seg] = nextIsIndex ? [] : {}
+      cur = cur[seg] as Record<string, unknown>
+    }
+    cur[segs[segs.length - 1]!] = value
+  }
+  return result
+}
+
+/**
  * Options for the field-definition-based useForm overload.
  * Types are inferred from the field definitions array.
  */
@@ -261,11 +298,13 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   let _valuesCacheEpoch = -1
   const getValues = (): TValues => {
     if (_valuesCacheEpoch === _valuesEpoch && _valuesCache !== undefined) return _valuesCache
-    const values = {} as TValues
+    const flat = {} as Record<string, unknown>
     for (const [name] of fieldEntries) {
-      ;(values as Record<string, unknown>)[name] =
-        fields[name]?.value.peek() ?? (initialValues as Record<string, unknown>)[name]
+      flat[name] = fields[name]?.value.peek() ?? (initialValues as Record<string, unknown>)[name]
     }
+    // Assemble dotted keys (`items.0.qty`) into nested objects/arrays; a flat
+    // form (no dotted keys) is returned unchanged.
+    const values = assembleNested(flat) as TValues
     _valuesCache = values
     _valuesCacheEpoch = _valuesEpoch
     return values
@@ -274,17 +313,16 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Helper for submit — excludes disabled fields from payload.
   // Form-level disabled always takes priority over field-level.
   const getSubmitValues = (): TValues => {
-    const values = {} as TValues
+    const flat = {} as Record<string, unknown>
     const formIsDisabled = formDisabled.peek()
     for (const [name] of fieldEntries) {
       const f = fields[name]
       // Form-level disabled → ALL fields excluded
       // Field-level disabled → only that field excluded
       if (formIsDisabled || f?.disabled.peek()) continue
-      ;(values as Record<string, unknown>)[name] =
-        f?.value.peek() ?? (currentInitials as Record<string, unknown>)[name]
+      flat[name] = f?.value.peek() ?? (currentInitials as Record<string, unknown>)[name]
     }
-    return values
+    return assembleNested(flat) as TValues
   }
 
   // Per-field schema-version tracking — independent of `validationVersions`
@@ -663,7 +701,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   function getValuesPublic<K extends keyof TValues>(field: K): TValues[K]
   function getValuesPublic<K extends keyof TValues>(field?: K): TValues | TValues[K] {
     if (field === undefined) return getValues()
-    return fields[field].value.peek()
+    const f = fields[field]
+    if (f) return f.value.peek()
+    // Not a directly-registered leaf (e.g. an array/object PARENT like `items`
+    // whose leaves are `items.0.qty`) — read it from the assembled tree.
+    return (getValues() as Record<string, unknown>)[field as string] as TValues[K]
   }
 
   // Aggregate dirty/touched records (only the dirty/touched fields present).
