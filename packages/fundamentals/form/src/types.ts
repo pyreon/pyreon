@@ -173,8 +173,14 @@ export interface FormState<TValues extends Record<string, unknown>> {
   setErrors: (errors: Partial<Record<keyof TValues, ValidationError>>) => void
   /** Clear all field errors. */
   clearErrors: () => void
-  /** Reset a single field to its initial value. */
-  resetField: (field: keyof TValues) => void
+  /**
+   * Reset a single field to its initial value. `options.keepError` /
+   * `keepTouched` preserve those across the reset (react-hook-form parity).
+   */
+  resetField: (
+    field: keyof TValues,
+    options?: { keepError?: boolean; keepTouched?: boolean },
+  ) => void
   /**
    * Returns props for binding an input element to a field.
    * For text/select: includes `value` signal, `onInput`, and `onBlur`.
@@ -215,8 +221,24 @@ export interface FormState<TValues extends Record<string, unknown>> {
    * Can be called directly or as a form event handler (calls preventDefault).
    */
   handleSubmit: (e?: Event) => Promise<void>
-  /** Reset all fields to initial values. */
-  reset: () => void
+  /**
+   * Reset the form. With no argument, reverts every field to its initial value
+   * and clears errors/touched/dirty + submitCount. Pass `values` to reset TO
+   * new values (the named fields become the new baseline; the rest revert to
+   * their original initial) — the idiomatic "reset to freshly-saved server
+   * data" flow. `options` preserves selected state across the reset:
+   * `keepErrors` / `keepTouched` / `keepDirty` / `keepSubmitCount`
+   * (react-hook-form parity).
+   */
+  reset: (
+    values?: Partial<TValues>,
+    options?: {
+      keepErrors?: boolean
+      keepTouched?: boolean
+      keepDirty?: boolean
+      keepSubmitCount?: boolean
+    },
+  ) => void
   /** Validate all fields and return whether the form is valid. */
   validate: () => Promise<boolean>
   /**
