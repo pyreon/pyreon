@@ -190,18 +190,28 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // (zod/valibot/arktype — accepted directly, no adapter, no `as never` cast).
   const schema = resolveSchemaValidator<TValues>(schemaInput)
 
+  // Mutable per-field validator map — seeded from `options.validators`, extended
+  // at runtime by `registerField` (dynamic fields). The field closures read
+  // `fieldValidators[name]`, so a validator added post-creation is picked up.
+  const fieldValidators: Record<string, ValidateFn<unknown, TValues>> = {
+    ...((validators ?? {}) as unknown as Record<string, ValidateFn<unknown, TValues>>),
+  }
+
   // Build field states.
   //
-  // STATIC FIELD MODEL — do NOT add auto-registration here. `fieldEntries` is
-  // captured ONCE from `initialValues` and is the fixed shape the whole form
-  // is built on: `values()`/`getValues()` iterate it (epoch-cached), the submit
-  // payload is assembled from it, and dirty/touched aggregation keys on it. A
-  // field registered lazily on first `useField`/`register` would NOT be in
-  // `fieldEntries`, so its value would never reach `onSubmit` and it would be
-  // invisible to `values()` — a silent data-loss bug. That's why using an
-  // undeclared field THROWS (with actionable guidance) instead of
-  // auto-registering the way react-hook-form does. Declare every field in
-  // `useForm({ initialValues })` (or the `fields` array).
+  // STATIC-BY-DEFAULT FIELD MODEL. `fieldEntries` starts from `initialValues`
+  // and is the shape the whole form is built on: `values()`/`getValues()`
+  // iterate it (epoch-cached), the submit payload is assembled from it, and
+  // dirty/touched aggregation keys on it. There is NO lazy AUTO-registration
+  // (a field first seen by `useField`/`register` would NOT be in `fieldEntries`,
+  // so its value would never reach `onSubmit` — a silent data-loss bug), which
+  // is why using an undeclared field THROWS. The ONLY way to add a field after
+  // creation is the EXPLICIT `form.registerField(name, initial, validator?)`
+  // escape hatch (+ `unregisterField`) — for dynamic / data-driven forms. It
+  // mutates `fieldEntries` + all the per-field machinery in lockstep, so the
+  // field is fully first-class (reaches `values()`/`onSubmit`, participates in
+  // validity). Registration stays explicit; only the "no *silent* auto-register"
+  // invariant is load-bearing.
   const fieldEntries = Object.entries(initialValues) as [
     keyof TValues & string,
     TValues[keyof TValues],
@@ -209,7 +219,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   // Registered top-level field names — used to match/route schema errors so a
   // nested (`address.city`) or path-less schema error is never silently dropped.
-  const fieldNames: ReadonlySet<string> = new Set(fieldEntries.map(([n]) => String(n)))
+  const fieldNames: Set<string> = new Set(fieldEntries.map(([n]) => String(n)))
 
   const fields = {} as { [K in keyof TValues]: FieldState<TValues[K]> }
 
@@ -372,7 +382,14 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // once), not per-render — this IS the documented form architecture
   // ("value/error/touched/dirty are independent Signal<T>"), not the
   // signal-in-render-loop anti-pattern the rule targets. Disabled per-site.
-  for (const [name, initial] of fieldEntries) {
+  // Build one field's FieldState + its per-field machinery. Extracted from the
+  // setup loop so `registerField` can create a field at runtime with the EXACT
+  // same wiring (dynamic / data-driven forms — an EXPLICIT escape hatch from the
+  // static model; still no lazy AUTO-registration).
+  const createFieldState = (
+    name: keyof TValues & string,
+    initial: TValues[keyof TValues],
+  ): FieldState<unknown> => {
     // EAGER: value + dirty. Both are written by `setValue` on the keystroke hot
     // path, so they're allocated up front and captured DIRECTLY in the closures
     // below — no getter indirection on the hot path, so no V8 deopt risk (the
@@ -444,7 +461,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // overhead with zero benefit (batch of 1 write is a no-op).
     // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     const runValidation = async (value: TValues[typeof name]) => {
-      const fieldValidator = validators?.[name]
+      const fieldValidator = fieldValidators[name]
       if (fieldValidator) {
         // Bump version to track this validation run
         /* v8 ignore next — `?? 0` right arm is dead: validationVersions[name] is
@@ -584,7 +601,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           // untouched — blur should validate the field that was blurred,
           // not surprise the user with errors on fields they haven't
           // visited yet.
-          if (schema && !validators?.[name]) {
+          if (schema && !fieldValidators[name]) {
             runSchemaForField(name).catch(() => {
               // Schema threw — swallowed here; submit's `validate()`
               // surfaces the error properly via `submitError`.
@@ -618,6 +635,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // same `validateField`). blur/submit modes stay passive until a blur /
     // submit. `showError` still gates display on `touched`.
     if (validateOn === 'change') validateField(valueSig.peek())
+    return fields[name] as FieldState<unknown>
+  }
+
+  for (const [name, initial] of fieldEntries) {
+    createFieldState(name, initial)
   }
 
   // Clean up debounce timers, cancel in-flight validators, and dispose on unmount
@@ -699,7 +721,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       // Run field-level validators with all values for cross-field support
       await Promise.all(
         fieldEntries.map(async ([name]) => {
-          const fieldValidator = validators?.[name]
+          const fieldValidator = fieldValidators[name]
           if (fieldValidator) {
             // Bump version so any in-flight debounced validation is discarded
             /* v8 ignore next — `?? 0` right arm is dead: validationVersions[name] is
@@ -813,7 +835,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           else fields[name].error.set(undefined)
           // Schema-only fields (no per-field validator) get their schema error
           // applied here too, mirroring blur-time `runSchemaForField`.
-          if (schema && !validators?.[name]) await runSchemaForField(name).catch(() => {})
+          if (schema && !fieldValidators[name]) await runSchemaForField(name).catch(() => {})
         }),
       )
       return names.every((name) => !fields[name] || fields[name].error.peek() === undefined)
@@ -1109,6 +1131,49 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     _valuesEpoch++ // values changed → invalidate snapshot cache
   }
 
+  // ── Dynamic field registration (explicit escape hatch) ──────────────────
+  // Add / remove a field at runtime for dynamic / data-driven forms (a
+  // server-defined schema, "add another section"). The field becomes fully
+  // first-class — reaches `values()`/`onSubmit`, participates in validity.
+  const registerField = (
+    name: string,
+    initialValue?: unknown,
+    validator?: ValidateFn<unknown, TValues>,
+  ): void => {
+    const key = name as keyof TValues & string
+    if (validator) fieldValidators[name] = validator
+    if (fields[key]) return // already registered — idempotent (validator refreshed above)
+    const init = initialValue as TValues[keyof TValues]
+    fieldEntries.push([key, init])
+    fieldNames.add(name)
+    ;(currentInitials as Record<string, unknown>)[name] = init
+    createFieldState(key, init)
+    _valuesEpoch++ // new field → invalidate the values() snapshot cache
+  }
+
+  const unregisterField = (name: string): void => {
+    const key = name as keyof TValues & string
+    const fieldState = fields[key]
+    if (!fieldState) return
+    // Reset FIRST so the field's error/dirty subscribers fire and cleanly
+    // zero its contribution to `_invalidCount` / `_dirtyCount` before removal.
+    fieldState.reset()
+    clearTimeout(debounceTimers[key])
+    delete debounceTimers[key]
+    delete validationVersions[key]
+    delete fieldRunValidation[key]
+    delete schemaFieldVersions[key]
+    delete fieldValidators[name]
+    delete (currentInitials as Record<string, unknown>)[name]
+    delete (fields as Record<string, unknown>)[name]
+    _fieldIds.delete(name)
+    for (const t of ['text', 'number', 'checkbox', 'file']) registerCache.delete(`${name}:${t}`)
+    const idx = fieldEntries.findIndex(([n]) => n === key)
+    if (idx !== -1) fieldEntries.splice(idx, 1)
+    fieldNames.delete(name)
+    _valuesEpoch++ // field removed → invalidate the values() snapshot cache
+  }
+
   // ── Reactive initialValues accessor watcher ───────��─────────────────
   if (typeof rawInitialValues === 'function') {
     effect(() => {
@@ -1156,6 +1221,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     getFieldState,
     setInitialValues,
     focusFirstError,
+    registerField,
+    unregisterField,
     disabled: formDisabled,
     readOnly: formReadOnly,
   }
