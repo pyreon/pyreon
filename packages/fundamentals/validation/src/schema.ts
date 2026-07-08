@@ -112,14 +112,19 @@ export type InferSchema<S> = S extends {
   readonly _infer: infer T extends Record<string, unknown>
 }
   ? T
-  : S extends {
-        readonly '~standard': {
-          readonly types: {
-            readonly output: infer O extends Record<string, unknown>
-          }
-        }
+  : // Standard Schema (Tier A.2). Its `types` phantom is OPTIONAL per the
+    // spec (`types?: { input; output }`), so we must match `types?` and
+    // unwrap with `NonNullable` — matching a required `types` (the prior
+    // shape) NEVER hit for a real zod/valibot/arktype schema, silently
+    // collapsing every raw-schema consumer to the `Record<string, unknown>`
+    // fallback. With this, passing a raw `z.object(...)` / `v.object(...)` /
+    // `type(...)` directly infers its field types.
+    S extends { readonly '~standard': { readonly types?: infer TY } }
+    ? NonNullable<TY> extends {
+        readonly output: infer O extends Record<string, unknown>
       }
-    ? O
+      ? O
+      : Record<string, unknown>
     : Record<string, unknown>
 
 /**
