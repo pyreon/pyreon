@@ -1363,6 +1363,43 @@ fn is_jsx_fn_init(init: &Expression) -> bool {
     }
 }
 
+/// Is this init a JSX COLLECTION — an array literal with >=1 JSX element
+/// (`[<a/>, <b/>]`) or a `.map()` whose callback returns JSX
+/// (`items.map(i => <li/>)`)? A bare `{x}` child of such a binding must be
+/// MOUNTED (`_mountSlot` -> `mountChild`, which renders arrays element-by-
+/// element), not text-coerced — pre-fix the compiler baked
+/// `textContent = arr`, stringifying a VNode[] to "[object Object]".
+/// Mirrors JS `isJsxCollectionInit` 1:1.
+fn is_jsx_collection_init(init: &Expression) -> bool {
+    let mut e = init;
+    while let Expression::ParenthesizedExpression(p) = e {
+        e = &p.expression;
+    }
+    match e {
+        Expression::ArrayExpression(arr) => arr.elements.iter().any(|el| match el {
+            ArrayExpressionElement::SpreadElement(_) => false,
+            _ => el.as_expression().map_or(false, |ex| returns_jsx_value(ex)),
+        }),
+        Expression::CallExpression(call) => {
+            if let Expression::StaticMemberExpression(m) = &call.callee {
+                if m.property.name.as_str() == "map" {
+                    if let Some(last) = call.arguments.last() {
+                        if let Some(ex) = last.as_expression() {
+                            return match ex {
+                                Expression::ArrowFunctionExpression(a) => arrow_returns_jsx(a),
+                                Expression::FunctionExpression(f) => fn_returns_jsx(f),
+                                _ => false,
+                            };
+                        }
+                    }
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
 /// PZ-02: is this (type-layer-unwrapped) child expression a call to an
 /// in-file JSX-returning helper? Accepts the bare call (`{cell(x)}`) and the
 /// concise-arrow accessor form (`{() => cell(x)}`, body type-layer
@@ -5977,6 +6014,11 @@ fn collect_prop_derived(decl: &VariableDeclaration, ctx: &mut Ctx) {
                     e = &p.expression;
                 }
                 if matches!(e, Expression::JSXElement(_) | Expression::JSXFragment(_)) {
+                    ctx.element_vars.insert(id.name.to_string());
+                } else if is_jsx_collection_init(e) {
+                    // Array-of-JSX or map-of-JSX const — mount it (renders
+                    // arrays) instead of text-coercing the VNode[] to
+                    // "[object Object]". Mirrors the JS backend.
                     ctx.element_vars.insert(id.name.to_string());
                 }
             }

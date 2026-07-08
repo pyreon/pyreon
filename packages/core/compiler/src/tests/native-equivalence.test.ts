@@ -1952,6 +1952,25 @@ describeNative('Native vs JS equivalence — corpus-sweep regressions', () => {
     compare('<div>{(() => { const x = 1; return <iframe src="x" /> })()}</div>'))
   test('IIFE returning JSX after statements', () =>
     compare('<section>{(() => { if (a) return null; return <article>{b()}</article> })()}</section>'))
+
+  // (4) An array-of-JSX const (`const arr = [<a/>, <b/>]`) or a map-of-JSX
+  // const (`const rows = items.map(i => <li/>)`) used as a bare `{x}` child is
+  // a VNODE-COLLECTION child (`_mountSlot` -> `mountChild` renders arrays), NOT
+  // text (`textContent = arr` -> "[object Object],[object Object]"). Both
+  // backends must add such a binding to `element_vars` (see
+  // `is_jsx_collection_init`). Reported migration finding: `<div>{vnodeArray}</div>`.
+  test('array-of-JSX const child is a vnode collection (_mountSlot)', () =>
+    compare('const arr = [<span>a</span>, <span>b</span>]; export const X = () => <div>{arr}</div>'))
+  test('map-of-JSX const child is a vnode collection (_mountSlot)', () =>
+    compare(
+      'const items = [1, 2]; const rows = items.map((i) => <li>{i}</li>); export const X = () => <ul>{rows}</ul>',
+    ))
+  test('array-of-JSX with a conditional element (returnsJsxValue recursion)', () =>
+    compare('const a = [c ? <b>x</b> : <i>y</i>, <span>z</span>]; export const X = () => <div>{a}</div>'))
+  test('plain string const child STAYS text (no over-classification)', () =>
+    compare("const s = 'hi'; export const X = () => <div>{s}</div>"))
+  test('array-of-primitives const stays text (no JSX element → not a collection)', () =>
+    compare('const nums = [1, 2, 3]; export const X = () => <div>{nums}</div>'))
   test('plain call (non-inline callee) returning JSX stays text-classified', () =>
     compare('<div>{renderThing()}</div>'))
 })

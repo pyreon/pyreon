@@ -1704,6 +1704,45 @@ export function transformJSX_JS(
   }
 
   /**
+   * Is this init a JSX COLLECTION — an array literal with ≥1 JSX element
+   * (`[<a/>, <b/>]`) or a `.map()` whose callback returns JSX
+   * (`items.map(i => <li/>)`)? A bare `{x}` child of such a binding must be
+   * MOUNTED (`_mountSlot` → `mountChild`, which renders arrays element-by-
+   * element), not text-coerced — pre-fix the compiler baked
+   * `textContent = arr` / `.data = arr`, stringifying a VNode[] to
+   * "[object Object],[object Object]". Same imprecision trade-off as
+   * `elementVars`/`jsxFnVars`: `mountChild` renders string/number elements
+   * correctly too, so a mixed/primitive array stays correct — the only cost
+   * is skipping the text fast path. Mirrored 1:1 in the Rust backend's
+   * `is_jsx_collection_init`.
+   */
+  function isJsxCollectionInit(init: N | undefined | null): boolean {
+    let node = init
+    while (node?.type === 'ParenthesizedExpression') node = node.expression
+    if (!node) return false
+    if (node.type === 'ArrayExpression') {
+      return (node.elements ?? []).some(
+        (el: N | null) => el != null && el.type !== 'SpreadElement' && returnsJsxValue(el),
+      )
+    }
+    if (node.type === 'CallExpression') {
+      const callee = node.callee
+      if (
+        (callee?.type === 'MemberExpression' || callee?.type === 'StaticMemberExpression') &&
+        callee.property?.type === 'Identifier' &&
+        callee.property.name === 'map'
+      ) {
+        const args = node.arguments ?? []
+        const fn = args[args.length - 1]
+        if (fn && (fn.type === 'ArrowFunctionExpression' || fn.type === 'FunctionExpression')) {
+          return fnReturnsJsx(fn)
+        }
+      }
+    }
+    return false
+  }
+
+  /**
    * Find declarations/params in a function that shadow JSX-returning fn
    * names — the `findShadowingNames` discipline applied to `jsxFnVars`
    * (params + body-top-level variable declarations; a same-named re-decl
@@ -1904,6 +1943,10 @@ export function transformJSX_JS(
         let initNode = decl.init
         while (initNode?.type === 'ParenthesizedExpression') initNode = initNode.expression
         if (initNode?.type === 'JSXElement' || initNode?.type === 'JSXFragment') {
+          elementVars.add(decl.id.name)
+        } else if (isJsxCollectionInit(initNode)) {
+          // Array-of-JSX or map-of-JSX const — mount it (renders arrays)
+          // instead of text-coercing the VNode[] to "[object Object]".
           elementVars.add(decl.id.name)
         }
       }
