@@ -24,7 +24,12 @@ export type {
 } from './types'
 export type { UseFieldResult } from './use-field'
 export { useField } from './use-field'
-export type { FieldArrayItem, UseFieldArrayResult } from './use-field-array'
+export type {
+  FieldArrayItem,
+  FormFieldArrayItem,
+  UseFieldArrayResult,
+  UseFormFieldArrayResult,
+} from './use-field-array'
 export { useFieldArray } from './use-field-array'
 export type { UseFormFieldsOptions } from './use-form'
 export { useForm } from './use-form'
