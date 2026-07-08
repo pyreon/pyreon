@@ -883,18 +883,54 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     }
   }
 
-  const reset = () => {
+  const reset = (
+    values?: Partial<TValues>,
+    resetOptions?: {
+      keepErrors?: boolean
+      keepTouched?: boolean
+      keepDirty?: boolean
+      keepSubmitCount?: boolean
+    },
+  ) => {
     clearAllTimers()
+    // Snapshot any state the caller asked to preserve, BEFORE the reset wipes it.
+    const keepErrors = resetOptions?.keepErrors ? { ...getErrors() } : undefined
+    const keepTouched = resetOptions?.keepTouched ? { ...touchedFields() } : undefined
+    const keepDirty = resetOptions?.keepDirty ? { ...dirtyFields() } : undefined
     // Batch the reset writes: every field's reset() touches multiple
     // signals (value/error/touched/dirty), then submitCount + submitError.
     // Without batch(), N-field form fires 4N+2 separate notify cycles.
     batch(() => {
-      for (const [name] of fieldEntries) {
-        fields[name].reset()
+      if (values !== undefined) {
+        // Reset TO new values (react-hook-form `reset(values)`): the named
+        // fields become the new baseline (via setInitialValues); the rest
+        // revert to their original initial.
+        setInitialValues(values)
+        for (const [name] of fieldEntries) {
+          if (!(name in values)) fields[name].reset()
+        }
+      } else {
+        for (const [name] of fieldEntries) {
+          fields[name].reset()
+        }
       }
-      submitCount.set(0)
-      submitError.set(undefined)
-      isSubmitSuccessful.set(false)
+      // Restore any kept state on top of the fresh reset.
+      if (keepErrors) {
+        for (const [k, e] of Object.entries(keepErrors)) {
+          fields[k as keyof TValues].error.set(e as ValidationError)
+        }
+      }
+      if (keepTouched) {
+        for (const k of Object.keys(keepTouched)) fields[k as keyof TValues].touched.set(true)
+      }
+      if (keepDirty) {
+        for (const k of Object.keys(keepDirty)) fields[k as keyof TValues].dirty.set(true)
+      }
+      if (!resetOptions?.keepSubmitCount) {
+        submitCount.set(0)
+        submitError.set(undefined)
+        isSubmitSuccessful.set(false)
+      }
     })
   }
 
@@ -930,10 +966,19 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     }
   }
 
-  const resetField = (field: keyof TValues) => {
-    if (fields[field]) {
-      fields[field].reset()
-    }
+  const resetField = (
+    field: keyof TValues,
+    resetOptions?: { keepError?: boolean; keepTouched?: boolean },
+  ) => {
+    const fieldState = fields[field]
+    if (!fieldState) return
+    const keptError = resetOptions?.keepError ? fieldState.error.peek() : undefined
+    const keptTouched = resetOptions?.keepTouched ? fieldState.touched.peek() : undefined
+    batch(() => {
+      fieldState.reset()
+      if (resetOptions?.keepError) fieldState.error.set(keptError)
+      if (resetOptions?.keepTouched) fieldState.touched.set(keptTouched ?? false)
+    })
   }
 
   // ── Accessibility id wiring ───────────────────────────────────────────
