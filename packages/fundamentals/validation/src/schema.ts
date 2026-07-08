@@ -14,7 +14,13 @@
  * dependencies on any specific validation library.
  */
 
-import type { ParseResult, ValidationIssue } from './types'
+import type {
+  ParseResult,
+  SchemaValidateFn,
+  StandardSchemaLike,
+  ValidationError,
+  ValidationIssue,
+} from './types'
 
 /**
  * Alias for `ValidationIssue` — re-exported under the schema-store /
@@ -27,6 +33,35 @@ export type SchemaIssue = ValidationIssue
  * state-tree friendly name. Same shape; either name works.
  */
 export type SchemaParseResult<T> = ParseResult<T>
+
+/**
+ * Adapt a raw Standard Schema into a `SchemaValidateFn` — the whole-object
+ * validator (`values → per-key error record`) that `@pyreon/form` and
+ * `@pyreon/store` consume. Issue paths are flattened to dot-strings
+ * (`address.city`), so a nested error routes to its ancestor field. First
+ * message per path wins. Async schemas resolve naturally (the caller awaits).
+ *
+ * This is the bridge that lets a consumer accept a RAW zod/valibot/arktype
+ * schema — no `zodSchema()` adapter, no cast:
+ * `useForm({ schema: myZodSchema })`.
+ */
+export function standardSchemaToValidator<TValues extends Record<string, unknown>>(
+  schema: StandardSchemaLike,
+): SchemaValidateFn<TValues> {
+  return async (values: TValues) => {
+    const result = await schema['~standard'].validate(values)
+    const errors: Record<string, ValidationError> = {}
+    if (result != null && 'issues' in result && result.issues) {
+      for (const issue of result.issues) {
+        const key = (issue.path ?? [])
+          .map((p) => (typeof p === 'object' && p !== null ? String(p.key) : String(p)))
+          .join('.')
+        if (errors[key] === undefined) errors[key] = issue.message
+      }
+    }
+    return errors as Partial<Record<keyof TValues, ValidationError>>
+  }
+}
 
 /**
  * Duck-typed `TypedSchemaAdapter` shape (Tier A.1). The `_infer` field

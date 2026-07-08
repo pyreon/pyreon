@@ -4,6 +4,7 @@ export {
   formatIssues,
   isPyreonAdapter,
   isStandardSchema,
+  standardSchemaToValidator,
   wrapStandardSchema,
 } from './schema'
 export type {
@@ -18,6 +19,9 @@ export type {
   ParseResult,
   SchemaAdapter,
   SchemaValidateFn,
+  StandardSchemaIssue,
+  StandardSchemaLike,
+  StandardSchemaResult,
   TypedSchemaAdapter,
   ValidateFn,
   ValidationError,
