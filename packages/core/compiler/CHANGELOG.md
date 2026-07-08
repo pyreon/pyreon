@@ -1,5 +1,11 @@
 # @pyreon/compiler
 
+## 0.41.2
+
+### Patch Changes
+
+- [#2117](https://github.com/pyreon/pyreon/pull/2117) [`72770bb`](https://github.com/pyreon/pyreon/commit/72770bbf4453be41332f595a1aa6fa191315199e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(compiler): array-of-JSX / map-of-JSX consts used as a bare `{x}` child now MOUNT instead of stringifying. Previously `const arr = [<a/>, <b/>]; <div>{arr}</div>` (or `const rows = items.map(i => <li/>); <ul>{rows}</ul>`) baked to `textContent = arr`, rendering `[object Object],[object Object]`. The compiler's element-binding tracking now recognizes array-of-JSX and map-of-JSX const initializers (`isJsxCollectionInit`, mirrored 1:1 in the Rust backend) and routes them through `_mountSlot` → `mountChild`, which renders arrays element-by-element. String/number consts stay on the text fast path (no over-classification). Cross-backend byte-equivalence verified.
+
 ## 0.41.1
 
 ## 0.41.0

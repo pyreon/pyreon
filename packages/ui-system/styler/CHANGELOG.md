@@ -1,5 +1,14 @@
 # @pyreon/styler
 
+## 0.41.2
+
+### Patch Changes
+
+- [#2114](https://github.com/pyreon/pyreon/pull/2114) [`3ebf924`](https://github.com/pyreon/pyreon/commit/3ebf924cff00ed5bfeb0a099f66f578409fe4c18) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fundamental completions of the migration-finding fixes:
+
+  - **@pyreon/styler**: `insertGlobal`'s `@layer`-unsupported fallback now flattens `@layer` blocks RECURSIVELY — handling MULTIPLE sibling blocks and NESTED blocks, not just a single outer block. Previously only a lone `@layer name{…}` spanning the whole string was unwrapped; sibling/nested layers still failed to insert in happy-dom.
+  - **@pyreon/form**: documented the STATIC-FIELD-MODEL contract in `use-form.ts` (why `useField`/`register` throw for undeclared fields instead of auto-registering — auto-registering would silently drop the field from the epoch-cached `values()`), and regression-locked the actionable "declare it in useForm({ initialValues })" guidance in the field-not-found errors.
+
 ## 0.41.1
 
 ### Patch Changes

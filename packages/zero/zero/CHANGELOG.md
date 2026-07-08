@@ -1,5 +1,22 @@
 # @pyreon/zero
 
+## 0.41.2
+
+### Patch Changes
+
+- [#2112](https://github.com/pyreon/pyreon/pull/2112) [`93ee46b`](https://github.com/pyreon/pyreon/commit/93ee46b03f7c13a55abd018ec27376b2b722dbea) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero({ env })` build-gate failures now name the `ZERO_PUBLIC_` prefix fix. A missing public var previously failed with a bare "required but not set", which is confusing when the var IS set but without the prefix (so it stays private and never reaches the gate). The message now spells out that public vars need the `ZERO_PUBLIC_` prefix in `.env` and secrets belong in server-side `validateEnv()`.
+
+- [#2113](https://github.com/pyreon/pyreon/pull/2113) [`55195ff`](https://github.com/pyreon/pyreon/commit/55195ff78e4a7e0a51af676211cc53ac880ad9d5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): SSR post-step no longer emits a spurious "Skipping SSR build" warning during the SSG prerender sub-build. In `mode: 'ssr' | 'isr'`, the SSG plugin runs a nested prerender build to `<dist>/.zero-ssg-server` (which has no client `index.html`); the SSR plugin's `closeBundle` fired there and warned `[zero:ssr] Skipping SSR build — …/.zero-ssg-server/index.html not found`, even though the real (outer) SSR build succeeds and produces `dist/server/entry-server.js`. The ssg-plugin already skipped on the SSR flag; this makes the guard symmetric (ssr-plugin now also skips on `PYREON_ZERO_SSG_INNER_BUILD`). Reproduced + verified on the default `examples/ssr-showcase` build.
+
+- Updated dependencies []:
+  - @pyreon/head@0.41.2
+  - @pyreon/router@0.41.2
+  - @pyreon/runtime-server@0.41.2
+  - @pyreon/server@0.41.2
+  - @pyreon/vite-plugin@0.41.2
+  - @pyreon/meta@0.41.2
+  - @pyreon/sized-map@0.41.2
+
 ## 0.41.1
 
 ### Patch Changes

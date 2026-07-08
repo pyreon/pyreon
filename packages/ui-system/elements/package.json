@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/elements",
-  "version": "0.41.1",
+  "version": "0.41.2",
   "description": "Foundational UI components for Pyreon",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/ui-system/elements#readme",
