@@ -13,6 +13,7 @@
 
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { topoSortByWorkspaceDeps } from './publish-order'
 import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
 
 const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
@@ -253,12 +254,32 @@ if (resolveErrors.length > 0) {
   process.exit(1)
 }
 
-// ── Phase 2 — publish the fully-validated plan. Every manifest here is
-// guaranteed `workspace:`-free. The only failures possible now are
-// network / npm-side (transient) — reported via `failed[]` + exit 1,
-// and a re-run resumes (skip-if-published). The deterministic
-// manifest-resolution bug class can no longer cause a partial release.
-for (const { dirPath, pkgPath, raw, pkg, resolved } of plan) {
+// ── Phase 2 — publish the fully-validated plan LEAF-FIRST. A package is
+// published only AFTER every intra-workspace `@pyreon/*` package it depends
+// on, so a dependent is never on npm carrying a `^X.Y.Z` range on a sibling
+// that hasn't published yet (which made `bun install` unresolvable in the
+// window — see scripts/publish-order.ts). Directory/alphabetical order was
+// NOT dependency-safe (e.g. `@pyreon/feature` sorts before its dep
+// `@pyreon/form`). Only `dependencies` + `peerDependencies` gate the order
+// (install-time requirements); devDependencies are stripped from the tarball
+// and never affect a consumer's resolution.
+const publishOrder = topoSortByWorkspaceDeps(
+  plan.map((entry) => {
+    const r = entry.resolved as {
+      dependencies?: Record<string, string>
+      peerDependencies?: Record<string, string>
+    }
+    const deps = [...Object.keys(r.dependencies ?? {}), ...Object.keys(r.peerDependencies ?? {})]
+    return { name: entry.pkg.name, deps, entry }
+  }),
+).map((node) => node.entry)
+
+// Phase 2 (continued). Every manifest here is guaranteed `workspace:`-free.
+// The only failures possible now are network / npm-side (transient) —
+// reported via `failed[]` + exit 1, and a re-run resumes (skip-if-published).
+// The deterministic manifest-resolution bug class can no longer cause a
+// partial release.
+for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
   console.log(`📦 ${pkg.name}@${pkg.version}`)
   await writeFile(pkgPath, `${JSON.stringify(resolved, null, 2)}\n`)
 
