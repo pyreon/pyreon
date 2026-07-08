@@ -9,6 +9,7 @@ import type {
   FieldErrorProps,
   FieldLabelProps,
   FieldRegisterCheckboxProps,
+  FieldRegisterFileProps,
   FieldRegisterProps,
   FieldState,
   FormState,
@@ -954,7 +955,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // and the rest return `FieldRegisterProps<unknown>`.
   const registerCache = new Map<
     string,
-    FieldRegisterProps<unknown> | FieldRegisterCheckboxProps
+    FieldRegisterProps<unknown> | FieldRegisterCheckboxProps | FieldRegisterFileProps
   >()
 
   function register<K extends keyof TValues & string>(
@@ -963,16 +964,23 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   ): FieldRegisterCheckboxProps
   function register<K extends keyof TValues & string>(
     field: K,
+    options: { type: 'file' },
+  ): FieldRegisterFileProps
+  function register<K extends keyof TValues & string>(
+    field: K,
     options?: { type?: 'number' },
   ): FieldRegisterProps<TValues[K]>
   function register<K extends keyof TValues & string>(
     field: K,
-    fieldOpts?: { type?: 'checkbox' | 'number' },
-  ): FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps {
+    fieldOpts?: { type?: 'checkbox' | 'number' | 'file' },
+  ): FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps | FieldRegisterFileProps {
     const cacheKey = `${field}:${fieldOpts?.type ?? 'text'}`
     const cached = registerCache.get(cacheKey)
     if (cached) {
-      return cached as FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps
+      return cached as
+        | FieldRegisterProps<TValues[K]>
+        | FieldRegisterCheckboxProps
+        | FieldRegisterFileProps
     }
 
     const fieldState = fields[field]
@@ -980,6 +988,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       const target = e.target as HTMLInputElement
       if (fieldOpts?.type === 'checkbox') {
         fieldState.setValue(target.checked as TValues[K])
+      } else if (fieldOpts?.type === 'file') {
+        // A file input can't be value-controlled — write its FileList to the
+        // field (value() is `FileList | null`; read `files?.[0]` for one file).
+        fieldState.setValue(target.files as TValues[K])
       } else if (fieldOpts?.type === 'number') {
         const num = target.valueAsNumber
         fieldState.setValue((Number.isNaN(num) ? target.value : num) as TValues[K])
@@ -1028,6 +1040,22 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       }
       registerCache.set(cacheKey, checkboxProps)
       return checkboxProps
+    }
+
+    if (fieldOpts?.type === 'file') {
+      // Omit BOTH `value` and `checked` — a file input can't be value-bound.
+      // `onInput` writes `target.files` to the field.
+      const fileProps: FieldRegisterFileProps = {
+        id,
+        onInput,
+        onBlur,
+        disabled,
+        readOnly,
+        'aria-invalid': ariaInvalid,
+        'aria-describedby': ariaDescribedby,
+      }
+      registerCache.set(cacheKey, fileProps)
+      return fileProps
     }
 
     const props: FieldRegisterProps<TValues[K]> = {

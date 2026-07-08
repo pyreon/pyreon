@@ -18,7 +18,7 @@
   "@pyreon/elements": 8448,
   "@pyreon/feature": 3584,
   "@pyreon/flow": 15616,
-  "@pyreon/form": 4608,
+  "@pyreon/form": 5120,
   "@pyreon/head": 256,
   "@pyreon/hooks": 4608,
   "@pyreon/hotkeys": 2304,

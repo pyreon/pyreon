@@ -80,6 +80,27 @@ export interface FieldRegisterCheckboxProps {
   'aria-describedby'?: Accessor<string | undefined>
 }
 
+/**
+ * Props returned by `register(field, { type: 'file' })`. Omits BOTH `value`
+ * and `checked` — a file input cannot be value-controlled (`<input type="file"
+ * value=…>` is a no-op the browser rejects for security). `onInput` writes the
+ * input's `FileList` (`target.files`) to the field, so `field.value()` is a
+ * `FileList | null` — read `files?.[0]` for a single file. Spread cleanly onto
+ * `<input type="file">` without a cast.
+ */
+export interface FieldRegisterFileProps {
+  /** Stable input id (auto-generated). See `FieldRegisterProps.id`. */
+  id: string
+  onInput: (e: Event) => void
+  onBlur: () => void
+  disabled?: Accessor<boolean>
+  readOnly?: Accessor<boolean>
+  /** Reactive `aria-invalid` — see `FieldRegisterProps`. */
+  'aria-invalid'?: Accessor<'true' | undefined>
+  /** Reactive `aria-describedby` — see `FieldRegisterProps`. */
+  'aria-describedby'?: Accessor<string | undefined>
+}
+
 /** Props for a field's ERROR element (`errorProps(field)`) — spread onto the
  * element that displays the field's error message. Its `id` matches the
  * input's `aria-describedby`, and `role="alert"` announces the message. */
@@ -167,6 +188,10 @@ export interface FormState<TValues extends Record<string, unknown>> {
       field: K,
       options: { type: 'checkbox' },
     ): FieldRegisterCheckboxProps
+    <K extends keyof TValues & string>(
+      field: K,
+      options: { type: 'file' },
+    ): FieldRegisterFileProps
     <K extends keyof TValues & string>(
       field: K,
       options?: { type?: 'number' },
