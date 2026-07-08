@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { _internal, ssrPlugin } from '../ssr-plugin'
 import { renderSsrEntrySource } from '../ssr-build-shared'
 
@@ -43,12 +43,60 @@ describe('ssrPlugin', () => {
       expect(_internal.SSR_BUILD_FLAG).not.toBe('PYREON_ZERO_SSG_INNER_BUILD')
     })
 
+    it('knows the SSG inner-build flag (to skip during SSG prerender)', () => {
+      expect(_internal.SSG_BUILD_FLAG).toBe('PYREON_ZERO_SSG_INNER_BUILD')
+    })
+
     it('outputs to dist/server/entry-server.js (matches adapters/validate.ts contract)', () => {
       // `entry-server.js` (NOT `.mjs`) — `package.json` `"type":
       // "module"` makes `.js` ESM. Adapters expect this filename per
       // `adapters/validate.ts:validateBuildInputs`.
       expect(_internal.SSR_OUTPUT_FILENAME).toBe('entry-server.js')
       expect(_internal.SSR_OUT_SUBDIR).toBe('server')
+    })
+  })
+
+  // Regression: in mode:'ssr'|'isr', the SSG plugin runs a prerender sub-build
+  // to `<dist>/.zero-ssg-server` (with PYREON_ZERO_SSG_INNER_BUILD=1). The SSR
+  // post-step's closeBundle must NOT fire there — its outDir has no client
+  // index.html, so the check emitted a MISLEADING "Skipping SSR build" warning
+  // even though the real (outer) SSR build succeeds. Reproduced on the default
+  // ssr-showcase build; fixed by honoring the SSG flag symmetrically.
+  describe('closeBundle skips during the SSG prerender sub-build', () => {
+    const RESOLVED = {
+      root: '/tmp/pyreon-nonexistent-root',
+      build: { outDir: 'dist', assetsInlineLimit: 0, assetsDir: 'assets' },
+      base: '/',
+      plugins: [],
+    }
+    afterEach(() => {
+      delete process.env.PYREON_ZERO_SSG_INNER_BUILD
+      vi.restoreAllMocks()
+    })
+
+    it('does NOT warn "Skipping SSR build" when the SSG inner-build flag is set', async () => {
+      process.env.PYREON_ZERO_SSG_INNER_BUILD = '1'
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssrPlugin({ mode: 'ssr' }) as any
+      plugin.configResolved(RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('Skipping SSR build'),
+        ...([] as unknown[]),
+      )
+    })
+
+    it('DOES reach the check (and warns) when NO inner-build flag is set', async () => {
+      // Proves the test setup actually reaches the client-index.html check —
+      // so the skip above is meaningful, not a vacuous pass.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssrPlugin({ mode: 'ssr' }) as any
+      plugin.configResolved(RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping SSR build'),
+        ...([] as unknown[]),
+      )
     })
   })
 
