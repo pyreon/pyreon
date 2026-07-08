@@ -1,29 +1,22 @@
 import type { Computed, Signal } from '@pyreon/reactivity'
+import type {
+  SchemaValidateFn,
+  StandardSchemaLike,
+  ValidateFn,
+  ValidationError,
+} from '@pyreon/validation'
 
-export type ValidationError = string | undefined
+// The validation contract (ValidationError / ValidateFn / SchemaValidateFn /
+// StandardSchemaLike) lives in @pyreon/validation — the universal, stack-wide
+// validation gate. @pyreon/form CONSUMES it. Re-exported here so the historical
+// `import { ValidationError } from '@pyreon/form'` public API keeps working.
+export type { SchemaValidateFn, StandardSchemaLike, ValidateFn, ValidationError }
 
 /**
  * A reactive value that can be read by calling it.
  * Both `Signal<T>` and `Computed<T>` satisfy this interface.
  */
 export type Accessor<T> = Signal<T> | Computed<T>
-
-/**
- * Field validator function. Receives the field value and all current form values
- * for cross-field validation. The optional signal can be checked to detect
- * cancellation (e.g., via AbortController when the form unmounts).
- */
-export type ValidateFn<T, TValues = Record<string, unknown>> = (
-  value: T,
-  allValues: TValues,
-  signal?: AbortSignal,
-) => ValidationError | Promise<ValidationError>
-
-export type SchemaValidateFn<TValues> = (
-  values: TValues,
-) =>
-  | Partial<Record<keyof TValues, ValidationError>>
-  | Promise<Partial<Record<keyof TValues, ValidationError>>>
 
 export interface FieldState<T = unknown> {
   /** Current field value. */
@@ -249,7 +242,10 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
    * (from @pyreon/validation) which preserves type information for compile-time
    * field name validation.
    */
-  schema?: SchemaValidateFn<TValues> | { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues> }
+  schema?:
+    | SchemaValidateFn<TValues>
+    | { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues> }
+    | StandardSchemaLike<TValues>
   /** When to validate: 'blur' (default), 'change', or 'submit'. */
   validateOn?: 'blur' | 'change' | 'submit'
   /** Debounce delay in ms for validators (useful for async validators). */

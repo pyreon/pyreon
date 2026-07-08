@@ -1,5 +1,11 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
-import type { ParseResult, TypedSchemaAdapter, ValidationIssue } from './types'
+import type {
+  ParseResult,
+  SchemaValidateFn,
+  TypedSchemaAdapter,
+  ValidateFn,
+  ValidationError,
+  ValidationIssue,
+} from './types'
 import { issuesToRecord } from './utils'
 
 /**

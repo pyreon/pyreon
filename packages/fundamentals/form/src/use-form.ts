@@ -1,6 +1,8 @@
 import { createUniqueId, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { batch, computed, effect, signal } from '@pyreon/reactivity'
+import type { SchemaValidateFn, StandardSchemaLike } from '@pyreon/validation'
+import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 import type { FieldDefinition, InferFieldValues } from './field'
 import { isFieldDefinition } from './field'
 import type {
@@ -61,6 +63,31 @@ export function orphanSchemaErrorKeys(
     if (!fieldNames.has(top)) orphans.push(key)
   }
   return orphans
+}
+
+/**
+ * Resolve a `schema` option into the whole-form `SchemaValidateFn` the form
+ * runs — accepting a plain function, a `@pyreon/validation` typed adapter
+ * (`{ _infer, validator }`), OR a raw Standard Schema (zod/valibot/arktype/`s`
+ * — no adapter, no cast) via `@pyreon/validation`'s bridge. Returns undefined
+ * when no schema is configured.
+ */
+export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
+  schemaInput: unknown,
+): SchemaValidateFn<TValues> | undefined {
+  if (schemaInput == null) return undefined
+  if (typeof schemaInput === 'function') return schemaInput as SchemaValidateFn<TValues>
+  if (typeof schemaInput === 'object') {
+    if ('_infer' in schemaInput && 'validator' in schemaInput) {
+      return (schemaInput as { validator: SchemaValidateFn<TValues> }).validator
+    }
+    // `isStandardSchema` narrows to the strict `StandardSchemaShape`; the bridge
+    // takes the lax `StandardSchemaLike` — bridge the two with one cast.
+    if (isStandardSchema(schemaInput)) {
+      return standardSchemaToValidator<TValues>(schemaInput as StandardSchemaLike)
+    }
+  }
+  return undefined
 }
 
 /**
@@ -154,8 +181,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     ? (rawInitialValues as () => Record<string, unknown>)()
     : rawInitialValues
 
-  // Extract validator from TypedSchemaAdapter if provided, otherwise use as-is
-  const schema = schemaInput && '_infer' in schemaInput ? schemaInput.validator : schemaInput
+  // Resolve the schema option: a plain SchemaValidateFn, a @pyreon/validation
+  // typed adapter (`{ _infer, validator }`), or a RAW Standard Schema
+  // (zod/valibot/arktype — accepted directly, no adapter, no `as never` cast).
+  const schema = resolveSchemaValidator<TValues>(schemaInput)
 
   // Build field states.
   //

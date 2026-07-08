@@ -1,7 +1,54 @@
-import type { SchemaValidateFn, ValidateFn, ValidationError } from '@pyreon/form'
+// ─── Validation contract (the universal, library-agnostic base) ─────────────
+// These types live HERE, not in @pyreon/form: @pyreon/validation is the
+// stack-wide validation gate (@pyreon/form, @pyreon/store, @pyreon/state-tree,
+// @pyreon/feature all consume it), so anchoring the contract to `form` coupled
+// every validation consumer to the forms package. @pyreon/validation depends on
+// nothing pyreon; the consumers depend on it. @pyreon/form re-exports these for
+// back-compat, so `import { ValidationError } from '@pyreon/form'` still works.
 
-/** Re-export form types for convenience. */
-export type { SchemaValidateFn, ValidateFn, ValidationError }
+/** A validation error message (or `undefined` for "no error"). */
+export type ValidationError = string | undefined
+
+/**
+ * Single-field validator. Receives the field value and all current values for
+ * cross-field validation; the optional signal detects cancellation (e.g. via
+ * AbortController when a form unmounts).
+ */
+export type ValidateFn<T, TValues = Record<string, unknown>> = (
+  value: T,
+  allValues: TValues,
+  signal?: AbortSignal,
+) => ValidationError | Promise<ValidationError>
+
+/**
+ * Whole-object validator: maps a values object to a per-key error record.
+ * This is what every schema adapter (zod/valibot/arktype/Standard Schema)
+ * produces, and what `@pyreon/form` / `@pyreon/store` consume.
+ */
+export type SchemaValidateFn<TValues> = (
+  values: TValues,
+) =>
+  | Partial<Record<keyof TValues, ValidationError>>
+  | Promise<Partial<Record<keyof TValues, ValidationError>>>
+
+// ─── Standard Schema contract (https://standardschema.dev) ──────────────────
+// The `~standard` shape zod ≥3.24 / valibot ≥1 / arktype ≥2 / @pyreon/validate
+// `s` all expose. Owning it here lets any consumer accept a raw schema with no
+// adapter and no cast.
+
+export interface StandardSchemaIssue {
+  readonly message: string
+  readonly path?: ReadonlyArray<PropertyKey | { readonly key: PropertyKey }>
+}
+export type StandardSchemaResult =
+  | { readonly value: unknown }
+  | { readonly issues: ReadonlyArray<StandardSchemaIssue> }
+export interface StandardSchemaLike<Output = unknown> {
+  readonly '~standard': {
+    readonly types?: { readonly output: Output }
+    readonly validate: (value: unknown) => StandardSchemaResult | Promise<StandardSchemaResult>
+  }
+}
 
 /**
  * Generic issue produced by any schema library.
