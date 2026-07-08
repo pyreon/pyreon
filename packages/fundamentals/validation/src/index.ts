@@ -22,6 +22,7 @@ export type {
   StandardSchemaIssue,
   StandardSchemaLike,
   StandardSchemaResult,
+  StandardSchemaV1,
   TypedSchemaAdapter,
   ValidateFn,
   ValidationError,
