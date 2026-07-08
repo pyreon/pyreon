@@ -271,6 +271,13 @@ in the same batch AND one gates display of the other.
 </For>
 ```
 
+A bare VNode array **does mount** now — `<div>{items().map(i => <li>{i.name}</li>)}</div>`
+renders the `<li>` elements (it no longer coerces to `[object Object]`, and there's no
+need to wrap it in an accessor). But `.map()` is still evaluated once at setup: the list
+won't react to `items` changing, and there's no keyed reconciliation. Reach for `<For>`
+for reactive, keyed lists; a bare `{arr}` is fine only for a static, one-shot list of
+elements.
+
 ### Using ternary instead of `<Show>`
 
 ```tsx

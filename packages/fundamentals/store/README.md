@@ -102,6 +102,33 @@ subscribe((m) => {
 })
 ```
 
+## Schema-driven stores
+
+Pass a `{ schema, initial, setup? }` config instead of a setup function to derive per-field signals AND their types from a validation schema (zod / valibot / arktype / any Standard Schema-compliant lib, or a `@pyreon/validation` adapter). Every `set` / `patch` / `deepPatch` / `update` validates through the schema, and field types are inferred end-to-end — no manual annotations, no casts.
+
+```ts
+import { defineStore, computed } from '@pyreon/store'
+import { z } from 'zod'
+
+const useUser = defineStore('user', {
+  schema: z.object({ name: z.string().min(1), age: z.number().int() }),
+  initial: { name: 'Alice', age: 30 },
+  setup: ({ state }) => ({
+    greet: computed(() => `Hi, ${state.name()}`),   // state.name: Signal<string>
+  }),
+})
+
+const u = useUser()
+u.store.name()                    // Signal<string> — reactive read
+u.store.greet()                   // computed
+u.set({ name: 'Bob', age: 31 })   // full replace + validate
+u.patch({ age: 32 })              // shallow merge + validate
+u.update('age', n => n + 1)       // n: number — typed from the schema, no cast
+u.store.age.set(-1)               // direct signal write — bypasses validation (escape hatch)
+```
+
+The hook returns a `SchemaStoreApi<TRaw, TStore>`: `state` / `set` / `patch` / `deepPatch` / `update` are all schema-typed, so a wrong-typed value, an unknown field, or an `update` on a non-field key fails typecheck. Standard Schema-compliant schemas (zod 3.24+, valibot 1.0+, arktype 2.0+) are auto-detected — pass them raw; other libraries wrap in a small `TypedSchemaAdapter`. Invalid `initial` throws at `defineStore`-time, and async validators are rejected. See the [guide](https://pyreon.dev/docs/store#schema-driven-stores) for `deepPatch`, `onValidationError`, and per-library adapter details.
+
 ## Plugins
 
 ```ts

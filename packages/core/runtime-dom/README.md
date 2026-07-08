@@ -105,6 +105,8 @@ These symbols are emitted by `@pyreon/compiler`. Not for hand-written user code,
 | `_tpl(html)` | Parse + clone an HTML template once per literal |
 | `_bindText(source, textNode)` | Reactive text — reads `source._v` directly on the fast path |
 | `_bindDirect(source, updater, caller?)` | Generic direct-subscribe updater — e.g. `_bindDirect(count, (v) => { t.data = v.toFixed(2) })`; the emitted updater closure does the DOM write |
+| `_setChild(node, value)` | Static sole `{x}` child — mounts a VNode/VNode[] value (from any source), else sets `textContent`. A bare `{arr}` of VNodes renders the elements instead of coercing to `[object Object]` |
+| `_setChildAt(parent, placeholder, value)` | Static mixed `{x}` child at a `<!>` placeholder — mounts a VNode/VNode[] value, else inserts a text node |
 | `_mountSlot(...)` | Mount a reactive child slot under a template anchor |
 | `_applyProps(...)` | Spread props on a template element |
 | `_rsCollapse(...)` / `_rsCollapseH(...)` | Rocketstyle compile-time-collapse mount paths |

@@ -2446,30 +2446,31 @@ post.author.id()   // 'u-42'`,
   // <gen-docs:api-reference:start @pyreon/validation>
 
   'validation/zodSchema': {
-    signature: '<T>(schema: ZodType<T>) => SchemaAdapter<T>',
+    signature: '<TValues>(schema: ZodSchema<TValues>) => TypedSchemaAdapter<TValues>',
     example: `const schema = z.object({ email: z.string().email(), age: z.number().min(18) })
 const form = useForm({
   initialValues: { email: '', age: 0 },
   schema: zodSchema(schema),
   onSubmit: (values) => save(values),
 })`,
-    notes: 'Create a whole-form schema adapter from a Zod schema. Duck-typed against the `.safeParse()` method so it works with both Zod v3 and v4 without version checks. Pass the result to `useForm({ schema })` for automatic full-form validation on submit or blur. See also: zodField, valibotSchema, arktypeSchema.',
-    mistakes: `- Passing zodSchema AND per-field validators for the same field — both run and errors may conflict
-- Using zodSchema with a non-object schema (z.string()) — form schemas must validate an object shape matching initialValues`,
+    notes: 'Create a typed whole-form schema adapter from a Zod schema. Duck-typed against `.safeParse()` / `.safeParseAsync()` so it works with Zod v3 and v4 without version checks. Returns a `TypedSchemaAdapter` (`{ _infer, validator, parse }`) that `useForm({ schema })`, schema-driven `defineStore`, and `model` accept — `_infer` carries the inferred field types for compile-time field-name checking; `parse` gives store / state-tree the coerced value. Since Zod ≥3.24 is Standard-Schema-compliant you may also skip this wrapper and pass the raw `z.object(...)` directly. See also: zodField, standardSchemaToValidator, TypedSchemaAdapter.',
+    mistakes: `- Passing both zodSchema AND a per-field validator for the same field — both run; a schema error can override the field error on that key
+- Using zodSchema with a non-object schema (z.string()) — form/store schemas must validate an object shape matching initialValues
+- Assuming the return is a plain function — it is a TypedSchemaAdapter object ({ _infer, validator, parse }); the form reads \`.validator\` for you`,
   },
 
   'validation/zodField': {
-    signature: '<T>(schema: ZodType<T>) => ValidateFn<T>',
+    signature: '<T>(schema: ZodSchema<T>) => ValidateFn<T>',
     example: `const form = useForm({
   initialValues: { username: '' },
   validators: { username: zodField(z.string().min(3).max(20)) },
   onSubmit: (values) => save(values),
 })`,
-    notes: `Create a per-field validator from a Zod schema. Returns a function compatible with \`useForm({ validators: { fieldName: zodField(z.string().email()) } })\`. Use when individual fields have independent validation rules that don't need cross-field context. See also: zodSchema, valibotField.`,
+    notes: `Create a per-field validator from a Zod schema. Returns a \`ValidateFn\` compatible with \`useForm({ validators: { fieldName: zodField(z.string().email()) } })\`. Uses \`safeParseAsync\` so sync AND async refinements work; returns the first issue message on failure, \`undefined\` on success. Use when individual fields have independent rules that don't need cross-field context. See also: zodSchema, valibotField, ValidateFn.`,
   },
 
   'validation/valibotSchema': {
-    signature: '<T>(schema: ValibotSchema<T>, safeParse: SafeParseFn) => SchemaAdapter<T>',
+    signature: '<TValues>(schema: unknown, safeParse: Function) => TypedSchemaAdapter<TValues>',
     example: `import * as v from 'valibot'
 const schema = v.object({ email: v.pipe(v.string(), v.email()) })
 const form = useForm({
@@ -2477,32 +2478,192 @@ const form = useForm({
   schema: valibotSchema(schema, v.safeParse),
   onSubmit: (values) => save(values),
 })`,
-    notes: `Create a whole-form schema adapter from a Valibot schema. Requires passing the \`safeParse\` function explicitly (Valibot uses standalone functions, not methods). This keeps the adapter independent of Valibot's internal module structure across versions. See also: valibotField, zodSchema.`,
-    mistakes: '- Forgetting to pass v.safeParse as the second argument — the adapter cannot call safeParse without it since Valibot uses standalone functions',
+    notes: `Create a typed whole-form schema adapter from a Valibot schema. Requires passing the \`safeParse\` (or \`safeParseAsync\`) function explicitly — Valibot uses standalone functions, not methods, so this keeps the adapter independent of Valibot's internal module structure across versions. Returns a \`TypedSchemaAdapter\` ({ _infer, validator, parse }); the sync \`parse\` path needs the SYNC \`v.safeParse\`. Valibot ≥1 is also Standard-Schema-compliant, so a raw \`v.object(...)\` can be passed directly instead. See also: valibotField, zodSchema, standardSchemaToValidator.`,
+    mistakes: `- Forgetting to pass v.safeParse as the second argument — the adapter cannot call safeParse without it (Valibot uses standalone functions)
+- Passing v.safeParseAsync when using the sync \`parse\` path (schema-driven store) — the parser then returns a Promise and store rejects it at defineStore-time`,
   },
 
   'validation/valibotField': {
-    signature: '<T>(schema: ValibotSchema<T>, safeParse: SafeParseFn) => ValidateFn<T>',
-    example: 'validators: { email: valibotField(v.pipe(v.string(), v.email()), v.safeParse) }',
-    notes: 'Create a per-field validator from a Valibot schema. Same standalone-function-style as valibotSchema — pass `v.safeParse` explicitly. See also: valibotSchema, zodField.',
+    signature: '<T>(schema: unknown, safeParse: Function) => ValidateFn<T>',
+    example: 'validators: { email: valibotField(v.pipe(v.string(), v.email()), v.safeParseAsync) }',
+    notes: 'Create a per-field validator from a Valibot schema. Same standalone-function style as valibotSchema — pass `v.safeParse` (or `v.safeParseAsync`) explicitly. Returns the first issue message on failure, `undefined` on success. See also: valibotSchema, zodField.',
   },
 
   'validation/arktypeSchema': {
-    signature: '<T>(schema: ArkTypeSchema<T>) => SchemaAdapter<T>',
+    signature: '<TValues>(schema: (data: unknown) => unknown) => TypedSchemaAdapter<TValues>',
     example: `import { type } from 'arktype'
-const schema = type({ email: 'email', age: 'number > 18' })
+const schema = type({ email: 'string.email', age: 'number > 18' })
 const form = useForm({
   initialValues: { email: '', age: 0 },
   schema: arktypeSchema(schema),
   onSubmit: (values) => save(values),
 })`,
-    notes: 'Create a whole-form schema adapter from an ArkType type. ArkType validation is synchronous only — async validators are not supported through this adapter. Returns errors via the ArkType `problems` array. See also: arktypeField, zodSchema.',
+    notes: 'Create a typed whole-form schema adapter from an ArkType type. Accepts any callable — ArkType schemas are invoked directly, no ArkType import required. Synchronous only (ArkType has no async surface); the non-error result IS the coerced value, so the `parse` path is native. Returns a `TypedSchemaAdapter` ({ _infer, validator, parse }); errors are read from the returned `ArkErrors` array. ArkType ≥2 is Standard-Schema-compliant, so a raw `type(...)` can be passed directly instead. See also: arktypeField, zodSchema, standardSchemaToValidator.',
+    mistakes: '- Expecting async validation — the ArkType adapter is synchronous; wrap async logic in a per-field validator function instead',
   },
 
   'validation/arktypeField': {
-    signature: '<T>(schema: ArkTypeSchema<T>) => ValidateFn<T>',
+    signature: '<T>(schema: (data: unknown) => unknown) => ValidateFn<T>',
     example: `validators: { age: arktypeField(type('number > 18')) }`,
-    notes: 'Create a per-field validator from an ArkType type. Synchronous only, same as arktypeSchema. See also: arktypeSchema, zodField.',
+    notes: 'Create a per-field validator from an ArkType type. Synchronous, like arktypeSchema. Returns the first ArkType error message on failure, `undefined` on success. See also: arktypeSchema, zodField.',
+  },
+
+  'validation/standardSchemaToValidator': {
+    signature: '<TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>',
+    example: `import { z } from 'zod'
+import { standardSchemaToValidator } from '@pyreon/validation'
+
+const schema = z.object({ email: z.string().email(), age: z.number().min(18) })
+const validate = standardSchemaToValidator(schema)
+const errors = await validate({ email: 'x', age: 5 })
+// => { email: 'Invalid email', age: 'Too small: ...' }`,
+    notes: 'Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) into a whole-object `SchemaValidateFn` — `(values) => per-key error record`. This is the bridge that lets a consumer accept a raw schema with no `zodSchema()` wrapper and no cast: `useForm({ schema: z.object(...) })`. Issue paths flatten to dot-strings (`address.city`); first message per path wins; async schemas resolve naturally (the returned validator is always async — await it). See also: isStandardSchema, zodSchema, InferSchema.',
+    mistakes: `- Passing a Pyreon adapter (the result of zodSchema()) instead of the RAW schema — the adapter is already a validator; pass z.object(...) directly, or use adapter.validator
+- Expecting a synchronous return — the produced validator is always async (returns a Promise); always await it
+- Assuming a non-object schema works — the output is a per-key record keyed on the top-level fields, so the schema must describe an object shape`,
+  },
+
+  'validation/isStandardSchema': {
+    signature: '(value: unknown) => value is StandardSchemaShape<unknown>',
+    example: `import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
+
+if (isStandardSchema(schema)) {
+  const validate = standardSchemaToValidator(schema)
+}`,
+    notes: 'Runtime type guard — detect a Standard Schema-compliant object by its `~standard` property (an object with a `validate` function). Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump. See also: isPyreonAdapter, standardSchemaToValidator.',
+    mistakes: '- Using it to detect a Pyreon adapter — those brand with `_infer`, not `~standard`; use isPyreonAdapter for that tier',
+  },
+
+  'validation/isPyreonAdapter': {
+    signature: '(value: unknown) => value is PyreonAdapterShape<Record<string, unknown>>',
+    example: `import { isPyreonAdapter } from '@pyreon/validation'
+
+if (isPyreonAdapter(schema)) {
+  const result = schema.parse!(value) // sync coerced parse
+}`,
+    notes: 'Runtime type guard — detect a Pyreon TypedSchemaAdapter (Tier A.1) by its `_infer` brand plus a callable `parse`. The counterpart to isStandardSchema in the two-tier detection that schema-driven consumers (`@pyreon/store`, `@pyreon/state-tree`) use to accept EITHER a `zodSchema()`-style adapter OR a raw Standard Schema (Tier A.2). See also: isStandardSchema, extractParseFn.',
+    mistakes: '- Assuming any adapter passes — all three built-in adapters ship `parse` so they do, but a validator-only shape ({ _infer, validator } with no parse) does NOT',
+  },
+
+  'validation/wrapStandardSchema': {
+    signature: '<T>(schema: StandardSchemaShape<unknown>) => (value: unknown) => SchemaParseResult<T>',
+    example: `import { wrapStandardSchema } from '@pyreon/validation'
+
+const parse = wrapStandardSchema(schema)
+const r = parse(input)
+if (r instanceof Promise) throw new Error('async schema unsupported')
+if (r.ok) use(r.value)`,
+    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. @internal — most consumers go through extractParseFn. See also: extractParseFn, standardSchemaToValidator.',
+    mistakes: `- Treating it like standardSchemaToValidator — this returns a coerced-value ParseResult, not a form error record
+- Not probing for a Promise return — an async Standard Schema returns a Promise, which is not a valid sync ParseResult`,
+  },
+
+  'validation/extractParseFn': {
+    signature: '<T>(schema: unknown) => (value: unknown) => SchemaParseResult<T>',
+    example: `import { extractParseFn, formatIssues } from '@pyreon/validation'
+
+const parse = extractParseFn(userSchema)
+const r = parse(initial)
+if (r instanceof Promise) throw new Error('[Pyreon] async schemas unsupported')
+if (!r.ok) throw new Error(formatIssues(r.issues, 'init'))
+const value = r.value // parsed + coerced`,
+    notes: 'The primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accept EITHER a Pyreon TypedSchemaAdapter (uses its sync `parse`) OR a raw Standard Schema (wraps via wrapStandardSchema) and return one uniform sync parser. Throws a `[Pyreon]`-prefixed error at construction if the value is neither shape, or if a Tier-A.1 adapter is missing its `parse`. Callers should probe the first call for a `Promise` (async-only schema) and reject it. See also: wrapStandardSchema, isPyreonAdapter, formatIssues.',
+    mistakes: `- Passing an async-only schema (objectAsync / safeParseAsync-only) — extractParseFn constructs fine but the returned parser resolves a Promise; detect and reject it
+- Passing a @pyreon/form-only validator ({ _infer, validator } with no parse) — throws at construction; schema-driven state needs the coerced value, not just errors`,
+  },
+
+  'validation/formatIssues': {
+    signature: '(issues: SchemaIssue[], op: string) => string',
+    example: `import { formatIssues } from '@pyreon/validation'
+
+throw new Error(formatIssues([{ path: 'email', message: 'Invalid' }], 'set'))
+// [Pyreon] Schema validation failed (set):
+//   - email: Invalid`,
+    notes: 'Format normalized schema issues into a readable multi-line `[Pyreon] Schema validation failed (<op>): ...` message. Truncates after 5 issues with an "and N more" suffix. `op` is a free-form label for the failing operation (`init`, `set`, `patch`, `create`, `$set`, ...). Used by schema-driven store / state-tree to throw clear errors on an invalid write. See also: extractParseFn, issuesToRecord.',
+  },
+
+  'validation/issuesToRecord': {
+    signature: '<TValues>(issues: ValidationIssue[]) => Partial<Record<keyof TValues, ValidationError>>',
+    example: `import { issuesToRecord } from '@pyreon/validation'
+
+issuesToRecord([
+  { path: 'email', message: 'Required' },
+  { path: 'email', message: 'Invalid' }, // dropped — first wins
+])
+// => { email: 'Required' }`,
+    notes: 'Collapse an array of normalized `ValidationIssue` (`{ path, message }`) into a flat field→error record — the shape `@pyreon/form` consumes. First message per path wins; nested dot-paths (`address.city`) become the record key verbatim (the adapter is responsible for producing the dot-string). The building block every custom adapter ends with. See also: formatIssues, zodSchema.',
+    mistakes: `- Expecting the LAST message to win for a repeated path — the FIRST wins; order your issues most-important-first
+- Feeding native library paths (arrays / objects) directly — normalize to a dot-string path in the ValidationIssue first`,
+  },
+
+  'validation/TypedSchemaAdapter': {
+    signature: 'interface TypedSchemaAdapter<TValues> { readonly _infer: TValues; readonly validator: SchemaValidateFn<TValues>; readonly parse?: (value: unknown) => ParseResult<TValues> }',
+    example: `import { zodSchema } from '@pyreon/validation'
+const adapter = zodSchema(z.object({ id: z.string() }))
+adapter.validator({ id: 5 })   // => { id: 'Expected string' }
+adapter.parse!({ id: 'x' })    // => { ok: true, value: { id: 'x' } }`,
+    notes: 'The object every `zodSchema()` / `valibotSchema()` / `arktypeSchema()` returns. `_infer` is a compile-time-only brand carrying the inferred field types (never read at runtime — it is `undefined as any`); `validator` is the whole-form error function `@pyreon/form` runs; `parse` is the optional sync coerced-value parser `@pyreon/store` / `@pyreon/state-tree` need (all three built-in adapters ship it). See also: zodSchema, SchemaValidateFn, InferSchema.',
+    mistakes: `- Calling the adapter like a function — it is an object; the form reads \`.validator\` for you, store reads \`.parse\`
+- Relying on \`_infer\` at runtime — it is \`undefined as any\`, a type brand only`,
+  },
+
+  'validation/InferSchema': {
+    signature: 'type InferSchema<S> = S["_infer"] /* Tier A.1 */ | S["~standard"]["types"]["output"] /* Tier A.2 */ | Record<string, unknown>',
+    example: `import type { InferSchema } from '@pyreon/validation'
+import { z } from 'zod'
+
+const schema = z.object({ id: z.string(), n: z.number() })
+type Values = InferSchema<typeof schema> // { id: string; n: number }`,
+    notes: 'Extract the inferred output type from EITHER a Pyreon TypedSchemaAdapter (reads `_infer`, Tier A.1) OR a raw Standard Schema (reads `~standard.types.output`, Tier A.2). Falls back to `Record<string, unknown>` for unknown shapes (never collapses to `never`). Powers the strict typing in `@pyreon/store` + `@pyreon/state-tree` so a raw `z.object(...)` passed directly infers its exact field types. See also: TypedSchemaAdapter, StandardSchemaLike.',
+    mistakes: '- Expecting inference when a raw schema omits its `~standard.types` phantom — the spec makes `types?` optional; real libraries emit it, but a hand-rolled ~standard without it falls back to Record<string, unknown>',
+  },
+
+  'validation/SchemaValidateFn': {
+    signature: 'type SchemaValidateFn<TValues> = (values: TValues) => Partial<Record<keyof TValues, ValidationError>> | Promise<Partial<Record<keyof TValues, ValidationError>>>',
+    example: `import type { SchemaValidateFn } from '@pyreon/validation'
+
+const validate: SchemaValidateFn<{ email: string }> = (values) =>
+  values.email.includes('@') ? {} : { email: 'Invalid email' }`,
+    notes: 'The whole-object validator contract — maps a values object to a per-key error record (sync or async). What every schema adapter (zod / valibot / arktype / Standard Schema) produces and what `@pyreon/form` + `@pyreon/store` consume. OWNED by `@pyreon/validation` (the library-agnostic gate); `@pyreon/form` re-exports it for back-compat. See also: ValidateFn, standardSchemaToValidator.',
+    mistakes: '- Returning a full record with every key present — return ONLY errored keys; an empty object {} means "valid"',
+  },
+
+  'validation/ValidateFn': {
+    signature: 'type ValidateFn<T, TValues = Record<string, unknown>> = (value: T, allValues: TValues, signal?: AbortSignal) => ValidationError | Promise<ValidationError>',
+    example: `import type { ValidateFn } from '@pyreon/validation'
+
+const confirm: ValidateFn<string, { password: string }> = (value, all) =>
+  value === all.password ? undefined : 'Passwords must match'`,
+    notes: 'The single-field validator contract — receives the field value, all current values (for cross-field checks), and an optional `AbortSignal` (cancellation, e.g. when a form unmounts). Returns an error string or `undefined` (sync or async). OWNED by `@pyreon/validation`; `@pyreon/form` re-exports it. See also: SchemaValidateFn, ValidationError.',
+    mistakes: '- Returning a falsy non-undefined value ("" / false / 0) to mean "valid" — return `undefined`; an empty string is technically an error message',
+  },
+
+  'validation/ValidationError': {
+    signature: 'type ValidationError = string | undefined',
+    example: `import type { ValidationError } from '@pyreon/validation'
+
+const err: ValidationError = isValid ? undefined : 'Required'`,
+    notes: `A single field's error value — the message string, or \`undefined\` for "no error". The atomic unit of every error record and validator return in the stack. OWNED by \`@pyreon/validation\`; re-exported by \`@pyreon/form\` so \`import { ValidationError } from '@pyreon/form'\` still works. See also: ValidateFn, SchemaValidateFn.`,
+  },
+
+  'validation/StandardSchemaLike': {
+    signature: 'interface StandardSchemaLike<Output = unknown> { readonly "~standard": { readonly types?: { readonly output: Output }; readonly validate: (value: unknown) => StandardSchemaResult | Promise<StandardSchemaResult> } }',
+    example: `import type { StandardSchemaLike } from '@pyreon/validation'
+import { standardSchemaToValidator } from '@pyreon/validation'
+
+function adapt<T extends Record<string, unknown>>(s: StandardSchemaLike) {
+  return standardSchemaToValidator<T>(s)
+}`,
+    notes: 'The Standard Schema (https://standardschema.dev) shape `@pyreon/validation` owns so any consumer can accept a raw schema with no adapter and no cast — the `~standard` property Zod ≥3.24 / Valibot ≥1 / ArkType ≥2 / Effect Schema / `@pyreon/validate` `s` all expose. `standardSchemaToValidator` takes this type; `useForm({ schema })` accepts it directly. See also: standardSchemaToValidator, isStandardSchema.',
+    mistakes: '- Confusing it with StandardSchemaShape — near-identical duck-types; standardSchemaToValidator takes StandardSchemaLike, wrapStandardSchema / isStandardSchema use StandardSchemaShape',
+  },
+
+  'validation/ValidationIssue': {
+    signature: 'interface ValidationIssue { path: string; message: string }',
+    example: `import type { ValidationIssue } from '@pyreon/validation'
+
+const issues: ValidationIssue[] = [{ path: 'address.city', message: 'Required' }]`,
+    notes: `The normalized issue shape every adapter produces before calling \`issuesToRecord\` — a dot-separated field \`path\` (\`address.city\`) plus a human-readable \`message\`. The common denominator that lets any library's errors flow into \`@pyreon/form\`'s flat record. Aliased as \`SchemaIssue\` for the store / state-tree surface. See also: issuesToRecord, formatIssues.`,
   },
   // <gen-docs:api-reference:end @pyreon/validation>
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2523,12 +2684,12 @@ const form = useForm({
 // Bind inputs with register():
 // h('input', form.register('email'))
 // h('input', { type: 'checkbox', ...form.register('remember', { type: 'checkbox' }) })`,
-    notes: `Create a signal-based form. \`initialValues\` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (\`useField\` field name, \`useWatch\` keys, validator signatures) are fully typed without annotation. Returns \`FormState<TValues>\` with per-field signals, form-level signals (\`isSubmitting\`, \`isValidating\`, \`isValid\`, \`isDirty\`, \`submitCount\`, \`isSubmitted\`, \`isSubmitSuccessful\`, \`submitError\`), and handlers (\`handleSubmit\`, \`reset\`, \`validate\`, \`trigger\`). react-hook-form-parity accessors: \`trigger(name?)\` validates a field/subset/whole-form on demand; \`getValues(name?)\` reads one value or all; \`dirtyFields()\` / \`touchedFields()\` return the changed/visited fields as records; \`getFieldState(name)\` returns a field's live signals; \`isSubmitted\` / \`isSubmitSuccessful\` track submit lifecycle. \`validateOn\` defaults to \`"blur"\` (not \`"change"\`) so users aren't scolded mid-keystroke; optional \`schema\` integrates with \`@pyreon/validation\` adapters (\`zodSchema\`, \`valibotSchema\`, \`arktypeSchema\`) for whole-form validation after per-field validators run. See also: useField, FormProvider, useFormState.`,
+    notes: `Create a signal-based form. \`initialValues\` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (\`useField\` field name, \`useWatch\` keys, validator signatures) are fully typed without annotation. Returns \`FormState<TValues>\` with per-field signals, form-level signals (\`isSubmitting\`, \`isValidating\`, \`isValid\`, \`isDirty\`, \`submitCount\`, \`isSubmitted\`, \`isSubmitSuccessful\`, \`submitError\`), and handlers (\`handleSubmit\`, \`reset\`, \`validate\`, \`trigger\`, \`focusFirstError\`, \`registerField\`, \`unregisterField\`). react-hook-form-parity accessors: \`trigger(name?)\` validates a field/subset/whole-form on demand; \`getValues(name?)\` reads one value or all; \`dirtyFields()\` / \`touchedFields()\` return the changed/visited fields as records; \`getFieldState(name)\` returns a field's live signals; \`isSubmitted\` / \`isSubmitSuccessful\` track submit lifecycle. \`validateOn\` defaults to \`"blur"\` (not \`"change"\`) so users aren't scolded mid-keystroke. \`schema\` accepts a RAW Standard Schema (zod / valibot / arktype / \`@pyreon/validate\`'s \`s\`) directly — no adapter, no \`as never\` cast — as well as a plain \`SchemaValidateFn\` or a \`@pyreon/validation\` typed adapter (\`zodSchema\` / \`valibotSchema\` / \`arktypeSchema\`); it runs after per-field validators, field-level errors win on the same field, a nested \`address.city\` error routes to its ancestor \`address\` field, and a key matching no field invalidates the form (never silently dropped). \`register(field, { type })\` binds an input per type — \`"checkbox"\` → \`checked\`, \`"number"\` → \`valueAsNumber\`, \`"file"\` → a value-less bag whose \`onInput\` writes the \`FileList\`. \`registerField(name, initial?, validator?)\` / \`unregisterField(name)\` add or remove first-class fields at runtime for data-driven forms (idempotent; no silent auto-registration; dynamic fields are runtime-typed). On a failed submit, focus moves to the first errored + \`register()\`-bound field unless \`focusOnError: false\` (also exposed as \`focusFirstError()\`). \`reset(values?, { keepErrors?, keepTouched?, keepDirty?, keepSubmitCount? })\` resets to a new baseline (named fields become the new baseline; the rest revert to initial); \`resetField(field, { keepError?, keepTouched? })\` resets one field. See also: useField, FormProvider, useFormState.`,
     mistakes: `- Mutating \`initialValues\` after creation — it is read once at setup; use \`setFieldValue\` for programmatic updates
 - Reading \`form.fields[name].value\` as a plain value — it is \`Signal<T>\`, call it: \`form.fields.email.value()\`
 - Passing \`validateOn: "change"\` without \`debounceMs\` on async validators — fires a network request on every keystroke
 - Calling \`form.handleSubmit()\` without attaching it as a form \`onSubmit\` handler — it calls \`preventDefault()\` so it must receive the form event, or be called with no argument for programmatic submit
-- Forgetting that \`schema\` runs AFTER per-field \`validators\` — errors from both sources merge; if a field validator already set an error, the schema can override it`,
+- Assuming \`schema\` errors override field validators — it is the reverse: \`schema\` runs AFTER per-field \`validators\` but a field that already has a field-level error KEEPS it; the schema only fills fields with no field-level error. Also: a raw Standard Schema needs NO \`zodSchema()\` wrapper or \`as never\` cast — pass zod/valibot/arktype directly`,
   },
 
   'form/useField': {

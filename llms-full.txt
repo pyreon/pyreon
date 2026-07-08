@@ -801,16 +801,17 @@ const WindowList = () => {
 >
 > **Re-exports**: TanStack Virtual core types and utilities (VirtualItem, Virtualizer, measureElement, etc.) are re-exported from `@pyreon/virtual` for single-import convenience.
 
-## @pyreon/validation — Schema Validation Adapters
+## @pyreon/validation — Universal Validation Gate
 
-Validation adapters that bridge schema libraries (Zod, Valibot, ArkType) with `@pyreon/form`. Each adapter provides a `*Schema()` function for whole-form validation and a `*Field()` function for single-field validation. Duck-typed so version mismatches are handled gracefully. All three schema libraries are optional peer dependencies — install only the one you use.
+The stack-wide validation gate — the library-agnostic contract every Pyreon data package (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/feature`) consumes. Owns the validation contract types (`ValidationError` / `ValidateFn` / `SchemaValidateFn`) and the Standard Schema bridge, with ZERO pyreon dependencies (the consumers depend on it, not the reverse). Accept a RAW Standard Schema (Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) directly — no wrapper, no cast — via `standardSchemaToValidator`, or use the duck-typed `zodSchema` / `valibotSchema` / `arktypeSchema` adapters (which add the `_infer` brand + a sync `parse` for schema-driven state). All schema libraries are optional peer dependencies.
 
 ```typescript
 import { useForm } from '@pyreon/form'
-import { zodSchema, zodField } from '@pyreon/validation'
 import { z } from 'zod'
 
-// Whole-form validation via zodSchema
+// Universal gate: pass a RAW Standard Schema directly — no adapter, no cast.
+// Zod ≥3.24 / Valibot ≥1 / ArkType ≥2 / Effect Schema / @pyreon/validate 's'
+// all expose '~standard', so the form bridges it via standardSchemaToValidator.
 const schema = z.object({
   email: z.string().email(),
   age: z.number().min(18),
@@ -818,48 +819,51 @@ const schema = z.object({
 
 const form = useForm({
   initialValues: { email: '', age: 0 },
-  schema: zodSchema(schema),        // validates all fields at once
+  schema,                             // raw schema — the gate adapts it
   onSubmit: (values) => save(values),
 })
 
-// Per-field validation via zodField — use when fields have independent rules
+// Or use the typed adapter when you want the _infer brand + sync parse
+// (schema-driven @pyreon/store / @pyreon/state-tree need the coerced value):
+import { zodSchema, zodField } from '@pyreon/validation'
+
 const form2 = useForm({
   initialValues: { username: '', bio: '' },
   validators: {
-    username: zodField(z.string().min(3).max(20)),
+    username: zodField(z.string().min(3).max(20)),  // per-field
     bio: zodField(z.string().max(500)),
   },
+  schema: zodSchema(z.object({ username: z.string(), bio: z.string() })),
   onSubmit: (values) => save(values),
 })
 
-// Valibot adapter — standalone-function style
-import { valibotSchema, valibotField } from '@pyreon/validation'
+// Valibot adapter — standalone-function style (pass v.safeParse explicitly)
+import { valibotSchema } from '@pyreon/validation'
 import * as v from 'valibot'
 
 const vSchema = v.object({ email: v.pipe(v.string(), v.email()) })
 const form3 = useForm({
   initialValues: { email: '' },
-  schema: valibotSchema(vSchema, v.safeParse),  // pass safeParse explicitly
+  schema: valibotSchema(vSchema, v.safeParse),
   onSubmit: (values) => save(values),
 })
 
-// ArkType adapter — sync validation only
-import { arktypeSchema } from '@pyreon/validation'
-import { type } from 'arktype'
-
-const atSchema = type({ email: 'email', age: 'number > 18' })
-const form4 = useForm({
-  initialValues: { email: '', age: 0 },
-  schema: arktypeSchema(atSchema),
-  onSubmit: (values) => save(values),
-})
+// Bridge a raw schema by hand when you need the validator standalone:
+import { standardSchemaToValidator } from '@pyreon/validation'
+const validate = standardSchemaToValidator(schema)
+const errors = await validate({ email: 'x', age: 5 })
+// => { email: 'Invalid email', age: 'Too small: ...' }
 ```
 
 > **Note**: All three schema libraries are optional peer dependencies. Install only the one you use — the adapters are tree-shaken per import path (`@pyreon/validation/zod`, `@pyreon/validation/valibot`, `@pyreon/validation/arktype`).
 >
+> **Raw Standard Schema needs no wrapper**: Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, and `@pyreon/validate`'s `s` all expose `~standard`, so you can pass the schema DIRECTLY (`useForm({ schema: z.object(...) })`) — the gate bridges it via `standardSchemaToValidator`. Reach for `zodSchema()` / `valibotSchema()` / `arktypeSchema()` when you want the `_infer`-branded typed adapter, the sync `parse` path (schema-driven `@pyreon/store` / `@pyreon/state-tree`), or a library that is not Standard-Schema-compliant.
+>
+> **Contract types live here now**: `ValidationError` / `ValidateFn` / `SchemaValidateFn` are OWNED by `@pyreon/validation` (the gate has ZERO pyreon deps; `@pyreon/form` / `@pyreon/store` / `@pyreon/state-tree` / `@pyreon/feature` depend on it). `@pyreon/form` re-exports them, so `import { ValidationError } from '@pyreon/form'` still works.
+>
 > **Valibot standalone functions**: Valibot uses standalone functions (not methods), so `valibotSchema` and `valibotField` require passing `v.safeParse` as an explicit argument. This is by design to avoid internal coupling to Valibot's module structure.
 >
-> **Duck typing**: The Zod adapter is duck-typed against `.safeParse()` — it works with both Zod v3 and v4 without version detection. If a future Zod version changes the safeParse return shape, the adapter will need updating.
+> **Duck typing**: Every adapter AND the Standard Schema bridge duck-type at runtime — they never `import` from Zod / Valibot / ArkType. Major version bumps in any validator library do not break the gate.
 
 ## @pyreon/validate — Pyreon validator + Standard Schema DX
 
@@ -1147,7 +1151,7 @@ const { store } = useTodoList() // same instance on every call
 
 ## @pyreon/form — Form Management
 
-Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`, `dirty`) is its own `Signal<T>` so templates only re-run for the slice they read. First-class schema validation (plug in `zodSchema` / `valibotSchema` / `arktypeSchema` from `@pyreon/validation`), per-field `validateOn: blur | change | submit`, async validators with optional `debounceMs` and version-based stale-result discarding, cross-field validation via `(value, allValues) => …`, dynamic `useFieldArray` with stable keys for keyed rendering, and typed `useWatch` overloads for single / multi / all-field reactive watchers.
+Signal-based form management for Pyreon. Each field (`value`, `error`, `touched`, `dirty`) is its own `Signal<T>` so templates only re-run for the slice they read. First-class schema validation — pass a RAW Standard Schema (zod / valibot / arktype / `@pyreon/validate`) straight to `schema` with no adapter and no cast, or a `zodSchema` / `valibotSchema` / `arktypeSchema` typed adapter from `@pyreon/validation`; nested schema errors route to their ancestor field, and a key matching no field invalidates rather than being silently dropped. Per-field `validateOn: blur | change | submit`, async validators with optional `debounceMs` and version-based stale-result discarding, cross-field validation via `(value, allValues) => …`, type-aware input bindings (`register({ type: "checkbox" | "number" | "file" })`), runtime field registration (`registerField` / `unregisterField`) for data-driven forms, focus-first-error on failed submit (`focusOnError`, default on), reset ergonomics (`reset(values, { keep* })` + `resetField(field, { keepError })`), dynamic `useFieldArray` with stable keys for keyed rendering, and typed `useWatch` overloads for single / multi / all-field reactive watchers.
 
 ```typescript
 import { useForm, useField, useFieldArray, useWatch, useFormState, FormProvider } from '@pyreon/form'
@@ -1225,6 +1229,31 @@ const canSubmit = useFormState(form, (s) => s.isValid && !s.isSubmitting && s.is
 //    failed submit. Does NOT touch touched state, so the error shows
 //    regardless of blur status.
 form.setErrors({ email: 'Already registered' })
+
+// 9. Raw Standard Schema — pass zod/valibot/arktype straight to `schema`,
+//    no zodSchema() adapter and no `as never` cast.
+import { z } from 'zod'
+const typed = useForm({
+  initialValues: { email: '', age: 0 },
+  schema: z.object({ email: z.string().email(), age: z.number().min(13) }),
+  onSubmit: async (v) => { await api.save(v) },
+})
+
+// 10. File input — a value-less bag; onInput writes the FileList.
+//     field.value() is `FileList | null`; read `files?.[0]` for one file.
+<input type="file" {...form.register('avatar', { type: 'file' })} />
+
+// 11. Dynamic fields — add/remove first-class fields at runtime.
+form.registerField('phone', '', (v) => (v ? undefined : 'Required'))
+form.setFieldValue('phone', '555-0100')   // reaches values()/onSubmit/validity
+form.unregisterField('phone')             // cleanly drops its invalid/dirty contribution
+
+// 12. Reset to freshly-saved server data + keep-options.
+form.reset(await api.save(form.values()))          // named fields = new baseline; isDirty() → false
+form.reset(undefined, { keepErrors: true })        // also keepTouched / keepDirty / keepSubmitCount
+
+// 13. Focus-first-error — on by default on a failed submit; also manual.
+if (!(await form.validate())) form.focusFirstError()
 ```
 
 > **validateOn default is `blur`, not `change`**: Fields validate on blur by default so users aren't scolded mid-keystroke. Use `validateOn: "change"` for instant feedback (often paired with `debounceMs: 300` to avoid thrashing async validators), or `validateOn: "submit"` for zero-feedback-until-submit forms. `showError` (from `useField`) gates on `touched`, so even with `validateOn: "change"` errors won't appear until the user has blurred at least once — this is intentional.
@@ -1236,6 +1265,16 @@ form.setErrors({ email: 'Already registered' })
 > **Async validators + stale results**: Async validators are version-tracked: if the user types faster than the validator resolves, the stale result is discarded when it finally returns. Combine with `debounceMs` to also cut down the number of in-flight requests. The `isValidating` signal is true while any field has a pending async validation — use it to gate the submit button.
 >
 > **Server errors via `setFieldError` / `setErrors`**: After a failed submit, attach server-side errors with `form.setFieldError(name, msg)` or `form.setErrors({ email: "Taken" })`. These do NOT touch `touched` state, so errors display immediately regardless of blur status. `clearErrors()` wipes them on the next keystroke if `validateOn: "change"` is set, or on next submit otherwise.
+>
+> **Raw Standard Schema — no adapter, no cast**: `schema` accepts a raw Standard Schema (zod ≥ 3.24 / valibot ≥ 1 / arktype ≥ 2 / `@pyreon/validate`'s `s`) DIRECTLY — pass `z.object({...})` with no `zodSchema()` wrapper and no `as never` cast. It also still accepts a plain `SchemaValidateFn` and a `@pyreon/validation` typed adapter (reach for the adapter when you want the schema's field names checked against `TValues` at compile time). The `~standard` contract + bridge live in `@pyreon/validation`; form re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn` so the historical `import { ValidationError } from "@pyreon/form"` keeps working.
+>
+> **Nested schema errors route to the ancestor field**: Standard Schema adapters key nested errors by dot-path (`{ "address.city": "Required" }`). The error routes to its TOP-LEVEL ancestor field (`address`), which surfaces the message — the field model is flat in v1, so there is no per-leaf `address.city` field. A schema-error key matching NO field (a shape mismatch, or the path-less `""` whole-form key) marks the form invalid, sets `submitError`, and dev-warns — it is NOT silently dropped (which previously let `onSubmit` fire with schema-rejected data). Field-level errors win over schema errors on the same field.
+>
+> **File inputs are value-less**: `register(field, { type: "file" })` returns a bag WITHOUT `value` or `checked` — a file input can't be value-controlled (`<input type="file" value=…>` is rejected). Its `onInput` writes the input's `FileList` (`target.files`) to the field, so `field.value()` is `FileList | null` — read `files?.[0]` for a single file, or iterate for a `multiple` input. The value flows into `values()` / `onSubmit` like any field.
+>
+> **Dynamic fields need explicit `registerField` — no auto-registration**: `@pyreon/form` never lazily registers a field on first `setFieldValue` / `register` — that would silently drop data. Add a runtime field with `form.registerField(name, initial?, validator?)` (idempotent: re-registering keeps the current value, refreshes the validator) and remove it with `form.unregisterField(name)` (cleanly zeroes its `isValid()` / `isDirty()` contribution). Dynamic fields are runtime-typed — not part of the static `TValues` — so read them via `getValues()[name]` / `fields[name]`.
+>
+> **Focus-first-error is on by default**: On a failed `handleSubmit`, focus moves to the first errored field (declaration order) that was bound via `register()` — accessible error recovery. Opt out with `focusOnError: false`. A field never passed through `register()` has no known id and is skipped. `form.focusFirstError()` is exposed for custom submit flows; both are SSR-safe no-ops on the server.
 
 ## @pyreon/query — TanStack Query Adapter
 

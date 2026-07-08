@@ -155,6 +155,8 @@ The transform emits calls to symbols exported by `@pyreon/runtime-dom` and `@pyr
 | `_bind(fn, …)`   | `@pyreon/runtime-dom`   | Per-binding reactive update wired to a template node |
 | `_bindText(…)`   | `@pyreon/runtime-dom`   | Fast path for reactive text nodes |
 | `_bindDirect(…)` | `@pyreon/runtime-dom`   | Fast path for reactive attributes |
+| `_setChild(node, value)` | `@pyreon/runtime-dom` | Static sole `{x}` child — mounts a VNode/VNode[] value, else sets `textContent` (a bare `{arr}` renders the elements, not `[object Object]`) |
+| `_setChildAt(parent, placeholder, value)` | `@pyreon/runtime-dom` | Static mixed `{x}` child — mounts a VNode/VNode[] value at a `<!>` placeholder, else inserts a text node |
 | `_applyProps(…)` | `@pyreon/runtime-dom`   | Spread props on a template element |
 | `_rp(thunk)`     | `@pyreon/core`          | Brand a reactive prop wrapper |
 | `_wrapSpread(s)` | `@pyreon/core`          | Preserve reactivity through `<Comp {...source}>` |
