@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/testing",
-  "version": "0.42.0",
+  "version": "0.43.0",
   "description": "Official testing utilities for Pyreon — Testing-Library-style render/screen/fireEvent plus reactive-native matchers",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/testing#readme",

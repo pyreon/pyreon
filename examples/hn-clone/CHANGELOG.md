@@ -1,5 +1,47 @@
 # hn-clone
 
+## 0.0.27
+
+### Patch Changes
+
+- Updated dependencies [[`cbefb07`](https://github.com/pyreon/pyreon/commit/cbefb0742e123484be6e158cfeb16c28d0d5deb9)]:
+  - @pyreon/zero@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/charts@1.0.0
+  - @pyreon/code@1.0.0
+  - @pyreon/dnd@1.0.0
+  - @pyreon/document@1.0.0
+  - @pyreon/feature@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/hotkeys@1.0.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/machine@1.0.0
+  - @pyreon/permissions@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/rx@1.0.0
+  - @pyreon/state-tree@1.0.0
+  - @pyreon/storage@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/table@1.0.0
+  - @pyreon/toast@1.0.0
+  - @pyreon/url-state@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/virtual@1.0.0
+  - @pyreon/connector-document@1.0.0
+  - @pyreon/coolgrid@1.0.0
+  - @pyreon/document-primitives@1.0.0
+  - @pyreon/elements@1.0.0
+  - @pyreon/kinetic-presets@1.0.0
+  - @pyreon/kinetic@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.0.26
 
 ### Patch Changes

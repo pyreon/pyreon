@@ -1,5 +1,16 @@
 # @pyreon/ui-primitives
 
+## 0.33.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.43.0
+  - @pyreon/reactivity@0.43.0
+  - @pyreon/runtime-dom@0.43.0
+  - @pyreon/hooks@0.43.0
+  - @pyreon/elements@0.43.0
+
 ## 0.32.0
 
 ### Patch Changes

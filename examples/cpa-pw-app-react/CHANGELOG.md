@@ -1,5 +1,25 @@
 # cpa-pw-app-react
 
+## 0.0.29
+
+### Patch Changes
+
+- Updated dependencies [[`cbefb07`](https://github.com/pyreon/pyreon/commit/cbefb0742e123484be6e158cfeb16c28d0d5deb9)]:
+  - @pyreon/zero@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/react-compat@1.0.0
+  - @pyreon/meta@1.0.0
+
 ## 0.0.28
 
 ### Patch Changes

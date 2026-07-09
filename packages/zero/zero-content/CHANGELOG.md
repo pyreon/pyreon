@@ -1,5 +1,17 @@
 # @pyreon/zero-content
 
+## 0.43.0
+
+### Patch Changes
+
+- Updated dependencies [[`cbefb07`](https://github.com/pyreon/pyreon/commit/cbefb0742e123484be6e158cfeb16c28d0d5deb9)]:
+  - @pyreon/zero@0.43.0
+  - @pyreon/core@0.43.0
+  - @pyreon/head@0.43.0
+  - @pyreon/reactivity@0.43.0
+  - @pyreon/router@0.43.0
+  - @pyreon/runtime-dom@0.43.0
+
 ## 0.42.0
 
 ### Patch Changes
