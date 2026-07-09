@@ -1,4 +1,8 @@
 import cac from 'cac'
+// Version derived from package.json (never hardcode a self-version — the
+// literal froze at 0.0.1 while releases advanced; see anti-patterns
+// "Hardcoding a package's OWN version"). The build inlines the literal.
+import packageJson from '../package.json' with { type: 'json' }
 import { build } from './commands/build'
 import { context } from './commands/context'
 import { create } from './commands/create'
@@ -52,5 +56,5 @@ cli
 cli.command('create <name>', 'Scaffold a new Pyreon Zero project').action(create)
 
 cli.help()
-cli.version('0.0.1')
+cli.version(packageJson.version)
 cli.parse()
