@@ -1,5 +1,19 @@
 # @pyreon/docs-pyreon
 
+## 0.0.18
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.43.1
+  - @pyreon/reactivity@0.43.1
+  - @pyreon/router@0.43.1
+  - @pyreon/runtime-dom@0.43.1
+  - @pyreon/server@0.43.1
+  - @pyreon/vite-plugin@0.43.1
+  - @pyreon/zero-content@0.43.1
+  - @pyreon/zero@0.43.1
+
 ## 0.0.17
 
 ### Patch Changes

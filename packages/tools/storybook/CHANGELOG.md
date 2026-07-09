@@ -1,5 +1,14 @@
 # @pyreon/storybook
 
+## 0.43.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.43.1
+  - @pyreon/reactivity@0.43.1
+  - @pyreon/runtime-dom@0.43.1
+
 ## 0.43.0
 
 ### Patch Changes

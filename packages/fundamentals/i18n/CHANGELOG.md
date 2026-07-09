@@ -1,5 +1,7 @@
 # @pyreon/i18n
 
+## 0.43.1
+
 ## 0.43.0
 
 ### Patch Changes

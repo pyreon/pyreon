@@ -1,5 +1,20 @@
 # @pyreon/elements
 
+## 0.43.1
+
+### Patch Changes
+
+- [#2141](https://github.com/pyreon/pyreon/pull/2141) [`7ba98f1`](https://github.com/pyreon/pyreon/commit/7ba98f1dda749e0844957070875ee01113cc6b9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(elements): `Text` `label` (and an explicit `children` prop) are now reactive
+
+  `<Text label={someSignal()} />` previously rendered the signal's value once and never updated. `Text` read `own.children ?? own.label` **eagerly** at setup, so a compiler `_rp()`-getter (what `label={sig()}` lowers to) was captured a single time. It now passes `children` as an accessor (`() => own.children ?? own.label`) — mirroring `Element`'s `getChildren` — so `mountChild` mounts it reactively and re-reads on each change.
+
+  PR [#1168](https://github.com/pyreon/pyreon/issues/1168) closed the sibling _rest-prop_ boundary (href/title/etc.) but left this children read eager; this closes the residual gap. `<Text>{sig()}</Text>` (a JSX-child accessor) was already reactive — the bug was specific to the getter-valued `label`/`children` **prop**. Bisect-verified with real-Chromium specs (revert the accessor → `expected 'live-1' to be 'live-2'`).
+
+- Updated dependencies []:
+  - @pyreon/ui-core@0.43.1
+  - @pyreon/unistyle@0.43.1
+  - @pyreon/sized-map@0.43.1
+
 ## 0.43.0
 
 ### Patch Changes

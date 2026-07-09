@@ -1,5 +1,19 @@
 # @pyreon/example-native-tasks-web
 
+## 0.0.16
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.43.1
+  - @pyreon/reactivity@0.43.1
+  - @pyreon/router@0.43.1
+  - @pyreon/runtime-dom@0.43.1
+  - @pyreon/form@0.43.1
+  - @pyreon/hooks@0.43.1
+  - @pyreon/store@0.43.1
+  - @pyreon/primitives@0.43.1
+
 ## 0.0.15
 
 ### Patch Changes

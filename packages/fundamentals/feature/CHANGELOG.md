@@ -1,5 +1,16 @@
 # @pyreon/feature
 
+## 0.43.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/form@0.43.1
+  - @pyreon/query@0.43.1
+  - @pyreon/store@0.43.1
+  - @pyreon/table@0.43.1
+  - @pyreon/validation@0.43.1
+
 ## 0.43.0
 
 ### Patch Changes
