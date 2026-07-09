@@ -92,7 +92,9 @@ describe('getFieldState(field)', () => {
   it('returns the live FieldState (same object as fields[field])', () => {
     const form = useForm({ initialValues: { email: '' }, onSubmit: () => {} })
     expect(form.getFieldState('email')).toBe(form.fields.email)
-    form.getFieldState('email').setValue('x')
+    // `!` — the field provably exists (constructed two lines up); the return
+    // is now honestly `| undefined` for unknown names.
+    form.getFieldState('email')!.setValue('x')
     expect(form.fields.email.value()).toBe('x')
   })
 })

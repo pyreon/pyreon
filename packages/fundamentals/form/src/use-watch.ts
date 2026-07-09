@@ -50,11 +50,29 @@ export function useWatch<TValues extends Record<string, unknown>, K extends keyo
     })
   }
 
+  // Unknown names must fail with the actionable guidance (same contract as
+  // useField/setFieldValue/register) — the bare `form.fields[name].value`
+  // deref shipped as an opaque TypeError on a typo'd field.
+  const assertField = (name: K): void => {
+    if (!form.fields[name]) {
+      throw new Error(
+        `[@pyreon/form] useWatch("${name}"): field "${name}" not found. ` +
+          `Available fields: ${Object.keys(form.fields).join(', ')}. ` +
+          `Declare it in useForm({ initialValues }) (or the fields array) — ` +
+          `@pyreon/form does not auto-register fields.`,
+      )
+    }
+  }
+
   // Watch multiple fields
   if (Array.isArray(nameOrNames)) {
-    return nameOrNames.map((name) => form.fields[name].value) as Signal<TValues[K]>[]
+    return nameOrNames.map((name) => {
+      assertField(name)
+      return form.fields[name].value
+    }) as Signal<TValues[K]>[]
   }
 
   // Watch single field
+  assertField(nameOrNames)
   return form.fields[nameOrNames].value
 }

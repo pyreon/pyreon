@@ -918,12 +918,16 @@ form.touchedFields() // → { password: true }
 ### `getFieldState(field)`
 
 A field's live `FieldState` signals — the same object as `form.fields[field]`,
-as a typed method (react-hook-form parity):
+as a typed method (react-hook-form parity). Returns `undefined` for a name
+matching no field, so it doubles as an existence probe for dynamic
+(`registerField`-added) fields:
 
 ```ts
 const email = form.getFieldState('email')
-email.value() // reactive read
-email.setValue('new@example.com')
+email?.value() // reactive read
+email?.setValue('new@example.com')
+
+if (!form.getFieldState('extra')) form.registerField('extra', '')
 ```
 
 ### `focusFirstError()`
