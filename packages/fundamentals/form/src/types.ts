@@ -253,8 +253,12 @@ export interface FormState<TValues extends Record<string, unknown>> {
    * Get a single field's reactive state — the SAME object as
    * `form.fields[field]`. (react-hook-form parity: `getFieldState(name)`,
    * but returns the live `FieldState` signals rather than a snapshot.)
+   * Returns `undefined` for a name matching no (static or runtime-registered)
+   * field — the honest type; the old non-optional signature just deferred the
+   * crash to the caller's first property read. Doubles as an existence probe
+   * for dynamic fields.
    */
-  getFieldState: <K extends keyof TValues>(field: K) => FieldState<TValues[K]>
+  getFieldState: <K extends keyof TValues>(field: K) => FieldState<TValues[K]> | undefined
   /**
    * Update initial values and reset all fields to the new values.
    * Useful when async data (e.g. from a query) arrives after form creation.
