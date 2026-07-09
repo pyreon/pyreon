@@ -13,6 +13,7 @@
  */
 
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -650,6 +651,7 @@ function detectVisit(ctx: DetectContext, node: ts.Node): void {
 }
 
 export function detectReactPatterns(code: string, filename = 'input.tsx'): ReactDiagnostic[] {
+  assertClassicTs()
   const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   const ctx: DetectContext = {
     sf,
@@ -1008,6 +1010,7 @@ function migrateVisit(ctx: MigrateContext, node: ts.Node): void {
 }
 
 export function migrateReactCode(code: string, filename = 'input.tsx'): MigrationResult {
+  assertClassicTs()
   const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   const diagnostics = detectReactPatterns(code, filename)
 

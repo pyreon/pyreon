@@ -27,6 +27,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 export type NativeFindingCode = 'web-only-package-import' | 'native-unsupported-decl'
 
@@ -128,6 +129,7 @@ function parseSourceFile(filePath: string): ts.SourceFile | null {
   } catch {
     return null
   }
+  assertClassicTs()
   return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true)
 }
 
@@ -266,6 +268,7 @@ export function detectNativePatterns(
   code: string,
   filename = 'snippet.tsx',
 ): NativePatternDiagnostic[] {
+  assertClassicTs()
   const source = ts.createSourceFile(filename, code, ts.ScriptTarget.Latest, true)
   const diags: NativePatternDiagnostic[] = []
 

@@ -19,6 +19,7 @@
  * UNCHANGED and reported as a warning — never silently mis-compiled.
  */
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 /** A hydration strategy string — same vocabulary as `island({ hydrate })`. */
 export type HydrateStrategy = string
@@ -133,6 +134,7 @@ export function transformClientDirectives(
   }
 
   const islandSource = opts.islandSource ?? DEFAULT_ISLAND_SOURCE
+  assertClassicTs()
   const sf = ts.createSourceFile(filePath, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   const warnings: DirectiveWarning[] = []
   const sites: DirectiveSite[] = []

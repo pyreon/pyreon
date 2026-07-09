@@ -45,6 +45,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 export type IslandFindingCode =
   | 'never-with-registry-entry'
@@ -342,6 +343,7 @@ function extractFromFile(absPath: string, root: string): FileExtraction {
   } catch {
     return { islands: [], registryEntries: [], imports: new Set() }
   }
+  assertClassicTs()
   const sf = ts.createSourceFile(absPath, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   return {
     islands: extractIslandDecls(sf, absPath, root),

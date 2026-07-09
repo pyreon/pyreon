@@ -34,7 +34,7 @@
     "typecheck": "echo 'nothing to typecheck'"
   },
   "peerDependencies": {
-    "typescript": ">=5.9.0"
+    "typescript": ">=5.9.0 <7.0.0"
   },
   "dependencies": {
     "@pyreon/core": ">=0.13.0"

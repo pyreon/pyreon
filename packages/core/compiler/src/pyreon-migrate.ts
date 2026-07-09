@@ -22,6 +22,7 @@
  */
 
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 import {
   collectSignalBindings,
   detectPyreonPatterns,
@@ -80,6 +81,7 @@ interface Edit {
  */
 export function migratePyreonCode(source: string, filename = 'component.tsx'): PyreonMigrationResult {
   const isTsx = filename.endsWith('.tsx') || filename.endsWith('.jsx')
+  assertClassicTs()
   const sf = ts.createSourceFile(
     filename,
     source,
