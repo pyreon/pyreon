@@ -35,7 +35,7 @@ import { warnMissingEnv } from './warn-missing-env'
  * @example
  * ```ts
  * // zero.config.ts
- * import { defineConfig } from "@pyreon/zero"
+ * import { defineConfig } from "@pyreon/zero/config"
  *
  * export default defineConfig({
  *   adapter: "cloudflare",

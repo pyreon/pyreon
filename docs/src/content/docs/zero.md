@@ -55,19 +55,17 @@ This gives you a working application with file-system routing, SSR, and hot modu
 | `@pyreon/zero`         | Browser-safe only: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme system, i18n hooks, plus types                                                          |
 | `@pyreon/zero/server`  | Everything that touches `node:fs`/`node:path`: `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `i18nRouting`, fs-router helpers, `vercelRevalidateHandler` |
 
-The main entry re-exports **compile-time-guarded stubs** for the most commonly mis-imported server APIs (`createServer`, `defineConfig`, `seoPlugin`, `faviconPlugin`, `validateEnv`, `ogImagePlugin`, `aiPlugin`). Calling one from the client entry is a **`tsc` error at the call site** — the message names the right subpath — and, for non-typechecked callers (plain JS / `as any`), the stub also **throws at runtime**, instead of a cryptic `node:fs` bundling error. (The `import` itself is harmless; the guard fires when you *use* the API.)
+The server APIs (`createServer`, `defineConfig`, `seoPlugin`, `faviconPlugin`, `validateEnv`, `ogImagePlugin`, `aiPlugin`) are **not exported from `@pyreon/zero` at all** — import each from its subpath (`@pyreon/zero/server`, `/config`, `/seo`, `/favicon`, `/env`, `/og-image`, `/ai`). Importing one from the main entry is a **structural compile error** (`TS2305: '@pyreon/zero' has no exported member 'createServer'`), and no server-only code reaches the client bundle:
 
 ```ts
 // ✅ client-safe
 import { Image, Link, Icon, theme } from '@pyreon/zero'
 
-// ✅ server-only
+// ✅ server-only — from the subpath
 import { createServer, defineConfig } from '@pyreon/zero/server'
 
-// ❌ compile error at the call site (tsc) — and a runtime throw for non-typechecked
-//    callers: "createServer is server-only. Import from '@pyreon/zero/server' instead."
+// ❌ compile error: TS2305 — '@pyreon/zero' has no exported member 'createServer'
 import { createServer } from '@pyreon/zero'
-createServer(config)
 ```
 
 A handful of features live on their own focused subpaths (so a client bundle that imports `corsMiddleware` doesn't pull in unrelated server code) — see [Subpath Exports](#subpath-exports).

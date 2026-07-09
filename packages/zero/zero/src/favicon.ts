@@ -59,7 +59,7 @@ function warnSharpMissing() {
 // - site.webmanifest
 //
 // Usage:
-//   import { faviconPlugin } from "@pyreon/zero"
+//   import { faviconPlugin } from "@pyreon/zero/favicon"
 //   export default { plugins: [Pyreon] }
 
 export interface FaviconLocaleConfig {
@@ -169,7 +169,7 @@ const SIZES: FaviconSize[] = [
  * @example
  * ```ts
  * // vite.config.ts
- * import { faviconPlugin } from "@pyreon/zero"
+ * import { faviconPlugin } from "@pyreon/zero/favicon"
  *
  * export default {
  *   plugins: [faviconPlugin({ source: "./src/assets/icon.svg" })],

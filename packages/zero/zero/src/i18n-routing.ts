@@ -75,7 +75,8 @@ function _currentLocaleStore(): LocaleStore | undefined {
 //
 // Usage:
 //   // zero.config.ts
-//   import { defineConfig, i18nRouting } from "@pyreon/zero"
+//   import { defineConfig } from "@pyreon/zero/config"
+//   import { i18nRouting } from "@pyreon/zero/server"
 //   export default defineConfig({
 //     i18n: { locales: ["en","de","cs"], defaultLocale: "en" },
 //     plugins: [i18nRouting({ locales: ["en","de","cs"], defaultLocale: "en" })],
