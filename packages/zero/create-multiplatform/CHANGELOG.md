@@ -1,5 +1,7 @@
 # @pyreon/create-multiplatform
 
+## 0.43.0
+
 ## 0.42.0
 
 ## 0.41.2

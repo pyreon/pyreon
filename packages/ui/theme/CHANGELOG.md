@@ -1,5 +1,13 @@
 # @pyreon/ui-theme
 
+## 0.13.30
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/rocketstyle@0.43.0
+  - @pyreon/unistyle@0.43.0
+
 ## 0.13.29
 
 ### Patch Changes

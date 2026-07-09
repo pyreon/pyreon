@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/validation",
-  "version": "0.42.0",
+  "version": "0.43.0",
   "description": "Schema validation adapters for Pyreon forms (Zod, Valibot, ArkType)",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/validation#readme",

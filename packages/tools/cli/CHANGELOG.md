@@ -1,5 +1,15 @@
 # @pyreon/cli
 
+## 0.43.0
+
+### Patch Changes
+
+- [#2138](https://github.com/pyreon/pyreon/pull/2138) [`e8bfb5c`](https://github.com/pyreon/pyreon/commit/e8bfb5c8ad930f22b2ab3ede6812040079324c56) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `pyreon doctor` scoring a consumer app a misleading `C` (75/100). The `doc-claims` gate (the "documentation" category) validates the Pyreon **monorepo's own** doc-claim numbers (hook counts, lint-rule counts, …) against framework-internal source files — meaningless in a downstream consumer, where those paths don't exist, so it flooded the category with `file-missing` errors and dragged an otherwise-clean project's grade. It now detects it's outside the monorepo (via the absence of `scripts/check-doc-claims.ts`) and returns **N/A (skipped, excluded from the composite score)** instead of 0. In-monorepo behavior is unchanged.
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.43.0
+  - @pyreon/lint@0.43.0
+
 ## 0.42.0
 
 ### Patch Changes
