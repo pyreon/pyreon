@@ -226,11 +226,11 @@ Routes are duplicated per locale at build time. `prefix-except-default` keeps th
 | `@pyreon/zero/middleware`     | Generic `Middleware` helpers                                                         |
 | `@pyreon/zero/testing`        | `createTestContext`, `testMiddleware`, `createTestApiServer`                         |
 
-The main entry (`@pyreon/zero`) re-exports browser-safe pieces only — components, theme, i18n helpers. Server APIs imported from the main entry throw a clear error pointing at the right subpath.
+The main entry (`@pyreon/zero`) re-exports browser-safe pieces only — components, theme, i18n helpers. Server APIs re-exported from the main entry are compile-error stubs: calling one is a `tsc` error at the call site (with a pointer to the right subpath), and a non-typechecked caller also throws at runtime.
 
 ## Gotchas
 
-- `@pyreon/zero` ≠ `@pyreon/zero/server` — the main entry is client-safe. Server plugins (`faviconPlugin`, `seoPlugin`, `createServer`) MUST be imported from `/server`. Importing them from the main entry throws at module-load with a pointer to the right path.
+- `@pyreon/zero` ≠ `@pyreon/zero/server` — the main entry is client-safe. Server plugins (`faviconPlugin`, `seoPlugin`, `createServer`) MUST be imported from `/server`. Calling one from the main entry is a compile error (`tsc`) at the call site — and throws at runtime for non-typechecked callers — with a pointer to the right path.
 - ISR with auth-gated pages needs `cacheKey: (req) => …` that varies on session — the default keys by `url.pathname + url.search` (cookies/auth excluded) and will serve one user's HTML to another.
 - `_404.tsx` rendered HTML is emitted by SSG, but **static hosts must be configured to serve it** for unmatched URLs (most managed hosts do this by convention; bare S3 / nginx / Caddy need explicit per-locale `try_files` / `[[redirects]]`).
 - `getStaticPaths` / `revalidate` literal-extraction skips re-exports + non-literal expressions. Inline the value (`export const revalidate = 60`), don't reference a const.

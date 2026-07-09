@@ -121,6 +121,17 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   const config = resolveConfig(userConfig)
   let root = ''
   let distDir = ''
+  // True when Vite is running a SERVER-target build (`build.ssr` set) rather
+  // than the client build. A server build has NO client assets — no
+  // `index.html`, no manifest — so this plugin (whose whole job runs AFTER
+  // the CLIENT build) must not fire. The `zero build` CLI runs a dedicated
+  // `vite build --ssr → dist/server` pass; before this guard the plugin's
+  // closeBundle fired there too, probed `dist/server/index.html` (which
+  // legitimately never exists), and logged a scary
+  // `[zero:ssr] Skipping SSR build — …/index.html not found` while the build
+  // still reported success — a success-with-a-hole that masked whether the
+  // real SSR post-step ran. See `closeBundle`.
+  let isSsrTargetBuild = false
   // Captured from the OUTER build's resolved config so the inner SSR
   // sub-build (which runs `configFile: false`) emits assets identically.
   // See `buildInnerBuildOptions` / `ssg-plugin.ts`.
@@ -150,6 +161,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
     configResolved(resolved) {
       root = resolved.root
       distDir = resolve(root, resolved.build.outDir)
+      isSsrTargetBuild = Boolean(resolved.build.ssr)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
@@ -162,10 +174,21 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       if (config.mode !== 'ssr' && config.mode !== 'isr') return
       if (isInnerBuild) return
 
+      // SERVER-target build (`build.ssr` set) — this is NOT the client build,
+      // so there are no client assets to post-process. Silent no-op: the
+      // client-build pass owns the SSR post-step (nested SSR sub-build +
+      // adapter), and the `zero build` CLI runs its own dedicated
+      // `dist/server` server build + adapter separately. Firing here would
+      // probe for a client `index.html` that legitimately never exists in a
+      // server build and emit a misleading "Skipping SSR build" warning
+      // followed by a green "Build completed" — a success-with-a-hole. Placed
+      // before the probe so the scary warning is impossible in this context.
+      if (isSsrTargetBuild) return
+
       // Sanity check — without a client build there's no asset
-      // manifest for the adapter to wrap. Most likely cause: user is
-      // running `vite build --ssr` directly, in which case this plugin
-      // shouldn't be active anyway.
+      // manifest for the adapter to wrap. Reaching this point means the
+      // CLIENT build ran but produced no `index.html`, which is a genuine
+      // failure worth flagging (keep the warning for that case).
       const clientOutDir = distDir
       const indexHtmlPath = join(clientOutDir, 'index.html')
       if (!existsSync(indexHtmlPath)) {

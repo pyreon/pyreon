@@ -112,21 +112,35 @@ function serverOnly(name: string, subpath: string): never {
   )
 }
 
+/**
+ * A parameter-list type whose only member is a literal message string. Because
+ * no real call argument (a config object, a plugin options bag, `undefined`)
+ * is assignable to that literal, ANY call to a stub typed with it — e.g.
+ * `createServer(cfg)` from the client entry — FAILS `tsc` with the message
+ * surfaced in the error text. This turns the historical RUNTIME-only throw
+ * (green through `tsc` / `zero dev` / e2e, only crashing the built server at
+ * boot — the 0.39→0.41 prod-outage shape) into a COMPILE error at the call
+ * site. The runtime `serverOnly(...)` body below is KEPT as belt-and-suspenders
+ * for non-typechecked callers (plain JS, `as any` bypasses, dynamic dispatch).
+ */
+type ServerOnlyArg<Name extends string, Sub extends string> =
+  [`❌ '${Name}' is server-only — import it from "@pyreon/zero/${Sub}"`]
+
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /** @deprecated Import from `@pyreon/zero/favicon` instead */
-export function faviconPlugin(..._: unknown[]): never { return serverOnly('faviconPlugin', 'favicon') }
+export function faviconPlugin(..._: ServerOnlyArg<'faviconPlugin', 'favicon'>): never { return serverOnly('faviconPlugin', 'favicon') }
 /** @deprecated Import from `@pyreon/zero/seo` instead */
-export function seoPlugin(..._: unknown[]): never { return serverOnly('seoPlugin', 'seo') }
+export function seoPlugin(..._: ServerOnlyArg<'seoPlugin', 'seo'>): never { return serverOnly('seoPlugin', 'seo') }
 /** @deprecated Import from `@pyreon/zero/server` instead */
-export function createServer(..._: unknown[]): never { return serverOnly('createServer', 'server') }
+export function createServer(..._: ServerOnlyArg<'createServer', 'server'>): never { return serverOnly('createServer', 'server') }
 /** @deprecated Import from `@pyreon/zero/config` instead */
-export function defineConfig(..._: unknown[]): never { return serverOnly('defineConfig', 'config') }
+export function defineConfig(..._: ServerOnlyArg<'defineConfig', 'config'>): never { return serverOnly('defineConfig', 'config') }
 /** @deprecated Import from `@pyreon/zero/env` instead */
-export function validateEnv(..._: unknown[]): never { return serverOnly('validateEnv', 'env') }
+export function validateEnv(..._: ServerOnlyArg<'validateEnv', 'env'>): never { return serverOnly('validateEnv', 'env') }
 /** @deprecated Import from `@pyreon/zero/og-image` instead */
-export function ogImagePlugin(..._: unknown[]): never { return serverOnly('ogImagePlugin', 'og-image') }
+export function ogImagePlugin(..._: ServerOnlyArg<'ogImagePlugin', 'og-image'>): never { return serverOnly('ogImagePlugin', 'og-image') }
 /** @deprecated Import from `@pyreon/zero/ai` instead */
-export function aiPlugin(..._: unknown[]): never { return serverOnly('aiPlugin', 'ai') }
+export function aiPlugin(..._: ServerOnlyArg<'aiPlugin', 'ai'>): never { return serverOnly('aiPlugin', 'ai') }
 
 // ─── Types (no runtime, safe everywhere) ────────────────────────────────────
 
