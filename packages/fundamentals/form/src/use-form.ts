@@ -144,7 +144,10 @@ export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<str
  */
 // oxlint-disable-next-line no-explicit-any
 export function useForm<TDefs extends FieldDefinition<string, any>[]>(
-  options: { fields: [...TDefs]; onSubmit: (values: InferFieldValues<TDefs>) => void | Promise<void>; schema?: any; validateOn?: 'blur' | 'change' | 'submit'; debounceMs?: number },
+  // The exported UseFormFieldsOptions IS the overload's type — an inline
+  // literal here silently drifted (it omitted `focusOnError`, so
+  // fields-overload users couldn't opt out of a default-ON behavior: TS2769).
+  options: UseFormFieldsOptions<TDefs>,
 ): FormState<InferFieldValues<TDefs>>
 /**
  * Create a form with explicit initial values and validators.
@@ -681,7 +684,13 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     return out
   }
 
-  const getFieldState = <K extends keyof TValues>(field: K): FieldState<TValues[K]> => fields[field]
+  // `| undefined` is the honest type: an unknown/unregistered name returns
+  // undefined at runtime (probe semantics — useful for "does this dynamic
+  // field exist?"), and the old non-optional signature just deferred the
+  // crash to the caller's first property read.
+  const getFieldState = <K extends keyof TValues>(
+    field: K,
+  ): FieldState<TValues[K]> | undefined => fields[field]
 
   const getErrors = (): Partial<Record<keyof TValues, ValidationError>> => {
     const errors = {} as Partial<Record<keyof TValues, ValidationError>>
@@ -821,6 +830,17 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const trigger = async (field?: keyof TValues | ReadonlyArray<keyof TValues>): Promise<boolean> => {
     if (field === undefined) return validate()
     const names = (Array.isArray(field) ? field : [field]) as (keyof TValues & string)[]
+    // "Matched no field" must mean INVALID, never valid (the same principle
+    // as schema-error routing's orphan-key handling): an unknown name used to
+    // be silently skipped AND counted as valid in the `every` below — a typo'd
+    // `trigger('titel')` reported the form field valid. Dev-warn + return false.
+    const unknown = names.filter((name) => !fields[name])
+    if (unknown.length > 0 && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[@pyreon/form] trigger(): unknown field(s) ${unknown.map((n) => `"${n}"`).join(', ')} — ` +
+          `treated as INVALID. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}.`,
+      )
+    }
     isValidating.set(true)
     try {
       await Promise.all(
@@ -838,7 +858,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           if (schema && !fieldValidators[name]) await runSchemaForField(name).catch(() => {})
         }),
       )
-      return names.every((name) => !fields[name] || fields[name].error.peek() === undefined)
+      // Unknown names count as INVALID (`fields[name] !== undefined` gate) —
+      // never silently valid.
+      return names.every(
+        (name) => fields[name] !== undefined && fields[name].error.peek() === undefined,
+      )
     } finally {
       isValidating.set(false)
     }
@@ -1041,6 +1065,19 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     field: K,
     fieldOpts?: { type?: 'checkbox' | 'number' | 'file' },
   ): FieldRegisterProps<TValues[K]> | FieldRegisterCheckboxProps | FieldRegisterFileProps {
+    // Guard BEFORE the cache: an undeclared field must throw the actionable
+    // guidance (same contract as useField/setFieldValue), never the bare
+    // `undefined is not an object (evaluating 'fieldState.value')` TypeError
+    // this site shipped with — register() is the primary documented binding
+    // API and was the one lookup that crashed cryptically on a typo.
+    if (!fields[field]) {
+      throw new Error(
+        `[@pyreon/form] register("${field}"): field "${field}" does not exist. ` +
+          `Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
+          `Declare it in useForm({ initialValues }) (or the fields array), or add it at runtime via ` +
+          `registerField("${field}", initialValue) — @pyreon/form does not auto-register fields.`,
+      )
+    }
     const cacheKey = `${field}:${fieldOpts?.type ?? 'text'}`
     const cached = registerCache.get(cacheKey)
     if (cached) {
@@ -1157,7 +1194,24 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
 
   // ── setInitialValues: update initials + reset fields ──────────────────
   const setInitialValues = (newValues: Partial<TValues>) => {
-    Object.assign(currentInitials, newValues)
+    // Keys matching no field are SKIPPED, never merged: server payloads
+    // legitimately carry extra keys (`id`, `createdAt`), so throwing (the
+    // setFieldValue contract) would break the documented "reset to freshly
+    // saved server data" flow — but silently merging them polluted
+    // `currentInitials` with dead keys AND hid typos. Dev-warn + skip.
+    const known: Partial<TValues> = {}
+    const ignored: string[] = []
+    for (const key of Object.keys(newValues) as (keyof TValues & string)[]) {
+      if (fields[key]) (known as Record<string, unknown>)[key] = newValues[key]
+      else ignored.push(key)
+    }
+    if (ignored.length > 0 && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[@pyreon/form] setInitialValues()/reset(values): key(s) ${ignored.map((k) => `"${k}"`).join(', ')} ` +
+          `match no field — ignored. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}.`,
+      )
+    }
+    Object.assign(currentInitials, known)
     // batch() so 4×N signal writes (per matching field) notify
     // subscribers once — typical use is async-prefill (loader data
     // landing post-mount), where un-batched the form re-renders 4×
