@@ -57,13 +57,22 @@ const Component: PyreonComponent<Props> & {
   // Children go into the mergeProps override (not h's third arg) so
   // mount's children-merge step skips this vnode — one descriptor-copy
   // hop instead of two.
+  //
+  // `children` is an ACCESSOR (`() => …`), not the eagerly-read value —
+  // otherwise `own.label` (a compiler `_rp()`-getter for a signal-driven
+  // `label={sig()}`) would be captured once at setup and never re-read,
+  // so the text would not update when the signal changes. The accessor
+  // lets `mountChild` mount it via `mountReactive`, re-reading
+  // `own.children`/`own.label` on each change. Mirrors Element's
+  // `getChildren` (Element/component.tsx). #1168 fixed the rest-prop
+  // boundary but left this children read eager.
   return h(
     Styled,
     mergeProps(rest as Record<string, unknown>, {
       ref: own.ref,
       as: finalTag,
       $text: { extraStyles: own.css },
-      children: own.children ?? own.label,
+      children: () => own.children ?? own.label,
     }),
   )
 }

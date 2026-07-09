@@ -5,6 +5,14 @@ import { Text } from '../Text'
 
 const asVNode = (v: unknown) => v as VNode
 
+// Text passes `children` as a reactive accessor (`() => own.children ??
+// own.label`) so a signal-driven `label`/`children` stays live. Resolve it
+// for value assertions.
+const resolveChildren = (v: VNode): unknown => {
+  const c = v.props.children
+  return typeof c === 'function' ? (c as () => unknown)() : c
+}
+
 describe('Text', () => {
   describe('static properties', () => {
     it('has isText set to true', () => {
@@ -37,7 +45,7 @@ describe('Text', () => {
 
     it('renders children in output', () => {
       const result = asVNode(Text({ children: 'Hello' }))
-      expect(result.props.children).toBe('Hello')
+      expect(resolveChildren(result)).toBe('Hello')
     })
 
     it('passes $text prop with extraStyles', () => {
@@ -47,35 +55,41 @@ describe('Text', () => {
 
     it('renders null content when no children or label', () => {
       const result = asVNode(Text({}))
-      expect(result.props.children).toBeUndefined()
+      expect(resolveChildren(result)).toBeUndefined()
     })
   })
 
+  // `children` is an ACCESSOR (`() => own.children ?? own.label`), not the
+  // eagerly-resolved value — that is what makes a signal-driven `label`
+  // reactive (see Text/component.tsx). These assertions therefore call the
+  // accessor via `resolveChildren`; asserting `props.children` directly
+  // would just compare against the function reference and silently pass for
+  // the old (non-reactive) eager-value shape too.
   describe('content fallback chain', () => {
     it('renders children as content', () => {
       const result = asVNode(Text({ children: 'child content' }))
-      expect(result.props.children).toBe('child content')
+      expect(resolveChildren(result)).toBe('child content')
     })
 
     it('renders label when children not provided', () => {
       const result = asVNode(Text({ label: 'label text' }))
-      expect(result.props.children).toBe('label text')
+      expect(resolveChildren(result)).toBe('label text')
     })
 
     it('prefers children over label', () => {
       const result = asVNode(Text({ children: 'child', label: 'label' }))
-      expect(result.props.children).toBe('child')
+      expect(resolveChildren(result)).toBe('child')
     })
 
     it('renders VNode children', () => {
       const child = h('strong', null, 'bold')
       const result = asVNode(Text({ children: child }))
-      expect(result.props.children).toBe(child)
+      expect(resolveChildren(result)).toBe(child)
     })
 
     it('renders number label', () => {
       const result = asVNode(Text({ label: 42 }))
-      expect(result.props.children).toBe(42)
+      expect(resolveChildren(result)).toBe(42)
     })
   })
 
@@ -247,7 +261,7 @@ describe('Text', () => {
       expect(result.props.$text).toEqual({ extraStyles: 'margin: 0;' })
       expect(result.props.class).toBe('intro')
       expect(result.props['data-testid']).toBe('intro-text')
-      expect(result.props.children).toBe('Hello world')
+      expect(resolveChildren(result)).toBe('Hello world')
       // Reserved props not forwarded
       expect(result.props.paragraph).toBeUndefined()
       expect(result.props.css).toBeUndefined()
@@ -268,7 +282,7 @@ describe('Text', () => {
       expect(result.props.as).toBe('h2')
       expect(result.props.ref).toBe(ref)
       expect(result.props.onClick).toBe(handler)
-      expect(result.props.children).toBe('Subtitle')
+      expect(resolveChildren(result)).toBe('Subtitle')
     })
   })
 })

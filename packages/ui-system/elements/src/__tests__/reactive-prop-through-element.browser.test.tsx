@@ -174,6 +174,50 @@ describe('reactive prop through Text — JSX spread regression', () => {
     await flush()
     expect(el.getAttribute('title')).toBe('updated')
   })
+
+  // The residual bug #1168 did NOT close: `label` (and an explicit
+  // `children` PROP) were read eagerly via `own.children ?? own.label` at
+  // setup, so a compiler `_rp()`-getter (what `<Text label={sig()} />`
+  // lowers to) was captured ONCE and never re-read. `<Text>{sig()}</Text>`
+  // (a JSX CHILD accessor) always worked — the bug is specific to the
+  // getter-valued `label`/`children` PROP. Fix = pass `children` as an
+  // accessor. These two specs are bisect-load-bearing: revert the accessor
+  // in Text/component.tsx → both fail with `expected 'live-1' to be 'live-2'`.
+  it('Text renders a reactive label as live text content', async () => {
+    const label = signal('live-1')
+    const { container } = mountInBrowser(
+      h(Text, {
+        tag: 'span',
+        label: _rp(() => label()),
+        'data-testid': 'txt-label',
+      }),
+    )
+    const el = container.querySelector<HTMLElement>('[data-testid="txt-label"]')!
+    expect(el).not.toBeNull()
+    expect(el.textContent).toBe('live-1')
+
+    label.set('live-2')
+    await flush()
+    expect(el.textContent).toBe('live-2')
+  })
+
+  it('Text renders a reactive children PROP as live text content', async () => {
+    const value = signal('live-1')
+    const { container } = mountInBrowser(
+      h(Text, {
+        tag: 'span',
+        children: _rp(() => value()),
+        'data-testid': 'txt-children-prop',
+      }),
+    )
+    const el = container.querySelector<HTMLElement>('[data-testid="txt-children-prop"]')!
+    expect(el).not.toBeNull()
+    expect(el.textContent).toBe('live-1')
+
+    value.set('live-2')
+    await flush()
+    expect(el.textContent).toBe('live-2')
+  })
 })
 
 describe('reactive prop through Content — JSX spread regression', () => {
