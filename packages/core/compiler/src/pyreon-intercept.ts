@@ -343,7 +343,11 @@ function unwrapInitializer(expr: ts.Expression): ts.Expression {
  * destructure is acceptable, a wrong one is not):
  *  - Only PascalCase, JSX-rendering functions (`isComponentShapedFunction`
  *    + `containsJsx`) — a plain helper that happens to destructure an
- *    options bag named `props` is NOT a component and is left alone.
+ *    options bag named `props` is NOT a component and is left alone —
+ *    PLUS the component-by-position HOC shape: an anonymous
+ *    return-position arrow whose first param is literally `props`
+ *    (`const withX = (W) => (props) => {…}`) — see
+ *    `isReturnedPropsComponent` for its own FP gating.
  *  - The initializer must be the bare first-parameter identifier
  *    (`= props`), unwrapped through paren / `as` / `satisfies` / `!`.
  *    `const { x } = props.nested` and `= someOtherObject` are NOT
@@ -361,7 +365,9 @@ function detectPropsDestructuredBody(
   ctx: DetectContext,
   node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
 ): void {
-  if (!isComponentShapedFunction(node)) return
+  // Component-by-NAME (PascalCase) or component-by-POSITION (the anonymous
+  // arrow a HOC returns, `props`-param-gated) — see isReturnedPropsComponent.
+  if (!isComponentShapedFunction(node) && !isReturnedPropsComponent(node)) return
   if (!containsJsx(node)) return
   if (!node.parameters.length) return
   const first = node.parameters[0]
@@ -773,6 +779,53 @@ function isComponentShapedFunction(
     return /^[A-Z]/.test(parent.name.text)
   }
   return false
+}
+
+/**
+ * Component-by-POSITION: the anonymous arrow / function expression a HOC
+ * returns — `const withLink = (W) => (props) => {…}` (concise body) or
+ * `(W) => { return (props) => {…} }` (block body). It carries no PascalCase
+ * name, but it IS the component the wrapped app mounts, so a body-scope
+ * `const { x } = props` inside it is the same captured-once reactivity bug
+ * `detectPropsDestructuredBody` exists for — and the name-only
+ * `isComponentShapedFunction` gate silently skipped it (the shipped gap:
+ * the anonymous-HOC shape got "No issues found"; naming the inner component
+ * made it fire).
+ *
+ * Gating for zero false positives (the detector's stated priority):
+ *  - RETURN position only — the concise body of an enclosing arrow, or the
+ *    expression of a `return` statement (paren-wrapped forms unwrapped).
+ *    Render-prop children (`<D>{(props) => …}</D>`) and `.map`/handler
+ *    callbacks are ARGUMENTS, not return values → excluded.
+ *  - The first parameter must be a plain identifier LITERALLY named `props` —
+ *    the recommended-fix reactive accessor (`return (() => …)`) has no
+ *    parameters, so it can never match; exotic callbacks almost never combine
+ *    a `props` param + return position + JSX. A HOC whose inner param has a
+ *    different name is an accepted MISS (a wrong flag is worse, per the
+ *    detector doctrine).
+ * `containsJsx` is enforced by the caller (same as the named path).
+ */
+function isReturnedPropsComponent(
+  node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
+): boolean {
+  if (!ts.isArrowFunction(node) && !ts.isFunctionExpression(node)) return false
+  const first = node.parameters[0]
+  if (!first || !ts.isIdentifier(first.name) || first.name.text !== 'props') {
+    return false
+  }
+  // Unwrap parens between the function and its structural parent, so
+  // `return ((props) => …)` and `(W) => ((props) => …)` both qualify.
+  let child: ts.Node = node
+  let parent = node.parent
+  while (parent && ts.isParenthesizedExpression(parent)) {
+    child = parent
+    parent = parent.parent
+  }
+  if (!parent) return false
+  // `(W) => (props) => {…}` — the function IS the enclosing arrow's body.
+  if (ts.isArrowFunction(parent) && parent.body === child) return true
+  // `(W) => { return (props) => {…} }`
+  return ts.isReturnStatement(parent)
 }
 
 function detectStaticReturnNullConditional(

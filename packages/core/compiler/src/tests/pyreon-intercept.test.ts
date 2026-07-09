@@ -213,6 +213,92 @@ describe('detectPyreonPatterns', () => {
       `
       expect(only(code)).toEqual([])
     })
+
+    // ── Component-by-position: the anonymous arrow a HOC returns ──────────
+    // Shipped gap (user-verified on 0.43): the anonymous inner component of
+    // `const withLink = (W) => (props) => {…}` destructuring props in its
+    // body got "No issues found" — only NAMING the inner component made the
+    // detector fire. `isReturnedPropsComponent` closes it: return position +
+    // first param literally `props`.
+    // Bisect: remove the `|| isReturnedPropsComponent(node)` acceptance in
+    // detectPropsDestructuredBody → the three FIRES specs below fail with
+    // `expected [] to have a length of 1`; the named-inner + guard specs
+    // still pass.
+
+    it('flags the anonymous concise-body HOC component (the reported shape)', () => {
+      const code = `
+        const withLink = (W: any) => (props: any) => {
+          const { href, ...rest } = props
+          return <a href={href}><W {...rest} /></a>
+        }
+      `
+      expect(only(code)).toHaveLength(1)
+    })
+
+    it('flags the anonymous block-body HOC component (`return (props) => …`)', () => {
+      const code = `
+        const withLink = (W: any) => {
+          return (props: any) => {
+            const { href } = props
+            return <a href={href} />
+          }
+        }
+      `
+      expect(only(code)).toHaveLength(1)
+    })
+
+    it('flags the paren-wrapped return-position component', () => {
+      const code = `
+        function withCard(W: any) {
+          return ((props: any) => {
+            const { title } = props
+            return <div>{title}<W /></div>
+          })
+        }
+      `
+      expect(only(code)).toHaveLength(1)
+    })
+
+    it('still flags the NAMED inner component (the pre-existing path)', () => {
+      const code = `
+        const withLink = (W: any) => {
+          function Inner(props: any) {
+            const { href } = props
+            return <a href={href} />
+          }
+          return Inner
+        }
+      `
+      expect(only(code)).toHaveLength(1)
+    })
+
+    it('does NOT flag a render-prop child callback (argument, not return position)', () => {
+      const code = `
+        const Page = (props: any) => (
+          <DataLoader>{(props: any) => { const { row } = props; return <td>{row}</td> }}</DataLoader>
+        )
+      `
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag a .map callback whose param is named props (argument position)', () => {
+      const code = `
+        const Cells = (props: any) => (
+          <tr>{props.items.map((props: any) => { const { id } = props; return <td>{id}</td> })}</tr>
+        )
+      `
+      expect(only(code)).toEqual([])
+    })
+
+    it('does NOT flag a returned arrow whose param is NOT named props (accepted miss)', () => {
+      const code = `
+        const withLink = (W: any) => (p: any) => {
+          const { href } = p
+          return <a href={href} />
+        }
+      `
+      expect(only(code)).toEqual([])
+    })
   })
 
   describe('process-dev-gate', () => {
