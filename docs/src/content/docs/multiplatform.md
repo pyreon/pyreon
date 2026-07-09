@@ -362,6 +362,41 @@ services), then build what doesn't (platform APIs, animations, adaptive
 layout, gestures beyond tap). The self-rating moves only on device
 evidence — this table is where that evidence is ledgered.
 
+### Per-hook device-behavior audit (M1.2)
+
+The service-hook layer at per-hook granularity — same rung vocabulary,
+same strictness (a hook that *runs* inside a green device test but has
+no assertion on its behavior earns nothing). "In device app" names which
+of the four nightly-built apps (todomvc / counter / router-demo / tasks)
+uses the hook at all.
+
+| Hook | In device app | Behavior asserted | Rung |
+| --- | --- | --- | --- |
+| `useFetch` | tasks | ✅ success (`lc-quote`) + error (`lc-error`) render | **R5** |
+| `useForm` | tasks | ✅ validators, field bindings, submit gating (login error path) | **R5** |
+| `useParams` / router nav + guards | router-demo | ✅ nav, typed params, auth gate | **R5** |
+| `useStorage` | todomvc | ❌ exercised (todos persist through it) but persistence-across-relaunch is NEVER asserted | R4-exercised, credit 0 |
+| `useLoaderData` (loader auto-emit) | — | ❌ | R2 |
+| `useAuth` | — (the tasks "login" is `useForm` + a router guard, NOT this hook) | ❌ | R2 |
+| `useDatabase` | — | ❌ | R2 |
+| `useSecureStorage` | — | ❌ | R2 |
+| `useWebSocket` | — | ❌ | R2 |
+| `useGeolocation` | — | ❌ (manual `.start()` on Kotlin) | R2 |
+| `useMap` | — | ❌ | R2 |
+| `usePush` | — | ❌ (manual `.start()`) | R2 |
+| `usePayments` | — | ❌ (manual `.start()`) | R2 |
+| `usePermissions` | — | ❌ (unit-tested; no device use) | R2–R3 |
+| `useClipboard` | — | ❌ | R2 |
+| `useOnline` | — | ❌ | R2 |
+| `useColorScheme` | — | ❌ (emit-only by design) | R2 |
+
+**Assertion queue** (the follow-up PR order; each moves a row to R5 and
+re-scores the matrix): 1. `useStorage` persistence (todomvc already uses
+it — terminate + relaunch + assert todos survive; zero new app code),
+2. `useDatabase`, 3. `useWebSocket`, 4. `useAuth`, 5. `useClipboard`.
+The three manual-`.start()` hooks (geolocation/push/payments) are gated
+on M3.9 auto-start parity first.
+
 ## Native routing
 
 `createRouter({ routes })` compiles to native dispatch — SwiftUI
