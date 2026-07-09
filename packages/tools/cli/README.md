@@ -40,6 +40,8 @@ pyreon doctor --format text|json|gha   # explicit format (alternative to --json 
 | `audit-types`     | architecture  | slow  | Typed-but-unimplemented public-interface fields                |
 | `bundle-budgets`  | performance   | slow  | Gzipped main-entry size vs locked `bundle-budgets.json` budget |
 
+**Framework-internal gates skip in consumer apps.** A handful of gates validate the Pyreon monorepo's OWN invariants and are meaningless in a downstream app: `doc-claims` (checks the framework's hand-quoted counts against its source of truth), `audit-leak-classes`, `audit-types`, and `bundle-budgets` all detect they aren't running inside the framework repo (via the presence of their companion `scripts/*.ts`) and return **skipped** — so they're EXCLUDED from the composite score rather than scoring 0 and dragging an otherwise-clean consumer app's grade down. They surface in the report's skipped-gates footer.
+
 ### Score formula
 
 - Per-finding penalty: `error = 10`, `warning = 3`, `info = 1` points.

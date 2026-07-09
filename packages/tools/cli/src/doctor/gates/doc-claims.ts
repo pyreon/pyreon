@@ -372,16 +372,28 @@ export const runDocClaimsGate = async (
   const start = Date.now()
   const findings: Finding[] = []
 
-  // The claim sites are Pyreon-monorepo-specific paths (hooks README,
-  // CLAUDE.md, docs/src/content/docs/index.md, etc.). In a downstream consumer
-  // project NONE of them exist — firing the gate would emit a flood of
-  // spurious file-missing errors that don't reflect any real problem.
-  // Skip when zero claim files are present: signal that the gate
-  // doesn't apply rather than blame the user for not being Pyreon.
-  const anyClaimExists = checks.some((c) =>
-    c.claims.some((cl) => existsSync(join(opts.cwd, cl.file))),
-  )
-  if (!anyClaimExists) {
+  // This gate validates the Pyreon monorepo's OWN doc-claim numbers (hook
+  // counts, lint-rule counts, …) against the framework source-of-truth — it
+  // is MEANINGLESS in a downstream consumer project. Both the claim sites
+  // (hooks README, CLAUDE.md, docs/src/content/docs/index.md, …) and the
+  // source-of-truth files the counters read (packages/fundamentals/hooks/
+  // src/index.ts, …) are Pyreon-monorepo-internal paths a consumer never has.
+  //
+  // Detect "am I in the Pyreon monorepo?" the SAME way the sibling monorepo-
+  // only gates do (audit-leak-classes / audit-types / bundle-budgets): the
+  // presence of THIS gate's companion script, `scripts/check-doc-claims.ts`
+  // (which wraps `runDocClaimsGate` for the standalone CLI). It exists in the
+  // framework repo and in no consumer project.
+  //
+  // A previous guard skipped only when ZERO *claim files* existed — but the
+  // claim set includes generic `README.md` / `CLAUDE.md`, which nearly every
+  // consumer has, so the gate ran anyway and flooded the `documentation`
+  // category with spurious `file-missing` errors for the monorepo-internal
+  // paths — dragging an otherwise-clean consumer app to a misleading C.
+  // Skipping excludes the gate from the composite score (see score.ts:
+  // computeScore) instead of scoring it 0.
+  const monorepoMarker = join(opts.cwd, 'scripts', 'check-doc-claims.ts')
+  if (!existsSync(monorepoMarker)) {
     return {
       gate: 'doc-claims',
       category: 'documentation',
@@ -391,7 +403,7 @@ export const runDocClaimsGate = async (
         elapsedMs: Date.now() - start,
         skipped: true,
         skipReason:
-          'no claim sites found in this project (gate targets Pyreon monorepo paths)',
+          'doc-claim audit targets the Pyreon monorepo (scripts/check-doc-claims.ts not present here)',
       },
     }
   }

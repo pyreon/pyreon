@@ -118,6 +118,59 @@ describe('runDoctor — runGate dispatch arms (L160-186)', () => {
   )
 })
 
+describe('runDoctor — doc-claims does not drag a consumer app grade', () => {
+  // Regression: in a downstream consumer app the doc-claims gate used to
+  // probe Pyreon-monorepo-INTERNAL paths (hooks README, lint rules, …)
+  // that don't exist there. Because the claim set includes the generic
+  // README.md / CLAUDE.md a consumer commonly has, the old guard let the
+  // gate RUN, flooding the `documentation` category with file-missing
+  // ERRORS → 0/100 for documentation → the composite grade fell to a
+  // misleading C even though every real (code) category was clean.
+  //
+  // The gate now detects it isn't the monorepo (no scripts/check-doc-claims.ts)
+  // and SKIPS, so documentation is EXCLUDED from the mean (score.ts:
+  // computeScore) rather than scored 0.
+  it('SKIPS doc-claims + excludes documentation from the score for a consumer with README.md / CLAUDE.md', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-consumer-grade-'))
+    try {
+      // A realistic consumer app: package.json + README + CLAUDE.md,
+      // but NONE of the framework internals.
+      fs.writeFileSync(
+        path.join(cwd, 'package.json'),
+        JSON.stringify({ name: 'my-app', dependencies: { '@pyreon/core': '*' } }),
+      )
+      fs.writeFileSync(path.join(cwd, 'README.md'), '# My App\nBuilt with Pyreon.\n')
+      fs.writeFileSync(path.join(cwd, 'CLAUDE.md'), '# Notes\nNo counts here.\n')
+
+      // Restrict to doc-claims + a code gate that is clean on this
+      // fixture, so the composite is deterministic:
+      //   before fix → mean(correctness 100, documentation 0) = 50 → F
+      //   after  fix → documentation excluded → 100 → A
+      const report = await runDoctor({ cwd, only: ['doc-claims', 'react-patterns'] })
+
+      const docClaims = report.gates.find((g) => g.gate === 'doc-claims')
+      expect(docClaims?.meta.skipped).toBe(true)
+
+      const documentation = report.categories.find(
+        (c) => c.category === 'documentation',
+      )!
+      // Excluded from the mean — an unmeasured category must not enter it.
+      expect(documentation.included).toBe(false)
+      // No file-missing errors leaked into the consumer's report.
+      expect(
+        report.findings.some((f) => f.code.endsWith('-file-missing')),
+      ).toBe(false)
+
+      // The clean consumer keeps an A — not dragged to a C/F by the
+      // monorepo-only doc gate.
+      expect(report.grade).toBe('A')
+      expect(report.score).toBe(100)
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+})
+
 describe('gate set consistency', () => {
   it('check-dedup is in the default (fast) set — it must be a valid --only/--skip target', () => {
     // Regression: the CLI's VALID_GATES used to be a hand-kept duplicate

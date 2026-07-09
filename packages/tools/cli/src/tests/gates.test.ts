@@ -156,6 +156,20 @@ describe('runDocClaimsGate', () => {
     expect(errs).toHaveLength(0)
   })
 
+  // Mark a tmp fixture as the Pyreon monorepo so the doc-claims gate
+  // doesn't skip. The gate's monorepo guard keys on the presence of its
+  // companion standalone script `scripts/check-doc-claims.ts` (the same
+  // shape audit-leak-classes / audit-types / bundle-budgets use) — a
+  // consumer app never has it, so every "this IS Pyreon" fixture must
+  // plant the marker to exercise the drift/finding paths.
+  function markMonorepo(tmp: string): void {
+    fs.mkdirSync(path.join(tmp, 'scripts'), { recursive: true })
+    fs.writeFileSync(
+      path.join(tmp, 'scripts', 'check-doc-claims.ts'),
+      '// monorepo marker for the doc-claims gate\n',
+    )
+  }
+
   // Helpers to build a tmp repo with the hooks claim sources the
   // doc-claims gate walks. Used by the drift / hedged / pattern-miss
   // path-covering tests below.
@@ -170,6 +184,7 @@ describe('runDocClaimsGate', () => {
       docsIndex?: string | null
     },
   ): void {
+    markMonorepo(tmp)
     const hooksDir = path.join(tmp, 'packages', 'fundamentals', 'hooks')
     fs.mkdirSync(path.join(hooksDir, 'src'), { recursive: true })
 
@@ -291,6 +306,7 @@ describe('runDocClaimsGate', () => {
     // project, but some claim sites have been deleted/moved" shape.
     // Gate walks claims[] and emits file-missing for each absent one.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-gate-'))
+    markMonorepo(tmp)
     fs.mkdirSync(
       path.join(tmp, 'packages', 'fundamentals', 'hooks', 'src'),
       { recursive: true },
@@ -322,6 +338,7 @@ describe('runDocClaimsGate', () => {
 
   it('lint-rule-count: drift when CLAUDE.md hard-codes the wrong allRules length', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-lr-'))
+    markMonorepo(tmp)
     const rulesDir = path.join(tmp, 'packages', 'tools', 'lint', 'src', 'rules')
     fs.mkdirSync(rulesDir, { recursive: true })
     // 4 real rule entries; the doc will lie and say 99.
@@ -351,6 +368,7 @@ describe('runDocClaimsGate', () => {
 
   it('lint-rule-count `all`: flags ONE wrong occurrence among many in manifest.ts', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-all-'))
+    markMonorepo(tmp)
     const rulesDir = path.join(tmp, 'packages', 'tools', 'lint', 'src', 'rules')
     fs.mkdirSync(rulesDir, { recursive: true })
     fs.writeFileSync(
@@ -384,6 +402,7 @@ describe('runDocClaimsGate', () => {
 
   it('detector-code-count: drift when anti-patterns.md mis-states the union size', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-dc-'))
+    markMonorepo(tmp)
     const compilerDir = path.join(tmp, 'packages', 'core', 'compiler', 'src')
     fs.mkdirSync(compilerDir, { recursive: true })
     fs.writeFileSync(
@@ -411,6 +430,7 @@ describe('runDocClaimsGate', () => {
 
   it('doc-format-count: drift when README mis-states the OutputFormat union size', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-fmt-'))
+    markMonorepo(tmp)
     const docDir = path.join(
       tmp,
       'packages',
@@ -443,6 +463,7 @@ describe('runDocClaimsGate', () => {
 
   it('package-count: drift when CLAUDE.md mis-states the published-package count', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-pkg-'))
+    markMonorepo(tmp)
     // 3 non-private packages + 1 private (the private one must NOT count).
     const mk = (cat: string, name: string, priv = false): void => {
       const dir = path.join(tmp, 'packages', cat, name)
@@ -473,7 +494,7 @@ describe('runDocClaimsGate', () => {
     fs.rmSync(tmp, { recursive: true, force: true })
   })
 
-  it('skips the gate when no claim files exist (non-Pyreon project)', async () => {
+  it('skips the gate in an empty (non-Pyreon) project', async () => {
     // A downstream consumer app has none of the Pyreon-monorepo claim
     // sites (CLAUDE.md, hooks README, docs/src/content/docs/index.md, …). The gate
     // recognises this and returns skipped:true rather than flooding
@@ -487,8 +508,62 @@ describe('runDocClaimsGate', () => {
     const result = await runDocClaimsGate({ cwd: tmp })
     assertGateResultShape(result, 'doc-claims')
     expect(result.meta.skipped).toBe(true)
-    expect(result.meta.skipReason).toContain('no claim sites')
+    expect(result.meta.skipReason).toContain('Pyreon monorepo')
     expect(result.findings).toHaveLength(0)
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('SKIPS in a consumer app that HAS README.md / CLAUDE.md but is not the monorepo', async () => {
+    // Regression: the previous guard skipped only when ZERO *claim files*
+    // existed — but the claim set includes generic README.md / CLAUDE.md,
+    // which nearly every consumer app has. So the gate ran anyway and
+    // flooded the `documentation` category with spurious `file-missing`
+    // ERRORS for the monorepo-internal paths (hooks README, lint rules,
+    // …) — dragging a clean consumer app's grade down to a misleading C.
+    // The gate must recognise "not the monorepo" via the absence of its
+    // companion script and SKIP (excluded from the score), not score 0.
+    const tmp = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'pyreon-claims-consumer-'),
+    )
+    // A realistic consumer: a top-level README + CLAUDE.md, but NONE of
+    // the framework internals (no scripts/check-doc-claims.ts).
+    fs.writeFileSync(
+      path.join(tmp, 'README.md'),
+      '# My App\n\nBuilt with Pyreon. No hook counts here.\n',
+    )
+    fs.writeFileSync(
+      path.join(tmp, 'CLAUDE.md'),
+      '# Project notes\n\nNothing about lint rules or package counts.\n',
+    )
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    assertGateResultShape(result, 'doc-claims')
+    expect(result.meta.skipped).toBe(true)
+    expect(result.meta.skipReason).toContain('Pyreon monorepo')
+    // The crux: NO file-missing errors leak into a consumer's report.
+    expect(result.findings).toHaveLength(0)
+    expect(
+      result.findings.some((f) => f.code.endsWith('-file-missing')),
+    ).toBe(false)
+
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('RUNS (does not skip) once the monorepo marker is present', async () => {
+    // The companion script is the monorepo signal — plant it plus a
+    // clean, drift-free hooks source-of-truth + matching claim, and the
+    // gate runs and finds nothing wrong.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-claims-run-'))
+    buildHooksRepo(tmp, { hookCount: 3 })
+
+    const result = await runDocClaimsGate({ cwd: tmp })
+    assertGateResultShape(result, 'doc-claims')
+    expect(result.meta.skipped).not.toBe(true)
+    // Clean fixture → no drift errors on the hook count.
+    expect(
+      result.findings.some((f) => f.code === 'doc-claims/hook-count-drift'),
+    ).toBe(false)
 
     fs.rmSync(tmp, { recursive: true, force: true })
   })
