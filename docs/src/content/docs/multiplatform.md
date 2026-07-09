@@ -317,6 +317,51 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 > arc; until then, fetch-style loaders populate `loaderData` from native
 > code (or via a `useFetch` container) as before.
 
+## Production capability matrix (weighted, rung-labeled)
+
+**This table is the denominator for every "N% of usages" claim.** Real
+mobile/tablet apps decompose into the weighted usage categories below
+(weights = editorial judgment of a typical app's surface, documented so
+they can be argued with). Each row states its **verification rung** —
+**R1** emit · **R2** `swiftc`/`kotlinc` typecheck · **R3** unit/spec ·
+**R4** local simulator/emulator build+run · **R5** the nightly device
+gate (XCUITest + Compose `connectedCheck`) — and the **fraction of the
+category with an ASSERTED behavior at R4+** (exercised-but-never-asserted
+counts as 0; strictness is the point). Coverage numbers are recomputed
+whenever a row changes; do not edit the totals without recomputing.
+
+| Category | Weight | R4+ fraction | Rung + evidence |
+| --- | --- | --- | --- |
+| Core UI & layout (15 primitives) | 10 | 0.8 | R5 — Stack/Text/Button/Field/Press/List/Image/Icon asserted across the 4 device apps; Modal/Toggle/Scroll/Link not individually asserted |
+| Lists & keyed rendering | 8 | 0.7 | R5 — todomvc list mutations asserted; 10k-row perf unmeasured |
+| Navigation & routing | 8 | 0.8 | R5 — nav, typed params, guards, loaders asserted (router-demo); deep links absent |
+| State (signals/computed/stores) | 9 | 1.0 | R5 — counter increment + store mutation asserted both platforms |
+| Forms & validation | 6 | 0.5 | R5 partial — useForm v2 device-proven (validators, bindings, submit gating); arrays/dynamic fields absent |
+| Networking (fetch/ws/http) | 8 | 0.5 | fetch R5 (success + error path asserted); websocket/http-verbs R2 |
+| Storage (kv/secure/db) | 7 | 0.0 | R2 — runtimes exist + exercised in device apps, but persistence never ASSERTED (M1.2) |
+| Auth | 5 | 0.3 | gate/login flow R5; real IdP token flow R1–R2 |
+| Platform APIs (haptics/share/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.0 | clipboard/geolocation/push/payments/permissions exist at R2 (~40% of the set); the rest ABSENT |
+| Animations & transitions | 6 | 0.0 | absent (v1 exclusion) |
+| Gestures | 4 | 0.4 | tap R5 (asserted everywhere); long-press/swipe/drag absent |
+| Adaptive / tablet layout | 5 | 0.0 | absent (no size classes) |
+| Media (image display/picker/AV) | 4 | 0.25 | bundled image display R5 (tasks branded header); remote image R2; picker/AV absent |
+| Accessibility | 3 | 0.0 | semantics emit R2; never device-asserted |
+| i18n | 3 | 0.0 | R2 (PyreonI18n both platforms) |
+| Offline / sync | 3 | 0.0 | `@pyreon/sync` web-only; native db offline-first R2 |
+| Maps / geolocation | 3 | 0.0 | R2 runtimes; no device test |
+| Payments | 2 | 0.0 | R2 runtime; no device test |
+| Background / push | 3 | 0.0 | R2 runtime; manual `.start()`; no device test |
+
+**Weighted totals (2026-07-08 baseline):** device-proven (R4+) coverage
+**≈ 37%** (40.1 / 107); compile-proven (R2+) upper bound **≈ 74%** —
+i.e. roughly three-quarters of the weighted surface already *exists and
+typechecks*, but only about a third is *proven to behave* on a device.
+**The production goal is 70–90% at R4+**; the gap between the two
+numbers is, precisely, the roadmap: assert what exists (storage, auth,
+services), then build what doesn't (platform APIs, animations, adaptive
+layout, gestures beyond tap). The self-rating moves only on device
+evidence — this table is where that evidence is ledgered.
+
 ## Native routing
 
 `createRouter({ routes })` compiles to native dispatch — SwiftUI
