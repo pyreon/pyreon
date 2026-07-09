@@ -32,6 +32,7 @@
  */
 
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 // ─── IR ──────────────────────────────────────────────────────────────────────
 
@@ -336,6 +337,7 @@ export function isEmittable(node: ValidateNode): boolean {
 export function analyzeValidate(code: string, filename = 'input.ts'): ValidateSchemaInfo[] {
   let sf: ts.SourceFile
   try {
+    assertClassicTs()
     sf = ts.createSourceFile(filename, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
   } catch {
     return []

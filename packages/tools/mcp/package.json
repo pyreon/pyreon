@@ -45,7 +45,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@pyreon/compiler": "workspace:^",
-    "typescript": ">=5.0.0",
+    "typescript": ">=5.0.0 <7.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

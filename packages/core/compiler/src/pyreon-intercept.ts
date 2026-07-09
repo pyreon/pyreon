@@ -90,6 +90,7 @@
  */
 
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -1100,6 +1101,7 @@ function visit(ctx: DetectContext, node: ts.Node): void {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function detectPyreonPatterns(code: string, filename = 'input.tsx'): PyreonDiagnostic[] {
+  assertClassicTs()
   const sf = ts.createSourceFile(filename, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
   const ctx: DetectContext = {
     sf,

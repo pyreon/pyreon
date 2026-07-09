@@ -42,6 +42,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 export type SsgFindingCode =
   | '404-outside-layout-dir'
@@ -181,6 +182,7 @@ function parseSourceFile(filePath: string): ts.SourceFile | null {
   } catch {
     return null
   }
+  assertClassicTs()
   return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true)
 }
 

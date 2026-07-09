@@ -5,6 +5,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 export interface RouteInfo {
   path: string
@@ -408,6 +409,7 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
 
     let sf: ts.SourceFile
     try {
+      assertClassicTs()
       sf = ts.createSourceFile(file, code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TSX)
     } catch {
       continue

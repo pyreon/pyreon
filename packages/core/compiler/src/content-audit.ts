@@ -37,6 +37,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import ts from 'typescript'
+import { assertClassicTs } from './ts'
 
 export type ContentFindingCode =
   | 'missing-frontmatter-title'
@@ -220,6 +221,7 @@ export function parseContentConfig(filePath: string): CollectionDecl[] {
   } catch {
     return []
   }
+  assertClassicTs()
   const sf = ts.createSourceFile(
     filePath,
     source,
