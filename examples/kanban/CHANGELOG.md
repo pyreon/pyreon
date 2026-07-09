@@ -1,5 +1,29 @@
 # kanban
 
+## 0.0.28
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.43.1
+  - @pyreon/head@0.43.1
+  - @pyreon/reactivity@0.43.1
+  - @pyreon/router@0.43.1
+  - @pyreon/runtime-dom@0.43.1
+  - @pyreon/runtime-server@0.43.1
+  - @pyreon/dnd@0.43.1
+  - @pyreon/form@0.43.1
+  - @pyreon/hooks@0.43.1
+  - @pyreon/i18n@0.43.1
+  - @pyreon/permissions@0.43.1
+  - @pyreon/rx@0.43.1
+  - @pyreon/state-tree@0.43.1
+  - @pyreon/storage@0.43.1
+  - @pyreon/toast@0.43.1
+  - @pyreon/url-state@0.43.1
+  - @pyreon/validation@0.43.1
+  - @pyreon/zero@0.43.1
+
 ## 0.0.27
 
 ### Patch Changes

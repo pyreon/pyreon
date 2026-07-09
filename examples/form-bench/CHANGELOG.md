@@ -1,5 +1,16 @@
 # @pyreon/form-bench
 
+## 0.0.10
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.43.1
+  - @pyreon/reactivity@0.43.1
+  - @pyreon/runtime-dom@0.43.1
+  - @pyreon/form@0.43.1
+  - @pyreon/validation@0.43.1
+
 ## 0.0.9
 
 ### Patch Changes

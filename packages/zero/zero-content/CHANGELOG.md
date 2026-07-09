@@ -1,5 +1,13 @@
 # @pyreon/zero-content
 
+## 0.43.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/head@0.43.1
+  - @pyreon/router@0.43.1
+
 ## 0.43.0
 
 ### Patch Changes

@@ -1,5 +1,14 @@
 # @pyreon/coolgrid
 
+## 0.43.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/styler@0.43.1
+  - @pyreon/ui-core@0.43.1
+  - @pyreon/unistyle@0.43.1
+
 ## 0.43.0
 
 ### Patch Changes
