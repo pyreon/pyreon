@@ -243,14 +243,16 @@ jobs:
           # id-token directly, independent of npm registry auth — which
           # masked the root cause). For trusted publishing the registry
           # default is correct and NO .npmrc auth must exist.
-      - name: Ensure npm supports OIDC trusted publishing
-        # npm's native OIDC trusted-publishing (token-free `npm publish`)
-        # landed in npm 11.5.1. Node 24's bundled npm can be older
-        # (24.x shipped 11.3.x); pin a known-good npm so the exchange is
-        # guaranteed regardless of the Node minor.
-        run: |
-          npm install -g npm@latest
-          npm --version
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        # Publish via `bunx npm` (see the publish step below), NOT a
+        # globally self-upgraded npm. `npm install -g npm@latest` produced
+        # npm 11.16.0 whose self-upgrade DROPPED the bundled `sigstore`
+        # module, so `npm publish --provenance` died with
+        # `Cannot find module 'sigstore'` — that broke the 0.42.0
+        # native-binary release (the JS packages published fine because
+        # publish.ts already uses `bunx npm`). `bunx npm` fetches a
+        # COMPLETE npm (bundled deps intact, and >= 11.5.1 so OIDC trusted
+        # publishing still works) — the exact mechanism the JS release uses.
       - name: Download platform artifact
         # SHA must match the real v5.0.0 tag (634f93cb…). The prior pin
         # (cc20338…) was a transcription error that GitHub rejected as
@@ -300,4 +302,8 @@ jobs:
           # Belt-and-suspenders: ensure no stray .npmrc auth line (repo
           # checkout, cached home dir) shadows the OIDC exchange.
           rm -f "$HOME/.npmrc" .npmrc ../../../../.npmrc 2>/dev/null || true
-          npm publish --provenance --access public
+          # Pinned npm (NOT `npm@latest`) so a future npm regression can't
+          # silently break a release — keep in sync with `NPM_PIN` in
+          # scripts/publish.ts. bunx installs the pinned npm's bundled deps
+          # (incl. sigstore) correctly, unlike `npm install -g`.
+          bunx npm@11.16.0 publish --provenance --access public
