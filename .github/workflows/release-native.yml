@@ -302,4 +302,8 @@ jobs:
           # Belt-and-suspenders: ensure no stray .npmrc auth line (repo
           # checkout, cached home dir) shadows the OIDC exchange.
           rm -f "$HOME/.npmrc" .npmrc ../../../../.npmrc 2>/dev/null || true
-          bunx npm publish --provenance --access public
+          # Pinned npm (NOT `npm@latest`) so a future npm regression can't
+          # silently break a release — keep in sync with `NPM_PIN` in
+          # scripts/publish.ts. bunx installs the pinned npm's bundled deps
+          # (incl. sigstore) correctly, unlike `npm install -g`.
+          bunx npm@11.16.0 publish --provenance --access public

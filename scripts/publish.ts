@@ -17,6 +17,18 @@ import { topoSortByWorkspaceDeps } from './publish-order'
 import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
 
 const PACKAGES_DIR = join(import.meta.dirname, '..', 'packages')
+
+// Pinned npm version for publishing. UNPINNED `bunx npm` floats to
+// `npm@latest`, which is how the 0.42.0 native-binary release broke — a
+// freshly-published npm shipped a `--provenance`-breaking regression and the
+// release ran on the wrong side of that clock. An EXACT pin removes the drift;
+// running via `bunx npm@<ver>` (not `npm install -g`) keeps npm's bundled deps
+// (incl. `sigstore`, which `--provenance` needs) intact. 11.16.0 is the version
+// that published the 0.42.0 JS packages with OIDC+provenance via bunx — proven.
+// BUMP DELIBERATELY (not automatically) — a bump wants a dry-run publish
+// rehearsal to verify before it reaches a real release. Keep in sync with the
+// pin in `.github/workflows/release-native.yml`.
+const NPM_PIN = '11.16.0'
 const dryRun = process.argv.includes('--dry-run')
 const otpArg = process.argv.find((a) => a.startsWith('--otp='))
 const otp = otpArg?.split('=')[1]
@@ -316,7 +328,7 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
 
   try {
     const isCI = !!process.env.CI
-    const args = ['bunx', 'npm', 'publish', '--access', 'public', '--ignore-scripts']
+    const args = ['bunx', `npm@${NPM_PIN}`, 'publish', '--access', 'public', '--ignore-scripts']
     // Provenance attests a real published artifact — it is meaningless for a
     // `--dry-run` (nothing is uploaded to attest) and requires an OIDC token
     // the dry-run gate (Release Build CI job) deliberately does NOT grant.
