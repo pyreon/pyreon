@@ -28,6 +28,6 @@ export type {
   ValidationError,
   ValidationIssue,
 } from './types'
-export { issuesToRecord } from './utils'
+export { flattenIssuePath, issuesToRecord } from './utils'
 export { valibotField, valibotSchema } from './valibot'
 export { zodField, zodSchema } from './zod'

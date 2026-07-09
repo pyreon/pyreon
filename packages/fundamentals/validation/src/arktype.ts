@@ -6,7 +6,7 @@ import type {
   ValidationError,
   ValidationIssue,
 } from './types'
-import { issuesToRecord } from './utils'
+import { flattenIssuePath, issuesToRecord } from './utils'
 
 /**
  * Minimal ArkType-compatible interfaces so we don't require arktype as a hard dep.
@@ -32,7 +32,7 @@ function isArkErrors(result: unknown): result is ArkErrors {
 
 function arkIssuesToGeneric(errors: ArkErrors): ValidationIssue[] {
   return errors.map((err) => ({
-    path: err.path.map(String).join('.'),
+    path: flattenIssuePath(err.path),
     message: err.message,
   }))
 }
