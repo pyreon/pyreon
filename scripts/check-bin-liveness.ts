@@ -26,15 +26,31 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 type Result = { name: string; ok: boolean; detail: string }
 
-/** Spawn `node <bin> <args>` and require exit 0 + non-empty stdout. */
-function checkFlagBin(name: string, binRel: string, args: string[]): Result {
+/**
+ * Spawn `node <bin> <args>` and require an allowed exit code + non-empty
+ * output. `okExits` defaults to [0]; scaffolders that print usage-then-exit-1
+ * on `--help` pass their own (liveness = it RAN, not that --help is exit 0).
+ * Output is stdout by default; `stderrOk` also accepts usage printed to
+ * stderr — but ONLY when the exit code is in `okExits`, so a crashing bin
+ * (ERR_MODULE_NOT_FOUND traceback on stderr, exit 1) still fails for bins
+ * whose contract is exit 0.
+ */
+function checkFlagBin(
+  name: string,
+  binRel: string,
+  args: string[],
+  opts: { okExits?: number[]; stderrOk?: boolean } = {},
+): Result {
+  const okExits = opts.okExits ?? [0]
   const bin = join(repoRoot, binRel)
   if (!existsSync(bin)) return { name, ok: false, detail: `bin missing: ${binRel} (build lib/ first?)` }
   const r = spawnSync('node', [bin, ...args], { encoding: 'utf8', timeout: 30_000 })
-  const out = (r.stdout ?? '').trim()
-  if (r.status !== 0) return { name, ok: false, detail: `exit ${r.status}; stderr: ${(r.stderr ?? '').slice(0, 200)}` }
+  const out = ((r.stdout ?? '') + (opts.stderrOk ? (r.stderr ?? '') : '')).trim()
+  if (!okExits.includes(r.status ?? -1)) {
+    return { name, ok: false, detail: `exit ${r.status}; stderr: ${(r.stderr ?? '').slice(0, 200)}` }
+  }
   if (out.length === 0) {
-    return { name, ok: false, detail: `exit 0 but EMPTY stdout — the no-op bug shape (bin ran nothing)` }
+    return { name, ok: false, detail: `exit ${r.status} but EMPTY output — the no-op bug shape (bin ran nothing)` }
   }
   return { name, ok: true, detail: `${args.join(' ')} → ${out.split('\n')[0].slice(0, 60)}` }
 }
@@ -77,11 +93,59 @@ function checkMcpBin(name: string, binRel: string): Promise<Result> {
   })
 }
 
+// EVERY published bin. Adding a new package with a `bin`? Add it here —
+// the drift check below fails the gate if a published bin is not covered.
 const results: Result[] = [
   checkFlagBin('@pyreon/cli (pyreon)', 'packages/tools/cli/lib/index.js', ['--version']),
   checkFlagBin('@pyreon/lint (pyreon-lint)', 'packages/tools/lint/bin/pyreon-lint.js', ['--help']),
   await checkMcpBin('@pyreon/mcp (pyreon-mcp)', 'packages/tools/mcp/lib/index.js'),
+  checkFlagBin('@pyreon/zero-cli (zero)', 'packages/zero/cli/bin/zero.js', ['--help']),
+  checkFlagBin('@pyreon/create-zero (create-zero)', 'packages/zero/create-zero/bin/create-zero.js', ['--help']),
+  checkFlagBin(
+    '@pyreon/create-zero (create-pyreon-app)',
+    'packages/zero/create-zero/bin/create-pyreon-app.js',
+    ['--help'],
+  ),
+  // Prints usage to stderr and exits 1 on --help (it requires a project
+  // name) — that IS the liveness signal for this bin.
+  checkFlagBin(
+    '@pyreon/create-multiplatform (create-multiplatform)',
+    'packages/zero/create-multiplatform/bin/create-multiplatform.js',
+    ['--help'],
+    { okExits: [1], stderrOk: true },
+  ),
 ]
+
+// Drift guard: fail if any published (non-private) package declares a bin
+// this gate doesn't spawn — a NEW dead bin must not ship unchecked.
+const { readdirSync, readFileSync } = await import('node:fs')
+const covered = new Set([
+  'packages/tools/cli',
+  'packages/tools/lint',
+  'packages/tools/mcp',
+  'packages/zero/cli',
+  'packages/zero/create-zero',
+  'packages/zero/create-multiplatform',
+])
+for (const cat of readdirSync(join(repoRoot, 'packages'))) {
+  const catDir = join(repoRoot, 'packages', cat)
+  let pkgs: string[] = []
+  try {
+    pkgs = readdirSync(catDir)
+  } catch {
+    continue
+  }
+  for (const pkg of pkgs) {
+    const pj = join(catDir, pkg, 'package.json')
+    if (!existsSync(pj)) continue
+    const manifest = JSON.parse(readFileSync(pj, 'utf8')) as { bin?: unknown; private?: boolean }
+    if (manifest.private || !manifest.bin) continue
+    const rel = `packages/${cat}/${pkg}`
+    if (!covered.has(rel)) {
+      results.push({ name: rel, ok: false, detail: 'published package declares a bin NOT covered by this gate — add a check' })
+    }
+  }
+}
 
 const dead = results.filter((r) => !r.ok)
 for (const r of results) {
