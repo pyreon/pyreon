@@ -12,10 +12,12 @@ import {
 // preserves the zero-content API surface (`baseUrl` instead of zero's
 // `origin`, named export `generateRssFeed`).
 //
-// **New code should import directly from `@pyreon/zero`** — same
-// generator, simpler integration:
+// **New code should import `generateRssFeed` directly from `@pyreon/zero`**
+// (it's a pure, client-safe string builder) — same generator, simpler
+// integration. `seoPlugin` is server-only, so it comes from `/seo`:
 //
-//     import { generateRssFeed, seoPlugin } from '@pyreon/zero'
+//     import { generateRssFeed } from '@pyreon/zero'
+//     import { seoPlugin } from '@pyreon/zero/seo'
 
 export type RssItem = RssItemZero
 

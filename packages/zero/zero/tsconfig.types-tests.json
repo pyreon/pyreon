@@ -1,0 +1,22 @@
+{
+  // Narrow typecheck for the `*.types.test.ts` compile-time regressions.
+  //
+  // The main `tsconfig.json` EXCLUDES `src/tests` (the 98 runtime test files
+  // carry ~84 deliberate type-loose assertions that would drown a strict
+  // `tsc --noEmit`). But the server-only-stubs type gate — `createServer(cfg)`
+  // from the client entry must be a COMPILE error — is only meaningful if a
+  // `@ts-expect-error` regression is actually enforced. This config compiles
+  // ONLY the `.types.test.ts` files against `src/index.ts` (which pulls in the
+  // stubs' real signatures transitively), so those `@ts-expect-error` lines
+  // fail `tsc` on regression while the noisy runtime tests stay excluded.
+  //
+  // Wired into the package `typecheck` script (runs after the main `tsc`), so
+  // the existing CI `Typecheck` job enforces it with no new job.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "emitDeclarationOnly": false
+  },
+  "include": ["src/index.ts", "src/tests/**/*.types.test.ts"],
+  "exclude": ["src/image-types.ts", "src/font-types.ts"]
+}

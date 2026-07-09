@@ -55,16 +55,16 @@ This gives you a working application with file-system routing, SSR, and hot modu
 | `@pyreon/zero`         | Browser-safe only: `Image`, `Link`, `Script`, `Icon`, `Meta`, theme system, i18n hooks, plus types                                                          |
 | `@pyreon/zero/server`  | Everything that touches `node:fs`/`node:path`: `createServer`, `createApp`, `defineConfig`, `resolveConfig`, adapters, `seoPlugin`, `aiPlugin`, `i18nRouting`, fs-router helpers, `vercelRevalidateHandler` |
 
-The main entry exports **throwing stubs** for the most commonly mis-imported server APIs (`createServer`, `defineConfig`, `seoPlugin`, `faviconPlugin`, `validateEnv`, `ogImagePlugin`, `aiPlugin`) so a wrong import fails fast with an actionable message instead of a cryptic `node:fs` bundling error:
+The server APIs (`createServer`, `defineConfig`, `seoPlugin`, `faviconPlugin`, `validateEnv`, `ogImagePlugin`, `aiPlugin`) are **not exported from `@pyreon/zero` at all** — import each from its subpath (`@pyreon/zero/server`, `/config`, `/seo`, `/favicon`, `/env`, `/og-image`, `/ai`). Importing one from the main entry is a **structural compile error** (`TS2305: '@pyreon/zero' has no exported member 'createServer'`), and no server-only code reaches the client bundle:
 
 ```ts
 // ✅ client-safe
 import { Image, Link, Icon, theme } from '@pyreon/zero'
 
-// ✅ server-only
+// ✅ server-only — from the subpath
 import { createServer, defineConfig } from '@pyreon/zero/server'
 
-// ❌ throws at import: "createServer is server-only. Import from '@pyreon/zero/server' instead."
+// ❌ compile error: TS2305 — '@pyreon/zero' has no exported member 'createServer'
 import { createServer } from '@pyreon/zero'
 ```
 

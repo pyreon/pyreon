@@ -191,7 +191,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.types-tests.json",
     "lint": "oxlint ."
   },
   "peerDependencies": {

@@ -100,6 +100,57 @@ describe('ssrPlugin', () => {
     })
   })
 
+  // Regression: the `zero build` CLI runs the client build (→ dist/client) and
+  // then a DEDICATED server build (`vite build --ssr` → dist/server). The SSR
+  // post-step's closeBundle fired during that server build too, probed
+  // `dist/server/index.html` (which a server-only build NEVER produces), and
+  // logged a scary "Skipping SSR build — …/index.html not found" while the
+  // build still reported "Build completed" — a success-with-a-hole. A
+  // server-target build (`build.ssr` set) has no client assets, so the plugin
+  // must silently no-op there. The client build (build.ssr falsy) still runs.
+  describe('closeBundle skips a server-target build (build.ssr set) silently', () => {
+    const SERVER_RESOLVED = {
+      root: '/tmp/pyreon-nonexistent-root',
+      build: { outDir: 'dist/server', ssr: 'src/entry-server.ts', assetsInlineLimit: 0, assetsDir: 'assets' },
+      base: '/',
+      plugins: [],
+    }
+    const CLIENT_RESOLVED = {
+      root: '/tmp/pyreon-nonexistent-root',
+      build: { outDir: 'dist/client', ssr: false, assetsInlineLimit: 0, assetsDir: 'assets' },
+      base: '/',
+      plugins: [],
+    }
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('does NOT warn "Skipping SSR build" when build.ssr is set (server-target build)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssrPlugin({ mode: 'ssr' }) as any
+      plugin.configResolved(SERVER_RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining('Skipping SSR build'),
+        ...([] as unknown[]),
+      )
+    })
+
+    it('DOES reach the check (and warns) for a CLIENT build with a missing index.html', async () => {
+      // Proves the skip above is meaningful: with build.ssr falsy the plugin
+      // reaches the client-index.html probe (missing here → genuine failure),
+      // so the server-target skip is discriminating, not a vacuous pass.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssrPlugin({ mode: 'ssr' }) as any
+      plugin.configResolved(CLIENT_RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('Skipping SSR build'),
+        ...([] as unknown[]),
+      )
+    })
+  })
+
   describe('SSR entry source generation', () => {
     it('SSR kind emits the canonical createServer body with all 3 virtual modules', () => {
       const src = renderSsrEntrySource({ kind: 'ssr', locales: [] })
