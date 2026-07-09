@@ -1200,6 +1200,27 @@ jobs:
       - name: Check sideEffects + source-map exclusion
         run: bun run check-distribution
 
+  # ── Check bin liveness: published-CLI no-op guard ─────────────────────
+  # A published bin can build + ship + exit 0 while executing NOTHING —
+  # @pyreon/lint 0.43.x shipped `bin/pyreon-lint.js` doing a bare
+  # `import('../lib/cli.js')` whose `if (import.meta.main) main()` call the
+  # bundler had tree-shaken out, so `npx pyreon-lint` ran nothing; and
+  # `import.meta.main`-gated bins are a silent no-op on Node 20/22 LTS.
+  # This gate spawns each published bin under REAL Node (not Bun — the bug
+  # is Node-runtime specific) and fails if any does nothing. Reads lib/, so
+  # it Needs Bootstrap. See scripts/check-bin-liveness.ts.
+  check-bin-liveness:
+    name: Check Bin Liveness
+    needs: [bootstrap, lint, typecheck, changes]
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/setup-pyreon
+      - name: Spawn every published bin, assert it does something
+        run: bun run check-bin-liveness
+
   # ── Check client-bundle node-import leak ──────────────────────────────
   # PR-S7 (#1125) first cut shipped a regression: i18n-routing.ts (exported
   # from @pyreon/zero's CLIENT-SAFE main entry) added a top-level

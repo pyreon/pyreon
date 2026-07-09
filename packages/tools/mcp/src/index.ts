@@ -44,7 +44,9 @@ import {
   migratePyreonCode,
   migrateReactCode,
 } from '@pyreon/compiler'
+import { realpathSync } from 'node:fs'
 import { relative } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { z } from 'zod'
 import packageJson from '../package.json' with { type: 'json' }
 import {
@@ -977,12 +979,44 @@ async function main(): Promise<void> {
   await server.connect(transport)
 }
 
-// `import.meta.main` is Bun's "entry module" flag. The compiled Node bin
-// (via bun build) preserves this — the bunx / tsx invocation of the
-// shebang sets it truthy; `import { createServer } from '...'` does not.
-// Covers both "run as CLI" and "imported by a test" without needing
-// require.main shims.
-if (import.meta.main) {
+// "Is this module the process entry?" — run the stdio server only when
+// invoked as the `pyreon-mcp` bin, NOT when imported by a test / another
+// package (which must not start a server). Cross-runtime because:
+//   - Bun and Node >=24.2 expose `import.meta.main` (a boolean) — use it.
+//   - Node 20/22 LTS do NOT (it's `undefined`) — a bare `if (import.meta.main)`
+//     is a SILENT no-op there, so `pyreon-mcp` would start nothing on LTS.
+// Fallback compares the resolved process entry URL to this module's URL.
+//
+// The comparison is a PURE function (`matchesProcessEntry`) so the LTS
+// `undefined` path is unit-testable without an actual old Node runtime.
+export function matchesProcessEntry(
+  meta: boolean | undefined,
+  moduleUrl: string,
+  resolvedEntryUrl: string | null,
+): boolean {
+  if (typeof meta === 'boolean') return meta
+  return resolvedEntryUrl !== null && moduleUrl === resolvedEntryUrl
+}
+
+function isProcessEntry(): boolean {
+  const entry = process.argv[1]
+  let resolvedEntryUrl: string | null = null
+  if (entry) {
+    // `realpathSync` resolves the npm `.bin` symlink so the file:// URLs match.
+    try {
+      resolvedEntryUrl = pathToFileURL(realpathSync(entry)).href
+    } catch {
+      resolvedEntryUrl = null
+    }
+  }
+  return matchesProcessEntry(
+    (import.meta as { main?: boolean }).main,
+    import.meta.url,
+    resolvedEntryUrl,
+  )
+}
+
+if (isProcessEntry()) {
   main().catch((err) => {
     console.error('MCP server error:', err)
     process.exit(1)
