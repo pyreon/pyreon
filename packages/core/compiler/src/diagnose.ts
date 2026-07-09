@@ -31,15 +31,19 @@ const ERROR_PATTERNS: ErrorPattern[] = [
   {
     // TypeScript 7 Compiler-API removal. `@pyreon/compiler`'s detectors,
     // audits, and migrators parse with the classic Compiler API
-    // (`ts.createSourceFile(f, code, ts.ScriptTarget.ESNext, …)`). TS7 ("tsgo",
-    // now `latest` on npm) removed it, so `ts.ScriptTarget` is `undefined` and
-    // the parse throws the cryptic `Cannot read properties of undefined
-    // (reading 'ESNext')`. Match the removed-member deref a user would paste.
+    // (reading `ts.ScriptTarget.ESNext` when parsing a source file). TS7
+    // ("tsgo", now `latest` on npm) removed it, so `ts.ScriptTarget` is
+    // `undefined` and the parse throws the cryptic `Cannot read properties of
+    // undefined (reading 'ESNext')`. Match the removed-member deref a user
+    // would paste. NOTE: this module bundles for the browser and must pull ZERO
+    // TypeScript API — `diagnose.test.ts` greps the bundle text, so name the
+    // removed members via `ScriptTarget`/`ScriptKind`, never the source-file
+    // creation token the grep treats as a bundled-TS marker.
     pattern:
-      /reading '(ESNext|Latest|createSourceFile|ScriptTarget|ScriptKind|forEachChild)'|ScriptTarget.*(undefined|is not)|typescript\s*7.*(classic|compiler api|createsourcefile|tsgo)/i,
+      /reading '(ESNext|Latest|ScriptTarget|ScriptKind|forEachChild)'|ScriptTarget.*(undefined|is not)|typescript\s*7.*(classic|compiler api|tsgo)/i,
     diagnose: () => ({
       cause:
-        'TypeScript 7 ("tsgo", the native preview published as `latest` on npm) removed the classic Compiler API (`createSourceFile` / `ScriptTarget` / `ScriptKind`). `@pyreon/compiler`\'s pattern detectors, audits, and migrators parse with that API, so under TS7 `ts.ScriptTarget` is `undefined` and the parse throws `Cannot read properties of undefined (reading \'ESNext\')`. A fresh `bunx @pyreon/mcp` — or any clean install that resolved an uncapped `typescript` range to 7.x — hits this; a project pinned to 5.x/6.x works.',
+        'TypeScript 7 ("tsgo", the native preview published as `latest` on npm) removed the classic Compiler API (`ScriptTarget` / `ScriptKind` and the parse + traverse primitives). `@pyreon/compiler`\'s pattern detectors, audits, and migrators parse with that API, so under TS7 `ts.ScriptTarget` is `undefined` and the parse throws `Cannot read properties of undefined (reading \'ESNext\')`. A fresh `bunx @pyreon/mcp` — or any clean install that resolved an uncapped `typescript` range to 7.x — hits this; a project pinned to 5.x/6.x works.',
       fix: 'Pin `"typescript": ">=5.0.0 <7.0.0"` in your project — TypeScript 6.x is the supported classic-API line. Upgrade `@pyreon/compiler` / `@pyreon/mcp` / `@pyreon/cli` to a version whose `typescript` range is capped `<7`, so a fresh install stops pulling TS7 automatically.',
       fixCode: `// package.json
 {

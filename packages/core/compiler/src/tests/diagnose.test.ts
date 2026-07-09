@@ -157,3 +157,19 @@ describe('diagnoseError — <select value> symptom entry (PZ-09)', () => {
     expect(diagnoseError('querySelector returns the first option element')).toBeNull()
   })
 })
+
+describe('diagnoseError — TypeScript 7 Compiler-API removal entry', () => {
+  it('maps the cryptic ESNext deref (bunx MCP crash) to the typescript-cap fix', () => {
+    // The exact runtime error a fresh `bunx @pyreon/mcp` throws under TS7.
+    const r = diagnoseError("Cannot read properties of undefined (reading 'ESNext')")
+    expect(r).not.toBeNull()
+    expect(r!.cause).toContain('TypeScript 7')
+    expect(r!.fix).toContain('>=5.0.0 <7.0.0')
+  })
+
+  it('does not fire on an unrelated "reading X" TypeError', () => {
+    expect(
+      diagnoseError("Cannot read properties of undefined (reading 'foo')"),
+    ).toBeNull()
+  })
+})
