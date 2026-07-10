@@ -6,7 +6,7 @@ import type {
   ValidationError,
   ValidationIssue,
 } from './types'
-import { issuesToRecord } from './utils'
+import { flattenIssuePath, issuesToRecord } from './utils'
 
 /**
  * Minimal Zod-compatible interfaces so we don't require zod as a hard dep.
@@ -34,7 +34,7 @@ interface ZodSchema<T = unknown> {
 
 function zodIssuesToGeneric(issues: ZodIssue[]): ValidationIssue[] {
   return issues.map((issue) => ({
-    path: issue.path.map(String).join('.'),
+    path: flattenIssuePath(issue.path),
     message: issue.message,
   }))
 }

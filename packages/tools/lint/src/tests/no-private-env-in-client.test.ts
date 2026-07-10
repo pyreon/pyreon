@@ -86,6 +86,18 @@ describe('pyreon/no-private-env-in-client (ssr, opt-in, warn)', () => {
     expect(hits(lintIn(dir, 'export const k = process.env.SECRET', 'entry-server.ts'))).toHaveLength(0)
   })
 
+  it('FIRES on computed `process.env[key]` (never build-inlined — dead client-side)', () => {
+    const r = lintIn(dir, 'const k = "API_URL"\nexport const u = process.env[k]')
+    expect(hits(r)).toHaveLength(1)
+    expect(hits(r)[0]!.message).toContain('computed')
+    expect(hits(r)[0]!.message).toContain('publicEnv()')
+  })
+
+  it('does NOT fire on computed `import.meta.env[key]` (Vite injects a real env object)', () => {
+    const r = lintIn(dir, 'const k = "MODE"\nexport const m = import.meta.env[k]')
+    expect(hits(r)).toHaveLength(0)
+  })
+
   it('does NOT fire when the project does not depend on @pyreon/zero', () => {
     _resetProjectDepsCache()
     const other = mkProject({ react: '^18.0.0' })
