@@ -9,6 +9,9 @@ const _listeners = new Set<() => void>()
 
 /** @internal — called by defineStore/resetStore to notify devtools. */
 export function _notifyChange(): void {
+  // Size guard: the common case (no devtools attached) skips the for..of
+  // iterator allocation on every store creation / reset.
+  if (_listeners.size === 0) return
   for (const listener of _listeners) listener()
 }
 

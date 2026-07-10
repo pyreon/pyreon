@@ -50,7 +50,13 @@
  */
 
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
-import { batch, registerSingleton, signal as createSignal, type Signal } from '@pyreon/reactivity'
+import {
+  batch,
+  effectScope,
+  registerSingleton,
+  signal as createSignal,
+  type Signal,
+} from '@pyreon/reactivity'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/store
 // instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
@@ -106,7 +112,15 @@ export interface ActionContext {
 
 export type OnActionCallback = (context: ActionContext) => void
 
-export type StorePlugin = (api: StoreApi<Record<string, unknown>>) => void
+/**
+ * Global store plugin. Runs once per store at first creation. May return a
+ * cleanup function — it runs when that store's `dispose()` is called (for
+ * tearing down external resources the plugin attached: sync loops, timers,
+ * server connections). Reactive primitives (`effect`/`computed`) created
+ * inside a plugin body are owned by the store's scope and disposed
+ * automatically — no cleanup needed for those.
+ */
+export type StorePlugin = (api: StoreApi<Record<string, unknown>>) => void | (() => void)
 
 /** The structured result returned by every store hook. */
 export interface StoreApi<T> {
@@ -143,12 +157,6 @@ function isSignalLike(v: unknown): v is SignalLike {
   if (typeof v !== 'function') return false
   const fn = v as unknown as Record<string, unknown>
   return typeof fn.set === 'function' && typeof fn.peek === 'function'
-}
-
-function isComputedLike(v: unknown): boolean {
-  if (typeof v !== 'function') return false
-  const fn = v as unknown as Record<string, unknown>
-  return typeof fn.dispose === 'function' && !isSignalLike(v)
 }
 
 // ─── Plugin system ───────────────────────────────────────────────────────────
@@ -332,6 +340,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  *   schema-store users expect for "deep-update this nested thing."
  */
 function deepMerge(target: unknown, source: unknown): unknown {
+  // Defensive guard for direct/recursive misuse — unreachable via deepPatch
+  // (the top-level call always passes two plain objects, and the recursion
+  // below only descends when BOTH sides are plain).
+  /* v8 ignore next */
   if (!isPlainObject(target) || !isPlainObject(source)) return source
   const out: Record<string, unknown> = { ...target }
   for (const key of Object.keys(source)) {
@@ -614,6 +626,21 @@ function defineSchemaStore(
 const SKIP_WRITE: Record<string, unknown> = Object.freeze({ __pyreon_skip_write__: true })
 
 /**
+ * Shared frozen empty events buffer — the between-patches placeholder for
+ * `patchEvents` (never pushed to: `notifyDirect` only records while
+ * `patchInProgress`, which always installs a fresh buffer first).
+ */
+const EMPTY_EVENTS: MutationInfo['events'] = Object.freeze([]) as unknown as MutationInfo['events']
+
+/**
+ * Dev-only: store ids already warned about a same-id redefinition (a registry
+ * hit whose instance came from a different setup function). Bounded by the
+ * number of DISTINCT warned ids — a small, dev-only diagnostic Set (never
+ * read in production builds; the sole caller is inside a NODE_ENV gate).
+ */
+const _warnedRedefinedIds = new Set<string>()
+
+/**
  * Existing setup-function-based store implementation. Unchanged from the
  * pre-schema version; the schema-mode pipeline synthesises a setup
  * function and routes through here, so the classifier / subscriber /
@@ -626,17 +653,55 @@ function defineSetupStore<T extends Record<string, unknown>>(
 ): () => StoreApi<T> {
   return function useStore(): StoreApi<T> {
     const registry = getRegistry()
-    if (registry.has(id)) return registry.get(id) as StoreApi<T>
+    // Single lookup — the registry never stores `undefined`, so `get` doubles
+    // as the membership check (saves the second Map hash on every hook call).
+    const cached = registry.get(id)
+    if (cached !== undefined) {
+      if (process.env.NODE_ENV !== 'production') {
+        // Redefinition diagnostic: a registry hit created from a DIFFERENT
+        // setup function means either two `defineStore` calls share an id, or
+        // the store module was hot-reloaded (HMR re-eval produces a new setup
+        // identity). Both are silent-stale traps — the registered instance
+        // keeps the OLD setup's actions/computeds. Warn once per id.
+        const prior = (cached as { _setupFn?: unknown })._setupFn
+        if (prior !== undefined && prior !== setup && !_warnedRedefinedIds.has(id)) {
+          _warnedRedefinedIds.add(id)
+          // oxlint-disable-next-line no-console
+          console.warn(
+            `[Pyreon] defineStore("${id}"): a store with this id already exists and was ` +
+              `created from a DIFFERENT setup function — the existing instance (old setup) ` +
+              `is returned. Causes: (a) two defineStore calls share an id, or (b) the store ` +
+              `module was hot-reloaded — state is preserved but edited actions/computeds do ` +
+              `NOT apply until resetStore("${id}") or a full reload.`,
+          )
+        }
+      }
+      return cached as StoreApi<T>
+    }
 
     // Mount-N-stores baseline. Fires only on cache miss (cache hit short-circuits above)
     // so the counter measures FRESH store creations, not registry lookups.
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.defineStore')
 
-    const raw = setup()
+    // Store-owned effect scope. `setup()` (and plugin bodies below) run inside
+    // it so every `computed()`/`effect()` they create is owned by the STORE:
+    //  - SHIELDING: without this, a store first created inside a component
+    //    body (the dominant lazy-creation shape — mount.ts sets the
+    //    component's scope as current during setup) registered its computeds
+    //    with THAT component's scope; the component's unmount then DISPOSED
+    //    the singleton store's computeds, freezing them stale for every other
+    //    consumer. `runInScope` swaps the ambient scope for the store's own.
+    //  - DISPOSAL: `api.dispose()` stops the scope, disposing setup-created
+    //    effects/computeds — without it, an effect reading an EXTERNAL signal
+    //    kept firing (and retained the store's object graph) forever.
+    // Matches Pinia: setup stores run in an effectScope; $dispose stops it.
+    // Regression locks: src/tests/scope-ownership.test.ts (bisect-verified).
+    const scope = effectScope()
+    const raw = scope.runInScope(setup)
 
-    // Classify properties
+    // Classify + build the user store in ONE pass (was two: classify, then a
+    // second keys loop with an O(actions) `includes` per key).
     const signalKeys: string[] = []
-    const actionKeys: string[] = []
     // Initial values captured at creation for `reset()`, kept as a parallel
     // array aligned with `signalKeys` (both pushed in the same iteration below).
     // An array is cheaper to build than a `Map` on the setup path, and `reset()`
@@ -644,17 +709,6 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // creation, so this can't be deferred like `signalKeySet`/`subscribers`.)
     const initialVals: unknown[] = []
 
-    for (const key of Object.keys(raw)) {
-      const val = raw[key]
-      if (isSignalLike(val)) {
-        signalKeys.push(key)
-        initialVals.push(val.peek())
-      } else if (isComputedLike(val)) {
-        // computed — skip, just pass through
-      } else if (typeof val === 'function') {
-        actionKeys.push(key)
-      }
-    }
     // O(1) membership for the `patch` hot path (vs an O(signalKeys) array scan
     // per patched key). LAZY: allocated on the first `patch()` object-form call
     // and reused thereafter — most stores mutate via `store.x.set()` / actions
@@ -669,7 +723,11 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // mount that's 1000 fewer Set allocations per page boot.
     let subscribers: Set<SubscribeCallback> | null = null
     let patchInProgress = false
-    let patchEvents: MutationInfo['events'] = []
+    // Starts at the shared frozen empty array — a fresh buffer is assigned at
+    // the top of every subscribed patch, and `notifyDirect` only pushes while
+    // `patchInProgress` (which implies the fresh buffer). Saves one array
+    // allocation per store at setup + one per subscribed patch at the end.
+    let patchEvents: MutationInfo['events'] = EMPTY_EVENTS
 
     function getState(): Record<string, unknown> {
       const state: Record<string, unknown> = {}
@@ -714,9 +772,12 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // (~10× a direct write), whereas an UNSUBSCRIBED write hits the inline
     // fast path. We now subscribe only while ≥1 store subscriber is attached;
     // a no-subscriber store's `patch()` writes its signals unsubscribed + fast.
-    const signalUnsubs: (() => void)[] = []
+    // Lazy array — most stores never get a `subscribe()` call, so don't pay
+    // the allocation at setup (same rationale as `subscribers`).
+    let signalUnsubs: (() => void)[] | null = null
     function activateSignalSubs(): void {
-      if (signalUnsubs.length > 0) return // already active (idempotent)
+      if (signalUnsubs !== null && signalUnsubs.length > 0) return // already active (idempotent)
+      if (signalUnsubs === null) signalUnsubs = []
       for (const key of signalKeys) {
         const sig = raw[key] as SignalLike
         let prev = sig.peek()
@@ -731,6 +792,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
       }
     }
     function deactivateSignalSubs(): void {
+      if (signalUnsubs === null) return
       for (const unsub of signalUnsubs) unsub()
       signalUnsubs.length = 0
     }
@@ -802,16 +864,44 @@ function defineSetupStore<T extends Record<string, unknown>>(
       }
     }
 
-    // ─── Build user store object ────────────────────────────────────────
+    // ─── Classify + build user store object (single pass) ──────────────
     const userStore: Record<string, unknown> = {}
 
     for (const key of Object.keys(raw)) {
-      if (actionKeys.includes(key)) {
-        userStore[key] = wrapAction(key, raw[key] as (...args: any[]) => unknown)
+      const val = raw[key]
+      if (isSignalLike(val)) {
+        signalKeys.push(key)
+        initialVals.push(val.peek())
+        userStore[key] = val
+      } else if (typeof val === 'function') {
+        // Not signal-like (checked above), so `isComputedLike` reduces to the
+        // `.dispose` duck-check: a computed passes through, everything else
+        // callable becomes a wrapped action.
+        if (typeof (val as unknown as Record<string, unknown>).dispose === 'function') {
+          userStore[key] = val // computed — pass through
+        } else {
+          userStore[key] = wrapAction(key, val as (...args: any[]) => unknown)
+        }
       } else {
-        userStore[key] = raw[key]
+        userStore[key] = val // plain value — pass through, inert
       }
     }
+
+    // Plugin-returned cleanup functions — run on `dispose()`. Lazy (most
+    // plugins return nothing; most apps register zero plugins).
+    let pluginCleanups: (() => void)[] | null = null
+
+    // Per-call state for the object/functional `patch` forms. The apply
+    // closure is created ONCE on first patch and reused — the previous shape
+    // allocated a fresh batch-callback closure (plus its context) per call.
+    // `patchArg` hands the argument across; the closure reads it into a local
+    // FIRST so a re-entrant patch (from a user effect during the batch drain)
+    // can't clobber it mid-apply.
+    let patchArg: Record<string, unknown> | ((state: Record<string, any>) => void) | null = null
+    let applyPatchFn: (() => void) | null = null
+    // Cached functional-form signal map — the signals never change identity
+    // after creation, so build it once on the first functional patch.
+    let signalMap: Record<string, unknown> | null = null
 
     // ─── Build StoreApi ─────────────────────────────────────────────────
     const api: StoreApi<T> = {
@@ -838,30 +928,61 @@ function defineSetupStore<T extends Record<string, unknown>>(
           patchEvents = []
         }
 
-        batch(() => {
-          if (typeof partialOrFn === 'function') {
-            // Functional form: pass an object with the actual signals so user calls .set()
-            const signalMap: Record<string, any> = {}
-            for (const key of signalKeys) {
-              signalMap[key] = raw[key]
-            }
-            partialOrFn(signalMap)
-          } else {
-            // Object form: set values directly (skip reserved proto keys).
-            // `Object.keys` + index avoids the per-entry [k,v] tuple arrays that
-            // `Object.entries` allocates.
-            for (const key of Object.keys(partialOrFn)) {
-              if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
-              if ((signalKeySet ??= new Set(signalKeys)).has(key)) {
-                // Per-key write inside batched patch. Tracks batch-size
-                // distribution; correlate with `reactivity.signalWrite`
-                // — the two should match 1:1 on the object-form path.
-                if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
-                ;(raw[key] as SignalLike).set(partialOrFn[key])
+        if (applyPatchFn === null) {
+          applyPatchFn = () => {
+            // Read the handed-across argument into a local FIRST — a
+            // re-entrant patch (user effect during the batch drain) reassigns
+            // `patchArg` and must not clobber this invocation's argument.
+            const arg = patchArg as
+              | Record<string, unknown>
+              | ((state: Record<string, any>) => void)
+            if (typeof arg === 'function') {
+              // Functional form: pass an object with the actual signals so
+              // user calls .set(). Map built once — signal identities are
+              // fixed at creation.
+              if (signalMap === null) {
+                signalMap = {}
+                for (const key of signalKeys) {
+                  signalMap[key] = raw[key]
+                }
+              }
+              arg(signalMap as Record<string, any>)
+            } else {
+              // Object form: set values directly. `Object.keys` + index
+              // avoids the per-entry [k,v] tuple arrays `Object.entries`
+              // allocates. Membership is checked FIRST — `signalKeySet` only
+              // contains classified signal fields, so `raw[key]` is only ever
+              // touched for real signals (this is also why the old
+              // `__proto__`/`constructor`/`prototype` string-compare guard
+              // was removable: an unknown key never reaches `raw[key]`, and a
+              // LEGITIMATE signal field named `constructor` is now patchable).
+              for (const key of Object.keys(arg)) {
+                if ((signalKeySet ??= new Set(signalKeys)).has(key)) {
+                  // Per-key write inside batched patch. Tracks batch-size
+                  // distribution; correlate with `reactivity.signalWrite`
+                  // — the two should match 1:1 on the object-form path.
+                  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
+                  ;(raw[key] as SignalLike).set(arg[key])
+                } else if (process.env.NODE_ENV !== 'production') {
+                  // Unknown key — historically a fully SILENT no-op (the #1
+                  // documented patch footgun: a typo'd key drops the write
+                  // with no signal). Surface it in dev; folded out of
+                  // production builds.
+                  // oxlint-disable-next-line no-console
+                  console.warn(
+                    `[Pyreon] patch("${id}"): key "${key}" is not a signal field — ignored. ` +
+                      `Patchable fields: [${signalKeys.join(', ')}]. Computeds/actions are not ` +
+                      `patchable; use the functional form patch(s => …) for direct signal access.`,
+                  )
+                }
               }
             }
           }
-        })
+        }
+
+        patchArg = partialOrFn
+        batch(applyPatchFn)
+        patchArg = null
 
         if (hasSubs) {
           patchInProgress = false
@@ -882,7 +1003,9 @@ function defineSetupStore<T extends Record<string, unknown>>(
               cb(mutation, state)
             }
           }
-          patchEvents = []
+          // Release the emitted buffer to its subscribers; the shared frozen
+          // empty array stands in until the next subscribed patch.
+          patchEvents = EMPTY_EVENTS
         }
       },
 
@@ -923,9 +1046,29 @@ function defineSetupStore<T extends Record<string, unknown>>(
       },
 
       dispose() {
+        // Plugin-returned cleanups first (they may still read state), nulled
+        // after so a second dispose() is a no-op for them.
+        if (pluginCleanups !== null) {
+          const cleanups = pluginCleanups
+          pluginCleanups = null
+          for (const cleanup of cleanups) {
+            try {
+              cleanup()
+            } catch (err) {
+              if (process.env.NODE_ENV !== 'production') {
+                // oxlint-disable-next-line no-console
+                console.warn(`[Pyreon] Store plugin cleanup error for "${id}":`, err)
+              }
+            }
+          }
+        }
         deactivateSignalSubs()
         subscribers?.clear()
         actionListeners?.clear()
+        // Stop the store-owned scope — disposes every computed/effect created
+        // inside setup() and plugin bodies (idempotent; see scope-ownership
+        // regression tests).
+        scope.stop()
         getRegistry().delete(id)
       },
     }
@@ -936,26 +1079,38 @@ function defineSetupStore<T extends Record<string, unknown>>(
     // saves the iteration + try/catch frame allocation for every fresh
     // store creation in the common case.
     if (_plugins.length > 0) {
-      for (const plugin of _plugins) {
-        // O(stores × plugins) is INHERENT, not an optimization target:
-        // plugins are side-effecting per-instance initializers (they
-        // attach behavior to THIS api object), so each fresh store must
-        // run each plugin — there is no semantics-preserving cache. The
-        // earlier "cache the plugin-init result per store-id" note was
-        // measured + rejected (2026-06): a noop plugin costs ~0.2µs here
-        // and the loop already skips entirely for the zero-plugin common
-        // case. storePluginScale-1000's pluginRun ∝ stores×plugins is the
-        // CORRECT signature for this contract.
-        if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.pluginRun')
-        try {
-          plugin(api as StoreApi<Record<string, unknown>>)
-        } catch (err) {
-          if (process.env.NODE_ENV !== 'production') {
-            // oxlint-disable-next-line no-console
-            console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
+      // Plugins run inside the store's scope too: effects/computeds a plugin
+      // creates are disposed with the store, and a plugin-returned cleanup
+      // function runs on `dispose()`.
+      scope.runInScope(() => {
+        for (const plugin of _plugins) {
+          // O(stores × plugins) is INHERENT, not an optimization target:
+          // plugins are side-effecting per-instance initializers (they
+          // attach behavior to THIS api object), so each fresh store must
+          // run each plugin — there is no semantics-preserving cache. The
+          // earlier "cache the plugin-init result per store-id" note was
+          // measured + rejected (2026-06): a noop plugin costs ~0.2µs here
+          // and the loop already skips entirely for the zero-plugin common
+          // case. storePluginScale-1000's pluginRun ∝ stores×plugins is the
+          // CORRECT signature for this contract.
+          if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.pluginRun')
+          try {
+            const cleanup = plugin(api as StoreApi<Record<string, unknown>>)
+            if (typeof cleanup === 'function') (pluginCleanups ??= []).push(cleanup)
+          } catch (err) {
+            if (process.env.NODE_ENV !== 'production') {
+              // oxlint-disable-next-line no-console
+              console.warn(`[Pyreon] Store plugin error for "${id}":`, err)
+            }
           }
         }
-      }
+      })
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      // Non-enumerable dev-only stamp powering the redefinition diagnostic on
+      // the registry-hit path above (invisible to spreads / Object.keys).
+      Object.defineProperty(api, '_setupFn', { value: setup, configurable: true })
     }
 
     registry.set(id, api)

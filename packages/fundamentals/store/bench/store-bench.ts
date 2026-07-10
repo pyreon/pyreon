@@ -4,16 +4,35 @@
  * Run: `bun run bench:stores` (sets NODE_ENV=production).
  *
  * Objectivity contract (see .claude/plans/fundamentals-benchmarks.md):
- *  - NODE_ENV=production (shell-set) before any library loads.
+ *  - NODE_ENV=production set by the npm script's SHELL before the process
+ *    starts (imports are hoisted, so the in-file assignment below runs AFTER
+ *    module load — it only covers per-call gates for direct invocation; the
+ *    shell env + explicit child env are the load-bearing parts).
  *  - Idiomatic per library — Pyreon `defineStore(id, () => ({signals, actions}))`,
  *    Zustand `createStore((set) => ({...}))`, Jotai `atom()` + `createStore()`.
  *  - CORRECTNESS GATE asserts all three produce identical results before timing.
- *  - PER-OP PROCESS ISOLATION (each op in a fresh `bun` child) — keeps each
- *    library's global/module state from one op contaminating another.
- *  - DISCLOSURE: Pyreon `defineStore` registers the store in a global registry
- *    (singleton-by-id — powers SSR / devtools / resetAllStores); Zustand & Jotai
- *    have no registry. So `setup` is not pure apples-to-apples — flagged.
- *  - Median ns/op over warmup + N runs; a `sink` defeats DCE.
+ *  - PER-(OP × IMPL) PROCESS ISOLATION — each (op, library) cell runs in its
+ *    own fresh `bun` child. This isolates ops from each other AND libraries
+ *    from each other: previously all three impls shared one child heap, so
+ *    whoever measured after Pyreon's registry-retained setup stores paid its
+ *    GC debt (a bias AGAINST the competitors on `setup`, and cross-impl JIT
+ *    pollution everywhere else).
+ *  - NO forced GC (measured: JSC jettisons compiled code on forced GC →
+ *    re-tier noise; see measureSamples doc). Instead: big warmup + MANY SMALL
+ *    samples per cell, POOLED across ${BENCH_REPEATS:-3} process spawns per
+ *    cell — per-process JIT/allocation modes and natural-GC-pause samples are
+ *    absorbed by the pooled median.
+ *  - Bounded registry on `setup`: Pyreon's `defineStore` retains every store
+ *    in its global registry (the feature powering SSR isolation / devtools /
+ *    resetAllStores — DISCLOSED cost, Zustand/Jotai have no registry). The op
+ *    resets the registry BETWEEN runs (outside the timed window) so the
+ *    measurement reflects per-store creation cost, not an ever-growing
+ *    500k-entry Map no real app has. Within a run the registry still grows —
+ *    that retention IS part of Pyreon's honest per-op cost.
+ *  - STATS: per-impl samples are the per-run means (runs × iters); table
+ *    reports the median with a bootstrap CI95. `🤝` marks a verdict whose
+ *    CI95 overlaps Pyreon's — treat those as ties, not wins/losses.
+ *  - A `sink` defeats DCE.
  *
  * NOTE Jotai is atom-granular (no "store of fields + actions") — its closest
  * shape is one atom per field; `dispatch` = `set(atom, updater)`. Comparable for
@@ -23,10 +42,11 @@
  *
  * HONEST READ of the numbers (don't cherry-pick): Pyreon wins the hot path
  * (per-field dispatch + write→notify) and ties Zustand on read, but LOSES to
- * Zustand on `setup` (Pyreon's global registry vs Zustand's bare closure) and on
- * `patch` (Pyreon's mutation-tracking patch vs Zustand's shallow object merge).
- * Both losses are disclosed in the table. Pyreon dominates Jotai's vanilla store
- * everywhere because the atom-state-map indirection is heavy per get/set.
+ * Zustand on `setup` (Pyreon's per-field signals + global registry vs Zustand's
+ * bare closure) and on with-subscriber `patch` (Pyreon's per-key mutation-event
+ * model vs Zustand's single shallow merge). Both losses are disclosed in the
+ * table notes. Pyreon dominates Jotai's vanilla store everywhere because the
+ * atom-state-map indirection is heavy per get/set.
  */
 process.env.NODE_ENV = 'production'
 
@@ -35,18 +55,76 @@ import { atom, createStore as createJotai } from 'jotai/vanilla'
 import { createStore as createZustand } from 'zustand/vanilla'
 import { defineStore, resetAllStores } from '../src/index'
 
+declare const Bun: {
+  spawnSync: (
+    cmd: string[],
+    opts: { env: Record<string, string | undefined> },
+  ) => { stdout: Uint8Array; exitCode: number }
+}
+
 const now = () => Number(process.hrtime.bigint())
-function measure(fn: () => void, { warmup = 2_000, iters = 20_000, runs = 11 } = {}): number {
-  for (let i = 0; i < warmup; i++) fn()
+
+/**
+ * Collect per-run mean ns/op samples. `between` runs OUTSIDE every timed
+ * window (interleaved through warmup + after each run) — used on the `setup`
+ * op for the registry reset that keeps Pyreon's store Map bounded.
+ *
+ * GC discipline (measured, not guessed): NO forced GC anywhere. A forced
+ * `Bun.gc(true)` makes JSC jettison optimized code — the next ~2 run-sized
+ * bursts then pay re-tiering (~350 → ~250 → steady), bi-modalizing medians;
+ * and any post-GC re-warm big enough to re-tier builds an allocation backlog
+ * whose major-GC collapse then lands INSIDE a timed run (~570ns spike, same
+ * run index every process). Instead: one big warmup (tier-up), then MANY
+ * SMALL samples (41 × 5k) — natural GC pauses land in a few samples and the
+ * MEDIAN ignores them, while steady-state amortized GC (what a real app pays)
+ * stays in the number.
+ */
+function measureSamples(
+  fn: () => void,
+  { warmup = 40_000, iters = 5_000, runs = 41, between }: {
+    warmup?: number
+    iters?: number
+    runs?: number
+    between?: () => void
+  } = {},
+): number[] {
+  // Warmup doubles as JIT tier-up (JSC needs ~2 run-sized bursts to reach
+  // steady state). `between` is interleaved so warmup allocations don't build
+  // an unbounded backlog (e.g. the setup op's registry).
+  for (let i = 0; i < warmup; i++) {
+    fn()
+    if ((i & 1023) === 1023) between?.()
+  }
+  between?.()
   const samples: number[] = []
   for (let r = 0; r < runs; r++) {
     const t0 = now()
     for (let i = 0; i < iters; i++) fn()
     samples.push((now() - t0) / iters)
+    between?.()
   }
-  samples.sort((a, b) => a - b)
-  return samples[samples.length >> 1] as number
+  return samples
 }
+
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b)
+  return s[s.length >> 1] as number
+}
+
+/** Bootstrap CI95 of the median (2000 resamples). */
+function bootstrapCI(samples: number[], resamples = 2_000): [number, number] {
+  const meds: number[] = []
+  const n = samples.length
+  for (let r = 0; r < resamples; r++) {
+    const re: number[] = []
+    for (let i = 0; i < n; i++) re.push(samples[(Math.random() * n) | 0] as number)
+    meds.push(median(re))
+  }
+  meds.sort((a, b) => a - b)
+  return [meds[(resamples * 0.025) | 0] as number, meds[(resamples * 0.975) | 0] as number]
+}
+
+const overlaps = (a: [number, number], b: [number, number]) => a[0] <= b[1] && b[0] <= a[1]
 
 let sink = 0
 const IMPLS = ['pyreon', 'zustand', 'jotai'] as const
@@ -78,9 +156,22 @@ function makeJotai() {
 }
 
 // ─── ops ─────────────────────────────────────────────────────────────────────
-const OPS: Record<string, { note?: string; make: () => Impl }> = {
+interface OpSpec {
+  note?: string
+  make: () => Impl
+  /** Per-run out-of-band hook (e.g. registry reset). Not timed. */
+  between?: () => void
+  /** Iteration override — `setup` uses fewer so within-run retention stays app-realistic. */
+  iters?: number
+}
+
+const OPS: Record<string, OpSpec> = {
   setup: {
-    note: 'Pyreon registers in a global registry (SSR/devtools); Zustand/Jotai do not',
+    note: 'Pyreon allocs 2 signals + registers in a global registry (SSR/devtools); Zustand/Jotai are bare closures. Registry reset between runs (untimed).',
+    // 2k stores per run keeps within-run registry retention in a real-app
+    // regime instead of a 220k-entry Map (a pure harness artifact).
+    iters: 2_000,
+    between: () => resetAllStores(),
     make: () => ({
       pyreon: () => {
         sink += makePyreon().store.count()
@@ -180,7 +271,7 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
     },
   },
   'patch 2 fields (with subscriber)': {
-    note: 'REALISTIC — a listener is attached, so every lib does its full notify path (Pyreon: per-field write + patch event + notify; Zustand: shallow merge + notify). Jotai sets 2 atoms.',
+    note: 'REALISTIC — a listener is attached, so every lib does its full notify path. Pyreon does MORE per notify (per-key {key,oldValue,newValue} events + state snapshot vs Zustand\'s single shallow merge + (state, prevState)). Jotai sets 2 atoms.',
     make: () => {
       const p = makePyreon()
       const z = makeZustand()
@@ -215,19 +306,23 @@ const OPS: Record<string, { note?: string; make: () => Impl }> = {
 }
 const OP_ORDER = Object.keys(OPS)
 
-// ─── child mode: measure ONE op for all impls, print JSON ────────────────────
+// ─── child mode: measure ONE (op × impl) cell, print JSON samples ────────────
 const childOp = process.argv[2]
+const childImpl = process.argv[3] as ImplName | undefined
 if (childOp) {
   const spec = OPS[childOp]
   if (!spec) throw new Error(`unknown op: ${childOp}`)
+  if (!childImpl || !IMPLS.includes(childImpl)) throw new Error(`unknown impl: ${childImpl}`)
   const impl = spec.make()
-  const out: Record<string, number> = {}
-  for (const name of IMPLS) out[name] = measure(impl[name])
-  process.stdout.write(JSON.stringify(out))
+  const opts: Parameters<typeof measureSamples>[1] = {}
+  if (spec.between) opts.between = spec.between
+  if (spec.iters !== undefined) opts.iters = spec.iters
+  const samples = measureSamples(impl[childImpl], opts)
+  process.stdout.write(JSON.stringify({ samples }))
   process.exit(0)
 }
 
-// ─── orchestrator: correctness gate, then spawn one child per op ─────────────
+// ─── orchestrator: correctness gate, then spawn one child per (op × impl) ────
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`[correctness] ${msg}`)
 }
@@ -260,35 +355,65 @@ function assert(cond: boolean, msg: string): void {
   console.log('✓ correctness gate passed — all three libraries agree\n')
 }
 
-declare const Bun: {
-  spawnSync: (cmd: string[], opts: { env: Record<string, string | undefined> }) => { stdout: Uint8Array; exitCode: number }
+interface Cell {
+  med: number
+  ci: [number, number]
 }
 interface Row {
   op: string
-  pyreon: number
-  zustand: number
-  jotai: number
+  cells: Record<ImplName, Cell>
   note?: string
 }
-const rows: Row[] = []
-for (const op of OP_ORDER) {
-  const proc = Bun.spawnSync(['bun', import.meta.path, op], { env: { ...process.env, NODE_ENV: 'production' } })
-  if (proc.exitCode !== 0) throw new Error(`child failed for op "${op}"`)
-  const r = JSON.parse(new TextDecoder().decode(proc.stdout)) as Record<ImplName, number>
-  rows.push({ op, pyreon: r.pyreon, zustand: r.zustand, jotai: r.jotai, note: OPS[op]?.note })
+
+// Pool samples across several fresh child processes per cell: JSC processes
+// land in slightly different steady-state modes (JIT/allocation-site layout),
+// so a single process can misrepresent the distribution.
+const CELL_REPEATS = Number(process.env.BENCH_REPEATS ?? 3)
+
+function runCell(op: string, impl: ImplName): Cell {
+  const pooled: number[] = []
+  for (let r = 0; r < CELL_REPEATS; r++) {
+    const proc = Bun.spawnSync(['bun', import.meta.path, op, impl], {
+      env: { ...process.env, NODE_ENV: 'production' },
+    })
+    if (proc.exitCode !== 0) throw new Error(`child failed for (op "${op}", impl "${impl}")`)
+    const { samples } = JSON.parse(new TextDecoder().decode(proc.stdout)) as { samples: number[] }
+    pooled.push(...samples)
+  }
+  return { med: median(pooled), ci: bootstrapCI(pooled) }
 }
 
-console.log(`=== @pyreon/store vs Zustand vs Jotai (${process.platform}/${process.arch}, NODE_ENV=production, per-op isolated, median ns/op) ===\n`)
+const rows: Row[] = []
+for (const op of OP_ORDER) {
+  const cells = {} as Record<ImplName, Cell>
+  for (const impl of IMPLS) cells[impl] = runCell(op, impl)
+  const row: Row = { op, cells }
+  const note = OPS[op]?.note
+  if (note !== undefined) row.note = note
+  rows.push(row)
+}
+
+console.log(
+  `=== @pyreon/store vs Zustand vs Jotai (${process.platform}/${process.arch}, NODE_ENV=production, per-(op×impl) isolated processes, median ns/op [CI95], 🤝 = CI-overlap tie) ===\n`,
+)
 const pad = (s: string, n: number) => s.padEnd(n)
 const padL = (s: string, n: number) => s.padStart(n)
-console.log(`${pad('op', 22)} ${padL('pyreon', 8)} ${padL('zustand', 9)} ${padL('jotai', 8)} ${padL('vs zustand', 12)} ${padL('vs jotai', 11)}   note`)
-console.log('─'.repeat(110))
+console.log(
+  `${pad('op', 32)} ${padL('pyreon', 8)} ${padL('zustand', 9)} ${padL('jotai', 8)} ${padL('vs zustand', 15)} ${padL('vs jotai', 14)}   note`,
+)
+console.log('─'.repeat(130))
 for (const r of rows) {
-  const vz = r.zustand / r.pyreon
-  const vj = r.jotai / r.pyreon
-  const f = (x: number) => (x >= 1 ? `${x.toFixed(1)}x faster` : `${(1 / x).toFixed(1)}x SLOWER`)
+  const p = r.cells.pyreon
+  const verdict = (c: Cell) => {
+    const ratio = c.med / p.med
+    const tie = overlaps(p.ci, c.ci)
+    const base = ratio >= 1 ? `${ratio.toFixed(1)}x faster` : `${(1 / ratio).toFixed(1)}x SLOWER`
+    return tie ? `🤝 ${base}` : base
+  }
   console.log(
-    `${pad(r.op, 22)} ${padL(r.pyreon.toFixed(0), 8)} ${padL(r.zustand.toFixed(0), 9)} ${padL(r.jotai.toFixed(0), 8)} ${padL(f(vz), 12)} ${padL(f(vj), 11)}   ${r.note ?? ''}`,
+    `${pad(r.op, 32)} ${padL(p.med.toFixed(0), 8)} ${padL(r.cells.zustand.med.toFixed(0), 9)} ${padL(r.cells.jotai.med.toFixed(0), 8)} ${padL(verdict(r.cells.zustand), 15)} ${padL(verdict(r.cells.jotai), 14)}   ${r.note ?? ''}`,
   )
 }
-console.log(`\n(ratios = competitor ÷ Pyreon; >1 ⇒ Pyreon faster. Median 11×20k, each op in a fresh process. ns machine-dependent — ratio is the portable signal.)`)
+console.log(
+  `\n(ratios = competitor ÷ Pyreon; >1 ⇒ Pyreon faster; 🤝 = CI95 overlap with Pyreon (treat as tied). Pooled median of 41 small runs × ${CELL_REPEATS} fresh processes per (op × impl); no forced GC — see measureSamples doc. ns machine-dependent — the ratio is the portable signal.)`,
+)

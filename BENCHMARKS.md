@@ -126,15 +126,18 @@ Pyreon's reactive pass + OXC costs **~2.3× over OXC-alone** — the price of th
 
 ### 4.1 store — vs Zustand / Jotai
 
+(2026-07 re-baseline — per-(op × impl) process isolation, pooled samples + CI95 tie markers, no forced GC; the earlier 20× setup figure was ~1/3 harness artifact: all three libraries shared one child heap and Pyreon's registry-retained stores grew unbounded across 220k iterations.)
+
 | op | **Pyreon** | Zustand | Jotai | verdict |
 |---|---|---|---|---|
-| setup | 870 | **43** | 3931 | Zustand 20.2× (Pyreon's global registry for SSR/devtools) |
-| read | 5 | 3 | 141 | ≈ tied Zustand (sub-ns = noise) |
-| dispatch (no subscriber) | **12** | 70 | 972 | Pyreon 5.9× |
-| write → 1 subscriber | **49** | 83 | 953 | Pyreon 1.7× |
-| patch 2 fields | **50** | 67 | 1052 | Pyreon 1.3× |
+| setup | 358 | **28** | 3450 | Zustand 12.6× (per-field signals + the global registry powering SSR isolation / devtools) |
+| read | 3 | 3 | 153 | 🤝 tied (CI95 overlap) |
+| dispatch (no subscriber) | **11** | 70 | 939 | Pyreon 6.4× |
+| write → 1 subscriber | **37** | 84 | 887 | Pyreon 2.3× |
+| patch 2 fields (no subscriber) | **42** | 71 | 965 | Pyreon 1.7× |
+| patch 2 fields (with subscriber) | 152 | **87** | 1070 | Zustand 1.7× (down from 2.6× — Pyreon emits per-key `{key, oldValue, newValue}` events + a state snapshot per notify vs Zustand's single shallow merge) |
 
-Honest-mixed: Pyreon wins the fine-grained hot path + patch, ties read, **loses setup 20×** (the registry that powers SSR isolation / devtools / `resetAllStores`). Dominates Jotai's *vanilla* store everywhere (Jotai is React-render-dedup-optimized, not vanilla-throughput).
+Honest-mixed: Pyreon wins the fine-grained hot path (dispatch 6.4×, write→1 sub 2.3×, no-subscriber patch 1.7×), ties read, **loses setup 12.6×** (the per-field-signal + registry model — paid once per store id) and **with-subscriber patch 1.7×** (the richer per-key mutation-event contract). Both are documented Pareto trades, not open gaps: a change-detection-suspend optimization was measured a wash, and the remaining setup cost IS the feature set (2 signals, effect-scope ownership, action wrapping, registry). Dominates Jotai's *vanilla* store everywhere (Jotai is React-render-dedup-optimized, not vanilla-throughput).
 
 ### 4.2 state-tree — vs MobX-State-Tree
 

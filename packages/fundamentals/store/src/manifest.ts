@@ -60,10 +60,12 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
   features: [
     'defineStore(id, setup) — composition stores, singleton by ID',
     'Auto-classifies setup returns: signals as state, functions as wrapped actions',
+    'Store-owned effect scope — setup/plugin computeds+effects die on dispose(), never with the first-creating component',
     'StoreApi with patch(), subscribe(), onAction(), reset(), dispose()',
-    'Global plugin system via addStorePlugin()',
+    'Global plugin system via addStorePlugin() — plugins may return a dispose-time cleanup',
     'SSR isolation via setStoreRegistryProvider() with AsyncLocalStorage',
-    'Devtools subpath export with WeakRef-based registry',
+    'Devtools subpath export — live registry introspection (getRegisteredStores/getStoreById/onStoreChange)',
+    'Persistence by composition — return useStorage() signals from setup (no persist middleware needed)',
   ],
   api: [
     {
@@ -71,7 +73,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())`,
       kind: 'function',
       signature: '<T extends Record<string, unknown>>(id: string, setup: () => T) => () => StoreApi<T>',
       summary:
-        'Define a composition-style store. The setup function runs once per store ID, returning an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with `.store` (user state/actions), `.patch()`, `.subscribe()`, `.onAction()`, `.reset()`, and `.dispose()`. Stores are singletons — calling the hook twice with the same ID returns the same instance.',
+        'Define a composition-style store. The setup function runs once per store ID — inside a store-OWNED effect scope, so `computed()`/`effect()` created in setup belong to the STORE (disposed by `dispose()`), never to the component whose mount happened to create the store first (a component unmount cannot freeze a singleton\'s computeds). Setup returns an object whose signals become tracked state and whose functions become interceptable actions. Returns a hook function that produces a StoreApi with `.store` (user state/actions), `.patch()`, `.subscribe()`, `.onAction()`, `.reset()`, and `.dispose()`. Stores are singletons — calling the hook twice with the same ID returns the same instance; redefining an ID from a DIFFERENT setup function dev-warns once (the existing instance wins).',
       example: `const useCounter = defineStore('counter', () => {
   const count = signal(0)
   const double = computed(() => count() * 2)
@@ -91,6 +93,8 @@ patch({ count: 42 })`,
         'Returning a non-signal, non-function value from `setup` (a plain object/array) and expecting it to be reactive — only signals become tracked state. Classification is duck-typed: signals = `.set` + `.peek`, computeds = `.dispose` (and not a signal), everything-else-callable = action. A plain object is none of these and is passed through inert',
         'Mutating state by reassigning `store.count` — it is a frozen accessor; write via `store.increment()` (an action) or `patch({ count })`. Direct property assignment is silently ineffective',
         'Registering an `addStorePlugin` AFTER the store was first created and expecting it to apply — plugins run only at creation time. The already-created store never sees it (see `addStorePlugin` mistakes)',
+        'Defining the same id twice with different setups (or editing a store module under HMR) and expecting the new setup to apply — the registry returns the FIRST instance; the second definition dev-warns once per id and is otherwise inert until `resetStore(id)` or a full reload',
+        'Expecting persisted state to need a middleware — return `useStorage()` (from `@pyreon/storage`) signals from setup instead; a StorageSignal IS a signal, so it classifies as state and `patch`/`reset`/`subscribe`/`dehydrateStores` all flow through it (cross-tab sync included)',
       ],
       seeAlso: ['StoreApi', 'addStorePlugin', 'resetStore', 'defineStore (schema mode)'],
     },
@@ -228,7 +232,7 @@ deepPatch({ prefs: { theme: 'dark', density: 'compact' } })  // full nested obje
       signature:
         'interface StoreApi<T> { store: T; id: string; state: Snapshot<T>; patch(p: Partial|fn): void; subscribe(cb): () => void; onAction(cb): () => void; reset(): void; dispose(): void }',
       summary:
-        'The object the `defineStore` hook returns. `store` is the user state + actions; `id` the registry key; `state` a plain-value snapshot getter (signals read via `.peek()`, no tracking — safe to log / serialize). `patch` batch-updates signals; `subscribe` fires per mutation with `{ storeId, type: "direct" | "patch", events }`; `onAction` intercepts wrapped actions (`ctx.name`, `ctx.args`, `ctx.after(fn)`, `ctx.onError(fn)`); `reset` restores each signal to its setup-time `.peek()` value; `dispose` unsubscribes all listeners and removes the store from the registry.',
+        'The object the `defineStore` hook returns. `store` is the user state + actions; `id` the registry key; `state` a plain-value snapshot getter (signals read via `.peek()`, no tracking — safe to log / serialize). `patch` batch-updates signals; `subscribe` fires per mutation with `{ storeId, type: "direct" | "patch", events }` (per-key `{ key, oldValue, newValue }` events); `onAction` intercepts wrapped actions (`ctx.name`, `ctx.args`, `ctx.after(fn)`, `ctx.onError(fn)`); `reset` restores each signal to its setup-time `.peek()` value; `dispose` is the full teardown — runs plugin cleanups, unsubscribes all listeners, stops the store-owned effect scope (disposing every computed/effect created in setup or plugin bodies), and removes the store from the registry.',
       example: `const { store, patch, subscribe, onAction, reset, dispose } = useCounter()
 patch({ count: 42 })                       // object form — batched
 patch((s) => { s.count.set(s.count.peek() + 1) }) // functional form: real signals
@@ -237,8 +241,9 @@ onAction((ctx) => { ctx.after((r) => log(r)); ctx.onError((e) => report(e)) })
 reset()      // signals → setup-time values
 dispose()    // teardown + registry removal`,
       mistakes: [
-        '`patch({ typoKey: 1 })` is a SILENT no-op — object-form patch only writes keys that are signal names; an unknown / mistyped key is skipped with no error or warning. Verify key names',
-        '`patch` silently drops `__proto__` / `constructor` / `prototype` keys (prototype-pollution guard) — a state field literally named one of those cannot be patched via the object form; use the functional form',
+        '`patch({ typoKey: 1 })` drops the key — it WARNS in dev (`[Pyreon] patch(...): key "typoKey" is not a signal field`) and is silent in production. Object-form patch only writes keys that are signal fields; computeds/actions are not patchable',
+        'Worrying about `__proto__` keys in patch payloads — membership is checked against the store\'s signal-field Set FIRST, so unknown keys (including `__proto__`-shaped keys from parsed JSON) never touch anything; a LEGITIMATE signal field named `constructor`/`prototype` IS patchable',
+        'Expecting `dispose()` to leave setup-created effects running — dispose stops the store-owned scope: every `computed`/`effect` from setup (and plugin bodies) is disposed with the store. An orphaned `StoreApi` reference still reads signals but its computeds are frozen',
         'Expecting `reset()` to restore the "last good" or current-default value — it restores the value captured by `.peek()` when `setup` first ran. A signal whose initial value was itself derived at setup resets to THAT, not to a fresh recomputation',
         'Reading `.state` and expecting it to be reactive — it is a one-shot plain snapshot via `.peek()` (no tracking). Reading it inside an `effect`/`computed` will NOT re-run on change; read `store.x()` for reactive access',
         'Keeping a destructured `store`/`patch` reference after `resetStore(id)` — the old `StoreApi` keeps working but is detached from the registry; the next hook call creates a NEW instance and your stale reference points at the orphan',
@@ -249,9 +254,9 @@ dispose()    // teardown + registry removal`,
     {
       name: 'addStorePlugin',
       kind: 'function',
-      signature: '(plugin: StorePlugin) => void',
+      signature: '(plugin: StorePlugin) => void  // StorePlugin: (api) => void | (() => void)',
       summary:
-        'Register a global store plugin. The plugin runs ONCE per store, at first creation of that store, receiving its full `StoreApi` — for logging, persistence, devtools, etc. Runs for every store created AFTER registration. Plugin throws are caught and (dev-only) `console.warn`ed so one bad plugin cannot break store creation — but in production a throwing plugin fails completely silently. The plugin chain is uncached: cost is O(stores × plugins) across all fresh store creations.',
+        "Register a global store plugin. The plugin runs ONCE per store, at first creation of that store, receiving its full `StoreApi` — for logging, persistence, devtools, etc. Runs for every store created AFTER registration. A plugin may RETURN a cleanup function — it runs on that store's `dispose()` (for external resources: timers, sockets, sync loops); `effect()`/`computed()` created in the plugin body need no cleanup because plugins run inside the store's effect scope (auto-disposed). Plugin throws are caught and (dev-only) `console.warn`ed so one bad plugin cannot break store creation — but in production a throwing plugin fails completely silently. The plugin chain is uncached: cost is O(stores × plugins) across all fresh store creations.",
       example: `// Register BEFORE any store hook is first called.
 addStorePlugin((api) => {
   api.subscribe((mutation) => {
@@ -262,6 +267,7 @@ addStorePlugin((api) => {
         'Registering AFTER a store was already created — plugins run only at creation. Stores already in the registry never receive the plugin. Register at module init before the first hook call, or `resetStore(id)` to force re-creation through the plugin chain',
         'Relying on a plugin throw surfacing in production — errors are swallowed with only a dev-mode `console.warn`. A plugin that throws in prod silently does nothing; make the plugin itself defensive',
         'Calling `api.subscribe` / `api.onAction` in a plugin without ever disposing — those listeners live for the whole store lifetime; in tests they accumulate across cases unless `resetAllStores()` runs in cleanup',
+        'Tearing down plugin-created `effect`s manually in the returned cleanup — unnecessary: plugin bodies run inside the store\'s effect scope, so reactive primitives are auto-disposed on `dispose()`. The returned cleanup is for EXTERNAL resources (timers, sockets, subscriptions to other systems)',
         'Registering many plugins and not noticing the cost — the chain is uncached and runs per fresh store creation (O(stores × plugins)); the `store.pluginRun` perf counter scales exactly with this',
         'Assuming plugin registration is idempotent — `addStorePlugin` pushes onto a list every call; registering the same plugin twice runs it twice per store',
       ],
@@ -361,7 +367,19 @@ hydrateStores(window.__PYREON_STORE_STATE__ ?? {})`,
     },
     {
       label: 'Devtools',
-      note: 'Import `@pyreon/store/devtools` for a WeakRef-based registry that exposes all live store instances. Tree-shakeable — zero cost unless imported.',
+      note: 'Import `@pyreon/store/devtools` to introspect the live store registry (`getRegisteredStores()` / `getStoreById(id)` / `onStoreChange(listener)`). Tree-shakeable — zero cost unless imported.',
+    },
+    {
+      label: 'Scope ownership',
+      note: "setup() runs inside a store-OWNED effect scope: computeds/effects created there belong to the store (disposed by `dispose()`), NOT to the component that happened to create the store first — a component unmount can never freeze a singleton's computeds.",
+    },
+    {
+      label: 'Persistence',
+      note: 'No persist middleware — return `useStorage()` (from `@pyreon/storage`) signals from setup. A StorageSignal IS a signal, so classification/patch/reset/subscribe/dehydrate all flow through it, with cross-tab sync free. You persist exactly the fields you wrap.',
+    },
+    {
+      label: 'HMR / same-id redefinition',
+      note: 'Redefining a store id from a DIFFERENT setup function dev-warns once per id: the registered instance keeps the OLD setup (state preserved, edited actions/computeds silently inert) until `resetStore(id)` or a full reload.',
     },
   ],
 })
