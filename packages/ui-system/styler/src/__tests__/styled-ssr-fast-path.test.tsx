@@ -6,7 +6,7 @@
 // weight server-side — `el` never fires, no signal changes within one render).
 // These tests run in the `node` environment (per the directive above), unlike
 // the rest of the styler suite which runs in happy-dom (client path).
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { setStyleExtraction, styled } from '../styled'
 
 describe('styled — SSR fast path (node env)', () => {

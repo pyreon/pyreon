@@ -489,6 +489,12 @@ describe('useFormState(form, selector) — scalar getters', () => {
     expect(result.dirty()).toBe(false)
     result.form.setFieldValue('a', 'x')
     expect(result.dirty()).toBe(true)
+    // `mountWith` has NO auto-cleanup (see its definition) and every other call
+    // site unmounts. Without this, the mounted form, its subscribed selector
+    // effect, and the container element leak into subsequent tests. (A static
+    // analyzer flagged `unmount` as an "unused binding" — deleting it would
+    // have cemented the leak; the fix is to call it.)
+    unmount()
   })
 })
 
