@@ -580,6 +580,22 @@ sheet.insertGlobal('*, *::before, *::after { box-sizing: border-box; }')
 sheet.insertGlobal(':root { --primary: royalblue; --text: #333; }')
 ```
 
+Multi-rule input is split string/comment/`url()`-aware (braces inside quoted
+strings, comments, or unquoted `url(…)` tokens never split a rule), and
+semicolon-terminated at-statements (`@layer a, b;`, `@import …;`,
+`@namespace …;`) are inserted as their own rules.
+
+**@layer fallback.** On engines without `@layer` support (happy-dom in
+tests, pre-2022 browsers), `insertGlobal` flattens `@layer` blocks — named,
+anonymous, nested, and nested inside `@media`/`@supports`/`@container` — to
+their inner rules so the content still lands. This changes cascade
+semantics; it is not an emulation: flattened rules become unlayered (they
+can now win specificity ties they were authored to lose, since unlayered
+beats layered in a real `@layer` engine), and `@layer a, b;` ordering
+statements are dropped with a dev warning — rules fall back to plain source
+order. Apps that must reproduce layer-order inversions in pre-`@layer`
+browsers need a specificity/source-order strategy instead.
+
 ### `sheet.getSSRStyles()`
 
 Returns all accumulated rules as a `<style>` tag string for server-side rendering. Returns an empty string if no rules have been inserted.

@@ -264,3 +264,49 @@ describe('@pyreon/styler in real browser', () => {
     unmount()
   })
 })
+
+// ─── insertGlobal release-audit locks (real @layer engine) ──────────────────
+//
+// Chromium supports @layer, so `supportsLayer` is TRUE here — this exercises
+// the MODERN path that happy-dom structurally cannot (its insertRule rejects
+// @layer, so the flatten fallback runs there instead).
+describe('insertGlobal — @layer statement + string-aware splitting (real Chromium)', () => {
+  it('keeps a `@layer a, b;` ordering statement live — declared order beats source order', () => {
+    // Statement declares pyrOrdA THEN pyrOrdB → B has higher priority.
+    // The blocks are authored in the OPPOSITE source order (B first): a
+    // splitter that swallows the statement (pre-fix) leaves first-USE
+    // order [B, A] → A's red wins. With the statement live, [A, B] → B's
+    // green wins. This is the user-visible cascade-order corruption the
+    // brace-only splitter caused in EVERY browser.
+    sheet.insertGlobal(
+      '@layer pyrOrdA, pyrOrdB;' +
+        '@layer pyrOrdB{.pyr-ord-probe{color:rgb(0, 128, 0)}}' +
+        '@layer pyrOrdA{.pyr-ord-probe{color:rgb(255, 0, 0)}}',
+    )
+    const el = document.createElement('div')
+    el.className = 'pyr-ord-probe'
+    document.body.appendChild(el)
+    expect(getComputedStyle(el).color).toBe('rgb(0, 128, 0)')
+    el.remove()
+  })
+
+  it('a `}` inside a quoted url keeps ALL declarations AND the sibling rule (string-aware split)', () => {
+    // Pre-fix the brace counter split mid-string: the first slice was
+    // garbage, the depth counter went negative, and the SIBLING rule after
+    // it was silently lost too.
+    sheet.insertGlobal(
+      '.pyr-strbrace-probe{background-image:url("a}b.png");color:rgb(0, 0, 255)}' +
+        '.pyr-strbrace-sib{color:rgb(255, 0, 255)}',
+    )
+    const el = document.createElement('div')
+    el.className = 'pyr-strbrace-probe'
+    const sib = document.createElement('div')
+    sib.className = 'pyr-strbrace-sib'
+    document.body.appendChild(el)
+    document.body.appendChild(sib)
+    expect(getComputedStyle(el).color).toBe('rgb(0, 0, 255)')
+    expect(getComputedStyle(sib).color).toBe('rgb(255, 0, 255)')
+    el.remove()
+    sib.remove()
+  })
+})
