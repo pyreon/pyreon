@@ -100,14 +100,86 @@ describe('ssrPlugin', () => {
     })
   })
 
-  // Regression: the `zero build` CLI runs the client build (→ dist/client) and
-  // then a DEDICATED server build (`vite build --ssr` → dist/server). The SSR
-  // post-step's closeBundle fired during that server build too, probed
+  // A leaked inner-build env flag (exported by a parent process / CI
+  // shell, NOT set by a `buildSsrBundle` running in this process)
+  // silently disables the ENTIRE SSR post-step of a top-level build —
+  // no server bundle, no template, no adapter, zero output. The plugin
+  // still skips (safe) but must SAY so. Genuine in-process sub-builds
+  // (marked via build-flags' `_enterInnerBuild`) stay silent.
+  describe('leaked inner-build env flag prints a one-line notice', () => {
+    const CLIENT_RESOLVED = {
+      root: '/tmp/pyreon-nonexistent-root',
+      build: { outDir: 'dist', assetsInlineLimit: 0, assetsDir: 'assets' },
+      base: '/',
+      plugins: [],
+    }
+    afterEach(() => {
+      delete process.env.PYREON_ZERO_SSR_INNER_BUILD
+      delete process.env.PYREON_ZERO_SSG_INNER_BUILD
+      vi.restoreAllMocks()
+    })
+
+    it('warns when the flag is set but no zero sub-build runs in this process', async () => {
+      process.env.PYREON_ZERO_SSR_INNER_BUILD = '1'
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssrPlugin({ mode: 'ssr' }) as any
+      plugin.configResolved(CLIENT_RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('leaked in from the environment'),
+      )
+    })
+
+    it('stays SILENT for a genuine in-process inner sub-build', async () => {
+      const { _enterInnerBuild, _exitInnerBuild } = await import('../build-flags')
+      process.env.PYREON_ZERO_SSG_INNER_BUILD = '1'
+      _enterInnerBuild()
+      try {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const plugin = ssrPlugin({ mode: 'ssr' }) as any
+        plugin.configResolved(CLIENT_RESOLVED)
+        await plugin.closeBundle()
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        _exitInnerBuild()
+      }
+    })
+
+    it('stays SILENT on a server-target build even with a leaked flag', async () => {
+      // Gate ordering: `server-target` wins before `inner-build`, so a
+      // build that would skip anyway (no client assets) never prints
+      // the leak notice.
+      process.env.PYREON_ZERO_SSR_INNER_BUILD = '1'
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssrPlugin({ mode: 'ssr' }) as any
+      plugin.configResolved({
+        ...CLIENT_RESOLVED,
+        build: { ...CLIENT_RESOLVED.build, ssr: 'src/entry-server.ts' },
+      })
+      await plugin.closeBundle()
+      expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('stays SILENT when the mode is not ssr/isr (nothing was disabled)', async () => {
+      process.env.PYREON_ZERO_SSR_INNER_BUILD = '1'
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssrPlugin({ mode: 'spa' }) as any
+      plugin.configResolved(CLIENT_RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).not.toHaveBeenCalled()
+    })
+  })
+
+  // Regression: historically the `zero build` CLI ran a DEDICATED server
+  // build (`vite build --ssr` → dist/server) on top of the plugin's own
+  // post-step. The closeBundle fired during that server build too, probed
   // `dist/server/index.html` (which a server-only build NEVER produces), and
   // logged a scary "Skipping SSR build — …/index.html not found" while the
-  // build still reported "Build completed" — a success-with-a-hole. A
-  // server-target build (`build.ssr` set) has no client assets, so the plugin
-  // must silently no-op there. The client build (build.ssr falsy) still runs.
+  // build still reported "Build completed" — a success-with-a-hole. The CLI's
+  // duplicate pass is gone (the plugin is the single owner now), but the
+  // guard stays: a USER-invoked `vite build --ssr <entry>` (custom
+  // server-bundle pipelines) has no client assets, so the plugin must
+  // silently no-op there. The client build (build.ssr falsy) still runs.
   describe('closeBundle skips a server-target build (build.ssr set) silently', () => {
     const SERVER_RESOLVED = {
       root: '/tmp/pyreon-nonexistent-root',

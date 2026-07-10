@@ -16,7 +16,7 @@ Most apps don't install this directly — `bun create @pyreon/zero my-app` adds 
 
 ```bash
 zero dev                  # start the dev server on :3000 with HMR + route table
-zero build                # production build (mode + adapter from vite.config.ts)
+zero build                # production build (= vite build; the zero plugin owns the pipeline)
 zero preview              # serve the production build for smoke-testing
 zero doctor               # run Pyreon health gates
 ```
@@ -37,15 +37,13 @@ Port resolution order: CLI flag > `zero({ port })` in `vite.config.ts` > framewo
 
 ### `zero build [root]`
 
-Production build. Reads `mode`, `adapter`, and `ssg` config from `vite.config.ts`. Writes per-adapter artefacts (`.vercel/output/config.json`, `_routes.json`, `netlify.toml`, etc.) alongside `dist/`.
+Production build — exactly `vite build`, run once. The `zero()` plugin chain from `vite.config.ts` owns the entire pipeline: client bundle → `dist/`, SSR/ISR server bundle + production `template.html` → `dist/server/`, SSG prerendered HTML, and deploy-adapter artefacts (`.vercel/output/`, `_routes.json`, `netlify.toml`, `dist/index.js`, …) staged into the same `dist/` tree.
 
-```
---mode <mode>      Override the rendering mode (ssr | ssg | isr | spa)
-```
+There is no `--mode` flag: the render mode comes from `zero({ mode })` in `vite.config.ts` — the plugin instances are constructed from that file, so a CLI flag can't override them.
 
 ### `zero preview [root]`
 
-Serve the production `dist/` for smoke-testing. Honors the same `port` resolution as `dev`.
+Serve the production build for smoke-testing (`dist/client/` when a node/bun-adapter build staged it, otherwise the project's `build.outDir`). Honors the same `port` resolution as `dev`.
 
 ```
 --port <port>      Server port (default: 3000)

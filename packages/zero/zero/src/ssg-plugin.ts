@@ -28,6 +28,11 @@ import { pathToFileURL } from 'node:url'
 import { withSilent } from '@pyreon/reactivity'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
+import {
+  SSG_BUILD_FLAG,
+  SSR_BUILD_FLAG,
+  innerBuildActiveInProcess,
+} from './build-flags'
 import { resolveConfig } from './config'
 import { isApiRoute } from './api-routes'
 import { collectFileRouteModes, detectRouteExports, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
@@ -72,10 +77,11 @@ import type { ZeroConfig } from './types'
 // the future `vite build --profile` flag.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
-// Marker env var used to skip the SSG hook on the recursive SSR sub-build —
-// the SSR pass loads the same vite config + same plugin chain, so without
-// this guard the SSG hook would re-trigger an infinite build loop.
-const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
+// The recursion-gate env flags (`SSG_BUILD_FLAG` for our own prerender
+// sub-build, `SSR_BUILD_FLAG` for the ssr-plugin's) live in the shared
+// `./build-flags` module — one source of truth for both plugins +
+// `buildSsrBundle`, replacing the historical keep-in-sync-by-comment
+// literals.
 
 // Synthetic SSR entry source. Imports the user's route tree via the virtual
 // module that zero's main plugin already registers, then exports a default
@@ -1160,10 +1166,36 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
   // Track whether this plugin instance is running inside the inner SSR
   // sub-build (where it must be a no-op) vs. the outer client build.
   const isInnerBuild = process.env[SSG_BUILD_FLAG] === '1'
+  // True when Vite is running a SERVER-target build (`build.ssr` set).
+  // A server build has no client assets / index.html template, so the
+  // prerender post-step must not fire there — covers a user-invoked
+  // `vite build --ssr <entry>` against a config carrying the zero
+  // plugin. Genuine inner sub-builds also set `build.ssr`, but those
+  // are already gated by the env flags above/below — this is the same
+  // belt-and-braces layering as ssr-plugin.ts.
+  let isSsrTargetBuild = false
   // Whether the USER explicitly enabled Vite's build manifest. When they did,
   // closeBundle must NOT delete it post-build (it's theirs); when only the
   // modulepreload feature enabled it, closeBundle cleans it up (internal).
   let userEnabledManifest = false
+
+  /**
+   * One-line notice when an inner-build env flag is set but NO zero
+   * sub-build is actually running in this process — i.e. the flag
+   * LEAKED in from a parent process / CI shell. A leaked flag silently
+   * disables the entire prerender of a top-level `mode: 'ssg'` build
+   * (no per-route HTML, no adapter config) with zero output, so name
+   * it. Genuine inner sub-builds (launched by `buildSsrBundle`, which
+   * marks itself in-process) stay silent. See build-flags.ts.
+   */
+  function warnIfLeakedInnerFlag(flag: string): void {
+    if (config.mode === 'ssg' && !innerBuildActiveInProcess()) {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        `[zero:ssg] Skipping the SSG prerender: the inner-build env flag ${flag} is set but no zero sub-build is running in this process — the flag leaked in from the environment. Unset it to restore prerendering.`,
+      )
+    }
+  }
 
   return {
     name: 'pyreon-zero-ssg',
@@ -1188,6 +1220,7 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
     configResolved(resolved) {
       root = resolved.root
       distDir = resolve(root, resolved.build.outDir)
+      isSsrTargetBuild = Boolean(resolved.build.ssr)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
       resolvedBase = resolved.base
@@ -1198,11 +1231,22 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
     },
 
     async closeBundle() {
-      if (isInnerBuild) return
+      if (isInnerBuild) {
+        warnIfLeakedInnerFlag(SSG_BUILD_FLAG)
+        return
+      }
       // Phase 2 — ALSO no-op inside the ssrPlugin's inner server build (its
       // reconstructed plugin chain includes this plugin again; the hybrid
       // pass must only run on the OUTER client build).
-      if (process.env.PYREON_ZERO_SSR_INNER_BUILD === '1') return
+      if (process.env[SSR_BUILD_FLAG] === '1') {
+        warnIfLeakedInnerFlag(SSR_BUILD_FLAG)
+        return
+      }
+      // SERVER-target build (`build.ssr` set) — not the client build;
+      // there is no client index.html template to prerender against.
+      // Covers a user-invoked `vite build --ssr <entry>`; genuine inner
+      // sub-builds were already caught by the flag gates above.
+      if (isSsrTargetBuild) return
       // Phase 2 — route-level render modes. The plugin runs in TWO shapes:
       //   - app mode 'ssg': the full SSG pass (existing behavior), now with
       //     per-route validation ('ssr'/'isr' routes are a build error in a
@@ -1978,9 +2022,13 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // emit it AFTER the artifact write so the path-render errors
       // already in the file aren't displaced.
       const adapter = resolveAdapter(config)
+      let adapterFailed = false
+      let adapterFailure: unknown
       try {
         await adapter.build({ kind: 'ssg', outDir: distDir, config, assetsDir })
       } catch (adapterError) {
+        adapterFailed = true
+        adapterFailure = adapterError
         errors.push({ path: `(adapter:${adapter.name})`, error: adapterError })
       }
 
@@ -2019,6 +2067,20 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       for (const { path: errPath, error } of errors) {
         // oxlint-disable-next-line no-console
         console.error(`[zero:ssg] Failed to prerender "${errPath}":`, error)
+      }
+
+      // EXPLICITLY-configured adapter (`zero({ adapter })`) whose build
+      // failed → fail the build. The user asked for that platform's
+      // deploy config (routing manifests, function wrappers); a green
+      // build without it is the catalogued "silent-filter" shape. Thrown
+      // AFTER the summary + per-error diagnostics print (and after the
+      // error artifact landed) so the failure is fully diagnosable.
+      // AUTO-selected adapters (config.adapter unset) stay non-fatal —
+      // the prerendered dist itself is complete and servable. Render
+      // errors keep their established semantics (error artifact +
+      // console; CI gates on `_pyreon-ssg-errors.json`).
+      if (adapterFailed && userConfig.adapter !== undefined) {
+        throw adapterFailure
       }
 
       // Per-route mode table (Tier-1 DX): which route ships in which mode,

@@ -57,28 +57,25 @@ import { copyFile, rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { BuildOptions, Plugin } from 'vite'
 import { resolveAdapter } from './adapters'
+// Per-mode flag namespaces (shared module — single source of truth for
+// both plugins + `buildSsrBundle`; historically each plugin kept the
+// other's literal in sync BY COMMENT). The SSR plugin's recursive
+// sub-build must NOT trigger the SSG plugin's hook, and vice-versa.
+// In `mode: 'ssr'|'isr'` the SSG plugin runs a nested prerender
+// sub-build to `<dist>/.zero-ssg-server` (for static routes) — that
+// sub-build's `closeBundle` must not trigger the SSR post-step either,
+// so this plugin honors BOTH flags (symmetric with ssg-plugin.ts).
+import {
+  SSG_BUILD_FLAG,
+  SSR_BUILD_FLAG,
+  innerBuildActiveInProcess,
+  innerBuildFlagSet,
+} from './build-flags'
 import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
 import type { ZeroConfig } from './types'
-
-/**
- * Per-mode flag namespace eliminates the cross-mode flag-leak failure
- * class — the SSR plugin's recursive sub-build must NOT trigger the
- * SSG plugin's hook, and vice-versa. Each plugin owns its own gate.
- */
-const SSR_BUILD_FLAG = 'PYREON_ZERO_SSR_INNER_BUILD'
-
-// Mirrors `SSG_BUILD_FLAG` in ssg-plugin.ts. In `mode: 'ssr'|'isr'` the SSG
-// plugin runs a nested prerender sub-build to `<dist>/.zero-ssg-server` (for
-// static routes). That sub-build's `closeBundle` must NOT trigger the SSR
-// post-step — its outDir has no client `index.html`, so the check would warn
-// a misleading "Skipping SSR build" even though the real (outer) SSR build
-// succeeds. The ssg-plugin already skips on OUR flag (ssr-plugin.ts's own
-// recursive build); this makes the guard symmetric. Keep the literal in sync
-// with ssg-plugin.ts:SSG_BUILD_FLAG.
-const SSG_BUILD_FLAG = 'PYREON_ZERO_SSG_INNER_BUILD'
 
 /**
  * Filename for the synthetic entry materialized at the project root.
@@ -124,13 +121,10 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // True when Vite is running a SERVER-target build (`build.ssr` set) rather
   // than the client build. A server build has NO client assets — no
   // `index.html`, no manifest — so this plugin (whose whole job runs AFTER
-  // the CLIENT build) must not fire. The `zero build` CLI runs a dedicated
-  // `vite build --ssr → dist/server` pass; before this guard the plugin's
-  // closeBundle fired there too, probed `dist/server/index.html` (which
-  // legitimately never exists), and logged a scary
-  // `[zero:ssr] Skipping SSR build — …/index.html not found` while the build
-  // still reported success — a success-with-a-hole that masked whether the
-  // real SSR post-step ran. See `closeBundle`.
+  // the CLIENT build) must not fire. This covers a user-invoked
+  // `vite build --ssr <entry>` against a config carrying the zero plugin
+  // (custom server-bundle pipelines) AND every genuine inner sub-build
+  // (which always sets `build.ssr` — see `buildInnerBuildOptions`).
   let isSsrTargetBuild = false
   // Captured from the OUTER build's resolved config so the inner SSR
   // sub-build (which runs `configFile: false`) emits assets identically.
@@ -146,12 +140,42 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // Capture inner-build state once at plugin instantiation. The inner
   // build re-loads zero's plugin chain (same as SSG); without this gate
   // the inner plugin instance would re-enter its own closeBundle.
-  // Mirrors `ssg-plugin.ts:1028`. Also skip during the SSG prerender
-  // sub-build (mode:'ssr'|'isr' runs it) — its outDir is `.zero-ssg-server`
-  // with no client index.html, so the SSR post-step would spuriously warn
-  // "Skipping SSR build" even though the outer SSR build succeeds.
-  const isInnerBuild =
-    process.env[SSR_BUILD_FLAG] === '1' || process.env[SSG_BUILD_FLAG] === '1'
+  // Mirrors `ssg-plugin.ts`. Honors BOTH flags: skip our own recursive
+  // build AND the SSG prerender sub-build (mode:'ssr'|'isr' runs it) —
+  // its outDir is `.zero-ssg-server` with no client index.html, so the
+  // SSR post-step would spuriously warn "Skipping SSR build" even
+  // though the outer SSR build succeeds.
+  const isInnerBuild = innerBuildFlagSet()
+  // Flag set but no `buildSsrBundle` active in THIS process ⇒ the env
+  // flag leaked in from OUTSIDE (a parent process / CI shell exporting
+  // PYREON_ZERO_*_INNER_BUILD). Still skip (safe), but say so — a
+  // leaked flag silently disabling the whole SSR post-step of a
+  // top-level build is otherwise undiagnosable. See build-flags.ts.
+  const leakedInnerFlag = isInnerBuild && !innerBuildActiveInProcess()
+
+  /**
+   * ONE predicate for every way this closeBundle must no-op — the
+   * post-step runs ONLY on the OUTER CLIENT build pass of an SSR/ISR
+   * app. Three layered gates, unified (each was historically a
+   * separate patched-in early-return):
+   *
+   *   1. `mode` — SPA needs no bundle; SSG has its own plugin.
+   *   2. `server-target` — `build.ssr` set ⇒ no client assets exist to
+   *      post-process. This structurally covers every genuine inner
+   *      sub-build too (they all set `build.ssr`).
+   *   3. `inner-build` — env-flag belt-and-braces under gate 2. Kept
+   *      even though `server-target` subsumes it for genuine inner
+   *      builds: it is the documented recursion contract
+   *      (`buildSsrBundle` gates on the FLAG, not on build.ssr), and
+   *      reaching this arm on a NON-server-target build is precisely
+   *      the leaked-flag case worth a notice.
+   */
+  function postStepSkipReason(): 'mode' | 'server-target' | 'inner-build' | null {
+    if (config.mode !== 'ssr' && config.mode !== 'isr') return 'mode'
+    if (isSsrTargetBuild) return 'server-target'
+    if (isInnerBuild) return 'inner-build'
+    return null
+  }
 
   return {
     name: 'pyreon-zero-ssr',
@@ -169,21 +193,25 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
     },
 
     async closeBundle() {
-      // SSR/ISR-only. SPA / SSG fall through to no-op (SPA needs no
-      // bundle; SSG has its own plugin).
-      if (config.mode !== 'ssr' && config.mode !== 'isr') return
-      if (isInnerBuild) return
-
-      // SERVER-target build (`build.ssr` set) — this is NOT the client build,
-      // so there are no client assets to post-process. Silent no-op: the
-      // client-build pass owns the SSR post-step (nested SSR sub-build +
-      // adapter), and the `zero build` CLI runs its own dedicated
-      // `dist/server` server build + adapter separately. Firing here would
-      // probe for a client `index.html` that legitimately never exists in a
-      // server build and emit a misleading "Skipping SSR build" warning
-      // followed by a green "Build completed" — a success-with-a-hole. Placed
-      // before the probe so the scary warning is impossible in this context.
-      if (isSsrTargetBuild) return
+      // See `postStepSkipReason` for the full gate catalog. All skips
+      // are silent EXCEPT a leaked inner-build env flag on what is
+      // otherwise the client build pass we own — that one silently
+      // disables the entire SSR post-step (no server bundle, no
+      // template, no adapter) with zero output, so name it.
+      const skip = postStepSkipReason()
+      if (skip !== null) {
+        if (skip === 'inner-build' && leakedInnerFlag) {
+          // oxlint-disable-next-line no-console
+          console.warn(
+            `[zero:ssr] Skipping the SSR post-step: an inner-build env flag (${SSR_BUILD_FLAG} / ${SSG_BUILD_FLAG}) is set but no zero sub-build is running in this process — the flag leaked in from the environment. Unset it to restore the SSR bundle + adapter steps.`,
+          )
+        }
+        return
+      }
+      // Past the `mode` gate inside `postStepSkipReason` the mode is
+      // 'ssr' | 'isr' — TS can't narrow through the predicate call, so
+      // re-state it for the entry-kind + route-table consumers below.
+      const mode = config.mode as 'ssr' | 'isr'
 
       // Sanity check — without a client build there's no asset
       // manifest for the adapter to wrap. Reaching this point means the
@@ -221,7 +249,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // dispatcher — locale-baking is SSG-only (the SSR entry's
       // mode dispatch via `wireRenderMode` doesn't need it).
       if (!userEntryExists) {
-        await materializeEntry(entryPath, renderSsrEntrySource({ kind: config.mode, locales: [] }))
+        await materializeEntry(entryPath, renderSsrEntrySource({ kind: mode, locales: [] }))
       }
 
       try {
@@ -317,9 +345,17 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
         console.error(
           `[zero:ssr] Adapter "${adapter.name}" failed: ${cause}`,
         )
-        // Do NOT rethrow — the SSR bundle landed successfully and is
-        // usable by hand-deploys / alternate pipelines. An adapter
-        // bug shouldn't block the bundle.
+        // EXPLICITLY-configured adapter (`zero({ adapter })`) → the user
+        // asked for that deploy artifact; a green build without it is a
+        // lie — fail the build (the repo's "silent-filter" anti-pattern:
+        // a swallowed adapter error here shipped green builds with no
+        // deployable output). AUTO-selected adapter (config.adapter
+        // unset → node / platform-detected) → non-fatal: the user never
+        // asked for adapter output, and the SSR bundle landed
+        // successfully and is usable by hand-deploys.
+        if (userConfig.adapter !== undefined) {
+          throw adapterError
+        }
       }
 
       // oxlint-disable-next-line no-console
@@ -330,7 +366,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // Per-route mode table (Tier-1 DX): which route ships in which mode,
       // at a glance, on every build. Informational — never fails the build.
       try {
-        const tableMode = config._autoMode ? ('auto' as const) : config.mode
+        const tableMode = config._autoMode ? ('auto' as const) : mode
         const modeEntries = await collectFileRouteModes(join(root, 'src', 'routes'), tableMode, config.routeRules)
         for (const line of formatRouteModeTable(modeEntries, tableMode)) {
           // oxlint-disable-next-line no-console
