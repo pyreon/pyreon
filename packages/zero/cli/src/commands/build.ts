@@ -1,135 +1,67 @@
-import { existsSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { build as viteBuild } from 'vite'
 
-export interface BuildOptions {
-  mode?: string
-}
-
-/** Extract zero plugin config from a Vite config file. */
-async function loadZeroConfig(configPath: string): Promise<Record<string, unknown> | undefined> {
+/**
+ * `zero build` — run the full production build.
+ *
+ * ONE Vite build, ONE owner. The `zero()` plugin chain from the
+ * project's `vite.config.ts` owns the ENTIRE production pipeline:
+ *
+ *   - client bundle → `dist/` (the project's `build.outDir`)
+ *   - SSR/ISR: server bundle → `dist/server/entry-server.js` (user
+ *     `src/entry-server.ts` when present, synthetic entry otherwise) +
+ *     `dist/server/template.html` (the built client index.html — the
+ *     production SSR template with hashed asset refs)
+ *   - SSG (+ hybrid static-first routes): prerendered per-route HTML
+ *   - deploy-adapter staging (node / bun / static / vercel /
+ *     cloudflare / netlify) into the same `dist/` tree
+ *
+ * This command is therefore exactly `vite build` — it exists for the
+ * scaffolded `bun run build` script and symmetric CLI UX (`zero dev` /
+ * `zero build` / `zero preview`), not to add build steps.
+ *
+ * HISTORY (the 0.43.x defect this shape fixes): the CLI used to run a
+ * SECOND owner on top of the plugin — its own `vite build --ssr` pass
+ * to `dist/server`, its own prerender pass, and its own
+ * `adapter.build()` into `dist/output`, each in a bare swallow-all
+ * `catch`. Result: the SSR bundle was built twice into divergent
+ * trees, the CLI's `dist/output` staged a server bundle WITHOUT
+ * `template.html` (a deployed `dist/output` server fell back to the
+ * DEV template + `/src/entry-client.ts` → server-rendered but never
+ * hydrated in production), zero-config apps (no user
+ * `src/entry-server.ts`) got NO `dist/server` at all, and every one of
+ * those failures was swallowed into a green "Build completed" — the
+ * catalogued "silent-filter" anti-pattern. The plugin's post-step is
+ * the battle-tested path (verify-modes + the ssr-node/isr-node/ssg-*
+ * e2e gates exercise it), so the CLI now delegates to it entirely.
+ *
+ * Failure surfacing: `viteBuild` rejects on any plugin failure —
+ * including an explicitly-configured adapter whose `build()` threw
+ * (the zero plugins rethrow those; auto-selected adapters stay
+ * non-fatal) — and `build()` reports it + exits non-zero.
+ *
+ * There is deliberately NO `--mode` flag anymore: the render mode
+ * comes from `zero({ mode })` in `vite.config.ts` (the plugin
+ * instances are constructed from that file — a CLI flag structurally
+ * cannot reach them, and the old flag only gated the CLI's own
+ * now-deleted duplicate passes while the plugin ran its configured
+ * mode regardless).
+ */
+export async function build(root: string | undefined) {
   try {
-    const { loadConfigFromFile } = await import('vite')
-    const { getZeroPluginConfig } = await import('@pyreon/zero/server')
-    const loaded = await loadConfigFromFile({ command: 'build', mode: 'production' }, configPath)
-    if (!loaded) return undefined
-
-    const plugins = (loaded.config.plugins ?? []) as Array<{ name?: string }>
-    const zeroPlugin = plugins.find(
-      (p) => p && typeof p === 'object' && 'name' in p && p.name === 'pyreon-zero',
-    )
-    if (!zeroPlugin) return undefined
-    // `getZeroPluginConfig` reads from a WeakMap keyed by plugin
-    // identity (set inside `zeroPlugin()` when the user constructed it).
-    // No `_zeroConfig` property reflection — internal coordination state
-    // doesn't leak onto the public Plugin object.
-    const config = getZeroPluginConfig(zeroPlugin as Parameters<typeof getZeroPluginConfig>[0])
-    return config as Record<string, unknown> | undefined
-  } catch {
-    // Config loading is optional — fall back to defaults
-  }
-  return undefined
-}
-
-/** Run SSG prerendering pass if configured. */
-async function prerenderIfNeeded(
-  projectRoot: string,
-  zeroConfig: Record<string, unknown> | undefined,
-) {
-  const serverEntry = join(projectRoot, 'dist/server/entry-server.js')
-  if (!existsSync(serverEntry)) return
-
-  try {
-    const { prerender } = await import('@pyreon/server')
-    const serverModule = await import(serverEntry)
-
-    const paths = await resolveSsgPaths(zeroConfig)
-    const result = await prerender({
-      handler: serverModule.default,
-      paths,
-      outDir: join(projectRoot, 'dist/client'),
-    })
-
-    for (const err of result.errors) {
-      console.warn('Prerender error:', err)
-    }
-  } catch {
-    // Prerender is best-effort — build continues without it
-  }
-}
-
-/** Resolve SSG paths from config (static array or async function). */
-async function resolveSsgPaths(zeroConfig: Record<string, unknown> | undefined): Promise<string[]> {
-  const ssgConfig = zeroConfig?.ssg as
-    | { paths?: string[] | (() => string[] | Promise<string[]>) }
-    | undefined
-  if (!ssgConfig?.paths) return ['/']
-  return typeof ssgConfig.paths === 'function' ? await ssgConfig.paths() : ssgConfig.paths
-}
-
-/** Run the deploy adapter build step. */
-async function runAdapter(projectRoot: string, zeroConfig: Record<string, unknown>) {
-  try {
-    const { resolveAdapter } = await import('@pyreon/zero/server')
-    const adapter = resolveAdapter(zeroConfig)
-    await adapter.build({
-      kind: 'ssr',
-      serverEntry: join(projectRoot, 'dist/server/entry-server.js'),
-      clientOutDir: join(projectRoot, 'dist/client'),
-      outDir: join(projectRoot, 'dist/output'),
-      config: zeroConfig,
-    })
-  } catch {
-    // Adapter build is optional — output may not need it
-  }
-}
-
-export async function build(root: string | undefined, options: BuildOptions) {
-  try {
-    await runBuild(root, options)
+    await runBuild(root)
   } catch (error) {
     console.error('Build failed:', (error as Error).message)
     process.exit(1)
   }
 }
 
-async function runBuild(root: string | undefined, options: BuildOptions) {
+/** @internal Exported for tests — same pipeline, rejects instead of exiting. */
+export async function runBuild(root: string | undefined) {
   const projectRoot = resolve(root ?? '.')
   const start = performance.now()
 
-  // Load zero config FIRST so we know whether SPA mode applies (which
-  // skips the server build — SPA apps have no `entry-server.ts`).
-  const configPath = join(projectRoot, 'vite.config.ts')
-  const zeroConfig = await loadZeroConfig(configPath)
-  const renderMode = (zeroConfig?.mode as string) ?? options.mode ?? 'ssr'
-
-  // Client build
-  await viteBuild({
-    root: projectRoot,
-    build: { outDir: 'dist/client', ssrManifest: true },
-  })
-
-  // Server build — skipped for SPA mode (no entry-server.ts), and skipped
-  // for any mode when the file doesn't exist (defensive — lets SPA apps
-  // not declare the mode explicitly).
-  const serverEntryPath = join(projectRoot, 'src/entry-server.ts')
-  const hasServerEntry = existsSync(serverEntryPath)
-  if (renderMode !== 'spa' && hasServerEntry) {
-    await viteBuild({
-      root: projectRoot,
-      build: {
-        outDir: 'dist/server',
-        ssr: 'src/entry-server.ts',
-        rollupOptions: { input: 'src/entry-server.ts' },
-      },
-    })
-  }
-
-  if (renderMode === 'ssg' || renderMode === 'isr') {
-    await prerenderIfNeeded(projectRoot, zeroConfig)
-  }
-
-  await runAdapter(projectRoot, zeroConfig ?? {})
+  await viteBuild({ root: projectRoot })
 
   const elapsed = Math.round(performance.now() - start)
   console.log(`Build completed in ${elapsed}ms`)

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SSG_BUILD_FLAG, SSR_BUILD_FLAG, _enterInnerBuild, _exitInnerBuild } from '../build-flags'
 import { _internal, ssgPlugin } from '../ssg-plugin'
 
 describe('ssgPlugin', () => {
@@ -1251,6 +1252,109 @@ describe('ssgPlugin', () => {
       const plugin = ssgPlugin({ mode: 'ssr' }) as any
       plugin.configResolved({ root: '/tmp', build: { outDir: 'dist' } })
       await expect(plugin.closeBundle()).resolves.toBeUndefined()
+    })
+  })
+
+  // A SERVER-target build (`build.ssr` set) has no client index.html to
+  // prerender against — the post-step must SILENTLY no-op there (a
+  // user-invoked `vite build --ssr <entry>` against a mode:'ssg' config
+  // would otherwise either warn a misleading "Skipping SSG —
+  // …/index.html not found" for its own outDir, or — worse, when a
+  // stale dist/index.html from a previous client build exists — run
+  // the whole prerender pipeline against the server build's outDir).
+  // Mirrors the ssr-plugin's server-target guard.
+  describe('closeBundle skips a server-target build (build.ssr set) silently', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('mode "ssg" + build.ssr → silent no-op (no misleading warning)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssgPlugin({ mode: 'ssg' }) as any
+      plugin.configResolved({
+        root: '/tmp/pyreon-nonexistent-root',
+        build: { outDir: 'dist/server', ssr: 'src/entry-server.ts' },
+      })
+      await expect(plugin.closeBundle()).resolves.toBeUndefined()
+      expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('DOES reach the index.html probe (and warns) for a client build', async () => {
+      // Discriminating control: with build.ssr falsy, the same missing
+      // root reaches the probe and warns — proving the silent skip
+      // above comes from the guard, not from an earlier bail.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssgPlugin({ mode: 'ssg' }) as any
+      plugin.configResolved({
+        root: '/tmp/pyreon-nonexistent-root',
+        build: { outDir: 'dist', ssr: false },
+      })
+      await plugin.closeBundle()
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('Skipping SSG'))
+    })
+  })
+
+  // A leaked inner-build env flag (exported by a parent process / CI
+  // shell, not set by a `buildSsrBundle` running in this process)
+  // silently disables the ENTIRE prerender of a top-level mode:'ssg'
+  // build. Still skip (safe), but say so. Genuine in-process sub-builds
+  // stay silent. Mirrors the ssr-plugin's notice.
+  describe('leaked inner-build env flag prints a one-line notice', () => {
+    const RESOLVED = {
+      root: '/tmp/pyreon-nonexistent-root',
+      build: { outDir: 'dist' },
+    }
+    afterEach(() => {
+      delete process.env[SSG_BUILD_FLAG]
+      delete process.env[SSR_BUILD_FLAG]
+      vi.restoreAllMocks()
+    })
+
+    it('warns for a leaked SSG flag on a top-level ssg build', async () => {
+      process.env[SSG_BUILD_FLAG] = '1'
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssgPlugin({ mode: 'ssg' }) as any
+      plugin.configResolved(RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('leaked in from the environment'),
+      )
+    })
+
+    it('warns for a leaked SSR flag on a top-level ssg build', async () => {
+      const plugin = ssgPlugin({ mode: 'ssg' }) as any
+      plugin.configResolved(RESOLVED)
+      // Set AFTER construction — the SSR flag is checked at closeBundle
+      // time (it gates the ssr-plugin's inner build re-entering us).
+      process.env[SSR_BUILD_FLAG] = '1'
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await plugin.closeBundle()
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('leaked in from the environment'),
+      )
+    })
+
+    it('stays SILENT for a genuine in-process inner sub-build', async () => {
+      process.env[SSG_BUILD_FLAG] = '1'
+      _enterInnerBuild()
+      try {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const plugin = ssgPlugin({ mode: 'ssg' }) as any
+        plugin.configResolved(RESOLVED)
+        await plugin.closeBundle()
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        _exitInnerBuild()
+      }
+    })
+
+    it('stays SILENT for non-ssg modes (hybrid skip is speculative, not a loss)', async () => {
+      process.env[SSG_BUILD_FLAG] = '1'
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const plugin = ssgPlugin({ mode: 'ssr' }) as any
+      plugin.configResolved(RESOLVED)
+      await plugin.closeBundle()
+      expect(warn).not.toHaveBeenCalled()
     })
   })
 

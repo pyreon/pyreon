@@ -26,8 +26,12 @@ cli
   .action(dev)
 
 cli
-  .command('build [root]', 'Build for production')
-  .option('--mode <mode>', 'Rendering mode override')
+  // No `--mode` flag — the render mode comes from `zero({ mode })` in
+  // vite.config.ts. The plugin instances are constructed from that
+  // file, so a CLI flag structurally cannot override them; the old
+  // flag only gated the CLI's (removed) duplicate build passes while
+  // the plugin ran its configured mode regardless. See commands/build.ts.
+  .command('build [root]', 'Build for production (one Vite build — the zero plugin owns the pipeline)')
   .action(build)
 
 cli

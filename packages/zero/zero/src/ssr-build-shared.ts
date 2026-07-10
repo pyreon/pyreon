@@ -25,6 +25,7 @@
 
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import type { BuildOptions, Plugin } from 'vite'
+import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
 import type { ZeroConfig } from './types'
 
 /**
@@ -253,8 +254,12 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
   // compiler) — every Pyreon app already has both. Loading both
   // lazily keeps this helper off the module-eval critical path.
   // Env-flag gate prevents the inner plugin instance from re-triggering
-  // its own closeBundle.
+  // its own closeBundle. The in-process marker (`_enterInnerBuild`)
+  // rides along so plugin instances constructed during this sub-build
+  // can tell a GENUINE inner build from an env flag leaked in from a
+  // parent process — see build-flags.ts.
   process.env[options.envFlag] = '1'
+  _enterInnerBuild()
   try {
     const [{ zeroPlugin }, pyreonModule] = await Promise.all([
       import('./vite-plugin'),
@@ -348,6 +353,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       build: buildInnerBuildOptions(options),
     })
   } finally {
+    _exitInnerBuild()
     delete process.env[options.envFlag]
   }
 }

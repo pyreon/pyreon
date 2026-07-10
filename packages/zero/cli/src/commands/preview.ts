@@ -9,19 +9,24 @@ export interface PreviewOptions {
 }
 
 /**
- * Resolve the directory `vite preview` should serve from. `zero build`
- * hardcodes the client bundle into `dist/client/` (see commands/build.ts)
- * — Vite's preview default of `dist/` would 404 because `dist/` only
- * contains subdirectories (`client/`, `server/`, `output/`) after a zero
- * build. Honour `build.outDir` from `vite.config.ts` if set; otherwise
- * fall back to `dist/client` when it exists; otherwise let vite preview
- * fall back to its own default and surface the resulting 404 to the
- * user.
+ * Resolve the directory `vite preview` should serve from.
+ *
+ * `zero build` delegates the whole pipeline to the zero plugin, so the
+ * client bundle lands at the project's `build.outDir` (`dist/` by
+ * default) — vite preview's own default therefore serves it correctly.
+ * Two cases still prefer `dist/client/` when that directory exists:
+ *
+ *   - node/bun adapter SSR builds stage a clean copy of the client
+ *     assets at `dist/client/` (next to the emitted `dist/index.js`
+ *     runner); serving the copy avoids also exposing the server
+ *     bundle / adapter scaffolding sitting at the `dist/` top level.
+ *   - stale `dist/` trees from pre-0.44 `zero build` runs (which
+ *     hardcoded the client bundle into `dist/client/`).
+ *
+ * When `dist/client/` doesn't exist, return undefined and let vite
+ * preview use the project's own `build.outDir`.
  */
 function resolvePreviewOutDir(projectRoot: string): string | undefined {
-  // `vite.config.ts` build.outDir override wins — read it if present.
-  // (Async config loading is out of scope here; the common case is the
-  // scaffolder-generated config which does NOT set build.outDir.)
   const clientDist = join(projectRoot, 'dist/client')
   if (existsSync(clientDist)) return 'dist/client'
   return undefined

@@ -3,7 +3,7 @@ title: '@pyreon/zero-cli'
 description: 'The Zero meta-framework CLI — the `zero` binary for dev, build, preview, doctor, context, and create. A framework-aware wrapper over Vite.'
 ---
 
-`@pyreon/zero-cli` ships the **`zero` binary** — the dev/build CLI for apps built on [`@pyreon/zero`](/docs/zero). It is a thin, framework-aware wrapper over Vite: `zero dev` boots Vite's dev server and prints the file-system route table, `zero build` reads your rendering mode + deploy adapter from `vite.config.ts` and runs the multi-pass production build, and the rest (`preview`, `doctor`, `context`, `create`) round out the day-to-day workflow.
+`@pyreon/zero-cli` ships the **`zero` binary** — the dev/build CLI for apps built on [`@pyreon/zero`](/docs/zero). It is a thin, framework-aware wrapper over Vite: `zero dev` boots Vite's dev server and prints the file-system route table, `zero build` runs the production build (one `vite build` — the `zero()` plugin chain owns the whole pipeline), and the rest (`preview`, `doctor`, `context`, `create`) round out the day-to-day workflow.
 
 <PackageBadge name="@pyreon/zero-cli" href="/docs/zero-cli" />
 
@@ -38,8 +38,8 @@ The package installs a single binary, **`zero`**. Its dependencies (`@pyreon/zer
 Vite alone doesn't know about Zero's conventions — file-system routing, per-route render modes, SSR/SSG server builds, or deploy adapters. `zero` closes that gap with the smallest possible surface:
 
 - **`zero dev`** boots `vite.createServer()` and then prints the discovered route tree, so you see your page and API routes the moment the server is up.
-- **`zero build`** is a *multi-pass* build — a client pass, an optional SSR server pass, an optional SSG/ISR prerender pass, and an optional adapter pass — all driven by what it reads back out of your `zero({ ... })` plugin config.
-- **`zero preview`** knows Zero writes the client bundle to `dist/client/` (not bare `dist/`), so it serves the right directory instead of 404-ing.
+- **`zero build`** runs **one** `vite build` and lets the `zero()` plugin chain own the entire production pipeline — client bundle, SSR/ISR server bundle + production template, SSG prerendering, deploy-adapter staging. It exists for the scaffolded `bun run build` script and symmetric UX, not to add build steps.
+- **`zero preview`** serves the built client bundle (`dist/client/` when a node/bun-adapter build staged one, otherwise your `build.outDir`).
 - **`zero doctor`** / **`zero context`** delegate to [`@pyreon/cli`](/docs/cli)'s health gates and AI-context generator, scoped to a Zero project.
 
 Everything heavier — plugins, aliases, build tuning — lives in `vite.config.ts`. The CLI deliberately exposes only the few flags that make sense to flip per-invocation.
@@ -130,31 +130,30 @@ The banner honors [`NO_COLOR`](https://no-color.org) / `FORCE_COLOR` and falls b
 
 ### `zero build [root]`
 
-Run the full production build. This is a sequence of passes, each gated by what the CLI reads back out of your `zero({ ... })` plugin config in `vite.config.ts`:
+Run the full production build — **exactly `vite build`, run once**. The `zero()` plugin chain from your `vite.config.ts` owns the entire pipeline (this is the same battle-tested path a plain `vite build` of any Zero app takes):
 
-1. **Client build** → `dist/client/` (always runs; emits an SSR manifest).
-2. **Server build** → `dist/server/entry-server.js` — runs *unless* the mode is `spa` **or** there's no `src/entry-server.ts` on disk.
-3. **Prerender pass** — for `ssg` / `isr` modes, walks the configured paths and writes static HTML into `dist/client/`.
-4. **Adapter build** → `dist/output/` — runs the resolved deploy adapter (Vercel / Netlify / Cloudflare / Node / Bun / static) to emit platform artefacts.
+1. **Client bundle** → `dist/` (your project's `build.outDir`).
+2. **SSR/ISR** (`mode: 'ssr' | 'isr'`): server bundle → `dist/server/entry-server.js` (your `src/entry-server.ts` when present, a synthetic entry otherwise — zero-config apps get a server bundle too) **plus** `dist/server/template.html`, the built client `index.html` staged next to the entry as the production SSR template (hashed asset refs — this is what makes the deployed page hydrate).
+3. **SSG** (`mode: 'ssg'`, plus hybrid static-first routes in server modes): prerendered per-route HTML into `dist/`.
+4. **Deploy adapter** (Vercel / Netlify / Cloudflare / Node / Bun / static): platform artefacts staged into the same `dist/` tree — e.g. the node adapter emits `dist/index.js` + a clean `dist/client/` copy of the client assets, Vercel emits `dist/.vercel/output/`, Cloudflare emits `dist/_worker.js` + `_routes.json`.
 
-On success it prints `Build completed in <N>ms`. On failure it logs `Build failed: <message>` and exits with code `1`.
-
-| Flag | Description |
-| --- | --- |
-| `--mode <mode>` | Rendering-mode override — one of `ssr`, `ssg`, `isr`, `spa`. **Only used as a fallback** (see the resolution note below). |
+On success it prints `Build completed in <N>ms`. On failure it logs `Build failed: <message>` and exits with code `1` — including when an **explicitly configured** adapter's build step fails (an auto-selected adapter failure is reported but doesn't fail the build; the server bundle itself is still usable).
 
 ```bash
 zero build                 # mode + adapter resolved from vite.config.ts
-zero build --mode ssg      # fall back to SSG if the config doesn't set a mode
 zero build ./apps/web      # build a project in a subdirectory
 ```
 
-:::warning{title="vite.config.ts wins over --mode"}
-The build's render mode resolves as `zero({ mode })` from `vite.config.ts` **first**, then `--mode`, then the `ssr` default. So if your `vite.config.ts` already sets `zero({ mode: 'ssr' })`, passing `--mode ssg` does **nothing** — the config value takes precedence. `--mode` is a *fallback for projects that don't pin a mode in config*, not an override. To switch modes, change the config. The full mode reference (what each mode emits) lives in the [Zero docs](/docs/zero).
+:::note{title="No --mode flag"}
+The render mode comes from `zero({ mode })` in `vite.config.ts` — the plugin instances are constructed from that file, so a CLI flag structurally cannot override them. Earlier versions accepted `--mode` as a "fallback"; it only gated the CLI's own (since removed) duplicate build passes while the plugin ran its configured mode regardless, so it was dropped. To switch modes, change the config. The full mode reference (what each mode emits) lives in the [Zero docs](/docs/zero).
 :::
 
 :::note
-`zero build` reads your `zero` plugin config through an internal accessor on the Vite plugin instance — it does not parse `vite.config.ts` as text. If the project has no `pyreon-zero` plugin in its Vite plugin chain, the build falls back to defaults (`ssr` mode, no adapter artefacts).
+If the project has no `pyreon-zero` plugin in its Vite plugin chain, `zero build` is just a plain `vite build` — client bundle only, no server bundle or adapter artefacts.
+:::
+
+:::tip{title="Upgrading from ≤ 0.43"}
+Older versions ran extra CLI-owned passes on top of the plugin: a duplicate server build to `dist/server/` and an adapter pass into `dist/output/` — the `dist/output` server bundle was staged **without** `template.html`, so a deployed `dist/output` server rendered but never hydrated, and zero-config apps got no server bundle at all (silently). Deploy the plugin-owned `dist/` tree instead (`node dist/index.js` for the node adapter); `dist/output` no longer exists.
 :::
 
 ### `zero preview [root]`
@@ -172,10 +171,10 @@ zero preview --port 4173            # explicit preview port
 zero preview --host                 # expose the preview on your LAN
 ```
 
-Because `zero build` writes the client bundle to **`dist/client/`** (not bare `dist/`), `zero preview` automatically serves from `dist/client` when that directory exists. Plain `vite preview` would serve `dist/` and 404, since after a Zero build `dist/` contains only the `client/`, `server/`, and `output/` subdirectories.
+`zero build` puts the client bundle at your project's `build.outDir` (`dist/` by default), which `vite preview` serves natively. When a `dist/client/` directory exists — the node/bun adapters stage a clean copy of the client assets there, next to the emitted `dist/index.js` runner — `zero preview` prefers it, so the preview doesn't also expose the server bundle / adapter scaffolding at the `dist/` top level.
 
 :::warning{title="Build first"}
-`zero preview` serves whatever is already in `dist/client/`. It does **not** trigger a build. Run `zero build` first, or your preview will serve a stale (or missing) bundle. `preview` is a static smoke-test of the client bundle — it does not run your SSR server entry. To exercise SSR/SSG/adapter output, deploy the `dist/output/` artefact (or run the emitted server bundle) per your adapter's instructions.
+`zero preview` serves whatever is already on disk. It does **not** trigger a build. Run `zero build` first, or your preview will serve a stale (or missing) bundle. `preview` is a static smoke-test of the client bundle — it does not run your SSR server entry. To exercise SSR/SSG/adapter output, run the emitted server bundle (e.g. `node dist/index.js` for the node adapter) or deploy per your adapter's instructions.
 :::
 
 ### `zero doctor [root]`
@@ -270,14 +269,14 @@ export default defineConfig({
 })
 ```
 
-The flags `zero` exposes are deliberately minimal — the per-invocation knobs that make sense on a command line (`--port`, `--host`, `--open`, `--mode`, the doctor flags). Anything structural belongs in `vite.config.ts`.
+The flags `zero` exposes are deliberately minimal — the per-invocation knobs that make sense on a command line (`--port`, `--host`, `--open`, the doctor flags). Anything structural belongs in `vite.config.ts`.
 
 ## Gotchas
 
 - **The CLI is a thin Vite wrapper.** For custom plugins, alias maps, or build tuning, edit `vite.config.ts` — don't look for CLI flags that don't exist. The complete flag set is in the [reference table](#command--flag-reference) below.
 - **`--port` does not always win at the CLI.** It does — but only when you actually pass it. If you omit it, `zero({ port })` from config wins over the `3000` default. Trust the resolution order.
-- **`--mode` is a fallback, not an override.** `zero({ mode })` in config takes precedence over `--mode`. Change the config to switch modes for real.
-- **`zero preview` serves `dist/client`, not `dist/`.** It also does not build for you — run `zero build` first.
+- **There is no `--mode` flag.** The render mode is `zero({ mode })` in `vite.config.ts` — the plugin instances are constructed from that file, so a CLI flag can't reach them. Change the config to switch modes.
+- **`zero preview` does not build for you** — run `zero build` first. It serves `dist/client/` when a node/bun-adapter build staged it, otherwise your `build.outDir`.
 - **`zero` is not `pyreon`.** `zero` (this package) is the Zero-aware CLI for `@pyreon/zero` apps; `pyreon` ([`@pyreon/cli`](/docs/cli)) is the framework-wide CLI for non-Zero / library packages. Same `doctor` philosophy, different default scope. Zero apps should use `zero`.
 - **`zero --version` reports `0.0.1`.** The `--version` string is a placeholder baked into the CLI, independent of the installed package version. Check `package.json` (or `npm ls @pyreon/zero-cli`) for the real version.
 - **`zero create` is template-only.** It copies the *default* `@pyreon/create-zero` template with no prompts. The next-steps it prints assume `bun`; substitute your package manager (`npm install` / `pnpm install`) as needed.
@@ -287,15 +286,15 @@ The flags `zero` exposes are deliberately minimal — the per-invocation knobs t
 | Command | Positional | Flags | Purpose |
 | --- | --- | --- | --- |
 | `zero dev [root]` | `[root]` (dir, default `.`) | `--port <port>`, `--host [host]`, `--open` | Vite dev server + route table |
-| `zero build [root]` | `[root]` | `--mode <mode>` (`ssr`\|`ssg`\|`isr`\|`spa`) | Production build (client + SSR + prerender + adapter) |
-| `zero preview [root]` | `[root]` | `--port <port>`, `--host [host]` | Serve `dist/client` locally |
+| `zero build [root]` | `[root]` | — | Production build (one `vite build`; the zero plugin owns client + SSR + prerender + adapter) |
+| `zero preview [root]` | `[root]` | `--port <port>`, `--host [host]` | Serve the built client bundle locally |
 | `zero doctor [root]` | `[root]` | `--fix`, `--json`, `--ci` | Pyreon health gates |
 | `zero context [root]` | `[root]` | `--out <path>` (default `.pyreon/context.json`) | AI-readable project summary |
 | `zero create <name>` | `<name>` (required) | — | Scaffold from the default template |
 | `zero --help` | — | — | Print usage |
 | `zero --version` | — | — | Print version (placeholder `0.0.1`) |
 
-Render modes accepted by `--mode`: `ssr`, `ssg`, `isr`, `spa`. The default when neither config nor flag sets one is `ssr`. What each mode emits is documented in the [Zero overview](/docs/zero).
+Render modes (`ssr`, `ssg`, `isr`, `spa`) are set via `zero({ mode })` in `vite.config.ts`; the default is `ssr`. What each mode emits is documented in the [Zero overview](/docs/zero).
 
 ## See also
 
