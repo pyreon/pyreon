@@ -553,17 +553,52 @@ jobs:
     needs: [bootstrap, lint, typecheck, changes]
     if: ${{ (success() && needs.changes.outputs.affected == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
-    # The `native` cell runs the heaviest tests in the repo (swiftc / kotlinc /
-    # cargo compiles in the native-compiler + runtime gates) and consistently
-    # ran right up against the flat 10-minute cap, getting timeout-CANCELLED —
-    # which failed the `Test` aggregator on every native-touching PR AND main.
-    # Give `native` real headroom; the other (vitest-only) cells keep the tight
-    # 10-minute cap so a genuine hang there still fails fast.
-    timeout-minutes: ${{ matrix.category == 'native' && 25 || 10 }}
+    # `native` used to be ONE cell carrying two unrelated heavy workloads, and
+    # it kept getting timeout-CANCELLED — which fails the required `Test`
+    # aggregator on PRs that never touched native. The first attempt at a fix
+    # raised the cap 10 → 25 minutes; measurement shows why that only bought
+    # time: on `main` the single cell runs 1357–1472s against the 1500s cap,
+    # i.e. 2–10% headroom. A gate that close to its own limit is a coin flip,
+    # and a coin-flip required gate is worse than no gate.
+    #
+    # The cost is NOT the toolchain spawns (a common guess — measured and
+    # wrong). `native/compiler` alone is ~2200s of aggregate test CPU (191
+    # files, 1933 tests, pure vitest — it spawns no swiftc/kotlinc at all),
+    # which on a 4-vCPU runner cannot go below ~600s however it is scheduled,
+    # while the Kotlin runtime chain runs ~300s behind it on the SAME runner.
+    # So give the compiler its own runner: the two workloads are unrelated and
+    # were only ever coupled by this matrix.
+    #
+    # The halves are `native/compiler` and `native` MINUS `native/compiler`
+    # (see `filterByCategory`'s `exclude`), so their union is `native` BY
+    # CONSTRUCTION — a newly-added `packages/native/<pkg>` joins the `-rest`
+    # cell automatically rather than silently escaping CI.
+    #
+    # The cap STAYS at 25 minutes for both native cells. Locally the compiler
+    # is 73-85% of the pair's cost, so post-split it should land near
+    # 1000-1200s — real headroom against 1500s, where the combined cell had
+    # 2-10%. Tightening the cap below that on a machine-load-sensitive local
+    # extrapolation would just rebuild the cliff somewhere less obvious; the
+    # honest move is to split now and tighten later against observed CI times.
+    #
+    # Non-native cells are vitest-only and keep the tight 10-minute cap so a
+    # genuine hang there still fails fast.
+    timeout-minutes: ${{ startsWith(matrix.category, 'native') && 25 || 10 }}
     strategy:
       fail-fast: false
       matrix:
-        category: [core, fundamentals, internals, native, tools, ui, ui-system, zero]
+        category:
+          [
+            core,
+            fundamentals,
+            internals,
+            native-compiler,
+            native-rest,
+            tools,
+            ui,
+            ui-system,
+            zero,
+          ]
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -591,16 +626,39 @@ jobs:
         env:
           PYREON_SKIP_SLOW_TESTS: ${{ github.event_name == 'pull_request' && '1' || '' }}
         run: |
+          # Most cells map 1:1 onto `packages/<category>/`. The two `native-*`
+          # cells are PSEUDO-categories splitting `packages/native/` across two
+          # runners (see the timeout-minutes comment). Their `--exclude`/glob
+          # complement is derived, never enumerated, so a new native package is
+          # always covered by exactly one of them.
+          case "${{ matrix.category }}" in
+            native-compiler)
+              AFFECTED_ARGS="--category=native/compiler"
+              FULL_FILTER="--filter=./packages/native/compiler"
+              ;;
+            native-rest)
+              AFFECTED_ARGS="--category=native --exclude=native/compiler"
+              FULL_FILTER=$(for d in packages/native/*/; do
+                d="${d%/}"
+                [ "$d" = "packages/native/compiler" ] && continue
+                printf -- '--filter=./%s ' "$d"
+              done)
+              ;;
+            *)
+              AFFECTED_ARGS="--category=${{ matrix.category }}"
+              FULL_FILTER="--filter=./packages/${{ matrix.category }}/*"
+              ;;
+          esac
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin "${{ github.base_ref }}" || true
             FILTER=$(bun run scripts/affected.ts \
               --base=origin/${{ github.base_ref }} \
-              --category=${{ matrix.category }})
+              $AFFECTED_ARGS)
             if [ "$FILTER" = "--filter=*" ]; then
-              FILTER="--filter=./packages/${{ matrix.category }}/*"
+              FILTER="$FULL_FILTER"
             fi
           else
-            FILTER="--filter=./packages/${{ matrix.category }}/*"
+            FILTER="$FULL_FILTER"
           fi
           if [ -z "$FILTER" ]; then
             echo "No affected packages in this category — skipping."
