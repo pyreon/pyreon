@@ -265,12 +265,32 @@ export function filterByCategory(
   workspaces: Workspace[],
   category: string,
   root: string = ROOT,
+  exclude: string[] = [],
 ): Set<string> {
   // `examples` is a PSEUDO-category mapping to the top-level `examples/`
   // dir — example apps live outside `packages/<category>/`. Every other
   // category maps to `packages/<category>/`.
-  const prefix =
-    category === 'examples' ? join(root, 'examples') + '/' : join(root, 'packages', category) + '/'
+  //
+  // A category may name a NESTED path (`native/compiler`), narrowing to a
+  // single package; `exclude` names nested paths to DROP. The pair exists so
+  // one heavy package can get its own runner while its siblings share another,
+  // with no package able to fall through the gap: the two `native` test cells
+  // are `--category=native/compiler` and
+  // `--category=native --exclude=native/compiler`, whose union is `native` BY
+  // CONSTRUCTION. A newly-added `packages/native/<new>` therefore joins the
+  // sibling cell automatically — an explicit allow-list would silently drop it
+  // from CI, which is the drift this shape is chosen to prevent.
+  const baseFor = (c: string) =>
+    c === 'examples' ? join(root, 'examples') : join(root, 'packages', c)
+  // "at or under" — a NESTED category (`native/compiler`) names the package's
+  // OWN dir, so a strict `startsWith(base + '/')` would never match it. A
+  // top-level category (`core`) only ever matches via the `/`-suffixed form,
+  // and the suffix is what stops `core` from also matching a `core-extras`
+  // sibling directory.
+  const matches = (dir: string, c: string) => {
+    const base = baseFor(c)
+    return dir === base || dir.startsWith(base + '/')
+  }
   const byName = new Map<string, Workspace>()
   for (const ws of workspaces) byName.set(ws.name, ws)
 
@@ -278,7 +298,9 @@ export function filterByCategory(
   for (const name of names) {
     const ws = byName.get(name)
     if (!ws) continue
-    if (ws.dir.startsWith(prefix)) out.add(name)
+    if (!matches(ws.dir, category)) continue
+    if (exclude.some((e) => matches(ws.dir, e))) continue
+    out.add(name)
   }
   return out
 }
@@ -295,9 +317,11 @@ export function computeAffectedFlags(opts: {
   changed: string[] | null
   workspaces: Workspace[]
   category?: string | undefined
+  exclude?: string[] | undefined
   root?: string | undefined
 }): string {
   const { changed, workspaces, category } = opts
+  const exclude = opts.exclude ?? []
   const root = opts.root ?? ROOT
 
   // Diff failed (bad base / shallow clone) — full suite (per-category if asked).
@@ -345,7 +369,7 @@ export function computeAffectedFlags(opts: {
   for (const leaf of leafSeeds) closure.add(leaf)
 
   if (category) {
-    closure = filterByCategory(closure, workspaces, category, root)
+    closure = filterByCategory(closure, workspaces, category, root, exclude)
     if (closure.size === 0) return ''
   }
 
@@ -450,11 +474,16 @@ export function isDocsOnlyChange(changed: string[] | null): boolean {
 function main(): void {
   let base = 'origin/main'
   let category: string | undefined
+  const exclude: string[] = []
   let codeChanged = false
   let hasAffected = false
   for (const arg of process.argv.slice(2)) {
     if (arg.startsWith('--base=')) base = arg.slice('--base='.length)
     else if (arg.startsWith('--category=')) category = arg.slice('--category='.length)
+    // `--exclude=<nested/category>` (repeatable) drops packages under that path
+    // from the emit. Pairs with `--category` so a heavy package can be split
+    // onto its own runner while its siblings stay covered by the complement.
+    else if (arg.startsWith('--exclude=')) exclude.push(arg.slice('--exclude='.length))
     // `--code-changed` prints `true`/`false`: does this diff touch anything
     // beyond pure docs? Gates the READ-NOTHING heavy jobs (build, verify-modes,
     // coverage, browser/rust, audit-types, budgets, distribution, …).
@@ -481,7 +510,7 @@ function main(): void {
   }
 
   const workspaces = discoverWorkspaces()
-  const flags = computeAffectedFlags({ changed, workspaces, category })
+  const flags = computeAffectedFlags({ changed, workspaces, category, exclude })
   process.stdout.write(flags)
 }
 

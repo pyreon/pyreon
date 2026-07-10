@@ -1,5 +1,6 @@
 import {
   computeAffectedFlags,
+  discoverWorkspaces,
   docInputConsumer,
   filterByCategory,
   isDocsOnlyChange,
@@ -220,6 +221,74 @@ describe('filterByCategory', () => {
       }
     }
     expect(result.has('app-showcase')).toBe(false)
+  })
+
+  // ── The `native` cell split (CI: `test (native-compiler)` + `test (native-rest)`) ──
+  // `packages/native/compiler` alone is ~2200s of aggregate test CPU, and
+  // sharing one runner with the Kotlin runtime chain put the combined cell
+  // 2–10% under its timeout — a coin-flip required gate. The two cells are
+  // `--category=native/compiler` and `--category=native --exclude=native/compiler`.
+  // What must hold FOREVER is that they PARTITION `packages/native/`: no
+  // package in both, none in neither.
+  describe('nested category + exclude (the native cell split)', () => {
+    const NATIVE_WS: Workspace[] = [
+      { name: '@pyreon/native-compiler', dir: `${ROOT}/packages/native/compiler`, deps: [] },
+      { name: '@pyreon/native-cli', dir: `${ROOT}/packages/native/cli`, deps: [] },
+      {
+        name: '@pyreon/native-runtime-kotlin',
+        dir: `${ROOT}/packages/native/runtime-kotlin`,
+        deps: [],
+      },
+      { name: '@pyreon/core', dir: `${ROOT}/packages/core/core`, deps: [] },
+    ]
+    const allNative = new Set(NATIVE_WS.map((w) => w.name))
+
+    it('a NESTED category narrows to that one package', () => {
+      expect([...filterByCategory(allNative, NATIVE_WS, 'native/compiler', ROOT)]).toEqual([
+        '@pyreon/native-compiler',
+      ])
+    })
+
+    it('`exclude` drops the nested path from the parent category', () => {
+      const rest = filterByCategory(allNative, NATIVE_WS, 'native', ROOT, ['native/compiler'])
+      expect([...rest].sort()).toEqual(['@pyreon/native-cli', '@pyreon/native-runtime-kotlin'])
+      // never leaks a sibling category
+      expect(rest.has('@pyreon/core')).toBe(false)
+    })
+
+    it('the two cells PARTITION packages/native — disjoint, and together total', () => {
+      const compilerCell = filterByCategory(allNative, NATIVE_WS, 'native/compiler', ROOT)
+      const restCell = filterByCategory(allNative, NATIVE_WS, 'native', ROOT, ['native/compiler'])
+      const wholeCategory = filterByCategory(allNative, NATIVE_WS, 'native', ROOT)
+
+      for (const n of compilerCell) expect(restCell.has(n)).toBe(false)
+      expect([...compilerCell, ...restCell].sort()).toEqual([...wholeCategory].sort())
+    })
+
+    it('DRIFT LOCK: every real packages/native/* package lands in exactly one cell', () => {
+      // Against the REAL workspace, not a fixture — this is the assertion that
+      // catches a newly-added native package escaping CI entirely. It passes by
+      // construction today; it would fail if `exclude` were ever replaced with
+      // an enumerated allow-list of sibling packages.
+      const real = discoverWorkspaces()
+      const nativeNames = new Set(
+        real.filter((w) => w.dir.includes('/packages/native/')).map((w) => w.name),
+      )
+      expect(nativeNames.size).toBeGreaterThan(1)
+
+      const compilerCell = filterByCategory(nativeNames, real, 'native/compiler')
+      const restCell = filterByCategory(nativeNames, real, 'native', undefined, ['native/compiler'])
+
+      for (const name of nativeNames) {
+        const inCompiler = compilerCell.has(name)
+        const inRest = restCell.has(name)
+        expect(
+          inCompiler !== inRest,
+          `${name} must be in exactly one native cell (compiler=${inCompiler}, rest=${inRest})`,
+        ).toBe(true)
+      }
+      expect(compilerCell.size).toBe(1)
+    })
   })
 
   it('the `examples` pseudo-category selects ONLY example apps (under examples/)', () => {
