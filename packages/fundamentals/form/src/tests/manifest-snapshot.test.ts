@@ -162,7 +162,7 @@ describe('gen-docs — form snapshot', () => {
     expect(Object.keys(record)).toContain('form/useFormContext')
 
     const useForm = record['form/useForm']!
-    expect(useForm.mistakes?.split('\n').length).toBe(5)
+    expect(useForm.mistakes?.split('\n').length).toBe(6)
     expect(useForm.notes).toContain('validateOn')
 
     const useField = record['form/useField']!
