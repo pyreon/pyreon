@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { NODE_ADAPTER_OUTPUT } from './contract'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 
@@ -32,9 +33,9 @@ export function nodeAdapter(): Adapter {
       // into client/ (auto-preserving the server subdir + the scaffold files we
       // write next) and no-ops the already-in-place server copy.
       await stageClientThenServer(options, {
-        clientDest: join(outDir, 'client'),
-        serverDest: join(outDir, 'server'),
-        preserve: ['index.js', 'package.json'],
+        clientDest: join(outDir, NODE_ADAPTER_OUTPUT.clientDir),
+        serverDest: join(outDir, NODE_ADAPTER_OUTPUT.serverDir),
+        preserve: [NODE_ADAPTER_OUTPUT.runnerEntry, 'package.json'],
       })
 
       // Generate standalone server entry
@@ -54,8 +55,8 @@ import { join, extname } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url))
-const handler = (await import("./server/entry-server.js")).default
-const clientDir = join(__dirname, "client")
+const handler = (await import("./${NODE_ADAPTER_OUTPUT.serverDir}/entry-server.js")).default
+const clientDir = join(__dirname, "${NODE_ADAPTER_OUTPUT.clientDir}")
 
 // Phase 2 — hybrid static-first. Routes declaring \`renderMode = 'ssg'\` are
 // prerendered at build time and listed in \`_pyreon-ssg-paths.json\` (the
@@ -198,7 +199,7 @@ server.listen(PORT, () => {
 })
 `.trimStart()
 
-      await writeFile(join(outDir, 'index.js'), serverEntry)
+      await writeFile(join(outDir, NODE_ADAPTER_OUTPUT.runnerEntry), serverEntry)
       await writeFile(join(outDir, 'package.json'), JSON.stringify({ type: 'module' }, null, 2))
     },
     async revalidate(_path: string): Promise<AdapterRevalidateResult> {

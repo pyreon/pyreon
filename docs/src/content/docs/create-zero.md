@@ -219,8 +219,8 @@ Pick a target during the prompt or pass `--adapter`. The prompt is filtered to t
 | Adapter | Vite factory | Files written | Env keys |
 | --- | --- | --- | --- |
 | `vercel` | `vercelAdapter()` | `vercel.json` | — |
-| `cloudflare` | `cloudflareAdapter()` | `wrangler.toml`, `_routes.json` | — |
-| `netlify` | `netlifyAdapter()` | `netlify.toml` | — |
+| `cloudflare` | `cloudflareAdapter()` | `wrangler.toml` (the adapter writes the authoritative `dist/_routes.json` at build time) | — |
+| `netlify` | `netlifyAdapter()` | `netlify.toml` (render-mode-aware — SSR modes publish `dist/publish` + wire the `ssr` function from `dist/netlify/functions`; SSG/SPA publish `dist`) | — |
 | `node` | `nodeAdapter()` | `Dockerfile`, `.dockerignore` | `PORT` |
 | `bun` | `bunAdapter()` | `Dockerfile` (Bun-based), `.dockerignore` | `PORT` |
 | `static` | (none) | (none — `dist/` after build is the whole site) | — |

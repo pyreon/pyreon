@@ -198,7 +198,11 @@ const MATRIX: Cell[] = [
       assertDirNonEmpty(join(dir, 'dist'))
       assertFileExists(join(dir, 'wrangler.toml'))
       assertFileContains(join(dir, 'wrangler.toml'), 'pages_build_output_dir = "dist"')
-      assertJsonValid(join(dir, '_routes.json'))
+      // The cloudflare ADAPTER writes `_routes.json` into dist/ during the
+      // build (Cloudflare Pages reads it from `pages_build_output_dir`, never
+      // the repo root — the scaffolder no longer ships a root copy). This
+      // assertion doubles as proof the adapter's SSG branch actually ran.
+      assertJsonValid(join(dir, 'dist', '_routes.json'))
       assertFileContains(join(dir, 'vite.config.ts'), 'cloudflareAdapter')
       // Blog README mentions RSS + content/posts/ (distinct from app's).
       assertFileContains(join(dir, 'README.md'), 'RSS')

@@ -37,7 +37,8 @@
     "@clack/prompts": "^1.4.0"
   },
   "devDependencies": {
-    "@pyreon/vitest-config": "workspace:*"
+    "@pyreon/vitest-config": "workspace:*",
+    "@pyreon/zero": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

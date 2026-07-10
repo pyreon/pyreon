@@ -67,3 +67,9 @@ QUICK_REFERENCE.md
 
 # Incremental-bootstrap content-hash manifest (scripts/bootstrap.ts)
 .bootstrap-cache.json
+
+# Vercel Build Output API v3 tree. The vercel adapter must write it at the
+# PROJECT ROOT (not under dist/) — that is the only path Vercel auto-detects.
+# So the `dist` rule above does NOT cover it; a local `verify-modes` or
+# `zero build --adapter vercel` would otherwise leave it untracked.
+.vercel/

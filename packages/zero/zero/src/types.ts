@@ -990,6 +990,24 @@ export type AdapterBuildOptions =
       clientOutDir: string
       /** Final output directory. */
       outDir: string
+      /**
+       * Vite's resolved `root` (the PROJECT root — the parent of `outDir`,
+       * NOT `outDir` itself). Adapters that must write PLATFORM-MANDATED
+       * root-level artifacts use this instead of `outDir`: the Vercel Build
+       * Output API v3 requires `.vercel/output` at `<projectRoot>` (Vercel
+       * reads `<projectRoot>/.vercel/output/{config.json,static,functions}`
+       * and IGNORES anything staged under `outDir`), so `vercelAdapter`
+       * writes there. Every other adapter (node/bun/netlify/cloudflare/
+       * static) stages entirely inside `outDir` and never reads this field.
+       *
+       * Threaded from BOTH invocation sites — `ssrPlugin`/`ssgPlugin` pass
+       * `resolved.root`. It is REQUIRED (not optional-with-fallback) on
+       * purpose: a `?? outDir` fallback would silently re-introduce the
+       * "SSR function unreachable on Vercel" defect if a future caller
+       * forgot it; a required field makes TS reject the omission at the
+       * call site so the bug can never silently reappear.
+       */
+      projectRoot: string
       config: ZeroConfig
       /**
        * Vite's resolved `build.assetsDir` (the directory under the output
@@ -1005,10 +1023,20 @@ export type AdapterBuildOptions =
       /**
        * The rendered dist directory. For SSG, this directory IS the
        * publishable output — adapters write platform-specific routing
-       * config alongside (e.g. `.vercel/output/config.json`,
-       * `_routes.json`, `netlify.toml`) but generally don't move files.
+       * config alongside (e.g. `_routes.json`, `netlify.toml`) but
+       * generally don't move files. The Vercel adapter is the exception:
+       * it builds a Build Output API v3 tree at `projectRoot` (see below).
        */
       outDir: string
+      /**
+       * Vite's resolved `root` (the PROJECT root). Same contract as the
+       * `'ssr'` variant — the Vercel adapter stages its `.vercel/output`
+       * Build Output API tree here (config.json + a `static/` copy of the
+       * prerendered dist), because Vercel auto-detects the tree only at
+       * `<projectRoot>`. Required for the same "can't silently regress"
+       * reason as the `'ssr'` variant.
+       */
+      projectRoot: string
       config: ZeroConfig
       /** Vite's resolved `build.assetsDir` — see the `'ssr'` variant. */
       assetsDir?: string | undefined

@@ -2439,6 +2439,7 @@
       },
       "devDependencies": {
         "@pyreon/vitest-config": "workspace:*",
+        "@pyreon/zero": "workspace:*",
       },
     },
     "packages/zero/meta": {

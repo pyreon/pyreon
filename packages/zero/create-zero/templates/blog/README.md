@@ -55,7 +55,7 @@ The post auto-appears in the listing, gets a per-route HTML at build time, and l
 
 ## Deploying
 
-Static site generation produces a fully self-contained `dist/client/` — deploy to any static host. The project was scaffolded with a deployment adapter (see `vercel.json` / `wrangler.toml` / etc.) for one-click deploys.
+Static site generation produces a fully self-contained `dist/` — deploy to any static host. The project was scaffolded with a deployment adapter (see `vercel.json` / `wrangler.toml` / etc.) for one-click deploys.
 
 ## Learn more
 
