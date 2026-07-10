@@ -8,28 +8,213 @@
 import { hash } from './hash'
 import { clearNormCache } from './resolve'
 
-/** A single `@layer <name>{ <inner> }` block spanning the whole string. */
-const OUTER_LAYER_RE = /^\s*@layer\s+[A-Za-z0-9_.-]+\s*\{([\s\S]*)\}\s*$/
+/**
+ * A single `@layer <name>? { <inner> }` BLOCK spanning the whole (trimmed)
+ * rule. The name is optional — anonymous `@layer { … }` blocks are valid CSS
+ * (each use creates a distinct unnamed layer).
+ */
+const LAYER_BLOCK_RE = /^@layer(?:\s+[A-Za-z0-9_.-]+)?\s*\{([\s\S]*)\}$/
+/** The `@layer a, b;` layer-ORDERING statement form (no block). */
+const LAYER_STATEMENT_RE = /^@layer\s[^{}]*;$/
+/** Conditional group rules whose body can legally nest `@layer` blocks. */
+const GROUP_RULE_RE = /^@(?:media|supports|container)[\s(]/
 
 /**
- * Flatten every `@layer <name>{ … }` block to its inner rules, recursively.
+ * Flatten every `@layer <name>?{ … }` block to its inner rules, recursively.
  * Used by `insertGlobal` when @layer is unsupported (happy-dom / older
  * engines) so pre-wrapped global CSS (e.g. a user-authored
  * `createGlobalStyle` reset written into `@layer rocketstyle{…}`) still
  * lands in the DOM via source order instead of being dropped with a
  * per-rule DOMException. Handles multiple SIBLING blocks (split at the top
- * level first) and NESTED blocks (recurse into each block's inner content).
+ * level first), NESTED blocks (recurse into each block's inner content),
+ * anonymous blocks, and `@layer` blocks nested INSIDE conditional group
+ * rules (@media/@supports/@container) — the group wrapper is preserved:
+ * `@media X{@layer y{RULES}}` → `@media X{RULES}`. A layer-ORDERING
+ * statement (`@layer a, b;`) is meaningless once the blocks are flattened
+ * (there are no layers left to order), so it is dropped WITH a dev warning
+ * naming the cascade-order loss — never silently.
  * A `split` fn is injected so this reuses the sheet's own rule splitter.
  * Bounded by real CSS nesting depth (≤ a handful in practice).
+ * Exported for white-box tests only — NOT part of the public API (not
+ * re-exported from index.ts).
  */
-function unwrapLayers(cssText: string, split: (s: string) => string[]): string[] {
+export function unwrapLayers(cssText: string, split: (s: string) => string[]): string[] {
   const out: string[] = []
   for (const rule of split(cssText)) {
-    const m = OUTER_LAYER_RE.exec(rule)
-    if (m) out.push(...unwrapLayers(m[1]!, split))
-    else out.push(rule)
+    const block = LAYER_BLOCK_RE.exec(rule)
+    if (block) {
+      out.push(...unwrapLayers(block[1]!, split))
+      continue
+    }
+    if (LAYER_STATEMENT_RE.test(rule)) {
+      if (process.env.NODE_ENV !== 'production') {
+        // oxlint-disable-next-line no-console
+        console.warn(
+          `[styler] @layer is unsupported in this environment — dropped the layer-ordering statement "${rule}" while flattening. The cascade priority it declared is lost; flattened rules fall back to plain source order.`,
+        )
+      }
+      continue
+    }
+    if (rule.includes('@layer') && GROUP_RULE_RE.test(rule)) {
+      // `@layer` nested INSIDE a conditional group rule — unwrap the layer
+      // blocks while keeping the group wrapper. Without this descent, the
+      // group rule inserts "successfully" with an EMPTY body (the engine
+      // drops the unknown @layer child) and its rules vanish silently.
+      const open = rule.indexOf('{')
+      const inner = unwrapLayers(rule.slice(open + 1, rule.length - 1), split)
+      out.push(`${rule.slice(0, open).trim()}{${inner.join('')}}`)
+      continue
+    }
+    out.push(rule)
   }
   return out
+}
+
+/**
+ * Skip a quoted string starting at `i` (the opening quote). Returns the
+ * index just past the closing quote. Backslash escapes are honored; an
+ * unterminated string runs to end-of-input.
+ */
+function skipQuoted(css: string, i: number): number {
+  const quote = css.charCodeAt(i)
+  const len = css.length
+  let j = i + 1
+  while (j < len) {
+    const c = css.charCodeAt(j)
+    if (c === 92 /* \ */) {
+      j += 2
+      continue
+    }
+    if (c === quote) return j + 1
+    j++
+  }
+  return len
+}
+
+/**
+ * True when `css` has a `url(` token starting at `i` (case-insensitive)
+ * that is NOT the tail of a longer ident (`image-url(`, `burl(` are plain
+ * functions, not url tokens — only url tokens may contain unquoted braces).
+ */
+function isUrlOpen(css: string, i: number): boolean {
+  if ((css.charCodeAt(i) | 32) !== 117 /* u */) return false
+  if ((css.charCodeAt(i + 1) | 32) !== 114 /* r */) return false
+  if ((css.charCodeAt(i + 2) | 32) !== 108 /* l */) return false
+  if (css.charCodeAt(i + 3) !== 40 /* ( */) return false
+  if (i > 0) {
+    const p = css.charCodeAt(i - 1)
+    const isIdent =
+      (p >= 48 && p <= 57) /* 0-9 */ ||
+      (p >= 65 && p <= 90) /* A-Z */ ||
+      (p >= 97 && p <= 122) /* a-z */ ||
+      p === 45 /* - */ ||
+      p === 95 /* _ */
+    if (isIdent) return false
+  }
+  return true
+}
+
+/**
+ * Split CSS text into individual top-level rules.
+ * `CSSStyleSheet.insertRule()` only accepts one rule at a time.
+ *
+ * String/comment/url-aware: braces inside `"…"`/`'…'` strings (incl.
+ * backslash escapes), inside block comments, and inside unquoted
+ * `url(…)` tokens do NOT count toward nesting depth — a naive counter
+ * split `.a{background:url("a}b.png")}` mid-string and silently lost both
+ * halves. Also emits semicolon-terminated at-STATEMENTS (`@layer a, b;`,
+ * `@import …;`, `@namespace …;`, `@charset …;`) as their own slices — a
+ * brace-only splitter swallowed them everywhere, silently corrupting the
+ * user's cascade order even on modern @layer-supporting browsers.
+ * Unbalanced/unparseable trailing input (a missing close brace) is named
+ * in a dev warning instead of vanishing.
+ * Exported for white-box tests only — NOT part of the public API.
+ */
+export function splitTopLevelRules(cssText: string): string[] {
+  const rules: string[] = []
+  const len = cssText.length
+  let depth = 0
+  let start = 0
+  let i = 0
+
+  // `charCodeAt(i)` returns a primitive int; `cssText[i]` allocates a
+  // fresh 1-char string per iteration. Ported from vitus-labs `c483cabc`.
+  while (i < len) {
+    const ch = cssText.charCodeAt(i)
+    if (ch === 47 /* / */ && cssText.charCodeAt(i + 1) === 42 /* * */) {
+      const close = cssText.indexOf('*/', i + 2)
+      i = close === -1 ? len : close + 2
+      continue
+    }
+    if (ch === 34 /* " */ || ch === 39 /* ' */) {
+      i = skipQuoted(cssText, i)
+      continue
+    }
+    if ((ch === 117 || ch === 85) /* u/U */ && isUrlOpen(cssText, i)) {
+      let j = i + 4
+      while (j < len && cssText.charCodeAt(j) <= 32 /* ws */) j++
+      const q = cssText.charCodeAt(j)
+      if (q === 34 /* " */ || q === 39 /* ' */) {
+        // Quoted url — the generic string handler above covers the body.
+        i += 4
+      } else {
+        // Unquoted url TOKEN — may legally contain `{`/`}`; skip to `)`.
+        const close = cssText.indexOf(')', j)
+        i = close === -1 ? len : close + 1
+      }
+      continue
+    }
+    if (ch === 123 /* { */) {
+      depth++
+    } else if (ch === 125 /* } */) {
+      if (depth > 0) {
+        depth--
+        if (depth === 0) {
+          const rule = cssText.slice(start, i + 1).trim()
+          // The slice ends at this depth-0 `}` (index i), so it always
+          // contains at least one `}` and the trim can never be empty —
+          // the false arm is unreachable. Kept as a defensive guard.
+          /* v8 ignore next */
+          if (rule) rules.push(rule)
+          start = i + 1
+        }
+      } else {
+        // Stray close brace at the top level — CSS error recovery drops
+        // it (a naive counter went to depth -1 and silently dropped
+        // EVERYTHING after it).
+        start = i + 1
+      }
+    } else if (ch === 59 /* ; */ && depth === 0) {
+      // Semicolon-terminated at-STATEMENT — a real rule with no braces.
+      const stmt = cssText.slice(start, i + 1).trim()
+      if (stmt.charCodeAt(0) === 64 /* @ */) rules.push(stmt)
+      // Non-@ content before a top-level `;` is invalid CSS (a stray
+      // declaration outside any block) — dropped, matching browser error
+      // recovery; without the reset it would prefix (and break) the NEXT
+      // rule's insertRule.
+      start = i + 1
+    }
+    i++
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    // Unbalanced input (`.x{` missing its close brace) leaves a non-empty
+    // tail that never became a rule — previously EVERYTHING from the
+    // unclosed rule on was dropped with zero signal. Name it in dev.
+    // Strip comments (incl. an unterminated trailing one) before judging.
+    const tail = cssText
+      .slice(start)
+      .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '')
+      .trim()
+    if (tail) {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        `[styler] splitRules: dropped unparseable trailing CSS (missing a closing brace?): "${tail.slice(0, 120)}"`,
+      )
+    }
+  }
+
+  return rules
 }
 
 // Dev-time counter sink — see styler/resolve.ts for the contract.
@@ -466,38 +651,6 @@ export class StyleSheet {
     }
   }
 
-  /**
-   * Split CSS text into individual top-level rules.
-   * CSSStyleSheet.insertRule() only accepts one rule at a time.
-   */
-  private splitRules(cssText: string): string[] {
-    const rules: string[] = []
-    const len = cssText.length
-    let depth = 0
-    let start = 0
-
-    // `charCodeAt(i)` returns a primitive int; `cssText[i]` allocates a
-    // fresh 1-char string per iteration. Ported from vitus-labs `c483cabc`.
-    for (let i = 0; i < len; i++) {
-      const ch = cssText.charCodeAt(i)
-      if (ch === 123 /* { */) depth++
-      else if (ch === 125 /* } */) {
-        depth--
-        if (depth === 0) {
-          const rule = cssText.slice(start, i + 1).trim()
-          // The slice ends at this depth-0 `}` (index i), so it always
-          // contains at least one `}` and the trim can never be empty —
-          // the false arm is unreachable. Kept as a defensive guard.
-          /* v8 ignore next */
-          if (rule) rules.push(rule)
-          start = i + 1
-        }
-      }
-    }
-
-    return rules
-  }
-
   /** Insert global CSS rules (no wrapper selector). Deduplicates by hash. */
   insertGlobal(cssText: string): void {
     const h = hash(cssText)
@@ -511,19 +664,29 @@ export class StyleSheet {
     if (this.isSSR) {
       this.ssrBuffer.push(cssText)
     } else if (this.sheet) {
-      // When @layer isn't supported (e.g. happy-dom in tests, older engines),
-      // the init probe leaves `supportsLayer` false. The scoped `insert()` path
-      // already skips the @layer wrap in that case; `insertGlobal` receives
-      // PRE-wrapped content from the caller (user-authored `createGlobalStyle`
-      // CSS), so flatten every `@layer name{…}` block — sibling AND nested —
-      // here too. Otherwise the inner rules (e.g. a global reset) are silently
-      // dropped AND every insert warns a DOMException. Source order is a
-      // correct fallback (that's why @layer exists — to make ordering explicit;
-      // without support the cascade uses source order, which the reset already
-      // relies on).
+      // When @layer isn't supported (e.g. happy-dom in tests, pre-2022
+      // engines), the init probe leaves `supportsLayer` false. The scoped
+      // `insert()` path already skips the @layer wrap in that case;
+      // `insertGlobal` receives PRE-wrapped content from the caller
+      // (user-authored `createGlobalStyle` CSS), so flatten every
+      // `@layer <name>?{…}` block — sibling, nested, anonymous, AND nested
+      // inside @media/@supports/@container group rules — here too.
+      // Otherwise the inner rules (e.g. a global reset) are silently
+      // dropped AND every insert warns a DOMException.
+      //
+      // HONEST CAVEAT — flattening CHANGES cascade semantics; it does not
+      // emulate @layer: (a) in a real @layer engine, UNLAYERED rules beat
+      // LAYERED ones — flattened rules become unlayered, so they can now
+      // WIN specificity ties they were authored to lose; (b) `@layer a, b;`
+      // ordering statements are meaningless once flattened and are dropped
+      // (dev-warned in unwrapLayers) — rules fall back to plain source
+      // order. This is the least-bad fallback (the content lands instead
+      // of vanishing), not a faithful one. Apps that must reproduce
+      // layer-order inversions in pre-@layer browsers need a different
+      // strategy (specificity / source order).
       const rules = this.supportsLayer
-        ? this.splitRules(cssText)
-        : unwrapLayers(cssText, (s) => this.splitRules(s))
+        ? splitTopLevelRules(cssText)
+        : unwrapLayers(cssText, splitTopLevelRules)
       for (const rule of rules) {
         try {
           const at = this.sheet.insertRule(rule, this.sheet.cssRules.length)

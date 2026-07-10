@@ -182,6 +182,18 @@ const sheet = createSheet({ layer: 'components' })
 // All scoped rules emitted inside @layer components { ... }
 ```
 
+**@layer fallback (honest caveat).** When the engine has no `@layer` support
+(happy-dom in tests, pre-2022 browsers), `insertGlobal` FLATTENS layer blocks
+— `@layer x{…}` (named, anonymous, nested, and nested inside
+`@media`/`@supports`/`@container`) unwraps to its inner rules so the content
+still lands. This is a least-bad fallback, **not** an emulation: flattened
+rules become *unlayered* (in a real `@layer` engine unlayered beats layered,
+so they can now win specificity ties they were authored to lose), and
+`@layer a, b;` ordering statements are meaningless once flattened — they are
+dropped with a dev warning; rules fall back to plain source order. On
+`@layer`-supporting engines everything (including ordering statements and
+`@import` statements) inserts natively.
+
 ### `useCSS(cssResult)`
 
 Read-only hook for retrieving the resolved class name of a `CSSResult` — useful for hand-managed JSX paths that need the class without `styled()`.
