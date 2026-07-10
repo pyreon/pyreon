@@ -6,7 +6,7 @@
  */
 import { h, mergeProps, splitProps } from '@pyreon/core'
 import { getShouldBeEmpty } from '../../Element/utils'
-import { IS_DEVELOPMENT } from '../../utils'
+import { hasGetterProps, IS_DEVELOPMENT } from '../../utils'
 import { internElementBundle } from '../internElementBundle'
 import Styled from './styled'
 import type { Props } from './types'
@@ -50,9 +50,34 @@ const OWN_KEYS: Array<keyof Props | 'ref'> = [
   'dangerouslySetInnerHTML',
 ]
 
+// Layout keys feeding the `$element` bundles below. When any is
+// getter-shaped (compiler `_rp()` → getter — a signal-driven layout prop),
+// the bundle is passed as an ACCESSOR: the styler's DynamicStyled treats a
+// function-valued `$element` as a reactive axis (same contract as
+// $rocketstyle/$rocketstate) — it re-reads it TRACKED inside its class
+// computed and swaps classList on change, on the SAME DOM element (no
+// remount). Static layout (the dominant case) keeps the interned plain
+// object — byte-identical resolution + elClassCache hits.
+const LAYOUT_KEYS = ['block', 'direction', 'alignX', 'alignY', 'equalCols', 'extendCss'] as const
+
 const Component = (props: Partial<Props> & { ref?: unknown }) => {
   const [own, rest] = splitProps(props, OWN_KEYS)
 
+  const layoutReactive = hasGetterProps(own, LAYOUT_KEYS)
+
+  // Defensive children gate: a getter-shaped `children` PROP (`children:
+  // _rp(() => sig())`) read eagerly at the `children:` sites below would
+  // freeze at its first value. Wrap in an accessor ONLY in that case —
+  // static children (incl. the accessor-valued children Element already
+  // passes, which are live by construction) keep today's zero-cost path
+  // (no extra mountReactive hop per Wrapper).
+  const childrenSlot = hasGetterProps(own, ['children'])
+    ? () => own.children
+    : own.children
+
+  // Tag-derived gates are MOUNT-TIME by design (a reactive tag swap is
+  // unsupported — it would mean unmounting one DOM element and mounting
+  // another; see Text's `paragraph`/`tag` JSDoc for the same contract).
   const needsFix = !own.dangerouslySetInnerHTML && isWebFixNeeded(own.tag)
 
   // Void HTML elements (hr, input, img, br, …) cannot have children. Even
@@ -72,14 +97,23 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
   const innerHTML = own.dangerouslySetInnerHTML
 
   if (!needsFix) {
-    const bundle = internElementBundle({
-      block: own.block,
-      direction: own.direction,
-      alignX: own.alignX,
-      alignY: own.alignY,
-      equalCols: own.equalCols,
-      extraStyles: own.extendCss,
-    })
+    const bundle = layoutReactive
+      ? () => ({
+          block: own.block,
+          direction: own.direction,
+          alignX: own.alignX,
+          alignY: own.alignY,
+          equalCols: own.equalCols,
+          extraStyles: own.extendCss,
+        })
+      : internElementBundle({
+          block: own.block,
+          direction: own.direction,
+          alignX: own.alignX,
+          alignY: own.alignY,
+          equalCols: own.equalCols,
+          extraStyles: own.extendCss,
+        })
     if (isVoidTag) {
       return h(
         Styled,
@@ -107,24 +141,38 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
         ref: own.ref,
         as: own.tag,
         $element: bundle,
-        children: own.children,
+        children: childrenSlot,
       }),
     )
   }
 
   const asTag = own.isInline ? 'span' : 'div'
-  const parentBundle = internElementBundle({
-    parentFix: true as const,
-    block: own.block,
-    extraStyles: own.extendCss,
-  })
-  const childBundle = internElementBundle({
-    childFix: true as const,
-    direction: own.direction,
-    alignX: own.alignX,
-    alignY: own.alignY,
-    equalCols: own.equalCols,
-  })
+  const parentBundle = layoutReactive
+    ? () => ({
+        parentFix: true as const,
+        block: own.block,
+        extraStyles: own.extendCss,
+      })
+    : internElementBundle({
+        parentFix: true as const,
+        block: own.block,
+        extraStyles: own.extendCss,
+      })
+  const childBundle = layoutReactive
+    ? () => ({
+        childFix: true as const,
+        direction: own.direction,
+        alignX: own.alignX,
+        alignY: own.alignY,
+        equalCols: own.equalCols,
+      })
+    : internElementBundle({
+        childFix: true as const,
+        direction: own.direction,
+        alignX: own.alignX,
+        alignY: own.alignY,
+        equalCols: own.equalCols,
+      })
 
   // needsFix path: innerHTML belongs on the INNER styled node (where the
   // actual content lives), NOT on the outer flex-fix wrapper. The
@@ -168,7 +216,7 @@ const Component = (props: Partial<Props> & { ref?: unknown }) => {
         as: asTag,
         $childFix: true,
         $element: childBundle,
-        children: own.children,
+        children: childrenSlot,
       }),
     }),
   )

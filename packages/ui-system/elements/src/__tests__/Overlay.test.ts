@@ -319,14 +319,17 @@ describe('useOverlay', () => {
   })
 
   describe('static align property', () => {
-    it('returns align value passed in props', () => {
+    it('returns align value passed in props (accessor — call it)', () => {
       const overlay = useOverlay({ align: 'top' })
-      expect(overlay.align).toBe('top')
+      // `align` is an ACCESSOR (harmonized with alignX/alignY signals) so a
+      // getter-shaped `align` prop stays live — a plain value would freeze
+      // at hook-init time.
+      expect(overlay.align()).toBe('top')
     })
 
     it('defaults align to bottom', () => {
       const overlay = useOverlay()
-      expect(overlay.align).toBe('bottom')
+      expect(overlay.align()).toBe('bottom')
     })
   })
 })
@@ -395,8 +398,13 @@ describe('Overlay component', () => {
       )
       const triggerVNode = asVNode(result.children[0])
       expect(triggerVNode.type).toBe(TriggerComp)
-      expect(triggerVNode.props.active).toBe(false)
-      expect(triggerVNode.props['aria-expanded']).toBe(false)
+      // `active` / `aria-expanded` are `_rp()`-branded ACCESSORS (the shape
+      // the compiler emits for `active={sig()}`) so the trigger's props stay
+      // LIVE without remounting the trigger — `makeReactiveProps` converts
+      // them to getters in the mount pipeline. At the raw-vnode level
+      // (no mount here) they are callable thunks.
+      expect((triggerVNode.props.active as () => boolean)()).toBe(false)
+      expect((triggerVNode.props['aria-expanded'] as () => boolean)()).toBe(false)
       expect(triggerVNode.props['aria-haspopup']).toBe('menu')
     })
 
@@ -411,8 +419,8 @@ describe('Overlay component', () => {
         }),
       )
       const triggerVNode = asVNode(result.children[0])
-      expect(triggerVNode.props.active).toBe(true)
-      expect(triggerVNode.props['aria-expanded']).toBe(true)
+      expect((triggerVNode.props.active as () => boolean)()).toBe(true)
+      expect((triggerVNode.props['aria-expanded'] as () => boolean)()).toBe(true)
     })
 
     it('passes aria-haspopup=dialog for modal type', () => {

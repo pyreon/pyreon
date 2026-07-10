@@ -10,10 +10,11 @@
  * cleanup brittle.
  */
 
-import type { VNodeChild } from '@pyreon/core'
+import type { VNodeChild, VNodeChildAtom } from '@pyreon/core'
 import { Portal as CorePortal, onUnmount } from '@pyreon/core'
 import { PKG_NAME } from '../constants'
 import type { PyreonComponent } from '../types'
+import { hasGetterProps } from '../utils'
 
 export interface Props {
   /**
@@ -42,7 +43,19 @@ const Component: PyreonComponent<Props> = (props) => {
     wrapper.remove()
   })
 
-  return <CorePortal target={wrapper}>{props.children}</CorePortal>
+  // Defensive children gate: `{props.children}` compiles to a JS-level value
+  // read — a getter-shaped `children` PROP (`children: _rp(() => sig())`)
+  // would be captured once and freeze. Wrap in an accessor ONLY in that case
+  // (mountChild handles nested accessors, so an already-accessor-valued
+  // children double-wraps safely); static children keep today's zero-cost
+  // path.
+  const children: VNodeChild = hasGetterProps(props, ['children'])
+    ? // The runtime resolves nested accessors (mountChild's function branch),
+      // but the VNodeChildAccessor TYPE is single-level — narrow the return.
+      () => props.children as VNodeChildAtom | VNodeChildAtom[]
+    : props.children
+
+  return <CorePortal target={wrapper}>{children}</CorePortal>
 }
 
 const name = `${PKG_NAME}/Portal` as const

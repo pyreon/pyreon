@@ -302,6 +302,28 @@ const createStyledComponent = (
     const $rsState = rawProps.$rocketstate
     const isReactiveRS = typeof $rs === 'function'
     const isReactiveState = typeof $rsState === 'function'
+    // Reactive layout/text axis — `@pyreon/elements` passes `$element`
+    // (Wrapper / Content bundles) and `$text` (Text extraStyles) as function
+    // ACCESSORS when any of the feeding props is getter-shaped (compiler
+    // `_rp()` → getter — a signal-driven layout/css prop). Mirrors the
+    // $rocketstyle / $rocketstate accessor contract exactly: the accessor is
+    // read TRACKED inside the computed below, so a signal change re-resolves
+    // the class and the renderEffect swaps classList — no remount.
+    const $elRaw = rawProps.$element
+    const $textRaw = rawProps.$text
+    const isReactiveEl = typeof $elRaw === 'function'
+    const isReactiveText = typeof $textRaw === 'function'
+    // The reactive $element/$text path BYPASSES elClassCache + CPSE:
+    //  - elClassCache: per-change accessor results are fresh objects, so the
+    //    identity-keyed cache can't hit; worse, a CPSE-agnostic className
+    //    stored by a STATIC Element sharing an interned bundle identity would
+    //    leak into the reactive path, whose renderEffect only swaps classList
+    //    and never merges the per-instance CPSE style vars → broken styles.
+    //  - CPSE: same reason — the vars ride finalProps.style, which is written
+    //    once at mount; a reactive re-resolve can't update it. Classic
+    //    resolution is correct here; sheet.insert dedups by content hash, so
+    //    repeated values still share one rule.
+    const bypassElCacheAndCpse = isReactiveEl || isReactiveText
 
     // Helper: resolve CSS + cache result.
     // `rs` and `rsState` are opaque from styler's perspective (the styler can't
@@ -317,8 +339,11 @@ const createStyledComponent = (
     // elClassCache, cpseVarsCache), NOT signal updates — `batch()` does not
     // apply. The rule counts `.set()` syntactically (a known Map-like FP class,
     // per its own docstring); CPSE's cpseVarsCache.set pushed the Element path to 3.
+    // `elVal` / `textVal` are the RESOLVED accessor values when the
+    // $element / $text axis is reactive (undefined otherwise — the static
+    // values stay on rawProps and flow through the resolveProps spread).
     // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
-    const doResolve = (rs: unknown, rsState: unknown, t: unknown): string => {
+    const doResolve = (rs: unknown, rsState: unknown, t: unknown, elVal?: unknown, textVal?: unknown): string => {
       pendingCpseVars = null
       // Tier 2 cache: skip resolve if same object identity seen before
       if (rs && typeof rs === 'object' && rsState && typeof rsState === 'object') {
@@ -332,9 +357,10 @@ const createStyledComponent = (
       // Element-layer cache (no rocketstyle props, but $element is present
       // and an object). Fires only when the rocketstyle path didn't apply
       // — they're mutually exclusive in practice.
-      const $el = rawProps.$element
+      const $el = isReactiveEl ? elVal : rawProps.$element
       const $childFix = rawProps.$childFix
       const useElCache =
+        !bypassElCacheAndCpse &&
         (!rs || typeof rs !== 'object' || !rsState || typeof rsState !== 'object') &&
         $el &&
         typeof $el === 'object'
@@ -358,6 +384,8 @@ const createStyledComponent = (
         ...rawProps,
         ...(isReactiveRS ? { $rocketstyle: rs } : {}),
         ...(isReactiveState ? { $rocketstate: rsState } : {}),
+        ...(isReactiveEl ? { $element: elVal } : {}),
+        ...(isReactiveText ? { $text: textVal } : {}),
         theme: t,
       }
       let cssText = normalizeCSS(resolve(strings, values, resolveProps))
@@ -369,6 +397,7 @@ const createStyledComponent = (
       if (
         _cpseEnabled &&
         _cpseRewrite &&
+        !bypassElCacheAndCpse &&
         !(rs && typeof rs === 'object' && rsState && typeof rsState === 'object')
       ) {
         const vars: Record<string, string> = {}
@@ -415,6 +444,8 @@ const createStyledComponent = (
           isReactiveRS ? $rs() : $rs,
           isReactiveState ? $rsState() : $rsState,
           theme,
+          isReactiveEl ? $elRaw() : undefined,
+          isReactiveText ? $textRaw() : undefined,
         ),
       )
       const finalProps = buildProps(rawProps, className, typeof finalTag === 'string', customFilter)
@@ -431,22 +462,25 @@ const createStyledComponent = (
       )
     }
 
-    // If any axis is reactive, wrap in computed that tracks all three:
+    // If any axis is reactive, wrap in computed that tracks all of:
     //   1. $rocketstyle accessor (mode + dimension signals)
     //   2. $rocketstate accessor (state descriptor)
-    //   3. themeAccessor (user-preference theme swap)
+    //   3. $element / $text accessors (elements-layer reactive layout/css)
+    //   4. themeAccessor (user-preference theme swap)
     // The resolve itself runs UNTRACKED to prevent exponential cascade.
-    const hasReactive = isReactiveRS || isReactiveState
+    const hasReactive = isReactiveRS || isReactiveState || isReactiveEl || isReactiveText
     const cssClass = hasReactive
       ? computed(
           () => {
             // TRACKED reads:
             const rs = isReactiveRS ? $rs() : $rs
             const rsState = isReactiveState ? $rsState() : $rsState
+            const elVal = isReactiveEl ? $elRaw() : undefined
+            const textVal = isReactiveText ? $textRaw() : undefined
             const t = themeAccessor() // TRACKED — theme swap
 
             // UNTRACKED: resolve + sheet insert
-            return runUntracked(() => doResolve(rs, rsState, t))
+            return runUntracked(() => doResolve(rs, rsState, t, elVal, textVal))
           },
           { equals: (a, b) => a === b },
         )

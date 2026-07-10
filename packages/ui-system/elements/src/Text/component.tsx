@@ -10,6 +10,7 @@ import type { PyreonHTMLAttributes, VNodeChild } from '@pyreon/core'
 import type { HTMLTextTags } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { ExtendCss, PyreonComponent } from '../types'
+import { hasGetterProps } from '../utils'
 import Styled from './styled'
 
 export type Props = Partial<{
@@ -23,14 +24,26 @@ export type Props = Partial<{
   children: VNodeChild
   /**
    * Defines whether should behave as a block text element. Automatically adds **p** HTML tag
+   *
+   * **Static by design** (mount-time): together with `tag` this selects the
+   * rendered HTML TAG, and a tag swap means unmounting one DOM element and
+   * mounting a different one — the styled layer applies `as` once per mount
+   * (a reactive tag swap is architecturally unsupported across the styler
+   * pipeline). A signal-driven `paragraph` is read at setup only; re-mount
+   * the component (e.g. via `<Show>`) to change the tag.
    */
   paragraph: boolean
   /**
    * Defines what kind of HTML tag should be rendered
+   *
+   * **Static by design** (mount-time) — see `paragraph`.
    */
   tag: HTMLTextTags
   /**
    * If an additional styling needs to be added, it can be do so via injecting styles using this property.
+   *
+   * Reactive: a signal-driven `css` re-resolves the injected styles when the
+   * signal changes (class swap on the same DOM element, no remount).
    */
   css: ExtendCss
 }> &
@@ -44,8 +57,20 @@ const Component: PyreonComponent<Props> & {
   // `paragraph` shorthand maps to <p>; otherwise pass through `tag`. Ternary
   // form replaces the prior `let finalTag` + if/else block — V8 prefers the
   // single-assignment shape for inline-cache stability. Ported from
-  // vitus-labs `804dd0e2`.
+  // vitus-labs `804dd0e2`. MOUNT-TIME read by design (see the Props JSDoc):
+  // the rendered tag cannot swap reactively.
   const finalTag = own.paragraph ? 'p' : own.tag
+
+  // Reactive `css`: when getter-shaped (compiler `_rp()` → getter), pass
+  // `$text` as an ACCESSOR — the styler's DynamicStyled treats a
+  // function-valued `$text` as a reactive axis (same contract as
+  // $rocketstyle/$rocketstate/$element): it re-reads it TRACKED inside its
+  // class computed and swaps classList on change, no remount. Static css
+  // (the dominant case) keeps the plain object — byte-identical resolution
+  // + elClassCache behavior.
+  const $text = hasGetterProps(own, ['css'])
+    ? () => ({ extraStyles: own.css })
+    : { extraStyles: own.css }
 
   // Use `h(Styled, mergeProps(rest, {..., children}))` instead of JSX
   // spread `<Styled ... {...rest}>` so compiler-emitted reactive props
@@ -71,7 +96,7 @@ const Component: PyreonComponent<Props> & {
     mergeProps(rest as Record<string, unknown>, {
       ref: own.ref,
       as: finalTag,
-      $text: { extraStyles: own.css },
+      $text,
       children: () => own.children ?? own.label,
     }),
   )

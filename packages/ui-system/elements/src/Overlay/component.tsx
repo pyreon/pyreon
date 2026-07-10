@@ -7,7 +7,23 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { createUniqueId, isClient, nativeCompat, onMount, Portal, splitProps } from '@pyreon/core'
+// `_rp` MUST be imported under an ALIAS: the real `@pyreon/vite-plugin`
+// compiler injects its own `import { _rp } from '@pyreon/core'` into any
+// file it transforms (this one, in every dev/build pipeline) — a bare
+// `_rp` import collides with the injected one ("Identifier `_rp` has
+// already been declared", which broke the ui-showcase dev boot). Same
+// class as the compiler's `cx` → `_cx` aliasing rule (anti-patterns
+// "alias injected PUBLIC-name imports"); caught by the ui-showcase e2e —
+// vitest's esbuild transform never injects, so unit tests can't see it.
+import {
+  _rp as _reactiveProp,
+  createUniqueId,
+  isClient,
+  nativeCompat,
+  onMount,
+  Portal,
+  splitProps,
+} from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { Content, PyreonComponent } from '../types'
@@ -70,13 +86,22 @@ const Component: PyreonComponent<Props> = (props) => {
     ...ctx
   } = useOverlay(overlayProps)
 
-  const { openOn, closeOn, type } = overlayProps
+  // LAZY config reads — `overlayProps` is a splitProps rest, so a compiler
+  // getter-shaped prop (`type={sig()}` → `_rp()` → getter) survives onto it;
+  // a destructure (`const { type } = overlayProps`) would fire the getter
+  // once and freeze it. The CONTENT render calls these per open/close cycle
+  // (its accessor re-runs), so they stay live there; the TRIGGER render runs
+  // once at mount — its prop PRESENCE decisions (aria-haspopup /
+  // aria-describedby / showContent-hideContent spread) are mount-time by
+  // design (prop presence cannot be reactive).
+  const readType = () => overlayProps.type
+  const passHandlers = () =>
+    overlayProps.openOn === 'manual' ||
+    overlayProps.closeOn === 'manual' ||
+    overlayProps.closeOn === 'clickOutsideContent'
 
-  const passHandlers =
-    openOn === 'manual' || closeOn === 'manual' || closeOn === 'clickOutsideContent'
-
-  const ariaHasPopup = (() => {
-    switch (type) {
+  const ariaHasPopup = () => {
+    switch (readType()) {
       case 'modal':
         return 'dialog' as const
       case 'tooltip':
@@ -88,7 +113,7 @@ const Component: PyreonComponent<Props> = (props) => {
       default:
         return 'menu' as const
     }
-  })()
+  }
 
   // WAI-ARIA Tooltip pattern: the tooltip container has role="tooltip" and the
   // trigger references it via aria-describedby, so a screen reader reads the
@@ -103,14 +128,29 @@ const Component: PyreonComponent<Props> = (props) => {
 
   return (
     <>
-      {render(own.trigger, {
-        [triggerRefName]: triggerRef,
-        active: active(),
-        'aria-expanded': active(),
-        'aria-haspopup': ariaHasPopup,
-        'aria-describedby': type === 'tooltip' ? tooltipId : undefined,
-        ...(passHandlers ? { showContent, hideContent } : {}),
-      })}
+      {
+        // The trigger is rendered ONCE (stable element identity — a per-flip
+        // re-render would REMOUNT the trigger subtree, destroying the element
+        // the focus-restore in useOverlay.hideContent returns focus to, and
+        // dropping focus mid-interaction). Reactivity rides on the PROPS
+        // instead: `active` / `aria-expanded` are passed as `_rp()`-branded
+        // accessors — the exact shape the compiler emits for
+        // `active={signal()}` — which `makeReactiveProps` converts to live
+        // getters in the mount pipeline. A trigger forwarding them to a DOM
+        // element (directly or through Element/rocketstyle, which are
+        // descriptor-preserving) gets a reactive binding: `aria-expanded`
+        // flips "false" → "true" on open with NO trigger remount. Pre-fix,
+        // `active: active()` read the signal at setup and froze both forever
+        // (screen readers were told the popup never opens).
+        render(own.trigger, {
+          [triggerRefName]: triggerRef,
+          active: _reactiveProp(() => active()),
+          'aria-expanded': _reactiveProp(() => active()),
+          'aria-haspopup': ariaHasPopup(),
+          'aria-describedby': readType() === 'tooltip' ? tooltipId : undefined,
+          ...(passHandlers() ? { showContent, hideContent } : {}),
+        })
+      }
 
       {() =>
         isClient && active() ? (
@@ -118,14 +158,21 @@ const Component: PyreonComponent<Props> = (props) => {
             <Provider {...ctx}>
               {render(own.children, {
                 [contentRefName]: contentRef,
-                role: type === 'modal' ? 'dialog' : type === 'tooltip' ? 'tooltip' : undefined,
-                id: type === 'tooltip' ? tooltipId : undefined,
-                'aria-modal': type === 'modal' ? true : undefined,
+                // Inside the accessor these re-read `overlayProps` per
+                // open/close cycle — live for getter-shaped config props.
+                role:
+                  readType() === 'modal'
+                    ? 'dialog'
+                    : readType() === 'tooltip'
+                      ? 'tooltip'
+                      : undefined,
+                id: readType() === 'tooltip' ? tooltipId : undefined,
+                'aria-modal': readType() === 'modal' ? true : undefined,
                 active: active(),
-                align,
+                align: align(),
                 alignX: alignX(),
                 alignY: alignY(),
-                ...(passHandlers ? { showContent, hideContent } : {}),
+                ...(passHandlers() ? { showContent, hideContent } : {}),
               })}
             </Provider>
           </Portal>
