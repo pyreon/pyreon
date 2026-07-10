@@ -29,6 +29,36 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Text-binding coercion RESIDUALS, after the `_bindText` VNode upgrade
+    // (PZ-02). A signal/accessor holding a VNode now mounts as a subtree, so
+    // the classic `[object Object]` is gone — but two coercions REMAIN by
+    // design and produce confusing, error-free output the user must be taught:
+    //  • a plain-primitive ARRAY joins with commas (`['a','b']` -> "a,b"),
+    //    because the mountable discriminator requires a VNode in the array;
+    //  • a bound text node with NO parent can't mount a subtree, so it warns
+    //    and stringifies (nowhere to put the nodes).
+    // Symptom-matched (no exception fires for the array case).
+    pattern:
+      /(signal|array|binding|text).*(renders?|shows?|prints?|outputs?).*("?[a-z0-9]+,[a-z0-9]+"?|comma)|(comma-?separated|joined with commas).*(signal|array|text|binding)|text node has no parent|could not be mounted in its place/i,
+    diagnose: () => ({
+      cause:
+        "Reactive text bindings are text-FIRST: `{sig()}` writes `String(value)` into a text node, and only a VNode-shaped value (a VNode, a NativeItem, or an array containing one) upgrades the binding to a real subtree mount. A signal holding a plain-primitive ARRAY (`signal(['a','b'])`) therefore renders the JS join — \"a,b\" — with no error, exactly like `String(['a','b'])`. Separately, if the bound text node has no parent (a detached node — compiled templates always bind attached nodes), there is nowhere to mount a subtree, so a VNode value warns and falls back to coercion.",
+      fix: 'For a list of primitives, map them into elements (or join them explicitly if the comma output was intended) — a VNode-bearing array mounts as real nodes: `{() => items().map((i) => <li>{i}</li>)}`, or `<For each={items} by={…}>` for keyed reconciliation. For the detached-node warning, attach the text node before binding, or mount the value with `mountChild` directly. (Note: a signal holding a VNode/VNode[] now mounts automatically — upgrade `@pyreon/runtime-dom` if you still see literal `[object Object]`.)',
+      fixCode: `const items = signal(['a', 'b'])
+
+// renders the string "a,b" — plain-primitive array is coerced, by design:
+<ul>{items()}</ul>
+
+// renders real <li> nodes — the array now carries VNodes:
+<ul>{() => items().map((i) => <li>{i}</li>)}</ul>
+
+// keyed reconciliation for a dynamic list:
+<For each={items} by={(i) => i}>{(i) => <li>{i}</li>}</For>`,
+      related:
+        'Companion to the `[object Object]` entry: a VNode-valued signal/accessor in a text position now UPGRADES to a subtree mount (matching what SSR always rendered, so the old guaranteed hydration mismatch is gone). Only plain-primitive arrays and the parentless-text-node degenerate case still coerce.',
+    }),
+  },
+  {
     // TypeScript 7 Compiler-API removal. `@pyreon/compiler`'s detectors,
     // audits, and migrators parse with the classic Compiler API
     // (reading `ts.ScriptTarget.ESNext` when parsing a source file). TS7
