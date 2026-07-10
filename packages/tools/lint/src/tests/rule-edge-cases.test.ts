@@ -200,3 +200,127 @@ describe('Store rule edge bails', () => {
     expect(find(result, 'pyreon/no-mutate-store-state').length).toBe(0)
   })
 })
+
+describe('use-by-not-key — bail arms', () => {
+  it('does NOT fire when <For> already has a `by` prop alongside `key`', () => {
+    const result = lintFile(
+      fp,
+      `const X = () => <For each={xs} by={(i) => i.id} key="x">{(i) => i.id}</For>`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/use-by-not-key').length).toBe(0)
+  })
+
+  it('does NOT fire on a member-expression element name (<Ns.For key>)', () => {
+    const result = lintFile(
+      fp,
+      `const X = () => <Ns.For key="x" />`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/use-by-not-key').length).toBe(0)
+  })
+
+  it('fires (with a fix) on <For key> without `by`', () => {
+    const result = lintFile(
+      fp,
+      `const X = () => <For each={xs} key="x">{(i) => i.id}</For>`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/use-by-not-key').length).toBe(1)
+  })
+})
+
+describe('no-duplicate-store-id — non-literal / missing id bails', () => {
+  it('does NOT fire on defineStore() with zero arguments', () => {
+    const result = lintFile(
+      fp,
+      `import { defineStore } from '@pyreon/store'
+       const s = defineStore()`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/no-duplicate-store-id').length).toBe(0)
+  })
+
+  it('does NOT fire on a dynamic (non-literal) store id, even repeated', () => {
+    const result = lintFile(
+      fp,
+      `import { defineStore } from '@pyreon/store'
+       const a = defineStore(dynamicId, () => ({}))
+       const b = defineStore(dynamicId, () => ({}))`,
+      allRules,
+      defaultConfig(),
+    )
+    // Non-string ids are untrackable at lint level — never flagged.
+    expect(find(result, 'pyreon/no-duplicate-store-id').length).toBe(0)
+  })
+
+  it('fires on a repeated string-literal store id', () => {
+    const result = lintFile(
+      fp,
+      `import { defineStore } from '@pyreon/store'
+       const a = defineStore('cart', () => ({}))
+       const b = defineStore('cart', () => ({}))`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/no-duplicate-store-id').length).toBe(1)
+  })
+})
+
+describe('prefer-cx — expression-kind arms', () => {
+  it('fires on a template literal WITH expressions in class', () => {
+    const result = lintFile(
+      fp,
+      'const X = () => <div class={`base ${active}`} />',
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/prefer-cx').length).toBe(1)
+  })
+
+  it('does NOT fire on a template literal with NO expressions', () => {
+    const result = lintFile(
+      fp,
+      'const X = () => <div class={`static-classes`} />',
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/prefer-cx').length).toBe(0)
+  })
+
+  it('does NOT fire on a ternary class expression (neither concat nor template)', () => {
+    const result = lintFile(
+      fp,
+      `const X = () => <div class={active ? 'on' : 'off'} />`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/prefer-cx').length).toBe(0)
+  })
+})
+
+describe('toast-a11y — element-name bail arms', () => {
+  it('does NOT fire on a member-expression toast element (<Ui.Toast/>)', () => {
+    const result = lintFile(
+      fp,
+      `const X = () => <Ui.Toast />`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/toast-a11y').length).toBe(0)
+  })
+
+  it('fires on a PascalCase *Toast* element with neither role nor aria-live', () => {
+    const result = lintFile(
+      fp,
+      `const X = () => <MyToast />`,
+      allRules,
+      defaultConfig(),
+    )
+    expect(find(result, 'pyreon/toast-a11y').length).toBe(1)
+  })
+})

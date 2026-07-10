@@ -455,3 +455,56 @@ describe('deep nested value comparison bails at the recursion guard', () => {
     expect(form.fields.tree.dirty()).toBe(true)
   })
 })
+
+// ─── trigger() on a validator-less field clears a stale error ────────────────
+// Covers use-form.ts trigger(): the `else fields[name].error.set(undefined)`
+// arm — a field with NO per-field validator must have any manually-set
+// (server) error CLEARED by trigger, mirroring the auto-validation path.
+
+describe('trigger() on a field without a validator', () => {
+  it('clears a manually-set error (no validator → nothing can re-assert it)', async () => {
+    const form = useForm<{ name: string }>({
+      initialValues: { name: '' },
+      onSubmit: () => {},
+    })
+    form.setFieldError('name', 'server says no')
+    expect(form.errors().name).toBe('server says no')
+    await expect(form.trigger('name')).resolves.toBe(true)
+    expect(form.errors().name).toBeUndefined()
+  })
+})
+
+// ─── useFormState selector reads the getter-backed scalar view ───────────────
+// Covers use-form-state.ts summary getters (isDirty) on the SELECTOR path —
+// the no-selector path derives isDirty from the atoms, so only a selector
+// exercises the getter.
+
+describe('useFormState(form, selector) — scalar getters', () => {
+  it('a selector reading s.isDirty tracks the dirty flip', () => {
+    const { result, unmount } = mountWith(() => {
+      const form = useForm({ initialValues: { a: '' }, onSubmit: () => {} })
+      const dirty = useFormState(form, (s) => s.isDirty)
+      return { form, dirty }
+    })
+    expect(result.dirty()).toBe(false)
+    result.form.setFieldValue('a', 'x')
+    expect(result.dirty()).toBe(true)
+  })
+})
+
+// ─── resolveSchemaValidator falls through on a non-schema object ─────────────
+// Covers use-form.ts resolveSchemaValidator's `return undefined` tail: a
+// `schema` that is neither a function, a typed adapter, nor a Standard
+// Schema is IGNORED (no validator installed) instead of crashing the form.
+
+describe('useForm({ schema }) with a non-schema object', () => {
+  it('ignores the bogus schema — the form still validates as valid', async () => {
+    const form = useForm<{ name: string }>({
+      initialValues: { name: '' },
+      schema: { not: 'a schema' } as never,
+      onSubmit: () => {},
+    })
+    await expect(form.validate()).resolves.toBe(true)
+    expect(form.errors()).toEqual({})
+  })
+})

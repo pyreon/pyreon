@@ -53,6 +53,20 @@ describe('useForm — reset(values, options) (P8)', () => {
     expect(form.touchedFields().name).toBe(true)
   })
 
+  it('keepDirty preserves dirty flags across reset', () => {
+    const form = useForm<{ name: string; age: number }>({
+      initialValues: { name: '', age: 0 },
+      onSubmit: () => {},
+    })
+    form.setFieldValue('name', 'edited')
+    expect(form.dirtyFields().name).toBe(true)
+    form.reset(undefined, { keepDirty: true })
+    // Value reverted, but the dirty FLAG survives (react-hook-form parity).
+    expect(form.getValues('name')).toBe('')
+    expect(form.dirtyFields().name).toBe(true)
+    expect(form.dirtyFields().age).toBeUndefined() // never dirty → not kept
+  })
+
   it('keepSubmitCount preserves submitCount across reset', async () => {
     const form = useForm<{ name: string }>({
       initialValues: { name: '' },

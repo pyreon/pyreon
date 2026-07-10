@@ -59,6 +59,24 @@ describe('@pyreon/store — SSR hydration', () => {
     expect(cart.store.count.peek()).toBe(99)
   })
 
+  it('hydrateStores ignores null / non-object payloads (defensive guard)', () => {
+    const useCart = defineStore('cart', () => ({ count: signal(0) }))
+    const cart = useCart()
+    hydrateStores(null as unknown as Record<string, Record<string, unknown>>)
+    hydrateStores('bogus' as unknown as Record<string, Record<string, unknown>>)
+    expect(cart.store.count.peek()).toBe(0) // untouched — guard returned early
+  })
+
+  it('repeated hydrateStores calls MERGE into the existing stash', () => {
+    // Two calls before any store exists — the second must merge, not replace.
+    hydrateStores({ cart: { count: 42 } })
+    hydrateStores({ user: { name: 'Ada' } })
+    const cart = defineStore('cart', () => ({ count: signal(0) }))()
+    const user = defineStore('user', () => ({ name: signal('') }))()
+    expect(cart.store.count.peek()).toBe(42) // first call survived the merge
+    expect(user.store.name.peek()).toBe('Ada')
+  })
+
   it('hydrateStores seeds a LAZILY-created store on first use (consumeHydration)', () => {
     // Hydrate BEFORE the store exists — the island's store isn't touched yet.
     hydrateStores({ cart: { count: 42, label: 'server' } })

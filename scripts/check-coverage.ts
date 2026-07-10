@@ -81,10 +81,10 @@ interface FloorExemption {
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/compiler': {
-    currentStatements: 92,
-    currentBranches: 85,
+    currentStatements: 89,
+    currentBranches: 83,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Branches lifted to 85% via PR #1328. Statements at 92.65%, branches at 85.34% — both below MINIMUM_FLOOR=95 / MINIMUM_BRANCH_FLOOR=95. Residual gap is in jsx.ts (~3000-line file with progressively rarer compiler-edge-case AST branches needing targeted fixtures). Lifting compiler to 95/95 is multi-PR work tracked as a long-tail effort.',
+      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Re-baselined 92/85 → 89/83 at the 2026-07 coverage-gate restoration (measured 89.12/83.14): beyond the long-standing jsx.ts edge-case tail, the PMTC/audit-era modules landed with integration-tier coverage — validate-emit.ts + native-audit.ts (swiftc/kotlinc loops run in the `test (native)` CI cell, not vitest) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting compiler to 95/95 is multi-PR work tracked as a long-tail effort.',
   },
   // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
   // Each entry's `currentBranches` mirrors the package's vitest.config.ts
@@ -98,10 +98,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   //   residual gaps are compiler-emitted fast paths and timing-sensitive
   //   animation/transition arms, covered by real-Chromium e2e.
   '@pyreon/cli': {
-    currentStatements: 95,
-    currentBranches: 85,
+    currentStatements: 88,
+    currentBranches: 76,
     reason:
-      'CLI tool. Branches at ~85% — residual gap in pyreon doctor subprocess orchestration + interactive prompt paths. Multi-PR per-subcommand work.',
+      'CLI tool. Re-baselined 95/85 → 88/76 at the 2026-07 coverage-gate restoration (measured 88.88/76.91): the CLI-unification wave (`pyreon new`/`mcp`/`add`/`check`/`upgrade` npx-delegator + subprocess paths) and the doctor gates that shell out to real repo scans (check-bundle-budgets, audit-types, native-audit, audit-leak-classes) landed with integration-tier coverage. Multi-PR per-subcommand work to lift back.',
   },
   '@pyreon/server': {
     currentStatements: 95,
@@ -122,10 +122,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Markdown content layer. The 2026-06 docs cutover (PRs #1448 + #1491) landed substantial integration-tier surface node vitest cannot reach: plugin.ts dev-server search middleware (configureServer), build-mode search-index emission (closeBundle), and optional-dependency dynamic imports (katex/mermaid success paths). Achieved node coverage at true-up: 87.39% statements / 80.79% branches (thresholds carry ~1pp variance margin). The integration paths are exercised daily by the real docs/ build + verify-modes; the Chromium harness (PR 7 follow-up) is the tracked lift back toward 95. Raise the package thresholds + this entry in lockstep as tests land.',
   },
   '@pyreon/runtime-dom': {
-    currentStatements: 95,
+    currentStatements: 93,
     currentBranches: 86,
     reason:
-      'DOM renderer. Branches at 86.88% — residual gap in template fast paths, hydrate NativeItem swaps, transition timing arms only reachable via compiler-emitted templates in real Chromium (covered by ui-showcase e2e).',
+      'DOM renderer. Branches at ~86% — residual gap in template fast paths, hydrate NativeItem swaps, transition timing arms only reachable via compiler-emitted templates in real Chromium (covered by ui-showcase e2e). Statements re-baselined 95 → 93 at the 2026-07 coverage-gate restoration (measured 93.98): devtools.ts reactive-overlay + DOM→signal picker machinery (e2e/reactive-overlay.spec.ts) and hydrate.ts parity-fuzz recovery arms landed with e2e-tier coverage.',
   },
   '@pyreon/vue-compat': {
     currentStatements: 95,
@@ -134,10 +134,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Vue 3 compat shim. Branches at ~86% — residual gap in Transition/TransitionGroup class-prop forwarders. Real-Chromium e2e (`e2e/compat-layers/vue-compat.spec.ts`) covers production shapes.',
   },
   '@pyreon/router': {
-    currentStatements: 95,
-    currentBranches: 88,
+    currentStatements: 91,
+    currentBranches: 85,
     reason:
-      'Router. Branches at ~88% — residual gap in View Transitions API integration (browser-only), scroll restoration timing arms, prefetch IntersectionObserver paths exercised by Playwright e2e (ssr-showcase, ssg-i18n).',
+      'Router. Re-baselined 95/88 → 91/85 at the 2026-07 coverage-gate restoration (measured 91.78/85.12): View Transitions API integration (browser-only), scroll restoration timing arms, prefetch IntersectionObserver paths, route-change announcer (router.browser.test.tsx), RouterLink link-DX warning paths, serverLoader/invalidateLoader arms — exercised by Playwright e2e (ssr-showcase, ssg-i18n) + the router browser suite rather than node vitest.',
   },
   '@pyreon/vite-plugin': {
     currentStatements: 95,

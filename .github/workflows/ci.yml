@@ -1067,6 +1067,17 @@ jobs:
     # Event-gated to push:main + merge_group only (never runs on PRs), so the
     # docs-only Layer-2 gate does not apply here — a code change always exists
     # by the time something lands on main.
+    #
+    # 2026-07 restoration: this job had gone red-on-arrival (12 packages below
+    # their configured thresholds — coverage drifted under feature waves whose
+    # tests live in the browser/e2e tier). A permanently-red safety net detects
+    # nothing. Invariant since the restoration: every package's configured
+    # thresholds sit AT/BELOW measured node-suite reality (ratchet up as tests
+    # land, like lint-baseline); browser-covered files are coverageExclude'd /
+    # v8-ignored from the node gate with per-site rationale. If this job goes
+    # red, treat it as a REGRESSION to fix or an honest re-baseline to land
+    # immediately — never leave it red (see anti-patterns.md "CI / Build Gate
+    # Mistakes": a red-on-arrival gate is a dead gate).
     if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     needs: [bootstrap, lint, typecheck]

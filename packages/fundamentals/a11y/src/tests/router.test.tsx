@@ -98,6 +98,16 @@ describe('RouteAnnouncer / useRouteAnnouncer', () => {
     expect(region('polite')).toBeNull()
   })
 
+  it('forwards clearAfter to announce (announcement is cleared after the delay)', async () => {
+    const { router, dispose } = mountAnnouncer('/', { clearAfter: 10 })
+    active = dispose
+    await router.push('/about')
+    await nextFrame()
+    expect(region()!.textContent).toBe('About')
+    await new Promise((r) => setTimeout(r, 60))
+    expect(region()!.textContent).toBe('') // clearAfter reached announce()
+  })
+
   it('removes the afterEach hook on unmount (nothing announced after dispose)', async () => {
     const { router, dispose } = mountAnnouncer('/')
     dispose() // unmount → onMount cleanup removes the afterEach hook

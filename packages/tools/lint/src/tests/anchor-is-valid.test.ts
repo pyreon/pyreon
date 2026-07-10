@@ -95,6 +95,11 @@ describe('pyreon/anchor-is-valid (frontend)', () => {
     expect(diagIds(result)).not.toContain('pyreon/anchor-is-valid')
   })
 
+  it('does NOT fire on a bare value-less `<a href>` attribute (nothing to prove)', () => {
+    const result = lint(`function App() { return <a href>x</a> }`)
+    expect(diagIds(result)).not.toContain('pyreon/anchor-is-valid')
+  })
+
   it('does NOT fire when the file path is exempted', () => {
     const result = lint(
       `function App() { return <a>x</a> }`,
