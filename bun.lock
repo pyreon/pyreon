@@ -2492,6 +2492,7 @@
         "@capsizecss/core": "^4.1.3",
         "@capsizecss/metrics": "^4.1.0",
         "@capsizecss/unpack": "^4.0.1",
+        "@pyreon/compiler": "workspace:^",
         "@pyreon/head": "workspace:^",
         "@pyreon/meta": "workspace:^",
         "@pyreon/router": "workspace:^",
