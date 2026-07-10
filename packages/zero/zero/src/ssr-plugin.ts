@@ -335,6 +335,10 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           serverEntry,
           clientOutDir,
           outDir: distDir,
+          // Vite's resolved project root (parent of distDir). The vercel
+          // adapter writes its `.vercel/output` Build Output API tree here —
+          // Vercel only auto-detects it at the project root, not under dist.
+          projectRoot: root,
           config,
           assetsDir,
         })

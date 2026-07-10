@@ -76,6 +76,19 @@ describe('node adapter — Dockerfile runs the adapter-emitted runner', () => {
     // The historical drift: dist/server.js was never emitted by any adapter.
     expect(dockerfile).not.toContain('dist/server.js')
   })
+
+  it('SPA mode emits NO Dockerfile (no adapter runs → no dist/index.js to run)', async () => {
+    // The node adapter's Dockerfile CMD runs `dist/index.js`, which is only
+    // emitted when `adapter.build()` runs — and it does NOT run in `spa`
+    // mode (SPA ships a static client bundle only). A Dockerfile CMD'ing a
+    // never-emitted entry would crash the container at startup, so we emit
+    // none. Bisect: revert `serverRunnerApply` to `overlayApply` → the
+    // Dockerfile reappears for spa and this fails.
+    const config = cfg('node', 'spa')
+    await adapterFor('node').apply(config)
+    expect(existsSync(join(config.targetDir, 'Dockerfile'))).toBe(false)
+    expect(existsSync(join(config.targetDir, '.dockerignore'))).toBe(false)
+  })
 })
 
 describe('bun adapter — Dockerfile runs the adapter-emitted runner', () => {
@@ -85,6 +98,13 @@ describe('bun adapter — Dockerfile runs the adapter-emitted runner', () => {
     const dockerfile = readFileSync(join(config.targetDir, 'Dockerfile'), 'utf8')
     expect(dockerfile).toContain(`CMD ["bun", "dist/${BUN_ADAPTER_OUTPUT.runnerEntry}"]`)
     expect(dockerfile).not.toContain('dist/server.js')
+  })
+
+  it('SPA mode emits NO Dockerfile (no adapter runs → no dist/index.ts to run)', async () => {
+    const config = cfg('bun', 'spa')
+    await adapterFor('bun').apply(config)
+    expect(existsSync(join(config.targetDir, 'Dockerfile'))).toBe(false)
+    expect(existsSync(join(config.targetDir, '.dockerignore'))).toBe(false)
   })
 })
 
@@ -145,15 +165,16 @@ describe('cloudflare adapter — Pages reads adapter-owned files from dist', () 
   })
 })
 
-describe('vercel adapter — vercel.json deploys the dist tree', () => {
-  it('outputDirectory is dist (locked; see the Build Output API caveat)', async () => {
-    // KNOWN LIMITATION (tracked, disclosed in VERCEL_ADAPTER_OUTPUT's
-    // JSDoc): the adapter stages the Build Output API tree INSIDE dist
-    // (`dist/${VERCEL_ADAPTER_OUTPUT.outputDir}`), but Vercel only
-    // auto-detects `.vercel/output` at the PROJECT root — so this
-    // config deploys `dist` statically and the SSR function is not
-    // reachable without a manual copy. Fixing that requires the adapter
-    // to learn the project root (an AdapterBuildOptions change).
+describe('vercel adapter — vercel.json + root-level Build Output API', () => {
+  it('outputDirectory is dist (the no-adapter / SPA fallback)', async () => {
+    // RESOLVED (was a tracked limitation): the vercel adapter now stages
+    // its Build Output API v3 tree at the PROJECT ROOT
+    // (`<projectRoot>/${VERCEL_ADAPTER_OUTPUT.outputDir}`), which Vercel
+    // auto-detects — so the SSR function IS reachable and dynamic routes no
+    // longer 404. When the Build Output API tree is present (every SSR/SSG
+    // build), Vercel deploys via it and IGNORES `outputDirectory`; the
+    // `outputDirectory: "dist"` here is only the fallback for a build that
+    // runs no adapter (SPA mode). It stays `"dist"` (unchanged scaffold).
     const config = cfg('vercel', 'ssr-stream')
     await adapterFor('vercel').apply(config)
     const vercelJson = JSON.parse(

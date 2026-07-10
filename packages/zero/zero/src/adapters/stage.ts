@@ -38,15 +38,21 @@ import { basename, join, relative, resolve, sep } from 'node:path'
  *    flat layout — `vite preview` and other tooling serve `outDir` directly, so
  *    moving the client out would 404 them. (A whole-directory `cp(src, dest)`
  *    here is what throws `ERR_FS_CP_EINVAL`; per-entry copy does not.)
- *  - disjoint → recursive **copy** (the normal case for a server bundle landing
- *    in a sibling function directory, or a genuinely separate clientOutDir).
+ *  - disjoint → recursive **copy**. When `preserve` is empty this is a single
+ *    whole-directory `cp` (the common case — a server bundle landing in a
+ *    sibling function directory). When `preserve` is non-empty (e.g. Vercel
+ *    stages the client into a root-level `.vercel/output/static`, disjoint from
+ *    `dist`, but must still skip the `dist/server` subdir), it falls to the
+ *    same per-entry copy so `preserve` is honored regardless of the src/dest
+ *    relationship — `preserve` means "don't copy these top-level entries" and
+ *    that invariant must hold for disjoint dests too.
  *
  * @param src      source directory (must exist for the copy/move paths).
  * @param dest     where `src`'s contents should end up.
- * @param preserve top-level entries of `src` to leave in place when moving
- *                 (the destination's own top segment is always preserved
- *                 automatically). Use this for the server subdir and any
- *                 scaffold files the adapter writes after staging.
+ * @param preserve top-level entries of `src` to leave in place when copying
+ *                 (the destination's own top segment, when `dest` is inside
+ *                 `src`, is always skipped automatically). Use this for the
+ *                 server subdir and any scaffold files the adapter writes next.
  */
 export async function materialize(
   src: string,
@@ -63,15 +69,21 @@ export async function materialize(
   const { cp, mkdir, readdir } = await import('node:fs/promises')
   await mkdir(d, { recursive: true })
 
-  // `dest` inside `src`: a whole-directory recursive copy would recurse into
-  // the destination (EINVAL). Copy `src`'s top-level entries into `dest`
-  // INDIVIDUALLY instead — each entry's source/dest are disjoint subtrees once
-  // the destination's own top segment is skipped, so there's no self-copy. The
-  // originals are PRESERVED (not moved) so `outDir` stays a valid flat layout
-  // for `vite preview` / other tooling.
+  // Build the set of top-level `src` entries to SKIP. `preserve` always
+  // applies. When `dest` is INSIDE `src`, its own top-level ancestor segment
+  // must also be skipped — a whole-directory recursive copy would otherwise
+  // recurse into the destination (`ERR_FS_CP_EINVAL`).
+  const skip = new Set<string>(preserve)
   if (d.startsWith(s + sep)) {
-    const destTop = relative(s, d).split(sep)[0] ?? ''
-    const skip = new Set<string>([destTop, ...preserve])
+    skip.add(relative(s, d).split(sep)[0] ?? '')
+  }
+
+  // Anything to skip → copy `src`'s top-level entries INDIVIDUALLY (each
+  // entry's source/dest are disjoint subtrees, so no self-copy) while
+  // PRESERVING the originals so `outDir` stays a valid flat layout for
+  // `vite preview` / other tooling. Nothing to skip AND disjoint → the fast
+  // whole-directory copy.
+  if (skip.size > 0) {
     for (const entry of await readdir(s)) {
       if (skip.has(entry)) continue
       await cp(join(s, entry), join(d, entry), { recursive: true })

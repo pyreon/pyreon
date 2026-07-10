@@ -86,6 +86,7 @@ describe('vercel adapter build', () => {
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
+      projectRoot: outDir,
       config: {},
     })
 
@@ -139,6 +140,7 @@ describe('cloudflare adapter build', () => {
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
+      projectRoot: outDir,
       config: {},
     })
 
@@ -238,6 +240,7 @@ describe('cloudflare adapter build', () => {
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
+      projectRoot: outDir,
       config: {},
     })
 
@@ -278,6 +281,7 @@ describe('netlify adapter build', () => {
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
+      projectRoot: outDir,
       config: {},
     })
 
@@ -315,6 +319,7 @@ describe('node adapter build', () => {
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
+      projectRoot: outDir,
       config: {},
     })
 
@@ -340,6 +345,7 @@ describe('bun adapter build', () => {
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
+      projectRoot: outDir,
       config: {},
     })
 
@@ -362,7 +368,7 @@ describe('bun adapter build', () => {
 describe('adapters — custom build.assetsDir scoping', () => {
   it('vercel: config.json route scopes cache to /<assetsDir>/ (SSG)', async () => {
     const ssgDist = await setupSsgDist()
-    await vercelAdapter().build({ kind: 'ssg', outDir: ssgDist, config: {}, assetsDir: 'static' })
+    await vercelAdapter().build({ kind: 'ssg', outDir: ssgDist, projectRoot: ssgDist, config: {}, assetsDir: 'static' })
     const cfg = JSON.parse(
       await readFile(join(ssgDist, '.vercel', 'output', 'config.json'), 'utf-8'),
     )
@@ -453,6 +459,7 @@ describe('adapters — base (subpath) cache-rule scoping', () => {
     await vercelAdapter().build({
       kind: 'ssg',
       outDir: ssgDist,
+      projectRoot: ssgDist,
       config: { base: '/blog/' },
       assetsDir: 'static',
     })
@@ -516,6 +523,7 @@ describe('static adapter build', () => {
       serverEntry: join(MOCK_SERVER, 'entry-server.js'),
       clientOutDir: MOCK_CLIENT,
       outDir,
+      projectRoot: outDir,
       config: {},
     })
 
@@ -604,6 +612,7 @@ describe('adapter build with clientOutDir === outDir (Bug A regression)', () => 
     await vercelAdapter().build({
       kind: 'ssr',
       serverEntry: join(SAME, 'server', 'entry-server.js'),
+      projectRoot: SAME,
       clientOutDir: SAME,
       outDir: SAME,
       config: {},
@@ -907,13 +916,19 @@ async function setupSsgDist() {
 }
 
 describe('vercel adapter — SSG mode (PR J)', () => {
-  it('emits .vercel/output/config.json without functions', async () => {
+  it('emits .vercel/output/config.json at the PROJECT ROOT, without functions', async () => {
     const ssgDist = await setupSsgDist()
     const adapter = vercelAdapter()
-    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+    // `projectRoot` (TMP) is the PARENT of `outDir` — the real shape. Vercel
+    // reads the Build Output API tree ONLY at `<projectRoot>/.vercel/output`;
+    // the pre-fix code wrote it inside `outDir`, where Vercel never looks —
+    // a DEAD config whose cache-header routes never applied.
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, projectRoot: TMP, config: {} })
 
-    const configPath = join(ssgDist, '.vercel', 'output', 'config.json')
+    const configPath = join(TMP, '.vercel', 'output', 'config.json')
     expect(existsSync(configPath)).toBe(true)
+    // ...and NOT buried inside the dist dir, where it would be ignored.
+    expect(existsSync(join(ssgDist, '.vercel'))).toBe(false)
     const cfg = JSON.parse(await readFile(configPath, 'utf-8'))
     expect(cfg.version).toBe(3)
     // SSG variant: no functions (every page is prerendered).
@@ -923,17 +938,27 @@ describe('vercel adapter — SSG mode (PR J)', () => {
     await cleanup()
   })
 
-  it('does NOT copy dist files into static/ subdir (preserves user post-build steps)', async () => {
-    // Vercel's CLI deploy flow detects the dist root automatically;
-    // adapters that move files break user post-build steps (sourcemap
-    // upload, perf scripts, custom asset handling). Verify dist content
-    // STAYS at outDir, not copied into .vercel/output/static/.
+  it('COPIES dist into <projectRoot>/.vercel/output/static and leaves outDir intact', async () => {
+    // The original invariant this spec guarded still holds: adapters must not
+    // MOVE files, or user post-build steps (sourcemap upload, perf scripts,
+    // custom asset handling) and `vite preview` break. `materialize` copies.
+    // What changed is the DESTINATION: Vercel's Build Output API serves
+    // `<projectRoot>/.vercel/output/static/` as the web root, so the
+    // prerendered tree must be copied there — the old "config.json alone,
+    // inside outDir" shape deployed nothing Vercel could read.
     const ssgDist = await setupSsgDist()
     const adapter = vercelAdapter()
-    await adapter.build({ kind: 'ssg', outDir: ssgDist, config: {} })
+    await adapter.build({ kind: 'ssg', outDir: ssgDist, projectRoot: TMP, config: {} })
 
+    const staticDir = join(TMP, '.vercel', 'output', 'static')
+    // Copied to the platform-mandated location…
+    expect(existsSync(join(staticDir, 'index.html'))).toBe(true)
+    expect(existsSync(join(staticDir, 'about', 'index.html'))).toBe(true)
+    // …and the original dist is untouched (copy, never move).
     expect(existsSync(join(ssgDist, 'index.html'))).toBe(true)
-    expect(existsSync(join(ssgDist, '.vercel', 'output', 'static'))).toBe(false)
+    expect(existsSync(join(ssgDist, 'about', 'index.html'))).toBe(true)
+    // Nothing is written inside the dist dir at all.
+    expect(existsSync(join(ssgDist, '.vercel'))).toBe(false)
     await cleanup()
   })
 })

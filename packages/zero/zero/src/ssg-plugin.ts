@@ -2021,20 +2021,31 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
       // _pyreon-ssg-errors.json if errorArtifact was set, but we
       // emit it AFTER the artifact write so the path-render errors
       // already in the file aren't displaced.
+      // Cleanup the SSR build artifacts — they're an implementation detail
+      // and shouldn't ship to the static host. Done BEFORE adapter.build so an
+      // adapter that STAGES the prerendered dist (the vercel adapter copies it
+      // into `.vercel/output/static/`) copies only publishable output — never
+      // the internal `.zero-ssg-server` bundle. Other adapters ignore this dir.
+      await rm(ssrOutDir, { recursive: true, force: true })
+
       const adapter = resolveAdapter(config)
       let adapterFailed = false
       let adapterFailure: unknown
       try {
-        await adapter.build({ kind: 'ssg', outDir: distDir, config, assetsDir })
+        await adapter.build({
+          kind: 'ssg',
+          outDir: distDir,
+          // Vite's resolved project root (parent of distDir). The vercel
+          // adapter stages its `.vercel/output` tree here (see ssr-plugin).
+          projectRoot: root,
+          config,
+          assetsDir,
+        })
       } catch (adapterError) {
         adapterFailed = true
         adapterFailure = adapterError
         errors.push({ path: `(adapter:${adapter.name})`, error: adapterError })
       }
-
-      // Cleanup the SSR build artifacts — they're an implementation detail
-      // and shouldn't ship to the static host.
-      await rm(ssrOutDir, { recursive: true, force: true })
 
       const elapsed = Date.now() - start
       const redirectsSummary = redirects.length > 0 ? ` + ${redirects.length} redirect(s)` : ''

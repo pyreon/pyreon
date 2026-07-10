@@ -1,8 +1,11 @@
 /**
  * Adapter OUTPUT-PATH contract — the single source of truth for where
- * each deploy adapter stages its artifacts inside the build's `outDir`
- * (`dist/` by default; the zero SSR/SSG plugins invoke adapters with
- * `clientOutDir === outDir === distDir`).
+ * each deploy adapter stages its artifacts. Most segments are RELATIVE to
+ * the build's `outDir` (`dist/` by default; the zero SSR/SSG plugins
+ * invoke adapters with `clientOutDir === outDir === distDir`). The ONE
+ * exception is the Vercel adapter, which — per Vercel's Build Output API
+ * v3 — stages `.vercel/output` at the PROJECT ROOT (`options.projectRoot`,
+ * a SIBLING of `outDir`), not inside `outDir`; see `VERCEL_ADAPTER_OUTPUT`.
  *
  * Consumers:
  *   - the adapters themselves (`node.ts` / `bun.ts` / `netlify.ts` /
@@ -76,13 +79,20 @@ export const CLOUDFLARE_ADAPTER_OUTPUT = Object.freeze({
 /** vercel adapter (`vercelAdapter`) — Vercel Build Output API v3 shape. */
 export const VERCEL_ADAPTER_OUTPUT = Object.freeze({
   /**
-   * Build Output API tree, staged INSIDE outDir (`dist/.vercel/output`).
-   * NOTE (known limitation, tracked): Vercel only auto-detects
-   * `.vercel/output` at the PROJECT root, so the scaffolded
-   * `vercel.json` deploys `dist` statically (`outputDirectory: "dist"`)
-   * and the SSR function inside `dist/.vercel/output` is not reachable
-   * without a manual copy to the root. Fixing that requires the adapter
-   * to learn the project root (an `AdapterBuildOptions` change).
+   * Build Output API v3 tree, staged at the PROJECT ROOT
+   * (`<projectRoot>/.vercel/output`) — NOT inside `outDir`. Vercel only
+   * auto-detects `.vercel/output` at the project root (it reads
+   * `<projectRoot>/.vercel/output/{config.json,static/,functions/}` and
+   * ignores anything under `outDir`), so the adapter uses
+   * `AdapterBuildOptions.projectRoot` for BOTH build kinds:
+   *   - SSR: `config.json` (`version: 3`) + `static/` (client assets) +
+   *     `functions/ssr.func/{.vc-config.json,index.js}` (the SSR function).
+   *   - SSG: `config.json` + `static/` (a copy of the prerendered dist);
+   *     no functions.
+   * With the tree at the root, Vercel deploys via the Build Output API and
+   * the scaffolded `vercel.json`'s `outputDirectory` is only a fallback for
+   * builds that run no adapter (e.g. SPA mode). This RELATIVE segment is
+   * joined onto `projectRoot`, not `outDir`.
    */
   outputDir: '.vercel/output',
 })

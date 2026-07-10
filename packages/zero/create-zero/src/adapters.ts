@@ -160,10 +160,30 @@ const netlify: AdapterGen = {
   },
 }
 
+/**
+ * node/bun apply — the overlay is an SSR-runner Dockerfile whose
+ * `CMD` runs the adapter-emitted entry (`dist/index.js` / `dist/index.ts`).
+ * That entry only exists when the adapter RUNS, which it does for SSR/ISR
+ * builds but NOT for `spa` mode (SPA ships a static client bundle only — no
+ * `adapter.build()` call, no server entry). So for `spa` we DON'T copy the
+ * Dockerfile overlay: a container CMD'ing a file that was never emitted
+ * would crash at startup, which is worse than shipping no Dockerfile. A SPA
+ * is static — deploy it to any static host, or use the `static` adapter.
+ * The adapter-contract test locks both branches (Dockerfile present + runs
+ * the emitted runner for SSR; absent for SPA).
+ */
+function serverRunnerApply(adapter: 'node' | 'bun') {
+  const copy = overlayApply(adapter)
+  return async (config: ProjectConfig): Promise<void> => {
+    if (config.renderMode === 'spa') return
+    await copy(config)
+  }
+}
+
 const node: AdapterGen = {
   id: 'node',
   viteFactory: 'nodeAdapter',
-  apply: overlayApply('node'),
+  apply: serverRunnerApply('node'),
   badge() {
     return ''
   },
@@ -175,7 +195,7 @@ const node: AdapterGen = {
 const bun: AdapterGen = {
   id: 'bun',
   viteFactory: 'bunAdapter',
-  apply: overlayApply('bun'),
+  apply: serverRunnerApply('bun'),
   badge() {
     return ''
   },

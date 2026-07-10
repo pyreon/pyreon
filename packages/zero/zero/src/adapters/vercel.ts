@@ -1,17 +1,22 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix } from './cache-headers'
 import { VERCEL_ADAPTER_OUTPUT } from './contract'
-import { stageClientThenServer } from './stage'
+import { materialize, stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
 
 /**
  * Vercel adapter — generates output for Vercel's Build Output API v3.
  *
- * Produces a `.vercel/output` directory with:
- * - `static/` — client-side assets (JS, CSS, images)
- * - `functions/ssr.func/` — serverless function for SSR
- * - `config.json` — routing configuration
+ * Produces a `.vercel/output` directory AT THE PROJECT ROOT
+ * (`options.projectRoot`, NOT inside `outDir`) — Vercel only auto-detects
+ * the Build Output API tree at `<projectRoot>/.vercel/output`, so staging
+ * it under `dist/` (the pre-fix behaviour) left the SSR function
+ * undiscoverable and dynamic routes 404'd in production. The tree holds:
+ * - `static/` — client-side assets (JS, CSS, images); for SSG this is a
+ *   copy of the prerendered dist.
+ * - `functions/ssr.func/` — serverless function for SSR (SSR mode only).
+ * - `config.json` — routing configuration (`version: 3`).
  *
  * @example
  * ```ts
@@ -28,22 +33,28 @@ export function vercelAdapter(): Adapter {
     name: 'vercel',
     async build(options: AdapterBuildOptions) {
       if (options.kind === 'ssg') {
-        // PR J — SSG branch. Emit Vercel Build Output API v3 STATIC
-        // variant: `.vercel/output/config.json` listing routes config
-        // for the prerendered dist; no functions (every page is
-        // already static). Vercel's deployer reads this config + the
-        // built dist content as the static asset root — no runtime SSR.
+        // PR J — SSG branch. Emit a Vercel Build Output API v3 STATIC
+        // deploy at the PROJECT ROOT: `.vercel/output/config.json` +
+        // `.vercel/output/static/` (a copy of the prerendered dist); no
+        // functions (every page is already static). Vercel auto-detects
+        // this tree only at `<projectRoot>` and serves `static/` as the
+        // web root, applying `config.json`'s cache-header routes.
         //
-        // We do NOT copy files into `.vercel/output/static/` — the
-        // standard Vercel CLI deploy flow detects the dist root
-        // automatically. Adapters that move files break user-side
-        // post-build steps (sourcemap upload, perf scripts, custom
-        // asset handling). Writing config.json alone is the
-        // minimum-impact signal "this is a prerendered site".
+        // We COPY the prerendered dist into `static/` (materialize copies,
+        // never moves — the original `outDir` is preserved intact, so
+        // `vite preview` and user-side post-build steps still work). The
+        // pre-fix "write config.json alone, inside outDir" shape produced a
+        // DEAD config (Vercel never reads `dist/.vercel/output`, only the
+        // root), so its cache-header routes never applied.
         const { writeFile, mkdir } = await import('node:fs/promises')
         const { join } = await import('node:path')
-        const vercelDir = join(options.outDir, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
-        await mkdir(vercelDir, { recursive: true })
+        const vercelDir = join(options.projectRoot, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
+        const staticDir = join(vercelDir, 'static')
+        await mkdir(staticDir, { recursive: true })
+        // Stage the prerendered dist into static/. `ssgPlugin` removes its
+        // internal SSR build (`.zero-ssg-server`) BEFORE calling the adapter,
+        // so the copied tree holds only publishable output.
+        await materialize(options.outDir, staticDir)
         const config = {
           version: 3,
           routes: [
@@ -62,17 +73,19 @@ export function vercelAdapter(): Adapter {
       const { writeFile, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
-      const vercelDir = join(options.outDir, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
+      const vercelDir = join(options.projectRoot, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
       const staticDir = join(vercelDir, 'static')
       const funcDir = join(vercelDir, 'functions', 'ssr.func')
 
       await mkdir(staticDir, { recursive: true })
       await mkdir(funcDir, { recursive: true })
 
-      // Stage client → .vercel/output/static and server → the function dir.
-      // clientOutDir === outDir, so static/ is a subtree of the client source;
-      // `stageClientThenServer` per-entry-copies the client in (auto-preserving
-      // the server bundle) to avoid a copy-into-self EINVAL. See stage.ts.
+      // Stage client → <projectRoot>/.vercel/output/static and server → the
+      // function dir. `.vercel/output` lives at the project root (a SIBLING of
+      // `outDir`/`clientOutDir`), so the client stage is a disjoint copy;
+      // `stageClientThenServer` preserves the `dist/server` subdir (now honored
+      // in materialize's disjoint branch too) so the server bundle isn't swept
+      // into the public static/ dir.
       await stageClientThenServer(options, { clientDest: staticDir, serverDest: funcDir })
 
       // Generate serverless function entry.
