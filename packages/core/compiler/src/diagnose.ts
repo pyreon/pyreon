@@ -228,32 +228,36 @@ function Body({ html }) {
   },
   {
     // PZ-02 — a VNode String()-coerced into a text binding renders the
-    // literal "[object Object]". The dominant shape: a JSX-returning helper
-    // called inline in a text position (`<td>{cell(row.status)}</td>`) — the
-    // compiler binds a bare call child under a DOM parent as reactive TEXT,
-    // not a mount. SSR renders the subtree correctly, so it also surfaces as
-    // a hydration mismatch. Placed AFTER the dangerouslySetInnerHTML entry
-    // (innerHTML-mentioning reports route there first) and BEFORE the
-    // SSR↔hydration parity entry at the end (whose `[object Object]` arm
-    // targets OLD-version polymorphic-text bugs; on current versions the
-    // inline-helper shape is the likely cause). The first alternative matches
-    // runtime-dom's dev warning text verbatim; the second is scoped to
-    // text/render context words to avoid over-broad matching.
+    // literal "[object Object]". Historical shapes: a JSX-returning helper
+    // called inline in a text position (`<td>{cell(row.status)}</td>`), a
+    // no-arg cross-file helper call (`{helper()}`), or a signal whose VALUE
+    // is a VNode (`{sig()}` / `{() => sig()}`). SSR renders the subtree
+    // correctly, so it also surfaces as a hydration mismatch. FIXED on
+    // current versions: in-file helper calls route through `_mountSlot` at
+    // the compiler, and `_bindText` (the single-signal/bare-call fast path)
+    // upgrades to a subtree mount on the first VNode-shaped value at the
+    // runtime — so the entry now leads with "upgrade". Placed AFTER the
+    // dangerouslySetInnerHTML entry (innerHTML-mentioning reports route
+    // there first) and BEFORE the SSR↔hydration parity entry at the end.
+    // The first alternative matches runtime-dom's dev warning text prefix
+    // (now fired only for a DETACHED bound text node); the second is scoped
+    // to text/render context words to avoid over-broad matching.
     pattern:
       /VNode was coerced to "?\[object Object\]"?|\[object Object\][^\n]{0,80}(text binding|text position|instead of|as (plain )?text|in (a |the )?(table |list )?(cell|text))/i,
     diagnose: () => ({
       cause:
-        'A VNode was String()-coerced into a TEXT binding — rendering the literal "[object Object]". The usual shape: a JSX-returning helper called inline under a DOM element (`<td>{cell(row.status)}</td>`). The compiler treats a bare call child under a DOM parent as a reactive TEXT expression, so the returned VNode is stringified instead of mounted. SSR renders the subtree correctly, so the client shows "[object Object]" plus a hydration mismatch.',
-      fix: 'Extract a real component and render it as a JSX element — an uppercase tag is MOUNTED, never stringified: `<Cell x={x} />` instead of `{cell(x)}`. (PascalCase does not save a bare CALL — `{Cell(x)}` still stringifies; only the JSX element form mounts.) In dev, `@pyreon/runtime-dom` warns at the binding with this guidance.',
-      fixCode: `// ✗ stringifies the returned VNode → "[object Object]":
+        'A VNode was String()-coerced into a TEXT binding — rendering the literal "[object Object]". On `@pyreon/runtime-dom` versions before the `_bindText` VNode upgrade this hit ANY VNode value reaching a text binding: an inline JSX-returning helper call (`<td>{cell(row.status)}</td>`), a no-arg helper call (`{helper()}`), or a signal holding a VNode (`{sig()}`, `{() => sig()}`). SSR renders the subtree correctly, so the client shows "[object Object]" plus a hydration mismatch.',
+      fix: 'Upgrade `@pyreon/compiler` + `@pyreon/runtime-dom` — current versions FIX this shape: `_bindText` permanently upgrades the binding to a subtree mount on the first VNode-shaped value (string bindings are untouched), and in-file helper calls mount via `_mountSlot`. Style guidance still applies: Extract a real component and render it as a JSX element — `<Cell x={x} />` is clearer than `{cell(x)}` and works cross-file on any version. (PascalCase does not change a bare CALL — `{Cell(x)}` is still a call expression; the JSX element form is the component path.)',
+      fixCode: `// ✗ on pre-upgrade versions, the returned VNode stringified → "[object Object]":
 const cell = (s) => <span class="badge">{s}</span>
 <td>{cell(row.status)}</td>
 
-// ✓ extract a component — JSX element form is mounted:
+// ✓ upgrade — current runtimes mount the VNode automatically. Or extract a
+// component — the JSX element form is mounted on any version:
 function Cell(props) { return <span class="badge">{props.s}</span> }
 <td><Cell s={row.status} /></td>`,
       related:
-        'If the value comes from a reactive accessor that only LATER yields a VNode (`{() => loading() ? "…" : <Table/>}`) and you are on an older @pyreon/runtime-dom, upgrade — the SSR↔hydration parity release added the polymorphic text→subtree upgrade.',
+        'The one remaining warn-only case is a DETACHED text node bound manually via `_bindText` (nowhere to mount). A reactive accessor that only LATER yields a VNode (`{() => loading() ? "…" : <Table/>}`) was fixed earlier by the SSR↔hydration parity release (`bindPolymorphicText`).',
     }),
   },
   {

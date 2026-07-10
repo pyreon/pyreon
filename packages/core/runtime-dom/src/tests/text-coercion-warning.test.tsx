@@ -2,11 +2,13 @@
  * Dev-mode diagnostics for the silent-stringify failure shapes (PZ-02 / PZ-05 /
  * PZ-10 — reported from a production app):
  *
- * 1. PZ-02 — a VNode (or NativeItem, or an array containing one) is
- *    String()-coerced into a text binding → renders the literal
- *    "[object Object]". The classic shape: a JSX-returning helper called
- *    inline in a text position (`<td>{props.getContent()}</td>`). SSR renders
- *    it CORRECTLY, so it is also a hydration mismatch. Sink:
+ * 1. PZ-02 — a VNode (or NativeItem, or an array containing one) in a text
+ *    binding. FIXED at the runtime layer: an ATTACHED `_bindText` binding now
+ *    permanently UPGRADES to a subtree mount on the first VNode-shaped value
+ *    (see bindtext-vnode-upgrade.test.tsx for the full matrix) — so the
+ *    attached specs below assert the MOUNT, not the old coercion. The warning
+ *    remains only for the degenerate DETACHED-text-node case (nowhere to
+ *    mount); the detached specs lock that. Sink:
  *    `_bindText` (fast path `String(source._v)` + fallback `String(fn())`).
  *
  * 2. PZ-05 — a raw FUNCTION is String()-coerced in a text position → renders
@@ -90,55 +92,73 @@ const fnWarnCalls = () =>
 
 // ─── PZ-02: VNode coerced to "[object Object]" in a text binding ─────────────
 
-describe('_bindText VNode-coercion warning (PZ-02)', () => {
-  it('fast path: signal holding a VNode warns ONCE with guidance + still renders (behavior unchanged)', () => {
+describe('_bindText VNode handling (PZ-02 — fixed: attached bindings upgrade, detached warn)', () => {
+  it('fast path: signal holding a VNode MOUNTS the subtree (no warning, no coercion)', () => {
     const sig = signal<unknown>(h('span', {}, 'hi'))
     const text = document.createTextNode('')
     const host = document.createElement('div')
     host.appendChild(text)
+    // Attached host (the harness convention): cleanup removers skip DOM
+    // removal in DISCONNECTED trees by design (`isConnected` guard).
+    document.body.appendChild(host)
 
     const dispose = _bindText(sig as never, text)
 
-    expect(vnodeWarnCalls().length).toBe(1)
-    const msg = String(vnodeWarnCalls()[0]![0])
-    expect(msg).toContain('[Pyreon] A VNode was coerced to "[object Object]" in a text binding')
-    expect(msg).toContain('Extract a component')
-    // Behavior unchanged — the coercion still happens.
-    expect(text.data).toBe('[object Object]')
+    // Pre-fix: warned once + text.data === '[object Object]'.
+    expect(vnodeWarnCalls().length).toBe(0)
+    expect(host.innerHTML).toContain('<span>hi</span>')
+    expect(host.textContent).toBe('hi')
 
-    // Once per binding — a second update with another VNode does NOT re-warn.
+    // Subsequent VNode values swap through the polymorphic path.
     sig.set(h('em', {}, 'again'))
-    expect(vnodeWarnCalls().length).toBe(1)
+    expect(vnodeWarnCalls().length).toBe(0)
+    expect(host.textContent).toBe('again')
+    expect(host.querySelector('em')).not.toBeNull()
     dispose()
+    expect(host.textContent, 'dispose removes the subtree').toBe('')
   })
 
-  it('fallback path (REAL compiled shape): {row.cell()} returning JSX warns + renders "[object Object]"', () => {
+  it('fallback path (REAL compiled shape): {row.cell()} returning JSX MOUNTS (no warning)', () => {
     // `<td>{row.cell()}</td>` compiles to
     // `_bindText(row.cell, __t0, () => row.cell())` — row.cell has no
-    // `.direct`, so the renderEffect fallback String()s the RESULT.
+    // `.direct`, so the renderEffect fallback handles the RESULT.
     const row = { cell: () => h('span', { class: 'badge' }, 'active') }
     const { container, cleanup, code } = compileAndMount('<td>{row.cell()}</td>', { row })
 
     expect(code).toContain('_bindText')
-    expect(vnodeWarnCalls().length).toBe(1)
-    expect(container.textContent).toBe('[object Object]')
+    expect(vnodeWarnCalls().length).toBe(0)
+    expect(container.textContent).toBe('active')
+    expect(container.querySelector('span.badge')).not.toBeNull()
+    expect(container.textContent).not.toContain('[object Object]')
     cleanup()
   })
 
-  it('array containing VNodes warns', () => {
+  it('DETACHED text node: array containing VNodes still warns (nowhere to mount)', () => {
     const sig = signal<unknown>([h('i', {}, 'a'), h('i', {}, 'b')])
     const text = document.createTextNode('')
     const dispose = _bindText(sig as never, text)
     expect(vnodeWarnCalls().length).toBe(1)
+    const msg = String(vnodeWarnCalls()[0]![0])
+    expect(msg).toContain('[Pyreon] A VNode was coerced to "[object Object]" in a text binding')
+    expect(msg).toContain('no parent')
     dispose()
   })
 
-  it('NativeItem (__isNative) warns', () => {
+  it('DETACHED text node: NativeItem (__isNative) still warns (nowhere to mount)', () => {
     const native = _tpl('<b>x</b>', () => null)
     const sig = signal<unknown>(native)
     const text = document.createTextNode('')
     const dispose = _bindText(sig as never, text)
     expect(vnodeWarnCalls().length).toBe(1)
+    dispose()
+  })
+
+  it('DETACHED text node, fallback path: a bare callable returning a VNode still warns + coerces', () => {
+    const accessor = () => h('b', {}, 'x')
+    const text = document.createTextNode('')
+    const dispose = _bindText(accessor as never, text)
+    expect(vnodeWarnCalls().length).toBe(1)
+    expect(text.data).toBe('[object Object]')
     dispose()
   })
 

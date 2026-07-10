@@ -3302,8 +3302,16 @@ export function transformJSX_JS(
       // (so `{props.items}` / `{() => arr()}` render an array instead of
       // "[object Object]"). `bindPolymorphicText`'s textish check is a cheap
       // typeof, so the dominant string/number case pays the historical cost.
-      // The single-signal fast paths (`_bindText`/`_bindDirect`) above stay
-      // text-only — a signal that yields a VNode uses the `{() => sig()}` form.
+      // The single-signal `_bindText` fast path above is text-FIRST, not
+      // text-only: the RUNTIME upgrades the binding to the same subtree
+      // mount on the first VNode-shaped value. Note both `{sig()}` AND
+      // `{() => sig()}` land on that fast path (`tryDirectSignalRef` unwraps
+      // the accessor form) — a prior comment here claimed the accessor form
+      // was an escape hatch to this general path; it never was, which is why
+      // the fix lives in `_bindText` itself (no compiler reroute, both
+      // backends stay byte-identical). `_bindDirect`'s text shape stays
+      // text-only by construction (the pure-method safelist implies
+      // primitive values).
       needsBindPolyImportGlobal = true
       const d = nextDisp()
       bindLines.push(`const ${d} = bindPolymorphicText(() => (${expr}), ${tVar}, ${parentRef})`)

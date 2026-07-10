@@ -5702,7 +5702,9 @@ fn emit_reactive_text_child(
     } else {
         // General reactive text child — polymorphic (text fast path for
         // primitives, MOUNT for a VNode/VNode[] value). Mirrors JS. See the
-        // jsx.ts comment for the perf trade-off (single-signal stays text-only).
+        // jsx.ts comment for the perf trade-off (the single-signal `_bindText`
+        // fast path is text-FIRST — the runtime upgrades it to a subtree
+        // mount on the first VNode-shaped value).
         tb.needs_bind_poly = true;
         let d = tb.next_disp();
         tb.bind_lines.push(format!(

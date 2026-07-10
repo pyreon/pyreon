@@ -1,8 +1,8 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _rdNodeId, renderEffect } from '@pyreon/reactivity'
+import { _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { _tagTextBinding } from './binding-registry'
-import { mountChild } from './mount'
+import { createPolyTextCore, mountChild, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -51,18 +51,23 @@ export function createTemplate<T>(
   }
 }
 
-// ─── Dev-only text-coercion diagnostics ──────────────────────────────────────
+// ─── Text-coercion handling ───────────────────────────────────────────────────
 //
 // Both `_bindText` paths String()-coerce the bound value into `Text.data`.
-// Two silent-failure shapes ship real bugs through that coercion:
+// Two failure shapes used to ship real bugs through that coercion:
 //
-//  • PZ-02 — a VNode / NativeItem (or an array containing one) renders the
-//    literal "[object Object]". The classic shape: a JSX-returning helper
-//    called inline in a text position (`<td>{props.getContent()}</td>` —
-//    the compiler binds a bare call child as reactive TEXT, not a mount).
-//    SSR renders the subtree correctly, so this is ALSO a hydration mismatch.
+//  • PZ-02 — a VNode / NativeItem (or an array containing one) rendered the
+//    literal "[object Object]". FIXED at this layer: on the first VNode-shaped
+//    value the binding permanently UPGRADES to a subtree mount (the swap core
+//    shared with `bindPolymorphicText`) — see `_bindText`. SSR always rendered
+//    the subtree correctly, so the upgrade also removes a guaranteed
+//    SSR↔client hydration mismatch for `{sig()}` where the signal holds a
+//    VNode. The dev warning below remains only for the degenerate case where
+//    the bound text node has NO parent (nowhere to mount — compiled templates
+//    always bind attached nodes).
 //  • PZ-05 — a raw FUNCTION renders its SOURCE text (e.g. an accessor
 //    neutralized by an `as never` cast, which the compiler treats as static).
+//    Still warn-only: a function RESULT stays on the String() path.
 //
 // The check targets the RESULT value only — `_bindText`'s SOURCE is
 // legitimately a callable that gets CALLED (fallback path) or read via `._v`
@@ -79,7 +84,10 @@ export function createTemplate<T>(
 // compiler's `_bind(() => { __t0.data = expr })` emit performs the coercion
 // via a RAW assignment inside user bundles, and `_bindDirect` updaters are
 // likewise raw compiler-emitted DOM writes — neither can be intercepted here
-// without changing compiler emit (out of scope for this layer).
+// without changing compiler emit. For TEXT that is fine by construction:
+// `_bindDirect` reaches `.data` only through the signal-method-call promotion
+// (`{count().toFixed(2)}` — a pure-method safelist over primitive values), so
+// a raw VNode value never lands on `.data` via `_bindDirect`.
 
 /** Structural VNode check — VNode has no symbol brand (see core/types.ts),
  *  so `{ type, props, children }` is the discriminator; `__isNative` covers
@@ -91,6 +99,15 @@ function _looksLikeVNode(v: unknown): boolean {
     (((v as { __isNative?: boolean }).__isNative === true) ||
       ('type' in v && 'props' in v && 'children' in v))
   )
+}
+
+/** The ONE mountable-in-a-text-position discriminator, shared by the static
+ *  setters (`_setChild`/`_setChildAt`), the reactive `_bindText` VNode
+ *  upgrade, and the dev coercion warning: a VNode/NativeItem, or an array
+ *  containing at least one. Plain objects and plain-primitive arrays keep
+ *  the historical String() coercion (consistent across all four sites). */
+function _isMountableTextValue(v: unknown): boolean {
+  return _looksLikeVNode(v) || (Array.isArray(v) && v.some(_looksLikeVNode))
 }
 
 /**
@@ -105,7 +122,7 @@ function _looksLikeVNode(v: unknown): boolean {
  * `bindPolymorphicText` (a reactive child can also swap text↔VNode).
  */
 export function _setChild(node: Element, value: unknown): void {
-  if (_looksLikeVNode(value) || (Array.isArray(value) && value.some(_looksLikeVNode))) {
+  if (_isMountableTextValue(value)) {
     mountChild(value as VNodeChild, node, null)
   } else {
     node.textContent = value as string
@@ -120,7 +137,7 @@ export function _setChild(node: Element, value: unknown): void {
  * text node — the historical `document.createTextNode(x) + replaceChild` shape.
  */
 export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown): void {
-  if (_looksLikeVNode(value) || (Array.isArray(value) && value.some(_looksLikeVNode))) {
+  if (_isMountableTextValue(value)) {
     mountChild(value as VNodeChild, parent, placeholder)
     placeholder.remove()
   } else {
@@ -145,12 +162,13 @@ function _warnTextCoercion(v: unknown, node: Text): void {
     )
     return
   }
-  if (_looksLikeVNode(v) || (Array.isArray(v) && v.some(_looksLikeVNode))) {
+  if (_isMountableTextValue(v)) {
     flagged.__pyreonWarnedCoercion = true
     console.warn(
-      '[Pyreon] A VNode was coerced to "[object Object]" in a text binding. ' +
-        'A JSX-returning helper called inline under a DOM element ({cell(x)}) compiles as ' +
-        'reactive TEXT, not a mount. Extract a component and render <Cell x={x}/> instead.',
+      '[Pyreon] A VNode was coerced to "[object Object]" in a text binding: the bound ' +
+        'text node has no parent, so the subtree could not be mounted in its place ' +
+        '(attached bindings upgrade to a subtree mount automatically). Attach the text ' +
+        'node before binding, or mount the VNode via mountChild directly.',
     )
   }
 }
@@ -170,6 +188,15 @@ function _warnTextCoercion(v: unknown, node: Text): void {
  * - No `run` closure
  * - Signal.subscribe is used directly (O(1) subscribe + unsubscribe)
  *
+ * VNode upgrade (PZ-02 fix): the binding is text-FIRST, not text-ONLY. A
+ * signal whose value is a VNode / NativeItem / VNode[] permanently upgrades
+ * to a subtree mount at the text node's position (the swap core shared with
+ * `bindPolymorphicText`) — matching what SSR already renders for the same
+ * shape. The string hot path stays byte-identical until a VNode is actually
+ * seen: the no-change bail (`next !== node.data`) is untouched, and the
+ * detection is ONE `typeof v === 'object'` short-circuit on the
+ * value-actually-changed branch only.
+ *
  * @param source - A signal (anything with `._v` and `.direct`)
  * @param node - The Text node to update
  * @param caller - Optional explicit caller for the slow path. Compiler emits
@@ -182,13 +209,50 @@ export function _bindText(
   caller?: () => unknown,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
+  // Captured for the upgrade path: components mounted by a LATER upgrade
+  // (inside a signal dispatch, where no ambient owner is active) must resolve
+  // context through the owner active at SETUP — the same discipline as
+  // `renderEffect`'s snapshot capture (anti-patterns: "captured context owner
+  // for re-runs"). A module-variable read — negligible per-binding cost.
+  const ownerAtSetup = getContextOwner()
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
+    // Lifecycle slot: null until subscribed; the textUpdate unsubscriber
+    // before an upgrade; the combined "unsub core updater + tear down
+    // subtree" cleanup after one. The returned disposer reads it late so
+    // ONE stable function survives the subscriber swap.
+    let disposer: (() => void) | null = null
     const textUpdate = () => {
       const v = source._v
-      if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
       const next = v == null || v === false ? '' : String(v as string | number)
-      if (next !== node.data) node.data = next
+      if (next !== node.data) {
+        // Value actually changed — the ONLY place the upgrade check runs
+        // (never on the no-change partial-update hot path). For strings and
+        // numbers the typeof short-circuits: one comparison per real change.
+        if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
+          const parent = node.parentNode
+          if (parent !== null) {
+            // Permanently upgrade this binding to a subtree mount. The
+            // textUpdate subscription is swapped for a core-applying one —
+            // unsubscribing mid-dispatch is safe (`_d1` is a single slot the
+            // dispatch already dereferenced; the `_d` Set path is enqueued
+            // by reference).
+            if (disposer !== null) disposer()
+            const core = createPolyTextCore(node, parent, ownerAtSetup)
+            core.apply(v as VNodeChild)
+            const unsub = source.direct!(() => core.apply(source._v as VNodeChild))
+            disposer = () => {
+              unsub()
+              core.dispose()
+            }
+            return
+          }
+          // No parent → nowhere to mount (detached manual binding). Fall
+          // through to the historical String() coercion + dev warning.
+        }
+        if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
+        node.data = next
+      }
     }
     textUpdate()
     // Dev-only: correlate this text node with the signal/computed it displays,
@@ -199,17 +263,43 @@ export function _bindText(
       const sourceId = _rdNodeId(source)
       if (sourceId !== undefined) _tagTextBinding(node, sourceId)
     }
-    return source.direct(textUpdate)
+    // Upgraded during the initial call → the core updater is already
+    // subscribed; otherwise wire the text updater now.
+    if (disposer === null) disposer = source.direct(textUpdate)
+    return () => disposer!()
   }
   // Fallback: bare callable. Use caller if compiler provided one (preserves
   // `this` for member-expression sources); otherwise call source directly.
+  // The renderEffect keeps tracking `fn`'s reads across the upgrade — after
+  // the first VNode-shaped value every re-run routes through the swap core
+  // (whose child mounts are runUntracked, so subtree reads can't leak into
+  // this effect's deps).
   const fn = caller ?? (source as unknown as () => unknown)
-  return renderEffect(() => {
+  let core: PolyTextCore | null = null
+  const disposeEffect = renderEffect(() => {
     const v = fn()
-    if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
+    if (core !== null) {
+      core.apply(v as VNodeChild)
+      return
+    }
     const next = v == null || v === false ? '' : String(v as string | number)
-    if (next !== node.data) node.data = next
+    if (next !== node.data) {
+      if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
+        const parent = node.parentNode
+        if (parent !== null) {
+          core = createPolyTextCore(node, parent, ownerAtSetup)
+          core.apply(v as VNodeChild)
+          return
+        }
+      }
+      if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
+      node.data = next
+    }
   })
+  return () => {
+    disposeEffect()
+    if (core !== null) core.dispose()
+  }
 }
 
 // ─── Direct signal binding (bypasses effect system) ──────────────────────────
