@@ -54,6 +54,8 @@ export class MapSchema<K, V> extends SchemaBase<Map<K, V>> {
       return input
     }
     const out = new Map<unknown, unknown>()
+    const beforeAll = ctx.issues.length
+    let pending: Array<Promise<[unknown, unknown]>> | null = null
     let i = 0
     for (const [k, v] of input) {
       ctx.path.push(i)
@@ -61,7 +63,12 @@ export class MapSchema<K, V> extends SchemaBase<Map<K, V>> {
         const before = ctx.issues.length
         const kv = this.key._runInto(k, ctx)
         const vv = this.value._runInto(v, ctx)
-        if (!(kv instanceof Promise) && !(vv instanceof Promise) && ctx.issues.length === before) {
+        if (kv instanceof Promise || vv instanceof Promise) {
+          // Async entry (async `.refine`/`.transform`/registered `.serverCheck`)
+          // — collect it; the whole Map resolves once every entry settles.
+          // `parseAsync` awaits; sync `parse()` reports async-in-sync at root.
+          ;(pending ??= []).push(Promise.all([kv, vv]))
+        } else if (ctx.issues.length === before) {
           out.set(kv, vv)
         }
       } finally {
@@ -69,7 +76,16 @@ export class MapSchema<K, V> extends SchemaBase<Map<K, V>> {
       }
       i++
     }
-    return out
+    if (!pending) return out
+    return Promise.all(pending).then((entries) => {
+      // The output only escapes when the parse produced NO issues, so
+      // per-entry issue attribution is unnecessary — on any failure the
+      // whole result is discarded by the caller.
+      if (ctx.issues.length === beforeAll) {
+        for (const [kv, vv] of entries) out.set(kv, vv)
+      }
+      return out
+    })
   }
 
   /** Require at least `n` entries. */
@@ -107,19 +123,30 @@ export class SetSchema<V> extends SchemaBase<Set<V>> {
       return input
     }
     const out = new Set<unknown>()
+    const beforeAll = ctx.issues.length
+    let pending: Array<Promise<unknown>> | null = null
     let i = 0
     for (const v of input) {
       ctx.path.push(i)
       try {
         const before = ctx.issues.length
         const vv = this.value._runInto(v, ctx)
-        if (!(vv instanceof Promise) && ctx.issues.length === before) out.add(vv)
+        if (vv instanceof Promise) {
+          // Async member — collect it (see MapSchema note above).
+          ;(pending ??= []).push(vv)
+        } else if (ctx.issues.length === before) {
+          out.add(vv)
+        }
       } finally {
         ctx.path.pop()
       }
       i++
     }
-    return out
+    if (!pending) return out
+    return Promise.all(pending).then((values) => {
+      if (ctx.issues.length === beforeAll) for (const vv of values) out.add(vv)
+      return out
+    })
   }
 
   /** Require at least `n` members. */

@@ -219,13 +219,6 @@ export interface ParseCtx {
   issues: PyreonIssue[]
   path: PathSegment[]
   /**
-   * When true, the parser collects EVERY issue. When false, the
-   * parser exits early after the first issue at the current scope —
-   * used by union/discriminate to skip exhaustive validation of a
-   * branch that already failed.
-   */
-  abortOnFirst?: boolean
-  /**
    * Server-only checks (`.serverCheck`) encountered whose validator is NOT
    * installed (the client) — the "valid so far, pending server" contract.
    * Surfaced on `Result.pending` so the form/UX layer can defer the field's

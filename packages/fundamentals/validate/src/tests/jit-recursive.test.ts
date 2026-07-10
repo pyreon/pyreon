@@ -147,10 +147,13 @@ describe('recursive JIT — correctness guards', () => {
     expect(({} as Record<string, unknown>).polluted).toBeUndefined()
   })
 
-  it('flags an async refine used inside a sync array parse with the ELEMENT wording', () => {
+  it('an async refine inside a sync array parse reports the canonical root async-in-sync issue', async () => {
     const asyncEl = s.string().refine(async (v) => v.length > 0, { message: 'x' })
-    const r = s.array(asyncEl).parse(['a'])
+    const schema = s.array(asyncEl)
+    const r = schema.parse(['a'])
     expect(r.ok).toBe(false)
-    if (!r.ok) expect(r.issues.some((i) => i.message.includes('async element schema'))).toBe(true)
+    if (!r.ok) expect(r.issues.some((i) => i.message.includes('use parseAsync'))).toBe(true)
+    // parseAsync on the SAME JIT'd schema resolves the deferred element.
+    expect(await schema.parseAsync(['a'])).toEqual({ ok: true, value: ['a'] })
   })
 })

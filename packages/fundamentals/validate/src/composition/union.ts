@@ -12,10 +12,11 @@
  */
 
 import { makeIssue } from '../core/issue'
+import type { PathSegment } from '../core/issue'
 import type { ParseCtx } from '../core/ops'
 import { Schema as SchemaBase, registerUnionFactory } from '../core/schema'
 import type { Schema } from '../core/schema'
-import { LiteralSchema } from '../primitives/literal'
+import { EnumSchema, LiteralSchema, NativeEnumSchema } from '../primitives/literal'
 import { ObjectSchema } from './object'
 
 type AnySchema = Schema<unknown>
@@ -52,28 +53,76 @@ export class UnionSchema<T extends readonly AnySchema[]> extends SchemaBase<Infe
   }
 
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
-    for (const member of this.members) {
-      const r = member['~standard'].validate(input)
-      if (r instanceof Promise) {
-        ctx.issues.push({
-          message: '[Pyreon] async member in sync union parse — use parseAsync',
-          path: ctx.path,
-        })
-        return input
+    // Members run against the SHARED ctx (no per-member ctx/result-object
+    // allocation — the old `~standard.validate`-per-member form allocated a
+    // fresh ctx + result envelope per member per parse, and DROPPED a winning
+    // member's `pending` serverCheck entries). A failed member's issues (and
+    // any pending entries it deferred) are truncated back before trying the
+    // next member; only the single `invalid_union` issue survives a full miss.
+    const members = this.members
+    const issuesBefore = ctx.issues.length
+    const pendingBefore = ctx.pending?.length ?? 0
+    for (let i = 0; i < members.length; i++) {
+      const v = members[i]!._runInto(input, ctx)
+      if (v instanceof Promise) {
+        // Async member (async `.refine`/`.transform`/registered `.serverCheck`)
+        // — continue the member scan asynchronously. `parseAsync` awaits this;
+        // a sync `parse()` sees the Promise at the root and reports the
+        // async-in-sync issue (same contract as async object fields).
+        return this._continueAsync(v, i, input, ctx, issuesBefore, pendingBefore, ctx.path.slice())
       }
-      if (!('issues' in r) || !r.issues) return r.value
+      if (ctx.issues.length === issuesBefore) return v
+      truncate(ctx, issuesBefore, pendingBefore)
     }
-    ctx.issues.push(
-      makeIssue({
-        code: 'invalid_union',
-        key: 'validate.union.no-match',
-        fallback: 'Did not match any allowed type',
-        message: 'Did not match any allowed type',
-        path: ctx.path,
-      }),
-    )
+    ctx.issues.push(unionMissIssue(ctx.path))
     return input
   }
+
+  /** Resume the member scan after member `i` returned a Promise. */
+  private async _continueAsync(
+    first: Promise<unknown>,
+    i: number,
+    input: unknown,
+    ctx: ParseCtx,
+    issuesBefore: number,
+    pendingBefore: number,
+    pathSnap: PathSegment[],
+  ): Promise<unknown> {
+    const v = await first
+    if (ctx.issues.length === issuesBefore) return v
+    truncate(ctx, issuesBefore, pendingBefore)
+    const members = this.members
+    for (let j = i + 1; j < members.length; j++) {
+      // The parse's sync frame has unwound by now, so ctx.path no longer
+      // reflects this union's position — reinstate the snapshot around the
+      // member's SYNC run (its own async parts snapshot internally, per the
+      // serverCheck pattern), then restore whatever was there.
+      const saved = ctx.path.splice(0, ctx.path.length, ...pathSnap)
+      const r = members[j]!._runInto(input, ctx)
+      ctx.path.splice(0, ctx.path.length, ...saved)
+      const vv = r instanceof Promise ? await r : r
+      if (ctx.issues.length === issuesBefore) return vv
+      truncate(ctx, issuesBefore, pendingBefore)
+    }
+    ctx.issues.push(unionMissIssue(pathSnap))
+    return input
+  }
+}
+
+/** Reset the shared ctx back to a failed member's entry state. */
+function truncate(ctx: ParseCtx, issuesBefore: number, pendingBefore: number): void {
+  ctx.issues.length = issuesBefore
+  if (ctx.pending && ctx.pending.length > pendingBefore) ctx.pending.length = pendingBefore
+}
+
+function unionMissIssue(path: ReadonlyArray<PathSegment>) {
+  return makeIssue({
+    code: 'invalid_union',
+    key: 'validate.union.no-match',
+    fallback: 'Did not match any allowed type',
+    message: 'Did not match any allowed type',
+    path,
+  })
 }
 
 // `s.union` accepts BOTH the rest-args form (`s.union(a, b)` — also the
@@ -123,7 +172,30 @@ export class DiscriminatedUnionSchema<
     this._map = new Map()
     for (const member of members) {
       const field = member.shape[discriminant]
-      if (field instanceof LiteralSchema) this._map.set(field.value, member)
+      // A discriminant may be a literal (`s.literal('a')`), an enum
+      // (`s.enum(['a','b'])` — the member owns several tag values), or a
+      // native enum. Register every value → member.
+      const values =
+        field instanceof LiteralSchema
+          ? [field.value]
+          : field instanceof EnumSchema || field instanceof NativeEnumSchema
+            ? field.values
+            : undefined
+      if (process.env.NODE_ENV !== 'production') {
+        if (values === undefined) {
+          throw new Error(
+            `[Pyreon] s.discriminatedUnion('${discriminant}', ...): a member's "${discriminant}" field is not a literal/enum/nativeEnum schema — its tag value(s) cannot be registered, so that member would be unreachable. Use s.literal(...) (or s.enum([...])) for the discriminant field.`,
+          )
+        }
+        for (const v of values) {
+          if (this._map.has(v)) {
+            throw new Error(
+              `[Pyreon] s.discriminatedUnion('${discriminant}', ...): duplicate discriminant value ${String(v)} — two members claim the same tag, the second would be unreachable.`,
+            )
+          }
+        }
+      }
+      if (values) for (const v of values) this._map.set(v, member)
     }
   }
 
@@ -157,12 +229,10 @@ export class DiscriminatedUnionSchema<
     }
     // The discriminant has selected the one definitive member — validate it
     // against the shared ctx (its issues should surface), zero extra alloc.
-    const v = member._runInto(input, ctx)
-    if (v instanceof Promise) {
-      ctx.issues.push({ message: '[Pyreon] async member in sync parse — use parseAsync', path: ctx.path })
-      return input
-    }
-    return v
+    // An async member (async `.refine`/`.transform`/registered `.serverCheck`)
+    // returns its Promise through — `parseAsync` awaits it; a sync `parse()`
+    // sees the Promise at the root and reports the async-in-sync issue.
+    return member._runInto(input, ctx)
   }
 }
 

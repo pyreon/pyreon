@@ -44,13 +44,75 @@ export const EMAIL_HTML5_RE =
 export const EMAIL_RE =
   /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
 
+// ─── Table-driven email scanner (the hot 'standard' path) ─────────────────
+// Byte-identical verdict to EMAIL_RE (locked by the exhaustive + fuzz
+// differential in `email-scan-equivalence.test.ts`), ~1.6× faster: the regex
+// pays the `(?!.*\.\.)` whole-string lookahead + a capturing-group pass; the
+// scanner is one linear charcode walk over a 128-slot bitflag table. The
+// email check is THE hot format in real payloads (it sits inside the bench's
+// object rows too), so it gets the hand-tuned path; every other format stays
+// a regex. Bitflags: 1 = local char `[A-Za-z0-9_'+-]`, 2 = local END char
+// (local minus `'`), 4 = alpha (TLD), 8 = alnum (label start), 16 = label
+// char (alnum + `-`).
+const EMAIL_CT = new Uint8Array(128)
+for (let c = 48; c <= 57; c++) EMAIL_CT[c] = 1 | 2 | 8 | 16 // 0-9
+for (let c = 65; c <= 90; c++) EMAIL_CT[c] = 1 | 2 | 4 | 8 | 16 // A-Z
+for (let c = 97; c <= 122; c++) EMAIL_CT[c] = 1 | 2 | 4 | 8 | 16 // a-z
+EMAIL_CT[95] = 1 | 2 // _
+EMAIL_CT[43] = 1 | 2 // +
+EMAIL_CT[45] = 1 | 2 | 16 // -
+EMAIL_CT[39] = 1 // '
+
+/**
+ * Linear-scan equivalent of `EMAIL_RE.test(value)` — same grammar:
+ * local part = `[A-Za-z0-9_'+-.]` runs with no leading/consecutive dots,
+ * last char before `@` in `[A-Za-z0-9_+-]`; domain = 1+ labels
+ * (`[A-Za-z0-9][A-Za-z0-9-]*` + `.`) then an alpha TLD of 2+ chars.
+ * A charcode > 127 indexes past the table -> `undefined & flag` is falsy ->
+ * reject (matches the regex: no non-ASCII anywhere).
+ */
+function isEmailStandard(v: string): boolean {
+  const len = v.length
+  let i = 0
+  let prev = 0 // previous local charcode; 0 = at start (leading dot illegal)
+  let c = 0
+  for (; i < len; i++) {
+    c = v.charCodeAt(i)
+    if (c === 64 /* @ */) break
+    if (c === 46 /* . */) {
+      if (prev === 0 || prev === 46) return false // leading or consecutive dot
+    } else if (!((EMAIL_CT[c]! & 1) as number)) return false
+    prev = c
+  }
+  // Non-empty local, an `@` present, last local char in the END set.
+  if (i === 0 || i >= len || !((EMAIL_CT[prev]! & 2) as number)) return false
+  i++ // skip @
+  let segStart = i
+  let lastDot = -1
+  for (; i < len; i++) {
+    c = v.charCodeAt(i)
+    if (c === 46 /* . */) {
+      if (i === segStart) return false // empty label
+      if (!((EMAIL_CT[v.charCodeAt(segStart)]! & 8) as number)) return false // label starts alnum
+      lastDot = i
+      segStart = i + 1
+    } else if (!((EMAIL_CT[c]! & 16) as number)) return false // label char: alnum | -
+  }
+  if (lastDot === -1) return false // at least one dot in the domain
+  if (len - segStart < 2) return false // TLD >= 2 chars
+  for (let k = segStart; k < len; k++) {
+    if (!((EMAIL_CT[v.charCodeAt(k)]! & 4) as number)) return false // TLD alpha-only
+  }
+  return true
+}
+
 /**
  * Validate an email string at the given precision. Pure + allocation-free
  * on the hot path. Exported so the server tier / custom checks can reuse it.
  */
 export function validateEmail(value: string, precision: EmailPrecision = 'standard'): boolean {
   if (precision === 'html5') return EMAIL_HTML5_RE.test(value)
-  if (!EMAIL_RE.test(value)) return false
+  if (!isEmailStandard(value)) return false
   if (precision === 'rfc5322') {
     if (value.length > 254) return false // RFC 5321 total length
     const at = value.lastIndexOf('@')

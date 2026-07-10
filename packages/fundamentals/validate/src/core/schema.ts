@@ -285,13 +285,24 @@ export abstract class Schema<T> {
 
   // ─── Standard Schema v1 contract ──────────────────────────────────────
 
+  /** Memoized `~standard` object — see the getter below. */
+  private _std?: StandardSchemaV1<unknown, T>['~standard'] | undefined
+
   /**
    * Standard Schema v1 protocol (https://standardschema.dev). Lets
    * Pyreon-validate schemas drop into any StdSchema-aware consumer —
    * `@pyreon/form` via `bindSchema()`, `@pyreon/feature`, third-party
    * libraries that adopted the spec, etc.
+   *
+   * MEMOIZED — repeated `schema['~standard']` reads return the SAME object
+   * (the pre-memo getter allocated a fresh `{ version, vendor, validate }`
+   * + closure per access, which consumers calling `~standard.validate` per
+   * validation paid on every keystroke). Safe across chained mutations: the
+   * closure resolves `this._getCompiled()` per invocation, so it always
+   * runs the CURRENT compiled pipeline.
    */
   get ['~standard'](): StandardSchemaV1<unknown, T>['~standard'] {
+    if (this._std) return this._std
     const validate = (input: unknown) => {
       const compiled = this._getCompiled()
       const ctx = makeCtx()
@@ -305,11 +316,11 @@ export abstract class Schema<T> {
       if (ctx.issues.length > 0) return { issues: ctx.issues }
       return { value: value as T }
     }
-    return {
+    return (this._std = {
       version: 1 as const,
       vendor: 'pyreon-validate',
       validate,
-    }
+    })
   }
 
   // ─── Chainable modifiers (every schema gets these) ────────────────────
@@ -682,11 +693,7 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
       }
     )._compileType(input, ctx)
 
-  return function compiled(input, ctx): unknown {
-    // Capture the raw input for `.catch((input) => …)` (the prelude may
-    // reassign `input` to a default below).
-    const originalInput = input
-
+  function compiled(input: unknown, ctx: ParseCtx): unknown {
     // 1. Modifier prelude.
     if (input === undefined) {
       if (modifiers.hasDefault) {
@@ -702,14 +709,12 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
       // else: fall through.
     }
 
-    // 2. Type-check. (`issuesBefore` is also the reset target for `.catch` —
-    // the prelude above never pushes issues, so it equals this schema's entry
-    // issue count.)
+    // 2. Type-check.
     const issuesBefore = ctx.issues.length
     const typed = typeCheck(input, ctx)
     if (ctx.issues.length > issuesBefore) {
       // Type-check failed — don't continue to checks/transforms/refines.
-      return catchSpec ? settleCatch(catchSpec, ctx, issuesBefore, originalInput, typed) : typed
+      return typed
     }
 
     // A composite type-check (object/array with an async field — async
@@ -722,12 +727,30 @@ export function compileSchema<T>(schema: Schema<T>): SyncValidator {
         // A field-level async check may have pushed issues during resolution —
         // skip the object's own pipeline in that case (parity with the sync
         // early-return above).
-        const r = ctx.issues.length > issuesBefore ? resolved : runPostType(resolved, ctx)
-        return catchSpec ? settleCatch(catchSpec, ctx, issuesBefore, originalInput, r) : r
+        return ctx.issues.length > issuesBefore ? resolved : runPostType(resolved, ctx)
       })
     }
-    const out = runPostType(typed, ctx)
-    return catchSpec ? settleCatch(catchSpec, ctx, issuesBefore, originalInput, out) : out
+    return runPostType(typed, ctx)
+  }
+
+  if (!catchSpec) return compiled
+
+  // `.catch` — run the WHOLE pipeline against a PRIVATE child ctx so the
+  // "did this schema fail?" question is answerable by `child.issues.length`
+  // alone. The old form snapshotted the SHARED ctx's issue count and compared
+  // after settle — under `parseAsync`, a SIBLING field's issue could land
+  // inside that window, misfiring the fallback AND truncating the sibling's
+  // legitimate issue (a silently-accepted invalid parse — fuzz-found).
+  // The child shares the parent's `path` array (issue paths snapshot at push
+  // time, so positions stay correct) and `context` (serverCheck threading);
+  // `pending` entries merge up only when the schema did NOT fall back.
+  return function compiledWithCatch(input: unknown, ctx: ParseCtx): unknown {
+    const child: ParseCtx = { issues: [], path: ctx.path, context: ctx.context }
+    const out = compiled(input, child)
+    if (out instanceof Promise) {
+      return out.then((resolved) => finishCatch(catchSpec, resolved, child, ctx, input))
+    }
+    return finishCatch(catchSpec, out, child, ctx, input)
   }
 
   // Steps 3-6 against an already-type-checked value (sync or post-await).
@@ -776,29 +799,23 @@ function resolveCatchValue(value: unknown, input: unknown): unknown {
 }
 
 /**
- * Apply `.catch`: if this schema added issues (relative to `issuesBefore`),
- * truncate them back and return the fallback; otherwise pass `value` through.
- * Promise-aware so an async transform/refine failure is caught after settle.
+ * Settle a `.catch`-wrapped run: the schema failed iff its PRIVATE child ctx
+ * accumulated issues — sibling issues live in the parent ctx and can never
+ * leak into (or be eaten by) the catch window. On success, deferred-server
+ * `pending` entries merge up to the parent.
  */
-function settleCatch(
+function finishCatch(
   catchSpec: CatchOp,
-  ctx: ParseCtx,
-  issuesBefore: number,
-  originalInput: unknown,
   value: unknown,
+  child: ParseCtx,
+  parent: ParseCtx,
+  originalInput: unknown,
 ): unknown {
-  if (value instanceof Promise) {
-    return value.then((resolved) => {
-      if (ctx.issues.length > issuesBefore) {
-        ctx.issues.length = issuesBefore
-        return resolveCatchValue(catchSpec.value, originalInput)
-      }
-      return resolved
-    })
-  }
-  if (ctx.issues.length > issuesBefore) {
-    ctx.issues.length = issuesBefore
+  if (child.issues.length > 0) {
     return resolveCatchValue(catchSpec.value, originalInput)
+  }
+  if (child.pending && child.pending.length > 0) {
+    ;(parent.pending ??= []).push(...child.pending)
   }
   return value
 }
@@ -1037,9 +1054,12 @@ export class OptionalSchema<T> extends Schema<T | undefined> {
 
 export class NullableSchema<T> extends Schema<T | null> {
   readonly _kind = 'nullable' as const
+  /** The wrapped schema — exposed for structural walkers (`toJsonSchema`). */
+  readonly inner: Schema<T>
 
   constructor(inner: Schema<T>) {
     super()
+    this.inner = inner
     this._ops = [{ kind: 'nullable' }, ...inner._ops]
     ;(this as unknown as { _compileType: typeof inner._compileType })._compileType = (
       inner as unknown as { _compileType: typeof inner._compileType }
@@ -1064,9 +1084,15 @@ export class NullishSchema<T> extends Schema<T | null | undefined> {
 
 export class DefaultSchema<T> extends Schema<T> {
   readonly _kind = 'default' as const
+  /** The wrapped schema — exposed for structural walkers (`toJsonSchema`). */
+  readonly inner: Schema<T>
+  /** The default value (or thunk) — exposed for structural walkers. */
+  readonly defaultValue: T | (() => T)
 
   constructor(inner: Schema<T>, value: T | (() => T)) {
     super()
+    this.inner = inner
+    this.defaultValue = value
     this._ops = [{ kind: 'default', value }, ...inner._ops]
     ;(this as unknown as { _compileType: typeof inner._compileType })._compileType = (
       inner as unknown as { _compileType: typeof inner._compileType }
@@ -1076,9 +1102,12 @@ export class DefaultSchema<T> extends Schema<T> {
 
 export class TransformSchema<TIn, TOut> extends Schema<TOut> {
   readonly _kind = 'transform' as const
+  /** The wrapped schema — exposed for structural walkers (`toJsonSchema`). */
+  readonly inner: Schema<TIn>
 
   constructor(inner: Schema<TIn>, fn: (value: TIn) => TOut | Promise<TOut>) {
     super()
+    this.inner = inner
     this._ops = [
       ...inner._ops,
       { kind: 'transform', fn: fn as (v: unknown) => unknown | Promise<unknown> },
@@ -1113,8 +1142,9 @@ export interface SuperRefineCtx {
  */
 export class PipeSchema<TOut> extends Schema<TOut> {
   readonly _kind = 'pipe' as const
-  private readonly source: Schema<unknown>
-  private readonly target: Schema<unknown>
+  /** Exposed for structural walkers (`toJsonSchema`). */
+  readonly source: Schema<unknown>
+  readonly target: Schema<unknown>
 
   constructor(source: Schema<unknown>, target: Schema<TOut>) {
     super()
@@ -1137,7 +1167,8 @@ export class PipeSchema<TOut> extends Schema<TOut> {
  */
 export class SuperRefineSchema<T> extends Schema<T> {
   readonly _kind = 'super-refine' as const
-  private readonly source: Schema<T>
+  /** Exposed for structural walkers (`toJsonSchema`). */
+  readonly source: Schema<T>
   private readonly fn: (value: T, ctx: SuperRefineCtx) => void
 
   constructor(source: Schema<T>, fn: (value: T, ctx: SuperRefineCtx) => void) {
@@ -1179,7 +1210,8 @@ export class SuperRefineSchema<T> extends Schema<T> {
 export class PreprocessSchema<TOut> extends Schema<TOut> {
   readonly _kind = 'preprocess' as const
   private readonly fn: (input: unknown) => unknown
-  private readonly target: Schema<TOut>
+  /** Exposed for structural walkers (`toJsonSchema`). */
+  readonly target: Schema<TOut>
 
   constructor(fn: (input: unknown) => unknown, target: Schema<TOut>) {
     super()
@@ -1198,7 +1230,8 @@ export class PreprocessSchema<TOut> extends Schema<TOut> {
  */
 export class NonOptionalSchema<T> extends Schema<T> {
   readonly _kind = 'nonoptional' as const
-  private readonly source: Schema<T>
+  /** Exposed for structural walkers (`toJsonSchema`). */
+  readonly source: Schema<T>
   private readonly message: string
 
   constructor(source: Schema<T>, message?: string) {

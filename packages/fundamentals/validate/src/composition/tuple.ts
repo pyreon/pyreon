@@ -59,13 +59,20 @@ export class TupleSchema<T extends readonly AnySchema[], Rest = never> extends S
       return input
     }
     const out: unknown[] = []
-    for (let i = 0; i < fixed; i++) {
+    const pending: Array<{ slot: number; promise: Promise<unknown> }> = []
+    // Validate one element; an async element (async `.refine`/`.transform`/
+    // registered `.serverCheck`) reserves its positional slot and is filled
+    // once it settles. `parseAsync` awaits the collected Promise; a sync
+    // `parse()` sees it at the root and reports async-in-sync.
+    const runElement = (schema: AnySchema, i: number): void => {
       ctx.path.push(i)
       try {
         const before = ctx.issues.length
-        const v = this.items[i]!._runInto(input[i], ctx)
+        const v = schema._runInto(input[i], ctx)
         if (v instanceof Promise) {
-          ctx.issues.push({ message: '[Pyreon] async element in sync parse — use parseAsync', path: ctx.path })
+          const slot = out.length
+          out.push(undefined)
+          pending.push({ slot, promise: v })
         } else if (ctx.issues.length === before) {
           out.push(v)
         }
@@ -73,24 +80,18 @@ export class TupleSchema<T extends readonly AnySchema[], Rest = never> extends S
         ctx.path.pop()
       }
     }
+    for (let i = 0; i < fixed; i++) runElement(this.items[i]!, i)
     // Validate the variadic tail (if any) against the rest schema.
     if (this.restSchema) {
-      for (let i = fixed; i < input.length; i++) {
-        ctx.path.push(i)
-        try {
-          const before = ctx.issues.length
-          const v = this.restSchema._runInto(input[i], ctx)
-          if (v instanceof Promise) {
-            ctx.issues.push({ message: '[Pyreon] async element in sync parse — use parseAsync', path: ctx.path })
-          } else if (ctx.issues.length === before) {
-            out.push(v)
-          }
-        } finally {
-          ctx.path.pop()
-        }
-      }
+      for (let i = fixed; i < input.length; i++) runElement(this.restSchema as AnySchema, i)
     }
-    return out
+    if (pending.length === 0) return out
+    return Promise.all(pending.map((p) => p.promise)).then((resolved) => {
+      // The output only escapes when the parse produced NO issues — every
+      // element is then valid, so positional slots line up exactly.
+      for (let i = 0; i < pending.length; i++) out[pending[i]!.slot] = resolved[i]
+      return out
+    })
   }
 }
 

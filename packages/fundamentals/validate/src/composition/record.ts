@@ -11,6 +11,15 @@ import { typeIssue } from '../core/issue'
 import { Schema as SchemaBase } from '../core/schema'
 import type { Schema } from '../core/schema'
 
+/** Prototype-pollution-safe property assignment. */
+function assignSafe(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (key === '__proto__') {
+    Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true })
+  } else {
+    target[key] = value
+  }
+}
+
 export class RecordSchema<K extends PropertyKey, V> extends SchemaBase<Record<K, V>> {
   readonly _kind = 'record' as const
   /** Optional key schema — when set, each own key is validated against it (Zod's `z.record(keySchema, valueSchema)`). */
@@ -30,6 +39,8 @@ export class RecordSchema<K extends PropertyKey, V> extends SchemaBase<Record<K,
     }
     const out: Record<string, unknown> = {}
     const source = input as Record<string, unknown>
+    const beforeAll = ctx.issues.length
+    let pending: Array<{ key: string; promise: Promise<unknown> }> | null = null
     for (const key of Object.keys(source)) {
       ctx.path.push(key)
       try {
@@ -40,28 +51,35 @@ export class RecordSchema<K extends PropertyKey, V> extends SchemaBase<Record<K,
         if (this.keySchema) {
           const kv = this.keySchema._runInto(key, ctx)
           if (kv instanceof Promise) {
-            ctx.issues.push({ message: '[Pyreon] async key schema in sync parse — use parseAsync', path: ctx.path })
+            // Async key schema (async `.refine`/registered `.serverCheck`) —
+            // chain the value validation behind it. `parseAsync` awaits; a
+            // sync `parse()` reports async-in-sync at the root.
+            ;(pending ??= []).push({ key, promise: kv.then(() => this.value._runInto(source[key], ctx)) })
             continue
           }
           if (ctx.issues.length !== before) continue // invalid key → skip this entry
         }
         const v = this.value._runInto(source[key], ctx)
         if (v instanceof Promise) {
-          ctx.issues.push({ message: '[Pyreon] async value schema in sync parse — use parseAsync', path: ctx.path })
+          ;(pending ??= []).push({ key, promise: v })
           continue
         }
         if (ctx.issues.length !== before) continue
-        // Prototype-pollution-safe assignment.
-        if (key === '__proto__') {
-          Object.defineProperty(out, key, { value: v, enumerable: true, writable: true, configurable: true })
-        } else {
-          out[key] = v
-        }
+        assignSafe(out, key, v)
       } finally {
         ctx.path.pop()
       }
     }
-    return out
+    if (!pending) return out
+    const pend = pending
+    return Promise.all(pend.map((p) => p.promise)).then((resolved) => {
+      // The output only escapes when the parse produced NO issues — on any
+      // failure the caller discards it, so per-entry attribution is unneeded.
+      if (ctx.issues.length === beforeAll) {
+        for (let i = 0; i < pend.length; i++) assignSafe(out, pend[i]!.key, resolved[i])
+      }
+      return out
+    })
   }
 }
 

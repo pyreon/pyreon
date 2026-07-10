@@ -41,6 +41,11 @@
       "bun": "./src/mini.ts",
       "import": "./lib/mini.js",
       "types": "./lib/types/mini.d.ts"
+    },
+    "./json-schema": {
+      "bun": "./src/json-schema.ts",
+      "import": "./lib/json-schema.js",
+      "types": "./lib/json-schema.d.ts"
     }
   },
   "publishConfig": {

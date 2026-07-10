@@ -17,18 +17,23 @@
  * interpreter; only the dispatch is flattened.
  *
  * A subtree it can't inline (optional/nullable/default, transform/refine,
- * union/record/tuple/map/set/intersection/lazy/coerce, nested objects with
- * their own checks or non-strip key policy) falls back to that subtree's
- * `_runInto` (captured closure) — so the rest still inlines. Schemas it
- * can't JIT at all (non-object root, root with its own checks, non-strip
- * root) return `null` → the caller uses the interpreter. Always correct;
- * fast wherever it can be.
+ * union/record/tuple/map/set/intersection/lazy/coerce, serverCheck, nested
+ * objects with their own checks or non-strip key policy) falls back to that
+ * subtree's `_runInto` (captured closure) — so the rest still inlines. A
+ * fallback that resolves ASYNCHRONOUSLY (async `.refine`/`.transform`/
+ * registered `.serverCheck` under `parseAsync`) is deferred onto a pending
+ * list the root return awaits — interpreter parity for async trees, zero
+ * cost on the all-sync path (the list stays `null`). Schemas it can't JIT
+ * at all (non-object root, root with its own checks, non-strip root) return
+ * `null` → the caller uses the interpreter. Always correct; fast wherever
+ * it can be.
  *
  * Assignment is prototype-pollution-safe at every level (a `__proto__` key
  * is written via `Object.defineProperty`, never `obj.__proto__ =`).
  */
 
 import { makeIssue, typeIssue } from './issue'
+import type { PathSegment } from './issue'
 import type { ParseCtx } from './ops'
 import type { Schema, SyncValidator } from './schema'
 
@@ -153,6 +158,62 @@ function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
 }
 
 /**
+ * Path state carried through CODEGEN (not runtime): the EFFECTIVE path of the
+ * current position is `ctx.path` (the flushed, real portion) + `[dynIdx]` (an
+ * enclosing array's loop-index variable, if any) + `suffix` (static object
+ * keys accumulated since the last flush). Fully-inline subtrees never touch
+ * `ctx.path` on the VALID path — the dominant per-field cost of the old
+ * emission (measured ~23ns on a 4-field object) — and reconstruct the full
+ * path only at FAILURE sites via {@link jitEffectivePath}. Array loops and
+ * `_runInto` fallbacks FLUSH the pending segments onto the real `ctx.path`
+ * first (fallback subtrees + always-called format-check closures read it).
+ */
+interface PathState {
+  dynIdx: string | null
+  suffix: string[]
+}
+
+/** Reconstruct the effective path at a FAILURE site (see {@link PathState}). */
+export function jitEffectivePath(
+  c: ParseCtx,
+  suffix: ReadonlyArray<string>,
+  idx?: number,
+): ReadonlyArray<PathSegment> {
+  if (idx === undefined && suffix.length === 0) return c.path
+  return idx === undefined ? [...c.path, ...suffix] : [...c.path, idx, ...suffix]
+}
+
+type CheckFn = (v: unknown, ctx: ParseCtx) => void
+
+/**
+ * Wrap a check closure so it observes the correct `ctx.path` under path
+ * elision: pushes the pending segments (enclosing array index + static
+ * suffix) around the call, restoring after. Identity (no wrapper, no cost)
+ * when there is nothing pending — the root-scalar hot path is byte-identical
+ * to the pre-elision emission.
+ */
+function wrapCheckWithPath(fn: CheckFn, suffix: ReadonlyArray<string>, hasDynIdx: boolean): CheckFn {
+  if (suffix.length === 0 && !hasDynIdx) return fn
+  return (v: unknown, c: ParseCtx, idx?: number) => {
+    const p = c.path
+    let n = 0
+    if (idx !== undefined) {
+      p.push(idx)
+      n++
+    }
+    for (const seg of suffix) {
+      p.push(seg)
+      n++
+    }
+    try {
+      fn(v, c)
+    } finally {
+      while (n-- > 0) p.pop()
+    }
+  }
+}
+
+/**
  * A plain object we can recurse into (no own checks/transforms, strip policy,
  * NO catchall — a catchall validates unknown keys, which the inline shape-only
  * loop would silently skip).
@@ -189,33 +250,12 @@ function fieldDefinedWhenValid(field: FieldLike): boolean {
 }
 
 /**
- * Whether `s` (or any nested field) carries a `serverCheck` op. The JIT emits
- * SYNCHRONOUS code; a `serverCheck` resolved by an async registered validator
- * returns a Promise, which the generated code can't await — so any tree with a
- * `serverCheck` must fall back to the (now async-aware) interpreter. Bounded
- * recursion (a deeper tree disqualifies — conservative, never wrong).
- */
-const treeHasServerCheck = (s: FieldLike, depth = 0): boolean => {
-  if (depth > 30) return true
-  if (Array.isArray(s._ops)) for (const op of s._ops) if (op.kind === 'serverCheck') return true
-  if (s.shape)
-    for (const k in s.shape) {
-      const child = s.shape[k]
-      if (child && treeHasServerCheck(child, depth + 1)) return true
-    }
-  return !!s.element && treeHasServerCheck(s.element, depth + 1)
-}
-
-/**
  * Try to JIT-compile `schema`. Returns a specialized validator, or `null`
  * if the root isn't an inline-able object (caller → interpreter). Never
  * throws — any codegen error returns `null`.
  */
 export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
   const root = schema as unknown as FieldLike
-  // A `serverCheck` anywhere in the tree forces the interpreter (the JIT can't
-  // await an async registered validator). Cheap scan, before any codegen.
-  if (treeHasServerCheck(root)) return null
   // JIT a composite root (object/array) OR an inline-primitive root (string /
   // number / … with only checks). A primitive root inlines its `typeof` +
   // cheap check conditions with zero closure calls on the valid path —
@@ -234,11 +274,19 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
     let uid = 0
     const nv = (): string => `t${uid++}`
 
-    const genChecks = (ops: CheckOpLike[], ve: string): string =>
-      ops
+    const genChecks = (ops: CheckOpLike[], ve: string, ps: PathState): string => {
+      const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
+      return ops
         .map((op) => {
           const cond = inlineCheckCond(op, ve)
-          const call = `${cap(op._checkFn)}(${ve}, ctx);`
+          // Check closures read `ctx.path` when they push an issue — under
+          // path elision they get a wrapper that reinstates the pending
+          // segments around the call (identity when nothing is pending, so
+          // the root-scalar path is unchanged). Cheap inline conds call the
+          // closure on FAILURE only; format checks call it always (the
+          // wrapper's push/pop then costs the same as the old per-field
+          // P.push — never more).
+          const call = `${cap(wrapCheckWithPath(op._checkFn!, ps.suffix, ps.dynIdx !== null))}(${ve}, ctx${idxArg});`
           // Inline ONLY cheap literal conditions (length / numeric compares):
           // the valid path then pays no closure CALL. Format/regex checks
           // deliberately stay closure-calls — MEASURED 3.5× FASTER than
@@ -248,6 +296,7 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
           return cond ? `if (${cond}) { ${call} }` : call
         })
         .join(' ')
+    }
 
     // Prototype-pollution-safe assignment of `valExpr` into `target[kl]`.
     const assign = (target: string, kl: string, key: string, valExpr: string): string =>
@@ -255,11 +304,19 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         ? `Object.defineProperty(${target}, ${kl}, { value: ${valExpr}, enumerable: true, writable: true, configurable: true });`
         : `${target}[${kl}] = ${valExpr};`
 
-    const lines: string[] = []
+    // Emit the real `ctx.path` pushes for the pending segments (an enclosing
+    // array's dynamic index + the static key suffix) and the matching pops.
+    // Used before an array element loop / a `_runInto` fallback — the two
+    // places that need the REAL path to be current.
+    const flushPath = (ps: PathState): { pre: string; post: string } => {
+      const pushes: string[] = []
+      if (ps.dynIdx) pushes.push(`P.push(${ps.dynIdx});`)
+      for (const seg of ps.suffix) pushes.push(`P.push(${JSON.stringify(seg)});`)
+      const n = (ps.dynIdx ? 1 : 0) + ps.suffix.length
+      return { pre: pushes.join(' '), post: n === 0 ? '' : Array(n).fill('P.pop();').join(' ') }
+    }
 
-    // Async-in-sync diagnostics, matching the interpreter's two messages.
-    const ASYNC_FIELD = '[Pyreon] async schema used in sync parse — use parseAsync'
-    const ASYNC_ELEMENT = '[Pyreon] async element schema used in sync parse — use parseAsync'
+    const lines: string[] = []
 
     // Bound generated-function size + codegen recursion on a pathologically
     // deep schema: beyond this nesting depth a subtree uses its `_runInto`
@@ -269,9 +326,18 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
 
     // Validate `srcVar`; on success emit `onValid(resultExpr)`. The caller
     // has already pushed any path segment. Recurses for object/array.
-    // `asyncMsg` is the diagnostic pushed if the fallback subtree turns out
-    // to be async (interpreter parity: element vs field wording).
-    const genValue = (field: FieldLike, srcVar: string, onValid: (r: string) => string, asyncMsg: string, depth: number): void => {
+    // `onAsync(promiseExpr)` is emitted when a FALLBACK subtree returns a
+    // Promise (async `.refine`/`.transform`/registered `.serverCheck` under
+    // `parseAsync`) — it defers the result application onto the function-level
+    // pending list `A`, which the root return awaits (interpreter parity: the
+    // whole parse resolves to a Promise; a sync `parse()` reports the ONE
+    // canonical async-in-sync issue at the root).
+    const genValue = (field: FieldLike, srcVar: string, onValid: (r: string) => string, onAsync: (p: string) => string, depth: number, ps: PathState): void => {
+      // Failure-site issue makers reconstruct the effective path from the
+      // captured static suffix + the (runtime) enclosing array index — the
+      // VALID path never touches `ctx.path` for inline subtrees.
+      const sfx = ps.suffix
+      const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
       if (isInlinePrimitive(field)) {
         const kind = field._kind as PrimKind
         const litRef = kind === 'literal' ? cap(field.value) : ''
@@ -280,7 +346,7 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         // <value>" — NOT the generic typeIssue ("Expected literal, …").
         const ti =
           kind === 'literal'
-            ? cap((val: unknown, c: ParseCtx) => {
+            ? cap((val: unknown, c: ParseCtx, idx?: number) => {
                 const lit = field.value
                 c.issues.push(
                   makeIssue({
@@ -289,68 +355,113 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
                     params: { expected: lit, actual: val },
                     fallback: `Expected ${String(lit)}`,
                     message: `Expected ${String(lit)}`,
-                    path: c.path,
+                    path: jitEffectivePath(c, sfx, idx),
                   }),
                 )
               })
-            : cap((val: unknown, c: ParseCtx) => {
-                c.issues.push(typeIssue(kind, val, c.path))
+            : cap((val: unknown, c: ParseCtx, idx?: number) => {
+                c.issues.push(typeIssue(kind, val, jitEffectivePath(c, sfx, idx)))
               })
-        const checks = genChecks(fieldCheckOps(field), srcVar)
-        lines.push(`if (${typeFailExpr(kind, srcVar, litRef)}) { ${ti}(${srcVar}, ctx); } else { ${checks} ${onValid(srcVar)} }`)
+        const checks = genChecks(fieldCheckOps(field), srcVar, ps)
+        lines.push(`if (${typeFailExpr(kind, srcVar, litRef)}) { ${ti}(${srcVar}, ctx${idxArg}); } else { ${checks} ${onValid(srcVar)} }`)
         return
       }
       if (depth <= MAX_DEPTH && isPlainObject(field)) {
-        const ti = cap((val: unknown, c: ParseCtx) => {
-          c.issues.push(typeIssue('object', val, c.path))
+        const ti = cap((val: unknown, c: ParseCtx, idx?: number) => {
+          c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
         })
         const outV = nv()
-        lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${ti}(${srcVar}, ctx); } else {`)
-        lines.push(`var ${outV} = {};`)
-        genObjectBody(field.shape as Record<string, FieldLike>, srcVar, outV, depth + 1)
+        lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${ti}(${srcVar}, ctx${idxArg}); } else {`)
+        lines.push(`let ${outV} = {};`)
+        genObjectBody(field.shape as Record<string, FieldLike>, srcVar, outV, depth + 1, ps)
+        // A pending descendant patches `outV` by reference when it settles, so
+        // handing the object to `onValid` NOW is correct — the root return
+        // barrier awaits every pending entry before the value escapes.
         lines.push(onValid(outV))
         lines.push(`}`)
         return
       }
       if (depth <= MAX_DEPTH && isInlineArray(field) && field.element) {
-        const ti = cap((val: unknown, c: ParseCtx) => {
-          c.issues.push(typeIssue('array', val, c.path))
+        const ti = cap((val: unknown, c: ParseCtx, idx?: number) => {
+          c.issues.push(typeIssue('array', val, jitEffectivePath(c, sfx, idx)))
         })
         const arrV = nv()
         const iV = nv()
         const eV = nv()
         const beforeV = nv()
-        const arrChecks = genChecks(fieldCheckOps(field), srcVar)
-        lines.push(`if (!Array.isArray(${srcVar})) { ${ti}(${srcVar}, ctx); } else {`)
-        lines.push(`var ${arrV} = []; var ${beforeV} = ctx.issues.length;`)
-        lines.push(`for (var ${iV} = 0; ${iV} < ${srcVar}.length; ${iV}++) { var ${eV} = ${srcVar}[${iV}]; P.push(${iV});`)
+        const a0V = nv()
+        // Elements need a REAL current path (their own dynamic index rides on
+        // `ps.dynIdx`; fallback elements + format checks read `ctx.path`) —
+        // flush this array's pending segments around the whole element block.
+        const { pre, post } = flushPath(ps)
+        const elemPs: PathState = { dynIdx: iV, suffix: [] }
+        // The array's own checks run INSIDE the flushed block (sync case) or
+        // at settlement (deferred case) — in BOTH they read the live
+        // `ctx.path` unwrapped: flushed = correct full path; deferred = the
+        // unwound path, which is EXACTLY what the interpreter's post-await
+        // `runPostType` checks observe (parity over prettiness).
+        const arrChecks = genChecks(fieldCheckOps(field), srcVar, { dynIdx: null, suffix: [] })
+        lines.push(`if (!Array.isArray(${srcVar})) { ${ti}(${srcVar}, ctx${idxArg}); } else {`)
+        if (pre) lines.push(pre)
+        lines.push(`let ${arrV} = []; let ${beforeV} = ctx.issues.length; let ${a0V} = A === null ? 0 : A.length;`)
+        lines.push(`for (let ${iV} = 0; ${iV} < ${srcVar}.length; ${iV}++) { let ${eV} = ${srcVar}[${iV}];`)
         // element pushed within its own type-ok branch (a failed element pushes
         // issues → the overall parse fails → the array value is discarded), so
         // the hot path pays no extra guard. Matches the interpreter element loop.
-        genValue(field.element, eV, (r) => `${arrV}.push(${r});`, ASYNC_ELEMENT, depth + 1)
-        lines.push(`P.pop(); }`)
+        // An ASYNC element reserves its positional slot now and is filled when
+        // it settles (ArraySchema's slot semantics — order preserved).
+        const slotV = nv()
+        genValue(
+          field.element,
+          eV,
+          (r) => `${arrV}.push(${r});`,
+          (p) =>
+            `const ${slotV} = ${arrV}.length; ${arrV}.push(undefined); if (A === null) { A = []; B = []; } A.push(${p}); B.push((${eV}r) => { ${arrV}[${slotV}] = ${eV}r; });`,
+          depth + 1,
+          elemPs,
+        )
+        lines.push(`}`)
         // The array's OWN checks (min/max/length) run AFTER element validation
         // and ONLY when no element failed — exactly the interpreter's
         // "type-check produced issues → skip checks" contract (compileSchema).
-        if (arrChecks) lines.push(`if (ctx.issues.length === ${beforeV}) { ${arrChecks} }`)
+        // They run while the array's path is still FLUSHED (their closures
+        // read `ctx.path` on failure). If the element loop deferred anything,
+        // the checks defer too (they must observe the final issue state,
+        // post-settlement) — the deferred closure reconstructs the path via
+        // its own wrapper, so it runs with `sfxArr` captured, not the live P.
+        if (arrChecks) {
+          lines.push(
+            `if (A === null || A.length === ${a0V}) { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } } else { A.push(Promise.all(A.slice(${a0V})).then(() => { if (ctx.issues.length === ${beforeV}) { ${arrChecks} } })); B.push(NOOP); }`,
+          )
+        }
+        if (post) lines.push(post)
         lines.push(onValid(arrV))
         lines.push(`}`)
         return
       }
-      // Fallback: this subtree's compiled validator against the shared ctx.
+      // Fallback: this subtree's compiled validator against the shared ctx —
+      // which must observe the REAL current path (issues, pending serverCheck
+      // entries, async snapshots), so the pending segments are flushed around
+      // the call. A Promise result (async `.refine`/`.transform`/registered
+      // `.serverCheck`) routes through `onAsync` — deferred onto `A`, awaited
+      // by the root return, exactly like the interpreter's pending collection.
       const run = cap((val: unknown, c: ParseCtx) => field._runInto(val, c))
       const fv = nv()
+      const { pre, post } = flushPath(ps)
       lines.push(
-        `var ${fv} = ${run}(${srcVar}, ctx); if (${fv} && typeof ${fv}.then === "function") { ctx.issues.push({ message: ${JSON.stringify(asyncMsg)}, path: P.slice() }); } else { ${onValid(fv)} }`,
+        `${pre} let ${fv} = ${run}(${srcVar}, ctx); ${post} if (${fv} && typeof ${fv}.then === "function") { ${onAsync(fv)} } else { ${onValid(fv)} }`,
       )
     }
 
-    function genObjectBody(shape: Record<string, FieldLike>, srcVar: string, outVar: string, depth: number): void {
+    function genObjectBody(shape: Record<string, FieldLike>, srcVar: string, outVar: string, depth: number, ps: PathState): void {
       for (const key of Object.keys(shape)) {
         const field = shape[key]!
         const kl = keyLit(key)
         const vV = nv()
-        lines.push(`P.push(${kl}); var ${vV} = ${srcVar}[${kl}];`)
+        // NO `P.push(key)` — the key rides on the codegen-time suffix; only
+        // failure sites / flush points materialize it (the path-elision win).
+        const fieldPs: PathState = { dynIdx: ps.dynIdx, suffix: [...ps.suffix, key] }
+        lines.push(`let ${vV} = ${srcVar}[${kl}];`)
         // The assignment guard `if (r !== undefined || (k in src))` decides
         // whether strip-mode copies the key. It is REDUNDANT when the value
         // reaching `onValid` is provably-not-`undefined`: an inline primitive
@@ -366,17 +477,34 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         const onValid = fieldDefinedWhenValid(field)
           ? (r: string) => assign(outVar, kl, key, r)
           : (r: string) => `if (${r} !== undefined || (${kl} in ${srcVar})) { ${assign(outVar, kl, key, r)} }`
-        genValue(field, vV, onValid, ASYNC_FIELD, depth)
-        lines.push(`P.pop();`)
+        // Deferred variant of the same strip-guarded assignment — an async
+        // field's resolved value is applied AT THE ROOT BARRIER (A = promises,
+        // B = paired apply callbacks), in deferral order. Applying inside each
+        // promise's own `.then` would key-order the output by SETTLEMENT order
+        // — observably different from the interpreter's field-ordered pend
+        // loop (fuzz-found key-order divergence).
+        const onAsync = (p: string) =>
+          `if (A === null) { A = []; B = []; } A.push(${p}); B.push((${vV}r) => { if (${vV}r !== undefined || (${kl} in ${srcVar})) { ${assign(outVar, kl, key, `${vV}r`)} } });`
+        genValue(field, vV, onValid, onAsync, depth, fieldPs)
       }
     }
 
     lines.push(`var P = ctx.path;`)
+    // Function-level pending lists — async fallback subtrees defer here:
+    // `A[i]` is the promise, `B[i]` the paired apply-callback run with the
+    // resolved value at the root barrier (in deferral = field order, matching
+    // the interpreter's pend loop; per-settlement application would key-order
+    // the output by settlement order). NOOP pads `B` for self-applying
+    // entries (deferred array checks).
+    lines.push(`var A = null; var B = null; var NOOP = () => {};`)
+    const BARRIER = (r: string) =>
+      `return A === null ? ${r} : Promise.all(A).then((vs) => { for (var z = 0; z < vs.length; z++) B[z](vs[z]); return ${r}; });`
     // Validate the root via the same recursive generator: on a valid value
-    // `return` it; if the root type-guard fails the issue was pushed and we
-    // fall through to `return input` (the raw value — the parse has failed).
-    genValue(root, 'input', (r) => `return ${r};`, ASYNC_FIELD, 0)
-    lines.push(`return input;`)
+    // `return` it (behind the pending barrier when anything deferred); if the
+    // root type-guard fails the issue was pushed and we fall through to
+    // `return input` (the raw value — the parse has failed).
+    genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { dynIdx: null, suffix: [] })
+    lines.push(BARRIER('input'))
 
     const body = lines.join('\n')
     // eslint-disable-next-line no-new-func
