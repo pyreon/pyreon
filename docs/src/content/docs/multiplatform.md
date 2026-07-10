@@ -338,7 +338,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | State (signals/computed/stores) | 9 | 1.0 | R5 — counter increment + store mutation asserted both platforms |
 | Forms & validation | 6 | 0.5 | R5 partial — useForm v2 device-proven (validators, bindings, submit gating); arrays/dynamic fields absent |
 | Networking (fetch/ws/http) | 8 | 0.5 | fetch R5 (success + error path asserted); websocket/http-verbs R2 |
-| Storage (kv/secure/db) | 7 | 0.0 | R2 — runtimes exist + exercised in device apps, but persistence never ASSERTED (M1.2) |
+| Storage (kv/secure/db) | 7 | 0.3 | kv persistence ASSERTED (M1.2a): iOS terminate+relaunch (R4, local Simulator pass) + Android activity-recreation (proven by the PR device run / nightly); secure-storage + database still R2 |
 | Auth | 5 | 0.3 | gate/login flow R5; real IdP token flow R1–R2 |
 | Platform APIs (haptics/share/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.0 | clipboard/geolocation/push/payments/permissions exist at R2 (~40% of the set); the rest ABSENT |
 | Animations & transitions | 6 | 0.0 | absent (v1 exclusion) |
@@ -353,7 +353,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | Background / push | 3 | 0.0 | R2 runtime; manual `.start()`; no device test |
 
 **Weighted totals (2026-07-08 baseline):** device-proven (R4+) coverage
-**≈ 37%** (40.1 / 107); compile-proven (R2+) upper bound **≈ 74%** —
+**≈ 39%** (42.2 / 107); compile-proven (R2+) upper bound **≈ 74%** —
 i.e. roughly three-quarters of the weighted surface already *exists and
 typechecks*, but only about a third is *proven to behave* on a device.
 **The production goal is 70–90% at R4+**; the gap between the two
@@ -375,7 +375,7 @@ uses the hook at all.
 | `useFetch` | tasks | ✅ success (`lc-quote`) + error (`lc-error`) render | **R5** |
 | `useForm` | tasks | ✅ validators, field bindings, submit gating (login error path) | **R5** |
 | `useParams` / router nav + guards | router-demo | ✅ nav, typed params, auth gate | **R5** |
-| `useStorage` | todomvc | ❌ exercised (todos persist through it) but persistence-across-relaunch is NEVER asserted | R4-exercised, credit 0 |
+| `useStorage` | todomvc | ✅ persistence: `test_todosPersistAcrossRelaunch` (iOS, genuine terminate+relaunch) + `todosPersistAcrossActivityRecreation` (Android, activity recreation — honest scope: not full process death) | **R4→R5** |
 | `useLoaderData` (loader auto-emit) | — | ❌ | R2 |
 | `useAuth` | — (the tasks "login" is `useForm` + a router guard, NOT this hook) | ❌ | R2 |
 | `useDatabase` | — | ❌ | R2 |

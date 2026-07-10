@@ -50,7 +50,6 @@ import { Stack, Inline, Text, Button, Field, Toggle } from '@pyreon/primitives'
 type Todo = { id: number; text: string; done: boolean }
 type Filter = 'all' | 'active' | 'completed'
 
-let nextId = 1
 
 export function TodoApp() {
   const todos = useStorage<Todo[]>('pyreon-todomvc:todos', [])
@@ -70,7 +69,13 @@ export function TodoApp() {
   const addTodo = () => {
     const text = draft().trim()
     if (text.length === 0) return
-    todos.set([...todos(), { id: nextId++, text, done: false }])
+    // Derive the next id from PERSISTED state — a module-level counter
+    // resets on every launch while todos survive via useStorage, so a
+    // second-session add collided with a persisted id and the duplicate
+    // `<For by={id}>` key silently dropped the new row (caught by
+    // test_todosPersistAcrossRelaunch on a state-polluted simulator).
+    const maxId = todos().reduce((m, t) => (t.id > m ? t.id : m), 0)
+    todos.set([...todos(), { id: maxId + 1, text, done: false }])
     draft.set('')
   }
 
@@ -93,6 +98,7 @@ export function TodoApp() {
         onChangeText={(t) => draft.set(t)}
         onSubmit={addTodo}
         placeholder="What needs to be done?"
+        data-testid="new-todo"
       />
 
       <For each={visible} by={(t) => t.id}>
