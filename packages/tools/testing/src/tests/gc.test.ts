@@ -71,4 +71,19 @@ describe('without --expose-gc', () => {
   it.skipIf(hasGc)('throws an actionable error', async () => {
     await expect(expectGarbageCollected(() => ({}))).rejects.toThrow(/--expose-gc/)
   })
+
+  it('throws the actionable error when globalThis.gc is unavailable (stubbed)', async () => {
+    // Deterministic in --expose-gc runs too: `hasGc` reads globalThis.gc at
+    // CALL time, so hiding it exercises the real no-gc error path.
+    // `gc` is writable but NON-configurable under --expose-gc: assign
+    // undefined (delete throws), restore in finally.
+    const g = globalThis as { gc?: (() => void) | undefined }
+    const saved = g.gc
+    g.gc = undefined
+    try {
+      await expect(expectGarbageCollected(() => ({}))).rejects.toThrow(/--expose-gc/)
+    } finally {
+      g.gc = saved
+    }
+  })
 })

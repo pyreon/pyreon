@@ -83,3 +83,31 @@ describe('validate — array max + nested issue paths', () => {
   })
 })
 
+
+// Substring-check FAILURE arms (interpreter path). The valid path is compiled
+// through the JIT; these lock the issue shape each check emits on rejection.
+describe('validate — string substring checks reject with the named issue', () => {
+  it('startsWith rejects a non-matching value with the prefix in the message', () => {
+    const schema = s.string().startsWith('img-')
+    expect(schema.parse('img-01').ok).toBe(true)
+    const r = schema.parse('doc-01')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(String(r.issues[0]!.message)).toContain('start with "img-"')
+  })
+
+  it('endsWith rejects a non-matching value with the suffix in the message', () => {
+    const schema = s.string().endsWith('.png')
+    expect(schema.parse('a.png').ok).toBe(true)
+    const r = schema.parse('a.jpg')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(String(r.issues[0]!.message)).toContain('end with ".png"')
+  })
+
+  it('includes rejects a non-matching value with the needle in the message', () => {
+    const schema = s.string().includes('@')
+    expect(schema.parse('a@b').ok).toBe(true)
+    const r = schema.parse('nope')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(String(r.issues[0]!.message)).toContain('"@"')
+  })
+})

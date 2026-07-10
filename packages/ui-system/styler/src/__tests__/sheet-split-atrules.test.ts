@@ -488,3 +488,55 @@ describe('StyleSheet -- splitAtRules string/comment/url awareness', () => {
     ).toBe(true)
   })
 })
+
+// The string/comment/url-aware tokenizer (both `splitAtRules` and
+// `splitTopLevelRules`) must TOLERATE malformed tails — an unterminated
+// comment / unquoted url token, or a `url`-looking ident that is not a url
+// token — scanning to end-of-input instead of hanging, throwing, or
+// mis-skipping. Locks the `close === -1` and `isUrlOpen` bail arms.
+describe('StyleSheet -- tokenizer tolerance (malformed / url-lookalike tails)', () => {
+  it('a u-prefixed NON-url function (urgent() / urlx ident) does not trigger url skipping', () => {
+    const s = createSheet()
+    const { rules } = s.prepare(
+      'transform: urgent(1); background: urlx; @media (min-width: 600px){color: blue;}',
+    )
+    // Neither `urgent(` (fails the `l` check) nor `urlx` (fails the `(`
+    // check) is a url token — the scan must still find and extract @media.
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}/)
+    expect(rules).toContain('transform: urgent(1); background: urlx;')
+  })
+
+  it('an UNTERMINATED block comment is tolerated (scan runs to end, no hang/throw)', () => {
+    const s = createSheet()
+    // The @media BEFORE the malformed tail keeps the input off the
+    // `indexOf('@') === -1` fast path, so the tokenizer actually scans.
+    const { rules } = s.prepare(
+      '@media (min-width: 600px){color: blue;} color: red; /* unterminated comment',
+    )
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}/)
+    expect(rules).toContain('color: red;')
+  })
+
+  it('an UNTERMINATED unquoted url token is tolerated (swallows to end, no hang)', () => {
+    const s = createSheet()
+    const { rules } = s.prepare(
+      '@media (min-width: 600px){color: blue;} background: url(oops-no-close',
+    )
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}/)
+    expect(rules).toContain('background: url(oops-no-close')
+  })
+
+  it('splitTopLevelRules tolerates an unterminated unquoted url token', async () => {
+    const { splitTopLevelRules } = await import('../sheet')
+    const rules = splitTopLevelRules('.a{background:url(oops-no-close')
+    // Single (unterminated) rule survives; the scan terminated.
+    expect(rules.length).toBeLessThanOrEqual(1)
+  })
+
+  it('a stray unbalanced `}` at depth 0 is tolerated (no negative-depth poisoning)', () => {
+    const s = createSheet()
+    const { rules } = s.prepare('color: red; } @media (min-width: 600px){color: blue;}')
+    // The stray brace must not poison depth: the @media is still extracted.
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}/)
+  })
+})

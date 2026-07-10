@@ -11,6 +11,19 @@ export default mergeConfig(
     category: 'tools',
     environment: 'happy-dom',
     excludeBrowserTests: true,
+    // Dogfood the package's own `setupFiles` entry (`@pyreon/testing/vitest`):
+    // registers afterEach(cleanup) + the jest-dom matchers for THIS suite the
+    // same way consumer suites wire it — the setup module is real shipped
+    // surface, so it must be exercised (it sat at 0% coverage before this).
+    setupFiles: ['./src/vitest.ts'],
+    // Explicit honest thresholds (2026-07 coverage-gate restoration): without
+    // an explicit `statements:` entry the check-coverage gate assumed 95 while
+    // the category-default vitest gate enforced 80/75 — so the package failed
+    // the Coverage (Full) gate while its own runs looked healthy. Measured
+    // 100/91.66/100/100 after the failure-path specs + setup dogfooding
+    // landed; thresholds sit 1pp under (elements' drift-margin convention).
+    // The 2 residual uncovered branches are matcher-internal defensive arms.
+    coverageThresholds: { statements: 99, branches: 90, functions: 99, lines: 99 },
     // --expose-gc so `globalThis.gc` is available to the GC/leak matchers
     // (expectGarbageCollected / expectNoReactiveLeak) — same harness as
     // @pyreon/runtime-dom.

@@ -492,19 +492,20 @@ describe('useFormState(form, selector) — scalar getters', () => {
   })
 })
 
-// ─── resolveSchemaValidator falls through on a non-schema object ─────────────
-// Covers use-form.ts resolveSchemaValidator's `return undefined` tail: a
-// `schema` that is neither a function, a typed adapter, nor a Standard
-// Schema is IGNORED (no validator installed) instead of crashing the form.
+// ─── resolveSchemaValidator rejects a non-schema object at definition ────────
+// Covers use-form.ts resolveSchemaValidator's throw tail (#2152): a `schema`
+// that is neither a function, a typed adapter, nor a Standard Schema THROWS
+// at useForm() time — silently disabling all schema validation (the pre-#2152
+// behavior) would let invalid data through unnoticed.
 
 describe('useForm({ schema }) with a non-schema object', () => {
-  it('ignores the bogus schema — the form still validates as valid', async () => {
-    const form = useForm<{ name: string }>({
-      initialValues: { name: '' },
-      schema: { not: 'a schema' } as never,
-      onSubmit: () => {},
-    })
-    await expect(form.validate()).resolves.toBe(true)
-    expect(form.errors()).toEqual({})
+  it('throws a [Pyreon]-prefixed definition-time error naming the accepted shapes', () => {
+    expect(() =>
+      useForm<{ name: string }>({
+        initialValues: { name: '' },
+        schema: { not: 'a schema' } as never,
+        onSubmit: () => {},
+      }),
+    ).toThrow(/\[Pyreon\] `schema` must be a SchemaValidateFn/)
   })
 })
