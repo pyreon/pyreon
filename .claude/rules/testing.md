@@ -20,6 +20,39 @@
 - Module-level const captures (e.g., `const _isBrowser = typeof window !== "undefined"`) move branches from per-call to module-load time
 - Run coverage: `cd packages/<name> && bun run test -- --coverage`
 
+## Test the shipped ENTRY, not the export
+
+Unit tests call the exported function; nothing runs the thing users actually run. The 2026-07 release audit found three bugs that survived **every** release in that blind spot:
+
+- **`pyreon-lint`'s bin was a total no-op in every published version.** `bin/pyreon-lint.js` was a bare `import('../lib/cli.js')`, and the built `lib/cli.js` is a pure re-export — `src/cli.ts`'s `if (import.meta.main) main()` self-run guard does not survive the library build (rolldown drops it, and inside a bundled chunk `import.meta.main` is never true). All 1058 unit tests were green because they call `runCli()` directly.
+- **Every scaffolded Docker deploy was broken since inception** — the Dockerfile ran `node dist/server.js`, a file **no adapter has ever emitted** (node emits `dist/index.js`). Nothing built the image or compared the `CMD` against the adapter's real output.
+- **The Vercel adapter wrote `.vercel/output` inside `outDir`**, where Vercel never looks (a dead config whose cache-header routes never applied). Its unit tests asserted the file existed *at the path the adapter chose* — a test that reads the path the code picked can only ever confirm the code agrees with itself.
+
+Rules:
+
+- Any shipped ENTRY POINT — a `bin`, a Dockerfile `CMD`, a platform-mandated output path, a scaffolded config — needs a test that exercises the ENTRY, not the library function behind it. `@pyreon/lint`'s `bin-invokes-cli.test.ts` is the reference: it SPAWNS the real bin.
+- **Assert exit codes only** for spawned processes. Captured stdout is non-deterministic under parallel load (see anti-patterns "Subprocess testing as a default").
+- **Assert paths against the producer's exported constants**, never a literal re-typed in the test. `@pyreon/zero`'s `adapters/contract.ts` (`*_ADAPTER_OUTPUT`) exists for exactly this: the adapters AND `create-zero`'s scaffolded configs key off it, so drift fails a test instead of a deploy.
+- If a suite has a "skip when the artifact is missing" guard, add a loud assertion that the artifact IS present in this environment — a skipped suite must never masquerade as coverage.
+
+## Timeouts: the wall-clock backstop must exceed the composed internal budgets
+
+A per-test timeout sized against ONE internal deadline is wrong the moment a test awaits two. `sync/ws-relay.test.ts` flaked on loaded runners while passing locally in <1s: vitest's 20s default was sized for one 15s `waitFor`, but `RECONNECTS with backoff` awaits **three sequentially** (45s of budget). Worse, its tick-counted deadline is deliberately *starvation-tolerant* (it counts SCHEDULED ticks, so it self-extends when the event loop is starved — exactly the CI condition it exists for), pushing its wall-clock past 20s while its own budget is still unspent. vitest's wall clock always won and killed the test with an **opaque** "test timed out", hiding the descriptive `waitFor: timed out`.
+
+- Derive the backstop (`MAX_SEQUENTIAL_WAITS × per-wait budget + setup/teardown headroom`); do not guess it.
+- `describe(name, { timeout }, fn)` IS honored in vitest 4 — prove the option is applied (not silently ignored) by temporarily forcing `timeout: 1` and confirming `Test timed out in 1ms`.
+- A load-dependent flake is usually **not locally reproducible**. Per the "Cross-tab Playwright specs" precedent below, the structural argument is the bisect proof — state that honestly instead of claiming a repro you don't have.
+
+## A test that encodes the bug is worse than no test
+
+Three specs in the audited releases asserted the broken behavior, so they could never catch it:
+
+- `getValues()` "falls back to initial when nullish" — codifying the `??` that silently swallowed an explicit `null` from the submit payload.
+- vercel's "does NOT copy dist files into `static/`" and "emits `.vercel/output/config.json`" — both asserting the tree lives under `dist`, i.e. exactly where Vercel ignores it.
+- `Text.test.ts`'s `expect(result.props.children).toBe('label text')` — comparing against the resolved VALUE, which only passes while `children` is eagerly read (the frozen reactive-prop bug).
+
+When an existing test blocks your fix, do not assume the fix is wrong — but do not blindly rewrite the test either. Ask what invariant it was protecting, KEEP that invariant, and rewrite only the assertion to the corrected truth; then say so explicitly in the PR body. (For vercel, the real invariant was "adapters copy, never move, or user post-build steps break". Only the destination changed — so the new spec asserts copied-to-projectRoot AND `outDir` untouched AND nothing written inside `dist`.)
+
 ## Test Organization
 
 - Test files live in `packages/<name>/src/tests/` as `*.test.ts` or `*.test.tsx`
