@@ -182,6 +182,11 @@ export function cpseStyled(tag: string): ComponentFn<CpseStyledProps> {
     for (const k in props) if (!RESERVED.has(k)) rest[k] = props[k]
 
     let el: HTMLElement | null = null
+    // Browser-only mount plumbing: the ref fires + inline vars patch only on
+    // a real runtime-dom mount — exercised by cpse-styled.browser.test.tsx
+    // (render / DYNAMIC signal-update specs) in real Chromium; the node suite
+    // proves the SSR input shape (cpse-styled-ssr.test.ts) instead.
+    /* v8 ignore start */
     const applyVars = (vars: Record<string, string>): void => {
       if (!el) return
       for (const k in vars) el.style.setProperty(k, vars[k]!)
@@ -202,6 +207,7 @@ export function cpseStyled(tag: string): ComponentFn<CpseStyledProps> {
         applyVars(resolve(getTheme(), rootSize, breakpoints).vars) // tracks the signal
       })
     }
+    /* v8 ignore stop */
 
     // `style: first.vars` carries the initial values for SSR + first paint
     // (custom-property names survive both runtime-dom `applyStyleProp` and the

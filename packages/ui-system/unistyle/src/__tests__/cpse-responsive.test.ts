@@ -35,6 +35,16 @@ describe('cpseStyled responsive', () => {
     expect(v.props.style![cpseVarName('padding', 'md')]).toBeUndefined()
   })
 
+  it('a SCALAR prop inside a responsive theme lands on the base breakpoint', () => {
+    const Box = cpseStyled('div')
+    // `padding` responsive forces the responsive expansion; `margin` is a
+    // plain scalar and must ride on the base (xs) breakpoint, not vanish.
+    const v = Box({ styles: { padding: [8, 16], margin: 4 } }) as unknown as CpseVNode
+    expect(v.props.style![cpseVarName('padding', 'xs')]).toBe('0.5rem')
+    expect(v.props.style![cpseVarName('padding', 'sm')]).toBe('1rem')
+    expect(v.props.style![cpseVarName('margin', 'xs')]).toBe('0.25rem') // 4/16, base
+  })
+
   it('two instances with distinct responsive values share ONE class (value-agnostic)', () => {
     const Box = cpseStyled('div')
     const a = Box({ styles: { padding: [8, 16] } }) as unknown as CpseVNode

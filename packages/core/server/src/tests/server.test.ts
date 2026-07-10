@@ -377,6 +377,46 @@ describe('createHandler — stream mode', () => {
     expect(html).toContain('<h1>Streamed</h1>')
   })
 
+  test('stream mode: redirect() thrown from a loader returns a Location response (mirrors renderPage semantics)', async () => {
+    const { redirect } = await import('@pyreon/router')
+    const protectedRoutes = [
+      { path: '/', component: Home },
+      {
+        path: '/app',
+        component: Home,
+        loader: async () => {
+          redirect('/login')
+        },
+      },
+    ]
+    const handler = createHandler({ App: Home, routes: protectedRoutes, mode: 'stream' })
+    const res = await handler(new Request('http://localhost/app'))
+    expect(res.status).toBe(307)
+    expect(res.headers.get('Location')).toBe('/login')
+    expect(await res.text()).toBe('')
+  })
+
+  test('stream mode: a loader throwing a plain error yields a 500 (not an unhandled rejection)', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const brokenRoutes = [
+        {
+          path: '/',
+          component: Home,
+          loader: async () => {
+            throw new Error('boom')
+          },
+        },
+      ]
+      const handler = createHandler({ App: Home, routes: brokenRoutes, mode: 'stream' })
+      const res = await handler(new Request('http://localhost/'))
+      expect(res.status).toBe(500)
+      expect(await res.text()).toBe('Internal Server Error')
+    } finally {
+      errSpy.mockRestore()
+    }
+  })
+
   test('stream mode uses default template placeholders', async () => {
     const handler = createHandler({ App: Home, routes, mode: 'stream' })
     const res = await handler(new Request('http://localhost/'))

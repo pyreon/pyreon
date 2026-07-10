@@ -7,7 +7,7 @@
 // These tests run in the `node` environment (per the directive above), unlike
 // the rest of the styler suite which runs in happy-dom (client path).
 import { describe, expect, it } from 'vitest'
-import { styled } from '../styled'
+import { setStyleExtraction, styled } from '../styled'
 
 describe('styled — SSR fast path (node env)', () => {
   it('runs in a server environment (document undefined → IS_SERVER true)', () => {
@@ -76,6 +76,26 @@ describe('styled — SSR fast path (node env)', () => {
       children: ['a', 'b'],
     })
     expect(vnode.children).toEqual(['a', 'b'])
+  })
+
+  it('CPSE vars reach the SSR style attr on the server (dynamic non-rocketstyle path)', () => {
+    // Line-of-interest: the SSR fast path's `if (pendingCpseVars)
+    // mergeCpseStyle(...)` — the server render must carry the per-instance
+    // custom property inline, mirroring the client path (else SSR HTML
+    // renders the agnostic rule with NO value → visibly unstyled until
+    // hydration). Fake rewrite: styler can't import unistyle (dep direction).
+    setStyleExtraction(true, (cssText: string, varsOut: Record<string, string>) => {
+      varsOut['--u-color'] = 'red'
+      return cssText.replace(/color\s*:\s*[^;]+;/, 'color: var(--u-color);')
+    })
+    try {
+      const Box = styled('div')`color: ${((p: any) => p.c) as any};` as any
+      const vnode = Box({ c: 'red', children: 'x' })
+      expect(vnode.props.style).toEqual({ '--u-color': 'red' })
+      expect(vnode.props.class).toMatch(/^pyr-/)
+    } finally {
+      setStyleExtraction(false)
+    }
   })
 
   it('emits no children when none are provided in the SSR fast path', () => {

@@ -78,3 +78,33 @@ describe('styles() CPSE extractVars mode', () => {
     expect(Object.keys(vars)).toHaveLength(0) // nothing extracted
   })
 })
+
+// `cpseRewrite` bail arms — the guard contract that keeps CPSE safe on
+// non-flat input: structural fragments (selectors / at-rules / url()) and
+// empty fragments return UNCHANGED with no vars extracted; a malformed
+// value-less token is left verbatim (never mangled into a var).
+describe('cpseRewrite — bail arms', () => {
+  it('returns an empty fragment unchanged', async () => {
+    const { cpseRewrite } = await import('../cpse')
+    const vars: Record<string, string> = {}
+    expect(cpseRewrite('', vars)).toBe('')
+    expect(Object.keys(vars)).toHaveLength(0)
+  })
+
+  it('returns a STRUCTURAL fragment unchanged (at-rule / nesting / url)', async () => {
+    const { cpseRewrite } = await import('../cpse')
+    const vars: Record<string, string> = {}
+    const frag = '@media (min-width: 600px){ color: red; }'
+    expect(cpseRewrite(frag, vars)).toBe(frag)
+    expect(Object.keys(vars)).toHaveLength(0)
+  })
+
+  it('leaves a malformed value-less token verbatim, still rewriting its siblings', async () => {
+    const { cpseRewrite } = await import('../cpse')
+    const vars: Record<string, string> = {}
+    const out = cpseRewrite('bogus-token; color: red;', vars)
+    expect(out).toContain('bogus-token;')
+    expect(out).toMatch(/color:var\(--u-[0-9a-z]+\);/) // rewriter emits compact form
+    expect(Object.values(vars)).toContain('red')
+  })
+})

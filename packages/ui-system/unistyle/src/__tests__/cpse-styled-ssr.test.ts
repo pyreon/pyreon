@@ -36,3 +36,42 @@ describe('cpseStyled SSR input shape', () => {
     expect(b.props.style![v]).toBe('4rem')
   })
 })
+
+describe('cpseStyled input-shape edges', () => {
+  it('a FUNCTION styles prop (dynamic accessor) resolves like the static form', () => {
+    const Box = cpseStyled('div')
+    const stat = Box({ styles: { padding: 36 } }) as unknown as CpseVNode
+    const dyn = Box({ styles: () => ({ padding: 36 }) } as never) as unknown as CpseVNode
+    expect(dyn.props.class).toBe(stat.props.class) // same value-agnostic class
+    expect(dyn.props.style![cpseVarName('padding')]).toBe('2.25rem')
+  })
+
+  it('merges a user class after the value-agnostic class', () => {
+    const Box = cpseStyled('div')
+    const v = Box({ styles: { padding: 8 }, class: 'extra' } as never) as unknown as CpseVNode
+    expect(v.props.class).toMatch(/ extra$/)
+  })
+
+  it('missing / empty styles produce NO class and NO vars (nothing to extract)', () => {
+    const Box = cpseStyled('div')
+    const none = Box({}) as unknown as CpseVNode
+    expect(none.props.class).toBe('')
+    const empty = Box({ styles: {} }) as unknown as CpseVNode
+    expect(empty.props.class).toBe('')
+    expect(Object.keys(empty.props.style ?? {})).toHaveLength(0)
+  })
+
+  it('an empty responsive array resolves to no class (responsive path, zero fragments)', () => {
+    const Box = cpseStyled('div')
+    const v = Box({ styles: { padding: [] } } as never) as unknown as CpseVNode
+    expect(v.props.class).toBe('')
+  })
+
+  it('forwards children into the rendered element', () => {
+    const Box = cpseStyled('div')
+    const v = Box({ styles: { padding: 8 }, children: 'hi' } as never) as unknown as {
+      children: unknown[]
+    }
+    expect(v.children).toEqual(['hi'])
+  })
+})

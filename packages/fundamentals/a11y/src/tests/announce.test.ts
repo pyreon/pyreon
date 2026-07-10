@@ -52,6 +52,19 @@ describe('announce', () => {
     expect(el.textContent).toBe('')
   })
 
+  it('a stale clearAfter timer does not clear a newer message', async () => {
+    announce('old', { clearAfter: 50 })
+    await nextFrame()
+    expect(region('polite')!.textContent).toBe('old')
+    // A newer announcement replaces the text BEFORE the old timer fires —
+    // the stale timer sees textContent !== its message and must not clear.
+    announce('new')
+    await nextFrame()
+    expect(region('polite')!.textContent).toBe('new')
+    await new Promise((r) => setTimeout(r, 120))
+    expect(region('polite')!.textContent).toBe('new')
+  })
+
   it('re-announces an identical consecutive message (clear-then-set)', async () => {
     announce('same')
     await nextFrame()

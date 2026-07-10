@@ -35,6 +35,14 @@ describe('expectSignal', () => {
   it('throws a clear error for a non-reactive target', () => {
     expect(() => expectSignal({}).toHaveChangedTimes(1)).toThrow(/not a reactive node/)
   })
+
+  it('toHaveChangedTimes fails with actual-vs-expected counts on mismatch', () => {
+    const count = signal(0)
+    count.set(1)
+    expect(() => expectSignal(count).toHaveChangedTimes(5)).toThrow(
+      /expected reactive node to have changed 5×, got 1/,
+    )
+  })
 })
 
 describe('expectEffect', () => {
@@ -47,6 +55,18 @@ describe('expectEffect', () => {
     expectEffect(e).toReRunWhen(() => qty.set(2))
     // The NEGATIVE — a DOM-only testing library can't express this:
     expectEffect(e).notToReRunWhen(() => unrelated.set(9))
+    e.dispose()
+  })
+
+  it('toReRunWhen fails when the effect did NOT re-run (with the fire counts)', () => {
+    const a = signal(0)
+    const unrelated = signal(0)
+    const e = effect(() => {
+      a()
+    })
+    expect(() => expectEffect(e).toReRunWhen(() => unrelated.set(1))).toThrow(
+      /expected effect to re-run on the action, but it did not/,
+    )
     e.dispose()
   })
 

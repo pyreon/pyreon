@@ -290,11 +290,17 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
     // content (which renders after `active` flips) is mounted. Focuses the
     // first focusable descendant, falling back to the content container.
     if (readType() === 'modal' && !isServer) {
+      // Browser-only: the rAF-deferred focus-in needs real focus mechanics
+      // (activeElement moves, rAF-after-mount timing) that happy-dom doesn't
+      // model — exercised by Overlay-focus-trap.browser.test.tsx ("moves focus
+      // into the modal content on open") in real Chromium.
+      /* v8 ignore start */
       requestAnimationFrame(() => {
         if (!active() || !contentEl) return
         const first = contentEl.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
         ;(first ?? contentEl).focus?.()
       })
+      /* v8 ignore stop */
     }
     props.onOpen?.()
     ctx.setBlocked?.()
@@ -502,6 +508,12 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
     // reads `contentEl` live (it mounts after `active` flips). Pairs with the
     // focus-restore in hideContent + the initial focus-in in showContent.
     if (readType() === 'modal') {
+      // Browser-only handler body: Tab wrap needs real keyboard-focus
+      // mechanics (activeElement tracking + preventDefault on a trusted Tab)
+      // that happy-dom doesn't model — exercised by
+      // Overlay-focus-trap.browser.test.tsx (last→first wrap, Shift+Tab
+      // first→last wrap, nothing-focusable pin) in real Chromium.
+      /* v8 ignore start */
       const handleFocusTrap = (e: KeyboardEvent) => {
         if (e.key !== 'Tab' || !active() || !contentEl) return
         const focusable = Array.from(
@@ -525,6 +537,7 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
           first.focus()
         }
       }
+      /* v8 ignore stop */
       window.addEventListener('keydown', handleFocusTrap)
       cleanups.push(() => window.removeEventListener('keydown', handleFocusTrap))
     }

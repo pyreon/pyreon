@@ -1404,6 +1404,30 @@ describe('<WebView> happy-dom unit (web = iframe host)', () => {
     unmount()
   })
 
+  it('data={…} pushes into the loaded frame (window.__pyreonData + pyreondata event)', () => {
+    // Drive the load handler by hand (happy-dom doesn't auto-fire it) —
+    // once loaded, the bridge must write __pyreonData and fire the
+    // `pyreondata` event on the hosted page's window.
+    const { container, unmount } = mountTest(
+      h(WebView, { html: '<svg/>', data: [{ x: 1 }] }),
+    )
+    const frame = container.firstElementChild as HTMLIFrameElement
+    frame.dispatchEvent(new Event('load'))
+    const win = frame.contentWindow as (Window & { __pyreonData?: unknown }) | null
+    if (win) {
+      const events: unknown[] = []
+      win.addEventListener('pyreondata', () => events.push(win.__pyreonData))
+      frame.dispatchEvent(new Event('load')) // re-push after listener attached
+      expect(win.__pyreonData).toEqual([{ x: 1 }])
+      expect(events.length).toBeGreaterThan(0)
+    } else {
+      // happy-dom gave no usable contentWindow — the push path is then
+      // exercised only in the real-Chromium browser test.
+      expect(frame.getAttribute('srcdoc')).toBe('<svg/>')
+    }
+    unmount()
+  })
+
   it('onMessage={…} defines window.pyreonPostMessage on the frame → calls back', () => {
     // The reverse bridge: on iframe load the host defines
     // `window.pyreonPostMessage` on the frame's contentWindow; the page
@@ -1467,6 +1491,16 @@ describe('Cross-platform a11y vocabulary (AccessibilityProps → web aria-*)', (
     const hdr = mountTest(h(Stack, { accessibilityRole: 'header' }))
     expect((hdr.container.firstElementChild as HTMLElement).getAttribute('role')).toBe('heading')
     hdr.unmount()
+  })
+
+  it('an unknown accessibilityRole is dropped (no bogus role attribute)', () => {
+    const { container, unmount } = mountTest(
+      h(Stack, { accessibilityRole: 'spinbutton' as never }),
+    )
+    // Not in the canonical cross-platform vocabulary → no role emitted
+    // (an unmapped role must never leak a raw/unvalidated value to ARIA).
+    expect((container.firstElementChild as HTMLElement).hasAttribute('role')).toBe(false)
+    unmount()
   })
 
   it('a raw aria-label wins over accessibilityLabel (explicit web override)', () => {

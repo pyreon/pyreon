@@ -455,3 +455,63 @@ describe('deep nested value comparison bails at the recursion guard', () => {
     expect(form.fields.tree.dirty()).toBe(true)
   })
 })
+
+// ─── trigger() on a validator-less field clears a stale error ────────────────
+// Covers use-form.ts trigger(): the `else fields[name].error.set(undefined)`
+// arm — a field with NO per-field validator must have any manually-set
+// (server) error CLEARED by trigger, mirroring the auto-validation path.
+
+describe('trigger() on a field without a validator', () => {
+  it('clears a manually-set error (no validator → nothing can re-assert it)', async () => {
+    const form = useForm<{ name: string }>({
+      initialValues: { name: '' },
+      onSubmit: () => {},
+    })
+    form.setFieldError('name', 'server says no')
+    expect(form.errors().name).toBe('server says no')
+    await expect(form.trigger('name')).resolves.toBe(true)
+    expect(form.errors().name).toBeUndefined()
+  })
+})
+
+// ─── useFormState selector reads the getter-backed scalar view ───────────────
+// Covers use-form-state.ts summary getters (isDirty) on the SELECTOR path —
+// the no-selector path derives isDirty from the atoms, so only a selector
+// exercises the getter.
+
+describe('useFormState(form, selector) — scalar getters', () => {
+  it('a selector reading s.isDirty tracks the dirty flip', () => {
+    const { result, unmount } = mountWith(() => {
+      const form = useForm({ initialValues: { a: '' }, onSubmit: () => {} })
+      const dirty = useFormState(form, (s) => s.isDirty)
+      return { form, dirty }
+    })
+    expect(result.dirty()).toBe(false)
+    result.form.setFieldValue('a', 'x')
+    expect(result.dirty()).toBe(true)
+    // `mountWith` has NO auto-cleanup (see its definition) and every other call
+    // site unmounts. Without this, the mounted form, its subscribed selector
+    // effect, and the container element leak into subsequent tests. (A static
+    // analyzer flagged `unmount` as an "unused binding" — deleting it would
+    // have cemented the leak; the fix is to call it.)
+    unmount()
+  })
+})
+
+// ─── resolveSchemaValidator rejects a non-schema object at definition ────────
+// Covers use-form.ts resolveSchemaValidator's throw tail (#2152): a `schema`
+// that is neither a function, a typed adapter, nor a Standard Schema THROWS
+// at useForm() time — silently disabling all schema validation (the pre-#2152
+// behavior) would let invalid data through unnoticed.
+
+describe('useForm({ schema }) with a non-schema object', () => {
+  it('throws a [Pyreon]-prefixed definition-time error naming the accepted shapes', () => {
+    expect(() =>
+      useForm<{ name: string }>({
+        initialValues: { name: '' },
+        schema: { not: 'a schema' } as never,
+        onSubmit: () => {},
+      }),
+    ).toThrow(/\[Pyreon\] `schema` must be a SchemaValidateFn/)
+  })
+})

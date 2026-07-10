@@ -18,6 +18,12 @@ describe('render', () => {
     expect(container.querySelector('[data-testid=root]')?.textContent).toBe('hi')
   })
 
+  it('debug() returns the container markup', () => {
+    const { debug } = render(<div data-testid="dbg">peek</div>)
+    expect(debug()).toContain('data-testid="dbg"')
+    expect(debug()).toContain('peek')
+  })
+
   it('binds the @testing-library/dom query set to the container', () => {
     const { getByText, getByRole, getByTestId } = render(
       <div>
