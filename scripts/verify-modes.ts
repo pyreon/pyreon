@@ -125,11 +125,14 @@ interface Cell {
    */
   routeRules?: Record<string, { renderMode: string }>
   /**
-   * Smoke assertion — throws on failure. Receives absolute path to dist/.
+   * Smoke assertion — throws on failure. Receives the absolute path to dist/
+   * and to the example's project root. Most adapters stage under dist/; the
+   * vercel one must write `.vercel/output` at the PROJECT ROOT, because that
+   * is the only place Vercel auto-detects a Build Output API v3 tree.
    * May be async (the platform-function cells `await import()` + invoke the
    * emitted handler).
    */
-  smoke: (distDir: string) => void | Promise<void>
+  smoke: (distDir: string, exampleDir: string) => void | Promise<void>
 }
 
 // ─── Smoke assertion helpers ────────────────────────────────────────────────
@@ -771,10 +774,26 @@ const MATRIX: Cell[] = [
     example: 'ssr-showcase',
     mode: 'ssr',
     adapter: 'vercel',
-    smoke: (dist) => {
-      assertFileExists(join(dist, '.vercel', 'output', 'config.json'))
-      assertFileContains(join(dist, '.vercel', 'output', 'static', 'index.html'), '<!--pyreon-app-->')
-      assertSsrFunctionRenders(dist, join('.vercel', 'output', 'functions', 'ssr.func', 'index.js'), 'vercel')
+    // NOTE the base is `exampleDir`, not `dist`. Vercel only auto-detects a
+    // Build Output API v3 tree at `<projectRoot>/.vercel/output` — a tree
+    // staged under `dist/` is never read, so the deploy silently falls back
+    // to framework auto-detection and the SSR functions are never mounted.
+    // The `.vercel/output/...` literals are the THIRD-PARTY contract (Vercel's,
+    // not ours) and are deliberately spelled out here rather than imported
+    // from the adapter: this gate must be able to catch the adapter changing
+    // them. Cross-checking the adapter's own constant against the scaffolded
+    // config is a separate concern, covered by create-zero's adapter-contract test.
+    smoke: (_dist, exampleDir) => {
+      assertFileExists(join(exampleDir, '.vercel', 'output', 'config.json'))
+      assertFileContains(
+        join(exampleDir, '.vercel', 'output', 'static', 'index.html'),
+        '<!--pyreon-app-->',
+      )
+      assertSsrFunctionRenders(
+        exampleDir,
+        join('.vercel', 'output', 'functions', 'ssr.func', 'index.js'),
+        'vercel',
+      )
     },
   },
   {
@@ -2001,6 +2020,11 @@ async function runCell(cell: Cell): Promise<CellResult> {
   const exampleDir = join(REPO_ROOT, 'examples', cell.example)
   const distDir = join(exampleDir, 'dist')
   const verifyConfig = join(exampleDir, VERIFY_CONFIG_NAME)
+  // The vercel adapter is the one that stages OUTSIDE dist/ (Build Output API
+  // v3 mandates `<projectRoot>/.vercel/output`). Wiping dist alone would leave
+  // it behind, so a later run could pass against a previous run's artifacts —
+  // exactly the false-pass the dist wipe exists to prevent.
+  const vercelDir = join(exampleDir, '.vercel')
   const start = Date.now()
 
   if (!existsSync(exampleDir)) {
@@ -2018,6 +2042,7 @@ async function runCell(cell: Cell): Promise<CellResult> {
       // that don't go through @pyreon/zero (e.g. islands-showcase uses
       // bare @pyreon/vite-plugin).
       await rm(distDir, { recursive: true, force: true })
+      await rm(vercelDir, { recursive: true, force: true })
       await runViteBuild(exampleDir, 'vite.config.ts')
     } else {
       // Write the per-cell config file. Lives alongside the example's real
@@ -2025,12 +2050,13 @@ async function runCell(cell: Cell): Promise<CellResult> {
       await writeFile(verifyConfig, configSourceFor(cell), 'utf-8')
       // Wipe any prior dist so we can't get a false-pass from stale output.
       await rm(distDir, { recursive: true, force: true })
+      await rm(vercelDir, { recursive: true, force: true })
       // Build.
       await runViteBuild(exampleDir, VERIFY_CONFIG_NAME)
     }
 
     // Smoke (may be async — platform-function cells import + invoke the entry).
-    await cell.smoke(distDir)
+    await cell.smoke(distDir, exampleDir)
 
     return { cell, ok: true, durationMs: Date.now() - start }
   } catch (error) {
@@ -2045,6 +2071,7 @@ async function runCell(cell: Cell): Promise<CellResult> {
     // vite.config.ts was never touched.
     await rm(verifyConfig, { force: true })
     await rm(distDir, { recursive: true, force: true })
+    await rm(vercelDir, { recursive: true, force: true })
   }
 }
 
