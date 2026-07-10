@@ -754,7 +754,7 @@ if (isValid) {
 
 Reset the entire form. With no arguments:
 
-- Restores all fields to their initial values
+- Restores all fields to their current baseline (the initial values, or the values from the most recent `reset(values)` / `setInitialValues`)
 - Clears all errors, touched, and dirty states
 - Resets `submitCount` to 0
 - Clears `submitError`
@@ -764,7 +764,7 @@ Reset the entire form. With no arguments:
 form.reset()
 ```
 
-**Reset to a new baseline.** Pass `values` to reset _to_ new values — the named fields become the new baseline (so they read as clean / not dirty), while any field NOT named reverts to its original initial value. This is the idiomatic "reset the form to the freshly-saved server response" flow:
+**Reset to a new baseline.** Pass `values` to reset _to_ new values — the named fields become the new baseline (so they read as clean / not dirty), while any field NOT named reverts to its own current baseline. The re-base is **durable** (react-hook-form `defaultValues`-replacement parity): the dirty compare, `resetField()`, and any later plain `reset()` all follow the new baseline — after `reset({ name: 'saved' })`, typing away and back to `'saved'` reads clean again. This is the idiomatic "reset the form to the freshly-saved server response" flow:
 
 ```ts
 async function save() {
@@ -773,7 +773,7 @@ async function save() {
   form.isDirty() // false — `saved` is the new clean baseline
 }
 
-// Partial — only the named fields change baseline; the rest revert to initial:
+// Partial — only the named fields change baseline; the rest revert to theirs:
 form.reset({ name: 'Ada' })
 ```
 
@@ -1581,10 +1581,10 @@ Create a signal-based form.
 <APICard name="setFieldError" type="function" signature="setFieldError(field: keyof TValues, error: string | undefined): void" description="Programmatically set a single field's error. Pass undefined to clear." />
 <APICard name="setErrors" type="function" signature={"setErrors(errors: Partial<Record<keyof TValues, string | undefined>>): void"} description="Set multiple field errors at once." />
 <APICard name="clearErrors" type="function" signature="clearErrors(): void" description="Clear all field errors at once." />
-<APICard name="resetField" type="function" signature="resetField(field: keyof TValues, options?: { keepError?: boolean; keepTouched?: boolean }): void" description="Reset a single field to its initial value without affecting other fields. Pass keepError / keepTouched to preserve those across the reset." />
+<APICard name="resetField" type="function" signature="resetField(field: keyof TValues, options?: { keepError?: boolean; keepTouched?: boolean }): void" description="Reset a single field to its current baseline (initial value, or the value from the most recent reset(values) / setInitialValues) without affecting other fields. Pass keepError / keepTouched to preserve those across the reset." />
 <APICard name="register" type="function" signature="register(field: keyof TValues, opts?: { type: 'checkbox' | 'number' | 'file' }): FieldRegisterProps" description="Get input binding props for a field. Returns id, value, onInput, onBlur (+ auto-wired aria). Pass { type: 'checkbox' } for a checked accessor (no value), { type: 'number' } for valueAsNumber, or { type: 'file' } for a value-less bag whose onInput writes the FileList." />
 <APICard name="handleSubmit" type="function" signature={"handleSubmit(event?: Event): Promise<void>"} description="Submit the form. Prevents default, validates all fields, calls onSubmit if valid, and focuses the first errored field on failure (unless focusOnError: false)." />
-<APICard name="reset" type="function" signature="reset(values?: Partial<TValues>, options?: { keepErrors?: boolean; keepTouched?: boolean; keepDirty?: boolean; keepSubmitCount?: boolean }): void" description="Reset the form. With no args, reverts every field to its initial value and clears errors/touched/dirty + submitCount. Pass values to reset to a new baseline (named fields become the new baseline; the rest revert to their original initial). options preserves selected state across the reset." />
+<APICard name="reset" type="function" signature="reset(values?: Partial<TValues>, options?: { keepErrors?: boolean; keepTouched?: boolean; keepDirty?: boolean; keepSubmitCount?: boolean }): void" description="Reset the form. With no args, reverts every field to its initial value and clears errors/touched/dirty + submitCount. Pass values to reset to a new baseline (named fields become the new baseline — durably, for the dirty compare, resetField, and later plain reset() calls; the rest revert to their own baseline). options preserves selected state across the reset." />
 <APICard name="validate" type="function" signature={"validate(): Promise<boolean>"} description="Manually validate all fields. Returns whether the form is valid. Bypasses debounce." />
 <APICard name="focusFirstError" type="function" signature="focusFirstError(): void" description="Move focus to the first errored + register()-bound field (declaration order). Called automatically by handleSubmit on failure unless focusOnError: false. SSR-safe no-op." />
 <APICard name="registerField" type="function" signature="registerField(name: string, initialValue?: unknown, validator?: ValidateFn): void" description="Add a field at runtime for data-driven forms. Becomes first-class (values / onSubmit / validity). Idempotent — re-registering keeps the current value and refreshes the validator. Dynamic fields are runtime-typed; read via getValues()[name] / fields[name]." />

@@ -124,24 +124,26 @@ describe('useForm extracts validator from a TypedSchemaAdapter', () => {
   })
 })
 
-// ─── getSubmitValues fallback to currentInitials ─────────────────────────────
+// ─── getSubmitValues: nullish values are first-class ─────────────────────────
 //
-// Covers use-form.ts binary-expr@159#1 (f?.value.peek() ?? currentInitials[name])
-// when a field's value is nullish, the submit payload falls back to the initial.
+// This spec used to CODIFY the release-audit defect it now guards against: the
+// old `f?.value.peek() ?? currentInitials[name]` fallback swallowed an
+// explicit `null` field value and submitted the stale initial (`'default'`).
+// Corrected semantics: the payload branches on FIELD EXISTENCE, so an
+// explicit null (a cleared `FileList | null` file field) reaches onSubmit.
 
-describe('submit payload falls back to initial when field value is nullish', () => {
-  it('uses currentInitials[name] when the field value peeks nullish', async () => {
+describe('submit payload preserves an explicit nullish field value', () => {
+  it('carries null to onSubmit instead of falling back to the initial', async () => {
     const onSubmit = vi.fn()
     const form = useForm<{ tag: string | null }>({
       initialValues: { tag: 'default' },
       onSubmit,
     })
 
-    // Make the field value nullish so the ?? fallback fires.
     form.fields.tag.setValue(null)
     await form.handleSubmit()
 
-    expect(onSubmit).toHaveBeenCalledWith({ tag: 'default' })
+    expect(onSubmit).toHaveBeenCalledWith({ tag: null })
   })
 })
 

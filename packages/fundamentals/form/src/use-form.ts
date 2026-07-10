@@ -71,7 +71,14 @@ export function orphanSchemaErrorKeys(
  * runs — accepting a plain function, a `@pyreon/validation` typed adapter
  * (`{ _infer, validator }`), OR a raw Standard Schema (zod/valibot/arktype/`s`
  * — no adapter, no cast) via `@pyreon/validation`'s bridge. Returns undefined
- * when no schema is configured.
+ * when no schema is configured (`schema` absent / null).
+ *
+ * An UNRECOGNIZED non-null schema THROWS. Returning undefined here (the
+ * pre-fix behavior) silently DISABLED all schema validation: a zod<3.24
+ * schema (no `~standard` support) or a typo'd object made `validate()`
+ * report true and `onSubmit` fire with unvalidated data — while
+ * `@pyreon/store` throws for the identical input (`extractParseFn` in
+ * `@pyreon/validation`, whose message this mirrors).
  */
 export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
   schemaInput: unknown,
@@ -88,7 +95,14 @@ export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
       return standardSchemaToValidator<TValues>(schemaInput as StandardSchemaLike)
     }
   }
-  return undefined
+  throw new Error(
+    '[Pyreon] `schema` must be a SchemaValidateFn, a TypedSchemaAdapter ' +
+      '(from @pyreon/validation), or a Standard Schema-compliant object ' +
+      '(zod 3.24+, valibot 1.0+, arktype 2.0+, Effect Schema, etc.). ' +
+      'The value passed is none of these — a zod<3.24 schema (no `~standard` ' +
+      'support) or a mistyped object would otherwise silently DISABLE all ' +
+      'schema validation. See https://standardschema.dev/ for the spec.',
+  )
 }
 
 /**
@@ -239,6 +253,16 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // Validation version per field — used to discard stale async results
   const validationVersions: Partial<Record<keyof TValues, number>> = {}
 
+  // Monotonic source for EVERY version value in `validationVersions` and
+  // `schemaFieldVersions` (seeds AND per-run bumps). Every version the form
+  // ever hands out is globally unique, so a still-in-flight async validator
+  // captured before an `unregisterField()` + `registerField()` cycle can
+  // NEVER collide with the fresh field's versions. Pre-fix, re-registering a
+  // name re-seeded its version at 0 — reusing the old field's version space —
+  // and the stale result then passed the `=== currentVersion` guard and wrote
+  // its error onto the fresh field.
+  let _versionCounter = 0
+
   // Per-field NON-debounced validator (the `runValidation` closure built in
   // the field loop). Stored so `trigger(name)` can validate a field/subset
   // immediately, reusing the exact same validation path as auto-validation.
@@ -267,8 +291,15 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (_valuesCacheEpoch === _valuesEpoch && _valuesCache !== undefined) return _valuesCache
     const values = {} as TValues
     for (const [name] of fieldEntries) {
-      ;(values as Record<string, unknown>)[name] =
-        fields[name]?.value.peek() ?? (initialValues as Record<string, unknown>)[name]
+      const f = fields[name]
+      // Branch on FIELD EXISTENCE, never on value nullishness: `?? initial`
+      // silently swallowed an explicit `null`/`undefined` field value (a
+      // cleared `FileList | null` file field) and reported the stale initial.
+      // The fallback reads `currentInitials` (the LIVE baseline), matching
+      // getSubmitValues — `initialValues` ignored `reset(values)` re-basing.
+      ;(values as Record<string, unknown>)[name] = f
+        ? f.value.peek()
+        : (currentInitials as Record<string, unknown>)[name]
     }
     _valuesCache = values
     _valuesCacheEpoch = _valuesEpoch
@@ -285,8 +316,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       // Form-level disabled → ALL fields excluded
       // Field-level disabled → only that field excluded
       if (formIsDisabled || f?.disabled.peek()) continue
-      ;(values as Record<string, unknown>)[name] =
-        f?.value.peek() ?? (currentInitials as Record<string, unknown>)[name]
+      // Field existence (not `??`) — see getValues: an explicit null/undefined
+      // value must reach the submit payload, not be masked by the initial.
+      ;(values as Record<string, unknown>)[name] = f
+        ? f.value.peek()
+        : (currentInitials as Record<string, unknown>)[name]
     }
     return values
   }
@@ -314,10 +348,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
    */
   const runSchemaForField = async (name: keyof TValues & string) => {
     if (!schema) return
-    /* v8 ignore next — `?? 0` left arm needs a 2nd concurrent blur on the same field
-       before the 1st resolves; setTouched flips touched once, so the version is always
-       undefined→0 here in practice. Defensive. */
-    schemaFieldVersions[name] = (schemaFieldVersions[name] ?? 0) + 1
+    // Monotonic counter (never a `+1` on the per-field slot) so a version
+    // can't be reused across an unregister/re-register of the same name.
+    schemaFieldVersions[name] = ++_versionCounter
     const v = schemaFieldVersions[name]
     const allValues = getValues()
     const result = await schema(allValues)
@@ -393,6 +426,15 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     name: keyof TValues & string,
     initial: TValues[keyof TValues],
   ): FieldState<unknown> => {
+    // ONE source of truth for the field's baseline: `currentInitials[name]`
+    // (the record `setInitialValues` / `reset(values)` / `registerField`
+    // mutate). The captured `initial` param seeds the value signal ONLY —
+    // pre-fix the dirty compare and `field.reset()` read the captured value,
+    // so a `reset({ name: 'saved' })` re-base was not durable: typing back to
+    // 'saved' stayed dirty forever, and `resetField()` / a later plain
+    // `reset()` reverted to the ORIGINAL initial instead of the new baseline.
+    const getBaseline = (): TValues[typeof name] =>
+      (currentInitials as Record<string, unknown>)[name] as TValues[typeof name]
     // EAGER: value + dirty. Both are written by `setValue` on the keystroke hot
     // path, so they're allocated up front and captured DIRECTLY in the closures
     // below — no getter indirection on the hot path, so no V8 deopt risk (the
@@ -453,8 +495,11 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       return _readOnlySig
     }
 
-    // Initialize validation version
-    validationVersions[name] = 0
+    // Seed the validation version from the monotonic form-level counter —
+    // NEVER 0. A 0-seed reused the version space of a previously-registered
+    // field with the same name (unregister + re-register), letting a
+    // still-in-flight old async validator's captured version collide.
+    validationVersions[name] = ++_versionCounter
 
     // The 3 `getError().set(...)` calls below are in MUTUALLY EXCLUSIVE
     // branches (validator success, validator threw, no validator
@@ -466,10 +511,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const runValidation = async (value: TValues[typeof name]) => {
       const fieldValidator = fieldValidators[name]
       if (fieldValidator) {
-        // Bump version to track this validation run
-        /* v8 ignore next — `?? 0` right arm is dead: validationVersions[name] is
-           initialised to 0 at field setup (see init above), so it's never undefined here. */
-        validationVersions[name] = (validationVersions[name] ?? 0) + 1
+        // Bump version to track this validation run — monotonic counter, so
+        // the value is unique across the form's whole lifetime (see
+        // `_versionCounter` above).
+        validationVersions[name] = ++_versionCounter
         const currentVersion = validationVersions[name]
         try {
           const result = await fieldValidator(value, getValues(), abortController.signal)
@@ -576,8 +621,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       setValue: (value: TValues[typeof name]) => {
         valueSig.set(value)
         _valuesEpoch++ // invalidate the values() snapshot cache
-        // Deep comparison for objects/arrays, reference for primitives
-        dirtySig.set(!structuredEqual(value, initial))
+        // Deep comparison for objects/arrays, reference for primitives —
+        // against the LIVE baseline (durable across reset(values) re-basing).
+        dirtySig.set(!structuredEqual(value, getBaseline()))
         // Auto-validate inline (replaces the removed per-field effect):
         // change-mode validates every keystroke; post-failed-submit
         // (submitCount > 0) validates live so errors clear as the user fixes.
@@ -618,7 +664,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
         // hint") get notified once per field-reset, not four times.
         // Fires per-field on form.reset() and explicit reverts.
         batch(() => {
-          valueSig.set(initial as TValues[typeof name])
+          // Revert to the LIVE baseline (`currentInitials[name]`), not the
+          // captured original — reset(values)'s re-base must be durable.
+          valueSig.set(getBaseline())
           dirtySig.set(false)
           // Only reset the lazy signals if they were ever materialized — an
           // un-materialized error/touched is already at its default, so there's
@@ -733,9 +781,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           const fieldValidator = fieldValidators[name]
           if (fieldValidator) {
             // Bump version so any in-flight debounced validation is discarded
-            /* v8 ignore next — `?? 0` right arm is dead: validationVersions[name] is
-               initialised to 0 at field setup, so it's never undefined here. */
-            validationVersions[name] = (validationVersions[name] ?? 0) + 1
+            // (monotonic counter — see `_versionCounter` above).
+            validationVersions[name] = ++_versionCounter
             const currentVersion = validationVersions[name]
             try {
               const error = await fieldValidator(
