@@ -183,4 +183,29 @@ describe('vercel adapter — vercel.json + root-level Build Output API', () => {
     expect(vercelJson.outputDirectory).toBe('dist')
     expect(vercelJson.framework).toBeNull()
   })
+
+  // Drift-lock the vercel contract ITSELF. This file exists so a scaffolded
+  // config can never disagree with the adapter's real output paths — and vercel
+  // was the one adapter whose constant was imported but only mentioned in a
+  // comment, never asserted. (Deleting the "unused" import, as the bot
+  // suggested, would have cemented that hole.)
+  it('the Build Output API dir is PROJECT-ROOT-relative and never collides with outputDirectory', async () => {
+    const outputDir = VERCEL_ADAPTER_OUTPUT.outputDir
+    // Root-relative: it is joined onto `projectRoot`, so it must be neither
+    // absolute nor nested under the build `outDir` (`dist/...`). Writing it
+    // under `outDir` is exactly the bug that made Vercel ignore the tree
+    // (SSR function never discovered; dead cache-header routes).
+    expect(outputDir).toBe('.vercel/output')
+    expect(outputDir.startsWith('/')).toBe(false)
+    expect(outputDir.startsWith('dist')).toBe(false)
+
+    // …and the scaffolded `outputDirectory` fallback must not point INTO the
+    // Build Output API tree, or the two deploy paths would fight.
+    const config = cfg('vercel', 'ssr-stream')
+    await adapterFor('vercel').apply(config)
+    const vercelJson = JSON.parse(
+      readFileSync(join(config.targetDir, 'vercel.json'), 'utf8'),
+    ) as { outputDirectory?: string }
+    expect(outputDir.startsWith(`${vercelJson.outputDirectory}/`)).toBe(false)
+  })
 })
