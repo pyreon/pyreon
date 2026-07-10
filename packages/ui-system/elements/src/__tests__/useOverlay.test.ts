@@ -155,9 +155,9 @@ describe('useOverlay', () => {
       expect(o.active()).toBe(false)
     })
 
-    it('align defaults to bottom', () => {
+    it('align defaults to bottom (accessor — call it)', () => {
       const o = useOverlay()
-      expect(o.align).toBe('bottom')
+      expect(o.align()).toBe('bottom')
     })
 
     it('alignX defaults to left', () => {

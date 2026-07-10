@@ -11,10 +11,20 @@
  */
 import { h, mergeProps, splitProps } from '@pyreon/core'
 import { resolveSlot } from '@pyreon/ui-core'
-import { IS_DEVELOPMENT } from '../../utils'
+import { hasGetterProps, IS_DEVELOPMENT } from '../../utils'
 import { internElementBundle } from '../internElementBundle'
 import Styled from './styled'
 import type { Props } from './types'
+
+const CONTENT_LAYOUT_KEYS = [
+  'parentDirection',
+  'direction',
+  'alignX',
+  'alignY',
+  'equalCols',
+  'gap',
+  'extendCss',
+] as const
 
 const Component = (props: Partial<Props>) => {
   const [own, rest] = splitProps(props, [
@@ -44,7 +54,15 @@ const Component = (props: Partial<Props>) => {
   // `styler.resolve` per slot per mount. `internElementBundle` bails (returns
   // the input unchanged) when any value is a function/object — so the
   // `extraStyles` (CSSResult/callback) case keeps today's behavior exactly.
-  const stylingProps = internElementBundle({
+  //
+  // When any layout key is GETTER-shaped (a signal-driven layout prop —
+  // Element's compound path threads them as live getters under its
+  // layoutReactive tier), the bundle is passed as an ACCESSOR instead: the
+  // styler's DynamicStyled reads a function-valued `$element` TRACKED inside
+  // its class computed (same contract as $rocketstyle/$rocketstate) and
+  // swaps classList on change — same DOM element, no remount.
+  const bundleReactive = hasGetterProps(own, CONTENT_LAYOUT_KEYS)
+  const buildBundle = () => ({
     contentType: own.contentType,
     parentDirection: own.parentDirection,
     direction: own.direction,
@@ -54,6 +72,7 @@ const Component = (props: Partial<Props>) => {
     gap: own.gap,
     extraStyles: own.extendCss,
   })
+  const stylingProps = bundleReactive ? buildBundle : internElementBundle(buildBundle())
 
   // Use `h(Styled, mergeProps(rest, {..., children}))` instead of JSX
   // spread `<Styled ... {...rest}>` so compiler-emitted reactive props

@@ -77,18 +77,29 @@ describe('<Iterator> — function-wrapped children', () => {
 
     const dispose = mount(tree as VNode, container)
 
+    // Function-valued children now route through the REACTIVE path (the
+    // body re-runs when a signal-reading children thunk changes). At mount,
+    // `mountChild` SAMPLES the accessor once (keyed-array detection) before
+    // the tracked effect run — so the iteration loop fires twice and the
+    // injectors run per pass: positions is one-or-more [1,2,3] groups.
+    // Injectors (itemProps/wrapProps/itemKey) must be PURE — the framework
+    // may re-invoke them (documented in the reactive-Iterator changeset).
     expect(
-      positions,
+      positions.length > 0 && positions.length % 3 === 0,
       `wrapProps was called for positions=${JSON.stringify(positions)}; ` +
-        `expected [1,2,3] (per-item iteration loop must fire). ` +
+        `expected one-or-more [1,2,3] groups (per-item iteration loop must fire). ` +
         `html=${container.innerHTML.slice(0, 400)}`,
-    ).toEqual([1, 2, 3])
+    ).toBe(true)
+    for (let g = 0; g < positions.length; g += 3) {
+      expect(positions.slice(g, g + 3)).toEqual([1, 2, 3])
+    }
     expect(firstFlagSet, 'first=true metadata must reach wrapProps').toBe(true)
     expect(lastFlagSet, 'last=true metadata must reach wrapProps').toBe(true)
 
+    expect(container.querySelectorAll('[data-id="item-a"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-id="item-b"]').length).toBe(1)
+    expect(container.querySelectorAll('[data-id="item-c"]').length).toBe(1)
     expect(container.querySelector('[data-id="item-a"]')?.tagName).toBe('SPAN')
-    expect(container.querySelector('[data-id="item-b"]')?.tagName).toBe('SPAN')
-    expect(container.querySelector('[data-id="item-c"]')?.tagName).toBe('SPAN')
 
     dispose()
   })

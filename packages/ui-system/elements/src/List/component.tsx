@@ -5,8 +5,8 @@
  * is wrapped in an Element that receives all non-iterator props (e.g.,
  * layout, alignment, css), allowing the list to be styled as a single block.
  */
-import type { VNodeChild } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import type { ComponentFn, VNodeChild } from '@pyreon/core'
+import { h, mergeProps, splitProps } from '@pyreon/core'
 import { omit, pick } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { ElementProps } from '../Element'
@@ -67,14 +67,34 @@ const LooseIterator = Iterator as unknown as (props: IteratorLooseProps) => VNod
 
 const Component = (allProps: IteratorLooseProps & ListExtras) => {
   const [own, props] = splitProps(allProps as Record<string, unknown>, ['rootElement', 'ref'])
-  const renderedList = <LooseIterator {...pick(props, Iterator.RESERVED_PROPS)} />
+
+  // `h(Comp, descriptorPreservingProps)` INSTEAD of JSX spread
+  // (`<LooseIterator {...pick(...)} />` / `<Element {...omit(...)}>`): the
+  // automatic JSX runtime lowers a spread to `jsx(Comp, { ...src })` — that
+  // object literal is evaluated at JS level and fires EVERY getter on the
+  // source before `jsx()` ever sees it, collapsing compiler-emitted reactive
+  // props (`_rp(() => signal())` → getters via `makeReactiveProps`) to frozen
+  // snapshots. `pick` / `omit` (ui-core) are descriptor-copying, so their
+  // RESULTS carry live getters — passing them to `h()` directly (which stores
+  // props as-is on the vnode) keeps the getters alive end-to-end. Same fix
+  // shape Element / Text / Content / Wrapper already carry.
+  //
+  // Children go into the mergeProps override (not h's third arg) so mount's
+  // children-merge step short-circuits — one descriptor-copy hop, mirroring
+  // Element's four return paths.
+  const renderedList = h(
+    LooseIterator as ComponentFn,
+    pick(props, Iterator.RESERVED_PROPS) as Record<string, unknown>,
+  )
 
   if (!own.rootElement) return renderedList
 
-  return (
-    <Element ref={own.ref as ElementProps['ref']} {...omit(props, Iterator.RESERVED_PROPS)}>
-      {renderedList}
-    </Element>
+  return h(
+    Element as unknown as ComponentFn,
+    mergeProps(omit(props, Iterator.RESERVED_PROPS) as Record<string, unknown>, {
+      ref: own.ref as ElementProps['ref'],
+      children: renderedList,
+    }),
   )
 }
 

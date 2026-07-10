@@ -185,32 +185,59 @@ const processVisibilityEvent = (
   }
 }
 
-const useOverlay = ({
-  isOpen = false,
-  openOn = 'click',
-  closeOn = 'click',
-  type = 'dropdown',
-  position = 'fixed',
-  align = 'bottom',
-  alignX: propAlignX = 'left',
-  alignY: propAlignY = 'bottom',
-  offsetX = 0,
-  offsetY = 0,
-  throttleDelay = 200,
-  parentContainer,
-  closeOnEsc = true,
-  hoverDelay = 100,
-  disabled,
-  onOpen,
-  onClose,
-}: Partial<UseOverlayProps> = {}) => {
+/**
+ * Overlay state + behavior hook.
+ *
+ * **Prop reactivity contract** — the hook does NOT parameter-destructure its
+ * props (a destructure fires compiler-emitted reactive getters ONCE, freezing
+ * a signal-driven prop like `disabled={busy()}` at its first value forever —
+ * `<Overlay disabled={busy()}>` never re-enabled). Config props are read
+ * through the `read*` accessors below AT THEIR CALL SITES, so a getter-shaped
+ * prop is re-read live:
+ *
+ * - **Live (per event / per reposition)**: `disabled`, `openOn`, `closeOn`,
+ *   `type`, `align`, `alignX`, `alignY`, `offsetX`, `offsetY`, `position`,
+ *   `hoverDelay`, `onOpen`, `onClose`.
+ * - **Initial-only by design**: `isOpen` (seeds the `active` signal — use
+ *   `showContent`/`hideContent` for programmatic control after mount);
+ *   `alignX`/`alignY` additionally seed the resolved-align signals' INITIAL
+ *   value (later repositions resolve from the live prop reads).
+ * - **Mount-time (listener-ATTACHMENT decisions in `setupListeners`)**:
+ *   which listener kinds attach — the window click listener (click-driven
+ *   `openOn`/`closeOn`), the ESC listener (`closeOnEsc`), the modal focus
+ *   trap + body-overflow lock (`type === 'modal'`), the hover listeners
+ *   (`openOn`/`closeOn === 'hover'`), `parentContainer` scroll, and
+ *   `throttleDelay` (baked into the throttle wrappers at hook init). The
+ *   DISPATCH logic inside attached handlers still reads live.
+ */
+const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
   const ctx = useOverlayContext()
+
+  // Live config reads — each fires the prop getter at CALL time (see the
+  // reactivity contract in the JSDoc above).
+  const readOpenOn = () => props.openOn ?? 'click'
+  const readCloseOn = () => props.closeOn ?? 'click'
+  const readType = () => props.type ?? 'dropdown'
+  const readPosition = () => props.position ?? 'fixed'
+  const readAlign = () => props.align ?? 'bottom'
+  const readAlignX = () => props.alignX ?? 'left'
+  const readAlignY = () => props.alignY ?? 'bottom'
+  const readOffsetX = () => props.offsetX ?? 0
+  const readOffsetY = () => props.offsetY ?? 0
+  const readHoverDelay = () => props.hoverDelay ?? 100
+  const readDisabled = () => props.disabled
+
+  // Init-time reads (initial-only / mount-time per the JSDoc contract).
+  const isOpen = props.isOpen ?? false
+  const throttleDelay = props.throttleDelay ?? 200
+  const closeOnEsc = props.closeOnEsc ?? true
+  const parentContainer = props.parentContainer
 
   // Signal-based state
   const active = signal(isOpen)
   const isContentLoaded = signal(false)
-  const innerAlignX = signal(propAlignX)
-  const innerAlignY = signal(propAlignY)
+  const innerAlignX = signal(readAlignX())
+  const innerAlignY = signal(readAlignY())
   const blockedCount = signal(0)
 
   const blocked = () => blockedCount() > 0
@@ -262,14 +289,14 @@ const useOverlay = ({
     // trigger and Tab escapes to the inert background. Deferred a frame so the
     // content (which renders after `active` flips) is mounted. Focuses the
     // first focusable descendant, falling back to the content container.
-    if (type === 'modal' && !isServer) {
+    if (readType() === 'modal' && !isServer) {
       requestAnimationFrame(() => {
         if (!active() || !contentEl) return
         const first = contentEl.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
         ;(first ?? contentEl).focus?.()
       })
     }
-    onOpen?.()
+    props.onOpen?.()
     ctx.setBlocked?.()
   }
 
@@ -296,7 +323,7 @@ const useOverlay = ({
       isContentLoaded.set(false)
     })
     if (shouldRestore && prev && typeof prev.focus === 'function') prev.focus()
-    onClose?.()
+    props.onClose?.()
     ctx.setUnblocked?.()
   }
 
@@ -309,7 +336,7 @@ const useOverlay = ({
     // other isServer guards.
     /* v8 ignore next */
     if (isServer) return { top: 0, left: 0 }
-    if (position !== 'absolute' || !contentEl) {
+    if (readPosition() !== 'absolute' || !contentEl) {
       return { top: 0, left: 0 }
     }
 
@@ -326,12 +353,12 @@ const useOverlay = ({
     if (!active() || !isContentLoaded()) return {}
 
     const result = computePosition(
-      type,
-      align,
-      propAlignX,
-      propAlignY,
-      offsetX,
-      offsetY,
+      readType(),
+      readAlign(),
+      readAlignX(),
+      readAlignY(),
+      readOffsetX(),
+      readOffsetY(),
       triggerEl,
       contentEl,
       getAncestorOffset(),
@@ -363,7 +390,7 @@ const useOverlay = ({
     const el = contentEl
     const setValue = (param?: string | number) => value(param, 16) as string
 
-    el.style.position = position
+    el.style.position = readPosition()
 
     el.style.top = values.top != null ? setValue(values.top) : ''
     el.style.bottom = values.bottom != null ? setValue(values.bottom) : ''
@@ -385,13 +412,16 @@ const useOverlay = ({
   }
 
   const handleVisibilityByEventType = (e: Event) => {
-    if (blocked() || disabled) return
+    // LIVE reads — `disabled={busy()}` (a compiler getter) is re-read per
+    // event, so flipping the signal re-enables/disables the overlay without
+    // a remount (the pre-fix parameter destructure froze it forever).
+    if (blocked() || readDisabled()) return
 
     processVisibilityEvent(
       e,
       active(),
-      openOn,
-      closeOn,
+      readOpenOn(),
+      readCloseOn(),
       isNodeOrChild(() => triggerEl),
       isNodeOrChild(() => contentEl),
       showContent,
@@ -447,7 +477,7 @@ const useOverlay = ({
     repositionOnOpen()
 
     // Click-based open/close
-    const enabledClick = openOn === 'click' || CLICK_CLOSE_KINDS.has(closeOn)
+    const enabledClick = readOpenOn() === 'click' || CLICK_CLOSE_KINDS.has(readCloseOn())
 
     if (enabledClick) {
       window.addEventListener('click', handleClick)
@@ -471,7 +501,7 @@ const useOverlay = ({
     // once; the body is gated on `active()` so it only traps while open, and
     // reads `contentEl` live (it mounts after `active` flips). Pairs with the
     // focus-restore in hideContent + the initial focus-in in showContent.
-    if (type === 'modal') {
+    if (readType() === 'modal') {
       const handleFocusTrap = (e: KeyboardEvent) => {
         if (e.key !== 'Tab' || !active() || !contentEl) return
         const focusable = Array.from(
@@ -500,7 +530,7 @@ const useOverlay = ({
     }
 
     // Hover-based open/close
-    const enabledHover = openOn === 'hover' || closeOn === 'hover'
+    const enabledHover = readOpenOn() === 'hover' || readCloseOn() === 'hover'
     if (enabledHover) {
       const clearHoverTimeout = () => {
         if (hoverTimeout != null) {
@@ -511,16 +541,16 @@ const useOverlay = ({
 
       const scheduleHide = () => {
         clearHoverTimeout()
-        hoverTimeout = setTimeout(hideContent, hoverDelay)
+        hoverTimeout = setTimeout(hideContent, readHoverDelay())
       }
 
       const onTriggerEnter = () => {
         clearHoverTimeout()
-        if (openOn === 'hover' && !active()) showContent()
+        if (readOpenOn() === 'hover' && !active()) showContent()
       }
 
       const onTriggerLeave = () => {
-        if (closeOn === 'hover' && active()) scheduleHide()
+        if (readCloseOn() === 'hover' && active()) scheduleHide()
       }
 
       const onContentEnter = () => {
@@ -528,7 +558,7 @@ const useOverlay = ({
       }
 
       const onContentLeave = () => {
-        if (closeOn === 'hover' && active()) scheduleHide()
+        if (readCloseOn() === 'hover' && active()) scheduleHide()
       }
 
       // We need to defer listener attachment until refs are available
@@ -559,7 +589,9 @@ const useOverlay = ({
     }
 
     // Resize/scroll repositioning
-    const shouldSetOverflow = type === 'modal'
+    // Captured ONCE at attach time so the cleanup decrement stays symmetric
+    // with the increment even if a (getter-shaped) `type` changes mid-life.
+    const shouldSetOverflow = readType() === 'modal'
 
     const onScroll = (e: Event) => {
       handleContentPosition()
@@ -586,7 +618,7 @@ const useOverlay = ({
 
     // Parent container scroll
     if (parentContainer) {
-      if (closeOn !== 'hover') parentContainer.style.overflow = 'hidden'
+      if (readCloseOn() !== 'hover') parentContainer.style.overflow = 'hidden'
 
       const onParentScroll = (e: Event) => {
         handleContentPosition()
@@ -624,8 +656,11 @@ const useOverlay = ({
   // required.
   onMount(() => setupListeners())
 
-  // Handle disabled state
-  if (disabled) {
+  // Handle disabled state — INITIAL-only: a disabled overlay never starts
+  // open. Later `disabled` changes gate event dispatch live (see
+  // handleVisibilityByEventType) but do not force-close an already-open
+  // overlay.
+  if (readDisabled()) {
     active.set(false)
   }
 
@@ -633,7 +668,10 @@ const useOverlay = ({
     triggerRef,
     contentRef: contentRefCallback,
     active,
-    align,
+    // ACCESSOR (call it) — harmonizes with `alignX`/`alignY` (signals) and
+    // keeps a getter-shaped `align` prop live for consumers; a plain value
+    // here would freeze it at hook-init time.
+    align: readAlign,
     alignX: innerAlignX,
     alignY: innerAlignY,
     showContent,

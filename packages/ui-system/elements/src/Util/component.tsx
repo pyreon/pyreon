@@ -8,6 +8,7 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 import { render } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'
 import type { PyreonComponent } from '../types'
+import { hasGetterProps } from '../utils'
 
 export interface Props {
   /**
@@ -24,14 +25,27 @@ export interface Props {
   style?: Record<string, unknown> | undefined
 }
 
-const Component: PyreonComponent<Props> = (({ children, className, style }: Props) => {
-  const mergedClasses = Array.isArray(className) ? className.join(' ') : className
+const UTIL_KEYS = ['children', 'className', 'style'] as const
 
-  const finalProps: Record<string, any> = {}
-  if (style) finalProps.style = style
-  if (mergedClasses) finalProps.className = mergedClasses
+const Component: PyreonComponent<Props> = ((props: Props) => {
+  // Two-path reactive gate: a getter-shaped prop (compiler `_rp()` →
+  // getter — e.g. `className={cls()}`) must be re-read per change, so the
+  // body runs inside a reactive accessor. Pre-fix, the parameter destructure
+  // fired every getter once and the render was a one-shot — the injected
+  // class/style froze at its first value. Static props (the dominant case)
+  // keep the one-shot render, byte-equivalent to the old body.
+  const renderBody = () => {
+    const { children, className, style } = props
+    const mergedClasses = Array.isArray(className) ? className.join(' ') : className
 
-  return render(children, finalProps) as VNode | null
+    const finalProps: Record<string, any> = {}
+    if (style) finalProps.style = style
+    if (mergedClasses) finalProps.className = mergedClasses
+
+    return render(children, finalProps) as VNode | null
+  }
+
+  return hasGetterProps(props, UTIL_KEYS) ? () => renderBody() : renderBody()
 }) as PyreonComponent<Props>
 
 const name = `${PKG_NAME}/Util` as const

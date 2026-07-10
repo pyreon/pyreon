@@ -112,9 +112,10 @@ describe('Content component (production mode)', () => {
   it('does not add data-pyr-element when IS_DEVELOPMENT is false', async () => {
     // Reset module registry so the new mock takes effect
     vi.resetModules()
-    vi.doMock('../utils', () => ({
-      IS_DEVELOPMENT: false,
-    }))
+    vi.doMock('../utils', async (importOriginal) => {
+      const actual = (await importOriginal()) as Record<string, unknown>
+      return { ...actual, IS_DEVELOPMENT: false }
+    })
     // Re-mock @pyreon/ui-core after resetModules
     vi.doMock('@pyreon/ui-core', async (importOriginal) => {
       const actual = (await importOriginal()) as Record<string, unknown>
