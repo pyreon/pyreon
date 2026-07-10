@@ -561,25 +561,40 @@ jobs:
     # i.e. 2–10% headroom. A gate that close to its own limit is a coin flip,
     # and a coin-flip required gate is worse than no gate.
     #
-    # The cost is NOT the toolchain spawns (a common guess — measured and
-    # wrong). `native/compiler` alone is ~2200s of aggregate test CPU (191
-    # files, 1933 tests, pure vitest — it spawns no swiftc/kotlinc at all),
-    # which on a 4-vCPU runner cannot go below ~600s however it is scheduled,
-    # while the Kotlin runtime chain runs ~300s behind it on the SAME runner.
-    # So give the compiler its own runner: the two workloads are unrelated and
-    # were only ever coupled by this matrix.
+    # `native/compiler` is ~75-85% of the pair's cost, and that cost is almost
+    # entirely REAL TOOLCHAIN. `packages/native/compiler/src/validate.ts` shells
+    # out via `execFileSync`, and the suite has 175 `validateSwift`/
+    # `validateKotlin` call sites across 98 test files. Measured warm, per
+    # invocation: `swiftc -parse` 5.2-5.7s, `kotlinc` 17.4s. 175 x ~15s ~= 2600s,
+    # which accounts for the whole ~2800s of aggregate test CPU. On 4 vCPUs that
+    # is ~700s + overhead; the cell is observed at 1276s. Consistent.
+    #
+    # Two plausible hypotheses that measurement killed, recorded so nobody pays
+    # for them twice:
+    #   - "The 21 chained `verify-kotlin.ts --service=` runs pay kotlinc startup
+    #     21 times." They are 26% of the cell, and the JVM page-cache warms after
+    #     the first (29s cold, then 2-4s). Optimising them targets the wrong 26%.
+    #   - "native/compiler spawns no toolchain; `import 383s` is the lead."
+    #     Both false. `--no-isolate` cuts import 383s -> 48s and wall-clock does
+    #     not move (291s -> 294s): `tests`, not `import`, dominates.
+    #
+    # So neither cell can be made meaningfully faster by scheduling, and the
+    # toolchain cost is irreducible without changing what the suite validates.
+    # What WAS fixable: two unrelated heavy workloads shared one runner for no
+    # reason but living in the same directory. Hence a runner each.
     #
     # The halves are `native/compiler` and `native` MINUS `native/compiler`
     # (see `filterByCategory`'s `exclude`), so their union is `native` BY
     # CONSTRUCTION — a newly-added `packages/native/<pkg>` joins the `-rest`
     # cell automatically rather than silently escaping CI.
     #
-    # The cap STAYS at 25 minutes for both native cells. Locally the compiler
-    # is 73-85% of the pair's cost, so post-split it should land near
-    # 1000-1200s — real headroom against 1500s, where the combined cell had
-    # 2-10%. Tightening the cap below that on a machine-load-sensitive local
-    # extrapolation would just rebuild the cliff somewhere less obvious; the
-    # honest move is to split now and tighten later against observed CI times.
+    # Observed after the split: `native-compiler` 1276s (85% of cap),
+    # `native-rest` 191s (13%). Headroom on the critical path went from 2-10%
+    # to 15%, and the Kotlin chain can no longer push the compiler over. 85% is
+    # still thinner than a required gate deserves — the remaining lever is spawn
+    # reduction (batch or cache `swiftc -parse` / `kotlinc`), NOT a cap tweak.
+    # The cap therefore STAYS at 25 minutes: tightening it toward the observed
+    # 1276s would just rebuild the cliff somewhere less visible.
     #
     # Non-native cells are vitest-only and keep the tight 10-minute cap so a
     # genuine hang there still fails fast.
