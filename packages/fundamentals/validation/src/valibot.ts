@@ -6,7 +6,7 @@ import type {
   ValidationError,
   ValidationIssue,
 } from './types'
-import { issuesToRecord } from './utils'
+import { flattenIssuePath, issuesToRecord } from './utils'
 
 /**
  * Minimal Valibot-compatible interfaces so we don't require valibot as a hard dep.
@@ -36,7 +36,7 @@ type GenericSafeParseFn = Function
 
 function valibotIssuesToGeneric(issues: ValibotIssue[]): ValidationIssue[] {
   return issues.map((issue) => ({
-    path: issue.path?.map((p) => String(p.key)).join('.') ?? '',
+    path: flattenIssuePath(issue.path),
     message: issue.message,
   }))
 }

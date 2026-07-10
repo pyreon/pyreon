@@ -14,6 +14,7 @@
  * dependencies on any specific validation library.
  */
 
+import { flattenIssuePath } from './utils'
 import type {
   ParseResult,
   SchemaValidateFn,
@@ -53,9 +54,7 @@ export function standardSchemaToValidator<TValues extends Record<string, unknown
     const errors: Record<string, ValidationError> = {}
     if (result != null && 'issues' in result && result.issues) {
       for (const issue of result.issues) {
-        const key = (issue.path ?? [])
-          .map((p) => (typeof p === 'object' && p !== null ? String(p.key) : String(p)))
-          .join('.')
+        const key = flattenIssuePath(issue.path)
         if (errors[key] === undefined) errors[key] = issue.message
       }
     }
@@ -196,11 +195,7 @@ export function wrapStandardSchema<T extends Record<string, unknown>>(
         return { ok: true, value: r.value as T }
       }
       const issues = (r.issues ?? []).map((issue) => ({
-        path: (issue.path ?? [])
-          .map((p) =>
-            typeof p === 'object' && p !== null ? String(p.key) : String(p),
-          )
-          .join('.'),
+        path: flattenIssuePath(issue.path),
         message: issue.message,
       }))
       return { ok: false, issues }

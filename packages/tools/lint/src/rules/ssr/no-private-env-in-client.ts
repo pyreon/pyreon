@@ -93,8 +93,31 @@ export const noPrivateEnvInClient: Rule = {
 
     const callbacks: VisitorCallbacks = {
       MemberExpression(node: any) {
-        const key = node.property?.type === 'Identifier' ? node.property.name : null
-        if (key == null) return // computed access (`process.env[k]`) — skip, rarer + dynamic
+        // `node.computed` is the real static-vs-dynamic discriminator:
+        // `process.env[k]` has an Identifier property (`k`) too, so a
+        // property-type check alone misclassifies it as a static `.k` read
+        // (and previously produced the WRONG guidance, `ZERO_PUBLIC_k`).
+        const isComputed = node.computed === true
+        const key =
+          !isComputed && node.property?.type === 'Identifier' ? node.property.name : null
+
+        if (key == null) {
+          // Computed access. `process.env[expr]` is ALWAYS dead in the
+          // browser — bundler define-replacement only rewrites STATIC member
+          // reads, so a computed read can never be inlined and `process.env`
+          // itself is undefined client-side. Report it (previously silently
+          // skipped — the bypass shape the release audit flagged). Computed
+          // `import.meta.env[expr]` stays exempt: Vite injects a real env
+          // object, so computed access genuinely works there.
+          if (isComputed && isProcessEnvBase(node)) {
+            context.report({
+              message:
+                '`process.env[<computed>]` is `undefined` in the browser — computed env access can never be build-inlined (bundler define-replacement rewrites static reads only), so this read is dead client-side. Read a `ZERO_PUBLIC_*` var via `publicEnv()` from `@pyreon/zero/env`, or move the dynamic lookup server-side.',
+              span: getSpan(node),
+            })
+          }
+          return
+        }
 
         if (isProcessEnvBase(node)) {
           if (key === 'NODE_ENV') return
