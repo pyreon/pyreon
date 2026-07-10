@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
+import { deriveIslandName } from '../island-naming'
 import { generateContext } from '../project-scanner'
 
 /** Create a temporary directory with the given file structure. */
@@ -216,6 +217,84 @@ describe('project-scanner — extractRoutes (file-based / @pyreon/zero)', () => 
     }
   })
 
+  // ── fs-route convention parity (zero truth) ──────────────────────────────
+  // These lock the scanner to @pyreon/zero's EXACT fs-route semantics (the
+  // shared `fs-route-convention` module). The scanner's original copies had
+  // already diverged at birth — the fixtures below are the misclassifications.
+
+  test('nested <dir>/api/*.ts is a PAGE route, not an API route (zero parity)', () => {
+    // zero's `isApiRoute` requires the TOP-LEVEL `api/` prefix
+    // (`startsWith('api/')` relative to the routes dir), so zero registers
+    // `posts/api/x.ts` as a page route — it is NEVER served from
+    // `virtual:zero/api-routes`. The scanner previously accepted `/api/`
+    // anywhere in the path and reported an API route zero doesn't serve.
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'src/routes/posts/api/x.ts': 'export function GET() { return new Response("ok") }',
+    })
+    try {
+      const ctx = generateContext(dir)
+      const route = ctx.routes.find((r) => r.path === '/posts/api/x')
+      expect(route).toBeTruthy()
+      expect(route?.isApi).toBeFalsy()
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('method-handler .ts OUTSIDE api/ is a page route, not an API route (zero parity)', () => {
+    // zero's api-route registry is populated ONLY from `api/**/*.{ts,js}`.
+    // A `.ts` route file elsewhere that exports HTTP method handlers (and no
+    // default component) is still included in zero's PAGE route module — the
+    // scanner's old export-shape heuristic invented an API route zero never
+    // registers.
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'src/routes/feed.ts':
+        'export function GET() { return new Response("feed") }\nexport function POST() { return new Response("x") }',
+    })
+    try {
+      const ctx = generateContext(dir)
+      const route = ctx.routes.find((r) => r.path === '/feed')
+      expect(route).toBeTruthy()
+      expect(route?.isApi).toBeFalsy()
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('api/*.tsx is a page route (isApiRoute claims .ts/.js only — zero parity)', () => {
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'src/routes/api/page.tsx': 'export default function ApiPage() { return <div/> }',
+    })
+    try {
+      const ctx = generateContext(dir)
+      const route = ctx.routes.find((r) => r.path === '/api/page')
+      expect(route).toBeTruthy()
+      expect(route?.isApi).toBeFalsy()
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
+  test('nested api/ dir keeps page-route URL derivation (index collapses, params map)', () => {
+    const dir = createTempProject({
+      'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
+      'src/routes/posts/api/index.ts': 'export function GET() { return new Response("i") }',
+      'src/routes/posts/api/[id].ts': 'export function GET() { return new Response("d") }',
+    })
+    try {
+      const ctx = generateContext(dir)
+      const paths = ctx.routes.map((r) => r.path)
+      expect(paths).toContain('/posts/api')
+      expect(paths).toContain('/posts/api/:id')
+      for (const r of ctx.routes) expect(r.isApi).toBeFalsy()
+    } finally {
+      cleanupDir(dir)
+    }
+  })
+
   test('finds a routes dir under app/routes and plain routes as well', () => {
     const dir = createTempProject({
       'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
@@ -324,7 +403,13 @@ const Nav = island(() => import("./Nav"), { name: "Nav" })
   // Regression: zero AUTO-NAMES const-bound islands (no `name:` option) — the
   // dominant modern shape. The old regex required an explicit `name:` and
   // missed these entirely → `islands: []` for every modern zero app.
-  test('detects auto-named islands from the const binding (no explicit name)', () => {
+  //
+  // Parity: the reported name must be the DERIVED REGISTRY name
+  // `X$<fnv1a6(relPath)>` — the same derivation `@pyreon/vite-plugin`'s
+  // auto-naming injects at transform time (shared via `island-naming.ts`).
+  // The scanner previously reported the bare binding name (`Widget`), which
+  // matches nothing in zero's actual hydration registry.
+  test('auto-named islands carry the derived registry name (vite-plugin parity)', () => {
     const dir = createTempProject({
       'package.json': JSON.stringify({ name: 'test', version: '1.0.0' }),
       'src/components/widgets.tsx': `
@@ -337,13 +422,15 @@ const Nav = island(() => import('./nav'), { name: 'MainNav', hydrate: 'idle' })
     try {
       const ctx = generateContext(dir)
       const names = ctx.islands.map((i) => i.name)
-      // auto-named from binding, hydrate captured
-      expect(names).toContain('Widget')
-      expect(ctx.islands.find((i) => i.name === 'Widget')?.hydrate).toBe('visible')
+      const widgetName = deriveIslandName('Widget', 'src/components/widgets.tsx')
+      const sidebarName = deriveIslandName('Sidebar', 'src/components/widgets.tsx')
+      // auto-named from binding → registry-name derivation, hydrate captured
+      expect(names).toContain(widgetName)
+      expect(ctx.islands.find((i) => i.name === widgetName)?.hydrate).toBe('visible')
       // auto-named, no-options form → default hydrate
-      expect(names).toContain('Sidebar')
-      expect(ctx.islands.find((i) => i.name === 'Sidebar')?.hydrate).toBe('load')
-      // explicit name wins over the binding
+      expect(names).toContain(sidebarName)
+      expect(ctx.islands.find((i) => i.name === sidebarName)?.hydrate).toBe('load')
+      // explicit name wins over the binding — NO hash suffix
       expect(names).toContain('MainNav')
       expect(ctx.islands.find((i) => i.name === 'MainNav')?.hydrate).toBe('idle')
     } finally {

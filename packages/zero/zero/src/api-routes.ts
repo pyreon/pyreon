@@ -1,3 +1,4 @@
+import { apiFilePathToPattern, isApiRoute } from '@pyreon/compiler/fs-route-convention'
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -131,64 +132,17 @@ export function createApiMiddleware(routes: ApiRouteEntry[]): Middleware {
 
 // ─── Virtual module generation ───────────────────────────────────────────────
 
-/**
- * Detect whether a route file is an API route.
- * API routes are `.ts` or `.js` files inside an `api/` directory.
- */
-export function isApiRoute(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, '/')
-  return (
-    normalized.startsWith('api/') &&
-    (normalized.endsWith('.ts') || normalized.endsWith('.js')) &&
-    !normalized.endsWith('.tsx') &&
-    !normalized.endsWith('.jsx')
-  )
-}
-
-/**
- * Convert an API route file path to a URL pattern.
- *
- * Examples:
- *   "api/posts.ts"        → "/api/posts"
- *   "api/posts/index.ts"  → "/api/posts"
- *   "api/posts/[id].ts"   → "/api/posts/:id"
- *   "api/[...path].ts"    → "/api/:path*"
- */
-export function apiFilePathToPattern(filePath: string): string {
-  let route = filePath
-  // Remove extension
-  for (const ext of ['.ts', '.js']) {
-    if (route.endsWith(ext)) {
-      route = route.slice(0, -ext.length)
-      break
-    }
-  }
-
-  const segments = route.split('/')
-  const urlSegments: string[] = []
-
-  for (const seg of segments) {
-    if (seg === 'index') continue
-
-    // Catch-all: [...param]
-    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
-    if (catchAll) {
-      urlSegments.push(`:${catchAll[1]}*`)
-      continue
-    }
-
-    // Dynamic: [param]
-    const dynamic = seg.match(/^\[(\w+)\]$/)
-    if (dynamic) {
-      urlSegments.push(`:${dynamic[1]}`)
-      continue
-    }
-
-    urlSegments.push(seg)
-  }
-
-  return `/${urlSegments.join('/')}`
-}
+// `isApiRoute` (a `.ts`/`.js` file inside the TOP-LEVEL `api/` directory —
+// nested `posts/api/x.ts` is a PAGE route) and `apiFilePathToPattern` are the
+// fs-route CONVENTION — single-sourced from
+// `@pyreon/compiler/fs-route-convention` (a pure, dependency-free subpath; it
+// does NOT pull the compiler barrel / TypeScript API) so this router and the
+// project scanner (`@pyreon/compiler` `generateContext`) can never drift.
+// The bodies over there are byte-behavior-identical ports of the functions
+// that lived here; this file's tests keep running against the re-exports and
+// `fs-route-convention-parity.test.ts` asserts IDENTITY. Do NOT reintroduce
+// local copies.
+export { apiFilePathToPattern, isApiRoute }
 
 /**
  * Generate a virtual module that exports API route entries.

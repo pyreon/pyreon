@@ -27,6 +27,11 @@
       "bun": "./src/diagnose.ts",
       "import": "./lib/diagnose.js",
       "types": "./lib/types/diagnose.d.ts"
+    },
+    "./fs-route-convention": {
+      "bun": "./src/fs-route-convention.ts",
+      "import": "./lib/fs-route-convention.js",
+      "types": "./lib/types/fs-route-convention.d.ts"
     }
   },
   "files": [

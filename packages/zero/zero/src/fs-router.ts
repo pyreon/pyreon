@@ -1,7 +1,23 @@
+import {
+  filePathToUrlPath,
+  ROUTE_EXTENSIONS,
+  stripRouteExtension,
+} from '@pyreon/compiler/fs-route-convention'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FileRoute, RenderMode, RouteFileExports } from './types'
 import { matchRouteRules } from './route-modes'
+
+// `filePathToUrlPath` + `ROUTE_EXTENSIONS` are the fs-route CONVENTION —
+// single-sourced from `@pyreon/compiler/fs-route-convention` (a pure,
+// dependency-free subpath; it does NOT pull the compiler barrel / TypeScript
+// API) so this router and the project scanner (`@pyreon/compiler`
+// `generateContext`) can never drift. The body over there is a
+// byte-behavior-identical port of the function that lived here; this file's
+// tests keep running against the re-export and
+// `fs-route-convention-parity.test.ts` asserts IDENTITY. Do NOT reintroduce
+// a local copy.
+export { filePathToUrlPath }
 
 /**
  * Return type of a route file's `getStaticPaths()` export. Each entry
@@ -58,8 +74,6 @@ export type GetStaticPaths<
 //   _404        → not-found component (renders on 404)
 //   _not-found  → alias for _404
 //   (group)     → route group (directory ignored in URL)
-
-const ROUTE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js']
 
 /** Names whose top-level export presence we care about. */
 const ROUTE_EXPORT_NAMES = [
@@ -863,14 +877,8 @@ export function parseFileRoutes(
 }
 
 function parseFilePath(filePath: string, defaultMode: RenderMode): FileRoute {
-  // Remove extension
-  let route = filePath
-  for (const ext of ROUTE_EXTENSIONS) {
-    if (route.endsWith(ext)) {
-      route = route.slice(0, -ext.length)
-      break
-    }
-  }
+  // Remove extension (shared convention helper — `.tsx` > `.jsx` > `.ts` > `.js`)
+  const route = stripRouteExtension(filePath)
 
   const fileName = getFileName(route)
   const isLayout = fileName === '_layout'
@@ -910,52 +918,8 @@ function parseFilePath(filePath: string, defaultMode: RenderMode): FileRoute {
   }
 }
 
-/**
- * Convert a file path (without extension) to a URL path pattern.
- *
- * Examples:
- *   "index"            → "/"
- *   "about"            → "/about"
- *   "users/index"      → "/users"
- *   "users/[id]"       → "/users/:id"
- *   "blog/[...slug]"   → "/blog/:slug*"
- *   "(auth)/login"     → "/login"         (group stripped)
- *   "_layout"          → "/"              (layout marker)
- */
-export function filePathToUrlPath(filePath: string): string {
-  const segments = filePath.split('/')
-  const urlSegments: string[] = []
-
-  for (const seg of segments) {
-    // Skip route groups "(name)"
-    if (seg.startsWith('(') && seg.endsWith(')')) continue
-
-    // Skip special files
-    if (seg === '_layout' || seg === '_error' || seg === '_loading' || seg === '_404' || seg === '_not-found') continue
-
-    // "index" maps to the parent path
-    if (seg === 'index') continue
-
-    // Catch-all: [...param] → :param*
-    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
-    if (catchAll) {
-      urlSegments.push(`:${catchAll[1]}*`)
-      continue
-    }
-
-    // Dynamic: [param] → :param
-    const dynamic = seg.match(/^\[(\w+)\]$/)
-    if (dynamic) {
-      urlSegments.push(`:${dynamic[1]}`)
-      continue
-    }
-
-    urlSegments.push(seg)
-  }
-
-  const path = `/${urlSegments.join('/')}`
-  return path || '/'
-}
+// `filePathToUrlPath` lives in `@pyreon/compiler/fs-route-convention` (see the
+// import + re-export at the top of this file).
 
 /** Sort routes: static before dynamic, catch-all last. */
 function sortRoutes(a: FileRoute, b: FileRoute): number {

@@ -7,11 +7,29 @@
  * auto-registry prescan (reads raw disk source), so marker and registry
  * can never disagree.
  */
+import {
+  deriveIslandName as compilerDeriveIslandName,
+  fnv1a6 as compilerFnv1a6,
+  islandRelPath as compilerIslandRelPath,
+} from '@pyreon/compiler'
 import { describe, expect, it } from 'vitest'
 import { deriveIslandName, fnv1a6, injectIslandNames, islandRelPath } from '../island-auto-name'
 
 const ROOT = '/app'
 const FILE = '/app/src/islands.ts'
+
+describe('derivation is single-sourced from @pyreon/compiler (drift lock)', () => {
+  it('re-exports ARE the compiler functions — identity, not equivalence', () => {
+    // If someone reintroduces a local copy in island-auto-name.ts, these
+    // identity assertions fail even when the copy is byte-identical today —
+    // that's the point: the derivation must have ONE home, because the
+    // project scanner (`generateContext`) derives with the same functions
+    // and a re-fork would let marker/registry/context names drift apart.
+    expect(deriveIslandName).toBe(compilerDeriveIslandName)
+    expect(fnv1a6).toBe(compilerFnv1a6)
+    expect(islandRelPath).toBe(compilerIslandRelPath)
+  })
+})
 
 describe('deriveIslandName', () => {
   it('is deterministic and file-scoped', () => {
