@@ -409,3 +409,82 @@ describe('StyleSheet -- at-rule splitting', () => {
     })
   })
 })
+
+// ─── Release-audit lock: string/comment/url-aware at-rule extraction ─────────
+//
+// The scoped `insert()`/`prepare()` component path shares the bug class fixed
+// in `splitTopLevelRules` (global-layer-happydom.test.ts): the brace counter
+// was string/comment/url-UNAWARE. Component CSS with a `}` inside a string
+// poisoned the depth counter, so a following nested @media block was never
+// extracted (it stayed NESTED inside the class rule — dropped by the
+// browser), a `}` inside a string WITHIN the @media body terminated the
+// block early (garbage at-rule + mangled base), and a commented-out @media
+// was extracted as a LIVE rule. `prepare()` is the pure window onto
+// splitAtRules — assertions run on its `rules` string.
+describe('StyleSheet -- splitAtRules string/comment/url awareness', () => {
+  it('a `}` inside a string BEFORE the @media block no longer blocks extraction', () => {
+    const s = createSheet()
+    const { rules } = s.prepare('content:"}"; color: red; @media (min-width: 600px){color: blue;}')
+
+    // The media block is extracted TOP-LEVEL, wrapped with the selector…
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}/)
+    // …and the base rule keeps the brace-in-string declaration intact.
+    expect(rules).toContain('content:"}"; color: red;')
+    // Pre-fix: depth went negative at the in-string `}` → the @media was
+    // never detected → the whole block stayed NESTED inside the class rule
+    // (`red; @media` still inside the base braces). Post-fix the base rule
+    // CLOSES before the media rule starts at the top level.
+    expect(rules).toContain('color: red;}@media')
+  })
+
+  it('a `}` inside a string WITHIN the @media body does not terminate the block early', () => {
+    const s = createSheet()
+    const { rules } = s.prepare('color: red; @media (min-width: 600px){content:"}"; color: blue;}')
+
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{content:"\}"; color: blue;\}\}/)
+  })
+
+  it('a quoted url with a `}` before the @media block stays intact', () => {
+    const s = createSheet()
+    const { rules } = s.prepare(
+      'background: url("a}b.png"); @media (min-width: 600px){color: blue;}',
+    )
+
+    expect(rules).toContain('background: url("a}b.png");')
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}/)
+  })
+
+  it('an UNQUOTED url token with a `}` before the @media block stays intact', () => {
+    const s = createSheet()
+    const { rules } = s.prepare('background: url(a}b.png); @media (min-width: 600px){color: blue;}')
+
+    expect(rules).toContain('background: url(a}b.png);')
+    expect(rules).toMatch(/@media \(min-width: 600px\)\{\.pyr-[0-9a-z]+\{color: blue;\}\}/)
+  })
+
+  it('a commented-out @media block is NOT extracted as a live rule', () => {
+    const s = createSheet()
+    const { rules } = s.prepare('color: red; /* @media (min-width: 600px){color: blue;} */')
+
+    // Pre-fix the `@` inside the comment was detected at depth 0 and the
+    // commented-out media query was emitted as a LIVE top-level rule.
+    expect(rules).not.toMatch(/@media \(min-width: 600px\)\{\.pyr-/)
+    // Single base rule; the comment rides along harmlessly.
+    expect(rules).toMatch(/^\.pyr-[0-9a-z]+\{color: red;/)
+  })
+
+  it('client insert(): the brace-in-string + nested @media shape lands as TWO live DOM rules', () => {
+    const s = createSheet()
+    const cls = s.insert('content:"}"; color: red; @media (min-width: 600px){color: blue;}')
+
+    const styleEl = query<HTMLStyleElement>(document, 'style[data-pyreon-styler]')
+    const cssSheet = styleEl.sheet as CSSStyleSheet
+    const ruleTexts = Array.from(cssSheet.cssRules).map((r) => r.cssText)
+    // The media rule exists top-level, scoped to the generated class.
+    expect(
+      ruleTexts.some(
+        (r) => r.includes('min-width') && r.includes(cls) && r.includes('color: blue'),
+      ),
+    ).toBe(true)
+  })
+})

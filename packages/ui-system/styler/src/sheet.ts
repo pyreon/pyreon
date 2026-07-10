@@ -438,30 +438,74 @@ export class StyleSheet {
     const len = cssText.length
     let depth = 0
     let atStart = -1
+    let atOpen = -1
     let lastBase = 0
 
+    // Same string/comment/url-aware scan as `splitTopLevelRules`. Braces
+    // inside quoted strings, block comments, or unquoted url(…) tokens must
+    // not move the depth counter — a `content:"}"` BEFORE the @media block
+    // poisoned depth negative so the at-rule was never extracted (it stayed
+    // NESTED inside the class rule and the browser dropped it), and a `}`
+    // inside a string WITHIN the @media body terminated the block early
+    // (garbage at-rule + mangled trailing base). The comment skip also
+    // stops a commented-out `@media {…}` from being extracted as a LIVE
+    // rule.
     // `charCodeAt(i)` returns a primitive int; `cssText[i]` allocates a
     // fresh 1-char string in V8 per iteration. On long stylesheets with
     // at-rule blocks the per-char allocation dominates. Ported from
     // vitus-labs `c483cabc`.
-    for (let i = 0; i < len; i++) {
+    let i = 0
+    while (i < len) {
       const ch = cssText.charCodeAt(i)
+
+      if (ch === 47 /* / */ && cssText.charCodeAt(i + 1) === 42 /* * */) {
+        const close = cssText.indexOf('*/', i + 2)
+        i = close === -1 ? len : close + 2
+        continue
+      }
+      if (ch === 34 /* " */ || ch === 39 /* ' */) {
+        i = skipQuoted(cssText, i)
+        continue
+      }
+      if ((ch === 117 || ch === 85) /* u/U */ && isUrlOpen(cssText, i)) {
+        let j = i + 4
+        while (j < len && cssText.charCodeAt(j) <= 32 /* ws */) j++
+        const q = cssText.charCodeAt(j)
+        if (q === 34 /* " */ || q === 39 /* ' */) {
+          // Quoted url — the generic string handler above covers the body.
+          i += 4
+        } else {
+          // Unquoted url TOKEN — may legally contain `{`/`}`; skip to `)`.
+          const close = cssText.indexOf(')', j)
+          i = close === -1 ? len : close + 1
+        }
+        continue
+      }
 
       if (ch === 123 /* { */) {
         depth++
+        // Record the tracked at-rule's REAL block opener via the state
+        // machine (the old `indexOf('{', atStart)` could land on a `{`
+        // inside a prelude string).
+        if (depth === 1 && atStart >= 0 && atOpen < 0) atOpen = i
       } else if (ch === 125 /* } */) {
-        depth--
-        if (depth === 0 && atStart >= 0) {
-          // End of a tracked at-rule block — extract and wrap with selector
-          const openBrace = cssText.indexOf('{', atStart)
-          const atPrefix = cssText.slice(atStart, openBrace).trim()
-          const innerCSS = cssText.slice(openBrace + 1, i).trim()
-          if (innerCSS) {
-            atRules.push(`${atPrefix}{${selector}{${innerCSS}}}`)
+        if (depth > 0) {
+          depth--
+          if (depth === 0 && atStart >= 0) {
+            // End of a tracked at-rule block — extract and wrap with selector
+            const atPrefix = cssText.slice(atStart, atOpen).trim()
+            const innerCSS = cssText.slice(atOpen + 1, i).trim()
+            if (innerCSS) {
+              atRules.push(`${atPrefix}{${selector}{${innerCSS}}}`)
+            }
+            atStart = -1
+            atOpen = -1
+            lastBase = i + 1
           }
-          atStart = -1
-          lastBase = i + 1
         }
+        // A stray depth-0 `}` stays in the base text (the browser drops
+        // that bad declaration); crucially it no longer drives depth
+        // negative, which blocked ALL subsequent at-rule detection.
       } else if (depth === 0 && ch === 64 /* @ */ && atStart < 0) {
         // Check if this starts a splittable at-rule (not @keyframes, @font-face, etc.)
         const remaining = cssText.slice(i, i + 20)
@@ -472,6 +516,7 @@ export class StyleSheet {
           atStart = i
         }
       }
+      i++
     }
 
     // Collect remaining base CSS after the last at-rule
