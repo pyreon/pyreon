@@ -758,6 +758,87 @@ function mountComponent(
 // ─── Children ────────────────────────────────────────────────────────────────
 
 /**
+ * The text↔subtree SWAP CORE shared by `bindPolymorphicText` (the general
+ * reactive-text path) and `_bindText`'s VNode upgrade (the single-signal
+ * fast path in template.ts). ONE implementation so the two paths can never
+ * drift (the attrSetter↔applyProp divergence lesson in anti-patterns).
+ *
+ * `apply(v)`: textish values write `text.data` in place; a non-text value
+ * swaps the text node for a comment marker and mounts the subtree there
+ * (untracked, with the SETUP-time context owner restored — same discipline
+ * as mountReactive); a later textish value tears the subtree down and
+ * restores the text node. `dispose()` tears down a mounted subtree + marker
+ * (real remover into the live parent — never a noop; the text node itself
+ * stays the caller's responsibility, matching the historical contract).
+ */
+export interface PolyTextCore {
+  apply: (v: VNodeChild) => void
+  dispose: Cleanup
+}
+
+export function createPolyTextCore(
+  text: Text,
+  parentAtSetup: Node,
+  ownerAtSetup: ReturnType<typeof getContextOwner>,
+): PolyTextCore {
+  let marker: Comment | null = null
+  let mode: 'text' | 'sub' = 'text'
+  let subCleanup: Cleanup = noop
+
+  return {
+    apply(v: VNodeChild): void {
+      const textish =
+        v == null || v === false || (typeof v !== 'object' && typeof v !== 'function')
+      if (textish) {
+        if (mode === 'sub') {
+          runUntracked(subCleanup)
+          subCleanup = noop
+          // Restore the text node at the marker's LIVE position.
+          const p = marker!.parentNode ?? parentAtSetup
+          p.insertBefore(text, marker)
+          marker!.parentNode?.removeChild(marker!)
+          mode = 'text'
+        }
+        const next = v == null || v === false ? '' : String(v as string | number | boolean)
+        if (next !== text.data) text.data = next
+        return
+      }
+      // Non-text value — mount it as a subtree at this binding's position.
+      if (mode === 'text') {
+        if (!marker) marker = document.createComment('pyreon')
+        // Live parent at swap time (the frag-then-move discipline — see the
+        // mountReactive stale-parent bug class in anti-patterns).
+        const p = text.parentNode ?? parentAtSetup
+        p.insertBefore(marker, text)
+        p.removeChild(text)
+        mode = 'sub'
+      } else {
+        runUntracked(subCleanup)
+      }
+      const liveParent = marker!.parentNode ?? parentAtSetup
+      // Reset _elementDepth: this mount can run at SETUP time (a signal that
+      // ALREADY holds a VNode at bind time, inside a `_tpl` bind under
+      // `mountChildren`'s depth>0 window). The subtree is torn down
+      // INDIVIDUALLY on the next textish flip — not as part of a
+      // freshly-built element — so its cleanups must be REAL removers
+      // (same save/reset discipline as mountFor / mountReactive).
+      const prevDepth = _elementDepth
+      _elementDepth = 0
+      subCleanup = runUntracked(() =>
+        runWithContextOwner(ownerAtSetup, () => mountChild(v as VNodeChild, liveParent, marker)),
+      )
+      _elementDepth = prevDepth
+    },
+    dispose(): void {
+      if (mode === 'sub') {
+        subCleanup()
+        marker?.parentNode?.removeChild(marker)
+      }
+    },
+  }
+}
+
+/**
  * Reactive TEXT binding that can UPGRADE to a subtree mount (and back).
  *
  * The dominant case — an accessor that only ever yields strings/numbers —
@@ -765,64 +846,21 @@ function mountComponent(
  * in-place. But a reactive child's type is not stable: the idiomatic
  * `{() => loading() ? 'Loading…' : <Table/>}` starts text-ish and later
  * yields a VNode. On the first non-text value the binding swaps the text
- * node for a comment marker and mounts the subtree there (untracked, with
- * the setup-time context owner restored — same discipline as
- * mountReactive); a later text value tears the subtree down and restores
- * the text node. Shared by mountChild's fast path AND the hydration
- * adoption paths (which bind an SSR-adopted text node the same way).
+ * node for a comment marker and mounts the subtree there (see
+ * `createPolyTextCore` for the swap semantics). Shared by mountChild's
+ * fast path AND the hydration adoption paths (which bind an SSR-adopted
+ * text node the same way).
  */
 export function bindPolymorphicText(
   child: () => VNodeChild,
   text: Text,
   parentAtSetup: Node,
 ): Cleanup {
-  const ownerAtSetup = getContextOwner()
-  let marker: Comment | null = null
-  let mode: 'text' | 'sub' = 'text'
-  let subCleanup: Cleanup = noop
-
-  const dispose = renderEffect(() => {
-    const v = child()
-    const textish =
-      v == null || v === false || (typeof v !== 'object' && typeof v !== 'function')
-    if (textish) {
-      if (mode === 'sub') {
-        runUntracked(subCleanup)
-        subCleanup = noop
-        // Restore the text node at the marker's LIVE position.
-        const p = marker!.parentNode ?? parentAtSetup
-        p.insertBefore(text, marker)
-        marker!.parentNode?.removeChild(marker!)
-        mode = 'text'
-      }
-      const next = v == null || v === false ? '' : String(v as string | number | boolean)
-      if (next !== text.data) text.data = next
-      return
-    }
-    // Non-text value — mount it as a subtree at this binding's position.
-    if (mode === 'text') {
-      if (!marker) marker = document.createComment('pyreon')
-      // Live parent at swap time (the frag-then-move discipline — see the
-      // mountReactive stale-parent bug class in anti-patterns).
-      const p = text.parentNode ?? parentAtSetup
-      p.insertBefore(marker, text)
-      p.removeChild(text)
-      mode = 'sub'
-    } else {
-      runUntracked(subCleanup)
-    }
-    const liveParent = marker!.parentNode ?? parentAtSetup
-    subCleanup = runUntracked(() =>
-      runWithContextOwner(ownerAtSetup, () => mountChild(v as VNodeChild, liveParent, marker)),
-    )
-  })
-
+  const core = createPolyTextCore(text, parentAtSetup, getContextOwner())
+  const dispose = renderEffect(() => core.apply(child()))
   return () => {
     dispose()
-    if (mode === 'sub') {
-      subCleanup()
-      marker?.parentNode?.removeChild(marker)
-    }
+    core.dispose()
   }
 }
 

@@ -158,6 +158,30 @@ describe('diagnoseError — <select value> symptom entry (PZ-09)', () => {
   })
 })
 
+describe('diagnoseError — text-binding coercion residuals (post VNode-upgrade)', () => {
+  it('matches the plain-primitive array comma-join symptom', () => {
+    for (const text of [
+      'my signal array renders a,b instead of separate nodes',
+      'text binding shows comma-separated values',
+    ]) {
+      const r = diagnoseError(text)
+      expect(r, text).not.toBeNull()
+      expect(r!.cause).toContain('text-FIRST')
+      expect(r!.fix).toContain('For each')
+    }
+  })
+
+  it('matches the parentless-text-node warning', () => {
+    const r = diagnoseError('[Pyreon] A VNode was coerced: the bound text node has no parent')
+    expect(r).not.toBeNull()
+    expect(r!.fix).toContain('mountChild')
+  })
+
+  it('does not fire on unrelated comma text', () => {
+    expect(diagnoseError('how do I join an array with commas in JS')).toBeNull()
+  })
+})
+
 describe('diagnoseError — TypeScript 7 Compiler-API removal entry', () => {
   it('maps the cryptic ESNext deref (bunx MCP crash) to the typescript-cap fix', () => {
     // The exact runtime error a fresh `bunx @pyreon/mcp` throws under TS7.

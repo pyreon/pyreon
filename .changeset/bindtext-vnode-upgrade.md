@@ -1,0 +1,6 @@
+---
+'@pyreon/runtime-dom': patch
+'@pyreon/compiler': patch
+---
+
+`_bindText` (the single-signal reactive-text fast path) now upgrades to a subtree mount on the first VNode-shaped value — `const node = signal(<b>hi</b>); <div>{node()}</div>` mounts `<b>hi</b>` instead of rendering `[object Object]`, matching what SSR already emitted for the shape (removing a guaranteed hydration mismatch). Covers `{sig()}`, `{() => sig()}` (which never avoided the fast path — the stale compiler comment claiming otherwise is corrected) and no-arg cross-file helper calls `{helper()}`. The binding stays permanently polymorphic after the first VNode: later string values restore the text node, later VNodes re-mount. String/number-only bindings are untouched — the no-change bail is byte-identical and the VNode check is one `typeof` on the value-actually-changed branch. The swap core is shared with `bindPolymorphicText` (no drift), resets `_elementDepth` for upgrade-at-setup mounts, uses live-parent reads, real removers, untracked child mounts and the setup-time context owner. The dev coercion warning now fires only for the degenerate detached-text-node case (nowhere to mount); the diagnose catalog's PZ-02 entry leads with "upgrade".
