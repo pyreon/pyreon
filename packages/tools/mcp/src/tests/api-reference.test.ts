@@ -201,9 +201,11 @@ describe('api-reference', () => {
       expect(entry!.notes).toBeTruthy()
     })
 
-    it('useForm carries 5 mistakes covering validateOn + schema ordering', () => {
+    it('useForm carries 6 mistakes covering validateOn + schema ordering', () => {
       const entry = API_REFERENCE['form/useForm']
-      expect(entry?.mistakes?.split('\n').length).toBe(5)
+      // 6th mistake added by the value-integrity fix (unrecognized `schema`
+      // object now throws instead of silently disabling validation).
+      expect(entry?.mistakes?.split('\n').length).toBe(6)
       expect(entry?.notes).toContain('validateOn')
     })
 
