@@ -48,7 +48,26 @@ const waitFor = (cond: () => boolean, timeoutMs = process.env.CI ? 15_000 : 8000
     tick()
   })
 
-describe('WebSocket relay — cross-device sync', () => {
+// The wall-clock backstop must EXCEED the worst-case sum of a test's internal
+// `waitFor` budgets, or vitest kills the test before any deadline can fire —
+// you get an opaque "test timed out" instead of the descriptive
+// `waitFor: timed out`, and a healthy relay looks like a broken one.
+//
+// The old 20s default was sized against ONE 15s `waitFor`. But waits COMPOSE:
+// `RECONNECTS with backoff` awaits three sequentially (connect → drop →
+// recover) = 45s of tick budget; `two clients converge` awaits two = 30s. Both
+// exceed 20s. Worse, the tick-counted deadline above is deliberately
+// starvation-TOLERANT (it counts SCHEDULED ticks, so it self-extends when the
+// event loop is starved) — exactly the CI condition it exists for — which
+// pushes its wall-clock past 20s while its own budget is still unspent. That is
+// why this file flaked as an opaque timeout on loaded runners (all 3 retries)
+// while passing in <1s locally.
+//
+// Backstop = worst case (3 sequential waits) + headroom for server setup/teardown.
+const MAX_SEQUENTIAL_WAITS = 3
+const TEST_TIMEOUT_MS = (process.env.CI ? 15_000 : 8000) * MAX_SEQUENTIAL_WAITS + 15_000
+
+describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, () => {
   let server: SyncServer | undefined
   const disposers: Array<() => void> = []
 
