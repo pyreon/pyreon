@@ -1,5 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix } from './cache-headers'
+import { NETLIFY_ADAPTER_OUTPUT } from './contract'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -56,8 +57,8 @@ export function netlifyAdapter(): Adapter {
       const { join } = await import('node:path')
 
       const outDir = options.outDir
-      const publishDir = join(outDir, 'publish')
-      const functionsDir = join(outDir, 'netlify', 'functions')
+      const publishDir = join(outDir, NETLIFY_ADAPTER_OUTPUT.publishDir)
+      const functionsDir = join(outDir, ...NETLIFY_ADAPTER_OUTPUT.functionsDir.split('/'))
 
       await mkdir(publishDir, { recursive: true })
       await mkdir(functionsDir, { recursive: true })
@@ -69,13 +70,13 @@ export function netlifyAdapter(): Adapter {
       // the sibling `netlify` functions dir so it isn't swept into publish/.
       await stageClientThenServer(options, {
         clientDest: publishDir,
-        serverDest: join(functionsDir, '_server'),
+        serverDest: join(functionsDir, NETLIFY_ADAPTER_OUTPUT.serverDir),
         preserve: ['netlify'],
       })
 
       // Generate Netlify Function (v2 format — ESM, Web-standard Request/Response).
       const funcEntry = `
-import handler from "./_server/entry-server.js"
+import handler from "./${NETLIFY_ADAPTER_OUTPUT.serverDir}/entry-server.js"
 
 export default async function(req, context) {
   try {
@@ -97,13 +98,20 @@ export const config = {
 }
 `.trimStart()
 
-      await writeFile(join(functionsDir, 'ssr.mjs'), funcEntry)
+      await writeFile(
+        join(functionsDir, `${NETLIFY_ADAPTER_OUTPUT.functionName}.mjs`),
+        funcEntry,
+      )
 
-      // Generate netlify.toml
+      // Generate netlify.toml (relative to outDir — informational for
+      // direct `netlify deploy --dir=dist` flows; a scaffolded repo's
+      // ROOT netlify.toml is what Netlify's builds actually read, and
+      // `@pyreon/create-zero` generates it from the same
+      // NETLIFY_ADAPTER_OUTPUT contract, dist-prefixed).
       const toml = `
 [build]
-  publish = "publish"
-  functions = "netlify/functions"
+  publish = "${NETLIFY_ADAPTER_OUTPUT.publishDir}"
+  functions = "${NETLIFY_ADAPTER_OUTPUT.functionsDir}"
 
 [[headers]]
   for = "${assetUrlPrefix(options.config.base, options.assetsDir)}/*"
@@ -112,9 +120,8 @@ export const config = {
 
 [[redirects]]
   from = "/*"
-  to = "/.netlify/functions/ssr"
+  to = "/.netlify/functions/${NETLIFY_ADAPTER_OUTPUT.functionName}"
   status = 200
-  conditions = {Role = ["admin", "user", ""]}
 `.trimStart()
 
       await writeFile(join(outDir, 'netlify.toml'), toml)

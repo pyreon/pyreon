@@ -1,5 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix, writeAssetCacheHeaders } from './cache-headers'
+import { CLOUDFLARE_ADAPTER_OUTPUT } from './contract'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -69,7 +70,7 @@ export function cloudflareAdapter(): Adapter {
           exclude: ['/*'],
         }
         await writeFile(
-          join(options.outDir, '_routes.json'),
+          join(options.outDir, CLOUDFLARE_ADAPTER_OUTPUT.routesFile),
           JSON.stringify(routesConfig, null, 2),
         )
         // Cloudflare Pages reads `_headers` for per-path cache control; without
@@ -95,7 +96,7 @@ export function cloudflareAdapter(): Adapter {
       // the server build is copied into _server/.
       await stageClientThenServer(options, {
         clientDest: outDir,
-        serverDest: join(outDir, '_server'),
+        serverDest: join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.serverDir),
       })
 
       // Cloudflare runs in workerd, NOT Node — there is no filesystem, so the
@@ -108,7 +109,7 @@ export function cloudflareAdapter(): Adapter {
       // `entry-server.ts`). Empty/missing template → empty global → the
       // server falls back exactly as before (SSG-only builds, etc.).
       const builtTemplate = await readFile(
-        join(outDir, '_server', 'template.html'),
+        join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.serverDir, 'template.html'),
         'utf-8',
       ).catch(() => '')
 
@@ -126,7 +127,7 @@ export function cloudflareAdapter(): Adapter {
       const workerEntry = `
 globalThis.__PYREON_SSR_TEMPLATE__ = ${JSON.stringify(builtTemplate)}
 
-const { default: handler } = await import("./_server/entry-server.js")
+const { default: handler } = await import("./${CLOUDFLARE_ADAPTER_OUTPUT.serverDir}/entry-server.js")
 
 export default {
   async fetch(request, env, ctx) {
@@ -147,7 +148,7 @@ export default {
 }
 `.trimStart()
 
-      await writeFile(join(outDir, '_worker.js'), workerEntry)
+      await writeFile(join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.workerFile), workerEntry)
 
       // Cloudflare Pages config — _routes.json for routing.
       //
@@ -186,7 +187,10 @@ export default {
         ],
       }
 
-      await writeFile(join(outDir, '_routes.json'), JSON.stringify(routesConfig, null, 2))
+      await writeFile(
+        join(outDir, CLOUDFLARE_ADAPTER_OUTPUT.routesFile),
+        JSON.stringify(routesConfig, null, 2),
+      )
       // `<base><assetsDir>/*` is excluded from the worker above and served by
       // Pages' static layer — pin it immutable via `_headers` (same as SSG).
       await writeAssetCacheHeaders(outDir, assetPrefix)

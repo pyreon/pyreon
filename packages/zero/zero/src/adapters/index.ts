@@ -1,5 +1,16 @@
 export { bunAdapter } from './bun'
 export { cloudflareAdapter } from './cloudflare'
+// Adapter OUTPUT-PATH contract — where each adapter stages its artifacts
+// inside `outDir`. Consumed by the adapters themselves AND locked against
+// `@pyreon/create-zero`'s scaffolded deploy configs by a contract test,
+// so the two can never drift (see contract.ts).
+export {
+  BUN_ADAPTER_OUTPUT,
+  CLOUDFLARE_ADAPTER_OUTPUT,
+  NETLIFY_ADAPTER_OUTPUT,
+  NODE_ADAPTER_OUTPUT,
+  VERCEL_ADAPTER_OUTPUT,
+} from './contract'
 export { netlifyAdapter } from './netlify'
 export { nodeAdapter } from './node'
 export { staticAdapter } from './static'

@@ -1,4 +1,5 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
+import { BUN_ADAPTER_OUTPUT } from './contract'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 
@@ -29,9 +30,9 @@ export function bunAdapter(): Adapter {
       // stage.ts for why a plain cp is a copy-into-self here (clientOutDir ===
       // outDir, server already at outDir/server).
       await stageClientThenServer(options, {
-        clientDest: join(outDir, 'client'),
-        serverDest: join(outDir, 'server'),
-        preserve: ['index.ts'],
+        clientDest: join(outDir, BUN_ADAPTER_OUTPUT.clientDir),
+        serverDest: join(outDir, BUN_ADAPTER_OUTPUT.serverDir),
+        preserve: [BUN_ADAPTER_OUTPUT.runnerEntry],
       })
 
       const port = options.config.port ?? 3000
@@ -46,8 +47,8 @@ export function bunAdapter(): Adapter {
       const serverEntry = `
 import { normalize } from "node:path"
 
-const handler = (await import("./server/entry-server.js")).default
-const clientDir = new URL("./client/", import.meta.url).pathname
+const handler = (await import("./${BUN_ADAPTER_OUTPUT.serverDir}/entry-server.js")).default
+const clientDir = new URL("./${BUN_ADAPTER_OUTPUT.clientDir}/", import.meta.url).pathname
 
 // Phase 2 — hybrid static-first. Prerendered \`renderMode = 'ssg'\` routes are
 // listed in \`_pyreon-ssg-paths.json\`; serve their index.html straight from
@@ -157,7 +158,7 @@ Bun.serve({
 console.log(\`\\n  ⚡ Zero production server running on http://localhost:\${PORT}\\n\`)
 `.trimStart()
 
-      await writeFile(join(outDir, 'index.ts'), serverEntry)
+      await writeFile(join(outDir, BUN_ADAPTER_OUTPUT.runnerEntry), serverEntry)
     },
     async revalidate(_path: string): Promise<AdapterRevalidateResult> {
       // Self-hosted Bun has no platform-driven ISR — same shape as

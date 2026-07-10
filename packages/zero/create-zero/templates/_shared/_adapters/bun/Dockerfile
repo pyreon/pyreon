@@ -7,8 +7,10 @@ RUN bun run build
 
 FROM oven/bun:1@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4
 WORKDIR /app
+# The bun adapter's dist/ tree is self-contained: dist/index.ts (the
+# emitted Bun.serve() runner — Bun runs TS natively) + dist/server/
+# (SSR bundle — externals are node:* builtins only) + dist/client/
+# (static assets). No node_modules needed at runtime.
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./
-COPY --from=build /app/node_modules ./node_modules
 EXPOSE 3000
-CMD ["bun", "run", "dist/server.js"]
+CMD ["bun", "dist/index.ts"]

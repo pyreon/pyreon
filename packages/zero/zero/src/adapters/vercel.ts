@@ -1,5 +1,6 @@
 import type { Adapter, AdapterBuildOptions, AdapterRevalidateResult } from '../types'
 import { assetUrlPrefix } from './cache-headers'
+import { VERCEL_ADAPTER_OUTPUT } from './contract'
 import { stageClientThenServer } from './stage'
 import { validateBuildInputs } from './validate'
 import { warnMissingEnv } from './warn-missing-env'
@@ -41,7 +42,7 @@ export function vercelAdapter(): Adapter {
         // minimum-impact signal "this is a prerendered site".
         const { writeFile, mkdir } = await import('node:fs/promises')
         const { join } = await import('node:path')
-        const vercelDir = join(options.outDir, '.vercel', 'output')
+        const vercelDir = join(options.outDir, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
         await mkdir(vercelDir, { recursive: true })
         const config = {
           version: 3,
@@ -61,7 +62,7 @@ export function vercelAdapter(): Adapter {
       const { writeFile, mkdir } = await import('node:fs/promises')
       const { join } = await import('node:path')
 
-      const vercelDir = join(options.outDir, '.vercel', 'output')
+      const vercelDir = join(options.outDir, ...VERCEL_ADAPTER_OUTPUT.outputDir.split('/'))
       const staticDir = join(vercelDir, 'static')
       const funcDir = join(vercelDir, 'functions', 'ssr.func')
 
