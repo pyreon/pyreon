@@ -213,6 +213,17 @@ public inline fun <reified T> rememberPyreonStorage(
     key: String,
     initial: T,
 ): MutableState<T> {
+    // Capture the FULLY-GENERIC serializer at the reified call site.
+    // The write shim previously derived it from the value's ERASED
+    // runtime class (`newValue!!::class.java` — a raw ArrayList for a
+    // List<Todo>), which kotlinx-serialization rejects at runtime; the
+    // silent-drop encode contract then swallowed the failure, so NO
+    // generic-typed value was EVER written through to the backend.
+    // Invisible to compile-time validation by construction — caught by
+    // the FIRST device persistence assertion (M1.2a): pre-recreate
+    // rendering worked from in-memory state, the post-recreate read
+    // returned null.
+    val ser = serializer<T>()
     val state = remember(key) {
         val current = PyreonStorageRegistry.backend.read(key)
         val initialValue: T = PyreonStorage.decodeOrDefault(current, initial)
@@ -224,7 +235,7 @@ public inline fun <reified T> rememberPyreonStorage(
     // common case is a single subscriber (this state itself) and the
     // observer registration adds complexity without payoff. Instead we
     // wrap the MutableState in a delegating shim that intercepts writes.
-    return PyreonStorageState(key, state)
+    return PyreonStorageState(key, state, ser)
 }
 
 /**
@@ -237,6 +248,7 @@ public inline fun <reified T> rememberPyreonStorage(
 internal class PyreonStorageState<T>(
     private val key: String,
     private val delegate: MutableState<T>,
+    private val ser: KSerializer<T>,
 ) : MutableState<T> {
     override var value: T
         get() = delegate.value
@@ -248,16 +260,12 @@ internal class PyreonStorageState<T>(
             // don't have a reified type at this site; do the encode
             // inline via the delegate's runtime type.
             try {
-                // Top-level `serializer(java.lang.reflect.Type)` — NO
-                // explicit type argument: the Type-taking overload is
-                // non-generic, so `serializer<Any>(...)` resolves to
-                // NOTHING (the generic form takes zero args) and kotlinc
-                // fails with "none of the following candidates is
-                // applicable". The package's own stub-based verify missed
-                // this — only the example apps' real gradle compile
-                // (device CI) surfaced it.
-                @Suppress("UNCHECKED_CAST")
-                val ser = serializer(newValue!!::class.java) as KSerializer<T>
+                // Uses the fully-generic KSerializer captured at the
+                // reified rememberPyreonStorage call site — deriving one
+                // here from the value's erased runtime class silently
+                // failed for EVERY generic type (List<Todo> → raw
+                // ArrayList → SerializationException → swallowed), so
+                // writes never reached the backend (M1.2a device find).
                 val encoded = Json.encodeToString(ser, newValue)
                 PyreonStorageRegistry.backend.write(key, encoded)
             } catch (_: Throwable) {
