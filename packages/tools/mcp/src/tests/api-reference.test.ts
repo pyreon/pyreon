@@ -308,9 +308,9 @@ describe('api-reference', () => {
       expect(entry?.notes).toContain('.peek()')
     })
 
-    it('effect documents the auto-tracking contract + 4 mistakes', () => {
+    it('effect documents the auto-tracking contract + 6 mistakes', () => {
       const entry = API_REFERENCE['reactivity/effect']
-      expect(entry?.mistakes?.split('\n').length).toBe(4)
+      expect(entry?.mistakes?.split('\n').length).toBe(6)
       expect(entry?.notes).toContain('auto-tracks')
     })
 

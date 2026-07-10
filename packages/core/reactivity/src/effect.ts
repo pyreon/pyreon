@@ -1,12 +1,10 @@
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
 import {
-  _restoreActiveEffect,
-  _setActiveEffect,
   getInnerEffectCollector,
-  setDepsCollector,
+  runCollect,
+  runVerify,
   setInnerEffectCollector,
-  withTracking,
 } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
@@ -68,8 +66,17 @@ export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
 
 // ─── onCleanup ───────────────────────────────────────────────────────────────
 // Thread-local collector for cleanup functions registered via onCleanup()
-// during effect execution. Pushed/popped around the user callback in effect().
+// during effect execution. LAZY: the run body only opens the WINDOW (a
+// boolean); the array is allocated on the first onCleanup() call. The old
+// shape pre-allocated a `collected: []` array on EVERY effect run — pure
+// garbage for the overwhelming majority of effects that never call
+// onCleanup. Both window + array are saved/restored around each run, so a
+// NESTED effect() created inside an outer effect's body no longer clobbers
+// the outer's collector (pre-fix: the inner run set the module var to null
+// on exit, silently DROPPING any outer onCleanup() registered after the
+// nested effect creation — regression-locked in verify-deps.test.ts).
 let _cleanupCollector: (() => void)[] | null = null
+let _cleanupWindowOpen = false
 
 /**
  * Register a cleanup function inside an effect. The cleanup runs:
@@ -89,10 +96,20 @@ let _cleanupCollector: (() => void)[] | null = null
  * })
  */
 export function onCleanup(fn: () => void): void {
-  if (_cleanupCollector) {
+  if (_cleanupWindowOpen) {
+    if (_cleanupCollector === null) _cleanupCollector = []
     _cleanupCollector.push(fn)
   }
 }
+
+// Lazy inner-effect collection window sentinel. An effect run opens the
+// window by setting the module collector to THIS array; the first nested
+// `effect()` created during the run swaps in a real array (see the
+// registration block at the bottom of `effect()`). Nothing ever pushes into
+// the sentinel itself — the swap happens before the first push by
+// construction. Saves one `myInners: []` allocation on every effect run for
+// the dominant no-nested-effects case.
+const LAZY_INNER: unknown[] = []
 
 // Inner-effect collector state is owned by tracking.ts (see
 // `getInnerEffectCollector` / `setInnerEffectCollector`) so `runUntracked`
@@ -253,36 +270,42 @@ export function effect(
     }
     // Run previous cleanup before re-running
     runCleanup()
-    // Start a new inner-effect collection window. Effects created during
-    // fn() will push themselves into this array and be disposed on the
-    // next re-run or on dispose.
-    const outerCollector = getInnerEffectCollector() as Effect[] | null
-    const myInners: Effect[] = []
-    setInnerEffectCollector(myInners)
+    // Open a LAZY inner-effect collection window (sentinel — no array
+    // allocation unless a nested effect() is actually created; see
+    // LAZY_INNER) and a LAZY onCleanup window (boolean — array allocated on
+    // first onCleanup call). Both saved/restored so nested effect runs
+    // can't clobber this run's collection state.
+    const outerCollector = getInnerEffectCollector()
+    setInnerEffectCollector(LAZY_INNER)
+    const prevCleanupWindow = _cleanupWindowOpen
+    const prevCleanupCollector = _cleanupCollector
+    _cleanupWindowOpen = true
+    _cleanupCollector = null
     try {
-      cleanupLocalDeps(deps, run)
-      setDepsCollector(deps)
-      // Collect onCleanup() registrations during execution
-      const collected: (() => void)[] = []
-      _cleanupCollector = collected
-      // First run executes inside the synchronous mount where the context
-      // stack is still intact — call fn directly to avoid pushing the
-      // captured snapshot a redundant second time. Subsequent re-runs
+      // First run COLLECTS deps into the persistent array; re-runs VERIFY
+      // them positionally (zero Set ops in the steady state — see
+      // tracking.ts verify-mode docs). No per-re-run teardown: the old
+      // `cleanupLocalDeps + re-collect` pair is what verify mode replaces.
+      //
+      // First run also executes inside the synchronous mount where the
+      // context stack is still intact — call fn directly to avoid pushing
+      // the captured snapshot a redundant second time. Subsequent re-runs
       // happen AFTER mountReactive's cleanup has truncated the stack, so
       // they need the snapshot restored — use the cached `fnToRunReplay`
       // closure built once at setup (no per-re-run allocation).
-      cleanup = withTracking(run, isFirstRun ? fn : fnToRunReplay) || undefined
-      _cleanupCollector = null
-      if (collected.length > 0) cleanups = collected
-      setDepsCollector(null)
+      cleanup =
+        (isFirstRun ? runCollect(run, deps, fn) : runVerify(run, deps, fnToRunReplay)) ||
+        undefined
+      if (_cleanupCollector !== null) cleanups = _cleanupCollector
     } catch (err) {
-      _cleanupCollector = null
-      setDepsCollector(null)
       _errorHandler(err)
     } finally {
+      _cleanupWindowOpen = prevCleanupWindow
+      _cleanupCollector = prevCleanupCollector
+      const mine = getInnerEffectCollector()
+      if (mine !== LAZY_INNER && mine !== null) innerEffects = mine as Effect[]
       setInnerEffectCollector(outerCollector)
     }
-    if (myInners.length > 0) innerEffects = myInners
     // Notify scope after each reactive re-run (not the initial synchronous run)
     // so onUpdate hooks fire after the DOM has settled.
     if (!isFirstRun) scope?.notifyEffectRan()
@@ -336,9 +359,16 @@ export function effect(
   // the outer reactive context falls through to scope.add instead, so
   // child component effects mounted inside `mountFor`'s `runUntracked`
   // wrap aren't auto-disposed on the For's next re-run (W23).
-  const collector = getInnerEffectCollector() as Effect[] | null
+  const collector = getInnerEffectCollector()
   if (collector !== null) {
-    collector.push(e)
+    if (collector === LAZY_INNER) {
+      // First nested effect of the enclosing run — materialize the real
+      // array now (the lazy-window swap; the sentinel itself is never
+      // mutated).
+      setInnerEffectCollector([e])
+    } else {
+      ;(collector as Effect[]).push(e)
+    }
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
     getCurrentScope()?.add(e)
@@ -351,11 +381,13 @@ export function effect(
  * Lightweight effect for DOM render bindings.
  *
  * Differences from `effect()`:
- * - No EffectScope registration (caller owns the dispose lifecycle)
  * - No error handler (errors propagate naturally)
- * - No onUpdate notification
- * - Deps stored in a local array instead of the global WeakMap — faster
- *   creation and disposal (~200ns saved per effect vs WeakMap path)
+ * - No onUpdate notification, no onCleanup collection, no inner-effect window
+ * - Re-runs use the same verify-mode dep reuse as `effect()` but skip the
+ *   cleanup/inner-effect ceremony entirely
+ *
+ * It DOES auto-register its disposer with the current `EffectScope` (same as
+ * `effect()`), so template bindings tear down with the owning component.
  *
  * Returns a dispose function (not an Effect object — saves 1 allocation).
  */
@@ -369,8 +401,8 @@ export function effect(
  * and tracking context save/restore entirely — just calls `fn()` directly.
  *
  * Per re-run savings vs renderEffect:
- * - No deps iteration + Set.delete (cleanup)
- * - No setDepsCollector + withTracking (re-registration)
+ * - No tracking frame at all (renderEffect re-runs enter a `runVerify`
+ *   frame — cheap, but still a save/restore + one compare per read)
  * - Signal reads hit `if (activeEffect)` null check → instant return
  */
 export function _bind(fn: () => void): () => void {
@@ -410,9 +442,7 @@ export function _bind(fn: () => void): () => void {
   // intentionally call `fn` directly (not `run`) here — the synchronous
   // mount stack is already intact at this point, so restoring the captured
   // snapshot would just push the same frames again redundantly.
-  setDepsCollector(deps)
-  withTracking(run, fn)
-  setDepsCollector(null)
+  runCollect(run, deps, fn)
 
   const dispose = () => {
     if (disposed) return
@@ -425,25 +455,6 @@ export function _bind(fn: () => void): () => void {
   getCurrentScope()?.add({ dispose })
 
   return dispose
-}
-
-/** Full re-track path for renderEffect: cleanup old deps, evaluate with tracking. */
-function renderEffectFullTrack(deps: Set<() => void>[], run: () => void, fn: () => void): void {
-  if (deps.length === 1) {
-    ;(deps[0] as Set<() => void>).delete(run)
-    deps.length = 0
-  } else if (deps.length > 1) {
-    for (const s of deps) s.delete(run)
-    deps.length = 0
-  }
-  setDepsCollector(deps)
-  _setActiveEffect(run)
-  try {
-    fn()
-  } finally {
-    _restoreActiveEffect()
-    setDepsCollector(null)
-  }
 }
 
 export function renderEffect(fn: () => void): () => void {
@@ -477,19 +488,14 @@ export function renderEffect(fn: () => void): () => void {
     if (disposed) return
     if (isFirstRun) {
       isFirstRun = false
-      setDepsCollector(deps)
-      _setActiveEffect(run)
-      try {
-        // First run: stack is still intact (we're inside the synchronous
-        // mount), so call fn directly to avoid pushing the snapshot frames
-        // a second time.
-        fn()
-      } finally {
-        _restoreActiveEffect()
-        setDepsCollector(null)
-      }
+      // First run: stack is still intact (we're inside the synchronous
+      // mount), so call fn directly to avoid pushing the snapshot frames
+      // a second time.
+      runCollect(run, deps, fn)
     } else {
-      renderEffectFullTrack(deps, run, trackedFn)
+      // Re-run: VERIFY the previous dep list positionally (zero Set ops in
+      // the steady state) instead of the old cleanup-all + re-track pair.
+      runVerify(run, deps, trackedFn)
     }
   }
 

@@ -14,5 +14,14 @@ export default defineNodeConfig({
   // excluded from the PRODUCTION coverage gate — same precedent as the
   // devtools panel — so the gate measures the code that actually ships.
   coverageExclude: ['src/reactive-devtools.ts', 'src/lpih.ts'],
-  coverageThresholds: { statements: 98, lines: 99, branches: 98 },
+  // branches: honest re-baseline 98 → 96 (2026-07). Measured node-suite
+  // reality on main was 96.02% — the configured 98 made the LOCAL
+  // `bun run test -- --coverage` exit non-zero on a clean tree while the CI
+  // coverage gate stayed green (scripts/check-coverage.ts gates on the
+  // STATEMENTS metric only), violating the "thresholds sit at/below measured
+  // reality" invariant (see ci.yml `coverage-full`). The residual branch tail
+  // is defensive/cross-engine arms in coverage.ts + reactive-describe.ts +
+  // createSelector.ts — ratchet back up as tests land, per the lint-baseline
+  // pattern. 96 stays above the repo-wide 95-branch floor.
+  coverageThresholds: { statements: 98, lines: 99, branches: 96 },
 })

@@ -71,7 +71,9 @@ doubled()  // 10`,
     notes: 'Create a memoized derived value. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. Custom `equals` function prevents downstream effects from firing on structurally-equal updates (default: `Object.is`). See also: signal, effect.',
     mistakes: `- \`computed(() => count)\` — must CALL the signal: \`computed(() => count())\`
 - Using \`computed()\` for side effects — use \`effect()\` instead; computed is for pure derivation
-- Expecting \`computed()\` to re-run when a \`.peek()\`-read signal changes — \`.peek()\` bypasses tracking`,
+- Expecting \`computed()\` to re-run when a \`.peek()\`-read signal changes — \`.peek()\` bypasses tracking
+- Expecting eager evaluation — the default computed is LAZY: a dependency change only marks it dirty; the derivation runs on the next read. Pass \`options.equals\` for the eager variant that re-evaluates on notification and gates downstream updates
+- Reasoning about memory from stale branches — a re-evaluated computed drops subscriptions to sources it no longer reads (exact dep list per evaluation), so \`dispose()\` fully unsubscribes even after conditional-branch flips`,
   },
 
   'reactivity/effect': {
@@ -91,7 +93,9 @@ effect(() => {
     mistakes: `- Passing a dependency array — Pyreon auto-tracks; no array needed
 - \`effect(() => { count })\` — must call the signal: \`effect(() => { count() })\`
 - Nesting \`effect()\` inside \`effect()\` — use \`computed()\` for derived values instead
-- Creating signals inside an effect — they re-create on every run; create once outside`,
+- Creating signals inside an effect — they re-create on every run; create once outside
+- Passing an \`async\` function — only signal reads BEFORE the first \`await\` are tracked (dev mode warns at registration); read every tracked signal before awaiting, or use \`watch(source, asyncCb)\`
+- Assuming a conditional read (\`cond() ? a() : b()\`) keeps BOTH branches subscribed — only the branch actually read this run is a dependency; the effect re-runs when the read branch or the condition changes, then re-tracks (stale-branch subscriptions are dropped on the next run)`,
   },
 
   'reactivity/renderEffect': {
@@ -102,10 +106,11 @@ const dispose = renderEffect(() => {
   node.data = String(count())
 })
 // Re-runs only when count() changes; lighter than effect() but no
-// onCleanup support, no scope auto-disposal, no error-handler routing.`,
+// onCleanup support and no error-handler routing (it DOES auto-register
+// its disposer with the surrounding EffectScope, like effect()).`,
     notes: `DOM-specific effect with a lighter dependency tracking path — uses a local array for deps instead of the full \`EffectScope\` integration. Used internally by \`_bind\` / \`_tpl\` for compiled-template DOM updates. **Prefer \`effect()\` for general use**; reach for \`renderEffect()\` only when you're hand-writing DOM update logic and have measured the overhead difference. Returns a dispose function (not an \`Effect\` object — different shape from \`effect()\`). See also: effect, computed.`,
     mistakes: `- Calling \`onCleanup()\` inside \`renderEffect()\` — not supported; only \`effect()\` collects cleanups. Use \`effect()\` if you need cleanup callbacks
-- Expecting \`renderEffect()\` to auto-dispose with the surrounding scope — it does NOT register with \`EffectScope\`. Component-scoped DOM effects should use \`effect()\` so they tear down on unmount
+- Assuming \`renderEffect()\` supports the full \`effect()\` surface — it auto-registers its DISPOSER with the surrounding \`EffectScope\` (tears down on unmount like \`effect()\`), but has no \`onCleanup\` collection, no error-handler routing, and returns a bare dispose function, not an \`Effect\` object
 - Reaching for \`renderEffect()\` as the default — \`effect()\` is the canonical primitive. The performance delta only matters in extreme hot paths (1000+ DOM nodes), never in component-level code`,
   },
 

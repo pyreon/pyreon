@@ -2,13 +2,7 @@ import { _markRecompute } from './batch'
 import { _errorHandler } from './effect'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
-import {
-  notifySubscribers,
-  setDepsCollector,
-  setSkipDepsCollection,
-  trackSubscriber,
-  withTracking,
-} from './tracking'
+import { notifySubscribers, runCollect, runVerify, trackSubscriber } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -138,14 +132,6 @@ function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
   deps.length = 0
 }
 
-/** Re-track dependencies using the local deps array collector. */
-function trackWithLocalDeps<T>(deps: Set<() => void>[], effect: () => void, fn: () => T): T {
-  setDepsCollector(deps)
-  const result = withTracking(effect, fn)
-  setDepsCollector(null)
-  return result
-}
-
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
   // Dev warning for async computed callbacks.
   // `computed(async () => …)` returns `Computed<Promise<T>>`, which silently
@@ -173,10 +159,13 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
 }
 
 /**
- * Default computed — lazy evaluation with deferred cleanup.
+ * Default computed — lazy evaluation with verified dep reuse.
  *
- * On notification: just marks dirty and propagates (no cleanup/re-track).
- * On read: cleans up old deps, re-evaluates, re-tracks.
+ * On notification: just marks dirty and propagates (no dep work).
+ * On read (dirty): first eval COLLECTS deps; re-evals VERIFY the previous
+ * dep list positionally (zero Set operations in the steady state — see
+ * tracking.ts `runVerify`), unsubscribing stale branches / recording new
+ * reads only on divergence.
  *
  * The `if (dirty) return` early exit in recompute prevents double-propagation
  * in diamond patterns (a→b,c→d: b notifies d, c tries to notify d again —
@@ -204,15 +193,16 @@ function computedLazy<T>(
       }
       try {
         if (tracked) {
-          // Deps already established from first run — skip adding to
-          // subscriber Sets again (they already contain recompute).
-          // Still need withTracking so activeEffect is set correctly
-          // for any NEW signals read on this evaluation.
-          setSkipDepsCollection(true)
-          read._value = withTracking(recompute, fn)
-          setSkipDepsCollection(false)
+          // Deps already established from a previous run — VERIFY them
+          // positionally (zero Set ops for the steady-state re-eval; see
+          // tracking.ts). A divergence (branch flip / new dep) unsubscribes
+          // the stale tail and records the new shape — the old skip-mode
+          // path left stale deps subscribed forever AND never recorded
+          // newly-read sources (so dispose() couldn't remove them); verify
+          // mode keeps the recorded dep list exact on every re-eval.
+          read._value = runVerify(recompute, deps, fn)
         } else {
-          read._value = trackWithLocalDeps(deps, recompute, fn)
+          read._value = runCollect(recompute, deps, fn)
           tracked = true
         }
       } catch (err) {
@@ -275,8 +265,9 @@ function computedWithEquals<T>(
   equals: (prev: T, next: T) => boolean,
   injectedLoc?: { file: string; line: number; col: number },
 ): Computed<T> {
-  // `initialized` and `deps` are touched only by per-instance closures.
+  // `initialized`, `tracked`, and `deps` are touched only by per-instance closures.
   let initialized = false
+  let tracked = false
   const deps: Set<() => void>[] = []
   let recompute: () => void
 
@@ -285,9 +276,14 @@ function computedWithEquals<T>(
     if (read._dirty) {
       if (process.env.NODE_ENV !== 'production')
         _countSink.__pyreon_count__?.('reactivity.computedRecompute')
-      cleanupLocalDeps(deps, recompute)
       try {
-        read._value = trackWithLocalDeps(deps, recompute, fn)
+        // Collect-only: in the equals variant, `_dirty` is true ONLY before
+        // the first successful eval — recompute (the sole re-evaluator)
+        // runs eagerly and clears it before any read can observe it. A
+        // throwing first read retries here with `tracked` still false, so
+        // collect is exact; verified re-evals live in `recompute` below.
+        read._value = runCollect(recompute, deps, fn)
+        tracked = true
       } catch (err) {
         _errorHandler(err)
       }
@@ -315,9 +311,15 @@ function computedWithEquals<T>(
       _countSink.__pyreon_count__?.('reactivity.computedRecompute')
       _rdRecordFire(read)
     }
-    cleanupLocalDeps(deps, recompute)
     try {
-      const next = trackWithLocalDeps(deps, recompute, fn)
+      // Same collect-then-verify shape as the read path above.
+      let next: T
+      if (tracked) {
+        next = runVerify(recompute, deps, fn)
+      } else {
+        next = runCollect(recompute, deps, fn)
+        tracked = true
+      }
       if (initialized && equals(read._value, next)) return
       read._value = next
       read._dirty = false
