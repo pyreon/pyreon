@@ -15,37 +15,25 @@
  * detects them after the fact). Explicit `name:` always wins — it stays
  * the pretty, human-chosen identifier.
  *
- * Two consumers must derive IDENTICALLY (both live in this plugin):
- *  - `injectIslandNames` (transform hook) — rewrites the source so the
+ * THREE consumers must derive IDENTICALLY, so the derivation itself lives in
+ * `@pyreon/compiler` (`island-naming.ts` — the lowest shared layer) and this
+ * module re-exports it:
+ *  - `injectIslandNames` (transform hook, here) — rewrites the source so the
  *    RUNTIME `island()` call receives the name.
- *  - `scanIslandDeclarations` (auto-registry prescan + transform rescan) —
- *    reads raw source from disk, so it re-derives with the same helper.
+ *  - `scanIslandDeclarations` (auto-registry prescan + transform rescan,
+ *    here) — reads raw source from disk, so it re-derives the same way.
+ *  - `@pyreon/compiler`'s `generateContext` project scanner — reports each
+ *    island under the name the hydration registry ACTUALLY uses.
+ * The identity parity test in `tests/island-auto-name.test.ts` locks against
+ * a local copy ever being reintroduced here.
  *
  * Bindingless nameless calls (`<X client:… />`-style inline `island(...)`
  * expressions) stay unnamed — the runtime throws with guidance, because
  * there is nothing stable to derive from.
  */
-import { relative } from 'node:path'
+import { deriveIslandName, fnv1a6, islandRelPath } from '@pyreon/compiler'
 
-/** FNV-1a 32-bit, base36, first 6 chars — same family as the styler's hash. */
-export function fnv1a6(str: string): string {
-  let h = 0x811c9dc5
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(36).slice(0, 6)
-}
-
-/** Normalize an absolute module id to a root-relative, forward-slash path. */
-export function islandRelPath(root: string, absPath: string): string {
-  return relative(root, absPath).replace(/\\/g, '/')
-}
-
-/** The one derivation both the injector and the scanners use. */
-export function deriveIslandName(varName: string, relPath: string): string {
-  return `${varName}$${fnv1a6(relPath)}`
-}
+export { deriveIslandName, fnv1a6, islandRelPath }
 
 // Optional binding capture + the same call shape the registry scanners use.
 // Group 1: const-binding name (optional), group 2: import path, group 3:

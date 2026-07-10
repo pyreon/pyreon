@@ -91,6 +91,8 @@ export function buildAliases(repoRoot: string): AliasEntry[] {
   // Subpath exports must come BEFORE their parent package to avoid prefix
   // matching. Vite resolves aliases in array order — first match wins.
   const subpaths: [string, string][] = [
+    ['@pyreon/compiler/diagnose', 'packages/core/compiler/src/diagnose.ts'],
+    ['@pyreon/compiler/fs-route-convention', 'packages/core/compiler/src/fs-route-convention.ts'],
     ['@pyreon/core/jsx-runtime', 'packages/core/core/src/jsx-runtime.ts'],
     ['@pyreon/core/jsx-dev-runtime', 'packages/core/core/src/jsx-dev-runtime.ts'],
     ['@pyreon/head/ssr', 'packages/core/head/src/ssr.ts'],

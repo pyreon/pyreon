@@ -324,6 +324,26 @@ import { generateContext } from "@pyreon/compiler"
 
 const ctx = generateContext(process.cwd())
 console.log(ctx.routes.length, ctx.islands.length)
+
+import { filePathToUrlPath } from "@pyreon/compiler/fs-route-convention"
+
+filePathToUrlPath("blog/[...slug]") // "/blog/:slug*"
+filePathToUrlPath("(auth)/login")   // "/login"
+
+import { isApiRoute } from "@pyreon/compiler/fs-route-convention"
+
+isApiRoute("api/posts.ts")    // true
+isApiRoute("posts/api/x.ts")  // false — page route
+isApiRoute("api/page.tsx")    // false — page route
+
+import { apiFilePathToPattern } from "@pyreon/compiler/fs-route-convention"
+
+apiFilePathToPattern("api/posts/[id].ts") // "/api/posts/:id"
+
+import { deriveIslandName, islandRelPath } from "@pyreon/compiler"
+
+deriveIslandName("Counter", islandRelPath(root, "/app/src/islands.ts"))
+// "Counter$<6-char-hash>"
 ```
 
 > **Dual backend**: Reverting `src/jsx.ts` (the JS path) is INVISIBLE to anything that goes through the native binary — the Rust path in `native/src/lib.rs` is a parallel implementation, kept byte-identical by the cross-backend equivalence tests. Edits to transform behavior must land in BOTH; the equivalence suite is the gate.

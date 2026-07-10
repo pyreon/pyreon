@@ -5,6 +5,15 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import ts from 'typescript'
+import {
+  apiFilePathToPattern,
+  filePathToUrlPath,
+  isApiRoute,
+  ROUTE_EXTENSIONS,
+  SPECIAL_ROUTE_FILES,
+  stripRouteExtension,
+} from './fs-route-convention'
+import { deriveIslandName, islandRelPath } from './island-naming'
 import { assertClassicTs } from './ts'
 
 export interface RouteInfo {
@@ -15,9 +24,11 @@ export interface RouteInfo {
   hasGuard: boolean
   params: string[]
   /**
-   * True when this is a file-based API route — a `.ts`/`.js` file under an
-   * `api/` segment (or a `.ts`/`.js` route file that exports HTTP method
-   * handlers instead of a default component). Absent for page routes.
+   * True when this is a file-based API route — a `.ts`/`.js` file under the
+   * TOP-LEVEL `api/` directory of the routes dir (exactly `@pyreon/zero`'s
+   * `isApiRoute`). Absent for page routes. Note zero registers everything
+   * else — nested `posts/api/x.ts`, method-handler `.ts` files outside
+   * `api/` — as PAGE routes, so the scanner reports them the same way.
    */
   isApi?: boolean | undefined
 }
@@ -31,6 +42,16 @@ export interface ComponentInfo {
 }
 
 export interface IslandInfo {
+  /**
+   * The island's REGISTRY name — what zero's hydration registry actually
+   * keys on. Explicit `name:` option verbatim; const-bound islands without
+   * one get the derived `X$<fnv1a6(relPath)>` name, the SAME derivation
+   * `@pyreon/vite-plugin`'s auto-naming injects at transform time (shared
+   * `island-naming.ts`; assumes the Vite root is the scanned cwd — true for
+   * a standard zero app). A bindingless nameless `island()` call falls back
+   * to the file basename — that is a PLACEHOLDER, not a registry name (the
+   * runtime rejects unnamed bindingless islands with guidance).
+   */
   name: string
   file: string
   hydrate: string
@@ -92,10 +113,10 @@ function collectSourceFiles(cwd: string): string[] {
  *
  *  1. **File-based routes** (`@pyreon/zero`) — the dominant modern shape. Route
  *     files live under `src/routes/` (or `app/routes/` / `routes/`) and the URL
- *     is derived from the file path via the zero fs-router convention. This is
- *     replicated here (NOT imported — `@pyreon/compiler` is a lower layer than
- *     `@pyreon/zero`), mirroring `filePathToUrlPath` / `isApiRoute` /
- *     `apiFilePathToPattern` in `packages/zero/zero/src/{fs-router,api-routes}.ts`.
+ *     is derived from the file path via the SHARED `./fs-route-convention`
+ *     module (`filePathToUrlPath` / `isApiRoute` / `apiFilePathToPattern`) —
+ *     the SAME functions `@pyreon/zero`'s fs-router re-exports, so scanner
+ *     output can never drift from what zero actually serves.
  *  2. **Manual route arrays** — `createRouter([...])` / `const routes = [...]`
  *     with `path:` keys. Kept for non-zero apps that wire the router by hand.
  *
@@ -151,17 +172,6 @@ function extractManualRoutes(files: string[]): RouteInfo[] {
   return routes
 }
 
-/** Route-file extensions, in the same precedence order the zero fs-router uses. */
-const ROUTE_EXTENSIONS = ['.tsx', '.jsx', '.ts', '.js']
-
-/**
- * Special (non-navigable) file names. These configure the route tree
- * (`_layout` wraps children; `_error`/`_loading`/`_404` are fallbacks) but
- * are not themselves URL routes — the context generator emits only navigable
- * page/api routes, so all of these are skipped.
- */
-const SPECIAL_ROUTE_FILES = new Set(['_layout', '_error', '_loading', '_404', '_not-found'])
-
 /** Locate the fs-router routes directory, checking each convention in order. */
 function findRoutesDir(cwd: string): string | undefined {
   for (const candidate of ['src/routes', 'app/routes', 'routes']) {
@@ -214,7 +224,7 @@ function extractFileRoutes(cwd: string): RouteInfo[] {
 
   const routes: RouteInfo[] = []
   for (const rel of enumerateRouteFiles(routesDir)) {
-    const noExt = stripRouteExt(rel)
+    const noExt = stripRouteExtension(rel)
     const fileName = noExt.split('/').pop() ?? ''
     if (SPECIAL_ROUTE_FILES.has(fileName)) continue
 
@@ -225,8 +235,12 @@ function extractFileRoutes(cwd: string): RouteInfo[] {
       // unreadable — still emit the path (empty source ⇒ no loader/guard flags)
     }
 
-    const api = isApiRouteFile(rel, source)
-    const urlPath = api ? apiFilePathToUrlPath(rel) : fileRouteToUrlPath(noExt)
+    // The SHARED zero convention decides API-vs-page — a `.ts`/`.js` file
+    // under the TOP-LEVEL `api/` dir only. Everything else (nested
+    // `posts/api/x.ts`, method-handler `.ts` outside `api/`) is a page
+    // route, exactly as zero registers it.
+    const api = isApiRoute(rel)
+    const urlPath = api ? apiFilePathToPattern(rel) : filePathToUrlPath(noExt)
 
     routes.push({
       path: urlPath,
@@ -240,92 +254,6 @@ function extractFileRoutes(cwd: string): RouteInfo[] {
   // Stable, human-friendly ordering for the generated context.json.
   routes.sort((a, b) => a.path.localeCompare(b.path))
   return routes
-}
-
-/** Strip the first matching route extension from a path. */
-function stripRouteExt(filePath: string): string {
-  for (const ext of ROUTE_EXTENSIONS) {
-    if (filePath.endsWith(ext)) return filePath.slice(0, -ext.length)
-  }
-  return filePath
-}
-
-/**
- * Convert an extension-stripped file-route path to its URL pattern. Mirrors
- * `filePathToUrlPath` in `packages/zero/zero/src/fs-router.ts`:
- *   `index` → `/` · `[param]` → `:param` · `[...param]` → `:param*` ·
- *   `(group)` segments are URL-invisible · special files are skipped upstream.
- */
-function fileRouteToUrlPath(routeNoExt: string): string {
-  const urlSegments: string[] = []
-  for (const seg of routeNoExt.split('/')) {
-    if (seg.startsWith('(') && seg.endsWith(')')) continue // route group — URL-invisible
-    if (SPECIAL_ROUTE_FILES.has(seg)) continue
-    if (seg === 'index') continue
-
-    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
-    if (catchAll) {
-      urlSegments.push(`:${catchAll[1]}*`)
-      continue
-    }
-    const dynamic = seg.match(/^\[(\w+)\]$/)
-    if (dynamic) {
-      urlSegments.push(`:${dynamic[1]}`)
-      continue
-    }
-    urlSegments.push(seg)
-  }
-  // Empty segment list (root `index`) already yields "/".
-  return `/${urlSegments.join('/')}`
-}
-
-/**
- * Convert an API route file path to its URL pattern. Mirrors
- * `apiFilePathToPattern` in `packages/zero/zero/src/api-routes.ts` — the
- * `api/` prefix is preserved (it IS part of the URL), `index` collapses,
- * and `[param]` / `[...param]` become `:param` / `:param*`.
- */
-function apiFilePathToUrlPath(rel: string): string {
-  const noExt = stripRouteExt(rel)
-  const urlSegments: string[] = []
-  for (const seg of noExt.split('/')) {
-    if (seg === 'index') continue
-    const catchAll = seg.match(/^\[\.\.\.(\w+)\]$/)
-    if (catchAll) {
-      urlSegments.push(`:${catchAll[1]}*`)
-      continue
-    }
-    const dynamic = seg.match(/^\[(\w+)\]$/)
-    if (dynamic) {
-      urlSegments.push(`:${dynamic[1]}`)
-      continue
-    }
-    urlSegments.push(seg)
-  }
-  return `/${urlSegments.join('/')}`
-}
-
-/**
- * True for a file-based API route. Mirrors `isApiRoute` (path under `api/`,
- * `.ts`/`.js` only) and additionally accepts a `.ts`/`.js` route file that
- * exports HTTP method handlers with no default component (method-handler shape).
- */
-function isApiRouteFile(rel: string, source: string): boolean {
-  const normalized = rel.replace(/\\/g, '/')
-  const isTsJs =
-    (normalized.endsWith('.ts') || normalized.endsWith('.js')) &&
-    !normalized.endsWith('.tsx') &&
-    !normalized.endsWith('.jsx')
-  if (!isTsJs) return false
-  if (normalized.startsWith('api/') || normalized.includes('/api/')) return true
-
-  const hasMethodHandler =
-    /export\s+(?:async\s+)?(?:const|let|var|function)\s+(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/.test(
-      source,
-    ) ||
-    /export\s*\{[^}]*\b(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b[^}]*\}/.test(source)
-  const hasDefault = /export\s+default\b/.test(source)
-  return hasMethodHandler && !hasDefault
 }
 
 /** Detect a top-level `export const|let|var|function NAME` or `export { NAME }`. */
@@ -388,9 +316,11 @@ function extractComponents(files: string[], cwd: string): ComponentInfo[] {
  *     (zero auto-names const-bound islands off the binding identifier — the #1
  *     modern shape the old `name:`-requiring regex missed entirely)
  *
- * The name is resolved in priority order: explicit `name:` option → enclosing
- * `const/let/var <Name> = island(...)` binding → file basename fallback (for a
- * bindingless nameless call). The loader-argument shape is NOT constrained, so
+ * The name is resolved in priority order: explicit `name:` option →
+ * `deriveIslandName(binding, relPath)` for an enclosing `const/let/var
+ * <Name> = island(...)` binding (the registry name the vite-plugin injects)
+ * → file basename fallback (for a bindingless nameless call — a placeholder,
+ * see IslandInfo.name). The loader-argument shape is NOT constrained, so
  * `island(loader, opts)` with a hoisted loader is captured too.
  */
 function extractIslands(files: string[], cwd: string): IslandInfo[] {
@@ -441,9 +371,15 @@ function extractIslands(files: string[], cwd: string): IslandInfo[] {
           }
         }
 
-        // Fall back to the enclosing const-binding identifier (zero's
-        // auto-naming source), then to the file basename.
-        if (!nameVal) nameVal = bindingNameOf(node)
+        // No explicit `name:` → derive the REGISTRY name from the enclosing
+        // const-binding identifier, exactly as the vite-plugin's auto-naming
+        // does (`X$<fnv1a6(relPath)>` — shared `deriveIslandName`). Last
+        // resort (bindingless nameless call): file-basename placeholder —
+        // documented on IslandInfo.name as NOT a registry name.
+        if (!nameVal) {
+          const binding = bindingNameOf(node)
+          if (binding) nameVal = deriveIslandName(binding, islandRelPath(cwd, file))
+        }
         if (!nameVal) nameVal = path.basename(relFile).replace(/\.(tsx?|jsx?)$/, '') || 'island'
 
         islands.push({ name: nameVal, file: relFile, hydrate: hydrateVal ?? 'load' })

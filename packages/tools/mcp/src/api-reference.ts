@@ -1306,6 +1306,44 @@ const ctx = generateContext(process.cwd())
 console.log(ctx.routes.length, ctx.islands.length)`,
     notes: 'Project scanner — walks the source tree and produces a structured `ProjectContext` (routes, islands, components) that `@pyreon/vite-plugin` regenerates into `.pyreon/context.json` for AI agents. Syntactic only; no type-check / bundle.',
   },
+
+  'compiler/filePathToUrlPath': {
+    signature: 'filePathToUrlPath(filePath: string): string',
+    example: `import { filePathToUrlPath } from "@pyreon/compiler/fs-route-convention"
+
+filePathToUrlPath("blog/[...slug]") // "/blog/:slug*"
+filePathToUrlPath("(auth)/login")   // "/login"`,
+    notes: `The \`@pyreon/zero\` fs-route convention: extension-stripped route file path → URL pattern (\`index\` collapses, \`[id]\` → \`:id\`, \`[...slug]\` → \`:slug*\`, \`(group)\` segments are URL-invisible, special files \`_layout\`/\`_error\`/\`_loading\`/\`_404\`/\`_not-found\` are skipped). SINGLE SOURCE OF TRUTH — zero's fs-router re-exports this exact function and the project scanner (\`generateContext\`) uses it, so the two can never drift. Importable without the compiler barrel via the pure \`@pyreon/compiler/fs-route-convention\` subpath (no \`typescript\` cold-load). See also: isApiRoute, apiFilePathToPattern, generateContext.`,
+  },
+
+  'compiler/isApiRoute': {
+    signature: 'isApiRoute(filePath: string): boolean',
+    example: `import { isApiRoute } from "@pyreon/compiler/fs-route-convention"
+
+isApiRoute("api/posts.ts")    // true
+isApiRoute("posts/api/x.ts")  // false — page route
+isApiRoute("api/page.tsx")    // false — page route`,
+    notes: `True for a zero file-based API route: a \`.ts\`/\`.js\` file inside the TOP-LEVEL \`api/\` directory of the routes dir (path is routes-dir-relative). NOT nested \`posts/api/x.ts\` (a page route), NOT \`.tsx\`/\`.jsx\` under \`api/\` (page routes — they still SSR), NOT method-handler \`.ts\` files outside \`api/\` (zero registers those as page routes too). Shared by zero's api-route registration and the project scanner — the scanner's old copy accepted \`/api/\` at any depth and reported API routes zero never serves. See also: apiFilePathToPattern, filePathToUrlPath.`,
+    mistakes: `- Assuming a nested \`posts/api/x.ts\` is an API route — only the TOP-LEVEL \`api/\` directory registers API routes; nested ones are page routes
+- Assuming a method-handler \`.ts\` file outside \`api/\` becomes an API route — zero includes it in the PAGE route module (broken at render; move it under \`api/\`)`,
+  },
+
+  'compiler/apiFilePathToPattern': {
+    signature: 'apiFilePathToPattern(filePath: string): string',
+    example: `import { apiFilePathToPattern } from "@pyreon/compiler/fs-route-convention"
+
+apiFilePathToPattern("api/posts/[id].ts") // "/api/posts/:id"`,
+    notes: 'API route file path → URL pattern, keeping the `api/` prefix (it IS part of the URL): `api/posts.ts` → `/api/posts`, `api/posts/index.ts` → `/api/posts`, `api/posts/[id].ts` → `/api/posts/:id`, `api/[...path].ts` → `/api/:path*`. Only meaningful for paths `isApiRoute` accepts. See also: isApiRoute.',
+  },
+
+  'compiler/deriveIslandName': {
+    signature: 'deriveIslandName(varName: string, relPath: string): string',
+    example: `import { deriveIslandName, islandRelPath } from "@pyreon/compiler"
+
+deriveIslandName("Counter", islandRelPath(root, "/app/src/islands.ts"))
+// "Counter$<6-char-hash>"`,
+    notes: `The island auto-name derivation: \`const X = island(…)\` (no explicit \`name:\`) in file F gets the registry name \`X$<fnv1a6(relPath(F))>\` — deterministic and collision-free by construction. SINGLE SOURCE OF TRUTH shared by \`@pyreon/vite-plugin\`'s transform-time name injection + auto-registry prescan AND the project scanner (\`generateContext\`), so marker, registry, and reported context names can never disagree. \`relPath\` is the Vite-root-relative forward-slash path (\`islandRelPath(root, absPath)\`). See also: generateContext.`,
+  },
   // <gen-docs:api-reference:end @pyreon/compiler>
 
   // ═══════════════════════════════════════════════════════════════════════════
