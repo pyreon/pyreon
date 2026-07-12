@@ -3896,7 +3896,7 @@ describe('useSearchParams', () => {
   it('setSearchParams updates query and navigates', async () => {
     const router = createRouter({ routes: spRoutes, url: '/search?page=1' })
     const container = document.createElement('div')
-    let setter: ((updates: Partial<Record<string, string>>) => Promise<void>) | undefined
+    let setter: ((updates: Partial<Record<string, string>>) => Promise<unknown>) | undefined
     const TestComp = () => {
       const [, setParams] = useSearchParams({ page: '1', sort: 'name' })
       setter = setParams
@@ -4515,10 +4515,10 @@ describe('useTypedSearchParams', () => {
   it('setTypedSearchParams updates query and navigates', async () => {
     const router = createRouter({ routes: tspRoutes, url: '/search?page=1' })
     const ctr = document.createElement('div')
-    let setter: ((updates: Partial<{ page: number }>) => Promise<void>) | undefined
+    let setter: ((updates: Partial<{ page: number }>) => Promise<unknown>) | undefined
     const TestComp = () => {
       const [, setParams] = useTypedSearchParams({ page: 'number' })
-      setter = setParams as (updates: Partial<{ page: number }>) => Promise<void>
+      setter = setParams as (updates: Partial<{ page: number }>) => Promise<unknown>
       return null
     }
     mount(h(RouterProvider, { router }, h(TestComp, {})), ctr)
@@ -4837,8 +4837,8 @@ describe('View Transitions API', () => {
       url: '/',
     })
 
-    // Navigation still settles without throwing.
-    await expect(router.push('/about')).resolves.toBeUndefined()
+    // Navigation still settles without throwing — and reports committed.
+    await expect(router.push('/about')).resolves.toBe('committed')
     // State still committed inside the callback (cb ran before the
     // promise rejected).
     expect(router.currentRoute().path).toBe('/about')
@@ -4877,7 +4877,7 @@ describe('View Transitions API', () => {
       ],
       url: '/',
     })
-    await expect(router.push('/about')).resolves.toBeUndefined()
+    await expect(router.push('/about')).resolves.toBe('committed')
     expect(router.currentRoute().path).toBe('/about')
 
     delete (document as any).startViewTransition

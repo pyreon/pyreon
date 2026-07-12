@@ -571,3 +571,128 @@ describe('router in real browser', () => {
     })
   })
 })
+
+// ─── Browser-navigation pipeline (real history traversal) ────────────────────
+//
+// Real-Chromium coverage for the popstate/hashchange → full-pipeline fix.
+// happy-dom can't exercise the REAL history stack (`history.back()` /
+// `history.go()` with real traversal events); these specs do.
+describe('browser traversal runs the navigation pipeline (real history)', () => {
+  const flushMs = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+  it('history.back() re-runs the loader so useLoaderData is populated after Back', async () => {
+    let loaderRuns = 0
+    const Posts = () => {
+      const data = useLoaderData<{ n: number } | undefined>()
+      return h('div', { id: 'posts' }, `posts:${data ? data.n : 'MISSING'}`)
+    }
+    const backRoutes = [
+      { path: '/', component: Home },
+      {
+        path: '/posts',
+        component: Posts,
+        loader: async () => {
+          loaderRuns++
+          return { n: loaderRuns }
+        },
+        gcTime: 0,
+      },
+      { path: '/about', component: About },
+    ]
+    const router = createRouter({ routes: backRoutes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+
+    await router.push('/posts')
+    await flush()
+    expect(container.querySelector('#posts')?.textContent).toBe('posts:1')
+
+    await router.push('/about')
+    await flush()
+    expect(container.querySelector('#about')).not.toBeNull()
+
+    // REAL browser Back — Chromium fires hashchange (and popstate) itself.
+    window.history.back()
+    await flushMs(150)
+    await flush()
+
+    expect(router.currentRoute().path).toBe('/posts')
+    // Pre-fix: loader never re-ran and its data had been pruned on leave —
+    // the component rendered 'posts:MISSING'.
+    expect(loaderRuns).toBe(2)
+    expect(container.querySelector('#posts')?.textContent).toBe('posts:2')
+    unmount()
+  })
+
+  it('a blocker cancels history.back() and restores the URL + position (history.go path)', async () => {
+    const router = createRouter({ routes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    // @vitest/browser runs every `it()` in ONE persistent page, so the real
+    // history STACK carries over between tests. Push a KNOWN base ('/') before
+    // the target so `history.back()` lands deterministically on it (rather than
+    // on a stale entry a previous test left in the back-stack). `push('/')`
+    // truncates any forward entries and stamps a fresh `__pyreonIdx`.
+    await router.push('/')
+    await flush()
+    await router.push('/about')
+    await flush()
+    expect(window.location.hash).toBe('#/about')
+
+    // Block everything (registered directly — the hook needs component setup)
+    const block = () => true
+    ;(router as unknown as { _blockers: Set<() => boolean> })._blockers.add(block)
+
+    window.history.back()
+    await flushMs(250) // traversal event + pipeline + restore go() round-trip
+
+    // Route unchanged, URL restored to the blocked-from path.
+    expect(router.currentRoute().path).toBe('/about')
+    expect(window.location.hash).toBe('#/about')
+    expect(container.querySelector('#about')).not.toBeNull()
+
+    // Unblock — Back now works, and the history stack is intact (go(-1)
+    // lands on '/', proving the blocked traversal didn't rewrite entries).
+    ;(router as unknown as { _blockers: Set<() => boolean> })._blockers.delete(block)
+    window.history.back()
+    await flushMs(250)
+    await flush()
+    expect(router.currentRoute().path).toBe('/')
+    expect(container.querySelector('#home')).not.toBeNull()
+    unmount()
+  })
+
+  it('afterEach fires on real Back (announcer pipeline)', async () => {
+    const router = createRouter({ routes, mode: 'hash' })
+    const { unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
+    // Push a known base ('/') under the target so the persistent-page history
+    // stack can't make `history.back()` land on a previous test's entry (see
+    // the blocker spec above).
+    await router.push('/')
+    await flush()
+    await router.push('/about')
+    await flush()
+
+    const seen: string[] = []
+    router.afterEach((to) => seen.push(to.path))
+
+    window.history.back()
+    await flushMs(150)
+    expect(seen).toEqual(['/'])
+    unmount()
+  })
+
+  it('push()/replace() resolve with NavigationResult', async () => {
+    const router = createRouter({ routes, mode: 'hash' })
+    const { unmount } = mountInBrowser(h(RouterProvider, { router }, h(RouterView, {})))
+
+    await expect(router.push('/about')).resolves.toBe('committed')
+
+    router.beforeEach(() => false)
+    await expect(router.push('/user/1')).resolves.toBe('cancelled')
+    expect(router.currentRoute().path).toBe('/about')
+    unmount()
+  })
+})

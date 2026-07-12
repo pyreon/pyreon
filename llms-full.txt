@@ -418,7 +418,6 @@ const router = createRouter({
     { path: "/settings", redirect: "/admin/settings" },
     { path: "(.*)", component: NotFound },
   ],
-  middleware: [authMiddleware, loggerMiddleware],
 })
 
 // Mount with RouterProvider

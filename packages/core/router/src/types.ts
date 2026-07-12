@@ -154,6 +154,23 @@ export type NavigationGuard = (
   from: ResolvedRoute,
 ) => NavigationGuardResult | Promise<NavigationGuardResult>
 
+/**
+ * What a navigation ultimately did — the resolved value of
+ * `router.push()` / `router.replace()`:
+ *   - `'committed'`  — the target route (or a redirect it chained into) is
+ *     now the current route;
+ *   - `'cancelled'`  — a blocker / guard / middleware / the redirect-depth
+ *     cap refused it; the current route is unchanged;
+ *   - `'superseded'` — a newer navigation started while this one was in
+ *     flight and won; this one never committed.
+ *
+ * Mirrors Vue Router's navigation-failure detection in a value-first shape:
+ * `if (await router.push('/checkout') !== 'committed') { … }`. Callers that
+ * ignore the value keep working (`await router.push(...)` — the promise
+ * still settles exactly when the navigation settles).
+ */
+export type NavigationResult = 'committed' | 'cancelled' | 'superseded'
+
 export type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void
 
 // ─── Route middleware ────────────────────────────────────────────────────────
@@ -422,22 +439,22 @@ export interface RouterOptions {
  * ```
  */
 export interface Router<TNames extends string = string> {
-  /** Navigate to a path */
-  push(path: string): Promise<void>
+  /** Navigate to a path. Resolves with what the navigation did — see {@link NavigationResult}. */
+  push(path: string): Promise<NavigationResult>
   /** Navigate to a named route */
   push(location: {
     name: TNames
     params?: Record<string, string>
     query?: Record<string, string>
-  }): Promise<void>
-  /** Replace current history entry */
-  replace(path: string): Promise<void>
+  }): Promise<NavigationResult>
+  /** Replace current history entry. Resolves with what the navigation did — see {@link NavigationResult}. */
+  replace(path: string): Promise<NavigationResult>
   /** Replace current history entry using a named route */
   replace(location: {
     name: TNames
     params?: Record<string, string>
     query?: Record<string, string>
-  }): Promise<void>
+  }): Promise<NavigationResult>
   /** Go back one step in history */
   back(): void
   /** Go forward one step in history */
@@ -493,8 +510,31 @@ export interface Router<TNames extends string = string> {
    * - No args: invalidate ALL cached loader data
    * - String: invalidate by cache key (as returned by `loaderKey`)
    * - Function: invalidate entries where the predicate returns true
+   *
+   * To refresh the CURRENT route's data in place (mutation-then-refresh
+   * flows), use {@link revalidate} instead — `invalidateLoader` only takes
+   * effect on the next navigation.
    */
   invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)): void
+  /**
+   * Re-run the CURRENT route's loaders in place and re-render the affected
+   * route components with fresh data — no navigation required. The
+   * mutation-then-refresh primitive (`useRevalidator` in React Router,
+   * `router.invalidate()` in TanStack):
+   *
+   * - drops the current chain's cached loader entries, then re-runs its
+   *   loaders through the normal pipeline (server-loader records re-fetch
+   *   from the data endpoint; `staleWhileRevalidate` records refresh in the
+   *   background per their contract);
+   * - a loader that throws `redirect()` navigates (replace semantics);
+   * - a real navigation starting mid-revalidate supersedes it (the fresh
+   *   navigation's loaders win — no torn state).
+   *
+   * @example
+   * await api.deletePost(id)
+   * await router.revalidate() // list loader re-runs, view updates in place
+   */
+  revalidate(): Promise<void>
   /** Remove all event listeners, clear caches, and abort in-flight navigations. */
   destroy(): void
 }
@@ -548,8 +588,29 @@ export interface RouterInstance extends Router {
   _readyPromise: Promise<void>
   /** Timestamp when the current navigation started — used for pendingMs timing */
   _navigationStartTime: number
+  /**
+   * Middleware data of the last COMMITTED navigation. `runMiddleware`
+   * accumulates onto the in-flight `to` object, but `currentRoute()` is a
+   * computed that re-resolves a FRESH ResolvedRoute from the path — the
+   * in-flight object (and anything attached to it) never becomes the
+   * current route. `commitNavigation` copies the accumulated data here
+   * (before flipping `currentPath`), and `useMiddlewareData()` reads it
+   * alongside a reactive `currentRoute()` subscription. Reset to `{}` on
+   * navigations whose chain has no middleware (data is per-navigation).
+   */
+  _committedMiddlewareData: Record<string, unknown>
   /** Key-based loader cache: cacheKey → { data, timestamp } */
   _loaderCache: SizedMap<string, { data: unknown; timestamp: number }>
+  /**
+   * Run a record's loader through the router's cache + in-flight dedup
+   * (cache hit → cached data; same-key in-flight with a live signal →
+   * the existing promise; else run + cache). The SAME path navigations
+   * take — `prefetchLoaderData` routes through this so a hover/viewport
+   * prefetch and the click that follows it share ONE loader run instead
+   * of double-fetching (pre-fix prefetch called `record.loader()` raw,
+   * bypassing `_loaderCache` and `_loaderInflight` entirely).
+   */
+  _executeLoader(record: RouteRecord, ctx: LoaderContext): Promise<unknown>
   /**
    * In-flight loader dedup: cacheKey → { promise, signal }.
    * Tracking the signal lets dedup skip an in-flight entry whose signal is

@@ -4,6 +4,10 @@ export default defineNodeConfig({
   category: 'core',
   environment: 'happy-dom',
   excludeBrowserTests: true,
+  // happy-dom spec-parity: suppress the non-spec `hashchange` events
+  // happy-dom queues for history.pushState/replaceState (real browsers
+  // never fire those — see src/tests/setup.ts for the full story).
+  setupFiles: ['./src/tests/setup.ts'],
   // src/scroll.ts: scroll restoration needs real browser scroll mechanics
   //   (scrollY positioning + scroll-event timing) — happy-dom returns 0 for
   //   all scroll metrics. Exercised by e2e nav tests in ssr-showcase.

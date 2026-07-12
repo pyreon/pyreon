@@ -1432,7 +1432,7 @@ router.replace("/login")
 router.back()
 router.forward()
 router.go(-2)`,
-    notes: 'Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes. See also: useRoute, RouterLink, createRouter.',
+    notes: `Access the router instance for programmatic navigation. Returns the \`Router\` object with \`push()\`, \`replace()\`, \`back()\`, \`forward()\`, \`go()\`. \`await router.push()\` resolves after the View Transition \`updateCallbackDone\` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a \`NavigationResult\`: \`'committed'\` (route changed), \`'cancelled'\` (a blocker/guard/middleware refused), or \`'superseded'\` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, \`meta.title\`). See also: useRoute, RouterLink, createRouter.`,
     mistakes: `- \`router.push("/path")\` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in \`onMount\`, event handler, or \`effect\`
 - \`await router.push("/path")\` expecting animation completion — \`push\` resolves after DOM commit (\`updateCallbackDone\`), not after View Transition animation finishes. Use the returned transition object's \`.finished\` if you need to wait for animation
 - Calling \`useRouter()\` outside a \`<RouterProvider>\` — throws because no router context exists`,
@@ -1465,12 +1465,14 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
   },
 
   'router/useTypedSearchParams': {
-    signature: 'useTypedSearchParams<T>(schema: T): TypedSearchParams<T>',
-    example: `const params = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
-params.page()    // number (auto-coerced)
-params.q()       // string
-params.set({ page: 2 })  // updates URL`,
-    notes: 'Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns an object where each key is a reactive accessor and `.set()` updates the URL. See also: useSearchParams, useRoute.',
+    signature: 'useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]',
+    example: `const [params, setParams] = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
+params().page    // number (auto-coerced)
+params().q       // string
+setParams({ page: 2 })  // updates URL via router.replace`,
+    notes: `Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (\`"string"\`, \`"number"\`, \`"boolean"\`). Returns a \`[get, set]\` TUPLE (like \`useSearchParams\`): \`get()\` reads the coerced values reactively; \`set()\` merges updates and navigates via \`router.replace\` (resolving with the navigation's \`NavigationResult\`). Missing numbers coerce to \`0\`, booleans accept \`"true"\`/\`"1"\`. See also: useSearchParams, useRoute.`,
+    mistakes: `- Destructuring an object (\`params.page()\`) — the hook returns a TUPLE: \`const [params, setParams] = useTypedSearchParams(...)\`, read via \`params().page\`
+- Expecting \`set()\` to bypass navigation — it navigates via \`router.replace\`, so guards/blockers apply (check the resolved \`NavigationResult\` if you need to know it committed)`,
   },
 
   'router/useTransition': {
@@ -1493,7 +1495,7 @@ const authMiddleware: RouteMiddleware = async (ctx) => {
 // Component:
 const data = useMiddlewareData()
 // data().user is available`,
-    notes: 'Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope. See also: createRouter, useLoaderData.',
+    notes: 'Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope. The data is per-navigation: it resets to `{}` when a navigation whose chain has no middleware commits. (Stored on the router at commit time — the in-flight route object never becomes `currentRoute()`, which is why the pre-fix accessor always returned `{}`.) See also: createRouter, useLoaderData.',
   },
 
   'router/useLoaderData': {
@@ -1560,7 +1562,7 @@ try {
   },
 
   'router/useSearchParams': {
-    signature: 'useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]',
+    signature: 'useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]',
     example: `const [search, setSearch] = useSearchParams({ page: "1", sort: "name" })
 
 // Read:
@@ -1572,21 +1574,20 @@ setSearch({ page: "2" })`,
   },
 
   'router/useBlocker': {
-    signature: 'useBlocker(shouldBlock: () => boolean): Blocker',
-    example: `const blocker = useBlocker(() => form.isDirty())
-
-<Show when={blocker.isBlocked()}>
-  <Dialog>
-    <p>Unsaved changes. Leave anyway?</p>
-    <button onClick={blocker.proceed}>Leave</button>
-    <button onClick={blocker.reset}>Stay</button>
-  </Dialog>
-</Show>`,
-    notes: `Block navigation when a condition is true (e.g., unsaved form changes). Returns a \`Blocker\` object with \`proceed()\` and \`reset()\` methods. Also hooks into the browser's \`beforeunload\` event to warn on tab close. Uses a shared ref-counted listener for \`beforeunload\` — N blockers share one event handler. See also: useRouter.`,
+    signature: 'useBlocker(fn: BlockerFn): Blocker',
+    example: `const blocker = useBlocker((to, from) => {
+  return form.isDirty() && !confirm('Discard unsaved changes?')
+})
+// later, e.g. after save:
+blocker.remove()`,
+    notes: 'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Also installs a shared ref-counted `beforeunload` handler so tab-close shows the browser confirmation while any blocker is active. See also: useRouter, onBeforeRouteLeave.',
+    mistakes: `- Expecting \`proceed()\` / \`reset()\` methods (React Router shape) — Pyreon's blocker is a predicate: return \`true\` to block, \`false\` to allow; \`remove()\` unregisters it
+- Returning \`false\` to block — inverted: \`true\` means BLOCK (it answers "should this navigation be blocked?")
+- Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL`,
   },
 
   'router/onBeforeRouteLeave': {
-    signature: 'onBeforeRouteLeave(guard: NavigationGuard): void',
+    signature: 'onBeforeRouteLeave(guard: NavigationGuard): () => void',
     example: `onBeforeRouteLeave((to, from) => {
   if (hasUnsavedChanges()) return false  // cancel navigation
 })`,
@@ -1594,7 +1595,7 @@ setSearch({ page: "2" })`,
   },
 
   'router/onBeforeRouteUpdate': {
-    signature: 'onBeforeRouteUpdate(guard: NavigationGuard): void',
+    signature: 'onBeforeRouteUpdate(guard: NavigationGuard): () => void',
     example: `onBeforeRouteUpdate((to, from) => {
   if (to.params.id === from.params.id) return  // no change
   // reload data for new ID...

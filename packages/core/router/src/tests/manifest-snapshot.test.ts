@@ -36,7 +36,6 @@ describe('gen-docs — router snapshot', () => {
           { path: "/settings", redirect: "/admin/settings" },
           { path: "(.*)", component: NotFound },
         ],
-        middleware: [authMiddleware, loggerMiddleware],
       })
 
       // Mount with RouterProvider

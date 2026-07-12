@@ -60,12 +60,35 @@ mount(<App />, document.getElementById('app')!)
 ## Modes
 
 ```ts
-createRouter({ routes, mode: 'history' }) // default; uses pushState
-createRouter({ routes, mode: 'hash' })    // for static hosting; pushState w/ #
+createRouter({ routes, mode: 'hash' })    // default; for static hosting; pushState w/ #
+createRouter({ routes, mode: 'history' }) // uses pushState (set `base` for sub-path deploys)
 createRouter({ routes, url: '/some/path' }) // SSR — pin to a URL for one render
 ```
 
 Hash mode uses `history.pushState` under the hood (not `window.location.hash`) to avoid the double-update jank.
+
+### Navigation results + browser Back/Forward
+
+`router.push()` / `replace()` resolve with a `NavigationResult`:
+
+```ts
+const result = await router.push('/checkout')
+// 'committed'  — the route (or a redirect it chained into) is now current
+// 'cancelled'  — a blocker / guard / middleware refused it
+// 'superseded' — a newer navigation started meanwhile and won
+```
+
+Browser **Back/Forward (popstate/hashchange) runs the full navigation
+pipeline** — loaders re-run (so `useLoaderData()` is populated after Back),
+guards + blockers apply, `afterEach` fires (the route announcer announces),
+and `meta.title` updates. A traversal cancelled by a guard/blocker restores
+the URL and history position (`history.go` when the entry carries the
+router's position stamp, `replaceState` otherwise).
+
+Scroll on Back/Forward: with no `scrollBehavior` configured, the browser's
+NATIVE scroll restoration owns it (untouched). Configuring `scrollBehavior`
+switches `history.scrollRestoration` to `'manual'` and the router's
+ScrollManager takes over for traversals too.
 
 ## Typed params + named navigation
 
@@ -120,7 +143,7 @@ router.push({ name: 'typo' }) // ❌ TypeScript error
 }
 ```
 
-Loaders run before the route renders. In-flight calls for the same `loaderKey` dedupe; cached results are served until `gcTime` expires. `router.invalidateLoader(key?)` clears entries.
+Loaders run before the route renders. In-flight calls for the same `loaderKey` dedupe; cached results are served until `gcTime` expires. `router.invalidateLoader(key?)` clears entries. `<RouterLink prefetch>` (hover/viewport) routes through the SAME cache + in-flight dedup, so a prefetch and the click that follows share ONE loader run.
 
 Read loader data in the component:
 
@@ -147,16 +170,19 @@ const data = useLoaderData<{ name: string }>()
   children: [...],
 }
 
-createRouter({
-  routes,
-  middleware: [
-    async (to, from, ctx) => {
-      ctx.data.user = await fetchUserFromCookie(to.request)
-    },
-  ],
-})
+// Middleware is PER-ROUTE (runs for every matched record, root → leaf,
+// before guards). It receives ONE ctx argument: { to, from, data }.
+{
+  path: '/app',
+  component: AppLayout,
+  middleware: async (ctx) => {
+    ctx.data.user = await fetchUser(ctx.to)
+    if (!ctx.data.user) return '/login' // string = redirect, false = cancel
+  },
+  children: [...],
+}
 
-// In components:
+// In components (per-navigation; resets when a middleware-less chain commits):
 const data = useMiddlewareData()
 data().user
 ```

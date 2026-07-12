@@ -113,6 +113,7 @@ export type {
   LoaderContext,
   NavigationGuard,
   NavigationGuardResult,
+  NavigationResult,
   ResolvedRoute,
   RouteComponent,
   RouteLoaderFn,

@@ -66,7 +66,16 @@ export async function prefetchLoaderData(
     route.matched
       .filter((r) => r.loader)
       .map(async (r) => {
-        const data = await r.loader?.({
+        // Route through the router's loader cache + in-flight dedup
+        // (`executeLoader` — the same path navigations take). Pre-fix this
+        // called `r.loader()` RAW, so a hover-prefetch followed by the
+        // click's navigation ran the loader TWICE (the nav's cache lookup
+        // missed because prefetch never wrote `_loaderCache`, and its
+        // in-flight dedup missed because prefetch never registered in
+        // `_loaderInflight`) — the exact double-fetch prefetching exists
+        // to avoid. Loader errors (incl. thrown `redirect()`) propagate
+        // to the caller exactly as before.
+        const data = await router._executeLoader(r, {
           params: route.params,
           query: route.query,
           signal: ac.signal,

@@ -37,7 +37,7 @@
   "@pyreon/reactivity": 7232,
   "@pyreon/rich-text": 1536,
   "@pyreon/rocketstyle": 5120,
-  "@pyreon/router": 12288,
+  "@pyreon/router": 15616,
   "@pyreon/runtime-dom": 12544,
   "@pyreon/runtime-server": 6912,
   "@pyreon/rx": 2304,
