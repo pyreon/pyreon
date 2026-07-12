@@ -119,11 +119,11 @@ const active = useUrlState('active', false)
 // URL ?active=1     →  active() === false  (only "true" is true)
 ```
 
-:::warning Match the default's type to the desired coercion
+:::warning[Match the default's type to the desired coercion]
 Coercion is driven entirely by the default value's type. `useUrlState('page', 1)` coerces `?page=2` to the number `2`; `useUrlState('page', '1')` keeps it as the **string** `"1"`. If you read a number out of a `string`-defaulted signal, you'll be doing math on strings. Always supply the default in the type you want back.
 :::
 
-:::note Object defaults use JSON automatically
+:::note[Object defaults use JSON automatically]
 An object default (`useUrlState('filter', { min: 0 })`) is serialized with `JSON.stringify` and parsed with `JSON.parse` — no custom serializer needed. The URL value will be the URL-encoded JSON. For shorter URLs or non-JSON encodings, supply a [custom serializer](#custom-serializers).
 :::
 
@@ -178,7 +178,7 @@ const isSearching = computed(() => q().length > 0)
 const current = q()
 ```
 
-:::warning Don't snapshot the value at setup
+:::warning[Don't snapshot the value at setup]
 `const current = q()` reads the URL **once** and freezes it. To track URL changes, call the signal inside a reactive scope — JSX, `effect`, or `computed`. This is the same rule as every Pyreon signal.
 :::
 
@@ -231,7 +231,7 @@ const q = useUrlState('q', '', {
 | `deserialize` | `(raw: string) => T`     | inferred    | Custom string → value. Must be paired with `serialize`                   |
 | `onChange`    | `(value: T) => void`     | —           | Called on **external** changes only (popstate, or another signal writing the same param) |
 
-:::note `serialize` and `deserialize` are a pair
+:::note[`serialize` and `deserialize` are a pair]
 Custom (de)serialization only takes effect when **both** `serialize` and `deserialize` are supplied. If you pass only one, the inferred serializer for the default's type is used instead.
 :::
 
@@ -253,7 +253,7 @@ function Search() {
 
 Typing `hello` fires a single URL update 300ms after the last keystroke, not five.
 
-:::warning Don't pair `replace: false` with a debounced high-frequency input
+:::warning[Don't pair `replace: false` with a debounced high-frequency input]
 `replace: false` adds a browser history entry per write. Even debounced, on a frequently-edited field this pollutes the back stack — every pause becomes a back-button step. Keep `replace: true` (the default) for anything the user edits rapidly. `replace: false` is for navigations the user should be able to step back through (e.g. moving between distinct pages).
 :::
 
@@ -281,7 +281,7 @@ tags()                              // ['typescript', 'pyreon']
 
 An empty array (or one equal to the default array) removes the parameter, consistent with the [default-cleanup rule](#default-values-clean-the-url).
 
-:::note `comma` vs `repeat`
+:::note[`comma` vs `repeat`]
 Use `comma` for the shortest URLs. Use `repeat` if your values may legitimately contain commas (the comma encoder splits on `,` so a value like `"a,b"` would be read back as two entries). Repeat format avoids that ambiguity.
 :::
 
@@ -337,11 +337,11 @@ setUrlRouter(router)
 
 `setUrlRouter` takes any object with a `replace(path)` method (the `UrlRouter` interface) — you are not forced to use `@pyreon/router`.
 
-:::warning When a router is set, the `replace` option is ignored
+:::warning[When a router is set, the `replace` option is ignored]
 With a router registered, **every** URL write goes through `router.replace(url)` regardless of the per-signal `replace` option — there is no `pushState` path through the router. Register the router before any `useUrlState` write that should be routed; calling `setUrlRouter` afterwards only affects subsequent writes.
 :::
 
-:::note Register the router after it exists
+:::note[Register the router after it exists]
 Don't call `setUrlRouter` before the router instance is available (e.g. during early SSR setup where no router exists yet). Wire it up where you have a live router — typically your client entry or root component setup.
 :::
 
@@ -360,7 +360,7 @@ function Tabs() {
 }
 ```
 
-:::warning Server renders use defaults, not the request URL
+:::warning[Server renders use defaults, not the request URL]
 On the server, parameters fall back to their **default values** — the server-rendered HTML reflects the default state, and the actual URL parameters are applied on the client after hydration. If a parameter must be present in the server-rendered output (e.g. for SEO of a filtered list), read it from your route/loader layer and seed your render from there rather than relying on `useUrlState` to surface it during SSR.
 :::
 

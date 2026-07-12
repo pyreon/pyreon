@@ -114,7 +114,7 @@ const b = rx.filter([{ active: true }], (u) => u.active)
 // just a plain filtered array, nothing reactive
 ```
 
-:::warning Signal detection is `typeof source === "function"` — pass the signal, not its value
+:::warning[Signal detection is `typeof source === "function"` — pass the signal, not its value]
 Detection is purely `typeof source === "function"` — there is no `.subscribe` check or value inspection. The common mistake is the **opposite** of what you'd expect: passing a **resolved value** silently takes the static path and the result never updates.
 
 ```tsx
@@ -125,7 +125,7 @@ const view = rx.filter(users, (u) => u.active) //   users   — reactive Compute
 In dev mode a spike in the `rx.transform.raw` perf counter is exactly this mistake (the signal path increments `rx.transform.signal` instead).
 :::
 
-:::tip Computed lifecycle
+:::tip[Computed lifecycle]
 A `Computed` output auto-disposes when it has no subscribers. Inside a component body the JSX reactive scope keeps it alive; in standalone code, read it inside an `effect()` (or subscribe) so it stays active and re-derives.
 :::
 
@@ -143,7 +143,7 @@ import { filter, sortBy, take } from '@pyreon/rx'
 const a = filter(users, (u) => u.active)
 ```
 
-:::tip Tree-shaking
+:::tip[Tree-shaking]
 The `rx` namespace is a `const` object — modern bundlers tree-shake unused properties from it. For maximum control (and to make the dependency surface explicit), import the individual functions you use.
 :::
 
@@ -168,7 +168,7 @@ Transform each item to a new value. The mapper receives `(item, index)`.
 const names = rx.map(users, (u) => u.name) // Computed<string[]>
 ```
 
-:::warning `rx.map` is a data transform, not a JSX list renderer
+:::warning[`rx.map` is a data transform, not a JSX list renderer]
 `rx.map` derives a reactive array — it is not the keyed-list primitive. To render a list, feed its output to `<For each={...} by={...}>`; spreading a freshly-mapped array straight into JSX loses keying and referential stability (every re-derive yields fresh objects).
 :::
 
@@ -181,7 +181,7 @@ const byName = rx.sortBy(users, 'name') // by key name
 const byAge = rx.sortBy(users, (u) => u.age) // by key-selector
 ```
 
-:::warning `sortBy` takes a key / key-selector — NOT a comparator
+:::warning[`sortBy` takes a key / key-selector — NOT a comparator]
 The argument is a key name or a `(item) => value` selector, **not** an `(a, b) => number` comparator like `Array.sort`. There is no direction option (always ascending — compose [`reverse`](#reverse) for descending), no `Intl` collation (codepoint order for non-ASCII), and numeric *strings* sort lexically (`"10" < "2"`) — use a numeric selector (`(u) => Number(u.id)`) for those. Unlike native `Array.sort`, it never mutates the source.
 :::
 
@@ -196,7 +196,7 @@ for (const [dept, members] of Object.entries(byDept())) {
 }
 ```
 
-:::warning `groupBy` returns a `Record`, not a `Map` — and keys are stringified
+:::warning[`groupBy` returns a `Record`, not a `Map` — and keys are stringified]
 Use `Object.entries()` / `result[key]`, never `.get()` / `.has()` / `.size`. Every key is `String()`-coerced, so a numeric group key `1` becomes `"1"` and `true` becomes `"true"`. A missing bucket is `undefined`, not `[]` — default it explicitly.
 :::
 
@@ -313,7 +313,7 @@ Pick `n` random items via a Fisher-Yates partial shuffle. Returns all items if `
 rx.sample([1, 2, 3, 4, 5], 2) // e.g. [3, 1]
 ```
 
-:::note `sample` is non-deterministic
+:::note[`sample` is non-deterministic]
 It uses `Math.random()`, so a reactive `sample` re-derives to a *new* random pick on every source change. For a stable random subset, sample a plain array once.
 :::
 
@@ -369,7 +369,7 @@ const oldest = rx.max(users, 'age') // Computed<User | undefined>
 const oldestAge = rx.max(users, 'age')()?.age // read the value off the returned item
 ```
 
-:::warning `min` / `max` return the ITEM, not the value
+:::warning[`min` / `max` return the ITEM, not the value]
 `rx.max(users, 'age')` resolves to the *oldest user object*, not the maximum age. Read the field off the returned item. Comparison is numeric (`Number(...)`).
 :::
 
@@ -425,7 +425,7 @@ const fullName = rx.combine(first, last, (f, l) => `${f} ${l}`) // Computed<stri
 const label = rx.combine(name, age, dept, (n, a, d) => `${n} (${a}, ${d})`) // 3 sources
 ```
 
-:::warning `combine` takes signals as separate args, not an array
+:::warning[`combine` takes signals as separate args, not an array]
 The signature is variadic: `combine(a, b, fn)` / `combine(a, b, c, fn)` — pass each signal positionally with the combiner last. It does **not** accept an array of signals.
 :::
 
@@ -478,11 +478,11 @@ effect(() => updateHeader(throttled()))
 onCleanup(() => throttled.dispose())
 ```
 
-:::danger `debounce` / `throttle` are NOT auto-cleaned — always `dispose()`
+:::danger[`debounce` / `throttle` are NOT auto-cleaned — always `dispose()`]
 Each `debounce`/`throttle` owns a live `effect` + a `setTimeout`. They are **not** tied to component lifecycle, so they leak across navigations unless you call `.dispose()` (register it with `onCleanup`). A growing `rx.debounce.create` / `rx.throttle.create` perf counter in dev is exactly this leak.
 :::
 
-:::warning Timing operators are value-level and do NOT compose in `pipe`
+:::warning[Timing operators are value-level and do NOT compose in `pipe`]
 `debounce(usersSignal, 300)` debounces the whole array emission, not individual rows. They take a single `Signal<T>` and return a signal — they are not curried collection operators and cannot be placed inside a [`pipe`](#pipe) chain. `debounce` emits **once after change stops**; `throttle` emits **at a steady rate during continuous change** — pick by which behavior you want.
 :::
 
@@ -496,7 +496,7 @@ const results = rx.search(users, query, ['name', 'email']) // Computed<User[]>
 // query = "ali" → matches "Alice" (substring, case-insensitive)
 ```
 
-:::warning `search` takes a POSITIONAL `keys` array, not a `{ keys }` object
+:::warning[`search` takes a POSITIONAL `keys` array, not a `{ keys }` object]
 The third argument is the keys array itself — `search(users, query, ['name', 'email'])` — **not** an options object `{ keys: [...] }` (an object matches nothing). Only `string`-typed fields are tested; numeric/date columns never match (pre-stringify them if needed). Matching is plain `String.includes` after `.toLowerCase().trim()` — it is **not** fuzzy / typo-tolerant (`"alce"` won't match `"Alice"`). Pass `query` as a `Signal<string>` for live results; a plain string is matched once.
 :::
 
@@ -526,11 +526,11 @@ const summary = pipe(
 summary() // "Total: 180"
 ```
 
-:::tip One computed, not N
+:::tip[One computed, not N]
 Composing transforms by nesting `rx` calls — `rx.take(rx.sortBy(rx.filter(src, p), k), n)` — allocates one tracked `computed` **per call**. `pipe` runs the whole chain inside a **single** `computed`, so it is the leaner shape for a multi-step derivation. (In dev, the `rx.pipe` counter increments once per `pipe` call regardless of chain depth.)
 :::
 
-:::warning `pipe` transforms are plain functions — `rx` functions are NOT curried operators
+:::warning[`pipe` transforms are plain functions — `rx` functions are NOT curried operators]
 Each step is a plain `(value) => newValue` function — write the array operation inline (`(items) => items.filter(...)`). The `@pyreon/rx` collection functions are **not** curried single-argument operators, so `pipe(users, filter((u) => u.active))` does **not** work — call them in their direct `(source, predicate)` form outside `pipe`, or write the transform inline. Only a **signal** source makes `pipe` reactive; a plain-array source gives a one-shot plain result that you read directly (not as a `Computed`).
 :::
 

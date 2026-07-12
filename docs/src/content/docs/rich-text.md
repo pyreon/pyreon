@@ -41,7 +41,7 @@ yarn add @pyreon/rich-text
 
 :::
 
-:::warning Peer dependencies
+:::warning[Peer dependencies]
 `@pyreon/rich-text` declares `@pyreon/core`, `@pyreon/reactivity`, **and `@pyreon/runtime-dom`** as peer dependencies. `<RichText>` emits compiled `_tpl()` / `_bind()` calls, which need the DOM runtime — declare all three in your app's dependencies or the editor won't mount.
 :::
 
@@ -79,7 +79,7 @@ const editor = createRichTextEditor({
 | `editor.editable` | `Signal<boolean>` | **Writable** read-only toggle (see below). |
 | `editor.view` | `Signal<Editor \| null>` | The underlying TipTap `Editor`, or `null` until mounted. |
 
-:::warning `editor.json` is a writable signal
+:::warning[`editor.json` is a writable signal]
 Read with `editor.json()` (reactive), write with `editor.json.set(next)`. Do **not** call `editor.json(newDoc)` — like any Pyreon signal, calling it with an argument reads and ignores it.
 :::
 
@@ -101,7 +101,7 @@ Read with `editor.json()` (reactive), write with `editor.json.set(next)`. Do **n
 <RichText instance={editor} class="prose" style="min-height: 12rem" />
 ```
 
-:::note Lifecycle is user-owned
+:::note[Lifecycle is user-owned]
 Like `@pyreon/code`, the editor instance is **yours** — `<RichText>` does not auto-dispose it, so the same instance can be re-mounted. Call `editor.dispose()` in `onCleanup` when it won't be reused:
 
 ```tsx
@@ -171,7 +171,7 @@ function Toolbar({ editor }: { editor: RichTextEditor }) {
 }
 ```
 
-:::warning Call `isActive` inside a reactive scope
+:::warning[Call `isActive` inside a reactive scope]
 `isActive` re-derives on every edit and selection move, but only when **read inside a reactive scope**. Use `class={() => editor.isActive('bold') ? 'active' : ''}` (a thunk), not `class={editor.isActive('bold') ? …}` at component-body top level — the latter captures the value once and the highlight never updates.
 :::
 
@@ -221,7 +221,7 @@ const html = signal('<p>hello</p>')
 bindRichTextToSignal({ editor, signal: html, format: 'html' })
 ```
 
-:::note Loop prevention
+:::note[Loop prevention]
 Internal flags break the echo loop and a value compare short-circuits no-op writes. Use `bindRichTextToSignal` rather than hand-wiring `effect`s in both directions — that's the #1 source of feedback-loop bugs.
 :::
 
@@ -270,13 +270,13 @@ const editor = createRichTextEditor({
 <RichText instance={editor} />
 ```
 
-:::warning Disable the editor's own history under collaboration
+:::warning[Disable the editor's own history under collaboration]
 Yjs provides collaborative undo/redo, so the editor's local history must be turned off (`StarterKit.configure({ undoRedo: false })`) or the two fight. Likewise, **don't pass `content`** to a collaborative editor — the document seeds from the shared Yjs doc.
 :::
 
 Add live cursors with `@pyreon/sync`'s `syncedAwareness` + TipTap's `CollaborationCursor` extension; reuse `persistViaIndexedDB` for offline-first and `connectViaBroadcastChannel` for cross-tab. See the [Sync guide](/docs/sync) for the transport + presence details.
 
-:::note Collaboration deps
+:::note[Collaboration deps]
 `@tiptap/extension-collaboration` (and `CollaborationCursor`) plus `y-prosemirror` are opt-in peers you add when you want collaboration — they're not pulled in by the base package, so a non-collaborative editor pays nothing for them.
 :::
 
