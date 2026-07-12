@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { isPathExempt } from '../../utils/exempt-paths'
+import { isProjectDependency } from '../../utils/project-deps'
 
 /**
  * `pyreon/no-querySelector-cast-in-test` — flags
@@ -65,6 +66,13 @@ export const noQuerySelectorCastInTest: Rule = {
     // production code (event-handler `e.target as HTMLInputElement`, etc.).
     const isTestFile = /\.test\.(?:ts|tsx)$/.test(filePath)
     if (!isTestFile) return {}
+
+    // `@pyreon/test-utils` (which exports `query()`) is a PRIVATE monorepo
+    // package — a consumer can't install it, so this rule's `error` would be
+    // unsatisfiable in a consumer test. It's a monorepo-internal ratchet (cites
+    // internal PR numbers), so it fires ONLY where `@pyreon/test-utils` is a
+    // declared dependency — i.e. this monorepo. Silent in consumer projects.
+    if (!isProjectDependency(filePath, '@pyreon/test-utils')) return {}
 
     if (isPathExempt(context)) return {}
 

@@ -43,8 +43,11 @@ describe('pyreon/no-signal-in-loop — fires inside each loop kind', () => {
 })
 
 describe('pyreon/no-signal-in-props — fires on Component JSX prop with signal call', () => {
-  it('flags <MyComp value={signal()}> shape', () => {
-    const code = `function App() { return <MyComp value={signal()} /> }`
+  it('flags a signal-BINDING read in a component prop (the real bug shape)', () => {
+    // LT-5: the callee must resolve to a `signal()`/`computed()` binding — the
+    // realistic "captured once" bug is `<MyComp value={count()}>`, not calling
+    // `signal()` inline (which creates a fresh signal, a different shape).
+    const code = `const count = signal(0); function App() { return <MyComp value={count()} /> }`
     const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, defaultConfig())
     const diags = find(result, 'pyreon/no-signal-in-props')
     expect(diags.length).toBeGreaterThan(0)

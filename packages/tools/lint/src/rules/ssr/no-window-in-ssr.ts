@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
 import { isPathExempt } from '../../utils/exempt-paths'
+import { isTestFile } from '../../utils/file-roles'
 import { BROWSER_GLOBALS } from '../../utils/imports'
 
 export const noWindowInSsr: Rule = {
@@ -13,6 +14,12 @@ export const noWindowInSsr: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    // Test files (`*.test.ts`, `*.browser.test.tsx`, Playwright specs) never
+    // run during SSR and legitimately touch `window` (a `page.evaluate`, a
+    // happy-dom/browser assertion), so skip them — consistent with every other
+    // SSR/env rule (prefer-isserver, no-private-env-in-client, …). Pre-fix this
+    // rule was the odd one out and produced ~60% of its findings inside specs.
+    if (isTestFile(context.getFilePath())) return {}
     // Configurable `exemptPaths` option — projects opt out directories
     // that legitimately run in a DOM-only environment (e.g. a DOM renderer
     // package has no SSR scenario). Monorepo configures its own paths in

@@ -1,5 +1,6 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { isPathExempt } from '../../utils/exempt-paths'
+import { isProjectDependency } from '../../utils/project-deps'
 
 /**
  * `pyreon/vitest-config-uses-shared` — every per-package `vitest.config.ts`
@@ -54,6 +55,14 @@ export const vitestConfigUsesShared: Rule = {
     const isNodeConfig = filePath.endsWith('/vitest.config.ts')
     const isBrowserConfig = filePath.endsWith('/vitest.browser.config.ts')
     if (!isNodeConfig && !isBrowserConfig) return {}
+
+    // `@pyreon/vitest-config` is a PRIVATE monorepo package — a consumer app
+    // cannot install it, so mandating it in a consumer's `vitest.config.ts`
+    // would be an unsatisfiable `error`. This rule is a monorepo-internal
+    // ratchet (its message even cites internal PR numbers), so it fires ONLY
+    // in a project that actually declares `@pyreon/vitest-config` — i.e. this
+    // monorepo (which self-depends). Silent everywhere else.
+    if (!isProjectDependency(filePath, '@pyreon/vitest-config')) return {}
 
     if (isPathExempt(context)) return {}
 

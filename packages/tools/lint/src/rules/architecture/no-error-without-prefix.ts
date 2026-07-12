@@ -1,6 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan } from '../../utils/ast'
 import { isPathExempt } from '../../utils/exempt-paths'
+import { getNearestPackageName } from '../../utils/project-deps'
 
 /**
  * A framework error is "identified" if it starts with `[Pyreon]` OR the
@@ -24,11 +25,21 @@ export const noErrorWithoutPrefix: Rule = {
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
+    const filePath = context.getFilePath()
+
+    // The `[Pyreon]` prefix is a FRAMEWORK-INTERNAL convention (so a user can
+    // grep their logs and know an error came from the framework). It is
+    // meaningless — and misleading — for a CONSUMER app's own errors
+    // (`throw new Error('Save failed (500)')` is not a framework error). So the
+    // rule fires ONLY when the file belongs to a `@pyreon/*` package; a consumer
+    // app (any other package name) is never flagged, and the autofix can never
+    // rewrite an application error to `[Pyreon] …`.
+    const pkgName = getNearestPackageName(filePath)
+    if (!pkgName || !pkgName.startsWith('@pyreon/')) return {}
+
     // Path-based exemptions (e.g. CLI-scaffolder packages whose throws are
     // user-facing CLI usage/argument errors, not framework runtime errors).
     if (isPathExempt(context)) return {}
-
-    const filePath = context.getFilePath()
     // Skip test files
     if (
       filePath.includes('/tests/') ||

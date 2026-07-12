@@ -7,7 +7,8 @@ export const devGuardWarnings: Rule = {
   meta: {
     id: 'pyreon/dev-guard-warnings',
     category: 'architecture',
-    description: 'Require console.warn/error calls to be wrapped in `if (__DEV__)` guards.',
+    description:
+      'Require console.warn/error calls to be wrapped in a dev-only guard (`if (process.env.NODE_ENV !== "production")` — the bundler-agnostic form; `__DEV__` is also accepted as a framework-internal alias) so they tree-shake in production.',
     severity: 'error',
     fixable: false,
     schema: { exemptPaths: 'string[]', devFlagNames: 'string[]' },
@@ -251,7 +252,7 @@ export const devGuardWarnings: Rule = {
         ) {
           if (callee.property.name === 'error' && catchDepth > 0) return
           context.report({
-            message: `\`console.${callee.property.name}()\` without \`__DEV__\` guard — dev warnings must be tree-shakeable in production. Wrap in \`if (__DEV__) { ... }\` (or \`__DEV__ && ...\`). Production error logging in \`catch\` blocks is exempt for \`console.error\`.`,
+            message: `\`console.${callee.property.name}()\` without a dev guard — dev warnings must be tree-shakeable in production. Wrap in \`if (process.env.NODE_ENV !== 'production') { ... }\` (the bundler-agnostic form every consumer's build replaces; \`__DEV__\` is a framework-internal alias and is NOT injected by @pyreon/zero / @pyreon/vite-plugin, so a raw \`if (__DEV__)\` would throw a ReferenceError in a consumer app). Production error logging in \`catch\` blocks is exempt for \`console.error\`.`,
             span: getSpan(node),
           })
         }

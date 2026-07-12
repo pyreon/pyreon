@@ -1,5 +1,7 @@
 import type { Rule, VisitorCallbacks } from '../../types'
 import { getSpan, isCallTo } from '../../utils/ast'
+import { isPathExempt } from '../../utils/exempt-paths'
+import { isTestFile } from '../../utils/file-roles'
 
 const DOM_METHODS = new Set([
   'querySelector',
@@ -16,8 +18,16 @@ export const noDomInSetup: Rule = {
     description: 'Warn when DOM query methods are used outside onMount or effect.',
     severity: 'warn',
     fixable: false,
+    schema: {
+      exemptPaths: 'string[]',
+    },
   },
   create(context) {
+    // A test's `document.querySelector(...)` assertion is not component setup —
+    // skip test files (consistent with the SSR/browser-API rules), and honor
+    // the configurable `exemptPaths` a consumer sets for DOM-only trees.
+    if (isTestFile(context.getFilePath())) return {}
+    if (isPathExempt(context)) return {}
     let safeDepth = 0
     function isSafeContextCall(node: any): boolean {
       // Lifecycle + effect hooks only run post-mount in a browser.
