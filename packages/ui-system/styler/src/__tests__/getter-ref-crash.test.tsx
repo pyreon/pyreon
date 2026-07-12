@@ -13,7 +13,7 @@
  * The throw is a pure strict-mode "assign to getter-only accessor" TypeError,
  * identical in happy-dom and a real browser, so a happy-dom mount is faithful.
  */
-import { effectScope, setCurrentScope } from '@pyreon/reactivity'
+import { effectScope } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { styled } from '../styled'
@@ -48,19 +48,20 @@ describe('FW-1 — getter-shaped ref/innerRef through a reactive styled componen
         received = node
       }
       const scope = effectScope()
-      const prev = setCurrentScope(scope)
       try {
         const container = document.createElement('div')
         document.body.appendChild(container)
-        // vnode creation is where the pre-fix assignment threw:
-        const vnode = Btn(getterRefProps(key, refFn))
-        // mount to prove the ref wrapper actually delivers the element:
-        expect(() => mount(vnode, container)).not.toThrow()
+        // vnode creation is where the pre-fix assignment threw (inside a scope
+        // so the reactive styled path's renderEffect has an owner):
+        expect(() => {
+          const vnode = scope.runInScope(() => Btn(getterRefProps(key, refFn)))
+          // mount to prove the ref wrapper actually delivers the element:
+          mount(vnode, container)
+        }).not.toThrow()
         expect(container.querySelector('button')).not.toBeNull()
         expect(received).toBe(container.querySelector('button'))
       } finally {
-        setCurrentScope(prev)
-        scope.dispose?.()
+        scope.stop()
       }
     })
   }
