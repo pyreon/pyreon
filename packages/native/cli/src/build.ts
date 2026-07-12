@@ -352,7 +352,17 @@ export function build(options: BuildOptions): BuildResult {
       options.target === 'kotlin' && options.kotlinPackage
         ? `package ${options.kotlinPackage}\n\n`
         : ''
+    // `@file:OptIn(...)` file annotations MUST precede the package
+    // directive. `combinedClickable` (<Press onLongPress>) is an
+    // experimental foundation API on the examples' Compose BOM — device
+    // build-found: it compiles nowhere without the opt-in. FQN keeps it
+    // import-free. Only emitted when the file actually uses it.
+    const fileAnnotations =
+      options.target === 'kotlin' && result.code.includes('.combinedClickable(')
+        ? '@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)\n\n'
+        : ''
     const finalCode =
+      fileAnnotations +
       packageHeader +
       sourceMapHeader(options.target, input) +
       importHeader(options.target) +
