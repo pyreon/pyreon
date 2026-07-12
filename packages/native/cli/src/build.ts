@@ -225,6 +225,20 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('horizontalScroll(')) {
     imports.push('import androidx.compose.foundation.horizontalScroll')
   }
+  // <Press> clickable modifiers live in the ROOT androidx.compose.foundation
+  // package (NOT the star-imported .layout/.lazy/.text sub-packages), same
+  // stub-masked class as verticalScroll. NO Android example had used <Press>
+  // on a real gradle build before the M2.3 gesture arc, so `.clickable`
+  // itself was a latent missing import — added here alongside the new
+  // `.combinedClickable` (onPress + onLongPress). combinedClickable is
+  // stable since Compose 1.6 (no @OptIn); if a device build proves an older
+  // BOM needs the opt-in, that's the follow-up the Android CI catches.
+  if (emitted.includes('.clickable(')) {
+    imports.push('import androidx.compose.foundation.clickable')
+  }
+  if (emitted.includes('.combinedClickable(')) {
+    imports.push('import androidx.compose.foundation.combinedClickable')
+  }
   // Modal emit (<Modal>): Dialog is androidx.compose.ui.window — not in
   // the star-imported ui.* (single-package).
   if (emitted.includes('Dialog(')) {

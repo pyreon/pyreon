@@ -73,4 +73,43 @@ final class PyreonCounterUITests: XCTestCase {
             "Count text did not update to \"Count: 1\" within 5s after tap"
         )
     }
+
+    // M2.3 — GESTURE (long-press) asserted on device. The shared
+    // Counter.tsx has a long-press-only `<Press onLongPress={() =>
+    // count.set(0)} data-testid="reset-zone">`; PMTC emits it as a
+    // chrome-less `Button(action: {}) { … }.onLongPressGesture { count = 0
+    // }` with `.accessibilityIdentifier("reset-zone")`. This proves the
+    // emitted long-press GESTURE actually fires on a real Simulator — a
+    // tap does nothing, a >=0.5s hold resets the counter. Pre-M2.3
+    // `onLongPress` was silently dropped from the native emit.
+    func test_longPressResetsCounter() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let incrementButton = app.buttons["Increment"]
+        XCTAssertTrue(
+            incrementButton.waitForExistence(timeout: 30),
+            "Increment button did not appear"
+        )
+        // Drive the count up so a reset is observable (0 -> 2).
+        incrementButton.tap()
+        incrementButton.tap()
+        XCTAssertTrue(
+            app.staticTexts["Count: 2"].waitForExistence(timeout: 5),
+            "Count did not reach 2 after two taps"
+        )
+
+        // The `<Press>` emits a Button carrying the reset-zone identifier.
+        let resetZone = app.buttons["reset-zone"]
+        XCTAssertTrue(
+            resetZone.waitForExistence(timeout: 5),
+            "reset-zone (<Press>) did not appear"
+        )
+        // A 1s hold = a long press → `.onLongPressGesture` fires count = 0.
+        resetZone.press(forDuration: 1.0)
+        XCTAssertTrue(
+            app.staticTexts["Count: 0"].waitForExistence(timeout: 5),
+            "Long-press did not reset the counter — onLongPress gesture not firing"
+        )
+    }
 }
