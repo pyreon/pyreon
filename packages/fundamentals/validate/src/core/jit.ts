@@ -101,27 +101,39 @@ function fieldCheckOps(field: FieldLike): CheckOpLike[] {
 }
 
 /** Inline failure-condition for cheap checks; `null` → call the closure. */
+// Render a numeric check bound as a code token. Bounds are numbers by the
+// schema-API contract (`.min(n: number)` etc.), but this JIT constructs source
+// via `new Function`, so a bound is a value flowing into a code-construction
+// sink. Coerce through `Number` at emission so the interpolated token is ALWAYS
+// a numeric literal: byte-identical for every real bound (incl. `Infinity` →
+// `"Infinity"`, a valid JS token), and `NaN` for any non-numeric a raw JS
+// caller might sneak past the types — making code injection structurally
+// impossible here rather than trusting the caller. `Number()` is also the
+// canonical CodeQL sanitizer for a code sink (resolves the jit.ts alert at the
+// root, not via a config suppression).
+const numLit = (n: unknown): string => String(Number(n))
+
 function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
   switch (op.kind) {
     case 'check:string:min':
     case 'check:array:min':
-      return `${ve}.length < ${op.n}`
+      return `${ve}.length < ${numLit(op.n)}`
     case 'check:string:max':
     case 'check:array:max':
-      return `${ve}.length > ${op.n}`
+      return `${ve}.length > ${numLit(op.n)}`
     case 'check:string:length':
     case 'check:array:length':
-      return `${ve}.length !== ${op.n}`
+      return `${ve}.length !== ${numLit(op.n)}`
     case 'check:string:nonempty':
       return `${ve}.length < 1`
     case 'check:number:min':
-      return `${ve} < ${op.n}`
+      return `${ve} < ${numLit(op.n)}`
     case 'check:number:max':
-      return `${ve} > ${op.n}`
+      return `${ve} > ${numLit(op.n)}`
     case 'check:number:gt':
-      return `!(${ve} > ${op.n})`
+      return `!(${ve} > ${numLit(op.n)})`
     case 'check:number:lt':
-      return `!(${ve} < ${op.n})`
+      return `!(${ve} < ${numLit(op.n)})`
     case 'check:number:safe':
       return `!(${ve} >= -9007199254740991 && ${ve} <= 9007199254740991)`
     case 'check:number:int':
@@ -139,11 +151,11 @@ function inlineCheckCond(op: CheckOpLike, ve: string): string | null {
     // between: pass = `v >= lo && v <= hi` → fail = `v < lo || v > hi`
     // (the value has already passed the numeric type-guard at the call site).
     case 'check:number:between':
-      return `${ve} < ${op.lo} || ${ve} > ${op.hi}`
+      return `${ve} < ${numLit(op.lo)} || ${ve} > ${numLit(op.hi)}`
     // multipleOf: pass = `v % n === 0` → fail = `v % n !== 0` (no epsilon in the
     // check impl, so a direct `%` is byte-exact).
     case 'check:number:multiple-of':
-      return `${ve} % ${op.n} !== 0`
+      return `${ve} % ${numLit(op.n)} !== 0`
     // positional string checks: pass = `v.startsWith/endsWith/includes(s)` →
     // fail = `!v.<method>(s)`. The needle is baked as a string literal.
     case 'check:string:starts-with':
