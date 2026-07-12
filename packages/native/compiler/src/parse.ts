@@ -3661,6 +3661,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useClipboard') {
     return { kind: 'clipboard', name }
   }
+  // M3.1 — `const h = useHaptics()` from `@pyreon/hooks` → the
+  // PyreonHaptics fire-and-forget wrapper. No arguments, no reactive
+  // state. Calls are member methods (`h.impact("light")` /
+  // `h.notification("success")` / `h.selection()`) that flow through
+  // unchanged — the runtime container provides the method surface, so
+  // (like useClipboard) there is NO `.value` rewrite and NO arg
+  // transformation (the string style arg passes straight through).
+  if (calleeName === 'useHaptics') {
+    return { kind: 'haptics', name }
+  }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
@@ -5739,6 +5749,7 @@ function warnIfHookInsideRenderCallback(
     'useFetch',
     'useForm',
     'useClipboard',
+    'useHaptics',
     'useColorScheme',
     'usePermissions',
     'useOnline',

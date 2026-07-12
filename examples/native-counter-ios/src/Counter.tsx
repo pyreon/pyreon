@@ -8,13 +8,27 @@
 // SwiftUI's @State is a var, not a method).
 
 import { signal } from '@pyreon/reactivity'
+import { useHaptics } from '@pyreon/hooks'
 
 export function Counter() {
   const count = signal<number>(0)
+  // M3.1 platform-API proof — a haptic fires on each increment tap.
+  // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
+  // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
+  // Web: `navigator.vibrate(10)`. No observable UI (haptics are physical),
+  // so the device gate proves "builds + runs + the tap does not crash".
+  const haptics = useHaptics()
   return (
     <VStack>
       <Text>Count: {count}</Text>
-      <Button onClick={() => count.set(count() + 1)}>Increment</Button>
+      <Button
+        onClick={() => {
+          count.set(count() + 1)
+          haptics.impact('light')
+        }}
+      >
+        Increment
+      </Button>
       {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
           Native: iOS `.onLongPressGesture { count = 0 }`, Android
           `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms

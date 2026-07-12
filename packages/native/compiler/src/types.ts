@@ -271,6 +271,22 @@ export type DeclIR =
    */
   | { kind: 'clipboard'; name: string }
   /**
+   * M3.1 — haptic feedback via `const h = useHaptics()` from
+   * `@pyreon/hooks`. Emits the PyreonHaptics fire-and-forget wrapper:
+   *   Swift  → @State private var h = PyreonHaptics()
+   *   Kotlin → val hHaptic = LocalHapticFeedback.current
+   *            val h = remember { PyreonHaptics(hHaptic) }
+   *
+   * `useHaptics()` takes no arguments and has NO reactive state. Calls
+   * are member methods (`h.impact("light")` / `h.notification("success")`
+   * / `h.selection()`) whose string arg flows through unchanged — the
+   * runtime container maps the style string to the platform generator
+   * (iOS UIImpactFeedbackGenerator/UINotificationFeedbackGenerator/
+   * UISelectionFeedbackGenerator; Android Compose LocalHapticFeedback,
+   * which is coarser — several styles map to the nearest constant).
+   */
+  | { kind: 'haptics'; name: string }
+  /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode
    * active" reads — NO runtime port needed (both SwiftUI and Compose
