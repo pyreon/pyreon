@@ -79,7 +79,7 @@ const useCounter = defineStore('counter', () => {
 })
 ```
 
-The `id` string must be unique across your application. If two `defineStore` calls share the same ID, the second call's setup function is never executed -- it receives the state created by the first:
+The `id` string must be unique across your application. If two `defineStore` calls share the same ID, the second call's setup function is never executed -- it receives the state created by the first (Pyreon warns once per id in dev when the two setup functions differ):
 
 ```ts
 const useA = defineStore('shared-id', () => ({ val: signal('first') }))
@@ -142,6 +142,32 @@ a.store.count.set(42)
 console.log(b.store.count()) // 42 — same signal instance
 ```
 
+The setup function runs inside a **store-owned effect scope**. That matters in two directions:
+
+- A store lazily created inside a component body (the common shape — the first `useStore()` call happens during some component's setup) does NOT hand its `computed`s/`effect`s to that component's scope. The component unmounting can never dispose the singleton's reactivity out from under every other consumer.
+- `dispose()` stops the scope, so everything reactive the setup created is torn down deterministically with the store.
+
+Two definitions with the **same id** don't merge: the registry returns the first instance and the second definition is inert (Pyreon warns once per id in dev when the setup functions differ). This is also what an HMR re-eval of a store module looks like — state is preserved, but edited actions/computeds do NOT apply until `resetStore(id)` or a full page reload.
+
+### Store Families — parameterized stores
+
+For keyed instances (one store per entity), derive the ID — `defineStore` is cheap and the registry is the cache:
+
+```ts
+const useDoc = (docId: string) =>
+  defineStore(`doc:${docId}`, () => {
+    const title = signal('')
+    const rename = (t: string) => title.set(t)
+    return { title, rename }
+  })()
+
+useDoc('a').store.title.set('Alpha')
+useDoc('a').store.title() // 'Alpha' — same instance per key
+useDoc('b').store.title() // ''      — independent instance
+```
+
+Lifecycle is yours: call `useDoc(id).dispose()` (or ``resetStore(`doc:${id}`)``) when the entity goes away. There is deliberately no automatic family GC — a registry that guesses when your entity is dead guesses wrong.
+
 ### Using in Components
 
 Call the store hook inside a component's setup function. Destructure `store` to access your signals and actions, and use the framework methods (`patch`, `reset`, etc.) as needed:
@@ -194,7 +220,8 @@ import type { Signal } from '@pyreon/store'
 ### Authentication Store
 
 ```ts
-import { defineStore, signal, computed, effect } from '@pyreon/store'
+import { defineStore, signal, computed } from '@pyreon/store'
+import { useStorage } from '@pyreon/storage'
 
 interface User {
   id: string
@@ -205,7 +232,10 @@ interface User {
 
 const useAuth = defineStore('auth', () => {
   const user = signal<User | null>(null)
-  const token = signal<string | null>(null)
+  // Persisted — useStorage returns a real Signal backed by localStorage, so
+  // the token survives reloads with zero manual setItem/getItem plumbing
+  // (see the Persistence section below).
+  const token = useStorage<string | null>('auth_token', null)
   const loading = signal(false)
   const error = signal<string | null>(null)
 
@@ -230,9 +260,8 @@ const useAuth = defineStore('auth', () => {
       }
 
       const data = await response.json()
-      token.set(data.token)
+      token.set(data.token) // persisted automatically — token is a StorageSignal
       user.set(data.user)
-      localStorage.setItem('auth_token', data.token)
     } catch (e) {
       error.set(e instanceof Error ? e.message : 'Login failed')
     } finally {
@@ -242,12 +271,13 @@ const useAuth = defineStore('auth', () => {
 
   function logout() {
     user.set(null)
-    token.set(null)
-    localStorage.removeItem('auth_token')
+    token.remove() // clears the signal AND the persisted localStorage entry
   }
 
+  // The token is already restored from localStorage at store creation —
+  // this only re-validates it against the server and loads the user.
   async function restoreSession() {
-    const savedToken = localStorage.getItem('auth_token')
+    const savedToken = token()
     if (!savedToken) return
 
     loading.set(true)
@@ -257,8 +287,9 @@ const useAuth = defineStore('auth', () => {
       })
       if (response.ok) {
         const data = await response.json()
-        token.set(savedToken)
         user.set(data.user)
+      } else {
+        token.remove() // stale token — drop it
       }
     } finally {
       loading.set(false)
@@ -380,12 +411,15 @@ const useCart = defineStore('cart', () => {
 
 ```ts
 import { defineStore, signal, computed, effect } from '@pyreon/store'
+import { useStorage } from '@pyreon/storage'
 
 type Theme = 'light' | 'dark' | 'system'
 type ResolvedTheme = 'light' | 'dark'
 
 const useTheme = defineStore('theme', () => {
-  const preference = signal<Theme>('system')
+  // Persisted preference — restored from localStorage at creation, written
+  // on every .set(), synced across tabs. No manual restore() needed.
+  const preference = useStorage<Theme>('theme', 'system')
 
   const systemPrefersDark = signal(
     typeof window !== 'undefined'
@@ -415,19 +449,36 @@ const useTheme = defineStore('theme', () => {
     document.documentElement.classList.toggle('dark', isDark())
   })
 
-  function setTheme(theme: Theme) {
-    preference.set(theme)
-    localStorage.setItem('theme', theme)
-  }
+  const setTheme = (theme: Theme) => preference.set(theme) // persists automatically
 
-  function restore() {
-    const saved = localStorage.getItem('theme') as Theme | null
-    if (saved) preference.set(saved)
-  }
-
-  return { preference, resolved, isDark, setTheme, restore }
+  return { preference, resolved, isDark, setTheme }
 })
 ```
+
+## Persistence
+
+There is no persist middleware — none is needed. `@pyreon/storage`'s `useStorage()` returns a `StorageSignal` (a real `Signal` plus a persistence side-effect), so **returning one from `setup` gives you a persisted store field** with everything a store field has: it's classified as state, `patch` / `reset` / `subscribe` / `dehydrateStores` all flow through it, and cross-tab sync plus optional debounced writes (`writeDebounceMs`) come from `@pyreon/storage` for free. You persist exactly the fields you wrap — the composition IS the selection (no `partialize` config):
+
+```ts
+import { computed, defineStore, signal } from '@pyreon/store'
+import { useStorage } from '@pyreon/storage'
+
+const useCart = defineStore('cart', () => {
+  const lines = useStorage<CartLine[]>('cart.lines', [])   // persisted
+  const currency = useStorage('cart.currency', 'USD')      // persisted
+  const drawerOpen = signal(false)                         // deliberately NOT persisted
+  const total = computed(() => lines().reduce((s, l) => s + l.price * l.qty, 0))
+  const add = (line: CartLine) => lines.set([...lines(), line])
+  return { lines, currency, drawerOpen, total, add }
+})
+```
+
+Other backends compose identically: `useSessionStorage`, `useCookie`, `useIndexedDB` (async-backed), `useMemoryStorage`.
+
+Two caveats worth knowing:
+
+- **`reset()` restores the setup-time snapshot** — for a persisted field that's the value read from storage at store creation, not your declared default. To clear the persisted value itself, call `field.remove()` (resets the signal to the default AND deletes the storage entry).
+- **Shape migrations are yours** — there is no `version`/`migrate` option. If the persisted shape evolves across releases, validate/normalize the raw value in setup (or use a schema-mode store and normalize through an action).
 
 ## Schema-driven Stores
 
@@ -806,32 +857,27 @@ Use `effect` to run side effects that react to store state changes:
 ```ts
 import { effect } from '@pyreon/store'
 
-const useSettings = defineStore('settings', () => {
-  const locale = signal('en')
-  const fontSize = signal(16)
+const useNotifications = defineStore('notifications', () => {
+  const unread = signal(0)
 
-  // Persist to localStorage whenever values change
+  // Reflect unread count into the document title whenever it changes
   effect(() => {
-    localStorage.setItem(
-      'settings',
-      JSON.stringify({
-        locale: locale(),
-        fontSize: fontSize(),
-      }),
-    )
+    if (typeof document === 'undefined') return
+    const n = unread()
+    document.title = n > 0 ? `(${n}) Inbox` : 'Inbox'
   })
 
-  // Restore from localStorage on initialization
-  const saved = localStorage.getItem('settings')
-  if (saved) {
-    const parsed = JSON.parse(saved)
-    locale.set(parsed.locale)
-    fontSize.set(parsed.fontSize)
+  return {
+    unread,
+    markAllRead: () => unread.set(0),
+    notify: () => unread.update((n) => n + 1),
   }
-
-  return { locale, fontSize }
 })
 ```
+
+(For persistence, don't hand-roll an effect + `localStorage` — return a `useStorage()` signal from setup instead; see [Persistence](#persistence).)
+
+Effects created in setup are owned by the **store's effect scope**: they are NOT adopted by whichever component happened to create the store first (a component unmount can't kill them), and they are disposed deterministically by `dispose()`.
 
 ### Logging and Debugging with Effects
 
@@ -1131,7 +1177,7 @@ console.log(store.count()) // 0
 
 ### `dispose`
 
-Tear down the store entirely -- unsubscribes all signal listeners, clears subscribers and action listeners, and removes the store from the registry:
+Full teardown — runs plugin cleanups, unsubscribes all signal listeners, clears subscribers and action listeners, **stops the store's effect scope** (disposing every `computed`/`effect` created in setup or plugin bodies), and removes the store from the registry:
 
 ```ts
 const { dispose } = useCounter()
@@ -1140,9 +1186,11 @@ dispose()
 // Next call to useCounter() will re-run setup
 ```
 
+Because setup runs inside a store-owned effect scope, `dispose()` is the ONE deterministic teardown point for everything the store created — no zombie effects keep firing on external signals afterwards.
+
 ## Plugins
 
-Register global plugins that run when any store is first created. Plugins receive the full `StoreApi`:
+Register global plugins that run when any store is first created. Plugins receive the full `StoreApi` and may return a **cleanup function** that runs on that store's `dispose()`:
 
 ```ts
 import { addStorePlugin } from '@pyreon/store'
@@ -1154,25 +1202,20 @@ addStorePlugin(({ store, id, subscribe }) => {
   })
 })
 
-// Persistence plugin
-addStorePlugin(({ id, patch, subscribe }) => {
-  // Restore from localStorage
-  const saved = localStorage.getItem(`store:${id}`)
-  if (saved) {
-    patch(JSON.parse(saved))
-  }
-
-  // Persist on change
-  subscribe((_mutation, state) => {
-    localStorage.setItem(`store:${id}`, JSON.stringify(state))
-  })
+// Server-sync plugin with dispose-time teardown
+addStorePlugin(({ id, subscribe }) => {
+  const socket = connectSync(id)
+  subscribe((_mutation, state) => socket.send(state))
+  return () => socket.close() // runs on store.dispose()
 })
 ```
+
+Plugin bodies run inside the store's effect scope — `effect()` / `computed()` created in a plugin are disposed automatically on `dispose()`; the returned cleanup is for EXTERNAL resources (timers, sockets, subscriptions to other systems). For localStorage persistence, prefer per-field `useStorage()` composition (see [Persistence](#persistence)) over a whole-store plugin — it persists exactly the fields you choose and syncs across tabs.
 
 ### StorePlugin type
 
 ```ts
-type StorePlugin = (api: StoreApi<Record<string, unknown>>) => void
+type StorePlugin = (api: StoreApi<Record<string, unknown>>) => void | (() => void)
 ```
 
 ## Resetting Stores
@@ -1462,6 +1505,21 @@ console.table(inspectStore(api))
 // | count | 0     |
 ```
 
+## Non-Goals — what the paradigm already covers
+
+Coming from Zustand / Pinia / Jotai / Valtio, several familiar features are absent from `@pyreon/store` ON PURPOSE — fine-grained signals make them unnecessary:
+
+| Familiar feature | Why it's absent |
+| --- | --- |
+| `subscribeWithSelector` / selector middleware | Signals ARE the selectors — subscribe to one field via `store.x.subscribe(...)`, derive with `computed(...)`. There is no coarse store subscription to narrow. |
+| `immer` / `produce` middleware | Per-field signals make granular writes the idiom (`store.x.set`, `patch`). Deep trees with snapshots/patches are `@pyreon/state-tree`'s job. |
+| `storeToRefs` (Pinia) | Store fields are stable signal callables — destructuring `const { count } = store` is safe by construction. The reactivity lives in READING `count()`, not in property access. |
+| Redux-style reducers / dispatch | Constrained transitions are `@pyreon/machine`'s job. Actions here are plain functions. |
+| Framework binding hooks (`useStore(selector)`) | There is no re-render layer to bind — components read signals directly. |
+| Refcounted auto-dispose (nanostores `onMount`) | Stores are app-level singletons with explicit `dispose()`; component-scoped resources belong in component hooks. |
+| Async derived-data primitives (async atoms, `loadable`) | Server/async data is `@pyreon/query`'s job. Async ACTIONS are first-class here — `onAction` is thenable-aware. |
+| Whole-store persist middleware (`partialize`, storage adapters) | Per-field `useStorage()` composition (see [Persistence](#persistence)) — you persist exactly the fields you wrap. |
+
 ## API Reference
 
 ### `defineStore(id, setup)`
@@ -1486,7 +1544,7 @@ The structured result returned by every store hook.
 | `subscribe(cb, opts?)` | `(cb, opts?) => () => void`                  | Listen to state changes, returns unsubscribe                       |
 | `onAction(cb)`         | `(cb) => () => void`                         | Intercept action calls with after/error hooks, returns unsubscribe |
 | `reset()`              | `() => void`                                 | Reset all signals to initial values                                |
-| `dispose()`            | `() => void`                                 | Tear down the store and remove from registry                       |
+| `dispose()`            | `() => void`                                 | Full teardown: plugin cleanups, listeners, the store's effect scope, registry entry |
 
 ### `setStoreRegistryProvider(fn)`
 
@@ -1508,7 +1566,7 @@ Destroy all stores in the current registry. Useful for test teardown, HMR, and S
 
 Register a global plugin that runs when any store is first created.
 
-- **`plugin`** (`StorePlugin`) -- Function receiving the full `StoreApi`.
+- **`plugin`** (`StorePlugin`) -- Function receiving the full `StoreApi`. May return a cleanup function that runs on that store's `dispose()`.
 
 ### Re-exported from `@pyreon/reactivity`
 

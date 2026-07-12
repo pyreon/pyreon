@@ -74,7 +74,13 @@ describe('gen-docs — store snapshot', () => {
       >
       > **Action classification**: Only plain functions in the setup return become actions. Signals and computeds are classified by duck-typing (\`.set\` + \`.peek\` for signals, \`.dispose\` for computeds). Arrow functions assigned to variables are classified as actions.
       >
-      > **Devtools**: Import \`@pyreon/store/devtools\` for a WeakRef-based registry that exposes all live store instances. Tree-shakeable — zero cost unless imported.
+      > **Devtools**: Import \`@pyreon/store/devtools\` to introspect the live store registry (\`getRegisteredStores()\` / \`getStoreById(id)\` / \`onStoreChange(listener)\`). Tree-shakeable — zero cost unless imported.
+      >
+      > **Scope ownership**: setup() runs inside a store-OWNED effect scope: computeds/effects created there belong to the store (disposed by \`dispose()\`), NOT to the component that happened to create the store first — a component unmount can never freeze a singleton's computeds.
+      >
+      > **Persistence**: No persist middleware — return \`useStorage()\` (from \`@pyreon/storage\`) signals from setup. A StorageSignal IS a signal, so classification/patch/reset/subscribe/dehydrate all flow through it, with cross-tab sync free. You persist exactly the fields you wrap.
+      >
+      > **HMR / same-id redefinition**: Redefining a store id from a DIFFERENT setup function dev-warns once per id: the registered instance keeps the OLD setup (state preserved, edited actions/computeds silently inert) until \`resetStore(id)\` or a full reload.
       "
     `)
   })
@@ -88,10 +94,13 @@ describe('gen-docs — store snapshot', () => {
     // resetStore + resetAllStores + dehydrateStores + hydrateStores = 13.
     expect(Object.keys(record).length).toBe(13)
     expect(record['store/defineStore']!.notes).toContain('singleton')
-    expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(7)
+    expect(record['store/defineStore']!.mistakes?.split('\n').length).toBe(9)
     // The previously-missing StoreApi entry now resolves (no 404).
     expect(record['store/StoreApi']).toBeDefined()
-    expect(record['store/StoreApi']!.mistakes).toContain('SILENT no-op')
+    // Unknown patch keys now dev-warn (were a fully silent no-op).
+    expect(record['store/StoreApi']!.mistakes).toContain('WARNS in dev')
+    // Scope-ownership teardown is part of the dispose contract.
+    expect(record['store/StoreApi']!.notes).toContain('effect scope')
     // SSR hydration handshake entries.
     expect(record['store/dehydrateStores']).toBeDefined()
     expect(record['store/hydrateStores']!.notes).toContain('boot-time one-shot')

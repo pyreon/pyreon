@@ -71,7 +71,7 @@ This is the Pyreon-native pattern for per-instance state. `defineStore` is for g
 
 ## Setup function — what runs and how
 
-The setup function runs ONCE per store ID; subsequent `useCounter()` calls return the cached instance. The return value is auto-classified:
+The setup function runs ONCE per store ID; subsequent `useCounter()` calls return the cached instance. It runs inside a **store-owned effect scope**: every `computed()` / `effect()` created in setup belongs to the STORE, not to whatever component happened to trigger the first creation — so a component unmounting never disposes a singleton store's reactivity, and `dispose()` tears all of it down deterministically (Pinia's effectScope model). The return value is auto-classified:
 
 | Return value shape          | Becomes                                  |
 |-----------------------------|------------------------------------------|
@@ -91,14 +91,14 @@ The setup function runs ONCE per store ID; subsequent `useCounter()` calls retur
 | `subscribe(cb, opts?)` | Mutation listener; `{ immediate: true }` fires once on registration |
 | `onAction(cb)` | Action interception with `ctx.after(fn)` / `ctx.onError(fn)` |
 | `reset()` | Reset every signal to its initial value |
-| `dispose()` | Detach, dispose computeds, clear subscribers |
+| `dispose()` | Full teardown: runs plugin cleanups, clears subscribers, stops the store's effect scope (disposing every `computed`/`effect` created in setup), removes from registry |
 
 `patch()` discriminator on subscribe events:
 
 ```ts
 subscribe((m) => {
   m.type           // 'direct' | 'patch'
-  m.events         // array of { key, prev, next }
+  m.events         // array of { key, oldValue, newValue }
 })
 ```
 
@@ -146,16 +146,56 @@ addStorePlugin((api) => {
 })
 ```
 
-Plugins are global — registered once at app startup, run for every defined store. Plugin throws are caught and silenced (with a dev-mode `console.warn`) so one bad plugin can't take the whole app down. Plugins added AFTER a store has been created do NOT retroactively run on it.
+Plugins are global — registered once at app startup, run for every defined store. A plugin may return a **cleanup function** — it runs when that store's `dispose()` is called (for external resources: sync loops, timers, connections). `effect()`/`computed()` created inside a plugin body need NO cleanup — they run in the store's effect scope and are disposed automatically. Plugin throws are caught and silenced (with a dev-mode `console.warn`) so one bad plugin can't take the whole app down. Plugins added AFTER a store has been created do NOT retroactively run on it.
+
+## Persistence — return `useStorage()` from setup
+
+There is no "persist middleware" — none is needed. `@pyreon/storage`'s `useStorage()` returns a `StorageSignal` (a real `Signal` + persistence side-effect), so returning one from `setup` gives you a persisted store field with everything a store field has: it's classified as state, `patch`/`reset`/`subscribe`/`dehydrateStores` all flow through it, and you get cross-tab sync + optional debounced writes from `@pyreon/storage` for free. You persist exactly the fields you wrap — no `partialize` config, the composition IS the selection:
+
+```ts
+import { computed, signal } from '@pyreon/reactivity'
+import { useStorage } from '@pyreon/storage'
+import { defineStore } from '@pyreon/store'
+
+const useCart = defineStore('cart', () => {
+  const lines = useStorage<CartLine[]>('cart.lines', [])   // persisted (localStorage)
+  const currency = useStorage('cart.currency', 'USD')      // persisted
+  const drawerOpen = signal(false)                         // deliberately NOT persisted
+  const total = computed(() => lines().reduce((s, l) => s + l.price * l.qty, 0))
+  const add = (line: CartLine) => lines.set([...lines(), line])
+  return { lines, currency, drawerOpen, total, add }
+})
+```
+
+(Shipped shape — `examples/app-showcase`'s shop cart + todos stores use exactly this.) Two caveats: `reset()` restores the value read from storage at store-creation time (the setup-time snapshot), not your declared default — call `lines.remove()` to clear the persisted value itself. And if the persisted SHAPE evolves across releases, validate/migrate on read (wrap the raw value in setup, or use a schema-mode store and normalize in an action) — there is no built-in `version`/`migrate` option.
+
+## Store families — parameterized stores
+
+For keyed instances (a store per entity id), derive the ID — `defineStore` is cheap and the registry is the cache:
+
+```ts
+const useDoc = (docId: string) =>
+  defineStore(`doc:${docId}`, () => {
+    const title = signal('')
+    const dirty = signal(false)
+    return { title, dirty, rename: (t: string) => (title.set(t), dirty.set(true)) }
+  })()
+
+useDoc('a').store.title.set('Alpha')
+useDoc('a').store.title()   // 'Alpha' — same instance per key
+useDoc('b').store.title()   // ''      — independent instance
+```
+
+This is the official pattern (the Jotai-`atomFamily` analogue). Lifecycle is yours: call `useDoc(id).dispose()` (or `resetStore(\`doc:${id}\`)`) when an entity goes away — there is no automatic family GC, deliberately (a registry that guesses when your entity is dead guesses wrong).
 
 ## Action interception
 
 ```ts
 const { store, onAction } = useCounter()
-onAction((name, args, ctx) => {
-  console.log(`> ${name}(${args.join(', ')})`)
-  ctx.after((result) => console.log(`< ${name} returned`, result))
-  ctx.onError((err) => console.error(`× ${name}`, err))
+onAction((ctx) => {
+  console.log(`> ${ctx.name}(${ctx.args.join(', ')})`)
+  ctx.after((result) => console.log(`< ${ctx.name} returned`, result))
+  ctx.onError((err) => console.error(`× ${ctx.name}`, err))
 })
 ```
 
@@ -211,11 +251,24 @@ Plus `Signal` (type).
 
 ## Gotchas
 
-- `patch({ unknownKey: 1 })` is a silent no-op — unknown keys are dropped without warning.
-- `patch()` drops `__proto__` / `constructor` / `prototype` keys for prototype-pollution safety.
+- `patch({ unknownKey: 1 })` drops the key — **warns in dev** (`[Pyreon] patch(...): key "..." is not a signal field`), silent in production.
+- `patch()` checks key membership against the store's signal fields FIRST, so unknown keys (including `__proto__`-shaped keys from parsed JSON) never touch anything — prototype pollution is structurally impossible, and a legitimate signal field named `constructor` IS patchable.
+- Redefining a store id from a **different setup function** warns in dev (once per id) — the registered instance keeps the OLD setup. This is the two-`defineStore`-calls-one-id mistake, and also what an HMR re-eval looks like: state is preserved but edited actions/computeds do NOT apply until `resetStore(id)` or a full reload.
 - `addStorePlugin` registrations persist across `resetAllStores()` (global registry).
 - `resetStore(id)` does NOT notify subscribers — orphaned references silently diverge.
 - `.state` is a `.peek()`-based snapshot (non-reactive). Reactive reads happen via the signals on `store.*`.
+
+## Non-goals (deliberate — the paradigm covers them)
+
+Coming from Zustand / Pinia / Jotai / Valtio, several familiar features are absent ON PURPOSE — fine-grained signals make them unnecessary:
+
+- **`subscribeWithSelector` / selector middleware** — signals ARE the selectors. Subscribe to one field via `store.x.subscribe(...)` or derive with `computed(...)`; there is no coarse store subscription to narrow.
+- **`immer` / produce middleware** — per-field signals make granular writes the idiom (`store.x.set`, `patch`). For deep trees with snapshots/patches, that's `@pyreon/state-tree`'s job.
+- **`storeToRefs`** — store fields are stable signal callables; destructuring `const { count } = store` is safe by construction (the reactivity is in READING `count()`, not in property access).
+- **Redux-style reducers/dispatch** — constrained transitions are `@pyreon/machine`'s job; actions here are plain functions.
+- **Framework binding adapters** (`useStore(selector)` hooks) — there is no re-render layer to bind; components read signals directly.
+- **Refcounted auto-dispose** (nanostores `onMount`) — stores are app-level singletons with explicit `dispose()`; component-scoped resources belong in component hooks.
+- **Async derived-data primitives** (Jotai async atoms, `loadable`) — server/async data is `@pyreon/query`'s job; async ACTIONS are first-class here (`onAction` is thenable-aware).
 
 ## Documentation
 
