@@ -249,29 +249,36 @@ describe('api-reference', () => {
       expect(entry!.notes).toBeTruthy()
     })
 
-    it('useEventListener documents the cleanup contract + 2 mistakes', () => {
+    it('useEventListener documents the cleanup contract + event-first signature', () => {
       const entry = API_REFERENCE['hooks/useEventListener']
-      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
       expect(entry?.mistakes).toContain('addEventListener')
       expect(entry?.notes).toContain('automatic cleanup')
+      // The signature is event-FIRST (target is the optional 4th arg).
+      expect(entry?.signature).toContain('event: K, handler')
     })
 
-    it('useControllableState documents the canonical pattern + 2 mistakes', () => {
+    it('useControllableState documents the canonical pattern + 3 mistakes', () => {
       const entry = API_REFERENCE['hooks/useControllableState']
-      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
       expect(entry?.notes).toContain('controlled/uncontrolled')
+      // defaultValue is a plain value, not a getter.
+      expect(entry?.signature).toContain('defaultValue: T')
     })
 
-    it('useFocusTrap documents the active-signal requirement', () => {
+    it('useFocusTrap documents the ref-gated (no active flag) contract', () => {
       const entry = API_REFERENCE['hooks/useFocusTrap']
       expect(entry?.mistakes?.split('\n').length).toBe(2)
-      expect(entry?.mistakes).toContain('active')
+      expect(entry?.signature).toBe('(getEl: () => HTMLElement | null) => void')
+      expect(entry?.notes).toContain('useFocusReturn')
     })
 
-    it('useInfiniteScroll documents the sentinel placement + enabled guard', () => {
+    it('useInfiniteScroll documents the sentinel placement + hasMore guard', () => {
       const entry = API_REFERENCE['hooks/useInfiniteScroll']
-      expect(entry?.mistakes?.split('\n').length).toBe(2)
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
       expect(entry?.mistakes).toContain('overflow')
+      // Returns { ref, triggered }, not { sentinelRef, isLoading }.
+      expect(entry?.signature).toContain('triggered: () => boolean')
     })
   })
 

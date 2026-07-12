@@ -112,6 +112,44 @@ const ModalTrigger = defineComponent(() => {
 })
 ```
 
+## useCounter
+
+The numeric companion to `useToggle`. Returns a reactive `count` signal plus `inc` / `dec` / `set` / `reset` helpers; when `min` / `max` are given, every write (including the initial value) is clamped into range.
+
+### Signature
+
+```ts
+function useCounter(
+  initial?: number,
+  options?: { min?: number; max?: number },
+): {
+  count: Signal<number>
+  inc: (delta?: number) => void
+  dec: (delta?: number) => void
+  set: (value: number) => void
+  reset: () => void
+}
+```
+
+### Example
+
+<Example file="./examples/hooks/usecounter-clamped" title="useCounter — clamped counter" />
+
+```tsx
+import { useCounter } from '@pyreon/hooks'
+
+function Quantity() {
+  const { count, inc, dec } = useCounter(1, { min: 1, max: 99 })
+  return (
+    <div>
+      <button onClick={() => dec()}>−</button>
+      <span>{count}</span>
+      <button onClick={() => inc()}>+</button>
+    </div>
+  )
+}
+```
+
 ## usePrevious
 
 Track the previous value of a reactive getter. Returns `undefined` on the first read, then returns the prior value each time the source changes.
@@ -1438,6 +1476,7 @@ const SmartTooltip = defineComponent<{ text: string }>((props) => {
 | Hook                | Signature                                                      | Description                                         |
 | ------------------- | -------------------------------------------------------------- | --------------------------------------------------- |
 | `useToggle`         | `(initial?) => UseToggleResult`                                | Boolean toggle with `toggle`, `setTrue`, `setFalse` |
+| `useCounter`        | `(initial?, opts?) => UseCounterResult`                        | Numeric counter with `inc`/`dec`/`set`/`reset`, optional `min`/`max` |
 | `usePrevious`       | `(getter) => () => T \| undefined`                             | Track the previous value of a reactive getter       |
 | `useDebouncedValue` | `(getter, delayMs) => () => T`                                 | Debounce a reactive value                           |
 | `useHover`          | `() => UseHoverResult`                                         | Track hover state with spreadable props             |
@@ -1446,13 +1485,16 @@ const SmartTooltip = defineComponent<{ text: string }>((props) => {
 | `useKeyboard`       | `(key, handler, options?) => void`                             | Listen for specific key presses                     |
 | `useFocusTrap`      | `(getEl) => void`                                              | Trap Tab focus within a container                   |
 | `useElementSize`    | `(getEl) => () => Size`                                        | Observe element dimensions via ResizeObserver       |
-| `useWindowResize`   | `(throttleMs?) => () => WindowSize`                            | Track window size with throttling                   |
+| `useWindowResize`   | `(debounceMs?) => () => WindowSize`                            | Track window size with debouncing                   |
+| `useWindowScroll`   | `() => UseWindowScrollResult`                                  | Reactive `{ x, y }` scroll offset + `scrollTo`      |
 | `useMediaQuery`     | `(query) => () => boolean`                                     | Subscribe to a CSS media query                      |
 | `useBreakpoint`     | `(breakpoints?) => () => string`                               | Get the active breakpoint name                      |
 | `useColorScheme`    | `() => () => 'light' \| 'dark'`                                | Detect light/dark mode preference                   |
 | `useReducedMotion`  | `() => () => boolean`                                          | Detect reduced-motion preference                    |
 | `useScrollLock`     | `() => &#123; lock, unlock &#125;`                             | Lock/unlock page scrolling                          |
 | `useIntersection`   | `(getEl, options?) => () => IntersectionObserverEntry \| null` | Observe element intersection                        |
+| `useDocumentVisibility` | `() => () => 'visible' \| 'hidden'`                        | Track tab visibility (Page Visibility API)          |
+| `useIdle`           | `(timeoutMs?, opts?) => () => boolean`                         | User-idle detection after `timeoutMs` of no activity |
 
 ## Type Exports
 
