@@ -11,7 +11,7 @@ import { transformJSX } from '@pyreon/compiler'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
-import { _applyProps, _setStyle, bindPolymorphicText, mount, mountChild } from '../index'
+import { _applyProps, _setClass, _setStyle, bindPolymorphicText, mount, mountChild } from '../index'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,7 @@ const RUNTIME_DEPS = {
   bindPolymorphicText,
   _applyProps,
   _setStyle,
+  _setClass,
   _rp,
   _cx: cx,
   h,
@@ -293,6 +294,45 @@ describe('compiler integration — SVG', () => {
     expect(circle!.getAttribute('cy')).toBe('50')
     expect(circle!.getAttribute('r')).toBe('40')
   })
+
+  // A template rooted at a BARE SVG child (`<g>`, `<path>`, …) — the shape the
+  // compiler emits for an `@pyreon/flow` edge, whose `<svg>` container has
+  // reactive `<For>` children so it is NOT fully templatized and each inner
+  // edge `<g>` becomes its own `_tpl("<g>…")`. Pre-fix this parsed as HTML and
+  // rendered nothing (nodes visible, connecting lines gone). We assert the
+  // NAMESPACE, not `querySelector('path')` — a CSS type selector matches by
+  // localName even on a broken HTML-namespaced <path>, which is exactly what
+  // masked this in the flow e2e (`page.locator('svg path').count()`).
+  const SVG_NS = 'http://www.w3.org/2000/svg'
+
+  it('a bare <g><path> template is SVG-namespaced (the flow edge shape)', () => {
+    const { code, container } = compileAndMount(
+      '<g><path fill="none" d="M0 0 L10 10"></path></g>',
+    )
+    // Lock that this shape really IS templatized as a bare <g> root — else the
+    // namespace assertion below proves nothing.
+    expect(code).toContain('_tpl("<g>')
+    const g = container.querySelector('g')!
+    expect(g).not.toBeNull()
+    expect(g.namespaceURI).toBe(SVG_NS)
+    const path = g.firstElementChild!
+    expect(path.namespaceURI).toBe(SVG_NS)
+    expect(path instanceof (globalThis as unknown as { SVGElement: typeof Element }).SVGElement).toBe(
+      true,
+    )
+    expect(path.getAttribute('d')).toBe('M0 0 L10 10')
+  })
+
+  it('a reactive attr on a bare-SVG-rooted template stays SVG + updates', () => {
+    const d = signal('M0 0')
+    const { container } = compileAndMount('<path fill="none" d={() => d()}></path>', { d })
+    const path = container.querySelector('path')!
+    expect(path.namespaceURI).toBe(SVG_NS)
+    expect(path.getAttribute('d')).toBe('M0 0')
+    d.set('M5 5 L9 9')
+    expect(path.getAttribute('d')).toBe('M5 5 L9 9')
+    expect(path.namespaceURI).toBe(SVG_NS) // still SVG after the reactive write
+  })
 })
 
 describe('compiler integration — component element with _rp', () => {
@@ -345,7 +385,7 @@ describe('compiler integration — compiler output structure', () => {
   it('class={cls()} emits _bindDirect', () => {
     const { code } = transformJSX('<div class={cls()}></div>', 'test.tsx')
     expect(code).toContain('_bindDirect(cls,')
-    expect(code).toContain('__root.className')
+    expect(code).toContain('_setClass(__root, v)')
   })
 
   it('component reactive prop emits _rp wrapping', () => {

@@ -44,8 +44,8 @@ describe('Compiler: selector.subscribe auto-promotion', () => {
       `
       const out = transform(src).code
       // The updater receives `m` and applies `m ? 'on' : 'off'` through the
-      // cx-normalizing class setter (string passthrough; array/object → cx).
-      expect(out).toMatch(/isSel\.subscribe\(k,\s*\(m\)\s*=>\s*\{[^]*_cv\s*=\s*\(\(m\s*\?\s*'on'\s*:\s*'off'\)\)[^]*className\s*=\s*typeof\s*_cv\s*===\s*"string"\s*\?\s*_cv\s*:\s*_cx\(_cv\)/)
+      // runtime `_setClass` normalizer (SVG-safe setAttribute + cx).
+      expect(out).toMatch(/isSel\.subscribe\(k,\s*\(m\)\s*=>\s*\{\s*_setClass\(__root,\s*\(m\s*\?\s*'on'\s*:\s*'off'\)\)\s*\}\)/)
     })
 
     it('also promotes the bare `selector(k) ? a : b` form without the arrow', () => {
@@ -162,7 +162,7 @@ describe('Compiler: selector.subscribe auto-promotion', () => {
         export const X = (k) => <div class={() => sel(k) ? 'YES' : 'NO'}>x</div>
       `
       const out = transform(src).code
-      expect(out).toMatch(/_cv\s*=\s*\(\(m\s*\?\s*'YES'\s*:\s*'NO'\)\)[^]*className\s*=\s*typeof\s*_cv\s*===\s*"string"\s*\?\s*_cv\s*:\s*_cx\(_cv\)/)
+      expect(out).toMatch(/_setClass\(__root,\s*\(m\s*\?\s*'YES'\s*:\s*'NO'\)\)/)
     })
 
     it('preserves the key expression literally (no rewriting)', () => {

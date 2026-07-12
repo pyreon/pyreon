@@ -196,4 +196,21 @@ describe('diagnoseError — TypeScript 7 Compiler-API removal entry', () => {
       diagnoseError("Cannot read properties of undefined (reading 'foo')"),
     ).toBeNull()
   })
+
+  it('diagnoses the SVG className-assignment throw (the flow-edge bug)', () => {
+    for (const msg of [
+      'Cannot set property className of #<SVGElement> which has only a getter',
+      'setting getter-only property "className"',
+      'my flow edges lines do not render',
+    ]) {
+      const r = diagnoseError(msg)
+      expect(r, msg).not.toBeNull()
+      expect(r!.cause).toContain('SVGAnimatedString')
+      expect(r!.fix).toContain('_setClass')
+    }
+  })
+
+  it('does not fire on an unrelated className mention', () => {
+    expect(diagnoseError('the className prop was updated')).toBeNull()
+  })
 })

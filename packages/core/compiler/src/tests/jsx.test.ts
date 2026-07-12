@@ -646,7 +646,7 @@ describe('JSX transform — template emission', () => {
   test('generates _bindDirect for reactive class with single signal', () => {
     const result = t('<div class={cls()}><span /></div>')
     expect(result).toContain('_bindDirect(cls,')
-    expect(result).toContain('className')
+    expect(result).toContain('_setClass(')
   })
 
   test('generates _bindText for reactive text child with single signal', () => {
@@ -1210,14 +1210,15 @@ describe('JSX transform — template attribute string expression', () => {
 
 describe('JSX transform — one-time className set in template', () => {
   test('one-time className assignment for non-reactive class expression', () => {
-    // class={someVar} where someVar has no calls — one-time set (line 450).
-    // The cx-normalizing form mirrors the runtime applyProp path (string
-    // passthrough, array/object → cx) — see attrSetter.
+    // class={someVar} where someVar has no calls — one-time set. Delegates to
+    // the runtime `_setClass` (= applyClassProp): SVG-safe `setAttribute` +
+    // cx normalization, the SAME path `applyProp` uses (see attrSetter). The
+    // old inline `.className = …` threw on real SVGElements.
     const result = t('<div class={someVar}><span /></div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain(
-      'const _cv = (someVar); __root.className = typeof _cv === "string" ? _cv : _cx(_cv)',
-    )
+    expect(result).toContain('_setClass(__root, someVar)')
+    expect(result).toContain('import { _tpl, _setClass } from "@pyreon/runtime-dom"')
+    expect(result).not.toContain('.className') // never touches the read-only SVG className
     expect(result).not.toContain('_bind(')
   })
 })
@@ -1226,18 +1227,18 @@ describe('JSX transform — class/style binding fidelity', () => {
   // Bug: the template fast path assigned the raw value to className/cssText,
   // so `class={[…]}` rendered "a,b", `class={{…}}` rendered "[object Object]",
   // and `style={() => ({…})}` set cssText to an object → no styles. The setter
-  // now mirrors the runtime applyProp path (cx for class, object-aware style).
+  // now delegates to the runtime `_setClass`/`_setStyle` normalizers.
 
-  test('reactive class array goes through cx()', () => {
+  test('reactive class array goes through _setClass (cx)', () => {
     const result = t("const t = signal('a'); export const X = () => <div class={[t(), 'x']}>y</div>")
-    expect(result).toContain('typeof _cv === "string" ? _cv : _cx(_cv)')
-    expect(result).toContain('import { cx as _cx } from "@pyreon/core"')
-    expect(result).not.toContain('.className = [') // never assigns a raw array
+    expect(result).toContain("_setClass(__root, [t(), 'x'])")
+    expect(result).toContain('import { _tpl, _setClass } from "@pyreon/runtime-dom"')
+    expect(result).not.toContain('.className') // never assigns to the SVG-unsafe property
   })
 
-  test('reactive class object goes through cx()', () => {
+  test('reactive class object goes through _setClass (cx)', () => {
     const result = t('const a = signal(true); export const X = () => <div class={{ active: a() }}>y</div>')
-    expect(result).toContain('typeof _cv === "string" ? _cv : _cx(_cv)')
+    expect(result).toContain('_setClass(__root, { active: a() })')
   })
 
   test('object style literal with a signal is reactive + delegates to _setStyle', () => {
@@ -1259,22 +1260,23 @@ describe('JSX transform — class/style binding fidelity', () => {
     expect(result).not.toContain('_bind(')
   })
 
-  test('string class still passes through (no cx call at runtime)', () => {
+  test('string class ternary passes through _setClass', () => {
     const result = t("const c = signal(0); export const X = () => <div class={c() > 10 ? 'hot' : 'cold'}>y</div>")
-    expect(result).toContain("const _cv = (c() > 10 ? 'hot' : 'cold')")
-    expect(result).toContain('typeof _cv === "string" ? _cv : _cx(_cv)')
+    expect(result).toContain("_setClass(__root, c() > 10 ? 'hot' : 'cold')")
   })
 
-  test('injected cx import is aliased (no collision with a user `import { cx }`)', () => {
-    // Regression: a hand-written component that imports `cx` AND uses a
-    // reactive class would get a duplicate `import { cx }` injected →
-    // "Identifier `cx` has already been declared" (broke the docs build).
+  test('a user `cx` import is never collided with (compiler no longer injects one)', () => {
+    // The class binding now delegates to `_setClass` (which does cx internally),
+    // so the compiler no longer injects `import { cx as _cx }` at all — the
+    // historical duplicate-`cx` collision ("Identifier `cx` has already been
+    // declared", which broke the docs build) is structurally impossible.
     const result = t(
       "import { cx } from '@pyreon/core'; const t = signal('a'); export const X = () => <div class={[t(), cx('manual')]}>y</div>",
     )
-    expect(result).toContain('import { cx as _cx } from "@pyreon/core"')
-    // the user's own `cx` import is untouched; no SECOND bare `import { cx }`
-    expect(result.match(/import \{ cx \} from "@pyreon\/core"/g)?.length ?? 0).toBeLessThanOrEqual(1)
+    expect(result).toContain('_setClass(__root, [t(), cx(')
+    expect(result).not.toContain('cx as _cx') // no injected alias anymore
+    // the user's own `cx` import is untouched; still exactly one `cx` import
+    expect(result.match(/import \{ cx \} from '@pyreon\/core'/g)?.length ?? 0).toBe(1)
   })
 })
 
@@ -2609,7 +2611,7 @@ describe('JSX transform — template combined _bind for complex expressions', ()
   test('complex attribute expression uses combined _bind', () => {
     const result = t('<div class={`${a()} ${b()}`}><span /></div>')
     expect(result).toContain('_bind(() => {')
-    expect(result).toContain('className')
+    expect(result).toContain('_setClass(')
   })
 
   test('dynamic spread in template uses _applyProps in reactive _bind', () => {
@@ -2756,7 +2758,7 @@ describe('JSX transform — reactive combined _bind for multiple reactive attrs'
   test('multiple reactive attributes on same element with complex expressions', () => {
     const result = t('<div class={`${a()} b`} title={`${c()} d`}><span /></div>')
     expect(result).toContain('_bind(() => {')
-    expect(result).toContain('className')
+    expect(result).toContain('_setClass(')
     expect(result).toContain('setAttribute("title"')
   })
 })
@@ -2774,8 +2776,8 @@ describe('JSX transform — signalVars.size > shadowedSignals.size check', () =>
       }
     `)
     // Inner's x is NOT auto-called (still appears verbatim inside the
-    // cx-normalizing class setter)
-    expect(result).toContain('const _cv = (x + " extra")')
+    // `_setClass` class setter)
+    expect(result).toContain('_setClass(__root, x + " extra")')
     // App's x IS auto-called
     expect(result).toContain('bindPolymorphicText(() => (x()')
   })
@@ -3122,8 +3124,8 @@ describe('JSX transform — additional branch coverage paths', () => {
 
   test('ternary in template attribute without signal', () => {
     const result = t('<div class={x ? "a" : "b"}><span /></div>')
-    // No calls — not dynamic; still routed through the cx-normalizing setter
-    expect(result).toContain('const _cv = (x ? "a" : "b")')
+    // No calls — not dynamic; still routed through the `_setClass` setter
+    expect(result).toContain('_setClass(__root, x ? "a" : "b")')
   })
 
   test('variable declaration kind is let — not tracked for prop-derived', () => {

@@ -440,7 +440,14 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
   }
 }
 
-function applyClassProp(el: Element, value: unknown): void {
+// Exported as `_setClass` for the compiler's template class binding — the SAME
+// SVG-safe normalizer the `h()` path (`applyProp`) uses, so the two paths can't
+// diverge. `setAttribute('class', …)` works on BOTH HTML and SVG elements,
+// whereas the compiler's old inline `el.className = …` THROWS on a real
+// SVGElement (`className` there is a read-only `SVGAnimatedString`) — which is
+// why flow edges rendered nothing once `_tpl` gave them the correct SVG
+// namespace. Mirrors the `applyStyleProp`→`_setStyle` extraction.
+export function applyClassProp(el: Element, value: unknown): void {
   const resolved = typeof value === 'string' ? value : cx(value as ClassValue)
   el.setAttribute('class', resolved || '')
 }
