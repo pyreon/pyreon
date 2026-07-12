@@ -224,7 +224,7 @@ function CustomNode(props: NodeComponentProps<WorkflowData>) {
 | `selected`   | `() => boolean` | Accessor — whether the node is selected                             |
 | `dragging`   | `() => boolean` | Accessor — whether the node is being dragged                        |
 
-:::warning **Read the accessors, don't capture them**
+:::warning[**Read the accessors, don't capture them**]
 `props.data`, `props.selected`, and `props.dragging` are **accessor functions** — call them: `props.data()`, `props.selected()`, `props.dragging()`. Reading them OUTSIDE a reactive scope (e.g. `const label = props.data().label` at the top of the component body) captures the value **once at mount** and defeats the per-node reactivity. Read them inside JSX expression thunks, `effect()`, or `computed()`. The component runs once — that's how each node mounts exactly once regardless of how many drags / selections / `updateNode` calls happen.
 :::
 

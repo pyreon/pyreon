@@ -132,7 +132,7 @@ effect(() => {
 const isAdmin = computed(() => can('users.manage'))
 ```
 
-:::warning Read inside a reactive scope, or it won't update
+:::warning[Read inside a reactive scope, or it won't update]
 `can('key')` is a signal read. Calling it at module top level, or in a one-shot function that never re-runs, gives you the value **at that instant** — it will not update when permissions change. Read it inside `effect()`, `computed()`, or a JSX `{() => ...}` thunk to get live updates.
 
 ```tsx
@@ -159,7 +159,7 @@ can.all('posts.read', 'posts.create') // true if both granted
 can.any('posts.update', 'posts.delete') // true if either granted
 ```
 
-:::note `all` / `any` do not take a context argument
+:::note[`all` / `any` do not take a context argument]
 `can.all(...keys)` and `can.any(...keys)` accept only permission keys — they evaluate each key with no context, so any predicate they touch receives `undefined`. For an instance-level check, use the single-key form `can(key, context)`. (Only `can(key, context?)`, `can.not(key, context?)`, and `can.assert(key, context?, message?)` accept a context argument.)
 :::
 
@@ -187,7 +187,7 @@ function Toolbar() {
 
 Both forms re-evaluate automatically when permissions change — switch roles and the toolbar updates without a manual refresh.
 
-:::tip Pass `when` as an accessor
+:::tip[Pass `when` as an accessor]
 `<Show when={() => can('x')}>` — wrap the check in `() =>` so `<Show>` can re-run it reactively. A bare `<Show when={can('x')}>` captures the boolean once at mount and never updates.
 :::
 
@@ -223,7 +223,7 @@ can.patch({ 'billing.export': true })
 can.patch({ 'feature.new-editor': false })
 ```
 
-:::warning `set` replaces, `patch` merges
+:::warning[`set` replaces, `patch` merges]
 `can.set(map)` **replaces** the whole permission map — anything not in `map` is gone. `can.patch(map)` **merges** — existing keys not in `map` survive. Reaching for `set` when you meant `patch` silently wipes every permission you didn't re-list.
 :::
 
@@ -307,7 +307,7 @@ can('admin.users.list') // true  — 'admin.**'
 can('admin.users.delete') // false — exact deny wins over 'admin.**'
 ```
 
-:::warning `*` matches one segment, `**` matches any depth
+:::warning[`*` matches one segment, `**` matches any depth]
 `admin.*` matches `admin.users` but **not** `admin.users.list`. If you want a grant to cover an entire subtree at every depth, use `admin.**`. Mixing the two up is the most common wildcard mistake — a grant that "should" cover nested keys silently doesn't.
 :::
 
@@ -327,7 +327,7 @@ can.assert('billing.export', undefined, 'Upgrade your plan to export')
 
 The thrown error is always `[Pyreon]`-prefixed — your custom `message` if you pass one, otherwise the default `permission denied: '<key>'`. It evaluates predicates and wildcards exactly like `can()`, and returns `void` when the permission is granted.
 
-:::warning Never use `assert` in render
+:::warning[Never use `assert` in render]
 `can.assert` **throws** — it is for imperative guard code, not conditional rendering. Use the boolean `can(key)` (or `<Show>`) in JSX, and reserve `assert` for loaders, guards, and server actions where a throw should stop the request.
 
 ```tsx
@@ -353,7 +353,7 @@ can.granted() // ['posts.read', 'posts.create', 'users.manage']
 can.entries() // [['posts.read', true], ['posts.update', fn], ['billing.export', false], ...]
 ```
 
-:::note `granted()` lists predicate keys too
+:::note[`granted()` lists predicate keys too]
 `can.granted()` returns every key whose value is `true` **or** a predicate function — it does not evaluate predicates, so a key is "granted" if the capability *exists*, not if it currently passes for some context. Explicit `false` keys are excluded.
 :::
 
@@ -382,7 +382,7 @@ function AdminPanel() {
 
 `usePermissions()` throws `[Pyreon] usePermissions() must be used within <PermissionsProvider>.` if no provider is mounted above it — so a missing provider fails loudly rather than silently denying everything.
 
-:::tip SSR: build a fresh instance per request
+:::tip[SSR: build a fresh instance per request]
 On the server, create a new `createPermissions(...)` instance per request from that request's session, and provide it via `<PermissionsProvider>`. A module-level singleton would leak one user's permissions across concurrent requests.
 
 ```tsx

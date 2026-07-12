@@ -29,7 +29,7 @@ yarn add @pyreon/code
 
 :::
 
-:::warning Peer dependencies
+:::warning[Peer dependencies]
 `@pyreon/code` declares `@pyreon/core`, `@pyreon/reactivity`, **and `@pyreon/runtime-dom`** as peer dependencies. `<CodeEditor>` (and the other components) emit compiled `_tpl()` / `_bind()` calls, which need the DOM runtime — declare all three in your app's dependencies or the editor won't mount.
 :::
 
@@ -81,7 +81,7 @@ editor.theme.set('dark') // reconfigures the theme extension
 editor.readOnly.set(true) // toggles read-only
 ```
 
-:::warning `editor.value` is a signal — `.set()` to write
+:::warning[`editor.value` is a signal — `.set()` to write]
 `editor.value` is a `Signal<string>`. Read it with `editor.value()` (reactive — tracks in effects, computeds, and JSX) and write it with `editor.value.set(next)`. Do **not** call `editor.value(newText)` — like any Pyreon signal, calling it with an argument _reads_ and silently ignores the value. The dev build warns on this.
 :::
 
@@ -141,7 +141,7 @@ A few options that behave non-obviously:
 - **`extensions`** is an escape hatch: any array of raw CodeMirror 6 `Extension`s is appended to the built-in set, so you can drop in any third-party CM extension.
 - **`onError`** receives a mount failure (a throwing extension or a failed language-grammar import) instead of leaving it as an unhandled promise rejection. Disposing the editor while it is still mounting — a fast navigate-away during the async grammar load — is leak-safe (the in-flight mount is aborted).
 
-:::note `onChange` vs. the `value` signal
+:::note[`onChange` vs. the `value` signal]
 `onChange` is called on every document change with the new text — handy for one-off side effects. But for most cases you don't need it: just read `editor.value()` reactively. The signal is the source of truth; `onChange` is a convenience hook layered on top of it.
 :::
 
@@ -172,7 +172,7 @@ getAvailableLanguages() // EditorLanguage[] — all 20 identifiers
 const ext = await loadLanguage('typescript') // returns the CodeMirror Extension
 ```
 
-:::note `loadLanguage` returns the extension
+:::note[`loadLanguage` returns the extension]
 `loadLanguage(lang)` resolves to the loaded CodeMirror `Extension` (cached after the first load), not `void`. If the optional grammar package isn't installed, it resolves to an empty extension `[]` rather than throwing — the editor degrades to plain-text editing.
 :::
 
@@ -213,7 +213,7 @@ editor.unfoldAll() // unfold everything
 editor.scrollTo(120) // scroll a character offset into view (centered)
 ```
 
-:::warning `insert` / `replaceSelection` need a mounted view
+:::warning[`insert` / `replaceSelection` need a mounted view]
 `insert` and `replaceSelection` are **cursor-relative** — they act on `view.state.selection`. The CodeMirror view is created by the `<CodeEditor>` mount _after_ an async grammar load, so calling them before the editor mounts has no cursor to act on. The call is dropped (with a dev-mode warning) — and dropping an `insert` silently loses the text you meant to add. To set content independently of the view (before mount, or from a binding), use `editor.value.set(...)` — it feeds the value signal, which seeds the document whenever the view is created.
 :::
 
@@ -350,7 +350,7 @@ binding.dispose()
 
 **What it does NOT do:** it doesn't debounce (every successful parse calls `signal.set`), doesn't preserve cursor across a forced re-serialization, and doesn't register itself with the component lifecycle — you call `dispose()` yourself.
 
-:::warning Binding pitfalls
+:::warning[Binding pitfalls]
 - **Always call `binding.dispose()` on unmount** — otherwise both effects leak. (Or use [`useEditorSignal`](#auto-cleanup-binding-hook) for automatic cleanup.)
 - **`serialize` must be deterministic.** If `serialize(parse(text))` produces a different string each call, the helper dispatches redundant writes that fight the user's typing. JSON with consistent indentation is fine.
 - **Return `null` (or throw) from `parse` on malformed input** — never a half-valid value. A non-null value for bad input writes garbage to the external state.
@@ -425,7 +425,7 @@ import { TabbedEditor } from '@pyreon/code'
 <TabbedEditor instance={tabbedInstance} style="height: 500px" />
 ```
 
-:::warning `createTabbedEditor` is not currently exported
+:::warning[`createTabbedEditor` is not currently exported]
 `<TabbedEditor>` requires a `TabbedEditorInstance`. The factory that builds one (`createTabbedEditor`) exists in the package source but is **not re-exported from `@pyreon/code`'s entry point** at the time of writing — so there is currently no public way to construct the `instance` the component needs. The `TabbedEditorInstance` / `Tab` / `TabbedEditorConfig` types and the `TabbedEditor` component _are_ exported. If you need tab management today, compose your own tab bar over multiple `createEditor` instances (one per file) and swap which one you mount. This gap is tracked; the factory is expected to be exported in a future release.
 :::
 
@@ -476,7 +476,7 @@ const editor = createEditor({
 
 If the corresponding package isn't installed, the flag is silently ignored (the editor still works with default keys).
 
-:::warning Don't enable both `vim` and `emacs`
+:::warning[Don't enable both `vim` and `emacs`]
 Setting `vim: true` and `emacs: true` together is undefined — emacs wins. Pick one.
 :::
 

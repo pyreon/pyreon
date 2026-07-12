@@ -93,7 +93,7 @@ count.peek() //             read WITHOUT subscribing
 count.remove() //           delete from storage, reset to 0
 ```
 
-:::warning `.remove()` returns `void`, not the removed value
+:::warning[`.remove()` returns `void`, not the removed value]
 `.remove()` clears storage and resets the signal to its default — it does **not** return the value that was removed. Read `count()` (or `count.peek()`) before removing if you need the prior value.
 :::
 
@@ -163,11 +163,11 @@ const formDraft = useSessionStorage('contact-draft', { name: '', message: '' })
 
 Use it for per-visit state that should *not* survive a tab close: multi-step wizard progress, an unsaved form draft, a scroll position, a "you have unsaved changes" flag.
 
-:::warning sessionStorage does not sync across tabs
+:::warning[sessionStorage does not sync across tabs]
 Two tabs on the same page each have their own independent `sessionStorage`. If you expect a change in one tab to appear in another, you want `useStorage` (localStorage). `useSessionStorage` writes are isolated per tab by design.
 :::
 
-:::warning sessionStorage is not "private"
+:::warning[sessionStorage is not "private"]
 It is the same JavaScript-readable surface as `localStorage` — any script on the page can read it. Do not store secrets, tokens, or PII there.
 :::
 
@@ -205,15 +205,15 @@ locale.remove() // deletes the cookie, resets to 'en'
 | `secure`   | `boolean`                     | `false` | Send only over HTTPS.                                        |
 | `sameSite` | `'strict' \| 'lax' \| 'none'` | `'lax'` | SameSite policy (emitted lowercased).                        |
 
-:::warning `maxAge` is in SECONDS, not milliseconds
+:::warning[`maxAge` is in SECONDS, not milliseconds]
 This matches the HTTP cookie spec. `maxAge: 86400` is **one day**, not one minute. A common bug is passing `Date.now()`-style millisecond values, which yield absurd expiry far in the future.
 :::
 
-:::warning Be explicit about `sameSite` for auth-style cookies
+:::warning[Be explicit about `sameSite` for auth-style cookies]
 The browser default for `sameSite` has tightened across vendors. Choose deliberately: `'lax'` (the package default — good for navigation/preference cookies), `'strict'` (login/session cookies), or `'none'` for cross-origin embeds — and `'none'` **requires** `secure: true`.
 :::
 
-:::warning Cookies have a ~4KB per-cookie limit
+:::warning[Cookies have a ~4KB per-cookie limit]
 Cookies are sent on every request to their `path`/`domain`, so keep them small — server-readable preference flags, locale, theme. For large client-side data, reach for `useIndexedDB`.
 :::
 
@@ -234,11 +234,11 @@ const html = await renderToString(<App />)
 
 In the browser `useCookie` reads `document.cookie` directly; the source set by `setCookieSource` is only consulted on the server.
 
-:::warning Set the cookie source before SSR render
+:::warning[Set the cookie source before SSR render]
 If you skip `setCookieSource`, `useCookie` falls back to its `defaultValue` on every server render — the page hydrates correctly on the client, but flashes the default first (wrong locale/theme on first paint). Call `setCookieSource(request.headers.get('cookie') ?? '')` before `renderToString`.
 :::
 
-:::warning The cookie source is module-level, set per request
+:::warning[The cookie source is module-level, set per request]
 `setCookieSource` sets a single module-level string. Call it at the start of each request handler with that request's header. Re-call it after any operation that should change the cookie set (login, redirect) so later loaders see the new value.
 :::
 
@@ -267,15 +267,15 @@ draft.set({ title: 'My Post', body: '...10KB of content...' })
 
 Note `useIndexedDB` uses its own `debounceMs` option (not `writeDebounceMs`) — IDB writes are always async-debounced.
 
-:::warning The first render sees the DEFAULT, not the persisted value
+:::warning[The first render sees the DEFAULT, not the persisted value]
 IndexedDB initialization is asynchronous. The signal starts at `defaultValue` synchronously, then the persisted value flows in on a later tick and updates reactively. If you must have the persisted value *before* first paint, pair it with a synchronous fallback (e.g. a small `useStorage` marker) — or render a loading state until the IDB read settles.
 :::
 
-:::warning IndexedDB does not sync across tabs
+:::warning[IndexedDB does not sync across tabs]
 IDB fires no `storage` event. Two tabs writing the same key will silently overwrite each other (last write wins). If multi-tab consistency matters, coordinate with a `BroadcastChannel` alongside.
 :::
 
-:::warning Per-origin quotas + rapid writes
+:::warning[Per-origin quotas + rapid writes]
 IDB has per-origin quotas (browser-dependent, often ~50% of free disk). Hitting the quota rejects the async write — the in-memory signal still holds the value, but the persist failed silently. Writes are debounced, but an unbounded loop of `.set()` calls still queues every value; throttle at the caller for very high-frequency mutations.
 :::
 
@@ -292,7 +292,7 @@ temp.set('typing...') // reactive, but gone on reload
 
 It accepts the same `(key, defaultValue, options?)` signature as the other hooks (it is literally `createStorage(memoryBackend)`), so `serializer` / `deserializer` / `onError` work — though for an in-memory store you rarely need them.
 
-:::tip A plain `signal()` is often simpler
+:::tip[A plain `signal()` is often simpler]
 If you do not need the `StorageSignal` `.remove()` shape or interchangeability with the persistent backends, a plain `signal(defaultValue)` from `@pyreon/reactivity` is lighter. Reach for `useMemoryStorage` specifically when you want the storage-hook shape as an SSR-safe stand-in for a real backend.
 :::
 
@@ -330,15 +330,15 @@ The backend receives the **already-serialized string** (`set` is called with `se
 
 An optional second argument names the backend for registry isolation (`createStorage(backend, 'my-backend')`); it defaults to `'custom'`.
 
-:::warning Return `null` from `get`, never `undefined`
+:::warning[Return `null` from `get`, never `undefined`]
 The contract matches `localStorage` / `sessionStorage`: return `null` when a key is absent. `undefined` can be JSON-serialized as the literal string `"undefined"` by some pipelines, corrupting the round-trip.
 :::
 
-:::warning Implement all three methods
+:::warning[Implement all three methods]
 `.remove()` calls `backend.remove`. Omitting any of `get` / `set` / `remove` breaks the corresponding code path. The hook swallows synchronous throws from `get`/`set`/`remove` (graceful degradation — the in-memory signal still updates), but a missing method is a structural error.
 :::
 
-:::note `createStorage` backends are read synchronously
+:::note[`createStorage` backends are read synchronously]
 The `StorageBackend` interface is synchronous (`get` returns `string | null`, not a Promise). The package also exports an `AsyncStorageBackend` *type* (used internally by the IndexedDB layer), but `createStorage` itself takes the synchronous `StorageBackend`. For an async custom backend, model it after `useIndexedDB` rather than wiring a Promise through `createStorage`.
 :::
 
@@ -366,7 +366,7 @@ const cache = useStorage('cache', new Map<string, number>(), {
 })
 ```
 
-:::warning Functions and class instances drop silently under JSON
+:::warning[Functions and class instances drop silently under JSON]
 The default `JSON.stringify` discards functions, `undefined` properties, and the prototype of class instances. If you store a value with non-serializable parts and read it back, those parts are gone — with no error. Provide custom `serializer`/`deserializer` for anything beyond plain JSON data.
 :::
 
@@ -429,7 +429,7 @@ clearStorage('indexeddb') // all managed IndexedDB entries
 clearStorage('all') //     everything
 ```
 
-:::note "Managed" means registered through a hook
+:::note["Managed" means registered through a hook]
 `clearStorage` only clears keys that were created via a `@pyreon/storage` hook in the current session (it iterates the internal registry). Pre-existing `localStorage` keys your app never touched through these hooks are left alone — use the native `localStorage.clear()` if you need a total wipe.
 :::
 

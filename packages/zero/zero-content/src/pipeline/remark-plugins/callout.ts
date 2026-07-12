@@ -2,6 +2,7 @@ import { visit } from 'unist-util-visit'
 import type { Root } from 'mdast'
 import type { ContainerDirective } from 'mdast-util-directive'
 import { escapeHtmlAttr as escapeAttr } from '../../_shared/html-escape'
+import { extractDirectiveLabel } from './math-mermaid-details'
 
 // ─── pyreon-remark-callout ────────────────────────────────────────────────
 //
@@ -178,9 +179,27 @@ export function remarkCallout(options: RemarkCalloutOptions = {}) {
       }
 
       const type = directive.name
-      const title = typeof directive.attributes?.title === 'string'
+      // Title resolution, in priority order:
+      //   1. `{title="…"}` attribute — explicit, unambiguous.
+      //   2. `[label]` bracket form (`:::warning[Title]`) — the natural
+      //      convention shared with Starlight / Docusaurus / Astro.
+      //      remark-directive surfaces the label as a `directiveLabel`
+      //      first-child paragraph; we lift it to the title AND strip it
+      //      from the body, or it would render twice (once as the title,
+      //      once as leading body text — the pre-fix behaviour that made
+      //      every `:::type[Title]` in the docs silently drop its title).
+      let title = typeof directive.attributes?.title === 'string'
         ? directive.attributes.title
         : undefined
+      let body = directive.children
+      // A `[label]` always gets stripped from the body when present (or it
+      // renders as leading body text). Its VALUE becomes the title only when
+      // no explicit `{title="…"}` attribute overrides it — the attribute wins.
+      const label = extractDirectiveLabel(directive)
+      if (label !== undefined) {
+        body = body.slice(1) // drop the directiveLabel paragraph
+        if (title === undefined) title = label
+      }
 
       const openTag = title
         ? `<Callout type="${type}" title="${escapeAttr(title)}">`
@@ -189,12 +208,34 @@ export function remarkCallout(options: RemarkCalloutOptions = {}) {
       const openNode = { type: 'html' as const, value: openTag }
       const closeNode = { type: 'html' as const, value: '</Callout>' }
 
-      // Replace the directive with: [openTag, ...children, closeTag].
+      // Replace the directive with: [openTag, ...body, closeTag].
       // remark-directive's children are already-parsed mdast — they'll
       // walk through the emit pipeline normally.
-      parent.children.splice(index, 1, openNode, ...directive.children, closeNode)
-      return index + 2 + directive.children.length
+      parent.children.splice(index, 1, openNode, ...body, closeNode)
+      return index + 2 + body.length
     })
+
+    // Raw-leak diagnostic. `:::warning bare text` (a known type followed by
+    // bare text rather than `[label]` / `{attrs}` / EOL) is NOT valid
+    // remark-directive syntax — the opener is rejected and the whole line
+    // ships to the page as the literal string `:::warning bare text`. It
+    // produced ZERO diagnostics pre-fix (73 instances leaked across the docs).
+    // The rejected opener lands as a PARAGRAPH whose first text child starts
+    // with `:::type`, so scanning parsed paragraphs (not the raw source)
+    // catches it precisely while skipping fenced code blocks — a ```` ```md ````
+    // sample that shows `:::warning …` is a `code` node, never a paragraph,
+    // so it is never flagged.
+    if (warnings) {
+      visit(tree, 'paragraph', (para) => {
+        const first = (para.children as Array<{ type: string; value?: string }>)[0]
+        if (!first || typeof first.value !== 'string') return
+        const m = /^:::(tip|warning|note|danger|info)\b/.exec(first.value)
+        if (!m) return
+        warnings.push(
+          `[@pyreon/zero-content] \`:::${m[1]}\` did not parse as a callout — a title must be \`:::${m[1]}[Title]\` (bracketed) or \`:::${m[1]}{title="Title"}\`. Bare text after the name is not valid directive syntax and ships as literal \`:::${m[1]}…\` text.`,
+        )
+      })
+    }
   }
 }
 

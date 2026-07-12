@@ -42,7 +42,7 @@ bun add zod        # or valibot, or arktype — any Standard Schema validator
 
 If you want **Pyreon's own `s` validator**, no extra dependency is needed — `import { s } from '@pyreon/validate'`.
 
-:::note Bundle contract
+:::note[Bundle contract]
 The package is tree-shakeable in two layers. A **DX-helpers-only** import (`withField` / `parseReactive` / `formatErrors`) is ~**0.5 KB gz** — Pyreon's `s` runtime is never pulled in. The **`s` validator runtime** is included only when you import `s` (or its standalone primitives like `string`, `object`), adding the runtime for a combined ~**3.9 KB gz**. So pairing the helpers with Zod / Valibot / ArkType stays as light as before.
 :::
 
@@ -170,15 +170,15 @@ const i18nLabel = resolveMetaField(emailSchema, 'label', t)
 - **The slot is invisible.** The metadata rides on a `Symbol.for('pyreon.validate.fieldMeta')` non-enumerable property, so it's skipped by `JSON.stringify`, `for…in`, `Object.keys`, structured clone, and library-internal schema comparators.
 - **Re-wrapping merges.** `withField(base, { a })` then `withField(base, { b })` produces a schema carrying both — later keys win on collision.
 
-:::warning withField returns the SAME reference
+:::warning[withField returns the SAME reference]
 Don't expect `withField` to return a fresh object. The metadata mutation is **in place**. If you need an isolated copy of the same shape, construct two separate schemas (`z.string().email()` twice) and wrap each.
 :::
 
-:::warning Metadata doesn't survive serialization
+:::warning[Metadata doesn't survive serialization]
 The slot is Symbol-keyed, so it won't round-trip through `JSON.stringify` / `JSON.parse`. If you store schemas with metadata in serialized state, re-attach the metadata on load.
 :::
 
-:::warning Set `label` alongside `i18nLabel`
+:::warning[Set `label` alongside `i18nLabel`]
 Adding `i18nLabel` without a corresponding `label` leaves no fallback — without a translation provider (or when `t` echoes the key), there's nothing to render. Always set both.
 :::
 
@@ -201,7 +201,7 @@ effect(() => {
 
 `ParseResult` mirrors Standard Schema's result shape exactly — `{ value }` on success, `{ issues }` on failure — so downstream code that already handles StdSchema results just works.
 
-:::warning Cache the Computed, don't re-create it
+:::warning[Cache the Computed, don't re-create it]
 `parseReactive` allocates a `Computed`. Call it **once per (schema, source) pair** at component setup time — not inside a render that runs every frame.
 :::
 
@@ -223,7 +223,7 @@ watch($result, async (current) => {
 
 The outer `Computed` re-evaluates synchronously on source change; the inner `Promise` resolves when the validator finishes. Rapid input changes produce overlapping in-flight promises — `watch` naturally drops stale frames, so the latest input wins.
 
-:::warning Use the async variant for async schemas
+:::warning[Use the async variant for async schemas]
 Calling `parseReactive` on an async schema doesn't silently produce a Promise as the "value". It surfaces a clear `issues` entry directing you to `parseReactiveAsync`.
 :::
 
@@ -449,7 +449,7 @@ s.stringbool({ truthy: ['si'], falsy: ['no'] })
 
 `s.stringbool()` accepts only strings and only the configured tokens (defaults: `true`/`1`/`yes`/`on`/`y`/`enabled` ↔ `false`/`0`/`no`/`off`/`n`/`disabled`, case-insensitive + trimmed). It's stricter than `s.coerce.boolean()`, which applies JS truthiness to any input.
 
-:::warning `s.nativeEnum` only accepts member VALUES
+:::warning[`s.nativeEnum` only accepts member VALUES]
 A numeric TS `enum { A }` compiles to `{ A: 0, 0: 'A' }`. `s.nativeEnum` filters out the auto-generated reverse-mapping, so `'A'` is **not** accepted — only `0` is. For a plain literal array, use `s.enum([...])` instead.
 :::
 
@@ -586,7 +586,7 @@ objA.and(objB)               // ≡ s.intersection(objA, objB)        → A & B
 s.string().transform(Number).pipe(s.number().positive())  // coerce → validate
 ```
 
-:::warning Composition methods need the constructors imported
+:::warning[Composition methods need the constructors imported]
 `.array()` / `.or()` / `.and()` rely on the composition factories registering themselves. Import `s` (or `array` / `union` / `intersection`) from `@pyreon/validate` so they register — a bare `import { string }` that never references composition will throw a clear `[Pyreon]` error when you call `.array()`.
 :::
 
@@ -795,7 +795,7 @@ registerServerCheck('email-unique', async (value, ctx) => {
 const verdict = await signup.parseAsync(formData, { context: { db } })
 ```
 
-:::danger The server is authoritative
+:::danger[The server is authoritative]
 On the client, `.serverCheck` ALWAYS passes — the entry is recorded on `Result.pending`, not validated. Never treat a client `{ ok: true, pending: [...] }` as fully verified; the server's `parseAsync` is the real verdict.
 :::
 

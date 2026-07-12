@@ -63,6 +63,47 @@ body
     expect(code).toContain('<Callout type="tip" title="My title">')
   })
 
+  it('lifts the `[label]` bracket form to the callout title', async () => {
+    // `:::warning[Title]` is the natural convention (Starlight/Docusaurus).
+    // remark-directive surfaces the label as a directiveLabel first-child;
+    // the plugin lifts it to title=.
+    const md = `:::warning[Peer dependencies]
+Install @tiptap/core.
+:::`
+    const code = await out(md)
+    expect(code).toContain('<Callout type="warning" title="Peer dependencies">')
+  })
+
+  it('flattens inline code inside a `[label]` title', async () => {
+    const md = `:::warning[\`editor.json\` is a writable signal]
+Read with editor.json().
+:::`
+    const code = await out(md)
+    expect(code).toContain('title="editor.json is a writable signal"')
+  })
+
+  it('does NOT duplicate the `[label]` in the body', async () => {
+    // The label paragraph is stripped from the body so the title text
+    // does not also render as leading body content (the pre-fix bug).
+    const md = `:::note[My Heading]
+Actual body.
+:::`
+    const code = await out(md)
+    expect(code).toContain('title="My Heading"')
+    // "My Heading" appears exactly once — in the title attribute, not the body.
+    const bodyOnly = code.replace(/title="[^"]*"/g, '')
+    expect(bodyOnly).not.toContain('My Heading')
+    expect(code).toContain('Actual body')
+  })
+
+  it('`{title=…}` attribute wins over a `[label]` when both are present', async () => {
+    const md = `:::tip[bracket]{title="attr"}
+body
+:::`
+    const code = await out(md)
+    expect(code).toContain('title="attr"')
+  })
+
   it('escapes < and > in the title attribute (XSS-safety)', async () => {
     // remark-directive's attribute syntax. The escapeAttr helper
     // converts <, > to entities so the emitted JSX never has

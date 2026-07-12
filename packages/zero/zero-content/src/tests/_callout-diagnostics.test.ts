@@ -171,3 +171,50 @@ describe('PR-A H5 — path label in error messages', () => {
     }
   })
 })
+
+describe('raw-leak diagnostic — bare text after a callout name', () => {
+  // `:::warning bare text` is NOT valid remark-directive syntax: the opener is
+  // rejected and the whole line ships to the page as literal `:::warning …`
+  // text. It produced ZERO diagnostics before this fix (73 instances leaked
+  // across the docs). The rejected opener lands as a paragraph starting with
+  // `:::type`, which the plugin scans for.
+  async function warns(md: string): Promise<string[]> {
+    const result = await compileMarkdown(md, '/abs/x.md', { highlight: false })
+    return result.warnings
+  }
+
+  it('fires when a known type is followed by bare text', async () => {
+    const ws = await warns(':::warning bare title\nbody\n:::')
+    expect(ws.some((w) => w.includes('did not parse as a callout'))).toBe(true)
+  })
+
+  it('fires for the inline-code shape too', async () => {
+    const ws = await warns(':::note `editor.json` is a writable signal\nbody\n:::')
+    expect(ws.some((w) => w.includes('did not parse as a callout'))).toBe(true)
+  })
+
+  it('does NOT fire on the valid `[label]` form', async () => {
+    const ws = await warns(':::warning[Peer dependencies]\nbody\n:::')
+    expect(ws.some((w) => w.includes('did not parse'))).toBe(false)
+  })
+
+  it('does NOT fire on the valid `{title=…}` form', async () => {
+    const ws = await warns(':::warning{title="Peer dependencies"}\nbody\n:::')
+    expect(ws.some((w) => w.includes('did not parse'))).toBe(false)
+  })
+
+  it('does NOT fire on a `:::` sample INSIDE a fenced code block', async () => {
+    // A docs page teaching callout syntax shows `:::warning …` inside ```` ```md ````.
+    // That is a `code` node, never a paragraph — it must not be flagged.
+    const ws = await warns('```md\n:::warning bare text\n```\n')
+    expect(ws.some((w) => w.includes('did not parse'))).toBe(false)
+  })
+
+  it('the warning names the exact fix (both accepted forms)', async () => {
+    const ws = await warns(':::tip do the thing\nbody\n:::')
+    const w = ws.find((x) => x.includes('did not parse'))
+    expect(w).toBeDefined()
+    expect(w).toContain(':::tip[Title]')
+    expect(w).toContain('{title="Title"}')
+  })
+})
