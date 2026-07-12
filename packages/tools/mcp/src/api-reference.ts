@@ -5489,6 +5489,21 @@ setUrlRouter(router)
 // Now useUrlState uses router.replace() internally`,
     notes: `Configure useUrlState to use a @pyreon/router instance for URL updates instead of raw \`history.replaceState\`. When set, URL changes go through the router's navigation system, ensuring route guards, middleware, and scroll management integrate correctly. See also: useUrlState.`,
   },
+
+  'url-state/batchUrlUpdates': {
+    signature: '<T>(fn: () => T) => T',
+    example: `import { useUrlState, batchUrlUpdates } from '@pyreon/url-state'
+
+const { page, q, sort } = useUrlState({ page: 1, q: '', sort: 'name' })
+
+// One history entry for the whole "apply filters" action:
+batchUrlUpdates(() => {
+  page.set(1)
+  q.set('hello')
+  sort.set('date')
+}) // → ?q=hello&sort=date (one replaceState)`,
+    notes: 'Collapse several `useUrlState` writes into ONE history entry. Every `.set()` / `.reset()` / `.remove()` invoked inside `fn` is coalesced into a single `history.replaceState` / `pushState` (or one `router.replace`). Signal values still update synchronously — only the URL write is deferred to the end of the batch. Signal notifications are also batched, so subscribers reading several params re-run once, and debounce is bypassed. Critical with `replace: false`: without batching, an N-param update pushes N history entries, so the back button steps through each intermediate state. If any write requested `replace: false`, the single batched write uses `pushState`; otherwise `replaceState`. See also: useUrlState.',
+  },
   // <gen-docs:api-reference:end @pyreon/url-state>
 
   // ═══════════════════════════════════════════════════════════════════════════

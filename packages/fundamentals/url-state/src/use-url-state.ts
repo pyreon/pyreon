@@ -1,7 +1,8 @@
 import { effect, isClient, onCleanup, signal } from '@pyreon/reactivity'
 import { inferSerializer } from './serializers'
+import { isBatching, subscribeKey, writeRepeatedParam, writeSingleParam } from './sync'
 import type { Serializer, UrlStateOptions, UrlStateSignal } from './types'
-import { getParam, getParamAll, setParamRepeated, setParams } from './url'
+import { getParam, getParamAll } from './url'
 
 // ─── Single-param overload ──────────────────────────────────────────────────
 
@@ -77,6 +78,7 @@ function createUrlSignal<T>(
   const replace = options?.replace !== false
   const debounceMs = options?.debounce ?? 0
   const arrayFormat = options?.arrayFormat ?? 'comma'
+  const clearOnDefault = options?.clearOnDefault !== false
   const isArray = Array.isArray(defaultValue)
   const isRepeat = isArray && arrayFormat === 'repeat'
 
@@ -85,57 +87,63 @@ function createUrlSignal<T>(
       ? { serialize: options.serialize, deserialize: options.deserialize }
       : inferSerializer(defaultValue, arrayFormat)
 
-  // Read initial value from URL (falls back to default when missing or in SSR)
-  let initial: T
-  if (isRepeat) {
-    const values = getParamAll(key)
-    initial = values.length > 0 ? (values as T) : defaultValue
-  } else {
+  // Read the current URL value (falls back to default when missing or in SSR).
+  const readFromUrl = (): T => {
+    if (isRepeat) {
+      const values = getParamAll(key)
+      return values.length > 0 ? (values as T) : defaultValue
+    }
     const raw = getParam(key)
-    initial = raw !== null ? deserialize(raw) : defaultValue
+    return raw !== null ? deserialize(raw) : defaultValue
   }
 
-  const state = signal<T>(initial)
+  const state = signal<T>(readFromUrl())
 
   // Pending debounce timer
   let timer: ReturnType<typeof setTimeout> | undefined
 
-  // Write URL when signal changes
+  // Re-read from the URL and reflect it into the signal + onChange. Runs on
+  // popstate (back/forward) AND when a SIBLING signal for the same key writes.
+  const reRead = () => {
+    const value = readFromUrl()
+    state.set(value)
+    options?.onChange?.(value)
+  }
+
+  // Write URL when signal changes.
   const writeUrl = (value: T) => {
     if (isRepeat) {
       const arr = value as string[]
       const defaultArr = defaultValue as string[]
-      // Remove param when value equals default to keep URLs clean
-      if (arr.length === defaultArr.length && arr.every((v, i) => v === defaultArr[i])) {
-        setParamRepeated(key, null, replace)
-      } else {
-        setParamRepeated(key, arr, replace)
-      }
+      // Remove the param when the value equals the default (unless clearOnDefault:false).
+      const equalsDefault =
+        arr.length === defaultArr.length && arr.every((v, i) => v === defaultArr[i])
+      writeRepeatedParam(key, clearOnDefault && equalsDefault ? null : arr, replace, reRead)
       return
     }
 
     const serialized = serialize(value)
-    const defaultSerialized = serialize(defaultValue)
-
-    // Remove param when value equals default to keep URLs clean
-    if (serialized === defaultSerialized) {
-      setParams({ [key]: null }, replace)
+    // Remove the param when the value equals the default (unless clearOnDefault:false).
+    if (clearOnDefault && serialized === serialize(defaultValue)) {
+      writeSingleParam(key, null, replace, reRead)
     } else {
-      setParams({ [key]: serialized }, replace)
+      writeSingleParam(key, serialized, replace, reRead)
     }
   }
 
   /** Force-remove the param from URL regardless of value. */
   const removeFromUrl = () => {
     if (isRepeat) {
-      setParamRepeated(key, null, replace)
+      writeRepeatedParam(key, null, replace, reRead)
     } else {
-      setParams({ [key]: null }, replace)
+      writeSingleParam(key, null, replace, reRead)
     }
   }
 
   const scheduleWrite = (value: T) => {
-    if (debounceMs <= 0) {
+    // Inside a batch, writes land synchronously so they coalesce into the
+    // single history op — debounce is bypassed. Same for debounce <= 0.
+    if (isBatching() || debounceMs <= 0) {
       writeUrl(value)
       return
     }
@@ -146,38 +154,27 @@ function createUrlSignal<T>(
     }, debounceMs)
   }
 
-  // Listen for popstate (back/forward navigation)
+  // Listen for popstate (back/forward) and cross-hook writes.
   if (isClient) {
-    const onPopState = () => {
-      let value: T
-      if (isRepeat) {
-        const values = getParamAll(key)
-        value = values.length > 0 ? (values as T) : defaultValue
-      } else {
-        const current = getParam(key)
-        value = current !== null ? deserialize(current) : defaultValue
-      }
-      state.set(value)
-      options?.onChange?.(value)
-    }
-
     // Why effect() and not onMount() — `useUrlState` is intentionally
     // callable OUTSIDE a component-mount context (modules, stores,
     // route loaders, and tests). `onMount` would silently no-op there,
-    // so the popstate listener would never register. `effect()` runs
-    // in any context and `onCleanup` ties teardown to whatever
-    // effect-scope owns it (component scope when called from a
-    // component, root scope otherwise). The static lint rule flags
-    // this site by name — the suppression is load-bearing.
+    // so the popstate listener + cross-hook subscription would never
+    // register. `effect()` runs in any context and `onCleanup` ties
+    // teardown to whatever effect-scope owns it (component scope when
+    // called from a component, root scope otherwise). The static lint
+    // rule flags this site by name — the suppression is load-bearing.
     //
     // Bisect-verified: replacing this with `onMount(() => { ...; return cleanup })`
-    // breaks 11 url-state tests because they call `useUrlState` directly
+    // breaks url-state tests because they call `useUrlState` directly
     // without a mount tree.
     // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
     effect(() => {
-      window.addEventListener('popstate', onPopState)
+      window.addEventListener('popstate', reRead)
+      const unsubscribe = subscribeKey(key, reRead)
       onCleanup(() => {
-        window.removeEventListener('popstate', onPopState)
+        window.removeEventListener('popstate', reRead)
+        unsubscribe()
         if (timer !== undefined) clearTimeout(timer)
       })
     })

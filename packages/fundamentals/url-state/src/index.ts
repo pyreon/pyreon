@@ -23,6 +23,10 @@
  * const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
  * tags.set(['a', 'b'])  // ?tags=a&tags=b
  *
+ * // Batch — collapse a multi-param update into ONE history entry
+ * import { batchUrlUpdates } from '@pyreon/url-state'
+ * batchUrlUpdates(() => { q.set('hi'); sort.set('date') })
+ *
  * // Router integration — uses router.replace() when available
  * import { setUrlRouter } from '@pyreon/url-state'
  * setUrlRouter(router)  // pass your @pyreon/router instance
@@ -38,6 +42,7 @@ import { registerSingleton } from '@pyreon/reactivity'
 // aid, not a load-bearing identity check.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
+export { batchUrlUpdates } from './sync'
 export { setUrlRouter } from './url'
 export { useUrlState } from './use-url-state'
 

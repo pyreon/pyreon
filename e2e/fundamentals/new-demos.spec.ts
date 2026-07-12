@@ -75,6 +75,35 @@ test.describe('URL-State demo — params round-trip', () => {
     await expect(page).not.toHaveURL(/q=foo/)
     await expect(page).not.toHaveURL(/page=5/)
   })
+
+  test('browser Back/Forward drives popstate re-read (real Chromium)', async ({ page }) => {
+    await page.goto('/url-state')
+    const pushNext = page.locator('[data-testid=url-state-push-next]')
+    const snapshot = page.locator('[data-testid=url-state-pushpage]')
+
+    // Two pushState entries: pushPage 1 → 2 → 3.
+    await pushNext.click()
+    await expect(page).toHaveURL(/pushPage=2/)
+    await pushNext.click()
+    await expect(page).toHaveURL(/pushPage=3/)
+    await expect(snapshot).toContainText('pushPage 3')
+
+    // Real browser Back → popstate fires → signal re-reads the restored URL.
+    // (happy-dom's synthetic dispatchEvent cannot exercise the real history
+    // stack — this is the parity gap the browser test closes.)
+    await page.goBack()
+    await expect(page).toHaveURL(/pushPage=2/)
+    await expect(snapshot).toContainText('pushPage 2')
+
+    await page.goBack()
+    await expect(page).not.toHaveURL(/pushPage/) // back at default (1) → param removed
+    await expect(snapshot).toContainText('pushPage 1')
+
+    // Forward → restores pushPage=2.
+    await page.goForward()
+    await expect(page).toHaveURL(/pushPage=2/)
+    await expect(snapshot).toContainText('pushPage 2')
+  })
 })
 
 test.describe('Hooks demo — useToggle + useClipboard', () => {

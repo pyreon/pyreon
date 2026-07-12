@@ -36,20 +36,18 @@ export function getUrlRouter(): UrlRouter | null {
   return _router
 }
 
-/** Write one or more search params to the URL without a full navigation. */
-export function setParams(entries: Record<string, string | null>, replace: boolean): void {
-  if (!isClient) return
+/** Read the current URL's search params. Client-only — callers guard SSR. */
+function currentParams(): URLSearchParams {
+  return new URLSearchParams(window.location.search)
+}
 
-  const params = new URLSearchParams(window.location.search)
-
-  for (const [key, value] of Object.entries(entries)) {
-    if (value === null) {
-      params.delete(key)
-    } else {
-      params.set(key, value)
-    }
-  }
-
+/**
+ * Commit a `URLSearchParams` to the URL via the registered router or the raw
+ * history API. This is the ONE place that touches `history` / the router —
+ * `setParams`, `setParamRepeated`, and `commitParams` all funnel through it,
+ * so the router-vs-history branch can't drift between write paths.
+ */
+function commit(params: URLSearchParams, replace: boolean): void {
   const search = params.toString()
   const url = search ? `${window.location.pathname}?${search}` : window.location.pathname
 
@@ -65,6 +63,21 @@ export function setParams(entries: Record<string, string | null>, replace: boole
   }
 }
 
+/** Write one or more search params to the URL without a full navigation. */
+export function setParams(entries: Record<string, string | null>, replace: boolean): void {
+  if (!isClient) return
+
+  const params = currentParams()
+  for (const [key, value] of Object.entries(entries)) {
+    if (value === null) {
+      params.delete(key)
+    } else {
+      params.set(key, value)
+    }
+  }
+  commit(params, replace)
+}
+
 /**
  * Write an array param using repeated keys (e.g. `?tags=a&tags=b`).
  * When `values` is null the param is deleted.
@@ -72,26 +85,43 @@ export function setParams(entries: Record<string, string | null>, replace: boole
 export function setParamRepeated(key: string, values: string[] | null, replace: boolean): void {
   if (!isClient) return
 
-  const params = new URLSearchParams(window.location.search)
+  const params = currentParams()
   params.delete(key)
-
   if (values !== null) {
-    for (const v of values) {
-      params.append(key, v)
+    for (const v of values) params.append(key, v)
+  }
+  commit(params, replace)
+}
+
+/**
+ * Apply a mix of single-value and repeated-array param mutations to the URL in
+ * ONE history operation. Used by `batchUrlUpdates` to coalesce several
+ * `.set()` calls into a single `replaceState` / `pushState` (or one
+ * `router.replace`), so a batched multi-param update produces exactly one
+ * history entry instead of N.
+ *
+ * @internal
+ */
+export function commitParams(
+  single: Map<string, string | null>,
+  repeated: Map<string, string[] | null>,
+  replace: boolean,
+): void {
+  if (!isClient) return
+
+  const params = currentParams()
+  for (const [key, value] of single) {
+    if (value === null) {
+      params.delete(key)
+    } else {
+      params.set(key, value)
     }
   }
-
-  const search = params.toString()
-  const url = search ? `${window.location.pathname}?${search}` : window.location.pathname
-
-  if (_router) {
-    _router.replace(url)
-    return
+  for (const [key, values] of repeated) {
+    params.delete(key)
+    if (values !== null) {
+      for (const v of values) params.append(key, v)
+    }
   }
-
-  if (replace) {
-    history.replaceState(null, '', url)
-  } else {
-    history.pushState(null, '', url)
-  }
+  commit(params, replace)
 }

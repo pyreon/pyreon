@@ -34,6 +34,7 @@
     "build": "vl_rolldown_build",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
+    "bench:nuqs": "NODE_ENV=production bun bench/url-state-bench.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
@@ -44,7 +45,8 @@
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitus-labs/tools-lint": "^2.6.3"
+    "@vitus-labs/tools-lint": "^2.6.3",
+    "nuqs": "^2.9.0"
   },
   "publishConfig": {
     "access": "public"
