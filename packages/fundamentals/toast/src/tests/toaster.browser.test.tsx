@@ -25,6 +25,11 @@ const nextFrame = () =>
     requestAnimationFrame(() => requestAnimationFrame(() => r()))
   })
 
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+// The leave animation lingers for LEAVE_DURATION (200ms in the store); wait a
+// touch longer so the hard removal has fired.
+const LEAVE_WAIT = 260
+
 let container: HTMLDivElement
 let dispose: () => void
 
@@ -126,7 +131,7 @@ describe('Toaster — reactivity (regression: rows reflect store mutations)', ()
 })
 
 describe('Toaster — dismiss interaction', () => {
-  it('clicking the × removes the toast from the DOM', async () => {
+  it('clicking the × plays the leave animation, then removes the toast', async () => {
     toast('Bye', { duration: 0 })
     await nextFrame()
     expect(toastEl()).not.toBeNull()
@@ -134,7 +139,39 @@ describe('Toaster — dismiss interaction', () => {
     const dismissBtn = document.querySelector('.pyreon-toast__dismiss') as HTMLButtonElement
     expect(dismissBtn).not.toBeNull()
     dismissBtn.click()
+
+    // SOFT dismiss: the row stays mounted with the --exiting class (fade +
+    // collapse) — it is NOT ripped out instantly.
     await nextFrame()
+    expect(toastEl()).not.toBeNull()
+    expect(toastEl()?.classList.contains('pyreon-toast--exiting')).toBe(true)
+
+    // After the leave animation the hard removal drops it from the DOM.
+    await wait(LEAVE_WAIT)
+    expect(toastEl()).toBeNull()
+  })
+
+  it('auto-dismiss also plays the leave animation before removal', async () => {
+    toast('Auto', { duration: 40 })
+    await nextFrame()
+    expect(toastEl()).not.toBeNull()
+
+    // Wait past the 40ms auto-dismiss but within the leave window.
+    await wait(80)
+    expect(toastEl()?.classList.contains('pyreon-toast--exiting')).toBe(true)
+
+    await wait(LEAVE_WAIT)
+    expect(toastEl()).toBeNull()
+  })
+
+  it('toast.remove() removes instantly with no leave animation', async () => {
+    const id = toast('Gone', { duration: 0 })
+    await nextFrame()
+    expect(toastEl()).not.toBeNull()
+
+    toast.remove(id)
+    await nextFrame()
+    // Hard remove: no --exiting phase, gone on the next frame.
     expect(toastEl()).toBeNull()
   })
 

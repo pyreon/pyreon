@@ -24,6 +24,7 @@
     "@pyreon/server": "workspace:*",
     "@pyreon/storage": "workspace:*",
     "@pyreon/sync": "workspace:*",
+    "@pyreon/toast": "workspace:*",
     "@pyreon/virtual": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/zero": "workspace:*",

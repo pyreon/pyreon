@@ -8,6 +8,20 @@ let _idCounter = 0
 const DEFAULT_DURATION = 4000
 
 /**
+ * How long a dismissed toast lingers in the `'exiting'` state before it is
+ * hard-removed from the store — long enough for the CSS leave transition
+ * (`.pyreon-toast--exiting`, 200ms in `styles.ts`) to finish. A `dismiss` is
+ * SOFT: it flips the toast to `'exiting'` (playing the fade + collapse) and
+ * schedules the removal after this delay. `remove` is the HARD, instant path.
+ *
+ * The store owns the timing (not the mounted Toaster) so the leave still
+ * completes headless — mirrors react-hot-toast's `dismiss` (soft) / `remove`
+ * (hard) split. Kept in lock-step with the CSS by convention; both live in this
+ * package.
+ */
+export const LEAVE_DURATION = 200
+
+/**
  * App-wide default auto-dismiss duration, settable via `<Toaster duration={…}>`.
  * The store is module-level (toasts can be created before the Toaster mounts),
  * so the Toaster writes this default on setup and `addToast` reads it for any
@@ -85,6 +99,7 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
     onDismiss: options.onDismiss,
     state: 'entering',
     timer: undefined,
+    leaveTimer: undefined,
     remaining: 0,
     timerStart: 0,
   }
@@ -103,7 +118,10 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
     /* v8 ignore next */
     if (dropped) {
       if (dropped.timer !== undefined) clearTimeout(dropped.timer)
-      dropped.onDismiss?.()
+      if (dropped.leaveTimer !== undefined) clearTimeout(dropped.leaveTimer)
+      // Fire onDismiss unless it already fired when the toast entered `exiting`
+      // (a soft-dismissed toast still counts toward the cap until removed).
+      if (dropped.state !== 'exiting') dropped.onDismiss?.()
     }
     _toasts.set([...current.slice(1), t])
   } else {
@@ -113,14 +131,64 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
   return id
 }
 
+/**
+ * SOFT dismiss — flip the toast(s) to `'exiting'` so the CSS leave transition
+ * plays, fire `onDismiss` immediately, then hard-remove after `LEAVE_DURATION`.
+ * The toast stays in the store (in its slot) during the exit so the row
+ * animates in place and its siblings reflow smoothly. Idempotent: a toast
+ * already `'exiting'` is left alone (double-click the × / dismiss + auto-timeout
+ * race can't fire `onDismiss` twice or schedule a second removal).
+ */
 function dismiss(id?: string): void {
   const current = _toasts()
 
   if (id === undefined) {
-    // Clear all
+    let changed = false
+    const next = current.map((t) => {
+      if (t.state === 'exiting') return t
+      changed = true
+      return beginExit(t)
+    })
+    if (changed) _toasts.set(next)
+    return
+  }
+
+  const idx = current.findIndex((item) => item.id === id)
+  if (idx === -1) return
+  const match = current[idx] as Toast
+  if (match.state === 'exiting') return
+
+  const next = [...current]
+  next[idx] = beginExit(match)
+  _toasts.set(next)
+}
+
+/**
+ * Transition one toast into `'exiting'`: clear its auto-dismiss timer, fire
+ * `onDismiss`, and schedule the hard `remove`. Returns the new (exiting) Toast
+ * object — a fresh reference so `<For>`-row reactivity re-runs the class binding.
+ */
+function beginExit(t: Toast): Toast {
+  if (t.timer !== undefined) clearTimeout(t.timer)
+  t.onDismiss?.()
+  const leaveTimer = setTimeout(() => remove(t.id), LEAVE_DURATION)
+  return { ...t, state: 'exiting', timer: undefined, leaveTimer, remaining: 0, timerStart: 0 }
+}
+
+/**
+ * HARD remove — drop the toast(s) from the store immediately, with no leave
+ * animation. Clears any pending timers. Fires `onDismiss` only if it hasn't
+ * already (a still-visible toast removed directly); a toast already `'exiting'`
+ * had `onDismiss` fired by `dismiss`. Mirrors react-hot-toast's `toast.remove`.
+ */
+function remove(id?: string): void {
+  const current = _toasts()
+
+  if (id === undefined) {
     for (const t of current) {
       if (t.timer !== undefined) clearTimeout(t.timer)
-      t.onDismiss?.()
+      if (t.leaveTimer !== undefined) clearTimeout(t.leaveTimer)
+      if (t.state !== 'exiting') t.onDismiss?.()
     }
     _toasts.set([])
     return
@@ -130,7 +198,8 @@ function dismiss(id?: string): void {
   if (!match) return
 
   if (match.timer !== undefined) clearTimeout(match.timer)
-  match.onDismiss?.()
+  if (match.leaveTimer !== undefined) clearTimeout(match.leaveTimer)
+  if (match.state !== 'exiting') match.onDismiss?.()
   _toasts.set(current.filter((item) => item.id !== id))
 }
 
@@ -144,6 +213,9 @@ function updateToast(
 
   const t = current[idx] as Toast
   if (t.timer !== undefined) clearTimeout(t.timer)
+  // An update cancels a pending leave and resurrects an `'exiting'` toast back
+  // to `'visible'` (e.g. `toast.promise` settling a toast that was mid-dismiss).
+  if (t.leaveTimer !== undefined) clearTimeout(t.leaveTimer)
 
   const updated: Toast = {
     ...t,
@@ -151,7 +223,9 @@ function updateToast(
     type: updates.type ?? t.type,
     duration: updates.duration ?? t.duration,
     description: updates.description ?? t.description,
+    state: t.state === 'exiting' ? 'visible' : t.state,
     timer: undefined,
+    leaveTimer: undefined,
     remaining: 0,
     timerStart: 0,
   }
@@ -179,6 +253,9 @@ export function _pauseAll(): void {
 
 export function _resumeAll(): void {
   for (const t of _toasts()) {
+    // Skip toasts already animating out — resuming must not restart an
+    // auto-dismiss timer on a toast whose leave is already in flight.
+    if (t.state === 'exiting') continue
     if (t.duration > 0 && t.timer === undefined && t.remaining > 0) {
       t.timerStart = Date.now()
       t.timer = setTimeout(() => dismiss(t.id), t.remaining)
@@ -232,8 +309,22 @@ toast.update = (
   },
 ): void => updateToast(id, updates)
 
-/** Dismiss a specific toast by id, or all toasts if no id is given. */
+/**
+ * Dismiss a specific toast by id, or all toasts if no id is given.
+ *
+ * SOFT: the toast plays its CSS leave transition (fade + collapse) and is
+ * removed after {@link LEAVE_DURATION}. `onDismiss` fires immediately. For an
+ * instant, animation-free removal use {@link toast.remove}.
+ */
 toast.dismiss = dismiss
+
+/**
+ * Remove a specific toast by id, or all toasts if no id is given — HARD and
+ * instant, with no leave animation. `onDismiss` still fires (once) if the toast
+ * hadn't already been dismissed. Use this when you want a toast gone right now
+ * (e.g. replacing it, or tearing down on unmount).
+ */
+toast.remove = remove
 
 /**
  * Show a loading toast that updates on promise resolution or rejection.
@@ -272,6 +363,7 @@ export function _reset(): void {
   const current = _toasts()
   for (const t of current) {
     if (t.timer !== undefined) clearTimeout(t.timer)
+    if (t.leaveTimer !== undefined) clearTimeout(t.leaveTimer)
   }
   _toasts.set([])
   _idCounter = 0

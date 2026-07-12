@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _reset, _toastMap, _toasts, toast } from '../toast'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { _reset, _toastMap, _toasts, LEAVE_DURATION, toast } from '../toast'
 
 beforeEach(() => _reset())
 afterEach(() => _reset())
@@ -30,10 +30,25 @@ describe('_toastMap', () => {
     expect(t?.type).toBe('success')
   })
 
-  it('drops an id once its toast is dismissed', () => {
+  it('keeps an id through its exit animation, then drops it once removed', () => {
+    vi.useFakeTimers()
     const id = toast('X', { duration: 0 })
     expect(_toastMap().has(id)).toBe(true)
+    // SOFT dismiss keeps the toast in the map (as `exiting`) so the row still
+    // renders its live fields during the leave transition.
     toast.dismiss(id)
+    expect(_toastMap().get(id)?.state).toBe('exiting')
+    // After the leave animation the hard removal drops it.
+    vi.advanceTimersByTime(LEAVE_DURATION)
+    expect(_toastMap().has(id)).toBe(false)
+    expect(_toastMap().size).toBe(0)
+    vi.useRealTimers()
+  })
+
+  it('drops an id instantly on a hard remove()', () => {
+    const id = toast('X', { duration: 0 })
+    expect(_toastMap().has(id)).toBe(true)
+    toast.remove(id)
     expect(_toastMap().has(id)).toBe(false)
     expect(_toastMap().size).toBe(0)
   })

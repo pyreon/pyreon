@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _pauseAll, _reset, _resumeAll, _toasts, toast } from '../toast'
+import { _pauseAll, _reset, _resumeAll, _toasts, LEAVE_DURATION, toast } from '../toast'
 import { Toaster } from '../toaster'
 
 /** Helper — get toast at index with non-null assertion (tests verify length first). */
@@ -72,23 +72,33 @@ describe('toast.success/error/warning/info', () => {
 })
 
 describe('toast.dismiss', () => {
-  it('removes a specific toast by id', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('removes a specific toast by id (after the leave animation)', () => {
     const id1 = toast('First')
     toast('Second')
     expect(_toasts().length).toBe(2)
 
+    // SOFT dismiss: the toast enters `exiting` and lingers for the CSS leave.
     toast.dismiss(id1)
+    expect(_toasts().length).toBe(2)
+    expect(at(0).state).toBe('exiting')
+
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(1)
     expect(at(0).message).toBe('Second')
   })
 
-  it('clears all toasts when no id is given', () => {
+  it('clears all toasts when no id is given (after the leave animation)', () => {
     toast('First')
     toast('Second')
     toast('Third')
     expect(_toasts().length).toBe(3)
 
     toast.dismiss()
+    expect(_toasts().every((t) => t.state === 'exiting')).toBe(true)
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -125,14 +135,19 @@ describe('auto-dismiss', () => {
     vi.useRealTimers()
   })
 
-  it('auto-dismisses after default duration (4000ms)', () => {
+  it('auto-dismisses after default duration (4000ms + leave)', () => {
     toast('Hello')
     expect(_toasts().length).toBe(1)
 
     vi.advanceTimersByTime(3999)
     expect(_toasts().length).toBe(1)
 
+    // At 4000ms the timer soft-dismisses (enter `exiting`); the hard removal
+    // follows after the leave animation.
     vi.advanceTimersByTime(1)
+    expect(at(0).state).toBe('exiting')
+
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -142,7 +157,7 @@ describe('auto-dismiss', () => {
     vi.advanceTimersByTime(1999)
     expect(_toasts().length).toBe(1)
 
-    vi.advanceTimersByTime(1)
+    vi.advanceTimersByTime(1 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -267,6 +282,7 @@ describe('toast.loading', () => {
     expect(_toasts().length).toBe(1)
 
     toast.dismiss(id)
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -323,8 +339,8 @@ describe('toast.update', () => {
     vi.advanceTimersByTime(1999)
     expect(_toasts().length).toBe(1)
 
-    vi.advanceTimersByTime(1)
-    expect(_toasts().length).toBe(0) // auto-dismissed after new duration
+    vi.advanceTimersByTime(1 + LEAVE_DURATION)
+    expect(_toasts().length).toBe(0) // auto-dismissed after new duration + leave
   })
 
   it('is a no-op for unknown id', () => {
@@ -344,8 +360,8 @@ describe('toast.update', () => {
     // Old timer would have fired at 1000ms total, but update reset it
     expect(_toasts().length).toBe(1)
 
-    vi.advanceTimersByTime(500)
-    // Now the new timer fires at 1000ms from update
+    vi.advanceTimersByTime(500 + LEAVE_DURATION)
+    // Now the new timer fires at 1000ms from update (+ leave animation)
     expect(_toasts().length).toBe(0)
   })
 
@@ -395,7 +411,7 @@ describe('pause/resume', () => {
     vi.advanceTimersByTime(999) // almost there
     expect(_toasts().length).toBe(1)
 
-    vi.advanceTimersByTime(1) // now it fires
+    vi.advanceTimersByTime(1 + LEAVE_DURATION) // now it fires + leaves
     expect(_toasts().length).toBe(0)
   })
 
@@ -415,7 +431,7 @@ describe('pause/resume', () => {
     // Call resume without pause — should not cause issues
     _resumeAll()
 
-    vi.advanceTimersByTime(4000)
+    vi.advanceTimersByTime(4000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 })
@@ -490,7 +506,7 @@ describe('toast.promise with rejected promise', () => {
     // After resolve, toast gets default duration (4000ms)
     expect(at(0).duration).toBe(4000)
 
-    vi.advanceTimersByTime(4000)
+    vi.advanceTimersByTime(4000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -515,7 +531,7 @@ describe('toast.promise with rejected promise', () => {
     expect(at(0).duration).toBe(4000)
     expect(at(0).type).toBe('error')
 
-    vi.advanceTimersByTime(4000)
+    vi.advanceTimersByTime(4000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 })
