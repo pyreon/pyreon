@@ -13,6 +13,14 @@ describe('filterProps', () => {
       expect(result.className).toBe('foo')
     })
 
+    it('keeps the STANDARD `for` attribute (a11y — was dropped, LR-3)', () => {
+      // A bare `for` on a styled/rocketstyle <Label> must pass through, or the
+      // label↔input association is silently severed. Was missing from the
+      // allowlist while the React-compat `htmlFor` was present.
+      expect(filterProps({ for: 'field-1' }).for).toBe('field-1')
+      expect(filterProps({ htmlFor: 'field-2' }).htmlFor).toBe('field-2')
+    })
+
     it('keeps style', () => {
       const style = { color: 'red' }
       const result = filterProps({ style })

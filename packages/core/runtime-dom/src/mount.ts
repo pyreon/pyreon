@@ -94,7 +94,7 @@ export function mountChild(
       return () => {
         dispose()
         const p = text.parentNode
-        if (p && (p as Element).isConnected !== false) p.removeChild(text)
+        if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(text)
       }
     }
     const prevDepth = _elementDepth
@@ -128,7 +128,7 @@ export function mountChild(
     if (_elementDepth > 0) return noop
     return () => {
       const p = tn.parentNode
-      if (p && (p as Element).isConnected !== false) p.removeChild(tn)
+      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(tn)
     }
   }
 
@@ -140,14 +140,14 @@ export function mountChild(
       if (_elementDepth > 0) return noop
       return () => {
         const p = native.el.parentNode
-        if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+        if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
       }
     }
     if (_elementDepth > 0) return native.cleanup
     return () => {
       native.cleanup?.()
       const p = native.el.parentNode
-      if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
     }
   }
 
@@ -426,7 +426,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     if (_elementDepth > 0) return noop
     return () => {
       const p = el.parentNode
-      if (p && (p as Element).isConnected !== false) p.removeChild(el)
+      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(el)
     }
   }
 
@@ -456,7 +456,7 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     if (propCleanup) propCleanup()
     childCleanup()
     const p = el.parentNode
-    if (p && (p as Element).isConnected !== false) p.removeChild(el)
+    if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(el)
   }
 }
 

@@ -18,6 +18,12 @@ const HTML_PROPS_LIST = [
   'class',
   'dangerouslySetInnerHTML',
   'htmlFor',
+  // The STANDARD HTML attribute — must pass through alongside the React-compat
+  // `htmlFor`, or a `<Label for="x">` on a styled/rocketstyle component silently
+  // DROPS the `for` attribute, severing the label↔input a11y association (the
+  // runtime + SSR both handle bare `for` on a native <label>; only this
+  // allowlist forgot it).
+  'for',
   'id',
   'key',
   'ref',

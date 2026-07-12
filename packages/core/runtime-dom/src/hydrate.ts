@@ -481,7 +481,7 @@ function hydrateChild(
     const cleanup = () => {
       native.cleanup?.()
       const p = native.el.parentNode
-      if (p && (p as Element).isConnected !== false) p.removeChild(native.el)
+      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
     }
     return [cleanup, next]
   }
