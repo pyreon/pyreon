@@ -24,12 +24,10 @@ describe('_tpl SVG-rooted templates in real Chromium', () => {
     host.setAttribute('height', '100')
     document.body.appendChild(host)
 
-    const item = _tpl('<g><path fill="none" d="M0 0 L50 50"></path></g>', () => null) as {
-      el: SVGGElement
-    }
-    host.appendChild(item.el)
+    const item = _tpl('<g><path fill="none" d="M0 0 L50 50"></path></g>', () => null)
+    const g = item.el as unknown as SVGGElement
+    host.appendChild(g)
 
-    const g = item.el
     expect(g.namespaceURI).toBe(SVG_NS)
     const path = g.firstElementChild as SVGPathElement
     expect(path.namespaceURI).toBe(SVG_NS)
@@ -45,19 +43,19 @@ describe('_tpl SVG-rooted templates in real Chromium', () => {
   it('a bare <rect> (minimap dot) mounts as a live SVGRectElement', () => {
     const host = document.createElementNS(SVG_NS, 'svg')
     document.body.appendChild(host)
-    const item = _tpl('<rect x="1" y="2" width="8" height="6"></rect>', () => null) as {
-      el: SVGRectElement
-    }
-    host.appendChild(item.el)
-    expect(item.el).toBeInstanceOf(SVGRectElement)
-    expect(item.el.width.baseVal.value).toBe(8) // SVGAnimatedLength — SVG-only
+    const item = _tpl('<rect x="1" y="2" width="8" height="6"></rect>', () => null)
+    const rect = item.el as unknown as SVGRectElement
+    host.appendChild(rect)
+    expect(rect).toBeInstanceOf(SVGRectElement)
+    expect(rect.width.baseVal.value).toBe(8) // SVGAnimatedLength — SVG-only
     host.remove()
   })
 
   it('a plain HTML <div> template is still an HTMLDivElement', () => {
-    const item = _tpl('<div class="x"></div>', () => null) as { el: HTMLElement }
-    document.body.appendChild(item.el)
-    expect(item.el).toBeInstanceOf(HTMLDivElement)
-    item.el.remove()
+    const item = _tpl('<div class="x"></div>', () => null)
+    const div = item.el
+    document.body.appendChild(div)
+    expect(div).toBeInstanceOf(HTMLDivElement)
+    div.remove()
   })
 })
