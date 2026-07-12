@@ -8,7 +8,7 @@ export default defineManifest({
   description:
     'Component model and lifecycle for Pyreon. Provides the VNode type system, `h()` hyperscript function, JSX automatic runtime (`@pyreon/core/jsx-runtime`), lifecycle hooks (`onMount`, `onUnmount`), two-tier context system (`createContext` for static values, `createReactiveContext` for signal-backed values), control-flow components (`Show`, `Switch`/`Match`, `For`, `Suspense`, `ErrorBoundary`), code-splitting via `lazy()`, dynamic rendering via `Dynamic`, and props utilities (`splitProps`, `mergeProps`, `cx`, `createUniqueId`). Components are plain functions (`ComponentFn<P> = (props: P) => VNodeChild`) that run ONCE — reactivity comes from reading signals inside reactive scopes, not from re-running the component.',
   category: 'universal',
-  longExample: `import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId, untrack } from "@pyreon/core"
+  longExample: `import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId } from "@pyreon/core"
 import { signal, computed } from "@pyreon/reactivity"
 
 // Context — static (destructure-safe) vs reactive (must call to read)
@@ -49,7 +49,7 @@ const Button = (props: { class?: string; size?: string; onClick: () => void; chi
   const [local, rest] = splitProps(props, ["class", "size"])
   const merged = mergeProps({ size: "md" }, local)
   const id = createUniqueId()
-  return <button id={id} {...rest} class={cx("btn", \`btn-\${merged.size}\`, local.class)} />
+  return <button id={id} {...rest} class={cx(["btn", \`btn-\${merged.size}\`, local.class])} />
 }
 
 // Code splitting
@@ -329,16 +329,24 @@ const getMode = useContext(ModeCtx)    // reactive: returns () => T`,
     {
       name: 'ErrorBoundary',
       kind: 'component',
-      signature: '<ErrorBoundary onCatch={handler} fallback={errorUI}>{children}</ErrorBoundary>',
+      signature: '<ErrorBoundary fallback={(err, reset) => VNodeChild}>{children}</ErrorBoundary>',
       summary:
-        'Catches render errors thrown by descendant components. The `fallback` receives the error object for display. `onCatch` fires with the error for logging/telemetry. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app.',
+        'Catches render errors thrown by descendant components. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`.',
       example: `<ErrorBoundary
-  onCatch={(err) => console.error(err)}
-  fallback={(err) => <div>Error: {err.message}</div>}
+  fallback={(err, reset) => (
+    <div>
+      <p>Error: {String(err)}</p>
+      <button onClick={reset}>Retry</button>
+    </div>
+  )}
 >
   <App />
 </ErrorBoundary>`,
-      seeAlso: ['Suspense', 'onErrorCaptured'],
+      mistakes: [
+        'Passing an `onCatch` prop — it does not exist. `fallback` is the only prop (besides children); log the error inside it or via `registerErrorHandler`',
+        'Reading `err.message` directly — `err` is typed `unknown`; narrow it (`err instanceof Error ? err.message : String(err)`) or `String(err)`',
+      ],
+      seeAlso: ['Suspense', 'registerErrorHandler'],
     },
     {
       name: 'lazy',
@@ -370,17 +378,19 @@ const current = signal("home")
     {
       name: 'cx',
       kind: 'function',
-      signature: 'cx(...values: ClassValue[]): string',
+      signature: 'cx(value: ClassValue): string',
       summary:
-        'Combine class values into a single string. Accepts strings, booleans (falsy values ignored), objects (`{ active: true }`), and arrays (nested). The `class` prop on JSX elements already accepts `ClassValue` directly, so explicit `cx()` is only needed when building class strings outside JSX or when composing values from multiple sources.',
-      example: `cx("foo", "bar")                         // "foo bar"
-cx("base", isActive && "active")         // conditional
+        'Combine a class value into a single string. Takes ONE `ClassValue` — a string, boolean (falsy ignored), object (`{ active: true }`), or (possibly nested) array. To combine multiple values, pass them as an ARRAY (`cx(["btn", active && "on"])`), not as separate arguments — `cx` is single-arg. The `class` prop on JSX elements already accepts `ClassValue` directly, so explicit `cx()` is only needed when building class strings outside JSX.',
+      example: `cx(["foo", "bar"])                       // "foo bar"
+cx(["base", isActive && "active"])       // conditional
 cx({ base: true, active: isActive() })   // object syntax
 cx(["a", ["b", { c: true }]])            // nested arrays
 
 // class prop accepts ClassValue directly:
-<div class={["base", cond && "active"]} />
-<div class={{ base: true, active: isActive() }} />`,
+<div class={["base", cond && "active"]} />`,
+      mistakes: [
+        'Calling `cx("a", "b")` with multiple arguments — `cx` takes ONE `ClassValue`. Wrap in an array: `cx(["a", "b"])`',
+      ],
       seeAlso: ['splitProps', 'mergeProps'],
     },
     {
@@ -392,7 +402,7 @@ cx(["a", ["b", { c: true }]])            // nested arrays
         'Split a props object into two parts: the picked keys and the rest. Both halves preserve signal reactivity — reads through either half still track the original reactive prop getters. This is the Pyreon replacement for `const { x, ...rest } = props` destructuring, which captures values once and loses reactivity.',
       example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
   const [local, rest] = splitProps(props, ["class"])
-  return <button {...rest} class={cx("btn", local.class)} />
+  return <button {...rest} class={cx(["btn", local.class])} />
 }`,
       mistakes: [
         '`const { class: cls, ...rest } = props` — destructuring captures once, loses reactivity. Use `splitProps(props, ["class"])`',
@@ -465,12 +475,15 @@ const merged = mergeProps(defaults, filtered)`,
     {
       name: 'mapArray',
       kind: 'function',
-      signature: 'mapArray<T, U>(list: () => T[], mapFn: (item: T, index: () => number) => U): () => U[]',
+      signature: 'mapArray<T, U>(source: () => T[], getKey: (item: T) => string | number, map: (item: T) => U): () => U[]',
       summary:
-        'Low-level reactive array mapping used internally by `<For>`. Maps a reactive array signal through a transform function, caching results per item identity. Prefer `<For>` in JSX — use `mapArray` only when you need a reactive derived array outside of rendering.',
-      example: `const items = signal([1, 2, 3])
-const doubled = mapArray(() => items(), (item) => item * 2)
-// doubled() → [2, 4, 6] — updates reactively`,
+        'Low-level reactive array mapping used internally by `<For>`. Maps a reactive array through a transform, caching results per KEY so unchanged items reuse their mapped value. Takes THREE args — the source accessor, a `getKey` identity function, and the `map` transform. Prefer `<For>` in JSX — use `mapArray` only when you need a reactive derived array outside of rendering.',
+      example: `const items = signal([{ id: 1, n: 2 }, { id: 2, n: 3 }])
+const doubled = mapArray(() => items(), (item) => item.id, (item) => item.n * 2)
+// doubled() → [4, 6] — updates reactively, keyed by id`,
+      mistakes: [
+        'Omitting the `getKey` argument — `mapArray` requires 3 args (source, getKey, map); without a key function it cannot cache per-item across updates',
+      ],
       seeAlso: ['For'],
     },
     {
@@ -483,18 +496,6 @@ const doubled = mapArray(() => items(), (item) => item * 2)
 onMount(() => inputRef.current?.focus())
 return <input ref={inputRef} />`,
       seeAlso: ['onMount'],
-    },
-    {
-      name: 'untrack',
-      kind: 'function',
-      signature: '(fn: () => T) => T',
-      summary:
-        'Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked` from `@pyreon/reactivity`. Use inside effects when you need a one-shot snapshot of a signal value without the effect re-running when that signal changes.',
-      example: `effect(() => {
-  const current = count()        // tracked
-  const other = untrack(() => otherSignal())  // NOT tracked
-})`,
-      seeAlso: ['@pyreon/reactivity'],
     },
     {
       name: 'nativeCompat',

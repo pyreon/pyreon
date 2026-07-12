@@ -31,7 +31,7 @@ import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
 
 const vnode = (
   <DocDocument title="Q4 Report" author="Acme Inc.">
-    <DocHeading level={1}>Summary</DocHeading>
+    <DocHeading level="h1">Summary</DocHeading>
     <DocText>Revenue was up 12%.</DocText>
   </DocDocument>
 )
@@ -102,7 +102,7 @@ import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
 
 const vnode = (
   <DocDocument title={() => reportTitle()} author="Acme Inc.">
-    <DocHeading level={1}>Summary</DocHeading>
+    <DocHeading level="h1">Summary</DocHeading>
     <DocText>{() => summaryText()}</DocText>
   </DocDocument>
 )
@@ -337,8 +337,10 @@ Marker interface: components carrying `_documentType` are extractable. Rocketsty
 **Example**
 
 ```tsx
+import type { VNodeChild } from '@pyreon/core'
+
 // Plain-function marked component (non-rocketstyle):
-function Callout(props: { children?: unknown }) {
+function Callout(props: { children?: VNodeChild }) {
   return <div _documentProps={{}}>{props.children}</div>
 }
 Callout._documentType = 'section'

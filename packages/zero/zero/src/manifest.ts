@@ -43,8 +43,8 @@ export default defineConfig({
       },
       adapter: vercelAdapter(),             // PR J — emits .vercel/output/config.json
     }),
-    seoPlugin({ sitemap: { useSsgPaths: true, hreflang: true } }),
-    aiPlugin(),
+    seoPlugin({ sitemap: { origin: 'https://example.com', useSsgPaths: true, hreflang: true } }),
+    aiPlugin({ name: 'My App', description: 'My Pyreon app', origin: 'https://example.com' }),
   ],
 })
 
@@ -147,7 +147,7 @@ zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en', strategy: 'prefix
         'function expandRoutesForLocales(routes: FileRoute[], config: I18nRoutingConfig): FileRoute[] // server-only',
       summary:
         "Fans a flat route list into per-locale variants based on `I18nRoutingConfig`. Each non-default locale gets a full subtree duplicate — layouts, error boundaries, loading components, 404 pages, dynamic params (`[id]` → `:id`), catch-all routes (`[...slug]` → `:slug*`) all compose naturally with the locale prefix. Source `filePath` is preserved so the duplicated routes share the same component module; only `urlPath` / `dirPath` / `depth` change. `getStaticPaths` inherits across duplicates so dynamic-route × locale cross-products work automatically (3 IDs × 3 locales = 9 SSG outputs). Root-layout skip under `prefix-except-default` prevents double-mount.",
-      example: `import { expandRoutesForLocales } from '@pyreon/zero/server'
+      example: `import { expandRoutesForLocales } from '@pyreon/zero/i18n-routing'
 import { parseFileRoutes, scanRouteFiles } from '@pyreon/zero/server'
 
 const files = await scanRouteFiles('./src/routes')
@@ -357,7 +357,7 @@ createISRHandler(handler, {
         "SEO plugin — emits `sitemap.xml`, `robots.txt`, JSON-LD, and hreflang cross-references. `sitemap.useSsgPaths: true` auto-detects from SSG output manifest (paths from `getStaticPaths` × locale variants flow in automatically). `sitemap.hreflang: true` auto-detects i18n config from the SSG manifest → clusters per-locale URLs into ONE `<url>` with `<xhtml:link rel='alternate' hreflang>` siblings + `x-default` entry. `sitemap.trailingSlash: 'always' | 'never' | 'preserve'` (default `'preserve'`) controls non-root `<loc>` slashes — set `'always'` for hosts that 301 `/path` → `/path/` (GitHub Pages, directory-style Netlify/Cloudflare Pages) so the sitemap doesn't emit redirect-triggering URLs. Falls back to fs-router walk when SSG manifest is absent.",
       example: `seoPlugin({
   sitemap: {
-    baseUrl: 'https://example.com',
+    origin: 'https://example.com',
     useSsgPaths: true,      // PR F — auto-detect SSG paths
     hreflang: true,         // PR K — auto-detect i18n + emit cross-refs
   },
@@ -403,7 +403,7 @@ plugins: [pyreon(), zero({ i18n: { locales, defaultLocale } }), i18nRouting({ lo
         'function validateEnv<T>(schema: T, env?: ProcessEnv): ValidatedEnv<T> // server-only',
       summary:
         "Env-variable validation with type coercion. Schema accepts primitives (`String`, `Number`, `Boolean`) for default coercion + `schema()` for custom parsers. `publicEnv()` returns a client-safe subset (no secrets). Catches missing-required-env errors at startup instead of mid-request runtime crashes.",
-      example: `import { validateEnv, publicEnv, schema } from '@pyreon/zero/server'
+      example: `import { validateEnv, publicEnv, schema } from '@pyreon/zero/env'
 
 const env = validateEnv({
   PORT: 3000,
@@ -413,7 +413,7 @@ const env = validateEnv({
 })
 // env.PORT → number; env.API_KEY → string; env.API_URL → URL
 
-const pub = publicEnv(env, ['API_URL'])  // omit secrets`,
+const pub = publicEnv()  // client-safe ZERO_PUBLIC_* subset (secrets excluded by prefix)`,
       seeAlso: ['zero'],
     },
     {
@@ -423,13 +423,13 @@ const pub = publicEnv(env, ['API_URL'])  // omit secrets`,
         'function cspMiddleware(config: { directives: CspDirectives }): Middleware // server-only',
       summary:
         'CSP (Content Security Policy) middleware — emits `Content-Security-Policy` header per request with configurable directives. Pair with `useNonce()` for inline scripts (nonce is generated per-request and embedded in CSP `script-src \'nonce-XXX\'`). Server-only; SPA mode without a request handler can\'t emit per-request nonces.',
-      example: `import { cspMiddleware } from '@pyreon/zero/server'
+      example: `import { cspMiddleware } from '@pyreon/zero/csp'
 
 plugins: [pyreon(), zero({
   middleware: [cspMiddleware({
     directives: {
-      'default-src': ["'self'"],
-      'script-src': ["'self'", "'nonce-{{nonce}}'"],
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'nonce-{{nonce}}'"],
     },
   })],
 })]`,

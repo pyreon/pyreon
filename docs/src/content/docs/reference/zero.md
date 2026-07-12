@@ -58,8 +58,8 @@ export default defineConfig({
       },
       adapter: vercelAdapter(),             // PR J — emits .vercel/output/config.json
     }),
-    seoPlugin({ sitemap: { useSsgPaths: true, hreflang: true } }),
-    aiPlugin(),
+    seoPlugin({ sitemap: { origin: 'https://example.com', useSsgPaths: true, hreflang: true } }),
+    aiPlugin({ name: 'My App', description: 'My Pyreon app', origin: 'https://example.com' }),
   ],
 })
 
@@ -215,7 +215,7 @@ Fans a flat route list into per-locale variants based on `I18nRoutingConfig`. Ea
 **Example**
 
 ```tsx
-import { expandRoutesForLocales } from '@pyreon/zero/server'
+import { expandRoutesForLocales } from '@pyreon/zero/i18n-routing'
 import { parseFileRoutes, scanRouteFiles } from '@pyreon/zero/server'
 
 const files = await scanRouteFiles('./src/routes')
@@ -515,7 +515,7 @@ SEO plugin — emits `sitemap.xml`, `robots.txt`, JSON-LD, and hreflang cross-re
 ```tsx
 seoPlugin({
   sitemap: {
-    baseUrl: 'https://example.com',
+    origin: 'https://example.com',
     useSsgPaths: true,      // PR F — auto-detect SSG paths
     hreflang: true,         // PR K — auto-detect i18n + emit cross-refs
   },
@@ -588,7 +588,7 @@ Env-variable validation with type coercion. Schema accepts primitives (`String`,
 **Example**
 
 ```tsx
-import { validateEnv, publicEnv, schema } from '@pyreon/zero/server'
+import { validateEnv, publicEnv, schema } from '@pyreon/zero/env'
 
 const env = validateEnv({
   PORT: 3000,
@@ -598,7 +598,7 @@ const env = validateEnv({
 })
 // env.PORT → number; env.API_KEY → string; env.API_URL → URL
 
-const pub = publicEnv(env, ['API_URL'])  // omit secrets
+const pub = publicEnv()  // client-safe ZERO_PUBLIC_* subset (secrets excluded by prefix)
 ```
 
 **See also:** `zero`
@@ -616,13 +616,13 @@ CSP (Content Security Policy) middleware — emits `Content-Security-Policy` hea
 **Example**
 
 ```tsx
-import { cspMiddleware } from '@pyreon/zero/server'
+import { cspMiddleware } from '@pyreon/zero/csp'
 
 plugins: [pyreon(), zero({
   middleware: [cspMiddleware({
     directives: {
-      'default-src': ["'self'"],
-      'script-src': ["'self'", "'nonce-{{nonce}}'"],
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'nonce-{{nonce}}'"],
     },
   })],
 })]

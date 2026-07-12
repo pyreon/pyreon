@@ -241,7 +241,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))`,
       example: `import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
 
 const r = auditIslands(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)`,
+for (const f of r.findings) console.log(f.code, f.location.relPath)`,
       seeAlso: ['formatIslandAudit', 'auditTestEnvironment', 'auditSsg'],
     },
     {
@@ -265,7 +265,7 @@ console.log(formatIslandAudit(auditIslands(".")))`,
       example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
 
 const r = auditSsg(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)`,
+for (const f of r.findings) console.log(f.code, f.location.relPath)`,
       seeAlso: ['formatSsgAudit', 'auditIslands'],
     },
     {

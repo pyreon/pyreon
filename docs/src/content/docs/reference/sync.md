@@ -201,7 +201,7 @@ doc.yDoc.transact(() => Y.applyUpdate(doc.yDoc, bytes), REMOTE_ORIGIN)
 ### FakeCrdtAdapter `class`
 
 ```ts
-class FakeCrdtAdapter implements CrdtAdapter { createDoc(): FakeCrdtDoc }
+class FakeCrdtAdapter implements CrdtAdapter { createDoc(): CrdtDoc }
 ```
 
 An in-memory, dependency-free CrdtAdapter for unit-testing synced stores without standing up a real engine. Pair docs with `connectFakeDocs(a, b)` to simulate two peers in-process. It does NOT do state-vector reconciliation, so it can't model offline-reconnect convergence — use the Yjs adapter (`createYjsDoc` + a transport) for that.
@@ -209,8 +209,10 @@ An in-memory, dependency-free CrdtAdapter for unit-testing synced stores without
 **Example**
 
 ```tsx
-const a = new FakeCrdtAdapter().createDoc()
-const b = new FakeCrdtAdapter().createDoc()
+// FakeCrdtAdapter.createDoc() returns a CrdtDoc; construct FakeCrdtDoc
+// directly to get the concrete type connectFakeDocs requires.
+const a = new FakeCrdtDoc()
+const b = new FakeCrdtDoc()
 connectFakeDocs(a, b)
 const sa = syncedSignal({ doc: a, key: "k", initial: 0 })
 const sb = syncedSignal({ doc: b, key: "k", initial: 0 })

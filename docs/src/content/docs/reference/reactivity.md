@@ -691,8 +691,8 @@ Create a SHALLOW reactive store — only top-level mutations trigger updates. Ne
 
 ```tsx
 const store = shallowReactive({ user: { name: 'Alice' }, count: 0 })
-effect(() => store.count)        // tracks store.count
-effect(() => store.user)         // tracks store.user reference (not its contents)
+effect(() => { store.count })        // tracks store.count
+effect(() => { store.user })         // tracks store.user reference (not its contents)
 store.user.name = 'Bob'          // does NOT trigger any effect (nested mutation)
 store.count = 5                  // triggers count effect
 store.user = { name: 'Bob' }     // triggers user effect (reference replacement)
@@ -720,7 +720,7 @@ Mark an object as RAW — `createStore` and `shallowReactive` will return it unw
 ```tsx
 import { markRaw, createStore } from '@pyreon/reactivity'
 
-class Editor { /* ... */ }
+class Editor { someMethod() {} }
 const ed = markRaw(new Editor())   // skips proxy
 const store = createStore({ editor: ed })
 store.editor === ed                 // true — raw reference preserved
@@ -1055,7 +1055,7 @@ import { activateReactiveDevtools, getReactiveGraph } from '@pyreon/reactivity'
 activateReactiveDevtools()
 const price = signal(10, { name: '$price' })
 const total = computed(() => price() * 2)
-effect(() => total())
+effect(() => { total() })
 getReactiveGraph().nodes // → [$price (signal), derived, effect]
 deactivateReactiveDevtools() // → registry cleared
 ```
@@ -1084,7 +1084,7 @@ Fresh snapshot of the live reactive graph + a bounded recent-fire timeline, for 
 activateReactiveDevtools()
 const a = signal(1, { name: '$a' })
 const b = computed(() => a() + 1)
-effect(() => b())
+effect(() => { b() })
 a.set(2)
 getReactiveGraph()
 // nodes: [{ name:'$a', kind:'signal', value:'2', … }, { kind:'derived', … }, { kind:'effect', … }]

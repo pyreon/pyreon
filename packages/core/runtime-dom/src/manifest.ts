@@ -10,34 +10,33 @@ export default defineManifest({
   category: 'browser',
   longExample: `import { mount, hydrateRoot, Transition, TransitionGroup, KeepAlive } from "@pyreon/runtime-dom"
 import { signal } from "@pyreon/reactivity"
-import { Show, For } from "@pyreon/core"
+import { Show } from "@pyreon/core"
 
 // Mount — clears container, returns unmount function
 const unmount = mount(<App />, document.getElementById("app")!)
 
-// Hydrate SSR-rendered HTML (preserves existing DOM)
-hydrateRoot(<App />, document.getElementById("app")!)
+// Hydrate SSR-rendered HTML (preserves existing DOM) — container FIRST
+hydrateRoot(document.getElementById("app")!, <App />)
 
-// Transition — CSS-based enter/leave animations
+// Transition — CSS-based enter/leave, visibility driven by the required show accessor
 const visible = signal(true)
 const FadeExample = () => (
-  <Transition name="fade" mode="out-in">
-    <Show when={visible()}>
-      <div>Content</div>
-    </Show>
+  <Transition name="fade" show={() => visible()}>
+    <div>Content</div>
   </Transition>
 )
 // CSS: .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
 //      .fade-enter-from, .fade-leave-to { opacity: 0 }
 
-// TransitionGroup — animate list items entering/leaving
+// TransitionGroup — drives the list itself via items / keyFn / render (not <For> children)
 const items = signal([1, 2, 3])
 const ListExample = () => (
-  <TransitionGroup name="list">
-    <For each={items()} by={i => i}>
-      {item => <div>{item}</div>}
-    </For>
-  </TransitionGroup>
+  <TransitionGroup
+    name="list"
+    items={() => items()}
+    keyFn={(i) => i}
+    render={(i) => <div>{i}</div>}
+  />
 )
 
 // KeepAlive — cache component state across mount/unmount cycles
@@ -51,7 +50,7 @@ const TabExample = () => (
   features: [
     'mount() — mount VNode tree into container, returns unmount function',
     'hydrateRoot() — hydrate SSR-rendered HTML, preserving existing DOM',
-    'Transition — CSS-based enter/leave animations with mode support',
+    'Transition — CSS-based enter/leave animations driven by a `show` accessor',
     'TransitionGroup — animate list item additions and removals',
     'KeepAlive — cache and restore component state across mount/unmount cycles',
     '_tpl() + _bind() — compiler-driven template instantiation with zero VNode overhead',
@@ -94,25 +93,28 @@ render(<App />, document.getElementById("app")!)`,
     {
       name: 'hydrateRoot',
       kind: 'function',
-      signature: 'hydrateRoot(root: VNodeChild, container: Element): () => void',
+      signature: 'hydrateRoot(container: Element, root: VNodeChild): () => void',
       summary:
-        'Hydrate server-rendered HTML. Walks the existing DOM and attaches reactive bindings without recreating elements. Expects the DOM to match the VNode tree structure — mismatches emit dev-mode warnings. Returns an unmount function.',
+        'Hydrate server-rendered HTML. Walks the existing DOM and attaches reactive bindings without recreating elements. Expects the DOM to match the VNode tree structure — mismatches emit dev-mode warnings. Returns an unmount function. NOTE the argument order is `(container, root)` — the CONTAINER comes first, which is the REVERSE of `mount(root, container)`.',
       example: `import { hydrateRoot } from "@pyreon/runtime-dom"
 
-// Hydrate SSR-rendered HTML:
-hydrateRoot(<App />, document.getElementById("app")!)`,
+// Hydrate SSR-rendered HTML — container FIRST, then the app:
+hydrateRoot(document.getElementById("app")!, <App />)`,
+      mistakes: [
+        'Passing arguments in `mount` order — `hydrateRoot(container, root)` takes the container FIRST (opposite of `mount(root, container)`)',
+      ],
       seeAlso: ['mount', '@pyreon/runtime-server'],
     },
     {
       name: 'Transition',
       kind: 'component',
-      signature: '<Transition name={name} mode={mode} onEnter={fn} onLeave={fn}>{children}</Transition>',
+      signature: '<Transition name={name} show={() => boolean} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
       summary:
-        'CSS-based enter/leave animation wrapper. Applies `{name}-enter-from`, `{name}-enter-active`, `{name}-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `mode` controls sequencing: `"out-in"` waits for leave to complete before entering, `"in-out"` enters first. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically.',
-      example: `<Transition name="fade" mode="out-in">
-  <Show when={visible()}>
-    <div>Content</div>
-  </Show>
+        'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show: () => boolean` accessor — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles.',
+      example: `const visible = signal(true)
+
+<Transition name="fade" show={() => visible()}>
+  <div>Content</div>
 </Transition>
 
 /* CSS:
@@ -120,29 +122,38 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
 .fade-enter-from, .fade-leave-to { opacity: 0 }
 */`,
       mistakes: [
+        'Omitting `show` — it is REQUIRED (`() => boolean`); Transition drives visibility itself, so a plain child with no `show` will not animate',
+        'Wrapping the child in a `<Show>` — `show` already toggles visibility; a nested `<Show>` double-gates it',
         'Missing CSS classes — `<Transition name="fade">` does nothing without `.fade-enter-active` / `.fade-leave-active` CSS',
-        'Wrapping multiple root elements — Transition expects a single child (or null). Multiple children cause undefined behavior',
-        'Using `mode="in-out"` when you want sequential — `"out-in"` is almost always what you want (old leaves, then new enters)',
+        'Passing a `mode` prop — Transition has no `mode`; for sequenced list moves use TransitionGroup',
       ],
       seeAlso: ['TransitionGroup', '@pyreon/kinetic'],
     },
     {
       name: 'TransitionGroup',
       kind: 'component',
-      signature: '<TransitionGroup name={name} tag={tag}>{children}</TransitionGroup>',
+      signature: '<TransitionGroup items={() => T[]} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
       summary:
-        'Animate list item additions and removals with CSS transitions. Each item gets enter/leave classes on mount/unmount. The `tag` prop controls the wrapper element (defaults to a fragment). Works with `<For>` for reactive lists. Also applies `-move` classes for FLIP-animated reordering.',
-      example: `<TransitionGroup name="list" tag="ul">
-  <For each={items()} by={i => i.id}>
-    {item => <li>{item.name}</li>}
-  </For>
-</TransitionGroup>
+        'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (a reactive accessor), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`).',
+      example: `const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }])
+
+<TransitionGroup
+  name="list"
+  tag="ul"
+  items={() => items()}
+  keyFn={(item) => item.id}
+  render={(item) => <li>{item.name}</li>}
+/>
 
 /* CSS:
 .list-enter-active, .list-leave-active { transition: all 0.3s }
 .list-enter-from, .list-leave-to { opacity: 0; transform: translateY(10px) }
 .list-move { transition: transform 0.3s }
 */`,
+      mistakes: [
+        'Passing a `<For>` as children — TransitionGroup owns iteration via `items`/`keyFn`/`render`, it is not a `<For>` wrapper',
+        'A `render` that returns a component or fragment — it must return a single DOM-element VNode (string `type`) so the group can inject a ref',
+      ],
       seeAlso: ['Transition', 'For'],
     },
     {
@@ -167,7 +178,7 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
         'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically.',
       example: `// Compiler output for <div class="box">{text()}</div>:
 _tpl("<div class=\\"box\\"> </div>", (__root) => {
-  const __t0 = __root.firstChild
+  const __t0 = __root.firstChild as Text
   const __d0 = _bindText(text, __t0)
   return () => { __d0() }
 })`,
@@ -181,7 +192,7 @@ _tpl("<div class=\\"box\\"> </div>", (__root) => {
         'Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment, returning a dispose function. The fast path BYPASSES the effect system entirely — it subscribes via the signal\'s `.direct()` single-subscriber slot (no Set, no deps array, no tracking-stack push); `renderEffect` is only the fallback for bare callables. Writes the initial value synchronously at bind time (which is why the baked `" "` template placeholder never renders). Each text node gets its own independent binding for fine-grained reactivity.',
       example: `// Compiler output for <div>{count()}</div>:
 _tpl("<div> </div>", (__root) => {
-  const __t0 = __root.firstChild
+  const __t0 = __root.firstChild as Text
   const __d0 = _bindText(count, __t0) // the SIGNAL, not a thunk
   return () => { __d0() }
 })`,

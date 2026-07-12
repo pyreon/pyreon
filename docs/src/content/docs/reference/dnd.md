@@ -24,7 +24,8 @@ Signal-driven drag and drop for Pyreon. A thin wrapper over Atlassian's `pragmat
 A full, end-to-end usage of the package:
 
 ```tsx
-import { signal, For } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { For } from '@pyreon/core'
 import { useDraggable, useDroppable, useSortable } from '@pyreon/dnd'
 
 // Single draggable — element is a GETTER, state is a signal accessor:

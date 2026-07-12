@@ -404,7 +404,7 @@ Project-wide syntactic island audit — five cross-file detectors (`duplicate-na
 import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
 
 const r = auditIslands(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)
+for (const f of r.findings) console.log(f.code, f.location.relPath)
 ```
 
 **See also:** `formatIslandAudit` · `auditTestEnvironment` · `auditSsg`
@@ -445,7 +445,7 @@ Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (
 import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
 
 const r = auditSsg(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)
+for (const f of r.findings) console.log(f.code, f.location.relPath)
 ```
 
 **See also:** `formatSsgAudit` · `auditIslands`

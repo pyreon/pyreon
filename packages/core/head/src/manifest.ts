@@ -20,7 +20,7 @@ export default defineManifest({
     'useHead({ script }) — external scripts default to defer for non-blocking load; ScriptTag carries the full attribute surface (integrity / nomodule / fetchpriority / …)',
   ],
   longExample: `import { useHead, HeadProvider } from '@pyreon/head'
-import { renderWithHead } from '@pyreon/head'
+import { renderWithHead } from '@pyreon/head/ssr'
 import { mount } from '@pyreon/runtime-dom'
 
 // Static head tags from any component
@@ -50,9 +50,12 @@ mount(
   document.getElementById('app')!,
 )
 
-// Server setup — collects every useHead() call and serializes the head
+// Server setup — collects every useHead() call and serializes the head.
+// htmlAttrs / bodyAttrs are Record<string, string> — serialize to attribute strings:
 const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
-const document = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bodyAttrs}>\${html}</body></html>\``,
+const attrs = (r: Record<string, string>) =>
+  Object.entries(r).map(([k, v]) => \` \${k}="\${v}"\`).join('')
+const page = \`<!doctype html><html\${attrs(htmlAttrs)}><head>\${head}</head><body\${attrs(bodyAttrs)}>\${html}</body></html>\``,
   api: [
     {
       name: 'useHead',
@@ -111,16 +114,20 @@ const { html, head } = await renderWithHead(
       name: 'renderWithHead',
       kind: 'function',
       signature:
-        'renderWithHead(app: VNode): Promise<{ html: string; head: string; htmlAttrs: string; bodyAttrs: string }>',
+        'renderWithHead(app: VNode): Promise<{ html: string; head: string; htmlAttrs: Record<string, string>; bodyAttrs: Record<string, string> }>',
       summary:
-        'SSR companion to `HeadProvider`. Renders the app to HTML via `renderToString` while collecting every `useHead()` call from the tree, then serializes the resolved tags into a single `head` string plus separate `htmlAttrs` / `bodyAttrs` strings. Async components that call `useHead()` in their body work — the renderer awaits suspended subtrees before serialization.',
-      example: `import { renderWithHead } from '@pyreon/head'
+        'SSR companion to `HeadProvider`, exported from the `@pyreon/head/ssr` subpath (kept out of the client entry). Renders the app to HTML via `renderToString` while collecting every `useHead()` call from the tree, then serializes the resolved tags into a single `head` string. `htmlAttrs` / `bodyAttrs` are returned as `Record<string, string>` objects (e.g. `{ lang: "en" }`) — serialize them into attribute strings yourself. Async components that call `useHead()` in their body work — the renderer awaits suspended subtrees before serialization.',
+      example: `import { renderWithHead } from '@pyreon/head/ssr'
 
 const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
-const doc = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bodyAttrs}>\${html}</body></html>\``,
+// htmlAttrs / bodyAttrs are Record<string, string> — serialize to attribute strings:
+const attrs = (r: Record<string, string>) =>
+  Object.entries(r).map(([k, v]) => \` \${k}="\${v}"\`).join('')
+const doc = \`<!doctype html><html\${attrs(htmlAttrs)}><head>\${head}</head><body\${attrs(bodyAttrs)}>\${html}</body></html>\``,
       mistakes: [
+        'Importing `renderWithHead` from `@pyreon/head` — it lives in the `@pyreon/head/ssr` subpath so the base entry stays client-safe',
         'Awaiting `renderWithHead` and then NOT splicing `head` into the `<head>` element — every `useHead()` call quietly disappears',
-        'Forgetting to interpolate `htmlAttrs` / `bodyAttrs` (the leading space is included in each string) — `htmlAttrs.lang` and `bodyAttrs.class` set via `useHead` won\\\'t reach the DOM',
+        'Interpolating `htmlAttrs` / `bodyAttrs` directly (`<html${htmlAttrs}>`) — they are `Record<string, string>` objects, not strings; interpolating them renders `[object Object]`. Serialize the entries first',
       ],
       seeAlso: ['useHead', 'HeadProvider'],
     },
@@ -135,7 +142,9 @@ const doc = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bod
 const ctx = createHeadContext()
 provide(HeadContext, ctx)
 // ... render tree that calls useHead() ...
-const { tags, htmlAttrs, bodyAttrs } = ctx.resolve()`,
+const tags = ctx.resolve()                 // HeadTag[]
+const htmlAttrs = ctx.resolveHtmlAttrs()   // Record<string, string>
+const bodyAttrs = ctx.resolveBodyAttrs()   // Record<string, string>`,
       seeAlso: ['HeadProvider', 'renderWithHead'],
     },
     {

@@ -19,34 +19,33 @@ describe('gen-docs — runtime-dom snapshot', () => {
       \`\`\`typescript
       import { mount, hydrateRoot, Transition, TransitionGroup, KeepAlive } from "@pyreon/runtime-dom"
       import { signal } from "@pyreon/reactivity"
-      import { Show, For } from "@pyreon/core"
+      import { Show } from "@pyreon/core"
 
       // Mount — clears container, returns unmount function
       const unmount = mount(<App />, document.getElementById("app")!)
 
-      // Hydrate SSR-rendered HTML (preserves existing DOM)
-      hydrateRoot(<App />, document.getElementById("app")!)
+      // Hydrate SSR-rendered HTML (preserves existing DOM) — container FIRST
+      hydrateRoot(document.getElementById("app")!, <App />)
 
-      // Transition — CSS-based enter/leave animations
+      // Transition — CSS-based enter/leave, visibility driven by the required show accessor
       const visible = signal(true)
       const FadeExample = () => (
-        <Transition name="fade" mode="out-in">
-          <Show when={visible()}>
-            <div>Content</div>
-          </Show>
+        <Transition name="fade" show={() => visible()}>
+          <div>Content</div>
         </Transition>
       )
       // CSS: .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
       //      .fade-enter-from, .fade-leave-to { opacity: 0 }
 
-      // TransitionGroup — animate list items entering/leaving
+      // TransitionGroup — drives the list itself via items / keyFn / render (not <For> children)
       const items = signal([1, 2, 3])
       const ListExample = () => (
-        <TransitionGroup name="list">
-          <For each={items()} by={i => i}>
-            {item => <div>{item}</div>}
-          </For>
-        </TransitionGroup>
+        <TransitionGroup
+          name="list"
+          items={() => items()}
+          keyFn={(i) => i}
+          render={(i) => <div>{i}</div>}
+        />
       )
 
       // KeepAlive — cache component state across mount/unmount cycles

@@ -77,7 +77,8 @@ addMiddleware(list, (call, next) => {
 
 // Singleton hook for app-wide state:
 const useTodoList = TodoList.asHook('todo-list')
-const { store } = useTodoList() // same instance on every call
+const shared = useTodoList() // same ModelInstance on every call
+shared.add('Persisted item')
 ```
 
 ## Exports
@@ -378,7 +379,13 @@ Returns `true` while the instance is live, `false` after `destroy(instance)` (an
 **Example**
 
 ```tsx
-if (isAlive(model)) model.applyServerUpdate(data)
+const counter = model({ state: { count: 0 } })
+  .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }))
+  .create()
+
+// Guard deferred work (a queued callback, a fetch resolution) that
+// might land after the instance was torn down:
+if (isAlive(counter)) counter.inc()
 ```
 
 **See also:** `destroy` · `model`
@@ -412,15 +419,18 @@ draft.title.set('edited')        // does not touch original
 ### getType `function`
 
 ```ts
-(instance: ModelInstance) => ModelDefinition | undefined
+(instance: object) => unknown
 ```
 
-Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed.
+Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed. The static return type is `unknown` (the definition\'s generics are not recoverable at runtime) — cast it to a `ModelDefinition<TState>` to call `.create()`.
 
 **Example**
 
 ```tsx
-const Def = getType(instance)
+import type { ModelDefinition } from '@pyreon/state-tree'
+
+// getType is typed `unknown` — cast to the definition type to instantiate siblings:
+const Def = getType(instance) as ModelDefinition<{ count: number }> | undefined
 const sibling = Def?.create()
 ```
 

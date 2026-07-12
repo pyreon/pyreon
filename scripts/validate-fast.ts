@@ -13,6 +13,7 @@
  *   - check-export-entries  (subpath export has a build entry — release-build guard)
  *   - check-release-readiness (publishConfig.access / fixed-group coverage)
  *   - check-manifest-depth  (LOCKED package density regressed)
+ *   - check-manifest-examples (a manifest api[].example no longer typechecks vs the shipped export)
  *   - check-client-bundle-node-imports (node: import leaked into client entry)
  *   - check-mcp-docs        (MCP tool added without docs/src/content/docs/mcp.md section)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
@@ -60,6 +61,7 @@ const GATES: Gate[] = [
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },
   { name: 'check-release-readiness', cmd: 'bun scripts/check-release-readiness.ts' },
   { name: 'check-manifest-depth', cmd: 'bun scripts/check-manifest-depth.ts' },
+  { name: 'check-manifest-examples', cmd: 'bun scripts/check-manifest-examples.ts' },
   {
     name: 'check-client-bundle-node-imports',
     cmd: 'bun scripts/check-client-bundle-node-imports.ts',
