@@ -832,7 +832,7 @@ toJsonSchema(User)
 
 The mapping: string formats → standard `format` keywords (`email` / `uri` / `uuid` / `date` / `date-time` / `time` / `duration`); `regex` / `startsWith` / `endsWith` / `includes` → `pattern`; `.int()` upgrades to `type: 'integer'`; unions → `anyOf`, intersections → `allOf`, tuples → `prefixItems`; `.strict()` → `additionalProperties: false`, `.catchall(s)` → `additionalProperties: <schema>`; `.optional()` / `.nullish()` / `.default()` fields drop out of `required`; `.describe()` → `description`, `.default()` → `default`.
 
-:::warning The contract, precisely
+:::warning[The contract, precisely]
 The document describes the **input shape** — `.transform()` emits its inner schema, `.pipe()` its source, `s.preprocess()` its target; `.refine()` / `.superRefine()` / `.serverCheck()` are runtime-only predicates and are structurally omitted. Unrepresentable kinds (`s.date()`, `s.bigint()`, `s.map()`, `s.undefined()`, …) **throw** a `[Pyreon]`-prefixed error by default — pass `{ unrepresentable: 'any' }` to emit `{}` in their place. Cyclic `s.lazy()` schemas throw (no `$defs`/`$ref` graph in v1 — documented scope).
 :::
 
