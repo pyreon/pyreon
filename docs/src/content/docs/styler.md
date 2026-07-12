@@ -146,14 +146,15 @@ const styles = css`
 `
 ```
 
-### `CSSResult` Class
+### `CSSResult`
 
-The `CSSResult` class holds the raw template strings and values. It is the type returned by `css`.
+`CSSResult` holds the raw template strings and values — it is the (type-only)
+type returned by `css`. Create one with the `css` tagged template, not `new`:
 
 ```ts
-import { CSSResult } from '@pyreon/styler'
+import { css, type CSSResult } from '@pyreon/styler'
 
-const result = new CSSResult(['color: ', ';'], ['red'])
+const result: CSSResult = css`color: ${'red'};`
 ```
 
 Properties:
@@ -161,18 +162,20 @@ Properties:
 - `strings: TemplateStringsArray | string[]` -- the static template parts
 - `values: Interpolation[]` -- the interpolated values
 
-### `resolveCSS(result, props?)`
+### Resolving a `CSSResult` to a string
 
-Resolves a `CSSResult` into a plain CSS string. Optionally pass a props object to resolve dynamic interpolation functions.
+A `CSSResult` is lazy — call `.toString()` for the static form, or the exported
+`resolve(strings, values, props)` to supply props for function interpolations.
+(To get an injected **class name** instead of a raw string, use `useCSS(result, props)`.)
 
 ```ts
-import { css, resolveCSS } from '@pyreon/styler'
+import { css, resolve } from '@pyreon/styler'
 
 const result = css`
   color: red;
   font-size: 14px;
 `
-const cssString = resolveCSS(result)
+const cssString = result.toString()
 // => "color: red; font-size: 14px;"
 ```
 
@@ -182,7 +185,7 @@ With dynamic props:
 const result = css`
   color: ${(props) => props.color};
 `
-const cssString = resolveCSS(result, { color: 'blue' })
+const cssString = resolve(result.strings, result.values, { color: 'blue' })
 // => "color: blue;"
 ```
 
@@ -311,7 +314,7 @@ const Box = styled('div', {
 
 // 'spacing' is used for styles but not forwarded to the DOM
 <Box spacing={16} id="my-box" />
-// Renders: <div id="my-box" class="ns-...">
+// Renders: <div id="my-box" class="pyr-...">
 ```
 
 Block all prop forwarding:
@@ -333,10 +336,10 @@ Styled components merge user-provided `class` or `className` props with the gene
 const Box = styled('div')`display: flex;`
 
 <Box class="custom-class" />
-// class="ns-abc123 custom-class"
+// class="pyr-abc123 custom-class"
 
 <Box class="react-style" />
-// class="ns-abc123 react-style"
+// class="pyr-abc123 react-style"
 ```
 
 When the CSS is empty, only the user class is applied:
@@ -376,12 +379,12 @@ const WhitespaceOnly = styled('div')``
 // Same — no class generated
 ```
 
-## `styledElements` Proxy
+## `styled.<tag>` Proxy shorthand
 
 A convenience proxy for common HTML tags. Instead of `styled('div')`, write `s.div`:
 
 ```ts
-import { styledElements as s } from '@pyreon/styler'
+import { styled as s } from '@pyreon/styler'
 
 const Title = s.h1`
   font-size: 24px;
@@ -449,7 +452,7 @@ const Spinner = styled('div')`
 `
 ```
 
-The returned string is a unique animation name (e.g., `ns-kf-abc123`) generated from an FNV-1a hash of the keyframes CSS. The `@keyframes` rule is injected into the stylesheet immediately.
+The returned string is a unique animation name (e.g., `pyr-kf-abc123`) generated from an FNV-1a hash of the keyframes CSS. The `@keyframes` rule is injected into the stylesheet immediately.
 
 ### Fade In/Out
 
@@ -534,7 +537,7 @@ The singleton stylesheet manager that handles all CSS injection. You rarely need
 The `StyleSheet` class maintains:
 
 - A **cache** (`Map<string, string>`) that maps CSS strings to generated class names for deduplication
-- A **`<style>` element** (client-side) injected into `document.head` with a `data-nova-styler` attribute
+- A **`<style>` element** (client-side) injected into `document.head` with a `data-pyreon-styler` attribute
 - An **SSR rules buffer** (server-side) that collects rules as strings
 
 The sheet automatically detects whether it is running in a browser or server environment via `typeof document === 'undefined'`.
@@ -547,14 +550,14 @@ Inserts a CSS rule and returns the generated class name. Rules are deduplicated 
 import { sheet } from '@pyreon/styler'
 
 const className = sheet.insert('color: red; font-size: 14px;')
-// => "ns-abc123"
+// => "pyr-abc123"
 
 // Same CSS returns same class (deduplication)
 const same = sheet.insert('color: red; font-size: 14px;')
 // same === className
 ```
 
-The generated class name has the format `ns-&#123;hash&#125;` where the hash is a base-36 FNV-1a hash of the CSS string.
+The generated class name has the format `pyr-&#123;hash&#125;` where the hash is a base-36 FNV-1a hash of the CSS string.
 
 ### Cache Eviction
 
@@ -566,8 +569,8 @@ Inserts a `@keyframes` rule and returns the generated animation name. Used inter
 
 ```ts
 const animName = sheet.insertKeyframes('', 'from { opacity: 0; } to { opacity: 1; }')
-// => "ns-kf-xyz789"
-// Injects: @keyframes ns-kf-xyz789 { from { opacity: 0; } to { opacity: 1; } }
+// => "pyr-kf-xyz789"
+// Injects: @keyframes pyr-kf-xyz789 { from { opacity: 0; } to { opacity: 1; } }
 ```
 
 ### `sheet.insertGlobal(css)`
@@ -596,14 +599,28 @@ statements are dropped with a dev warning — rules fall back to plain source
 order. Apps that must reproduce layer-order inversions in pre-`@layer`
 browsers need a specificity/source-order strategy instead.
 
-### `sheet.getSSRStyles()`
+### `sheet.getStyleTag(nonce?)`
 
-Returns all accumulated rules as a `<style>` tag string for server-side rendering. Returns an empty string if no rules have been inserted.
+Returns all accumulated rules as a `<style>` tag string for server-side rendering. Returns an empty (still-tagged) `<style>` if no rules have been inserted.
 
 ```ts
-const html = sheet.getSSRStyles()
-// => '<style data-nova-styler>.ns-abc123 { color: red; }@keyframes ns-kf-xyz { ... }</style>'
+const html = sheet.getStyleTag()
+// => '<style data-pyreon-styler>.pyr-abc123 { color: red; }@keyframes pyr-kf-xyz { ... }</style>'
 ```
+
+#### CSP nonce (strict `style-src`)
+
+Under a strict Content-Security-Policy (`style-src 'nonce-…'`, no `'unsafe-inline'`), the SSR-inlined critical `<style>` needs a nonce or the browser blocks it on first paint. Pass the per-request nonce — it also lands on the client `<style>` element on mount:
+
+```ts
+const html = sheet.getStyleTag(req.cspNonce)
+// => '<style data-pyreon-styler nonce="…">…</style>'
+
+// or bake a default into an isolated per-request sheet:
+const requestSheet = createSheet({ nonce: req.cspNonce })
+```
+
+(Client-side CSSOM `insertRule` is CSP-exempt regardless, so this only matters for the SSR-inlined `<style>` and the initial client `<style>` element.)
 
 ### `sheet.reset()`
 
@@ -636,8 +653,8 @@ const Button = styled('button')`
 // ... render your component tree ...
 
 // 2. Collect the generated styles
-const styleTag = sheet.getSSRStyles()
-// '<style data-nova-styler>.ns-abc { background: royalblue; color: white; padding: 8px 16px; }</style>'
+const styleTag = sheet.getStyleTag()
+// '<style data-pyreon-styler>.pyr-abc { background: royalblue; color: white; padding: 8px 16px; }</style>'
 
 // 3. Inject into your HTML template
 const html = `
@@ -662,7 +679,7 @@ async function handleRequest(req, res) {
 
   // ... render app ...
 
-  const styles = sheet.getSSRStyles()
+  const styles = sheet.getStyleTag()
   const html = await renderToString(<App />)
 
   res.send(`<html><head>${styles}</head><body>${html}</body></html>`)
@@ -724,7 +741,7 @@ const theme = {
     full: 9999,
   },
   fonts: {
-    body: 'system-ui, -apple-system, sans-serif',
+    body: 'system-ui, -apple-system, sapyr-serif',
     mono: 'ui-monospace, monospace',
   },
 }
@@ -939,7 +956,7 @@ const ResponsiveText = styled('p')`
 ### Button with Variants
 
 ```ts
-import { styled, keyframes, styledElements as s } from '@pyreon/styler'
+import { styled as s, keyframes } from '@pyreon/styler'
 import { h } from '@pyreon/core'
 
 const Button = styled('button')`
@@ -1174,7 +1191,7 @@ Since the sheet deduplicates by CSS content, identical CSS strings always resolv
 
 ## CSS Normalization
 
-All CSS processed by `resolveCSS` goes through a single-pass normalization:
+All CSS processed by `resolve` goes through a single-pass normalization:
 
 - **Block comments** (`/* ... */`) are stripped
 - **Line comments** (`//`) are stripped (but `://` in URLs is preserved)
@@ -1189,13 +1206,14 @@ This ensures consistent hashing regardless of how the template is formatted.
 | Export           | Type     | Description                                                      |
 | ---------------- | -------- | ---------------------------------------------------------------- |
 | `css`            | Function | Tagged template for lazy CSS representation                      |
-| `CSSResult`      | Class    | Lazy CSS result holding template strings and interpolated values |
-| `resolveCSS`     | Function | Resolves a `CSSResult` into a CSS string                         |
+| `CSSResult`      | Type     | Lazy CSS result holding template strings and interpolated values |
+| `resolve`        | Function | Resolves template strings + values (+ props) into a CSS string  |
 | `hash`           | Function | FNV-1a hash producing base-36 class name suffixes                |
 | `keyframes`      | Function | Define `@keyframes` and return the animation name                |
+| `createGlobalStyle` | Function | Inject global (unscoped) CSS via a mounted component          |
 | `sheet`          | Object   | Singleton `StyleSheet` instance for CSS injection                |
-| `styled`         | Function | Create a styled component from an HTML tag                       |
-| `styledElements` | Proxy    | Shorthand for `styled('div')`, `styled('span')`, etc.            |
+| `createSheet`    | Function | Isolated `StyleSheet` (per-request SSR, shadow DOM, CSP nonce)   |
+| `styled`         | Function | Create a styled component; `styled.div` etc. via Proxy shorthand |
 | `ThemeContext`   | Context  | Pyreon context for theme distribution                            |
 | `useTheme`       | Function | Access the current theme value                                   |
 

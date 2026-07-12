@@ -230,6 +230,35 @@ function extractServer(output: string, results: Record<string, BenchMetric>): vo
   }
 }
 
+/** Parse a `375.0K` / `36.39M` / `3.9K` ops value into a plain number. */
+function parseOpsValue(raw: string): number {
+  const m = raw.match(/^([\d.]+)([KM]?)$/)
+  if (!m) return NaN
+  const n = Number(m[1])
+  if (Number.isNaN(n)) return NaN
+  return m[2] === 'M' ? n * 1_000_000 : m[2] === 'K' ? n * 1_000 : n
+}
+
+function extractStyler(output: string, results: Record<string, BenchMetric>): void {
+  // The styler CSS-in-JS engine bench prints one `report()` block per operation
+  // with a title line, then per-library rows. Extract the Pyreon row's ops/sec.
+  const lines = output.split('\n')
+  let section = ''
+  for (const line of lines) {
+    const t = line.trim()
+    if (t.startsWith('Cold insert')) section = 'cold-insert'
+    else if (t.startsWith('Warm dedup')) section = 'warm-dedup'
+    else if (t.startsWith('Dynamic resolve')) section = 'dynamic-resolve'
+    else if (t.startsWith('SSR collect')) section = 'ssr-collect'
+    if (!section) continue
+    const row = line.match(/^\s*@pyreon\/styler\s+([\d.]+[KM]?)\s+ops\/s/)
+    if (!row) continue
+    const ops = parseOpsValue(row[1]!)
+    if (Number.isNaN(ops)) continue
+    results[`styler/${section}`] = { mean: ops, unit: 'ops/s' }
+  }
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 const results: Record<string, BenchMetric> = {}
@@ -245,6 +274,7 @@ const benchmarks = [
   },
   { script: 'scripts/bench/core/head.ts', extractor: extractHead, name: 'head' },
   { script: 'scripts/bench/core/server.ts', extractor: extractServer, name: 'server' },
+  { script: 'scripts/bench/core/styler.ts', extractor: extractStyler, name: 'styler' },
 ]
 
 for (const { script, extractor, name } of benchmarks) {

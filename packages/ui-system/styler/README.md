@@ -175,6 +175,26 @@ const styleTags = requestSheet.getStyleTag()
 requestSheet.reset()
 ```
 
+#### CSP nonce (strict `style-src`)
+
+Under a strict CSP (`style-src 'nonce-…'`, no `'unsafe-inline'`), the
+SSR-inlined critical `<style>` needs a nonce or the browser blocks it on first
+paint. Pass the per-request nonce to `getStyleTag(nonce)` — or set a default via
+`createSheet({ nonce })`:
+
+```ts
+// per-request nonce (recommended — nonces rotate per response)
+const tag = sheet.getStyleTag(res.locals.cspNonce)
+// → <style data-pyreon-styler="" nonce="…">…</style>
+
+// or a default nonce baked into an isolated sheet:
+const requestSheet = createSheet({ nonce: res.locals.cspNonce })
+```
+
+The nonce also lands on the client `<style>` element created on mount. (Client
+CSSOM `insertRule` mutations are CSP-exempt regardless — this covers only the
+two inline-`<style>` surfaces.)
+
 #### `@layer` support
 
 ```ts
@@ -250,16 +270,37 @@ const Card = styled('div')`
 | styled-components       |     44.93 KB |    17.89 KB |
 | @emotion/react + styled |     48.26 KB |    16.59 KB |
 
-### Performance (ops/sec, higher is better)
+### Performance — CSS-in-JS engine hot paths (ops/sec, higher is better)
 
-| Benchmark                 |    styler | styled-components | @emotion | goober |
-| ------------------------- | --------: | ----------------: | -------: | -----: |
-| css() creation            | **25.2M** |              9.0M |     2.2M |    26K |
-| css() with interpolations | **24.9M** |              5.6M |     2.3M |    28K |
-| Template resolution       | **21.4M** |              3.9M |        — |      — |
-| Nested composition        |  **8.3M** |              2.2M |     1.4M |     8K |
-| SSR renderToString        |  **307K** |               69K |     192K |    18K |
-| styled() factory          | **17.3M** |              109K |     933K |  18.2M |
+Reproducible cross-library micro-bench of the string-generation pipeline
+(serialize → hash → dedup → SSR-collect), median of 30 windows + 95 % bootstrap
+CI, `NODE_ENV=production`, correctness-gated. Reproduce:
+`bun scripts/bench/core/styler.ts`.
+
+| Operation                                     | **@pyreon/styler** |  @emotion/css |        goober | styled-components\* |
+| --------------------------------------------- | -----------------: | ------------: | ------------: | ------------------: |
+| Cold insert (100 unique rules / fresh sheet)  |         **~390 K** | ~185 K (2.1×) | ~164 K (2.4×) |                   — |
+| Warm dedup (repeat identical CSS — cache hit) |         **~35 M**  | ~4.9 M (7.1×) | ~6.9 M (5.1×) |                   — |
+| Dynamic resolve (fn/prop interpolation)       |         **~1.9 M** | ~360 K (5.3×) | ~890 K (2.2×) |                   — |
+| SSR collect (100 rules → `<style>` string)    |         **~4.1 K** | ~1.8 K (2.3×) | ~1.6 K (2.5×) |       ~2.6 K (1.6×) |
+
+(`N.N×` = how much slower than styler. Apple M3 Max / Bun-JSC; ratios are the
+portable signal, absolute ops/s are machine-dependent.)
+
+styler leads every operation: FNV-1a hashing + a raw-string `insertCache`
+short-circuits warm re-renders (no re-serialize), and rule injection is **O(1)**
+per rule (Map + buffer) so SSR critical-CSS collection stays flat as pages grow —
+goober's string-append is O(n) and edges styler only on tiny pages (≲50 rules),
+falling furthest behind at page scale.
+
+\* **styled-components** appears in the SSR row only (via `ServerStyleSheet`) and
+its number **includes a React `renderToStaticMarkup` pass** — it is a
+component-model library, not a bare engine, so a per-call engine row would time
+React, not the CSS work. **vanilla-extract** is intentionally absent: it is a
+**zero-runtime, build-time** extractor (`.css.ts` → static stylesheet), a
+different paradigm with no runtime resolve/insert to time. Author-judge
+disclosed; this is a Node/JSC micro-bench (real-DOM `insertRule` cost is
+browser-uniform and engine-dominated).
 
 ## Gotchas
 
