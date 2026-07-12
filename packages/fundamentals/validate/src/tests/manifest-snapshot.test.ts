@@ -1,4 +1,4 @@
-import { renderLlmsTxtLine } from '@pyreon/manifest'
+import { renderApiReferenceEntries, renderLlmsTxtLine } from '@pyreon/manifest'
 import { describe, expect, it } from 'vitest'
 import manifest from '../manifest'
 
@@ -18,8 +18,8 @@ describe('gen-docs — validate snapshot', () => {
     )
   })
 
-  it('has all 25 v1 API entries', () => {
-    expect(manifest.api).toHaveLength(25)
+  it('has all 26 v1 API entries', () => {
+    expect(manifest.api).toHaveLength(26)
     const names = manifest.api.map((a) => a.name)
     expect(names).toEqual([
       'withField',
@@ -31,6 +31,7 @@ describe('gen-docs — validate snapshot', () => {
       'formatError',
       'formatErrors',
       'formatErrorsByPath',
+      'toJsonSchema',
       'serverCheck',
       'registerServerCheck',
       'catch',
@@ -55,5 +56,18 @@ describe('gen-docs — validate snapshot', () => {
       expect(entry.summary, `${entry.name} missing summary`).toBeTruthy()
       expect(entry.example, `${entry.name} missing example`).toBeTruthy()
     }
+  })
+
+  it('renders the MCP api-reference region (spot-checked, not full-body — MCP prose rots inline snapshots)', () => {
+    const rendered = renderApiReferenceEntries(manifest)
+    // one entry per api[] item, keyed validate/<name>
+    expect(Object.keys(rendered)).toHaveLength(manifest.api.length)
+    for (const key of Object.keys(rendered)) expect(key).toMatch(/^validate\//)
+    expect(rendered['validate/toJsonSchema']).toBeDefined()
+    expect(rendered['validate/withField']).toBeDefined()
+    expect(rendered['validate/serverCheck']).toBeDefined()
+    // notes carry the summary; the mistakes catalog renders on `mistakes`
+    expect(rendered['validate/toJsonSchema']!.notes).toContain('draft 2020-12')
+    expect(rendered['validate/toJsonSchema']!.mistakes).toContain('unrepresentable')
   })
 })

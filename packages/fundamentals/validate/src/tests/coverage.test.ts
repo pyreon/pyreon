@@ -207,9 +207,12 @@ describe('array — error + length branches', () => {
     }
   })
 
-  it('async element schema in sync parse pushes the actionable issue', async () => {
-    // An async refine forces the element's compiled validator to
-    // return a Promise — array's sync iteration MUST flag this.
+  it('async element schema: sync parse reports the canonical async-in-sync issue; parseAsync works', async () => {
+    // An async refine makes the element's compiled validator return a
+    // Promise — the array defers it (slot-reserved) and the whole parse
+    // resolves async. A sync `parse()` therefore reports the ONE canonical
+    // root-level issue (interpreter ≡ JIT — the old JIT-only element-level
+    // hard issue was a backend divergence, fixed with the async-aware glue).
     const asyncElement = s.string().refine(async (v) => v.length > 0, {
       message: 'must be non-empty (async)',
     })
@@ -217,18 +220,20 @@ describe('array — error + length branches', () => {
     const r = schema.parse(['a'])
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      expect(r.issues.some((i) => i.message.includes('async element schema'))).toBe(true)
+      expect(r.issues.some((i) => i.message.includes('use parseAsync'))).toBe(true)
     }
-    // Sanity: the async element itself works through parseAsync directly.
-    const asyncResult = await asyncElement.parseAsync('a')
-    expect(asyncResult.ok).toBe(true)
+    // The SAME schema works through parseAsync — element validated + kept.
+    const asyncResult = await schema.parseAsync(['a'])
+    expect(asyncResult).toEqual({ ok: true, value: ['a'] })
+    const asyncBad = await schema.parseAsync([''])
+    expect(asyncBad.ok).toBe(false)
   })
 })
 
 // ─── Object — async-field branch + optional/key-presence merge ────────
 
 describe('object — async-field branch + optional/key-presence', () => {
-  it('async field in sync parse pushes the actionable issue', () => {
+  it('async field: sync parse reports the canonical async-in-sync issue; parseAsync works', async () => {
     const asyncField = s.string().refine(async (v) => v.length > 0, {
       message: 'must be non-empty (async)',
     })
@@ -236,8 +241,14 @@ describe('object — async-field branch + optional/key-presence', () => {
     const r = schema.parse({ name: 'a' })
     expect(r.ok).toBe(false)
     if (!r.ok) {
-      expect(r.issues.some((i) => i.message.includes('async schema used in sync parse'))).toBe(true)
+      expect(r.issues.some((i) => i.message.includes('use parseAsync'))).toBe(true)
     }
+    // The SAME (JIT'd) schema works through parseAsync — the async field is
+    // deferred + patched onto the output when it settles.
+    const asyncResult = await schema.parseAsync({ name: 'a' })
+    expect(asyncResult).toEqual({ ok: true, value: { name: 'a' } })
+    const asyncBad = await schema.parseAsync({ name: '' })
+    expect(asyncBad.ok).toBe(false)
   })
 
   it('optional field omitted is NOT copied into the result object', () => {

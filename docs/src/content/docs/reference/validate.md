@@ -7,7 +7,7 @@ description: "Pyreon's own validation library — chainable + function-comp hybr
 
 > **Generated** from `validate`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [validate](/docs/validate).
 
-Pyreon-owned validator library implementing Standard Schema (https://standardschema.dev) natively. Hybrid API: chainable methods (`s.string().email().min(3)`) AND function composition (`pipe(string(), email(), min(3))`) — same schemas, different ergonomic surface. The chainable path doesn't pay class-overhead per parse: each schema's ops compile to a single closure on first call. Includes built-in DX helpers (`withField` / `parseReactive` / `formatErrors`) that ALSO work on top of any other Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+) — backward-compatible with existing schema code. v1 surface: string/number/boolean/bigint/date/literal/enum/symbol/null/undefined/void/any/unknown primitives + object/array/tuple/record/union/discriminatedUnion/intersection/map/set/lazy composition + optional/nullable/nullish/default/transform/refine/brand/describe modifiers + coercion + 20+ built-in checks. Object algebra: .pick / .omit / .partial / .required / .extend / .merge / .keyof + unknown-key policy (.strip / .strict / .passthrough / .catchall). Performance (bench&#58;validation vs Zod 4 / Valibot 1 / ArkType 2 — per-cell process-isolated with 3 processes pooled, cross-library correctness gate, seeded bootstrap CI95 with tie detection; author-written-and-judged, disclosed in the bench header): FASTEST on the error/invalid path across every shape (31–53× vs Zod, 15–64× vs ArkType, 1.2–4.6× vs Valibot — early-exit vs rich error allocation, with verified error-information parity vs Zod); valid-parse is at par or ahead of ArkType on the array shapes (~1.1× ahead pooled, inside run-to-run drift), statistically TIED on number-range + deep-nested, and behind only ArkType's full type-level AOT on scalar-string + flat-object (~1.6× — largely the RFC-precise email regex + ArkType's codegen; nanosecond-scale), ahead of Zod + Valibot on every shape. The JIT (`core/jit.ts`) SHIPS and auto-applies on first `.parse()`: it recursively flattens pure object/array/primitive shapes to one monomorphic `new Function`, falling back to the interpreter per-subtree for anything it can't inline (union/record/tuple/coerce/transform/optional/…). Both paths are byte-identical, locked by a JIT↔interpreter differential fuzz (incl. the partial-inline seam).
+Pyreon-owned validator library implementing Standard Schema (https://standardschema.dev) natively. Hybrid API: chainable methods (`s.string().email().min(3)`) AND function composition (`pipe(string(), email(), min(3))`) — same schemas, different ergonomic surface. The chainable path doesn't pay class-overhead per parse: each schema's ops compile to a single closure on first call. Includes built-in DX helpers (`withField` / `parseReactive` / `formatErrors`) that ALSO work on top of any other Standard Schema validator (Zod 3.24+, Valibot 1.0+, ArkType 2.0+) — backward-compatible with existing schema code. v1 surface: string/number/boolean/bigint/date/literal/enum/symbol/null/undefined/void/any/unknown primitives + object/array/tuple/record/union/discriminatedUnion/intersection/map/set/lazy composition + optional/nullable/nullish/default/transform/refine/brand/describe modifiers + coercion + 20+ built-in checks. Object algebra: .pick / .omit / .partial / .required / .extend / .merge / .keyof + unknown-key policy (.strip / .strict / .passthrough / .catchall). Performance (bench&#58;validation vs Zod 4 / Valibot 1 / ArkType 2 — per-cell process-isolated with 3 processes pooled, cross-library correctness gate, seeded bootstrap CI95 with tie detection; author-written-and-judged, disclosed in the bench header): FASTEST on the error/invalid path across every shape (33–44× vs Zod, 20–53× vs ArkType, 1.4–3.6× vs Valibot — early-exit vs rich error allocation, with verified error-information parity vs Zod); valid-parse WINS the array shapes outright (1.9–2.3× vs ArkType), is statistically TIED 🤝 on scalar-email + number-range + deep-nested, and trails only on flat-object (~1.2× — ArkType returns the INPUT by reference while Pyreon returns an immutable stripped clone; a semantic choice, not a codegen gap), ahead of Zod + Valibot on every shape. The JIT (`core/jit.ts`) SHIPS and auto-applies on first `.parse()`: it recursively flattens pure object/array/primitive shapes to one monomorphic `new Function` with static-path elision (ctx.path untouched on the valid path; full issue paths reconstructed only at failure sites) and async-aware fallback deferral (async `.refine`/`.transform`/`.serverCheck` subtrees park on a pending list the root return awaits), falling back to the interpreter per-subtree for anything it can't inline (union/record/tuple/coerce/…). Both paths are byte-identical, locked by THREE JIT↔interpreter differential fuzz suites (sync inline kinds, the partial-inline seam, async trees). The hot email 'standard' tier runs a table-driven charcode scanner (~1.6× the Zod-parity regex, exhaustive+fuzz equivalence-locked).
 
 ## Features
 
@@ -98,6 +98,7 @@ const $sameResult = parseReactive(sameSchema, $email)
 | [`formatError`](#formaterror) | function | Resolve a single issue to a human-readable string. |
 | [`formatErrors`](#formaterrors) | function | Resolve an array of issues to strings via the same per-issue logic as formatError. |
 | [`formatErrorsByPath`](#formaterrorsbypath) | function | Build a per-field error map keyed by the issue's path joined with `.`. |
+| [`toJsonSchema`](#tojsonschema) | function | Emit a JSON Schema (draft 2020-12) document from an `s` schema — for OpenAPI specs, AI structured-output constraints, ed |
 | [`serverCheck`](#servercheck) | function | Declare a server-only validation step on a shared schema — the async/privileged tier of the client/server split (unique- |
 | [`registerServerCheck`](#registerservercheck) | function | Register the heavy/privileged half of a `.serverCheck(key)` — the implementation that must NEVER reach the client bundle |
 | [`catch`](#catch) | function | On parse FAILURE, discard the issues this schema produced and return a fallback instead of erroring — resilient parsing  |
@@ -232,7 +233,7 @@ $email.set('foo@bar.com')  // $result re-derives
 ) => Computed<Promise<ParseResult>>
 ```
 
-Async variant of parseReactive. The outer Computed re-evaluates synchronously on source change; the inner Promise resolves once the validator finishes. Rapid source changes produce overlapping in-flight promises — the caller is responsible for handling staleness (a `watch()` over the Computed naturally drops stale frames).
+Async variant of parseReactive. The outer Computed re-evaluates synchronously on source change; the inner Promise resolves once the validator finishes. Stale results are superseded automatically — each re-run bumps an internal version, and a validation that finishes after a newer one started resolves to the NEWEST run's result, so an awaited stale frame can never deliver a stale verdict.
 
 **Example**
 
@@ -332,6 +333,37 @@ const errorMap = formatErrorsByPath(result.issues ?? [], t)
 ```
 
 **See also:** `formatErrors`
+
+---
+
+### toJsonSchema `function`
+
+```ts
+(schema: Schema<unknown>, options?: { unrepresentable?: 'throw' | 'any' }) => JsonSchema
+```
+
+Emit a JSON Schema (draft 2020-12) document from an `s` schema — for OpenAPI specs, AI structured-output constraints, editor autocomplete, cross-language contracts. Ships on the `@pyreon/validate/json-schema` SUBPATH so the main entry stays lean. The document describes the INPUT shape: `.transform()` emits its inner schema, `.pipe()` its source, `s.preprocess()` its target; `.refine()`/`.superRefine()`/`.serverCheck()` are runtime-only predicates and are structurally omitted. Formats map to standard `format` keywords (email/uri/uuid/date/date-time/time/duration); `regex`/`startsWith`/`endsWith`/`includes` map to `pattern`; `.int()` upgrades to `type: 'integer'`; `.strict()` → `additionalProperties: false`, `.catchall(s)` → `additionalProperties: <schema>`; `.optional()`/`.nullish()`/`.default()` fields are omitted from `required`.
+
+**Example**
+
+```tsx
+import { toJsonSchema } from '@pyreon/validate/json-schema'
+
+toJsonSchema(s.object({ name: s.string().min(2), age: s.number().int().optional() }))
+// → { $schema: 'https://json-schema.org/draft/2020-12/schema',
+//     type: 'object',
+//     properties: { name: { type: 'string', minLength: 2 }, age: { type: 'integer' } },
+//     required: ['name'] }
+```
+
+**Common mistakes**
+
+- Expecting Date/BigInt/Map/Symbol/undefined kinds to emit — JSON Schema cannot express them; the emitter THROWS a [Pyreon]-prefixed error naming the kind. Pass &#123; unrepresentable: 'any' &#125; to emit &#123;&#125; (accept-anything) in their place instead.
+- Expecting the post-transform OUTPUT shape — the document describes the INPUT the schema accepts (a `.transform()` result type is a runtime concern JSON Schema can't express).
+- Feeding a cyclic s.lazy() schema — recursive $ref/$defs graph emission is not supported in v1; the emitter throws with guidance. Flatten the recursion or write the recursive document by hand.
+- Importing from the main entry — `toJsonSchema` is deliberately on the `@pyreon/validate/json-schema` subpath so validators-only bundles never carry the emitter.
+
+**See also:** `object` · `union`
 
 ---
 
@@ -658,6 +690,6 @@ s.nativeEnum(Role).parse('admin') // → { ok: true, value: 'admin' }
 
 > **Ships its own validator AND interops with others:** v1 ships Pyreon's own `s` validator runtime (chainable + function-comp, Standard Schema-native, opt-in by import). The DX helpers (`withField` / `parseReactive` / `formatErrors`) ALSO work on top of any other Standard Schema validator (Zod / Valibot / ArkType / typia) — backward-compatible. Use whichever; mix freely.
 
-> **serverCheck is client-no-op, server-async:** `.serverCheck(key)` only runs where its validator is installed. On the client it ALWAYS passes (recorded on `Result.pending`) — the SERVER is the authoritative re-validation; never treat a client `ok: true` with `pending` as fully verified. A registered ASYNC check promotes the parse to a Promise, so `parse()` returns a parseAsync-directing issue — use `parseAsync(input, { context })` server-side. A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
+> **serverCheck is client-no-op, server-async:** `.serverCheck(key)` only runs where its validator is installed. On the client it ALWAYS passes (recorded on `Result.pending`) — the SERVER is the authoritative re-validation; never treat a client `ok: true` with `pending` as fully verified. A registered ASYNC check promotes the parse to a Promise, so `parse()` returns a parseAsync-directing issue — use `parseAsync(input, { context })` server-side. serverCheck fields JIT-compile like everything else (the JIT defers async-resolving subtrees onto a pending list its root return awaits) — no perf cliff.
 
-> **Compiler-emit is a follow-up:** A future PR adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators per schema at build time. v1 ships at the underlying lib's speed (Valibot/ArkType are already 3-5× faster than Zod; the compiler PR closes the gap for Zod schemas too).
+> **Three shipped performance layers — runtime JIT + two build flags:** The runtime JIT (`core/jit.ts`) auto-applies on first `.parse()` and is differential-fuzz-locked against the interpreter (incl. async trees + the partial-inline seam). On top: `pyreon({ optimizeValidators: true })` rewrites module-level `s.` chains to the tree-shakeable `/mini` form (~−41% measured), and `pyreon({ compileValidators: true })` attaches build-emitted monomorphic `.is()` verdicts (1.6–3× on hot verdict loops — nanoseconds; only matters in tight `.is()` loops, `.parse()` is unchanged). Both build flags recognize statically-analyzable chains only (a dynamically-built or out-of-emit-scope chain — e.g. `.cuid2()`, unions — gracefully stays full-runtime).

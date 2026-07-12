@@ -23,10 +23,13 @@
  * verdict (zero issues ⟺ valid) is equivalence-tested against the real runtime
  * `s` schema in `tests/validate-emit.test.ts`.
  *
- * Wiring the emit into `@pyreon/vite-plugin` (replace the runtime schema
- * construction at a call site with the specialized validator) is a follow-up —
- * this module is the pure, independently-testable foundation, exactly as
- * `analyzeReactivity` shipped before its LSP consumer.
+ * Both `@pyreon/vite-plugin` consumers are SHIPPED: `optimizeValidators`
+ * (rewrites module-level `s.` chains to the tree-shakeable `/mini` form via
+ * `emitSchemaSource`) and `compileValidators` (attaches emitted monomorphic
+ * `.is()` verdicts via `emitValidator`). A chain using a check OUTSIDE this
+ * slice's scope (e.g. `.cuid2()`, unions, records) analyzes as
+ * non-`emittable` and gracefully keeps the full runtime — correctness never
+ * depends on the emit; widening the slice widens the optimization coverage.
  *
  * @module
  */

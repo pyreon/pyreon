@@ -60,11 +60,12 @@ const stop = watchValid(emailSchema, $email, (valid) => {
 | `getMeta(schema)` | Read attached metadata back. Returns `undefined` for unwrapped schemas. |
 | `resolveMetaField(schema, field, t?)` | Read a field through optional i18n. `t('auth.email.label')` wins over `meta.label` when it resolves. |
 | `parseReactive(schema, source)` | `Computed<ParseResult>` that re-derives on signal changes. Synchronous. |
-| `parseReactiveAsync(schema, source)` | Async variant for schemas with async refinements. |
+| `parseReactiveAsync(schema, source)` | Async variant for schemas with async refinements. Stale results are superseded automatically — an awaited stale frame resolves to the LATEST run's result, so rapid source changes can never deliver a stale verdict. |
 | `watchValid(schema, source, cb)` | Fire `cb(valid)` only on validity transitions, not every error change. |
 | `formatError(issue, t?)` | Resolve a single issue's text. `issue.key + t` wins; falls back to `fallback` then `message`. |
 | `formatErrors(issues, t?)` | Array variant. |
 | `formatErrorsByPath(issues, t?, options?)` | Build a per-field error map keyed by the issue's path. Compatible with `@pyreon/form`'s `Errors` shape. |
+| `toJsonSchema(schema, opts?)` | Emit a JSON Schema (draft 2020-12) document from an `s` schema — from the `@pyreon/validate/json-schema` subpath so the main entry stays lean. Unrepresentable kinds (`date`/`bigint`/`map`/…) throw by default, or emit `{}` with `{ unrepresentable: 'any' }`. |
 
 ## Client / server validation
 
@@ -106,11 +107,13 @@ Notes:
 - The **server is authoritative** — never treat a client `ok: true` with `pending` entries as fully verified.
 - An async registered check promotes the parse to a Promise, so `parse()` returns a parseAsync-directing issue — use `parseAsync(input, { context })` server-side.
 - Object fields and array elements are validated async-aware, so the issue `path` is correct even though an async check resolves after the path unwinds.
-- A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
+- `serverCheck` fields JIT-compile like everything else — the JIT defers an async-resolving subtree onto a pending list its root return awaits (locked by the JIT ↔ interpreter async differential fuzz), so there is no perf cliff for schemas that carry server checks.
 
 ### String format checks (`s.string()`)
 
-`email` · `url` · `uuid` · `ip` · `phone` · `creditCard` · `cuid2` · `ulid` · `nanoid` · `emoji` · `base64` · `jwt` · `.iso.date()` / `.iso.dateTime()` / `.iso.time()`.
+`email` (3 precision tiers) · `url` · `uuid` · `ip` · `cidr` · `phone` · `e164` · `creditCard` · `cuid` · `cuid2` · `ulid` · `nanoid` · `emoji` · `base64` · `base64url` · `jwt` · `duration` · `.iso.date()` / `.iso.dateTime()` / `.iso.time()` — plus `regex` / `startsWith` / `endsWith` / `includes`.
+
+The hot `email()` 'standard' tier runs a table-driven charcode scanner (~1.6× the Zod-parity regex, byte-identical verdict — locked by an exhaustive + fuzz differential against the published `EMAIL_RE`).
 
 Every format routes through the client/server registry seam — a server can swap in a stricter validator for any of them in place via `installFormatValidator(name, fn)` (the same mechanism `@pyreon/validate/server` uses to upgrade `email`/`phone`), without touching the shared schema.
 
@@ -170,6 +173,30 @@ import { object, string, minLength, email, pipe } from '@pyreon/validate/mini'
 const Login = object({ name: string().check(minLength(2)), email: string().check(email()) })
 ```
 
+## JSON Schema emit
+
+`toJsonSchema(schema)` (from the **`@pyreon/validate/json-schema`** subpath) walks the introspectable schema graph and emits a JSON Schema **draft 2020-12** document — for OpenAPI specs, AI structured-output constraints, editor autocomplete, cross-language contracts.
+
+```ts
+import { s } from '@pyreon/validate'
+import { toJsonSchema } from '@pyreon/validate/json-schema'
+
+const User = s.object({
+  name: s.string().min(2),
+  email: s.string().email(),
+  age: s.number().int().min(0).optional(),
+})
+toJsonSchema(User)
+// → { $schema: 'https://json-schema.org/draft/2020-12/schema',
+//     type: 'object',
+//     properties: { name: { type: 'string', minLength: 2 },
+//                   email: { type: 'string', format: 'email' },
+//                   age: { type: 'integer', minimum: 0 } },
+//     required: ['name', 'email'] }
+```
+
+The contract, precisely: the document describes the **input shape** (`.transform()` emits its inner schema, `.pipe()` its source, `s.preprocess()` its target); `.refine()`/`.superRefine()`/`.serverCheck()` are runtime-only predicates and are structurally omitted; unrepresentable kinds (`s.date()`, `s.bigint()`, `s.map()`, `s.undefined()`, …) **throw** by default — pass `{ unrepresentable: 'any' }` to emit `{}` in their place (Zod 4's policy split). Cyclic `s.lazy()` schemas throw (no `$defs`/`$ref` graph in v1 — documented scope).
+
 ## Why mutate-in-place?
 
 `withField()` mutates the original schema with a Symbol-keyed non-enumerable property. It does NOT clone.
@@ -186,7 +213,7 @@ ArkType's `Type` instances are callable functions whose `~standard.validate` doe
 ## What this is NOT
 
 - **Lock-in.** The DX helpers work on top of any Standard Schema validator (Zod / Valibot / ArkType / typia) — use Pyreon's own `s` runtime or bring your own; mix freely. Existing `zodSchema` / `valibotSchema` / `arktypeSchema` adapters from `@pyreon/validation` continue to work.
-- **A typia-class JIT (yet).** v1's `s` runtime is the error-path leader and runner-up on valid-parse (bench: `bun bench:validate`). A follow-up PR adds `@pyreon/compiler:analyzeValidate()` for compile-time specialized validators (works against any Standard Schema validator).
+- **Slow-by-architecture.** The `s` runtime JIT-compiles pure object/array/primitive trees to a single flat validator on first parse (`core/jit.ts`, differential-fuzz-locked against the interpreter — including async trees) — it wins or ties every benchmark row except flat-object valid-parse, where ArkType's alias-the-input design is ~1.2× ahead of Pyreon's immutable stripped-clone output (a deliberate semantic, not a gap; see the bench header). On top of that, two BUILD-time levers ship in `@pyreon/vite-plugin`: `optimizeValidators` (tree-shaking rewrite, above) and `compileValidators` (build-emitted monomorphic `.is()` verdicts — 1.6–3× on hot verdict loops; `@pyreon/compiler:analyzeValidate` recognizes statically-analyzable `s.` chains only, so dynamically-built schemas gracefully stay full-runtime).
 
 ## See also
 

@@ -11,16 +11,21 @@
  *     enum / symbol / nan / null / undefined / void / any / unknown
  *   - composition: object / array / union / discriminatedUnion / record /
  *     tuple / map / set / intersection / lazy (recursive)
- *   - object algebra: .pick / .omit / .partial / .extend / .merge / .keyof
- *     + unknown-key policy (.strip / .strict / .passthrough)
+ *   - object algebra: .pick / .omit / .partial / .required / .extend /
+ *     .merge / .keyof + unknown-key policy (.strip / .strict /
+ *     .passthrough / .catchall)
  *   - modifiers: optional / nullable / nullish / default / transform /
- *     refine / brand / describe / field
+ *     refine / brand / describe / field / catch / readonly
  *   - coercion: s.coerce.{string,number,boolean,date,bigint}
  *   - email precision tiers (html5 / standard / rfc5322)
  *
- * Still open (tracked follow-ups): `.required` / `.catchall`, and
- * compiler-emit for typia-class wall-clock (the JIT path needed to beat
- * ArkType on valid-parse).
+ * Performance layers (all shipped): the runtime JIT (`core/jit.ts` — pure
+ * object/array/primitive trees compile to one flat validator on first
+ * parse, async-aware, differential-fuzz-locked), plus the build-time
+ * `optimizeValidators` (tree-shaking rewrite to `/mini`) and
+ * `compileValidators` (emitted monomorphic `.is()` verdicts) in
+ * `@pyreon/vite-plugin`. JSON Schema emission ships as
+ * `@pyreon/validate/json-schema`.
  */
 
 import { array, ArraySchema } from './composition/array'

@@ -24,8 +24,9 @@ export interface StringBoolOptions {
 
 export class StringBoolSchema extends SchemaBase<boolean> {
   readonly _kind = 'stringbool' as const
-  private readonly truthy: ReadonlySet<string>
-  private readonly falsy: ReadonlySet<string>
+  /** Exposed for structural walkers (`toJsonSchema`). */
+  readonly truthy: ReadonlySet<string>
+  readonly falsy: ReadonlySet<string>
   private readonly message: string
 
   constructor(opts?: StringBoolOptions) {

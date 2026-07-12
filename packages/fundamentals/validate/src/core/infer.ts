@@ -26,20 +26,23 @@ export type Infer<S> = S extends Schema<infer T> ? T : never
 export type Output<S> = Infer<S>
 
 /**
- * The INPUT type of a schema (pre-transform). For most schemas this
- * equals `Output<S>`; for `.transform()` schemas it's the type before
- * transformation.
- *
- * v1 limitation: we don't track input vs output types separately at
- * the Schema<T> base level — both are `T`. A schema's input is its
- * inferred output type. This will be tightened in a follow-up PR via
- * a `Schema<TInput, TOutput>` shape if needed.
+ * The INPUT type of a schema. DELIBERATE v1 SCOPE: the runtime is
+ * single-generic (`Schema<T>` — `T` is the OUTPUT type), so `Input<S>`
+ * resolves to the same type as {@link Output} — including for
+ * `.transform()` schemas, where the true pre-transform input differs.
+ * Threading a second generic (`Schema<TIn, TOut>`) through every
+ * primitive / composition / modifier / the JIT was weighed and rejected
+ * for v1: it doubles the public type surface for one alias that only
+ * diverges under `.transform()`, and `TransformSchema` keeps the real
+ * input type internally if that trade-off is ever revisited. Until then,
+ * treat `Input<S>` as "the type `parse()` returns", NOT "the raw wire
+ * type a transform accepts".
  *
  * @example
  * ```ts
- * const s = s.string().transform(s => s.length)
- * type In = Input<typeof s>   // string (today: number, since v1 doesn't track input)
- * type Out = Output<typeof s> // number
+ * const len = s.string().transform(v => v.length)
+ * type In = Input<typeof len>   // number — NOT string (see scope note)
+ * type Out = Output<typeof len> // number
  * ```
  */
 export type Input<S> = Infer<S>

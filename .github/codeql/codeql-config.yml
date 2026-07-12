@@ -47,3 +47,17 @@ paths-ignore:
   # are false positives for a build-time emitter; correctness is locked by the
   # transform's 16-spec suite incl. a pipeline-validity check.
   - '**/compiler/src/client-directives.ts'
+  # The validate runtime JIT — the reference pattern the compiled-verdicts.ts
+  # comment above already cites. `tryCompileJit` emits a specialized validator
+  # via `new Function` from the DEVELOPER'S schema definition (never untrusted
+  # runtime input), and every value reaching the generated source is sanitized
+  # by construction: runtime values (regex/refine/serverCheck fns, literal
+  # values) are closure-captured into `H[]`; string literals are JSON.stringify'd
+  # (keys via `keyLit`); numeric check bounds go through `numLit` = String(Number(n))
+  # (always a numeric literal — injection-proof, bisect-locked by
+  # jit-codegen-safety.test.ts). CodeQL's `js/bad-code-sanitization` /
+  # `js/unsafe-code-construction` still flag the `new Function` sink because
+  # their taint model can't see the sanitizers through genChecks' string
+  # composition — a false positive for this build-time emitter, same as the two
+  # above. Correctness/parity locked by the JIT↔interpreter differential fuzzers.
+  - '**/validate/src/core/jit.ts'

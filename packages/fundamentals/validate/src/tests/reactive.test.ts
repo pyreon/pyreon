@@ -106,6 +106,27 @@ describe('parseReactiveAsync', () => {
     const r = await $result()
     expect(r).toMatchObject({ value: 'hello' })
   })
+
+  it('supersedes stale in-flight results — a SLOW old validation resolves to the NEWEST verdict', async () => {
+    // Slow-old / fast-new (memory-leak class F shape): the FIRST input's
+    // validation takes 40ms, the SECOND's 1ms. Pre-fix, awaiting the frame
+    // captured before the second keystroke delivered the STALE first verdict.
+    const delays: Record<string, number> = { first: 40, second: 1 }
+    const schema = z.string().refine(async (v) => {
+      await new Promise((res) => setTimeout(res, delays[v] ?? 0))
+      return v === 'second' // only the newest input is valid
+    })
+    const $input = signal('first')
+    const $result = parseReactiveAsync(schema, $input)
+
+    const staleFrame = $result() // captured BEFORE the next keystroke
+    $input.set('second')
+
+    // The stale frame must resolve to the LATEST run's result — valid
+    // 'second', NOT the invalid 'first' verdict it was started with.
+    await expect(staleFrame).resolves.toMatchObject({ value: 'second' })
+    await expect($result()).resolves.toMatchObject({ value: 'second' })
+  })
 })
 
 describe('watchValid', () => {

@@ -28,8 +28,14 @@ export class IntersectionSchema<A, B> extends SchemaBase<A & B> {
     const a = this.left._runInto(input, ctx)
     const b = this.right._runInto(input, ctx)
     if (a instanceof Promise || b instanceof Promise) {
-      ctx.issues.push({ message: '[Pyreon] async member in sync intersection — use parseAsync', path: ctx.path })
-      return input
+      // An async side (async `.refine`/`.transform`/registered `.serverCheck`)
+      // — defer the merge until both settle. `parseAsync` awaits this; a sync
+      // `parse()` sees the Promise at the root and reports async-in-sync.
+      return Promise.all([a, b]).then(([av, bv]) => {
+        if (ctx.issues.length !== before) return input
+        if (isPlainObject(av) && isPlainObject(bv)) return { ...av, ...bv }
+        return bv
+      })
     }
     if (ctx.issues.length !== before) return input
     // Both passed — merge object outputs, else prefer the right side.

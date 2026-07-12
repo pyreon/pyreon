@@ -10,9 +10,9 @@
  * `parseReactiveAsync(schema, source)` — same shape, but the result is
  *   a `Computed<Promise<ParseResult>>`. Use for schemas that include
  *   async refinements (Zod `.refine(async)`, Valibot's async pipe).
- *   Honours abort tokens: when the source signal flips before the
- *   previous validation settles, the previous result is discarded
- *   (the latest input always wins).
+ *   Stale results are superseded: when the source flips before the
+ *   previous validation settles, the superseded promise resolves to the
+ *   NEWEST run's result (the latest input always wins).
  *
  * `watchValid(schema, source, callback)` — fires `callback(valid)` when
  *   the validity bit flips (input transitions from valid to invalid or
@@ -108,10 +108,13 @@ export function parseReactive<S extends StandardSchemaV1<unknown, unknown>>(
  * — the outer `Computed` re-evaluates synchronously on source change,
  * but the inner `Promise` resolves once the validator finishes.
  *
- * **Stale-result handling**: rapid source changes (typing) produce
- * overlapping in-flight promises. The CALLER is responsible for
- * awaiting only the latest — pattern below uses `watch` to track the
- * latest accessor identity.
+ * **Stale results are superseded automatically**: rapid source changes
+ * (typing) produce overlapping in-flight validations. Each re-run bumps an
+ * internal version; a validation that finishes AFTER a newer one started
+ * resolves to the NEWEST run's result instead of its own — so an awaited
+ * stale frame can never deliver a stale verdict (the latest input always
+ * wins; the "slow-old clobbers fast-new" race is structurally impossible
+ * for consumers of this API).
  *
  * @example
  * ```ts
@@ -123,7 +126,8 @@ export function parseReactive<S extends StandardSchemaV1<unknown, unknown>>(
  *
  * watch($result, async (current) => {
  *   const result = await current
- *   // Use result — watch() naturally drops stale frames.
+ *   // `result` always reflects the LATEST input — even if `current`
+ *   // was captured before a newer keystroke.
  * })
  * ```
  */
@@ -131,14 +135,30 @@ export function parseReactiveAsync<S extends StandardSchemaV1<unknown, unknown>>
   schema: S,
   source: ReactiveSource<unknown>,
 ): Computed<Promise<ParseResult<unknown>>> {
-  // Intentional async computed: `read(source)` runs synchronously before the
-  // first await, so dependency tracking IS preserved; staleness is the
-  // caller's responsibility (see docstring + parseReactive for the sync form).
-  // pyreon-lint-disable-next-line pyreon/no-async-effect
-  return computed<Promise<ParseResult<unknown>>>(async () => {
+  let version = 0
+  let latest: Promise<ParseResult<unknown>>
+
+  // Validate `value`; when this run settles, two supersede checks apply:
+  //  1. a newer computed re-run happened (version bumped) → forward to ITS
+  //     promise, so an awaited stale frame chains to the newest result;
+  //  2. the SOURCE flipped but the (lazy) computed hasn't been re-read yet —
+  //     re-validate the CURRENT value (untracked read: we're past an await,
+  //     outside any tracking scope), recursing until the value is stable.
+  const run = async (value: unknown, myVersion: number): Promise<ParseResult<unknown>> => {
+    const result = await Promise.resolve(schema['~standard'].validate(value))
+    if (myVersion !== version) return latest
+    const current = read(source)
+    if (!Object.is(current, value)) return run(current, myVersion)
+    return result
+  }
+
+  return computed<Promise<ParseResult<unknown>>>(() => {
+    // `read(source)` runs synchronously inside the computed body, so
+    // dependency tracking is preserved; only the validation itself defers.
     const value = read(source)
-    const result = schema['~standard'].validate(value)
-    return result instanceof Promise ? result : result
+    const myVersion = ++version
+    latest = run(value, myVersion)
+    return latest
   })
 }
 

@@ -72,7 +72,11 @@ function safe(v: unknown): string {
   try {
     return JSON.stringify(v)?.slice(0, 120) ?? String(v)
   } catch {
-    return String(v)
+    try {
+      return String(v)
+    } catch {
+      return Object.prototype.toString.call(v)
+    }
   }
 }
 
@@ -82,8 +86,10 @@ const BADS: unknown[] = [undefined, null, 42, 'str', true, NaN, {}, [], { a: 1 }
 function* primInputs(): Generator<unknown> {
   yield* ['hello', '', 'a', 'abcdef', 'ada@example.com', 'not-an-email', '12345']
   yield* ['https://example.com/x', 'ftp://no', '550e8400-e29b-41d4-a716-446655440000', 'not-a-uuid', '2026-06-22', '2026-13-99', '2026-06-22T10:00:00Z']
-  yield* [0, 1, -1, 42, 999, 1.5, 150, 151, NaN, Infinity, -0]
+  yield* ['abmidyz', 'ab', 'yz', 'mid', 'zz', 'on', 'off']
+  yield* [0, 1, -1, 42, 999, 1.5, 150, 151, NaN, Infinity, -Infinity, -0, 3, 9, 10, 2 ** 53, -(2 ** 53)]
   yield* [true, false]
+  yield* [42n, 0n, -3n, new Date('2026-06-22'), new Date('invalid')]
   yield* BADS
 }
 
@@ -103,8 +109,24 @@ describe('JIT differential — primitive roots', () => {
     ['number.int.min0.max150', s.number().int().min(0).max(150)],
     ['number.between', s.number().between(0, 150)],
     ['number.positive', s.number().positive()],
+    ['number.negative', s.number().negative()],
+    ['number.nonNegative', s.number().nonNegative()],
+    ['number.nonPositive', s.number().nonPositive()],
+    ['number.gt.lt', s.number().gt(0).lt(100)],
+    ['number.safe', s.number().safe()],
+    ['number.finite', s.number().finite()],
+    ['number.multipleOf3', s.number().multipleOf(3)],
+    ['string.nonEmpty', s.string().nonEmpty()],
+    ['string.startsWith', s.string().startsWith('ab')],
+    ['string.endsWith', s.string().endsWith('yz')],
+    ['string.includes', s.string().includes('mid')],
     ['boolean', s.boolean()],
     ['literal42', s.literal(42)],
+    ['literalStr', s.literal('on')],
+    ['bigint', s.bigint()],
+    ['date', s.date()],
+    ['null', s.null()],
+    ['undefined', s.undefined()],
   ]
   for (const [name, sc] of schemas) {
     it(name, () => {
@@ -167,14 +189,43 @@ describe('JIT differential — randomized fuzz (seeded)', () => {
     const r = rng(0x9e3779b9)
     const pick = <T,>(xs: T[]): T => xs[Math.floor(r() * xs.length)]!
     const fieldSchemas = (): Schema<unknown> => {
-      const k = pick(['s', 's', 'n', 'n', 'b', 'o', 'a'])
-      if (k === 's') return pick([s.string(), s.string().min(2), s.string().max(8), s.string().length(4), s.string().regex(/^x/)])
-      if (k === 'n') return pick([s.number(), s.number().int(), s.number().min(0), s.number().max(100), s.number().between(1, 9), s.number().positive()])
+      const k = pick(['s', 's', 'n', 'n', 'b', 'o', 'a', 'l', 'x'])
+      if (k === 's')
+        return pick([
+          s.string(),
+          s.string().min(2),
+          s.string().max(8),
+          s.string().length(4),
+          s.string().regex(/^x/),
+          s.string().nonEmpty(),
+          s.string().startsWith('x'),
+          s.string().endsWith('d'),
+          s.string().includes('bc'),
+        ])
+      if (k === 'n')
+        return pick([
+          s.number(),
+          s.number().int(),
+          s.number().min(0),
+          s.number().max(100),
+          s.number().between(1, 9),
+          s.number().positive(),
+          s.number().negative(),
+          s.number().nonNegative(),
+          s.number().nonPositive(),
+          s.number().gt(0),
+          s.number().lt(50),
+          s.number().safe(),
+          s.number().finite(),
+          s.number().multipleOf(2),
+        ])
       if (k === 'b') return s.boolean()
+      if (k === 'l') return pick<Schema<unknown>>([s.literal(42), s.literal('a'), s.literal(true)])
+      if (k === 'x') return pick<Schema<unknown>>([s.bigint(), s.date(), s.null(), s.undefined()])
       if (k === 'o') return s.object({ inner: pick<Schema<unknown>>([s.string().min(1), s.number().int()]), flag: s.boolean() })
       return s.array(pick<Schema<unknown>>([s.string().min(1), s.number().int(), s.object({ v: s.number().int() })]))
     }
-    const randValue = (): unknown => pick([42, -1, 1.5, 'a', 'abcd', 'xyz', '', true, false, null, undefined, NaN, {}, [], { inner: 'q', flag: true }, [1, 2], ['a'], [{ v: 1 }], [{ v: 'no' }], { v: 1 }])
+    const randValue = (): unknown => pick([42, -1, 1.5, 2, 4, 'a', 'abcd', 'xyz', 'xbcd', '', true, false, null, undefined, NaN, {}, [], { inner: 'q', flag: true }, [1, 2], ['a'], [{ v: 1 }], [{ v: 'no' }], { v: 1 }, 42n, new Date('2026-01-01'), new Date('bad')])
 
     for (let n = 0; n < 1000; n++) {
       const keys = ['a', 'b', 'c', '__proto__'].slice(0, 1 + Math.floor(r() * 4))

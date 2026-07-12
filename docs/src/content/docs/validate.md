@@ -801,16 +801,49 @@ On the client, `.serverCheck` ALWAYS passes — the entry is recorded on `Result
 
 - A registered **async** check promotes the parse to a Promise, so `parse()` returns a `parseAsync`-directing issue — use `parseAsync(input, { context })` server-side.
 - The issue `path` is snapshotted at the check site, so a field / array-element check reports the correct path even though it resolves after the path unwinds.
-- A schema containing any `serverCheck` is never JIT-compiled (the JIT can't await); it uses the async-aware interpreter.
+- `serverCheck` fields JIT-compile like everything else — the JIT defers async-resolving subtrees onto a pending list its root return awaits, so carrying server checks costs no performance.
+
+## JSON Schema emit
+
+`toJsonSchema(schema)` — from the **`@pyreon/validate/json-schema`** subpath — emits a JSON Schema **draft 2020-12** document from any `s` schema: for OpenAPI specs, AI structured-output constraints, editor autocomplete, or cross-language contracts. The subpath keeps the emitter out of validators-only bundles.
+
+```ts
+import { s } from '@pyreon/validate'
+import { toJsonSchema } from '@pyreon/validate/json-schema'
+
+const User = s.object({
+  name: s.string().min(2),
+  email: s.string().email(),
+  age: s.number().int().min(0).optional(),
+})
+
+toJsonSchema(User)
+// {
+//   $schema: 'https://json-schema.org/draft/2020-12/schema',
+//   type: 'object',
+//   properties: {
+//     name: { type: 'string', minLength: 2 },
+//     email: { type: 'string', format: 'email' },
+//     age: { type: 'integer', minimum: 0 },
+//   },
+//   required: ['name', 'email'],
+// }
+```
+
+The mapping: string formats → standard `format` keywords (`email` / `uri` / `uuid` / `date` / `date-time` / `time` / `duration`); `regex` / `startsWith` / `endsWith` / `includes` → `pattern`; `.int()` upgrades to `type: 'integer'`; unions → `anyOf`, intersections → `allOf`, tuples → `prefixItems`; `.strict()` → `additionalProperties: false`, `.catchall(s)` → `additionalProperties: <schema>`; `.optional()` / `.nullish()` / `.default()` fields drop out of `required`; `.describe()` → `description`, `.default()` → `default`.
+
+:::warning[The contract, precisely]
+The document describes the **input shape** — `.transform()` emits its inner schema, `.pipe()` its source, `s.preprocess()` its target; `.refine()` / `.superRefine()` / `.serverCheck()` are runtime-only predicates and are structurally omitted. Unrepresentable kinds (`s.date()`, `s.bigint()`, `s.map()`, `s.undefined()`, …) **throw** a `[Pyreon]`-prefixed error by default — pass `{ unrepresentable: 'any' }` to emit `{}` in their place. Cyclic `s.lazy()` schemas throw (no `$defs`/`$ref` graph in v1 — documented scope).
+:::
 
 ## Performance
 
 The `s` runtime is benchmarked against Zod 4 / Valibot 1 / ArkType 2 (`bun bench:validation`). The harness is built for objectivity: every scenario × path × library cell runs in fresh isolated processes (3 pooled per cell, so the confidence interval covers process-level jitter), a cross-library correctness gate runs before any timing, and each row carries a seeded bootstrap 95% CI — rows inside the winner's CI are marked 🤝 tied. One honest limit is structural: the bench is written and judged by the Pyreon authors (disclosed in its header); every scenario, input, and competitor call form is in the one file for review.
 
-- **Fastest on the error / invalid path** across every shape — **31–53× vs Zod, 15–64× vs ArkType, 1.2–4.6× vs Valibot** — because it early-exits on the first failing op while Zod and ArkType allocate rich structured error objects. Error-information parity is verified separately: on a multi-fail object Pyreon reports the same issue count with paths and messages as Zod, so the error-path speed is not "reporting less".
-- **Valid-parse path** — at par or ahead of ArkType on the array shapes (~1.1× ahead in the pooled run, inside run-to-run drift), statistically tied 🤝 on number-range and deep-nested objects, and behind only ArkType's type-level AOT on scalar-string and flat-object parse (~1.6×). **Faster than Zod and Valibot on every shape.** The chainable API doesn't pay class-overhead per parse: each schema's ops compile to one closure on first call, and pure object/array/primitive trees get a flat monomorphic JIT validator.
+- **Fastest on the error / invalid path** across every shape — **33–44× vs Zod, 20–53× vs ArkType, 1.4–3.6× vs Valibot** — because it early-exits on the first failing op while Zod and ArkType allocate rich structured error objects. Error-information parity is verified separately: on a multi-fail object Pyreon reports the same issue count with paths and messages as Zod, so the error-path speed is not "reporting less".
+- **Valid-parse path** — **wins the array shapes outright (1.9–2.3× vs ArkType)**, statistically tied 🤝 on scalar-email, number-range, and deep-nested objects, and trails only on flat-object parse (~1.2×). **Faster than Zod and Valibot on every shape.** The chainable API doesn't pay class-overhead per parse: each schema's ops compile to one closure on first call, and pure object/array/primitive trees get a flat monomorphic JIT validator with static-path elision (`ctx.path` is untouched on the valid path; full issue paths are reconstructed only at failure sites) and an equivalence-locked table-driven email scanner on the hot `email()` tier.
 
-The valid-parse gap to ArkType is the documented frontier — a follow-up adds `@pyreon/compiler:analyzeValidate()` to emit typia-class specialized validators at build time (works against any Standard Schema validator). Until then you can keep using Zod / Valibot / ArkType through the DX helpers — `@pyreon/validate` never locks you in.
+The one row ArkType still leads — flat-object valid-parse — is a **semantic difference, not a codegen gap**: ArkType returns the INPUT object by reference, while Pyreon (like Zod and Valibot) returns an immutable clone with unknown keys stripped. Keeping strip-and-clone semantics is deliberate; the ~7ns/parse it costs on a 4-field object is the documented trade. For hot boolean-verdict loops, `pyreon({ compileValidators: true })` attaches build-emitted monomorphic `.is()` verdicts (1.6–3× on that call form). You can also keep using Zod / Valibot / ArkType through the DX helpers — `@pyreon/validate` never locks you in.
 
 ## See also
 
