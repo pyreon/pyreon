@@ -43,7 +43,7 @@ export interface Selector<T> {
    * const dispose = renderEffect(() => updater(selector(key)))
    * ```
    * but skips the `renderEffect` machinery entirely: no `deps` array, no
-   * `withTracking` / `setDepsCollector`, no `run` closure allocation, no
+   * tracking frame (`runCollect`/`runVerify`), no `run` closure allocation, no
    * scope `add({ dispose })` wrapper. The updater is called ONCE inline
    * with the initial value, then again each time the selector's
    * per-key bucket fires (only when the selection actually crosses this
@@ -211,7 +211,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
   //   - 0 effect, 0 deps array, 0 tracking-stack push
   //
   // vs `renderEffect(() => updater(selector(key)))`: ~5× fewer allocations,
-  // no withTracking/setDepsCollector overhead, no scope.add wrapper.
+  // no tracking-frame overhead, no scope.add wrapper.
   selector.subscribe = (value: T, updater: (matches: boolean) => void): (() => void) => {
     if (disposed) {
       // Selector is disposed — call updater once with the stale-last value,

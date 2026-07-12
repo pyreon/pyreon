@@ -13,6 +13,12 @@ description: "Common reactivity mistakes in Pyreon and how to fix them."
 
 ---
 
+### [FIXED, 2026-07] Module-level tracking collectors set-then-NULLED instead of saved-then-RESTORED around nested reactive frames.
+
+`effect`'s run body + a computed's first eval each set a module-level thread-local (cleanup collector / deps collector) and reset it to a FIXED value (`null`) on exit — correct only at depth 1. Real shapes nest: a nested `effect()` created inside an outer effect's body nulled the cleanup collector on its run's exit, silently DROPPING every outer `onCleanup()` registered after that line; a dirty computed's FIRST eval inside an effect run nulled the deps collector, so the effect's subsequent signal reads were subscribed but never RECORDED → subscription retained after `dispose()` (leak class B). **Rule: module-level thread-local frame state (collector/owner/index) must be captured into locals at frame entry and RESTORED — never reset to a constant — at frame exit.** The `tracking.ts` frame helpers (`runCollect`/`runVerify`) centralize the save/restore; never hand-roll a set/null pair around a tracked evaluation. Both shapes bisect-locked in `packages/core/reactivity/src/tests/verify-deps.test.ts` ("frame-restore regressions").
+
+---
+
 ### Stale closures
 
 `signal.peek()` captured in long-lived closures loses reactivity

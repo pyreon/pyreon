@@ -72,7 +72,9 @@ const dispose = effect(() => {
 dispose()
 ```
 
-`effect()` re-runs on tracked-signal change; the returned function disposes. Returning a cleanup function from the effect body is supported; `onCleanup(fn)` is the explicit form. `renderEffect()` is a lighter DOM-targeted variant that does NOT support `onCleanup` and does NOT register with `EffectScope` — used internally by `@pyreon/runtime-dom`.
+`effect()` re-runs on tracked-signal change; the returned function disposes. Returning a cleanup function from the effect body is supported; `onCleanup(fn)` is the explicit form. `renderEffect()` is a lighter DOM-targeted variant that does NOT support `onCleanup` (it does register its disposer with the surrounding `EffectScope`, like `effect()`) — used internally by `@pyreon/runtime-dom`.
+
+Dependency tracking is exact per run and reuses subscriptions across re-runs: a steady-state re-run (same signals, same order) verifies the previous dependency list instead of tearing it down and rebuilding it — zero allocations, zero Set operations. A conditional-branch flip re-tracks that run and drops stale-branch subscriptions.
 
 `watch(source, callback)` is the explicit-source variant: `source` is evaluated for tracking, `callback(next, prev)` runs on change, and returning a cleanup function is honored.
 

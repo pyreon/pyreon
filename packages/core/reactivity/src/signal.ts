@@ -47,7 +47,7 @@ export interface Signal<T> {
    */
   trigger(): void
   /**
-   * Subscribe a static listener directly — no effect overhead (no withTracking,
+   * Subscribe a static listener directly — no effect overhead (no tracking frame,
    * no cleanupEffect, no effectDeps WeakMap). Use when the dependency is fixed
    * and dynamic re-tracking is not needed.
    * Returns a disposer that removes the subscription.
