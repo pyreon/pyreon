@@ -384,8 +384,11 @@ function buildRadix3({ flatDefs }: Table): Adapter {
 }
 
 function buildReactRouter({ flatDefs }: Table): Adapter {
+  // React Router uses `/*` natively for splat routes, which is exactly the
+  // flat token (`/files/*`) — so no transform is needed (unlike radix3 `/**`,
+  // TanStack `/$`, solid `/:splat(.*)*`). Pass `d.flat` through directly.
   const rrRoutes = flatDefs.map((d) => ({
-    path: d.flat.endsWith('/*') ? d.flat.replace('/*', '/*') : d.flat,
+    path: d.flat,
     element: null,
     rid: d.rid,
   }))
