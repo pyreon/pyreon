@@ -20,7 +20,12 @@ export function getParamAll(key: string): string[] {
  * This avoids a hard dependency on `@pyreon/router`.
  */
 export interface UrlRouter {
-  replace(path: string): void | Promise<void>
+  // Return type is intentionally `unknown`-wide: url-state calls `replace`
+  // purely for its side effect and ignores the result, so ANY router whose
+  // `replace(path)` returns nothing OR a promise of anything satisfies the
+  // bridge. `@pyreon/router`'s `replace` returns `Promise<NavigationResult>`
+  // (since #2171) — narrowing this to `Promise<void>` broke `setUrlRouter(useRouter())`.
+  replace(path: string): void | Promise<unknown>
 }
 
 /** Module-level router reference. Set via `setUrlRouter()`. */

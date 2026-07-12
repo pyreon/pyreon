@@ -1,5 +1,6 @@
 ---
 "@pyreon/mcp": patch
+"@pyreon/url-state": patch
 ---
 
 Fix manifest↔shipped-API drift across 15 packages + ship a prevention gate.
@@ -23,4 +24,4 @@ Package manifests' `api[].example` / `signature` blocks render VERBATIM into the
 - **@pyreon/sync** — `FakeCrdtAdapter.createDoc()` returns the concrete fake doc for `connectFakeDocs`.
 - **@pyreon/query** — `QueryErrorResetBoundary` takes a plain subtree; use `useQueryErrorResetBoundary()` inside the fallback (no render prop).
 
-**Prevention gate** — `scripts/check-manifest-examples.ts` (wired into `validate-fast` + CI): for every package with a `src/manifest.ts`, it typechecks each `api[].example`/`longExample` against the LIVE shipped types (subpath-aware resolution, validated symbol injection, syntax-fragment-tolerant, synthetic missing-export detection). A drift fails the gate, naming the package + api entry + TS error. Harness-limited packages (untyped ambient example data, DOM-global name collisions, alt-JSX namespaces, strict-mode-only schema libs) sit in a `NON_ENFORCED` ratchet with a per-package rationale (report-only; can only shrink). No runtime code changed — the regenerated MCP `api-reference` + `llms-full` are the only shipped artifacts affected.
+**Prevention gate** — `scripts/check-manifest-examples.ts` (wired into `validate-fast` + CI): for every package with a `src/manifest.ts`, it typechecks each `api[].example`/`longExample` against the LIVE shipped types (subpath-aware resolution, validated symbol injection, syntax-fragment-tolerant, synthetic missing-export detection). A drift fails the gate, naming the package + api entry + TS error. Harness-limited packages (untyped ambient example data, DOM-global name collisions, alt-JSX namespaces, strict-mode-only schema libs) sit in a `NON_ENFORCED` ratchet with a per-package rationale (report-only; can only shrink). One runtime line changed: `@pyreon/url-state`'s `UrlRouter.replace` return type is widened from `void | Promise<void>` to `void | Promise<unknown>` — the gate surfaced a real type regression (since `@pyreon/router` #2171 made `replace()` return `Promise<NavigationResult>`, the narrow bridge broke `setUrlRouter(useRouter())` at the type level; url-state ignores the return value, so the wider type is correct). Aside from that one line, the regenerated MCP `api-reference` + `llms-full` are the only shipped artifacts affected.
