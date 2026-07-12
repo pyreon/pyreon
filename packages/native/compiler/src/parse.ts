@@ -5810,12 +5810,18 @@ function warnIfMissingRequiredProp(tag: string, attrs: AttrIR[], ctx: ParseCtx):
   // both targets). Each of these used to silently drop the prop with
   // no diagnostic — users wrote them assuming they worked.
 
-  // <Press> without onPress → emit a clickable element with empty
-  // action. Real-user trap: the element looks interactive but does
-  // nothing on tap.
-  if (tag === 'Press' && !attrs.some((a) => a.kind === 'event' && a.name === 'press')) {
+  // <Press> with NEITHER onPress NOR onLongPress → a no-op clickable
+  // element. Real-user trap: it looks interactive but does nothing. A
+  // long-press-ONLY `<Press onLongPress={fn}>` is legitimate (the tap
+  // action is intentionally empty), so it must NOT warn.
+  if (
+    tag === 'Press' &&
+    !attrs.some(
+      (a) => a.kind === 'event' && (a.name === 'press' || a.name === 'longpress'),
+    )
+  ) {
     ctx.warnings.push(
-      '<Press> without an `onPress` handler emits a no-op clickable element on both targets (button with empty action / Box with no-op clickable modifier). Add `onPress={fn}` or use the plain primitive directly.',
+      '<Press> without an `onPress` or `onLongPress` handler emits a no-op clickable element on both targets (button with empty action / Box with no-op clickable modifier). Add `onPress={fn}` or use the plain primitive directly.',
     )
   }
 

@@ -342,7 +342,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | Auth | 5 | 0.3 | gate/login flow R5; real IdP token flow R1–R2 |
 | Platform APIs (haptics/share/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.0 | clipboard/geolocation/push/payments/permissions exist at R2 (~40% of the set); the rest ABSENT |
 | Animations & transitions | 6 | 0.0 | absent (v1 exclusion) |
-| Gestures | 4 | 0.4 | tap R5 (asserted everywhere); long-press/swipe/drag absent |
+| Gestures | 4 | 0.6 | tap R5; **long-press** `<Press onLongPress>` R4 (M2.3 — counter reset via a simultaneous LongPressGesture, iOS Simulator pass; Android `combinedClickable(onLongClick)` proven by the device run); swipe/drag absent |
 | Adaptive / tablet layout | 5 | 0.0 | absent (no size classes) |
 | Media (image display/picker/AV) | 4 | 0.25 | bundled image display R5 (tasks branded header); remote image R2; picker/AV absent |
 | Accessibility | 3 | 0.0 | semantics emit R2; never device-asserted |
@@ -353,7 +353,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | Background / push | 3 | 0.0 | R2 runtime; manual `.start()`; no device test |
 
 **Weighted totals (2026-07-08 baseline):** device-proven (R4+) coverage
-**≈ 39%** (42.2 / 107); compile-proven (R2+) upper bound **≈ 74%** —
+**≈ 40%** (43.0 / 107); compile-proven (R2+) upper bound **≈ 74%** —
 i.e. roughly three-quarters of the weighted surface already *exists and
 typechecks*, but only about a third is *proven to behave* on a device.
 **The production goal is 70–90% at R4+**; the gap between the two
@@ -396,6 +396,18 @@ it — terminate + relaunch + assert todos survive; zero new app code),
 2. `useDatabase`, 3. `useWebSocket`, 4. `useAuth`, 5. `useClipboard`.
 The three manual-`.start()` hooks (geolocation/push/payments) are gated
 on M3.9 auto-start parity first.
+
+**M2.3 — gestures (long-press) SHIPPED.** `<Press onLongPress={fn}>` now
+lowers on native (the type + web 500ms-polyfill already existed; only the
+native emit was missing). **Swift uses a SIMULTANEOUS `LongPressGesture`,
+not `.onLongPressGesture`** — a bare long-press modifier on a `Button`
+does NOT fire (the button's tap recognizer swallows it; found on a real
+Simulator, invisible to `swiftc`). Android uses `combinedClickable(
+onClick, onLongClick)`. Device-proven: `examples/native-counter-ios`'s
+XCUITest holds a `<Press>` reset zone >=0.5s and asserts the counter
+resets (R4 local pass); the Android `longClick()` sibling is proven by
+the device run. First gesture beyond tap. Deferred: `onSwipe` / drag
+(M2.3b).
 
 ## Native routing
 

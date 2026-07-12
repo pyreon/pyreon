@@ -5833,6 +5833,24 @@ function emitSwiftPress(
       a.kind === 'event' && (a.name === 'press' || a.name === 'click'),
   )
   const action = onPress ? emitSwiftAction(onPress.handler, indent) : '{}'
+  // `onLongPress` → a `.simultaneousGesture(LongPressGesture(...))`. A bare
+  // `.onLongPressGesture { }` on a Button does NOT fire — the Button's own
+  // tap recognizer swallows the press (device-found: the emit typechecks
+  // but the gesture never triggers on a real Simulator). A SIMULTANEOUS
+  // LongPressGesture coexists with the button, so a quick tap still fires
+  // `action` and a >=0.5s hold fires the long-press. `emitSwiftAction`
+  // returns a `() -> Void` closure `{ … }`; `.onEnded` wants `(Bool) ->
+  // Void`, so inject `_ in` after the opening brace.
+  const onLongPress = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'longpress',
+  )
+  const longGesture = onLongPress
+    ? `.simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded ${emitSwiftAction(
+        onLongPress.handler,
+        indent,
+      ).replace(/^\{/, '{ _ in')})`
+    : ''
 
   const pad = ' '.repeat(indent + 2)
   const contentLines = e.children
@@ -5850,7 +5868,7 @@ function emitSwiftPress(
   // explicit `action:` argument form is the unambiguous canonical
   // SwiftUI Button initializer and type-checks clean. (`action` already
   // carries its `{ … }` braces from `emitSwiftAction`.)
-  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}`
+  return `Button(action: ${action}) {\n${contentLines}\n${' '.repeat(indent)}}.buttonStyle(.plain)${modifiers}${longGesture}`
 }
 
 /**

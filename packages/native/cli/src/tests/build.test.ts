@@ -397,4 +397,52 @@ describe('@pyreon/native-cli build', () => {
       }
     })
   })
+
+  it('Kotlin <Press onLongPress> pulls clickable+combinedClickable imports + a @file:OptIn', () => {
+    // M2.3 device-found: `combinedClickable` is an EXPERIMENTAL foundation
+    // API on the examples' Compose BOM — `gradle assembleDebug` fails with
+    // "This foundation API is experimental" without a file-level opt-in.
+    // Also no Android example had used <Press> before, so `.clickable`
+    // itself was a latent missing import. Both caught only by the real
+    // device build, not the kotlinc-stub validate loop.
+    // onLongPress → combinedClickable (self-contained; does NOT also pull
+    // the plain `.clickable` import — `.combinedClickable(` is not a
+    // `.clickable(` substring).
+    const combined = conditionalKotlinImports(
+      'Box(Modifier.combinedClickable(onClick = {}, onLongClick = { n = 0 }))',
+    )
+    expect(combined).toContain('import androidx.compose.foundation.combinedClickable')
+    // onPress-only <Press> emits `.clickable(` → its own foundation import
+    // (latent-missing before M2.3 — no Android example used <Press>).
+    const plainClick = conditionalKotlinImports('Box(Modifier.clickable(onClick = {}))')
+    expect(plainClick).toContain('import androidx.compose.foundation.clickable')
+
+    // The @file:OptIn is assembled in build(); prove it lands BEFORE the
+    // package directive (Kotlin requires file annotations there).
+    const src = mkdtempSync(join(tmpdir(), 'pyreon-longpress-src-'))
+    try {
+      writeFileSync(
+        join(src, 'Reset.tsx'),
+        `import { signal } from '@pyreon/reactivity'
+export function Reset() {
+  const n = signal<number>(0)
+  return <Press onLongPress={() => n.set(0)}><Text>x</Text></Press>
+}`,
+      )
+      const result = build({
+        source: src,
+        out: tempOut,
+        target: 'kotlin',
+        kotlinPackage: 'com.pyreon.generated',
+      })
+      const out = result.outputs[0]!.code
+      expect(
+        out.indexOf('@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)'),
+      ).toBe(0)
+      expect(out.indexOf('@file:OptIn')).toBeLessThan(out.indexOf('package '))
+      expect(out).toContain('.combinedClickable(')
+    } finally {
+      rmSync(src, { recursive: true, force: true })
+    }
+  })
 })

@@ -32,8 +32,11 @@ package com.pyreon
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -64,5 +67,23 @@ class CounterInstrumentedTest {
         composeRule
             .onNodeWithText("Count: 1")
             .assertIsDisplayed()
+    }
+
+    // M2.3 — GESTURE (long-press) asserted on device. The shared
+    // Counter.tsx has a long-press-only `<Press onLongPress={() =>
+    // count.set(0)} data-testid="reset-zone">`; PMTC emits it as a
+    // `Box(Modifier.testTag("reset-zone").combinedClickable(onClick = {},
+    // onLongClick = { count = 0 }))`. A `longClick()` on the tagged node
+    // fires the reset — proving the emitted Compose long-press gesture.
+    @Test
+    fun longPressResetsCounter() {
+        // Drive the count up (0 -> 2) so the reset is observable.
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Increment").performClick()
+        composeRule.onNodeWithText("Count: 2").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("reset-zone").performTouchInput { longClick() }
+
+        composeRule.onNodeWithText("Count: 0").assertIsDisplayed()
     }
 }

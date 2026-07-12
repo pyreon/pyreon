@@ -15,6 +15,13 @@ export function Counter() {
     <VStack>
       <Text>Count: {count}</Text>
       <Button onClick={() => count.set(count() + 1)}>Increment</Button>
+      {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
+          Native: iOS `.onLongPressGesture { count = 0 }`, Android
+          `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms
+          pointer-down polyfill (already in @pyreon/primitives). */}
+      <Press onLongPress={() => count.set(0)} data-testid="reset-zone">
+        <Text>Hold to reset</Text>
+      </Press>
     </VStack>
   )
 }

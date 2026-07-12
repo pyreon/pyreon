@@ -4781,10 +4781,20 @@ function emitKotlinPress(
       a.kind === 'event' && (a.name === 'press' || a.name === 'click'),
   )
   const action = handler ? emitKotlinAction(handler.handler, indent) : '{}'
+  const onLongPress = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'event' }> =>
+      a.kind === 'event' && a.name === 'longpress',
+  )
 
-  // Combine .clickable() with the layout modifier chain.
+  // Combine the click modifier with the layout modifier chain. With
+  // `onLongPress`, `.combinedClickable(onClick, onLongClick)` is the
+  // idiomatic Compose long-press surface (stable since Compose 1.6); the
+  // conditional import for it is added in build.ts's
+  // `conditionalKotlinImports` keyed on `combinedClickable(`.
   const layoutModifier = emitKotlinLayoutModifier(e)
-  const clickable = `.clickable(onClick = ${action})`
+  const clickable = onLongPress
+    ? `.combinedClickable(onClick = ${action}, onLongClick = ${emitKotlinAction(onLongPress.handler, indent)})`
+    : `.clickable(onClick = ${action})`
   const modifier =
     layoutModifier !== '' ? `${layoutModifier}${clickable}` : `Modifier${clickable}`
 
