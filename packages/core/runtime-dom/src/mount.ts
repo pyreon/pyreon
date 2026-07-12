@@ -271,11 +271,13 @@ const VOID_ELEMENTS = new Set([
   'wbr',
 ])
 
-const SVG_NS = 'http://www.w3.org/2000/svg'
-const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
+export const SVG_NS = 'http://www.w3.org/2000/svg'
+export const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
 
-// Tags that require namespace-aware creation
-const SVG_TAGS = new Set([
+// Tags that require namespace-aware creation. Exported so `_tpl` (template.ts)
+// can decide when a template STRING is rooted at a foreign (SVG/MathML) element
+// and must be parsed in the right namespace — see `_tpl`'s foreign-root wrap.
+export const SVG_TAGS = new Set([
   'svg',
   'circle',
   'ellipse',
@@ -327,7 +329,7 @@ const SVG_TAGS = new Set([
   'foreignObject',
 ])
 
-const MATHML_TAGS = new Set([
+export const MATHML_TAGS = new Set([
   'math',
   'mi',
   'mo',

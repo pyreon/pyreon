@@ -1084,6 +1084,7 @@ export function transformJSX_JS(
   let needsMountSlotImportGlobal = false
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
+  let needsSetClassImportGlobal = false
 
   // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
   let needsCollapse = false
@@ -2437,6 +2438,7 @@ export function transformJSX_JS(
     if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
     if (needsSetChildAtImportGlobal) runtimeDomImports.push('_setChildAt')
     if (needsSetStyleImportGlobal) runtimeDomImports.push('_setStyle')
+    if (needsSetClassImportGlobal) runtimeDomImports.push('_setClass')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -2592,6 +2594,7 @@ export function transformJSX_JS(
     let needsMountSlotImport = false
     let needsCxImport = false
     let needsSetStyle = false
+    let needsSetClass = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -2994,8 +2997,15 @@ export function transformJSX_JS(
       // Block-scoped temp = single eval (safe for signal-call exprs) + no
       // collision when several bindings are combined into one `_bind` body.
       if (htmlAttrName === 'class') {
-        needsCxImport = true
-        return `{ const _cv = (${expr}); ${varName}.className = typeof _cv === "string" ? _cv : _cx(_cv) }`
+        // Delegate to the runtime `_setClass` (= applyClassProp) so a compiled
+        // class binding normalizes identically to applyProp (string passes
+        // through, array/object → cx) AND uses `setAttribute('class', …)`,
+        // which is SVG-safe. The previous inline `.className = …` THREW on a
+        // real SVGElement (read-only SVGAnimatedString) — silently breaking
+        // every `<g>`/`<path>` class binding once `_tpl` gave SVG templates the
+        // correct namespace (the `@pyreon/flow` edge bug). Mirrors `_setStyle`.
+        needsSetClass = true
+        return `_setClass(${varName}, ${expr})`
       }
       if (htmlAttrName === 'style') {
         // Delegate to the runtime `_setStyle` (= applyStyleProp) so a compiled
@@ -3043,10 +3053,9 @@ export function transformJSX_JS(
       if (directRef) {
         needsBindDirectImport = true
         const d = nextDisp()
-        if (htmlAttrName === 'class') needsCxImport = true
         const updater =
           htmlAttrName === 'class'
-            ? `(v) => { ${varName}.className = v == null ? "" : (typeof v === "string" ? v : _cx(v)) }`
+            ? ((needsSetClass = true), `(v) => _setClass(${varName}, v)`)
             : htmlAttrName === 'style'
               ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
               : htmlAttrName === 'dangerouslySetInnerHTML'
@@ -3621,6 +3630,7 @@ export function transformJSX_JS(
     if (needsMountSlotImport) needsMountSlotImportGlobal = true
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true
+    if (needsSetClass) needsSetClassImportGlobal = true
 
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 

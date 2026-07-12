@@ -641,6 +641,35 @@ const rows = items.map((i) => <li>{i}</li>);  // -> mounts each <li>
         'A bare `h()`-call const (`const v = h("span")`) is also not tracked (write JSX, or wrap in a JSX element). A single primitive/string const stays on the text fast path (correct).',
     }),
   },
+  {
+    // SVG className-assignment throw — a `class={…}` binding on an SVG element
+    // (`<g>`, `<path>`, `<rect>`, …) inside a compiled template. Pre-fix the
+    // template path emitted `el.className = …`, but on a real SVGElement
+    // `className` is a read-only `SVGAnimatedString`, so the assignment threw
+    // — which surfaced once `_tpl` learned to give SVG-rooted templates the
+    // correct namespace (before that, the elements were HTML and the throw
+    // was latent). Chromium: "Cannot set property className of #<SVGElement>
+    // which has only a getter"; Firefox/WebKit: "setting getter-only property
+    // className". The classic symptom is an `@pyreon/flow` diagram whose nodes
+    // render but whose edge LINES do not.
+    pattern:
+      /className.*(getter|read-?only)|(getter|read-?only).*className|(className|class).*SVGElement|SVGElement.*(className|class)|(flow|svg|edge).*(lines?|edges?|paths?).*(not|missing|don'?t).*(render|show|draw)/i,
+    diagnose: () => ({
+      cause:
+        "A `class={…}` binding on an SVG element (`<g>`/`<path>`/`<rect>`/…) in a compiled template used `element.className = …`. On an HTMLElement `className` is a writable string, but on an SVGElement it is a READ-ONLY `SVGAnimatedString`, so the assignment throws — the reactive binding effect throws, and (for a `<For>` of edges) the item is skipped, so the shape renders nothing. It stayed hidden until `_tpl` began parsing SVG-rooted templates in the correct namespace: before that the cloned `<g>`/`<path>` were HTML-namespaced (writable `className`, but inert / invisible).",
+      fix: 'Upgrade `@pyreon/compiler` + `@pyreon/runtime-dom`. The compiler now emits `_setClass(el, value)` for every class binding (the runtime `applyClassProp`), which uses `setAttribute("class", …)` — valid on BOTH HTML and SVG — instead of `el.className = …`. No app code change is needed. If you cannot upgrade, avoid a reactive `class=` on SVG elements in templates; set the class via `setAttribute` in a `ref` callback, or wrap the SVG element so its class lives on an HTML ancestor.',
+      fixCode: `// Fixed by upgrade — a reactive class on an SVG element now works:
+<svg>
+  <For each={edges} by={(e) => e.id}>
+    {(e) => <path d={() => e.path()} class={() => (e.selected() ? 'sel' : '')} />}
+  </For>
+</svg>
+// Pre-upgrade workaround (set class imperatively via setAttribute):
+<path ref={(el) => effect(() => el.setAttribute('class', cls()))} />`,
+      related:
+        'Same family as the SVG-namespace `_tpl` fix: an SVG-rooted template string (`<g><path…`) was parsed as HTML and rendered nothing. Both ship together — flow edges need the namespace fix AND the `_setClass` fix to render.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

@@ -51,6 +51,24 @@ test.describe('app-showcase /flow', () => {
     const paths = await page.locator('svg path').count()
     expect(paths).toBeGreaterThanOrEqual(3)
 
+    // …but a `svg path` COUNT does not prove the edges actually render: a CSS
+    // type selector matches by localName, so it counts even an inert
+    // HTML-namespaced `<path>` — the exact masking that hid the SVG-blind
+    // `_tpl` bug (edges lowered to `_tpl("<g><path…")` and parsed as HTML →
+    // no lines drawn while nodes showed). Assert the edge path is a REAL
+    // SVGPathElement with measurable geometry (`getTotalLength` exists only on
+    // genuine SVG geometry elements, not on an HTMLUnknownElement).
+    const edgeIsRealSvg = await page.locator('svg path').first().evaluate((el) => ({
+      isSvgPath: el instanceof SVGPathElement,
+      ns: el.namespaceURI,
+      len: typeof (el as SVGPathElement).getTotalLength === 'function'
+        ? (el as SVGPathElement).getTotalLength()
+        : -1,
+    }))
+    expect(edgeIsRealSvg.isSvgPath).toBe(true)
+    expect(edgeIsRealSvg.ns).toBe('http://www.w3.org/2000/svg')
+    expect(edgeIsRealSvg.len).toBeGreaterThan(0)
+
     // Sanity: no console errors at mount. The flow component lazy-loads
     // elkjs only on `instance.layout()` call, NOT on initial mount, so a
     // clean mount path means `<Flow>` + nodes + edges all wired without

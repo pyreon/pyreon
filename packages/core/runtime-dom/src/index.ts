@@ -27,6 +27,7 @@ export { KeepAlive } from './keep-alive'
 export { bindPolymorphicText, mountChild } from './mount'
 export type { SanitizeFn } from './props'
 export {
+  applyClassProp as _setClass,
   applyProp,
   applyProps,
   applyProps as _applyProps,

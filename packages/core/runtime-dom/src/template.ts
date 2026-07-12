@@ -2,7 +2,7 @@ import type { NativeItem, VNodeChild } from '@pyreon/core'
 import { _rdNodeId, getContextOwner, renderEffect } from '@pyreon/reactivity'
 import { SizedMap } from '@pyreon/sized-map'
 import { _tagTextBinding } from './binding-registry'
-import { createPolyTextCore, mountChild, type PolyTextCore } from './mount'
+import { createPolyTextCore, mountChild, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
 // Dev-mode gates in this file use the bare bundler-agnostic
@@ -388,12 +388,55 @@ const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 }
  *   return () => { __d0() };
  * })
  */
+// SVG tags that are ALSO valid HTML — a template rooted at one of these is
+// almost always the HTML element, so we do NOT SVG-wrap it. `svg` parses
+// correctly as a literal root on its own; a bare `<title>` root is an HTML
+// document title, not an SVG `<title>`. Every other entry in SVG_TAGS is
+// namespace-unambiguous. (MathML is the same SHAPE of bug but has zero real
+// template-rooted instances in the codebase AND happy-dom can't parse MathML
+// foreign content to verify a fix — so it is deliberately out of scope here.)
+const SVG_ROOT_EXCLUDE = new Set(['svg', 'title'])
+
+/**
+ * Whether a template STRING is rooted at a bare SVG element — `<g>`, `<path>`,
+ * `<rect>`, `<linearGradient>`, … NOT enclosed in an `<svg>`.
+ *
+ * `document.createElement('template').innerHTML = html` runs the HTML parser,
+ * which only enters SVG foreign-content mode when it hits a literal `<svg>`. A
+ * string rooted at `<g>` is parsed in the HTML namespace, so the cloned nodes
+ * are inert `HTMLUnknownElement`s that render nothing — the `@pyreon/flow`
+ * edge / minimap-dot bug (edges lower to `_tpl("<g><path…")`). Wrapping in
+ * `<svg>` for parsing (then lifting the children back out) gives correctly
+ * namespaced `SVGElement`s.
+ */
+function isSvgRooted(html: string): boolean {
+  const m = /^\s*<([a-zA-Z][a-zA-Z0-9-]*)/.exec(html)
+  if (m === null) return false
+  const tag = m[1] as string
+  return !SVG_ROOT_EXCLUDE.has(tag) && SVG_TAGS.has(tag)
+}
+
 export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | null): NativeItem {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
     tpl = document.createElement('template')
-    tpl.innerHTML = html
+    if (isSvgRooted(html)) {
+      // Parse inside an `<svg>` wrapper so the root + descendants land in the
+      // SVG namespace, then MOVE the parsed children into the cache template's
+      // content — moving preserves `namespaceURI`, and the cloned root in the
+      // hot path below inherits it too. Verified in happy-dom + real Chromium.
+      const wrapper = document.createElement('template')
+      wrapper.innerHTML = `<svg>${html}</svg>`
+      const svg = wrapper.content.firstElementChild
+      if (svg) {
+        while (svg.firstChild) tpl.content.appendChild(svg.firstChild)
+      } else {
+        tpl.innerHTML = html
+      }
+    } else {
+      tpl.innerHTML = html
+    }
     // SizedMap.set() handles FIFO eviction internally — drops the
     // oldest entry once we hit the cap.
     _tplCache.set(html, tpl)

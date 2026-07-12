@@ -458,6 +458,7 @@ struct Ctx<'a> {
     needs_wrap_spread_import: bool,
     needs_cx_import: bool,
     needs_set_style_import: bool,
+    needs_set_class_import: bool,
     needs_bind_text_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
@@ -608,6 +609,7 @@ impl<'a> Ctx<'a> {
             needs_wrap_spread_import: false,
             needs_cx_import: false,
             needs_set_style_import: false,
+            needs_set_class_import: false,
             needs_bind_text_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
@@ -745,6 +747,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_set_style_import {
                 imports.push("_setStyle");
+            }
+            if self.needs_set_class_import {
+                imports.push("_setClass");
             }
             let reactivity = if self.needs_bind_import {
                 "\nimport { _bind } from \"@pyreon/reactivity\";"
@@ -4683,6 +4688,7 @@ struct TemplateBuilder {
     needs_set_child_at: bool,
     needs_cx: bool,
     needs_set_style: bool,
+    needs_set_class: bool,
 }
 
 impl TemplateBuilder {
@@ -4705,6 +4711,7 @@ impl TemplateBuilder {
             needs_set_child_at: false,
             needs_cx: false,
             needs_set_style: false,
+            needs_set_class: false,
         }
     }
 
@@ -4769,6 +4776,9 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     }
     if tb.needs_set_style {
         ctx.needs_set_style_import = true;
+    }
+    if tb.needs_set_class {
+        ctx.needs_set_class_import = true;
     }
     if tb.needs_apply_props {
         ctx.needs_apply_props_import = true;
@@ -5389,10 +5399,11 @@ fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str) -> String {
     // (packages/core/compiler/src/jsx.ts) — the native-equivalence tests assert
     // it. The caller sets `tb.needs_cx` for class so `cx` is imported.
     if html_attr_name == "class" {
-        format!(
-            "{{ const _cv = ({}); {}.className = typeof _cv === \"string\" ? _cv : _cx(_cv) }}",
-            expr, var_name
-        )
+        // Delegate to runtime `_setClass` (= applyClassProp) — SVG-safe
+        // `setAttribute('class', …)` + cx normalization. The old inline
+        // `.className = …` THREW on a real SVGElement. See the JS backend's
+        // attrSetter. The caller sets `tb.needs_set_class`.
+        format!("_setClass({}, {})", var_name, expr)
     } else if html_attr_name == "style" {
         // Delegate to runtime `_setStyle` (= applyStyleProp) — see the JS
         // backend's attrSetter. The caller sets `tb.needs_set_style`.
@@ -5419,11 +5430,11 @@ fn emit_dynamic_attr(
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) {
-    // class always routes through `attr_setter`'s cx-normalizing form, so the
-    // `cx` import is needed whenever a (static-or-reactive) class binding is
-    // emitted here. Mirrors the JS backend setting `needsCxImport` in attrSetter.
+    // class always routes through `attr_setter`'s `_setClass` form (SVG-safe),
+    // so `_setClass` is imported whenever a (static-or-reactive) class binding
+    // is emitted here. Mirrors the JS backend setting `needsSetClass`.
     if html_attr_name == "class" {
-        tb.needs_cx = true;
+        tb.needs_set_class = true;
     }
     if html_attr_name == "style" {
         tb.needs_set_style = true;
@@ -5451,10 +5462,8 @@ fn emit_dynamic_attr(
         tb.needs_bind_direct = true;
         let d = tb.next_disp();
         let updater = if html_attr_name == "class" {
-            format!(
-                "(v) => {{ {}.className = v == null ? \"\" : (typeof v === \"string\" ? v : _cx(v)) }}",
-                var_name
-            )
+            tb.needs_set_class = true;
+            format!("(v) => _setClass({}, v)", var_name)
         } else if html_attr_name == "style" {
             format!("(v) => _setStyle({}, v)", var_name)
         } else if html_attr_name == "dangerouslySetInnerHTML" {
