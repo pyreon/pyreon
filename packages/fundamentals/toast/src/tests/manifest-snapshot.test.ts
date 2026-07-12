@@ -14,7 +14,7 @@ describe('gen-docs — toast snapshot', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/toast — Toast Notifications
 
-      Imperative toast notifications for Pyreon. Call \`toast()\` from anywhere in your app — no provider or context needed. Preset variants (\`toast.success\`, \`toast.error\`, etc.), a \`toast.promise()\` helper for async operations, and \`toast.update()\` for loading-to-success patterns. Render \`<Toaster />\` once at the app root — it uses Portal, CSS transitions, auto-dismiss, and pause-on-hover. Accessible with \`role="alert"\` and \`aria-live="polite"\` on toast elements.
+      Imperative toast notifications for Pyreon. Call \`toast()\` from anywhere in your app — no provider or context needed. Preset variants (\`toast.success\`, \`toast.error\`, etc.), a \`toast.promise()\` helper for async operations, and \`toast.update()\` for loading-to-success patterns. Render \`<Toaster />\` once at the app root — it uses Portal, animated enter/leave CSS transitions, auto-dismiss, and pause-on-hover-and-focus. Accessible with a type-aware live-region role — \`role="alert"\` (assertive) for error/warning, \`role="status"\` (polite) for info/success — plus \`aria-atomic\`.
 
       \`\`\`typescript
       import { toast, Toaster } from '@pyreon/toast'
@@ -54,10 +54,12 @@ describe('gen-docs — toast snapshot', () => {
         error: 'Failed to load',
       })
 
-      // Dismiss programmatically:
+      // Dismiss (soft — animates out) or remove (hard — instant):
       const toastId = toast('Dismissable')
-      toast.dismiss(toastId)  // dismiss one
-      toast.dismiss()         // dismiss all
+      toast.dismiss(toastId)  // soft-dismiss one (plays the leave animation)
+      toast.dismiss()         // soft-dismiss all
+      toast.remove(toastId)   // hard-remove one (no animation)
+      toast.remove()          // hard-remove all
       \`\`\`
 
       > **Peer dep**: @pyreon/runtime-dom
@@ -75,6 +77,6 @@ describe('gen-docs — toast snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).length).toBe(2)
     expect(record['toast/toast']!.notes).toContain('imperative')
-    expect(record['toast/toast']!.mistakes?.split('\n').length).toBe(3)
+    expect(record['toast/toast']!.mistakes?.split('\n').length).toBe(4)
   })
 })

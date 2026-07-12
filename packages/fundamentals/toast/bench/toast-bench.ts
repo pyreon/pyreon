@@ -2,17 +2,23 @@
 /**
  * Headless toast-store benchmark — @pyreon/toast vs react-hot-toast.
  *
- * Both ship a module-level imperative store with a HEADLESS, hard removal path
- * (`toast.dismiss`+`toast.remove` for RHT; `toast.dismiss` removes immediately
- * for Pyreon), so the raw store-op dispatch cost is directly comparable with
- * the store kept at steady size across the timed loop.
+ * Both ship a module-level imperative store with a HARD, instant removal path
+ * (`toast.remove` on both — @pyreon/toast and react-hot-toast share the exact
+ * `dismiss` (soft, animated) / `remove` (hard, instant) split), so the raw
+ * store-op dispatch cost is directly comparable with the store kept at steady
+ * size across the timed loop. The SOFT animated `dismiss` (which schedules a
+ * leave transition) is measured against react-hot-toast — where the DOM commit
+ * is what matters — in `toast-commit-bench.ts`'s dismiss→commit row.
  *
  * sonner is DELIBERATELY EXCLUDED here: its `dismiss` is animation-coupled —
  * a dismissed toast is only removed from the store once a MOUNTED `<Toaster>`
- * finishes the exit animation, so headless (no Toaster) dismissed toasts linger
- * forever and the loop degrades to O(N²). That isn't sonner's real per-op cost,
- * so reporting it here would be a benchmark artifact. sonner IS measured fairly
- * — with a mounted Toaster — in `toast-commit-bench.ts`.
+ * finishes the exit animation (its `dismiss` fires a `requestAnimationFrame`),
+ * so headless (no Toaster) dismissed toasts linger forever and the loop degrades
+ * to O(N²). That isn't sonner's real per-op cost, so reporting it here would be a
+ * benchmark artifact. sonner IS measured fairly on the ONE headless-comparable op
+ * (create throughput, fresh process per sample) in `toast-commit-bench.ts`; that
+ * file's mounted-commit rows are @pyreon/toast vs react-hot-toast only (sonner's
+ * layout-measurement Toaster does not render under happy-dom).
  *
  * Methodology mirrors the repo bench standard (form-bench.ts):
  *  - NODE_ENV=production BEFORE any import (dev paths are noise).
@@ -56,16 +62,19 @@ const bench = (scenario: string, impls: { pyreon: () => void; rht: () => void })
 }
 
 // ── Scenario 1 — create + dismiss cycle (steady state, store stays ~empty) ──
+// This bench measures raw STORE DISPATCH, so removal uses the HARD path
+// (`remove`) on both — the instant, animation-free op both libraries expose. The
+// SOFT animated `dismiss` (which schedules a leave) is fairly measured against
+// react-hot-toast in `toast-commit-bench.ts`'s dismiss→commit row.
 let n = 0
-bench('create+dismiss', {
+bench('create+remove', {
   pyreon: () => {
     const id = pyreon('m' + (n++ & 1023), { duration: 0 })
-    pyreon.dismiss(id)
+    pyreon.remove(id) // HARD, instant
   },
   rht: () => {
     const id = rht('m' + (n++ & 1023), { duration: Infinity })
-    rht.dismiss(id)
-    rht.remove(id) // hard-remove so the store doesn't accumulate (RHT dismiss is soft)
+    rht.remove(id) // HARD, instant
   },
 })
 
@@ -90,12 +99,11 @@ bench('create+dismiss', {
 bench('create10+clear', {
   pyreon: () => {
     for (let i = 0; i < 10; i++) pyreon('m' + i, { duration: 0 })
-    pyreon.dismiss()
+    pyreon.remove() // HARD clear-all
   },
   rht: () => {
     const ids: string[] = []
     for (let i = 0; i < 10; i++) ids.push(rht('m' + i, { duration: Infinity }))
-    rht.dismiss()
     for (const id of ids) rht.remove(id)
   },
 })

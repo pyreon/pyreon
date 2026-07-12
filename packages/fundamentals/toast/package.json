@@ -37,7 +37,8 @@
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench": "bun bench/toast-bench.ts"
+    "bench": "bun bench/toast-bench.ts",
+    "bench:commit": "bun bench/toast-commit-bench.ts"
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
@@ -52,7 +53,8 @@
     "@vitus-labs/tools-lint": "^2.6.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-hot-toast": "^2.6.0"
+    "react-hot-toast": "^2.6.0",
+    "sonner": "^2.0.7"
   },
   "publishConfig": {
     "access": "public"

@@ -64,6 +64,13 @@ export interface Toast {
   onDismiss: (() => void) | undefined
   state: ToastState
   timer: ReturnType<typeof setTimeout> | undefined
+  /**
+   * Leave-animation timer. A soft `dismiss` flips `state` to `'exiting'` (so the
+   * CSS leave transition plays) and schedules the hard removal via this timer.
+   * A hard `remove` (or `_reset`) clears it. `undefined` while the toast is
+   * `entering`/`visible`.
+   */
+  leaveTimer: ReturnType<typeof setTimeout> | undefined
   /** Remaining ms when timer was paused (hover). */
   remaining: number
   /** Timestamp when current timer started. */

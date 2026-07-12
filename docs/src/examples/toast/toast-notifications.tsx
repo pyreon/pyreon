@@ -1,36 +1,89 @@
-// @ts-nocheck — 1:1 port from a JS `<Playground>`. Strict-mode TS
-// would need a manual rewrite (signal shapes, possibly-null guards).
-// Renders + behaves correctly; type tightening is a follow-up.
-import { signal } from '@pyreon/reactivity'
-import { h } from '@pyreon/core'
+import { signal, type Signal } from '@pyreon/reactivity'
+import { toast, Toaster } from '@pyreon/toast'
 
 /**
- * Migrated from `<Playground>` — Toast Notifications.
+ * Live `@pyreon/toast` demo — the REAL imperative API, not a re-implementation.
  *
- * The original playground ran inline JS inside an iframe via `mount(ui, app)`.
- * This is the same code as a real Pyreon component file: typechecked, lint-
- * covered, refactor-safe. See `<Example>` in docs/zero-content for the
- * inline-mount + signal-share contract.
+ * Mounts one `<Toaster>` (bottom-right) and fires real `toast.*` calls from the
+ * buttons: presets, the promise pattern, a loading→success `update`, and
+ * dismiss-all. The `shared` signal counts how many toasts this demo has fired —
+ * bridge it with `<Example ... share="toasts-fired" />` and any other Example on
+ * the page reading the same signal reacts. Falls back to a local signal when
+ * unbridged (the "bridgeable, not require-bridged" contract).
  */
-export default function ToastNotifications() {
-  const toasts = signal<string[]>([])
-  let id = 0
+export default function ToastNotifications(props: { shared?: Signal<number> }) {
+  const fired = props.shared ?? signal(0)
+  const bump = () => fired.update((n) => n + 1)
 
-  const addToast = (type: any, msg: any) => {
-    const toast = { id: ++id, type, msg }
-    toasts.update(t => [...t, toast])
-    setTimeout(() => toasts.update(t => t.filter(x => x.id !== toast.id)), 2000)
-  }
+  const fakeSave = () =>
+    new Promise<{ files: number }>((resolve, reject) => {
+      setTimeout(
+        () => (Math.random() > 0.3 ? resolve({ files: 3 }) : reject(new Error('network'))),
+        900,
+      )
+    })
 
-  const colors = { success: '#198754', error: '#dc3545', info: '#0d6efd' }
-  return h('div', {},
-    h('div', { style: { display: 'flex', gap: '8px' } },
-      h('button', { onClick: () => addToast('success', 'Saved!') }, 'Success'),
-      h('button', { onClick: () => addToast('error', 'Failed!') }, 'Error'),
-      h('button', { onClick: () => addToast('info', 'FYI') }, 'Info'),
-    ),
-    h('div', { style: { marginTop: '12px' } }, () =>
-      toasts().map(t => h('div', { style: { padding: '6px 12px', marginBottom: '4px', borderRadius: '4px', color: '#fff', background: (colors as Record<string, any>)[t.type] } }, t.msg))
-    ),
+  return (
+    <div class="example-col">
+      <Toaster position="bottom-right" />
+
+      <div class="example-row" style={{ flexWrap: 'wrap', gap: '8px' }}>
+        <button
+          type="button"
+          class="example-btn"
+          onClick={() => {
+            toast.success('Saved!', { description: '3 files · 1.2 MB' })
+            bump()
+          }}
+        >
+          Success
+        </button>
+        <button
+          type="button"
+          class="example-btn"
+          onClick={() => {
+            toast.error('Connection failed', {
+              action: { label: 'Retry', onClick: () => toast.info('Retrying…') },
+            })
+            bump()
+          }}
+        >
+          Error + action
+        </button>
+        <button
+          type="button"
+          class="example-btn"
+          onClick={() => {
+            const id = toast.loading('Uploading…')
+            bump()
+            setTimeout(() => toast.update(id, { type: 'success', message: 'Uploaded!' }), 1000)
+          }}
+        >
+          Loading → success
+        </button>
+        <button
+          type="button"
+          class="example-btn"
+          onClick={() => {
+            toast.promise(fakeSave(), {
+              loading: 'Saving draft…',
+              success: (data) => `Saved ${data.files} files`,
+              error: (err) => `Failed: ${(err as Error).message}`,
+            })
+            bump()
+          }}
+        >
+          Promise
+        </button>
+        <button type="button" class="example-btn" onClick={() => toast.dismiss()}>
+          Dismiss all
+        </button>
+      </div>
+
+      <div class="example-card">
+        <span class="example-muted">toasts fired: </span>
+        <span class="example-badge">{() => fired()}</span>
+      </div>
+    </div>
   )
 }

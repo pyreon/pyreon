@@ -221,16 +221,21 @@ const user = await toast.promise(fetchUser(id), {
 
 Under the hood, the loading toast is created with `duration: 0` (persistent) and then `update`d on settle to a success/error toast that uses the Toaster's default duration.
 
-## Dismissing — `toast.dismiss()`
+## Dismissing — `toast.dismiss()` (soft) and `toast.remove()` (hard)
 
 ```tsx
 const id = toast('Dismissable')
 
-toast.dismiss(id)   // dismiss one toast
-toast.dismiss()     // dismiss all toasts
+toast.dismiss(id)   // SOFT: play the leave animation, then remove
+toast.dismiss()     // soft-dismiss all toasts
+
+toast.remove(id)    // HARD: remove instantly, no leave animation
+toast.remove()      // hard-remove all toasts
 ```
 
-Dismissing clears the toast's timer and fires its `onDismiss` callback. With no argument, every active toast is cleared (each one's `onDismiss` fires).
+`dismiss` is the default you want — the toast plays its CSS leave transition (fade + collapse in place) and is removed once the animation finishes; its siblings reflow up smoothly. `onDismiss` fires **immediately** in both cases, and the toast's auto-dismiss timer is cleared. This is the same `dismiss` (soft, animated) / `remove` (hard, instant) split react-hot-toast uses — reach for `remove` when you need a toast gone right now (replacing it, or tearing down on unmount).
+
+Auto-dismiss (a toast's `duration` elapsing) goes through the soft `dismiss` path too, so timed-out toasts animate out the same way manual dismissals do.
 
 ## The Toaster component
 
@@ -346,6 +351,20 @@ Each toast also sets `aria-atomic="true"` so the whole toast is announced as one
 
 An `info → error` update also upgrades the live-region urgency, because `role` is reactive to the toast's current type.
 
+## Animation
+
+Toasts animate on both enter and leave via CSS transitions — no external animation library. A new toast fades + slides in (`entering → visible`, promoted on the next frame). A dismissed toast fades and collapses in place (`--exiting`, `max-height → 0`) for ~200ms before it is removed, so its siblings reflow up smoothly rather than snapping. The store owns this timing (`dismiss` schedules the removal), so the leave still completes even without a mounted animation runtime. Use [`toast.remove()`](#dismissing--toastdismiss-soft-and-toastremove-hard) to skip the animation.
+
+## Scope — deliberate non-goals
+
+`@pyreon/toast` is signal-native, framework-integrated, and a11y-first — not a port of a React toast library. A few features common elsewhere are intentional non-goals:
+
+- **Swipe-to-dismiss / draggable toasts** (sonner, react-toastify) — a touch-gesture affordance; use the `×` button (`dismissible`) or an `action`.
+- **Collapsed stacking with hover-to-expand** (sonner's signature look) — an opinionated visual; `max` controls how many render at once.
+- **Per-toast `position`** — position is a `<Toaster>` prop; mount two Toasters if you need two corners.
+
+Rich/custom content is fully supported the idiomatic way: `message`, `description`, and `icon` all accept any `VNodeChild`.
+
 ## SSR
 
 `<Toaster />` returns `null` on the server, so it is safe to include in SSR layouts — nothing renders until the client mounts. `toast()` calls during SSR are harmless: they write into the module-level signal, which is simply discarded server-side (no DOM, no Portal). Notifications begin rendering once the Toaster mounts on the client.
@@ -410,7 +429,8 @@ The `toast` function also exposes these methods:
 | `toast.info` | `(message, options?: Omit<ToastOptions, 'type'>)` | `string` | Create an info toast. |
 | `toast.loading` | `(message, options?: Omit<ToastOptions, 'type' \| 'duration'>)` | `string` | Create a persistent (`duration: 0`) info toast. Returns its id for later `update`. |
 | `toast.update` | `(id: string, updates: { message?, type?, duration?, description? })` | `void` | Modify an existing toast in place. Restarts its timer. No-op if the id is gone. |
-| `toast.dismiss` | `(id?: string)` | `void` | Dismiss one toast by id, or all toasts if no id is given. Fires each toast's `onDismiss`. |
+| `toast.dismiss` | `(id?: string)` | `void` | **Soft**: dismiss one toast by id (or all) — plays the leave animation, then removes. Fires each toast's `onDismiss` immediately. |
+| `toast.remove` | `(id?: string)` | `void` | **Hard**: remove one toast by id (or all) instantly, no leave animation. Fires `onDismiss` if the toast wasn't already dismissed. |
 | `toast.promise` | `<T>(promise: Promise<T>, opts: ToastPromiseOptions<T>)` | `Promise<T>` | Show a loading toast that transitions to success/error on settle. Returns the original promise. |
 
 ### `<Toaster />`

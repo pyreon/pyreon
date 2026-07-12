@@ -1,4 +1,5 @@
-import { _pauseAll, _reset, _resumeAll, _toasts, toast } from '../toast'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { _pauseAll, _reset, _resumeAll, _toasts, LEAVE_DURATION, toast } from '../toast'
 
 /** Helper — get toast at index with assertion. */
 function at(index: number) {
@@ -128,33 +129,42 @@ describe('toast.loading', () => {
   })
 
   it('returns an id for later dismiss/update', () => {
+    vi.useFakeTimers()
     const id = toast.loading('Please wait')
     expect(typeof id).toBe('string')
     expect(_toasts().length).toBe(1)
 
     toast.dismiss(id)
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
+    vi.useRealTimers()
   })
 })
 
 // ─── toast.dismiss ──────────────────────────────────────────────────────────
 
 describe('toast.dismiss', () => {
-  it('removes a specific toast by id', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('removes a specific toast by id (after the leave animation)', () => {
     const id1 = toast('First')
     toast('Second')
     expect(_toasts().length).toBe(2)
 
     toast.dismiss(id1)
+    expect(at(0).state).toBe('exiting')
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(1)
     expect(at(0).message).toBe('Second')
   })
 
-  it('clears all toasts when no id given', () => {
+  it('clears all toasts when no id given (after the leave animation)', () => {
     toast('A')
     toast('B')
     toast('C')
     toast.dismiss()
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -217,7 +227,7 @@ describe('toast.update', () => {
     toast.update(id, { duration: 2000 })
     expect(at(0).duration).toBe(2000)
 
-    vi.advanceTimersByTime(2000)
+    vi.advanceTimersByTime(2000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
     vi.useRealTimers()
   })
@@ -248,8 +258,8 @@ describe('toast.update', () => {
     vi.advanceTimersByTime(500)
     expect(_toasts().length).toBe(1)
 
-    // New timer fires at 1000ms from update
-    vi.advanceTimersByTime(500)
+    // New timer fires at 1000ms from update (+ leave animation)
+    vi.advanceTimersByTime(500 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
     vi.useRealTimers()
   })
@@ -371,7 +381,7 @@ describe('toast.promise', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(at(0).duration).toBe(4000)
-    vi.advanceTimersByTime(4000)
+    vi.advanceTimersByTime(4000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -393,7 +403,7 @@ describe('toast.promise', () => {
     }
     await vi.advanceTimersByTimeAsync(0)
 
-    vi.advanceTimersByTime(4000)
+    vi.advanceTimersByTime(4000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 })
@@ -409,17 +419,19 @@ describe('auto-dismiss timing', () => {
     vi.useRealTimers()
   })
 
-  it('auto-dismisses after default 4000ms', () => {
+  it('auto-dismisses after default 4000ms (+ leave)', () => {
     toast('Hello')
     vi.advanceTimersByTime(3999)
     expect(_toasts().length).toBe(1)
     vi.advanceTimersByTime(1)
+    expect(at(0).state).toBe('exiting')
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
   it('auto-dismisses after custom duration', () => {
     toast('Quick', { duration: 1000 })
-    vi.advanceTimersByTime(1000)
+    vi.advanceTimersByTime(1000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -472,7 +484,7 @@ describe('pause and resume', () => {
     vi.advanceTimersByTime(999)
     expect(_toasts().length).toBe(1)
 
-    vi.advanceTimersByTime(1)
+    vi.advanceTimersByTime(1 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 
@@ -487,7 +499,7 @@ describe('pause and resume', () => {
   it('_resumeAll is safe to call without prior pause', () => {
     toast('Hello', { duration: 4000 })
     _resumeAll()
-    vi.advanceTimersByTime(4000)
+    vi.advanceTimersByTime(4000 + LEAVE_DURATION)
     expect(_toasts().length).toBe(0)
   })
 })
@@ -511,16 +523,20 @@ describe('multiple toasts', () => {
   })
 
   it('dismissing one does not affect others', () => {
+    vi.useFakeTimers()
     const id1 = toast('A', { duration: 0 })
     const id2 = toast('B', { duration: 0 })
     toast('C', { duration: 0 })
 
     toast.dismiss(id1)
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(2)
 
     toast.dismiss(id2)
+    vi.advanceTimersByTime(LEAVE_DURATION)
     expect(_toasts().length).toBe(1)
     expect(at(0).message).toBe('C')
+    vi.useRealTimers()
   })
 })
 

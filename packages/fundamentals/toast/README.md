@@ -2,7 +2,7 @@
 
 Imperative toast notifications — call `toast()` from anywhere, render `<Toaster />` once.
 
-A provider-less toast system: one `<Toaster />` mounted at the root, and any code (component bodies, event handlers, async functions, stores, route loaders) calls `toast(message)` / `toast.success(message)` / `toast.promise(promise, ...)` to enqueue. Backed by a signal so the Toaster picks updates up reactively. Includes auto-dismiss, pause-on-hover, action buttons, the loading → success / error promise pattern, and accessibility primitives (`role="alert"`, `aria-live="polite"`).
+A provider-less toast system: one `<Toaster />` mounted at the root, and any code (component bodies, event handlers, async functions, stores, route loaders) calls `toast(message)` / `toast.success(message)` / `toast.promise(promise, ...)` to enqueue. Backed by a signal so the Toaster picks updates up reactively. Includes auto-dismiss, pause-on-hover-and-focus, action buttons, an animated enter/leave, the loading → success / error promise pattern, and type-aware accessibility (`role="alert"` for error/warning, `role="status"` for info/success).
 
 ## Install
 
@@ -45,7 +45,8 @@ toast.promise(saveDraft(), {
 | `toast.info(message, options?)` | `{ type: 'info' }` | |
 | `toast.loading(message, options?)` | persistent loading toast — won't auto-dismiss | |
 | `toast.update(id, patch)` | mutate an open toast (text + type) | |
-| `toast.dismiss(id?)` | dismiss one or every toast | |
+| `toast.dismiss(id?)` | dismiss one or every toast (soft — plays the leave animation) | |
+| `toast.remove(id?)` | remove one or every toast instantly (hard — no leave animation) | |
 | `toast.promise(promise, opts)` | transitions loading → success / error automatically | |
 
 ```ts
@@ -64,12 +65,15 @@ toast(<span>Saved to <strong>{name}</strong></span>)
 interface ToastOptions {
   type?: 'info' | 'success' | 'warning' | 'error'
   duration?: number // ms, default 4000. Set 0 for persistent.
-  position?: ToastPosition // overrides the Toaster default
+  description?: string | VNodeChild // secondary line under the message
+  icon?: VNodeChild // leading icon
   dismissible?: boolean // shows × dismiss button, default true
   action?: { label: string; onClick: () => void }
   onDismiss?: () => void // fires on manual or auto dismiss
 }
 ```
+
+There is **no per-toast `position`** — position is a `<Toaster>` prop, not a `ToastOptions` field. All toasts render in the Toaster's configured corner.
 
 ## `<Toaster>` — render once at root
 
@@ -87,9 +91,9 @@ Positions: `'top-left'` · `'top-center'` · `'top-right'` · `'bottom-left'` ·
 The Toaster:
 
 - Renders into a Portal so it sits above any z-index stack
-- Pauses auto-dismiss timers on hover, resumes on leave (the remaining duration is preserved per toast)
-- Emits `role="alert"` + `aria-live="polite"` so screen readers announce new toasts
-- Animates entry / exit via CSS transitions (no external animation lib)
+- Pauses auto-dismiss timers on hover AND on keyboard focus, resumes on leave/blur (the remaining duration is preserved per toast)
+- Announces toasts with a **type-aware** live-region role — `role="alert"` (assertive) for error/warning, `role="status"` (polite) for info/success — plus `aria-atomic="true"`; the role implies its own `aria-live`, so the container is a plain labeled landmark (no double-announce)
+- Animates entry AND exit via CSS transitions (no external animation lib): a dismissed toast fades + collapses in place, and its siblings reflow smoothly
 
 ## Loading → success/error via `toast.promise`
 
@@ -114,6 +118,29 @@ const id = toast.loading('Uploading…')
 toast.update(id, { message: 'Processing…', type: 'info' })
 toast.update(id, { message: 'Done', type: 'success', duration: 3000 })
 ```
+
+## Dismiss (soft) vs remove (hard)
+
+Two ways to take a toast down — the same `dismiss` / `remove` split react-hot-toast uses:
+
+```ts
+toast.dismiss(id) // SOFT: plays the CSS leave animation (fade + collapse), then removes
+toast.remove(id) //  HARD: removes instantly, no leave animation
+toast.dismiss() //   soft-dismiss every toast
+toast.remove() //    hard-remove every toast
+```
+
+`dismiss` is the default you want for user-facing removals — the toast fades and collapses in place while its siblings reflow smoothly. `onDismiss` fires immediately in both cases. Reach for `remove` when you need a toast gone right now (replacing it, tearing down on unmount).
+
+## Scope — what's deliberately not here
+
+`@pyreon/toast` is a **signal-native, framework-integrated, a11y-first** toast — not a re-skin of a React toast library. Some features common elsewhere are intentional non-goals:
+
+- **Swipe-to-dismiss / draggable toasts** (sonner, react-toastify) — a touch-gesture affordance; use `dismissible` + the `×` button, or an `action`.
+- **Collapsed stacking with hover-to-expand** (sonner's signature) — an opinionated visual; `max` controls how many render, newest-first.
+- **Per-toast `position`** — position is a `<Toaster>` prop; all toasts share the configured corner (mount two Toasters for two corners).
+
+Fully custom toast content IS supported — `message`, `description`, and `icon` all accept any `VNodeChild`, so you render whatever markup you want inside the toast chrome.
 
 ## Testing
 

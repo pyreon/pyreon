@@ -5187,10 +5187,11 @@ toast.promise(fetchData(), {
 // Dismiss:
 toast.dismiss(id)  // one
 toast.dismiss()    // all`,
-    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for removal, and `.promise(promise, messages)` for async operation tracking. See also: Toaster.',
+    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), and `.promise(promise, messages)` for async operation tracking. See also: Toaster.',
     mistakes: `- Forgetting to render \`<Toaster />\` — toasts are created but have no visual container to render into
 - Calling \`toast.update()\` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
-- Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\``,
+- Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\`
+- Expecting \`toast.dismiss(id)\` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for \`toast.remove(id)\` when you need it gone instantly`,
   },
 
   'toast/Toaster': {
