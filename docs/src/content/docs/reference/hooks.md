@@ -1,22 +1,22 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "36 signal-based hooks: state (useToggle/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFoc"
+description: "40 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 36 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 40 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 36 signal-based hooks across 7 categories
-- State: useToggle, usePrevious, useLatest, useControllableState
-- DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useScrollLock, useIntersection, useInfiniteScroll
+- 40 signal-based hooks across 7 categories
+- State: useToggle, useCounter, usePrevious, useLatest, useControllableState
+- DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useReducedMotion, useThemeValue, useSpacing, useRootSize
 - Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo
-- Interaction: useClipboard, useDialog, useKeyboard, useOnline
+- Interaction: useClipboard, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle
 - Data: useFetch — thin reactive JSON fetch (&#123; data, error, isPending, refetch &#125;); the web half of the multiplatform useFetch contract
 - Composition: useMergedRef, useUpdateEffect, useIsomorphicLayoutEffect
 - Every hook is SSR-safe and auto-cleans on unmount
@@ -29,16 +29,16 @@ A full, end-to-end usage of the package:
 ```tsx
 import {
   // State
-  useToggle, usePrevious, useLatest, useControllableState,
+  useToggle, useCounter, usePrevious, useLatest, useControllableState,
   // DOM
   useEventListener, useClickOutside, useFocus, useHover, useFocusTrap,
-  useElementSize, useWindowResize, useScrollLock, useIntersection, useInfiniteScroll,
+  useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll,
   // Responsive
   useBreakpoint, useMediaQuery, useColorScheme, useReducedMotion, useThemeValue, useSpacing, useRootSize,
   // Timing
   useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo,
   // Interaction
-  useClipboard, useDialog, useKeyboard, useOnline,
+  useClipboard, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle,
   // Composition
   useMergedRef, useUpdateEffect, useIsomorphicLayoutEffect,
 } from '@pyreon/hooks'
@@ -48,25 +48,26 @@ import {
 //    the `isControlled + signal + getter` shape by hand.
 function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange?: (v: boolean) => void }) {
   const [checked, setChecked] = useControllableState({
-    value: () => props.checked,            // controlled — function so signal reads track
-    defaultValue: () => props.defaultChecked ?? false,
+    value: () => props.checked,            // controlled — a FUNCTION so the signal read tracks
+    defaultValue: props.defaultChecked ?? false,  // uncontrolled initial — a plain value (read once)
     onChange: props.onChange,
   })
   return <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
 }
 
-// 2. DOM listeners — auto-cleanup on unmount.
-useEventListener(window, 'resize', () => layoutSig.set(measure()))
-useClickOutside(panelRef, () => setOpen(false))
+// 2. DOM listeners — auto-cleanup on unmount. Signature is (event, handler,
+//    options?, target?); target defaults to window (resolved once at setup).
+useEventListener('resize', () => layoutSig.set(measure()))
+useClickOutside(() => panelEl, () => setOpen(false))
 
 // 3. Element observers.
-const size = useElementSize(boxRef)        // Signal<{ width, height }>
-const visible = useIntersection(targetRef, { threshold: 0.5 })  // Signal<boolean>
-useInfiniteScroll(() => loadMore(), { rootMargin: '200px' })
+const size = useElementSize(() => boxEl)   // Signal<{ width, height }>
+const visible = useIntersection(() => targetEl, { threshold: 0.5 })  // Signal<entry | null>
+useInfiniteScroll(() => loadMore(), { threshold: 200, hasMore: () => more() })
 
 // 4. Focus management for modals / drawers.
-useFocusTrap(modalRef, () => isOpen())     // traps Tab inside the ref while signal is true
-useScrollLock(() => isOpen())              // locks <body> scroll while signal is true
+useFocusTrap(() => modalEl)                // traps Tab inside the element while it's present (null = inert)
+const scroll = useScrollLock()             // scroll.lock() / scroll.unlock() — refcounted <body> lock
 
 // 5. Responsive — driven by theme breakpoints, NOT raw media queries.
 const bp = useBreakpoint()                 // Signal<{ xs, sm, md, lg, xl }> active breakpoint flags
@@ -84,13 +85,19 @@ const sent = useTimeAgo(message.sentAt)    // Signal<string> "5 minutes ago", au
 // 7. Clipboard / dialog / online status — wraps the browser quirks.
 const { copy, copied } = useClipboard()    // `copied` auto-resets after 2s
 copy('hello')
-const dialog = useDialog()                 // native <dialog> with open/close/returnValue
+const dialog = useDialog()                 // native <dialog>: open signal + show/showModal/close/toggle
 const online = useOnline()                 // Signal<boolean>
 
 // 8. Composition primitives.
 const merged = useMergedRef(localRef, props.ref)   // forward ref + capture local
 useUpdateEffect(() => save(value()), [value])      // skips first run (mount-only effect)
 useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client, no-op on SSR
+
+// 9. More state + lifecycle.
+const { count, inc, dec, reset } = useCounter(0, { min: 0, max: 10 })  // numeric counter, clamped
+const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + scrollTo()
+const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
+const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity
 ```
 
 ## Exports
@@ -101,36 +108,40 @@ useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client
 | [`useEventListener`](#useeventlistener) | hook | Register a DOM event listener with automatic cleanup on unmount. |
 | [`useClickOutside`](#useclickoutside) | hook | Fire a callback when the user clicks outside the referenced element. |
 | [`useElementSize`](#useelementsize) | hook | Reactive element size via `ResizeObserver`. |
-| [`useFocusTrap`](#usefocustrap) | hook | Trap Tab/Shift+Tab focus inside the referenced element while `active()` is true. |
+| [`useFocusTrap`](#usefocustrap) | hook | Trap Tab/Shift+Tab focus inside the element returned by `getEl()`. |
 | [`useFocusReturn`](#usefocusreturn) | hook | The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus  |
 | [`useBreakpoint`](#usebreakpoint) | hook | Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes  |
 | [`useDebouncedValue`](#usedebouncedvalue) | hook | Returns a debounced signal that only updates after `delayMs` of source-signal idle. |
 | [`useFetch`](#usefetch) | hook | Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compi |
-| [`useClipboard`](#useclipboard) | hook | `navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `timeoutMs` (default 2000). |
-| [`useDialog`](#usedialog) | hook | Native `<dialog>` element wrapper with reactive `isOpen` / `returnValue` signals. |
+| [`useClipboard`](#useclipboard) | hook | `navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms (defau |
+| [`useDialog`](#usedialog) | hook | Native `<dialog>` element wrapper. |
 | [`useTimeAgo`](#usetimeago) | hook | Reactive "5 minutes ago" / "in 2 hours" relative-time string. |
 | [`useInfiniteScroll`](#useinfinitescroll) | hook | `IntersectionObserver`-based infinite loading. |
 | [`useMergedRef`](#usemergedref) | hook | Combine multiple refs into a single callback ref — used when forwarding `props.ref` while also keeping a local ref to th |
 | [`useUpdateEffect`](#useupdateeffect) | hook | Like `effect` but skips the initial run — only fires when one of the tracked signals updates *after* mount. |
 | [`useIsomorphicLayoutEffect`](#useisomorphiclayouteffect) | hook | Runs a layout-phase effect on the client (synchronous, before paint) and a no-op on the server. |
+| [`useCounter`](#usecounter) | hook | Reactive numeric counter — the numeric companion to useToggle. |
+| [`useWindowScroll`](#usewindowscroll) | hook | Track the window scroll offset reactively via a passive `scroll` listener (auto-removed on unmount), plus an SSR-safe im |
+| [`useDocumentVisibility`](#usedocumentvisibility) | hook | Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimi |
+| [`useIdle`](#useidle) | hook | Reactive user-idle detection — `true` once no activity event (pointer / key / scroll / wheel by default) has fired for ` |
 
 ## API
 
 ### useControllableState `hook`
 
 ```ts
-<T>(opts: { value?: () => T | undefined; defaultValue: () => T; onChange?: (v: T) => void }) => [Signal<T>, (v: T) => void]
+<T>(opts: { value: () => T | undefined; defaultValue: T; onChange?: (v: T) => void }) => [() => T, (next: T | ((prev: T) => T)) => void]
 ```
 
-Canonical controlled/uncontrolled state pattern. Returns a `[value, setValue]` tuple where the setter respects controlled mode (calls `onChange` only if controlled, mutates internal signal if uncontrolled). Used by every primitive in `@pyreon/ui-primitives`. Never reimplement the `isControlled + signal + getter` shape by hand. `value` and `defaultValue` are FUNCTIONS so signal reads track reactively — passing a plain value loses controlled/uncontrolled detection on prop changes.
+Canonical controlled/uncontrolled state pattern. Returns a `[getValue, setValue]` tuple where the getter reads the controlled `value()` when defined, else an internal signal, and the setter mutates the internal signal when uncontrolled and always fires `onChange`. Used by every primitive in `@pyreon/ui-primitives`. Never reimplement the `isControlled + signal + getter` shape by hand. `value` MUST be a FUNCTION so the controlled prop is read reactively; `defaultValue` is a PLAIN value (captured once as the uncontrolled initial). Controlled-vs-uncontrolled is detected once at setup from whether `value()` is defined.
 
 **Example**
 
 ```tsx
 function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange?: (v: boolean) => void }) {
   const [checked, setChecked] = useControllableState({
-    value: () => props.checked,
-    defaultValue: () => props.defaultChecked ?? false,
+    value: () => props.checked,           // controlled — function so the signal read tracks
+    defaultValue: props.defaultChecked ?? false,  // uncontrolled initial — plain value
     onChange: props.onChange,
   })
   return <button onClick={() => setChecked(!checked())}>{checked() ? 'on' : 'off'}</button>
@@ -139,34 +150,38 @@ function MyToggle(props: { checked?: boolean; defaultChecked?: boolean; onChange
 
 **Common mistakes**
 
-- Passing `value: props.checked` (not a function) — loses reactivity on prop changes
-- Mutating the returned signal directly with `.set()` instead of using the returned setter — bypasses the controlled-mode check
+- Passing `value: props.checked` (not a function) — loses reactivity on prop changes; pass `value: () => props.checked`
+- Passing `defaultValue` as a getter (`() => false`) — it is a plain value stored once into the internal signal; a function would be stored as the value itself
+- Mutating the returned signal directly with `.set()` instead of using the returned setter — bypasses the controlled-mode / onChange handling
 
-**See also:** `useToggle` · `usePrevious`
+**See also:** `useToggle` · `useCounter` · `usePrevious`
 
 ---
 
 ### useEventListener `hook`
 
 ```ts
-(target: EventTarget | (() => EventTarget | null), event: string, handler: EventListener, options?: AddEventListenerOptions) => void
+<K extends keyof WindowEventMap>(event: K, handler: (e: WindowEventMap[K]) => void, options?: boolean | AddEventListenerOptions, target?: () => EventTarget | null) => void
 ```
 
-Register a DOM event listener with automatic cleanup on unmount. Use this instead of raw `addEventListener` in primitives — never `addEventListener` / `removeEventListener` directly in component code (the cleanup is the hook's whole job). `target` may be a getter so reactive refs (`() => buttonRef()`) re-bind when the underlying element changes.
+Register a DOM event listener with automatic cleanup on unmount. Signature is `(event, handler, options?, target?)` — event FIRST, and `target` is the optional last argument, a getter resolved ONCE at setup (defaults to `window`). Use this instead of raw `addEventListener` in primitives — never `addEventListener` / `removeEventListener` directly in component code (the cleanup is the hook's whole job). SSR-safe: no-ops on the server.
 
 **Example**
 
 ```tsx
-useEventListener(window, 'resize', () => layoutSig.set(measure()))
-useEventListener(() => panelRef(), 'keydown', (e) => {
+useEventListener('resize', () => layoutSig.set(measure()))
+useEventListener('keydown', (e) => {
   if (e.key === 'Escape') setOpen(false)
 })
+// A specific element via the 4th (target) argument, resolved once at setup:
+useEventListener('click', onDocClick, {}, () => document)
 ```
 
 **Common mistakes**
 
 - Using raw `addEventListener` instead of `useEventListener` — you lose automatic `onUnmount` cleanup
-- Passing a static `window` / `document` when the target might not exist on SSR — `useEventListener` handles SSR-safe registration internally, but the target must be resolvable at `onMount` time
+- Passing the target FIRST (`useEventListener(window, "resize", fn)`) — the signature is event-first; the target is the optional 4th argument
+- Expecting the `target` getter to re-bind reactively — it is resolved ONCE at setup, so a ref that is still null then falls back to `window`; attach to a stable target or read a ref that is populated by setup time
 
 **See also:** `useClickOutside` · `useKeyboard`
 
@@ -216,25 +231,26 @@ effect(() => console.log('Box is', size().width, 'x', size().height))
 ### useFocusTrap `hook`
 
 ```ts
-(ref: () => HTMLElement | null, active: () => boolean) => void
+(getEl: () => HTMLElement | null) => void
 ```
 
-Trap Tab/Shift+Tab focus inside the referenced element while `active()` is true. Required for modals / drawers / fullscreen overlays to be keyboard-accessible. Returns focus to the previously-focused element on deactivation.
+Trap Tab/Shift+Tab focus inside the element returned by `getEl()`. Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every Tab, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally (a reactive `<Show>` / accessor) and the trap turns on/off with it, no separate `active` flag needed. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`.
 
 **Example**
 
 ```tsx
-const isOpen = signal(false)
-useFocusTrap(() => modalRef(), () => isOpen())
-useScrollLock(() => isOpen())
+// The dialog renders only while open, so getEl() is null (inert) when closed.
+let dialogEl: HTMLElement | null = null
+useFocusTrap(() => dialogEl)
+useFocusReturn(() => isOpen())  // returns focus to the opener on close
 ```
 
 **Common mistakes**
 
-- Forgetting the second argument `active` — always pass a reactive boolean (`() => isOpen()`) so the trap deactivates when the modal closes; a static `true` traps focus forever
-- Using on an element that isn't rendered yet — the ref getter must return the element at the time `active` becomes true; pair with a `<Show>` or reactive accessor that mounts the element first
+- Keeping the element permanently mounted (e.g. `display: none`) and expecting the trap to disable when hidden — the trap is gated on `getEl()` returning null, not on visibility; unmount the element (or a `<Show>`) to deactivate
+- Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only cycles Tab within the container while it is present
 
-**See also:** `useScrollLock` · `useDialog` · `useClickOutside`
+**See also:** `useFocusReturn` · `useScrollLock` · `useDialog` · `useClickOutside`
 
 ---
 
@@ -342,10 +358,10 @@ const quotes = useFetch<Quote[]>('/api/quotes.json')
 ### useClipboard `hook`
 
 ```ts
-(timeoutMs?: number) => { copy: (text: string) => Promise<void>; copied: Signal<boolean> }
+(options?: { timeout?: number }) => { copy: (text: string) => Promise<boolean>; copied: () => boolean; text: () => string }
 ```
 
-`navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `timeoutMs` (default 2000). Use the `copied` signal to flash a "Copied!" UI cue without manual timer management.
+`navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms (default 2000). `copy` resolves `true` on success / `false` on failure (never throws). `text()` is the last successfully-copied string. Use the `copied` signal to flash a "Copied!" UI cue without manual timer management.
 
 **Example**
 
@@ -354,6 +370,10 @@ const { copy, copied } = useClipboard()
 <button onClick={() => copy(token)}>{copied() ? 'Copied!' : 'Copy'}</button>
 ```
 
+**Common mistakes**
+
+- Passing a bare number (`useClipboard(3000)`) — the argument is an options object: `useClipboard({ timeout: 3000 })`
+
 **See also:** `useDialog` · `useOnline`
 
 ---
@@ -361,22 +381,23 @@ const { copy, copied } = useClipboard()
 ### useDialog `hook`
 
 ```ts
-() => { ref: (el: HTMLDialogElement | null) => void; open: () => void; close: (returnValue?: string) => void; isOpen: Signal<boolean>; returnValue: Signal<string> }
+(options?: { onClose?: () => void }) => { open: () => boolean; show: () => void; showModal: () => void; close: () => void; toggle: () => void; ref: (el: HTMLDialogElement | null) => void }
 ```
 
-Native `<dialog>` element wrapper with reactive `isOpen` / `returnValue` signals. Handles `showModal()` / `close()` plumbing and the `cancel`/`close` event wiring so consumers don't reimplement the boilerplate.
+Native `<dialog>` element wrapper. `open` is the reactive OPEN-STATE signal (call it to read: `dialog.open()`); `show()` opens non-modal, `showModal()` opens with backdrop + focus, `close()` closes, `toggle()` flips. Wires the native `close` event so `open` stays in sync (and fires `options.onClose`) when the user presses Escape.
 
 **Example**
 
 ```tsx
 const dialog = useDialog()
-<dialog ref={dialog.ref}>...</dialog>
-<button onClick={dialog.open}>Open</button>
+<button onClick={dialog.showModal}>Open</button>
+<dialog ref={dialog.ref}><button onClick={dialog.close}>Close</button></dialog>
 ```
 
 **Common mistakes**
 
-- Calling `dialog.open()` before the ref callback has fired — Pyreon components run once, so the `<dialog>` must be in the initial render (not behind a conditional `<Show>`); the ref callback fires synchronously during mount, and `dialog.open()` before that point has no element to call `showModal()` on
+- Using `dialog.open` as an OPENER — it is the open-STATE signal, not a method; open with `dialog.show()` / `dialog.showModal()`
+- Rendering the `<dialog>` behind a conditional `<Show>` — it must be in the initial render so the ref callback binds before you call `showModal()`
 
 **See also:** `useFocusTrap` · `useScrollLock`
 
@@ -404,25 +425,27 @@ const sent = useTimeAgo(message.sentAt)
 ### useInfiniteScroll `hook`
 
 ```ts
-(onLoadMore: () => void | Promise<void>, opts?: { rootMargin?: string; threshold?: number; enabled?: () => boolean }) => { sentinelRef: (el: HTMLElement | null) => void; isLoading: Signal<boolean> }
+(onLoadMore: () => void | Promise<void>, opts?: { threshold?: number; loading?: () => boolean; hasMore?: () => boolean; direction?: "up" | "down" }) => { ref: (el: HTMLElement | null) => void; triggered: () => boolean }
 ```
 
-`IntersectionObserver`-based infinite loading. Attach the returned `sentinelRef` to a node at the bottom of the list — when it scrolls into view, `onLoadMore` fires. `isLoading` blocks re-fires until the promise resolves. `enabled` accessor lets you stop observing once you've loaded the last page.
+`IntersectionObserver`-based infinite loading. Attach the returned `ref` to the SCROLL CONTAINER — the hook injects an invisible sentinel at the boundary; when it scrolls into view, `onLoadMore` fires. `triggered()` reflects whether the sentinel is currently visible. `loading` (skip while a load is in flight) and `hasMore` (stop once the last page is reached) are accessor guards; `threshold` is the px distance from the edge (default 100), `direction` picks the top/bottom boundary (default `down`).
 
 **Example**
 
 ```tsx
-const { sentinelRef, isLoading } = useInfiniteScroll(loadNextPage, { rootMargin: '200px', enabled: () => hasMore() })
-<For each={items()} by={(i) => i.id}>{(item) => <Row data={item} />}</For>
-<div ref={sentinelRef}>{isLoading() && 'Loading…'}</div>
+const { ref, triggered } = useInfiniteScroll(loadNextPage, { threshold: 200, loading: () => loading(), hasMore: () => hasMore() })
+<div ref={ref} style={{ overflowY: 'auto', height: '400px' }}>
+  <For each={items()} by={(i) => i.id}>{(item) => <Row data={item} />}</For>
+</div>
 ```
 
 **Common mistakes**
 
-- Placing the sentinel inside a container with `overflow: hidden` and no scroll — IntersectionObserver never fires because the sentinel is always clipped; the sentinel must be inside the scrollable container
-- Forgetting to pass `enabled: () => hasMore()` — the hook keeps calling `onLoadMore` even after the last page
+- Attaching `ref` to the sentinel instead of the scroll CONTAINER — the hook creates its own sentinel; `ref` goes on the scrollable element
+- A container with `overflow: hidden` and no scroll — the injected sentinel is always clipped, so IntersectionObserver never fires
+- Forgetting `hasMore: () => hasMore()` — the hook keeps calling `onLoadMore` even after the last page
 
-**See also:** `useIntersection`
+**See also:** `useIntersection` · `useWindowScroll`
 
 ---
 
@@ -487,14 +510,100 @@ useIsomorphicLayoutEffect(() => {
 
 ---
 
+### useCounter `hook`
+
+```ts
+(initial?: number, opts?: { min?: number; max?: number }) => { count: Signal<number>; inc: (d?: number) => void; dec: (d?: number) => void; set: (v: number) => void; reset: () => void }
+```
+
+Reactive numeric counter — the numeric companion to useToggle. `inc` / `dec` step by `d` (default 1), `set` assigns absolutely, `reset` returns to the initial value; every write is clamped into `[min, max]` when bounds are given (the initial value is clamped too). `count` is the reactive value signal.
+
+**Example**
+
+```tsx
+const { count, inc, dec, reset } = useCounter(0, { min: 0, max: 10 })
+<button onClick={() => dec()}>-</button><span>{count}</span><button onClick={() => inc()}>+</button>
+```
+
+**Common mistakes**
+
+- Calling the exposed `count` signal's `.set()` directly to bypass clamping — use `set()` / `inc()` / `dec()` so `min`/`max` are enforced
+
+**See also:** `useToggle` · `useControllableState`
+
+---
+
+### useWindowScroll `hook`
+
+```ts
+() => { position: () => { x: number; y: number }; scrollTo: (o: { x?: number; y?: number; behavior?: ScrollBehavior }) => void }
+```
+
+Track the window scroll offset reactively via a passive `scroll` listener (auto-removed on unmount), plus an SSR-safe imperative `scrollTo` (omitted axes keep their current value). Use for scroll-to-top buttons, scroll-progress bars, sticky-header reveal, parallax. SSR-safe: `position()` is `{ x: 0, y: 0 }` on the server.
+
+**Example**
+
+```tsx
+const { position, scrollTo } = useWindowScroll()
+<Show when={() => position().y > 400}>
+  <button onClick={() => scrollTo({ y: 0, behavior: 'smooth' })}>Top</button>
+</Show>
+```
+
+**See also:** `useElementSize` · `useInfiniteScroll` · `useIntersection`
+
+---
+
+### useDocumentVisibility `hook`
+
+```ts
+() => () => "visible" | "hidden"
+```
+
+Track the Page Visibility state (`document.visibilityState`) reactively — `"hidden"` when the tab is backgrounded/minimized, `"visible"` otherwise. Use it to pause work the user can't see (polling, video, animations, expensive timers) and resume on return. SSR-safe (returns `"visible"` on the server); the `visibilitychange` listener is removed on unmount.
+
+**Example**
+
+```tsx
+const visibility = useDocumentVisibility()
+effect(() => { visibility() === 'hidden' ? pausePolling() : resumePolling() })
+```
+
+**See also:** `useOnline` · `useIdle`
+
+---
+
+### useIdle `hook`
+
+```ts
+(timeoutMs?: number, opts?: { events?: readonly string[]; initialState?: boolean }) => () => boolean
+```
+
+Reactive user-idle detection — `true` once no activity event (pointer / key / scroll / wheel by default) has fired for `timeoutMs` (default 60000), back to `false` on the next interaction. Every listener and the timer are removed on unmount. Use for auto-logout, "are you still there?" prompts, presence away-status, pausing background work. SSR-safe (listeners register in `onMount`).
+
+**Example**
+
+```tsx
+const idle = useIdle(30_000)
+effect(() => { if (idle()) showAwayBanner() })
+```
+
+**Common mistakes**
+
+- Expecting it to fire once — `idle` is a live boolean signal that flips false again on the next activity event; read it reactively
+
+**See also:** `useDocumentVisibility` · `useInterval` · `useOnline`
+
+---
+
 ## Package-level notes
 
-> **Use `useControllableState` for controlled/uncontrolled — never reimplement:** `useControllableState({ value, defaultValue, onChange })` is the canonical controlled/uncontrolled pattern. Every primitive in `@pyreon/ui-primitives` uses it. Reimplementing the `isControlled + signal + getter` shape by hand was the #1 anti-pattern across primitives before the helper landed. Pass `value` and `defaultValue` as FUNCTIONS so signal reads track reactively — a plain value loses prop-driven controlled/uncontrolled detection.
+> **Use `useControllableState` for controlled/uncontrolled — never reimplement:** `useControllableState({ value, defaultValue, onChange })` is the canonical controlled/uncontrolled pattern. Every primitive in `@pyreon/ui-primitives` uses it. Reimplementing the `isControlled + signal + getter` shape by hand was the #1 anti-pattern across primitives before the helper landed. Pass `value` as a FUNCTION (`() => props.checked`) so the controlled prop read tracks reactively; `defaultValue` is a PLAIN value captured once as the uncontrolled initial.
 
 > **Hooks return signals, not plain values:** Every hook returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values. Read by calling: `size().width`, `bp().md`, `online()`. This is the cost of fine-grained reactivity but the reward is composition: hooks chain into `effect` / `computed` directly without re-bridging into Pyreon's reactivity graph.
 
 > **SSR-safe by construction:** Every hook that touches a browser API (`window`, `document`, `navigator`, `IntersectionObserver`, `ResizeObserver`, `MediaQueryList`) is guarded so SSR returns a sensible default and the listener is registered inside `onMount`. Do not wrap hook calls in `if (typeof window !== "undefined")` — the hook does it for you, and your wrapper would skip the hook on the SSR-rendered shell where it should still register no-op state.
 
-> **Auto-cleanup on unmount — never call `addEventListener` directly:** Every observer/listener/timer hook (`useEventListener`, `useClickOutside`, `useElementSize`, `useIntersection`, `useInterval`, `useTimeout`, etc.) registers an `onUnmount` cleanup. In primitives, never reach for raw `addEventListener` / `removeEventListener` — use `useEventListener`. The framework lint rule `pyreon/use-pyreon-hooks` (planned) will flag direct DOM listener registration in component code.
+> **Auto-cleanup on unmount — never call `addEventListener` directly:** Every observer/listener/timer hook (`useEventListener`, `useClickOutside`, `useElementSize`, `useIntersection`, `useInterval`, `useTimeout`, `useIdle`, etc.) registers an `onUnmount` cleanup. In primitives, never reach for raw `addEventListener` / `removeEventListener` — use `useEventListener`. The framework lint rules `pyreon/no-raw-addeventlistener` and `pyreon/no-raw-setinterval` flag direct DOM listener / timer registration in component code.
 
 > **`useBreakpoint` reads the theme, `useMediaQuery` is raw:** `useBreakpoint()` reads `theme.breakpoints` so swapping themes (or unit systems) Just Works — use it for layout decisions tied to the design system. `useMediaQuery("(max-width: 640px)")` is a raw media-query escape hatch — use it for one-off queries that don't correspond to a theme breakpoint (`(prefers-contrast: more)`, `(orientation: landscape)`, etc.).

@@ -34,6 +34,7 @@
     "prepublish": "bun run build",
     "build": "bun run vl_rolldown_build",
     "build:watch": "bun run vl_rolldown_build-watch",
+    "bench:hooks": "NODE_ENV=production bun bench/hooks-bench.ts",
     "lint": "oxlint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

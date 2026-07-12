@@ -1,6 +1,6 @@
 # @pyreon/hooks
 
-36 signal-based reactive utilities across seven categories for Pyreon apps.
+40 signal-based reactive utilities across seven categories for Pyreon apps.
 
 A reactive-primitives library for the patterns Pyreon components reach for every day: controllable state, DOM observers, responsive layout, timing, interaction, and ref composition. Every hook is SSR-safe (browser-API access is guarded), auto-cleans on unmount (registers `onUnmount` for listeners / observers / timers), and signal-native (returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values) so consumers compose directly with `effect` / `computed` without re-bridging. Used as the foundation by every `@pyreon/ui-primitives` component.
 
@@ -13,20 +13,31 @@ bun add @pyreon/hooks @pyreon/core @pyreon/reactivity
 ## Quick start
 
 ```tsx
-import { signal } from '@pyreon/reactivity'
-import { useControllableState, useClickOutside, useFocusTrap, useScrollLock } from '@pyreon/hooks'
+import { effect, signal } from '@pyreon/reactivity'
+import {
+  useControllableState,
+  useClickOutside,
+  useEventListener,
+  useFocusTrap,
+  useScrollLock,
+} from '@pyreon/hooks'
 
 function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v: boolean) => void }) {
   const [open, setOpen] = useControllableState({
     value: () => props.open,
-    defaultValue: () => props.defaultOpen ?? false,
+    defaultValue: props.defaultOpen ?? false,
     onChange: props.onOpenChange,
   })
 
   const panelRef = signal<HTMLElement | null>(null)
+  const scroll = useScrollLock()
   useClickOutside(() => panelRef(), () => setOpen(false))
-  useFocusTrap(() => panelRef(), () => open())
-  useScrollLock(() => open())
+  // The trap is live-gated on the ref: null (panel unmounted) => inert.
+  useFocusTrap(() => panelRef())
+  useEventListener('keydown', (e) => {
+    if (e.key === 'Escape') setOpen(false)
+  })
+  effect(() => (open() ? scroll.lock() : scroll.unlock()))
 
   return () =>
     open() ? (
@@ -39,13 +50,14 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 ## The full surface
 
-36 hooks across 7 categories.
+40 hooks across 7 categories.
 
 ### State
 
 | Hook | Signature | Notes |
 |---|---|---|
 | `useToggle(initial?)` | `() => { value: Signal<boolean>; toggle, setTrue, setFalse }` | Boolean state with helpers |
+| `useCounter(initial?, opts?)` | `() => { count: Signal<number>; inc, dec, set, reset }` | Numeric counter, optional `min`/`max` clamp |
 | `usePrevious(value)` | `Signal<T> → Signal<T \| undefined>` | Previous value across updates |
 | `useLatest(value)` | `Signal<T> → { current: T }` | Always-current ref (escape hatch) |
 | `useControllableState(opts)` | See manifest | Canonical controlled/uncontrolled pattern |
@@ -54,14 +66,16 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 | Hook | Notes |
 |---|---|
-| `useEventListener(target, event, handler, options?)` | Auto-cleanup listener. `target` may be a getter for reactive refs. |
+| `useEventListener(event, handler, options?, target?)` | Auto-cleanup listener. `target` getter defaults to `window`, resolved once at setup. |
 | `useClickOutside(ref, handler)` | Click-outside dismissal |
-| `useFocus()` | `{ focused, onFocus, onBlur }` |
-| `useHover()` | `{ hover, onMouseEnter, onMouseLeave }` |
-| `useFocusTrap(ref, active)` | Tab/Shift-Tab trap while `active()` is true. Returns focus on deactivation. |
+| `useFocus()` | `{ focused, props: { onFocus, onBlur } }` |
+| `useHover()` | `{ hovered, props: { onMouseEnter, onMouseLeave } }` |
+| `useFocusTrap(ref)` | Tab/Shift-Tab trap inside `ref()`. Inert while `ref()` is null. Pair with `useFocusReturn` for return-on-close. |
+| `useFocusReturn(isOpen, opts?)` | Restore focus to the trigger when `isOpen()` flips false |
 | `useElementSize(ref)` | `Signal<{ width, height }>` via `ResizeObserver` |
 | `useWindowResize(debounceMs?)` | `() => { width, height }` debounced viewport size |
-| `useScrollLock(active)` | Locks `<body>` scroll while `active()` is true |
+| `useWindowScroll()` | `{ position: () => { x, y }; scrollTo }` — reactive scroll offset |
+| `useScrollLock()` | `{ lock, unlock }` — refcounted `<body>` scroll lock |
 | `useIntersection(ref, opts?)` | `IntersectionObserver` wrapper — exposes `{ entry }` |
 | `useInfiniteScroll(onLoadMore, opts?)` | Sentinel-based infinite loading with `isLoading` gate |
 
@@ -92,10 +106,12 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 | Hook | Notes |
 |---|---|
-| `useClipboard(timeoutMs?)` | `{ copy, copied }` — `copied` auto-resets after 2s |
-| `useDialog()` | Native `<dialog>` wrapper with reactive `isOpen` / `returnValue` |
+| `useClipboard(opts?)` | `{ copy, copied, text }` — `copy` resolves `true`/`false`; `copied` auto-resets after `opts.timeout` (2s) |
+| `useDialog(opts?)` | Native `<dialog>` wrapper — `open` signal + `show`/`showModal`/`close`/`toggle`/`ref` |
 | `useKeyboard(key, handler)` | Single-key listener |
 | `useOnline()` | `Signal<boolean>` from `navigator.onLine` |
+| `useDocumentVisibility()` | `() => 'visible' \| 'hidden'` from the Page Visibility API |
+| `useIdle(timeoutMs?, opts?)` | `Signal<boolean>` — true after `timeoutMs` of no activity |
 
 ### Data
 
@@ -122,8 +138,8 @@ function MyToggle(props: {
   onChange?: (v: boolean) => void
 }) {
   const [checked, setChecked] = useControllableState({
-    value: () => props.checked, // function so signal reads track
-    defaultValue: () => props.defaultChecked ?? false,
+    value: () => props.checked, // controlled — a FUNCTION so the signal read tracks
+    defaultValue: props.defaultChecked ?? false, // uncontrolled initial — a plain value
     onChange: props.onChange,
   })
   return (
@@ -132,7 +148,7 @@ function MyToggle(props: {
 }
 ```
 
-Pass `value` and `defaultValue` as functions — a plain value loses controlled/uncontrolled detection on prop changes.
+Pass `value` as a function (`() => props.checked`) so the controlled read tracks reactively. `defaultValue` is a plain value — the uncontrolled initial, captured once.
 
 ## Gotchas
 
@@ -140,7 +156,7 @@ Pass `value` and `defaultValue` as functions — a plain value loses controlled/
 - **Every hook is SSR-safe**. Do NOT wrap hook calls in `if (typeof window !== 'undefined')` — the hook does it for you, and your wrapper would skip SSR-rendered shell registration.
 - **Never reach for `addEventListener` / `removeEventListener` directly in primitives** — use `useEventListener`. Same for observers (`useIntersection` / `useElementSize`) and timers (`useInterval` / `useTimeout`). The cleanup is the hook's job.
 - **`useBreakpoint` reads the theme**, `useMediaQuery` is raw — the former for layout decisions tied to the design system, the latter for one-off queries like `(prefers-contrast: more)`.
-- **`useFocusTrap` requires a reactive `active` boolean** — a static `true` traps focus forever. Always pass `() => isOpen()`.
+- **`useFocusTrap(getEl)` gates on the ref, not an `active` flag** — the getter is read live on every Tab, so the trap is inert while `getEl()` returns `null`. Render the trapped element conditionally (a `<Show>` / reactive accessor) and the trap turns on/off with it. For return-on-close focus, add `useFocusReturn(() => isOpen())`.
 - **`useInfiniteScroll` sentinel must live inside the scrollable container** — `overflow: hidden` with no scroll means `IntersectionObserver` never fires.
 - **`useDialog`** — the `<dialog>` must be present in the initial render (not gated behind `<Show>`) so the ref callback fires before `dialog.open()`.
 - **`useDebouncedValue`** — the debounced signal still holds the OLD value during the debounce window. Effects downstream of it are correct; imperative reads in the same tick are stale.

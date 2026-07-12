@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 44 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 45 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 44 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 45 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Coolgrid
 
@@ -68,6 +68,10 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 <Example file="./examples/form/field-validation-error-gating-on-blur" />
 
 ## Hooks
+
+### Usecounter Clamped
+
+<Example file="./examples/hooks/usecounter-clamped" />
 
 ### Usetoggle Disclosure Pattern
 

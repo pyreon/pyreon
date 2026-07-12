@@ -8,10 +8,13 @@
  */
 import { isClient, isServer } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
+import { useDocumentVisibility } from '../useDocumentVisibility'
 import { useFetch } from '../useFetch'
+import { useIdle } from '../useIdle'
 import { useInfiniteScroll } from '../useInfiniteScroll'
 import useIsomorphicLayoutEffect from '../useIsomorphicLayoutEffect'
 import { useWindowResize } from '../useWindowResize'
+import { useWindowScroll } from '../useWindowScroll'
 
 describe('SSR sanity — node env has no DOM at load', () => {
   it('isServer is true / isClient is false / no IntersectionObserver', () => {
@@ -54,6 +57,32 @@ describe('useFetch — SSR early return (!isClient)', () => {
     } finally {
       globalThis.fetch = realFetch
     }
+  })
+})
+
+describe('useWindowScroll — SSR fallback (isClient false arm)', () => {
+  it('initializes position to 0/0 without touching window', () => {
+    const { position } = useWindowScroll()
+    expect(position()).toEqual({ x: 0, y: 0 })
+  })
+
+  it('scrollTo is a no-op on the server (isClient guard)', () => {
+    const { scrollTo } = useWindowScroll()
+    expect(() => scrollTo({ x: 10, y: 10 })).not.toThrow()
+  })
+})
+
+describe('useDocumentVisibility — SSR fallback (isClient false arm)', () => {
+  it('returns "visible" without touching document', () => {
+    const visibility = useDocumentVisibility()
+    expect(visibility()).toBe('visible')
+  })
+})
+
+describe('useIdle — SSR (listeners register in onMount, never on server)', () => {
+  it('holds its initial state without touching document', () => {
+    expect(useIdle(1000)()).toBe(false)
+    expect(useIdle(1000, { initialState: true })()).toBe(true)
   })
 })
 
