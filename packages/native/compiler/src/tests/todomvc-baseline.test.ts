@@ -70,8 +70,6 @@ describe('TodoMVC compile baseline', () => {
         var done: Bool
       }
 
-      private var nextId = 1
-
       struct TodoApp: View {
         @PyreonAppStorage("pyreon-todomvc:todos") private var todos: [Todo] = []
         @State private var filter: Filter = .all
@@ -93,7 +91,8 @@ describe('TodoMVC compile baseline', () => {
           if text.count == 0 {
             return
           }
-          todos = (todos + [Todo(id: { let __v = nextId; nextId += 1; return __v }(), text: text, done: false)])
+          let maxId = todos.reduce(0, { m, t in (t.id > m ? t.id : m) })
+          todos = (todos + [Todo(id: maxId + 1, text: text, done: false)])
           draft = ""
         }
         private func toggle(_ id: Int) {
@@ -108,7 +107,7 @@ describe('TodoMVC compile baseline', () => {
         var body: some View {
           VStack(spacing: 8) {
             TextField("What needs to be done?", text: $draft)
-              .onSubmit { addTodo() }
+              .onSubmit { addTodo() }.accessibilityIdentifier("new-todo")
             ForEach(visible, id: \\.id) { t in
               TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
             }
@@ -437,20 +436,26 @@ describe('TodoMVC gap-tracking baseline', () => {
     expect(out.code).not.toContain('.some(')
   })
 
-  it('Phase 2 — module-level `let nextId = 1` emits as Swift `private var nextId = 1`', () => {
-    // Closes the TodoMVC `nextId undefined` typecheck blocker.
+  // The module-level-`let` capability is tracked with an INLINE fixture:
+  // TodoApp.tsx no longer carries a module-level counter (M1.2a's device
+  // assertion caught a real second-session bug in that shape — a module
+  // counter resets per launch while storage persists, colliding ids — so
+  // the app now derives ids from persisted state). A gap-tracking test
+  // must not depend on an example app's incidental shape.
+  const MODULE_LET_SOURCE = `let counter = 1
+export function App() { return <Text>x</Text> }`
+
+  it('Phase 2 — module-level `let` emits as Swift `private var`', () => {
     // Module-level mutable bindings (TS `let`) emit as Swift `private var`
     // at file scope, preserving the source's module-level privacy.
-    // The locked Swift-emit snapshot above already proves this; the
-    // explicit assertion here is the gap-closure marker.
-    const out = transform(source, { target: 'swift' })
-    expect(out.code).toContain('private var nextId = 1')
+    const out = transform(MODULE_LET_SOURCE, { target: 'swift' })
+    expect(out.code).toContain('private var counter = 1')
   })
 
-  it('Phase 2 — module-level `let nextId = 1` emits as Kotlin `private var nextId = 1`', () => {
+  it('Phase 2 — module-level `let` emits as Kotlin `private var`', () => {
     // Kotlin parallel. TS `let` → Kotlin `var`; TS `const` → Kotlin `val`.
-    const out = transform(source, { target: 'kotlin' })
-    expect(out.code).toContain('private var nextId = 1')
+    const out = transform(MODULE_LET_SOURCE, { target: 'kotlin' })
+    expect(out.code).toContain('private var counter = 1')
   })
 
   it('Phase 2 — module-level `const` mutability is preserved (immutable emit `let`/`val`)', () => {

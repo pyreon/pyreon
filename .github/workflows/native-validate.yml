@@ -228,8 +228,13 @@ jobs:
           # #853 + #857 — struct emit + Codable conformance for
           #               named type aliases.
           grep -q 'struct Todo: Codable {' generated/TodoApp.swift
-          # #864 — module-level let/const bindings.
-          grep -q '^private var nextId = 1' generated/TodoApp.swift
+          # #864's module-level-let lock moved to an INLINE fixture in
+          # todomvc-baseline.test.ts — M1.2a's device assertion caught a
+          # real second-session bug in the app's module counter (resets
+          # per launch while storage persists → id collision → duplicate
+          # <For by={id}> key silently dropped the new row), so TodoApp
+          # now derives ids from persisted state. Lock the NEW shape:
+          grep -q 'let maxId = todos.reduce(0' generated/TodoApp.swift
           # #859 — @PyreonAppStorage (Codable bridge to @AppStorage).
           grep -q '@PyreonAppStorage("pyreon-todomvc:todos")' generated/TodoApp.swift
           # #866 — computed property type inference via method chain.
