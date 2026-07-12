@@ -124,6 +124,8 @@ const router = createRouter({ routes, mode: 'history' })
 
 Hash mode uses `window.location.hash` and listens to `hashchange` events. History mode uses `pushState`/`replaceState` and listens to `popstate` events. History mode requires your server to serve the app for all routes (SPA fallback).
 
+**Browser Back/Forward runs the full navigation pipeline.** A `popstate`/`hashchange` traversal goes through the same flow as `router.push()`: blockers, middleware, guards, and loaders all run (so `useLoaderData()` is populated after pressing Back), `afterEach` fires (the route announcer announces the change), and `meta.title` updates. If a guard or blocker cancels the traversal, the router restores the URL and history position — `history.go()` when the target entry carries the router's position stamp (`history.state.__pyreonIdx`), `replaceState` otherwise. Traversal-driven route updates are asynchronous (they await the pipeline).
+
 **Base path (sub-directory deployment):**
 
 When deploying to a sub-path like `https://example.com/app/`, set the `base` option. The router strips the base before matching and prepends it when building URLs.
@@ -597,6 +599,17 @@ router.invalidateLoader('user-42')
 // Invalidate entries where a predicate matches the key
 router.invalidateLoader((key) => key.startsWith('user-'))
 ```
+
+`invalidateLoader` only takes effect on the **next navigation**. To refresh the **current** route's data in place — the mutation-then-refresh flow — use `revalidate()`:
+
+```ts
+// After a mutation, re-run the current route's loaders and re-render
+// the affected components with fresh data. No navigation required.
+await api.deletePost(id)
+await router.revalidate()
+```
+
+`revalidate()` drops the current chain's cached loader entries and re-runs its loaders through the normal pipeline: server-loader records re-fetch from the data endpoint, `staleWhileRevalidate` records refresh in the background per their contract, and a loader that throws `redirect()` navigates (replace semantics). A real navigation starting mid-revalidate supersedes it.
 
 After invalidation the next navigation to the affected route re-runs the loader instead of serving the stale entry.
 
@@ -1227,17 +1240,22 @@ router.push({ name: 'user', params: { id: '42' }, query: { tab: 'posts' } })
 
 If a named route does not exist, the router logs a warning and navigates to `/`.
 
-**Navigation is async:**
+**Navigation is async — and reports what it did:**
 
-`push()` and `replace()` return promises that resolve after all guards, loaders, and the navigation commit have completed. This is useful for sequential navigation:
+`push()` and `replace()` return promises that resolve after all guards, loaders, and the navigation commit have completed — with a `NavigationResult` telling you what happened:
 
 ```tsx
 async function handleLogin() {
   await authenticate()
-  await router.push('/dashboard')
-  // Navigation is complete, dashboard is rendered
+  const result = await router.push('/dashboard')
+  // 'committed'  — the route (or a redirect it chained into) is now current
+  // 'cancelled'  — a blocker / guard / middleware refused the navigation
+  // 'superseded' — a newer navigation started while this one was in flight
+  if (result !== 'committed') showToast('Navigation was blocked')
 }
 ```
+
+Callers that ignore the value keep working — `await router.push(...)` still settles exactly when the navigation settles.
 
 **Security:**
 
@@ -2519,7 +2537,7 @@ function AdminDashboard() {
 }
 ```
 
-`useMiddlewareData()` returns a reactive accessor `() => Record<string, unknown>` — call it to read the accumulated middleware data, and cast individual keys at the use site. It is not generic and does not return the object directly.
+`useMiddlewareData()` returns a reactive accessor `() => Record<string, unknown>` — call it to read the accumulated middleware data, and cast individual keys at the use site. It is not generic and does not return the object directly. The data is **per-navigation**: it resets to `{}` when a navigation whose matched chain has no middleware commits.
 
 ## Typed Route Names
 

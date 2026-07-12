@@ -27,7 +27,6 @@ const router = createRouter({
     { path: "/settings", redirect: "/admin/settings" },
     { path: "(.*)", component: NotFound },
   ],
-  middleware: [authMiddleware, loggerMiddleware],
 })
 
 // Mount with RouterProvider
@@ -168,7 +167,7 @@ const Admin = () => (
       kind: 'hook',
       signature: 'useRouter(): Router',
       summary:
-        'Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes.',
+        "Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a `NavigationResult`: `'committed'` (route changed), `'cancelled'` (a blocker/guard/middleware refused), or `'superseded'` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, `meta.title`).",
       example: `const router = useRouter()
 
 router.push("/settings")
@@ -221,13 +220,18 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
     {
       name: 'useTypedSearchParams',
       kind: 'hook',
-      signature: 'useTypedSearchParams<T>(schema: T): TypedSearchParams<T>',
+      signature:
+        'useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]',
       summary:
-        'Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns an object where each key is a reactive accessor and `.set()` updates the URL.',
-      example: `const params = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
-params.page()    // number (auto-coerced)
-params.q()       // string
-params.set({ page: 2 })  // updates URL`,
+        'Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns a `[get, set]` TUPLE (like `useSearchParams`): `get()` reads the coerced values reactively; `set()` merges updates and navigates via `router.replace` (resolving with the navigation\'s `NavigationResult`). Missing numbers coerce to `0`, booleans accept `"true"`/`"1"`.',
+      example: `const [params, setParams] = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
+params().page    // number (auto-coerced)
+params().q       // string
+setParams({ page: 2 })  // updates URL via router.replace`,
+      mistakes: [
+        'Destructuring an object (`params.page()`) — the hook returns a TUPLE: `const [params, setParams] = useTypedSearchParams(...)`, read via `params().page`',
+        'Expecting `set()` to bypass navigation — it navigates via `router.replace`, so guards/blockers apply (check the resolved `NavigationResult` if you need to know it committed)',
+      ],
       seeAlso: ['useSearchParams', 'useRoute'],
     },
     {
@@ -248,7 +252,7 @@ params.set({ page: 2 })  // updates URL`,
       kind: 'hook',
       signature: 'useMiddlewareData(): () => Record<string, unknown>',
       summary:
-        'Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope.',
+        'Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope. The data is per-navigation: it resets to `{}` when a navigation whose chain has no middleware commits. (Stored on the router at commit time — the in-flight route object never becomes `currentRoute()`, which is why the pre-fix accessor always returned `{}`.)',
       example: `// Middleware:
 const authMiddleware: RouteMiddleware = async (ctx) => {
   ctx.data.user = await getUser(ctx.to)
@@ -340,7 +344,7 @@ try {
       name: 'useSearchParams',
       kind: 'hook',
       signature:
-        'useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]',
+        'useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]',
       summary:
         'Access and update URL search params as a reactive tuple. Returns `[get, set]` where `get()` reads the current params and `set()` updates them via `replaceState`. For typed params with auto-coercion, prefer `useTypedSearchParams`.',
       example: `const [search, setSearch] = useSearchParams({ page: "1", sort: "name" })
@@ -355,24 +359,25 @@ setSearch({ page: "2" })`,
     {
       name: 'useBlocker',
       kind: 'hook',
-      signature: 'useBlocker(shouldBlock: () => boolean): Blocker',
+      signature: 'useBlocker(fn: BlockerFn): Blocker',
       summary:
-        'Block navigation when a condition is true (e.g., unsaved form changes). Returns a `Blocker` object with `proceed()` and `reset()` methods. Also hooks into the browser\'s `beforeunload` event to warn on tab close. Uses a shared ref-counted listener for `beforeunload` — N blockers share one event handler.',
-      example: `const blocker = useBlocker(() => form.isDirty())
-
-<Show when={blocker.isBlocked()}>
-  <Dialog>
-    <p>Unsaved changes. Leave anyway?</p>
-    <button onClick={blocker.proceed}>Leave</button>
-    <button onClick={blocker.reset}>Stay</button>
-  </Dialog>
-</Show>`,
-      seeAlso: ['useRouter'],
+        'Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Also installs a shared ref-counted `beforeunload` handler so tab-close shows the browser confirmation while any blocker is active.',
+      example: `const blocker = useBlocker((to, from) => {
+  return form.isDirty() && !confirm('Discard unsaved changes?')
+})
+// later, e.g. after save:
+blocker.remove()`,
+      mistakes: [
+        'Expecting `proceed()` / `reset()` methods (React Router shape) — Pyreon\'s blocker is a predicate: return `true` to block, `false` to allow; `remove()` unregisters it',
+        'Returning `false` to block — inverted: `true` means BLOCK (it answers "should this navigation be blocked?")',
+        'Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL',
+      ],
+      seeAlso: ['useRouter', 'onBeforeRouteLeave'],
     },
     {
       name: 'onBeforeRouteLeave',
       kind: 'function',
-      signature: 'onBeforeRouteLeave(guard: NavigationGuard): void',
+      signature: 'onBeforeRouteLeave(guard: NavigationGuard): () => void',
       summary:
         'Register a per-component navigation guard that fires when leaving the current route. Return `false` to cancel, a string path to redirect, or `undefined` to allow. Must be called during component setup.',
       example: `onBeforeRouteLeave((to, from) => {
@@ -383,7 +388,7 @@ setSearch({ page: "2" })`,
     {
       name: 'onBeforeRouteUpdate',
       kind: 'function',
-      signature: 'onBeforeRouteUpdate(guard: NavigationGuard): void',
+      signature: 'onBeforeRouteUpdate(guard: NavigationGuard): () => void',
       summary:
         'Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g., param change `/user/1` to `/user/2`). Same return semantics as `onBeforeRouteLeave`.',
       example: `onBeforeRouteUpdate((to, from) => {

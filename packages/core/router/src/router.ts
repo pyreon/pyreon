@@ -14,6 +14,7 @@ import {
   type LoaderContext,
   type NavigationGuard,
   type NavigationGuardResult,
+  type NavigationResult,
   type ResolvedRoute,
   type RouteMiddlewareContext,
   type RouteRecord,
@@ -38,6 +39,15 @@ export const RouterContext = createContext<RouterInstance | null>(null)
 // Module-level fallback — safe for CSR (single-threaded), not for concurrent SSR.
 // RouterProvider also sets this so legacy useRouter() calls outside the tree work.
 let _activeRouter: RouterInstance | null = null
+
+// The router that OWNS browser-history writes for cancelled traversals.
+// Set when a client router attaches its popstate/hashchange listener
+// (newest wins), cleared by `destroy()`. When a guard/blocker cancels a
+// browser-initiated navigation, only the owner restores the URL/position —
+// a stale instance that missed its `destroy()` (HMR remount, a second
+// router on the page) must never write the shared URL back to ITS state,
+// or two instances fight over the history stack.
+let _navOwner: object | null = null
 
 export function getActiveRouter(): RouterInstance | null {
   return useContext(RouterContext) ?? _activeRouter
@@ -172,7 +182,9 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
 
 /**
  * Register a navigation blocker. The `fn` callback is called before each
- * navigation — return `true` (or resolve to `true`) to block it.
+ * navigation — return `true` (or resolve to `true`) to block it. Browser
+ * Back/Forward traversals run the same pipeline, so blockers cover the
+ * back button too: a blocked traversal restores the URL + history position.
  *
  * Automatically removed on component unmount if called during component setup.
  * Also installs a `beforeunload` handler so the browser shows a confirmation
@@ -319,14 +331,14 @@ type InferSearchParams<T extends SearchParamSchema> = {
  */
 export function useSearchParams<T extends Record<string, string>>(
   defaults?: T,
-): [get: () => T, set: (updates: Partial<T>) => Promise<void>] {
+): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>] {
   const router = _getRouter()
   const get = (): T => {
     const query = router.currentRoute().query
     if (!defaults) return query as T
     return { ...defaults, ...query } as T
   }
-  const set = (updates: Partial<T>): Promise<void> => {
+  const set = (updates: Partial<T>): Promise<NavigationResult> => {
     const merged = { ...get(), ...updates }
     const path = router.currentRoute().path + stringifyQuery(merged as Record<string, string>)
     return router.replace(path)
@@ -356,7 +368,7 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
   schema: T,
 ): [
   get: () => InferSearchParams<T>,
-  set: (updates: Partial<InferSearchParams<T>>) => Promise<void>,
+  set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>,
 ] {
   const router = _getRouter()
   const get = (): InferSearchParams<T> => {
@@ -372,7 +384,7 @@ export function useTypedSearchParams<T extends SearchParamSchema>(
     }
     return result as InferSearchParams<T>
   }
-  const set = (updates: Partial<InferSearchParams<T>>): Promise<void> => {
+  const set = (updates: Partial<InferSearchParams<T>>): Promise<NavigationResult> => {
     const current = get()
     const merged: Record<string, string> = {}
     for (const [k, v] of Object.entries({ ...current, ...updates })) {
@@ -475,7 +487,15 @@ export function useTransition(): () => boolean {
  */
 export function useMiddlewareData(): () => Record<string, unknown> {
   const router = _getRouter()
-  return () => router.currentRoute()._middlewareData ?? {}
+  return () => {
+    // Subscribe to route changes; the data itself lives on the router —
+    // `currentRoute()` re-resolves a FRESH object per path, so middleware
+    // data attached to the in-flight `to` never reaches it (the pre-fix
+    // shape read `currentRoute()._middlewareData`, which was ALWAYS
+    // undefined — useMiddlewareData returned `{}` from package inception).
+    router.currentRoute()
+    return router._committedMiddlewareData
+  }
 }
 
 // ─── Factory ──────────────────────────────────────────────────────────────────
@@ -510,6 +530,30 @@ export function createRouter<TNames extends string = string>(
   // one starts. Prevents out-of-order completion from stale async guards.
   let _navGen = 0
 
+  // ── History position tracking ─────────────────────────────────────────────
+  //
+  // Every router-written history entry is stamped with a monotonically
+  // increasing index (`history.state.__pyreonIdx`) so the popstate handler
+  // can compute the traversal DELTA. When a guard / blocker / middleware
+  // cancels a browser-initiated navigation (Back/Forward), the router
+  // restores the user's position with `history.go(-delta)` — keeping the
+  // history stack intact (the entry they were blocked from leaving stays
+  // reachable, and the entry they tried to reach isn't rewritten). Entries
+  // created OUTSIDE the router (a plain pushState, an in-page `#/x` anchor
+  // in hash mode) carry no index; cancellation then degrades to a
+  // `replaceState` URL restore (URL + app state stay consistent; only the
+  // stack position is approximated). The `go()` fired by a restore triggers
+  // its own popstate — `_suppressBrowserNav` swallows exactly that one so
+  // the pipeline doesn't run a second time.
+  let _histIdx = 0
+  let _suppressBrowserNav = 0
+
+  const readHistoryIdx = (): number | null => {
+    if (!isClient) return null
+    const st = window.history.state as { __pyreonIdx?: unknown } | null
+    return typeof st?.__pyreonIdx === 'number' ? st.__pyreonIdx : null
+  }
+
   // ── Initial location ──────────────────────────────────────────────────────
 
   const getInitialLocation = (): string => {
@@ -537,18 +581,104 @@ export function createRouter<TNames extends string = string>(
   const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash))
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
+  // ── Browser-initiated navigation (Back/Forward, hash anchors) ────────────
+  //
+  // Routes history traversals through the SAME `navigate()` pipeline as
+  // `router.push()` — pre-fix this was a bare `currentPath.set(...)`, so
+  // Back/Forward silently bypassed loaders (leaving `useLoaderData()`
+  // undefined — `commitNavigation` prunes data for routes navigated away
+  // from), guards, blockers, middleware, `afterEach` (the a11y route
+  // announcer never fired on Back), scroll save/restore, and `meta.title`.
+  //
+  // Semantics:
+  //   - the browser has ALREADY moved the URL, so the commit uses replace
+  //     semantics (re-stamps the current entry, never pushes a new one);
+  //   - a cancelled traversal (guard/blocker/middleware refusal) restores
+  //     the user's position via `history.go(-delta)` when the popped entry
+  //     carries a `__pyreonIdx` stamp, else `replaceState`s the URL back;
+  //   - a SUPERSEDED traversal (a newer navigation started meanwhile) is
+  //     left alone — the newer navigation owns the URL;
+  //   - a same-path event (in-page fragment click in history mode, our own
+  //     restore `go()`) early-returns without running the pipeline.
+  const handleBrowserNav = (): void => {
+    // Client-only: wired solely to the popstate/hashchange listeners, which
+    // are null on the server. The explicit `isClient` early-return documents
+    // the SSR-safety contract for the `window.history.go` call below (the
+    // no-window-in-ssr lint rule can't trace the listener wiring).
+    if (!isClient) return
+    const poppedIdx = readHistoryIdx()
+    if (_suppressBrowserNav > 0) {
+      // Our own restore `go()` — sync the index bookkeeping, skip the pipeline.
+      _suppressBrowserNav--
+      if (poppedIdx !== null) _histIdx = poppedIdx
+      return
+    }
+    const target = normalizeTrailingSlash(getCurrentLocation(), trailingSlash)
+    if (target === currentPath.peek()) {
+      // Fragment-only change (history mode) or an echo — native behavior wins.
+      if (poppedIdx !== null) _histIdx = poppedIdx
+      return
+    }
+    const prevIdx = _histIdx
+    if (poppedIdx !== null) _histIdx = poppedIdx
+    void navigate(target, true, 0, true).then((status) => {
+      if (status !== 'cancelled') return
+      // Guard / blocker / middleware refused the traversal — the app state
+      // never changed, so put the BROWSER back where the app is. Only the
+      // OWNING router writes the shared URL back (a stale instance that
+      // missed its destroy() must not fight the live one over the stack).
+      _histIdx = prevIdx
+      if (_navOwner !== router) return
+      if (poppedIdx !== null && poppedIdx !== prevIdx) {
+        _suppressBrowserNav++
+        window.history.go(prevIdx - poppedIdx)
+      } else {
+        syncBrowserUrl(currentPath.peek(), true)
+      }
+    })
+  }
+
   // Browser event listeners — stored so destroy() can remove them.
   // Ternary-bound on `isClient` (the canonical `@pyreon/reactivity` SSR-guard
   // primitive — a recognized guard name) so the lint rule can trace these to an
   // SSR-safe shape without needing `if (isClient && handler)` contortions at
   // every use site.
   const _popstateHandler: (() => void) | null =
-    isClient && mode === 'history' ? () => currentPath.set(getCurrentLocation()) : null
+    isClient && mode === 'history' ? handleBrowserNav : null
   const _hashchangeHandler: (() => void) | null =
-    isClient && mode !== 'history' ? () => currentPath.set(getCurrentLocation()) : null
+    isClient && mode !== 'history' ? handleBrowserNav : null
 
   if (_popstateHandler) window.addEventListener('popstate', _popstateHandler)
   if (_hashchangeHandler) window.addEventListener('hashchange', _hashchangeHandler)
+
+  // Stamp the INITIAL history entry with index 0 (merging any pre-existing
+  // state) so a later Back to it carries a readable index. Entries stamped
+  // by other code keep their fields — we only add `__pyreonIdx`.
+  if (isClient) {
+    const existing = readHistoryIdx()
+    if (existing !== null) {
+      _histIdx = existing
+    } else {
+      const prev = window.history.state as Record<string, unknown> | null
+      window.history.replaceState(
+        prev && typeof prev === 'object' ? { ...prev, __pyreonIdx: 0 } : { __pyreonIdx: 0 },
+        '',
+        window.location.href,
+      )
+    }
+  }
+
+  // When the user configures scroll behavior, the ROUTER owns scroll on
+  // history traversals — switch off the browser's native restoration so the
+  // two don't fight (native restores, then ScrollManager scrolls again).
+  // Without an explicit `scrollBehavior`, browser-initiated navigations skip
+  // ScrollManager entirely (see `commitNavigation`) and native restoration
+  // keeps working exactly as before. `destroy()` restores the prior value.
+  const _prevScrollRestoration: History['scrollRestoration'] | null =
+    isClient && scrollBehavior !== undefined && 'scrollRestoration' in window.history
+      ? window.history.scrollRestoration
+      : null
+  if (isClient && _prevScrollRestoration !== null) window.history.scrollRestoration = 'manual'
 
   // Dev-only full-reload-link warning: a plain internal `<a href>` in a
   // router app triggers a full page reload the author almost never wants.
@@ -689,9 +819,17 @@ export function createRouter<TNames extends string = string>(
     if (!isClient) return
     const url = mode === 'history' ? `${base}${path}` : `#${path}`
     if (replace) {
-      window.history.replaceState(null, '', url)
+      // Merge any pre-existing state (third-party code may stash data on the
+      // entry) — we only own the `__pyreonIdx` field.
+      const prev = window.history.state as Record<string, unknown> | null
+      const merged =
+        prev && typeof prev === 'object'
+          ? { ...prev, __pyreonIdx: _histIdx }
+          : { __pyreonIdx: _histIdx }
+      window.history.replaceState(merged, '', url)
     } else {
-      window.history.pushState(null, '', url)
+      _histIdx++
+      window.history.pushState({ __pyreonIdx: _histIdx }, '', url)
     }
   }
 
@@ -976,10 +1114,16 @@ export function createRouter<TNames extends string = string>(
     replace: boolean,
     to: ResolvedRoute,
     from: ResolvedRoute,
+    fromBrowser = false,
   ): Promise<void> {
     scrollManager.save(from.path)
 
     const doCommit = () => {
+      // Publish the middleware chain's accumulated data BEFORE flipping the
+      // path so any reactive reader waking up on the route change sees the
+      // new navigation's data (empty when the chain had no middleware —
+      // middleware data is per-navigation). See useMiddlewareData.
+      router._committedMiddlewareData = to._middlewareData ?? {}
       currentPath.set(path)
       syncBrowserUrl(path, replace)
 
@@ -1092,7 +1236,16 @@ export function createRouter<TNames extends string = string>(
       }
     }
 
-    if (isClient) {
+    // Scroll ownership split (matches Vue Router semantics):
+    //   - programmatic navigations (push/replace) always run ScrollManager
+    //     (default 'top' — a new page starts at the top);
+    //   - BROWSER-initiated traversals (Back/Forward) run ScrollManager only
+    //     when the user configured an explicit `scrollBehavior` — otherwise
+    //     the browser's NATIVE scroll restoration owns Back/Forward scroll
+    //     (`history.scrollRestoration` stays 'auto'), exactly the pre-pipeline
+    //     behavior. With an explicit behavior, native restoration is switched
+    //     to 'manual' at router creation so the two never fight.
+    if (isClient && (!fromBrowser || scrollBehavior !== undefined)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
   }
@@ -1135,7 +1288,16 @@ export function createRouter<TNames extends string = string>(
     return { action: 'continue' }
   }
 
-  async function navigate(rawPath: string, replace: boolean, redirectDepth = 0): Promise<void> {
+  // Navigation outcome — the PUBLIC `NavigationResult` (types.ts). Also
+  // consumed by `handleBrowserNav` to decide whether a browser-initiated
+  // traversal needs its URL restored ('cancelled' → restore; 'superseded'
+  // → the newer navigation owns the URL — restoring would fight it).
+  async function navigate(
+    rawPath: string,
+    replace: boolean,
+    redirectDepth = 0,
+    fromBrowser = false,
+  ): Promise<NavigationResult> {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.navigate')
     router._navigationStartTime = Date.now()
     if (redirectDepth > 10) {
@@ -1146,7 +1308,7 @@ export function createRouter<TNames extends string = string>(
             'This likely indicates a redirect loop in your route configuration.',
         )
       }
-      return
+      return 'cancelled'
     }
 
     const path = normalizeTrailingSlash(rawPath, trailingSlash)
@@ -1165,7 +1327,7 @@ export function createRouter<TNames extends string = string>(
     const blockerResult = await checkBlockers(to, from, gen)
     if (blockerResult !== 'continue') {
       loadingSignal.update((n) => n - 1)
-      return
+      return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
     // Run per-route middleware chain (before guards)
@@ -1175,7 +1337,7 @@ export function createRouter<TNames extends string = string>(
       if (mwResult.action === 'redirect') {
         return navigate(sanitizePath(mwResult.target), replace, redirectDepth + 1)
       }
-      return
+      return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
     const guardOutcome = await runAllGuards(to, from, gen)
@@ -1184,7 +1346,7 @@ export function createRouter<TNames extends string = string>(
       if (guardOutcome.action === 'redirect') {
         return navigate(sanitizePath(guardOutcome.target), replace, redirectDepth + 1)
       }
-      return
+      return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
     router._abortController?.abort()
@@ -1197,11 +1359,12 @@ export function createRouter<TNames extends string = string>(
       if (loaderOutcome.action === 'redirect') {
         return navigate(sanitizePath(loaderOutcome.target), replace, redirectDepth + 1)
       }
-      return
+      return gen === _navGen ? 'cancelled' : 'superseded'
     }
 
-    await commitNavigation(path, replace, to, from)
+    await commitNavigation(path, replace, to, from, fromBrowser)
     loadingSignal.update((n) => n - 1)
+    return 'committed'
   }
 
   // ── isReady promise ─────────────────────────────────────────────────────
@@ -1241,8 +1404,10 @@ export function createRouter<TNames extends string = string>(
     _linkConfig: opts.links,
     _maxCacheSize: maxCacheSize,
     _navigationStartTime: Date.now(),
+    _committedMiddlewareData: {},
     _loaderCache: new SizedMap({ maxEntries: maxCacheSize }),
     _loaderInflight: new Map(),
+    _executeLoader: (record, ctx) => executeLoader(record, ctx),
 
     async push(
       location:
@@ -1412,6 +1577,36 @@ export function createRouter<TNames extends string = string>(
       return { kind: 'data' as const, data }
     },
 
+    async revalidate() {
+      // Re-run the CURRENT chain's loaders in place (see Router.revalidate).
+      const to = currentRoute()
+      if (to.matched.length === 0) return
+      const ctx = { params: to.params, query: to.query }
+      // Drop the chain's cached entries so executeLoader re-runs instead of
+      // serving the cache we're trying to refresh.
+      for (const r of to.matched) {
+        if (r.loader) {
+          const key = getCacheKey(r, ctx)
+          router._loaderCache.delete(key)
+          router._loaderInflight.delete(key)
+        }
+      }
+      const ac = new AbortController()
+      // Current generation: a REAL navigation starting mid-revalidate bumps
+      // `_navGen` and runLoaders returns `cancel` — the navigation's own
+      // loader batch wins, nothing tears.
+      const outcome = await runLoaders(to, _navGen, ac)
+      if (outcome.action === 'redirect') {
+        await navigate(sanitizePath(outcome.target), true, 0)
+        return
+      }
+      if (outcome.action !== 'continue') return
+      // Wake loader-bearing depthEntries so route components re-render with
+      // the fresh data (same tick mechanism the SWR background path uses).
+      loadingSignal.update((n) => n + 1)
+      loadingSignal.update((n) => n - 1)
+    },
+
     invalidateLoader(keyOrPredicate?: string | ((key: string) => boolean)) {
       if (!keyOrPredicate) {
         // Invalidate all
@@ -1436,6 +1631,9 @@ export function createRouter<TNames extends string = string>(
     destroy() {
       if (_popstateHandler) window.removeEventListener('popstate', _popstateHandler)
       if (_hashchangeHandler) window.removeEventListener('hashchange', _hashchangeHandler)
+      if (isClient && _prevScrollRestoration !== null) {
+        window.history.scrollRestoration = _prevScrollRestoration
+      }
       if (_devAnchorWarn) document.removeEventListener('click', _devAnchorWarn)
       guards.length = 0
       afterHooks.length = 0
@@ -1450,6 +1648,7 @@ export function createRouter<TNames extends string = string>(
       router._abortController = null
       // Clear global ref so stale router doesn't survive in SSR or re-creation
       if (_activeRouter === router) _activeRouter = null
+      if (_navOwner === router) _navOwner = null
       if (process.env.NODE_ENV !== 'production' && isClient) {
         const g = globalThis as Record<string, unknown>
         if (g.__pyreon_hmr_swap__ === router._hmrSwap) {
@@ -1498,6 +1697,10 @@ export function createRouter<TNames extends string = string>(
         }
       : {}),
   }
+
+  // This (newest) client router owns browser-history restoration for
+  // cancelled traversals — see `_navOwner`.
+  if (_popstateHandler || _hashchangeHandler) _navOwner = router
 
   // Initial route is resolved synchronously — mark ready on next microtask
   // so consumers can await isReady() before the first render.

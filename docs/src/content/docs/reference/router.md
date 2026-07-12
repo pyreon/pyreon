@@ -49,7 +49,6 @@ const router = createRouter({
     { path: "/settings", redirect: "/admin/settings" },
     { path: "(.*)", component: NotFound },
   ],
-  middleware: [authMiddleware, loggerMiddleware],
 })
 
 // Mount with RouterProvider
@@ -105,7 +104,7 @@ const User = () => {
 | [`isRedirectError`](#isredirecterror) | function | Type guard for errors thrown by `redirect()`. |
 | [`getRedirectInfo`](#getredirectinfo) | function | Extract the redirect URL and status from a thrown RedirectError. |
 | [`useSearchParams`](#usesearchparams) | hook | Access and update URL search params as a reactive tuple. |
-| [`useBlocker`](#useblocker) | hook | Block navigation when a condition is true (e.g., unsaved form changes). |
+| [`useBlocker`](#useblocker) | hook | Block navigations while a condition holds. |
 | [`onBeforeRouteLeave`](#onbeforerouteleave) | function | Register a per-component navigation guard that fires when leaving the current route. |
 | [`onBeforeRouteUpdate`](#onbeforerouteupdate) | function | Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g.,  |
 
@@ -249,7 +248,7 @@ Declarative navigation link that renders an `<a>` element. Applies `activeClass`
 useRouter(): Router
 ```
 
-Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes.
+Access the router instance for programmatic navigation. Returns the `Router` object with `push()`, `replace()`, `back()`, `forward()`, `go()`. `await router.push()` resolves after the View Transition `updateCallbackDone` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a `NavigationResult`: `'committed'` (route changed), `'cancelled'` (a blocker/guard/middleware refused), or `'superseded'` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, `meta.title`).
 
 **Example**
 
@@ -330,19 +329,24 @@ const isExactAdmin = useIsActive("/admin", true)  // exact only
 ### useTypedSearchParams `hook`
 
 ```ts
-useTypedSearchParams<T>(schema: T): TypedSearchParams<T>
+useTypedSearchParams<T extends SearchParamSchema>(schema: T): [get: () => InferSearchParams<T>, set: (updates: Partial<InferSearchParams<T>>) => Promise<NavigationResult>]
 ```
 
-Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns an object where each key is a reactive accessor and `.set()` updates the URL.
+Type-safe search params with auto-coercion from URL strings. Schema keys define parameter names, values define types (`"string"`, `"number"`, `"boolean"`). Returns a `[get, set]` TUPLE (like `useSearchParams`): `get()` reads the coerced values reactively; `set()` merges updates and navigates via `router.replace` (resolving with the navigation's `NavigationResult`). Missing numbers coerce to `0`, booleans accept `"true"`/`"1"`.
 
 **Example**
 
 ```tsx
-const params = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
-params.page()    // number (auto-coerced)
-params.q()       // string
-params.set({ page: 2 })  // updates URL
+const [params, setParams] = useTypedSearchParams({ page: "number", q: "string", active: "boolean" })
+params().page    // number (auto-coerced)
+params().q       // string
+setParams({ page: 2 })  // updates URL via router.replace
 ```
+
+**Common mistakes**
+
+- Destructuring an object (`params.page()`) — the hook returns a TUPLE: `const [params, setParams] = useTypedSearchParams(...)`, read via `params().page`
+- Expecting `set()` to bypass navigation — it navigates via `router.replace`, so guards/blockers apply (check the resolved `NavigationResult` if you need to know it committed)
 
 **See also:** `useSearchParams` · `useRoute`
 
@@ -376,7 +380,7 @@ const isTransitioning = useTransition()
 useMiddlewareData(): () => Record<string, unknown>
 ```
 
-Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope.
+Returns a reactive accessor for data set by `RouteMiddleware` in the middleware chain. Middleware functions receive `ctx` with a mutable `ctx.data` object — properties set there are read by calling the returned accessor inside a reactive scope. The data is per-navigation: it resets to `{}` when a navigation whose chain has no middleware commits. (Stored on the router at commit time — the in-flight route object never becomes `currentRoute()`, which is why the pre-fix accessor always returned `{}`.)
 
 **Example**
 
@@ -512,7 +516,7 @@ try {
 ### useSearchParams `hook`
 
 ```ts
-useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<void>]
+useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]
 ```
 
 Access and update URL search params as a reactive tuple. Returns `[get, set]` where `get()` reads the current params and `set()` updates them via `replaceState`. For typed params with auto-coercion, prefer `useTypedSearchParams`.
@@ -536,33 +540,35 @@ setSearch({ page: "2" })
 ### useBlocker `hook`
 
 ```ts
-useBlocker(shouldBlock: () => boolean): Blocker
+useBlocker(fn: BlockerFn): Blocker
 ```
 
-Block navigation when a condition is true (e.g., unsaved form changes). Returns a `Blocker` object with `proceed()` and `reset()` methods. Also hooks into the browser's `beforeunload` event to warn on tab close. Uses a shared ref-counted listener for `beforeunload` — N blockers share one event handler.
+Block navigations while a condition holds. `fn(to, from)` is called before EVERY navigation — including browser Back/Forward, which route through the full pipeline — and returning `true` (or resolving to `true`; async blockers are supported, e.g. `confirm()` dialogs) cancels it. A cancelled browser traversal restores the URL/history position. Returns `{ remove() }` to unregister (auto-removed on component unmount). Also installs a shared ref-counted `beforeunload` handler so tab-close shows the browser confirmation while any blocker is active.
 
 **Example**
 
 ```tsx
-const blocker = useBlocker(() => form.isDirty())
-
-<Show when={blocker.isBlocked()}>
-  <Dialog>
-    <p>Unsaved changes. Leave anyway?</p>
-    <button onClick={blocker.proceed}>Leave</button>
-    <button onClick={blocker.reset}>Stay</button>
-  </Dialog>
-</Show>
+const blocker = useBlocker((to, from) => {
+  return form.isDirty() && !confirm('Discard unsaved changes?')
+})
+// later, e.g. after save:
+blocker.remove()
 ```
 
-**See also:** `useRouter`
+**Common mistakes**
+
+- Expecting `proceed()` / `reset()` methods (React Router shape) — Pyreon's blocker is a predicate: return `true` to block, `false` to allow; `remove()` unregisters it
+- Returning `false` to block — inverted: `true` means BLOCK (it answers "should this navigation be blocked?")
+- Assuming the Back button bypasses blockers — browser traversals run the same pipeline; a blocked Back restores the URL
+
+**See also:** `useRouter` · `onBeforeRouteLeave`
 
 ---
 
 ### onBeforeRouteLeave `function`
 
 ```ts
-onBeforeRouteLeave(guard: NavigationGuard): void
+onBeforeRouteLeave(guard: NavigationGuard): () => void
 ```
 
 Register a per-component navigation guard that fires when leaving the current route. Return `false` to cancel, a string path to redirect, or `undefined` to allow. Must be called during component setup.
@@ -582,7 +588,7 @@ onBeforeRouteLeave((to, from) => {
 ### onBeforeRouteUpdate `function`
 
 ```ts
-onBeforeRouteUpdate(guard: NavigationGuard): void
+onBeforeRouteUpdate(guard: NavigationGuard): () => void
 ```
 
 Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g., param change `/user/1` to `/user/2`). Same return semantics as `onBeforeRouteLeave`.
