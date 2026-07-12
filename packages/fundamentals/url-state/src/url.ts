@@ -38,6 +38,10 @@ export function getUrlRouter(): UrlRouter | null {
 
 /** Read the current URL's search params. Client-only — callers guard SSR. */
 function currentParams(): URLSearchParams {
+  // SSR guard: callers funnel through the public `isClient`-guarded entries,
+  // but guard here too so the helper is SSR-safe by construction (and the
+  // no-window-in-ssr rule can't trace the cross-function guard).
+  if (!isClient) return new URLSearchParams()
   return new URLSearchParams(window.location.search)
 }
 
@@ -48,6 +52,7 @@ function currentParams(): URLSearchParams {
  * so the router-vs-history branch can't drift between write paths.
  */
 function commit(params: URLSearchParams, replace: boolean): void {
+  if (!isClient) return
   const search = params.toString()
   const url = search ? `${window.location.pathname}?${search}` : window.location.pathname
 
