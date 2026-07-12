@@ -117,7 +117,7 @@ export function useIndexedDB<T>(
       .then((db) => idbGet(db, storeName, key))
       .then((raw) => {
         if (raw !== null) {
-          const value = deserialize(raw, defaultValue, options.deserializer, options.onError)
+          const value = deserialize(raw, defaultValue, options)
           sig.set(value)
         }
       })
@@ -146,10 +146,11 @@ export function useIndexedDB<T>(
     if (!isBrowser() || typeof indexedDB === 'undefined') return
 
     openDB(dbName, storeName)
-      .then((db) => idbSet(db, storeName, key, serialize(value, options.serializer)))
-      /* v8 ignore start — write-failure catch: signal already holds the value, nothing to do */
-      .catch(() => {
-        // Write failed — signal still has the correct value
+      .then((db) => idbSet(db, storeName, key, serialize(value, options)))
+      /* v8 ignore start — write-failure catch: signal already holds the value; notify onError */
+      .catch((err) => {
+        // Write failed — signal still has the correct value. Notify onError.
+        options.onError?.(err instanceof Error ? err : new Error(String(err)))
       })
     /* v8 ignore stop */
   }
@@ -187,7 +188,7 @@ export function useIndexedDB<T>(
     removeEntry('indexeddb', key)
   }
 
-  setEntry('indexeddb', key, storageSig, defaultValue)
+  setEntry('indexeddb', key, storageSig, defaultValue, options)
 
   return storageSig
 }

@@ -5,20 +5,35 @@ import { deserialize, isBrowser, serialize } from './utils'
 
 // ─── Server-side cookie source ───────────────────────────────────────────────
 
-let serverCookieString = ''
+// The SSR cookie source. A plain string (fixed for the process/request) OR an
+// accessor evaluated LAZILY at each cookie read — the accessor form is the seam
+// an SSR integration wires to its per-request context (e.g. reading the current
+// request's `Cookie` header out of `runWithRequestContext`'s AsyncLocalStorage),
+// so concurrent requests each resolve their own cookies without this module
+// holding per-request state. `null` clears it.
+let serverCookieSource: string | (() => string) | null = null
 
 /**
- * Set the cookie source string for SSR. Call this once per request
- * with the raw Cookie header value.
+ * Tell `useCookie` how to read cookies during SSR. Pass the raw `Cookie` header
+ * string, an accessor returning it (evaluated lazily at read time — wire this to
+ * your per-request context for concurrency-safe SSR), or `null` to clear.
+ *
+ * The module-level source is a single slot, so a bare STRING is shared across
+ * concurrent requests — safe only when rendering is serialized per process. For
+ * a server handling concurrent requests, pass an ACCESSOR that reads the current
+ * request's cookies from your request context.
  *
  * @example
  * ```ts
- * // In your SSR request handler
+ * // Simplest — single request in flight (dev / serialized render):
  * setCookieSource(request.headers.get('cookie') ?? '')
+ *
+ * // Concurrency-safe — accessor bound to the per-request context:
+ * setCookieSource(() => currentRequest().headers.get('cookie') ?? '')
  * ```
  */
-export function setCookieSource(cookieHeader: string): void {
-  serverCookieString = cookieHeader
+export function setCookieSource(source: string | (() => string) | null): void {
+  serverCookieSource = source
 }
 
 // ─── Cookie parsing ──────────────────────────────────────────────────────────
@@ -39,9 +54,9 @@ function parseCookies(cookieString: string): Map<string, string> {
 }
 
 function getCookieString(): string {
-  /* v8 ignore next 2 — SSR/isBrowser branch; tests run with happy-dom */
   if (isBrowser()) return document.cookie
-  return serverCookieString
+  if (typeof serverCookieSource === 'function') return serverCookieSource()
+  return serverCookieSource ?? ''
 }
 
 function readCookie(key: string): string | null {
@@ -55,7 +70,7 @@ function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void 
   /* v8 ignore next — SSR/isBrowser guard */
   if (!isBrowser()) return
 
-  const serialized = serialize(value, options.serializer)
+  const serialized = serialize(value, options)
   let cookie = `${encodeURIComponent(key)}=${encodeURIComponent(serialized)}`
 
   if (options.maxAge !== undefined) {
@@ -119,9 +134,7 @@ export function useCookie<T>(
   // Read initial value from cookie
   const raw = readCookie(key)
   const initialValue =
-    raw !== null
-      ? deserialize(raw, defaultValue, options.deserializer, options.onError)
-      : defaultValue
+    raw !== null ? deserialize(raw, defaultValue, options) : defaultValue
 
   const sig = signal<T>(initialValue)
 
@@ -140,7 +153,7 @@ export function useCookie<T>(
     removeEntry('cookie', key)
   }
 
-  setEntry('cookie', key, storageSig, defaultValue)
+  setEntry('cookie', key, storageSig, defaultValue, options)
 
   return storageSig
 }

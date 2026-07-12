@@ -8,7 +8,7 @@ describe('serialize', () => {
 
   it('uses custom serializer when provided', () => {
     const custom = (v: number) => `NUM:${v}`
-    expect(serialize(42, custom)).toBe('NUM:42')
+    expect(serialize(42, { serializer: custom })).toBe('NUM:42')
   })
 })
 
@@ -19,7 +19,7 @@ describe('deserialize', () => {
 
   it('uses custom deserializer when provided', () => {
     const custom = (s: string) => s.toUpperCase()
-    expect(deserialize('hello', 'default', custom)).toBe('HELLO')
+    expect(deserialize('hello', 'default', { deserializer: custom })).toBe('HELLO')
   })
 
   it('returns default value on parse error', () => {
@@ -27,13 +27,13 @@ describe('deserialize', () => {
   })
 
   it('calls onError and returns its result on parse error', () => {
-    const onError = (e: Error) => 'recovered'
-    expect(deserialize('{broken', 'default', undefined, onError)).toBe('recovered')
+    const onError = (_e: Error) => 'recovered'
+    expect(deserialize('{broken', 'default', { onError })).toBe('recovered')
   })
 
   it('returns default when onError returns undefined', () => {
     const onError = (_e: Error) => undefined
-    expect(deserialize('{broken', 'fallback', undefined, onError)).toBe('fallback')
+    expect(deserialize('{broken', 'fallback', { onError })).toBe('fallback')
   })
 })
 

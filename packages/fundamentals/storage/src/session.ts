@@ -35,14 +35,14 @@ export function useSessionStorage<T>(
   if (storage) {
     const raw = storage.getItem(key)
     if (raw !== null) {
-      initialValue = deserialize(raw, defaultValue, options?.deserializer, options?.onError)
+      initialValue = deserialize(raw, defaultValue, options)
     }
   }
 
   const sig = signal<T>(initialValue)
   const storageSig = createStorageSignal(sig, key, defaultValue, 'session', options)
 
-  setEntry('session', key, storageSig, defaultValue)
+  setEntry('session', key, storageSig, defaultValue, options)
 
   return storageSig
 }
