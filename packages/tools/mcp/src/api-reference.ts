@@ -4732,9 +4732,9 @@ const GlobalReset = createGlobalStyle\`
   body { margin: 0; font-family: \${(p) => p.theme.fonts.body}; }
 \`
 // render <GlobalReset /> once at the app root`,
-    notes: 'Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root; unmounting removes the global rule. Function interpolations make the global block dynamic (re-resolves on prop/theme change). See also: styled, css.',
+    notes: `Returns a \`ComponentFn\` that injects GLOBAL CSS (resets, \`:root\` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root. The injected rule PERSISTS for the document's lifetime, deduped by content hash — like emotion's \`injectGlobal\`, and UNLIKE styled-components' \`createGlobalStyle\`, it is NOT removed on unmount (a global reset shouldn't vanish when the mounting component re-renders away). Function interpolations make the global block dynamic (re-resolves on prop/theme change). See also: styled, css.`,
     mistakes: `- Calling \`createGlobalStyle\` (the tagged template) and expecting the CSS to inject — nothing happens until the returned component is RENDERED. Mount \`<GlobalReset />\` once near the root
-- Mounting it in many components — duplicates the global rule lifetime management; mount exactly once`,
+- Expecting the global CSS to be removed when the component unmounts — it persists (deduped by hash), matching emotion \`injectGlobal\` not styled-components. Toggle globals with a class/attribute on \`:root\`, not by mounting/unmounting the component`,
   },
 
   'styler/useCSS': {
@@ -4802,7 +4802,7 @@ const themeAccessor = useContext(ThemeContext) // () => Theme`,
     example: `import { createSheet } from "@pyreon/styler"
 
 const shadowSheet = createSheet({ /* StyleSheetOptions */ })`,
-    notes: 'Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton `sheet`. Use for shadow-DOM roots, multi-window/iframe rendering, or test isolation where one request/realm must not share the global dedup cache. Most apps never need this — the singleton is correct for a single document. See also: StyleSheet, sheet.',
+    notes: `Creates an ISOLATED \`StyleSheet\` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton \`sheet\`. Use for shadow-DOM roots, multi-window/iframe rendering, per-request SSR isolation, or test isolation where one request/realm must not share the global dedup cache. Options: \`maxCacheSize\`, \`layer\` (wrap scoped rules in an \`@layer\`), and \`nonce\` (CSP — stamps the SSR \`<style>\` from \`getStyleTag()\` and the client \`<style>\` element with a \`nonce\` so a strict \`style-src 'nonce-…'\` policy admits the critical CSS). Most apps never need this — the singleton is correct for a single document. See also: StyleSheet, sheet.`,
     mistakes: `- Creating a fresh sheet per render — defeats dedup; create once per realm/root and reuse
 - Mixing the singleton and an isolated sheet for the same DOM — classes from one will not be deduped against the other; pick one per document root`,
   },

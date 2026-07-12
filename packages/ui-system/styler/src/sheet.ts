@@ -234,6 +234,17 @@ export interface StyleSheetOptions {
   maxCacheSize?: number
   /** CSS @layer name to wrap scoped rules in. */
   layer?: string
+  /**
+   * CSP nonce. When set, the SSR `<style>` tag from `getStyleTag()` carries a
+   * `nonce="…"` attribute, and the client `<style>` element created by
+   * `mount()` gets the same nonce — so a strict `style-src 'nonce-…'` policy
+   * (no `'unsafe-inline'`) does NOT block the critical CSS on first paint.
+   * Per-request nonces (which rotate per response) are best passed at call time
+   * via `getStyleTag(nonce)`, which overrides this default. Client-side CSSOM
+   * `insertRule` is exempt from CSP regardless, so this only matters for the
+   * SSR-emitted inline `<style>` and the initial client `<style>` element.
+   */
+  nonce?: string
 }
 
 export class StyleSheet {
@@ -261,11 +272,13 @@ export class StyleSheet {
   private isSSR: boolean
   private maxCacheSize: number
   private layer: string | undefined
+  private nonce: string | undefined
   private supportsLayer = false
 
   constructor(options: StyleSheetOptions = {}) {
     this.maxCacheSize = options.maxCacheSize ?? DEFAULT_MAX_CACHE_SIZE
     this.layer = options.layer
+    this.nonce = options.nonce
     this.isSSR = typeof document === 'undefined'
     if (!this.isSSR) this.mount()
   }
@@ -287,6 +300,11 @@ export class StyleSheet {
     } else {
       const el = document.createElement('style')
       el.setAttribute(ATTR, '')
+      // CSP: tag the client <style> with the nonce so a strict
+      // `style-src 'nonce-…'` policy admits the element. (CSSOM insertRule
+      // mutations below are CSP-exempt regardless — this covers the element
+      // itself.)
+      if (this.nonce) el.setAttribute('nonce', this.nonce)
       document.head.appendChild(el)
       this.sheet = el.sheet ?? null
     }
@@ -746,9 +764,19 @@ export class StyleSheet {
     }
   }
 
-  /** Returns collected CSS for SSR as a complete `<style>` tag string. */
-  getStyleTag(): string {
-    if (this.ssrBuffer.length === 0) return `<style ${ATTR}=""></style>`
+  /**
+   * Returns collected CSS for SSR as a complete `<style>` tag string.
+   *
+   * @param nonce - CSP nonce to stamp on the `<style>` tag (overrides the
+   *   instance `nonce` option). Pass the per-request nonce here so a strict
+   *   `style-src 'nonce-…'` policy admits the SSR-inlined critical CSS on first
+   *   paint. Omit to fall back to the instance nonce (if any). Quotes in the
+   *   nonce are stripped so it can't break out of the attribute.
+   */
+  getStyleTag(nonce?: string): string {
+    const n = nonce ?? this.nonce
+    const nonceAttr = n ? ` nonce="${n.replace(/["'<>]/g, '')}"` : ''
+    if (this.ssrBuffer.length === 0) return `<style ${ATTR}=""${nonceAttr}></style>`
     // Emit the layer ordering declaration for SSR output so the cascade
     // is correct when the browser parses the SSR HTML. On the client side
     // this ordering is injected via insertRule in mount().
@@ -758,7 +786,7 @@ export class StyleSheet {
         ? `@layer ${this.layer};`
         : ''
     const css = (layerDecl + this.ssrBuffer.join('')).replace(/<\/style/gi, '<\\/style')
-    return `<style ${ATTR}="">${css}</style>`
+    return `<style ${ATTR}=""${nonceAttr}>${css}</style>`
   }
 
   /**

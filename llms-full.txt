@@ -2617,6 +2617,8 @@ isDynamic("12px")          // false → static, cached
 > **Prop forwarding copies descriptors**: `buildProps` / `filterProps` copy property DESCRIPTORS (not values) so compiler-emitted `_rp` getter props keep their reactive subscription end-to-end. Any custom prop-forwarding wrapper layered on styler MUST do the same — plain `result[k] = src[k]` silently collapses signal-driven props to a one-time snapshot.
 >
 > **Singleton sheet by default**: All injection goes through the `sheet` singleton (FNV-1a dedup, SSR). `createSheet()` / `new StyleSheet()` are only for isolated realms (shadow DOM, iframes, test isolation) — mixing sheets for one document breaks dedup.
+>
+> **CSP nonce for strict style-src**: Under a strict `style-src 'nonce-…'` policy (no `'unsafe-inline'`), the SSR-inlined critical `<style>` needs a nonce or the browser blocks it on first paint (client CSSOM `insertRule` is CSP-exempt regardless). Pass the per-request nonce to `sheet.getStyleTag(nonce)`, or set `createSheet({ nonce })` as a default — both stamp the SSR `<style>` and the client `<style>` element.
 
 ## @pyreon/unistyle — Responsive CSS Utilities
 

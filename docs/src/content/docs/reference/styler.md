@@ -138,7 +138,7 @@ const Spinner = styled("div")`animation: ${spin} 1s linear infinite;`
 createGlobalStyle(strings: TemplateStringsArray, ...values: Interpolation[]): ComponentFn
 ```
 
-Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root; unmounting removes the global rule. Function interpolations make the global block dynamic (re-resolves on prop/theme change).
+Returns a `ComponentFn` that injects GLOBAL CSS (resets, `:root` tokens, body styles) when MOUNTED — it is not a side-effecting call. Render the returned component once near the app root. The injected rule PERSISTS for the document's lifetime, deduped by content hash — like emotion's `injectGlobal`, and UNLIKE styled-components' `createGlobalStyle`, it is NOT removed on unmount (a global reset shouldn't vanish when the mounting component re-renders away). Function interpolations make the global block dynamic (re-resolves on prop/theme change).
 
 **Example**
 
@@ -155,7 +155,7 @@ const GlobalReset = createGlobalStyle`
 **Common mistakes**
 
 - Calling `createGlobalStyle` (the tagged template) and expecting the CSS to inject — nothing happens until the returned component is RENDERED. Mount `<GlobalReset />` once near the root
-- Mounting it in many components — duplicates the global rule lifetime management; mount exactly once
+- Expecting the global CSS to be removed when the component unmounts — it persists (deduped by hash), matching emotion `injectGlobal` not styled-components. Toggle globals with a class/attribute on `:root`, not by mounting/unmounting the component
 
 **See also:** `styled` · `css`
 
@@ -302,7 +302,7 @@ const themeAccessor = useContext(ThemeContext) // () => Theme
 createSheet(options?: StyleSheetOptions): StyleSheet
 ```
 
-Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton `sheet`. Use for shadow-DOM roots, multi-window/iframe rendering, or test isolation where one request/realm must not share the global dedup cache. Most apps never need this — the singleton is correct for a single document.
+Creates an ISOLATED `StyleSheet` instance (its own FNV-1a dedup cache + rule registry) instead of the shared singleton `sheet`. Use for shadow-DOM roots, multi-window/iframe rendering, per-request SSR isolation, or test isolation where one request/realm must not share the global dedup cache. Options: `maxCacheSize`, `layer` (wrap scoped rules in an `@layer`), and `nonce` (CSP — stamps the SSR `<style>` from `getStyleTag()` and the client `<style>` element with a `nonce` so a strict `style-src 'nonce-…'` policy admits the critical CSS). Most apps never need this — the singleton is correct for a single document.
 
 **Example**
 
@@ -519,3 +519,5 @@ isDynamic("12px")          // false → static, cached
 > **Prop forwarding copies descriptors:** `buildProps` / `filterProps` copy property DESCRIPTORS (not values) so compiler-emitted `_rp` getter props keep their reactive subscription end-to-end. Any custom prop-forwarding wrapper layered on styler MUST do the same — plain `result[k] = src[k]` silently collapses signal-driven props to a one-time snapshot.
 
 > **Singleton sheet by default:** All injection goes through the `sheet` singleton (FNV-1a dedup, SSR). `createSheet()` / `new StyleSheet()` are only for isolated realms (shadow DOM, iframes, test isolation) — mixing sheets for one document breaks dedup.
+
+> **CSP nonce for strict style-src:** Under a strict `style-src 'nonce-…'` policy (no `'unsafe-inline'`), the SSR-inlined critical `<style>` needs a nonce or the browser blocks it on first paint (client CSSOM `insertRule` is CSP-exempt regardless). Pass the per-request nonce to `sheet.getStyleTag(nonce)`, or set `createSheet({ nonce })` as a default — both stamp the SSR `<style>` and the client `<style>` element.
