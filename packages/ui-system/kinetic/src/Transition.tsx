@@ -13,6 +13,7 @@ import {
   nextFrame,
   removeClasses,
   resolveChildren,
+  setTransition,
 } from './utils'
 
 const applyEnter = (
@@ -43,7 +44,7 @@ const applyEnter = (
   addClasses(el, enter)
   addClasses(el, enterFrom)
   if (enterStyle) Object.assign(el.style, enterStyle)
-  if (enterTransition) el.style.transition = enterTransition
+  if (enterTransition) setTransition(el, enterTransition)
 
   return nextFrame(() => {
     removeClasses(el, enterFrom)
@@ -71,7 +72,7 @@ const applyLeave = (
   addClasses(el, leave)
   addClasses(el, leaveFrom)
   if (leaveStyle) Object.assign(el.style, leaveStyle)
-  if (leaveTransition) el.style.transition = leaveTransition
+  if (leaveTransition) setTransition(el, leaveTransition)
 
   return nextFrame(() => {
     removeClasses(el, leaveFrom)
@@ -186,14 +187,12 @@ const Transition = (props: TransitionProps): VNode | null => {
 
       if (currentStage === 'entering') {
         callbacks.onEnter?.()
-        const frameId = applyEnter(el, transitionConfig)
-        return () => cancelAnimationFrame(frameId)
+        return applyEnter(el, transitionConfig)
       }
 
       if (currentStage === 'leaving') {
         callbacks.onLeave?.()
-        const frameId = applyLeave(el, transitionConfig)
-        return () => cancelAnimationFrame(frameId)
+        return applyLeave(el, transitionConfig)
       }
 
       if (currentStage === 'entered') {

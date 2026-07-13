@@ -36,17 +36,61 @@ export const removeClasses = (el: HTMLElement, classes: string | undefined) => {
 }
 
 /**
- * Executes callback after two animation frames (double-rAF).
- * Ensures the browser paints the current state before applying changes,
- * which is required for CSS transitions to trigger. Returns 0 on SSR —
- * the typeof-window guard makes the SSR-safety contract explicit (callers
- * are always browser-only via `onMount`, but the rule can't AST-trace it).
+ * Executes `callback` after two animation frames (double-rAF), ensuring the
+ * browser paints the current state before applying changes — required for
+ * CSS transitions to trigger.
+ *
+ * Returns a CANCEL function that stops the pending work. Crucially it
+ * cancels the INNER frame too when called AFTER the outer frame has already
+ * fired: a bare `cancelAnimationFrame(outerId)` misses the inner frame, so a
+ * rapid enter→leave flip inside one frame could still apply the stale
+ * enter-to state on the way out. Both scheduling and cancelling are SSR /
+ * post-teardown safe — `requestAnimationFrame` may be undefined (SSR: the
+ * cancel is a no-op), and `cancelAnimationFrame` may be undefined when the
+ * cleanup runs after the env is torn down (the returned cancel guards it).
  */
-export const nextFrame = (callback: () => void): number => {
-  if (typeof requestAnimationFrame === 'undefined') return 0
-  return requestAnimationFrame(() => {
-    requestAnimationFrame(callback)
+export const nextFrame = (callback: () => void): (() => void) => {
+  if (typeof requestAnimationFrame === 'undefined') return () => {}
+  let inner = 0
+  const outer = requestAnimationFrame(() => {
+    inner = requestAnimationFrame(callback)
   })
+  return () => {
+    if (typeof cancelAnimationFrame !== 'function') return
+    cancelAnimationFrame(outer)
+    if (inner) cancelAnimationFrame(inner)
+  }
+}
+
+/** Stable custom property carrying a kinetic-controlled transition-delay. */
+export const KINETIC_DELAY_VAR = '--kinetic-delay'
+
+/**
+ * Assigns the `transition` shorthand WITHOUT clobbering a per-element
+ * transition-delay.
+ *
+ * **Why:** assigning `el.style.transition` (the shorthand) resets EVERY
+ * transition longhand it omits — including `transition-delay` → `0s` — in
+ * spec-compliant engines (Chromium / Firefox). Kinetic's stagger bakes each
+ * child's delay onto `transition-delay`, so a bare `el.style.transition =
+ * enterTransition` erased the stagger delay the instant the enter/leave
+ * animation started: every child animated at once. happy-dom does NOT model
+ * the shorthand→longhand reset, so unit tests never caught it — only a real
+ * browser does (see `stagger-delay-preserved.browser.test.tsx`).
+ *
+ * The delay is sourced from a stable `--kinetic-delay` custom property (set
+ * by the stagger renderers) because a plain inline `transition-delay` is
+ * itself wiped by the `transition = ''` reset kinetic performs at the
+ * `entered` stage — the custom property survives both, so multi-cycle
+ * staggers keep their delay. A plain inline `transition-delay` (e.g.
+ * user-set) is honoured as a first-cycle fallback.
+ */
+export const setTransition = (el: HTMLElement, value: string): void => {
+  const staggerDelay = el.style.getPropertyValue(KINETIC_DELAY_VAR)
+  const inlineDelay = el.style.transitionDelay
+  el.style.transition = value
+  const delay = staggerDelay || inlineDelay
+  if (delay) el.style.transitionDelay = delay
 }
 
 /** Merges two className strings, filtering undefined/empty. */

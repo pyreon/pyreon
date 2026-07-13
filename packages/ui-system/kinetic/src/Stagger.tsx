@@ -49,6 +49,11 @@ const Stagger = (props: StaggerProps): VNode | null => {
                 ...((child.props as Record<string, unknown>)?.style as CSSProperties | undefined),
                 '--stagger-index': staggerIndex,
                 '--stagger-interval': `${interval}ms`,
+                // Stable delay source — survives the `transition` shorthand
+                // reset AND the `transition=''` reset at 'entered'; kinetic's
+                // `setTransition` restores `transition-delay` from it on each
+                // enter/leave (see utils.ts).
+                '--kinetic-delay': `${delay}ms`,
                 transitionDelay: `${delay}ms`,
               } as CSSProperties,
             })}
