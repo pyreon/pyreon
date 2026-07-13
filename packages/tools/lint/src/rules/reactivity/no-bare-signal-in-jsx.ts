@@ -27,6 +27,12 @@ export const noBareSignalInJsx: Rule = {
     // correct code, and the autofix (below) is removed because a rewrite is pure
     // churn (identical output).
     severity: 'info',
+    // Opt-in (matches the "Opt-in." description above): the rule cannot tell a
+    // signal from a pure formatter (it never resolves the callee to a
+    // `signal()`/`computed()` binding), so in `recommended` it hinted on every
+    // `{formatValue(x)}` / `{humanize(id)}`. Since bare `{sig()}` is already
+    // fully reactive, a purely-stylistic hint should not be on by default.
+    optIn: true,
     fixable: false,
     schema: { exemptPaths: 'string[]' },
   },

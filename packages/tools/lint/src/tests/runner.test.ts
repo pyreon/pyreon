@@ -50,6 +50,19 @@ function lintWith(ruleId: string, source: string, filePath?: string) {
   return lintFile(filePath ?? 'test.tsx', source, [rule], defaultConfig())
 }
 
+// Lint a single rule with it EXPLICITLY enabled at its default severity —
+// used for `meta.optIn` rules, which are OFF in `recommended` (so `lintWith`
+// would report nothing). The detection logic is unchanged; the rule is just
+// opt-in now (per the upstream 0.44.0 findings), so a test asserting its
+// DETECTION must enable it explicitly.
+function lintWithRuleEnabled(ruleId: string, source: string, filePath?: string) {
+  const rule = allRules.find((r) => r.meta.id === ruleId)
+  if (!rule) throw new Error(`Rule not found: ${ruleId}`)
+  return lintFile(filePath ?? 'test.tsx', source, [rule], {
+    rules: { [ruleId]: rule.meta.severity },
+  })
+}
+
 // ── Rule Metadata ───────────────────────────────────────────────────────────
 
 describe('Rule metadata', () => {
@@ -259,7 +272,7 @@ describe('AstCache', () => {
 describe('Reactivity rules', () => {
   it('pyreon/no-bare-signal-in-jsx: flags {count()} in JSX as an info hint (NO autofix)', () => {
     const source = `const App = () => <div>{count()}</div>`
-    const result = lintSource(source)
+    const result = lintWithRuleEnabled('pyreon/no-bare-signal-in-jsx', source)
     const diags = findByRule(result, 'pyreon/no-bare-signal-in-jsx')
     expect(diags.length).toBe(1)
     // No autofix: `{count()}` and `{() => count()}` compile identically, so a
@@ -507,14 +520,14 @@ describe('JSX rules', () => {
 
   it('pyreon/no-ternary-conditional: flags ternary with JSX', () => {
     const source = `const App = () => <div>{flag ? <span>a</span> : <span>b</span>}</div>`
-    const result = lintSource(source)
+    const result = lintWithRuleEnabled('pyreon/no-ternary-conditional', source)
     const diags = findByRule(result, 'pyreon/no-ternary-conditional')
     expect(diags.length).toBe(1)
   })
 
   it('pyreon/no-and-conditional: flags && with JSX', () => {
     const source = `const App = () => <div>{flag && <span>yes</span>}</div>`
-    const result = lintSource(source)
+    const result = lintWithRuleEnabled('pyreon/no-and-conditional', source)
     const diags = findByRule(result, 'pyreon/no-and-conditional')
     expect(diags.length).toBe(1)
   })
@@ -999,7 +1012,7 @@ describe('Performance rules', () => {
   })
 
   it('pyreon/prefer-show-over-display: flags conditional display style', () => {
-    const result = lintWith(
+    const result = lintWithRuleEnabled(
       'pyreon/prefer-show-over-display',
       `const App = () => <div style={{ display: visible ? "block" : "none" }} />`,
     )
@@ -1777,7 +1790,10 @@ describe('Styling rules', () => {
   })
 
   it('pyreon/no-theme-outside-provider: flags useTheme() without provider import', () => {
-    const result = lintWith('pyreon/no-theme-outside-provider', `const theme = useTheme()`)
+    const result = lintWithRuleEnabled(
+      'pyreon/no-theme-outside-provider',
+      `const theme = useTheme()`,
+    )
     expect(result.diagnostics.length).toBe(1)
   })
 
@@ -2180,7 +2196,7 @@ describe('no-theme-outside-provider: arrow-form hook implementation', () => {
       import { useTheme } from '@pyreon/styler'
       export const getColor = () => useTheme()?.colors?.primary
     `
-    const result = lintSource(source)
+    const result = lintWithRuleEnabled('pyreon/no-theme-outside-provider', source)
     const diags = findByRule(result, 'pyreon/no-theme-outside-provider')
     expect(diags.length).toBeGreaterThanOrEqual(1)
   })
@@ -2620,7 +2636,7 @@ describe('no-bare-signal-in-jsx: render() helper exemption', () => {
 
   it('still fires for other bare identifiers in JSX text', () => {
     const source = `const App = () => <div>{count()}</div>`
-    const result = lintSource(source)
+    const result = lintWithRuleEnabled('pyreon/no-bare-signal-in-jsx', source)
     expect(findByRule(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThanOrEqual(1)
   })
 

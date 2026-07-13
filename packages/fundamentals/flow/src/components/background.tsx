@@ -13,7 +13,10 @@ import type { BackgroundProps } from '../types'
  * ```
  */
 export function Background(props: BackgroundProps): VNodeChild {
-  const { variant = 'dots', gap = 20, size = 1, color = '#ddd' } = props
+  const variant = props.variant ?? 'dots'
+  const gap = props.gap ?? 20
+  const size = props.size ?? 1
+  const color = props.color ?? '#ddd'
 
   const patternId = `flow-bg-${variant}`
 

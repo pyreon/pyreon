@@ -409,6 +409,13 @@ export const noWindowInSsr: Rule = {
     // identifier in the file then refers to the import, not `window.history`.
     // Populated by ImportSpecifier / ImportDefaultSpecifier / ImportNamespaceSpecifier.
     const importShadowedNames = new Set<string>()
+    // LT-4.3: MODULE-level `const`/`let`/`var` bindings that shadow a browser
+    // global — `const history = createHistory()` at top level makes every later
+    // `history` a reference to that local, not `window.history`. Function-scoped
+    // locals are handled by `shadowedNamesStack` (a local const is added to the
+    // current function's frame in the VariableDeclaration handler). Kept
+    // separate so module scope survives for the whole file.
+    const moduleLevelShadowed = new Set<string>()
     function collectParamNames(params: any[]): Set<string> {
       const names = new Set<string>()
       const walk = (p: any) => {
@@ -472,6 +479,20 @@ export const noWindowInSsr: Rule = {
             bodyIsTypeofGuard(decl.init.body)
           ) {
             typeofGuardFunctions.add(decl.id.name)
+          }
+          // LT-4.3: a local binding NAMED like a browser global
+          // (`const history = …`, `const location = …`) shadows that global
+          // for the rest of its scope. Record the name so later `history.push`
+          // reads resolve to the local (not `window.history`), and skip the
+          // declaration identifier itself so the LHS doesn't fire a spurious
+          // second finding. Function-scoped → the current frame; else module.
+          if (BROWSER_GLOBALS.has(decl.id.name)) {
+            if (shadowedNamesStack.length > 0) {
+              shadowedNamesStack[shadowedNamesStack.length - 1]!.add(decl.id.name)
+            } else {
+              moduleLevelShadowed.add(decl.id.name)
+            }
+            skipPropertyNodes.add(decl.id)
           }
         }
       },
@@ -580,6 +601,21 @@ export const noWindowInSsr: Rule = {
       'ConditionalExpression:exit'(node: any) {
         if (testIsTypeofGuard(node.test)) typeofGuardDepth--
       },
+      // LT-4.2: a same-expression `&&` guard —
+      // `typeof window !== 'undefined' && window.location.href`. `&&`
+      // short-circuits, so when the LEFT conjunct is a typeof guard the right
+      // side only evaluates when the global exists. Mirror the ternary handler:
+      // bump the guard depth for the whole subtree (the left conjunct is itself
+      // the guard, so it's safe under the bump too). Reverse order
+      // (`window.x && typeof window …`) stays flagged — the left genuinely runs
+      // unguarded. Enter/exit balance because the same predicate is checked on
+      // both, and bound consts can't change within one `&&` subtree.
+      LogicalExpression(node: any) {
+        if (node.operator === '&&' && testIsTypeofGuard(node.left)) typeofGuardDepth++
+      },
+      'LogicalExpression:exit'(node: any) {
+        if (node.operator === '&&' && testIsTypeofGuard(node.left)) typeofGuardDepth--
+      },
       UnaryExpression(node: any) {
         if (node.operator === 'typeof') inTypeofExpr++
       },
@@ -666,6 +702,9 @@ export const noWindowInSsr: Rule = {
         if (isNameShadowed(node.name)) return
         // Skip identifiers shadowed by a module-level import binding.
         if (importShadowedNames.has(node.name)) return
+        // Skip identifiers shadowed by a module-level local `const`/`let`/`var`
+        // named like a browser global (LT-4.3).
+        if (moduleLevelShadowed.has(node.name)) return
 
         context.report({
           message: `Browser global \`${node.name}\` used outside \`onMount\`/\`effect\`/typeof guard — this will fail during SSR. Wrap in \`onMount(() => { ... })\`.`,

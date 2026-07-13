@@ -34,7 +34,12 @@ const isSignal = (value: string | Signal<string>): value is Signal<string> =>
  * ```
  */
 export function DiffEditor(props: DiffEditorProps): VNodeChild {
-  const { original, modified, language = 'plain', theme = 'light', readOnly = true, onError } = props
+  const original = props.original
+  const modified = props.modified
+  const language = props.language ?? 'plain'
+  const theme = props.theme ?? 'light'
+  const readOnly = props.readOnly ?? true
+  const onError = props.onError
 
   let mergeView: MergeView | null = null
   // `containerRef` lazy-loads the language grammar (async), so the component

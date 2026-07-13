@@ -21,7 +21,9 @@ const positionStyles: Record<string, string> = {
  * ```
  */
 export function Panel(props: PanelProps): VNodeChild {
-  const { position = 'top-left', style = '', children } = props
+  const position = props.position ?? 'top-left'
+  const style = props.style ?? ''
+  const children = props.children
   const posStyle = positionStyles[position] ?? positionStyles['top-left']
   const baseStyle = `position: absolute; ${posStyle} z-index: 5; ${style}`
 

@@ -41,6 +41,65 @@ function alwaysReturns(node: any): boolean {
 }
 
 /**
+ * LT-3 Bug A: does `node`'s own evaluation contain a top-level `await`
+ * (NOT one inside a nested function — that's the nested function's own async
+ * boundary)? A statement whose evaluation awaits SPLITS the enclosing block
+ * into synchronous microtask segments: code before the await runs in one
+ * task, code after it (including the awaiting statement's own trailing work,
+ * e.g. `value.set(await fetch())`) resumes in a later task. `batch()` cannot
+ * span an `await`, so sets in different segments are NOT batchable together.
+ */
+function containsTopLevelAwait(node: any): boolean {
+  if (!node || typeof node !== 'object') return false
+  if (node.type === 'AwaitExpression') return true
+  if (
+    node.type === 'ArrowFunctionExpression' ||
+    node.type === 'FunctionExpression' ||
+    node.type === 'FunctionDeclaration'
+  ) {
+    return false
+  }
+  for (const key in node) {
+    if (key === 'parent') continue
+    const val = node[key]
+    if (Array.isArray(val)) {
+      for (const c of val) if (c && typeof c.type === 'string' && containsTopLevelAwait(c)) return true
+    } else if (val && typeof val.type === 'string') {
+      if (containsTopLevelAwait(val)) return true
+    }
+  }
+  return false
+}
+
+// LT-3 Bug B: constructors whose instances have a `.set(k, v)` method that is
+// NOT a signal write — a triple `m.set(...)` on one of these must not be
+// flagged as "unbatched signal updates". (`Set`/`WeakSet` use `.add`, so they
+// never reach `isSetCall`.) Populated per-file: `nonSignalSetReceivers` records
+// the local names bound to `new Map()` etc. It is a module-level `let`
+// deliberately RESET at the top of every `create()` — lint runs one file at a
+// time synchronously, so there is no cross-file leakage (the reset is the
+// contract).
+const NON_SIGNAL_SET_CTORS = new Set(['Map', 'WeakMap', 'URLSearchParams', 'Headers', 'FormData'])
+let nonSignalSetReceivers = new Set<string>()
+
+/** Is this `.set()` call on a KNOWN non-signal collection receiver? */
+function isNonSignalSetCall(node: any): boolean {
+  const obj = node?.callee?.object
+  if (!obj) return false
+  // `m.set(...)` where `m = new Map()`.
+  if (obj.type === 'Identifier' && nonSignalSetReceivers.has(obj.name)) return true
+  // `new Map().set(...)` — inline construction.
+  if (
+    obj.type === 'NewExpression' &&
+    obj.callee?.type === 'Identifier' &&
+    NON_SIGNAL_SET_CTORS.has(obj.callee.name)
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
  * Count the MAXIMUM `.set()` calls that can fire on ANY SINGLE execution
  * path through `node`. Branching constructs (if / else / switch / try-catch
  * / ternary / logical-and-or) take MAX across mutually-exclusive arms.
@@ -80,7 +139,18 @@ function maxPathSets(node: any): number {
       const stmts = node.body as any[]
       let cumulative = 0
       let branchMax = 0
+      // LT-3 Bug A: max across completed synchronous microtask SEGMENTS. An
+      // `await` in a statement closes the current segment (batch() can't span
+      // it); the awaiting statement's own sets begin the next segment.
+      let segmentMax = 0
       for (const stmt of stmts) {
+        // Await boundary: the statements accumulated so far form a completed
+        // synchronous segment. Record it and reset — this statement's sets
+        // (which resume AFTER the await) start the next segment.
+        if (containsTopLevelAwait(stmt)) {
+          segmentMax = Math.max(segmentMax, cumulative)
+          cumulative = 0
+        }
         // Early-exit `if`: consequent always-returns. Subsequent statements
         // reachable ONLY when the if-test is false (fallthrough).
         if (
@@ -139,12 +209,14 @@ function maxPathSets(node: any): number {
         // statements are dead — stop walking.
         if (alwaysReturns(stmt)) break
       }
-      return Math.max(cumulative, branchMax)
+      return Math.max(cumulative, branchMax, segmentMax)
     }
     case 'ExpressionStatement':
       return maxPathSets(node.expression)
     case 'CallExpression':
-      return isSetCall(node) ? 1 : 0
+      // A `.set()` counts as a signal write UNLESS its receiver is a known
+      // non-signal collection (`Map`/`URLSearchParams`/… — Bug B).
+      return isSetCall(node) && !isNonSignalSetCall(node) ? 1 : 0
     case 'IfStatement':
       return Math.max(maxPathSets(node.consequent), maxPathSets(node.alternate))
     case 'SwitchStatement':
@@ -226,6 +298,9 @@ export const noUnbatchedUpdates: Rule = {
     if (isPathExempt(context)) return {}
     const scopeStack: ScopeInfo[] = []
     let batchDepth = 0
+    // Reset the per-file non-signal-receiver set (Bug B). Lint is synchronous
+    // per file, so a fresh Set here scopes it to this file with no leakage.
+    nonSignalSetReceivers = new Set<string>()
 
     function enterScope(node: any) {
       scopeStack.push({ hasBatch: false, insideBatch: batchDepth > 0, node })
@@ -246,6 +321,21 @@ export const noUnbatchedUpdates: Rule = {
     }
 
     const callbacks: VisitorCallbacks = {
+      // Bug B: record `const m = new Map()` / `new URLSearchParams()` / … so a
+      // `m.set(...)` on it is not counted as a signal write.
+      VariableDeclaration(node: any) {
+        for (const decl of node.declarations ?? []) {
+          if (decl.id?.type !== 'Identifier') continue
+          const init = decl.init
+          if (
+            init?.type === 'NewExpression' &&
+            init.callee?.type === 'Identifier' &&
+            NON_SIGNAL_SET_CTORS.has(init.callee.name)
+          ) {
+            nonSignalSetReceivers.add(decl.id.name)
+          }
+        }
+      },
       FunctionDeclaration(node: any) {
         enterScope(node)
       },
