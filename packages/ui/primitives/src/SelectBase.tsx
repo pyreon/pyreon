@@ -49,7 +49,7 @@ export const SelectBase: ComponentFn<SelectBaseProps> = (props) => {
       ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       value={value()}
       disabled={own.disabled}
-      aria-invalid={own['aria-invalid'] || undefined}
+      aria-invalid={own['aria-invalid'] ? 'true' : undefined}
       name={own.name}
       onChange={handleChange}
     >

@@ -60,8 +60,8 @@ export const SliderBase: ComponentFn<SliderBaseProps> = (props) => {
       aria-valuenow={value()}
       aria-valuemin={own.min ?? 0}
       aria-valuemax={own.max ?? 100}
-      aria-disabled={own.disabled || undefined}
-      aria-invalid={own['aria-invalid'] || undefined}
+      aria-disabled={own.disabled ? 'true' : undefined}
+      aria-invalid={own['aria-invalid'] ? 'true' : undefined}
       onInput={handleInput}
     />
   )

@@ -48,7 +48,7 @@ export const SwitchBase: ComponentFn<SwitchBaseProps> = (props) => {
       role="switch"
       aria-checked={checked() ? 'true' : 'false'}
       aria-disabled={own.disabled ? 'true' : undefined}
-      aria-invalid={own['aria-invalid'] || undefined}
+      aria-invalid={own['aria-invalid'] ? 'true' : undefined}
       data-checked={checked() || undefined}
       data-disabled={own.disabled || undefined}
       tabIndex={own.disabled ? -1 : 0}
