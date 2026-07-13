@@ -49,10 +49,10 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@oxc-project/types": "^0.138.0",
+    "@oxc-project/types": "^0.139.0",
     "@pyreon/compiler": "workspace:*",
     "@pyreon/sized-map": "workspace:*",
-    "oxc-parser": "^0.138.0"
+    "oxc-parser": "^0.139.0"
   },
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
