@@ -462,7 +462,7 @@ jobs:
         # for CI.
         # SHA-pinned per PinnedDependenciesID supply-chain hardening.
         # reactivecircus/android-emulator-runner@v2
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 33
           target: google_apis
@@ -498,7 +498,7 @@ jobs:
         # (reactivecircus/android-emulator-runner re-boots when invoked
         # multiple times in the same job) — acceptable cost on the
         # label-gated advisory path.
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 33
           target: google_apis
@@ -528,7 +528,7 @@ jobs:
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Run Espresso test on Android Emulator — native-router-demo-android
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 33
           target: google_apis
@@ -563,7 +563,7 @@ jobs:
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Run Espresso test on Android Emulator — native-tasks-android
-        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 33
           target: google_apis
