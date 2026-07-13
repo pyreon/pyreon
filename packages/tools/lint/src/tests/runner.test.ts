@@ -257,12 +257,15 @@ describe('AstCache', () => {
 // ── Reactivity Rules ────────────────────────────────────────────────────────
 
 describe('Reactivity rules', () => {
-  it('pyreon/no-bare-signal-in-jsx: flags {count()} in JSX', () => {
+  it('pyreon/no-bare-signal-in-jsx: flags {count()} in JSX as an info hint (NO autofix)', () => {
     const source = `const App = () => <div>{count()}</div>`
     const result = lintSource(source)
     const diags = findByRule(result, 'pyreon/no-bare-signal-in-jsx')
     expect(diags.length).toBe(1)
-    expect(diags[0]?.fix).toBeDefined()
+    // No autofix: `{count()}` and `{() => count()}` compile identically, so a
+    // rewrite is pure churn. Demoted to a non-gating style hint (LR-1).
+    expect(diags[0]?.fix).toBeUndefined()
+    expect(diags[0]?.severity).toBe('info')
   })
 
   it('pyreon/no-bare-signal-in-jsx: skips PascalCase and use* calls', () => {

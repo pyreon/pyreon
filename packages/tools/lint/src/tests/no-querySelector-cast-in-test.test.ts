@@ -6,20 +6,50 @@
  * `querySelector(X) as HTMLAnchorElement` pattern silently
  * re-introduces the 122-site regression PR #963 eliminated.
  */
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { noQuerySelectorCastInTest } from '../rules/architecture/no-querySelector-cast-in-test'
 import { lintFile } from '../runner'
 import type { LintConfig } from '../types'
+import { _resetProjectDepsCache } from '../utils/project-deps'
 
 const ON: LintConfig = {
   rules: { 'pyreon/no-querySelector-cast-in-test': 'error' },
 }
 
+// This rule now gates on `isProjectDependency(filePath, '@pyreon/test-utils')`
+// (the PRIVATE package that exports `query()`), so it never fires in a consumer
+// project that can't install it. Specs run inside a temp project that DOES
+// declare it (mirroring the monorepo); the relative `filePath` is preserved
+// under the temp root so substring `exemptPaths` cases still match.
+let tmpRoot: string
+const tmpDirsToClean: string[] = []
+beforeAll(() => {
+  tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-lt9-qs-')))
+  fs.writeFileSync(
+    path.join(tmpRoot, 'package.json'),
+    JSON.stringify({ name: 'fixture', devDependencies: { '@pyreon/test-utils': '*' } }),
+  )
+  tmpDirsToClean.push(tmpRoot)
+})
+afterAll(() => {
+  for (const d of tmpDirsToClean) fs.rmSync(d, { recursive: true, force: true })
+})
+beforeEach(() => {
+  _resetProjectDepsCache()
+})
+
 function lint(
   source: string,
   filePath: string,
   config: LintConfig = ON,
+  root: string = tmpRoot,
 ): ReturnType<typeof lintFile> {
-  return lintFile(filePath, source, [noQuerySelectorCastInTest], config)
+  const abs = path.join(root, filePath)
+  fs.mkdirSync(path.dirname(abs), { recursive: true })
+  fs.writeFileSync(abs, source)
+  return lintFile(abs, source, [noQuerySelectorCastInTest], config)
 }
 
 function diagIds(result: ReturnType<typeof lintFile>): string[] {
@@ -157,4 +187,21 @@ describe('pyreon/no-querySelector-cast-in-test', () => {
     )
     expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
   })
+  // ── Consumer-project gate (the fix for the upstream 0.43.1 finding) ────────
+  it('does NOT fire in a project that does not declare @pyreon/test-utils', () => {
+    const consumer = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-lt9-qs-consumer-')))
+    fs.writeFileSync(
+      path.join(consumer, 'package.json'),
+      JSON.stringify({ name: 'consumer-app', devDependencies: { vitest: '^3.0.0' } }),
+    )
+    tmpDirsToClean.push(consumer)
+    const result = lint(
+      `const anchor = el.querySelector('a') as HTMLAnchorElement`,
+      'src/tests/foo.test.ts',
+      ON,
+      consumer,
+    )
+    expect(diagIds(result)).not.toContain('pyreon/no-querySelector-cast-in-test')
+  })
+
 })

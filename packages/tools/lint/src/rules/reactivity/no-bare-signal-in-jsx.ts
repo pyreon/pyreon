@@ -20,21 +20,27 @@ export const noBareSignalInJsx: Rule = {
     id: 'pyreon/no-bare-signal-in-jsx',
     category: 'reactivity',
     description:
-      'Disallow bare signal calls in JSX text positions. Wrap in `() =>` for reactivity.',
-    severity: 'error',
-    fixable: true,
+      'STYLE-ONLY: prefer the explicit `{() => sig()}` accessor form over bare `{sig()}` in JSX text. NOT a correctness rule — the compiler lowers BOTH forms to the SAME reactive `_bindText(sig, node)` binding, so bare `{sig()}` is already fully reactive. Opt-in.',
+    // Demoted from `error` to non-gating `info`: the premise that bare `{sig()}`
+    // is "captured once / non-reactive" is FALSE on current compilers — it
+    // compiles byte-identically to `{() => sig()}` — so it must not gate CI on
+    // correct code, and the autofix (below) is removed because a rewrite is pure
+    // churn (identical output).
+    severity: 'info',
+    fixable: false,
     schema: { exemptPaths: 'string[]' },
   },
   create(context) {
     // Optional path-based exemption (kept for consumer override flexibility).
     if (isPathExempt(context)) return {}
 
-    // Only TEXT-position containers are reported. A `JSXExpressionContainer`
-    // appears in two places: as a TEXT CHILD of an element/fragment
-    // (`<div>{sig()}</div>` — the compiler does NOT re-wrap an already-called
-    // signal here, so it's captured once → the real bug) and as an ATTRIBUTE
-    // VALUE (`<input value={sig()}>` — the compiler `_rp()`/`_bind()`-wraps
-    // signal reads in attribute position, so it IS reactive). oxc's walker
+    // Only TEXT-position containers are reported (as a STYLE hint). A
+    // `JSXExpressionContainer` appears in two places: as a TEXT CHILD of an
+    // element/fragment (`<div>{sig()}</div>` — the compiler lowers this to a
+    // reactive `_bindText(sig, node)`, IDENTICAL to `{() => sig()}`, so it is
+    // already fully reactive) and as an ATTRIBUTE VALUE (`<input value={sig()}>`
+    // — `_rp()`/`_bind()`-wrapped, also reactive). Neither form is a bug; this
+    // rule is an opt-in stylistic preference only. oxc's walker
     // passes no parent, so we mark text-child containers when visiting their
     // owning element/fragment; anything not marked is an attribute value
     // (or otherwise not a text child) and is skipped. Nested JSX inside an
@@ -67,16 +73,12 @@ export const noBareSignalInJsx: Rule = {
         if (SKIP_NAMES.has(name) || SKIP_PREFIXES.test(name)) return
 
         const span = getSpan(node)
-        const source = context.getSourceText()
-        const original = source.slice(span.start, span.end)
-        // {count()} → {() => count()}
-        const inner = original.slice(1, -1) // strip { }
-        const fixed = `{() => ${inner}}`
-
+        // NO autofix: `{name()}` and `{() => name()}` compile to the identical
+        // `_bindText(name, node)` binding, so a rewrite is pure churn. This is
+        // an opt-in STYLE preference, not a reactivity fix.
         context.report({
-          message: `Bare signal call \`${name}()\` in JSX text — wrap in \`() => ${name}()\` for fine-grained reactivity.`,
+          message: `Bare call \`${name}()\` in JSX text. Style preference: the explicit \`{() => ${name}()}\` form reads as "reactive" at a glance — but it is NOT required, both compile to the same reactive \`_bindText\` binding. (If \`${name}\` is a non-signal pure function, ignore this hint.)`,
           span,
-          fix: { span, replacement: fixed },
         })
       },
     }

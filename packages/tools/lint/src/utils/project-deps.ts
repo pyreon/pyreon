@@ -99,6 +99,23 @@ export function isProjectDependency(
   return readDeclaredDeps(manifest).has(pkgName)
 }
 
+/**
+ * The `name` of the nearest `package.json` above `filePath`, or `null` when
+ * none is found / unparseable. Used to scope framework-internal-convention
+ * rules (e.g. the `[Pyreon]` error-prefix) to `@pyreon/*` packages so they
+ * never fire in a consumer app.
+ */
+export function getNearestPackageName(filePath: string): string | null {
+  const manifest = findNearestManifest(dirname(resolve(filePath)))
+  if (!manifest) return null
+  try {
+    const pkg = JSON.parse(readFileSync(manifest, 'utf-8')) as { name?: unknown }
+    return typeof pkg.name === 'string' ? pkg.name : null
+  } catch {
+    return null
+  }
+}
+
 /** Test-only: clear the memoized manifest/deps caches. */
 export function _resetProjectDepsCache(): void {
   manifestPathCache.clear()

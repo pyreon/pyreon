@@ -3,6 +3,10 @@ import { getPreset } from '../config/presets'
 import { lintFile } from '../runner'
 import { allRules } from '../rules'
 import type { LintConfig } from '../types'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
+import { _resetProjectDepsCache } from '../utils/project-deps'
 
 const defaultConfig = (): LintConfig => getPreset('recommended')
 const find = (
@@ -12,47 +16,82 @@ const find = (
   result.diagnostics.filter((d) => d.ruleId === id)
 
 describe('pyreon/no-error-without-prefix (architecture)', () => {
+  // `no-error-without-prefix` now fires only inside a `@pyreon/*` package
+  // (the `[Pyreon]` prefix is a framework convention, not for consumer app
+  // errors). Run these specs in a temp project whose manifest is named
+  // `@pyreon/foo`, preserving the relative path so `exemptPaths` substrings
+  // still match. A consumer-project spec (below) asserts the silent path.
+  let FWROOT: string
+  beforeAll(() => {
+    FWROOT = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-lr8-fw-')))
+    fs.writeFileSync(path.join(FWROOT, 'package.json'), JSON.stringify({ name: '@pyreon/foo' }))
+  })
+  afterAll(() => {
+    fs.rmSync(FWROOT, { recursive: true, force: true })
+  })
+  beforeEach(() => {
+    _resetProjectDepsCache()
+  })
+  const fwLint = (code: string, absPath: string, config = defaultConfig()) => {
+    const rel = absPath.replace(/^\/abs\//, '')
+    const abs = path.join(FWROOT, rel)
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    fs.writeFileSync(abs, code)
+    return lintFile(abs, code, allRules, config)
+  }
+
+  it('does NOT fire in a CONSUMER project (package not @pyreon/*) — the LR-8 fix', () => {
+    const consumer = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-lr8-consumer-')))
+    fs.writeFileSync(path.join(consumer, 'package.json'), JSON.stringify({ name: 'my-app' }))
+    const abs = path.join(consumer, 'src', 'x.ts')
+    fs.mkdirSync(path.dirname(abs), { recursive: true })
+    const code = `function f() { throw new Error("Save failed (500)") }`
+    fs.writeFileSync(abs, code)
+    const result = lintFile(abs, code, allRules, defaultConfig())
+    expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
+    fs.rmSync(consumer, { recursive: true, force: true })
+  })
   it('flags `throw new Error("msg")` without [Pyreon] prefix', () => {
     const code = `function f() { throw new Error("oops") }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     const diags = find(result, 'pyreon/no-error-without-prefix')
     expect(diags.length).toBeGreaterThan(0)
   })
 
   it('does NOT flag when [Pyreon] prefix is present', () => {
     const code = `function f() { throw new Error("[Pyreon] oops") }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
   it('flags template literal Error without prefix', () => {
     const code = `function f(x) { throw new Error(\`oops \${x}\`) }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     const diags = find(result, 'pyreon/no-error-without-prefix')
     expect(diags.length).toBeGreaterThan(0)
   })
 
   it('does NOT flag template literal with [Pyreon] prefix', () => {
     const code = `function f(x) { throw new Error(\`[Pyreon] oops \${x}\`) }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
   it('does NOT flag the scoped [@pyreon/<pkg>] convention (string)', () => {
     const code = `function f() { throw new Error("[@pyreon/state-tree] not a model instance") }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
   it('does NOT flag the scoped [@pyreon/<pkg>] convention (template)', () => {
     const code = `function f(x) { throw new Error(\`[@pyreon/hotkeys] invalid shortcut: \${x}\`) }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
   it('still flags an unrelated bracket prefix (e.g. [Vue])', () => {
     const code = `function f() { throw new Error("[Vue] oops") }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBeGreaterThan(0)
   })
 
@@ -64,25 +103,25 @@ describe('pyreon/no-error-without-prefix (architecture)', () => {
       },
     }
     const code = `function f() { throw new Error("Project name cannot be empty.") }`
-    const result = lintFile('/abs/packages/zero/create-zero/src/args.ts', code, allRules, config)
+    const result = fwLint(code, '/abs/packages/zero/create-zero/src/args.ts', config)
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
   it('does NOT fire on throws of non-Error values', () => {
     const code = `function f() { throw "string" }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
   it('does NOT fire on throws of non-Identifier callee (new x.Error())', () => {
     const code = `function f() { throw new x.Error("oops") }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
   it('does NOT fire on Error() with no args (empty throw)', () => {
     const code = `function f() { throw new Error() }`
-    const result = lintFile('/abs/packages/core/foo/src/x.ts', code, allRules, defaultConfig())
+    const result = fwLint(code, '/abs/packages/core/foo/src/x.ts')
     expect(find(result, 'pyreon/no-error-without-prefix').length).toBe(0)
   })
 
