@@ -463,6 +463,53 @@ export function applyClassProp(el: Element, value: unknown): void {
   el.setAttribute('class', resolved || '')
 }
 
+/**
+ * Apply a GENERIC attribute (not class/style/DOM-property) with the SAME
+ * null / boolean-aria / boolean normalization the `h()` path's
+ * `setStaticProp` (below) performs. Exported as `_setAttr` for the
+ * compiler's template fast path so a compiled DYNAMIC attribute binding
+ * can't diverge from the runtime:
+ *   - `null` / `undefined` → `removeAttribute` — NOT the literal
+ *     `"undefined"` a raw `setAttribute(name, undefined)` would
+ *     ToString-coerce. `aria-disabled={x ? 'true' : undefined}` (the
+ *     recommended ARIA shape) must leave the attribute ABSENT on the
+ *     nullish branch; `aria-*="undefined"` is an invalid ARIA value that
+ *     assistive tech reads as the OPPOSITE state.
+ *   - boolean on an `aria-*` attr → the STRING `"true"`/`"false"` (ARIA
+ *     state is a string enum, never presence-only).
+ *   - boolean on any other attr → presence/absence (HTML boolean attrs
+ *     like `hidden`: `hidden={false}` must be ABSENT, not `hidden="false"`
+ *     — which keeps the element hidden).
+ *   - anything else → `setAttribute(name, String(value))`.
+ *
+ * The compiler routes class → `_setClass`, style → `_setStyle`, and the
+ * DOM_PROPS set (`value`/`checked`/…) to a property assignment BEFORE a
+ * value reaches this helper, so it deliberately omits those branches AND
+ * the `key in el` property routing — it mirrors ONLY `setStaticProp`'s
+ * `value == null` / boolean-aria / boolean tail. Keep those three
+ * branches byte-identical to `setStaticProp`'s (same ARIA charCode probe)
+ * so the template and `h()` paths can never drift on this attribute
+ * class. Mirrors the `applyStyleProp`→`_setStyle` /
+ * `applyClassProp`→`_setClass` extractions.
+ */
+export function applyAttrProp(el: Element, key: string, value: unknown): void {
+  if (value == null) {
+    el.removeAttribute(key)
+    return
+  }
+  if (typeof value === 'boolean') {
+    if (key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
+      el.setAttribute(key, value ? 'true' : 'false')
+    } else if (value) {
+      el.setAttribute(key, '')
+    } else {
+      el.removeAttribute(key)
+    }
+    return
+  }
+  el.setAttribute(key, String(value))
+}
+
 function setStaticProp(el: Element, key: string, value: unknown): void {
   // Block javascript:/data: URI injection in URL-bearing attributes.
   if (
@@ -500,6 +547,9 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // generic boolean branch (which keeps presence semantics for HTML boolean
   // attrs like `disabled`/`hidden`; `data-*` is author-defined, also presence).
   // Mirrors runtime-server's SSR serialization so hydration sees identical markup.
+  // NOTE: the value==null / boolean-aria / boolean tail here is mirrored, branch
+  // for branch, by `applyAttrProp` (exported `_setAttr`) — the compiler template
+  // fast path routes generic dynamic attrs through it. Keep the two in lockstep.
   if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
     el.setAttribute(key, value ? 'true' : 'false')
     return

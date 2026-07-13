@@ -933,6 +933,22 @@ describe('renderToString — null/undefined/boolean prop values', () => {
     const html = await renderToString(h('span', null, false))
     expect(html).toBe('<span></span>')
   })
+
+  // SSR↔client parity for the recommended ARIA shape `aria-x={cond ? 'true' : undefined}`.
+  // The undefined branch must be ABSENT in the SSR HTML — matching the client
+  // template fast path's `_setAttr` (= applyAttrProp), which removeAttributes on
+  // nullish. A divergence here (SSR absent vs client `="undefined"`) was a latent
+  // hydration mismatch before the compiler `attrSetter` mirrored applyStaticProp.
+  test('aria-disabled={undefined} branch is ABSENT (client-hydration parity)', async () => {
+    expect(await renderToString(h('button', { 'aria-disabled': undefined }))).toBe(
+      '<button></button>',
+    )
+    expect(await renderToString(h('button', { 'aria-disabled': 'true' }))).toBe(
+      '<button aria-disabled="true"></button>',
+    )
+    // Boolean HTML attr: `hidden={false}` absent, matching client presence semantics.
+    expect(await renderToString(h('div', { hidden: false }))).toBe('<div></div>')
+  })
 })
 
 describe('renderToString — component with children via h()', () => {

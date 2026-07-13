@@ -11,7 +11,15 @@ import { transformJSX } from '@pyreon/compiler'
 import { Fragment, h, _rp, cx } from '@pyreon/core'
 import { _bind, signal } from '@pyreon/reactivity'
 import { _tpl, _bindText, _bindDirect, _setChild, _setChildAt } from '../template'
-import { _applyProps, _setClass, _setStyle, bindPolymorphicText, mount, mountChild } from '../index'
+import {
+  _applyProps,
+  _setAttr,
+  _setClass,
+  _setStyle,
+  bindPolymorphicText,
+  mount,
+  mountChild,
+} from '../index'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -32,6 +40,7 @@ const RUNTIME_DEPS = {
   _applyProps,
   _setStyle,
   _setClass,
+  _setAttr,
   _rp,
   _cx: cx,
   h,
@@ -256,6 +265,77 @@ describe('compiler integration — class attribute reactivity', () => {
 
     cls.set('')
     expect(container.querySelector('div')!.className).toBe('')
+  })
+})
+
+// Regression: the template fast-path attribute setter mirrors the runtime
+// `applyStaticProp` null/undefined/boolean-aria normalization via `_setAttr`.
+// Compiled through the REAL transformJSX (NOT the oxc auto-runtime, which
+// masked the bug by routing through h()→applyProps). Bisect: revert the
+// attrSetter fix (emit raw `setAttribute`) and the `undefined`/`false`
+// branches render `="undefined"` / `="false"` (present) → these fail.
+describe('compiler integration — _setAttr null/boolean-aria normalization', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('aria-disabled={cond ? "true" : undefined} — undefined branch is ABSENT (not "undefined")', () => {
+    // The exact recommended-ARIA shape the ui-primitives ship. `cond` is a plain
+    // (non-signal) var → the non-reactive one-time _setAttr path.
+    const off = compileAndMount('<button aria-disabled={cond ? "true" : undefined}>x</button>', {
+      cond: false,
+    })
+    const btnOff = off.container.querySelector('button')!
+    expect(btnOff.hasAttribute('aria-disabled')).toBe(false)
+    expect(btnOff.getAttribute('aria-disabled')).toBe(null)
+
+    const on = compileAndMount('<button aria-disabled={cond ? "true" : undefined}>x</button>', {
+      cond: true,
+    })
+    expect(on.container.querySelector('button')!.getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('aria-invalid={() => err() ? "true" : undefined} — toggles ABSENT↔"true" reactively', () => {
+    const err = signal(false)
+    // Wrapped in a parent so the single element templates (a standalone void
+    // self-closing element stays raw JSX and never hits the fast path).
+    const { container } = compileAndMount(
+      '<div><input aria-invalid={() => err() ? "true" : undefined} /></div>',
+      { err },
+    )
+    const input = container.querySelector('input')!
+    expect(input.hasAttribute('aria-invalid')).toBe(false)
+
+    err.set(true)
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+
+    // The load-bearing assertion: flipping BACK to the undefined branch REMOVES
+    // the attribute (a raw setAttribute would leave a stale "true"/"undefined").
+    err.set(false)
+    expect(input.hasAttribute('aria-invalid')).toBe(false)
+  })
+
+  it('hidden={cond} — boolean false is ABSENT (not hidden="false"), true is present', () => {
+    const off = compileAndMount('<div hidden={cond}>a</div>', { cond: false })
+    const divOff = off.container.querySelector('div')!
+    expect(divOff.hasAttribute('hidden')).toBe(false)
+
+    const on = compileAndMount('<div hidden={cond}>a</div>', { cond: true })
+    const divOn = on.container.querySelector('div')!
+    expect(divOn.hasAttribute('hidden')).toBe(true)
+    // HTML boolean attr: presence-only, empty string value.
+    expect(divOn.getAttribute('hidden')).toBe('')
+  })
+
+  it('data-x={maybe} — nullish value is ABSENT (not data-x="undefined")', () => {
+    const { container } = compileAndMount('<div data-x={maybe}>a</div>', { maybe: undefined })
+    expect(container.querySelector('div')!.hasAttribute('data-x')).toBe(false)
+  })
+
+  it('emitted code routes the generic attr through _setAttr, not raw setAttribute', () => {
+    const { code } = compileExpression('<button aria-disabled={cond ? "true" : undefined}>x</button>')
+    expect(code).toContain('_setAttr(__root, "aria-disabled", cond ? "true" : undefined)')
+    expect(code).not.toContain('__root.setAttribute("aria-disabled"')
   })
 })
 

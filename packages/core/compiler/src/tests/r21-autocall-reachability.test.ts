@@ -126,12 +126,15 @@ describe('R21 — emitted FORM (semantic assertions, JS backend)', () => {
     expect(out).not.toContain('setAttribute')
   })
 
-  it('no-subst template + signed numeric BAKE; computed pays ONE setAttribute; nothing dropped', () => {
+  it('no-subst template + signed numeric BAKE; computed pays ONE _setAttr; nothing dropped', () => {
     const out = t(CORPUS[12]![1])
     expect(out).toContain('id=\\"x\\"')
     expect(out).toContain('data-a=\\"-5\\"')
-    expect(out).toContain('setAttribute("title", 1+2)')
-    expect(out).toContain('setAttribute("data-b", !0)')
+    // Static-but-not-foldable computed attrs fall through to the dynamic path,
+    // which now routes through the runtime `_setAttr` normalizer (null/boolean/
+    // aria parity with the h() path) instead of a raw setAttribute.
+    expect(out).toContain('_setAttr(__root, "title", 1+2)')
+    expect(out).toContain('_setAttr(__root, "data-b", !0)')
   })
 
   it('undefined attr is OMITTED (setAttribute would coerce to the string "undefined")', () => {

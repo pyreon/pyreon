@@ -459,6 +459,7 @@ struct Ctx<'a> {
     needs_cx_import: bool,
     needs_set_style_import: bool,
     needs_set_class_import: bool,
+    needs_set_attr_import: bool,
     needs_bind_text_import: bool,
     needs_bind_direct_import: bool,
     needs_bind_import: bool,
@@ -610,6 +611,7 @@ impl<'a> Ctx<'a> {
             needs_cx_import: false,
             needs_set_style_import: false,
             needs_set_class_import: false,
+            needs_set_attr_import: false,
             needs_bind_text_import: false,
             needs_bind_direct_import: false,
             needs_bind_import: false,
@@ -750,6 +752,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_set_class_import {
                 imports.push("_setClass");
+            }
+            if self.needs_set_attr_import {
+                imports.push("_setAttr");
             }
             let reactivity = if self.needs_bind_import {
                 "\nimport { _bind } from \"@pyreon/reactivity\";"
@@ -4720,6 +4725,7 @@ struct TemplateBuilder {
     needs_cx: bool,
     needs_set_style: bool,
     needs_set_class: bool,
+    needs_set_attr: bool,
 }
 
 impl TemplateBuilder {
@@ -4743,6 +4749,7 @@ impl TemplateBuilder {
             needs_cx: false,
             needs_set_style: false,
             needs_set_class: false,
+            needs_set_attr: false,
         }
     }
 
@@ -4810,6 +4817,9 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     }
     if tb.needs_set_class {
         ctx.needs_set_class_import = true;
+    }
+    if tb.needs_set_attr {
+        ctx.needs_set_attr_import = true;
     }
     if tb.needs_apply_props {
         ctx.needs_apply_props_import = true;
@@ -5422,7 +5432,7 @@ fn is_dom_prop(name: &str) -> bool {
     )
 }
 
-fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str) -> String {
+fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str, tb: &mut TemplateBuilder) -> String {
     // class/style mirror the runtime `applyProp` value-normalization
     // (packages/core/runtime-dom/src/props.ts): a string passes through, an
     // array/object class goes through `cx()`, and an object style is applied
@@ -5450,7 +5460,14 @@ fn attr_setter(html_attr_name: &str, var_name: &str, expr: &str) -> String {
     } else if is_dom_prop(html_attr_name) {
         format!("{}.{} = {}", var_name, html_attr_name, expr)
     } else {
-        format!("{}.setAttribute(\"{}\", {})", var_name, html_attr_name, expr)
+        // Generic attribute — delegate to runtime `_setAttr` (= applyAttrProp)
+        // so a DYNAMIC attr normalizes identically to the h() path: null/undefined
+        // → removeAttribute (never the literal "undefined" a raw setAttribute
+        // ToString-coerces — the `aria-*="undefined"` a11y bug), boolean aria →
+        // "true"/"false", boolean → presence/absence. Mirrors the JS backend's
+        // attrSetter (jsx.ts). Static literals still bake via static_attr_to_html.
+        tb.needs_set_attr = true;
+        format!("_setAttr({}, \"{}\", {})", var_name, html_attr_name, expr)
     }
 }
 
@@ -5472,8 +5489,8 @@ fn emit_dynamic_attr(
     }
     let (expr_text, is_reactive) = unwrap_accessor(expr_node, ctx);
     if !is_reactive {
-        tb.bind_lines
-            .push(attr_setter(html_attr_name, var_name, &expr_text));
+        let line = attr_setter(html_attr_name, var_name, &expr_text, tb);
+        tb.bind_lines.push(line);
         return;
     }
     let sp = expr_node.span();
@@ -5505,10 +5522,8 @@ fn emit_dynamic_attr(
         } else if is_dom_prop(html_attr_name) {
             format!("(v) => {{ {}.{} = v }}", var_name, html_attr_name)
         } else {
-            format!(
-                "(v) => {{ {}.setAttribute(\"{}\", v == null ? \"\" : String(v)) }}",
-                var_name, html_attr_name
-            )
+            tb.needs_set_attr = true;
+            format!("(v) => _setAttr({}, \"{}\", v)", var_name, html_attr_name)
         };
         let caller_arg = if is_member {
             format!(", () => {}()", signal_name)
@@ -5530,15 +5545,15 @@ fn emit_dynamic_attr(
     if let Some(sel) = try_direct_selector_ternary(expr_node, ctx) {
         let d = tb.next_disp();
         let setter_expr = format!("(m ? {} : {})", sel.consequent, sel.alternate);
-        let setter_body = attr_setter(html_attr_name, var_name, &setter_expr);
+        let setter_body = attr_setter(html_attr_name, var_name, &setter_expr, tb);
         tb.bind_lines.push(format!(
             "const {} = {}.subscribe({}, (m) => {{ {} }})",
             d, sel.selector_ref, sel.key_expr, setter_body
         ));
         return;
     }
-    tb.reactive_bind_exprs
-        .push(attr_setter(html_attr_name, var_name, &expr_text));
+    let line = attr_setter(html_attr_name, var_name, &expr_text, tb);
+    tb.reactive_bind_exprs.push(line);
 }
 
 fn emit_attr_expression(
@@ -5597,11 +5612,8 @@ fn attr_initializer_to_html(
             // double-quoted JS literal (quote/backslash/control-safe,
             // independent of the JSX quote style). Mirrors jsx.ts.
             if tag == "select" && html_attr_name == "value" {
-                tb.bind_lines.push(attr_setter(
-                    html_attr_name,
-                    var_name,
-                    &escape_js_string(&s.value),
-                ));
+                let line = attr_setter(html_attr_name, var_name, &escape_js_string(&s.value), tb);
+                tb.bind_lines.push(line);
                 return String::new();
             }
             format!(" {}=\"{}\"", html_attr_name, escape_html_attr(&s.value))

@@ -305,6 +305,34 @@ function Body({ html }) {
     }),
   },
   {
+    // Compiler template fast-path — a DYNAMIC generic attribute
+    // (`aria-disabled={x ? 'true' : undefined}`, `hidden={cond}`,
+    // `data-x={maybe}`) fell through to a raw `setAttribute(name, value)`, so
+    // a nullish value ToString-coerced to the literal "undefined"
+    // (`aria-disabled="undefined"` — an INVALID aria value assistive tech reads
+    // as the OPPOSITE state) and a boolean `false` rendered `hidden="false"`
+    // (attribute PRESENT → element still hidden). The runtime `h()`/spread path
+    // was correct — only the `_tpl()` template fast path diverged. Symptom-
+    // matched (no exception fires; the user pastes the wrong attribute value or
+    // an a11y complaint).
+    pattern:
+      /aria-[\w-]+="?undefined"?|(hidden|disabled|checked|draggable|selected|expanded)="(false|undefined)"|(attribute|attr|aria).*(renders?|shows?|set to|value).*("undefined"|=undefined|"false")|(screen ?reader|assistive|a11y|voiceover|nvda).*(wrong|opposite|reversed|ignore).*(state|announce|disabled|checked)/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/compiler` versions before this fix, a DYNAMIC generic attribute on an element the compiler lowered into a `_tpl()` template fell through to a raw `setAttribute(name, value)` with no null/boolean normalization. A nullish value ToString-coerced to the literal string "undefined" (so the recommended ARIA shape `aria-disabled={x ? "true" : undefined}` rendered `aria-disabled="undefined"` — an INVALID aria value that assistive tech reads as the opposite / default state), and a boolean `false` rendered as a PRESENT attribute (`hidden={cond}` with `cond===false` → `hidden="false"`, still hidden). The runtime `h()`/spread path (`applyStaticProp`) was always correct — only the template fast path diverged, so SSR (also correct) disagreed with the client → a latent hydration mismatch too.',
+      fix: 'Upgrade `@pyreon/compiler` + `@pyreon/runtime-dom` — the template fast path now routes generic dynamic attributes through the runtime `_setAttr` normalizer (= `applyAttrProp`), mirroring `applyStaticProp` in both JS + Rust backends: null/undefined → removeAttribute, boolean `aria-*` → "true"/"false", boolean → presence/absence. No app code change needed. If you cannot upgrade, drop the nullish branch (`aria-disabled={String(!!x)}` always emits "true"/"false") or set the attribute imperatively in `onMount` via a `ref`.',
+      fixCode: `// All of these now normalize correctly (template + runtime + SSR agree):
+<button aria-disabled={busy() ? 'true' : undefined}>Save</button>  // undefined -> ABSENT
+<div hidden={collapsed()}>panel</div>                              // false -> ABSENT
+<input aria-invalid={hasError() ? 'true' : undefined} />           // toggles absent<->"true"
+
+// Pre-upgrade workaround — avoid the nullish branch for ARIA state:
+<button aria-disabled={busy() ? 'true' : 'false'}>Save</button>`,
+      related:
+        'Sibling of the template-path `dangerouslySetInnerHTML` and class/style (`_setClass`/`_setStyle`) fixes — all are cases where the compiler template fast path had to be taught to mirror the runtime `applyStaticProp` value-normalization instead of assigning the raw value. Locked by the native-equivalence oracle + a real-transform mount regression.',
+    }),
+  },
+  {
     // PZ-02 — a VNode String()-coerced into a text binding renders the
     // literal "[object Object]". Historical shapes: a JSX-returning helper
     // called inline in a text position (`<td>{cell(row.status)}</td>`), a
