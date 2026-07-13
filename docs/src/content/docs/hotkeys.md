@@ -165,6 +165,19 @@ useHotkey('mod+s', () => save())            // fires on ⌘S only
 useHotkey('mod+shift+s', () => saveAs())    // fires on ⌘⇧S only
 ```
 
+The one exception is **single symbol keys**. `?`, `!`, `+`, and friends are typed *with*
+Shift on a standard layout, so exact-match would never let them fire. Instead the Shift
+modifier is ignored for single-symbol bindings — the produced `event.key` already encodes
+the character. Bind the symbol directly:
+
+```tsx
+useHotkey('?', () => openHelp())   // fires on the real Shift+/ keystroke
+```
+
+Don't write `shift+?` — the symbol already implies Shift, and `/` vs `?` stay distinct
+because their `event.key` values differ. Letters and named keys (`a`, `arrowup`) keep
+exact Shift-matching, so `a` never matches `Shift+A`.
+
 ### Sequential combos
 
 Separate combos with a **space** to require them to be pressed in order. Each step must
@@ -320,25 +333,30 @@ A scoped shortcut is **silently dormant** until its scope is active. If `useHotk
 its scope is off, so dispatch skips it.
 :::
 
-:::warning
-**Scope activation is not reference-counted.** `useHotkeyScope` enables the scope on mount
-and disables it on unmount. If two components both activate `'editor'`, the *first* one to
-unmount disables the scope for both — it does **not** wait for the last component to leave.
-Activate a given scope from a single owning component (or manage it imperatively with
-`enableScope` / `disableScope`) rather than from several siblings at once.
+:::note
+**Scope activation is reference-counted.** `useHotkeyScope` acquires the scope on mount and
+releases it on unmount. If two components both activate `'editor'`, the scope stays active
+until *both* unmount — so stacked panels, nested modals, and sibling components sharing a
+scope all stay correct. The imperative `enableScope` / `disableScope` are the same
+acquire/release primitive; pair them evenly (an unmatched `enableScope` keeps the scope
+active until a matching `disableScope`).
 :::
 
-### Avoiding scope conflicts
+### Detecting scope conflicts
 
 If you register the same combo in two scopes that are active at the same time, **both**
-handlers fire, in registration order. To make `Escape` mean different things in different
-contexts, keep the scopes mutually exclusive — e.g. don't leave the `editor` scope active
-while a `modal` scope is up, if both bind `escape`.
+handlers fire, in registration order. That cross-scope overlap is intentional *layering*.
+A genuine bug is the same combo registered **twice in the same scope** — `getHotkeyConflicts()`
+surfaces exactly those (see [Introspection](#introspection--help-dialogs)).
 
 ```tsx
-// Both fire if 'editor' and 'modal' are active simultaneously:
+// Intentional layering — both fire if 'editor' and 'modal' are active:
 useHotkey('escape', () => clearSelection(), { scope: 'editor' })
 useHotkey('escape', () => closeModal(), { scope: 'modal' })
+
+// A same-scope duplicate — getHotkeyConflicts() flags this pair:
+useHotkey('mod+s', saveDraft, { scope: 'editor' })
+useHotkey('mod+s', saveAll, { scope: 'editor' })
 ```
 
 ## Imperative API — `registerHotkey()`
@@ -427,6 +445,36 @@ to get a fresh snapshot. For a panel that updates live as shortcuts mount and un
 re-read it on open, or recompute when `getActiveScopes()` changes.
 :::
 
+### Conflict detection
+
+`getHotkeyConflicts()` flags shortcuts that would fire on the **same keystroke within the
+same scope** — the classic "two handlers, one binding, both fire" bug. Matching is on the
+*parsed* combo, not the source string, so aliased duplicates (`ctrl+s` vs `control+s`, or
+`mod+s` vs `ctrl+s` off Mac) are caught too. Cross-scope overlaps are intentional layering
+and are **not** reported.
+
+```tsx
+import { getHotkeyConflicts } from '@pyreon/hotkeys'
+
+// A dev-only audit panel — or assert `getHotkeyConflicts()` is empty in a test.
+function ConflictWarnings() {
+  const conflicts = getHotkeyConflicts()
+  if (conflicts.length === 0) return null
+  return (
+    <ul>
+      {conflicts.map((c) => (
+        <li>
+          Conflict in <code>{c.scope}</code>: {c.shortcuts.join(', ')}
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Each conflict is `{ scope, shortcuts, descriptions }` — the colliding source strings and
+their descriptions (parallel arrays, `undefined` where none was set).
+
 ## Utilities
 
 Three pure functions back the matching and formatting machinery. They're exported so you
@@ -456,11 +504,18 @@ split on spaces, so pass it one combo at a time, not a sequential shortcut like 
 
 ## Server-side rendering
 
-The shared `keydown` listener is attached against `window`, guarded by `isServer`. On the
-server, registration is a no-op for event dispatch — the entry is recorded but no listener
-is attached. Shortcuts come alive on the client when the registry attaches its listener
-on the first registration during hydration. You don't need to wrap `useHotkey` in any
-browser guard.
+`@pyreon/hotkeys` drives a browser `keydown` listener, so on the server every mutating
+entry point is a **no-op**: `registerHotkey` records nothing and returns an inert
+unregister, and `enableScope` / `disableScope` don't touch scope state. This matters
+because the registry is a module-level singleton **shared across every SSR request** —
+recording entries or flipping scopes on the server would leak unboundedly (no unmount
+fires during `renderToString`) and bleed one request's hotkeys into the next. You don't
+need to wrap `useHotkey` in a browser guard; shortcuts come alive on the client when the
+registry attaches its listener on the first registration during hydration.
+
+Because registration is a client-runtime concern, `getRegisteredHotkeys()` returns an empty
+list on the server. Build a server-rendered "keyboard shortcuts" panel from a static config
+rather than the live registry.
 
 ## Common mistakes
 
@@ -477,8 +532,15 @@ always on, so global shortcuts never hit this.
 :::
 
 :::warning
-**Expecting scope deactivation to be reference-counted.** It isn't — the first unmount of
-*any* component that activated a scope disables it. Own each scope from one component.
+**Registering the same combo twice in one scope.** Both handlers fire on every press.
+Scope activation *is* reference-counted (stacked components sharing a scope are fine), but a
+genuine duplicate binding in the same scope is a bug — audit with `getHotkeyConflicts()`,
+which also catches aliased duplicates like `ctrl+s` vs `control+s`.
+:::
+
+:::warning
+**Writing `shift+?` for a help shortcut.** Bind `?` directly. A single symbol key already
+implies Shift, so `?` fires on the real `Shift+/` keystroke and `shift+?` never matches.
 :::
 
 :::warning
@@ -494,24 +556,25 @@ call `e.preventDefault()` in the handler.
 | Export | Signature | Description |
 | ------ | --------- | ----------- |
 | `useHotkey` | `(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => void` | Register a shortcut bound to the component's lifecycle. Auto-unregisters on unmount. |
-| `useHotkeyScope` | `(scope: string) => void` | Activate a scope for the component's lifetime; deactivates on unmount (not reference-counted). |
+| `useHotkeyScope` | `(scope: string) => void` | Activate a scope for the component's lifetime; deactivates on unmount. Reference-counted, so stacked components sharing a scope stay correct. |
 
 ### Imperative API
 
 | Export | Signature | Description |
 | ------ | --------- | ----------- |
-| `registerHotkey` | `(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => () => void` | Register a shortcut imperatively. Returns an unregister function; **no** auto-cleanup. |
-| `enableScope` | `(scope: string) => void` | Mark a scope active. |
-| `disableScope` | `(scope: string) => void` | Deactivate a scope. No-op for `'global'`. |
+| `registerHotkey` | `(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => () => void` | Register a shortcut imperatively. Returns an unregister function; **no** auto-cleanup. No-op on the server. |
+| `enableScope` | `(scope: string) => void` | Acquire a scope (reference-counted). No-op on the server. |
+| `disableScope` | `(scope: string) => void` | Release a scope (reference-counted). No-op for `'global'` and on the server. |
 | `getActiveScopes` | `() => Signal<Set<string>>` | The reactive set of currently-active scopes. |
-| `getRegisteredHotkeys` | `() => ReadonlyArray<{ shortcut: string; scope: string; description?: string }>` | Snapshot of every registered shortcut, for help dialogs. |
+| `getRegisteredHotkeys` | `() => ReadonlyArray<{ shortcut: string; scope: string; description?: string }>` | Snapshot of every registered shortcut, for help dialogs. Empty on the server. |
+| `getHotkeyConflicts` | `() => ReadonlyArray<{ scope: string; shortcuts: string[]; descriptions: Array<string \| undefined> }>` | Registered shortcuts that collide (same parsed combo, same scope). |
 
 ### Utilities
 
 | Export | Signature | Description |
 | ------ | --------- | ----------- |
 | `parseShortcut` | `(shortcut: string) => KeyCombo` | Parse a single combo string into a `KeyCombo`. Supports aliases and `mod`. |
-| `matchesCombo` | `(event: KeyboardEvent, combo: KeyCombo) => boolean` | Whether the event's modifiers + key match the combo exactly. |
+| `matchesCombo` | `(event: KeyboardEvent, combo: KeyCombo) => boolean` | Whether the event's modifiers + key match the combo (Shift is ignored for single-symbol keys like `?`). |
 | `formatCombo` | `(combo: KeyCombo) => string` | Human-readable label (`⌘` for Meta on Mac, `Meta` elsewhere). |
 
 ### Options — `HotkeyOptions`

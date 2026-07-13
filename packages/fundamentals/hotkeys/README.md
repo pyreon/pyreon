@@ -58,9 +58,10 @@ For non-component use (one-off registration, dynamic shortcuts read from setting
 | Function | Notes |
 |---|---|
 | `registerHotkey(shortcut, handler, options?)` | Returns an `unregister()` function — call manually |
-| `enableScope(scope)` / `disableScope(scope)` | Imperative scope control |
+| `enableScope(scope)` / `disableScope(scope)` | Imperative scope control — reference-counted acquire/release |
 | `getActiveScopes()` | Currently active scope names |
-| `getRegisteredHotkeys(): HotkeyEntry[]` | All registered shortcuts — useful for help dialogs |
+| `getRegisteredHotkeys()` | All registered shortcuts — useful for help dialogs |
+| `getHotkeyConflicts()` | Shortcuts that collide (same combo, same scope) — useful for audits/settings UIs |
 
 ## Options
 
@@ -84,6 +85,32 @@ Plus-separated, case-insensitive: `ctrl+shift+s`, `mod+k`, `alt+enter`.
 Modifiers: `ctrl` / `control`, `shift`, `alt`, `meta` / `cmd` / `command`, `mod` (cross-platform).
 
 Key aliases: `esc` → `escape`, `return` → `enter`, `del` → `delete`, `ins` → `insert`, `space` / `spacebar` → ` `, `up` / `down` / `left` / `right` → `arrowup` / `arrowdown` / …, `plus` → `+`.
+
+**Sequential combos** — space-separated combos fire in order, Gmail/vim-style. `'g t'` fires when the user presses `g` then `t` within one second; `'ctrl+k p'` works too (each step is a full combo). A stranded prefix times out after 1 s.
+
+```ts
+useHotkey('g t', () => goToTop())
+useHotkey('g n', () => goToNotifications())
+```
+
+**Shifted symbols** — bind a single symbol directly. `?` fires on the real `Shift+/` keystroke (the canonical "show help" shortcut) — the produced character encodes the shift, so you never write `shift+?`, and `/` and `?` stay distinct.
+
+```ts
+useHotkey('?', () => openHelp())
+```
+
+## Conflict detection
+
+`getHotkeyConflicts()` returns registered shortcuts that would fire on the **same keystroke within the same scope**. Matching is on the *parsed* combo, so aliased duplicates (`ctrl+s` vs `control+s`, `mod+s` vs `ctrl+s` off Mac) are caught. Cross-scope overlaps are intentional layering and are not reported.
+
+```ts
+import { getHotkeyConflicts } from '@pyreon/hotkeys'
+
+// In a dev-only "keyboard audit" panel or a test assertion:
+for (const c of getHotkeyConflicts()) {
+  console.warn(`Conflict in "${c.scope}": ${c.shortcuts.join(', ')}`)
+}
+```
 
 ## Parsing utilities
 
@@ -117,11 +144,14 @@ Clears every registered hotkey and active scope. Underscore-prefixed because it'
 ## Gotchas
 
 - **Scopes are NOT hierarchical** — activating `'editor'` does not implicitly activate `'editor/code'`. A hotkey fires only when its exact scope string is active.
+- **Scopes are reference-counted** — two components that both activate `'editor'` keep it active until BOTH release it. `enableScope`/`disableScope` are acquire/release; pair them evenly.
 - **`'global'` is the default scope** and is always active. A hotkey with no `scope` option fires whenever the global scope is active (which is always, unless you disable it).
-- **Multiple scopes can fire simultaneously** — if both `'modal'` and `'global'` are active and both have a `'mod+s'` binding, both handlers fire. Use `stopPropagation: true` or different scopes to disambiguate.
-- **`enableOnInputs: true` is required** to let users trigger shortcuts while typing — by default the listener checks `document.activeElement` and bails on form fields / `contenteditable`.
+- **Multiple scopes can fire simultaneously** — if both `'modal'` and `'global'` are active and both have a `'mod+s'` binding, both handlers fire. Use `stopPropagation: true` or different scopes to disambiguate; `getHotkeyConflicts()` surfaces same-scope duplicates.
+- **`enableOnInputs: true` is required** to let users trigger shortcuts while typing — by default the listener checks the event target and bails on `<input>` / `<textarea>` / `<select>` / `contenteditable`.
+- **Bind shifted symbols directly** — write `?` (not `shift+?`) for a help shortcut; a single symbol key already implies shift, so `?` fires on the real `Shift+/` keystroke.
 - **`enabled` is re-evaluated on every dispatch** — pass a function for reactive gating; a static `false` is equivalent to never registering.
 - **The hotkey listener attaches to `window`** at first registration and detaches when the last hotkey is removed (`_resetHotkeys` or every `unregister()` called).
+- **SSR-safe** — registration and scope activation are no-ops on the server (no shared-state bleed across requests). `getRegisteredHotkeys()` is client-runtime state; build server-rendered help panels from a static config.
 
 ## Documentation
 

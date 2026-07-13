@@ -1,7 +1,7 @@
 import type { Signal } from '@pyreon/reactivity'
 import { isServer, signal } from '@pyreon/reactivity'
-import { matchesCombo, parseShortcut } from './parse'
-import type { HotkeyEntry, HotkeyOptions } from './types'
+import { matchesComboWithKey, parseShortcut } from './parse'
+import type { HotkeyEntry, HotkeyOptions, KeyCombo } from './types'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -17,6 +17,15 @@ const entries: HotkeyEntry[] = []
 const activeScopes = signal<Set<string>>(new Set(['global']))
 let listenerAttached = false
 let keydownHandler: ((event: KeyboardEvent) => void) | null = null
+
+// Scope activation is REFERENCE-COUNTED. `enableScope`/`disableScope` (and the
+// `useHotkeyScope` hook that calls them) are acquire/release: a scope becomes
+// active on the 0→1 transition and deactivates on the 1→0 transition. This is
+// what makes STACKED components correct — two panels that both activate
+// `'editor'` keep it active until BOTH release it, instead of the first
+// unmount disabling it for the survivor (the classic leak-class-D shape).
+// `'global'` is always active and never counted.
+const scopeRefcounts = new Map<string, number>()
 
 // ─── Sequence state ──────────────────────────────────────────────────────────
 
@@ -69,11 +78,21 @@ function isInputFocused(event: KeyboardEvent): boolean {
 
 function attachListener(): void {
   if (listenerAttached) return
+  // SSR guard: never touch `window` on the server. (Also enforced upstream by
+  // `registerHotkey`'s own isServer bail, but this keeps the window access
+  // provably SSR-safe at its use site.)
   if (isServer) return
   listenerAttached = true
 
   keydownHandler = (event) => {
     const scopes = activeScopes.peek()
+    // Hoist the two per-keydown-constant computations OUT of the per-entry
+    // loop: `event.key` lower-cased once (not once per registered entry inside
+    // matchesCombo), and the input-focus check once (its result is identical
+    // for every entry on this keystroke). Both were previously recomputed for
+    // every entry — pure waste that scaled with the number of hotkeys.
+    const eventKey = event.key.toLowerCase()
+    const inInput = isInputFocused(event)
 
     // ─── Stage 1: advance any pending sequences ──────────────────────────
     // If we're mid-sequence, the user's next keystroke must match the
@@ -95,7 +114,7 @@ function attachListener(): void {
         // `sequence[next]` is always defined.
         /* v8 ignore next */
         if (!expected) continue
-        if (!matchesCombo(event, expected)) continue
+        if (!matchesComboWithKey(event, expected, eventKey)) continue
         // Advance
         if (p.next + 1 === p.entry.sequence.length) {
           // Full match — fire
@@ -121,8 +140,15 @@ function attachListener(): void {
     // ─── Stage 2: fresh dispatch ────────────────────────────────────────
     const newPending: PendingSequence[] = []
     for (const entry of entries) {
+      // Check FIRST combo match (most selective — reject non-matching keystrokes
+      // before the scope / enabled / input-focus work).
+      if (!matchesComboWithKey(event, entry.combo, eventKey)) continue
+
       // Check scope
       if (!scopes.has(entry.options.scope)) continue
+
+      // Check input focus (hoisted once-per-keydown result)
+      if (!entry.options.enableOnInputs && inInput) continue
 
       // Check enabled
       const enabled =
@@ -130,12 +156,6 @@ function attachListener(): void {
           ? entry.options.enabled()
           : entry.options.enabled
       if (!enabled) continue
-
-      // Check input focus
-      if (!entry.options.enableOnInputs && isInputFocused(event)) continue
-
-      // Check FIRST combo match
-      if (!matchesCombo(event, entry.combo)) continue
 
       if (entry.sequence.length === 0) {
         // Single-combo hotkey — fire immediately
@@ -184,7 +204,16 @@ export function registerHotkey(
   handler: (event: KeyboardEvent) => void,
   options?: HotkeyOptions,
 ): () => void {
-  attachListener()
+  attachListener() // no-op on the server (its own isServer guard)
+
+  // SSR no-op. The registry drives a `keydown` listener that only exists in a
+  // browser, so registering on the server does nothing useful — but the module
+  // is shared across every request, so pushing the entry would (a) leak
+  // unboundedly (no unmount fires during `renderToString`) and (b) BLEED one
+  // request's hotkeys into the next. Return an inert unregister and touch no
+  // shared state. `getRegisteredHotkeys()` is therefore client-runtime state;
+  // build SSR help panels from a static config, not the live registry.
+  if (isServer) return () => {}
 
   // Sequential combo support: space-separated combos like `'g t'` are
   // treated as ordered sequences — user presses `g`, then `t` within
@@ -242,24 +271,39 @@ export function registerHotkey(
 // ─── Scope management ────────────────────────────────────────────────────────
 
 /**
- * Activate a hotkey scope. 'global' is always active.
+ * Activate a hotkey scope (acquire). Reference-counted — the scope becomes
+ * active on the first acquire and stays active until every acquire is matched
+ * by a {@link disableScope} release. `'global'` is always active. No-op on the
+ * server (scope state is client-runtime and must not bleed across requests).
  */
 export function enableScope(scope: string): void {
-  const current = activeScopes.peek()
-  if (current.has(scope)) return
-  const next = new Set(current)
+  if (isServer) return
+  if (scope === 'global') return
+  const count = scopeRefcounts.get(scope) ?? 0
+  scopeRefcounts.set(scope, count + 1)
+  if (count > 0) return // already active — just bumped the refcount
+  const next = new Set(activeScopes.peek())
   next.add(scope)
   activeScopes.set(next)
 }
 
 /**
- * Deactivate a hotkey scope. Cannot deactivate 'global'.
+ * Deactivate a hotkey scope (release). Reference-counted — the scope only
+ * deactivates once every {@link enableScope} acquire has been released. Cannot
+ * deactivate `'global'`. Releasing an inactive scope is a no-op (the count
+ * clamps at zero). No-op on the server.
  */
 export function disableScope(scope: string): void {
+  if (isServer) return
   if (scope === 'global') return
-  const current = activeScopes.peek()
-  if (!current.has(scope)) return
-  const next = new Set(current)
+  const count = scopeRefcounts.get(scope) ?? 0
+  if (count === 0) return // not active — nothing to release
+  if (count > 1) {
+    scopeRefcounts.set(scope, count - 1)
+    return // still held by another acquirer
+  }
+  scopeRefcounts.delete(scope)
+  const next = new Set(activeScopes.peek())
   next.delete(scope)
   activeScopes.set(next)
 }
@@ -286,11 +330,80 @@ export function getRegisteredHotkeys(): ReadonlyArray<{
   }))
 }
 
+// ─── Conflict detection ──────────────────────────────────────────────────────
+
+/** Deterministic signature for one parsed combo (modifiers + key). */
+function comboSignature(c: KeyCombo): string {
+  return `${c.ctrl ? 'c' : ''}${c.alt ? 'a' : ''}${c.shift ? 's' : ''}${c.meta ? 'm' : ''}:${c.key}`
+}
+
+/**
+ * Full-sequence signature for an entry. Two entries with the SAME signature
+ * resolve to the same keystroke(s) — so `'ctrl+s'` and `'control+s'`, or (on a
+ * non-Mac) `'mod+s'` and `'ctrl+s'`, share a signature and are flagged as
+ * conflicting despite different source strings.
+ */
+function entrySignature(e: HotkeyEntry): string {
+  return [e.combo, ...e.sequence].map(comboSignature).join(' ')
+}
+
+/**
+ * Detect hotkeys that would fire on the SAME keystroke within the SAME scope —
+ * i.e. registered shortcuts whose parsed combo sequence is identical. Because
+ * matching happens on the parsed combo (not the source string), aliased
+ * duplicates (`'ctrl+s'` vs `'control+s'`, `'mod+s'` vs `'ctrl+s'` off Mac)
+ * are caught too.
+ *
+ * Cross-scope overlaps are NOT reported — a `'mod+s'` in `'global'` and one in
+ * `'editor'` is intentional scope LAYERING, not a conflict. Use this for a
+ * "keyboard shortcut audit" panel, a dev-time assertion, or a settings UI that
+ * warns on duplicate bindings.
+ *
+ * @example
+ * ```ts
+ * registerHotkey('ctrl+s', saveA)
+ * registerHotkey('control+s', saveB) // same combo, same (global) scope
+ * getHotkeyConflicts()
+ * // → [{ scope: 'global', shortcuts: ['ctrl+s', 'control+s'], descriptions: [undefined, undefined] }]
+ * ```
+ */
+export function getHotkeyConflicts(): ReadonlyArray<{
+  /** The scope in which the colliding hotkeys are registered. */
+  scope: string
+  /** The source shortcut strings that resolve to the same key sequence. */
+  shortcuts: string[]
+  /** Descriptions parallel to `shortcuts` (`undefined` where none was set). */
+  descriptions: Array<string | undefined>
+}> {
+  const groups = new Map<string, HotkeyEntry[]>()
+  for (const e of entries) {
+    const key = `${e.options.scope} ${entrySignature(e)}`
+    const g = groups.get(key)
+    if (g) g.push(e)
+    else groups.set(key, [e])
+  }
+  const conflicts: {
+    scope: string
+    shortcuts: string[]
+    descriptions: Array<string | undefined>
+  }[] = []
+  for (const g of groups.values()) {
+    if (g.length < 2) continue
+    conflicts.push({
+      scope: g[0]!.options.scope,
+      shortcuts: g.map((e) => e.shortcut),
+      descriptions: g.map((e) => e.options.description),
+    })
+  }
+  return conflicts
+}
+
 // ─── Reset (for testing) ────────────────────────────────────────────────
 
 export function _resetHotkeys(): void {
   entries.length = 0
   activeScopes.set(new Set(['global']))
+  scopeRefcounts.clear()
   clearPending()
   detachListener()
 }
