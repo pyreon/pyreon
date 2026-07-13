@@ -2225,23 +2225,24 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 
 ## @pyreon/rx — Reactive Transforms
 
-Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 37 functions across collections (filter, map, sortBy, groupBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` composes transforms left-to-right. Also exported as a namespaced `rx` object for dot-notation usage.
+Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 39 functions across collections (filter, map, flatMap, sortBy, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` collapses a chain into ONE computed (vs N computeds for N separate calls). Also exported as a namespaced `rx` object for dot-notation usage.
 
 ```typescript
-import { signal } from '@pyreon/reactivity'
-import { rx, pipe, filter, sortBy, map, groupBy, take, sum, debounce, search } from '@pyreon/rx'
+import { signal, effect } from '@pyreon/reactivity'
+import { rx, pipe, filter, sortBy, map, flatMap, groupBy, countBy, take, sum, debounce, search } from '@pyreon/rx'
 
 interface User {
   name: string
   age: number
   department: string
+  tags: string[]
   active: boolean
 }
 
 const users = signal<User[]>([
-  { name: 'Alice', age: 30, department: 'eng', active: true },
-  { name: 'Bob', age: 25, department: 'eng', active: false },
-  { name: 'Charlie', age: 35, department: 'design', active: true },
+  { name: 'Alice', age: 30, department: 'eng', tags: ['ts', 'rust'], active: true },
+  { name: 'Bob', age: 25, department: 'eng', tags: ['go'], active: false },
+  { name: 'Charlie', age: 35, department: 'design', tags: ['css'], active: true },
 ])
 
 // Signal input → Computed output (auto-tracks):
@@ -2251,14 +2252,17 @@ const top5 = rx.take(sorted, 5)                          // Computed<User[]>
 
 // Aggregation:
 const totalAge = rx.sum(users, u => u.age)               // Computed<number>
-const count = rx.count(activeUsers)                       // Computed<number>
+const headcount = rx.count(activeUsers)                  // Computed<number>
 
-// Grouping:
+// Grouping and counting:
 const byDept = rx.groupBy(users, u => u.department)      // Computed<Record<string, User[]>>
+const perDept = rx.countBy(users, u => u.department)     // Computed<Record<string, number>>
+const allTags = rx.flatMap(users, u => u.tags)           // Computed<string[]> (map + flatten)
 
 // Pipe — thread the value through plain transform functions, left-to-right.
 // Each fn receives the resolved value; the rx helpers are 2-arg (source, ...),
 // so wrap them: us => filter(us, pred). There is NO curried filter(pred) form.
+// The whole chain is ONE computed — one recompute per source change, not N.
 const result = pipe(
   users,
   us => filter(us, u => u.active),
@@ -2271,16 +2275,22 @@ const result = pipe(
 const query = signal('')
 const matches = search(users, query, ['name', 'department'])
 
-// Timing — debounce/throttle a SIGNAL value (returns ReadableSignal +
-// dispose; value-level, not collection operators; NOT auto-cleaned):
-const debounced = debounce(users, 300)    // ReadableSignal<User[]> & { dispose }
-const throttled = rx.throttle(users, 100) // ReadableSignal<User[]> & { dispose }
+// Timing — debounce/throttle a SIGNAL value (returns ReadableSignal + dispose;
+// value-level, not collection operators). Auto-torn-down inside a component /
+// effectScope; call dispose() for standalone usage:
+const debounced = debounce(query, 300)     // ReadableSignal<string> & { dispose }
+const throttled = rx.throttle(query, 100)  // ReadableSignal<string> & { dispose }
+effect(() => matches())
 
 // Plain input → plain output (no signals):
 const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 ```
 
 > **Signal detection**: Detection is purely `typeof source === "function"` (see `isSignal` in `rx/src/types.ts`) — there is NO `.subscribe` / value inspection. Any function (the signal, an accessor wrapper `() => items()`, a bound method) is treated as reactive and called inside a computed. The actual mistake is the opposite of what you might expect: passing a RESOLVED value (`items()`, an already-read array) takes the static path and never updates. Pass the signal, not its resolved value.
+>
+> **pipe collapses N computeds into ONE**: `pipe(source, ...fns)` builds a SINGLE computed that runs the whole chain — one recompute per source change, ~1 computed node retained (~913 B). Chaining N separate rx calls (`const a = filter(src,…); const b = sortBy(a,…); …`) builds N computed nodes: N intermediate subscriptions, N dirty-propagation hops per change, ~N×913 B. For any chain longer than 2 steps, prefer `pipe`. (Reproduce the exact node/recompute counts with `bun run --filter=@pyreon/rx bench`.)
+>
+> **Timing operators are scope-aware**: `debounce`/`throttle`/`distinct`/`scan` create an eager `effect()`. Created inside a component or `effectScope`, that effect (and any pending timer for debounce/throttle) is torn down automatically on unmount. Created STANDALONE (module scope, a `defineStore` setup that outlives every scope), nothing owns it — call the returned `.dispose()`. All four expose an idempotent `.dispose()`. A growing `rx.debounce.create` / `rx.throttle.create` perf counter in dev flags standalone instances created without a matching dispose.
 >
 > **Computed lifecycle**: Computed outputs from signal inputs auto-dispose when they have no subscribers. In component bodies, the reactive scope from JSX keeps them alive; in standalone code, subscribe or read within an `effect()` to keep them active.
 >

@@ -82,7 +82,8 @@ const CACHE_DIR = join(REPO_ROOT, '.cache', 'manifest-examples')
 //      so the harness can be tightened later to re-enforce them.
 const NON_ENFORCED: Record<string, string> = {
   // Harness-limited (structural — findings are not drift):
-  '@pyreon/rx': 'harness-limited: examples map/filter over untyped ambient data → `unknown` element types',
+  // (@pyreon/rx was here — its examples now declare typed signals inline, so
+  //  the collection-op callback params no longer resolve to `unknown`; ENFORCED.)
   '@pyreon/styler': 'harness-limited: theme callback params resolve to `unknown` (no theme augmentation in the harness)',
   '@pyreon/attrs': 'harness-limited: per-method fragments use `Element` (a cross-package component) bare, colliding with the DOM `Element` global',
   '@pyreon/document': 'harness-limited: examples use the DocNode JSX namespace, not core VNode; the harness compiles JSX via @pyreon/core',

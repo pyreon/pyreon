@@ -149,7 +149,7 @@ The `rx` namespace is a `const` object — modern bundlers tree-shake unused pro
 
 ## Collections
 
-The 21 collection transforms. Each is overloaded `Signal<T[]> → Computed` / `T[] → plain`. The reactive return type is noted per function.
+The 23 collection transforms. Each is overloaded `Signal<T[]> → Computed` / `T[] → plain`. The reactive return type is noted per function.
 
 ### `filter`
 
@@ -171,6 +171,18 @@ const names = rx.map(users, (u) => u.name) // Computed<string[]>
 :::warning[`rx.map` is a data transform, not a JSX list renderer]
 `rx.map` derives a reactive array — it is not the keyed-list primitive. To render a list, feed its output to `<For each={...} by={...}>`; spreading a freshly-mapped array straight into JSX loses keying and referential stability (every re-derive yields fresh objects).
 :::
+
+### `flatMap`
+
+Map each item to an **array** and flatten one level — exactly `Array.prototype.flatMap`. Empty inner arrays drop out, so it doubles as a filter-and-map in one pass.
+
+```tsx
+const allTags = rx.flatMap(posts, (p) => p.tags) // Computed<string[]>
+rx.flatMap([1, 2, 3], (n) => [n, n * 10]) // [1, 10, 2, 20, 3, 30] (plain)
+rx.flatMap([1, 2, 3], (n) => (n % 2 === 0 ? [n] : [])) // [2] — empties drop out
+```
+
+The mapper must return an **array** (`n => [n * 2]`, not `n => n * 2`), and it flattens exactly one level. Prefer `flatMap` over a `map(...)` + `flatten(...)` pair — that's two computed nodes; `flatMap` is one.
 
 ### `sortBy`
 
@@ -199,6 +211,17 @@ for (const [dept, members] of Object.entries(byDept())) {
 :::warning[`groupBy` returns a `Record`, not a `Map` — and keys are stringified]
 Use `Object.entries()` / `result[key]`, never `.get()` / `.has()` / `.size`. Every key is `String()`-coerced, so a numeric group key `1` becomes `"1"` and `true` becomes `"true"`. A missing bucket is `undefined`, not `[]` — default it explicitly.
 :::
+
+### `countBy`
+
+The counting companion to `groupBy` — buckets by key but returns per-bucket **counts** (`Record<string, number>`), single-pass. Keys are `String(...)`-coerced, same as `groupBy`.
+
+```tsx
+const perRole = rx.countBy(users, 'role') // Computed<Record<string, number>> → { admin: 2, viewer: 1 }
+rx.countBy([1, 2, 2, 3], (n) => (n % 2 === 0 ? 'even' : 'odd')) // { odd: 2, even: 2 }
+```
+
+Use `countBy` for counts and `groupBy` for the members — `countBy` avoids the `mapValues(groupBy(...), (g) => g.length)` two-node detour.
 
 ### `keyBy`
 
@@ -396,7 +419,7 @@ Five signal-to-signal operators. Unlike the collection transforms, several of th
 
 ### `distinct`
 
-Skip **consecutive** duplicate emissions from a signal. Uses `Object.is` by default, or a custom `equals`. Returns a `ReadableSignal<T>`.
+Skip **consecutive** duplicate emissions from a signal. Uses `Object.is` by default, or a custom `equals`. Returns a `ReadableSignal<T> & { dispose }` — like the timing operators, `distinct` owns an eager `effect()` that is auto-torn-down inside a component / `effectScope`; call `.dispose()` for standalone use.
 
 ```tsx
 const status = signal('idle')
@@ -406,7 +429,7 @@ const byId = rx.distinct(item, (a, b) => a.id === b.id) // custom equality
 
 ### `scan`
 
-A running accumulator over a signal's changes — like `reduce`, but it **emits the accumulated value on every source change**. Returns a `ReadableSignal<U>`.
+A running accumulator over a signal's changes — like `reduce`, but it **emits the accumulated value on every source change**. Returns a `ReadableSignal<U> & { dispose }`. The reducer runs on the current source value immediately (the initial `source()` is the first emission), and like `distinct` it is scope-aware — auto-torn-down in a component, `.dispose()` for standalone use.
 
 ```tsx
 const clicks = signal(0)
@@ -465,7 +488,8 @@ effect(() => {
   fetchResults(debounced()) // fires 300ms after the user stops typing
 })
 
-onCleanup(() => debounced.dispose()) // REQUIRED — see warning below
+// Inside a component this is auto-cleaned on unmount. Standalone, dispose:
+onCleanup(() => debounced.dispose())
 ```
 
 ### `throttle`
@@ -478,8 +502,8 @@ effect(() => updateHeader(throttled()))
 onCleanup(() => throttled.dispose())
 ```
 
-:::danger[`debounce` / `throttle` are NOT auto-cleaned — always `dispose()`]
-Each `debounce`/`throttle` owns a live `effect` + a `setTimeout`. They are **not** tied to component lifecycle, so they leak across navigations unless you call `.dispose()` (register it with `onCleanup`). A growing `rx.debounce.create` / `rx.throttle.create` perf counter in dev is exactly this leak.
+:::caution[`debounce` / `throttle` are scope-aware — `dispose()` only for standalone use]
+Each `debounce`/`throttle` (and `distinct`/`scan`) owns a live `effect` +, for the timing ops, a `setTimeout`. Created **inside a component or `effectScope`**, the effect **and its pending timer** are torn down automatically on unmount — no `dispose()` needed. Created **standalone** (module scope, a `defineStore` setup that outlives every scope), nothing owns it — call the returned idempotent `.dispose()`. A growing `rx.debounce.create` / `rx.throttle.create` perf counter in dev flags standalone instances created without a matching dispose.
 :::
 
 :::warning[Timing operators are value-level and do NOT compose in `pipe`]
@@ -502,7 +526,16 @@ The third argument is the keys array itself — `search(users, query, ['name', '
 
 ## Pipe
 
-`pipe(source, ...transforms)` composes transforms **left-to-right** and collapses the entire chain into **one** `computed` (not one per step). Each transform is a **plain function** that receives the resolved value from the previous step and returns the next — `(value) => newValue`. A signal source yields a `Computed`; a plain-array source yields a one-shot plain result. Typed for up to **5** transforms, with full type narrowing across steps.
+`pipe(source, ...transforms)` composes transforms **left-to-right** and collapses the entire chain into **one** `computed` (not one per step). Each transform is a **plain function** that receives the resolved value from the previous step and returns the next — `(value) => newValue`. A signal source yields a `Computed`; a plain-array source yields a one-shot plain result. Typed for up to **7** transforms, with full type narrowing across steps.
+
+This is `pipe`'s structural payoff over chaining separate rx calls. A 3-step chain built as `const a = filter(src, …); const b = sortBy(a, …); const c = take(b, …)` allocates **3** computed nodes and does **3** recomputes per source change (each node re-derives in turn); the same chain in a single `pipe` is **1** node, **1** recompute — measured exactly by `bun run --filter=@pyreon/rx bench`:
+
+| chain | naive nodes | naive recomputes/change | `pipe` nodes | `pipe` recomputes/change |
+| --- | --- | --- | --- | --- |
+| `filter → map → sort` | 3 | 3 | 1 | 1 |
+| `filter → map → sort → skip → take` | 5 | 5 | 1 | 1 |
+
+Prefer `pipe` for any chain longer than 2 steps — fewer nodes, fewer subscription links, ~1 computed retained (~913 B) instead of ~N×913 B.
 
 ```tsx
 const topRisks = pipe(
@@ -553,16 +586,18 @@ Reactive returns are typed as the `Computed` produced by `@pyreon/reactivity`'s 
 
 ### `rx` namespace
 
-`rx` is a `Readonly` object exposing all 37 functions plus `pipe` for dot-notation use (`rx.filter(...)`). Every member is also a tree-shakeable named export.
+`rx` is a `Readonly` object exposing all 39 functions plus `pipe` for dot-notation use (`rx.filter(...)`). Every member is also a tree-shakeable named export.
 
-### Collections (21)
+### Collections (23)
 
 | Function                       | Signature (signal-input form)                                                                | Returns (signal in)              |
 | ------------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------- |
 | `filter(source, predicate)`    | `(Signal<T[]>, (item: T, i: number) => boolean)`                                             | `Computed<T[]>`                  |
 | `map(source, fn)`              | `(Signal<T[]>, (item: T, i: number) => U)`                                                   | `Computed<U[]>`                  |
+| `flatMap(source, fn)`          | `(Signal<T[]>, (item: T, i: number) => U[])` — map + flatten one level                       | `Computed<U[]>`                  |
 | `sortBy(source, key)`          | `(Signal<T[]>, KeyOf<T>)` — key name or selector, ascending, non-mutating                    | `Computed<T[]>`                  |
 | `groupBy(source, key)`         | `(Signal<T[]>, KeyOf<T>)` — keys `String()`-coerced                                          | `Computed<Record<string, T[]>>`  |
+| `countBy(source, key)`         | `(Signal<T[]>, KeyOf<T>)` — per-bucket counts, keys `String()`-coerced                       | `Computed<Record<string, number>>` |
 | `keyBy(source, key)`           | `(Signal<T[]>, KeyOf<T>)` — last wins on collision                                           | `Computed<Record<string, T>>`    |
 | `uniqBy(source, key)`          | `(Signal<T[]>, KeyOf<T>)` — first occurrence kept                                            | `Computed<T[]>`                  |
 | `unique(source)`               | `(Signal<T[]>)` — primitive dedupe via `Set`                                                 | `Computed<T[]>`                  |
@@ -598,8 +633,8 @@ Reactive returns are typed as the `Computed` produced by `@pyreon/reactivity`'s 
 
 | Function                       | Signature                                                                                  | Returns                          |
 | ------------------------------ | ------------------------------------------------------------------------------------------ | -------------------------------- |
-| `distinct(source, equals?)`    | `(Signal<T>, (a: T, b: T) => boolean = Object.is)` — skips consecutive dupes               | `ReadableSignal<T>`              |
-| `scan(source, reducer, init)`  | `(Signal<T>, (acc: U, value: T) => U, U)` — running accumulator                            | `ReadableSignal<U>`              |
+| `distinct(source, equals?)`    | `(Signal<T>, (a: T, b: T) => boolean = Object.is)` — skips consecutive dupes               | `ReadableSignal<T> & { dispose }` |
+| `scan(source, reducer, init)`  | `(Signal<T>, (acc: U, value: T) => U, U)` — running accumulator                            | `ReadableSignal<U> & { dispose }` |
 | `combine(a, b[, c], fn)`       | `(Signal<A>, Signal<B>[, Signal<C>], (a, b[, c]) => R)` — 2 or 3 signals, combiner last    | `Computed<R>`                    |
 | `zip(a, b[, c])`               | `(Signal<A[]> \| A[], …)` — tuples, truncated to shortest; reactive if any input is signal | `Computed<[A, B(, C)][]>` / `[…]` |
 | `merge(a, …rest)`              | `(Signal<T[]> \| T[], …)` — concatenate; reactive if any input is signal                   | `Computed<T[]>` / `T[]`          |
@@ -625,7 +660,7 @@ Case-insensitive substring match across the named **string** fields; reactive if
 
 | Function                      | Signature                                                                            | Returns                |
 | ----------------------------- | ------------------------------------------------------------------------------------ | ---------------------- |
-| `pipe(source, ...transforms)` | `(Signal<A> \| A, (a: A) => B, (b: B) => C, …)` — plain transforms, up to 5, typed   | `Computed<…>` / plain  |
+| `pipe(source, ...transforms)` | `(Signal<A> \| A, (a: A) => B, (b: B) => C, …)` — plain transforms, up to 7, typed   | `Computed<…>` / plain  |
 
 Composes left-to-right into **one** computed; signal source → `Computed`, plain source → one-shot value. Transforms are plain `(value) => newValue` functions (not curried `rx` operators).
 

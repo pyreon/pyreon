@@ -9,8 +9,12 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
  * Debounce a signal — emits the latest value after `ms` of silence.
  * Returns a new signal that updates only after the source stops changing.
  *
- * Works both inside and outside component context.
- * The returned signal has a `.dispose()` method to stop tracking.
+ * **Lifecycle**: created inside a component / `effectScope`, the internal
+ * effect AND its pending timer are torn down automatically on unmount (the
+ * effect auto-registers with the active scope; the returned cleanup clears
+ * the timer). Created in standalone code (module scope, a `defineStore`
+ * setup that outlives any scope), nothing owns it — call `.dispose()`
+ * yourself. The `.dispose()` method is always available and idempotent.
  */
 export function debounce<T>(
   source: ReadableSignal<T>,
@@ -25,14 +29,31 @@ export function debounce<T>(
 
   const fx = effect(() => {
     const val = source()
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => debounced.set(val), ms)
+    // The effect's `run` calls the previous cleanup BEFORE re-running, so any
+    // pending timer from the last change is already cleared here — no need to
+    // clearTimeout at the top of the body (it would be dead code).
+    timer = setTimeout(() => {
+      timer = undefined
+      debounced.set(val)
+    }, ms)
+    // Return a cleanup so scope-disposal (component unmount) ALSO clears the
+    // pending timer — not just an explicit dispose(), and also between rapid
+    // source changes. Without this, a component that unmounts mid-debounce
+    // leaves a setTimeout that fires AFTER unmount, mutating a signal whose
+    // subscribers are gone (leak class I — orphaned setTimeout with no
+    // clearTimeout on the dispose path). ONE place owns timer cancellation.
+    return () => {
+      if (timer) {
+        clearTimeout(timer)
+        timer = undefined
+      }
+    }
   })
 
-  const dispose = () => {
-    if (timer) clearTimeout(timer)
-    fx.dispose()
-  }
+  // fx.dispose() runs the effect's returned cleanup (which clears the timer),
+  // so the timer teardown lives in ONE place. Idempotent — a second call is a
+  // no-op because the effect guards its own `disposed` flag.
+  const dispose = () => fx.dispose()
 
   return Object.assign(debounced as ReadableSignal<T>, { dispose })
 }
@@ -41,8 +62,10 @@ export function debounce<T>(
  * Throttle a signal — emits at most once every `ms` milliseconds.
  * Immediately emits on first change, then waits for the interval.
  *
- * Works both inside and outside component context.
- * The returned signal has a `.dispose()` method to stop tracking.
+ * **Lifecycle**: identical to {@link debounce} — auto-torn-down (effect +
+ * pending trailing timer) when created inside a component / `effectScope`;
+ * call `.dispose()` for standalone usage. `.dispose()` is always available
+ * and idempotent.
  */
 export function throttle<T>(
   source: ReadableSignal<T>,
@@ -64,18 +87,25 @@ export function throttle<T>(
       throttled.set(val)
       lastEmit = now
     } else {
-      if (timer) clearTimeout(timer)
+      // The prior cleanup already cleared any pending trailing timer before
+      // this re-run, so a fresh one always captures the LATEST value.
       timer = setTimeout(() => {
+        timer = undefined
         throttled.set(val)
         lastEmit = Date.now()
       }, ms - elapsed)
     }
+    // Clear the pending trailing timer on scope-disposal (unmount) as well as
+    // explicit dispose — see the debounce rationale (leak class I).
+    return () => {
+      if (timer) {
+        clearTimeout(timer)
+        timer = undefined
+      }
+    }
   })
 
-  const dispose = () => {
-    if (timer) clearTimeout(timer)
-    fx.dispose()
-  }
+  const dispose = () => fx.dispose()
 
   return Object.assign(throttled as ReadableSignal<T>, { dispose })
 }

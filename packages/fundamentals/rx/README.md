@@ -1,6 +1,6 @@
 # @pyreon/rx
 
-37 signal-aware reactive transforms — filter, map, sortBy, groupBy, pipe, debounce.
+39 signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, pipe, debounce.
 
 A small lodash-shaped library where every function is overloaded twice: pass a `Signal<T[]>` (or other `ReadableSignal<T[]>`) and get a `Computed<R>` back that auto-tracks; pass a plain `T[]` and get `R` synchronously. Use it for list pipelines (filter → sort → paginate), aggregations (sum / average / count over a reactive collection), grouped views (groupBy returning `Record<K, T[]>`), reactive search, and signal-rate limiting (debounce / throttle). Composes with `pipe(source, op1, op2, ...)` into a single computed.
 
@@ -42,9 +42,9 @@ import { rx } from '@pyreon/rx' // rx.filter, rx.sortBy, …
 import { filter, sortBy } from '@pyreon/rx' // tree-shake-friendly
 ```
 
-### Collections (21)
+### Collections (23)
 
-`filter` · `map` · `sortBy` · `groupBy` · `keyBy` · `uniqBy` · `take` · `skip` · `last` · `chunk` · `flatten` · `find` · `mapValues` · `first` · `compact` · `reverse` · `partition` · `takeWhile` · `dropWhile` · `unique` · `sample`
+`filter` · `map` · `flatMap` · `sortBy` · `groupBy` · `countBy` · `keyBy` · `uniqBy` · `take` · `skip` · `last` · `chunk` · `flatten` · `find` · `mapValues` · `first` · `compact` · `reverse` · `partition` · `takeWhile` · `dropWhile` · `unique` · `sample`
 
 ### Aggregation (8)
 
@@ -95,14 +95,16 @@ const result = rx.pipe(
 // which would create three computeds and three subscriber links.
 ```
 
-## Grouped and keyed views
+## Grouped, keyed and counted views
 
 ```ts
 const byDept = rx.groupBy(users, (u) => u.department) // Computed<Record<string, User[]>>
 const byId = rx.keyBy(users, 'id') // Computed<Record<string, User>>
+const perDept = rx.countBy(users, (u) => u.department) // Computed<Record<string, number>>
+const allTags = rx.flatMap(users, (u) => u.tags) // Computed<string[]> — map + flatten one level
 ```
 
-`groupBy` returns a `Record<K, T[]>`, NOT a `Map<K, T[]>` — easier JSX iteration via `Object.entries`.
+`groupBy` returns a `Record<K, T[]>`, NOT a `Map<K, T[]>` — easier JSX iteration via `Object.entries`. `countBy` is the counting companion (per-bucket counts, not members); `flatMap` maps each item to an array and flattens one level (like `Array.prototype.flatMap`).
 
 ## Aggregations
 
@@ -127,20 +129,23 @@ const totals = rx.reduce(items, (acc, i) => acc + i.qty, 0) // Computed<number>
 
 ```ts
 const search = signal('')
-const debounced = rx.debounce(search, 300) // Computed<string>
-const throttled = rx.throttle(scrollY, 16) // Computed<number>
+const debounced = rx.debounce(search, 300) // ReadableSignal<string> & { dispose }
+const throttled = rx.throttle(scrollY, 16) // ReadableSignal<number> & { dispose }
 
 effect(() => fetchResults(debounced()))
 ```
 
 These differ from `useDebouncedCallback` (`@pyreon/hooks`): rx versions debounce / throttle a SIGNAL, hooks versions debounce / throttle a FUNCTION CALL.
 
+**Lifecycle**: `debounce`/`throttle` (and `distinct`/`scan`) own an eager `effect()`. Created inside a component or `effectScope`, the effect **and its pending timer** are torn down automatically on unmount. Created **standalone** (module scope, a `defineStore` setup that outlives every scope), nothing owns it — call the returned idempotent `.dispose()`.
+
 ## Search
 
 ```ts
 const query = signal('')
-const results = rx.search(users, query, { keys: ['name', 'email'] })
-// Computed<User[]> — case-insensitive substring across the listed keys
+const results = rx.search(users, query, ['name', 'email'])
+// Computed<User[]> — case-insensitive substring across the listed keys.
+// The keys array is a REQUIRED positional argument, NOT a { keys } options object.
 ```
 
 ## Types
@@ -156,13 +161,14 @@ Every reactive overload accepts any `ReadableSignal<T[]>` — not just Pyreon `S
 
 ## Gotchas
 
-- **`pipe(source, ...ops)` produces ONE computed** vs N chained calls producing N computeds. Use `pipe` for long chains.
-- **`groupBy` returns `Record`, not `Map`** — JSX iteration via `Object.entries(groups())` instead of `[...groups()]`.
-- **`debounce` / `throttle` here transform signals**, NOT functions. For debounced callbacks, use `useDebouncedCallback` / `useThrottledCallback` from `@pyreon/hooks`.
+- **`pipe(source, ...ops)` produces ONE computed** vs N chained calls producing N computeds. For a 3-step chain that's 1 node / 1 recompute-per-change vs 3 nodes / 3 recomputes. Use `pipe` for any chain longer than 2 steps. (Reproduce the exact counts with `bun run --filter=@pyreon/rx bench`.)
+- **`groupBy` / `countBy` return `Record`, not `Map`** — JSX iteration via `Object.entries(groups())` instead of `[...groups()]`. `countBy` gives per-bucket counts; `groupBy` gives the members.
+- **`flatMap` flattens ONE level** — the mapper must return an ARRAY per item (`n => [n * 2]`, not `n => n * 2`); nested arrays beyond one level stay nested.
+- **`debounce` / `throttle` here transform signals**, NOT functions. For debounced callbacks, use `useDebouncedCallback` / `useThrottledCallback` from `@pyreon/hooks`. They're scope-aware — auto-cleaned inside a component, `.dispose()` for standalone.
 - **`reverse` / `sortBy` return new arrays** — no in-place mutation, safe to use with Pyreon's identity-comparison effect tracking.
 - **Reading a static `T[]` overload** returns a plain value — pass a `Signal<T[]>` for the reactive path. The TS error if you mix them is clear.
 - **`sample(source, n)` uses Fisher-Yates** — for cryptographic randomness, sample upstream and pass static results.
-- **The `keys: [...]` argument is required for `search`** — without it, only top-level stringifiable fields are matched.
+- **`search`'s keys array is a REQUIRED positional argument** — `search(users, q, ['name', 'email'])`, NOT `{ keys: [...] }`. There is no "search all fields" default; only the listed string fields are matched.
 - **Pure transforms only** — no side effects, no mutations. The `reduce` / `scan` callbacks must return the new accumulator; mutating the seed silently breaks the reactive chain.
 
 ## Documentation

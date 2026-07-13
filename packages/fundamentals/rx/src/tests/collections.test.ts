@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   chunk,
   compact,
+  countBy,
   dropWhile,
   filter,
   find,
   first,
+  flatMap,
   flatten,
   groupBy,
   keyBy,
@@ -364,6 +366,61 @@ describe('unique', () => {
     expect(u()).toEqual([1, 2, 3])
     src.set([5, 5, 5])
     expect(u()).toEqual([5])
+  })
+})
+
+describe('flatMap', () => {
+  it('maps and flattens one level', () => {
+    expect(flatMap([1, 2, 3], (n) => [n, n * 10])).toEqual([1, 10, 2, 20, 3, 30])
+  })
+
+  it('empty inner arrays drop out', () => {
+    expect(flatMap([1, 2, 3], (n) => (n % 2 === 0 ? [n] : []))).toEqual([2])
+  })
+
+  it('exposes the index', () => {
+    expect(flatMap(['a', 'b'], (s, i) => [s, String(i)])).toEqual(['a', '0', 'b', '1'])
+  })
+
+  it('empty array', () => {
+    expect(flatMap([] as number[], (n) => [n])).toEqual([])
+  })
+
+  it('signal returns computed that tracks', () => {
+    const posts = signal([{ tags: ['a', 'b'] }, { tags: ['c'] }])
+    const tags = flatMap(posts, (p) => p.tags)
+    expect(tags()).toEqual(['a', 'b', 'c'])
+    posts.set([{ tags: ['x'] }])
+    expect(tags()).toEqual(['x'])
+  })
+})
+
+describe('countBy', () => {
+  it('counts by string key', () => {
+    expect(countBy(users, 'role')).toEqual({ admin: 2, viewer: 1, editor: 1 })
+  })
+
+  it('counts by selector', () => {
+    expect(countBy([1, 2, 2, 3, 4], (n) => (n % 2 === 0 ? 'even' : 'odd'))).toEqual({
+      odd: 2,
+      even: 3,
+    })
+  })
+
+  it('String-coerces numeric/boolean keys (like groupBy)', () => {
+    expect(countBy([{ v: 1 }, { v: 1 }, { v: 2 }], 'v')).toEqual({ '1': 2, '2': 1 })
+  })
+
+  it('empty array', () => {
+    expect(countBy([] as { role: string }[], 'role')).toEqual({})
+  })
+
+  it('signal returns computed that tracks', () => {
+    const src = signal(users)
+    const counts = countBy(src, 'role')
+    expect(counts()).toEqual({ admin: 2, viewer: 1, editor: 1 })
+    src.set([users[0]!])
+    expect(counts()).toEqual({ admin: 1 })
   })
 })
 

@@ -52,6 +52,25 @@ export function pipe<A, B, C, D, E, F>(
   f4: (d: D) => E,
   f5: (e: E) => F,
 ): ReturnType<typeof computed<F>>
+export function pipe<A, B, C, D, E, F, G>(
+  source: ReadableSignal<A>,
+  f1: (a: A) => B,
+  f2: (b: B) => C,
+  f3: (c: C) => D,
+  f4: (d: D) => E,
+  f5: (e: E) => F,
+  f6: (f: F) => G,
+): ReturnType<typeof computed<G>>
+export function pipe<A, B, C, D, E, F, G, H>(
+  source: ReadableSignal<A>,
+  f1: (a: A) => B,
+  f2: (b: B) => C,
+  f3: (c: C) => D,
+  f4: (d: D) => E,
+  f5: (e: E) => F,
+  f6: (f: F) => G,
+  f7: (g: G) => H,
+): ReturnType<typeof computed<H>>
 // Plain value overloads
 export function pipe<A, B>(source: A, f1: (a: A) => B): B
 export function pipe<A, B, C>(source: A, f1: (a: A) => B, f2: (b: B) => C): C
@@ -71,6 +90,25 @@ export function pipe<A, B, C, D, E, F>(
   f4: (d: D) => E,
   f5: (e: E) => F,
 ): F
+export function pipe<A, B, C, D, E, F, G>(
+  source: A,
+  f1: (a: A) => B,
+  f2: (b: B) => C,
+  f3: (c: C) => D,
+  f4: (d: D) => E,
+  f5: (e: E) => F,
+  f6: (f: F) => G,
+): G
+export function pipe<A, B, C, D, E, F, G, H>(
+  source: A,
+  f1: (a: A) => B,
+  f2: (b: B) => C,
+  f3: (c: C) => D,
+  f4: (d: D) => E,
+  f5: (e: E) => F,
+  f6: (f: F) => G,
+  f7: (g: G) => H,
+): H
 export function pipe(source: any, ...fns: Array<(v: any) => any>): any {
   // One emit per pipe() call regardless of chain depth — pipe collapses
   // the entire chain into ONE computed (not one per step). The

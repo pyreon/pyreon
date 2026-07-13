@@ -1,6 +1,49 @@
-import { signal } from '@pyreon/reactivity'
+import { effectScope, signal } from '@pyreon/reactivity'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { debounce, throttle } from '../timing'
+
+// ─── Scope-lifecycle teardown (leak class I) ─────────────────────────────────
+// A component that unmounts mid-debounce must not leave a pending setTimeout
+// that fires post-unmount. The internal effect auto-registers with the active
+// EffectScope, so scope.stop() disposes it — and the effect's returned cleanup
+// must ALSO clear the pending timer. Bisect-verified: without the cleanup
+// return in timing.ts, `debounced()` reads 1 after stop (the timer fired).
+describe('debounce/throttle — scope teardown clears the pending timer', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('debounce: scope.stop() clears the pending timer (no post-unmount fire)', () => {
+    vi.useFakeTimers()
+    const scope = effectScope()
+    let debounced!: ReturnType<typeof debounce<number>>
+    let src!: ReturnType<typeof signal<number>>
+    scope.runInScope(() => {
+      src = signal(0)
+      debounced = debounce(src, 100)
+      src.set(1) // schedule a timer inside the scope
+    })
+    scope.stop() // simulate component unmount BEFORE the timer fires
+    vi.advanceTimersByTime(500)
+    expect(debounced()).toBe(0) // timer was cancelled, value frozen at seed
+  })
+
+  it('throttle: scope.stop() clears the pending trailing timer', () => {
+    vi.useFakeTimers()
+    const scope = effectScope()
+    let throttled!: ReturnType<typeof throttle<number>>
+    let src!: ReturnType<typeof signal<number>>
+    scope.runInScope(() => {
+      src = signal(0)
+      throttled = throttle(src, 100)
+      vi.advanceTimersByTime(100)
+      src.set(1) // emits immediately
+      src.set(2) // trailing timer scheduled
+    })
+    expect(throttled()).toBe(1)
+    scope.stop()
+    vi.advanceTimersByTime(500)
+    expect(throttled()).toBe(1) // trailing update never fires post-unmount
+  })
+})
 
 describe('debounce', () => {
   afterEach(() => {
