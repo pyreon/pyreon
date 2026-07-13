@@ -1,4 +1,5 @@
 /** @jsxImportSource @pyreon/core */
+import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -21,6 +22,20 @@ import { useWindowVirtualizer } from '../use-window-virtualizer'
 // `useWindowVirtualizer` had ZERO real-browser coverage before this file —
 // only happy-dom unit tests where window scroll is inert. This is its
 // first proof that window-based virtualization actually works.
+
+// `measureElement` drives a real ResizeObserver, which emits the well-known,
+// benign "ResizeObserver loop completed with undelivered notifications" signal
+// when a measurement triggers a reflow inside the same frame. It is NOT a test
+// failure — swallow it so vitest-browser's strict unhandled-error catcher
+// doesn't surface it. (Chrome/spec both classify this as a non-error notice.)
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (e) => {
+    if (e.message?.includes('ResizeObserver loop')) {
+      e.stopImmediatePropagation()
+      e.preventDefault()
+    }
+  })
+}
 
 const COUNT = 1000
 const ROW = 40
@@ -100,6 +115,84 @@ describe('useVirtualizer — real Chromium', () => {
       Number(el.getAttribute('data-index')),
     )
     expect(Math.min(...indices)).toBeGreaterThan(400)
+    unmount()
+  })
+})
+
+describe('useVirtualizer — <For> + item() fine-grained + real measurement', () => {
+  // The fine-grained pattern: keyed <For> (staying rows never re-render) +
+  // item() (per-index reactive position) so a dynamic remeasure repositions
+  // staying rows correctly. Real Chromium is where measureElement actually
+  // measures (happy-dom has no layout). This is the proof that the captured-
+  // <For>-item staleness fix works with REAL getBoundingClientRect measurement.
+  function DynamicList() {
+    const parentRef = signal<HTMLElement | null>(null)
+    const expanded = signal(false)
+    const v = useVirtualizer<HTMLElement, HTMLElement>(() => ({
+      count: COUNT,
+      getScrollElement: () => parentRef(),
+      estimateSize: () => ROW,
+      overscan: 3,
+      measureElement: (el: Element) => el.getBoundingClientRect().height,
+    }))
+    return (
+      <div>
+        <button data-testid="expand" onClick={() => expanded.set(true)}>
+          expand
+        </button>
+        <div
+          ref={(el: HTMLElement | null) => parentRef.set(el)}
+          data-testid="dyn-scroll"
+          style="height:300px;overflow:auto;"
+        >
+          <div style={() => `height:${v.totalSize()}px;width:100%;position:relative;`}>
+            <For each={() => v.virtualItems()} by={(row) => row.index}>
+              {(row) => {
+                const m = v.item(row.index)
+                return (
+                  <div
+                    class="dyn-row"
+                    data-index={String(row.index)}
+                    ref={(el: HTMLElement | null) => el && v.instance.measureElement(el)}
+                    style={() =>
+                      `position:absolute;top:0;left:0;width:100%;transform:translateY(${m.start()}px);box-sizing:border-box;`
+                    }
+                  >
+                    {/* Row 0 grows tall when expanded; others stay ROW-high. */}
+                    <div
+                      style={() =>
+                        `height:${row.index === 0 && expanded() ? 200 : ROW}px;`
+                      }
+                    >
+                      Item {row.index}
+                    </div>
+                  </div>
+                )
+              }}
+            </For>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const topOf = (container: HTMLElement, index: number): number => {
+    const el = container.querySelector<HTMLElement>(`.dyn-row[data-index="${index}"]`)
+    const m = el?.style.transform.match(/translateY\(([\d.]+)px\)/)
+    return m ? Number(m[1]) : Number.NaN
+  }
+
+  it('repositions a STAYING row below when row 0 is remeasured taller', async () => {
+    const { container, unmount } = mountInBrowser(<DynamicList />)
+    await vi.waitFor(() => expect(container.querySelectorAll('.dyn-row').length).toBeGreaterThan(0))
+    // Row 3 sits at 3 × ROW initially (fixed estimate, measured to the same).
+    await vi.waitFor(() => expect(topOf(container, 3)).toBeCloseTo(3 * ROW, 0))
+
+    // Expand row 0 → its real height jumps to 200 → measureElement remeasures →
+    // every row below shifts down. Row 3 STAYS in the window (same key), so its
+    // <For> callback does NOT re-run — item()'s signal is what repositions it.
+    container.querySelector<HTMLElement>('[data-testid=expand]')!.click()
+    await vi.waitFor(() => expect(topOf(container, 3)).toBeGreaterThan(3 * ROW + 100))
     unmount()
   })
 })
