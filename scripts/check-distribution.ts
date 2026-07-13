@@ -58,6 +58,7 @@ if (json) {
   )
   console.log(`  • All have \`sideEffects\` declared`)
   console.log(`  • None exclude \`lib/**/*.map\` from the published tarball`)
+  console.log(`  • All \`repository.url\` fields are in npm's canonical \`git+…\` form`)
   console.log(`  • npm pack --dry-run probe: .map files present in tarball`)
 } else {
   console.error(`✗ Distribution gate found ${result.findings.length} violation(s):\n`)
