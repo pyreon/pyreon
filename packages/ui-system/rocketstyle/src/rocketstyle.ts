@@ -188,6 +188,9 @@ const rocketComponent: RocketComponent = (options) => {
   // --------------------------------------------------------
   // In Pyreon, components are plain functions — no forwardRef needed.
   // Ref flows as a normal prop through the chain.
+  // The `.set()` calls in this component body are WeakMap CACHE writes
+  // (ThemeManager, _dimensionsCache), NOT reactive signal updates.
+  // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
   const EnhancedComponent: ComponentFn<InnerComponentProps> = (props) => {
     // --------------------------------------------------
     // hover - focus - pressed state passed via context from parent component
@@ -280,6 +283,9 @@ const rocketComponent: RocketComponent = (options) => {
     // computed which re-resolves the entry. Same key → cached entry; new key
     // → fresh computation, stored under LRU cap.
     // --------------------------------------------------
+    // The `.set()` calls here are WeakMap/SizedMap CACHE writes (ThemeManager
+    // tiers + _rsMemo), NOT reactive signal updates — batch() does not apply.
+    // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     const _resolveRsEntry = (): RsMemoEntry => {
       // Read reactive inputs (tracks theme + mode signals).
       //
