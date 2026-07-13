@@ -6,12 +6,16 @@ import { useQuery } from './use-query'
  * Run multiple named queries in parallel from a single declaration.
  * Returns a typed object of query results instead of an array.
  *
+ * Each value is an OPTIONS FUNCTION (like `useQuery`), so a signal read inside
+ * it makes that query's key reactive. Pass an object of such functions — NOT a
+ * single function returning an object.
+ *
  * @example
  * ```ts
- * const { user, posts } = defineQueries(() => ({
- *   user: { queryKey: ['user', userId()], queryFn: fetchUser },
- *   posts: { queryKey: ['posts'], queryFn: fetchPosts },
- * }))
+ * const { user, posts } = defineQueries({
+ *   user: () => ({ queryKey: ['user', userId()], queryFn: fetchUser }),
+ *   posts: () => ({ queryKey: ['posts'], queryFn: fetchPosts }),
+ * })
  *
  * // user.data() — Signal<User | undefined>
  * // posts.isFetching() — Signal<boolean>

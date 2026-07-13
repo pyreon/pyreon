@@ -33,11 +33,25 @@ TanStack Query core is included as a dependency -- you do not need to install `@
 
 ## How It Works
 
-Traditional TanStack Query adapters (e.g., `@tanstack/react-query`) re-render the entire component when any query field changes. Pyreon's adapter creates separate signals for each field (`data`, `error`, `isPending`, `isFetching`, etc.) and uses `batch()` to coalesce all signal updates into a single notification flush. This means:
+`@tanstack/react-query`'s reactive granularity is the **observer = the whole component**. It is field-aware _across_ components (its tracked-properties optimization skips a re-render when none of a component's accessed fields changed), but within a single component, a change to _any_ accessed field re-renders the entire component — re-running every field derivation in its body plus a VDOM reconcile. Pyreon's granularity is the **signal**: each field (`data`, `error`, `isPending`, `isFetching`, etc.) is an independent signal, and `batch()` coalesces the subscribe callback's writes into one flush. Only the bindings that read the field that _actually_ changed re-run. This means:
 
-- A component that only reads `query.data()` will not re-run when `isFetching` flips.
+- A component that only reads `query.data()` will not re-run when `isFetching` flips. (react-query matches this across components — see the benchmark below.)
+- **Within one component** that reads several fields, flipping `data` re-runs only the `data` binding — the `status` / `isFetching` / `error` bindings do not re-execute (react-query re-runs the whole component body).
 - A loading spinner that only reads `query.isPending()` will not re-run when data arrives (it will re-run once to switch from pending to not-pending, but not for the data change itself).
 - The `result` signal provides the full observer result for cases where you need multiple fields in one read.
+
+### Benchmark — fine-grained vs `@tanstack/react-query`
+
+Both adapters wrap the **same** `@tanstack/query-core` (pinned to one version tree-wide), so the comparison is fair by construction — it measures the _adapter_ layer, not the query engine. Run it with `bun run --filter=@pyreon/query bench:react-query` (`NODE_ENV=production`, real react-dom@19 in happy-dom, deterministic COUNTS + process-isolated timing). On a data-**only** change to a query (via `setQueryData`, so `status` / `isFetching` / `error` stay put):
+
+| Scenario | Pyreon | `@tanstack/react-query` |
+| --- | --- | --- |
+| **Cross-component** — one component reads only `status`, one only `data` → flip `data` | `status` skips, `data` re-runs (**1**) | `status` skips, `data` re-renders (**1**) — 🤝 tie (tracked-props) |
+| **Intra-component** — one component reads all 8 fields → flip `data` | **0** component re-runs · **1** field-derivation | **1** whole-component re-render · **8** field-derivations + VDOM reconcile |
+| **Time to reflect the change in the DOM** | ~1.6 µs (synchronous fine-grained patch) | ~6.3 µs (macrotask-batched render + reconcile) — Pyreon ~**4×** faster |
+| **Mount a 1-query component → first DOM** | ~11 µs | ~12 µs — 🤝 ~tied |
+
+The honest reads: react-query is **not** naive — its tracked-props make it field-aware _across_ components (the cross-component row is a genuine tie). Pyreon's structural win is _within_ a component (fine-grained signals vs whole-component re-render) and steady-state per-update latency (synchronous fine-grained patch vs macrotask-batched VDOM reconcile). Mounting is comparable. (Machine-dependent µs — the ratios and counts are the portable signal.)
 
 ### Lazy signal allocation
 
