@@ -186,7 +186,11 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     visibleNodes: getVisibleNodes,
     treeProps: () => ({
       role: 'tree',
-      'aria-multiselectable': own.multiple || undefined,
+      // ARIA state must be a STRING enum, never a boolean — a boolean `true`
+      // that bypasses the runtime aria coercion renders as presence-only
+      // `aria-multiselectable=""`, which AT reads as the default (false).
+      // Mirrors ComboboxBase's listbox wiring.
+      'aria-multiselectable': own.multiple ? 'true' : undefined,
     }),
     getItemProps: (id: string, depth: number, hasChildren: boolean) => {
       const node = findNode(id, own.data)

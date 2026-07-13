@@ -60,7 +60,7 @@ export const RadioGroupBase: ComponentFn<RadioGroupBaseProps> = (props) => {
       {...(rest as Record<string, unknown>)}
       ref={own.ref as ((el: HTMLElement | null) => void) | undefined}
       role="radiogroup"
-      aria-invalid={own['aria-invalid'] || undefined}
+      aria-invalid={own['aria-invalid'] ? 'true' : undefined}
     >
       {own.children}
     </div>
