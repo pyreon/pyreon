@@ -29,6 +29,33 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // FW-2: a props-derived object SHORTHAND in a style/object literal. Before
+    // the fix, the compiler inlined the prop-derived local into the shorthand
+    // value WITHOUT expanding the `key:` prefix — the native (Rust) backend
+    // emitted a keyless `{ (pick(props.v)) }`, a build-time syntax error the
+    // user sees as "Unexpected token '('. Expected a property name."; the JS
+    // backend didn't crash but left the shorthand captured-once (non-reactive).
+    // Only the SHORTHAND form broke — the explicit `{ color: color }` always
+    // worked. Matched on the parser message a user pastes, scoped by the fix
+    // text to the shorthand-style shape.
+    pattern:
+      /expected a property name|unexpected token.*(shorthand|style=\{\{|object literal)|prop-?derived.*shorthand|shorthand.*(style|object).*(reactive|keyless|parse|unexpected)/i,
+    diagnose: () => ({
+      cause:
+        'On versions before the FW-2 release, a props-derived local used as an object SHORTHAND inside a style/object literal (`const color = pick(props.v); <span style={{ color }} />`) was inlined without expanding the `key:` prefix. The native (Rust) backend emitted a keyless `{ (pick(props.v)) }` — a build-time syntax error ("Unexpected token \'(\'. Expected a property name."); the JS backend did not crash but left the shorthand captured-once (non-reactive). Only the SHORTHAND form broke — the explicit `{ color: color }` form always worked.',
+      fix: 'Upgrade `@pyreon/compiler` — both backends now expand a prop-derived shorthand to `{ color: (pick(props.v)) }`, byte-identical to the explicit form and reactive. No app code change needed. If you cannot upgrade, write the property explicitly: `style={{ color: color }}` instead of `style={{ color }}`.',
+      fixCode: `// Before (crashed on the native backend / non-reactive on JS):
+const color = pick(props.v)
+return <span style={{ color }} />
+
+// After the fix, the shorthand works and is reactive. To work on ANY
+// version, expand it yourself:
+return <span style={{ color: color }} />`,
+      related:
+        "The bug was a divergence between the compiler's two backends: the JS backend skipped shorthand object-property values during prop-derived inlining (leaving them non-reactive), while the native backend substituted them and produced a keyless property. The fix expands the shorthand to `key: (value)` in BOTH backends, locked by the native-equivalence oracle.",
+    }),
+  },
+  {
     // Text-binding coercion RESIDUALS, after the `_bindText` VNode upgrade
     // (PZ-02). A signal/accessor holding a VNode now mounts as a subtree, so
     // the classic `[object Object]` is gone — but two coercions REMAIN by

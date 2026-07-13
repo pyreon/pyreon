@@ -765,6 +765,38 @@ describeNative('Native vs JS equivalence — string literal collision', () => {
       return <div style={{ x: x }}></div>
     }
   `))
+  // FW-2: a prop-derived SHORTHAND object value must expand to `key: (value)`
+  // in BOTH backends — never a keyless `{ (value) }` (a syntax error the native
+  // backend previously emitted; the JS backend previously left it non-reactive).
+  test('prop-derived shorthand object value (FW-2)', () =>
+    compare(`
+    function C(props) {
+      const color = pick(props.v)
+      return <span style={{ color }} />
+    }
+  `))
+  test('multiple prop-derived shorthand values (FW-2)', () =>
+    compare(`
+    function C(props) {
+      const color = pick(props.v)
+      const background = pick(props.b)
+      return <span style={{ color, background }} />
+    }
+  `))
+  test('mixed prop-derived shorthand + static (FW-2)', () =>
+    compare(`
+    function C(props) {
+      const color = pick(props.v)
+      return <span style={{ color, fontWeight: 700 }} />
+    }
+  `))
+  test('nested prop-derived shorthand (FW-2)', () =>
+    compare(`
+    function C(props) {
+      const color = pick(props.v)
+      return <span style={{ theme: { color } }} />
+    }
+  `))
   test('prop name in nested string', () =>
     compare(`
     function C(props) {
