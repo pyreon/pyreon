@@ -10,6 +10,11 @@
   (different label / activity launches a different generated composable).
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- M3.3 useNotifications: Android 13+ (API 33) requires the
+         POST_NOTIFICATIONS runtime permission to deliver local notifications
+         (PyreonNotifications). NotificationManagerCompat no-ops gracefully if
+         it isn't granted, so the app never crashes. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="PyreonCounter"
         android:allowBackup="true">

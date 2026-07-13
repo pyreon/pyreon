@@ -1605,6 +1605,16 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonLinking(${id}Ctx) }`,
     ].join('\n  ')
   }
+  // M3.3: `const notifs = useNotifications()` → a remembered
+  // PyreonNotifications. Android NotificationManager needs a Context —
+  // hoisted from LocalContext (like share). Methods flow through unchanged.
+  if (d.kind === 'notifications') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonNotifications(${id}Ctx) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'share') {
     const id = kotlinIdent(d.name)
     return [

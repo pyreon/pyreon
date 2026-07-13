@@ -318,6 +318,22 @@ export type DeclIR =
    */
   | { kind: 'linking'; name: string }
   /**
+   * M3.3 — local notifications via `const notifs = useNotifications()` from
+   * `@pyreon/hooks`. Emits the PyreonNotifications wrapper:
+   *   Swift  → @State private var notifs = PyreonNotifications()
+   *   Kotlin → val notifsCtx = LocalContext.current
+   *            val notifs = remember { PyreonNotifications(notifsCtx) }
+   *
+   * `useNotifications()` takes no arguments and has NO reactive state.
+   * Methods (`notifs.notify("t", "b")` / `notifs.requestPermission()`) flow
+   * through unchanged — the runtime posts a local notification (iOS
+   * UNUserNotificationCenter; Android NotificationManager + a channel).
+   * Android needs a Context (hoisted from LocalContext, like share); iOS
+   * uses the shared notification center. Distinct from usePush (which
+   * RECEIVES remote push).
+   */
+  | { kind: 'notifications'; name: string }
+  /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode
    * active" reads — NO runtime port needed (both SwiftUI and Compose

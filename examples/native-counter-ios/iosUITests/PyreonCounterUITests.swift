@@ -178,4 +178,35 @@ final class PyreonCounterUITests: XCTestCase {
                 + "foreground and Safari did not launch (PyreonLinking.openUrl failed)"
         )
     }
+
+    // M3.3 — NOTIFICATIONS (useNotifications) asserted on device. The shared
+    // Counter.tsx has `<Button onClick={() => notifs.notify('Pyreon', '...')}>
+    // Notify`; PMTC emits `@State private var notifs = PyreonNotifications()`
+    // + `Button("Notify") { notifs.notify("Pyreon", "...") }`. Tapping it
+    // requests authorization (a system prompt may appear) then schedules a
+    // local notification via UNUserNotificationCenter.
+    //
+    // This is a NON-BEHAVIORAL R4 (like haptics): a notification's permission
+    // prompt + auto-dismissing banner make a reliable behavioral springboard
+    // assert infeasible, so the honest proof is "the tap fires the call and
+    // the app remains alive". The app's UI stays in the accessibility tree
+    // behind any permission alert, so `Count: 0` still exists iff the app did
+    // not crash.
+    func test_notifyButtonDoesNotCrash() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let notifyButton = app.buttons["Notify"]
+        XCTAssertTrue(
+            notifyButton.waitForExistence(timeout: 30),
+            "Notify button (useNotifications) did not appear"
+        )
+        notifyButton.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Count: 0"].waitForExistence(timeout: 5),
+            "App did not remain alive after the Notify tap — "
+                + "PyreonNotifications.notify crashed"
+        )
+    }
 }

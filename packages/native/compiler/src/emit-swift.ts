@@ -1928,6 +1928,14 @@ function emitSwiftDecl(
   if (d.kind === 'linking') {
     return `@State private var ${swiftIdent(d.name)} = PyreonLinking()`
   }
+  // M3.3: `const notifs = useNotifications()` → an @State
+  // PyreonNotifications. Methods (`notifs.notify("t","b")`) flow through
+  // unchanged — the runtime posts a local notification via
+  // UNUserNotificationCenter; no reactive field, no ctor arg (iOS uses the
+  // shared center).
+  if (d.kind === 'notifications') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonNotifications()`
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`

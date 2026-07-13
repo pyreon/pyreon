@@ -3689,6 +3689,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useLinking') {
     return { kind: 'linking', name }
   }
+  // M3.3 — `const notifs = useNotifications()` from `@pyreon/hooks` → the
+  // PyreonNotifications wrapper. No arguments. `notifs.notify("title","body")` /
+  // `notifs.requestPermission()` — the runtime container posts a local
+  // notification (iOS UNUserNotificationCenter, Android NotificationManager
+  // + channel). Like useShare, Android needs a Context.
+  if (calleeName === 'useNotifications') {
+    return { kind: 'notifications', name }
+  }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
@@ -5770,6 +5778,7 @@ function warnIfHookInsideRenderCallback(
     'useHaptics',
     'useShare',
     'useLinking',
+    'useNotifications',
     'useColorScheme',
     'usePermissions',
     'useOnline',
