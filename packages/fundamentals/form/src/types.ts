@@ -304,6 +304,19 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
    *
    * When a function is provided, the form watches it and resets fields
    * when the returned values change (e.g. when async data loads).
+   *
+   * **Dot-path leaf fields**: a key containing a dot (`'address.city'`)
+   * declares a FIRST-CLASS leaf field, addressable exactly like a top-level
+   * one — `register('address.city')`, `useField('address.city')`,
+   * `setFieldValue('address.city', …)`, `validators: { 'address.city': … }`,
+   * and a schema/validator error keyed `'address.city'` all route to it. The
+   * value model is FLAT: `values()` / `getValues()` / `onSubmit` return the
+   * flat keys (`{ 'address.city': … }`), so field-name types stay honest;
+   * convert to a nested API payload with `nestValues(form.values())` (and back
+   * with `flattenValues`). A nested schema (`z.object({ address: z.object({…})
+   * }))`) whose value is a single object field routes its error to the ANCESTOR
+   * object field — use a flat-keyed schema or per-field validators for per-leaf
+   * routing.
    */
   initialValues: TValues | (() => TValues)
   /** Called with validated values on successful submit. */

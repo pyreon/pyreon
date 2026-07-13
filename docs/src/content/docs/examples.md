@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 45 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 46 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 45 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 46 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Coolgrid
 
@@ -62,6 +62,10 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Disabled Read Only Fields
 
 <Example file="./examples/form/disabled-read-only-fields" />
+
+### Dot Path Leaf Fields
+
+<Example file="./examples/form/dot-path-leaf-fields" />
 
 ### Field Validation Error Gating On Blur
 

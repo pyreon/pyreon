@@ -16,6 +16,7 @@
   "dependencies": {
     "@pyreon/core": "workspace:*",
     "@pyreon/flow": "workspace:*",
+    "@pyreon/form": "workspace:*",
     "@pyreon/head": "workspace:*",
     "@pyreon/hotkeys": "workspace:*",
     "@pyreon/reactivity": "workspace:*",

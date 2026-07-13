@@ -311,9 +311,33 @@ It also still accepts a plain `SchemaValidateFn` (`(values) => Partial<Record<ke
 
 The `~standard` contract + bridge live in `@pyreon/validation`; `@pyreon/form` depends on it and re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn`, so the historical `import { ValidationError } from '@pyreon/form'` keeps working.
 
-### Nested schema errors
+### Dot-path leaf fields + nested schema errors
 
-A whole-form schema error keyed by a nested dot-path — `{ 'address.city': 'Required' }`, the shape the zod / valibot / arktype adapters produce — routes to its top-level ancestor field (`address`). A schema error whose key matches **no** field marks the form invalid, sets `submitError`, and dev-warns — rather than being silently dropped (which previously let `onSubmit` fire with invalid data). Both the submit and blur paths honor this. Known limitation: the field model is flat in v1, so a nested error surfaces on the **ancestor** field, not a per-leaf field.
+A field key containing a dot (`'address.city'`) declares a **first-class leaf field**, addressable exactly like a top-level one:
+
+```ts
+const form = useForm({
+  initialValues: { name: '', 'address.city': '', 'address.zip': '' },
+  validators: {
+    'address.city': (v) => (v ? undefined : 'City is required'),
+    'address.zip': (v) => (/^\d{5}$/.test(v) ? undefined : 'Bad zip'),
+  },
+  onSubmit: (values) => api.save(nestValues(values)), // { name, address: { city, zip } }
+})
+
+// h('input', form.register('address.city'))
+// form.fields['address.city'].error()   → 'City is required'
+// form.errors()                          → { 'address.city': 'City is required' }
+```
+
+**Two error-routing modes:**
+
+- **Leaf routing** — per-field validators, or a **flat-keyed schema** (`s.object({ 'address.city': s.string().min(1) })`), route their error to the exact **leaf** field.
+- **Ancestor routing** — a **nested schema** over a single object field (`initialValues: { address: { city: '' } }` → field `address`, schema `z.object({ address: z.object({ city }) })`) routes its dot-path error to the **ancestor** object field.
+
+The value model is **flat**: `values()` / `getValues()` / `onSubmit` return the flat dot-path keys (so field-name types stay honest — no type footgun), and `nestValues(form.values())` / `flattenValues(serverData)` convert to and from a nested API payload. A schema error whose key matches **no** field (a shape mismatch, or the path-less `""` whole-form key) marks the form invalid, sets `submitError`, and dev-warns — never silently dropped. Declaring **both** an object field `address` **and** a leaf `address.city` dev-warns (the error would show on both). Both the submit and blur paths honor this.
+
+Not yet typed: `values()` / `onSubmit` carry the flat dot-path keys, not a nested `NestValues<T>` inference; and a **nested** schema's error is not auto-split to per-leaf fields (use a flat-keyed schema or per-field validators for leaf routing). Both are tracked follow-ups.
 
 ## Devtools
 
@@ -329,7 +353,7 @@ import { formRegistry } from '@pyreon/form/devtools'
 - **Mutating `initialValues` after creation has no effect** — they're read once at setup. Use `setFieldValue` for programmatic updates.
 - **`form.fields[name].value` is `Signal<T>`** — call it: `form.fields.email.value()`. Reading without calling captures the signal reference, not the value.
 - **`handleSubmit` calls `preventDefault()`** — wire it as `<form onSubmit={form.handleSubmit}>` or call with no argument for programmatic submit.
-- **`schema` runs AFTER per-field `validators`, but field-level errors win** — the schema only fills fields that have no field-level error. A raw Standard Schema needs no `zodSchema()` wrapper or `as never` cast. A nested `{ 'address.city': ... }` error routes to the ancestor `address` field; a key matching no field invalidates the form + sets `submitError` (never silently dropped).
+- **`schema` runs AFTER per-field `validators`, but field-level errors win** — the schema only fills fields that have no field-level error. A raw Standard Schema needs no `zodSchema()` wrapper or `as never` cast. A dot-path field key (`'address.city'`) is a first-class leaf field — per-field validators + a flat-keyed schema route to the exact leaf; a nested schema over an object field routes to the ancestor; a key matching no field invalidates the form + sets `submitError` (never silently dropped). `values()`/`onSubmit` keep FLAT dot-path keys — use `nestValues` for a nested payload.
 - **File inputs are value-less** — `register(field, { type: 'file' })` omits `value`; its `onInput` writes the `FileList`, so `field.value()` is `FileList | null` (read `files?.[0]`).
 - **Dynamic fields need `registerField`** — `@pyreon/form` never auto-registers; add runtime fields with `form.registerField(name, initial?, validator?)` and read them via `getValues()[name]` (they're not in the static `TValues`).
 - **`FormProvider` doesn't support nesting** — the inner shadows the outer. For multi-form pages use separate sibling providers.

@@ -496,25 +496,67 @@ const form = useForm({
 
 The `~standard` contract and the schema-to-validator bridge live in `@pyreon/validation` (the universal, stack-wide validation gate); `@pyreon/form` depends on it and re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn`, so the historical `import { ValidationError } from '@pyreon/form'` still works. Reach for a typed adapter (`zodSchema(...)`) instead of the raw schema when you want the schema's field names checked against `TValues` at compile time.
 
-### Nested Schema Errors
+### Dot-Path Leaf Fields
 
-Standard Schema adapters report nested-field errors under a dot-path key — `{ 'address.city': 'Required' }`. `@pyreon/form` routes such an error to its **top-level ancestor field**, so an object-valued `address` field carries the message:
+A field key containing a dot (`'address.city'`) declares a **first-class leaf field**, addressable exactly like a top-level one — `register('address.city')`, `useField('address.city')`, `setFieldValue('address.city', …)`, `validators: { 'address.city': … }`, and `errors()['address.city']` all route to it:
 
 ```ts
+import { useForm, nestValues } from '@pyreon/form'
+
 const form = useForm({
-  initialValues: { address: { city: '' } },
-  schema: z.object({ address: z.object({ city: z.string().min(1) }) }),
-  onSubmit: async () => {},
+  initialValues: { name: '', 'address.city': '', 'address.zip': '' },
+  validators: {
+    'address.city': (v) => (v ? undefined : 'City is required'),
+    'address.zip': (v) => (/^\d{5}$/.test(v) ? undefined : 'Bad zip'),
+  },
+  onSubmit: (values) => api.save(nestValues(values)),
 })
 
-await form.validate() // false
-form.errors() // { address: 'City is required' } — surfaced on the ancestor field
+// h('input', form.register('address.city'))
+form.fields['address.city'].error() // 'City is required'
+form.errors() // { 'address.city': 'City is required', 'address.zip': 'Bad zip' }
 ```
+
+The value model is **flat** — `values()` / `getValues()` / `onSubmit` return the flat dot-path keys (`{ name, 'address.city', 'address.zip' }`), so field-name types stay honest. Convert to and from a nested API payload with `nestValues` / `flattenValues`:
+
+```ts
+nestValues(form.values()) // { name, address: { city, zip } }
+form.reset(flattenValues(serverData)) // nested server payload → flat baseline
+```
+
+<Example file="./examples/form/dot-path-leaf-fields" title="Dot-path leaf fields — per-leaf validation + nested submit payload" />
+
+### Schema-Error Routing (leaf vs ancestor)
+
+There are two routing modes, depending on how you declare the field:
+
+- **Leaf routing** — per-field validators (above), or a **flat-keyed schema**, route to the exact **leaf**:
+
+  ```ts
+  useForm({
+    initialValues: { 'address.city': '' },
+    schema: s.object({ 'address.city': s.string().min(1) }), // flat keys
+    onSubmit: () => {},
+  })
+  // → error surfaces on fields['address.city']
+  ```
+
+- **Ancestor routing** — a **nested schema** over a single object-valued field routes its dot-path error to the **ancestor** object field:
+
+  ```ts
+  const form = useForm({
+    initialValues: { address: { city: '' } }, // object field `address`
+    schema: z.object({ address: z.object({ city: z.string().min(1) }) }),
+    onSubmit: async () => {},
+  })
+  await form.validate() // false
+  form.errors() // { address: 'City is required' } — on the ancestor field
+  ```
 
 A schema error whose key matches **no** field (a real shape mismatch, or the path-less whole-form `""` key) marks the form invalid, sets `submitError`, and logs a dev warning — rather than being silently dropped (which previously let `onSubmit` fire with data the schema had rejected). Both the submit path and the blur path honor this.
 
 :::note
-The field model is flat in v1 — a nested schema error surfaces on the **ancestor** field (`address`), not on a per-leaf field (`address.city`).
+Declaring **both** an object field `address` **and** a leaf `address.city` dev-warns — a schema error keyed `address.city` would surface on both. Pick one style per branch. Not yet typed: `values()` / `onSubmit` carry the flat dot-path keys (not a nested `NestValues<T>` inference), and a **nested** schema's error is not auto-split to per-leaf fields — use a flat-keyed schema or per-field validators for leaf routing.
 :::
 
 ### Async Validators

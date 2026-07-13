@@ -5,6 +5,7 @@ import type { SchemaValidateFn, StandardSchemaLike } from '@pyreon/validation'
 import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 import type { FieldDefinition, InferFieldValues } from './field'
 import { isFieldDefinition } from './field'
+import { findPathAncestorConflict, nearestAncestorField } from './path'
 import type {
   FieldErrorProps,
   FieldLabelProps,
@@ -47,11 +48,19 @@ export function matchSchemaErrorForField(
 }
 
 /**
- * Schema-error keys whose top-level segment matches NO registered field — a
- * genuine schema/field shape mismatch (typo, an extra schema rule, or a
- * path-less whole-form error under the `""` key). These must NOT be silently
- * dropped: the form is treated as invalid and the keys are surfaced. Pure +
- * exported for unit testing.
+ * Schema-error keys that match NO registered field — a genuine schema/field
+ * shape mismatch (typo, an extra schema rule, or a path-less whole-form error
+ * under the `""` key). These must NOT be silently dropped: the form is treated
+ * as invalid and the keys are surfaced. Pure + exported for unit testing.
+ *
+ * A key is MATCHED (not orphan) when it is EXACTLY a field name — a top-level
+ * `email` OR a first-class dot-path leaf field `address.city` — or when it is
+ * NESTED under a registered object field (`address.city` under object field
+ * `address`, or a deeper `a.b.c` under object field `a.b`). The exact-match
+ * arm is what makes dot-path leaf fields first-class: without it a leaf error
+ * `address.city` was flagged as an orphan (its top segment `address` is not a
+ * field), so a leaf field + schema produced a spurious `submitError` even
+ * though the error had already routed to the leaf.
  */
 export function orphanSchemaErrorKeys(
   schemaErrors: Record<string, ValidationError | undefined>,
@@ -60,8 +69,9 @@ export function orphanSchemaErrorKeys(
   const orphans: string[] = []
   for (const key in schemaErrors) {
     if (schemaErrors[key] === undefined) continue
-    const top = key.split('.', 1)[0]!
-    if (!fieldNames.has(top)) orphans.push(key)
+    if (fieldNames.has(key)) continue // exact field (top-level OR dot-path leaf)
+    if (nearestAncestorField(key, fieldNames) !== undefined) continue // nested under object field
+    orphans.push(key)
   }
   return orphans
 }
@@ -234,9 +244,27 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     TValues[keyof TValues],
   ][]
 
-  // Registered top-level field names — used to match/route schema errors so a
-  // nested (`address.city`) or path-less schema error is never silently dropped.
+  // Registered field names (top-level AND dot-path leaf) — used to match/route
+  // schema errors so a leaf (`address.city`), a nested, or a path-less schema
+  // error is never silently dropped or spuriously flagged.
   const fieldNames: Set<string> = new Set(fieldEntries.map(([n]) => String(n)))
+
+  // Dev-only ambiguity guard: declaring BOTH an object field `address` AND a
+  // dot-path leaf `address.city` means a schema error keyed `address.city`
+  // matches both (leaf exactly, object via ancestor routing) → the message
+  // shows twice. Not corrupting (the flat value model keeps the keys separate),
+  // so this warns rather than throws — pick one style per branch.
+  if (process.env.NODE_ENV !== 'production') {
+    const conflict = findPathAncestorConflict([...fieldNames])
+    if (conflict) {
+      console.warn(
+        `[@pyreon/form] Ambiguous field declaration: an object field "${conflict[0]}" AND a ` +
+          `dot-path leaf field "${conflict[1]}" are both declared. A schema/validator error keyed ` +
+          `"${conflict[1]}" would surface on BOTH. Declare EITHER the object field (nested errors ` +
+          `route to it) OR the leaf field(s) (each surfaces its own error) — not both.`,
+      )
+    }
+  }
 
   const fields = {} as { [K in keyof TValues]: FieldState<TValues[K]> }
 
@@ -1292,6 +1320,19 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const init = initialValue as TValues[keyof TValues]
     fieldEntries.push([key, init])
     fieldNames.add(name)
+    // Dev-only ambiguity guard (see the setup-time check): a runtime field can
+    // introduce the same object-vs-leaf conflict (`registerField('address.city')`
+    // when `address` already exists, or vice versa).
+    if (process.env.NODE_ENV !== 'production') {
+      const conflict = findPathAncestorConflict([...fieldNames])
+      if (conflict) {
+        console.warn(
+          `[@pyreon/form] registerField("${name}") creates an ambiguous field pair: an object field ` +
+            `"${conflict[0]}" AND a dot-path leaf field "${conflict[1]}" are both registered. A schema/` +
+            `validator error keyed "${conflict[1]}" would surface on both — declare EITHER, not both.`,
+        )
+      }
+    }
     ;(currentInitials as Record<string, unknown>)[name] = init
     createFieldState(key, init)
     _valuesEpoch++ // new field → invalidate the values() snapshot cache

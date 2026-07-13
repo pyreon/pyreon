@@ -46,6 +46,19 @@ describe('orphanSchemaErrorKeys (pure)', () => {
   it('ignores undefined values', () => {
     expect(orphanSchemaErrorKeys({ phone: undefined }, fields)).toEqual([])
   })
+  it('does NOT flag an EXACT dot-path leaf field key (the leaf-field fix)', () => {
+    // `address.city` is itself a registered LEAF field — its top segment
+    // `address` is NOT a field, but the exact match must win so no orphan.
+    expect(orphanSchemaErrorKeys({ 'address.city': 'req' }, new Set(['address.city']))).toEqual([])
+  })
+  it('matches a deep key under a multi-segment object field', () => {
+    expect(orphanSchemaErrorKeys({ 'a.b.c': 'x' }, new Set(['a.b']))).toEqual([])
+  })
+  it('still flags a key with no matching field or ancestor', () => {
+    expect(orphanSchemaErrorKeys({ 'billing.zip': 'x' }, new Set(['address.city']))).toEqual([
+      'billing.zip',
+    ])
+  })
 })
 
 describe('useForm — nested schema error is no longer dropped (B1)', () => {
