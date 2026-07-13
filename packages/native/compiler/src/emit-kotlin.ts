@@ -1598,6 +1598,13 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // sibling val (can't live in the non-Composable `remember` lambda) and
   // injected, the same shape clipboard uses. Methods (`share.text("hi")`)
   // flow through unchanged.
+  if (d.kind === 'linking') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonLinking(${id}Ctx) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'share') {
     const id = kotlinIdent(d.name)
     return [

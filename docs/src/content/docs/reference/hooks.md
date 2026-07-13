@@ -1,22 +1,22 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "42 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
+description: "43 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 42 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 43 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 42 signal-based hooks across 7 categories
+- 43 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useReducedMotion, useThemeValue, useSpacing, useRootSize
 - Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo
-- Interaction: useClipboard, useHaptics, useShare, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle
+- Interaction: useClipboard, useHaptics, useShare, useLinking, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle
 - Data: useFetch — thin reactive JSON fetch (&#123; data, error, isPending, refetch &#125;); the web half of the multiplatform useFetch contract
 - Composition: useMergedRef, useUpdateEffect, useIsomorphicLayoutEffect
 - Every hook is SSR-safe and auto-cleans on unmount
@@ -38,7 +38,7 @@ import {
   // Timing
   useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo,
   // Interaction
-  useClipboard, useHaptics, useShare, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle,
+  useClipboard, useHaptics, useShare, useLinking, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle,
   // Composition
   useMergedRef, useUpdateEffect, useIsomorphicLayoutEffect,
 } from '@pyreon/hooks'
@@ -89,6 +89,7 @@ const dialog = useDialog()                 // native <dialog>: open signal + sho
 const online = useOnline()                 // Signal<boolean>
 const haptics = useHaptics()               // fire-and-forget: haptics.impact('light') / .notification('success') / .selection()
 const share = useShare()                   // platform share sheet: share.text('..') / share.url('..') / share.textUrl('..', '..')
+const linking = useLinking()               // open external URL: linking.openUrl('https://pyreon.dev')
 
 // 8. Composition primitives.
 const merged = useMergedRef(localRef, props.ref)   // forward ref + capture local

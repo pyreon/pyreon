@@ -146,4 +146,36 @@ final class PyreonCounterUITests: XCTestCase {
                 + "PyreonShare failed to present a UIActivityViewController"
         )
     }
+
+    // M3.2b — LINKING (useLinking) asserted on device. The shared
+    // Counter.tsx has `<Button onClick={() => linking.openUrl('https://
+    // pyreon.dev')}>Open`; PMTC emits `@State private var linking =
+    // PyreonLinking()` + `Button("Open") { linking.openUrl("...") }`.
+    // Tapping it hands the URL to `UIApplication.shared.open`, which
+    // backgrounds this app and hands off to Safari. OBSERVABLE — assert the
+    // app leaves the foreground (and/or Safari foregrounds) — a behavioral
+    // R4, not just "does not crash".
+    func test_openButtonOpensExternalUrl() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let openButton = app.buttons["Open"]
+        XCTAssertTrue(
+            openButton.waitForExistence(timeout: 30),
+            "Open button (useLinking) did not appear"
+        )
+        openButton.tap()
+
+        // `UIApplication.shared.open` hands the URL to the OS: this app
+        // backgrounds and Safari comes to the foreground. Assert EITHER
+        // observable (state reporting varies slightly by Simulator).
+        let appBackgrounded = app.wait(for: .runningBackground, timeout: 10)
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        let safariForeground = safari.wait(for: .runningForeground, timeout: 10)
+        XCTAssertTrue(
+            appBackgrounded || safariForeground,
+            "Tapping Open did not hand the URL to the OS — the app stayed "
+                + "foreground and Safari did not launch (PyreonLinking.openUrl failed)"
+        )
+    }
 }

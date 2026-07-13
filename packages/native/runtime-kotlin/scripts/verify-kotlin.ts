@@ -262,6 +262,41 @@ class Intent {
 }
 `
 
+// PyreonLinking-specific stubs — the android.content.Context + Intent
+// (ACTION_VIEW) + android.net.Uri surface PyreonLinking.kt uses, mirrored
+// EXACTLY. Gated behind --service=PyreonLinking. Split into two files
+// because a .kt file declares a single package (content + net).
+const ANDROID_LINKING_CONTENT_STUBS = `package android.content
+
+import android.net.Uri
+
+open class Context {
+  @Suppress("UNUSED_PARAMETER")
+  open fun startActivity(intent: Intent) {}
+}
+
+class Intent {
+  companion object {
+    const val ACTION_VIEW = "android.intent.action.VIEW"
+    const val FLAG_ACTIVITY_NEW_TASK = 0
+  }
+  @Suppress("UNUSED_PARAMETER")
+  constructor(action: String, uri: Uri)
+  @Suppress("UNUSED_PARAMETER")
+  fun addFlags(flags: Int): Intent = this
+}
+`
+
+const ANDROID_NET_STUBS = `package android.net
+
+class Uri {
+  companion object {
+    @Suppress("UNUSED_PARAMETER")
+    fun parse(uriString: String): Uri = Uri()
+  }
+}
+`
+
 // PyreonWebSocketOkHttp-specific stubs — the okhttp3 4.x surface the
 // transport file uses, mirrored EXACTLY (no superset — a superset stub
 // masks; the same rule the compiler's kotlin-stubs.ts documents 4×).
@@ -369,6 +404,12 @@ try {
   if (SERVICE === 'PyreonShare') {
     writeFileSync(shareIntentPath, ANDROID_SHARE_STUBS, 'utf8')
   }
+  const linkingContentPath = join(tempDir, 'AndroidContentLinking.kt')
+  const linkingNetPath = join(tempDir, 'AndroidNet.kt')
+  if (SERVICE === 'PyreonLinking') {
+    writeFileSync(linkingContentPath, ANDROID_LINKING_CONTENT_STUBS, 'utf8')
+    writeFileSync(linkingNetPath, ANDROID_NET_STUBS, 'utf8')
+  }
   const okhttpPath = join(tempDir, 'OkHttp3.kt')
   if (SERVICE === 'PyreonWebSocketOkHttp') {
     writeFileSync(okhttpPath, OKHTTP3_STUBS, 'utf8')
@@ -400,6 +441,7 @@ try {
   // PyreonHaptics-only stub source (the Compose hapticfeedback package).
   const hapticStubs = SERVICE === 'PyreonHaptics' ? [hapticFeedbackPath] : []
   const shareStubs = SERVICE === 'PyreonShare' ? [shareIntentPath] : []
+  const linkingStubs = SERVICE === 'PyreonLinking' ? [linkingContentPath, linkingNetPath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
   // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
   const okhttpExtras =
@@ -416,6 +458,7 @@ try {
         ...clipboardStubs,
         ...hapticStubs,
         ...shareStubs,
+        ...linkingStubs,
         ...okhttpExtras,
         SOURCE_FILE,
       ]
@@ -428,6 +471,7 @@ try {
         ...clipboardStubs,
         ...hapticStubs,
         ...shareStubs,
+        ...linkingStubs,
         ...okhttpExtras,
         SOURCE_FILE,
         TEST_FILE,

@@ -8,7 +8,7 @@
 // SwiftUI's @State is a var, not a method).
 
 import { signal } from '@pyreon/reactivity'
-import { useHaptics, useShare } from '@pyreon/hooks'
+import { useHaptics, useShare, useLinking } from '@pyreon/hooks'
 
 export function Counter() {
   const count = signal<number>(0)
@@ -24,6 +24,12 @@ export function Counter() {
   // Web: `navigator.share({ url })`. UNLIKE haptics this IS observable — the
   // share sheet appears — so the device gate asserts the sheet exists.
   const share = useShare()
+  // M3.2b platform-API proof — an Open button opens an external URL.
+  // Native: iOS `PyreonLinking().openUrl(...)` (UIApplication.shared.open),
+  // Android `PyreonLinking(ctx).openUrl(...)` (Intent.ACTION_VIEW). Web:
+  // `window.open`. Observable — tapping it backgrounds the app / foregrounds
+  // Safari — so the device gate asserts the app leaves the foreground.
+  const linking = useLinking()
   return (
     <VStack>
       <Text>Count: {count}</Text>
@@ -36,6 +42,7 @@ export function Counter() {
         Increment
       </Button>
       <Button onClick={() => share.url('https://pyreon.dev')}>Share</Button>
+      <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
       {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
           Native: iOS `.onLongPressGesture { count = 0 }`, Android
           `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms
