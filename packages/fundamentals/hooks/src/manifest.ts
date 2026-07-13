@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '44 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useDialog/useKeyboard/useOnline/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '45 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useDialog/useKeyboard/useOnline/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 44 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 45 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   longExample: `import {
   // State
@@ -25,7 +25,7 @@ export default defineManifest({
   useEventListener, useClickOutside, useFocus, useHover, useFocusTrap,
   useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll,
   // Responsive
-  useBreakpoint, useMediaQuery, useColorScheme, useReducedMotion, useThemeValue, useSpacing, useRootSize,
+  useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion, useThemeValue, useSpacing, useRootSize,
   // Timing
   useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo,
   // Interaction
@@ -64,6 +64,7 @@ const scroll = useScrollLock()             // scroll.lock() / scroll.unlock() �
 const bp = useBreakpoint()                 // () => string — active breakpoint name ('xs'|'sm'|'md'|'lg'|'xl')
 const isMobile = useMediaQuery('(max-width: 640px)')
 const colorScheme = useColorScheme()       // Signal<'light' | 'dark'> from prefers-color-scheme
+const sizeClass = useSizeClass()           // () => 'compact' | 'regular' — SwiftUI/Compose size-class analog (min-width: 600px)
 const motion = useReducedMotion()          // Signal<boolean> from prefers-reduced-motion
 
 // 6. Timing — debounced/throttled signals + callbacks.
@@ -94,10 +95,10 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
-    '44 signal-based hooks across 7 categories',
+    '45 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
-    'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useReducedMotion, useThemeValue, useSpacing, useRootSize',
+    'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion, useThemeValue, useSpacing, useRootSize',
     'Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo',
     'Interaction: useClipboard, useHaptics, useShare, useLinking, useNotifications, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle',
     'Data: useFetch — thin reactive JSON fetch ({ data, error, isPending, refetch }); the web half of the multiplatform useFetch contract',

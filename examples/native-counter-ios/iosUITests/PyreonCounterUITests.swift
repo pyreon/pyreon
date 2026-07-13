@@ -209,4 +209,31 @@ final class PyreonCounterUITests: XCTestCase {
                 + "PyreonNotifications.notify crashed"
         )
     }
+
+    // M2.2 — SIZE CLASS (useSizeClass) asserted on device. The shared
+    // Counter.tsx has `<Text>Size: {sizeClass}</Text>` where
+    // `const sizeClass = useSizeClass()`; PMTC emits an
+    // `@Environment(\.horizontalSizeClass)` injection + a computed
+    // `sizeClass: String { pyreonSizeClass == .regular ? "regular" : "compact" }`,
+    // rendered as `Text("Size: \(sizeClass)")`.
+    //
+    // BEHAVIORAL R4 (unlike haptics/notifications): the rendered value
+    // reflects the REAL device environment. An iPhone (this scheme's
+    // Simulator destination) reports `.compact`, so the text must read
+    // "Size: compact" — proving the hook reads the live size class, not
+    // a baked constant. The differentiating counterpart is proven
+    // LOCALLY on an iPad Simulator (horizontalSizeClass == .regular →
+    // "Size: regular"); the nightly gate runs iPhone only, so the
+    // committed assertion is the iPhone/compact side.
+    func test_sizeClassReadsCompactOnPhone() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Size: compact"].waitForExistence(timeout: 30),
+            "Expected \"Size: compact\" on an iPhone Simulator — useSizeClass "
+                + "did not read the horizontal size class (or emitted a "
+                + "non-environment constant)"
+        )
+    }
 }

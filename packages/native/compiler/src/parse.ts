@@ -3102,6 +3102,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'usePermissions',
     'useOnline',
     'useColorScheme',
+    'useSizeClass',
     'useNetworkStatus',
     'useGeolocation',
     'useWebSocket',
@@ -3704,6 +3705,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // same `"light" | "dark"` string shape the web hook uses.
   if (calleeName === 'useColorScheme') {
     return { kind: 'color-scheme', name }
+  }
+  // M2.2 — `const sizeClass = useSizeClass()` from `@pyreon/hooks`
+  // → platform-native horizontal size-class read. No arguments. NO
+  // runtime port needed (same shape as useColorScheme) — SwiftUI ships
+  // `@Environment(\.horizontalSizeClass)` and Compose derives it from
+  // `LocalConfiguration.current.screenWidthDp`. Emit returns the same
+  // `"compact" | "regular"` string the web hook uses.
+  if (calleeName === 'useSizeClass') {
+    return { kind: 'size-class', name }
   }
   // Phase 5 — native data/services hooks. Each instantiates a runtime
   // service container (mirrors useOnline/usePermissions). No args (except
@@ -5780,6 +5790,7 @@ function warnIfHookInsideRenderCallback(
     'useLinking',
     'useNotifications',
     'useColorScheme',
+    'useSizeClass',
     'usePermissions',
     'useOnline',
     'useGeolocation',

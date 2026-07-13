@@ -234,6 +234,14 @@ let _usesRouter = false
  */
 let _usesColorScheme = false
 /**
+ * Per-component: set to true when the component declares `useSizeClass`.
+ * When set, the View struct gains `@Environment(\.horizontalSizeClass)
+ * private var pyreonSizeClass: UserInterfaceSizeClass?` so the computed
+ * property emit can read it. Same @Environment-init constraint as
+ * `_usesColorScheme`.
+ */
+let _usesSizeClass = false
+/**
  * C5.2: per-component map from router-decl name → its routes array.
  * Populated at the start of each `emitSwiftComponent` from the
  * `kind: 'router'` decls that carry routes. `emitSwiftRouterProvider`
@@ -1306,6 +1314,9 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Same shape for useColorScheme — set during decl-pass if any
   // `kind: 'color-scheme'` binding is present.
   _usesColorScheme = false
+  // Same shape for useSizeClass — set during decl-pass if any
+  // `kind: 'size-class'` binding is present.
+  _usesSizeClass = false
   // C5.2: reset router-routes map. Populated during decl-pass for
   // each `kind: 'router'` decl with a non-undefined routes array.
   _routerRoutes = new Map()
@@ -1362,6 +1373,9 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Phase 4 follow-up: useColorScheme reads SwiftUI's
     // @Environment(\.colorScheme), so the View needs the injection.
     if (d.kind === 'color-scheme') _usesColorScheme = true
+    // M2.2: useSizeClass reads SwiftUI's @Environment(\.horizontalSizeClass),
+    // so the View needs that injection.
+    if (d.kind === 'size-class') _usesSizeClass = true
     // Phase B6: `const data = useLoaderData<T>()` reads via the runtime
     // helper `useLoaderData(router:)` which takes the @Environment-injected
     // pyreonRouter. Mark _usesRouter so the View struct gets the
@@ -1446,6 +1460,17 @@ function emitSwiftComponent(c: ComponentIR): string {
   if (_usesColorScheme) {
     lines.push(
       `  @Environment(\\.colorScheme) private var pyreonColorScheme: ColorScheme`,
+    )
+  }
+  // M2.2: useSizeClass injection. SwiftUI's `@Environment(\.horizontalSizeClass)`
+  // is the system-supplied compact/regular width class — no runtime port
+  // needed. Each useSizeClass decl's computed property reads
+  // `pyreonSizeClass` to derive the "compact"/"regular" string. Optional
+  // because the environment value is `UserInterfaceSizeClass?` (nil on
+  // platforms/contexts without a class → treated as compact).
+  if (_usesSizeClass) {
+    lines.push(
+      `  @Environment(\\.horizontalSizeClass) private var pyreonSizeClass: UserInterfaceSizeClass?`,
     )
   }
   for (const d of c.decls) {
@@ -1992,6 +2017,17 @@ function emitSwiftDecl(
   // the router hooks document.
   if (d.kind === 'color-scheme') {
     return `private var ${swiftIdent(d.name)}: String { pyreonColorScheme == .dark ? "dark" : "light" }`
+  }
+  // M2.2: `const sizeClass = useSizeClass()` → a computed property
+  // reading the View's @Environment(\.horizontalSizeClass) injection
+  // (added via _usesSizeClass). Returns a `"compact" | "regular"`
+  // string for parity with the web hook so cross-platform code reading
+  // `sizeClass === 'regular'` works on all three targets. `.regular`
+  // is the expanded (iPad / landscape / split) width; nil or `.compact`
+  // → "compact". Computed for the same @Environment-init reason as
+  // color-scheme.
+  if (d.kind === 'size-class') {
+    return `private var ${swiftIdent(d.name)}: String { pyreonSizeClass == .regular ? "regular" : "compact" }`
   }
   // computed — infer the return type from the expression body so we
   // can emit a typed computed property. Falls back to `Any` for cases

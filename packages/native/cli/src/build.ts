@@ -258,6 +258,14 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('LocalContext.current')) {
     imports.push('import androidx.compose.ui.platform.LocalContext')
   }
+  // M2.2 size-class (`const sizeClass = useSizeClass()`): the emitted code
+  // reads `LocalConfiguration.current.screenWidthDp`. LocalConfiguration
+  // lives in androidx.compose.ui.platform (same single-package as
+  // LocalContext, NOT the star-imported ui.*), so it needs its own
+  // conditional import keyed on the emitted read.
+  if (emitted.includes('LocalConfiguration.current')) {
+    imports.push('import androidx.compose.ui.platform.LocalConfiguration')
+  }
   // Modal emit (<Modal>): Dialog is androidx.compose.ui.window — not in
   // the star-imported ui.* (single-package).
   if (emitted.includes('Dialog(')) {

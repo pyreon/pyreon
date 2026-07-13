@@ -352,6 +352,23 @@ export type DeclIR =
    */
   | { kind: 'color-scheme'; name: string }
   /**
+   * M2.2 — horizontal size-class read via `const sizeClass = useSizeClass()`
+   * from `@pyreon/hooks`. Maps to platform-native "is this an expanded
+   * (tablet / landscape / split) width" reads — NO runtime port needed
+   * (same shape as color-scheme):
+   *
+   *   Swift  → @Environment(\.horizontalSizeClass) private var pyreonSizeClass
+   *            + private var ${name}: String { pyreonSizeClass == .regular ? "regular" : "compact" }
+   *   Kotlin → val ${name} = if (LocalConfiguration.current.screenWidthDp >= 600) "regular" else "compact"
+   *
+   * Returns the same `"compact" | "regular"` string shape the web hook
+   * uses, so cross-platform code reading `sizeClass === 'regular'` works
+   * identically. `useSizeClass()` takes no arguments. The Swift shape
+   * uses a computed property because @Environment isn't readable at
+   * stored-let init time (same constraint color-scheme documents).
+   */
+  | { kind: 'size-class'; name: string }
+  /**
    * Phase 5 (native data/services hook emit). Reactive-container hooks that
    * instantiate the @pyreon/native-runtime-{swift,kotlin} service containers
    * shipped this arc. Each mirrors the `network-status` / `permissions`
