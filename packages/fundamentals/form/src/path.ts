@@ -122,21 +122,26 @@ export function nestValues(flat: Record<string, unknown>): Record<string, unknow
 
 const NUMERIC_SEGMENT = /^(?:0|[1-9]\d*)$/
 
-// Segments that would let a crafted flat key walk into a prototype and pollute
-// it (`"__proto__.polluted"`). Never a legitimate field name; a path containing
-// one is dropped wholesale — the standard post-CVE `lodash.set` posture.
-const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype'])
-
 function setPath(root: Record<string, unknown>, path: string, value: unknown): void {
   const parts = path.split('.')
-  for (const part of parts) {
-    if (FORBIDDEN_SEGMENTS.has(part)) return // prototype-pollution guard
-  }
-  // A container keyed by "" (an empty top-level path — a flattened leaf whose
-  // whole value was a scalar with no key) is assigned directly.
   let cur: Record<string, unknown> = root
-  for (let i = 0; i < parts.length - 1; i++) {
+  for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!
+    // Prototype-pollution guard. An explicit `===` comparison (NOT a `Set.has`
+    // membership test) placed in the walk loop so it dominates EVERY write below
+    // — the final leaf assignment AND each intermediate container creation. This
+    // is the barrier form static taint analysis recognizes; `__proto__` /
+    // `constructor` / `prototype` are never legitimate field names, so a path
+    // containing one is rejected — the standard post-CVE `lodash.set` posture.
+    if (part === '__proto__' || part === 'constructor' || part === 'prototype') {
+      return
+    }
+    // Last segment (incl. the "" empty top-level path — a flattened leaf whose
+    // whole value was a scalar with no key) is the assignment target.
+    if (i === parts.length - 1) {
+      cur[part] = value
+      return
+    }
     const nextIsIndex = NUMERIC_SEGMENT.test(parts[i + 1]!)
     const existing = cur[part]
     if (existing === null || typeof existing !== 'object') {
@@ -144,5 +149,4 @@ function setPath(root: Record<string, unknown>, path: string, value: unknown): v
     }
     cur = cur[part] as Record<string, unknown>
   }
-  cur[parts[parts.length - 1]!] = value
 }
