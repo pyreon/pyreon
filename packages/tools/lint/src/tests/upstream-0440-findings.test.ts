@@ -76,8 +76,30 @@ describe('LT-3 — no-unbatched-updates: await boundaries + non-signal receivers
   it('Bug B: does NOT fire on a URLSearchParams triple-set', () => {
     expect(fire('function f(){ const p = new URLSearchParams(); p.set("a","1"); p.set("b","2"); p.set("c","3") }')).toBe(0)
   })
+  it('Bug B: does NOT fire on an inline new Map().set() chain', () => {
+    expect(fire('function f(){ new Map().set("a",1); new Map().set("b",2); new Map().set("c",3) }')).toBe(0)
+  })
   it('still FIRES on 3 sync sets before an await', () => {
     expect(fire('async function f(){ a.set(1); b.set(2); c.set(3); await x() }')).toBe(1)
+  })
+
+  // maxPathSets branch coverage — the per-node-type counting the rule relies on.
+  it('counts the max path when the ELSE branch early-returns', () => {
+    // if-path: a+b+d = 3 (fires); else-path: a+c then return (d unreachable) = 2.
+    expect(fire('function f(){ a.set(1); if (x) { b.set(2) } else { c.set(3); return }; d.set(4) }')).toBe(1)
+  })
+  it('counts a comma sequence of sets', () => {
+    expect(fire('function f(){ a.set(1), b.set(2), c.set(3) }')).toBe(1)
+  })
+  it('counts sets inside a labeled loop body (per iteration)', () => {
+    expect(fire('function f(){ outer: for (let i = 0; i < 3; i++) { a.set(1); b.set(2); c.set(3) } }')).toBe(1)
+  })
+  it('does not fire when the rule path is exempt', () => {
+    const rule = noUnbatchedUpdates
+    const res = lintFile('src/legacy/x.tsx', 'function f(){ a.set(1); b.set(2); c.set(3) }', [rule], {
+      rules: { 'pyreon/no-unbatched-updates': ['warn', { exemptPaths: ['src/legacy/'] }] },
+    })
+    expect(res.diagnostics.filter((d) => d.ruleId === 'pyreon/no-unbatched-updates').length).toBe(0)
   })
 })
 
