@@ -50,7 +50,11 @@ const App = () => <CodeEditor instance={editor} style="height: 400px" />
 | `vim` / `emacs` | `false` | Keybindings |
 | `tabSize` | `2` | |
 | `placeholder` | — | Hint text when empty |
-| `keybindings` | — | Custom keymap |
+| `minimap` | `false` | Canvas code-overview sidebar |
+| `ariaLabel` | `'Code editor'` | Accessible name for the content textbox |
+| `onError` | — | Mount-failure handler (throwing extension / failed grammar import) |
+
+Add custom keybindings imperatively on the instance: `editor.addKeybinding('Ctrl-s', () => save())`.
 
 `EditorInstance` shape:
 
@@ -70,7 +74,7 @@ const App = () => <CodeEditor instance={editor} style="height: 400px" />
 | `undo()` / `redo()` / `foldAll()` / `unfoldAll()` | imperative |
 | `dispose()` | manual cleanup (auto on unmount when used via `<CodeEditor>`) |
 
-## Languages — 20 supported, lazy-loaded
+## Languages — 20 identifiers, lazy-loaded
 
 ```ts
 import { loadLanguage, getAvailableLanguages } from '@pyreon/code'
@@ -82,6 +86,8 @@ getAvailableLanguages()
 
 await loadLanguage('typescript') // returns a CodeMirror Extension
 ```
+
+**19 have a real grammar** (`plain` is intentionally empty — plain-text editing). 17 come from the modern `@codemirror/lang-*` packages; `ruby` and `shell` come from `@codemirror/legacy-modes` (CodeMirror-5-era StreamLanguage grammars). All are lazy-loaded — an uninstalled optional grammar package resolves to an empty extension rather than throwing, so a JSON-only editor never downloads the Rust or C++ grammar.
 
 Setting `editor.language.set('python')` triggers the load + grammar swap; mid-load the editor stays usable in the previous grammar.
 
@@ -104,19 +110,24 @@ Single-pane editor mounting the `EditorInstance` view.
 
 ### `<TabbedEditor>` — multi-file editor
 
-```tsx
-import { TabbedEditor } from '@pyreon/code'
+Build a `TabbedEditorInstance` with `createTabbedEditor`, then pass it via the
+component's `instance` prop. A `Tab` uses `name` (the displayed file name), not
+`label`; `id` is the optional unique key (defaults to `name`).
 
-;<TabbedEditor
-  tabs={[
-    { id: 'main', label: 'main.ts', value: 'export {}', language: 'typescript' },
-    { id: 'style', label: 'style.css', value: 'body {}', language: 'css' },
-  ]}
-  style="height: 500px"
-/>
+```tsx
+import { createTabbedEditor, TabbedEditor } from '@pyreon/code'
+
+const tabbed = createTabbedEditor({
+  tabs: [
+    { id: 'main', name: 'main.ts', value: 'export {}', language: 'typescript' },
+    { id: 'style', name: 'style.css', value: 'body {}', language: 'css' },
+  ],
+})
+
+;<TabbedEditor instance={tabbed} style="height: 500px" />
 ```
 
-The exported `TabbedEditorInstance` (when accessed via lower-level APIs) exposes `editor`, `tabs: Signal<Tab[]>`, `activeTab: Computed<Tab | null>`, `activeTabId: Signal<string>`, plus `openTab` / `closeTab` / `switchTab` actions.
+`TabbedEditorInstance` exposes `editor`, `tabs: Signal<Tab[]>`, `activeTab: Computed<Tab | null>`, `activeTabId: Signal<string>`, plus `openTab` / `closeTab` / `switchTab` / `renameTab` / `setModified` / `moveTab` / `closeAll` / `closeOthers` actions.
 
 ## Two-way binding to an external signal
 
@@ -131,9 +142,9 @@ const code = signal('export const x = 1')
 const { dispose } = bindEditorToSignal({
   editor,
   signal: code, // Signal<string> or any SignalLike<T>
-  serialize: (v) => v, // T → string (default identity for string T)
-  parse: (s) => s, // string → T (default identity)
-  onParseError: (err, source) => console.warn('parse failed:', err),
+  serialize: (v) => v, // T → string
+  parse: (s) => s, // string → T | null (return null on parse failure)
+  onParseError: (err) => console.warn('parse failed:', err.message),
 })
 
 // External writes flow into the editor; user edits flow back into `code`.
@@ -143,9 +154,9 @@ const { dispose } = bindEditorToSignal({
 onUnmount(dispose)
 ```
 
-Accepts a generic `T` — use `serialize` / `parse` to round-trip JSON, YAML, or any custom format. Both directions are loop-safe.
+Accepts a generic `T` — use `serialize` / `parse` to round-trip JSON, YAML, or any custom format. Both directions are loop-safe. `parse` returns `T | null` — return `null` (or throw) on invalid input to route it to `onParseError`.
 
-For the simple Pyreon-signal-only case, `useEditorSignal(signal)` is a one-line wrapper that returns a configured `EditorInstance`.
+`useEditorSignal(options)` is the same binding with automatic cleanup: it takes the same `BindEditorToSignalOptions`, calls `bindEditorToSignal` for you, and disposes on unmount (via `onUnmount`) — no manual `dispose()` needed.
 
 ## Minimap
 

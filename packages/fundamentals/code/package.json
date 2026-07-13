@@ -36,6 +36,7 @@
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "typecheck": "tsc --noEmit",
+    "bench": "bun bench/bundle-bench.ts",
     "lint": "oxlint ."
   },
   "peerDependencies": {
@@ -56,11 +57,16 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
+    "@monaco-editor/react": "^4.7.0",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
+    "@uiw/react-codemirror": "^4.25.4",
     "@vitest/browser-playwright": "^4.1.8",
-    "@vitus-labs/tools-lint": "^2.6.3"
+    "@vitus-labs/tools-lint": "^2.6.3",
+    "monaco-editor": "^0.55.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "optionalDependencies": {
     "@codemirror/lang-cpp": "^6.0.2",
@@ -76,7 +82,8 @@
     "@codemirror/lang-rust": "^6.0.2",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/lang-xml": "^6.1.0",
-    "@codemirror/lang-yaml": "^6.1.2"
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@codemirror/legacy-modes": "^6.5.1"
   },
   "publishConfig": {
     "access": "public"

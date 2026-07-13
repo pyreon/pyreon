@@ -4254,7 +4254,7 @@ tabbed.activeTab()   // Computed<Tab | null>
     signature: '(language: EditorLanguage) => Promise<Extension>',
     example: `const ext = await loadLanguage('python') // the CodeMirror Extension
 // createEditor({ language: 'python' }) now resolves instantly (cache warm)`,
-    notes: 'Lazy-load a language grammar and return its CodeMirror `Extension`. Supports 19 grammars (json, typescript, javascript, jsx, tsx, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php, ruby, shell). The result is cached per language; an uninstalled or unknown grammar resolves to an empty `[]` extension (never throws). `createEditor` loads the grammar for its `language` on mount, so calling `loadLanguage` ahead of time just warms the cache. See also: createEditor, getAvailableLanguages.',
+    notes: 'Lazy-load a language grammar and return its CodeMirror `Extension`. All 19 non-plain identifiers ship a real grammar: json, typescript, javascript, jsx, tsx, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php from the modern `@codemirror/lang-*` packages, plus ruby and shell from `@codemirror/legacy-modes` (StreamLanguage). `plain` is intentionally empty. The result is cached per language; an uninstalled optional grammar package (or an unknown identifier) resolves to an empty `[]` extension (never throws). `createEditor` loads the grammar for its `language` on mount, so calling `loadLanguage` ahead of time just warms the cache. See also: createEditor, getAvailableLanguages.',
   },
 
   'code/minimapExtension': {

@@ -270,14 +270,17 @@ describe('resolveTheme', () => {
 // ─── loadLanguage — additional languages ─────────────────────────────────
 
 describe('loadLanguage — additional', () => {
-  it('loads ruby (returns empty extension)', async () => {
+  it('loads ruby (real StreamLanguage grammar via @codemirror/legacy-modes)', async () => {
     const ext = await loadLanguage('ruby')
-    expect(ext).toEqual([])
+    // A real grammar, not the old `[]` plain-text fallback.
+    expect(ext).toBeDefined()
+    expect(ext).not.toEqual([])
   })
 
-  it('loads shell (returns empty extension)', async () => {
+  it('loads shell (real StreamLanguage grammar via @codemirror/legacy-modes)', async () => {
     const ext = await loadLanguage('shell')
-    expect(ext).toEqual([])
+    expect(ext).toBeDefined()
+    expect(ext).not.toEqual([])
   })
 
   it('returns empty for unknown language', async () => {

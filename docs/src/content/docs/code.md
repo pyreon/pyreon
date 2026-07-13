@@ -3,7 +3,7 @@ title: Code Editor
 description: Reactive code editor for Pyreon — CodeMirror 6 with signal-backed state, minimap, diff editor, tabs, and lazy-loaded languages.
 ---
 
-`@pyreon/code` is a reactive code editor built on [CodeMirror 6](https://codemirror.net). Every piece of editor state — content, language, theme, cursor, selection — is a Pyreon signal, so the editor composes with the rest of your reactive app the same way any other signal does. It ships a canvas-based minimap, a side-by-side diff editor, lazy-loaded language grammars, and a two-way signal binding helper. ~250 KB modular instead of Monaco's ~2.5 MB.
+`@pyreon/code` is a reactive code editor built on [CodeMirror 6](https://codemirror.net). Every piece of editor state — content, language, theme, cursor, selection — is a Pyreon signal, so the editor composes with the rest of your reactive app the same way any other signal does. It ships a canvas-based minimap, a side-by-side diff editor, lazy-loaded language grammars, and a two-way signal binding helper. The core editor measures ~138 KB gzipped (~416 KB minified) — about 7x lighter than Monaco's ~940 KB gzipped core, with each language grammar streaming as a ~40 KB gzipped lazy chunk (reproduce: `bun run --filter=@pyreon/code bench`).
 
 <PackageBadge name="@pyreon/code" href="/docs/code" />
 
@@ -147,12 +147,12 @@ A few options that behave non-obviously:
 
 ## Languages
 
-20 language identifiers are supported. 17 ship a real grammar (lazy-loaded as an optional dependency); `ruby`, `shell`, and `plain` resolve to an empty extension (plain-text editing, no syntax highlighting) — there's no grammar package for them.
+20 language identifiers are supported. **19 ship a real grammar** (lazy-loaded as an optional dependency); only `plain` resolves to an empty extension (plain-text editing, no syntax highlighting). 17 come from the modern `@codemirror/lang-*` packages; `ruby` and `shell` come from `@codemirror/legacy-modes` (CodeMirror-5-era StreamLanguage grammars).
 
 ```text
 javascript  typescript  jsx   tsx    html   css    json   markdown
 python      rust        sql   xml    yaml   cpp    java   go      php
-ruby*       shell*      plain*                        (* plain-text — no grammar)
+ruby        shell       plain*                       (* plain-text — no grammar)
 ```
 
 Grammars are imported on demand — zero cost until used. Switching language at runtime lazy-loads the new grammar and hot-swaps it into the live view:
@@ -693,4 +693,18 @@ Returns a CodeMirror `Extension` — the canvas code-overview minimap. Equivalen
 
 ## Bundle Size
 
-`@pyreon/code` is built on CodeMirror 6 (~250 KB) instead of Monaco (~2.5 MB). The core editor, search, history, lint underlines, and diff (`@codemirror/merge`) ship as regular dependencies. The 14 language grammars are `optionalDependencies` loaded on demand by `loadLanguage` — a JSON-only editor never downloads the Rust, C++, or Markdown grammars. Vim and Emacs key modes are optional, not bundled at all.
+`@pyreon/code` is built on CodeMirror 6 instead of Monaco. Language grammars are `optionalDependencies` loaded on demand by `loadLanguage`, so a JSON-only editor never downloads the Rust, C++, or Markdown grammar; Vim and Emacs key modes are optional and not bundled at all.
+
+Measured with esbuild (ESM, minify, tree-shake, code-split) + gzip -9 — reproduce with `bun run --filter=@pyreon/code bench`:
+
+| Bundle | minified | gzipped | notes |
+| --- | --- | --- | --- |
+| `@pyreon/code` core editor | ~416 KB | **~138 KB** | CM6 core + wrapper; framework runtime external, no grammar |
+| — + one language grammar | ~111 KB | ~41 KB | streams on first use; reuses the loaded core |
+| `@pyreon/code` full API | ~444 KB | ~147 KB | + diff + tabs + minimap + binding |
+| `@uiw/react-codemirror` | ~396 KB | ~129 KB | fair peer — wraps the same CM6 (React external) |
+| `monaco-editor` ESM core | ~3.6 MB | **~940 KB** | conservative lower bound (CSS, fonts, web workers excluded) |
+
+The two CM6 wrappers land within ~7% of each other — they wrap the same engine, so the delta is wrapper + which-extensions-each-bundles, not the editor. Against Monaco, `@pyreon/code`'s core is **~7x smaller gzipped**, and Monaco's real footprint is larger still once its CSS and web-worker bundles are counted.
+
+This is a bundle-size measurement, not a runtime latency benchmark — the mount / doc-swap / reactive-binding timing comparison is a separate axis (it needs real-browser layout).

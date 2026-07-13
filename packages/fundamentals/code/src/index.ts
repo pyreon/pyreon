@@ -2,8 +2,9 @@
  * @pyreon/code — Reactive code editor for Pyreon.
  *
  * CodeMirror 6 with signal-backed state, lazy-loaded languages,
- * custom minimap, and diff editor. ~250KB for a full-featured
- * code editor instead of ~2.5MB for Monaco.
+ * custom minimap, and diff editor. The core editor is ~138 KB gz
+ * (measured) — about 7x lighter than Monaco's ~940 KB gz core.
+ * Reproduce: `bun run --filter=@pyreon/code bench`.
  *
  * @example
  * ```tsx

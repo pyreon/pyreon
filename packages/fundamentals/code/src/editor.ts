@@ -14,6 +14,8 @@ import {
 } from '@codemirror/commands'
 import {
   bracketMatching,
+  foldAll as cmFoldAll,
+  unfoldAll as cmUnfoldAll,
   defaultHighlightStyle,
   foldGutter,
   foldKeymap,
@@ -521,16 +523,18 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
-    const { foldAll: foldAllCmd } = require('@codemirror/language')
-    foldAllCmd(v)
+    // `foldAll`/`unfoldAll` are statically imported from @codemirror/language —
+    // a prior `require('@codemirror/language')` here threw `require is not
+    // defined` in every ESM browser bundle (this package is `type: module`),
+    // so editor.foldAll()/unfoldAll() crashed the moment they ran in a real app.
+    cmFoldAll(v)
   }
 
   function unfoldAll(): void {
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const v = view.peek()
     if (!v) return
-    const { unfoldAll: unfoldAllCmd } = require('@codemirror/language')
-    unfoldAllCmd(v)
+    cmUnfoldAll(v)
   }
 
   // ── Diagnostics ────────────────────────────────────────────────────

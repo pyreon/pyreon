@@ -35,7 +35,12 @@ function renderMinimap(canvas: HTMLCanvasElement, view: EditorView): void {
   const height = canvas.clientHeight
   canvas.height = height * 2 // retina
 
-  const isDark = view.dom.classList.contains('cm-dark')
+  // Detect dark mode via the `EditorView.darkTheme` facet, which CodeMirror
+  // sets from `EditorView.theme(spec, { dark: true })` (what our `darkTheme`
+  // uses). The prior `view.dom.classList.contains('cm-dark')` check NEVER
+  // matched — CM6 applies hashed style-mod classes (e.g. `ͼ1 ͼ3`), not a
+  // `cm-dark` class — so a dark editor always got the light minimap background.
+  const isDark = view.state.facet(EditorView.darkTheme)
   const bg = isDark ? MINIMAP_BG : MINIMAP_BG_LIGHT
   const textColor = isDark ? TEXT_COLOR : TEXT_COLOR_LIGHT
 
@@ -138,7 +143,19 @@ export function minimapExtension(): Extension {
         }
 
         update(update: ViewUpdate) {
-          if (update.docChanged || update.viewportChanged || update.geometryChanged) {
+          // Re-render on a dark/light theme swap too — a `themeCompartment`
+          // reconfigure (editor.theme.set('dark')) doesn't always flip
+          // `geometryChanged`, so compare the darkTheme facet across the update
+          // to repaint the minimap background when the theme flips.
+          const themeChanged =
+            update.startState.facet(EditorView.darkTheme) !==
+            update.state.facet(EditorView.darkTheme)
+          if (
+            update.docChanged ||
+            update.viewportChanged ||
+            update.geometryChanged ||
+            themeChanged
+          ) {
             // Use the host view's window via `ownerDocument.defaultView`
             // instead of the global — SSR-safe and correctly scoped to the
             // view's own window in multi-frame scenarios.
