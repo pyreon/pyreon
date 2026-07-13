@@ -377,7 +377,7 @@ export function getHotkeyConflicts(): ReadonlyArray<{
 }> {
   const groups = new Map<string, HotkeyEntry[]>()
   for (const e of entries) {
-    const key = `${e.options.scope} ${entrySignature(e)}`
+    const key = `${e.options.scope}\u0000${entrySignature(e)}`
     const g = groups.get(key)
     if (g) g.push(e)
     else groups.set(key, [e])
