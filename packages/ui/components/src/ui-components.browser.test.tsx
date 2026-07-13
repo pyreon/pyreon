@@ -4,7 +4,7 @@ import { init, PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
-import { Button } from './index'
+import { Button, Loader, Pagination, Tooltip } from './index'
 
 /**
  * Real-browser smoke test for `@pyreon/ui-components`.
@@ -35,6 +35,58 @@ describe('@pyreon/ui-components — browser smoke', () => {
     expect(btn.textContent).toContain('Click me')
     unmount()
     expect(document.getElementById('smoke-btn')).toBeNull()
+  })
+})
+
+/**
+ * Static ARIA landmark/role/name defaults on presentational components that
+ * own no `@pyreon/ui-primitives` behavior base (Loader/Pagination/Tooltip are
+ * pure styling shells). These attributes flow through the rocketstyle → Element
+ * → styler → runtime `applyProps` pipeline, so they must land as real DOM
+ * attributes with the CORRECT VALUE. Each spec asserts `getAttribute(...) ===`
+ * the expected string — never `hasAttribute` (which passes for both an empty
+ * `role=""` and a real `role="status"`, masking a broken value).
+ */
+describe('@pyreon/ui-components — static ARIA defaults', () => {
+  it('Loader carries role="status" + an accessible name (aria-label="Loading")', () => {
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme }, h(Loader as never, { id: 'a11y-loader' })),
+    )
+    const el = container.querySelector('#a11y-loader')!
+    expect(el).not.toBeNull()
+    expect(el.getAttribute('role')).toBe('status')
+    expect(el.getAttribute('aria-label')).toBe('Loading')
+    unmount()
+  })
+
+  it('Loader aria-label is a DEFAULT — a user-supplied aria-label wins', () => {
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme }, h(Loader as never, { id: 'a11y-loader2', 'aria-label': 'Fetching results' })),
+    )
+    const el = container.querySelector('#a11y-loader2')!
+    expect(el.getAttribute('aria-label')).toBe('Fetching results')
+    unmount()
+  })
+
+  it('Pagination labels its <nav> landmark (aria-label="Pagination")', () => {
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme }, h(Pagination as never, { id: 'a11y-pag' })),
+    )
+    const el = container.querySelector('#a11y-pag')!
+    expect(el).not.toBeNull()
+    expect(el.tagName.toLowerCase()).toBe('nav')
+    expect(el.getAttribute('aria-label')).toBe('Pagination')
+    unmount()
+  })
+
+  it('Tooltip carries role="tooltip"', () => {
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme }, h(Tooltip as never, { id: 'a11y-tip' }, 'Hint')),
+    )
+    const el = container.querySelector('#a11y-tip')!
+    expect(el).not.toBeNull()
+    expect(el.getAttribute('role')).toBe('tooltip')
+    unmount()
   })
 })
 

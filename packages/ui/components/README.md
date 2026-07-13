@@ -167,6 +167,20 @@ Components that need state machines (combobox filtering, calendar date math, tab
 
 Where DOM behaviour is needed (event listeners, scroll lock, click-outside, overlay positioning), components use `@pyreon/hooks` (`useEventListener`, `useScrollLock`, `useClickOutside`) and `@pyreon/elements`' `Overlay` + `useOverlay`. Components do NOT call raw `addEventListener` / `removeEventListener`.
 
+## Accessibility
+
+ARIA responsibility is split by where behaviour lives:
+
+- **Interactive components delegate role/state ARIA to their `*Base` primitive.** `Switch`/`Checkbox`/`Radio`/`Tabs`/`Select`/`Combobox`/`Slider`/`Modal`/`Calendar` etc. are styling shells over `@pyreon/ui-primitives` — the primitive emits `role`, `aria-checked`/`aria-selected`/`aria-expanded`, keyboard handlers, and focus management. This package adds only theming.
+- **Presentational components that own no primitive carry correct STATIC ARIA defaults** via `.attrs()`, all overridable:
+  - `Loader` → `role="status"` + `aria-label="Loading"` (a bare spinner has no text — `role="status"` is a polite live region and the label names it).
+  - `Pagination` → `aria-label="Pagination"` on its `<nav>` landmark (multiple nav landmarks must be distinguishable — WAI-ARIA APG Pagination pattern).
+  - `Tooltip` → `role="tooltip"` (the trigger still owns `aria-describedby` linkage).
+  - `CloseButton` → `aria-label="Close"`.
+- **Screen-reader-only content**: use `VisuallyHidden` (sr-only CSS — clipped, not `display:none`, so assistive tech still reads it).
+
+> **Known cross-cutting gap (tracked, NOT in this package):** the interactive primitives' DIRECT-JSX `aria-invalid` / `aria-disabled` / `data-*` attributes with an `undefined` branch (e.g. `aria-disabled={x ? 'true' : undefined}`) render the literal string `="undefined"` in real (`@pyreon/vite-plugin`-compiled) apps, because the compiled template `attrSetter` emits an un-guarded `setAttribute(name, undefined)` that the DOM coerces to `"undefined"`. It is masked in the primitives' browser tests, which use the oxc automatic JSX runtime (the `h()`/`applyProps` path, which correctly drops null attributes) rather than the real compiler. Root-cause fix is a `@pyreon/compiler` template-attr-setter follow-up (mirror `applyStaticProp`'s null handling). See `.claude/rules/anti-patterns.md` → "Boolean ARIA-STATE … Compiled-template-path caveat".
+
 ## Theme augmentation
 
 `@pyreon/ui-theme` globally augments `ThemeDefault extends Theme` and `StylesDefault extends ITheme` — consumer apps MUST NOT re-augment those interfaces (would trigger TS2320). The `t` parameter inside `.theme()` / `.states()` / `.sizes()` / `.variants()` is typed as the full theme shape from `@pyreon/ui-theme`.
