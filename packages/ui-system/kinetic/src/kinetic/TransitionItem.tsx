@@ -13,6 +13,7 @@ import {
   nextFrame,
   removeClasses,
   resolveChildren,
+  setTransition,
 } from '../utils'
 
 type TransitionItemProps = ClassTransitionProps &
@@ -38,7 +39,7 @@ const applyEnter = (el: HTMLElement, config: ClassTransitionProps & StyleTransit
   addClasses(el, config.enter)
   addClasses(el, config.enterFrom)
   if (config.enterStyle) Object.assign(el.style, config.enterStyle)
-  if (config.enterTransition) el.style.transition = config.enterTransition
+  if (config.enterTransition) setTransition(el, config.enterTransition)
 
   return nextFrame(() => {
     removeClasses(el, config.enterFrom)
@@ -54,7 +55,7 @@ const applyLeave = (el: HTMLElement, config: ClassTransitionProps & StyleTransit
   addClasses(el, config.leave)
   addClasses(el, config.leaveFrom)
   if (config.leaveStyle) Object.assign(el.style, config.leaveStyle)
-  if (config.leaveTransition) el.style.transition = config.leaveTransition
+  if (config.leaveTransition) setTransition(el, config.leaveTransition)
 
   return nextFrame(() => {
     removeClasses(el, config.leaveFrom)
@@ -169,14 +170,12 @@ const TransitionItem = (props: TransitionItemProps): VNode | null => {
 
       if (currentStage === 'entering') {
         callbacks.onEnter?.()
-        const frameId = applyEnter(el, transitionConfig)
-        return () => cancelAnimationFrame(frameId)
+        return applyEnter(el, transitionConfig)
       }
 
       if (currentStage === 'leaving') {
         callbacks.onLeave?.()
-        const frameId = applyLeave(el, transitionConfig)
-        return () => cancelAnimationFrame(frameId)
+        return applyLeave(el, transitionConfig)
       }
 
       if (currentStage === 'entered') {

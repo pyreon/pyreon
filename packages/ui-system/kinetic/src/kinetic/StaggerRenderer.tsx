@@ -77,6 +77,10 @@ const StaggerRenderer = ({
             ...((child.props as Record<string, unknown>)?.style as CSSProperties | undefined),
             '--stagger-index': staggerIndex,
             '--stagger-interval': `${effectiveInterval}ms`,
+            // Stable delay source — survives the `transition` shorthand reset
+            // AND the `transition=''` reset at 'entered'; `setTransition`
+            // restores `transition-delay` from it on every enter/leave.
+            '--kinetic-delay': `${delay}ms`,
             transitionDelay: `${delay}ms`,
           } as CSSProperties,
         })}

@@ -91,12 +91,38 @@ const child = () => h('div', { 'data-testid': 'child' }, 'Hello') as VNode
 
 // ─── nextFrame SSR guard (utils.ts) ──────────────────────────────────────
 
-describe('nextFrame — SSR guard', () => {
-  it('returns 0 when requestAnimationFrame is undefined (SSR path)', () => {
+describe('nextFrame — cancel handle', () => {
+  it('returns a no-op cancel function when requestAnimationFrame is undefined (SSR path)', () => {
     vi.stubGlobal('requestAnimationFrame', undefined)
     const fn = vi.fn()
-    expect(nextFrame(fn)).toBe(0)
+    const cancel = nextFrame(fn)
+    expect(typeof cancel).toBe('function')
+    expect(() => cancel()).not.toThrow()
     expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('cancels the INNER frame when cancelled after the outer frame already fired', () => {
+    const fn = vi.fn()
+    const cancel = nextFrame(fn)
+    // Outer frame queued (id 1).
+    expect(rafCallbacks.length).toBe(1)
+    // Run the outer frame → schedules the inner frame (id 2). The callback
+    // has NOT fired yet — it runs on the inner frame.
+    rafCallbacks[0]?.()
+    expect(rafCallbacks.length).toBe(2)
+    expect(fn).not.toHaveBeenCalled()
+    // Cancel now — a bare cancelAnimationFrame(outerId) would MISS the inner
+    // frame (id 2), leaving the stale enter/leave-to commit scheduled.
+    cancel()
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(1) // outer
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(2) // inner (the fix)
+  })
+
+  it('cancel is a no-op when cancelAnimationFrame is undefined (post-teardown safe)', () => {
+    const cancel = nextFrame(vi.fn())
+    rafCallbacks[0]?.()
+    vi.stubGlobal('cancelAnimationFrame', undefined)
+    expect(() => cancel()).not.toThrow()
   })
 })
 

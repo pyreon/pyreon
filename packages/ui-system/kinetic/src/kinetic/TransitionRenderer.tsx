@@ -5,7 +5,7 @@ import type { CSSProperties, TransitionCallbacks } from '../types'
 import useAnimationEnd from '../useAnimationEnd'
 import { useReducedMotion } from '../useReducedMotion'
 import useTransitionState from '../useTransitionState'
-import { addClasses, mergeRefs, nextFrame, removeClasses } from '../utils'
+import { addClasses, mergeRefs, nextFrame, removeClasses, setTransition } from '../utils'
 import type { KineticConfig } from './types'
 
 type TransitionRendererProps = {
@@ -32,7 +32,7 @@ const applyEnter = (el: HTMLElement, config: KineticConfig) => {
   addClasses(el, config.enter)
   addClasses(el, config.enterFrom)
   if (config.enterStyle) Object.assign(el.style, config.enterStyle)
-  if (config.enterTransition) el.style.transition = config.enterTransition
+  if (config.enterTransition) setTransition(el, config.enterTransition)
 
   return nextFrame(() => {
     removeClasses(el, config.enterFrom)
@@ -48,7 +48,7 @@ const applyLeave = (el: HTMLElement, config: KineticConfig) => {
   addClasses(el, config.leave)
   addClasses(el, config.leaveFrom)
   if (config.leaveStyle) Object.assign(el.style, config.leaveStyle)
-  if (config.leaveTransition) el.style.transition = config.leaveTransition
+  if (config.leaveTransition) setTransition(el, config.leaveTransition)
 
   return nextFrame(() => {
     removeClasses(el, config.leaveFrom)
@@ -126,14 +126,12 @@ const TransitionRenderer = (props: TransitionRendererProps): VNode | null => {
 
       if (currentStage === 'entering') {
         props.callbacks.onEnter?.()
-        const frameId = applyEnter(el, props.config)
-        return () => cancelAnimationFrame(frameId)
+        return applyEnter(el, props.config)
       }
 
       if (currentStage === 'leaving') {
         props.callbacks.onLeave?.()
-        const frameId = applyLeave(el, props.config)
-        return () => cancelAnimationFrame(frameId)
+        return applyLeave(el, props.config)
       }
 
       if (currentStage === 'entered') {

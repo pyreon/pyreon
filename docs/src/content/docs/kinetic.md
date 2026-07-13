@@ -7,6 +7,10 @@ description: CSS-transition-based animation components for Pyreon — enter/leav
 
 <PackageBadge name="@pyreon/kinetic" href="/docs/kinetic" />
 
+:::note[Scope — kinetic is CSS-transition-based, not a JS animation engine]
+Because kinetic offloads the tween to the browser compositor, its per-frame JS cost is zero and its framework overhead to reveal a list is competitive with Motion One (within ~1.5×; see the package's `bench/`). The flip side: it **cannot** do spring physics, interruptible / retargetable value animation, layout / shared-element (FLIP) animations, or gestures / drag — those need a JS animation loop kinetic deliberately does not run. Reach for **Motion One** or **Framer Motion** when you need them; reach for **kinetic** for declarative, SSR-safe, reactive-prop enter / leave / collapse / stagger.
+:::
+
 ## Installation
 
 :::code-group

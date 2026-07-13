@@ -21,6 +21,7 @@ CSS-transition animation engine for Pyreon. One factory — `kinetic(tag)` — p
 - prefers-reduced-motion respected automatically — visuals skipped, callbacks still fire
 - SSR contract: initially-hidden content always emitted with hidden-state class inlined (SSG scroll-reveal safe)
 - Low-level hooks exported: useTransitionState (state machine) + useAnimationEnd (end listener + timeout)
+- Stagger sets per-child `--stagger-index` / `--stagger-interval` CSS custom props (drive your own CSS-based timing) + a `transition-delay` preserved across the CSS transition-shorthand reset
 
 ## Complete example
 
@@ -375,3 +376,5 @@ const Notice = kinetic('div').preset(fade).on({
 > **Reactive HTML attrs forward:** Non-kinetic props (`class`, `style`, `id`, event handlers) are forwarded to the rendered tag with reactivity preserved — the prop split uses descriptor-copying `splitProps`/`mergeProps`, so signal-driven attrs like `class={sig()}` keep updating (a plain `{...props}` value-copy would freeze them).
 
 > **Compositor-thread animations:** Only `transform` / `opacity` / `filter` animate on the GPU compositor thread. Animating `width` / `height` / `top` / `left` runs on the main thread and may jank — use collapse mode for height animation.
+
+> **CSS-transition scope (not a JS animation engine):** kinetic offloads the tween to CSS/the compositor — it does NOT run a JS animation loop. It cannot do spring physics, interruptible / retargetable value animation, layout / shared-element (FLIP) animations, or gestures / drag; reach for Motion One or Framer Motion for those. What kinetic owns: declarative, SSR-safe, reactive-prop enter/leave/collapse/stagger with zero per-frame JS. Its framework JS overhead to reveal a list is competitive with Motion One (within ~1.5×, winning small-enter, tying elsewhere — see `bench/`), both a small constant over hand-rolled CSS.
