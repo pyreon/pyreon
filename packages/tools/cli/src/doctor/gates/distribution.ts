@@ -33,6 +33,7 @@ interface PackageInfo {
     files?: string[]
     main?: string
     exports?: unknown
+    repository?: unknown
   }
 }
 
@@ -108,6 +109,39 @@ export const _detectMapsInPackOutput = (
   }
 }
 
+/**
+ * Extract the `repository.url` string from a package.json `repository`
+ * field, which npm accepts in two shapes: a bare string (`"github:org/repo"`
+ * or a git URL) or an object `{ type, url, directory? }`. Returns `null`
+ * when no URL can be read (field absent / malformed) — the caller treats
+ * that as "nothing to validate", NOT a violation.
+ */
+export const _repositoryUrl = (repository: unknown): string | null => {
+  if (typeof repository === 'string') return repository
+  if (
+    repository &&
+    typeof repository === 'object' &&
+    typeof (repository as { url?: unknown }).url === 'string'
+  ) {
+    return (repository as { url: string }).url
+  }
+  return null
+}
+
+/**
+ * True when `url` is in a form npm publishes WITHOUT auto-correcting +
+ * warning. npm canonicalizes any bare `https://…​.git` / `git://…` /
+ * `git@…` (SSH) form into a `git+…` URL at pack time and prints
+ * `npm warn publish "repository.url" was normalized to …` for each
+ * package. The only shapes npm leaves untouched are the explicit
+ * `git+…` prefixes (`git+https`/`git+ssh`/…) and the host shorthands
+ * (`github:org/repo` etc.), so the gate accepts exactly those and
+ * fires on every noisy shape — including the plain `git@`/`git://`
+ * forms, which DO get normalized.
+ */
+export const _isCanonicalRepositoryUrl = (url: string): boolean =>
+  /^(git\+|github:|gitlab:|bitbucket:|gist:)/.test(url)
+
 export interface DistributionGateOptions {
   /**
    * Repository root directory. The gate walks `<cwd>/packages/*` and
@@ -158,6 +192,26 @@ export const runDistributionGate = async (
           relPath: relative(opts.cwd, join(p.dir, 'package.json')),
         },
         fix: 'Add `"sideEffects": false` to package.json',
+      })
+    }
+
+    // Rule 4: `repository.url`, when present, must be in npm's canonical
+    // `git+…` form. A bare `https://…​.git` makes npm auto-correct it +
+    // print `npm warn publish "repository.url" was normalized to …` for
+    // EVERY package on EVERY release — 69 lines of publish-log noise.
+    const repoUrl = _repositoryUrl(p.pj.repository)
+    if (repoUrl !== null && !_isCanonicalRepositoryUrl(repoUrl)) {
+      findings.push({
+        category: 'architecture',
+        severity: 'error',
+        code: 'distribution/non-canonical-repository-url',
+        gate: 'distribution',
+        message: `${p.name} package.json \`repository.url\` is "${repoUrl}", which npm auto-corrects to a \`git+…\` form at publish time (printing \`npm warn publish "repository.url" was normalized to …\`). Prefix it with \`git+\` so the release log stays clean.`,
+        location: {
+          path: join(p.dir, 'package.json'),
+          relPath: relative(opts.cwd, join(p.dir, 'package.json')),
+        },
+        fix: `Change repository.url to "git+${repoUrl}"`,
       })
     }
 
