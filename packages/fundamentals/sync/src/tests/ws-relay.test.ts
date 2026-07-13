@@ -36,7 +36,7 @@ const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 // specs each time, all 3 vitest retries, blocking the release PR), while
 // the same commit passes locally in <1s. 15s keeps headroom under
 // vitest's 20s per-test timeout.
-const waitFor = (cond: () => boolean, timeoutMs = process.env.CI ? 15_000 : 8000): Promise<void> =>
+const waitFor = (cond: () => boolean, timeoutMs = process.env.CI ? 20_000 : 8000): Promise<void> =>
   new Promise((resolve, reject) => {
     const maxTicks = Math.ceil(timeoutMs / 10)
     let ticks = 0
@@ -96,9 +96,11 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     sa.set('hello over WS') // a writes after both are connected — propagates to b
     await waitFor(() => sb() === 'hello over WS')
     expect(sb()).toBe('hello over WS')
-    // 30s wall-clock budget: two sequential tick-counted waits need wall-clock
-    // headroom when CI starves the loop (the evidenced flake on this exact spec).
-  }, 30_000)
+    // 50s wall-clock backstop: two sequential 20s tick-counted waits (40s sum)
+    // need the backstop to EXCEED the sum (per the file rule above), or vitest
+    // kills the test at the boundary with an opaque "test timed out" instead of
+    // the descriptive `waitFor: timed out`. Was 30s == 2×15s (== sum, violated).
+  }, 50_000)
 
   it('REJECTS an unauthorized connection (authorize → false)', async () => {
     server = await createSyncServer({ port: 0, authorize: ({ token }) => token === 'secret' })
@@ -236,9 +238,12 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     sa.set('over shared server')
     await waitFor(() => sb() === 'over shared server')
     expect(sb()).toBe('over shared server')
-    // Same 30s wall-clock budget as the first spec — this one flaked (retry ×1,
-    // then passed in 243ms) inside the same CI starvation window.
-  }, 30_000)
+    // Same 50s backstop as the first spec (two 20s waits = 40s sum; backstop
+    // must exceed it). This spec is the one that timed out on 2026-07-13 main
+    // (#2148 window) — the sync `waitFor` genuinely burned its old 15s
+    // scheduled-tick budget under localhost-WS delivery contention; 20s adds
+    // the headroom, and the 50s backstop keeps the descriptive deadline first.
+  }, 50_000)
 
   it('RECONNECTS with backoff after the relay drops, then comes back', async () => {
     // Fixed http server so the relay can be torn down + brought back on the SAME
