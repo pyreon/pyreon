@@ -21,7 +21,7 @@ function sev(entry: unknown): Severity {
 }
 
 describe('opt-in best-practice rule wiring', () => {
-  it('the expected 19 best-practice rules are tagged optIn', () => {
+  it('the expected 24 best-practice rules are tagged optIn', () => {
     expect(new Set(OPT_IN_IDS)).toEqual(
       new Set([
         'pyreon/require-img-alt',
@@ -43,6 +43,17 @@ describe('opt-in best-practice rule wiring', () => {
         'pyreon/prefer-typed-search-params',
         'pyreon/no-storage-write-as-call',
         'pyreon/no-private-env-in-client',
+        // Demoted to opt-in from the upstream 0.44.0 findings — style/precision
+        // preferences that were firing (or gating, under strict/lib) on correct
+        // code: the compiler makes `&&`/ternary byte-equivalent to `<Show>`
+        // (LR-2), bare `{sig()}` is already reactive (LR-1), `display` toggling
+        // is a legitimate SSR-safe technique (LR-4), and `useTheme()` reads
+        // cross-file context by design (LR-9).
+        'pyreon/no-bare-signal-in-jsx',
+        'pyreon/no-and-conditional',
+        'pyreon/no-ternary-conditional',
+        'pyreon/prefer-show-over-display',
+        'pyreon/no-theme-outside-provider',
       ]),
     )
   })

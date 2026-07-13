@@ -125,12 +125,97 @@ export const noPropsDestructure: Rule = {
   },
 }
 
+/**
+ * Unwrap TypeScript type-only layers + parens off an initializer, so
+ * `const { a } = (props as P)` / `(props)!` / `(props)` all resolve to the
+ * bare `props` identifier. Mirrors the compiler's `unwrapInitializer`.
+ */
+function unwrapInitializer(expr: any): any {
+  let e = expr
+  while (
+    e &&
+    (e.type === 'TSAsExpression' ||
+      e.type === 'TSSatisfiesExpression' ||
+      e.type === 'TSNonNullExpression' ||
+      e.type === 'ParenthesizedExpression')
+  ) {
+    e = e.expression
+  }
+  return e
+}
+
+function reportDestructure(node: any, context: any, pattern: any) {
+  const names = getDestructuredNames(pattern)
+  const hasRest = (pattern.properties ?? []).some((p: any) => p.type === 'RestElement')
+
+  let suggestion = 'Use `props.x` pattern for reactive prop access.'
+  if (names.length > 0) {
+    const propsAccess = names.map((n) => `props.${n}`).join(', ')
+    suggestion = `Use \`props\` parameter and access as ${propsAccess}.`
+    if (hasRest) {
+      suggestion += ` For rest props, use \`splitProps(props, [${names.map((n) => `'${n}'`).join(', ')}])\`.`
+    }
+  }
+
+  context.report({
+    message: `Destructured props in component function — breaks reactive prop tracking. ${suggestion}`,
+    span: getSpan(pattern),
+  })
+}
+
+/**
+ * LT-2: the BODY-scope form — `function C(props) { const { a } = props }`.
+ * `const { a } = props` fires the getter-backed props at setup, capturing dead
+ * snapshots (identical bug to the signature-destructure form the rule already
+ * catches). Walk the component body's statements; flag any
+ * `const { … } = <paramName>` (initializer unwrapped through `as`/`satisfies`/
+ * `!`/parens). Do NOT descend into nested functions — a destructure inside a
+ * handler / effect / returned accessor re-reads per invocation and is
+ * reactivity-correct. Conservative by construction (zero false positives): only
+ * a bare `= <first-param-identifier>` matches; `= props.nested` / `= other`
+ * are ignored. Ports the compiler's `detectPropsDestructuredBody`.
+ */
+function checkBodyDestructure(paramName: string, body: any, context: any) {
+  function walk(n: any): void {
+    if (!n || typeof n.type !== 'string') return
+    // Stop at nested-function boundaries.
+    if (
+      n.type === 'ArrowFunctionExpression' ||
+      n.type === 'FunctionExpression' ||
+      n.type === 'FunctionDeclaration'
+    ) {
+      return
+    }
+    if (
+      n.type === 'VariableDeclarator' &&
+      n.id?.type === 'ObjectPattern' &&
+      (n.id.properties?.length ?? 0) > 0 &&
+      n.init
+    ) {
+      const base = unwrapInitializer(n.init)
+      if (base?.type === 'Identifier' && base.name === paramName) {
+        reportDestructure(n, context, n.id)
+      }
+    }
+    // Recurse into every child except the nested functions returned above.
+    for (const key in n) {
+      if (key === 'parent') continue
+      const val = n[key]
+      if (Array.isArray(val)) {
+        for (const c of val) if (c && typeof c.type === 'string') walk(c)
+      } else if (val && typeof val.type === 'string') {
+        walk(val)
+      }
+    }
+  }
+  for (const stmt of body.body ?? []) walk(stmt)
+}
+
 function checkFunction(node: any, context: any, depth: number, callArgFns: WeakMap<any, any>) {
   const params = node.params
   if (!params || params.length === 0) return
 
   const firstParam = params[0]
-  if (!isDestructuring(firstParam)) return
 
   // Skip nested functions (depth > 1). This protects render-prop
   // callbacks whose first param is NOT a Pyreon component prop bag —
@@ -138,7 +223,7 @@ function checkFunction(node: any, context: any, depth: number, callArgFns: WeakM
   // items, so destructuring is a non-issue there. The tradeoff is that
   // genuinely-nested component declarations slip past this rule;
   // they're rare enough in practice that the false-negative is
-  // acceptable.
+  // acceptable. Applies to BOTH the signature and body forms.
   if (depth > 1) return
 
   // Skip functions passed as call arguments (HOC / render-prop
@@ -151,24 +236,18 @@ function checkFunction(node: any, context: any, depth: number, callArgFns: WeakM
 
   const body = node.body
   if (!body) return
+  if (!containsJSXReturn(body)) return
 
-  if (containsJSXReturn(body)) {
-    const names = getDestructuredNames(firstParam)
-    const hasRest = (firstParam.properties ?? []).some((p: any) => p.type === 'RestElement')
+  // Signature form: `function C({ a }) { … }`.
+  if (isDestructuring(firstParam)) {
+    reportDestructure(firstParam, context, firstParam)
+    return
+  }
 
-    let suggestion = 'Use `props.x` pattern for reactive prop access.'
-    if (names.length > 0) {
-      const propsAccess = names.map((n) => `props.${n}`).join(', ')
-      suggestion = `Use \`props\` parameter and access as ${propsAccess}.`
-      if (hasRest) {
-        suggestion += ` For rest props, use \`splitProps(props, [${names.map((n) => `'${n}'`).join(', ')}])\`.`
-      }
-    }
-
-    context.report({
-      message:
-        `Destructured props in component function — breaks reactive prop tracking. ${suggestion}`,
-      span: getSpan(firstParam),
-    })
+  // LT-2 body form: `function C(props) { const { a } = props; … }`. Only when
+  // the first param is a plain identifier (the destructured-param shape is the
+  // signature form above) and the body is a block.
+  if (firstParam?.type === 'Identifier' && body.type === 'BlockStatement') {
+    checkBodyDestructure(firstParam.name, body, context)
   }
 }

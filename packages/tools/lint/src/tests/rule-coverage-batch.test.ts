@@ -5,6 +5,8 @@ import { allRules } from '../rules'
 import type { LintConfig } from '../types'
 
 const defaultConfig = (): LintConfig => getPreset('recommended')
+// `best-practices` enables the opt-in rules (e.g. no-bare-signal-in-jsx, LR-1).
+const bpConfig = (): LintConfig => getPreset('best-practices')
 const find = (
   result: ReturnType<typeof lintFile>,
   id: string,
@@ -51,7 +53,7 @@ describe('pyreon/no-bare-signal-in-jsx', () => {
       fp,
       `const count = signal(0); const X = () => <div>{count()}</div>`,
       allRules,
-      defaultConfig(),
+      bpConfig(),
     )
     expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThan(0)
   })
@@ -65,7 +67,7 @@ describe('pyreon/no-bare-signal-in-jsx', () => {
       `const checked = signal(false); const value = signal(0);
        const X = () => <input checked={checked()} value={value()} aria-valuenow={value()} />`,
       allRules,
-      defaultConfig(),
+      bpConfig(),
     )
     expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
   })
@@ -77,7 +79,7 @@ describe('pyreon/no-bare-signal-in-jsx', () => {
       fp,
       `const count = signal(0); const X = () => <Comp prop={<div>{count()}</div>} />`,
       allRules,
-      defaultConfig(),
+      bpConfig(),
     )
     expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBeGreaterThan(0)
   })
@@ -87,7 +89,7 @@ describe('pyreon/no-bare-signal-in-jsx', () => {
       fp,
       `const count = signal(0); const X = () => <div>{() => count()}</div>`,
       allRules,
-      defaultConfig(),
+      bpConfig(),
     )
     expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
   })
@@ -97,7 +99,7 @@ describe('pyreon/no-bare-signal-in-jsx', () => {
       fp,
       `const X = () => <div>{useTheme()}</div>`,
       allRules,
-      defaultConfig(),
+      bpConfig(),
     )
     expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
   })
@@ -107,7 +109,7 @@ describe('pyreon/no-bare-signal-in-jsx', () => {
       fp,
       `const X = () => <div>{Component()}</div>`,
       allRules,
-      defaultConfig(),
+      bpConfig(),
     )
     expect(find(result, 'pyreon/no-bare-signal-in-jsx').length).toBe(0)
   })

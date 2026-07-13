@@ -5,6 +5,16 @@
     "pyreon/no-and-conditional": "off",
     "pyreon/no-map-in-jsx": "off",
     "pyreon/no-children-access": "off",
+    "pyreon/no-props-destructure": [
+      "error",
+      {
+        "exemptPaths": [
+          "packages/fundamentals/flow/src/components/",
+          "packages/fundamentals/code/src/components/",
+          "packages/fundamentals/rich-text/src/components/"
+        ]
+      }
+    ],
     "pyreon/no-window-in-ssr": [
       "error",
       {

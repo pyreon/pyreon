@@ -8,7 +8,15 @@ export const noThemeOutsideProvider: Rule = {
   meta: {
     id: 'pyreon/no-theme-outside-provider',
     category: 'styling',
-    description: 'Warn when useTheme() is used without PyreonUI or ThemeProvider in the same file.',
+    description:
+      'Warn when useTheme() is used without a PyreonUI or ThemeProvider import in the same file. Opt-in — a consumer component legitimately reads theme from an ancestor <ThemeProvider> in another file (the whole point of context), so the same-file requirement is a false positive that a single-file AST walk cannot avoid.',
+    // Opt-in: the provider is almost always in an ancestor at the app/table
+    // root, in a DIFFERENT file — which is exactly how context is meant to be
+    // used. A single-file walker cannot prove a provider is absent app-wide, so
+    // firing on every cross-file `useTheme()` in `recommended` (and gating it as
+    // an error under `strict`/`lib`) flags correct code. Available via
+    // `best-practices` / explicit config for teams that co-locate providers.
+    optIn: true,
     severity: 'warn',
     fixable: false,
   },

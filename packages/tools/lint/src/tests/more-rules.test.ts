@@ -12,35 +12,37 @@ const find = (
 ): ReturnType<typeof lintFile>['diagnostics'] =>
   result.diagnostics.filter((d) => d.ruleId === id)
 
+// `prefer-show-over-display` is opt-in (LR-4) — enable it via `best-practices`
+// so these detection specs still exercise the rule's logic.
 describe('pyreon/prefer-show-over-display (performance)', () => {
   it('flags <div style={{ display: cond ? "block" : "none" }}>', () => {
     const code = `function App({ open }) { return <div style={{ display: open ? "block" : "none" }} /> }`
-    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, defaultConfig())
+    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, bpConfig())
     const diags = find(result, 'pyreon/prefer-show-over-display')
     expect(diags.length).toBeGreaterThan(0)
   })
 
   it('flags logical-expression display value', () => {
     const code = `function App({ show }) { return <div style={{ display: show && "flex" }} /> }`
-    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, defaultConfig())
+    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, bpConfig())
     expect(find(result, 'pyreon/prefer-show-over-display').length).toBeGreaterThan(0)
   })
 
   it('does NOT flag static display value', () => {
     const code = `function App() { return <div style={{ display: "flex" }} /> }`
-    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, defaultConfig())
+    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, bpConfig())
     expect(find(result, 'pyreon/prefer-show-over-display').length).toBe(0)
   })
 
   it('does NOT flag non-style attribute', () => {
     const code = `function App() { return <div className={{ display: x ? 'a' : 'b' }} /> }`
-    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, defaultConfig())
+    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, bpConfig())
     expect(find(result, 'pyreon/prefer-show-over-display').length).toBe(0)
   })
 
   it('does NOT flag non-display key', () => {
     const code = `function App({ active }) { return <div style={{ color: active ? "red" : "blue" }} /> }`
-    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, defaultConfig())
+    const result = lintFile('/abs/packages/core/foo/src/x.tsx', code, allRules, bpConfig())
     expect(find(result, 'pyreon/prefer-show-over-display').length).toBe(0)
   })
 })
