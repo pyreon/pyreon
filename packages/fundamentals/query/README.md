@@ -38,6 +38,39 @@ const App = () => (
 )
 ```
 
+## Performance vs `@tanstack/react-query`
+
+Both adapters wrap the **same** `@tanstack/query-core` (pinned to one version tree-wide), so a head-to-head measures the **adapter** — not the query engine. On a data-**only** change (`setQueryData`, so `status` / `isFetching` / `error` don't move):
+
+| Scenario | `@pyreon/query` | `@tanstack/react-query` |
+| --- | --- | --- |
+| **Cross-component** (one reads `status`, one `data`) → flip `data` | `data` re-runs, `status` skips (**1**) | 🤝 tie — tracked-props skips `status`, re-renders `data` (**1**) |
+| **Intra-component** (one reads all 8 fields) → flip `data` | **0** component re-runs · **1** field-derivation | **1** whole-component re-render · **8** field-derivations + VDOM reconcile |
+| **Data-flip → DOM** | ~1.6 µs (synchronous fine-grained patch) | ~6.3 µs (macrotask-batched render) — ~**4×** |
+| **Mount a 1-query component** | ~11 µs | ~12 µs — 🤝 ~tied |
+
+Honest read: react-query is **not** naive — its tracked-props make it field-aware _across_ components (the first row is a real tie). Pyreon's structural win is _within_ a component — a signal-granular update re-runs only the binding for the changed field, where react-query re-runs the whole component body. Mounting is comparable. Reproduce: `bun run --filter=@pyreon/query bench:react-query` (`NODE_ENV=production`, real react-dom@19, deterministic counts + process-isolated timing). Author-judged; the counts are exact and the ns ratios are the portable signal.
+
+## Feature parity with the TanStack adapter family
+
+`@pyreon/query` is feature-complete against `@tanstack/{react,solid,svelte}-query` and adds Pyreon-native extras:
+
+| Capability | Status |
+| --- | --- |
+| Reactive query key (options-as-function) | ✅ — signal read in `options()` refetches automatically (no dependency array) |
+| Fine-grained per-field signals | ✅ — the differentiator (see the benchmark above) |
+| `useQuery` / `useMutation` / `useInfiniteQuery` / `useQueries` | ✅ |
+| Suspense (`useSuspenseQuery` / `…InfiniteQuery` / `…Queries` + `<QuerySuspense>`) | ✅ |
+| `select`, `placeholderData`, `keepPreviousData`, `enabled`, `staleTime`, `retry`, … | ✅ — all `QueryObserverOptions` pass straight through to query-core |
+| Optimistic updates (`onMutate` + `setQueryData`) | ✅ — inherited from query-core |
+| SSR dehydrate / hydrate (`dehydrate` / `hydrate` / `<HydrationBoundary>`) | ✅ |
+| Persistence (`<PersistQueryClientProvider>` + `useIsRestoring`, `/persist` subpath) | ✅ |
+| Devtools (`/devtools` subpath) | ✅ |
+| `defineQueries` (named parallel queries → typed object) | ✅ Pyreon extra |
+| `useSubscription` (WebSocket) + `useSSE` (Server-Sent Events) | ✅ Pyreon extra |
+
+Deliberate scope: `useSSE`'s `Last-Event-ID` cannot be set on the FIRST `EventSource` connection (a platform limitation) — pair with `useStorage` + the `initialLastEventId` option to resume across remounts (see the SSE section).
+
 ## `useQuery(() => options)`
 
 Subscribe to a query with fine-grained signals. **Options are a function** — read signals inside and the observer reconfigures + refetches when they change.
