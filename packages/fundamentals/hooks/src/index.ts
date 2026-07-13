@@ -12,6 +12,12 @@ export { useBreakpoint } from './useBreakpoint'
 export { useClickOutside } from './useClickOutside'
 export type { UseClipboardResult } from './useClipboard'
 export { useClipboard } from './useClipboard'
+export type {
+  HapticImpactStyle,
+  HapticNotificationType,
+  UseHapticsResult,
+} from './useHaptics'
+export { useHaptics } from './useHaptics'
 export { useColorScheme } from './useColorScheme'
 export type { UseControllableState } from './useControllableState'
 export { useControllableState } from './useControllableState'

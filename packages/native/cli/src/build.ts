@@ -239,6 +239,15 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.combinedClickable(')) {
     imports.push('import androidx.compose.foundation.combinedClickable')
   }
+  // M3.1 haptics (`const h = useHaptics()`): the Compose haptic surface
+  // `LocalHapticFeedback` lives in androidx.compose.ui.platform — NOT
+  // covered by the star-imported androidx.compose.ui.* (single-package).
+  // No gated Android app used haptics before, so this is a first-use
+  // import (the same latent-missing class as `.clickable` in M2.3);
+  // keyed on the emitted `LocalHapticFeedback.current` read.
+  if (emitted.includes('LocalHapticFeedback.current')) {
+    imports.push('import androidx.compose.ui.platform.LocalHapticFeedback')
+  }
   // Modal emit (<Modal>): Dialog is androidx.compose.ui.window — not in
   // the star-imported ui.* (single-package).
   if (emitted.includes('Dialog(')) {

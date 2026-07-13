@@ -1905,6 +1905,14 @@ function emitSwiftDecl(
   if (d.kind === 'clipboard') {
     return `@State private var ${swiftIdent(d.name)} = PyreonClipboard()`
   }
+  // M3.1: `const h = useHaptics()` → an @State PyreonHaptics. Fire-and-
+  // forget: methods (`h.impact("light")`) flow through unchanged (the
+  // runtime container maps the style string to a UIFeedbackGenerator);
+  // no reactive field, no `.value` rewrite, no ctor arg (iOS haptics
+  // need no context).
+  if (d.kind === 'haptics') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonHaptics()`
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`

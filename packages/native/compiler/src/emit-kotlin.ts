@@ -1578,6 +1578,20 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonClipboard(${id}Ctx, ${id}Scope) }`,
     ].join('\n  ')
   }
+  // M3.1: `const h = useHaptics()` → a remembered PyreonHaptics. The
+  // Compose haptic surface is `LocalHapticFeedback` (a composition-
+  // local — NO permission, NO Context, unlike Vibrator). Local reads
+  // can't live inside `remember { … }`'s non-Composable lambda, so
+  // hoist it to a sibling val and inject it (same shape clipboard uses
+  // for LocalContext). Methods (`h.impact("light")`) flow through
+  // unchanged — PyreonHaptics maps the style string internally.
+  if (d.kind === 'haptics') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Haptic = LocalHapticFeedback.current`,
+      `val ${id} = remember { PyreonHaptics(${id}Haptic) }`,
+    ].join('\n  ')
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` →
   // `val i18n = remember { PyreonI18n(...) }`. Method `i18n.t("key")`
   // flows through unchanged (PyreonI18n.t is defined on the runtime

@@ -210,6 +210,26 @@ object ContextCompat {
 }
 `
 
+// PyreonHaptics-specific stubs — the Compose haptic-feedback surface
+// PyreonHaptics.kt uses, mirrored EXACTLY (no superset — a superset stub
+// masks; the rule kotlin-stubs.ts documents 4×). Real Compose ships
+// `HapticFeedback` as an interface + `HapticFeedbackType` with companion
+// `LongPress` / `TextHandleMove` vals (the only two the runtime maps to).
+// Gated behind --service=PyreonHaptics.
+const ANDROIDX_COMPOSE_HAPTIC_STUBS = `package androidx.compose.ui.hapticfeedback
+
+class HapticFeedbackType {
+  companion object {
+    val LongPress = HapticFeedbackType()
+    val TextHandleMove = HapticFeedbackType()
+  }
+}
+
+interface HapticFeedback {
+  fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType)
+}
+`
+
 // PyreonWebSocketOkHttp-specific stubs — the okhttp3 4.x surface the
 // transport file uses, mirrored EXACTLY (no superset — a superset stub
 // masks; the same rule the compiler's kotlin-stubs.ts documents 4×).
@@ -309,6 +329,10 @@ try {
     writeFileSync(androidxCoreContentPath, ANDROIDX_CORE_CONTENT_STUBS, 'utf8')
     writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
   }
+  const hapticFeedbackPath = join(tempDir, 'AndroidxComposeHaptic.kt')
+  if (SERVICE === 'PyreonHaptics') {
+    writeFileSync(hapticFeedbackPath, ANDROIDX_COMPOSE_HAPTIC_STUBS, 'utf8')
+  }
   const okhttpPath = join(tempDir, 'OkHttp3.kt')
   if (SERVICE === 'PyreonWebSocketOkHttp') {
     writeFileSync(okhttpPath, OKHTTP3_STUBS, 'utf8')
@@ -337,6 +361,8 @@ try {
     SERVICE === 'PyreonClipboard'
       ? [androidContentPath, androidxCoreContentPath, kotlinxCoroutinesPath]
       : []
+  // PyreonHaptics-only stub source (the Compose hapticfeedback package).
+  const hapticStubs = SERVICE === 'PyreonHaptics' ? [hapticFeedbackPath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
   // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
   const okhttpExtras =
@@ -351,6 +377,7 @@ try {
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
+        ...hapticStubs,
         ...okhttpExtras,
         SOURCE_FILE,
       ]
@@ -361,6 +388,7 @@ try {
         kotlinxSerializationPath,
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
+        ...hapticStubs,
         ...okhttpExtras,
         SOURCE_FILE,
         TEST_FILE,
