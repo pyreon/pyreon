@@ -506,7 +506,7 @@ const createStyledComponent = (
       let currentClassName = className
 
       const originalRef = finalProps.ref
-      finalProps.ref = (node: Element | null) => {
+      const refWrapper = (node: Element | null) => {
         el = node
         if (originalRef) {
           // A valid `RefProp` is only ever a function or a `{ current }`
@@ -517,6 +517,21 @@ const createStyledComponent = (
           else if (typeof originalRef === 'object') (originalRef as Ref<Element>).current = node
         }
       }
+      // DEFINE, don't assign. A prop-derived `ref`/`innerRef` (e.g.
+      // `innerRef={props.innerRef}`) arrives as a getter-ONLY descriptor
+      // (the compiler `_rp`-wraps it, `makeReactiveProps` makes it a getter),
+      // and `buildProps` descriptor-copies it — so a plain `finalProps.ref = …`
+      // assignment throws `Cannot set property ref … which has only a getter`,
+      // taking down the whole styled subtree. `Object.defineProperty` redefines
+      // it as a data property (the descriptor is `configurable`). This is the
+      // "companion writes must use defineProperty, not assignment" rule from
+      // anti-patterns.md — the site slipped through.
+      Object.defineProperty(finalProps, 'ref', {
+        value: refWrapper,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      })
 
       renderEffect(() => {
         const newClass = cssClass() // reads computed — O(1), just string
