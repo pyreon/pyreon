@@ -1,9 +1,15 @@
+import { StreamLanguage } from '@codemirror/language'
 import type { Extension } from '@codemirror/state'
 import type { EditorLanguage } from './types'
 
 /**
  * Language extension loaders — lazy-loaded on demand.
  * Only the requested language is imported, keeping the initial bundle small.
+ *
+ * `ruby` and `shell` come from `@codemirror/legacy-modes` (CodeMirror 5-era
+ * StreamLanguage grammars) wrapped via `StreamLanguage.define` — the modern
+ * `@codemirror/lang-*` packages don't cover them. Still lazy-loaded, so they
+ * cost nothing until requested.
  */
 const languageLoaders: Record<EditorLanguage, () => Promise<Extension>> = {
   javascript: () => import('@codemirror/lang-javascript').then((m) => m.javascript()),
@@ -27,8 +33,10 @@ const languageLoaders: Record<EditorLanguage, () => Promise<Extension>> = {
   java: () => import('@codemirror/lang-java').then((m) => m.java()),
   go: () => import('@codemirror/lang-go').then((m) => m.go()),
   php: () => import('@codemirror/lang-php').then((m) => m.php()),
-  ruby: () => Promise.resolve([]),
-  shell: () => Promise.resolve([]),
+  ruby: () =>
+    import('@codemirror/legacy-modes/mode/ruby').then((m) => StreamLanguage.define(m.ruby)),
+  shell: () =>
+    import('@codemirror/legacy-modes/mode/shell').then((m) => StreamLanguage.define(m.shell)),
   plain: () => Promise.resolve([]),
 }
 

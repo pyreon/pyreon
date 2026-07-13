@@ -6,7 +6,7 @@ export default defineManifest({
   tagline:
     'Reactive code editor — CodeMirror 6 with signals, minimap, diff editor, lazy-loaded languages',
   description:
-    'Reactive code editor for Pyreon built on CodeMirror 6 (~250KB vs Monaco\'s ~2.5MB). `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.',
+    'Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is ~138 KB gz (measured), ~7x lighter than Monaco\'s ~940 KB gz core. `editor.value` is a writable Signal<string> — reads track reactively, writes push back into CodeMirror. 19 language grammars lazy-loaded on demand. Canvas-based minimap, diff editor, tabbed editor, and two-way signal binding with built-in loop prevention.',
   category: 'browser',
   peerDeps: ['@pyreon/runtime-dom'],
   longExample: `import { createEditor, createTabbedEditor, CodeEditor, DiffEditor, TabbedEditor, bindEditorToSignal, loadLanguage, minimapExtension } from '@pyreon/code'
@@ -190,7 +190,7 @@ tabbed.activeTab()   // Computed<Tab | null>
       kind: 'function',
       signature: '(language: EditorLanguage) => Promise<Extension>',
       summary:
-        "Lazy-load a language grammar and return its CodeMirror `Extension`. Supports 19 grammars (json, typescript, javascript, jsx, tsx, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php, ruby, shell). The result is cached per language; an uninstalled or unknown grammar resolves to an empty `[]` extension (never throws). `createEditor` loads the grammar for its `language` on mount, so calling `loadLanguage` ahead of time just warms the cache.",
+        "Lazy-load a language grammar and return its CodeMirror `Extension`. All 19 non-plain identifiers ship a real grammar: json, typescript, javascript, jsx, tsx, python, css, html, markdown, rust, go, java, cpp, sql, xml, yaml, php from the modern `@codemirror/lang-*` packages, plus ruby and shell from `@codemirror/legacy-modes` (StreamLanguage). `plain` is intentionally empty. The result is cached per language; an uninstalled optional grammar package (or an unknown identifier) resolves to an empty `[]` extension (never throws). `createEditor` loads the grammar for its `language` on mount, so calling `loadLanguage` ahead of time just warms the cache.",
       example: `const ext = await loadLanguage('python') // the CodeMirror Extension
 // createEditor({ language: 'python' }) now resolves instantly (cache warm)`,
       seeAlso: ['createEditor', 'getAvailableLanguages'],
@@ -218,7 +218,11 @@ tabbed.activeTab()   // Computed<Tab | null>
     },
     {
       label: 'Bundle size',
-      note: 'Built on CodeMirror 6 (~250KB) vs Monaco (~2.5MB). Language grammars are optional dependencies loaded on demand via `loadLanguage()`.',
+      note: 'Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is ~138 KB gz (~416 KB min) — at parity with @uiw/react-codemirror (~129 KB gz), both wrap the same CM6. Monaco\'s ESM core is ~940 KB gz (~3.6 MB min, workers/CSS excluded) — @pyreon/code is ~7x smaller gzipped. Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.',
+    },
+    {
+      label: 'ruby / shell grammars',
+      note: '`ruby` and `shell` highlighting come from `@codemirror/legacy-modes` (an optionalDependency). It installs by default; if your package manager skips optional deps, those two fall back to plain-text (empty extension) rather than throwing.',
     },
   ],
 })

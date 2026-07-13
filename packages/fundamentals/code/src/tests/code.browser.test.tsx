@@ -368,6 +368,105 @@ describe('code editor in real browser', () => {
     host.remove()
   })
 
+  // ── foldAll / unfoldAll — must NOT crash in an ESM browser bundle ─────────
+  //
+  // `foldAll`/`unfoldAll` previously did `require('@codemirror/language')`.
+  // This package is `type: module`, so `require` is undefined in a real
+  // browser and the call threw `require is not defined`. The commands are now
+  // statically imported. This suite mounts a live editor (the only place the
+  // commands run past the no-view bail) and exercises both.
+
+  it('foldAll() on a mounted editor runs without throwing (ESM require bug)', async () => {
+    const editor = createEditor({
+      value: '{\n  "a": {\n    "b": 1,\n    "c": 2\n  }\n}',
+      language: 'json',
+    })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+    expect(container.querySelector('.cm-editor')).not.toBeNull()
+
+    // The bisect-critical assertion: in the broken (require) version this
+    // throws `require is not defined` in the ESM browser bundle.
+    expect(() => editor.foldAll()).not.toThrow()
+    await flush()
+    expect(() => editor.unfoldAll()).not.toThrow()
+    await flush()
+    unmount()
+  })
+
+  // ── minimap dark detection — reads EditorView.darkTheme facet ─────────────
+  //
+  // The minimap picked its background from `view.dom.classList.contains(
+  // 'cm-dark')`, which NEVER matches (CM6 uses hashed style-mod classes), so a
+  // dark editor always rendered a LIGHT minimap. It now reads the darkTheme
+  // facet. We spy the FIRST fillRect (the background fill) to capture the bg
+  // color the minimap chose — deterministic, no pixel-layout dependency.
+
+  it('minimap uses the DARK background for a dark editor (facet, not cm-dark class)', async () => {
+    const proto = HTMLCanvasElement.prototype.getContext
+    let firstFill: string | null = null
+    const origFillRect = CanvasRenderingContext2D.prototype.fillRect
+    CanvasRenderingContext2D.prototype.fillRect = function (this: CanvasRenderingContext2D, ...a) {
+      if (firstFill === null) firstFill = String(this.fillStyle)
+      return origFillRect.apply(this, a as [number, number, number, number])
+    }
+    try {
+      const editor = createEditor({
+        value: 'const x = 1\n'.repeat(40),
+        theme: 'dark',
+        minimap: true,
+      })
+      const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor, style: 'height: 200px' }))
+      await flush()
+      // Dark background is #1e1e2e; the broken version painted #f8fafc (light).
+      expect(firstFill).toBe('#1e1e2e')
+      unmount()
+    } finally {
+      CanvasRenderingContext2D.prototype.fillRect = origFillRect
+      void proto
+    }
+  })
+
+  it('minimap uses the LIGHT background for a light editor', async () => {
+    let firstFill: string | null = null
+    const origFillRect = CanvasRenderingContext2D.prototype.fillRect
+    CanvasRenderingContext2D.prototype.fillRect = function (this: CanvasRenderingContext2D, ...a) {
+      if (firstFill === null) firstFill = String(this.fillStyle)
+      return origFillRect.apply(this, a as [number, number, number, number])
+    }
+    try {
+      const editor = createEditor({
+        value: 'const x = 1\n'.repeat(40),
+        theme: 'light',
+        minimap: true,
+      })
+      const { unmount } = mountInBrowser(h(CodeEditor, { instance: editor, style: 'height: 200px' }))
+      await flush()
+      expect(firstFill).toBe('#f8fafc')
+      unmount()
+    } finally {
+      CanvasRenderingContext2D.prototype.fillRect = origFillRect
+    }
+  })
+
+  // ── ruby / shell — real grammars via @codemirror/legacy-modes ─────────────
+
+  it('ruby grammar (real StreamLanguage) mounts without error and round-trips', async () => {
+    // The grammar now comes from @codemirror/legacy-modes — a broken loader
+    // would reject and the editor would fail to mount / lose content.
+    const editor = createEditor({ value: 'def greet\n  puts "hi"\nend', language: 'ruby' })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await flush()
+    expect(container.querySelector('.cm-editor')).not.toBeNull()
+    expect(container.textContent).toContain('puts "hi"')
+    expect(editor.value()).toContain('def greet')
+    unmount()
+  })
+
   it('DiffEditor unmounted during its async load does NOT leak a MergeView', async () => {
     // DiffEditor's containerRef lazy-loads the grammar — unmounting before the
     // import resolves must abort, not build a MergeView into the detached node.
