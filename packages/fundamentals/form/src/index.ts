@@ -12,6 +12,7 @@ export type { FieldDefinition, InferFieldValues } from './field'
 export { field } from './field'
 export type { FormProps, SubmitProps } from './form-component'
 export { Form, Submit } from './form-component'
+export { flattenValues, nestValues } from './path'
 export type {
   Accessor,
   FieldRegisterProps,
