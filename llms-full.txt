@@ -768,7 +768,7 @@ const table = useTable(() => ({
 
 ## @pyreon/virtual — TanStack Virtual Adapter
 
-Reactive TanStack Virtual adapter for Pyreon. Signal-driven virtualizer that returns reactive `virtualItems`, `totalSize`, and `isScrolling` signals. Supports element-scoped (`useVirtualizer`) and window-scoped (`useWindowVirtualizer`) variants. SSR-safe — window virtualizer checks for browser environment before attaching scroll listeners.
+Reactive TanStack Virtual adapter for Pyreon. Signal-driven virtualizer that returns reactive `virtualItems`, `totalSize`, and `isScrolling` signals plus a fine-grained per-index `item(index)` accessor for dynamically-measured lists. Supports element-scoped (`useVirtualizer`) and window-scoped (`useWindowVirtualizer`) variants. Because Pyreon renders without a virtual DOM, a scroll patches only the entering/leaving rows (staying rows do zero work) — where a virtual-DOM adapter re-renders its virtualizer component and reconciles the whole visible window. SSR-safe — window virtualizer checks for browser environment before attaching scroll listeners.
 
 ```typescript
 import { useVirtualizer, useWindowVirtualizer } from '@pyreon/virtual'
@@ -826,6 +826,8 @@ const WindowList = () => {
 ```
 
 > **Note**: Both hooks return reactive signals (`virtualItems()`, `totalSize()`, `isScrolling()`). Always read them inside reactive scopes (JSX thunks, effect, computed) so they update on scroll.
+>
+> **Fixed vs dynamic sizing**: For FIXED-size lists, read the captured `<For>` item directly (`row.start`) — a row's `start = index * size` is invariant, so a keyed `<For by={row => row.index}>` reuses it with zero per-scroll work. For DYNAMICALLY-measured lists (`measureElement`), a remeasure above a row shifts its position but the row is NOT re-rendered (same key) — the captured `row.start` goes STALE. Read the reactive per-index `item(row.index).start()` / `.size()` instead: they are signals the adapter updates in place, so a staying row re-positions correctly and only the genuinely-shifted rows patch the DOM. `item()` is zero-cost until first used.
 >
 > **Absolute positioning**: Virtual items must be positioned absolutely inside a container whose height equals `totalSize()`. Each item's `start` property gives its pixel offset from the top.
 >

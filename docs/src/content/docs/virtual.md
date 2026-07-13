@@ -3,7 +3,7 @@ title: Virtual
 description: Reactive TanStack Virtual adapter for efficient list and grid virtualization.
 ---
 
-`@pyreon/virtual` is the Pyreon adapter for [TanStack Virtual](https://tanstack.com/virtual). It provides reactive virtualizer hooks that return fine-grained signals for virtual items, total size, and scrolling state. Efficiently render thousands of items by only mounting the visible ones plus a configurable overscan buffer.
+`@pyreon/virtual` is the Pyreon adapter for [TanStack Virtual](https://tanstack.com/virtual). It provides reactive virtualizer hooks that return signals for virtual items, total size, and scrolling state. Efficiently render thousands of items by only mounting the visible ones plus a configurable overscan buffer.
 
 The package provides two hooks:
 
@@ -11,6 +11,10 @@ The package provides two hooks:
 - **`useWindowVirtualizer`** -- for window-based scrolling (the browser viewport is the scroll container)
 
 Both hooks return reactive signals that update automatically when the user scrolls, the item count changes, or item sizes are remeasured.
+
+Because Pyreon renders without a virtual DOM, rendering rows with a keyed `<For by={row => row.index}>` makes a scroll **patch only the entering and leaving rows** — the rows that stay in the window do zero work. A virtual-DOM adapter (`@tanstack/react-virtual`) instead re-renders its virtualizer component and reconciles the whole visible window on every scroll. Both wrap the identical `@tanstack/virtual-core` engine, so the difference is purely the adapter — see [Fine-Grained Rows](#fine-grained-rows-with-for-and-item) below.
+
+> The examples below use `virtualItems().map(...)` for brevity. That form is correct but re-mounts every visible row on each scroll. For the fine-grained behavior above, render with a keyed `<For>` — and for dynamically-measured lists, position rows with `item(index)`. See [Fine-Grained Rows](#fine-grained-rows-with-for-and-item).
 
 <PackageBadge name="@pyreon/virtual" href="/docs/virtual" />
 
@@ -110,6 +114,65 @@ The return value from `useVirtualizer` provides:
 | `virtualItems` | `Signal<VirtualItem[]>`                     | Reactive list of currently visible virtual items                            |
 | `totalSize`    | `Signal<number>`                            | Total scrollable size in pixels (height for vertical, width for horizontal) |
 | `isScrolling`  | `Signal<boolean>`                           | Whether the user is currently scrolling                                     |
+| `item`         | `(index) => { start(); size(); lane() }`    | Fine-grained per-index measurement accessors — see [Fine-Grained Rows](#fine-grained-rows-with-for-and-item) |
+
+## Fine-Grained Rows with `<For>` and `item()`
+
+Pyreon has no virtual DOM. Which pattern you use to render rows decides how much work each scroll costs.
+
+**Fixed-size lists — keyed `<For>`, read the captured item.** A row's `start = index × size` is invariant, so a keyed `<For by={row => row.index}>` reuses staying rows without re-running their render — only entering/leaving rows touch the DOM:
+
+```tsx
+import { For } from '@pyreon/core'
+
+const v = useVirtualizer(() => ({
+  count: items.length,
+  getScrollElement: () => parentRef(),
+  estimateSize: () => 40,
+  overscan: 5,
+}))
+
+<div style={() => `height: ${v.totalSize()}px; position: relative`}>
+  <For each={() => v.virtualItems()} by={(row) => row.index}>
+    {(row) => (
+      <div
+        style={() =>
+          `position: absolute; top: 0; width: 100%; height: ${row.size}px; transform: translateY(${row.start}px)`
+        }
+      >
+        {items[row.index]}
+      </div>
+    )}
+  </For>
+</div>
+```
+
+**Dynamically-measured lists (`measureElement`) — read `item(index)`.** When item sizes are measured after render, a remeasure above a row shifts the row's position. But with a keyed `<For>`, the staying row is **not** re-rendered — so its captured `row.start` is a **stale snapshot**. Read the reactive per-index `item(row.index).start()` / `.size()` / `.lane()` instead. These are signals the adapter updates in place, so a staying row re-positions correctly, and only the rows that actually moved patch the DOM:
+
+```tsx
+<For each={() => v.virtualItems()} by={(row) => row.index}>
+  {(row) => {
+    const m = v.item(row.index) // per-index reactive start/size/lane
+    return (
+      <div
+        data-index={row.index}
+        ref={(el) => el && v.instance.measureElement(el)}
+        style={() => `position: absolute; top: 0; width: 100%; transform: translateY(${m.start()}px)`}
+      >
+        {items[row.index]}
+      </div>
+    )
+  }}
+</For>
+```
+
+`item()` costs nothing until the first call — a fixed-size list that never calls it pays zero extra. Each field (`start`/`size`/`lane`) is lazily allocated on first read and gated on numeric equality, so a fixed-size scroll fires zero of the unchanged rows' signals.
+
+| Pattern | Fixed-size | Dynamic (`measureElement`) |
+| ------- | ---------- | -------------------------- |
+| `.map()` | Correct, re-mounts all visible rows each scroll | Correct, re-mounts all visible rows |
+| `<For>` + captured `row.start` | **Best** — staying rows do zero work | **Stale** — staying rows don't re-position ❌ |
+| `<For>` + `item(row.index).start()` | Best — staying rows do zero work | **Correct + fine-grained** — only moved rows patch |
 
 ### UseVirtualizerOptions
 
@@ -258,6 +321,7 @@ const WindowVirtualList = defineComponent(() => {
 | `virtualItems` | `Signal<VirtualItem[]>`             | Reactive list of visible virtual items  |
 | `totalSize`    | `Signal<number>`                    | Total scrollable size in pixels         |
 | `isScrolling`  | `Signal<boolean>`                   | Whether the user is currently scrolling |
+| `item`         | `(index) => { start(); size(); lane() }` | Fine-grained per-index measurement accessors (see [Fine-Grained Rows](#fine-grained-rows-with-for-and-item)) |
 
 ### Window Virtualizer Defaults
 
@@ -374,6 +438,8 @@ Key points for dynamic measurement:
 3. Call `virtual.instance.measureElement(el)` via a `ref` callback on each item
 4. Do **not** set a fixed `height` on items -- let them size naturally based on content
 5. Provide a reasonable `estimateSize` as the initial guess -- the virtualizer uses this for items that have not been measured yet
+
+> **Rendering with a keyed `<For>`?** The `.map()` above re-mounts every visible row on each scroll, so captured positions are always fresh. If you switch to a keyed `<For by={row => row.index}>` for fine-grained updates, you **must** position rows with `virtual.item(row.index).start()` instead of the captured `row.start` — otherwise a staying row won't re-position when a remeasure shifts it. See [Fine-Grained Rows](#fine-grained-rows-with-for-and-item).
 
 ### Estimate Size Matters
 
@@ -1239,14 +1305,14 @@ The following are re-exported from `@tanstack/virtual-core` for convenience:
 Create a reactive virtualizer for element-based scrolling.
 
 - **`options`** -- `() => VirtualizerOptions<TScrollElement, TItemElement>` (minus `observeElementRect`, `observeElementOffset`, `scrollToFn` which are defaulted; these can be overridden)
-- **Returns** -- `UseVirtualizerResult<TScrollElement, TItemElement>` with `instance`, `virtualItems`, `totalSize`, and `isScrolling`
+- **Returns** -- `UseVirtualizerResult<TScrollElement, TItemElement>` with `instance`, `virtualItems`, `totalSize`, `isScrolling`, and `item(index)` (fine-grained per-index measurement accessors)
 
 ### useWindowVirtualizer(options)
 
 Create a reactive virtualizer for window-based scrolling.
 
 - **`options`** -- `() => VirtualizerOptions<Window, TItemElement>` (minus `getScrollElement`, `observeElementRect`, `observeElementOffset`, `scrollToFn` which are defaulted for window; these can be overridden)
-- **Returns** -- `UseWindowVirtualizerResult<TItemElement>` with `instance`, `virtualItems`, `totalSize`, and `isScrolling`
+- **Returns** -- `UseWindowVirtualizerResult<TItemElement>` with `instance`, `virtualItems`, `totalSize`, `isScrolling`, and `item(index)` (fine-grained per-index measurement accessors)
 
 ### VirtualItem Properties
 

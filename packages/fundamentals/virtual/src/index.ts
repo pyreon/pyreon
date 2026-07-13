@@ -23,6 +23,7 @@ export {
 
 // ─── Pyreon adapter ─────────────────────────────────────────────────────────────
 
+export type { ItemRegistry, VirtualItemMeasurement } from './item-registry'
 export type { UseVirtualizerOptions, UseVirtualizerResult } from './use-virtualizer'
 export { useVirtualizer } from './use-virtualizer'
 export type {

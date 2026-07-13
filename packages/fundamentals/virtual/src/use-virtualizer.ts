@@ -9,6 +9,7 @@ import {
   Virtualizer,
   type VirtualizerOptions,
 } from '@tanstack/virtual-core'
+import { createItemRegistry, type VirtualItemMeasurement } from './item-registry'
 
 export type UseVirtualizerOptions<
   TScrollElement extends Element,
@@ -36,6 +37,15 @@ export interface UseVirtualizerResult<
   totalSize: Signal<number>
   /** Reactive signal indicating whether the user is scrolling. */
   isScrolling: Signal<boolean>
+  /**
+   * Fine-grained per-index measurement accessors (`start`/`size`/`lane`), for
+   * dynamically-measured lists. Read inside a row's style accessor so a staying
+   * row re-positions when a remeasure above it shifts its `start` — the
+   * captured `<For>` item is a stale snapshot and never updates in place. Each
+   * field gates on numeric equality, so only genuinely-moved rows patch the DOM
+   * (fixed-size lists never fire it → zero cost until first used).
+   */
+  item: (index: number) => VirtualItemMeasurement
 }
 
 /**
@@ -67,11 +77,24 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
   const virtualItems = signal<VirtualItem[]>([])
   const totalSize = signal(0)
   const isScrolling = signal(false)
+  const registry = createItemRegistry()
 
   // Store latest user options so onChange always reads the freshest reference
   let latestUserOpts = options()
 
   const instance = new Virtualizer<TScrollElement, TItemElement>(resolvedOptions)
+
+  // Single emission point: pull the instance's current state into all reactive
+  // surfaces (coarse signals + fine-grained per-index registry) in one batch.
+  const emit = (): void => {
+    batch(() => {
+      const items = instance.getVirtualItems()
+      virtualItems.set(items)
+      totalSize.set(instance.getTotalSize())
+      isScrolling.set(instance.isScrolling)
+      registry.sync(items)
+    })
+  }
 
   // Track reactive options: when signals inside options() change, update the virtualizer.
   const effectCleanup = effect(() => {
@@ -80,11 +103,7 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
       ...instance.options,
       ...latestUserOpts,
       onChange: (inst, sync) => {
-        batch(() => {
-          virtualItems.set(inst.getVirtualItems())
-          totalSize.set(inst.getTotalSize())
-          isScrolling.set(inst.isScrolling)
-        })
+        emit()
         // Read latest opts to avoid stale closure
         latestUserOpts.onChange?.(inst, sync)
       },
@@ -92,10 +111,7 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
 
     // After updating options, recalculate and re-emit
     instance._willUpdate()
-    batch(() => {
-      virtualItems.set(instance.getVirtualItems())
-      totalSize.set(instance.getTotalSize())
-    })
+    emit()
   })
 
   // Lifecycle: mount observers, clean up on unmount.
@@ -103,10 +119,7 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
   onMount(() => {
     mountCleanup = instance._didMount()
     instance._willUpdate()
-    batch(() => {
-      virtualItems.set(instance.getVirtualItems())
-      totalSize.set(instance.getTotalSize())
-    })
+    emit()
     return undefined
   })
 
@@ -115,5 +128,5 @@ export function useVirtualizer<TScrollElement extends Element, TItemElement exte
     mountCleanup?.()
   })
 
-  return { instance, virtualItems, totalSize, isScrolling }
+  return { instance, virtualItems, totalSize, isScrolling, item: registry.item }
 }
