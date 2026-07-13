@@ -2,6 +2,7 @@ import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createUniqueId, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
 import { signal } from '@pyreon/reactivity'
+import { createTypeahead, typeaheadMatch } from './keyboard'
 
 export interface TreeNode {
   id: string
@@ -51,7 +52,15 @@ export interface TreeState {
   isExpanded: (id: string) => boolean
   /** Check if a node is selected. */
   isSelected: (id: string) => boolean
-  /** Keyboard handler. */
+  /**
+   * Keyboard handler (WAI-ARIA tree pattern). ArrowUp/ArrowDown move focus
+   * between visible nodes, ArrowRight expands / enters a child, ArrowLeft
+   * collapses, Enter/Space selects, Home/End focus the first/last visible
+   * node, `*` expands all siblings at the focused node's level, and printable
+   * characters type-ahead to the next visible node whose label starts with the
+   * typed buffer (buffer resets after ~500ms idle; a repeated same letter
+   * cycles). Wire it on each tree item's `onKeyDown` (or the tree container).
+   */
   onKeyDown: (e: KeyboardEvent) => void
   /** Flat list of visible nodes for rendering. */
   visibleNodes: () => { node: TreeNode; depth: number }[]
@@ -77,6 +86,8 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
 
   const expanded = signal(new Set<string>(own.defaultExpanded ?? []))
   const focused = signal<string | null>(null)
+  // Per-instance typeahead buffer (WAI-ARIA tree "type-to-select").
+  const typeahead = createTypeahead()
 
   function isExpanded(id: string): boolean { return expanded().has(id) }
 
@@ -157,7 +168,64 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
       e.preventDefault()
       const node = visible[idx]?.node
       if (node && !node.disabled) select(focusedId)
+    } else if (e.key === 'Home') {
+      // WAI-ARIA tree: focus the first visible node.
+      e.preventDefault()
+      if (visible[0]) focused.set(visible[0].node.id)
+    } else if (e.key === 'End') {
+      // WAI-ARIA tree: focus the LAST visible node (respects collapsed
+      // subtrees — getVisibleNodes already excludes them).
+      e.preventDefault()
+      const last = visible[visible.length - 1]
+      if (last) focused.set(last.node.id)
+    } else if (e.key === '*' && focusedId) {
+      // WAI-ARIA tree: expand ALL sibling nodes at the focused node's level
+      // (nodes sharing its parent). Only siblings with children are affected;
+      // nodes further up/down the tree stay as they are.
+      e.preventDefault()
+      const siblings = getSiblingsOf(focusedId)
+      const next = new Set(expanded())
+      let changed = false
+      for (const s of siblings) {
+        if (s.children?.length && !next.has(s.id)) {
+          next.add(s.id)
+          own.onExpand?.(s.id)
+          changed = true
+        }
+      }
+      if (changed) expanded.set(next)
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // WAI-ARIA tree typeahead: printable characters move focus to the next
+      // VISIBLE node whose label starts with the accumulated buffer (buffer
+      // resets after ~500ms idle; a repeated same letter cycles). Space never
+      // reaches here — it is consumed by the Enter/Space select branch above.
+      const search = typeahead.push(e.key)
+      if (search) {
+        const match = typeaheadMatch(visible.map((v) => v.node.label), search, idx)
+        if (match >= 0) {
+          e.preventDefault()
+          focused.set(visible[match]!.node.id)
+        }
+      }
     }
+  }
+
+  /** Return the array of nodes that are siblings of `id` (i.e. the array that
+   *  directly contains it — its parent's `children`, or the root list). */
+  function getSiblingsOf(id: string): TreeNode[] {
+    let result: TreeNode[] = []
+    function walk(nodes: TreeNode[]): boolean {
+      if (nodes.some((n) => n.id === id)) {
+        result = nodes
+        return true
+      }
+      for (const n of nodes) {
+        if (n.children?.length && walk(n.children)) return true
+      }
+      return false
+    }
+    walk(own.data)
+    return result
   }
 
   function findNode(id: string, nodes: TreeNode[]): TreeNode | undefined {

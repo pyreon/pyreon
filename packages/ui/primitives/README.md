@@ -91,7 +91,7 @@ Render-function primitive. State exposes:
 - `highlightedIndex()` — keyboard-driven highlight
 - `selected()` / `select(value)` / `remove(value)` / `clear()` — selection (single or multi)
 - `isSelected(value)` / `getLabel(value)`
-- `onKeyDown(e)` — drop-in keyboard handler (arrow nav, Enter, Escape)
+- `onKeyDown(e)` — drop-in WAI-ARIA listbox keyboard handler: ArrowUp/ArrowDown (ArrowDown opens a closed listbox), `Home`/`End` (first/last option), Enter (select), Escape/Tab (close), and **typeahead** — printable characters jump the active option to the next label starting with the typed buffer (resets after ~500ms idle; a repeated letter cycles through matches)
 - `inputProps()` / `listboxProps()` / `getOptionProps(value, index)` — ARIA helpers
 
 ### `FileUploadBase` — drag-drop + click upload
@@ -133,7 +133,7 @@ Context-based. `TabsBase` provides the controlled value + `onChange`; `TabBase` 
 
 ### `TreeBase` — hierarchical selection
 
-Render-function primitive. State exposes expanded set (`expanded()` / `toggleExpand(id)` / `expand(id)` / `collapse(id)`), selection (`selected()` / `select(id)`), focus (`focused()` / `focus(id)`), single/multi-select via the `multiple` prop, `onExpand` for lazy-loading children, `treeProps()` / `getItemProps(node, depth)` ARIA helpers.
+Render-function primitive. State exposes expanded set (`expanded()` / `toggleExpand(id)` / `expand(id)` / `collapse(id)`), selection (`selected()` / `select(id)`), focus (`focused()` / `focus(id)`), single/multi-select via the `multiple` prop, `onExpand` for lazy-loading children, `treeProps()` / `getItemProps(node, depth)` ARIA helpers. `onKeyDown(e)` is the WAI-ARIA tree keyboard handler: ArrowUp/ArrowDown (move between visible nodes), ArrowRight (expand / enter child), ArrowLeft (collapse), Enter/Space (select), `Home`/`End` (first/last **visible** node — collapsed subtrees excluded), **`*`** (expand all siblings at the focused node's level), and **typeahead** (jump to the next visible node whose label starts with the typed buffer; resets after ~500ms idle; a repeated letter cycles).
 
 ## Shared keyboard helper
 
@@ -147,6 +147,11 @@ const value = navigateByRole(e, {
 })
 if (value) tabs.onChange(value)
 ```
+
+`keyboard.ts` also exports the shared **typeahead** helpers used by `ComboboxBase` and `TreeBase`:
+
+- `createTypeahead(resetMs = 500)` — a per-instance printable-character buffer (`{ push(key), clear() }`) that accumulates single characters and resets after `resetMs` of idle. Create ONE per primitive instance.
+- `typeaheadMatch(labels, buffer, currentIndex)` — pure, case-insensitive prefix matcher returning the next matching index (or `-1`). A single repeated character cycles from `currentIndex + 1`; a longer buffer refines from `currentIndex`. Pass `currentIndex = -1` when there is no active item yet (closed combobox / unfocused tree) so the first keystroke lands on the first match.
 
 ## Conventions
 
