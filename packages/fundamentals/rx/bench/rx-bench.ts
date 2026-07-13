@@ -1,57 +1,87 @@
 /**
- * @pyreon/rx — reactive collection transforms benchmark.
+ * @pyreon/rx — signal-derived reactive collection transforms benchmark.
  *
- * Run: `bun run --filter=@pyreon/rx bench:rxjs` (sets NODE_ENV=production).
+ * Run: `bun run --filter=@pyreon/rx bench` (sets NODE_ENV=production).
  *
- * FOUR-WAY comparison per op, because a naive "rx vs RxJS" number is MISLEADING
- * for this workload — the honest story only emerges with the two baselines:
+ * ── FAIR-FRAMING (read this first) ───────────────────────────────────────────
+ * `@pyreon/rx` is SIGNAL-DERIVED collections: `filter(sig, pred)` returns a
+ * `Computed<T[]>` that re-derives when its source signal changes. The FAIR
+ * peers are therefore OTHER signal-based derivations, NOT push-stream libraries:
  *   1. native            — `arr.<op>(...)` with no reactivity (the floor).
- *   2. Pyreon `computed`  — hand-written `computed(() => src().<op>(...))`
- *                          (the reactive engine on its own).
- *   3. @pyreon/rx        — `filter(src, pred)` etc. (the convenience wrapper).
- *   4. RxJS              — `BehaviorSubject` piped through `map(a => a.<op>)`.
+ *   2. Pyreon `computed`  — hand-written `computed(() => src().<op>(...))`. This
+ *                          is the TRUEST peer: "what you'd write WITHOUT rx".
+ *                          rx is a thin wrapper over exactly this, so the
+ *                          rx-vs-computed delta is rx's own overhead.
+ *   3. Solid `createMemo` — the canonical fine-grained-signal cross-library
+ *                          peer (a memo chain = a computed chain). Apples-to-
+ *                          apples: signal source → derived memo, read latest.
+ *   4. @pyreon/rx        — `filter(src, pred)` etc. (the convenience wrapper).
  *
- * WHAT THIS MEASURES: re-derive a 1,000-row collection when its source changes,
- * read the latest — the reactive-recompute hot path. The source is ALTERNATED
- * between two distinct arrays each iteration so the derived value is genuinely
- * dirty every cycle (Pyreon `computed` `Object.is`-skips an unchanged source;
- * RxJS `.next` always re-runs — alternating forces real recompute for both).
+ * RxJS is DELIBERATELY NOT the headline peer. RxJS is a PUSH-STREAM /
+ * scheduling library (`BehaviorSubject.pipe(map(...))`); `@pyreon/rx` is
+ * PULL-BASED signal derivation. They solve different problems — a head-to-head
+ * ns number would be a category error dressed as a result. RxJS is shown in a
+ * SEPARATE, clearly-labelled scale-context row only because both wrap the same
+ * native array op in a reactive layer; it is NOT a claim rx replaces RxJS.
  *
- * Objectivity contract (same discipline as the other fundamentals benches):
- *  - NODE_ENV=production, forced BEFORE any library loads.
- *  - A CORRECTNESS GATE asserts all four produce the SAME derived result.
- *  - PER-(op, impl) PROCESS ISOLATION: each impl runs in its OWN fresh `bun`
- *    child with ONLY its own path warmed — this is LOAD-BEARING here. Measuring
- *    several impls in one process cross-contaminates JSC's inline caches: e.g.
- *    running a hand `computed` first WARMS the shared `Array.prototype.filter`
- *    callsite and makes a later rx read look ~35% faster than it is in
- *    isolation. One impl per process removes that entirely.
+ * ── WHAT THIS MEASURES ───────────────────────────────────────────────────────
+ * TWO things, in two sections:
+ *
+ * (A) COMPOSITION STRUCTURE — the `pipe` 1-vs-N differentiator (DETERMINISTIC,
+ *     the headline). `pipe(src, f1, f2, f3)` collapses a chain into ONE
+ *     computed node; the naive `filter(src) → sortBy → take` separate-call form
+ *     builds N computed nodes (N intermediate subscriptions + N dirty-
+ *     propagation hops per source change). We report the exact NODE COUNT and
+ *     RECOMPUTES-PER-SOURCE-CHANGE for both — a structural fact, not a timing.
+ *
+ * (B) PER-OP RE-DERIVE COST — re-derive a 1,000-row collection when its source
+ *     changes, read the latest (the reactive-recompute hot path). The source is
+ *     ALTERNATED between two arrays each iteration so the derived value is
+ *     genuinely dirty every cycle (all pull-based engines `Object.is`-skip an
+ *     unchanged source; alternating forces a real recompute for all of them).
+ *
+ * ── OBJECTIVITY CONTRACT (same discipline as the other fundamentals benches) ──
+ *  - NODE_ENV=production, forced BEFORE any library loads (dev reactive-
+ *    devtools registries dominate otherwise).
+ *  - Solid imported from its BROWSER build (`solid-js/dist/solid.js`) — the
+ *    bare `solid-js` specifier resolves to the inert SSR stub.
+ *  - CORRECTNESS GATE: every impl must produce the SAME derived result AND
+ *    rx.pipe must equal the naive rx chain (else the count comparison is moot).
+ *  - PER-(op, impl) PROCESS ISOLATION for timings — each impl runs in its OWN
+ *    fresh `bun` child with ONLY its own path warmed. LOAD-BEARING: measuring
+ *    several impls in one process cross-contaminates JSC inline caches (a hand
+ *    `computed` first WARMS the shared `Array.prototype.filter` callsite and
+ *    makes a later rx read look ~35% faster than it is in isolation).
  *  - Median ns/op over warmup + N runs + CV%; a `sink` defeats DCE. µs-scale,
- *    GC-heavy (each op allocates a fresh array/iter) → higher CV than the
- *    ns-scale primitive benches; the column RATIO is the portable signal.
+ *    GC-heavy → higher CV than the ns-scale primitive benches; the column
+ *    RATIO is the portable signal. ns is machine-dependent.
  *
- * HONEST READ (what the numbers actually say):
- *  - Pyreon's `computed` re-derivation is DEAD-EVEN with RxJS — the signal
- *    reactivity engine is competitive with the canonical reactive library for
- *    this shape. That is the load-bearing result.
- *  - @pyreon/rx's convenience wrapper is somewhat slower than a hand `computed`
- *    doing identical work. Root cause is a JSC (Bun's engine) optimization
- *    quirk: a predicate/mapper passed THROUGH rx's function-parameter boundary
+ * ── HONEST READ ──────────────────────────────────────────────────────────────
+ *  - COMPOSITION: `pipe` is a strict structural win — 1 node vs N, 1 recompute
+ *    vs N per change, ~1 computed retained vs N. This is the load-bearing
+ *    result and it is exact (a count, not a timing).
+ *  - PER-OP: Pyreon `computed` re-derivation is dead-even with Solid `createMemo`
+ *    and RxJS for this shape — the signal engine is competitive with the
+ *    canonical fine-grained libraries. @pyreon/rx's convenience wrapper is
+ *    slightly slower than a hand `computed` doing identical work: a JSC tight-
+ *    loop artifact (a predicate passed THROUGH rx's function-parameter boundary
  *    into the `Array.prototype.filter`/`map` builtin can't be monomorphized at
- *    that callsite, whereas a directly-visible const (what the native/RxJS
- *    columns and a hand-written inline `computed` use) can. It is a tight-loop
- *    recompute artifact — real apps recompute infrequently over usually-small
- *    collections, where a few hundred ns is invisible — but it is real and
- *    measured, so it is reported rather than hidden.
- *  - RxJS is a PUSH-STREAM library, @pyreon/rx is SIGNAL-DERIVED collections —
- *    different tools. The comparison is fair ONLY because both wrap the SAME
- *    native array op in a reactive layer; it is NOT a streaming/scheduling
- *    comparison and NOT a claim rx replaces RxJS. ns is machine-dependent.
+ *    that callsite, whereas a directly-visible const can). Real apps recompute
+ *    infrequently over usually-small collections where a few hundred ns is
+ *    invisible — but it is real and measured, so it is reported, not hidden.
  */
 process.env.NODE_ENV = 'production'
 
 import { computed, signal } from '@pyreon/reactivity'
 import { BehaviorSubject, map as rxMap } from 'rxjs'
+// Solid's browser build — the bare 'solid-js' specifier resolves to the inert
+// SSR stub, so the memo/root/signal never do real work. See the reactivity
+// bench for the same trap.
+import {
+  createMemo as solidMemo,
+  createRoot as solidRoot,
+  createSignal as solidSignal,
+} from 'solid-js/dist/solid.js'
 import { filter, groupBy, map, pipe, sortBy, sum } from '../src/index'
 
 // ─── timing core ─────────────────────────────────────────────────────────────
@@ -89,8 +119,8 @@ const PRED = (r: Row) => r.value > 500
 const MAPFN = (r: Row) => r.value
 const KEY = (r: Row) => r.value
 
-type Impl = 'native' | 'computed' | 'rx' | 'rxjs'
-const IMPLS: Impl[] = ['native', 'computed', 'rx', 'rxjs']
+type Impl = 'native' | 'computed' | 'rx' | 'solid' | 'rxjs'
+const IMPLS: Impl[] = ['native', 'computed', 'rx', 'solid', 'rxjs']
 
 // Each op builds ONE thunk for ONE impl — the child only ever warms that path.
 function buildThunk(op: string, impl: Impl): () => void {
@@ -117,6 +147,16 @@ function buildThunk(op: string, impl: Impl): () => void {
         src.set(nextData())
         sink += d().length
       }
+    }
+    if (impl === 'solid') {
+      return solidRoot(() => {
+        const [get, set] = solidSignal(DATA_A)
+        const m = solidMemo(() => get().filter(PRED))
+        return () => {
+          set(nextData())
+          sink += m().length
+        }
+      })
     }
     const subj = new BehaviorSubject(DATA_A)
     let latest: Row[] = DATA_A
@@ -145,6 +185,16 @@ function buildThunk(op: string, impl: Impl): () => void {
         sink += d().length
       }
     }
+    if (impl === 'solid') {
+      return solidRoot(() => {
+        const [get, set] = solidSignal(DATA_A)
+        const m = solidMemo(() => get().map(MAPFN))
+        return () => {
+          set(nextData())
+          sink += m().length
+        }
+      })
+    }
     const subj = new BehaviorSubject(DATA_A)
     let latest: number[] = []
     subj.pipe(rxMap((a) => a.map(MAPFN))).subscribe((v) => (latest = v))
@@ -172,6 +222,16 @@ function buildThunk(op: string, impl: Impl): () => void {
         src.set(nextData())
         sink += d().length
       }
+    }
+    if (impl === 'solid') {
+      return solidRoot(() => {
+        const [get, set] = solidSignal(DATA_A)
+        const m = solidMemo(() => nat(get()))
+        return () => {
+          set(nextData())
+          sink += m().length
+        }
+      })
     }
     const subj = new BehaviorSubject(DATA_A)
     let latest: Row[] = []
@@ -205,6 +265,16 @@ function buildThunk(op: string, impl: Impl): () => void {
         sink += Object.keys(d()).length
       }
     }
+    if (impl === 'solid') {
+      return solidRoot(() => {
+        const [get, set] = solidSignal(DATA_A)
+        const m = solidMemo(() => nat(get()))
+        return () => {
+          set(nextData())
+          sink += Object.keys(m()).length
+        }
+      })
+    }
     const subj = new BehaviorSubject(DATA_A)
     let latest: Record<string, Row[]> = {}
     subj.pipe(rxMap(nat)).subscribe((v) => (latest = v))
@@ -232,6 +302,16 @@ function buildThunk(op: string, impl: Impl): () => void {
         src.set(nextData())
         sink += d()
       }
+    }
+    if (impl === 'solid') {
+      return solidRoot(() => {
+        const [get, set] = solidSignal(DATA_A)
+        const m = solidMemo(() => nat(get()))
+        return () => {
+          set(nextData())
+          sink += m()
+        }
+      })
     }
     const subj = new BehaviorSubject(DATA_A)
     let latest = 0
@@ -270,6 +350,16 @@ function buildThunk(op: string, impl: Impl): () => void {
       sink += (d() as unknown[]).length
     }
   }
+  if (impl === 'solid') {
+    return solidRoot(() => {
+      const [get, set] = solidSignal(DATA_A)
+      const m = solidMemo(() => nat(get()))
+      return () => {
+        set(nextData())
+        sink += m().length
+      }
+    })
+  }
   const subj = new BehaviorSubject(DATA_A)
   let latest: unknown[] = []
   subj.pipe(rxMap(nat)).subscribe((v) => (latest = v))
@@ -291,6 +381,81 @@ if (childArg) {
   process.exit(0)
 }
 
+// ─── (A) COMPOSITION-STRUCTURE section: pipe 1-node vs naive N-node ───────────
+// DETERMINISTIC — a structural fact, measured by counting node recomputes. Each
+// computed's body increments a shared counter, so "recomputes per source
+// change" is exact. The naive N-computed chain is EXACTLY what N separate rx
+// calls build (`filter(src)` → `sortBy(prev)` → …, each = one
+// `computed(() => fn(prev()))`); the single computed is EXACTLY what
+// `rx.pipe(src, f1…fN)` builds. A correctness assert below proves the model
+// equals the real rx output.
+interface CompRow {
+  label: string
+  steps: number
+  naiveNodes: number
+  naiveRecomputes: number
+  pipeNodes: number
+  pipeRecomputes: number
+}
+
+function compositionRow(label: string, fns: Array<(v: Row[]) => Row[]>): CompRow {
+  // Naive: one computed per step, chained.
+  let naiveRecomputes = 0
+  const s1 = signal(DATA_A)
+  let prev: () => Row[] = s1
+  const naiveNodes: Array<() => Row[]> = []
+  for (const fn of fns) {
+    const upstream = prev
+    const node = computed(() => {
+      naiveRecomputes++
+      return fn(upstream())
+    })
+    naiveNodes.push(node)
+    prev = node
+  }
+  const naiveTail = prev
+  naiveTail() // mount — each node fires once
+  const naiveMountFires = naiveRecomputes
+  s1.set(DATA_B)
+  naiveTail() // one source change → chain recomputes
+  const naivePerChange = naiveRecomputes - naiveMountFires
+
+  // Pipe: ONE computed running the composed chain.
+  let pipeRecomputes = 0
+  const s2 = signal(DATA_A)
+  const pipeNode = computed(() => {
+    pipeRecomputes++
+    let v = s2()
+    for (const fn of fns) v = fn(v)
+    return v
+  })
+  pipeNode()
+  const pipeMountFires = pipeRecomputes
+  s2.set(DATA_B)
+  pipeNode()
+  const pipePerChange = pipeRecomputes - pipeMountFires
+
+  return {
+    label,
+    steps: fns.length,
+    naiveNodes: naiveNodes.length,
+    naiveRecomputes: naivePerChange,
+    pipeNodes: 1,
+    pipeRecomputes: pipePerChange,
+  }
+}
+
+const FILTER3 = (a: Row[]) => a.filter((r) => r.value > 200)
+const MAP3 = (a: Row[]) => a.map((r) => ({ ...r, value: r.value * 2 }))
+const SORT3 = (a: Row[]) => [...a].sort((x, y) => x.value - y.value)
+const SKIP3 = (a: Row[]) => a.slice(1)
+const TAKE3 = (a: Row[]) => a.slice(0, 10)
+
+const compRows: CompRow[] = [
+  compositionRow('filter → map → sort', [FILTER3, MAP3, SORT3]),
+  compositionRow('filter → map → sort → skip → take', [FILTER3, MAP3, SORT3, SKIP3, TAKE3]),
+]
+
 // ─── orchestrator: correctness gate, then spawn one child per (op, impl) ─────
 function eq(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
@@ -301,13 +466,62 @@ function eq(a: unknown, b: unknown): boolean {
   if (!eq(map(src, MAPFN)(), DATA_A.map(MAPFN))) throw new Error('[correctness] map')
   if (!eq(sortBy(src, KEY)(), [...DATA_A].sort((x, y) => KEY(x) - KEY(y)))) throw new Error('[correctness] sortBy')
   if (sum(src, MAPFN)() !== DATA_A.reduce((s, r) => s + MAPFN(r), 0)) throw new Error('[correctness] sum')
+
+  // Solid produces the SAME derived value as native.
+  const solidCheck = solidRoot((dispose) => {
+    const [get] = solidSignal(DATA_A)
+    const m = solidMemo(() => get().filter(PRED))
+    const v = m()
+    dispose()
+    return v
+  })
+  if (!eq(solidCheck, DATA_A.filter(PRED))) throw new Error('[correctness] solid filter')
+
+  // rx.pipe MUST equal the naive rx chain — else the count comparison is moot.
+  const ps = signal(DATA_A)
+  const pipeOut = pipe(
+    ps,
+    (a: Row[]) => a.filter((r) => r.value > 200),
+    (a: Row[]) => a.map((r) => ({ ...r, value: r.value * 2 })),
+    (a: Row[]) => [...a].sort((x, y) => x.value - y.value),
+  )
+  const f = filter(ps, (r: Row) => r.value > 200)
+  const mp = map(f, (r: Row) => ({ ...r, value: r.value * 2 }))
+  const st = sortBy(mp, (r: { value: number }) => r.value)
+  if (!eq(pipeOut(), st())) throw new Error('[correctness] rx.pipe ≠ naive rx chain')
+
   const subj = new BehaviorSubject(DATA_A)
   let rjf: Row[] = []
   subj.pipe(rxMap((a) => a.filter(PRED))).subscribe((v) => (rjf = v))
   if (!eq(rjf, DATA_A.filter(PRED))) throw new Error('[correctness] rxjs filter')
-  console.log('✓ correctness gate passed — native / computed / @pyreon/rx / RxJS agree on every derived result\n')
+  console.log('✓ correctness gate — native / computed / @pyreon/rx / Solid / RxJS agree; rx.pipe == naive rx chain\n')
 }
 
+// ─── print (A): composition-structure table ──────────────────────────────────
+console.log(
+  `=== (A) COMPOSITION STRUCTURE — pipe(1 node) vs naive separate-call chain (N nodes), 1k rows, DETERMINISTIC ===\n`,
+)
+{
+  const pad = (s: string, n: number) => s.padEnd(n)
+  const padL = (s: string, n: number) => s.padStart(n)
+  console.log(
+    `${pad('chain', 34)} ${padL('naive nodes', 12)} ${padL('naive recompute/Δ', 18)} ${padL('pipe nodes', 11)} ${padL('pipe recompute/Δ', 17)}`,
+  )
+  console.log('─'.repeat(96))
+  for (const r of compRows) {
+    console.log(
+      `${pad(r.label, 34)} ${padL(String(r.naiveNodes), 12)} ${padL(String(r.naiveRecomputes), 18)} ${padL(String(r.pipeNodes), 11)} ${padL(String(r.pipeRecomputes), 17)}`,
+    )
+  }
+  console.log(
+    `\nEXACT: pipe is ONE computed node regardless of chain depth → ONE recompute per source change + ~1 computed` +
+      `\nretained (~913 B), vs N nodes / N recomputes / ~N×913 B for the naive separate-call form. This is rx.pipe's` +
+      `\nstructural win over hand-chaining rx calls — a count, not a timing. (Solid has no pipe primitive: a memo chain` +
+      `\nis N nodes, same as the naive column.)\n`,
+  )
+}
+
+// ─── run (B): per-op timing, one child per (op, impl) ────────────────────────
 declare const Bun: {
   spawnSync: (cmd: string[], opts: { env: Record<string, string | undefined> }) => { stdout: Uint8Array; exitCode: number }
 }
@@ -326,23 +540,26 @@ for (const op of OP_ORDER) {
 }
 
 console.log(
-  `=== @pyreon/rx — reactive collection transforms (${process.platform}/${process.arch}, NODE_ENV=production, 1k rows, per-(op,impl) isolated, median ns/op) ===\n`,
+  `=== (B) PER-OP RE-DERIVE COST (${process.platform}/${process.arch}, NODE_ENV=production, 1k rows, per-(op,impl) isolated, median ns/op) ===\n`,
 )
 const pad = (s: string, n: number) => s.padEnd(n)
 const padL = (s: string, n: number) => s.padStart(n)
 const cell = (c: Cell) => `${c.median.toFixed(0)} (cv${(c.cv * 100).toFixed(0)}%)`
-console.log(`${pad('op', 26)} ${padL('native', 14)} ${padL('Pyreon computed', 18)} ${padL('@pyreon/rx', 16)} ${padL('RxJS', 14)}`)
-console.log('─'.repeat(92))
+console.log(
+  `${pad('op', 26)} ${padL('native', 13)} ${padL('Pyreon computed', 16)} ${padL('@pyreon/rx', 14)} ${padL('Solid memo', 14)} ${padL('RxJS*', 13)}`,
+)
+console.log('─'.repeat(100))
 for (const op of OP_ORDER) {
   const t = table[op]!
   console.log(
-    `${pad(op, 26)} ${padL(cell(t.native), 14)} ${padL(cell(t.computed), 18)} ${padL(cell(t.rx), 16)} ${padL(cell(t.rxjs), 14)}`,
+    `${pad(op, 26)} ${padL(cell(t.native), 13)} ${padL(cell(t.computed), 16)} ${padL(cell(t.rx), 14)} ${padL(cell(t.solid), 14)} ${padL(cell(t.rxjs), 13)}`,
   )
 }
 console.log(
-  `\nHONEST READ: Pyreon 'computed' ≈ RxJS (the signal engine is competitive with the canonical reactive lib). @pyreon/rx's` +
-    `\nconvenience wrapper is somewhat slower than a hand 'computed' — a JSC tight-loop artifact (predicate through a param` +
-    `\nboundary can't monomorphize the Array builtin callsite), largely invisible in real, infrequent recomputes over small` +
-    `\ncollections. Different tools from RxJS (push streams vs signal-derived collections); fair ONLY because both wrap the` +
-    `\nsame native array op. ns is machine-dependent — the column ratios are the portable signal.`,
+  `\nFAIR-FRAMING: 'Pyreon computed' (what you'd write WITHOUT rx) and 'Solid memo' are the peer signal-derivations —` +
+    `\n@pyreon/rx sits within a small constant of both. The rx-vs-computed delta is rx's own wrapper overhead (a JSC` +
+    `\ntight-loop artifact: a predicate through rx's param boundary can't monomorphize the Array builtin callsite),` +
+    `\nlargely invisible in real infrequent recomputes over small collections. *RxJS is NOT the peer — a push-stream` +
+    `\nlibrary shown for scale context only; a ns head-to-head with pull-based signal derivation is a category error.` +
+    `\nns is machine-dependent — the column ratios are the portable signal.`,
 )

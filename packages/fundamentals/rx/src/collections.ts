@@ -111,6 +111,35 @@ export function keyBy<T>(source: ReadableSignal<T[]> | T[], key: KeyOf<T>): any 
   })
 }
 
+/**
+ * Count items per key bucket. Returns `Record<string, number>` (keys are
+ * `String()`-coerced, like {@link groupBy}). The counting companion to
+ * `groupBy` — equivalent to `mapValues(groupBy(src, key), g => g.length)`
+ * but single-pass.
+ *
+ * @example
+ * ```ts
+ * countBy(users, 'role')       // { admin: 2, viewer: 1 }
+ * countBy([1, 2, 2, 3], n => n % 2 === 0 ? 'even' : 'odd') // { odd: 2, even: 2 }
+ * ```
+ */
+export function countBy<T>(
+  source: ReadableSignal<T[]>,
+  key: KeyOf<T>,
+): ReturnType<typeof computed<Record<string, number>>>
+export function countBy<T>(source: T[], key: KeyOf<T>): Record<string, number>
+export function countBy<T>(source: ReadableSignal<T[]> | T[], key: KeyOf<T>): any {
+  const getKey = resolveKey(key)
+  return reactive(source, (arr: T[]) => {
+    const result: Record<string, number> = {}
+    for (const item of arr) {
+      const k = String(getKey(item))
+      result[k] = (result[k] ?? 0) + 1
+    }
+    return result
+  })
+}
+
 /** Deduplicate items by key. */
 export function uniqBy<T>(
   source: ReadableSignal<T[]>,
@@ -156,6 +185,28 @@ export function flatten<T>(source: ReadableSignal<T[][]>): ReturnType<typeof com
 export function flatten<T>(source: T[][]): T[]
 export function flatten<T>(source: ReadableSignal<T[][]> | T[][]): any {
   return reactive(source, (arr: T[][]) => arr.flat())
+}
+
+/**
+ * Map each item to an array and flatten ONE level (like `Array.prototype.flatMap`).
+ * The mapper returns an array per item; the results are concatenated.
+ *
+ * @example
+ * ```ts
+ * flatMap([1, 2, 3], n => [n, n * 10]) // [1, 10, 2, 20, 3, 30]
+ * const tags = rx.flatMap(posts, p => p.tags) // Computed<string[]>
+ * ```
+ */
+export function flatMap<T, U>(
+  source: ReadableSignal<T[]>,
+  fn: (item: T, index: number) => U[],
+): ReturnType<typeof computed<U[]>>
+export function flatMap<T, U>(source: T[], fn: (item: T, index: number) => U[]): U[]
+export function flatMap<T, U>(
+  source: ReadableSignal<T[]> | T[],
+  fn: (item: T, index: number) => U[],
+): any {
+  return reactive(source, (arr: T[]) => arr.flatMap(fn))
 }
 
 /** Find the first item matching a predicate. */

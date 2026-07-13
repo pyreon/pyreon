@@ -5,14 +5,19 @@ import { isSignal } from './types'
 /**
  * Distinct — skip consecutive duplicate values from a signal.
  * Uses `Object.is` by default, or a custom equality function.
+ *
+ * **Lifecycle**: like {@link debounce}/{@link throttle}, `distinct` owns an
+ * eager `effect()`. Created inside a component / `effectScope` it is torn
+ * down automatically on unmount; created standalone (module scope, a store
+ * setup) call the returned `.dispose()` to release the source subscription.
  */
 export function distinct<T>(
   source: ReadableSignal<T>,
   equals: (a: T, b: T) => boolean = Object.is,
-): ReadableSignal<T> {
+): ReadableSignal<T> & { dispose: () => void } {
   const result = signal(source())
 
-  effect(() => {
+  const fx = effect(() => {
     const val = source()
     // Loop-prevention: read own output untracked so writing it back
     // doesn't re-trigger this effect. `source()` is the only dep.
@@ -22,7 +27,7 @@ export function distinct<T>(
     }
   })
 
-  return result
+  return Object.assign(result as ReadableSignal<T>, { dispose: () => fx.dispose() })
 }
 
 /**
@@ -37,15 +42,20 @@ export function distinct<T>(
  * // clicks: 3 → total: 4
  * // clicks: 2 → total: 6
  * ```
+ *
+ * The reducer runs on the CURRENT source value immediately (the initial
+ * `source()` counts as the first emission). Like {@link distinct}, `scan`
+ * owns an eager `effect()` — auto-torn-down inside a component / `effectScope`,
+ * else call the returned `.dispose()`.
  */
 export function scan<T, U>(
   source: ReadableSignal<T>,
   reducer: (acc: U, value: T) => U,
   initial: U,
-): ReadableSignal<U> {
+): ReadableSignal<U> & { dispose: () => void } {
   const result = signal(initial)
 
-  effect(() => {
+  const fx = effect(() => {
     const val = source()
     // Loop-prevention: read the running accumulator untracked; the
     // tracked dependency is `source()`, not `result`.
@@ -53,7 +63,7 @@ export function scan<T, U>(
     result.set(reducer(result.peek(), val))
   })
 
-  return result
+  return Object.assign(result as ReadableSignal<U>, { dispose: () => fx.dispose() })
 }
 
 /**
@@ -74,6 +84,30 @@ export function combine<A, B, C, R>(
   b: ReadableSignal<B>,
   c: ReadableSignal<C>,
   fn: (a: A, b: B, c: C) => R,
+): ReturnType<typeof computed<R>>
+export function combine<A, B, C, D, R>(
+  a: ReadableSignal<A>,
+  b: ReadableSignal<B>,
+  c: ReadableSignal<C>,
+  d: ReadableSignal<D>,
+  fn: (a: A, b: B, c: C, d: D) => R,
+): ReturnType<typeof computed<R>>
+export function combine<A, B, C, D, E, R>(
+  a: ReadableSignal<A>,
+  b: ReadableSignal<B>,
+  c: ReadableSignal<C>,
+  d: ReadableSignal<D>,
+  e: ReadableSignal<E>,
+  fn: (a: A, b: B, c: C, d: D, e: E) => R,
+): ReturnType<typeof computed<R>>
+export function combine<A, B, C, D, E, F, R>(
+  a: ReadableSignal<A>,
+  b: ReadableSignal<B>,
+  c: ReadableSignal<C>,
+  d: ReadableSignal<D>,
+  e: ReadableSignal<E>,
+  f: ReadableSignal<F>,
+  fn: (a: A, b: B, c: C, d: D, e: E, f: F) => R,
 ): ReturnType<typeof computed<R>>
 export function combine(...args: any[]): any {
   const fn = args[args.length - 1] as (...vals: any[]) => any
@@ -104,6 +138,13 @@ export function zip<A, B, C>(
   c: ReadableSignal<C[]> | C[],
 ): ReturnType<typeof computed<[A, B, C][]>>
 export function zip<A, B, C>(a: A[], b: B[], c: C[]): [A, B, C][]
+export function zip<A, B, C, D>(
+  a: ReadableSignal<A[]> | A[],
+  b: ReadableSignal<B[]> | B[],
+  c: ReadableSignal<C[]> | C[],
+  d: ReadableSignal<D[]> | D[],
+): ReturnType<typeof computed<[A, B, C, D][]>>
+export function zip<A, B, C, D>(a: A[], b: B[], c: C[], d: D[]): [A, B, C, D][]
 export function zip(...sources: any[]): any {
   const hasSignal = sources.some(isSignal)
   const resolve = () => {

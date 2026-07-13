@@ -90,4 +90,32 @@ describe('pipe — signal values', () => {
     )
     expect(result).toBe('9-8')
   })
+
+  it('supports 6 and 7 transforms (typed overloads, not `any`)', () => {
+    const src = signal([1, 2, 3, 4, 5, 6, 7, 8])
+    // Each step's param type must flow (number[] → number[] → … → string).
+    const result = pipe(
+      src,
+      (arr) => arr.filter((n) => n % 2 === 0), // [2,4,6,8]
+      (arr) => arr.map((n) => n * 2), // [4,8,12,16]
+      (arr) => arr.slice(0, 3), // [4,8,12]
+      (arr) => arr.reduce((s, n) => s + n, 0), // 24
+      (n) => n + 1, // 25
+      (n) => `v=${n}`, // "v=25"
+    )
+    expect(result()).toBe('v=25')
+
+    const seven = pipe(
+      src,
+      (arr) => arr.filter((n) => n > 2),
+      (arr) => arr.map((n) => n + 1),
+      (arr) => arr.slice(0, 2),
+      (arr) => arr.reduce((s, n) => s + n, 0),
+      (n) => n * 10,
+      (n) => n - 5,
+      (n) => `total:${n}`,
+    )
+    // filter>2: [3..8], +1: [4..9], slice 2: [4,5], sum: 9, *10: 90, -5: 85
+    expect(seven()).toBe('total:85')
+  })
 })

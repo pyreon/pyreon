@@ -33,7 +33,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint .",
-    "bench:rxjs": "NODE_ENV=production bun bench/rx-bench.ts"
+    "bench": "NODE_ENV=production bun bench/rx-bench.ts"
   },
   "peerDependencies": {
     "@pyreon/reactivity": "workspace:^"
@@ -42,7 +42,8 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "solid-js": "^1.9.13"
   },
   "publishConfig": {
     "access": "public"

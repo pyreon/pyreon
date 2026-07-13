@@ -1,4 +1,4 @@
-import { signal } from '@pyreon/reactivity'
+import { effectScope, signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import { combine, distinct, merge, scan, zip } from '../operators'
 
@@ -53,6 +53,31 @@ describe('distinct', () => {
     src.set('c')
     expect(d()).toBe('c')
   })
+
+  it('dispose() stops tracking; auto-torn-down by an owning scope', () => {
+    const src = signal(0)
+    const d = distinct(src)
+    src.set(1)
+    expect(d()).toBe(1)
+    d.dispose()
+    src.set(2)
+    expect(d()).toBe(1) // frozen after dispose
+    expect(() => d.dispose()).not.toThrow() // idempotent
+
+    // Scope teardown disposes the internal effect (no dispose() needed).
+    const scope = effectScope()
+    let s2!: ReturnType<typeof signal<number>>
+    let d2!: ReturnType<typeof distinct<number>>
+    scope.runInScope(() => {
+      s2 = signal(0)
+      d2 = distinct(s2)
+    })
+    s2.set(5)
+    expect(d2()).toBe(5)
+    scope.stop()
+    s2.set(9)
+    expect(d2()).toBe(5) // scope disposed the effect
+  })
 })
 
 describe('scan', () => {
@@ -98,6 +123,17 @@ describe('scan', () => {
     // Different value triggers accumulation again
     src.set(7)
     expect(running()).toBe(22)
+  })
+
+  it('dispose() stops accumulation; idempotent', () => {
+    const src = signal(1)
+    const total = scan(src, (acc, val) => acc + val, 0)
+    src.set(2)
+    expect(total()).toBe(3) // 0+1, then +2
+    total.dispose()
+    src.set(10)
+    expect(total()).toBe(3) // frozen after dispose
+    expect(() => total.dispose()).not.toThrow()
   })
 })
 
@@ -150,6 +186,24 @@ describe('combine', () => {
     c.set(200)
     expect(sum()).toBe(222)
   })
+
+  it('combines 4, 5 and 6 signals (typed overloads)', () => {
+    const a = signal(1)
+    const b = signal(2)
+    const c = signal(3)
+    const d = signal(4)
+    const e = signal(5)
+    const f = signal(6)
+    // Types must infer x..z as numbers, not `any` — the higher-arity overloads.
+    const four = combine(a, b, c, d, (w, x, y, z) => w + x + y + z)
+    const five = combine(a, b, c, d, e, (v, w, x, y, z) => v + w + x + y + z)
+    const six = combine(a, b, c, d, e, f, (u, v, w, x, y, z) => u + v + w + x + y + z)
+    expect(four()).toBe(10)
+    expect(five()).toBe(15)
+    expect(six()).toBe(21)
+    a.set(10)
+    expect(six()).toBe(30)
+  })
 })
 
 // ─── zip ────────────────────────────────────────────────────────────────────
@@ -179,6 +233,14 @@ describe('zip', () => {
     expect(zip(['a', 'b'], [1, 2], [true, false])).toEqual([
       ['a', 1, true],
       ['b', 2, false],
+    ])
+  })
+
+  it('four arrays (typed overload)', () => {
+    const result = zip(['a', 'b'], [1, 2], [true, false], [10n, 20n])
+    expect(result).toEqual([
+      ['a', 1, true, 10n],
+      ['b', 2, false, 20n],
     ])
   })
 
