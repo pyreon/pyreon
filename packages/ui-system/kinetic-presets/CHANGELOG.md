@@ -1,5 +1,7 @@
 # @pyreon/kinetic-presets
 
+## 0.44.0
+
 ## 0.43.1
 
 ## 0.43.0

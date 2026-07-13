@@ -1,5 +1,88 @@
 # @pyreon/mcp
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2176](https://github.com/pyreon/pyreon/pull/2176) [`0288b44`](https://github.com/pyreon/pyreon/commit/0288b44f9a46e9d99c8fdece0e79ab9192976ec1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/hooks` excellence pass — 4 new hooks (36 → 40) + doc/impl drift eliminated.
+
+  **New hooks** (each SSR-safe, self-cleaning, tested — happy-dom + true-node SSR arms):
+
+  - **`useCounter(initial?, { min?, max? })`** — reactive numeric counter (`inc`/`dec`/`set`/`reset`), min/max clamping. The numeric companion to `useToggle`. Zero wrapper overhead over a raw signal, and the fastest counter primitive measured (1.36–1.62× vs Solid `createSignal` / Preact signals — see the new `bench:hooks`).
+  - **`useWindowScroll()`** — reactive `{ x, y }` scroll offset (passive listener) + SSR-safe `scrollTo`.
+  - **`useDocumentVisibility()`** — reactive Page Visibility (`'visible' | 'hidden'`) to pause work when the tab is hidden.
+  - **`useIdle(timeoutMs?, opts?)`** — reactive user-idle detection; flips back on the next activity event.
+
+  **Drift eliminated** — the shipped implementations were correct and consumer-validated, but the README + manifest + generated MCP `api-reference` had drifted to an aspirational, runtime-broken API. Docs now match the code:
+
+  - `useControllableState` — `defaultValue` is a PLAIN value (was documented as a getter, which wouldn't typecheck).
+  - `useEventListener` — signature is `(event, handler, options?, target?)` (was documented target-first); `target` is resolved once at setup (the "re-binds reactively" claim was false).
+  - `useFocusTrap` — signature is `(getEl)`; it is ref-gated (inert while `getEl()` is null), with no `active` flag and no focus-return (that is the separate `useFocusReturn`).
+  - `useInfiniteScroll` — returns `{ ref, triggered }` with `{ threshold, loading, hasMore, direction }` options (was documented as `{ sentinelRef, isLoading }` / `{ rootMargin, enabled }`).
+  - `useClipboard` / `useDialog` — corrected return shapes (`copy` resolves `boolean`; `useDialog.open` is the state signal, openers are `show`/`showModal`).
+  - Stale "(planned)" lint-rule caveat replaced with the shipped `pyreon/no-raw-addeventlistener` / `pyreon/no-raw-setinterval` rules.
+
+  `useIsomorphicLayoutEffect` simplified (removed a no-op `isClient ? onMount : onMount` ternary — `onMount` is already isomorphic).
+
+- [#2180](https://github.com/pyreon/pyreon/pull/2180) [`757893e`](https://github.com/pyreon/pyreon/commit/757893e05129efb91feb3f06eac5465d4175e8e0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix manifest↔shipped-API drift across 15 packages + ship a prevention gate.
+
+  Package manifests' `api[].example` / `signature` blocks render VERBATIM into the MCP `api-reference` (what AI coding assistants read) and into `llms-full.txt`, but are hand-maintained and had silently drifted from the shipped exports — teaching code that wouldn't typecheck. Corrected the drift and added a gate so it can't recur.
+
+  **Real drift fixed** (example/signature corrected to match the shipped export; the shipped runtime is the source of truth):
+
+  - **@pyreon/core** — `ErrorBoundary` (no `onCatch` prop; `fallback` is `(err, reset) => VNodeChild`, `err` is `unknown`); `cx` is SINGLE-arg (`cx(["a","b"])`, not `cx("a","b")`); `mapArray` takes THREE args (`source, getKey, map`); removed the bogus `untrack` entry (it's a `@pyreon/reactivity` export, not `@pyreon/core`).
+  - **@pyreon/head** — `renderWithHead` is imported from the `@pyreon/head/ssr` subpath (not the main entry); `htmlAttrs`/`bodyAttrs` are `Record<string,string>` (serialize them, don't interpolate raw); `createHeadContext()` returns a value with `resolve()`/`resolveHtmlAttrs()`/`resolveBodyAttrs()`, not a `{tags, htmlAttrs, bodyAttrs}` object.
+  - **@pyreon/runtime-dom** — `hydrateRoot(container, root)` takes the container FIRST (reverse of `mount(root, container)`); `<Transition>` uses a required `show` accessor and has NO `mode` prop; `<TransitionGroup>` drives the list via `items`/`keyFn`/`render` props (not `<For>` children).
+  - **@pyreon/router** — `useTypedSearchParams` returns a `[get, set]` TUPLE (not an object); `RouterLink to` is a string; `onBeforeRouteUpdate`/`onBeforeRouteLeave` return an unregister fn; per-route `middleware` lives on a `RouteRecord`, not `createRouter` options; a redirect route still needs `component`.
+  - **@pyreon/compiler** — audit-finding locations expose `.relPath`/`.path`, not `.file`.
+  - **@pyreon/reactivity** — `effect(...)` callbacks in examples return `void` (a value-returning body doesn't typecheck).
+  - **@pyreon/dnd** — `For` is imported from `@pyreon/core`, not `@pyreon/reactivity`.
+  - **@pyreon/zero** — env helpers import from `@pyreon/zero/env`; `expandRoutesForLocales` from `@pyreon/zero/i18n-routing`; `cspMiddleware` from `@pyreon/zero/csp` with camelCase directive keys; `aiPlugin(config)` requires a config; `SitemapConfig` requires `origin`.
+  - **@pyreon/unistyle** — `makeItResponsive` is a styled-interpolation factory; `styles` requires `css`; `alignContent`/direction use the real unions; `extendCss` is single-arg; `breakpoints` is a const object; `createMediaQueries` takes an object and returns tagged-template fns.
+  - **@pyreon/virtual** — virtualizer options are FUNCTION types (`useVirtualizer(() => ({ count, ... }))`).
+  - **@pyreon/state-tree** — `getType(instance): unknown`; instances have no `.store`; corrected the lifecycle example.
+  - **@pyreon/connector-document** / **@pyreon/document-primitives** — `DocHeading level` is a tag string (`"h1"`), not a number.
+  - **@pyreon/sync** — `FakeCrdtAdapter.createDoc()` returns the concrete fake doc for `connectFakeDocs`.
+  - **@pyreon/query** — `QueryErrorResetBoundary` takes a plain subtree; use `useQueryErrorResetBoundary()` inside the fallback (no render prop).
+
+  **Prevention gate** — `scripts/check-manifest-examples.ts` (wired into `validate-fast` + CI): for every package with a `src/manifest.ts`, it typechecks each `api[].example`/`longExample` against the LIVE shipped types (subpath-aware resolution, validated symbol injection, syntax-fragment-tolerant, synthetic missing-export detection). A drift fails the gate, naming the package + api entry + TS error. Harness-limited packages (untyped ambient example data, DOM-global name collisions, alt-JSX namespaces, strict-mode-only schema libs) sit in a `NON_ENFORCED` ratchet with a per-package rationale (report-only; can only shrink). One runtime line changed: `@pyreon/url-state`'s `UrlRouter.replace` return type is widened from `void | Promise<void>` to `void | Promise<unknown>` — the gate surfaced a real type regression (since `@pyreon/router` [#2171](https://github.com/pyreon/pyreon/issues/2171) made `replace()` return `Promise<NavigationResult>`, the narrow bridge broke `setUrlRouter(useRouter())` at the type level; url-state ignores the return value, so the wider type is correct). Aside from that one line, the regenerated MCP `api-reference` + `llms-full` are the only shipped artifacts affected.
+
+- [#2146](https://github.com/pyreon/pyreon/pull/2146) [`7870ebd`](https://github.com/pyreon/pyreon/commit/7870ebd9f2042bc83d5c4d86bc13776ea6e711c0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(mcp): `pyreon-mcp` starts on Node 20/22 LTS (was a silent no-op there)
+
+  The stdio server was gated on `import.meta.main` alone, which Node only
+  defines from v24.2 (it's `undefined` on 20/22 LTS) — so `npx pyreon-mcp` under
+  Node LTS started nothing and exited silently (it worked under Bun/`bunx`, which
+  masked it). The entry check is now cross-runtime: it uses `import.meta.main`
+  when it's a boolean, else falls back to comparing the resolved process-entry
+  URL to the module URL. The comparison is a pure exported helper
+  (`matchesProcessEntry`) so the LTS path is unit-tested without an old Node.
+
+- [#2168](https://github.com/pyreon/pyreon/pull/2168) [`0274fb6`](https://github.com/pyreon/pyreon/commit/0274fb6a0f838a9f7b4ec41295adef1bf5ed4e95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/validate` excellence pass — async-composition correctness, a fuzz-found `.catch` bug, JSON Schema emit, and a valid-path perf sweep that wins back the scalar-email benchmark row.
+
+  **Fixes (all bisect-verified, locked by three JIT↔interpreter differential fuzz suites):**
+
+  - Async members (`.refine(async)` / `.transform(async)` / registered `.serverCheck`) now work inside EVERY composition — `union`, `discriminatedUnion`, `intersection`, `map`, `set`, `record`, `tuple` previously hard-errored "async member in sync parse" even under `parseAsync` (and Map/Set silently DROPPED async entries). A sync `parse()` of an async tree now reports the one canonical "use parseAsync" issue at the root.
+  - The runtime JIT is async-aware: an async fallback subtree defers onto a pending list the root return awaits (previously any Promise from a fallback hard-errored — `parseAsync` was broken for JIT'd objects with async-refine fields). `serverCheck` no longer disqualifies a tree from the JIT.
+  - **`.catch` no longer eats sibling issues under `parseAsync`** (fuzz-found): the catch window snapshotted the shared ctx's issue count across an await, so a concurrent sibling failure could misfire the fallback AND truncate the sibling's issue — an invalid object parsed `ok: true`. `.catch` now runs against a private child ctx.
+  - `parseReactiveAsync` supersedes stale in-flight results (the file header claimed this but the implementation didn't do it): an awaited stale frame resolves to the LATEST run's verdict — typing fast can never apply a stale validation.
+  - `s.discriminatedUnion` registers `s.enum(...)` / `s.nativeEnum(...)` discriminant values (previously only literals — enum-tagged members were unreachable) and dev-throws at construction on a non-registrable discriminant field or a duplicate tag value.
+  - Union members now run against the shared parse ctx: a winning member's `pending` serverCheck entries propagate (previously silently dropped), and per-member result-envelope allocation is gone.
+  - `schema['~standard']` is memoized — repeated reads return the same object (was a fresh object + closure per access).
+
+  **New:**
+
+  - `toJsonSchema(schema, { unrepresentable? })` — JSON Schema draft 2020-12 emission from the new `@pyreon/validate/json-schema` subpath (input-shape contract; unrepresentable kinds throw or emit `{}`; cyclic `s.lazy` throws — no `$defs` in v1).
+  - `@pyreon/validate` now serves MCP `get_api` (api-reference region migrated).
+
+  **Performance** (process-isolated bench, pooled CI95): scalar-email valid-parse is now 🤝 TIED with ArkType (was 1.4× behind) via a table-driven email scanner (~1.6× the Zod-parity regex, exhaustive+fuzz equivalence-locked); array rows now win 1.9–2.3× vs ArkType (were ~1.1–1.2×) via JIT static-path elision (`ctx.path` untouched on the valid path, full issue paths reconstructed only at failure sites); flat-object narrows to ~1.2× (ArkType aliases the input; Pyreon keeps immutable strip-clone semantics — documented Pareto). Error-path dominance kept on every row (33–44× Zod, 20–53× ArkType).
+
+  **Security hardening:** numeric check bounds (`.min`/`.max`/`.length`/`.gt`/`.lt`/`.between`/`.multipleOf`) are now rendered into the JIT-generated source through `Number`-coercion (`numLit`), so the interpolated token is always a numeric literal — byte-identical for every real bound (incl. `Infinity`), and injection-proof for any non-numeric a raw-JS caller could sneak past the `number` types. Closes the CodeQL code-construction finding at its root (all runtime values were already closure-captured; literals `JSON.stringify`'d — this was the sole raw-value interpolation). Regression-locked by `jit-codegen-safety.test.ts` (bisect-verified: the payload executes at compile time without it).
+
+  **Breaking (pre-1.0):** the never-implemented `ParseCtx.abortOnFirst` field is removed; JIT-compiled schemas now report field-level async-in-sync errors at the ROOT (interpreter parity) instead of a per-field message.
+
+- Updated dependencies [[`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99), [`57808e6`](https://github.com/pyreon/pyreon/commit/57808e65d9b2d9823b0b054d0af0371cde078e85), [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4), [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c), [`0274fb6`](https://github.com/pyreon/pyreon/commit/0274fb6a0f838a9f7b4ec41295adef1bf5ed4e95)]:
+  - @pyreon/compiler@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

@@ -1,5 +1,30 @@
 # @pyreon/router
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2171](https://github.com/pyreon/pyreon/pull/2171) [`28fbd77`](https://github.com/pyreon/pyreon/commit/28fbd7799f015503d45c8642d8822bff64e9e155) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Router excellence pass — browser-navigation correctness + in-place revalidation:
+
+  - **Browser Back/Forward now runs the FULL navigation pipeline.** Pre-fix, popstate/hashchange did a bare path write — so loaders never re-ran (`useLoaderData()` was `undefined` after pressing Back, since loader data is pruned on leave), guards/blockers/middleware were bypassed, `afterEach` never fired (the a11y route announcer was silent on Back/Forward), and scroll positions + `meta.title` were not maintained. A traversal cancelled by a guard/blocker now restores the URL and history position (`history.go` via a per-entry `history.state.__pyreonIdx` stamp, `replaceState` fallback for entries the router didn't create).
+  - **`push()`/`replace()` resolve with a `NavigationResult`** (`'committed' | 'cancelled' | 'superseded'`) instead of `void` — Vue-Router-style navigation-failure detection in value form (`if (await router.push('/x') !== 'committed') …`). Existing `await router.push(...)` call sites keep compiling and behaving identically.
+  - **New `router.revalidate()`** — re-runs the CURRENT route's loaders in place and re-renders affected components (the mutation-then-refresh primitive; closes the "`invalidateLoader` only takes effect on next navigation" limitation). A revalidating loader that throws `redirect()` navigates.
+  - **`useMiddlewareData()` fixed** — it returned `{}` since inception (data was attached to an in-flight route object that never becomes `currentRoute()`). Middleware data is now published at commit time and read reactively; it resets per navigation.
+  - **`<RouterLink>` prefetch dedup** — hover/viewport prefetch now routes through the loader cache + in-flight dedup, so a prefetch and the click that follows share ONE loader run (was a guaranteed double-fetch).
+  - Behavioral notes: browser-traversal route updates are now asynchronous (they run the pipeline); when an explicit `scrollBehavior` is configured the router sets `history.scrollRestoration = 'manual'` for its lifetime (restored on `destroy()`) — without one, native scroll restoration keeps owning Back/Forward scroll exactly as before.
+
+### Patch Changes
+
+- [#2184](https://github.com/pyreon/pyreon/pull/2184) [`9ef1b14`](https://github.com/pyreon/pyreon/commit/9ef1b1422313b49a020b7deb1ffa0871a5cc012a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security: harden user-controlled-key parsers against property injection (CodeQL `js/remote-property-injection`)
+
+  `parseQuery`/`parseQueryMulti` (`@pyreon/router`) write user-controlled query KEYS into the result, and `parseCookies` (`@pyreon/zero` i18n routing) writes client-controlled cookie NAMES — a plain `{}` result let `?__proto__=…` / `Cookie: constructor=…` reach inherited prototype slots. All three now build a **null-prototype** result object (`Object.create(null)`, the `qs`/`query-string` standard), so every user key is a plain own data property: prototype/property injection is structurally impossible, and `?__proto__=x` becomes a retrievable own key rather than a `Object.prototype`-shadowing footgun. Public return types (`Record<string, …>`) are unchanged; consumer access (`q[key]`, `key in q`, `Object.keys`, spread) is unaffected. Regression-locked + bisect-verified in both packages.
+
+- Updated dependencies [[`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99), [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c), [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/runtime-dom@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/core@0.44.0
+  - @pyreon/sized-map@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

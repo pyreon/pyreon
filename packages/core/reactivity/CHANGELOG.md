@@ -1,5 +1,11 @@
 # @pyreon/reactivity
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2166](https://github.com/pyreon/pyreon/pull/2166) [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Verify-mode dependency reuse: effect/computed re-runs no longer tear down + rebuild their dependency subscriptions. Steady-state re-runs verify the previous dep list positionally (one identity compare per read — zero Set operations, zero allocations; preact-signals' versioned-node reuse semantics adapted to Pyreon's array/Set architecture with the signal-side notify path byte-identical). Measured: 2.0–2.2× effect propagation, 1.85× batch-50, 2.6× 10k-effect re-run throughput, memory-neutral. Internals-only — public API unchanged; effects/computeds now also keep an EXACT dependency list on every run, which fixes two latent bugs: a nested `effect()` creation no longer silently drops the outer effect's later `onCleanup()` registrations, and a dependency read after a dirty computed's first evaluation is now recorded (previously the subscription leaked past `dispose()`). Lazy computeds additionally unsubscribe stale conditional-branch dependencies on re-evaluation.
+
 ## 0.43.1
 
 ## 0.43.0

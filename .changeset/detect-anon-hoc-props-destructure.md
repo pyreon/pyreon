@@ -1,5 +1,0 @@
----
-"@pyreon/compiler": patch
----
-
-`validate` / `pyreon check` now catch props-destructuring inside the anonymous component a HOC returns. `const withLink = (W) => (props) => { const { href, ...rest } = props; … }` previously got "No issues found" — `detectPropsDestructuredBody` only accepted PascalCase-NAMED components, so the component-by-position shape slipped through (naming the inner component made it fire). The detector now also accepts an anonymous return-position arrow/function whose first parameter is literally `props` (`isReturnedPropsComponent`) — concise-body (`(W) => (props) => {…}`), block-body (`return (props) => {…}`), and paren-wrapped forms. False-positive gating preserved: render-prop children and `.map`/handler callbacks are arguments (not return position) and stay unflagged; the recommended-fix reactive accessor (`return (() => …)`) has no parameters and can never match; a returned arrow whose param isn't named `props` is an accepted miss (a wrong flag is worse than a missed one, per the detector's zero-FP doctrine).

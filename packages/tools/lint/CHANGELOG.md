@@ -1,5 +1,33 @@
 # @pyreon/lint
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2150](https://github.com/pyreon/pyreon/pull/2150) [`38deec0`](https://github.com/pyreon/pyreon/commit/38deec0695ae616960966766e530e1b42d138ed1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Release-audit low-tier hardening:
+
+  - **`@pyreon/validation`**: the Standard-Schema issue-path → dot-string flattening existed as five inline copies (`standardSchemaToValidator`, `wrapStandardSchema`, and the zod/valibot/arktype adapters) — identical by luck, not construction; every consumer (form's schema-error routing, store/state-tree parse errors) keys on that exact format, so a drifted copy would silently mis-route errors. Consolidated into ONE exported `flattenIssuePath()` (plain segments, `{key}` objects, mixed; absent/empty → `""` the whole-form key), used by all five sites and unit-locked.
+  - **`@pyreon/lint`** (`pyreon/no-private-env-in-client`): computed `process.env[expr]` access is now reported — it is ALWAYS dead in the browser (bundler define-replacement rewrites static reads only; `process.env` itself is undefined client-side); it was silently skipped. The specs also exposed a pre-existing misclassification: `process.env[k]` with an identifier key was treated as a STATIC `.k` read and given the wrong guidance (`ZERO_PUBLIC_k`) — `node.computed` is the real discriminator. Computed `import.meta.env[expr]` stays exempt by design (Vite injects a real env object).
+
+- [#2144](https://github.com/pyreon/pyreon/pull/2144) [`e857e7b`](https://github.com/pyreon/pyreon/commit/e857e7be71601bcded333045182b13fb8814a8e5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The `pyreon-lint` bin actually runs the CLI — it was a complete no-op in published builds. `bin/pyreon-lint.js` was a bare `import('../lib/cli.js')`, but the built `lib/cli.js` is a pure re-export: `src/cli.ts`'s `if (import.meta.main) main()` self-run guard does not survive the library build (rolldown drops it, and inside a bundled chunk `import.meta.main` is never true anyway), so the bin loaded a module, ran nothing, and exited 0 for every invocation. The wrapper now explicitly calls `runCli(process.argv.slice(2))` and exits with its code (staying alive for `--watch`/`--lsp`). Locked by a real-bin regression test that asserts exit code 1 on an error-severity finding — the no-op bin exited 0 (bisect-verified). Note `pyreon lint` (via `@pyreon/cli`) was unaffected — it forwards to `runCli` programmatically; only the standalone `pyreon-lint` binary was dead.
+
+- [#2179](https://github.com/pyreon/pyreon/pull/2179) [`bc4870c`](https://github.com/pyreon/pyreon/commit/bc4870c318abfa12bd037cde428ad7cf182dd4ba) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix nine `@pyreon/lint` rule defects surfaced by an upstream consumer's hardening pass — accuracy, scope, and two code-corrupting autofixes.
+
+  - **LT-9** `vitest-config-uses-shared` + `no-querySelector-cast-in-test`: fired at `error` in the default preset mandating `@pyreon/vitest-config` / `@pyreon/test-utils` — both `"private": true`, so a consumer literally cannot satisfy them. Now gated on `isProjectDependency` — silent in a project that doesn't declare the (private) package; the monorepo (which self-depends) still enforces them.
+  - **LT-7** `no-signal-leak`: flagged `export const x = signal(0)` as "unused" — exported signals are consumed cross-module. Now skips exported bindings.
+  - **LT-5** `no-signal-in-props`: flagged ANY call in a component prop (`String(v)`, `t(key)`, `humanize(id)` — none signals). Now resolves the callee to a `signal()`/`computed()` binding.
+  - **LT-4.1** `no-window-in-ssr` + **LT-6** `no-dom-in-setup`: fired inside test files (which never SSR and legitimately touch `window`/`document`). Now skip test files (+ `no-dom-in-setup` gains `exemptPaths`), consistent with the other SSR/browser-API rules.
+  - **LR-5** `no-onchange`: its **autofix** rewrote `onChange`→`onInput` on `<select>`/`checkbox`/`radio`/etc., where `onChange` is the correct DOM event. Now restricted to text-like inputs.
+  - **LR-8** `no-error-without-prefix`: **autofixed** a consumer's `throw new Error('Save failed (500)')` to `[Pyreon] …`, mislabeling app errors as framework errors. The `[Pyreon]` prefix is a framework-internal convention, so the rule now fires only inside `@pyreon/*` packages.
+  - **LR-6** `dev-guard-warnings`: recommended wrapping in `if (__DEV__)` — a global neither `@pyreon/zero` nor `@pyreon/vite-plugin` injects (a runtime `ReferenceError`). Message now recommends the bundler-agnostic `if (process.env.NODE_ENV !== 'production')` (which the rule already accepted).
+  - **LR-1** `no-bare-signal-in-jsx`: premise was false — `{sig()}` compiles byte-identically to `{() => sig()}` (both reactive), yet the rule flagged it at `error` and autofixed correct code. Demoted to a non-gating `info` style hint and the churning autofix removed.
+
+  Also carries a 39-byte `@pyreon/mcp` bundle-budget bump (drift making `Check Bundle Budgets` red on main; mcp is not otherwise touched).
+
+- Updated dependencies [[`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99), [`57808e6`](https://github.com/pyreon/pyreon/commit/57808e65d9b2d9823b0b054d0af0371cde078e85), [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4), [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c), [`0274fb6`](https://github.com/pyreon/pyreon/commit/0274fb6a0f838a9f7b4ec41295adef1bf5ed4e95)]:
+  - @pyreon/compiler@0.44.0
+  - @pyreon/sized-map@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

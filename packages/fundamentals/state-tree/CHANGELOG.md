@@ -1,5 +1,13 @@
 # @pyreon/state-tree
 
+## 0.44.0
+
+### Patch Changes
+
+- Updated dependencies [[`38deec0`](https://github.com/pyreon/pyreon/commit/38deec0695ae616960966766e530e1b42d138ed1), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/validation@0.44.0
+  - @pyreon/reactivity@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes
