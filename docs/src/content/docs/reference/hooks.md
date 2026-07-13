@@ -70,7 +70,7 @@ useFocusTrap(() => modalEl)                // traps Tab inside the element while
 const scroll = useScrollLock()             // scroll.lock() / scroll.unlock() — refcounted <body> lock
 
 // 5. Responsive — driven by theme breakpoints, NOT raw media queries.
-const bp = useBreakpoint()                 // Signal<{ xs, sm, md, lg, xl }> active breakpoint flags
+const bp = useBreakpoint()                 // () => string — active breakpoint name ('xs'|'sm'|'md'|'lg'|'xl')
 const isMobile = useMediaQuery('(max-width: 640px)')
 const colorScheme = useColorScheme()       // Signal<'light' | 'dark'> from prefers-color-scheme
 const motion = useReducedMotion()          // Signal<boolean> from prefers-reduced-motion
@@ -92,7 +92,7 @@ const share = useShare()                   // platform share sheet: share.text('
 
 // 8. Composition primitives.
 const merged = useMergedRef(localRef, props.ref)   // forward ref + capture local
-useUpdateEffect(() => save(value()), [value])      // skips first run (mount-only effect)
+useUpdateEffect(() => value(), (v) => save(v))     // watch-style (source, cb); skips first run
 useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client, no-op on SSR
 
 // 9. More state + lifecycle.
@@ -112,7 +112,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useElementSize`](#useelementsize) | hook | Reactive element size via `ResizeObserver`. |
 | [`useFocusTrap`](#usefocustrap) | hook | Trap Tab/Shift+Tab focus inside the element returned by `getEl()`. |
 | [`useFocusReturn`](#usefocusreturn) | hook | The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus  |
-| [`useBreakpoint`](#usebreakpoint) | hook | Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes  |
+| [`useBreakpoint`](#usebreakpoint) | hook | Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. |
 | [`useDebouncedValue`](#usedebouncedvalue) | hook | Returns a debounced signal that only updates after `delayMs` of source-signal idle. |
 | [`useFetch`](#usefetch) | hook | Thin reactive JSON fetch matching the multiplatform `useFetch<T>(url)` contract — the SAME call in a shared `.tsx` compi |
 | [`useClipboard`](#useclipboard) | hook | `navigator.clipboard.writeText` wrapped with a reactive `copied` flag that auto-resets after `options.timeout` ms (defau |
@@ -120,7 +120,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useTimeAgo`](#usetimeago) | hook | Reactive "5 minutes ago" / "in 2 hours" relative-time string. |
 | [`useInfiniteScroll`](#useinfinitescroll) | hook | `IntersectionObserver`-based infinite loading. |
 | [`useMergedRef`](#usemergedref) | hook | Combine multiple refs into a single callback ref — used when forwarding `props.ref` while also keeping a local ref to th |
-| [`useUpdateEffect`](#useupdateeffect) | hook | Like `effect` but skips the initial run — only fires when one of the tracked signals updates *after* mount. |
+| [`useUpdateEffect`](#useupdateeffect) | hook | Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`' |
 | [`useIsomorphicLayoutEffect`](#useisomorphiclayouteffect) | hook | Runs a layout-phase effect on the client (synchronous, before paint) and a no-op on the server. |
 | [`useCounter`](#usecounter) | hook | Reactive numeric counter — the numeric companion to useToggle. |
 | [`useWindowScroll`](#usewindowscroll) | hook | Track the window scroll offset reactively via a passive `scroll` listener (auto-removed on unmount), plus an SSR-safe im |
@@ -269,7 +269,7 @@ The companion to useFocusTrap: captures the focused element (the trigger) when `
 ```tsx
 const open = signal(false)
 useFocusReturn(() => open())               // focus returns to the opener on close
-useFocusTrap(() => dialogRef(), () => open()) // focus is trapped while open
+useFocusTrap(() => dialogRef())            // focus is trapped while the dialog is present
 ```
 
 **Common mistakes**
@@ -284,16 +284,16 @@ useFocusTrap(() => dialogRef(), () => open()) // focus is trapped while open
 ### useBreakpoint `hook`
 
 ```ts
-() => Signal<{ xs: boolean; sm: boolean; md: boolean; lg: boolean; xl: boolean }>
+(breakpoints?: Record<string, number>) => () => string
 ```
 
-Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Use `useMediaQuery` for one-off arbitrary queries.
+Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. `"xs"` / `"sm"` / `"md"` / `"lg"` / `"xl"`), driven by the **theme** breakpoints, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Compare the read against a name; use `useMediaQuery` for one-off arbitrary queries.
 
 **Example**
 
 ```tsx
 const bp = useBreakpoint()
-{() => bp().md ? <DesktopNav /> : <MobileNav />}
+{() => bp() === 'lg' || bp() === 'xl' ? <DesktopNav /> : <MobileNav />}
 ```
 
 **Common mistakes**
@@ -474,15 +474,15 @@ const merged = useMergedRef(localRef, props.ref)
 ### useUpdateEffect `hook`
 
 ```ts
-(fn: () => void | (() => void), deps: Signal<unknown>[]) => void
+<T>(source: () => T, callback: (newVal: T, oldVal: T | undefined) => void | (() => void)) => void
 ```
 
-Like `effect` but skips the initial run — only fires when one of the tracked signals updates *after* mount. Use for "save on change but not on first render" patterns where the initial value is already persisted.
+Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`'s value changes *after* mount (`oldVal` is `undefined` on the first change). Use for "save on change but not on first render" patterns where the initial value is already persisted. Note the argument order is `(source, callback)` — NOT React's `(effect, deps)`.
 
 **Example**
 
 ```tsx
-useUpdateEffect(() => api.save(value()), [value])
+useUpdateEffect(() => value(), (val) => api.save(val))
 // Doesn't fire on initial mount — only on subsequent value changes
 ```
 

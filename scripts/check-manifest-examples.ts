@@ -81,9 +81,6 @@ const CACHE_DIR = join(REPO_ROOT, '.cache', 'manifest-examples')
 //      Their findings are NOT drift; the entry documents the limitation
 //      so the harness can be tightened later to re-enforce them.
 const NON_ENFORCED: Record<string, string> = {
-  // Residual drift (PR ratchet — shrink to zero in a follow-up):
-  '@pyreon/hooks':
-    'residual: #2176 (merged) corrected most hook examples, but useFocusReturn (extra options arg), useBreakpoint (returns `() => string`, not a flags object), and useUpdateEffect (watch-style `(source, callback)`, not React `(effect, deps)`) still drift — report-only pending a dedicated hooks-manifest follow-up (not owned by this docs-drift PR)',
   // Harness-limited (structural — findings are not drift):
   '@pyreon/rx': 'harness-limited: examples map/filter over untyped ambient data → `unknown` element types',
   '@pyreon/styler': 'harness-limited: theme callback params resolve to `unknown` (no theme augmentation in the harness)',
