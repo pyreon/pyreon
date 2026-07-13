@@ -2740,14 +2740,24 @@ import { List } from "@pyreon/elements"
 
 import { Overlay } from "@pyreon/elements"
 
-<Overlay isOpen={open()} type="dropdown" align="bottom" onClose={() => open.set(false)}>
-  <Menu />
+<Overlay
+  type="dropdown"
+  openOn="click"
+  trigger={(t) => <button ref={t.ref}>Open menu</button>}
+>
+  {(c) => (
+    <ul ref={c.ref}>
+      <li>Profile</li>
+      <li>Sign out</li>
+    </ul>
+  )}
 </Overlay>
 
 import { useOverlay } from "@pyreon/elements"
 
 const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
-// spread o.triggerProps on the anchor, o.overlayProps on the floating layer
+// attach o.triggerRef to the anchor and o.contentRef to the floating layer;
+// read o.active() for open state; call o.showContent() / o.hideContent()
 
 import { OverlayProvider } from "@pyreon/elements"
 

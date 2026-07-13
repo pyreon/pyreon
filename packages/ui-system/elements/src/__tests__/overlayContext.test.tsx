@@ -7,9 +7,28 @@ describe('Overlay context', () => {
     expect(typeof useOverlayContext).toBe('function')
   })
 
-  it('returns the default context (empty object) when called outside a provider', () => {
+  it('returns a working no-op default context when called outside a provider', () => {
+    // The default context carries no-op `setBlocked`/`setUnblocked` (not the
+    // former `{}` cast-lie) so a `useOverlay` used outside any provider gets a
+    // callable coordinator instead of relying on `ctx.setBlocked?.()` optional
+    // chaining. `OverlayProvider` now also accepts these props optionally.
     const ctx = useOverlayContext()
-    expect(ctx).toEqual({})
+    expect(ctx.blocked).toBe(false)
+    expect(typeof ctx.setBlocked).toBe('function')
+    expect(typeof ctx.setUnblocked).toBe('function')
+    expect(() => {
+      ctx.setBlocked()
+      ctx.setUnblocked()
+    }).not.toThrow()
+  })
+
+  it('a root provider with no coordination props falls back to no-op defaults', () => {
+    OverlayContextProvider({ children: 'root' })
+    const ctx = useOverlayContext()
+    expect(ctx.blocked).toBe(false)
+    expect(typeof ctx.setBlocked).toBe('function')
+    expect(() => ctx.setBlocked()).not.toThrow()
+    popContext()
   })
 })
 

@@ -72,14 +72,24 @@ export default defineManifest({
       kind: 'component',
       signature: 'Overlay(props: OverlayProps): VNodeChild',
       summary:
-        'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Renders through `Portal` so the layer escapes overflow/stacking contexts.',
+        'A positioned layer (dropdown / modal / tooltip / popover) with an optional backdrop, driven internally by `useOverlay`. It handles viewport flipping, ESC-to-close, click-outside, scroll tracking, and hover delay — do NOT reimplement any of that in a primitive; compose `Overlay` (or `useOverlay`) instead. Takes a `trigger` render prop (receives `{ ref, active, showContent, hideContent }` — attach `ref` to the anchor) and a content render prop as `children` (receives `{ ref, active, align, alignX, alignY, … }` — attach `ref` to the floating node); the content renders through `Portal` so the layer escapes overflow/stacking contexts. `align`/`alignX`/`alignY` reach the content as LIVE reactive props, so a viewport-edge flip re-styles the content in place without remounting it.',
       example: `import { Overlay } from "@pyreon/elements"
 
-<Overlay isOpen={open()} type="dropdown" align="bottom" onClose={() => open.set(false)}>
-  <Menu />
+<Overlay
+  type="dropdown"
+  openOn="click"
+  trigger={(t) => <button ref={t.ref}>Open menu</button>}
+>
+  {(c) => (
+    <ul ref={c.ref}>
+      <li>Profile</li>
+      <li>Sign out</li>
+    </ul>
+  )}
 </Overlay>`,
       mistakes: [
         'Hand-rolling positioning / flip / click-outside / ESC logic in a tooltip or dropdown primitive — `useOverlay` already owns all of it; reimplementing drifts from the shared behavior',
+        'Forgetting to attach the `ref` the trigger / content render props receive — without it the hook cannot measure, position, wire click-outside, or restore focus (the layer renders at the document origin)',
         'Reading the rendered overlay as `document.body.firstChild` — it renders through `Portal` into a per-instance wrapper; traverse the wrapper, not body’s direct child',
       ],
       seeAlso: ['useOverlay', 'OverlayProvider', 'Portal'],
@@ -88,14 +98,16 @@ export default defineManifest({
       name: 'useOverlay',
       kind: 'hook',
       signature:
-        'useOverlay(props?: Partial<UseOverlayProps>): { isOpen, open, close, toggle, triggerProps, overlayProps, /* … */ }',
+        'useOverlay(props?: Partial<UseOverlayProps>): { triggerRef, contentRef, active, align, alignX, alignY, showContent, hideContent, blocked, setBlocked, setUnblocked, setContentPosition, setupListeners, Provider }',
       summary:
-        'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Options: `openOn` / `closeOn` (`click` | `hover` | …), `type` (`dropdown` | `modal` | …), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. Focus management is built in: focus returns to the opener on close (all types), and `type: "modal"` additionally moves focus into the content on open and traps Tab / Shift+Tab within it (the WAI-ARIA dialog pattern — no extra wiring). SSR-safe: the internal positioning + focus helpers early-return under no-`window` so the contract is documented at the call site rather than crashing on the server.',
+        'The positioning + interaction engine `Overlay` is built on, exposed for headless consumers. Returns `triggerRef` / `contentRef` (attach to the anchor + floating node), the `active` open-state signal, the resolved `align` accessor + `alignX` / `alignY` signals, `showContent` / `hideContent` (programmatic control), and `setContentPosition` (reposition when the content SIZE changes while open — async option lists). Options: `openOn` / `closeOn` (`click` | `hover` | …), `type` (`dropdown` | `modal` | …), `position` (`fixed` | …), `align` + `alignX` / `alignY` + `offsetX` / `offsetY`, `closeOnEsc`, `hoverDelay`, `throttleDelay`, `parentContainer`, `disabled`, `onOpen` / `onClose`. Focus management is built in: focus returns to the opener on close (all types), and `type: "modal"` additionally moves focus into the content on open and traps Tab / Shift+Tab within it (the WAI-ARIA dialog pattern — no extra wiring). Listeners auto-attach on mount (idempotent) — a hover overlay keeps open while the pointer is over its content (the content listeners re-bind as it mounts). SSR-safe: the internal positioning + focus helpers early-return under no-`window`.',
       example: `import { useOverlay } from "@pyreon/elements"
 
 const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
-// spread o.triggerProps on the anchor, o.overlayProps on the floating layer`,
+// attach o.triggerRef to the anchor and o.contentRef to the floating layer;
+// read o.active() for open state; call o.showContent() / o.hideContent()`,
       mistakes: [
+        'Reading `o.isOpen` / spreading `o.triggerProps` / `o.overlayProps` — those do not exist; the hook returns `active` (a signal), `triggerRef` / `contentRef` (ref callbacks), and `showContent` / `hideContent`',
         'Passing `align` as a function accessor — it is a value option, not a signal accessor; let the compiler wrap reactive values',
         'Expecting positioning to run during SSR — the helpers are guarded and no-op without `window`; positioning happens post-mount on the client',
         'Reaching for `addEventListener` for outside-click / scroll instead of letting `useOverlay` own the listener lifecycle — it self-cleans on unmount',
@@ -105,9 +117,10 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
     {
       name: 'OverlayProvider',
       kind: 'component',
-      signature: 'OverlayProvider(props: { children?: VNodeChild }): VNodeChild',
+      signature:
+        'OverlayProvider(props?: Partial<OverlayContext> & { children?: VNodeChild }): VNodeChild',
       summary:
-        'Context provider that lets nested overlays coordinate (shared root, stacking, outside-click scoping). `useOverlay` reads it via `useOverlayContext`. Marked `nativeCompat` so it works correctly inside `@pyreon/{react,preact,vue,solid}-compat` apps (its `provide()` runs in Pyreon’s setup frame, not the compat wrapper accessor).',
+        'Context provider that lets nested overlays coordinate (a child overlay blocks its parent from closing while it is open). The coordination props (`blocked` / `setBlocked` / `setUnblocked`) are OPTIONAL — a root `<OverlayProvider>` establishes the context with no-op defaults, while `Overlay` supplies real ones internally via `useOverlay`. `useOverlay` reads it through `useOverlayContext`. Marked `nativeCompat` so it works correctly inside `@pyreon/{react,preact,vue,solid}-compat` apps (its `provide()` runs in Pyreon’s setup frame, not the compat wrapper accessor).',
       example: `import { OverlayProvider } from "@pyreon/elements"
 
 <OverlayProvider>

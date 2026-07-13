@@ -85,7 +85,6 @@ const NON_ENFORCED: Record<string, string> = {
   '@pyreon/rx': 'harness-limited: examples map/filter over untyped ambient data → `unknown` element types',
   '@pyreon/styler': 'harness-limited: theme callback params resolve to `unknown` (no theme augmentation in the harness)',
   '@pyreon/attrs': 'harness-limited: per-method fragments use `Element` (a cross-package component) bare, colliding with the DOM `Element` global',
-  '@pyreon/elements': 'harness-limited: examples use `open`/`Window`-shaped identifiers that collide with DOM globals',
   '@pyreon/document': 'harness-limited: examples use the DocNode JSX namespace, not core VNode; the harness compiles JSX via @pyreon/core',
   '@pyreon/server': 'harness-limited: loader-context example data is untyped → `unknown` property access',
   '@pyreon/permissions': 'harness-limited: predicate-context example data is untyped → `unknown` property access',
