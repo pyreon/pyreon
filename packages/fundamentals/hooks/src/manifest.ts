@@ -61,7 +61,7 @@ useFocusTrap(() => modalEl)                // traps Tab inside the element while
 const scroll = useScrollLock()             // scroll.lock() / scroll.unlock() — refcounted <body> lock
 
 // 5. Responsive — driven by theme breakpoints, NOT raw media queries.
-const bp = useBreakpoint()                 // Signal<{ xs, sm, md, lg, xl }> active breakpoint flags
+const bp = useBreakpoint()                 // () => string — active breakpoint name ('xs'|'sm'|'md'|'lg'|'xl')
 const isMobile = useMediaQuery('(max-width: 640px)')
 const colorScheme = useColorScheme()       // Signal<'light' | 'dark'> from prefers-color-scheme
 const motion = useReducedMotion()          // Signal<boolean> from prefers-reduced-motion
@@ -83,7 +83,7 @@ const share = useShare()                   // platform share sheet: share.text('
 
 // 8. Composition primitives.
 const merged = useMergedRef(localRef, props.ref)   // forward ref + capture local
-useUpdateEffect(() => save(value()), [value])      // skips first run (mount-only effect)
+useUpdateEffect(() => value(), (v) => save(v))     // watch-style (source, cb); skips first run
 useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client, no-op on SSR
 
 // 9. More state + lifecycle.
@@ -193,7 +193,7 @@ useFocusReturn(() => isOpen())  // returns focus to the opener on close`,
         'The companion to useFocusTrap: captures the focused element (the trigger) when `isOpen()` flips true and restores focus to it when `isOpen()` flips false — so keyboard / screen-reader users return to where they were when an overlay closes, instead of the top of the page. Pass `returnTo` when the trigger may have unmounted by close time. SSR-safe (no-op on the server), self-cleaning (the watcher is removed on unmount).',
       example: `const open = signal(false)
 useFocusReturn(() => open())               // focus returns to the opener on close
-useFocusTrap(() => dialogRef(), () => open()) // focus is trapped while open`,
+useFocusTrap(() => dialogRef())            // focus is trapped while the dialog is present`,
       mistakes: [
         'Passing the open state as a plain boolean instead of a getter — `useFocusReturn(open())` reads it once and never tracks the transition; pass `() => open()`.',
         'Expecting it to move focus INTO the overlay on open — that is useFocusTrap / autofocus. useFocusReturn only handles the RETURN on close.',
@@ -203,11 +203,11 @@ useFocusTrap(() => dialogRef(), () => open()) // focus is trapped while open`,
     {
       name: 'useBreakpoint',
       kind: 'hook',
-      signature: '() => Signal<{ xs: boolean; sm: boolean; md: boolean; lg: boolean; xl: boolean }>',
+      signature: '(breakpoints?: Record<string, number>) => () => string',
       summary:
-        'Reactive breakpoint flags driven by the **theme**, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Use `useMediaQuery` for one-off arbitrary queries.',
+        'Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. `"xs"` / `"sm"` / `"md"` / `"lg"` / `"xl"`), driven by the **theme** breakpoints, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Compare the read against a name; use `useMediaQuery` for one-off arbitrary queries.',
       example: `const bp = useBreakpoint()
-{() => bp().md ? <DesktopNav /> : <MobileNav />}`,
+{() => bp() === 'lg' || bp() === 'xl' ? <DesktopNav /> : <MobileNav />}`,
       mistakes: [
         'Using `useBreakpoint` for a one-off media query like `(prefers-contrast: more)` — `useBreakpoint` reads theme breakpoints only; use `useMediaQuery` for arbitrary media queries',
       ],
@@ -316,10 +316,11 @@ const merged = useMergedRef(localRef, props.ref)
     {
       name: 'useUpdateEffect',
       kind: 'hook',
-      signature: '(fn: () => void | (() => void), deps: Signal<unknown>[]) => void',
+      signature:
+        '<T>(source: () => T, callback: (newVal: T, oldVal: T | undefined) => void | (() => void)) => void',
       summary:
-        'Like `effect` but skips the initial run — only fires when one of the tracked signals updates *after* mount. Use for "save on change but not on first render" patterns where the initial value is already persisted.',
-      example: `useUpdateEffect(() => api.save(value()), [value])
+        'Watch-style effect that skips the initial run — tracks `source` and fires `callback(newVal, oldVal)` only when `source`\'s value changes *after* mount (`oldVal` is `undefined` on the first change). Use for "save on change but not on first render" patterns where the initial value is already persisted. Note the argument order is `(source, callback)` — NOT React\'s `(effect, deps)`.',
+      example: `useUpdateEffect(() => value(), (val) => api.save(val))
 // Doesn't fire on initial mount — only on subsequent value changes`,
       seeAlso: ['useIsomorphicLayoutEffect'],
     },

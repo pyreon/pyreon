@@ -68,7 +68,7 @@ describe('gen-docs — hooks snapshot', () => {
       const scroll = useScrollLock()             // scroll.lock() / scroll.unlock() — refcounted <body> lock
 
       // 5. Responsive — driven by theme breakpoints, NOT raw media queries.
-      const bp = useBreakpoint()                 // Signal<{ xs, sm, md, lg, xl }> active breakpoint flags
+      const bp = useBreakpoint()                 // () => string — active breakpoint name ('xs'|'sm'|'md'|'lg'|'xl')
       const isMobile = useMediaQuery('(max-width: 640px)')
       const colorScheme = useColorScheme()       // Signal<'light' | 'dark'> from prefers-color-scheme
       const motion = useReducedMotion()          // Signal<boolean> from prefers-reduced-motion
@@ -90,7 +90,7 @@ describe('gen-docs — hooks snapshot', () => {
 
       // 8. Composition primitives.
       const merged = useMergedRef(localRef, props.ref)   // forward ref + capture local
-      useUpdateEffect(() => save(value()), [value])      // skips first run (mount-only effect)
+      useUpdateEffect(() => value(), (v) => save(v))     // watch-style (source, cb); skips first run
       useIsomorphicLayoutEffect(() => measure())          // useLayoutEffect on client, no-op on SSR
 
       // 9. More state + lifecycle.
