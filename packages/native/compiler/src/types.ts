@@ -303,6 +303,21 @@ export type DeclIR =
    */
   | { kind: 'share'; name: string }
   /**
+   * M3.2b — external-URL open via `const linking = useLinking()` from
+   * `@pyreon/hooks`. Emits the PyreonLinking wrapper:
+   *   Swift  → @State private var linking = PyreonLinking()
+   *   Kotlin → val linkingCtx = LocalContext.current
+   *            val linking = remember { PyreonLinking(linkingCtx) }
+   *
+   * `useLinking()` takes no arguments and has NO reactive state.
+   * `linking.openUrl("...")` (string arg) flows through unchanged — the
+   * runtime hands the URL to the OS (iOS `UIApplication.shared.open`;
+   * Android `startActivity(Intent(ACTION_VIEW, Uri.parse(url)))`). Android
+   * needs a Context (hoisted from LocalContext, like share); iOS uses the
+   * shared application.
+   */
+  | { kind: 'linking'; name: string }
+  /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode
    * active" reads — NO runtime port needed (both SwiftUI and Compose

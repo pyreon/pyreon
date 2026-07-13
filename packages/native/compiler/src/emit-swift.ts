@@ -1921,6 +1921,13 @@ function emitSwiftDecl(
   if (d.kind === 'share') {
     return `@State private var ${swiftIdent(d.name)} = PyreonShare()`
   }
+  // M3.2b: `const linking = useLinking()` → an @State PyreonLinking.
+  // `linking.openUrl("...")` flows through unchanged — the runtime hands
+  // the URL to `UIApplication.shared.open`; no reactive field, no ctor arg
+  // (iOS uses the shared application).
+  if (d.kind === 'linking') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonLinking()`
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`

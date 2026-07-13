@@ -1,6 +1,6 @@
 # @pyreon/hooks
 
-42 signal-based reactive utilities across seven categories for Pyreon apps.
+43 signal-based reactive utilities across seven categories for Pyreon apps.
 
 A reactive-primitives library for the patterns Pyreon components reach for every day: controllable state, DOM observers, responsive layout, timing, interaction, and ref composition. Every hook is SSR-safe (browser-API access is guarded), auto-cleans on unmount (registers `onUnmount` for listeners / observers / timers), and signal-native (returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values) so consumers compose directly with `effect` / `computed` without re-bridging. Used as the foundation by every `@pyreon/ui-primitives` component.
 
@@ -50,7 +50,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 ## The full surface
 
-42 hooks across 7 categories.
+43 hooks across 7 categories.
 
 ### State
 
@@ -109,6 +109,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useClipboard(opts?)` | `{ copy, copied, text }` — `copy` resolves `true`/`false`; `copied` auto-resets after `opts.timeout` (2s) |
 | `useHaptics()` | `{ impact, notification, selection }` — fire-and-forget device haptics; web `navigator.vibrate`, iOS/Android via PMTC (`@pyreon/native-*`). Coarser on web/Android than iOS |
 | `useShare()` | `{ text, url, textUrl, canShare }` — open the platform share sheet; web Web Share API, iOS `UIActivityViewController` / Android `Intent.ACTION_SEND` via PMTC. Android shares URLs as text |
+| `useLinking()` | `{ openUrl }` — open an external URL in the platform browser; web `window.open`, iOS `UIApplication.open` / Android `Intent.ACTION_VIEW` via PMTC |
 | `useDialog(opts?)` | Native `<dialog>` wrapper — `open` signal + `show`/`showModal`/`close`/`toggle`/`ref` |
 | `useKeyboard(key, handler)` | Single-key listener |
 | `useOnline()` | `Signal<boolean>` from `navigator.onLine` |

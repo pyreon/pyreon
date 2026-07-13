@@ -3681,6 +3681,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useShare') {
     return { kind: 'share', name }
   }
+  // M3.2b — `const linking = useLinking()` from `@pyreon/hooks` → the
+  // PyreonLinking wrapper. No arguments. `linking.openUrl("...")` flows
+  // through unchanged (string arg) — the runtime container hands the URL
+  // to the OS (iOS `UIApplication.shared.open`, Android
+  // `Intent.ACTION_VIEW`). Like useShare, Android needs a Context.
+  if (calleeName === 'useLinking') {
+    return { kind: 'linking', name }
+  }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
@@ -5761,6 +5769,7 @@ function warnIfHookInsideRenderCallback(
     'useClipboard',
     'useHaptics',
     'useShare',
+    'useLinking',
     'useColorScheme',
     'usePermissions',
     'useOnline',
