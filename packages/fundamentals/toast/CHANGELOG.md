@@ -1,5 +1,48 @@
 # @pyreon/toast
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2175](https://github.com/pyreon/pyreon/pull/2175) [`5ff4f21`](https://github.com/pyreon/pyreon/commit/5ff4f21ed13c2c194316fad4be9164fe4a06daf6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Animated leave + hard `toast.remove()`, and a fair three-way competitor benchmark.
+
+  **Leave animation (fixes dead code + a doc over-claim).** `toast.dismiss(id?)` is now
+  SOFT: it flips the toast to `state: 'exiting'`, plays the CSS leave transition
+  (fade + collapse in place while siblings reflow smoothly), then hard-removes it
+  after `LEAVE_DURATION` (200ms). Auto-dismiss and manual dismiss both animate out.
+  `onDismiss` still fires immediately. Previously the `'exiting'` state was typed,
+  styled, and read by the render layer but NOTHING ever set it — dismissal was
+  instant and the documented exit animation never played. The store owns the leave
+  timing (works headless); the fine-grained `<For by=id>` + `_toastMap` render path
+  is unchanged (its `class` binding already reacts to `state==='exiting'`).
+
+  **New `toast.remove(id?)`** — the HARD, instant, animation-free removal path (the
+  exact `dismiss` (soft) / `remove` (hard) split react-hot-toast ships). Use it when
+  you need a toast gone right now.
+
+  **Behavior note (pre-1.0):** `toast.dismiss(id)` no longer removes from the store
+  synchronously — the toast lingers as `exiting` for ~200ms while it animates. Code
+  that read `_toasts()` immediately after `dismiss` should use `toast.remove(id)`
+  (instant) or account for the leave delay.
+
+  **Docs fixes:** README/docs/manifest/CLAUDE.md no longer claim `aria-live="polite"`
+  (the a11y is type-aware `role="alert"`/`role="status"`), the phantom
+  `ToastOptions.position` field is removed, and swipe-to-dismiss / collapsed-stacking
+  / per-toast-position are documented as deliberate non-goals.
+
+  **Benchmark:** a new `bench/toast-commit-bench.ts` adds react-hot-toast + sonner —
+  a fresh-process create-throughput row (all three, fair) and mounted-Toaster
+  create/update/dismiss→DOM-commit rows (@pyreon/toast vs react-hot-toast, where
+  Pyreon's fine-grained patch beats React re-render ~20×). The headless
+  `toast-bench.ts` now measures the hard `remove` path symmetrically.
+
+### Patch Changes
+
+- Updated dependencies [[`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99), [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c), [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/runtime-dom@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/core@0.44.0
+
 ## 0.43.1
 
 ## 0.43.0

@@ -1,5 +1,34 @@
 # @pyreon/runtime-dom
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2172](https://github.com/pyreon/pyreon/pull/2172) [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix SVG-rooted templates rendering nothing (the `@pyreon/flow` "edges don't render" bug) — two coupled bugs.
+
+  **`_tpl` was SVG-namespace-blind.** The compiler lowers a DOM subtree to `_tpl("<html>")`; the runtime parsed it via `template.innerHTML`, which only enters SVG mode on a literal `<svg>`. A template rooted at a bare SVG child — `<g>`, `<path>`, `<rect>` (what a flow edge lowers to) — was parsed in the HTML namespace, so the cloned nodes were inert `HTMLUnknownElement`s that rendered nothing. `_tpl` now parses an SVG-rooted string inside an `<svg>` wrapper so the clone carries the SVG namespace.
+
+  **The compiler's template `class` binding used `el.className = …`.** That's a writable string on HTML but a read-only `SVGAnimatedString` on SVG, so the assignment threw once `_tpl` gave the elements the correct namespace — the reactive effect threw and the edge was skipped. Both backends now emit `_setClass(el, v)` (the runtime `applyClassProp`, using `setAttribute("class", …)`, valid on HTML and SVG) — finishing the `_setStyle` extraction (`class` was the last attribute still inlined). No app code change; a reactive `class=` on an SVG element in a template now works.
+
+  Verified in real Chromium (`getTotalLength()`/`SVGPathElement`, not a `querySelector` count) — happy-dom couldn't catch either bug (no `SVGAnimatedString`; HTML-namespace SVG parse).
+
+### Patch Changes
+
+- [#2156](https://github.com/pyreon/pyreon/pull/2156) [`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `_bindText` (the single-signal reactive-text fast path) now upgrades to a subtree mount on the first VNode-shaped value — `const node = signal(<b>hi</b>); <div>{node()}</div>` mounts `<b>hi</b>` instead of rendering `[object Object]`, matching what SSR already emitted for the shape (removing a guaranteed hydration mismatch). Covers `{sig()}`, `{() => sig()}` (which never avoided the fast path — the stale compiler comment claiming otherwise is corrected) and no-arg cross-file helper calls `{helper()}`. The binding stays permanently polymorphic after the first VNode: later string values restore the text node, later VNodes re-mount. String/number-only bindings are untouched — the no-change bail is byte-identical and the VNode check is one `typeof` on the value-actually-changed branch. The swap core is shared with `bindPolymorphicText` (no drift), resets `_elementDepth` for upgrade-at-setup mounts, uses live-parent reads, real removers, untracked child mounts and the setup-time context owner. The dev coercion warning now fires only for the degenerate detached-text-node case (nowhere to mount); the diagnose catalog's PZ-02 entry leads with "upgrade".
+
+- [#2178](https://github.com/pyreon/pyreon/pull/2178) [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix three defects surfaced by an upstream consumer's hardening pass.
+
+  **FW-1 (crash):** a getter-shaped `ref`/`innerRef` on a reactive styled component crashed `DynamicStyled`. The compiler `_rp`-wraps any props-derived JSX prop and `makeReactiveProps` makes it a getter-only descriptor, which `buildProps` descriptor-copies — so `finalProps.ref = wrapper` (plain assignment) threw `Cannot set property ref … which has only a getter`, taking down the whole styled subtree (every rocketstyle/elements component receiving `innerRef={props.innerRef}`). Now defines the wrapper via `Object.defineProperty` (a data descriptor) — the documented "companion writes must use defineProperty, not assignment" rule.
+
+  **LR-3 (a11y):** the styler prop allowlist (`HTML_PROPS_LIST`) contained the React-compat `htmlFor` but not the standard `for`, so a bare `<Label for="x">` on a styled/rocketstyle component silently dropped the `for` attribute, severing the label↔input association. Added `for` to the allowlist.
+
+  **FW-3:** conditional-slot removal (`{cond && <X/>}` / `<Show>` / ternary) no-op'd when the mount root was detached from `document`, leaking the old node and accumulating new ones — because the removal guard was `parent.isConnected !== false`. That conflated "detached by `clearBetween`" (a `DocumentFragment`, the case the skip optimizes) with "the whole root is a detached Element" (common in unit tests, which were thereby blind to removal regressions). The skip now keys on `nodeType === 11` (DocumentFragment).
+
+- Updated dependencies [[`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/core@0.44.0
+  - @pyreon/sized-map@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

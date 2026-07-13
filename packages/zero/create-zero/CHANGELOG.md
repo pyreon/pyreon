@@ -1,5 +1,30 @@
 # create-zero
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2160](https://github.com/pyreon/pyreon/pull/2160) [`4ad62b2`](https://github.com/pyreon/pyreon/commit/4ad62b25037776d6521501cadb8ac9fe33d75e38) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(create-zero): scaffolded deploy configs now match the adapters' actual output paths (shared contract + drift-proof test)
+
+  The scaffolder's deploy configs hardcoded paths no `@pyreon/zero` adapter has ever emitted — every scaffolded node/bun/netlify deploy was broken from inception:
+
+  - **node/bun Dockerfiles** ran `dist/server.js`; the adapters emit `dist/index.js` (node) / `dist/index.ts` (bun). Fixed (`CMD ["node", "dist/index.js"]` / `CMD ["bun", "dist/index.ts"]`), and the runtime stage no longer copies `node_modules` + root `package.json` — the adapter's `dist/` tree is self-contained (SSR bundle externals are `node:*` builtins only).
+  - **`netlify.toml`** published `dist` with functions at `dist/.netlify/functions` and a redirect to a function named `server`; the netlify adapter stages the client into `dist/publish`, the function into `dist/netlify/functions`, and names it `ssr`. The file is now **generated per render mode**: SSR/ISR → `publish = "dist/publish"` + `[functions] directory = "dist/netlify/functions"` + redirect to `/.netlify/functions/ssr`; SSG → `publish = "dist"` (the prerendered root); SPA → `publish = "dist"` + the standard SPA fallback rewrite.
+  - **cloudflare**: the scaffolded root `_routes.json` is removed — Cloudflare Pages reads `_routes.json` from the deploy output dir (`pages_build_output_dir = "dist"`), where the adapter writes the authoritative one; the root copy was dead weight with misleading content (`exclude: ["/build/*"]`). `wrangler.toml` verified correct and locked.
+  - **vercel**: `vercel.json` (`outputDirectory: "dist"`) verified + locked. Known limitation (disclosed, tracked): the adapter stages the Build Output API tree INSIDE `dist/.vercel/output`, but Vercel only auto-detects it at the project root — so the scaffolded config deploys `dist` statically and the SSR function isn't reachable without a manual copy; fixing that requires the adapter to learn the project root.
+
+  `@pyreon/zero` now exports the adapter **output-path contract** (`NODE_ADAPTER_OUTPUT` / `BUN_ADAPTER_OUTPUT` / `NETLIFY_ADAPTER_OUTPUT` / `CLOUDFLARE_ADAPTER_OUTPUT` / `VERCEL_ADAPTER_OUTPUT` from `@pyreon/zero/server`); the adapters build their staging paths from it, and `create-zero`'s new `adapter-contract.test.ts` runs every scaffolder `apply()` and asserts the written configs against the same constants — drift on either side fails the test. Also fixed: the netlify adapter's emitted `dist/netlify.toml` no longer carries a `conditions = {Role = [...]}` clause on its SSR redirect (a role-gated rewrite would have gated SSR behind Netlify JWT roles), and the blog template README's stale `dist/client/` output path is now `dist/`.
+
+  Note: the values encode the plugin-owned `zero build` layout (adapter artifacts staged into the one `dist/` tree).
+
+- [#2160](https://github.com/pyreon/pyreon/pull/2160) [`4ad62b2`](https://github.com/pyreon/pyreon/commit/4ad62b25037776d6521501cadb8ac9fe33d75e38) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Vercel deploys now actually serve the SSR function (and SSG cache headers).** Vercel's Build Output API v3 is auto-detected ONLY at `<projectRoot>/.vercel/output` — `vercelAdapter` was writing the tree inside the build `outDir` (`dist/.vercel/output`), where Vercel never looks. The SSR function was therefore never discovered (dynamic routes 404 / fell through to static), and the SSG variant's `config.json` was a dead file whose long-cache `assets` routes never applied.
+
+  - `AdapterBuildOptions` gains a **required** `projectRoot: string` (Vite's resolved `root`) on both the `ssr` and `ssg` variants — required, not optional-with-fallback, so TypeScript rejects an omission at the call site and the bug can't silently reappear. Threaded from both invocation sites (`ssrPlugin` + `ssgPlugin`).
+  - `vercelAdapter` anchors `.vercel/output` at `projectRoot`, keyed off the shared `VERCEL_ADAPTER_OUTPUT` contract constants. The SSG branch copies (never moves — `materialize`) the prerendered dist into `.vercel/output/static/`, so the original `outDir` stays intact for `vite preview` and user post-build steps.
+  - Every other adapter (node/bun/netlify/cloudflare/static) is unchanged: they stage entirely inside `outDir` and never read `projectRoot`.
+
+  Bisect-verified: anchoring reverted to `outDir` → the two project-root specs fail; restored → 76/76 adapter tests (incl. spawn-and-curl runtime contracts). zero 1653 · create-zero 102 · zero-cli 19 · verify-modes 27/27.
+
 ## 0.43.1
 
 ## 0.43.0

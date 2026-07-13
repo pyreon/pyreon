@@ -1,5 +1,46 @@
 # @pyreon/elements
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2159](https://github.com/pyreon/pyreon/pull/2159) [`8a5e24e`](https://github.com/pyreon/pyreon/commit/8a5e24e241abbd4202a02a13442a7c06289c825f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Coverage-gate restoration housekeeping — no runtime changes. The main-branch
+  `Coverage (Full)` CI gate had been red on arrival (15 packages below their
+  configured thresholds), making it unable to detect real regressions. This
+  change adds `/* v8 ignore */` annotations (with rationale) to browser-covered
+  blocks in `elements/src/Overlay/useOverlay.tsx` (modal focus-in + focus-trap,
+  covered by `Overlay-focus-trap.browser.test.tsx` in real Chromium) and
+  `unistyle/src/cpse-styled.tsx` (client mount plumbing, covered by
+  `cpse-styled.browser.test.tsx`), so the node coverage gate measures what the
+  node suite can actually reach. Sibling packages received genuine new tests
+  and/or honest threshold re-baselines (documented in each `vitest.config.ts`
+  and `scripts/check-coverage.ts` BELOW_FLOOR_EXEMPTIONS). Comment-only source
+  edits — zero behavior change.
+
+- [#2157](https://github.com/pyreon/pyreon/pull/2157) [`8527892`](https://github.com/pyreon/pyreon/commit/85278924ecba5059e3aadcca10fc63752dfa3f90) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(elements): close the eager-read reactive-prop FREEZE class — every remaining instance of the bug fixed in 0.43.1 for `Text.label` (a compiler `_rp()`-emitted getter read once at setup = a signal-driven prop frozen at its first value forever).
+
+  **@pyreon/styler (minor — additive reactive axis):** `DynamicStyled` now treats a FUNCTION-valued `$element` / `$text` as a reactive accessor — read TRACKED inside the class computed (the exact `$rocketstyle`/`$rocketstate` contract), re-resolving the class and swapping `classList` on the same DOM element when a signal inside changes. The reactive `$element`/`$text` path bypasses `elClassCache` + CPSE (identity-keyed caching can't hit per-change objects, and a CPSE-agnostic class stored by a static Element sharing an interned bundle identity would leak un-updatable `var()`-only styles). Static object `$element`/`$text` is byte-identical to before (interning + elClassCache + CPSE untouched).
+
+  **@pyreon/elements — per instance:**
+
+  - **List**: `<LooseIterator {...pick(...)}>` / `<Element {...omit(...)}>` JSX spreads (which fire every getter at the object-literal layer) → `h(Comp, pickResult)` / `h(Element, mergeProps(omitResult, { ref, children }))` — descriptor-preserving end-to-end.
+  - **Iterator**: the full body destructure + one-shot `return renderItems()` froze `data`/`itemProps`/`component`/function-`children` — `<List data={items()} component={Row}/>` never updated. The body now runs inside a reactive accessor when any reserved prop is getter-shaped OR `children` is function-valued (the compiler's accessor wrap; unwrapped per-run, so a signal-reading thunk stays live). **Re-render semantics are WHOLE-LIST REPLACEMENT** — Iterator rows bake plain props (no per-row signals), so keyed reuse would mean stale rows; the decorative index `key`s on `wrapComponent` vnodes were removed so the reactive path can never route to the keyed reconciler and freeze. For surgical keyed reconciliation use `<For by={...}>`. **`itemProps`/`wrapProps`/`itemKey` injectors must be PURE** — the reactive path re-invokes them (mount samples the accessor once before the tracked run). Static-prop Iterators keep the one-shot render, byte-equivalent.
+  - **Overlay (a11y)**: the trigger's `active`/`aria-expanded` were read at setup (`active: active()`) — screen readers were told the popup never opens. Now passed as `_rp()` accessors (the compiler's own shape), so a trigger forwarding them reactively gets a live binding on the SAME element — the trigger is deliberately NOT re-rendered per flip (a remount would destroy the element the focus-restore in `hideContent` returns focus to). Verified in real Chromium: click-open flips `aria-expanded="true"` with element identity + focus preserved; ESC close restores focus to the trigger.
+  - **useOverlay**: the parameter destructure froze every config prop — `<Overlay disabled={busy()}>` never re-enabled. The hook no longer destructures; `disabled`/`openOn`/`closeOn`/`type`/`align(X/Y)`/`offset(X/Y)`/`position`/`hoverDelay`/`onOpen`/`onClose` are read at their call sites (per event / per reposition = live). Documented initial-only: `isOpen` (seeds `active`); mount-time: listener-ATTACHMENT decisions (`closeOnEsc`, hover/click listener kinds, modal focus trap + overflow lock, `parentContainer`, `throttleDelay`). **Breaking (pre-1.0):** the hook's returned `align` is now an ACCESSOR (`o.align()`), harmonized with `alignX`/`alignY`.
+  - **Util**: parameter destructure + one-shot render → reactive accessor when `className`/`style`/`children` is getter-shaped.
+  - **Text**: `css` is now reactive (getter-shaped `css` → accessor `$text` through the new styler axis; class swap, no remount). `paragraph`/`tag` are documented **static by design** (mount-time — a reactive TAG swap means unmounting one DOM element and mounting another; unsupported across the styler pipeline).
+  - **Element (the architectural piece)**: layout/enum/boolean props (`block`/`equalCols`/`gap`/`direction`/`alignX`/`alignY`/`css` + all `content*`/`beforeContent*`/`afterContent*` variants) were eagerly baked into `WRAPPER_PROPS` + the interned `$element` bundles, and slot EXISTENCE (`isSimpleElement`) was pinned. Two-path design: no getter-shaped props (the dominant static case) → the exact pre-existing fast paths (interning intact, zero perf change); getter-shaped layout → accessor `$element` bundles / getter-threaded Wrapper + Content props (class swap on the same element, no remount); getter-shaped `beforeContent`/`afterContent` → the body runs in a reactive accessor so a flip re-selects the simple/compound branch (structural re-mount — unavoidable when the DOM shape changes). `equalBeforeAfter`'s observer gate stays mount-time (documented).
+  - **Wrapper / Content / Portal**: same two-path bundles in Wrapper (`!needsFix` + parent/child fix bundles) and Content (the compound-slot consumer); defensive getter-gated `children` accessors in Wrapper + Portal (static/accessor-valued children keep the zero-cost path — no double-wrap).
+
+  Known-static by design (documented in JSDoc, not silently frozen): `tag`/`paragraph` (Text, Element, Wrapper — tag swaps), `rootElement` (List), prop-PRESENCE decisions (Overlay trigger's `aria-haspopup`/`aria-describedby`/handler spread), `isOpen`, and listener-attachment kinds in `useOverlay`.
+
+- Updated dependencies [[`8a5e24e`](https://github.com/pyreon/pyreon/commit/8a5e24e241abbd4202a02a13442a7c06289c825f), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/unistyle@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/ui-core@0.44.0
+  - @pyreon/core@0.44.0
+  - @pyreon/sized-map@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

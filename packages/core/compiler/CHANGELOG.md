@@ -1,5 +1,56 @@
 # @pyreon/compiler
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2154](https://github.com/pyreon/pyreon/pull/2154) [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Single-source the zero fs-route convention + island-name derivation — the project scanner reports what zero actually serves.
+
+  `@pyreon/compiler`'s project scanner (`generateContext` — behind `pyreon context` and the MCP `get_routes`/`get_components` tools) carried comment-synced copies of `@pyreon/zero`'s fs-route functions that had diverged at birth: it accepted `api/` at ANY depth (zero's `isApiRoute` requires the top-level `api/` prefix, so a nested `posts/api/x.ts` was reported as an API route zero never serves), invented API routes for method-handler `.ts` files outside `api/` (zero registers those as page routes), and reported auto-named islands under their bare binding name (`Widget`) instead of the actual registry name (`Widget$<fnv1a6(relPath)>`).
+
+  The convention now has ONE home:
+
+  - New pure subpath `@pyreon/compiler/fs-route-convention` — `filePathToUrlPath`, `isApiRoute`, `apiFilePathToPattern`, `ROUTE_EXTENSIONS`, `SPECIAL_ROUTE_FILES`, `stripRouteExtension` (byte-behavior-identical ports of zero's originals; no `typescript` cold-load). `@pyreon/zero`'s `fs-router.ts`/`api-routes.ts` re-export it; identity parity tests lock against a local copy ever being reintroduced.
+  - New `@pyreon/compiler` exports `deriveIslandName` / `fnv1a6` / `islandRelPath` — the island auto-name derivation, re-exported by `@pyreon/vite-plugin`'s `island-auto-name.ts` (identity-locked) and used by the scanner so reported island names match the hydration registry.
+  - Scanner fixes: nested `<dir>/api/*.ts` and method-handler `.ts` outside `api/` are reported as page routes (zero parity); auto-named islands carry the derived registry name; a bindingless nameless `island()`'s basename fallback is documented as a placeholder, not a registry name.
+
+- [#2172](https://github.com/pyreon/pyreon/pull/2172) [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix SVG-rooted templates rendering nothing (the `@pyreon/flow` "edges don't render" bug) — two coupled bugs.
+
+  **`_tpl` was SVG-namespace-blind.** The compiler lowers a DOM subtree to `_tpl("<html>")`; the runtime parsed it via `template.innerHTML`, which only enters SVG mode on a literal `<svg>`. A template rooted at a bare SVG child — `<g>`, `<path>`, `<rect>` (what a flow edge lowers to) — was parsed in the HTML namespace, so the cloned nodes were inert `HTMLUnknownElement`s that rendered nothing. `_tpl` now parses an SVG-rooted string inside an `<svg>` wrapper so the clone carries the SVG namespace.
+
+  **The compiler's template `class` binding used `el.className = …`.** That's a writable string on HTML but a read-only `SVGAnimatedString` on SVG, so the assignment threw once `_tpl` gave the elements the correct namespace — the reactive effect threw and the edge was skipped. Both backends now emit `_setClass(el, v)` (the runtime `applyClassProp`, using `setAttribute("class", …)`, valid on HTML and SVG) — finishing the `_setStyle` extraction (`class` was the last attribute still inlined). No app code change; a reactive `class=` on an SVG element in a template now works.
+
+  Verified in real Chromium (`getTotalLength()`/`SVGPathElement`, not a `querySelector` count) — happy-dom couldn't catch either bug (no `SVGAnimatedString`; HTML-namespace SVG parse).
+
+### Patch Changes
+
+- [#2156](https://github.com/pyreon/pyreon/pull/2156) [`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `_bindText` (the single-signal reactive-text fast path) now upgrades to a subtree mount on the first VNode-shaped value — `const node = signal(<b>hi</b>); <div>{node()}</div>` mounts `<b>hi</b>` instead of rendering `[object Object]`, matching what SSR already emitted for the shape (removing a guaranteed hydration mismatch). Covers `{sig()}`, `{() => sig()}` (which never avoided the fast path — the stale compiler comment claiming otherwise is corrected) and no-arg cross-file helper calls `{helper()}`. The binding stays permanently polymorphic after the first VNode: later string values restore the text node, later VNodes re-mount. String/number-only bindings are untouched — the no-change bail is byte-identical and the VNode check is one `typeof` on the value-actually-changed branch. The swap core is shared with `bindPolymorphicText` (no drift), resets `_elementDepth` for upgrade-at-setup mounts, uses live-parent reads, real removers, untracked child mounts and the setup-time context owner. The dev coercion warning now fires only for the degenerate detached-text-node case (nowhere to mount); the diagnose catalog's PZ-02 entry leads with "upgrade".
+
+- [#2147](https://github.com/pyreon/pyreon/pull/2147) [`57808e6`](https://github.com/pyreon/pyreon/commit/57808e65d9b2d9823b0b054d0af0371cde078e85) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `validate` / `pyreon check` now catch props-destructuring inside the anonymous component a HOC returns. `const withLink = (W) => (props) => { const { href, ...rest } = props; … }` previously got "No issues found" — `detectPropsDestructuredBody` only accepted PascalCase-NAMED components, so the component-by-position shape slipped through (naming the inner component made it fire). The detector now also accepts an anonymous return-position arrow/function whose first parameter is literally `props` (`isReturnedPropsComponent`) — concise-body (`(W) => (props) => {…}`), block-body (`return (props) => {…}`), and paren-wrapped forms. False-positive gating preserved: render-prop children and `.map`/handler callbacks are arguments (not return position) and stay unflagged; the recommended-fix reactive accessor (`return (() => …)`) has no parameters and can never match; a returned arrow whose param isn't named `props` is an accepted miss (a wrong flag is worse than a missed one, per the detector's zero-FP doctrine).
+
+- [#2168](https://github.com/pyreon/pyreon/pull/2168) [`0274fb6`](https://github.com/pyreon/pyreon/commit/0274fb6a0f838a9f7b4ec41295adef1bf5ed4e95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/validate` excellence pass — async-composition correctness, a fuzz-found `.catch` bug, JSON Schema emit, and a valid-path perf sweep that wins back the scalar-email benchmark row.
+
+  **Fixes (all bisect-verified, locked by three JIT↔interpreter differential fuzz suites):**
+
+  - Async members (`.refine(async)` / `.transform(async)` / registered `.serverCheck`) now work inside EVERY composition — `union`, `discriminatedUnion`, `intersection`, `map`, `set`, `record`, `tuple` previously hard-errored "async member in sync parse" even under `parseAsync` (and Map/Set silently DROPPED async entries). A sync `parse()` of an async tree now reports the one canonical "use parseAsync" issue at the root.
+  - The runtime JIT is async-aware: an async fallback subtree defers onto a pending list the root return awaits (previously any Promise from a fallback hard-errored — `parseAsync` was broken for JIT'd objects with async-refine fields). `serverCheck` no longer disqualifies a tree from the JIT.
+  - **`.catch` no longer eats sibling issues under `parseAsync`** (fuzz-found): the catch window snapshotted the shared ctx's issue count across an await, so a concurrent sibling failure could misfire the fallback AND truncate the sibling's issue — an invalid object parsed `ok: true`. `.catch` now runs against a private child ctx.
+  - `parseReactiveAsync` supersedes stale in-flight results (the file header claimed this but the implementation didn't do it): an awaited stale frame resolves to the LATEST run's verdict — typing fast can never apply a stale validation.
+  - `s.discriminatedUnion` registers `s.enum(...)` / `s.nativeEnum(...)` discriminant values (previously only literals — enum-tagged members were unreachable) and dev-throws at construction on a non-registrable discriminant field or a duplicate tag value.
+  - Union members now run against the shared parse ctx: a winning member's `pending` serverCheck entries propagate (previously silently dropped), and per-member result-envelope allocation is gone.
+  - `schema['~standard']` is memoized — repeated reads return the same object (was a fresh object + closure per access).
+
+  **New:**
+
+  - `toJsonSchema(schema, { unrepresentable? })` — JSON Schema draft 2020-12 emission from the new `@pyreon/validate/json-schema` subpath (input-shape contract; unrepresentable kinds throw or emit `{}`; cyclic `s.lazy` throws — no `$defs` in v1).
+  - `@pyreon/validate` now serves MCP `get_api` (api-reference region migrated).
+
+  **Performance** (process-isolated bench, pooled CI95): scalar-email valid-parse is now 🤝 TIED with ArkType (was 1.4× behind) via a table-driven email scanner (~1.6× the Zod-parity regex, exhaustive+fuzz equivalence-locked); array rows now win 1.9–2.3× vs ArkType (were ~1.1–1.2×) via JIT static-path elision (`ctx.path` untouched on the valid path, full issue paths reconstructed only at failure sites); flat-object narrows to ~1.2× (ArkType aliases the input; Pyreon keeps immutable strip-clone semantics — documented Pareto). Error-path dominance kept on every row (33–44× Zod, 20–53× ArkType).
+
+  **Security hardening:** numeric check bounds (`.min`/`.max`/`.length`/`.gt`/`.lt`/`.between`/`.multipleOf`) are now rendered into the JIT-generated source through `Number`-coercion (`numLit`), so the interpolated token is always a numeric literal — byte-identical for every real bound (incl. `Infinity`), and injection-proof for any non-numeric a raw-JS caller could sneak past the `number` types. Closes the CodeQL code-construction finding at its root (all runtime values were already closure-captured; literals `JSON.stringify`'d — this was the sole raw-value interpolation). Regression-locked by `jit-codegen-safety.test.ts` (bisect-verified: the payload executes at compile time without it).
+
+  **Breaking (pre-1.0):** the never-implemented `ParseCtx.abortOnFirst` field is removed; JIT-compiled schemas now report field-level async-in-sync errors at the ROOT (interpreter parity) instead of a per-field message.
+
 ## 0.43.1
 
 ### Patch Changes

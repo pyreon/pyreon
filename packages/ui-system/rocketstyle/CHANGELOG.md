@@ -1,5 +1,20 @@
 # @pyreon/rocketstyle
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2174](https://github.com/pyreon/pyreon/pull/2174) [`57f7b2d`](https://github.com/pyreon/pyreon/commit/57f7b2d1d9028f7a73c3717cd893b2028cc0330b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Internal lint hygiene: suppress 2 `pyreon/no-unbatched-updates` false positives in `rocketstyle.ts`.
+
+  The `.set()` calls in `EnhancedComponent` and `_resolveRsEntry` are WeakMap/SizedMap CACHE writes (ThemeManager tiers, `_dimensionsCache`, `_rsMemo`) — not reactive signal updates — so `batch()` does not apply. Each site now carries a `pyreon-lint-disable-next-line` with the rationale, and the `pyreon-lint-baseline.json` ratchet is tightened accordingly (`no-unbatched-updates` 15 → 13, total 113 → 111). Comment-only in source; no runtime, type, or API change for consumers.
+
+- Updated dependencies [[`8527892`](https://github.com/pyreon/pyreon/commit/85278924ecba5059e3aadcca10fc63752dfa3f90), [`da1f628`](https://github.com/pyreon/pyreon/commit/da1f6282c42e42018aa15c92337df1badc185143), [`d0bd1d8`](https://github.com/pyreon/pyreon/commit/d0bd1d8a771fd8442e242f4e089440e606f88d6f), [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/styler@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/ui-core@0.44.0
+  - @pyreon/core@0.44.0
+  - @pyreon/sized-map@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

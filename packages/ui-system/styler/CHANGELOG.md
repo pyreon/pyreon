@@ -1,5 +1,79 @@
 # @pyreon/styler
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2157](https://github.com/pyreon/pyreon/pull/2157) [`8527892`](https://github.com/pyreon/pyreon/commit/85278924ecba5059e3aadcca10fc63752dfa3f90) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(elements): close the eager-read reactive-prop FREEZE class — every remaining instance of the bug fixed in 0.43.1 for `Text.label` (a compiler `_rp()`-emitted getter read once at setup = a signal-driven prop frozen at its first value forever).
+
+  **@pyreon/styler (minor — additive reactive axis):** `DynamicStyled` now treats a FUNCTION-valued `$element` / `$text` as a reactive accessor — read TRACKED inside the class computed (the exact `$rocketstyle`/`$rocketstate` contract), re-resolving the class and swapping `classList` on the same DOM element when a signal inside changes. The reactive `$element`/`$text` path bypasses `elClassCache` + CPSE (identity-keyed caching can't hit per-change objects, and a CPSE-agnostic class stored by a static Element sharing an interned bundle identity would leak un-updatable `var()`-only styles). Static object `$element`/`$text` is byte-identical to before (interning + elClassCache + CPSE untouched).
+
+  **@pyreon/elements — per instance:**
+
+  - **List**: `<LooseIterator {...pick(...)}>` / `<Element {...omit(...)}>` JSX spreads (which fire every getter at the object-literal layer) → `h(Comp, pickResult)` / `h(Element, mergeProps(omitResult, { ref, children }))` — descriptor-preserving end-to-end.
+  - **Iterator**: the full body destructure + one-shot `return renderItems()` froze `data`/`itemProps`/`component`/function-`children` — `<List data={items()} component={Row}/>` never updated. The body now runs inside a reactive accessor when any reserved prop is getter-shaped OR `children` is function-valued (the compiler's accessor wrap; unwrapped per-run, so a signal-reading thunk stays live). **Re-render semantics are WHOLE-LIST REPLACEMENT** — Iterator rows bake plain props (no per-row signals), so keyed reuse would mean stale rows; the decorative index `key`s on `wrapComponent` vnodes were removed so the reactive path can never route to the keyed reconciler and freeze. For surgical keyed reconciliation use `<For by={...}>`. **`itemProps`/`wrapProps`/`itemKey` injectors must be PURE** — the reactive path re-invokes them (mount samples the accessor once before the tracked run). Static-prop Iterators keep the one-shot render, byte-equivalent.
+  - **Overlay (a11y)**: the trigger's `active`/`aria-expanded` were read at setup (`active: active()`) — screen readers were told the popup never opens. Now passed as `_rp()` accessors (the compiler's own shape), so a trigger forwarding them reactively gets a live binding on the SAME element — the trigger is deliberately NOT re-rendered per flip (a remount would destroy the element the focus-restore in `hideContent` returns focus to). Verified in real Chromium: click-open flips `aria-expanded="true"` with element identity + focus preserved; ESC close restores focus to the trigger.
+  - **useOverlay**: the parameter destructure froze every config prop — `<Overlay disabled={busy()}>` never re-enabled. The hook no longer destructures; `disabled`/`openOn`/`closeOn`/`type`/`align(X/Y)`/`offset(X/Y)`/`position`/`hoverDelay`/`onOpen`/`onClose` are read at their call sites (per event / per reposition = live). Documented initial-only: `isOpen` (seeds `active`); mount-time: listener-ATTACHMENT decisions (`closeOnEsc`, hover/click listener kinds, modal focus trap + overflow lock, `parentContainer`, `throttleDelay`). **Breaking (pre-1.0):** the hook's returned `align` is now an ACCESSOR (`o.align()`), harmonized with `alignX`/`alignY`.
+  - **Util**: parameter destructure + one-shot render → reactive accessor when `className`/`style`/`children` is getter-shaped.
+  - **Text**: `css` is now reactive (getter-shaped `css` → accessor `$text` through the new styler axis; class swap, no remount). `paragraph`/`tag` are documented **static by design** (mount-time — a reactive TAG swap means unmounting one DOM element and mounting another; unsupported across the styler pipeline).
+  - **Element (the architectural piece)**: layout/enum/boolean props (`block`/`equalCols`/`gap`/`direction`/`alignX`/`alignY`/`css` + all `content*`/`beforeContent*`/`afterContent*` variants) were eagerly baked into `WRAPPER_PROPS` + the interned `$element` bundles, and slot EXISTENCE (`isSimpleElement`) was pinned. Two-path design: no getter-shaped props (the dominant static case) → the exact pre-existing fast paths (interning intact, zero perf change); getter-shaped layout → accessor `$element` bundles / getter-threaded Wrapper + Content props (class swap on the same element, no remount); getter-shaped `beforeContent`/`afterContent` → the body runs in a reactive accessor so a flip re-selects the simple/compound branch (structural re-mount — unavoidable when the DOM shape changes). `equalBeforeAfter`'s observer gate stays mount-time (documented).
+  - **Wrapper / Content / Portal**: same two-path bundles in Wrapper (`!needsFix` + parent/child fix bundles) and Content (the compound-slot consumer); defensive getter-gated `children` accessors in Wrapper + Portal (static/accessor-valued children keep the zero-cost path — no double-wrap).
+
+  Known-static by design (documented in JSDoc, not silently frozen): `tag`/`paragraph` (Text, Element, Wrapper — tag swaps), `rootElement` (List), prop-PRESENCE decisions (Overlay trigger's `aria-haspopup`/`aria-describedby`/handler spread), `isOpen`, and listener-attachment kinds in `useOverlay`.
+
+- [#2173](https://github.com/pyreon/pyreon/pull/2173) [`da1f628`](https://github.com/pyreon/pyreon/commit/da1f6282c42e42018aa15c92337df1badc185143) Thanks [@vitbokisch](https://github.com/vitbokisch)! - CSS-in-JS excellence pass — CSP nonce support + reproducible competitor benchmark:
+
+  - **CSP nonce** — `StyleSheetOptions.nonce` and `sheet.getStyleTag(nonce?)` now
+    stamp the SSR-inlined critical `<style>` (and the client `<style>` element
+    created on mount) with a `nonce` attribute, so a strict `style-src 'nonce-…'`
+    policy (no `'unsafe-inline'`) admits the critical CSS on first paint instead
+    of blocking it and FOUCing until client hydration re-inserts via CSSOM. Pass
+    the per-request nonce to `getStyleTag(nonce)` (recommended — nonces rotate per
+    response) or bake a default via `createSheet({ nonce })`. The nonce value is
+    quote/`<`/`>`-stripped so it can't break out of the attribute. No nonce → the
+    output is byte-identical to before (zero hydration-parity impact — className
+    hashing is untouched).
+
+  - **Docs accuracy** — corrected the `createGlobalStyle` manifest note (its
+    injected rule PERSISTS deduped, like emotion `injectGlobal`; it is NOT removed
+    on unmount as the old text claimed) and fixed a batch of copy-paste-breaking
+    stale API references on the styler docs page (`resolveCSS` → `resolve`,
+    `styledElements` → the `styled` Proxy, `getSSRStyles` → `getStyleTag`,
+    `data-nova-styler`/`ns-` → `data-pyreon-styler`/`pyr-`, `new CSSResult` →
+    `css\`…\``).
+
+  This is a `minor` because it adds public API (`nonce` option +
+  `getStyleTag(nonce)` param). Also ships (non-published) a new reproducible
+  CSS-in-JS engine benchmark (`scripts/bench/core/styler.ts`) vs `@emotion/css`,
+  goober, and styled-components — median + 95% bootstrap CI + tie markers,
+  correctness-gated — replacing the README's prior unverified perf table with
+  measured numbers.
+
+### Patch Changes
+
+- [#2153](https://github.com/pyreon/pyreon/pull/2153) [`d0bd1d8`](https://github.com/pyreon/pyreon/commit/d0bd1d8a771fd8442e242f4e089440e606f88d6f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `insertGlobal` CSS rule splitting/flattening — four silent-drop classes closed (the 0.41.x `@layer` fixes covered top-level sibling + nested blocks only; a fresh-DOM stress audit proved these remained). Before/after per shape:
+
+  1. **`@layer` inside a group rule** (`@media (min-width:600px){ @layer x { .a{color:red} } }`, flatten path): before — the flattener didn't descend into `@media`/`@supports`/`@container`, insertRule succeeded with an EMPTY group body and `.a` was lost with ZERO warn; after — layer blocks inside group rules unwrap while the group wrapper is preserved (`@media X{@layer y{R}}` → `@media X{R}`).
+  2. **`@layer a, b;` ordering STATEMENT — broken on EVERY path, modern browsers included**: before — the brace-counting splitter only emitted brace-terminated slices, so the statement (and `@import …;`/`@namespace …;`) vanished even on `@layer`-supporting engines, silently corrupting the user's declared cascade order (locked by a real-Chromium spec: with the statement swallowed, source order won — red instead of green); after — depth-0 semicolon-terminated at-statements are emitted as their own rules and insert natively on the supported path. On the flatten path an ordering statement is meaningless once flattened — it is dropped WITH a dev warning naming the cascade-order loss.
+  3. **String/comment/url-unaware brace counting**: before — `.a{background:url("a}b.png");content:"}"}` split mid-string, both declarations were lost AND the poisoned (negative) depth counter silently ate following sibling rules; after — the splitter is a string-aware state machine (`"…"`/`'…'` incl. backslash escapes, `/* … */` comments, unquoted `url(…)` tokens) and rules survive intact (real-Chromium computed-style locks).
+  4. **Anonymous `@layer { … }` blocks + unbalanced input**: before — anonymous blocks (valid CSS) weren't unwrapped (the regex required a name), and unbalanced input (`@layer a{.x{`) dropped everything from the unclosed rule on with zero signal; after — the block regex takes an optional name, and a dev warning names the dropped unparseable tail.
+
+  Honest caveat now documented in code + README + docs instead of an over-confident comment: the `@layer`-unsupported flatten fallback CHANGES cascade semantics (flattened rules become unlayered, which inverts "unlayered beats layered"; ordering statements are lost) — it is a least-bad fallback that lands the content, not an `@layer` emulation.
+
+  5. **Scoped `insert()`/`prepare()` component path (`splitAtRules`) — same class, same fix**: before — the at-rule extractor counted braces naively, so a `}` inside a string BEFORE a nested `@media` block poisoned depth negative and the media block was never extracted (it stayed NESTED inside the class rule — dropped by the browser), a `}` inside a string WITHIN the `@media` body terminated the block early (garbage at-rule + mangled base), and a commented-out `@media {…}` was extracted as a LIVE rule; after — `splitAtRules` uses the same string/comment/url-aware scan (shared `skipQuoted`/`isUrlOpen` helpers), records the at-rule's real block opener via the state machine (not `indexOf('{')`, which could land inside a prelude string), and a stray depth-0 `}` no longer blocks all subsequent at-rule detection.
+
+- [#2178](https://github.com/pyreon/pyreon/pull/2178) [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix three defects surfaced by an upstream consumer's hardening pass.
+
+  **FW-1 (crash):** a getter-shaped `ref`/`innerRef` on a reactive styled component crashed `DynamicStyled`. The compiler `_rp`-wraps any props-derived JSX prop and `makeReactiveProps` makes it a getter-only descriptor, which `buildProps` descriptor-copies — so `finalProps.ref = wrapper` (plain assignment) threw `Cannot set property ref … which has only a getter`, taking down the whole styled subtree (every rocketstyle/elements component receiving `innerRef={props.innerRef}`). Now defines the wrapper via `Object.defineProperty` (a data descriptor) — the documented "companion writes must use defineProperty, not assignment" rule.
+
+  **LR-3 (a11y):** the styler prop allowlist (`HTML_PROPS_LIST`) contained the React-compat `htmlFor` but not the standard `for`, so a bare `<Label for="x">` on a styled/rocketstyle component silently dropped the `for` attribute, severing the label↔input association. Added `for` to the allowlist.
+
+  **FW-3:** conditional-slot removal (`{cond && <X/>}` / `<Show>` / ternary) no-op'd when the mount root was detached from `document`, leaking the old node and accumulating new ones — because the removal guard was `parent.isConnected !== false`. That conflated "detached by `clearBetween`" (a `DocumentFragment`, the case the skip optimizes) with "the whole root is a detached Element" (common in unit tests, which were thereby blind to removal regressions). The skip now keys on `nodeType === 11` (DocumentFragment).
+
+- Updated dependencies [[`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/core@0.44.0
+
 ## 0.43.1
 
 ## 0.43.0

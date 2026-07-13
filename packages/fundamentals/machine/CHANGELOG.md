@@ -1,5 +1,12 @@
 # @pyreon/machine
 
+## 0.44.0
+
+### Patch Changes
+
+- Updated dependencies [[`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/reactivity@0.44.0
+
 ## 0.43.1
 
 ## 0.43.0

@@ -1,5 +1,14 @@
 # @pyreon/a11y
 
+## 0.44.0
+
+### Patch Changes
+
+- Updated dependencies [[`28fbd77`](https://github.com/pyreon/pyreon/commit/28fbd7799f015503d45c8642d8822bff64e9e155), [`9ef1b14`](https://github.com/pyreon/pyreon/commit/9ef1b1422313b49a020b7deb1ffa0871a5cc012a), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/router@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/core@0.44.0
+
 ## 0.43.1
 
 ## 0.43.0

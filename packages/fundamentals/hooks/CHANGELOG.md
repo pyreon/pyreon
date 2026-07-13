@@ -1,5 +1,45 @@
 # @pyreon/hooks
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2176](https://github.com/pyreon/pyreon/pull/2176) [`0288b44`](https://github.com/pyreon/pyreon/commit/0288b44f9a46e9d99c8fdece0e79ab9192976ec1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/hooks` excellence pass — 4 new hooks (36 → 40) + doc/impl drift eliminated.
+
+  **New hooks** (each SSR-safe, self-cleaning, tested — happy-dom + true-node SSR arms):
+
+  - **`useCounter(initial?, { min?, max? })`** — reactive numeric counter (`inc`/`dec`/`set`/`reset`), min/max clamping. The numeric companion to `useToggle`. Zero wrapper overhead over a raw signal, and the fastest counter primitive measured (1.36–1.62× vs Solid `createSignal` / Preact signals — see the new `bench:hooks`).
+  - **`useWindowScroll()`** — reactive `{ x, y }` scroll offset (passive listener) + SSR-safe `scrollTo`.
+  - **`useDocumentVisibility()`** — reactive Page Visibility (`'visible' | 'hidden'`) to pause work when the tab is hidden.
+  - **`useIdle(timeoutMs?, opts?)`** — reactive user-idle detection; flips back on the next activity event.
+
+  **Drift eliminated** — the shipped implementations were correct and consumer-validated, but the README + manifest + generated MCP `api-reference` had drifted to an aspirational, runtime-broken API. Docs now match the code:
+
+  - `useControllableState` — `defaultValue` is a PLAIN value (was documented as a getter, which wouldn't typecheck).
+  - `useEventListener` — signature is `(event, handler, options?, target?)` (was documented target-first); `target` is resolved once at setup (the "re-binds reactively" claim was false).
+  - `useFocusTrap` — signature is `(getEl)`; it is ref-gated (inert while `getEl()` is null), with no `active` flag and no focus-return (that is the separate `useFocusReturn`).
+  - `useInfiniteScroll` — returns `{ ref, triggered }` with `{ threshold, loading, hasMore, direction }` options (was documented as `{ sentinelRef, isLoading }` / `{ rootMargin, enabled }`).
+  - `useClipboard` / `useDialog` — corrected return shapes (`copy` resolves `boolean`; `useDialog.open` is the state signal, openers are `show`/`showModal`).
+  - Stale "(planned)" lint-rule caveat replaced with the shipped `pyreon/no-raw-addeventlistener` / `pyreon/no-raw-setinterval` rules.
+
+  `useIsomorphicLayoutEffect` simplified (removed a no-op `isClient ? onMount : onMount` ternary — `onMount` is already isomorphic).
+
+- [#2177](https://github.com/pyreon/pyreon/pull/2177) [`063e809`](https://github.com/pyreon/pyreon/commit/063e80999e7ec067fcd8b417d18e4c7c032da752) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useHaptics()` — a fire-and-forget haptic-feedback hook (`impact` / `notification` / `selection`). On the web it maps to `navigator.vibrate`; the PMTC native compiler lowers it to `PyreonHaptics` on iOS (UIImpactFeedbackGenerator / UINotificationFeedbackGenerator / UISelectionFeedbackGenerator) and Android (Compose `LocalHapticFeedback`). Web and Android are coarser than iOS — a documented platform difference.
+
+  This is the first imperative platform-API hook in the multiplatform (M3) track, establishing the recognition → emit → runtime pipeline the remaining platform hooks reuse. Device-proven on an iOS Simulator (the counter's increment tap fires `impact("light")` without crashing) and the Android device gate.
+
+- [#2183](https://github.com/pyreon/pyreon/pull/2183) [`922d3c2`](https://github.com/pyreon/pyreon/commit/922d3c28200c547239b13139cc1ad00c752896d0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useShare()` — invoke the platform share sheet (`text` / `url` / `textUrl` / `canShare`). On the web it uses the Web Share API (`navigator.share`); the PMTC native compiler lowers it to `PyreonShare` on iOS (`UIActivityViewController` presented from the key window) and Android (`Intent.createChooser(ACTION_SEND)`). Android shares URLs as text (its basic share intent is text-based) — a documented platform difference from iOS's typed URL items.
+
+  The second imperative platform-API hook in the multiplatform (M3) track, reusing the recognition → emit → runtime pipeline from `useHaptics`. Unlike haptics, sharing is OBSERVABLE — the counter example's iOS XCUITest asserts the system share sheet appears when the Share button is tapped (a behavioral R4).
+
+### Patch Changes
+
+- Updated dependencies [[`8527892`](https://github.com/pyreon/pyreon/commit/85278924ecba5059e3aadcca10fc63752dfa3f90), [`da1f628`](https://github.com/pyreon/pyreon/commit/da1f6282c42e42018aa15c92337df1badc185143), [`d0bd1d8`](https://github.com/pyreon/pyreon/commit/d0bd1d8a771fd8442e242f4e089440e606f88d6f), [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/styler@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/ui-core@0.44.0
+  - @pyreon/core@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

@@ -1,5 +1,22 @@
 # @pyreon/storage
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2182](https://github.com/pyreon/pyreon/pull/2182) [`577fa83`](https://github.com/pyreon/pyreon/commit/577fa836fa48623e0179fd440d55ef2cd41aebdb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Storage excellence pass — versioned migration, write-error surfacing, SSR-safe cookie accessor, and a competitor benchmark:
+
+  - **`version` + `migrate`** (all backends, cross-tab-aware): set `version` to store a value inside a small JSON envelope carrying the schema version; a read at a higher `version` runs `migrate(oldValue, fromVersion)` to transform the old shape (a pre-versioning value is migrated as `from = 0`). The registry entry now carries the hook's `options`, so the cross-tab `storage`-event handler migrates inbound values through the SAME pipeline the writer used (previously a versioned/custom-serialized value synced from another tab would land as the raw envelope). Closes the persisted-shape-migration gap that `zustand persist` has and `jotai atomWithStorage` lacks.
+  - **`onError` fires on WRITE failures** (`setItem` quota-exceeded / blocked storage), not just deserialize — the in-memory signal has already updated, so the return is ignored (a notification). Without `onError`, the pre-existing silent-swallow behavior is preserved. Wired across localStorage, custom, and IndexedDB backends.
+  - **`setCookieSource(source)`** now accepts `string | (() => string) | null`. The accessor form (evaluated lazily at each cookie read) is the concurrency-safe SSR seam — bind it to your per-request context so concurrent renders each resolve their own cookies. Fixes the doc overclaim that the module-level string was automatically per-request-isolated.
+  - **Coverage**: 100% statements + 100% branches (added a Node-environment SSR-safety suite covering every backend's server branch, versioned round-trip/migration unit + hook tests, quota→`onError`, `.remove()` idempotency, and a `_bindText` fast-path simulation).
+  - **Benchmark**: `bun run --filter '@pyreon/storage' bench:storage` — objective head-to-head vs `jotai atomWithStorage` and `zustand persist` over a shared in-memory storage engine (per-(op×impl) process isolation, pooled median + CI95, correctness gate). Pyreon dominates jotai on every op and wins read / ties create vs zustand; zustand's plain reactive-layer write is ~1.4× faster (a component dwarfed by the real `localStorage` syscall in a real app).
+
+### Patch Changes
+
+- Updated dependencies [[`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/reactivity@0.44.0
+
 ## 0.43.1
 
 ## 0.43.0

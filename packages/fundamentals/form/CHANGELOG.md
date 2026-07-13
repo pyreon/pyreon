@@ -1,5 +1,34 @@
 # @pyreon/form
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2149](https://github.com/pyreon/pyreon/pull/2149) [`c79a5f4`](https://github.com/pyreon/pyreon/commit/c79a5f492836645e41db6467b97c61ae2694c903) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Unknown-field-name handling is now CONSISTENT across every lookup API (release-audit finding: the same user mistake — an undeclared field name — produced five different behaviors). The contract:
+
+  - **Binding/subscription APIs throw actionable guidance**: `register("missing")` (the flagship binding API) previously crashed with a bare `TypeError: … reading 'value'`; it now throws the same `[@pyreon/form]` message as `useField`/`setFieldValue`, including the `registerField()` escape hatch for dynamic fields. `useWatch(form, "missing")` (single + array forms) likewise now throws the guidance instead of a bare TypeError.
+  - **Validity means INVALID**: `trigger("missing")` / `trigger(["title","missing"])` previously resolved `true` — silently reporting an undeclared field VALID. Unknown names now count as invalid (resolve `false`) + dev-warn naming them ("matched no field must mean INVALID", the same principle as schema-error routing).
+  - **Probes stay probes, honestly typed**: `getFieldState()` returns `FieldState | undefined` — it always returned `undefined` at runtime for unknown names; the non-optional type just deferred the crash to your first property read. It now doubles as a documented existence probe for dynamic fields. (Type-level breaking: add `?.`/`!` at call sites that assume existence.)
+  - **Baseline writes skip + dev-warn unknown keys**: `setInitialValues()`/`reset(values)` silently merged typo keys into the internal baseline; extra keys (e.g. server payloads carrying `id`/`createdAt`) are now skipped with a dev warning instead of polluting state — deliberately NOT a throw, so reset-to-server-data keeps working.
+  - **Fields-array overload accepts `focusOnError`**: the overload's inline options literal had drifted from the exported `UseFormFieldsOptions` (TS2769) — fields-overload users couldn't opt out of a default-ON behavior. The overload now uses the exported type.
+
+  All bisect-verified (guards reverted → 5 specs fail with the pre-fix behaviors; restored → green), plus the previously-unasserted `useField` guidance message is now test-locked.
+
+- [#2152](https://github.com/pyreon/pyreon/pull/2152) [`7021725`](https://github.com/pyreon/pyreon/commit/702172586ab3ede234cddc19ee691f82b30c4770) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Value-integrity fixes across the form core — four release-audit defects, each with a proven failure scenario:
+
+  - **Unrecognized `schema` now THROWS instead of silently disabling validation.** `useForm({ schema: { safeParse: (x) => x } as never })` (a zod<3.24 schema without `~standard` support, or a typo'd object) previously resolved to NO validator — `validate()` returned `true`, `errors()` stayed `{}`, and `onSubmit` fired with unvalidated data. `resolveSchemaValidator` now throws the same `[Pyreon] \`schema\` must be a SchemaValidateFn, a TypedSchemaAdapter…`guidance`@pyreon/store`gives for the identical input. Plain functions,`@pyreon/validation` adapters, raw Standard Schemas, and absent/`undefined` schemas are unaffected.
+
+  - **`reset(values)` re-basing is now durable (react-hook-form `defaultValues`-replacement parity).** The per-field dirty compare and `field.reset()` captured the ORIGINAL initial at setup, ignoring the baseline moved by `reset(values)` / `setInitialValues`: after `reset({ name: 'saved' })`, typing `'x'` then back to `'saved'` reported `isDirty() === true` forever (unsaved-changes guards misfired on the exact reset-to-saved-server-data flow), and `resetField('name')` / a later plain `reset()` reverted to the ORIGINAL initial. All baseline reads now go through the live `currentInitials` record (one source of truth); `getValues()`'s fallback was reconciled onto it too (it read the stale `initialValues` while `getSubmitValues` read `currentInitials`). `_dirtyCount` stays consistent across baseline moves.
+
+  - **Explicit `null`/`undefined` field values are no longer swallowed by the initial.** `values()` and the submit payload used `fields[name]?.value.peek() ?? initial`, so `setFieldValue('age', null)` silently reported the original initial — with file inputs (`FileList | null`), a server-prefilled file field cleared to `null` submitted the stale initial. Both reads now branch on FIELD EXISTENCE, never on value nullishness.
+
+  - **Dynamic-field re-registration can no longer resurrect a stale async validation.** `registerField` seeded the per-field validation version at 0, so an unregister + re-register of the same name reused the old field's version space — a still-in-flight OLD async validator whose captured version collided wrote its stale error onto the fresh field. Every version (seed and per-run bump, for field validators AND per-field schema runs) now comes from one monotonic form-level counter, so a version value is never reused.
+
+- Updated dependencies [[`38deec0`](https://github.com/pyreon/pyreon/commit/38deec0695ae616960966766e530e1b42d138ed1), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/validation@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/core@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

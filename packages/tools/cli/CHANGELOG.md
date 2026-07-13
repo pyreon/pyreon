@@ -1,5 +1,13 @@
 # @pyreon/cli
 
+## 0.44.0
+
+### Patch Changes
+
+- Updated dependencies [[`38deec0`](https://github.com/pyreon/pyreon/commit/38deec0695ae616960966766e530e1b42d138ed1), [`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99), [`57808e6`](https://github.com/pyreon/pyreon/commit/57808e65d9b2d9823b0b054d0af0371cde078e85), [`e857e7b`](https://github.com/pyreon/pyreon/commit/e857e7be71601bcded333045182b13fb8814a8e5), [`bc4870c`](https://github.com/pyreon/pyreon/commit/bc4870c318abfa12bd037cde428ad7cf182dd4ba), [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4), [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c), [`0274fb6`](https://github.com/pyreon/pyreon/commit/0274fb6a0f838a9f7b4ec41295adef1bf5ed4e95)]:
+  - @pyreon/lint@0.44.0
+  - @pyreon/compiler@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

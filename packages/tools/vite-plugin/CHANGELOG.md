@@ -1,5 +1,24 @@
 # @pyreon/vite-plugin
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2154](https://github.com/pyreon/pyreon/pull/2154) [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Single-source the zero fs-route convention + island-name derivation — the project scanner reports what zero actually serves.
+
+  `@pyreon/compiler`'s project scanner (`generateContext` — behind `pyreon context` and the MCP `get_routes`/`get_components` tools) carried comment-synced copies of `@pyreon/zero`'s fs-route functions that had diverged at birth: it accepted `api/` at ANY depth (zero's `isApiRoute` requires the top-level `api/` prefix, so a nested `posts/api/x.ts` was reported as an API route zero never serves), invented API routes for method-handler `.ts` files outside `api/` (zero registers those as page routes), and reported auto-named islands under their bare binding name (`Widget`) instead of the actual registry name (`Widget$<fnv1a6(relPath)>`).
+
+  The convention now has ONE home:
+
+  - New pure subpath `@pyreon/compiler/fs-route-convention` — `filePathToUrlPath`, `isApiRoute`, `apiFilePathToPattern`, `ROUTE_EXTENSIONS`, `SPECIAL_ROUTE_FILES`, `stripRouteExtension` (byte-behavior-identical ports of zero's originals; no `typescript` cold-load). `@pyreon/zero`'s `fs-router.ts`/`api-routes.ts` re-export it; identity parity tests lock against a local copy ever being reintroduced.
+  - New `@pyreon/compiler` exports `deriveIslandName` / `fnv1a6` / `islandRelPath` — the island auto-name derivation, re-exported by `@pyreon/vite-plugin`'s `island-auto-name.ts` (identity-locked) and used by the scanner so reported island names match the hydration registry.
+  - Scanner fixes: nested `<dir>/api/*.ts` and method-handler `.ts` outside `api/` are reported as page routes (zero parity); auto-named islands carry the derived registry name; a bindingless nameless `island()`'s basename fallback is documented as a placeholder, not a registry name.
+
+- Updated dependencies [[`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99), [`57808e6`](https://github.com/pyreon/pyreon/commit/57808e65d9b2d9823b0b054d0af0371cde078e85), [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4), [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c), [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12), [`0274fb6`](https://github.com/pyreon/pyreon/commit/0274fb6a0f838a9f7b4ec41295adef1bf5ed4e95), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/runtime-dom@0.44.0
+  - @pyreon/compiler@0.44.0
+  - @pyreon/reactivity@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

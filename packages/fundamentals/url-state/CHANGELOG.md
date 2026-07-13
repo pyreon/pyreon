@@ -1,5 +1,46 @@
 # @pyreon/url-state
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2181](https://github.com/pyreon/pyreon/pull/2181) [`719e916`](https://github.com/pyreon/pyreon/commit/719e9166619c5208f4c2af609cc6f4383b960b02) Thanks [@vitbokisch](https://github.com/vitbokisch)! - URL-state excellence pass — cross-hook sync (fixed), atomic batch updates, `clearOnDefault`, and doc-drift elimination:
+
+  - **Cross-hook sync (fixed broken promise)**: two `useUrlState('page', 1)` calls bound to the same key were independent signals that DESYNCED — `a.set(5)` updated the URL but left `b()` stale (a raw `history.replaceState` emits no `popstate`). The `onChange` "fires when another `useUrlState` writes the same param" contract, documented on 4 surfaces, never worked. Now every live signal for a key stays in sync: after any write, sibling signals re-read the URL and fire their `onChange` (the writer's own `onChange` does not fire). Backed by an identity-cleaned module-level subscriber registry (Set.delete + drop-empty; tied to the owning effect scope).
+  - **`batchUrlUpdates(fn)`**: coalesce several `.set()` / `.reset()` / `.remove()` calls into ONE history entry (one `replaceState` / `pushState` / `router.replace`). Critical with `replace: false`, where an N-param update previously pushed N back-stack entries. Signal values still update synchronously inside the batch; reactive notifications coalesce; debounce is bypassed. Matches nuqs's `useQueryStates` batching.
+  - **`clearOnDefault` option** (default `true`): pass `false` to keep a param written in the URL even at its default value (canonical shareable links, analytics).
+  - **Doc-drift fixes**: the README/manifest claimed invalid numbers coerce to `0` (they fall back to the **default**), that `?dark=1` is `true` (only the exact string `'true'` is), and the manifest said `debounceMs` (the option is `debounce`) and self-contradicted on SSR ("reads the request URL" — it does NOT; it uses defaults server-side). All corrected across README, manifest, docs, and JSDoc.
+  - **New competitor benchmark** vs nuqs (`bun run bench:nuqs`, per-op process isolation): url-state wins array parse 6.2× / array serialize 2.6× / boolean parse 2.2×, ties string + number serialize + round-trip, and is within ~1.2× on scalar number parse (the cost of the `defaultValue`-capturing closure that powers NaN→default — a Pareto trade on a once-per-read path).
+  - Internal `url.ts` refactor: one `commit()` funnel for the router-vs-history branch (was duplicated), plus `commitParams` for atomic multi-param writes.
+
+### Patch Changes
+
+- [#2180](https://github.com/pyreon/pyreon/pull/2180) [`757893e`](https://github.com/pyreon/pyreon/commit/757893e05129efb91feb3f06eac5465d4175e8e0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix manifest↔shipped-API drift across 15 packages + ship a prevention gate.
+
+  Package manifests' `api[].example` / `signature` blocks render VERBATIM into the MCP `api-reference` (what AI coding assistants read) and into `llms-full.txt`, but are hand-maintained and had silently drifted from the shipped exports — teaching code that wouldn't typecheck. Corrected the drift and added a gate so it can't recur.
+
+  **Real drift fixed** (example/signature corrected to match the shipped export; the shipped runtime is the source of truth):
+
+  - **@pyreon/core** — `ErrorBoundary` (no `onCatch` prop; `fallback` is `(err, reset) => VNodeChild`, `err` is `unknown`); `cx` is SINGLE-arg (`cx(["a","b"])`, not `cx("a","b")`); `mapArray` takes THREE args (`source, getKey, map`); removed the bogus `untrack` entry (it's a `@pyreon/reactivity` export, not `@pyreon/core`).
+  - **@pyreon/head** — `renderWithHead` is imported from the `@pyreon/head/ssr` subpath (not the main entry); `htmlAttrs`/`bodyAttrs` are `Record<string,string>` (serialize them, don't interpolate raw); `createHeadContext()` returns a value with `resolve()`/`resolveHtmlAttrs()`/`resolveBodyAttrs()`, not a `{tags, htmlAttrs, bodyAttrs}` object.
+  - **@pyreon/runtime-dom** — `hydrateRoot(container, root)` takes the container FIRST (reverse of `mount(root, container)`); `<Transition>` uses a required `show` accessor and has NO `mode` prop; `<TransitionGroup>` drives the list via `items`/`keyFn`/`render` props (not `<For>` children).
+  - **@pyreon/router** — `useTypedSearchParams` returns a `[get, set]` TUPLE (not an object); `RouterLink to` is a string; `onBeforeRouteUpdate`/`onBeforeRouteLeave` return an unregister fn; per-route `middleware` lives on a `RouteRecord`, not `createRouter` options; a redirect route still needs `component`.
+  - **@pyreon/compiler** — audit-finding locations expose `.relPath`/`.path`, not `.file`.
+  - **@pyreon/reactivity** — `effect(...)` callbacks in examples return `void` (a value-returning body doesn't typecheck).
+  - **@pyreon/dnd** — `For` is imported from `@pyreon/core`, not `@pyreon/reactivity`.
+  - **@pyreon/zero** — env helpers import from `@pyreon/zero/env`; `expandRoutesForLocales` from `@pyreon/zero/i18n-routing`; `cspMiddleware` from `@pyreon/zero/csp` with camelCase directive keys; `aiPlugin(config)` requires a config; `SitemapConfig` requires `origin`.
+  - **@pyreon/unistyle** — `makeItResponsive` is a styled-interpolation factory; `styles` requires `css`; `alignContent`/direction use the real unions; `extendCss` is single-arg; `breakpoints` is a const object; `createMediaQueries` takes an object and returns tagged-template fns.
+  - **@pyreon/virtual** — virtualizer options are FUNCTION types (`useVirtualizer(() => ({ count, ... }))`).
+  - **@pyreon/state-tree** — `getType(instance): unknown`; instances have no `.store`; corrected the lifecycle example.
+  - **@pyreon/connector-document** / **@pyreon/document-primitives** — `DocHeading level` is a tag string (`"h1"`), not a number.
+  - **@pyreon/sync** — `FakeCrdtAdapter.createDoc()` returns the concrete fake doc for `connectFakeDocs`.
+  - **@pyreon/query** — `QueryErrorResetBoundary` takes a plain subtree; use `useQueryErrorResetBoundary()` inside the fallback (no render prop).
+
+  **Prevention gate** — `scripts/check-manifest-examples.ts` (wired into `validate-fast` + CI): for every package with a `src/manifest.ts`, it typechecks each `api[].example`/`longExample` against the LIVE shipped types (subpath-aware resolution, validated symbol injection, syntax-fragment-tolerant, synthetic missing-export detection). A drift fails the gate, naming the package + api entry + TS error. Harness-limited packages (untyped ambient example data, DOM-global name collisions, alt-JSX namespaces, strict-mode-only schema libs) sit in a `NON_ENFORCED` ratchet with a per-package rationale (report-only; can only shrink). One runtime line changed: `@pyreon/url-state`'s `UrlRouter.replace` return type is widened from `void | Promise<void>` to `void | Promise<unknown>` — the gate surfaced a real type regression (since `@pyreon/router` [#2171](https://github.com/pyreon/pyreon/issues/2171) made `replace()` return `Promise<NavigationResult>`, the narrow bridge broke `setUrlRouter(useRouter())` at the type level; url-state ignores the return value, so the wider type is correct). Aside from that one line, the regenerated MCP `api-reference` + `llms-full` are the only shipped artifacts affected.
+
+- Updated dependencies [[`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/reactivity@0.44.0
+
 ## 0.43.1
 
 ## 0.43.0

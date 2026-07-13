@@ -1,5 +1,71 @@
 # @pyreon/zero
 
+## 0.44.0
+
+### Minor Changes
+
+- [#2160](https://github.com/pyreon/pyreon/pull/2160) [`4ad62b2`](https://github.com/pyreon/pyreon/commit/4ad62b25037776d6521501cadb8ac9fe33d75e38) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Vercel deploys now actually serve the SSR function (and SSG cache headers).** Vercel's Build Output API v3 is auto-detected ONLY at `<projectRoot>/.vercel/output` — `vercelAdapter` was writing the tree inside the build `outDir` (`dist/.vercel/output`), where Vercel never looks. The SSR function was therefore never discovered (dynamic routes 404 / fell through to static), and the SSG variant's `config.json` was a dead file whose long-cache `assets` routes never applied.
+
+  - `AdapterBuildOptions` gains a **required** `projectRoot: string` (Vite's resolved `root`) on both the `ssr` and `ssg` variants — required, not optional-with-fallback, so TypeScript rejects an omission at the call site and the bug can't silently reappear. Threaded from both invocation sites (`ssrPlugin` + `ssgPlugin`).
+  - `vercelAdapter` anchors `.vercel/output` at `projectRoot`, keyed off the shared `VERCEL_ADAPTER_OUTPUT` contract constants. The SSG branch copies (never moves — `materialize`) the prerendered dist into `.vercel/output/static/`, so the original `outDir` stays intact for `vite preview` and user post-build steps.
+  - Every other adapter (node/bun/netlify/cloudflare/static) is unchanged: they stage entirely inside `outDir` and never read `projectRoot`.
+
+  Bisect-verified: anchoring reverted to `outDir` → the two project-root specs fail; restored → 76/76 adapter tests (incl. spawn-and-curl runtime contracts). zero 1653 · create-zero 102 · zero-cli 19 · verify-modes 27/27.
+
+### Patch Changes
+
+- [#2184](https://github.com/pyreon/pyreon/pull/2184) [`9ef1b14`](https://github.com/pyreon/pyreon/commit/9ef1b1422313b49a020b7deb1ffa0871a5cc012a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Security: harden user-controlled-key parsers against property injection (CodeQL `js/remote-property-injection`)
+
+  `parseQuery`/`parseQueryMulti` (`@pyreon/router`) write user-controlled query KEYS into the result, and `parseCookies` (`@pyreon/zero` i18n routing) writes client-controlled cookie NAMES — a plain `{}` result let `?__proto__=…` / `Cookie: constructor=…` reach inherited prototype slots. All three now build a **null-prototype** result object (`Object.create(null)`, the `qs`/`query-string` standard), so every user key is a plain own data property: prototype/property injection is structurally impossible, and `?__proto__=x` becomes a retrievable own key rather than a `Object.prototype`-shadowing footgun. Public return types (`Record<string, …>`) are unchanged; consumer access (`q[key]`, `key in q`, `Object.keys`, spread) is unaffected. Regression-locked + bisect-verified in both packages.
+
+- [#2160](https://github.com/pyreon/pyreon/pull/2160) [`4ad62b2`](https://github.com/pyreon/pyreon/commit/4ad62b25037776d6521501cadb8ac9fe33d75e38) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(create-zero): scaffolded deploy configs now match the adapters' actual output paths (shared contract + drift-proof test)
+
+  The scaffolder's deploy configs hardcoded paths no `@pyreon/zero` adapter has ever emitted — every scaffolded node/bun/netlify deploy was broken from inception:
+
+  - **node/bun Dockerfiles** ran `dist/server.js`; the adapters emit `dist/index.js` (node) / `dist/index.ts` (bun). Fixed (`CMD ["node", "dist/index.js"]` / `CMD ["bun", "dist/index.ts"]`), and the runtime stage no longer copies `node_modules` + root `package.json` — the adapter's `dist/` tree is self-contained (SSR bundle externals are `node:*` builtins only).
+  - **`netlify.toml`** published `dist` with functions at `dist/.netlify/functions` and a redirect to a function named `server`; the netlify adapter stages the client into `dist/publish`, the function into `dist/netlify/functions`, and names it `ssr`. The file is now **generated per render mode**: SSR/ISR → `publish = "dist/publish"` + `[functions] directory = "dist/netlify/functions"` + redirect to `/.netlify/functions/ssr`; SSG → `publish = "dist"` (the prerendered root); SPA → `publish = "dist"` + the standard SPA fallback rewrite.
+  - **cloudflare**: the scaffolded root `_routes.json` is removed — Cloudflare Pages reads `_routes.json` from the deploy output dir (`pages_build_output_dir = "dist"`), where the adapter writes the authoritative one; the root copy was dead weight with misleading content (`exclude: ["/build/*"]`). `wrangler.toml` verified correct and locked.
+  - **vercel**: `vercel.json` (`outputDirectory: "dist"`) verified + locked. Known limitation (disclosed, tracked): the adapter stages the Build Output API tree INSIDE `dist/.vercel/output`, but Vercel only auto-detects it at the project root — so the scaffolded config deploys `dist` statically and the SSR function isn't reachable without a manual copy; fixing that requires the adapter to learn the project root.
+
+  `@pyreon/zero` now exports the adapter **output-path contract** (`NODE_ADAPTER_OUTPUT` / `BUN_ADAPTER_OUTPUT` / `NETLIFY_ADAPTER_OUTPUT` / `CLOUDFLARE_ADAPTER_OUTPUT` / `VERCEL_ADAPTER_OUTPUT` from `@pyreon/zero/server`); the adapters build their staging paths from it, and `create-zero`'s new `adapter-contract.test.ts` runs every scaffolder `apply()` and asserts the written configs against the same constants — drift on either side fails the test. Also fixed: the netlify adapter's emitted `dist/netlify.toml` no longer carries a `conditions = {Role = [...]}` clause on its SSR redirect (a role-gated rewrite would have gated SSR behind Netlify JWT roles), and the blog template README's stale `dist/client/` output path is now `dist/`.
+
+  Note: the values encode the plugin-owned `zero build` layout (adapter artifacts staged into the one `dist/` tree).
+
+- [#2154](https://github.com/pyreon/pyreon/pull/2154) [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Single-source the zero fs-route convention + island-name derivation — the project scanner reports what zero actually serves.
+
+  `@pyreon/compiler`'s project scanner (`generateContext` — behind `pyreon context` and the MCP `get_routes`/`get_components` tools) carried comment-synced copies of `@pyreon/zero`'s fs-route functions that had diverged at birth: it accepted `api/` at ANY depth (zero's `isApiRoute` requires the top-level `api/` prefix, so a nested `posts/api/x.ts` was reported as an API route zero never serves), invented API routes for method-handler `.ts` files outside `api/` (zero registers those as page routes), and reported auto-named islands under their bare binding name (`Widget`) instead of the actual registry name (`Widget$<fnv1a6(relPath)>`).
+
+  The convention now has ONE home:
+
+  - New pure subpath `@pyreon/compiler/fs-route-convention` — `filePathToUrlPath`, `isApiRoute`, `apiFilePathToPattern`, `ROUTE_EXTENSIONS`, `SPECIAL_ROUTE_FILES`, `stripRouteExtension` (byte-behavior-identical ports of zero's originals; no `typescript` cold-load). `@pyreon/zero`'s `fs-router.ts`/`api-routes.ts` re-export it; identity parity tests lock against a local copy ever being reintroduced.
+  - New `@pyreon/compiler` exports `deriveIslandName` / `fnv1a6` / `islandRelPath` — the island auto-name derivation, re-exported by `@pyreon/vite-plugin`'s `island-auto-name.ts` (identity-locked) and used by the scanner so reported island names match the hydration registry.
+  - Scanner fixes: nested `<dir>/api/*.ts` and method-handler `.ts` outside `api/` are reported as page routes (zero parity); auto-named islands carry the derived registry name; a bindingless nameless `island()`'s basename fallback is documented as a placeholder, not a registry name.
+
+- [#2155](https://github.com/pyreon/pyreon/pull/2155) [`550508c`](https://github.com/pyreon/pyreon/commit/550508ce30be3dbf1a93c9069b542e37237fca39) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero-cli): `zero build` is now ONE `vite build` — the zero plugin owns the whole pipeline (single SSR post-step owner, loud failures)
+
+  `zero build` previously ran a SECOND owner on top of the `zero()` plugin's battle-tested post-step: its own `vite build --ssr` pass to `dist/server`, its own prerender pass, and its own `adapter.build()` into `dist/output` — each wrapped in a bare swallow-all `catch`. Consequences: the SSR bundle was built twice into divergent trees (up to four copies of `entry-server.js`), the deployed `dist/output` server bundle was staged **without** `template.html` (it fell back to the dev template + `/src/entry-client.ts`, so pages server-rendered but never hydrated in production), zero-config apps (no user `src/entry-server.ts`) got **no** server bundle at the documented location at all, and every one of those failures was swallowed into a green "Build completed".
+
+  Now:
+
+  - `zero build` runs exactly one `vite build`; the plugin chain owns client bundle, SSR/ISR server bundle + `dist/server/template.html`, SSG prerendering, and deploy-adapter staging into the one `dist/` tree (`node dist/index.js` for the node adapter). `dist/output` and the CLI's duplicate passes are gone.
+  - **Breaking (pre-1.0):** the `--mode` CLI flag is removed — the render mode comes from `zero({ mode })` in `vite.config.ts` (the flag never reached the plugin instances; it only gated the CLI's now-deleted duplicate passes).
+  - An **explicitly configured** adapter (`zero({ adapter })`) whose `build()` throws now **fails the build** (SSR/ISR and SSG modes); auto-selected adapters remain non-fatal with a console error — the server bundle itself is still usable.
+  - The SSR/SSG plugins' inner-build recursion flags moved to one shared module (`build-flags.ts`); a flag **leaked** in from a parent process/shell (which silently disabled the whole post-step) now prints a one-line notice, and both plugins silently no-op on user-invoked server-target builds (`vite build --ssr`).
+  - `zero preview` serves `dist/client/` when a node/bun-adapter build staged it, otherwise the project's `build.outDir` (previously-documented `dist/client` layouts keep working).
+
+- Updated dependencies [[`ae2472e`](https://github.com/pyreon/pyreon/commit/ae2472e4ecb31cd59bde23d1983afe7db1c62d99), [`57808e6`](https://github.com/pyreon/pyreon/commit/57808e65d9b2d9823b0b054d0af0371cde078e85), [`28fbd77`](https://github.com/pyreon/pyreon/commit/28fbd7799f015503d45c8642d8822bff64e9e155), [`9ef1b14`](https://github.com/pyreon/pyreon/commit/9ef1b1422313b49a020b7deb1ffa0871a5cc012a), [`4add6bd`](https://github.com/pyreon/pyreon/commit/4add6bd17711a6eb9f0cc9375a3643289bf931c4), [`8413136`](https://github.com/pyreon/pyreon/commit/84131368d6f8790ba50e2af9d383ee289e4b1f5c), [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12), [`0274fb6`](https://github.com/pyreon/pyreon/commit/0274fb6a0f838a9f7b4ec41295adef1bf5ed4e95), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/runtime-dom@0.44.0
+  - @pyreon/compiler@0.44.0
+  - @pyreon/router@0.44.0
+  - @pyreon/vite-plugin@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/head@0.44.0
+  - @pyreon/server@0.44.0
+  - @pyreon/meta@0.44.0
+  - @pyreon/core@0.44.0
+  - @pyreon/runtime-server@0.44.0
+  - @pyreon/sized-map@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes

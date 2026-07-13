@@ -1,5 +1,27 @@
 # @pyreon/unistyle
 
+## 0.44.0
+
+### Patch Changes
+
+- [#2159](https://github.com/pyreon/pyreon/pull/2159) [`8a5e24e`](https://github.com/pyreon/pyreon/commit/8a5e24e241abbd4202a02a13442a7c06289c825f) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Coverage-gate restoration housekeeping — no runtime changes. The main-branch
+  `Coverage (Full)` CI gate had been red on arrival (15 packages below their
+  configured thresholds), making it unable to detect real regressions. This
+  change adds `/* v8 ignore */` annotations (with rationale) to browser-covered
+  blocks in `elements/src/Overlay/useOverlay.tsx` (modal focus-in + focus-trap,
+  covered by `Overlay-focus-trap.browser.test.tsx` in real Chromium) and
+  `unistyle/src/cpse-styled.tsx` (client mount plumbing, covered by
+  `cpse-styled.browser.test.tsx`), so the node coverage gate measures what the
+  node suite can actually reach. Sibling packages received genuine new tests
+  and/or honest threshold re-baselines (documented in each `vitest.config.ts`
+  and `scripts/check-coverage.ts` BELOW_FLOOR_EXEMPTIONS). Comment-only source
+  edits — zero behavior change.
+- Updated dependencies [[`8527892`](https://github.com/pyreon/pyreon/commit/85278924ecba5059e3aadcca10fc63752dfa3f90), [`da1f628`](https://github.com/pyreon/pyreon/commit/da1f6282c42e42018aa15c92337df1badc185143), [`d0bd1d8`](https://github.com/pyreon/pyreon/commit/d0bd1d8a771fd8442e242f4e089440e606f88d6f), [`721618e`](https://github.com/pyreon/pyreon/commit/721618e97dacf995d8356dabea601ef4e98a4a12), [`d859370`](https://github.com/pyreon/pyreon/commit/d8593704b0941ef0e51a427147ebce2a385ecae3)]:
+  - @pyreon/styler@0.44.0
+  - @pyreon/reactivity@0.44.0
+  - @pyreon/ui-core@0.44.0
+  - @pyreon/core@0.44.0
+
 ## 0.43.1
 
 ### Patch Changes
