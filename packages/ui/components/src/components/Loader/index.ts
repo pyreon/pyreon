@@ -2,7 +2,11 @@ import { txt } from '../../factory'
 
 const Loader = txt
   .config({ name: 'Loader' })
-  .attrs({ tag: 'span' })
+  // A bare spinner has no text, so assistive tech announces nothing. `role="status"`
+  // makes it a POLITE live region and `aria-label` gives it an accessible name
+  // (Bootstrap/Chakra/MUI spinner convention). Both are DEFAULTS — pass your own
+  // `aria-label` (e.g. a localized string) or `role` to override.
+  .attrs({ tag: 'span', role: 'status', 'aria-label': 'Loading' })
   .theme(() => ({
     display: 'inline-block',
     borderWidth: 2,
