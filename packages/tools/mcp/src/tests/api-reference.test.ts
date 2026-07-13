@@ -201,11 +201,14 @@ describe('api-reference', () => {
       expect(entry!.notes).toBeTruthy()
     })
 
-    it('useForm carries 6 mistakes covering validateOn + schema ordering', () => {
+    it('useForm carries 7 mistakes covering validateOn + schema ordering + dot-path fields', () => {
       const entry = API_REFERENCE['form/useForm']
-      // 6th mistake added by the value-integrity fix (unrecognized `schema`
-      // object now throws instead of silently disabling validation).
-      expect(entry?.mistakes?.split('\n').length).toBe(6)
+      // 6th mistake: the value-integrity fix (an unrecognized `schema` object
+      // now throws instead of silently disabling validation). 7th mistake: the
+      // dot-path field feature — `values()`/`onSubmit` stay FLAT for nested
+      // leaf fields (no `NestValues<T>` cascade), so expecting a nested shape
+      // is a footgun.
+      expect(entry?.mistakes?.split('\n').length).toBe(7)
       expect(entry?.notes).toContain('validateOn')
     })
 
