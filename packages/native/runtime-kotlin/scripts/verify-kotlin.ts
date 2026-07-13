@@ -297,6 +297,86 @@ class Uri {
 }
 `
 
+// PyreonNotifications-specific stubs — the android.app + android.content +
+// android.os + android.R + androidx.core.app surface PyreonNotifications.kt
+// uses, mirrored EXACTLY. Split by package (a .kt file declares one
+// package). Gated behind --service=PyreonNotifications.
+const ANDROID_APP_NOTIF_STUBS = `package android.app
+
+class Notification
+
+class NotificationChannel(
+  @Suppress("UNUSED_PARAMETER") id: String,
+  @Suppress("UNUSED_PARAMETER") name: CharSequence,
+  @Suppress("UNUSED_PARAMETER") importance: Int,
+)
+
+class NotificationManager {
+  companion object {
+    const val IMPORTANCE_DEFAULT = 3
+  }
+  @Suppress("UNUSED_PARAMETER")
+  fun createNotificationChannel(channel: NotificationChannel) {}
+}
+`
+
+const ANDROID_CONTENT_NOTIF_STUBS = `package android.content
+
+open class Context {
+  @Suppress("UNUSED_PARAMETER")
+  open fun <T> getSystemService(serviceClass: Class<T>): T? = null
+}
+`
+
+const ANDROID_OS_STUBS = `package android.os
+
+object Build {
+  object VERSION {
+    const val SDK_INT = 34
+  }
+  object VERSION_CODES {
+    const val O = 26
+  }
+}
+`
+
+const ANDROID_R_STUBS = `package android
+
+object R {
+  object drawable {
+    const val ic_dialog_info = 0
+  }
+}
+`
+
+const ANDROIDX_CORE_APP_STUBS = `package androidx.core.app
+
+import android.app.Notification
+import android.content.Context
+
+class NotificationCompat {
+  class Builder(
+    @Suppress("UNUSED_PARAMETER") context: Context,
+    @Suppress("UNUSED_PARAMETER") channelId: String,
+  ) {
+    @Suppress("UNUSED_PARAMETER") fun setContentTitle(title: CharSequence): Builder = this
+    @Suppress("UNUSED_PARAMETER") fun setContentText(text: CharSequence): Builder = this
+    @Suppress("UNUSED_PARAMETER") fun setSmallIcon(icon: Int): Builder = this
+    @Suppress("UNUSED_PARAMETER") fun setAutoCancel(autoCancel: Boolean): Builder = this
+    fun build(): Notification = Notification()
+  }
+}
+
+class NotificationManagerCompat {
+  companion object {
+    @Suppress("UNUSED_PARAMETER")
+    fun from(context: Context): NotificationManagerCompat = NotificationManagerCompat()
+  }
+  @Suppress("UNUSED_PARAMETER")
+  fun notify(id: Int, notification: Notification) {}
+}
+`
+
 // PyreonWebSocketOkHttp-specific stubs — the okhttp3 4.x surface the
 // transport file uses, mirrored EXACTLY (no superset — a superset stub
 // masks; the same rule the compiler's kotlin-stubs.ts documents 4×).
@@ -410,6 +490,18 @@ try {
     writeFileSync(linkingContentPath, ANDROID_LINKING_CONTENT_STUBS, 'utf8')
     writeFileSync(linkingNetPath, ANDROID_NET_STUBS, 'utf8')
   }
+  const notifAppPath = join(tempDir, 'AndroidApp.kt')
+  const notifContentPath = join(tempDir, 'AndroidContentNotif.kt')
+  const notifOsPath = join(tempDir, 'AndroidOs.kt')
+  const notifRPath = join(tempDir, 'AndroidR.kt')
+  const notifCorePath = join(tempDir, 'AndroidxCoreApp.kt')
+  if (SERVICE === 'PyreonNotifications') {
+    writeFileSync(notifAppPath, ANDROID_APP_NOTIF_STUBS, 'utf8')
+    writeFileSync(notifContentPath, ANDROID_CONTENT_NOTIF_STUBS, 'utf8')
+    writeFileSync(notifOsPath, ANDROID_OS_STUBS, 'utf8')
+    writeFileSync(notifRPath, ANDROID_R_STUBS, 'utf8')
+    writeFileSync(notifCorePath, ANDROIDX_CORE_APP_STUBS, 'utf8')
+  }
   const okhttpPath = join(tempDir, 'OkHttp3.kt')
   if (SERVICE === 'PyreonWebSocketOkHttp') {
     writeFileSync(okhttpPath, OKHTTP3_STUBS, 'utf8')
@@ -442,6 +534,7 @@ try {
   const hapticStubs = SERVICE === 'PyreonHaptics' ? [hapticFeedbackPath] : []
   const shareStubs = SERVICE === 'PyreonShare' ? [shareIntentPath] : []
   const linkingStubs = SERVICE === 'PyreonLinking' ? [linkingContentPath, linkingNetPath] : []
+  const notifStubs = SERVICE === 'PyreonNotifications' ? [notifAppPath, notifContentPath, notifOsPath, notifRPath, notifCorePath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
   // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
   const okhttpExtras =
@@ -459,6 +552,7 @@ try {
         ...hapticStubs,
         ...shareStubs,
         ...linkingStubs,
+        ...notifStubs,
         ...okhttpExtras,
         SOURCE_FILE,
       ]
@@ -472,6 +566,7 @@ try {
         ...hapticStubs,
         ...shareStubs,
         ...linkingStubs,
+        ...notifStubs,
         ...okhttpExtras,
         SOURCE_FILE,
         TEST_FILE,

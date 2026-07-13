@@ -8,7 +8,7 @@
 // SwiftUI's @State is a var, not a method).
 
 import { signal } from '@pyreon/reactivity'
-import { useHaptics, useShare, useLinking } from '@pyreon/hooks'
+import { useHaptics, useShare, useLinking, useNotifications } from '@pyreon/hooks'
 
 export function Counter() {
   const count = signal<number>(0)
@@ -30,6 +30,12 @@ export function Counter() {
   // `window.open`. Observable — tapping it backgrounds the app / foregrounds
   // Safari — so the device gate asserts the app leaves the foreground.
   const linking = useLinking()
+  // M3.3 platform-API proof — a Notify button posts a local notification.
+  // Native: iOS `PyreonNotifications().notify(...)` (UNUserNotificationCenter),
+  // Android `PyreonNotifications(ctx).notify(...)` (NotificationManager +
+  // channel). Web: Notification API. R4 asserts the tap does not crash
+  // (the banner + permission prompt make a full behavioral assert flaky).
+  const notifs = useNotifications()
   return (
     <VStack>
       <Text>Count: {count}</Text>
@@ -43,6 +49,7 @@ export function Counter() {
       </Button>
       <Button onClick={() => share.url('https://pyreon.dev')}>Share</Button>
       <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
+      <Button onClick={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
       {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
           Native: iOS `.onLongPressGesture { count = 0 }`, Android
           `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms

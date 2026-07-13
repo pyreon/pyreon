@@ -340,7 +340,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | Networking (fetch/ws/http) | 8 | 0.5 | fetch R5 (success + error path asserted); websocket/http-verbs R2 |
 | Storage (kv/secure/db) | 7 | 0.3 | kv persistence ASSERTED (M1.2a): iOS terminate+relaunch (R4, local Simulator pass) + Android activity-recreation (proven by the PR device run / nightly); secure-storage + database still R2 |
 | Auth | 5 | 0.3 | gate/login flow R5; real IdP token flow R1–R2 |
-| Platform APIs (haptics/share/link/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.3 | clipboard/geolocation/push/payments/permissions/**haptics**/**share**/**link** exist at R2+. **haptics** (`useHaptics()`, M3.1 — the FIRST imperative platform-API hook, establishing the pattern) reaches **R4-BUILD** (increment tap fires `PyreonHaptics().impact("light")`, no crash) — a **NON-BEHAVIORAL R4** (no observable UI; the Simulator has no Taptic Engine). **share** (`useShare()`, M3.2) + **link** (`useLinking()`, M3.2b) each reach a **BEHAVIORAL R4**: the Share button's XCUITest ASSERTS the `UIActivityViewController` share sheet appears; the Open button's XCUITest ASSERTS the app leaves the foreground when `PyreonLinking().openUrl()` hands the URL to `UIApplication.shared.open` (both iOS Simulator passes — observable proofs). Android: `Intent.createChooser(ACTION_SEND)` / `Intent.ACTION_VIEW`. notifs/camera/biometrics/files/deep-links/lifecycle ABSENT |
+| Platform APIs (haptics/share/link/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.4 | clipboard/geolocation/push/payments/permissions/**haptics**/**share**/**link**/**notifs** exist at R2+. **share** (`useShare()`, M3.2) + **link** (`useLinking()`, M3.2b) each reach a **BEHAVIORAL R4** (XCUITest asserts the share sheet appears / the app leaves the foreground on `UIApplication.shared.open`). **haptics** (`useHaptics()`, M3.1) + **notifs** (`useNotifications()`, M3.3 — LOCAL notifications, iOS UNUserNotificationCenter / Android NotificationManager+channel+POST_NOTIFICATIONS) each reach a **NON-BEHAVIORAL R4** (the tap fires the call without crashing; haptics have no observable UI on the Simulator, and a notification's permission-prompt + auto-dismissing banner make a reliable springboard assert infeasible — so the honest ceiling is build+run+tap-no-crash). Android: `Intent.createChooser(ACTION_SEND)` / `Intent.ACTION_VIEW` / `NotificationManagerCompat`. camera/biometrics/files/deep-links/lifecycle ABSENT |
 | Animations & transitions | 6 | 0.0 | absent (v1 exclusion) |
 | Gestures | 4 | 0.6 | tap R5; **long-press** `<Press onLongPress>` R4 (M2.3 — counter reset via a simultaneous LongPressGesture, iOS Simulator pass; Android `combinedClickable(onLongClick)` proven by the device run); swipe/drag absent |
 | Adaptive / tablet layout | 5 | 0.0 | absent (no size classes) |
@@ -352,8 +352,8 @@ whenever a row changes; do not edit the totals without recomputing.
 | Payments | 2 | 0.0 | R2 runtime; no device test |
 | Background / push | 3 | 0.0 | R2 runtime; manual `.start()`; no device test |
 
-**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 + M3.2 + M3.2b applied):** device-proven (R4+) coverage
-**≈ 43%** (46.0 / 107 — +1.0 haptics non-behavioral R4-build + +1.0 share behavioral R4 + +1.0 link behavioral R4, see the Platform APIs row); compile-proven (R2+) upper bound **≈ 74%** —
+**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 + M3.2 + M3.2b + M3.3 applied):** device-proven (R4+) coverage
+**≈ 44%** (47.0 / 107 — +1.0 each: haptics non-behavioral + share behavioral + link behavioral + notifs non-behavioral R4, see the Platform APIs row); compile-proven (R2+) upper bound **≈ 74%** —
 i.e. roughly three-quarters of the weighted surface already *exists and
 typechecks*, but only about a third is *proven to behave* on a device.
 **The production goal is 70–90% at R4+**; the gap between the two
