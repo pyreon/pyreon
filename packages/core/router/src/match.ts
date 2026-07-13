@@ -45,9 +45,23 @@ function decodeQueryComponent(raw: string): string {
   return decodeURIComponent(raw.replace(/\+/g, ' '))
 }
 
+/**
+ * Fresh null-prototype record for parsed query params. Query KEYS are
+ * user-controlled, so a plain `{}` would let `?__proto__=…` / `?constructor=…`
+ * write to inherited slots — prototype/property injection (CodeQL
+ * `js/remote-property-injection`). A null-prototype object has no prototype
+ * chain, so every user key is a plain OWN data property: injection is
+ * structurally impossible, and `?__proto__=x` becomes a retrievable own key
+ * rather than a footgun that shadows `Object.prototype`. This is the standard
+ * `qs` / `query-string` hardening.
+ */
+function emptyQueryRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>
+}
+
 export function parseQuery(qs: string): Record<string, string> {
-  if (!qs) return {}
-  const result: Record<string, string> = {}
+  if (!qs) return emptyQueryRecord()
+  const result = emptyQueryRecord<string>()
   for (const part of qs.split('&')) {
     const eqIdx = part.indexOf('=')
     if (eqIdx < 0) {
@@ -70,8 +84,8 @@ export function parseQuery(qs: string): Record<string, string> {
  * // → { color: ["red", "blue"], size: "lg" }
  */
 export function parseQueryMulti(qs: string): Record<string, string | string[]> {
-  if (!qs) return {}
-  const result: Record<string, string | string[]> = {}
+  if (!qs) return emptyQueryRecord()
+  const result = emptyQueryRecord<string | string[]>()
   for (const part of qs.split('&')) {
     const eqIdx = part.indexOf('=')
     let key: string
