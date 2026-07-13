@@ -345,15 +345,15 @@ whenever a row changes; do not edit the totals without recomputing.
 | Gestures | 4 | 0.6 | tap R5; **long-press** `<Press onLongPress>` R4 (M2.3 — counter reset via a simultaneous LongPressGesture, iOS Simulator pass; Android `combinedClickable(onLongClick)` proven by the device run); swipe/drag absent |
 | Adaptive / tablet layout | 5 | 0.2 | **`useSizeClass()` (M2.2)** — the horizontal size-class READ reaches a **BEHAVIORAL R4**: the counter's XCUITest asserts `Size: compact` on an iPhone Simulator, and the same suite (assertion flipped) asserts `Size: regular` on an iPad Simulator — so the emit reflects the REAL environment, not a baked constant. iOS `@Environment(\.horizontalSizeClass)` / Android `LocalConfiguration.current.screenWidthDp >= 600` / web `matchMedia('(min-width: 600px)')`. The adaptive-LAYOUT primitive (size-class-driven Stack↔Inline) is still absent (M2.2b) |
 | Media (image display/picker/AV) | 4 | 0.25 | bundled image display R5 (tasks branded header); remote image R2; picker/AV absent |
-| Accessibility | 3 | 0.0 | semantics emit R2; never device-asserted |
+| Accessibility | 3 | 0.15 | **`accessibilityLabel` DEVICE-PROVEN (iOS)** — the counter's XCUITest asserts a labelled element is queryable in the REAL accessibility tree by its LABEL ("A11y status ready"), NOT by its visible glyph "●", so `.accessibilityLabel` genuinely overrode the accessible name in the live tree (bisect-verified: strip the prop → the query fails). The rest stays R2/emit-locked: `accessibilityHidden` (XCUITest string queries don't reliably reflect it — tooling limitation, not an emit gap), roles/focus-order/live-announcements, and the Android side (not device-asserted here) |
 | i18n | 3 | 0.0 | R2 (PyreonI18n both platforms) |
 | Offline / sync | 3 | 0.0 | `@pyreon/sync` web-only; native db offline-first R2 |
 | Maps / geolocation | 3 | 0.0 | R2 runtimes; no device test |
 | Payments | 2 | 0.0 | R2 runtime; no device test |
 | Background / push | 3 | 0.0 | R2 runtime; manual `.start()`; no device test |
 
-**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 + M3.2 + M3.2b + M3.3 + M2.2 applied):** device-proven (R4+) coverage
-**≈ 45%** (48.0 / 107 — the Platform-APIs row's +1.0 each for haptics/share/link/notifs, plus **+1.0 for `useSizeClass()` (M2.2)**: the Adaptive/tablet row moves 0.0 → 0.2 on a BEHAVIORAL R4 size-class read, see that row); compile-proven (R2+) upper bound **≈ 74%** —
+**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 + M3.2 + M3.2b + M3.3 + M2.2 + a11y-label applied):** device-proven (R4+) coverage
+**≈ 45%** (48.45 / 107 — the Platform-APIs row's +1.0 each for haptics/share/link/notifs, +1.0 for `useSizeClass()` (M2.2, Adaptive/tablet 0.0 → 0.2), plus **+0.45 for the `accessibilityLabel` device assertion**: the Accessibility row moves 0.0 → 0.15 on the first iOS device proof of an a11y lowering, see that row); compile-proven (R2+) upper bound **≈ 74%** —
 i.e. roughly three-quarters of the weighted surface already *exists and
 typechecks*, but only about a third is *proven to behave* on a device.
 **The production goal is 70–90% at R4+**; the gap between the two

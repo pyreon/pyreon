@@ -47,6 +47,16 @@ export function Counter() {
     <VStack>
       <Text>Count: {count}</Text>
       <Text>Size: {sizeClass}</Text>
+      {/* A11y device proof — the cross-platform AccessibilityProps vocab
+          lowers per-target: iOS `.accessibilityLabel(...)`, Android
+          `semantics { contentDescription }`. Differentiating device
+          assertion: this element is queryable in the REAL accessibility tree
+          by its LABEL ("A11y status ready"), NOT by its visible glyph "●" —
+          proving `accessibilityLabel` overrode the accessible name in the
+          live tree. (`accessibilityHidden` stays R2/emit-locked: XCUITest's
+          string queries don't reliably reflect it — a tooling limitation, not
+          an emit gap.) */}
+      <Text accessibilityLabel="A11y status ready">●</Text>
       <Button
         onClick={() => {
           count.set(count() + 1)
