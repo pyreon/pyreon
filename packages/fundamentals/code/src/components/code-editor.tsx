@@ -16,7 +16,7 @@ import type { CodeEditorProps, EditorInstance } from '../types'
  * ```
  */
 export function CodeEditor(props: CodeEditorProps): VNodeChild {
-  const instance = props.instance
+  const { instance } = props
 
   const containerRef = (el: Element | null) => {
     if (!el) return

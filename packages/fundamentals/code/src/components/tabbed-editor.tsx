@@ -21,7 +21,7 @@ import { CodeEditor } from './code-editor'
  * ```
  */
 export function TabbedEditor(props: TabbedEditorProps): VNodeChild {
-  const instance = props.instance
+  const { instance } = props
 
   const containerStyle = `display: flex; flex-direction: column; width: 100%; height: 100%; ${props.style ?? ''}`
 

@@ -1,8 +1,5 @@
 ---
 "@pyreon/lint": patch
-"@pyreon/code": patch
-"@pyreon/flow": patch
-"@pyreon/rich-text": patch
 ---
 
 Harden `@pyreon/lint` from the upstream 0.44.0 findings — three detection
@@ -38,8 +35,9 @@ bugs and five rule-precision fixes:
 - **`overlay-a11y` (LR-10)** — accepts `<Overlay type="dialog|…">` as
   satisfying a11y (the component derives ARIA from `type`).
 
-**Framework consistency** — the new `no-props-destructure` body-form check
-surfaced 7 body-destructures in `@pyreon/code`/`@pyreon/flow`/`@pyreon/rich-text`
-static components; converted them to plain `const x = props.x` reads (the
-compiler reactively inlines these at JSX use sites — behavior-preserving, and
-the framework now follows its own rule).
+The new body-form check is scoped off (in the monorepo `.pyreonlintrc.json`)
+for `@pyreon/{flow,code,rich-text}` render-layer components: they legitimately
+destructure `children`/stable-instance/static-config props, and the rule's
+recommended `props.x` fix is *harmful* for `children` (the compiler reactively
+inlines `const x = props.x`, wrapping children in an accessor and breaking
+structural rendering — verified against real-compiler flow e2e).

@@ -699,9 +699,7 @@ export interface FlowComponentProps {
  * ```
  */
 export function Flow(props: FlowComponentProps): VNodeChild {
-  const instance = props.instance
-  const children = props.children
-  const edgeTypes = props.edgeTypes
+  const { instance, children, edgeTypes } = props
 
   // Make the instance available to child components (MiniMap / Controls)
   // so `<Flow instance={flow}><MiniMap /></Flow>` works without passing

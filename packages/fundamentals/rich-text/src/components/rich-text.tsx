@@ -19,7 +19,7 @@ import type { RichTextProps } from '../types'
  * ```
  */
 export function RichText(props: RichTextProps): VNodeChild {
-  const instance = props.instance
+  const { instance } = props
 
   const containerRef = (el: Element | null): void => {
     if (!el) return
