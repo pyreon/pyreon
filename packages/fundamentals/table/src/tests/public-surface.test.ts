@@ -62,6 +62,7 @@ describe('@pyreon/table — public surface', () => {
         "filterFns",
         "flattenBy",
         "flexRender",
+        "flexRenderCell",
         "functionalUpdate",
         "getCoreRowModel",
         "getExpandedRowModel",

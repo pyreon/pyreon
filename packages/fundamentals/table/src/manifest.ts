@@ -54,7 +54,11 @@ const table = useTable(() => ({
       {(row) => (
         <tr>
           <For each={() => row.getVisibleCells()} by={(c) => c.id}>
-            {(cell) => <td>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>}
+            {/* flexRenderCell(table, …) inside an accessor = fine-grained:
+                a single-cell edit patches ONLY this cell. Plain
+                flexRender(cell…, cell.getContext()) FREEZES on a value change
+                because the keyed <For> reuses the cell and never re-runs it. */}
+            {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
           </For>
         </tr>
       )}
@@ -64,9 +68,9 @@ const table = useTable(() => ({
   features: [
     'useTable(optionsFn) with reactive signal-driven options',
     'flexRender for column def templates (strings, functions, VNodes)',
+    'flexRenderCell — fine-grained per-cell updates: an in-place data edit patches only the changed rows cells, no memo boilerplate',
     'Full TanStack Table core re-exported — single import source',
-    'Computed<Table<T>> return type for fine-grained reactivity',
-    'Auto state sync via internal signal + version counter',
+    'Computed<Table<T>> return type; per-row signals under the hood',
   ],
   api: [
     {
@@ -92,10 +96,10 @@ const table = useTable(() => ({
         'Passing options as a plain object instead of a function — signal reads are not tracked and the table never updates when data changes',
         'Reading `table` without calling it — `table` is a Computed, you must call `table()` to get the Table instance',
         'Forgetting getCoreRowModel() — TanStack Table requires at least getCoreRowModel in options or it throws',
-        'Using `.map()` on rows instead of `<For>` — loses Pyreon\'s keyed reconciliation and fine-grained DOM updates',
-        'Binding a value that CHANGES (column width from `getSize()`, a sort indicator) as a STATIC prop/attr through a keyed `<For>` — the keyed cell is reused on state change and its body never re-runs, so the value freezes. `table()` DOES re-notify; the fix is to read the value inside a reactive closure at the point of use: `style={() => ({ width: table().getColumn(id).getSize() + "px" })}`',
+        'Using `.map()` on rows instead of `<For>` — loses Pyreon\'s keyed reconciliation, rebuilds the whole tbody on every change (worst-case DOM churn)',
+        'Binding a value that CHANGES (a cell value, column width from `getSize()`, a sort indicator) as a STATIC prop/attr/child through a keyed `<For>` — the keyed cell is reused on a state change and its body never re-runs, so the value freezes. Read it inside a reactive closure at the point of use: cell content via `<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>`, an attribute via `style={() => ({ width: table().getColumn(id).getSize() + "px" })}`',
       ],
-      seeAlso: ['flexRender'],
+      seeAlso: ['flexRender', 'flexRenderCell'],
     },
     {
       name: 'flexRender',
@@ -110,8 +114,26 @@ flexRender(cell.column.columnDef.cell, cell.getContext())`,
       mistakes: [
         'Wrapping flexRender output in an extra function accessor — the result is already renderable JSX content',
         'Passing the column def directly instead of calling getContext() — TanStack Table requires the context object',
+        'Using plain `flexRender(cell…, cell.getContext())` for a cell inside a keyed `<For>` when the cell VALUE can change in place — the captured `cell` is stale and the reused row never re-runs it, so it freezes. Use `flexRenderCell(table, row.id, cell.column.id)` for live cells.',
       ],
-      seeAlso: ['useTable'],
+      seeAlso: ['useTable', 'flexRenderCell'],
+    },
+    {
+      name: 'flexRenderCell',
+      kind: 'function',
+      signature:
+        '<TData extends RowData>(table: Table<TData> | Computed<Table<TData>>, rowId: string, columnId: string) => unknown',
+      summary:
+        'Fine-grained per-cell renderer for live cell values. Inside a keyed `<For>`, the `row`/`cell` objects are captured ONCE (the reconciler reuses the DOM node and never re-runs its body), so plain `flexRender(cell…, cell.getContext())` FREEZES when a value changes in place. `flexRenderCell` re-navigates to the live cell from the current row model each read — place it in an explicit accessor `<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>`. Pass the Computed<Table> ACCESSOR (`table`, not `table()`) for fine-grained updates: the cell then subscribes to only its own row\'s signal, so an in-place data edit patches ONLY the changed rows\' cells — matching a hand-memoized react-table row without any React.memo boilerplate. Returns null when the row is not in the current (filtered/paginated) row model.',
+      example: `// Place inside an accessor child, passing the \`table\` ACCESSOR (not \`table()\`):
+//   <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>
+// so a single-cell edit patches ONLY that cell.
+flexRenderCell(table, row.id, columnId)`,
+      mistakes: [
+        'Passing the resolved instance `table()` instead of the accessor `table` — still correct, but subscribes coarsely (every cell re-runs on any change) instead of fine-grained per-row',
+        'Forgetting the explicit accessor wrapper `{() => …}` — without it the cell is captured once and freezes on the next change',
+      ],
+      seeAlso: ['useTable', 'flexRender'],
     },
   ],
   gotchas: [
@@ -123,6 +145,14 @@ flexRender(cell.column.columnDef.cell, cell.getContext())`,
     {
       label: 'Computed return',
       note: 'useTable returns Computed<Table<T>>, not Table<T>. Always call `table()` to get the instance. Reading it inside `<For each={() => table().getRowModel().rows}>` makes the list reactive.',
+    },
+    {
+      label: 'Fine-grained cells',
+      note: 'For live/editable tables, render cells with `flexRenderCell(table, row.id, cell.column.id)` inside an accessor. An in-place data edit then re-runs ONLY the changed rows\' cell bindings (per-row signals) and patches ONE cell — no memo boilerplate, matching a hand-optimized react-table. A table-STATE change (sort/filter/selection/column visibility) re-runs all cells (coarse, correct-by-default for state-reading cells).',
+    },
+    {
+      label: 'reorder-on-data-edit limitation',
+      note: 'A DATA edit that changes the SORT ORDER (editing the column you are sorted BY) updates every cell to the correct value but does NOT re-position the keyed rows until the next structure/state change — a pre-existing base-adapter limitation of the sorted-row-model + <For> interaction (it affects plain `flexRender` cells too, not just `flexRenderCell`). Re-ordering via the sort controls (`toggleSorting`/`setSorting`) works normally. Workaround: re-apply sorting after such an edit, or sort by a column you do not edit in place.',
     },
   ],
 })

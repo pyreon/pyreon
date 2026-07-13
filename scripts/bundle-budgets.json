@@ -52,7 +52,7 @@
   "@pyreon/svelte-compat": 2816,
   "@pyreon/sync": 1792,
   "@pyreon/testing": 5120,
-  "@pyreon/table": 768,
+  "@pyreon/table": 1536,
   "@pyreon/toast": 3072,
   "@pyreon/ui-core": 3584,
   "@pyreon/unistyle": 9472,

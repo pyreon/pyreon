@@ -4342,12 +4342,12 @@ getHotkeyConflicts()
 <For each={() => table().getRowModel().rows} by={(r) => r.id}>
   {(row) => <tr>...</tr>}
 </For>`,
-    notes: 'Create a reactive TanStack Table instance. Options are passed as a function so reactive signals (data, columns, sorting state) can be read inside and the table updates automatically when they change. Returns a Computed<Table<T>> — read it inside JSX expression thunks or effects to track state changes. Internal state management uses a version counter to force re-notification even when the table reference is the same object. See also: flexRender.',
+    notes: 'Create a reactive TanStack Table instance. Options are passed as a function so reactive signals (data, columns, sorting state) can be read inside and the table updates automatically when they change. Returns a Computed<Table<T>> — read it inside JSX expression thunks or effects to track state changes. Internal state management uses a version counter to force re-notification even when the table reference is the same object. See also: flexRender, flexRenderCell.',
     mistakes: `- Passing options as a plain object instead of a function — signal reads are not tracked and the table never updates when data changes
 - Reading \`table\` without calling it — \`table\` is a Computed, you must call \`table()\` to get the Table instance
 - Forgetting getCoreRowModel() — TanStack Table requires at least getCoreRowModel in options or it throws
-- Using \`.map()\` on rows instead of \`<For>\` — loses Pyreon's keyed reconciliation and fine-grained DOM updates
-- Binding a value that CHANGES (column width from \`getSize()\`, a sort indicator) as a STATIC prop/attr through a keyed \`<For>\` — the keyed cell is reused on state change and its body never re-runs, so the value freezes. \`table()\` DOES re-notify; the fix is to read the value inside a reactive closure at the point of use: \`style={() => ({ width: table().getColumn(id).getSize() + "px" })}\``,
+- Using \`.map()\` on rows instead of \`<For>\` — loses Pyreon's keyed reconciliation, rebuilds the whole tbody on every change (worst-case DOM churn)
+- Binding a value that CHANGES (a cell value, column width from \`getSize()\`, a sort indicator) as a STATIC prop/attr/child through a keyed \`<For>\` — the keyed cell is reused on a state change and its body never re-runs, so the value freezes. Read it inside a reactive closure at the point of use: cell content via \`<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>\`, an attribute via \`style={() => ({ width: table().getColumn(id).getSize() + "px" })}\``,
   },
 
   'table/flexRender': {
@@ -4356,9 +4356,21 @@ getHotkeyConflicts()
 flexRender(header.column.columnDef.header, header.getContext())
 // Cell:
 flexRender(cell.column.columnDef.cell, cell.getContext())`,
-    notes: 'Render a TanStack Table column definition template (header, cell, or footer). Handles strings, numbers, functions (component functions or render functions), and VNodes. Returns the rendered output or null for undefined/null inputs. Use in JSX to render column definitions provided by TanStack Table. See also: useTable.',
+    notes: 'Render a TanStack Table column definition template (header, cell, or footer). Handles strings, numbers, functions (component functions or render functions), and VNodes. Returns the rendered output or null for undefined/null inputs. Use in JSX to render column definitions provided by TanStack Table. See also: useTable, flexRenderCell.',
     mistakes: `- Wrapping flexRender output in an extra function accessor — the result is already renderable JSX content
-- Passing the column def directly instead of calling getContext() — TanStack Table requires the context object`,
+- Passing the column def directly instead of calling getContext() — TanStack Table requires the context object
+- Using plain \`flexRender(cell…, cell.getContext())\` for a cell inside a keyed \`<For>\` when the cell VALUE can change in place — the captured \`cell\` is stale and the reused row never re-runs it, so it freezes. Use \`flexRenderCell(table, row.id, cell.column.id)\` for live cells.`,
+  },
+
+  'table/flexRenderCell': {
+    signature: '<TData extends RowData>(table: Table<TData> | Computed<Table<TData>>, rowId: string, columnId: string) => unknown',
+    example: `// Place inside an accessor child, passing the \`table\` ACCESSOR (not \`table()\`):
+//   <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>
+// so a single-cell edit patches ONLY that cell.
+flexRenderCell(table, row.id, columnId)`,
+    notes: `Fine-grained per-cell renderer for live cell values. Inside a keyed \`<For>\`, the \`row\`/\`cell\` objects are captured ONCE (the reconciler reuses the DOM node and never re-runs its body), so plain \`flexRender(cell…, cell.getContext())\` FREEZES when a value changes in place. \`flexRenderCell\` re-navigates to the live cell from the current row model each read — place it in an explicit accessor \`<td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>\`. Pass the Computed<Table> ACCESSOR (\`table\`, not \`table()\`) for fine-grained updates: the cell then subscribes to only its own row's signal, so an in-place data edit patches ONLY the changed rows' cells — matching a hand-memoized react-table row without any React.memo boilerplate. Returns null when the row is not in the current (filtered/paginated) row model. See also: useTable, flexRender.`,
+    mistakes: `- Passing the resolved instance \`table()\` instead of the accessor \`table\` — still correct, but subscribes coarsely (every cell re-runs on any change) instead of fine-grained per-row
+- Forgetting the explicit accessor wrapper \`{() => …}\` — without it the cell is captured once and freezes on the next change`,
   },
   // <gen-docs:api-reference:end @pyreon/table>
 
