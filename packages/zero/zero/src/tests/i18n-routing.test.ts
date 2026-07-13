@@ -883,6 +883,24 @@ describe('PR-S3: parseCookies — values containing `=` are preserved end-to-end
     expect(_parseCookiesForTesting(undefined)).toEqual({})
     expect(_parseCookiesForTesting('')).toEqual({})
   })
+
+  // Security: cookie NAMES are client-controlled, so a `Cookie: __proto__=…`
+  // header must not reach the prototype chain (same property-injection class as
+  // parseQuery — CodeQL js/remote-property-injection). Fixed via null-prototype
+  // record. Bisect: revert `parseCookies` result to a plain `{}` → the
+  // null-prototype + own-key specs fail.
+  it('is property-injection safe (null-prototype record)', () => {
+    expect(Object.getPrototypeOf(_parseCookiesForTesting('a=1'))).toBeNull()
+    expect(Object.getPrototypeOf(_parseCookiesForTesting(undefined))).toBeNull()
+
+    const c = _parseCookiesForTesting('__proto__=evil; constructor=x; foo=bar')
+    expect(c.__proto__).toBe('evil') // plain OWN key, not the inherited accessor
+    expect(c.constructor as unknown).toBe('x')
+    expect(c.foo).toBe('bar')
+    // Object.prototype stays clean
+    expect(({} as Record<string, unknown>).evil).toBeUndefined()
+    expect(Object.getPrototypeOf({})).toBe(Object.prototype)
+  })
 })
 
 // ─── PR-S10: expandRoutesForLocales clone + locale-major ordering ──────────

@@ -53,6 +53,40 @@ describe('parseQuery — edge cases', () => {
   test('decodes both keys and values', () => {
     expect(parseQuery('na%2Fme=val%26ue')).toEqual({ 'na/me': 'val&ue' })
   })
+
+  // Security: query KEYS are user-controlled, so the parsed record MUST NOT let
+  // `?__proto__=…` / `?constructor=…` reach the prototype chain
+  // (CodeQL js/remote-property-injection). Fixed with a null-prototype record.
+  describe('property-injection safety', () => {
+    test('result has a null prototype', () => {
+      expect(Object.getPrototypeOf(parseQuery('a=1'))).toBeNull()
+      expect(Object.getPrototypeOf(parseQuery(''))).toBeNull()
+    })
+
+    test('__proto__ / constructor / prototype are plain OWN keys, not prototype writes', () => {
+      const q = parseQuery('__proto__=evil&constructor=x&prototype=y')
+      // Retrievable as own data properties (not the inherited accessor/ctor)
+      expect(q.__proto__).toBe('evil')
+      expect(q.constructor as unknown).toBe('x')
+      expect(q.prototype as unknown).toBe('y')
+      expect(Object.keys(q).sort()).toEqual(['__proto__', 'constructor', 'prototype'])
+    })
+
+    test('does not pollute Object.prototype', () => {
+      parseQuery('__proto__=polluted&constructor=polluted&polluted=1')
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+      // A fresh plain object still has its normal prototype
+      expect(Object.getPrototypeOf({})).toBe(Object.prototype)
+    })
+
+    test('parseQueryMulti is equally injection-safe', () => {
+      const q = parseQueryMulti('__proto__=a&__proto__=b&constructor=c')
+      expect(Object.getPrototypeOf(q)).toBeNull()
+      expect(q.__proto__).toEqual(['a', 'b'])
+      expect(q.constructor as unknown).toBe('c')
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    })
+  })
 })
 
 // ─── parseQueryMulti ─────────────────────────────────────────────────────────

@@ -152,8 +152,13 @@ export function _parseCookiesForTesting(header: string | undefined): Record<stri
 }
 
 function parseCookies(header: string | undefined): Record<string, string> {
-  if (!header) return {}
-  const result: Record<string, string> = {}
+  // Null-prototype record: cookie NAMES are client-controlled, so a plain `{}`
+  // would let a `Cookie: __proto__=…` / `constructor=…` header write to
+  // inherited slots (property injection — same class as `parseQuery` in
+  // packages/core/router/src/match.ts). A null-proto object has no prototype
+  // chain, so every cookie name is a plain OWN data property.
+  if (!header) return Object.create(null) as Record<string, string>
+  const result: Record<string, string> = Object.create(null)
   for (const pair of header.split(';')) {
     const trimmed = pair.trim()
     // PR-S3: split on FIRST `=` only. The old `split('=')` then destructure
