@@ -31,7 +31,7 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "playwright": "^1.60.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.0.16"
   }
 }
