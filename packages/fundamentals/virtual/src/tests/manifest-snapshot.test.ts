@@ -24,14 +24,14 @@ describe('gen-docs — virtual snapshot', () => {
       const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, label: \`Item \${i}\` })))
 
       const MyList = () => {
-        let scrollRef!: HTMLDivElement
+        let scrollRef!: HTMLElement
 
-        const virtualizer = useVirtualizer({
-          count: () => items().length,
+        const virtualizer = useVirtualizer(() => ({
+          count: items().length,             // read a signal here → reactive
           getScrollElement: () => scrollRef,
           estimateSize: () => 35,            // px per row
           overscan: 5,                       // render 5 extra items above/below viewport
-        })
+        }))
 
         return (
           <div ref={(el) => (scrollRef = el)} style="height: 400px; overflow: auto">
@@ -52,10 +52,10 @@ describe('gen-docs — virtual snapshot', () => {
 
       // Window-scoped virtualizer — scrolls with the page
       const WindowList = () => {
-        const virtualizer = useWindowVirtualizer({
-          count: () => items().length,
+        const virtualizer = useWindowVirtualizer(() => ({
+          count: items().length,
           estimateSize: () => 50,
-        })
+        }))
 
         return (
           <div style={() => \`height: \${virtualizer.totalSize()}px; position: relative\`}>

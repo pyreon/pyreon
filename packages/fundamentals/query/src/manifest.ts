@@ -432,15 +432,18 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
     {
       name: 'QueryErrorResetBoundary',
       kind: 'component',
-      signature: '(props: QueryErrorResetBoundaryProps) => VNodeChild',
+      signature: '(props: QueryErrorResetBoundaryProps) => VNode',
       summary:
-        'Resets errored queries inside its subtree when a sibling `ErrorBoundary` recovers. Wrap around a `QuerySuspense` + `ErrorBoundary` pair to get clean retry semantics — without this, a recovered `ErrorBoundary` re-renders children but the queries still hold their error state, so the boundary immediately catches the same error again (infinite error loop). Accepts a render function child `{(reset) => ...}` so the reset action can be wired to a retry button.',
+        'Resets errored queries inside its subtree when a sibling `ErrorBoundary` recovers. Wrap around a `QuerySuspense` + `ErrorBoundary` pair to get clean retry semantics — without this, a recovered `ErrorBoundary` re-renders children but the queries still hold their error state, so the boundary immediately catches the same error again (infinite error loop). Takes a normal child subtree (its `children` is `VNodeChild`, NOT a render prop); reach for the reset action via `useQueryErrorResetBoundary()` inside the `ErrorBoundary` fallback.',
       example: `<QueryErrorResetBoundary>
-  {(reset) => (
-    <ErrorBoundary fallback={(err, retry) => <button onClick={() => { reset(); retry() }}>Retry</button>}>
-      <QuerySuspense query={q}>{() => <Data />}</QuerySuspense>
-    </ErrorBoundary>
-  )}
+  <ErrorBoundary
+    fallback={(err, retry) => {
+      const { reset } = useQueryErrorResetBoundary()
+      return <button onClick={() => { reset(); retry() }}>Retry</button>
+    }}
+  >
+    <QuerySuspense query={q}>{() => <Data />}</QuerySuspense>
+  </ErrorBoundary>
 </QueryErrorResetBoundary>`,
       seeAlso: ['QuerySuspense'],
     },

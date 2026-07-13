@@ -60,7 +60,8 @@ describe('gen-docs — state-tree snapshot', () => {
 
       // Singleton hook for app-wide state:
       const useTodoList = TodoList.asHook('todo-list')
-      const { store } = useTodoList() // same instance on every call
+      const shared = useTodoList() // same ModelInstance on every call
+      shared.add('Persisted item')
       \`\`\`
 
       > **Actions only**: State mutations must go through actions — direct \`.set()\` calls on state signals bypass middleware and patch recording. The model enforces this in dev mode.

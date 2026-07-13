@@ -8,7 +8,8 @@ export default defineManifest({
   description:
     "Signal-driven drag and drop for Pyreon. A thin wrapper over Atlassian's `pragmatic-drag-and-drop` (the engine behind Trello / Jira): pdnd owns the native-event lifecycle, hit-testing, and edge detection; `@pyreon/dnd` adapts every state field into a Pyreon signal accessor (`isDragging` / `isOver` / `activeId` / `overId` / `overEdge` / `dragData`) and wires every pdnd teardown into `onCleanup`. Five hooks cover the common surfaces — single draggable, single drop target, sortable list with edge detection + auto-scroll + keyboard reordering + opt-in cross-list boards, native-file drop with MIME / count filtering, and a page-global drag monitor.",
   category: 'browser',
-  longExample: `import { signal, For } from '@pyreon/reactivity'
+  longExample: `import { signal } from '@pyreon/reactivity'
+import { For } from '@pyreon/core'
 import { useDraggable, useDroppable, useSortable } from '@pyreon/dnd'
 
 // Single draggable — element is a GETTER, state is a signal accessor:

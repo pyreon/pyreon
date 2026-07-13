@@ -1477,6 +1477,28 @@ jobs:
       - name: Verify locked manifests stay at or above their density floor
         run: bun run check-manifest-depth
 
+  # ── Check Manifest Examples: manifest api[].example ↔ shipped API ─────
+  # Every manifest api[].example (+ longExample) is rendered VERBATIM into
+  # the MCP api-reference AI assistants read. A stale example (wrong arg
+  # order/shape, missing/renamed export, wrong return field) actively
+  # TEACHES broken code. This gate typechecks every enforced package's
+  # examples against the LIVE shipped types (subpath-aware, validated
+  # injection, syntax-fragment tolerant). LIB-FREE: aliases @pyreon/* to
+  # src via the bun condition. See scripts/check-manifest-examples.ts.
+  check-manifest-examples:
+    name: Check Manifest Examples
+    needs: [install, changes]
+    if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: ./.github/actions/setup-pyreon
+        with:
+          restore-bootstrap: 'false'
+      - name: Typecheck manifest api[].example blocks against shipped exports
+        run: bun run check-manifest-examples
+
   # ── No-major-changesets: 0.x version cap at PR time ───────────────────
   # Pyreon is 0.x; `major` changesets would produce a 1.0.0 cascade across
   # the `fixed` group of 60+ packages. Companion to `scripts/cap-changeset-

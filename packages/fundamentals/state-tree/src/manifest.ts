@@ -51,7 +51,8 @@ addMiddleware(list, (call, next) => {
 
 // Singleton hook for app-wide state:
 const useTodoList = TodoList.asHook('todo-list')
-const { store } = useTodoList() // same instance on every call`,
+const shared = useTodoList() // same ModelInstance on every call
+shared.add('Persisted item')`,
   features: [
     'model({ state }) or model({ schema }) — chainable builder',
     '.views(self => ...) — chainable derived values; each layer sees prior ones',
@@ -246,7 +247,13 @@ isAlive(clock)   // false`,
       signature: '(instance: ModelInstance) => boolean',
       summary:
         'Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). Use to guard deferred work (a queued callback, a fetch resolution) that might land after the instance was torn down.',
-      example: `if (isAlive(model)) model.applyServerUpdate(data)`,
+      example: `const counter = model({ state: { count: 0 } })
+  .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }))
+  .create()
+
+// Guard deferred work (a queued callback, a fetch resolution) that
+// might land after the instance was torn down:
+if (isAlive(counter)) counter.inc()`,
       seeAlso: ['destroy', 'model'],
     },
     {
@@ -266,10 +273,13 @@ draft.title.set('edited')        // does not touch original`,
     {
       name: 'getType',
       kind: 'function',
-      signature: '(instance: ModelInstance) => ModelDefinition | undefined',
+      signature: '(instance: object) => unknown',
       summary:
-        'Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed.',
-      example: `const Def = getType(instance)
+        'Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed. The static return type is `unknown` (the definition\\\'s generics are not recoverable at runtime) — cast it to a `ModelDefinition<TState>` to call `.create()`.',
+      example: `import type { ModelDefinition } from '@pyreon/state-tree'
+
+// getType is typed \`unknown\` — cast to the definition type to instantiate siblings:
+const Def = getType(instance) as ModelDefinition<{ count: number }> | undefined
 const sibling = Def?.create()`,
       seeAlso: ['clone', 'model'],
     },

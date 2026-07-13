@@ -275,8 +275,8 @@ isStore(null)  // false (null-safe)`,
   'reactivity/shallowReactive': {
     signature: '<T extends object>(initial: T) => T',
     example: `const store = shallowReactive({ user: { name: 'Alice' }, count: 0 })
-effect(() => store.count)        // tracks store.count
-effect(() => store.user)         // tracks store.user reference (not its contents)
+effect(() => { store.count })        // tracks store.count
+effect(() => { store.user })         // tracks store.user reference (not its contents)
 store.user.name = 'Bob'          // does NOT trigger any effect (nested mutation)
 store.count = 5                  // triggers count effect
 store.user = { name: 'Bob' }     // triggers user effect (reference replacement)`,
@@ -289,7 +289,7 @@ store.user = { name: 'Bob' }     // triggers user effect (reference replacement)
     signature: '<T extends object>(value: T) => T',
     example: `import { markRaw, createStore } from '@pyreon/reactivity'
 
-class Editor { /* ... */ }
+class Editor { someMethod() {} }
 const ed = markRaw(new Editor())   // skips proxy
 const store = createStore({ editor: ed })
 store.editor === ed                 // true — raw reference preserved
@@ -459,7 +459,7 @@ count.set(101)  // logs/reports via handler instead of crashing`,
 activateReactiveDevtools()
 const price = signal(10, { name: '$price' })
 const total = computed(() => price() * 2)
-effect(() => total())
+effect(() => { total() })
 getReactiveGraph().nodes // → [$price (signal), derived, effect]
 deactivateReactiveDevtools() // → registry cleared`,
     notes: 'Opt-in lifecycle for the reactive-devtools bridge — the live signal/computed/effect graph the `@pyreon/devtools` Signals/Graph/Effects/Profiler tabs consume (surfaced on the browser hook as `window.__PYREON_DEVTOOLS__.reactive`). **Zero cost until activated**: every per-primitive instrumentation point early-returns on the inactive flag and sits inside the production dead-code gate, so it tree-shakes out of prod builds entirely (locked by a minified-bundle test) and, in dev, costs one predicted-false branch until a devtools client calls `activate()` — the same risk profile as the adjacent reactive-trace / perf-harness calls. `deactivate()` drops all retained registry + fire-buffer state (a closed panel leaves zero residue). Leak-free by construction: nodes are held via `WeakRef` + `FinalizationRegistry`, never pinned. See also: getReactiveGraph, onSignalUpdate, getReactiveTrace.',
@@ -473,7 +473,7 @@ deactivateReactiveDevtools() // → registry cleared`,
     example: `activateReactiveDevtools()
 const a = signal(1, { name: '$a' })
 const b = computed(() => a() + 1)
-effect(() => b())
+effect(() => { b() })
 a.set(2)
 getReactiveGraph()
 // nodes: [{ name:'$a', kind:'signal', value:'2', … }, { kind:'derived', … }, { kind:'effect', … }]
@@ -795,14 +795,20 @@ const getMode = useContext(ModeCtx)    // reactive: returns () => T`,
   },
 
   'core/ErrorBoundary': {
-    signature: '<ErrorBoundary onCatch={handler} fallback={errorUI}>{children}</ErrorBoundary>',
+    signature: '<ErrorBoundary fallback={(err, reset) => VNodeChild}>{children}</ErrorBoundary>',
     example: `<ErrorBoundary
-  onCatch={(err) => console.error(err)}
-  fallback={(err) => <div>Error: {err.message}</div>}
+  fallback={(err, reset) => (
+    <div>
+      <p>Error: {String(err)}</p>
+      <button onClick={reset}>Retry</button>
+    </div>
+  )}
 >
   <App />
 </ErrorBoundary>`,
-    notes: 'Catches render errors thrown by descendant components. The `fallback` receives the error object for display. `onCatch` fires with the error for logging/telemetry. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. See also: Suspense, onErrorCaptured.',
+    notes: 'Catches render errors thrown by descendant components. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`. See also: Suspense, registerErrorHandler.',
+    mistakes: `- Passing an \`onCatch\` prop — it does not exist. \`fallback\` is the only prop (besides children); log the error inside it or via \`registerErrorHandler\`
+- Reading \`err.message\` directly — \`err\` is typed \`unknown\`; narrow it (\`err instanceof Error ? err.message : String(err)\`) or \`String(err)\``,
   },
 
   'core/lazy': {
@@ -826,23 +832,23 @@ const current = signal("home")
   },
 
   'core/cx': {
-    signature: 'cx(...values: ClassValue[]): string',
-    example: `cx("foo", "bar")                         // "foo bar"
-cx("base", isActive && "active")         // conditional
+    signature: 'cx(value: ClassValue): string',
+    example: `cx(["foo", "bar"])                       // "foo bar"
+cx(["base", isActive && "active"])       // conditional
 cx({ base: true, active: isActive() })   // object syntax
 cx(["a", ["b", { c: true }]])            // nested arrays
 
 // class prop accepts ClassValue directly:
-<div class={["base", cond && "active"]} />
-<div class={{ base: true, active: isActive() }} />`,
-    notes: 'Combine class values into a single string. Accepts strings, booleans (falsy values ignored), objects (`{ active: true }`), and arrays (nested). The `class` prop on JSX elements already accepts `ClassValue` directly, so explicit `cx()` is only needed when building class strings outside JSX or when composing values from multiple sources. See also: splitProps, mergeProps.',
+<div class={["base", cond && "active"]} />`,
+    notes: 'Combine a class value into a single string. Takes ONE `ClassValue` — a string, boolean (falsy ignored), object (`{ active: true }`), or (possibly nested) array. To combine multiple values, pass them as an ARRAY (`cx(["btn", active && "on"])`), not as separate arguments — `cx` is single-arg. The `class` prop on JSX elements already accepts `ClassValue` directly, so explicit `cx()` is only needed when building class strings outside JSX. See also: splitProps, mergeProps.',
+    mistakes: '- Calling `cx("a", "b")` with multiple arguments — `cx` takes ONE `ClassValue`. Wrap in an array: `cx(["a", "b"])`',
   },
 
   'core/splitProps': {
     signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
     example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {
   const [local, rest] = splitProps(props, ["class"])
-  return <button {...rest} class={cx("btn", local.class)} />
+  return <button {...rest} class={cx(["btn", local.class])} />
 }`,
     notes: 'Split a props object into two parts: the picked keys and the rest. Both halves preserve signal reactivity — reads through either half still track the original reactive prop getters. This is the Pyreon replacement for `const { x, ...rest } = props` destructuring, which captures values once and loses reactivity. See also: mergeProps, cx.',
     mistakes: `- \`const { class: cls, ...rest } = props\` — destructuring captures once, loses reactivity. Use \`splitProps(props, ["class"])\`
@@ -896,11 +902,12 @@ const merged = mergeProps(defaults, filtered)`,
   },
 
   'core/mapArray': {
-    signature: 'mapArray<T, U>(list: () => T[], mapFn: (item: T, index: () => number) => U): () => U[]',
-    example: `const items = signal([1, 2, 3])
-const doubled = mapArray(() => items(), (item) => item * 2)
-// doubled() → [2, 4, 6] — updates reactively`,
-    notes: 'Low-level reactive array mapping used internally by `<For>`. Maps a reactive array signal through a transform function, caching results per item identity. Prefer `<For>` in JSX — use `mapArray` only when you need a reactive derived array outside of rendering. See also: For.',
+    signature: 'mapArray<T, U>(source: () => T[], getKey: (item: T) => string | number, map: (item: T) => U): () => U[]',
+    example: `const items = signal([{ id: 1, n: 2 }, { id: 2, n: 3 }])
+const doubled = mapArray(() => items(), (item) => item.id, (item) => item.n * 2)
+// doubled() → [4, 6] — updates reactively, keyed by id`,
+    notes: 'Low-level reactive array mapping used internally by `<For>`. Maps a reactive array through a transform, caching results per KEY so unchanged items reuse their mapped value. Takes THREE args — the source accessor, a `getKey` identity function, and the `map` transform. Prefer `<For>` in JSX — use `mapArray` only when you need a reactive derived array outside of rendering. See also: For.',
+    mistakes: '- Omitting the `getKey` argument — `mapArray` requires 3 args (source, getKey, map); without a key function it cannot cache per-item across updates',
   },
 
   'core/createRef': {
@@ -909,15 +916,6 @@ const doubled = mapArray(() => items(), (item) => item * 2)
 onMount(() => inputRef.current?.focus())
 return <input ref={inputRef} />`,
     notes: 'Create a mutable ref object (`{ current: T | null }`) for holding DOM element references. Pass as the `ref` prop on JSX elements — the runtime sets `.current` after mount and clears it on unmount. Callback refs (`(el: T | null) => void`) are also supported via `RefProp<T>`. See also: onMount.',
-  },
-
-  'core/untrack': {
-    signature: '(fn: () => T) => T',
-    example: `effect(() => {
-  const current = count()        // tracked
-  const other = untrack(() => otherSignal())  // NOT tracked
-})`,
-    notes: 'Execute a function reading signals WITHOUT subscribing to them. Alias for `runUntracked` from `@pyreon/reactivity`. Use inside effects when you need a one-shot snapshot of a signal value without the effect re-running when that signal changes. See also: @pyreon/reactivity.',
   },
 
   'core/nativeCompat': {
@@ -1266,7 +1264,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))`,
     example: `import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
 
 const r = auditIslands(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)`,
+for (const f of r.findings) console.log(f.code, f.location.relPath)`,
     notes: 'Project-wide syntactic island audit — five cross-file detectors (`duplicate-name`, `never-with-registry-entry`, `registry-mismatch`, `nested-island`, `dead-island`) that auto-registry and the per-file detector cannot reach. No type-check pass / module resolution; entirely TypeScript-compiler-API syntactic. Powers `pyreon doctor --check-islands` + the MCP `audit_islands` tool. See also: formatIslandAudit, auditTestEnvironment, auditSsg.',
   },
 
@@ -1283,7 +1281,7 @@ console.log(formatIslandAudit(auditIslands(".")))`,
     example: `import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
 
 const r = auditSsg(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)`,
+for (const f of r.findings) console.log(f.code, f.location.relPath)`,
     notes: 'Project-wide syntactic SSG audit — three detectors: `404-outside-layout-dir` (`_404.tsx` not co-located with `_layout.tsx` → no layout chrome), `dynamic-route-missing-get-static-paths` (`[id].tsx` without `getStaticPaths` → silently skipped by SSG auto-detect), `non-literal-revalidate-export` (`export const revalidate = TTL` → dropped from the build-time ISR manifest). API routes (`src/routes/api/` or no `export default`) are skipped. Powers `pyreon doctor --check-ssg`. See also: formatSsgAudit, auditIslands.',
   },
 
@@ -1597,10 +1595,11 @@ blocker.remove()`,
   'router/onBeforeRouteUpdate': {
     signature: 'onBeforeRouteUpdate(guard: NavigationGuard): () => void',
     example: `onBeforeRouteUpdate((to, from) => {
-  if (to.params.id === from.params.id) return  // no change
-  // reload data for new ID...
+  if (to.params.id === from.params.id) return  // no change — allow
+  if (hasUnsavedChanges()) return false        // cancel: the param change would lose unsaved edits
+  // otherwise allow — reload data for the new ID
 })`,
-    notes: 'Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g., param change `/user/1` to `/user/2`). Same return semantics as `onBeforeRouteLeave`. See also: onBeforeRouteLeave, useRoute.',
+    notes: 'Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g., param change `/user/1` to `/user/2`). Same return semantics as `onBeforeRouteLeave` — return `false` to cancel, a string path to redirect, or `undefined` to allow. See also: onBeforeRouteLeave, useRoute.',
   },
   // <gen-docs:api-reference:end @pyreon/router>
 
@@ -1654,14 +1653,18 @@ const { html, head } = await renderWithHead(
   },
 
   'head/renderWithHead': {
-    signature: 'renderWithHead(app: VNode): Promise<{ html: string; head: string; htmlAttrs: string; bodyAttrs: string }>',
-    example: `import { renderWithHead } from '@pyreon/head'
+    signature: 'renderWithHead(app: VNode): Promise<{ html: string; head: string; htmlAttrs: Record<string, string>; bodyAttrs: Record<string, string> }>',
+    example: `import { renderWithHead } from '@pyreon/head/ssr'
 
 const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
-const doc = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bodyAttrs}>\${html}</body></html>\``,
-    notes: 'SSR companion to `HeadProvider`. Renders the app to HTML via `renderToString` while collecting every `useHead()` call from the tree, then serializes the resolved tags into a single `head` string plus separate `htmlAttrs` / `bodyAttrs` strings. Async components that call `useHead()` in their body work — the renderer awaits suspended subtrees before serialization. See also: useHead, HeadProvider.',
-    mistakes: `- Awaiting \`renderWithHead\` and then NOT splicing \`head\` into the \`<head>\` element — every \`useHead()\` call quietly disappears
-- Forgetting to interpolate \`htmlAttrs\` / \`bodyAttrs\` (the leading space is included in each string) — \`htmlAttrs.lang\` and \`bodyAttrs.class\` set via \`useHead\` won\\'t reach the DOM`,
+// htmlAttrs / bodyAttrs are Record<string, string> — serialize to attribute strings:
+const attrs = (r: Record<string, string>) =>
+  Object.entries(r).map(([k, v]) => \` \${k}="\${v}"\`).join('')
+const doc = \`<!doctype html><html\${attrs(htmlAttrs)}><head>\${head}</head><body\${attrs(bodyAttrs)}>\${html}</body></html>\``,
+    notes: 'SSR companion to `HeadProvider`, exported from the `@pyreon/head/ssr` subpath (kept out of the client entry). Renders the app to HTML via `renderToString` while collecting every `useHead()` call from the tree, then serializes the resolved tags into a single `head` string. `htmlAttrs` / `bodyAttrs` are returned as `Record<string, string>` objects (e.g. `{ lang: "en" }`) — serialize them into attribute strings yourself. Async components that call `useHead()` in their body work — the renderer awaits suspended subtrees before serialization. See also: useHead, HeadProvider.',
+    mistakes: `- Importing \`renderWithHead\` from \`@pyreon/head\` — it lives in the \`@pyreon/head/ssr\` subpath so the base entry stays client-safe
+- Awaiting \`renderWithHead\` and then NOT splicing \`head\` into the \`<head>\` element — every \`useHead()\` call quietly disappears
+- Interpolating \`htmlAttrs\` / \`bodyAttrs\` directly (\`<html\${htmlAttrs}>\`) — they are \`Record<string, string>\` objects, not strings; interpolating them renders \`[object Object]\`. Serialize the entries first`,
   },
 
   'head/createHeadContext': {
@@ -1671,7 +1674,9 @@ const doc = \`<!doctype html><html\${htmlAttrs}><head>\${head}</head><body\${bod
 const ctx = createHeadContext()
 provide(HeadContext, ctx)
 // ... render tree that calls useHead() ...
-const { tags, htmlAttrs, bodyAttrs } = ctx.resolve()`,
+const tags = ctx.resolve()                 // HeadTag[]
+const htmlAttrs = ctx.resolveHtmlAttrs()   // Record<string, string>
+const bodyAttrs = ctx.resolveBodyAttrs()   // Record<string, string>`,
     notes: 'Manual factory for a `HeadContextValue` — only needed when wiring up a custom SSR pipeline that bypasses `renderWithHead`, or when running multiple isolated head contexts in the same process. The value exposes `add` / `remove` / `resolve` / `resolveTitleTemplate` / `resolveHtmlAttrs` / `resolveBodyAttrs` for full programmatic control. See also: HeadProvider, renderWithHead.',
   },
 
@@ -1868,46 +1873,54 @@ render(<App />, document.getElementById("app")!)`,
   },
 
   'runtime-dom/hydrateRoot': {
-    signature: 'hydrateRoot(root: VNodeChild, container: Element): () => void',
+    signature: 'hydrateRoot(container: Element, root: VNodeChild): () => void',
     example: `import { hydrateRoot } from "@pyreon/runtime-dom"
 
-// Hydrate SSR-rendered HTML:
-hydrateRoot(<App />, document.getElementById("app")!)`,
-    notes: 'Hydrate server-rendered HTML. Walks the existing DOM and attaches reactive bindings without recreating elements. Expects the DOM to match the VNode tree structure — mismatches emit dev-mode warnings. Returns an unmount function. See also: mount, @pyreon/runtime-server.',
+// Hydrate SSR-rendered HTML — container FIRST, then the app:
+hydrateRoot(document.getElementById("app")!, <App />)`,
+    notes: 'Hydrate server-rendered HTML. Walks the existing DOM and attaches reactive bindings without recreating elements. Expects the DOM to match the VNode tree structure — mismatches emit dev-mode warnings. Returns an unmount function. NOTE the argument order is `(container, root)` — the CONTAINER comes first, which is the REVERSE of `mount(root, container)`. See also: mount, @pyreon/runtime-server.',
+    mistakes: '- Passing arguments in `mount` order — `hydrateRoot(container, root)` takes the container FIRST (opposite of `mount(root, container)`)',
   },
 
   'runtime-dom/Transition': {
-    signature: '<Transition name={name} mode={mode} onEnter={fn} onLeave={fn}>{children}</Transition>',
-    example: `<Transition name="fade" mode="out-in">
-  <Show when={visible()}>
-    <div>Content</div>
-  </Show>
+    signature: '<Transition name={name} show={() => boolean} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
+    example: `const visible = signal(true)
+
+<Transition name="fade" show={() => visible()}>
+  <div>Content</div>
 </Transition>
 
 /* CSS:
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
 .fade-enter-from, .fade-leave-to { opacity: 0 }
 */`,
-    notes: 'CSS-based enter/leave animation wrapper. Applies `{name}-enter-from`, `{name}-enter-active`, `{name}-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `mode` controls sequencing: `"out-in"` waits for leave to complete before entering, `"in-out"` enters first. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. See also: TransitionGroup, @pyreon/kinetic.',
-    mistakes: `- Missing CSS classes — \`<Transition name="fade">\` does nothing without \`.fade-enter-active\` / \`.fade-leave-active\` CSS
-- Wrapping multiple root elements — Transition expects a single child (or null). Multiple children cause undefined behavior
-- Using \`mode="in-out"\` when you want sequential — \`"out-in"\` is almost always what you want (old leaves, then new enters)`,
+    notes: 'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show: () => boolean` accessor — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles. See also: TransitionGroup, @pyreon/kinetic.',
+    mistakes: `- Omitting \`show\` — it is REQUIRED (\`() => boolean\`); Transition drives visibility itself, so a plain child with no \`show\` will not animate
+- Wrapping the child in a \`<Show>\` — \`show\` already toggles visibility; a nested \`<Show>\` double-gates it
+- Missing CSS classes — \`<Transition name="fade">\` does nothing without \`.fade-enter-active\` / \`.fade-leave-active\` CSS
+- Passing a \`mode\` prop — Transition has no \`mode\`; for sequenced list moves use TransitionGroup`,
   },
 
   'runtime-dom/TransitionGroup': {
-    signature: '<TransitionGroup name={name} tag={tag}>{children}</TransitionGroup>',
-    example: `<TransitionGroup name="list" tag="ul">
-  <For each={items()} by={i => i.id}>
-    {item => <li>{item.name}</li>}
-  </For>
-</TransitionGroup>
+    signature: '<TransitionGroup items={() => T[]} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
+    example: `const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }])
+
+<TransitionGroup
+  name="list"
+  tag="ul"
+  items={() => items()}
+  keyFn={(item) => item.id}
+  render={(item) => <li>{item.name}</li>}
+/>
 
 /* CSS:
 .list-enter-active, .list-leave-active { transition: all 0.3s }
 .list-enter-from, .list-leave-to { opacity: 0; transform: translateY(10px) }
 .list-move { transition: transform 0.3s }
 */`,
-    notes: 'Animate list item additions and removals with CSS transitions. Each item gets enter/leave classes on mount/unmount. The `tag` prop controls the wrapper element (defaults to a fragment). Works with `<For>` for reactive lists. Also applies `-move` classes for FLIP-animated reordering. See also: Transition, For.',
+    notes: 'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (a reactive accessor), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`). See also: Transition, For.',
+    mistakes: `- Passing a \`<For>\` as children — TransitionGroup owns iteration via \`items\`/\`keyFn\`/\`render\`, it is not a \`<For>\` wrapper
+- A \`render\` that returns a component or fragment — it must return a single DOM-element VNode (string \`type\`) so the group can inject a ref`,
   },
 
   'runtime-dom/KeepAlive': {
@@ -1925,7 +1938,7 @@ hydrateRoot(<App />, document.getElementById("app")!)`,
     signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined): NativeItem',
     example: `// Compiler output for <div class="box">{text()}</div>:
 _tpl("<div class=\\"box\\"> </div>", (__root) => {
-  const __t0 = __root.firstChild
+  const __t0 = __root.firstChild as Text
   const __d0 = _bindText(text, __t0)
   return () => { __d0() }
 })`,
@@ -1936,7 +1949,7 @@ _tpl("<div class=\\"box\\"> </div>", (__root) => {
     signature: '_bindText(source: Signal-like, node: Text, caller?: () => unknown): () => void',
     example: `// Compiler output for <div>{count()}</div>:
 _tpl("<div> </div>", (__root) => {
-  const __t0 = __root.firstChild
+  const __t0 = __root.firstChild as Text
   const __d0 = _bindText(count, __t0) // the SIGNAL, not a thunk
   return () => { __d0() }
 })`,
@@ -2388,7 +2401,13 @@ isAlive(clock)   // false`,
 
   'state-tree/isAlive': {
     signature: '(instance: ModelInstance) => boolean',
-    example: 'if (isAlive(model)) model.applyServerUpdate(data)',
+    example: `const counter = model({ state: { count: 0 } })
+  .actions((self) => ({ inc: () => self.count.update((n) => n + 1) }))
+  .create()
+
+// Guard deferred work (a queued callback, a fetch resolution) that
+// might land after the instance was torn down:
+if (isAlive(counter)) counter.inc()`,
     notes: 'Returns `true` while the instance is live, `false` after `destroy(instance)` (and `false` for a non-model-instance). Use to guard deferred work (a queued callback, a fetch resolution) that might land after the instance was torn down. See also: destroy, model.',
   },
 
@@ -2402,10 +2421,13 @@ draft.title.set('edited')        // does not touch original`,
   },
 
   'state-tree/getType': {
-    signature: '(instance: ModelInstance) => ModelDefinition | undefined',
-    example: `const Def = getType(instance)
+    signature: '(instance: object) => unknown',
+    example: `import type { ModelDefinition } from '@pyreon/state-tree'
+
+// getType is typed \`unknown\` — cast to the definition type to instantiate siblings:
+const Def = getType(instance) as ModelDefinition<{ count: number }> | undefined
 const sibling = Def?.create()`,
-    notes: 'Returns the `ModelDefinition` that produced `instance` (the back-reference stored at `.create()` time), or `undefined` for an instance created without one. Pairs with `clone`; lets you create siblings from an instance you were handed. See also: clone, model.',
+    notes: `Returns the \`ModelDefinition\` that produced \`instance\` (the back-reference stored at \`.create()\` time), or \`undefined\` for an instance created without one. Pairs with \`clone\`; lets you create siblings from an instance you were handed. The static return type is \`unknown\` (the definition\\'s generics are not recoverable at runtime) — cast it to a \`ModelDefinition<TState>\` to call \`.create()\`. See also: clone, model.`,
   },
 
   'state-tree/volatile': {
@@ -3297,15 +3319,18 @@ usePrefetchQuery(() => ({ queryKey: ['user', id], queryFn: fetchUser }))
   },
 
   'query/QueryErrorResetBoundary': {
-    signature: '(props: QueryErrorResetBoundaryProps) => VNodeChild',
+    signature: '(props: QueryErrorResetBoundaryProps) => VNode',
     example: `<QueryErrorResetBoundary>
-  {(reset) => (
-    <ErrorBoundary fallback={(err, retry) => <button onClick={() => { reset(); retry() }}>Retry</button>}>
-      <QuerySuspense query={q}>{() => <Data />}</QuerySuspense>
-    </ErrorBoundary>
-  )}
+  <ErrorBoundary
+    fallback={(err, retry) => {
+      const { reset } = useQueryErrorResetBoundary()
+      return <button onClick={() => { reset(); retry() }}>Retry</button>
+    }}
+  >
+    <QuerySuspense query={q}>{() => <Data />}</QuerySuspense>
+  </ErrorBoundary>
 </QueryErrorResetBoundary>`,
-    notes: 'Resets errored queries inside its subtree when a sibling `ErrorBoundary` recovers. Wrap around a `QuerySuspense` + `ErrorBoundary` pair to get clean retry semantics — without this, a recovered `ErrorBoundary` re-renders children but the queries still hold their error state, so the boundary immediately catches the same error again (infinite error loop). Accepts a render function child `{(reset) => ...}` so the reset action can be wired to a retry button. See also: QuerySuspense.',
+    notes: 'Resets errored queries inside its subtree when a sibling `ErrorBoundary` recovers. Wrap around a `QuerySuspense` + `ErrorBoundary` pair to get clean retry semantics — without this, a recovered `ErrorBoundary` re-renders children but the queries still hold their error state, so the boundary immediately catches the same error again (infinite error loop). Takes a normal child subtree (its `children` is `VNodeChild`, NOT a render prop); reach for the reset action via `useQueryErrorResetBoundary()` inside the `ErrorBoundary` fallback. See also: QuerySuspense.',
   },
 
   'query/useQueryErrorResetBoundary': {
@@ -4330,12 +4355,12 @@ flexRender(cell.column.columnDef.cell, cell.getContext())`,
 
   'virtual/useVirtualizer': {
     signature: '(options: UseVirtualizerOptions) => UseVirtualizerResult',
-    example: `const virtualizer = useVirtualizer({
-  count: () => items().length,
+    example: `const virtualizer = useVirtualizer(() => ({
+  count: items().length,          // signal read inside the thunk → reactive
   getScrollElement: () => scrollRef,
   estimateSize: () => 35,
   overscan: 5,
-})
+}))
 
 // virtualItems() is reactive — re-evaluates as user scrolls
 <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
@@ -4343,17 +4368,17 @@ flexRender(cell.column.columnDef.cell, cell.getContext())`,
 </For>`,
     notes: 'Create an element-scoped virtualizer. Attach to a scrollable container via `getScrollElement`. Returns reactive `virtualItems()`, `totalSize()`, and `isScrolling()` signals plus `scrollToIndex()` and `scrollToOffset()` for programmatic control. Options that accept functions (`count`, `estimateSize`) track signal reads reactively. See also: useWindowVirtualizer.',
     mistakes: `- Forgetting to set a fixed height on the scroll container — without overflow:auto + a height, the virtualizer has no viewport to measure
-- Passing count as a plain number instead of a function when the list length is dynamic — the virtualizer won't update when items change
+- Passing options as a plain object instead of a function — useVirtualizer takes a thunk \`() => ({ ... })\`, so signal reads inside it (e.g. \`count: items().length\`) are tracked and the virtualizer updates when the list changes
 - Reading virtualItems() outside a reactive scope — captures the initial window only, never updates on scroll
 - Using .map() instead of <For> on virtualItems — loses keyed reconciliation`,
   },
 
   'virtual/useWindowVirtualizer': {
     signature: '(options: UseWindowVirtualizerOptions) => UseWindowVirtualizerResult',
-    example: `const virtualizer = useWindowVirtualizer({
-  count: () => items().length,
+    example: `const virtualizer = useWindowVirtualizer(() => ({
+  count: items().length,
   estimateSize: () => 50,
-})
+}))
 
 <div style={() => \`height: \${virtualizer.totalSize()}px; position: relative\`}>
   <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
@@ -4843,70 +4868,81 @@ const theme = enrichTheme({
   },
 
   'unistyle/breakpoints': {
-    signature: 'breakpoints(): Breakpoints',
+    signature: 'const breakpoints: { rootSize: number; breakpoints: Record<string, number> }',
     example: `import { breakpoints } from '@pyreon/unistyle'
 
-const bp = breakpoints()
-// { xs: 0, sm: 640, md: 768, lg: 1024, xl: 1280, xxl: 1536 }`,
-    notes: 'Return the default breakpoint set keyed by name (`xs`, `sm`, `md`, `lg`, `xl`, `xxl`) with min-width values in pixels. The same map is folded into `enrichTheme()` output, so most consumers read `theme.breakpoints` rather than calling this directly. Use it when you need the defaults outside a theme context (e.g. building a custom theme programmatically). See also: enrichTheme, createMediaQueries.',
+breakpoints.breakpoints // { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1440 }
+breakpoints.rootSize    // 16`,
+    notes: 'The default breakpoint configuration — a constant `{ rootSize, breakpoints }` object, NOT a function. `breakpoints.breakpoints` is the min-width map keyed by name (`xs` 0, `sm` 576, `md` 768, `lg` 992, `xl` 1200, `xxl` 1440) and `breakpoints.rootSize` is 16. The same values are folded into `enrichTheme()` output, so most consumers read the enriched theme rather than this constant. Use it when you need the defaults outside a theme context (e.g. building a custom theme or seeding `createMediaQueries`). See also: enrichTheme, createMediaQueries.',
   },
 
   'unistyle/createMediaQueries': {
-    signature: 'createMediaQueries(breakpoints: Breakpoints): Record<string, string>',
+    signature: 'createMediaQueries(options: { breakpoints: Record<string, number>; rootSize: number; css: CssFn }): Record<string, (strings: TemplateStringsArray, ...values: unknown[]) => string>',
     example: `import { createMediaQueries, breakpoints } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-const queries = createMediaQueries(breakpoints())
-// { xs: '@media (min-width: 0)', sm: '@media (min-width: 640px)', md: '@media (min-width: 768px)', ... }`,
-    notes: 'Build a record of media-query strings keyed by breakpoint name. Each value is a `min-width` query — `xs` is `(min-width: 0)`, `sm` becomes `(min-width: 640px)`, and so on. Used internally by `makeItResponsive()`; expose to consumers when they need to compose custom CSS-in-JS rules outside the responsive-prop pipeline. See also: breakpoints, makeItResponsive.',
+const queries = createMediaQueries({
+  breakpoints: breakpoints.breakpoints,
+  rootSize: breakpoints.rootSize,
+  css: config.css,
+})
+// each value is a tagged-template that wraps CSS in that breakpoint @media block:
+// queries.sm\`color: red\` → '@media only screen and (min-width: 36em) { color: red }'`,
+    notes: 'Build a record of media-query tagged-templates keyed by breakpoint name from a `{ breakpoints, rootSize, css }` options bag (NOT a bare breakpoints argument). Each value is a FUNCTION — a `css` tagged-template that wraps the interpolated CSS in that breakpoint `@media (min-width)` block (the `0` breakpoint passes through unwrapped). Widths convert to `em` via `rootSize`. Used internally by `enrichTheme()` (stored on `theme.__PYREON__.media`); call directly when composing custom CSS-in-JS rules outside the responsive-prop pipeline. See also: breakpoints, makeItResponsive.',
   },
 
   'unistyle/makeItResponsive': {
-    signature: 'makeItResponsive<T>(options: { value: T | T[] | Record<string, T>; property: string; theme: Theme }): string',
+    signature: 'makeItResponsive(options: { css: CssFn; styles: MakeItResponsiveStyles; theme?: object; key?: string; normalize?: boolean }): (props) => CSSResult | string',
     example: `import { makeItResponsive } from '@pyreon/unistyle'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-makeItResponsive({ value: 16, property: 'padding', theme })
-// → 'padding: 16px;'
+const { css } = config
 
-makeItResponsive({ value: [8, 12, 16], property: 'padding', theme })
-// → 'padding: 8px; @media (min-width: 640px) { padding: 12px } @media (min-width: 768px) { padding: 16px }'
+// The \`styles\` callback receives the resolved per-breakpoint theme (typed via
+// the generic). makeItResponsive returns a styled-component interpolation.
+const styles: MakeItResponsiveStyles<{ padding?: string }> = ({ theme: t, css: cssFn }) =>
+  cssFn\`padding: \${t.padding};\`
 
-makeItResponsive({ value: { xs: 8, md: 16, xl: 24 }, property: 'padding', theme })
-// → '@media (min-width: 0) { padding: 8px } @media (min-width: 768px) { padding: 16px } @media (min-width: 1280px) { padding: 24px }'`,
-    notes: 'Resolve a responsive prop value to CSS for the current screen. Accepts three input shapes: single value (applies at all breakpoints), mobile-first array `[xs, sm, md, lg]` (each entry maps to the next breakpoint), or breakpoint object `{ xs: ..., md: ..., xl: ... }` (named keys map directly). The output is a CSS string with media queries already embedded; insert into a styled component template literal. See also: createMediaQueries, styles.',
-    mistakes: `- Passing CSS-spec property names (\`borderTopWidth\`) — unistyle uses property-first naming (\`borderWidthTop\`); the responsive transformer expects the unistyle convention
-- Forgetting to pass an enriched theme — without \`theme.breakpoints\`, the array form falls back to the first value at every breakpoint`,
+const responsive = makeItResponsive({ key: '$box', css, styles, normalize: true })
+// styled('div')\`\${responsive}\` — reads the component theme prop, emits @media queries`,
+    notes: 'Build a styled-component interpolation from a `styles` callback. This is NOT a value resolver — it returns a FUNCTION that, given component props, reads the theme (via `key` or `props.theme`) and emits the mobile-first `@media` cascade. The `styles` callback (a `MakeItResponsiveStyles`) receives the resolved per-breakpoint `{ theme, css, rootSize }` and returns the CSS for that breakpoint; when the theme carries responsive per-breakpoint values, makeItResponsive normalizes then transforms then optimizes them into `@media (min-width)` blocks (mobile-first, only deltas emitted). `key` scopes which prop bag holds the theme; `normalize` toggles the breakpoint normalization; pass the `css` tag from `@pyreon/ui-core` `config`. Drop the returned interpolation into a styled template literal. See also: createMediaQueries, styles.',
+    mistakes: `- Passing \`{ value, property }\` — makeItResponsive is a styled-component interpolation factory, not a value resolver; provide a \`styles\` callback plus the \`css\` tag from \`@pyreon/ui-core\` config
+- Passing CSS-spec property names (\`borderTopWidth\`) inside the styles callback — unistyle uses property-first naming (\`borderWidthTop\`); the responsive transformer expects the unistyle convention
+- Forgetting to pass an enriched theme — without \`theme.__PYREON__\` (populated by \`enrichTheme\`), per-breakpoint values fall back to the base value at every breakpoint`,
   },
 
   'unistyle/styles': {
-    signature: 'styles(theme: Theme): string',
-    example: `import { styles, enrichTheme } from '@pyreon/unistyle'
+    signature: 'styles(options: { theme: InnerTheme; css: CssFn; rootSize?: number; globalTheme?: object }): CSSResult',
+    example: `import { styles } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-const theme = enrichTheme({ colors: { primary: '#3b82f6' } })
-const css = styles(theme)
-// → ':root { --color-primary: #3b82f6; --spacing-xs: 4px; ... }'`,
-    notes: `Generate the CSS string for a complete theme — colors, spacing, fonts, breakpoints, the works. Used to produce the cascade of CSS variables / global declarations that backs every styled component. Most consumers don\\'t call this directly; the \`PyreonUI\` provider invokes it internally on theme mount. See also: enrichTheme, extendCss.`,
+const { css } = config
+const rules = styles({ theme: { padding: '8px', color: '#222' }, css })
+// → the resolved CSS declarations for the given theme`,
+    notes: 'Generate the CSS for a flat theme object — box-model, typography, spacing, border, and layout declarations resolved from a `{ theme, css }` options bag (NOT a bare theme argument). Returns the `css`-tagged result. Used to produce the declarations that back every styled component. Most consumers do not call this directly; the `PyreonUI` provider invokes it internally on theme mount. See also: enrichTheme, extendCss.',
   },
 
   'unistyle/alignContent': {
-    signature: `alignContent(options: { alignX?: AlignXKey; alignY?: AlignYKey; direction?: 'row' | 'column' | 'inline' | 'rows' }): string`,
+    signature: 'alignContent(options: { alignX?: AlignContentAlignXKeys; alignY?: AlignContentAlignYKeys; direction?: AlignContentDirectionKeys }): string | null',
     example: `import { alignContent } from '@pyreon/unistyle'
 
-alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
-// → 'justify-content: center; align-items: flex-start;'
+alignContent({ direction: 'rows', alignX: 'center', alignY: 'top' })
+// → 'flex-direction: column; align-items: center; justify-content: flex-start;'
 
-alignContent({ alignX: 'spaceBetween', direction: 'inline' })
-// → 'justify-content: space-between;'`,
-    notes: `Resolve \`alignX\` / \`alignY\` / \`direction\` shorthand to the matching flex / grid CSS (\`justify-content\`, \`align-items\`). The Element / Row / Column primitives use this internally — it\\'s exposed for custom layout components that want the same alignment semantics. \`direction: "inline"\` maps to \`row\`; \`direction: "rows"\` maps to \`column\`. See also: makeItResponsive.`,
+alignContent({ direction: 'inline', alignX: 'spaceBetween', alignY: 'center' })
+// → 'flex-direction: row; align-items: center; justify-content: space-between;'`,
+    notes: 'Resolve `direction` / `alignX` / `alignY` shorthand to the matching flex CSS (`flex-direction`, `align-items`, `justify-content`). The Element / Row / Column primitives use this internally — it is exposed for custom layout components that want the same alignment semantics. `direction` is one of `inline` / `reverseInline` / `rows` / `reverseRows` (`inline` maps to `row`, `rows` to `column`; the `inline` variants swap which axis alignX / alignY drive). Returns `null` when any of the three inputs is missing. See also: makeItResponsive.',
   },
 
   'unistyle/extendCss': {
-    signature: 'extendCss(base: ExtendCss, override?: ExtendCss): ExtendCss',
+    signature: 'extendCss(styles: ((css: CssFn) => string) | string | null | undefined): string',
     example: `import { extendCss } from '@pyreon/unistyle'
 
-const base = { color: 'red', hover: { color: 'darkred' } }
-const extended = extendCss(base, { hover: { background: 'pink' } })
-// → { color: 'red', hover: { color: 'darkred', background: 'pink' } }`,
-    notes: 'Extend a CSS definition (theme block, style descriptor) with overrides — deep-merges nested objects without losing the base. Used by rocketstyle dimension chains to layer dimension-specific CSS over a baseline. The base is not mutated; the result is a new object. See also: styles.',
+extendCss('color: red;')                    // → 'color: red;'  (string returned as-is)
+extendCss((css) => css\`color: \${'red'};\`)   // → 'color: red;'  (callback invoked)
+extendCss(undefined)                         // → ''             (nullish → empty string)`,
+    notes: 'Flatten a CSS definition to a string. Takes a SINGLE argument that is either a css-callback (invoked with a simple `css` tag, its result returned), a raw CSS string (returned as-is), or `null` / `undefined` (returns an empty string). Used by rocketstyle dimension chains + the elements / coolgrid styled helpers to inline a component `extraStyles` / `extendCss` prop. NOT an object deep-merge — it takes ONE argument and never layers a base with an override. See also: styles.',
   },
 
   'unistyle/stripUnit': {
@@ -5791,7 +5827,7 @@ zero({ i18n: { locales: ['en','de','cs'], defaultLocale: 'en', strategy: 'prefix
 
   'zero/expandRoutesForLocales': {
     signature: 'function expandRoutesForLocales(routes: FileRoute[], config: I18nRoutingConfig): FileRoute[] // server-only',
-    example: `import { expandRoutesForLocales } from '@pyreon/zero/server'
+    example: `import { expandRoutesForLocales } from '@pyreon/zero/i18n-routing'
 import { parseFileRoutes, scanRouteFiles } from '@pyreon/zero/server'
 
 const files = await scanRouteFiles('./src/routes')
@@ -5956,7 +5992,7 @@ createISRHandler(handler, {
     signature: 'function seoPlugin(config: SeoPluginConfig): Plugin // server-only',
     example: `seoPlugin({
   sitemap: {
-    baseUrl: 'https://example.com',
+    origin: 'https://example.com',
     useSsgPaths: true,      // PR F — auto-detect SSG paths
     hreflang: true,         // PR K — auto-detect i18n + emit cross-refs
   },
@@ -5987,7 +6023,7 @@ plugins: [pyreon(), zero({ i18n: { locales, defaultLocale } }), i18nRouting({ lo
 
   'zero/validateEnv': {
     signature: 'function validateEnv<T>(schema: T, env?: ProcessEnv): ValidatedEnv<T> // server-only',
-    example: `import { validateEnv, publicEnv, schema } from '@pyreon/zero/server'
+    example: `import { validateEnv, publicEnv, schema } from '@pyreon/zero/env'
 
 const env = validateEnv({
   PORT: 3000,
@@ -5997,19 +6033,19 @@ const env = validateEnv({
 })
 // env.PORT → number; env.API_KEY → string; env.API_URL → URL
 
-const pub = publicEnv(env, ['API_URL'])  // omit secrets`,
+const pub = publicEnv()  // client-safe ZERO_PUBLIC_* subset (secrets excluded by prefix)`,
     notes: 'Env-variable validation with type coercion. Schema accepts primitives (`String`, `Number`, `Boolean`) for default coercion + `schema()` for custom parsers. `publicEnv()` returns a client-safe subset (no secrets). Catches missing-required-env errors at startup instead of mid-request runtime crashes. See also: zero.',
   },
 
   'zero/cspMiddleware': {
     signature: 'function cspMiddleware(config: { directives: CspDirectives }): Middleware // server-only',
-    example: `import { cspMiddleware } from '@pyreon/zero/server'
+    example: `import { cspMiddleware } from '@pyreon/zero/csp'
 
 plugins: [pyreon(), zero({
   middleware: [cspMiddleware({
     directives: {
-      'default-src': ["'self'"],
-      'script-src': ["'self'", "'nonce-{{nonce}}'"],
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'nonce-{{nonce}}'"],
     },
   })],
 })]`,
@@ -6883,9 +6919,11 @@ store.dispose()          // tear down all fields (or rely on onCleanup in-scope)
   },
 
   'sync/FakeCrdtAdapter': {
-    signature: 'class FakeCrdtAdapter implements CrdtAdapter { createDoc(): FakeCrdtDoc }',
-    example: `const a = new FakeCrdtAdapter().createDoc()
-const b = new FakeCrdtAdapter().createDoc()
+    signature: 'class FakeCrdtAdapter implements CrdtAdapter { createDoc(): CrdtDoc }',
+    example: `// FakeCrdtAdapter.createDoc() returns a CrdtDoc; construct FakeCrdtDoc
+// directly to get the concrete type connectFakeDocs requires.
+const a = new FakeCrdtDoc()
+const b = new FakeCrdtDoc()
 connectFakeDocs(a, b)
 const sa = syncedSignal({ doc: a, key: "k", initial: 0 })
 const sb = syncedSignal({ doc: b, key: "k", initial: 0 })
@@ -7875,7 +7913,7 @@ import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
 
 const vnode = (
   <DocDocument title={() => reportTitle()} author="Acme Inc.">
-    <DocHeading level={1}>Summary</DocHeading>
+    <DocHeading level="h1">Summary</DocHeading>
     <DocText>{() => summaryText()}</DocText>
   </DocDocument>
 )
@@ -7986,8 +8024,10 @@ const styles = resolveStyles(rocketstyleTheme, 16, resolveVar)`,
 
   'connector-document/DocumentMarker': {
     signature: 'interface DocumentMarker { _documentType: NodeType }',
-    example: `// Plain-function marked component (non-rocketstyle):
-function Callout(props: { children?: unknown }) {
+    example: `import type { VNodeChild } from '@pyreon/core'
+
+// Plain-function marked component (non-rocketstyle):
+function Callout(props: { children?: VNodeChild }) {
   return <div _documentProps={{}}>{props.children}</div>
 }
 Callout._documentType = 'section'`,

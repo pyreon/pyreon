@@ -42,11 +42,12 @@ const router = createRouter({
       meta: { title: "User Profile" } },
     { path: "/admin", component: AdminLayout,
       beforeEnter: (to, from) => isAdmin() || "/login",
+      middleware: [authMiddleware, loggerMiddleware], // per-route middleware — runs before guards
       children: [
         { path: "users", component: AdminUsers },
         { path: "settings", component: AdminSettings },
       ] },
-    { path: "/settings", redirect: "/admin/settings" },
+    { path: "/settings", redirect: "/admin/settings", component: AdminSettings },
     { path: "(.*)", component: NotFound },
   ],
 })
@@ -56,7 +57,7 @@ mount(
   <RouterProvider router={router}>
     <nav>
       <RouterLink to="/" activeClass="nav-active">Home</RouterLink>
-      <RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>
+      <RouterLink to="/user/42">Profile</RouterLink>
     </nav>
     <RouterView />
   </RouterProvider>,
@@ -70,7 +71,7 @@ const User = () => {
   const router = useRouter()
   const isAdmin = useIsActive("/admin")
   const isTransitioning = useTransition()
-  const params = useTypedSearchParams({ tab: "string", page: "number" })
+  const [search, setSearch] = useTypedSearchParams({ tab: "string", page: "number" })
 
   return (
     <div>
@@ -591,14 +592,15 @@ onBeforeRouteLeave((to, from) => {
 onBeforeRouteUpdate(guard: NavigationGuard): () => void
 ```
 
-Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g., param change `/user/1` to `/user/2`). Same return semantics as `onBeforeRouteLeave`.
+Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g., param change `/user/1` to `/user/2`). Same return semantics as `onBeforeRouteLeave` — return `false` to cancel, a string path to redirect, or `undefined` to allow.
 
 **Example**
 
 ```tsx
 onBeforeRouteUpdate((to, from) => {
-  if (to.params.id === from.params.id) return  // no change
-  // reload data for new ID...
+  if (to.params.id === from.params.id) return  // no change — allow
+  if (hasUnsavedChanges()) return false        // cancel: the param change would lose unsaved edits
+  // otherwise allow — reload data for the new ID
 })
 ```
 

@@ -111,7 +111,7 @@ effect(() => {
 Component model and lifecycle for Pyreon. Provides the VNode type system, `h()` hyperscript function, JSX automatic runtime (`@pyreon/core/jsx-runtime`), lifecycle hooks (`onMount`, `onUnmount`), two-tier context system (`createContext` for static values, `createReactiveContext` for signal-backed values), control-flow components (`Show`, `Switch`/`Match`, `For`, `Suspense`, `ErrorBoundary`), code-splitting via `lazy()`, dynamic rendering via `Dynamic`, and props utilities (`splitProps`, `mergeProps`, `cx`, `createUniqueId`). Components are plain functions (`ComponentFn<P> = (props: P) => VNodeChild`) that run ONCE — reactivity comes from reading signals inside reactive scopes, not from re-running the component.
 
 ```typescript
-import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId, untrack } from "@pyreon/core"
+import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId } from "@pyreon/core"
 import { signal, computed } from "@pyreon/reactivity"
 
 // Context — static (destructure-safe) vs reactive (must call to read)
@@ -152,7 +152,7 @@ const Button = (props: { class?: string; size?: string; onClick: () => void; chi
   const [local, rest] = splitProps(props, ["class", "size"])
   const merged = mergeProps({ size: "md" }, local)
   const id = createUniqueId()
-  return <button id={id} {...rest} class={cx("btn", `btn-${merged.size}`, local.class)} />
+  return <button id={id} {...rest} class={cx(["btn", `btn-${merged.size}`, local.class])} />
 }
 
 // Code splitting
@@ -301,7 +301,7 @@ console.log(formatTestAudit(auditTestEnvironment("."), { minRisk: "medium" }))
 import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
 
 const r = auditIslands(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)
+for (const f of r.findings) console.log(f.code, f.location.relPath)
 
 import { auditIslands, formatIslandAudit } from "@pyreon/compiler"
 
@@ -310,7 +310,7 @@ console.log(formatIslandAudit(auditIslands(".")))
 import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
 
 const r = auditSsg(process.cwd())
-for (const f of r.findings) console.log(f.code, f.location.file)
+for (const f of r.findings) console.log(f.code, f.location.relPath)
 
 import { auditSsg, formatSsgAudit } from "@pyreon/compiler"
 
@@ -411,11 +411,12 @@ const router = createRouter({
       meta: { title: "User Profile" } },
     { path: "/admin", component: AdminLayout,
       beforeEnter: (to, from) => isAdmin() || "/login",
+      middleware: [authMiddleware, loggerMiddleware], // per-route middleware — runs before guards
       children: [
         { path: "users", component: AdminUsers },
         { path: "settings", component: AdminSettings },
       ] },
-    { path: "/settings", redirect: "/admin/settings" },
+    { path: "/settings", redirect: "/admin/settings", component: AdminSettings },
     { path: "(.*)", component: NotFound },
   ],
 })
@@ -425,7 +426,7 @@ mount(
   <RouterProvider router={router}>
     <nav>
       <RouterLink to="/" activeClass="nav-active">Home</RouterLink>
-      <RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>
+      <RouterLink to="/user/42">Profile</RouterLink>
     </nav>
     <RouterView />
   </RouterProvider>,
@@ -439,7 +440,7 @@ const User = () => {
   const router = useRouter()
   const isAdmin = useIsActive("/admin")
   const isTransitioning = useTransition()
-  const params = useTypedSearchParams({ tab: "string", page: "number" })
+  const [search, setSearch] = useTypedSearchParams({ tab: "string", page: "number" })
 
   return (
     <div>
@@ -469,7 +470,7 @@ Reactive head tag management for Pyreon — `useHead()` collects title, meta, li
 
 ```typescript
 import { useHead, HeadProvider } from '@pyreon/head'
-import { renderWithHead } from '@pyreon/head'
+import { renderWithHead } from '@pyreon/head/ssr'
 import { mount } from '@pyreon/runtime-dom'
 
 // Static head tags from any component
@@ -499,9 +500,12 @@ mount(
   document.getElementById('app')!,
 )
 
-// Server setup — collects every useHead() call and serializes the head
+// Server setup — collects every useHead() call and serializes the head.
+// htmlAttrs / bodyAttrs are Record<string, string> — serialize to attribute strings:
 const { html, head, htmlAttrs, bodyAttrs } = await renderWithHead(<App />)
-const document = `<!doctype html><html${htmlAttrs}><head>${head}</head><body${bodyAttrs}>${html}</body></html>`
+const attrs = (r: Record<string, string>) =>
+  Object.entries(r).map(([k, v]) => ` ${k}="${v}"`).join('')
+const page = `<!doctype html><html${attrs(htmlAttrs)}><head>${head}</head><body${attrs(bodyAttrs)}>${html}</body></html>`
 ```
 
 > **Key deduplication**: Tags with the same key replace each other (innermost wins). Meta keys: `name` → `property` → index. Link keys: `href + rel` → `rel` → index. Script keys: `src` → index. Style and noscript are unkeyed and always accumulated.
@@ -568,34 +572,33 @@ Surgical signal-to-DOM renderer with zero virtual DOM overhead. The compiler emi
 ```typescript
 import { mount, hydrateRoot, Transition, TransitionGroup, KeepAlive } from "@pyreon/runtime-dom"
 import { signal } from "@pyreon/reactivity"
-import { Show, For } from "@pyreon/core"
+import { Show } from "@pyreon/core"
 
 // Mount — clears container, returns unmount function
 const unmount = mount(<App />, document.getElementById("app")!)
 
-// Hydrate SSR-rendered HTML (preserves existing DOM)
-hydrateRoot(<App />, document.getElementById("app")!)
+// Hydrate SSR-rendered HTML (preserves existing DOM) — container FIRST
+hydrateRoot(document.getElementById("app")!, <App />)
 
-// Transition — CSS-based enter/leave animations
+// Transition — CSS-based enter/leave, visibility driven by the required show accessor
 const visible = signal(true)
 const FadeExample = () => (
-  <Transition name="fade" mode="out-in">
-    <Show when={visible()}>
-      <div>Content</div>
-    </Show>
+  <Transition name="fade" show={() => visible()}>
+    <div>Content</div>
   </Transition>
 )
 // CSS: .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
 //      .fade-enter-from, .fade-leave-to { opacity: 0 }
 
-// TransitionGroup — animate list items entering/leaving
+// TransitionGroup — drives the list itself via items / keyFn / render (not <For> children)
 const items = signal([1, 2, 3])
 const ListExample = () => (
-  <TransitionGroup name="list">
-    <For each={items()} by={i => i}>
-      {item => <div>{item}</div>}
-    </For>
-  </TransitionGroup>
+  <TransitionGroup
+    name="list"
+    items={() => items()}
+    keyFn={(i) => i}
+    render={(i) => <div>{i}</div>}
+  />
 )
 
 // KeepAlive — cache component state across mount/unmount cycles
@@ -767,14 +770,14 @@ import { signal } from '@pyreon/reactivity'
 const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, label: `Item ${i}` })))
 
 const MyList = () => {
-  let scrollRef!: HTMLDivElement
+  let scrollRef!: HTMLElement
 
-  const virtualizer = useVirtualizer({
-    count: () => items().length,
+  const virtualizer = useVirtualizer(() => ({
+    count: items().length,             // read a signal here → reactive
     getScrollElement: () => scrollRef,
     estimateSize: () => 35,            // px per row
     overscan: 5,                       // render 5 extra items above/below viewport
-  })
+  }))
 
   return (
     <div ref={(el) => (scrollRef = el)} style="height: 400px; overflow: auto">
@@ -795,10 +798,10 @@ const MyList = () => {
 
 // Window-scoped virtualizer — scrolls with the page
 const WindowList = () => {
-  const virtualizer = useWindowVirtualizer({
-    count: () => items().length,
+  const virtualizer = useWindowVirtualizer(() => ({
+    count: items().length,
     estimateSize: () => 50,
-  })
+  }))
 
   return (
     <div style={() => `height: ${virtualizer.totalSize()}px; position: relative`}>
@@ -1165,7 +1168,8 @@ addMiddleware(list, (call, next) => {
 
 // Singleton hook for app-wide state:
 const useTodoList = TodoList.asHook('todo-list')
-const { store } = useTodoList() // same instance on every call
+const shared = useTodoList() // same ModelInstance on every call
+shared.add('Persisted item')
 ```
 
 > **Actions only**: State mutations must go through actions — direct `.set()` calls on state signals bypass middleware and patch recording. The model enforces this in dev mode.
@@ -2288,8 +2292,10 @@ doc.getMap("m").transact(() => map.set("k", v), LOCAL_ORIGIN)
 
 doc.yDoc.transact(() => Y.applyUpdate(doc.yDoc, bytes), REMOTE_ORIGIN)
 
-const a = new FakeCrdtAdapter().createDoc()
-const b = new FakeCrdtAdapter().createDoc()
+// FakeCrdtAdapter.createDoc() returns a CrdtDoc; construct FakeCrdtDoc
+// directly to get the concrete type connectFakeDocs requires.
+const a = new FakeCrdtDoc()
+const b = new FakeCrdtDoc()
 connectFakeDocs(a, b)
 const sa = syncedSignal({ doc: a, key: "k", initial: 0 })
 const sb = syncedSignal({ doc: b, key: "k", initial: 0 })
@@ -2634,35 +2640,34 @@ isDynamic("12px")          // false → static, cached
 Foundational responsive-style layer that powers every visual package above it (`elements`, `rocketstyle`, `coolgrid`, `kinetic`). `enrichTheme()` merges a partial user theme with the default breakpoints / spacing / unit utilities so the rest of the system has a complete theme to read. `makeItResponsive()` turns a value or per-breakpoint map into the right CSS for the current screen. `createMediaQueries()` builds breakpoint-keyed media queries; `styles()` generates CSS from a theme; `alignContent()` resolves alignment shorthand to flex / grid CSS. The package is the single source of truth for responsive prop semantics across the UI system.
 
 ```typescript
-import { enrichTheme, makeItResponsive, createMediaQueries, alignContent } from '@pyreon/unistyle'
+import { enrichTheme, makeItResponsive, alignContent } from '@pyreon/unistyle'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-// 1. Enrich a partial user theme with defaults — required before passing to PyreonUI
+const { css } = config
+
+// 1. Enrich a partial user theme with defaults — required before passing to
+//    PyreonUI. enrichTheme also precomputes the breakpoint media-query helpers
+//    into theme.__PYREON__ for makeItResponsive to consume.
 const theme = enrichTheme({
   colors: { primary: '#3b82f6', secondary: '#6366f1' },
   fonts: { body: 'Inter, sans-serif' },
 })
 
-// 2. Build media queries keyed by breakpoint name
-const queries = createMediaQueries(theme.breakpoints)
-// → { xs: '@media (min-width: 0)', sm: '@media (min-width: 640px)', md: '...', ... }
+// 2. makeItResponsive builds a styled-component interpolation from a `styles`
+//    callback. It reads the component's theme prop and emits the mobile-first
+//    @media cascade — drop the result into a styled template literal.
+const boxStyles: MakeItResponsiveStyles<{ padding?: string }> = ({ theme: t, css: cssFn }) =>
+  cssFn`padding: ${t.padding};`
+const responsivePadding = makeItResponsive({ key: '$box', css, styles: boxStyles, normalize: true })
 
-// 3. Responsive props — single value, mobile-first array, or breakpoint object
-const padding = makeItResponsive({ value: [8, 12, 16], property: 'padding', theme })
-// → 'padding: 8px; @media (...) { padding: 12px } @media (...) { padding: 16px }'
+// 3. alignContent maps direction / alignX / alignY shorthand to flex CSS
+const flexCss = alignContent({ direction: 'rows', alignX: 'center', alignY: 'top' })
+// → 'flex-direction: column; align-items: center; justify-content: flex-start;'
 
-const padding2 = makeItResponsive({
-  value: { xs: 8, md: 16, xl: 24 },
-  property: 'padding',
-  theme,
-})
-
-// 4. alignContent maps shorthand to flex CSS
-const flexCss = alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
-// → 'justify-content: center; align-items: flex-start;'
-
-// 5. Autogenerate CSS custom properties from a theme JSON (units baked at emission)
+// 4. Autogenerate CSS custom properties from a theme JSON (units baked at emission)
 import { themeToCssVars } from '@pyreon/unistyle'
-const { vars, css } = themeToCssVars({ rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } })
+const { vars } = themeToCssVars({ rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } })
 vars.spacing.small // 'var(--px-spacing-small)'  (emitted as 0.5rem in the :root block)
 const width = `calc(${vars.spacing.small} * ${vars.ratio.medium})` // proportional sizing, native CSS
 ```
@@ -2931,8 +2936,8 @@ export default defineConfig({
       },
       adapter: vercelAdapter(),             // PR J — emits .vercel/output/config.json
     }),
-    seoPlugin({ sitemap: { useSsgPaths: true, hreflang: true } }),
-    aiPlugin(),
+    seoPlugin({ sitemap: { origin: 'https://example.com', useSsgPaths: true, hreflang: true } }),
+    aiPlugin({ name: 'My App', description: 'My Pyreon app', origin: 'https://example.com' }),
   ],
 })
 
@@ -3032,7 +3037,8 @@ const cache = new SizedMap<string, string>(opts)
 Signal-driven drag and drop for Pyreon. A thin wrapper over Atlassian's `pragmatic-drag-and-drop` (the engine behind Trello / Jira): pdnd owns the native-event lifecycle, hit-testing, and edge detection; `@pyreon/dnd` adapts every state field into a Pyreon signal accessor (`isDragging` / `isOver` / `activeId` / `overId` / `overEdge` / `dragData`) and wires every pdnd teardown into `onCleanup`. Five hooks cover the common surfaces — single draggable, single drop target, sortable list with edge detection + auto-scroll + keyboard reordering + opt-in cross-list boards, native-file drop with MIME / count filtering, and a page-global drag monitor.
 
 ```typescript
-import { signal, For } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { For } from '@pyreon/core'
 import { useDraggable, useDroppable, useSortable } from '@pyreon/dnd'
 
 // Single draggable — element is a GETTER, state is a signal accessor:
@@ -3398,7 +3404,7 @@ import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
 
 const vnode = (
   <DocDocument title="Q4 Report" author="Acme Inc.">
-    <DocHeading level={1}>Summary</DocHeading>
+    <DocHeading level="h1">Summary</DocHeading>
     <DocText>Revenue was up 12%.</DocText>
   </DocDocument>
 )

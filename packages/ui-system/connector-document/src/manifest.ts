@@ -14,7 +14,7 @@ import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
 
 const vnode = (
   <DocDocument title="Q4 Report" author="Acme Inc.">
-    <DocHeading level={1}>Summary</DocHeading>
+    <DocHeading level="h1">Summary</DocHeading>
     <DocText>Revenue was up 12%.</DocText>
   </DocDocument>
 )
@@ -63,7 +63,7 @@ import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
 
 const vnode = (
   <DocDocument title={() => reportTitle()} author="Acme Inc.">
-    <DocHeading level={1}>Summary</DocHeading>
+    <DocHeading level="h1">Summary</DocHeading>
     <DocText>{() => summaryText()}</DocText>
   </DocDocument>
 )
@@ -264,8 +264,10 @@ const styles = resolveStyles(rocketstyleTheme, 16, resolveVar)`,
       signature: 'interface DocumentMarker { _documentType: NodeType }',
       summary:
         'Marker interface: components carrying `_documentType` are extractable. Rocketstyle primitives set it via `.statics({ _documentType: "heading" })` (the extractor reads it from the component\'s `.meta`); plain function components set it as a direct static property. `@pyreon/document-primitives` ships 18 pre-marked primitives; follow the same convention for custom ones.',
-      example: `// Plain-function marked component (non-rocketstyle):
-function Callout(props: { children?: unknown }) {
+      example: `import type { VNodeChild } from '@pyreon/core'
+
+// Plain-function marked component (non-rocketstyle):
+function Callout(props: { children?: VNodeChild }) {
   return <div _documentProps={{}}>{props.children}</div>
 }
 Callout._documentType = 'section'`,

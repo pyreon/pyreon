@@ -29,11 +29,12 @@ describe('gen-docs — router snapshot', () => {
             meta: { title: "User Profile" } },
           { path: "/admin", component: AdminLayout,
             beforeEnter: (to, from) => isAdmin() || "/login",
+            middleware: [authMiddleware, loggerMiddleware], // per-route middleware — runs before guards
             children: [
               { path: "users", component: AdminUsers },
               { path: "settings", component: AdminSettings },
             ] },
-          { path: "/settings", redirect: "/admin/settings" },
+          { path: "/settings", redirect: "/admin/settings", component: AdminSettings },
           { path: "(.*)", component: NotFound },
         ],
       })
@@ -43,7 +44,7 @@ describe('gen-docs — router snapshot', () => {
         <RouterProvider router={router}>
           <nav>
             <RouterLink to="/" activeClass="nav-active">Home</RouterLink>
-            <RouterLink to={{ name: "user", params: { id: "42" } }}>Profile</RouterLink>
+            <RouterLink to="/user/42">Profile</RouterLink>
           </nav>
           <RouterView />
         </RouterProvider>,
@@ -57,7 +58,7 @@ describe('gen-docs — router snapshot', () => {
         const router = useRouter()
         const isAdmin = useIsActive("/admin")
         const isTransitioning = useTransition()
-        const params = useTypedSearchParams({ tab: "string", page: "number" })
+        const [search, setSearch] = useTypedSearchParams({ tab: "string", page: "number" })
 
         return (
           <div>

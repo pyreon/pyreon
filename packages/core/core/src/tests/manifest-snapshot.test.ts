@@ -17,7 +17,7 @@ describe('gen-docs — core snapshot', () => {
       Component model and lifecycle for Pyreon. Provides the VNode type system, \`h()\` hyperscript function, JSX automatic runtime (\`@pyreon/core/jsx-runtime\`), lifecycle hooks (\`onMount\`, \`onUnmount\`), two-tier context system (\`createContext\` for static values, \`createReactiveContext\` for signal-backed values), control-flow components (\`Show\`, \`Switch\`/\`Match\`, \`For\`, \`Suspense\`, \`ErrorBoundary\`), code-splitting via \`lazy()\`, dynamic rendering via \`Dynamic\`, and props utilities (\`splitProps\`, \`mergeProps\`, \`cx\`, \`createUniqueId\`). Components are plain functions (\`ComponentFn<P> = (props: P) => VNodeChild\`) that run ONCE — reactivity comes from reading signals inside reactive scopes, not from re-running the component.
 
       \`\`\`typescript
-      import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId, untrack } from "@pyreon/core"
+      import { h, Fragment, onMount, onUnmount, provide, createContext, createReactiveContext, useContext, Show, Switch, Match, For, Suspense, ErrorBoundary, lazy, Dynamic, cx, splitProps, mergeProps, createUniqueId } from "@pyreon/core"
       import { signal, computed } from "@pyreon/reactivity"
 
       // Context — static (destructure-safe) vs reactive (must call to read)
@@ -58,7 +58,7 @@ describe('gen-docs — core snapshot', () => {
         const [local, rest] = splitProps(props, ["class", "size"])
         const merged = mergeProps({ size: "md" }, local)
         const id = createUniqueId()
-        return <button id={id} {...rest} class={cx("btn", \`btn-\${merged.size}\`, local.class)} />
+        return <button id={id} {...rest} class={cx(["btn", \`btn-\${merged.size}\`, local.class])} />
       }
 
       // Code splitting
@@ -85,7 +85,7 @@ describe('gen-docs — core snapshot', () => {
 
   it('renders @pyreon/core to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(coreManifest)
-    expect(Object.keys(record).length).toBe(32)
+    expect(Object.keys(record).length).toBe(31)
     expect(Object.keys(record)).toContain('core/h')
     expect(Object.keys(record)).toContain('core/removeUndefinedProps')
     // Compat-mode native marker — added so framework JSX components opt out

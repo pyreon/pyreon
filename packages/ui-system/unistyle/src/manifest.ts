@@ -21,35 +21,34 @@ export default defineManifest({
     'resolveCssVarReferences(value, registry) — inline var() references back to raw values for non-CSS consumers (document export, devtools)',
     'Provider / context — React-style provider for the theme (used internally by PyreonUI)',
   ],
-  longExample: `import { enrichTheme, makeItResponsive, createMediaQueries, alignContent } from '@pyreon/unistyle'
+  longExample: `import { enrichTheme, makeItResponsive, alignContent } from '@pyreon/unistyle'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-// 1. Enrich a partial user theme with defaults — required before passing to PyreonUI
+const { css } = config
+
+// 1. Enrich a partial user theme with defaults — required before passing to
+//    PyreonUI. enrichTheme also precomputes the breakpoint media-query helpers
+//    into theme.__PYREON__ for makeItResponsive to consume.
 const theme = enrichTheme({
   colors: { primary: '#3b82f6', secondary: '#6366f1' },
   fonts: { body: 'Inter, sans-serif' },
 })
 
-// 2. Build media queries keyed by breakpoint name
-const queries = createMediaQueries(theme.breakpoints)
-// → { xs: '@media (min-width: 0)', sm: '@media (min-width: 640px)', md: '...', ... }
+// 2. makeItResponsive builds a styled-component interpolation from a \`styles\`
+//    callback. It reads the component's theme prop and emits the mobile-first
+//    @media cascade — drop the result into a styled template literal.
+const boxStyles: MakeItResponsiveStyles<{ padding?: string }> = ({ theme: t, css: cssFn }) =>
+  cssFn\`padding: \${t.padding};\`
+const responsivePadding = makeItResponsive({ key: '$box', css, styles: boxStyles, normalize: true })
 
-// 3. Responsive props — single value, mobile-first array, or breakpoint object
-const padding = makeItResponsive({ value: [8, 12, 16], property: 'padding', theme })
-// → 'padding: 8px; @media (...) { padding: 12px } @media (...) { padding: 16px }'
+// 3. alignContent maps direction / alignX / alignY shorthand to flex CSS
+const flexCss = alignContent({ direction: 'rows', alignX: 'center', alignY: 'top' })
+// → 'flex-direction: column; align-items: center; justify-content: flex-start;'
 
-const padding2 = makeItResponsive({
-  value: { xs: 8, md: 16, xl: 24 },
-  property: 'padding',
-  theme,
-})
-
-// 4. alignContent maps shorthand to flex CSS
-const flexCss = alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
-// → 'justify-content: center; align-items: flex-start;'
-
-// 5. Autogenerate CSS custom properties from a theme JSON (units baked at emission)
+// 4. Autogenerate CSS custom properties from a theme JSON (units baked at emission)
 import { themeToCssVars } from '@pyreon/unistyle'
-const { vars, css } = themeToCssVars({ rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } })
+const { vars } = themeToCssVars({ rootSize: 16, spacing: { small: 8 }, ratio: { medium: 1.5 } })
 vars.spacing.small // 'var(--px-spacing-small)'  (emitted as 0.5rem in the :root block)
 const width = \`calc(\${vars.spacing.small} * \${vars.ratio.medium})\` // proportional sizing, native CSS`,
   api: [
@@ -75,91 +74,104 @@ const theme = enrichTheme({
     },
     {
       name: 'breakpoints',
-      kind: 'function',
-      signature: 'breakpoints(): Breakpoints',
+      kind: 'constant',
+      signature: 'const breakpoints: { rootSize: number; breakpoints: Record<string, number> }',
       summary:
-        'Return the default breakpoint set keyed by name (`xs`, `sm`, `md`, `lg`, `xl`, `xxl`) with min-width values in pixels. The same map is folded into `enrichTheme()` output, so most consumers read `theme.breakpoints` rather than calling this directly. Use it when you need the defaults outside a theme context (e.g. building a custom theme programmatically).',
+        'The default breakpoint configuration — a constant `{ rootSize, breakpoints }` object, NOT a function. `breakpoints.breakpoints` is the min-width map keyed by name (`xs` 0, `sm` 576, `md` 768, `lg` 992, `xl` 1200, `xxl` 1440) and `breakpoints.rootSize` is 16. The same values are folded into `enrichTheme()` output, so most consumers read the enriched theme rather than this constant. Use it when you need the defaults outside a theme context (e.g. building a custom theme or seeding `createMediaQueries`).',
       example: `import { breakpoints } from '@pyreon/unistyle'
 
-const bp = breakpoints()
-// { xs: 0, sm: 640, md: 768, lg: 1024, xl: 1280, xxl: 1536 }`,
+breakpoints.breakpoints // { xs: 0, sm: 576, md: 768, lg: 992, xl: 1200, xxl: 1440 }
+breakpoints.rootSize    // 16`,
       seeAlso: ['enrichTheme', 'createMediaQueries'],
     },
     {
       name: 'createMediaQueries',
       kind: 'function',
-      signature: 'createMediaQueries(breakpoints: Breakpoints): Record<string, string>',
+      signature:
+        'createMediaQueries(options: { breakpoints: Record<string, number>; rootSize: number; css: CssFn }): Record<string, (strings: TemplateStringsArray, ...values: unknown[]) => string>',
       summary:
-        'Build a record of media-query strings keyed by breakpoint name. Each value is a `min-width` query — `xs` is `(min-width: 0)`, `sm` becomes `(min-width: 640px)`, and so on. Used internally by `makeItResponsive()`; expose to consumers when they need to compose custom CSS-in-JS rules outside the responsive-prop pipeline.',
+        'Build a record of media-query tagged-templates keyed by breakpoint name from a `{ breakpoints, rootSize, css }` options bag (NOT a bare breakpoints argument). Each value is a FUNCTION — a `css` tagged-template that wraps the interpolated CSS in that breakpoint `@media (min-width)` block (the `0` breakpoint passes through unwrapped). Widths convert to `em` via `rootSize`. Used internally by `enrichTheme()` (stored on `theme.__PYREON__.media`); call directly when composing custom CSS-in-JS rules outside the responsive-prop pipeline.',
       example: `import { createMediaQueries, breakpoints } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-const queries = createMediaQueries(breakpoints())
-// { xs: '@media (min-width: 0)', sm: '@media (min-width: 640px)', md: '@media (min-width: 768px)', ... }`,
+const queries = createMediaQueries({
+  breakpoints: breakpoints.breakpoints,
+  rootSize: breakpoints.rootSize,
+  css: config.css,
+})
+// each value is a tagged-template that wraps CSS in that breakpoint @media block:
+// queries.sm\`color: red\` → '@media only screen and (min-width: 36em) { color: red }'`,
       seeAlso: ['breakpoints', 'makeItResponsive'],
     },
     {
       name: 'makeItResponsive',
       kind: 'function',
       signature:
-        'makeItResponsive<T>(options: { value: T | T[] | Record<string, T>; property: string; theme: Theme }): string',
+        'makeItResponsive(options: { css: CssFn; styles: MakeItResponsiveStyles; theme?: object; key?: string; normalize?: boolean }): (props) => CSSResult | string',
       summary:
-        'Resolve a responsive prop value to CSS for the current screen. Accepts three input shapes: single value (applies at all breakpoints), mobile-first array `[xs, sm, md, lg]` (each entry maps to the next breakpoint), or breakpoint object `{ xs: ..., md: ..., xl: ... }` (named keys map directly). The output is a CSS string with media queries already embedded; insert into a styled component template literal.',
+        'Build a styled-component interpolation from a `styles` callback. This is NOT a value resolver — it returns a FUNCTION that, given component props, reads the theme (via `key` or `props.theme`) and emits the mobile-first `@media` cascade. The `styles` callback (a `MakeItResponsiveStyles`) receives the resolved per-breakpoint `{ theme, css, rootSize }` and returns the CSS for that breakpoint; when the theme carries responsive per-breakpoint values, makeItResponsive normalizes then transforms then optimizes them into `@media (min-width)` blocks (mobile-first, only deltas emitted). `key` scopes which prop bag holds the theme; `normalize` toggles the breakpoint normalization; pass the `css` tag from `@pyreon/ui-core` `config`. Drop the returned interpolation into a styled template literal.',
       example: `import { makeItResponsive } from '@pyreon/unistyle'
+import type { MakeItResponsiveStyles } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-makeItResponsive({ value: 16, property: 'padding', theme })
-// → 'padding: 16px;'
+const { css } = config
 
-makeItResponsive({ value: [8, 12, 16], property: 'padding', theme })
-// → 'padding: 8px; @media (min-width: 640px) { padding: 12px } @media (min-width: 768px) { padding: 16px }'
+// The \`styles\` callback receives the resolved per-breakpoint theme (typed via
+// the generic). makeItResponsive returns a styled-component interpolation.
+const styles: MakeItResponsiveStyles<{ padding?: string }> = ({ theme: t, css: cssFn }) =>
+  cssFn\`padding: \${t.padding};\`
 
-makeItResponsive({ value: { xs: 8, md: 16, xl: 24 }, property: 'padding', theme })
-// → '@media (min-width: 0) { padding: 8px } @media (min-width: 768px) { padding: 16px } @media (min-width: 1280px) { padding: 24px }'`,
+const responsive = makeItResponsive({ key: '$box', css, styles, normalize: true })
+// styled('div')\`\${responsive}\` — reads the component theme prop, emits @media queries`,
       mistakes: [
-        'Passing CSS-spec property names (`borderTopWidth`) — unistyle uses property-first naming (`borderWidthTop`); the responsive transformer expects the unistyle convention',
-        'Forgetting to pass an enriched theme — without `theme.breakpoints`, the array form falls back to the first value at every breakpoint',
+        'Passing `{ value, property }` — makeItResponsive is a styled-component interpolation factory, not a value resolver; provide a `styles` callback plus the `css` tag from `@pyreon/ui-core` config',
+        'Passing CSS-spec property names (`borderTopWidth`) inside the styles callback — unistyle uses property-first naming (`borderWidthTop`); the responsive transformer expects the unistyle convention',
+        'Forgetting to pass an enriched theme — without `theme.__PYREON__` (populated by `enrichTheme`), per-breakpoint values fall back to the base value at every breakpoint',
       ],
       seeAlso: ['createMediaQueries', 'styles'],
     },
     {
       name: 'styles',
       kind: 'function',
-      signature: 'styles(theme: Theme): string',
+      signature:
+        'styles(options: { theme: InnerTheme; css: CssFn; rootSize?: number; globalTheme?: object }): CSSResult',
       summary:
-        'Generate the CSS string for a complete theme — colors, spacing, fonts, breakpoints, the works. Used to produce the cascade of CSS variables / global declarations that backs every styled component. Most consumers don\\\'t call this directly; the `PyreonUI` provider invokes it internally on theme mount.',
-      example: `import { styles, enrichTheme } from '@pyreon/unistyle'
+        'Generate the CSS for a flat theme object — box-model, typography, spacing, border, and layout declarations resolved from a `{ theme, css }` options bag (NOT a bare theme argument). Returns the `css`-tagged result. Used to produce the declarations that back every styled component. Most consumers do not call this directly; the `PyreonUI` provider invokes it internally on theme mount.',
+      example: `import { styles } from '@pyreon/unistyle'
+import { config } from '@pyreon/ui-core'
 
-const theme = enrichTheme({ colors: { primary: '#3b82f6' } })
-const css = styles(theme)
-// → ':root { --color-primary: #3b82f6; --spacing-xs: 4px; ... }'`,
+const { css } = config
+const rules = styles({ theme: { padding: '8px', color: '#222' }, css })
+// → the resolved CSS declarations for the given theme`,
       seeAlso: ['enrichTheme', 'extendCss'],
     },
     {
       name: 'alignContent',
       kind: 'function',
       signature:
-        "alignContent(options: { alignX?: AlignXKey; alignY?: AlignYKey; direction?: 'row' | 'column' | 'inline' | 'rows' }): string",
+        'alignContent(options: { alignX?: AlignContentAlignXKeys; alignY?: AlignContentAlignYKeys; direction?: AlignContentDirectionKeys }): string | null',
       summary:
-        'Resolve `alignX` / `alignY` / `direction` shorthand to the matching flex / grid CSS (`justify-content`, `align-items`). The Element / Row / Column primitives use this internally — it\\\'s exposed for custom layout components that want the same alignment semantics. `direction: "inline"` maps to `row`; `direction: "rows"` maps to `column`.',
+        'Resolve `direction` / `alignX` / `alignY` shorthand to the matching flex CSS (`flex-direction`, `align-items`, `justify-content`). The Element / Row / Column primitives use this internally — it is exposed for custom layout components that want the same alignment semantics. `direction` is one of `inline` / `reverseInline` / `rows` / `reverseRows` (`inline` maps to `row`, `rows` to `column`; the `inline` variants swap which axis alignX / alignY drive). Returns `null` when any of the three inputs is missing.',
       example: `import { alignContent } from '@pyreon/unistyle'
 
-alignContent({ alignX: 'center', alignY: 'start', direction: 'row' })
-// → 'justify-content: center; align-items: flex-start;'
+alignContent({ direction: 'rows', alignX: 'center', alignY: 'top' })
+// → 'flex-direction: column; align-items: center; justify-content: flex-start;'
 
-alignContent({ alignX: 'spaceBetween', direction: 'inline' })
-// → 'justify-content: space-between;'`,
+alignContent({ direction: 'inline', alignX: 'spaceBetween', alignY: 'center' })
+// → 'flex-direction: row; align-items: center; justify-content: space-between;'`,
       seeAlso: ['makeItResponsive'],
     },
     {
       name: 'extendCss',
       kind: 'function',
-      signature: 'extendCss(base: ExtendCss, override?: ExtendCss): ExtendCss',
+      signature: 'extendCss(styles: ((css: CssFn) => string) | string | null | undefined): string',
       summary:
-        'Extend a CSS definition (theme block, style descriptor) with overrides — deep-merges nested objects without losing the base. Used by rocketstyle dimension chains to layer dimension-specific CSS over a baseline. The base is not mutated; the result is a new object.',
+        'Flatten a CSS definition to a string. Takes a SINGLE argument that is either a css-callback (invoked with a simple `css` tag, its result returned), a raw CSS string (returned as-is), or `null` / `undefined` (returns an empty string). Used by rocketstyle dimension chains + the elements / coolgrid styled helpers to inline a component `extraStyles` / `extendCss` prop. NOT an object deep-merge — it takes ONE argument and never layers a base with an override.',
       example: `import { extendCss } from '@pyreon/unistyle'
 
-const base = { color: 'red', hover: { color: 'darkred' } }
-const extended = extendCss(base, { hover: { background: 'pink' } })
-// → { color: 'red', hover: { color: 'darkred', background: 'pink' } }`,
+extendCss('color: red;')                    // → 'color: red;'  (string returned as-is)
+extendCss((css) => css\`color: \${'red'};\`)   // → 'color: red;'  (callback invoked)
+extendCss(undefined)                         // → ''             (nullish → empty string)`,
       seeAlso: ['styles'],
     },
     {

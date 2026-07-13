@@ -502,8 +502,8 @@ isStore(null)  // false (null-safe)`,
       summary:
         'Create a SHALLOW reactive store — only top-level mutations trigger updates. Nested objects are NOT auto-wrapped; reading a nested object returns the raw reference, and mutating it does NOT trigger any effect. Replacing the top-level reference DOES trigger reactivity. Use when nested data is immutable (frozen API responses), when you want explicit control over which subtrees are reactive, or when you need to store class instances/third-party objects without paying the deep-proxy overhead. Vue 3 parity.',
       example: `const store = shallowReactive({ user: { name: 'Alice' }, count: 0 })
-effect(() => store.count)        // tracks store.count
-effect(() => store.user)         // tracks store.user reference (not its contents)
+effect(() => { store.count })        // tracks store.count
+effect(() => { store.user })         // tracks store.user reference (not its contents)
 store.user.name = 'Bob'          // does NOT trigger any effect (nested mutation)
 store.count = 5                  // triggers count effect
 store.user = { name: 'Bob' }     // triggers user effect (reference replacement)`,
@@ -521,7 +521,7 @@ store.user = { name: 'Bob' }     // triggers user effect (reference replacement)
         'Mark an object as RAW — `createStore` and `shallowReactive` will return it unwrapped. Useful for class instances, third-party objects, DOM nodes, or any shape that shouldn\'t be deeply proxied (Vue 3 parity). Marking is one-way: there\'s no `unmarkRaw`. Mark BEFORE the object enters a store; marking after wrap doesn\'t unwrap an existing proxy.',
       example: `import { markRaw, createStore } from '@pyreon/reactivity'
 
-class Editor { /* ... */ }
+class Editor { someMethod() {} }
 const ed = markRaw(new Editor())   // skips proxy
 const store = createStore({ editor: ed })
 store.editor === ed                 // true — raw reference preserved
@@ -748,7 +748,7 @@ count.set(101)  // logs/reports via handler instead of crashing`,
 activateReactiveDevtools()
 const price = signal(10, { name: '$price' })
 const total = computed(() => price() * 2)
-effect(() => total())
+effect(() => { total() })
 getReactiveGraph().nodes // → [$price (signal), derived, effect]
 deactivateReactiveDevtools() // → registry cleared`,
       mistakes: [
@@ -768,7 +768,7 @@ deactivateReactiveDevtools() // → registry cleared`,
       example: `activateReactiveDevtools()
 const a = signal(1, { name: '$a' })
 const b = computed(() => a() + 1)
-effect(() => b())
+effect(() => { b() })
 a.set(2)
 getReactiveGraph()
 // nodes: [{ name:'$a', kind:'signal', value:'2', … }, { kind:'derived', … }, { kind:'effect', … }]

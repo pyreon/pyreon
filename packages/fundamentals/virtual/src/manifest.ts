@@ -14,14 +14,14 @@ import { signal } from '@pyreon/reactivity'
 const items = signal(Array.from({ length: 10000 }, (_, i) => ({ id: i, label: \`Item \${i}\` })))
 
 const MyList = () => {
-  let scrollRef!: HTMLDivElement
+  let scrollRef!: HTMLElement
 
-  const virtualizer = useVirtualizer({
-    count: () => items().length,
+  const virtualizer = useVirtualizer(() => ({
+    count: items().length,             // read a signal here → reactive
     getScrollElement: () => scrollRef,
     estimateSize: () => 35,            // px per row
     overscan: 5,                       // render 5 extra items above/below viewport
-  })
+  }))
 
   return (
     <div ref={(el) => (scrollRef = el)} style="height: 400px; overflow: auto">
@@ -42,10 +42,10 @@ const MyList = () => {
 
 // Window-scoped virtualizer — scrolls with the page
 const WindowList = () => {
-  const virtualizer = useWindowVirtualizer({
-    count: () => items().length,
+  const virtualizer = useWindowVirtualizer(() => ({
+    count: items().length,
     estimateSize: () => 50,
-  })
+  }))
 
   return (
     <div style={() => \`height: \${virtualizer.totalSize()}px; position: relative\`}>
@@ -73,12 +73,12 @@ const WindowList = () => {
       signature: '(options: UseVirtualizerOptions) => UseVirtualizerResult',
       summary:
         'Create an element-scoped virtualizer. Attach to a scrollable container via `getScrollElement`. Returns reactive `virtualItems()`, `totalSize()`, and `isScrolling()` signals plus `scrollToIndex()` and `scrollToOffset()` for programmatic control. Options that accept functions (`count`, `estimateSize`) track signal reads reactively.',
-      example: `const virtualizer = useVirtualizer({
-  count: () => items().length,
+      example: `const virtualizer = useVirtualizer(() => ({
+  count: items().length,          // signal read inside the thunk → reactive
   getScrollElement: () => scrollRef,
   estimateSize: () => 35,
   overscan: 5,
-})
+}))
 
 // virtualItems() is reactive — re-evaluates as user scrolls
 <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>
@@ -86,7 +86,7 @@ const WindowList = () => {
 </For>`,
       mistakes: [
         'Forgetting to set a fixed height on the scroll container — without overflow:auto + a height, the virtualizer has no viewport to measure',
-        'Passing count as a plain number instead of a function when the list length is dynamic — the virtualizer won\'t update when items change',
+        'Passing options as a plain object instead of a function — useVirtualizer takes a thunk `() => ({ ... })`, so signal reads inside it (e.g. `count: items().length`) are tracked and the virtualizer updates when the list changes',
         'Reading virtualItems() outside a reactive scope — captures the initial window only, never updates on scroll',
         'Using .map() instead of <For> on virtualItems — loses keyed reconciliation',
       ],
@@ -98,10 +98,10 @@ const WindowList = () => {
       signature: '(options: UseWindowVirtualizerOptions) => UseWindowVirtualizerResult',
       summary:
         'Create a window-scoped virtualizer that uses the browser window as the scroll container. SSR-safe — checks for browser environment before attaching scroll listeners. Same return shape as `useVirtualizer` (virtualItems, totalSize, isScrolling, scrollToIndex). Use for long page-level lists where the entire page scrolls.',
-      example: `const virtualizer = useWindowVirtualizer({
-  count: () => items().length,
+      example: `const virtualizer = useWindowVirtualizer(() => ({
+  count: items().length,
   estimateSize: () => 50,
-})
+}))
 
 <div style={() => \`height: \${virtualizer.totalSize()}px; position: relative\`}>
   <For each={() => virtualizer.virtualItems()} by={(item) => item.index}>

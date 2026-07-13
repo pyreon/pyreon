@@ -354,7 +354,6 @@ describe('api-reference', () => {
       'core/Portal',
       'core/mapArray',
       'core/createRef',
-      'core/untrack',
       'core/ExtractProps',
       'core/HigherOrderComponent',
     ]
@@ -424,7 +423,7 @@ describe('api-reference', () => {
     it('Transition documents the 5s safety timeout', () => {
       const entry = API_REFERENCE['runtime-dom/Transition']
       expect(entry?.notes).toContain('5')
-      expect(entry?.mistakes?.split('\n').length).toBe(3)
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
     })
   })
 
