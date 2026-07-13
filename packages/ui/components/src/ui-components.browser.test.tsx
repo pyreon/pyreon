@@ -4,7 +4,16 @@ import { init, PyreonUI } from '@pyreon/ui-core'
 import { theme } from '@pyreon/ui-theme'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
-import { Button, Loader, Pagination, Tooltip } from './index'
+import {
+  Alert,
+  Breadcrumb,
+  BreadcrumbItem,
+  Button,
+  Loader,
+  Notification,
+  Pagination,
+  Tooltip,
+} from './index'
 
 /**
  * Real-browser smoke test for `@pyreon/ui-components`.
@@ -86,6 +95,135 @@ describe('@pyreon/ui-components — static ARIA defaults', () => {
     const el = container.querySelector('#a11y-tip')!
     expect(el).not.toBeNull()
     expect(el.getAttribute('role')).toBe('tooltip')
+    unmount()
+  })
+})
+
+/**
+ * Live-region roles on Alert/Notification + the Breadcrumb navigation landmark
+ * (the residual deferred by PR #2214). All values are asserted with
+ * `getAttribute(...) === '<string>'` — never `hasAttribute` — because an ARIA
+ * live-region role that renders as `role=""` announces NOTHING, so the VALUE is
+ * the whole point. `aria-current` is asserted as the literal string `"page"`
+ * (a boolean would render value-less `aria-current=""`, which AT ignores).
+ */
+describe('@pyreon/ui-components — live-region roles + breadcrumb landmark', () => {
+  it('Alert default (no state) is a POLITE live region (role="status" + aria-live="polite")', () => {
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme }, h(Alert as never, { id: 'a11y-alert' }, 'Heads up')),
+    )
+    const el = container.querySelector('#a11y-alert')!
+    expect(el).not.toBeNull()
+    expect(el.getAttribute('role')).toBe('status')
+    expect(el.getAttribute('aria-live')).toBe('polite')
+    unmount()
+  })
+
+  it('Alert state="info"/"success" stay POLITE (role="status")', () => {
+    for (const state of ['info', 'success'] as const) {
+      const { container, unmount } = mountInBrowser(
+        h(PyreonUI, { theme }, h(Alert as never, { id: `a11y-alert-${state}`, state }, state)),
+      )
+      const el = container.querySelector(`#a11y-alert-${state}`)!
+      expect(el.getAttribute('role')).toBe('status')
+      expect(el.getAttribute('aria-live')).toBe('polite')
+      unmount()
+    }
+  })
+
+  it('Alert state="error"/"warning" become ASSERTIVE (role="alert" + aria-live="assertive")', () => {
+    for (const state of ['error', 'warning'] as const) {
+      const { container, unmount } = mountInBrowser(
+        h(PyreonUI, { theme }, h(Alert as never, { id: `a11y-alert-${state}`, state }, state)),
+      )
+      const el = container.querySelector(`#a11y-alert-${state}`)!
+      expect(el.getAttribute('role')).toBe('alert')
+      expect(el.getAttribute('aria-live')).toBe('assertive')
+      unmount()
+    }
+  })
+
+  it('Alert role/aria-live are DEFAULTS — consumer-supplied values win', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme },
+        // A critical error rendered non-interrupting on purpose (author override).
+        h(Alert as never, { id: 'a11y-alert-ovr', state: 'error', role: 'log', 'aria-live': 'polite' }, 'x'),
+      ),
+    )
+    const el = container.querySelector('#a11y-alert-ovr')!
+    expect(el.getAttribute('role')).toBe('log')
+    expect(el.getAttribute('aria-live')).toBe('polite')
+    unmount()
+  })
+
+  it('Notification is a POLITE live region regardless of severity (role="status" + aria-live="polite")', () => {
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme }, h(Notification as never, { id: 'a11y-notif', state: 'error' }, 'Saved')),
+    )
+    const el = container.querySelector('#a11y-notif')!
+    expect(el).not.toBeNull()
+    expect(el.getAttribute('role')).toBe('status')
+    expect(el.getAttribute('aria-live')).toBe('polite')
+    unmount()
+  })
+
+  it('Notification role is a DEFAULT — a consumer can escalate to role="alert"', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme },
+        h(Notification as never, { id: 'a11y-notif-ovr', role: 'alert', 'aria-live': 'assertive' }, 'Urgent'),
+      ),
+    )
+    const el = container.querySelector('#a11y-notif-ovr')!
+    expect(el.getAttribute('role')).toBe('alert')
+    expect(el.getAttribute('aria-live')).toBe('assertive')
+    unmount()
+  })
+
+  it('Breadcrumb is a <nav aria-label="Breadcrumb"> navigation landmark', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme },
+        h(
+          Breadcrumb as never,
+          { id: 'a11y-crumbs' },
+          h(BreadcrumbItem as never, { id: 'crumb-home' }, 'Home'),
+          h(BreadcrumbItem as never, { id: 'crumb-current', 'aria-current': 'page' }, 'Current'),
+        ),
+      ),
+    )
+    const el = container.querySelector('#a11y-crumbs')!
+    expect(el).not.toBeNull()
+    expect(el.tagName.toLowerCase()).toBe('nav')
+    expect(el.getAttribute('aria-label')).toBe('Breadcrumb')
+    unmount()
+  })
+
+  it('Breadcrumb aria-label is a DEFAULT — a consumer-supplied label wins', () => {
+    const { container, unmount } = mountInBrowser(
+      h(PyreonUI, { theme }, h(Breadcrumb as never, { id: 'a11y-crumbs2', 'aria-label': 'You are here' })),
+    )
+    const el = container.querySelector('#a11y-crumbs2')!
+    expect(el.tagName.toLowerCase()).toBe('nav')
+    expect(el.getAttribute('aria-label')).toBe('You are here')
+    unmount()
+  })
+
+  it('BreadcrumbItem forwards aria-current="page" as the literal string (not a value-less boolean)', () => {
+    const { container, unmount } = mountInBrowser(
+      h(
+        PyreonUI,
+        { theme },
+        h(BreadcrumbItem as never, { id: 'crumb-active', 'aria-current': 'page' }, 'Current'),
+      ),
+    )
+    const el = container.querySelector('#crumb-active')!
+    expect(el).not.toBeNull()
+    expect(el.getAttribute('aria-current')).toBe('page')
     unmount()
   })
 })
