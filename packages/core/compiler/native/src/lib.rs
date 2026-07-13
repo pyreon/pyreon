@@ -2347,7 +2347,7 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
         // AST-based resolution: find identifier references to prop-derived vars
         let prop_derived_vars_snapshot: FxHashMap<String, Span> =
             ctx.prop_derived_vars.clone();
-        let mut idents: Vec<(u32, u32, String)> = Vec::new();
+        let mut idents: Vec<(u32, u32, String, bool)> = Vec::new();
         collect_prop_derived_idents(init_expr, &prop_derived_vars_snapshot, &mut idents);
 
         if idents.is_empty() {
@@ -2355,7 +2355,7 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
         } else {
             // Sort by position, deduplicate overlapping
             idents.sort_by_key(|i| i.0);
-            let mut deduped: Vec<(u32, u32, String)> = Vec::new();
+            let mut deduped: Vec<(u32, u32, String, bool)> = Vec::new();
             for ident in idents {
                 if deduped.last().map_or(true, |last| ident.0 >= last.1) {
                     deduped.push(ident);
@@ -2365,10 +2365,16 @@ fn resolve_var_to_string(var_name: &str, ctx: &mut Ctx) -> String {
             // Build replacement string using absolute source offsets
             let mut result = String::new();
             let mut last = span.start;
-            for (start, end, ref ident_name) in &deduped {
+            for (start, end, ref ident_name, is_shorthand) in &deduped {
                 result.push_str(&ctx.source[last as usize..*start as usize]);
                 let resolved_ident = resolve_var_to_string(ident_name, ctx);
-                result.push_str(&format!("({})", resolved_ident));
+                // A shorthand-property ident expands to `name: (value)`; a
+                // normal reference substitutes `(value)` in place.
+                if *is_shorthand {
+                    result.push_str(&format!("{}: ({})", ident_name, resolved_ident));
+                } else {
+                    result.push_str(&format!("({})", resolved_ident));
+                }
                 last = *end;
             }
             result.push_str(&ctx.source[last as usize..span.end as usize]);
@@ -2394,7 +2400,7 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
     let source_slice = &ctx.source[span.start as usize..span.end as usize];
 
     // Collect identifier references to prop-derived vars in this expression subtree
-    let mut idents: Vec<(u32, u32, String)> = Vec::new(); // (start, end, var_name)
+    let mut idents: Vec<(u32, u32, String, bool)> = Vec::new(); // (start, end, var_name)
     collect_prop_derived_idents(expr, &ctx.prop_derived_vars, &mut idents);
 
     if idents.is_empty() {
@@ -2403,7 +2409,7 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
 
     // Sort by position, deduplicate overlapping
     idents.sort_by_key(|i| i.0);
-    let mut deduped: Vec<(u32, u32, String)> = Vec::new();
+    let mut deduped: Vec<(u32, u32, String, bool)> = Vec::new();
     for ident in idents {
         if deduped.last().map_or(true, |last| ident.0 >= last.1) {
             deduped.push(ident);
@@ -2413,10 +2419,16 @@ fn resolve_expr_with_props(expr: &Expression, ctx: &mut Ctx) -> String {
     // Build replacement string using absolute source offsets
     let mut result = String::new();
     let mut last = span.start;
-    for (start, end, var_name) in &deduped {
+    for (start, end, var_name, is_shorthand) in &deduped {
         result.push_str(&ctx.source[last as usize..*start as usize]);
         let resolved = resolve_var_to_string(var_name, ctx);
-        result.push_str(&format!("({})", resolved));
+        // A shorthand-property ident expands to `name: (value)`; a normal
+        // reference substitutes `(value)` in place.
+        if *is_shorthand {
+            result.push_str(&format!("{}: ({})", var_name, resolved));
+        } else {
+            result.push_str(&format!("({})", resolved));
+        }
         last = *end;
     }
     result.push_str(&ctx.source[last as usize..span.end as usize]);
@@ -2464,7 +2476,7 @@ fn pd_minus(
 
 /// Recurse a JSX element's attributes + children collecting prop-derived
 /// idents. JSX introduces no bindings, so `pd` passes through unchanged.
-fn collect_pd_in_jsx_element(el: &JSXElement, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+fn collect_pd_in_jsx_element(el: &JSXElement, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String, bool)>) {
     for attr in &el.opening_element.attributes {
         match attr {
             JSXAttributeItem::Attribute(a) => {
@@ -2484,7 +2496,7 @@ fn collect_pd_in_jsx_element(el: &JSXElement, pd: &FxHashMap<String, Span>, out:
     }
 }
 
-fn collect_pd_in_jsx_child(child: &JSXChild, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+fn collect_pd_in_jsx_child(child: &JSXChild, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String, bool)>) {
     match child {
         JSXChild::ExpressionContainer(c) => {
             if let Some(e) = jsx_expr_as_expression(&c.expression) {
@@ -2505,7 +2517,7 @@ fn collect_pd_in_jsx_child(child: &JSXChild, pd: &FxHashMap<String, Span>, out: 
 /// computes the block's own bound names (declarations) and filters `pd` for
 /// the whole block — byte-equivalent to the JS `bindingsIntroducedBy`
 /// (BlockStatement) + enter/leave discipline.
-fn collect_pd_in_body(stmts: &[Statement], pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+fn collect_pd_in_body(stmts: &[Statement], pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String, bool)>) {
     let mut bound = FxHashSet::default();
     for s in stmts {
         match s {
@@ -2533,7 +2545,7 @@ fn collect_pd_in_body(stmts: &[Statement], pd: &FxHashMap<String, Span>, out: &m
     }
 }
 
-fn collect_pd_in_stmt(stmt: &Statement, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String)>) {
+fn collect_pd_in_stmt(stmt: &Statement, pd: &FxHashMap<String, Span>, out: &mut Vec<(u32, u32, String, bool)>) {
     match stmt {
         Statement::ExpressionStatement(s) => collect_prop_derived_idents(&s.expression, pd, out),
         Statement::ReturnStatement(s) => {
@@ -2638,12 +2650,12 @@ fn collect_pd_in_stmt(stmt: &Statement, pd: &FxHashMap<String, Span>, out: &mut 
 fn collect_prop_derived_idents(
     expr: &Expression,
     prop_derived_vars: &FxHashMap<String, Span>,
-    out: &mut Vec<(u32, u32, String)>,
+    out: &mut Vec<(u32, u32, String, bool)>,
 ) {
     match expr {
         Expression::Identifier(id) => {
             if prop_derived_vars.contains_key(id.name.as_str()) {
-                out.push((id.span.start, id.span.end, id.name.to_string()));
+                out.push((id.span.start, id.span.end, id.name.to_string(), false));
             }
         }
         // Static member: only recurse into .object, NOT .property
@@ -2733,7 +2745,26 @@ fn collect_prop_derived_idents(
                         if p.computed {
                             collect_prop_derived_idents_in_prop_key(&p.key, prop_derived_vars, out);
                         }
-                        collect_prop_derived_idents(&p.value, prop_derived_vars, out);
+                        if p.shorthand {
+                            // Shorthand `{ color }`: the value IS the key ident.
+                            // A bare substitution would emit a keyless
+                            // `{ (pick(props.v)) }` (a syntax error). Record it
+                            // with the shorthand marker so substitution expands it
+                            // to `{ color: (pick(props.v)) }` — byte-identical to
+                            // the JS backend + the explicit `{ color: color }` form.
+                            if let Expression::Identifier(id) = &p.value {
+                                if prop_derived_vars.contains_key(id.name.as_str()) {
+                                    out.push((
+                                        id.span.start,
+                                        id.span.end,
+                                        id.name.to_string(),
+                                        true,
+                                    ));
+                                }
+                            }
+                        } else {
+                            collect_prop_derived_idents(&p.value, prop_derived_vars, out);
+                        }
                     }
                     ObjectPropertyKind::SpreadProperty(s) => {
                         collect_prop_derived_idents(&s.argument, prop_derived_vars, out);
@@ -2871,7 +2902,7 @@ fn collect_prop_derived_idents(
 fn collect_prop_derived_idents_in_prop_key(
     key: &PropertyKey,
     prop_derived_vars: &FxHashMap<String, Span>,
-    out: &mut Vec<(u32, u32, String)>,
+    out: &mut Vec<(u32, u32, String, bool)>,
 ) {
     if let Some(expr) = key.as_expression() {
         collect_prop_derived_idents(expr, prop_derived_vars, out);
@@ -2883,12 +2914,12 @@ fn collect_prop_derived_idents_in_prop_key(
 fn collect_prop_derived_idents_in_assignment_target(
     target: &SimpleAssignmentTarget,
     prop_derived_vars: &FxHashMap<String, Span>,
-    out: &mut Vec<(u32, u32, String)>,
+    out: &mut Vec<(u32, u32, String, bool)>,
 ) {
     match target {
         SimpleAssignmentTarget::AssignmentTargetIdentifier(id) => {
             if prop_derived_vars.contains_key(id.name.as_str()) {
-                out.push((id.span.start, id.span.end, id.name.to_string()));
+                out.push((id.span.start, id.span.end, id.name.to_string(), false));
             }
         }
         SimpleAssignmentTarget::StaticMemberExpression(m) => {

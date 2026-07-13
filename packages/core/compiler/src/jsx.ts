@@ -2059,7 +2059,12 @@ export function transformJSX_JS(
 
   function resolveIdentifiersInText(text: string, baseOffset: number, sourceNode?: N): string {
     const endOffset = baseOffset + text.length
-    const idents: { start: number; end: number; name: string }[] = []
+    const idents: {
+      start: number
+      end: number
+      name: string
+      shorthand?: boolean
+    }[] = []
 
     // ── Scope-aware shadow tracking ──────────────────────────────────────────
     // Prop-derived consts are only ever COLLECTED at component top level
@@ -2164,7 +2169,21 @@ export function transformJSX_JS(
           } else if (parent.type === 'Property' && parent.key === node && !parent.computed) {
             /* skip */
           } else if (parent.type === 'Property' && parent.shorthand) {
-            /* skip */
+            // Shorthand object property `{ color }` whose value is a
+            // prop-derived const. The identifier is BOTH key and value, so a
+            // bare substitution would emit a keyless `{ (pick(props.v)) }`
+            // (a syntax error). Collect it with a shorthand marker so the
+            // substitution below expands it to `{ color: (pick(props.v)) }` —
+            // byte-identical to the explicit `{ color: color }` form, and
+            // reactive (the inlined value reads props inside the accessor).
+            if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
+              idents.push({
+                start: nodeStart,
+                end: nodeEnd,
+                name: node.name,
+                shorthand: true,
+              })
+            }
           } else if (nodeStart >= baseOffset && nodeEnd <= endOffset) {
             idents.push({ start: nodeStart, end: nodeEnd, name: node.name })
           }
@@ -2188,7 +2207,10 @@ export function transformJSX_JS(
     let lastPos = baseOffset
     for (const id of idents) {
       parts.push(code.slice(lastPos, id.start))
-      parts.push(`(${resolveVarToString(id.name, sourceNode)})`)
+      const resolved = resolveVarToString(id.name, sourceNode)
+      // A shorthand-property ident expands to `name: (value)`; a normal
+      // reference just substitutes `(value)` in place.
+      parts.push(id.shorthand ? `${id.name}: (${resolved})` : `(${resolved})`)
       lastPos = id.end
     }
     parts.push(code.slice(lastPos, endOffset))

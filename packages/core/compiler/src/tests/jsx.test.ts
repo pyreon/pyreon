@@ -1647,6 +1647,29 @@ describe('JSX transform — reactive props detection', () => {
     expect(result).toContain('own.x ?? 5')
   })
 
+  // FW-2: a prop-derived SHORTHAND object value must expand to `key: (value)`,
+  // not a keyless `{ (value) }` (which the native backend emitted as a syntax
+  // error, and the JS backend left non-reactive as `{ color }`). After the fix
+  // the shorthand is byte-identical to the explicit `{ color: color }` form:
+  // the inlined value reads props inside the reactive accessor, so it updates.
+  test('prop-derived shorthand style expands to key: (value) — reactive', () => {
+    const result = t(
+      'function Comp(props) { const color = pick(props.v); return <span style={{ color }} /> }',
+    )
+    expect(result).toContain('color: (pick(props.v))')
+    // never a keyless object property (the old crash/staleness shape)
+    expect(result).not.toMatch(/\{\s*\(pick\(props\.v\)\)\s*\}/)
+  })
+
+  test('static (non-prop-derived) shorthand is left untouched', () => {
+    const result = t(
+      "function Comp() { const color = 'red'; return <span style={{ color }} /> }",
+    )
+    // `color` is a plain local, not prop-derived → not inlined, stays shorthand
+    expect(result).toContain('{ color }')
+    expect(result).not.toContain('color: (')
+  })
+
   test('non-component function NOT tracked (no JSX)', () => {
     const result = t('function helper(props) { const x = props.y; return x }')
     expect(result).not.toContain('_bind')
