@@ -99,7 +99,9 @@ export function App() {
     expect(idx(code, 'const __e0 = __root.firstChild.nextSibling;')).toBeLessThan(
       idx(code, '_mountSlot('),
     )
-    idx(code, '__e0.setAttribute("id", "a" + "b");')
+    // The computed `id={"a" + "b"}` binds on the hoisted `__e0` ref via the
+    // runtime `_setAttr` normalizer (this test's point is the ref-hoist ORDER).
+    idx(code, '_setAttr(__e0, "id", "a" + "b");')
   })
 
   it('slot before a reactive-text sibling: element ref AND text capture hoisted above _mountSlot', () => {

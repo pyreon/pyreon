@@ -185,7 +185,9 @@ describe('Compiler: selector.subscribe auto-promotion', () => {
       `
       const out = transform(src).code
       expect(out).toContain('sel.subscribe(k,')
-      expect(out).toContain('setAttribute("aria-current"')
+      // Generic attrs in the selector-subscribe setter body route through the
+      // runtime `_setAttr` normalizer (aria/boolean/null parity with h()).
+      expect(out).toContain('_setAttr(__root, "aria-current"')
     })
   })
 })

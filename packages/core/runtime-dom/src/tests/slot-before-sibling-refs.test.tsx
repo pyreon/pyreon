@@ -34,6 +34,7 @@ import { renderToString } from '@pyreon/runtime-server'
 import { _tpl, _bindText, _bindDirect, _mountSlot } from '../template'
 import {
   _applyProps,
+  _setAttr,
   _setStyle,
   disableHydrationWarnings,
   hydrateRoot,
@@ -68,6 +69,7 @@ const RUNTIME_DEPS = {
   _bindDirect,
   _applyProps,
   _setStyle,
+  _setAttr,
   _mountSlot,
   _rp,
   _cx: cx,

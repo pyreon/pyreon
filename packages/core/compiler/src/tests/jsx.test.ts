@@ -981,14 +981,17 @@ describe('JSX transform — template emission', () => {
 
   test('one-time set for non-class static expression attribute', () => {
     const result = t('<div title={someVar}><span /></div>')
-    expect(result).toContain('setAttribute("title", someVar)')
+    // Generic attrs route through the runtime `_setAttr` normalizer (= applyAttrProp)
+    // so a dynamic value gets null→removeAttribute / boolean-aria / boolean parity
+    // with the h() path (was a raw setAttribute that ToString'd undefined → "undefined").
+    expect(result).toContain('_setAttr(__root, "title", someVar)')
     expect(result).not.toContain('_bind(')
   })
 
   test('_bindDirect for non-class single-signal dynamic attribute', () => {
     const result = t('<div title={getTitle()}><span /></div>')
     expect(result).toContain('_bindDirect(getTitle,')
-    expect(result).toContain('setAttribute("title"')
+    expect(result).toContain('_setAttr(__root, "title", v)')
   })
 
   test('ref attribute in template binds .current for object refs', () => {
@@ -2623,10 +2626,12 @@ describe('JSX transform — DOM properties use property assignment', () => {
     expect(result).not.toContain('setAttribute("disabled"')
   })
 
-  test('non-DOM-prop attribute still uses setAttribute', () => {
-    // placeholder is a real attribute, not a property-divergent IDL prop
+  test('non-DOM-prop attribute uses the attribute path (_setAttr), not property assignment', () => {
+    // placeholder is a real attribute, not a property-divergent IDL prop — so it
+    // routes through the runtime `_setAttr` attribute normalizer, NOT `.placeholder = v`.
     const result = t('<div><input placeholder={msg()} /></div>')
-    expect(result).toContain('setAttribute("placeholder"')
+    expect(result).toContain('_setAttr(__e0, "placeholder", v)')
+    expect(result).not.toContain('.placeholder = v')
   })
 })
 
@@ -2782,7 +2787,7 @@ describe('JSX transform — reactive combined _bind for multiple reactive attrs'
     const result = t('<div class={`${a()} b`} title={`${c()} d`}><span /></div>')
     expect(result).toContain('_bind(() => {')
     expect(result).toContain('_setClass(')
-    expect(result).toContain('setAttribute("title"')
+    expect(result).toContain('_setAttr(__root, "title"')
   })
 })
 

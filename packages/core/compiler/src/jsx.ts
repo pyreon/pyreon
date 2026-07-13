@@ -1085,6 +1085,7 @@ export function transformJSX_JS(
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
   let needsSetClassImportGlobal = false
+  let needsSetAttrImportGlobal = false
 
   // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
   let needsCollapse = false
@@ -2461,6 +2462,7 @@ export function transformJSX_JS(
     if (needsSetChildAtImportGlobal) runtimeDomImports.push('_setChildAt')
     if (needsSetStyleImportGlobal) runtimeDomImports.push('_setStyle')
     if (needsSetClassImportGlobal) runtimeDomImports.push('_setClass')
+    if (needsSetAttrImportGlobal) runtimeDomImports.push('_setAttr')
     const reactivityImports = needsBindImportGlobal
       ? `\nimport { _bind } from "@pyreon/reactivity";`
       : ''
@@ -2617,6 +2619,7 @@ export function transformJSX_JS(
     let needsCxImport = false
     let needsSetStyle = false
     let needsSetClass = false
+    let needsSetAttr = false
 
     function nextVar(): string {
       return `__e${varIdx++}`
@@ -3047,7 +3050,16 @@ export function transformJSX_JS(
         return `{ const _h = (${expr}); ${varName}.innerHTML = _h != null && _h.__html != null ? _h.__html : "" }`
       }
       if (DOM_PROPS.has(htmlAttrName)) return `${varName}.${htmlAttrName} = ${expr}`
-      return `${varName}.setAttribute("${htmlAttrName}", ${expr})`
+      // Generic attribute — delegate to the runtime `_setAttr` (= applyAttrProp)
+      // so a compiled DYNAMIC attribute normalizes identically to the h() path
+      // (packages/core/runtime-dom/src/props.ts:setStaticProp): null/undefined →
+      // removeAttribute (NOT the literal "undefined" a raw setAttribute would
+      // ToString-coerce — the invalid `aria-*="undefined"` a11y bug), boolean
+      // aria → "true"/"false", boolean → presence/absence. Mirrors `_setClass`/
+      // `_setStyle`. Static string/number/bool LITERALS still bake into the
+      // template HTML (staticAttrToHtml) — this fires only for dynamic values.
+      needsSetAttr = true
+      return `_setAttr(${varName}, "${htmlAttrName}", ${expr})`
     }
 
     function emitDynamicAttr(
@@ -3084,7 +3096,7 @@ export function transformJSX_JS(
                 ? `(v) => { ${varName}.innerHTML = v != null && v.__html != null ? v.__html : "" }`
                 : DOM_PROPS.has(htmlAttrName)
                   ? `(v) => { ${varName}.${htmlAttrName} = v }`
-                  : `(v) => { ${varName}.setAttribute("${htmlAttrName}", v == null ? "" : String(v)) }`
+                  : ((needsSetAttr = true), `(v) => _setAttr(${varName}, "${htmlAttrName}", v)`)
         const callerArg = directRef.isMember ? `, () => ${directRef.ref}()` : ''
         bindLines.push(`const ${d} = _bindDirect(${directRef.ref}, ${updater}${callerArg})`)
         return
@@ -3653,6 +3665,7 @@ export function transformJSX_JS(
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true
     if (needsSetClass) needsSetClassImportGlobal = true
+    if (needsSetAttr) needsSetAttrImportGlobal = true
 
     const escaped = html.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
