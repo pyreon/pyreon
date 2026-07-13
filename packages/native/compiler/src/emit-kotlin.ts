@@ -1673,6 +1673,17 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'color-scheme') {
     return `val ${kotlinIdent(d.name)} = if (isSystemInDarkTheme()) "dark" else "light"`
   }
+  // M2.2: `const sizeClass = useSizeClass()` →
+  // `val ${name} = if (LocalConfiguration.current.screenWidthDp >= 600) "regular" else "compact"`.
+  // `LocalConfiguration` (androidx.compose.ui.platform, conditional-imported
+  // in cli/build.ts like LocalContext) recomposes on configuration change
+  // (rotation / split-screen), so the read is reactive — no runtime port
+  // needed. 600dp is the standard expanded-width breakpoint, matching the
+  // web hook's `(min-width: 600px)`. Returns the same `"compact" | "regular"`
+  // string shape Swift + web emit.
+  if (d.kind === 'size-class') {
+    return `val ${kotlinIdent(d.name)} = if (LocalConfiguration.current.screenWidthDp >= 600) "regular" else "compact"`
+  }
   // C4: router hook — `const navigate = useNavigate()` → as-is.
   // Compose's `useNavigate()` is a `@Composable` function that reads
   // `LocalPyreonRouter.current` directly via CompositionLocal — no

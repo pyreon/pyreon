@@ -8,7 +8,7 @@
 // SwiftUI's @State is a var, not a method).
 
 import { signal } from '@pyreon/reactivity'
-import { useHaptics, useShare, useLinking, useNotifications } from '@pyreon/hooks'
+import { useHaptics, useShare, useLinking, useNotifications, useSizeClass } from '@pyreon/hooks'
 
 export function Counter() {
   const count = signal<number>(0)
@@ -36,9 +36,17 @@ export function Counter() {
   // channel). Web: Notification API. R4 asserts the tap does not crash
   // (the banner + permission prompt make a full behavioral assert flaky).
   const notifs = useNotifications()
+  // M2.2 adaptive proof — the current horizontal size class, read reactively.
+  // Native: iOS `@Environment(\.horizontalSizeClass)` → "compact"/"regular",
+  // Android `LocalConfiguration.current.screenWidthDp >= 600`. Web:
+  // `matchMedia('(min-width: 600px)')`. OBSERVABLE + differentiating — the
+  // device gate asserts `Size: compact` on an iPhone (and `Size: regular`
+  // on an iPad locally), proving the read reflects the REAL environment.
+  const sizeClass = useSizeClass()
   return (
     <VStack>
       <Text>Count: {count}</Text>
+      <Text>Size: {sizeClass}</Text>
       <Button
         onClick={() => {
           count.set(count() + 1)

@@ -243,7 +243,7 @@ Handlers may be **multi-statement** — `onPress={() => { a.set(1); b.set(2) }}`
 | `justify` | `"start" \| "center" \| "end" \| "between"` | Per-platform main-axis |
 | `radius` | `"none" \| "sm" \| "md" \| "lg" \| "full"` | Per-platform corner radius |
 
-**No responsive props in v1.** Web has media queries, iOS has size classes, Android has configuration changes — unifying these is a multi-week design problem deferred to a future arc. Apps that need responsive web layouts use `@pyreon/elements` directly (it has full responsive prop support).
+**No responsive props in v1.** Web has media queries, iOS has size classes, Android has configuration changes — unifying these as per-primitive responsive *props* is a multi-week design problem deferred to a future arc. Apps that need responsive web layouts use `@pyreon/elements` directly (it has full responsive prop support). The one adaptive primitive that HAS landed is the `useSizeClass()` READ hook (M2.2) — a single `'compact' | 'regular'` signal that lowers to iOS `@Environment(\.horizontalSizeClass)` / Android `LocalConfiguration` width / web `matchMedia` — so shared code can branch on width today; the size-class-driven *layout* primitive (Stack↔Inline) is the M2.2b follow-up.
 
 **No animation primitives in v1.** Same reasoning.
 
@@ -343,7 +343,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | Platform APIs (haptics/share/link/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.4 | clipboard/geolocation/push/payments/permissions/**haptics**/**share**/**link**/**notifs** exist at R2+. **share** (`useShare()`, M3.2) + **link** (`useLinking()`, M3.2b) each reach a **BEHAVIORAL R4** (XCUITest asserts the share sheet appears / the app leaves the foreground on `UIApplication.shared.open`). **haptics** (`useHaptics()`, M3.1) + **notifs** (`useNotifications()`, M3.3 — LOCAL notifications, iOS UNUserNotificationCenter / Android NotificationManager+channel+POST_NOTIFICATIONS) each reach a **NON-BEHAVIORAL R4** (the tap fires the call without crashing; haptics have no observable UI on the Simulator, and a notification's permission-prompt + auto-dismissing banner make a reliable springboard assert infeasible — so the honest ceiling is build+run+tap-no-crash). Android: `Intent.createChooser(ACTION_SEND)` / `Intent.ACTION_VIEW` / `NotificationManagerCompat`. camera/biometrics/files/deep-links/lifecycle ABSENT |
 | Animations & transitions | 6 | 0.0 | absent (v1 exclusion) |
 | Gestures | 4 | 0.6 | tap R5; **long-press** `<Press onLongPress>` R4 (M2.3 — counter reset via a simultaneous LongPressGesture, iOS Simulator pass; Android `combinedClickable(onLongClick)` proven by the device run); swipe/drag absent |
-| Adaptive / tablet layout | 5 | 0.0 | absent (no size classes) |
+| Adaptive / tablet layout | 5 | 0.2 | **`useSizeClass()` (M2.2)** — the horizontal size-class READ reaches a **BEHAVIORAL R4**: the counter's XCUITest asserts `Size: compact` on an iPhone Simulator, and the same suite (assertion flipped) asserts `Size: regular` on an iPad Simulator — so the emit reflects the REAL environment, not a baked constant. iOS `@Environment(\.horizontalSizeClass)` / Android `LocalConfiguration.current.screenWidthDp >= 600` / web `matchMedia('(min-width: 600px)')`. The adaptive-LAYOUT primitive (size-class-driven Stack↔Inline) is still absent (M2.2b) |
 | Media (image display/picker/AV) | 4 | 0.25 | bundled image display R5 (tasks branded header); remote image R2; picker/AV absent |
 | Accessibility | 3 | 0.0 | semantics emit R2; never device-asserted |
 | i18n | 3 | 0.0 | R2 (PyreonI18n both platforms) |
@@ -352,8 +352,8 @@ whenever a row changes; do not edit the totals without recomputing.
 | Payments | 2 | 0.0 | R2 runtime; no device test |
 | Background / push | 3 | 0.0 | R2 runtime; manual `.start()`; no device test |
 
-**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 + M3.2 + M3.2b + M3.3 applied):** device-proven (R4+) coverage
-**≈ 44%** (47.0 / 107 — +1.0 each: haptics non-behavioral + share behavioral + link behavioral + notifs non-behavioral R4, see the Platform APIs row); compile-proven (R2+) upper bound **≈ 74%** —
+**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 + M3.2 + M3.2b + M3.3 + M2.2 applied):** device-proven (R4+) coverage
+**≈ 45%** (48.0 / 107 — the Platform-APIs row's +1.0 each for haptics/share/link/notifs, plus **+1.0 for `useSizeClass()` (M2.2)**: the Adaptive/tablet row moves 0.0 → 0.2 on a BEHAVIORAL R4 size-class read, see that row); compile-proven (R2+) upper bound **≈ 74%** —
 i.e. roughly three-quarters of the weighted surface already *exists and
 typechecks*, but only about a third is *proven to behave* on a device.
 **The production goal is 70–90% at R4+**; the gap between the two

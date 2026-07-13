@@ -1,6 +1,6 @@
 # @pyreon/hooks
 
-44 signal-based reactive utilities across seven categories for Pyreon apps.
+45 signal-based reactive utilities across seven categories for Pyreon apps.
 
 A reactive-primitives library for the patterns Pyreon components reach for every day: controllable state, DOM observers, responsive layout, timing, interaction, and ref composition. Every hook is SSR-safe (browser-API access is guarded), auto-cleans on unmount (registers `onUnmount` for listeners / observers / timers), and signal-native (returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values) so consumers compose directly with `effect` / `computed` without re-bridging. Used as the foundation by every `@pyreon/ui-primitives` component.
 
@@ -50,7 +50,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 ## The full surface
 
-44 hooks across 7 categories.
+45 hooks across 7 categories.
 
 ### State
 
@@ -86,6 +86,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useBreakpoint()` | Theme-driven active-breakpoint flags |
 | `useMediaQuery(query)` | Raw CSS media-query escape hatch |
 | `useColorScheme()` | `Signal<'light' \| 'dark'>` from `prefers-color-scheme` |
+| `useSizeClass()` | `() => 'compact' \| 'regular'` horizontal size class (`min-width: 600px`); PMTC lowers to iOS `@Environment(\.horizontalSizeClass)` / Android `LocalConfiguration` width |
 | `useReducedMotion()` | `Signal<boolean>` from `prefers-reduced-motion` |
 | `useThemeValue(path)` | Reactive theme lookup by path |
 | `useSpacing(value)` | Reactive theme-spacing accessor |
