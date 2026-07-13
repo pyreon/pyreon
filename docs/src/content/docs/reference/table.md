@@ -168,15 +168,10 @@ Fine-grained per-cell renderer for live cell values. Inside a keyed `<For>`, the
 **Example**
 
 ```tsx
-<For each={() => table().getRowModel().rows} by={(r) => r.id}>
-  {(row) => (
-    <tr>
-      <For each={() => row.getVisibleCells()} by={(c) => c.id}>
-        {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
-      </For>
-    </tr>
-  )}
-</For>
+// Place inside an accessor child, passing the `table` ACCESSOR (not `table()`):
+//   <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>
+// so a single-cell edit patches ONLY that cell.
+flexRenderCell(table, row.id, columnId)
 ```
 
 **Common mistakes**
