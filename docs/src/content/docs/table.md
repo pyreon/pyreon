@@ -38,9 +38,9 @@ TanStack Table core is included as a dependency -- all exports from `@tanstack/t
 Use `useTable` to create a reactive table instance. Options are passed as a function so reactive signals (e.g., data, columns, sorting state) can be read inside and the table updates automatically.
 
 ```tsx
-import { defineComponent } from '@pyreon/core'
+import { defineComponent, For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { useTable, flexRender, getCoreRowModel, createColumnHelper } from '@pyreon/table'
+import { useTable, flexRender, flexRenderCell, getCoreRowModel, createColumnHelper } from '@pyreon/table'
 
 interface Person {
   name: string
@@ -71,35 +71,43 @@ const PeopleTable = defineComponent(() => {
   return () => (
     <table>
       <thead>
-        {table()
-          .getHeaderGroups()
-          .map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <th key={header.id}>
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
-                </th>
-              ))}
+        <For each={() => table().getHeaderGroups()} by={(g) => g.id}>
+          {(headerGroup) => (
+            <tr>
+              <For each={() => headerGroup.headers} by={(h) => h.id}>
+                {(header) => (
+                  <th onClick={header.column.getToggleSortingHandler()}>
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
+                )}
+              </For>
             </tr>
-          ))}
+          )}
+        </For>
       </thead>
       <tbody>
-        {table()
-          .getRowModel()
-          .rows.map((row) => (
-            <tr key={row.id}>
-              {row.getVisibleCells().map((cell) => (
-                <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-              ))}
+        <For each={() => table().getRowModel().rows} by={(r) => r.id}>
+          {(row) => (
+            <tr>
+              <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+                {/* Fine-grained: pass the `table` accessor (not `table()`) so a
+                    single-cell edit patches ONLY this cell — no re-render of
+                    the row or table, no memoization boilerplate. */}
+                {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+              </For>
             </tr>
-          ))}
+          )}
+        </For>
       </tbody>
     </table>
   )
 })
 ```
+
+Use `<For>` (not `.map()`) for the rows and cells: it keeps Pyreon's keyed
+reconciliation (DOM nodes are reused/moved, not rebuilt), and `flexRenderCell`
+inside an accessor gives fine-grained per-cell updates. A plain `.map()` rebuilds
+the whole `<tbody>` on every change — the worst-case DOM churn.
 
 ## `useTable`
 
@@ -117,7 +125,8 @@ Internally, `useTable`:
 2. Creates the TanStack Table instance via `createTable()` with resolved options.
 3. Sets up a reactive `effect()` that re-syncs options whenever signals read inside the options function change.
 4. Uses a version counter signal to force the returned `Computed` to re-notify consumers when table state changes (since the table object identity does not change).
-5. Registers an `onUnmount` callback to dispose the effect when the component unmounts.
+5. Maintains **per-row version signals** so `flexRenderCell` cells subscribe to only their own row — an in-place data edit re-runs just the changed rows' cells (see [Fine-grained cell updates](#fine-grained-cell-updates)).
+6. Registers an `onUnmount` callback to dispose the effect when the component unmounts.
 
 ### Reactive Options
 
@@ -171,6 +180,50 @@ rowCount() // 4
 data.set([defaultData[0]])
 rowCount() // 1
 ```
+
+### Fine-grained cell updates
+
+Render live cells with **`flexRenderCell(table, row.id, cell.column.id)`** inside an
+accessor. This is the fine-grained per-cell primitive: on an in-place data edit it
+patches **only** the changed rows' cells — no row re-render, no table re-render, and
+no memoization boilerplate.
+
+```tsx
+<For each={() => table().getRowModel().rows} by={(r) => r.id}>
+  {(row) => (
+    <tr>
+      <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+        {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+      </For>
+    </tr>
+  )}
+</For>
+```
+
+Two rules make it fine-grained:
+
+- **Pass the `table` accessor, not `table()`.** With the accessor, the cell subscribes
+  to only its own row's signal (the adapter tracks which rows' `original` data changed).
+  Passing the resolved instance `table()` still works but subscribes to the whole table
+  — every cell re-runs on any change.
+- **Wrap it in an explicit accessor `{() => …}`.** Inside a keyed `<For>`, the `row`/`cell`
+  objects are captured once (the reconciler reuses the DOM node and never re-runs the cell
+  body). Plain `flexRender(cell.column.columnDef.cell, cell.getContext())` therefore *freezes*
+  when a cell value changes in place. `flexRenderCell` re-navigates to the live cell each read.
+
+A table-**state** change (sort, filter, selection, column visibility) re-runs all cells
+(coarse — correct by default for cells that render state, e.g. a selection checkbox). An
+in-place **data** edit is the fine-grained path.
+
+:::caution Reorder-on-data-edit limitation
+A data edit that changes the **sort order** (editing the very column you're sorted by)
+updates every cell to the correct value but does **not** re-position the keyed rows until
+the next structure/state change. This is a pre-existing base-adapter limitation of the
+sorted-row-model + `<For>` interaction (it affects plain `flexRender` cells too — not
+just `flexRenderCell`). Re-ordering via the sort controls (`toggleSorting` / `setSorting`)
+works normally. Workaround: re-apply sorting after such an edit, or sort by a column you
+don't edit in place.
+:::
 
 ### Binding per-cell values that change (column width, sort indicators)
 
@@ -315,6 +368,37 @@ columnHelper.accessor('name', {
   cell: (info) => info.getValue(),
 })
 ```
+
+## `flexRenderCell`
+
+```ts
+function flexRenderCell<TData extends RowData>(
+  table: Table<TData> | Computed<Table<TData>>,
+  rowId: string,
+  columnId: string,
+): unknown
+```
+
+The fine-grained per-cell renderer. Where `flexRender` renders a cell from a captured
+`cell` object (which freezes inside a keyed `<For>` when the value changes), `flexRenderCell`
+re-navigates to the **live** cell from the current row model on every read. Place it inside
+an accessor and pass the `table` **accessor** for fine-grained updates:
+
+```tsx
+<For each={() => row.getVisibleCells()} by={(c) => c.id}>
+  {(cell) => <td>{() => flexRenderCell(table, row.id, cell.column.id)}</td>}
+</For>
+```
+
+- Pass the **accessor** `table` (not `table()`): the cell then subscribes to only its own
+  row's signal, so an in-place data edit re-runs just the changed rows' cells — matching a
+  hand-memoized `@tanstack/react-table` row, with no `React.memo` boilerplate.
+- Passing the resolved instance `table()` still renders correctly but subscribes coarsely
+  (every cell re-runs on any change).
+- Returns `null` when the row is not in the current (filtered / paginated) row model.
+
+See [Fine-grained cell updates](#fine-grained-cell-updates) for the full pattern and the
+reorder-on-data-edit caveat.
 
 ## Column Definitions
 
@@ -1594,3 +1678,12 @@ Render a TanStack Table column definition template.
 - **`component`** -- The column def template (string, number, function, VNode, or null).
 - **`props`** -- The context props from TanStack Table (e.g., `header.getContext()`, `cell.getContext()`).
 - **Returns** -- The rendered output (string, number, VNode, or null).
+
+### `flexRenderCell(table, rowId, columnId)`
+
+Fine-grained per-cell renderer — re-navigates to the live cell each read so an in-place
+data edit patches only the changed cell. Place inside an accessor: `{() => flexRenderCell(table, row.id, cell.column.id)}`.
+
+- **`table`** -- The `Computed<Table>` **accessor** (fine-grained per-row subscription) or a resolved `Table` instance (coarse).
+- **`rowId`** / **`columnId`** -- The row id (`row.id`) and column id (`cell.column.id`).
+- **Returns** -- The rendered cell output, or `null` when the row is not in the current row model.
