@@ -52,6 +52,8 @@ const secret = useEncrypted('api-key', '')`,
     'useMemoryStorage — in-memory fallback, SSR-safe',
     'createStorage(backend) — factory for custom storage backends',
     'StorageSignal<T> extends Signal<T> with .remove()',
+    'version + migrate — persisted-schema migration for evolving stored shapes (all backends, cross-tab-aware)',
+    'onError fires on WRITE failures too (quota-exceeded / blocked storage), not just deserialize — no more silent swallow',
   ],
   api: [
     {
@@ -69,6 +71,8 @@ theme.remove()    // delete from storage, reset to default`,
         'Expecting cross-tab sync with `useSessionStorage` — only `useStorage` (localStorage) fires storage events across tabs',
         'Storing non-serializable values (functions, class instances) without custom `serializer`/`deserializer` — JSON.stringify drops them silently',
         'Reading `.remove()` return value — it returns void, not the removed value',
+        'Evolving the stored shape without `version` + `migrate` — a user with the OLD shape on disk loads it as-is (or `onError`/default if it no longer parses). Bump `version` and provide `migrate` to transform the old shape; a pre-versioning value is migrated as version `0`.',
+        'Assuming a `.set()` that exceeds quota throws — the in-memory signal always updates; the `setItem` failure is routed to `onError` (a notification) instead of throwing. Provide `onError` to surface quota problems to the user.',
       ],
       seeAlso: ['useSessionStorage', 'useCookie', 'useIndexedDB', 'createStorage'],
     },
@@ -124,7 +128,7 @@ draft.set('typing...')
       kind: 'function',
       signature: 'setCookieSource(source: string | (() => string) | null) => void',
       summary:
-        "Tell `useCookie` how to read cookies during SSR. Pass the raw cookie header string (or an accessor returning it) at the top of each request handler so server-side renders see the user's actual cookies. Pass `null` to clear (typically at request cleanup). The module-level cookie source is per-request-context-isolated via `runWithRequestContext` so concurrent SSR requests do not see each other's cookies.",
+        "Tell `useCookie` how to read cookies during SSR. Pass the raw cookie header string, an accessor `() => string` returning it, or `null` to clear. The source is a single module-level slot: a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process), so on a server handling concurrent requests pass an ACCESSOR bound to your per-request context (e.g. reading the current request's `Cookie` header out of `runWithRequestContext`'s AsyncLocalStorage) — the accessor is evaluated LAZILY at each cookie read, so each request resolves its own cookies without this module holding per-request state.",
       example: `import { setCookieSource } from '@pyreon/storage'
 
 // Inside an SSR handler:
@@ -132,6 +136,7 @@ setCookieSource(request.headers.get('cookie') ?? '')
 const html = await renderToString(<App />)`,
       mistakes: [
         "Forgetting to call setCookieSource on SSR — `useCookie` falls back to `defaultValue` on every request, ignoring the user's real cookie state. The page hydrates correctly on the client but flashes the default first.",
+        "Passing a bare STRING source on a CONCURRENTLY-rendering server — the source is one module-level slot, so request A's string can leak into request B's render. Pass an accessor `() => currentRequest().cookieHeader` bound to your per-request context (it's evaluated lazily at read time) so each request resolves its own cookies.",
         'Passing a stale cookie source after redirect or login — the source is captured once; re-call after any operation that should change the cookie set.',
         'Calling setCookieSource(null) too early — call it at request CLEANUP (after the response is sent), not before render. Cleaning up mid-render erases the source from later loaders.',
       ],
@@ -186,7 +191,11 @@ const secret = useEncrypted('api-key', '')`,
     },
     {
       label: 'IndexedDB async init',
-      note: 'The IndexedDB hook initializes synchronously with the default value, then hydrates asynchronously. Components reading the value in their first render see the default — the value updates reactively once the IDB read completes.',
+      note: 'The IndexedDB hook initializes synchronously with the default value, then hydrates asynchronously. Components reading the value in their first render see the default — the value updates reactively once the IDB read completes. Init/read/write failures are routed to `onError`.',
+    },
+    {
+      label: 'Versioned migration',
+      note: "Set `version` to store values inside a small JSON envelope carrying the schema version; a later load with a HIGHER `version` runs `migrate(oldValue, fromVersion)` to transform the old shape. A legacy value written before versioning (no envelope) is treated as version `0`. Migration is applied on read AND on cross-tab sync (the entry's options travel with it), so a tab holding the old shape upgrades when a newer tab writes.",
     },
   ],
 })

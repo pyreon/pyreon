@@ -234,12 +234,20 @@ const html = await renderToString(<App />)
 
 In the browser `useCookie` reads `document.cookie` directly; the source set by `setCookieSource` is only consulted on the server.
 
+`setCookieSource` also accepts an **accessor** `() => string` (evaluated lazily at each cookie read) or `null` to clear. The accessor is the concurrency-safe form — see the warning below.
+
+```ts
+// Concurrency-safe: read the current request's cookies out of your per-request
+// context (e.g. the AsyncLocalStorage that `runWithRequestContext` maintains).
+setCookieSource(() => currentRequest().headers.get('cookie') ?? '')
+```
+
 :::warning[Set the cookie source before SSR render]
 If you skip `setCookieSource`, `useCookie` falls back to its `defaultValue` on every server render — the page hydrates correctly on the client, but flashes the default first (wrong locale/theme on first paint). Call `setCookieSource(request.headers.get('cookie') ?? '')` before `renderToString`.
 :::
 
-:::warning[The cookie source is module-level, set per request]
-`setCookieSource` sets a single module-level string. Call it at the start of each request handler with that request's header. Re-call it after any operation that should change the cookie set (login, redirect) so later loaders see the new value.
+:::warning[The cookie source is a single module-level slot]
+A bare STRING source is shared across concurrent requests — safe only when rendering is serialized per process. On a server handling **concurrent** requests, pass an **accessor** bound to your per-request context so each request resolves its own cookies. Re-call `setCookieSource` after any operation that should change the cookie set (login, redirect) so later loaders see the new value.
 :::
 
 ### `useIndexedDB()` — large data
@@ -374,16 +382,44 @@ The default `JSON.stringify` discards functions, `undefined` properties, and the
 
 Shared by every hook (and extended by `CookieOptions` / `IndexedDBOptions`):
 
-| Option            | Type                          | Default          | Description                                                                 |
-| ----------------- | ----------------------------- | ---------------- | --------------------------------------------------------------------------- |
-| `serializer`      | `(value: T) => string`        | `JSON.stringify` | Serialize a value to a string before persisting.                            |
-| `deserializer`    | `(raw: string) => T`          | `JSON.parse`     | Parse a stored string back to a value.                                      |
-| `onError`         | `(error: Error) => T \| undefined` | —           | Called when deserialization throws. Return a fallback, or `void` for the default. |
-| `writeDebounceMs` | `number`                      | `0`              | Coalesce the persist write (localStorage / sessionStorage only).            |
+| Option            | Type                                      | Default          | Description                                                                 |
+| ----------------- | ----------------------------------------- | ---------------- | --------------------------------------------------------------------------- |
+| `serializer`      | `(value: T) => string`                    | `JSON.stringify` | Serialize a value to a string before persisting.                            |
+| `deserializer`    | `(raw: string) => T`                      | `JSON.parse`     | Parse a stored string back to a value.                                      |
+| `onError`         | `(error: Error) => T \| undefined`        | —                | Called on a deserialize failure (return a fallback / void) OR a WRITE failure (quota / blocked — return ignored, notification). |
+| `version`         | `number`                                  | —                | Persisted-schema version — wraps the value so a later load can `migrate` it. |
+| `migrate`         | `(persisted: unknown, from: number) => T` | —                | Transform a value stored under an older `version` (pre-versioning value is `from = 0`). |
+| `writeDebounceMs` | `number`                                  | `0`              | Coalesce the persist write (localStorage / sessionStorage only).            |
+
+## Versioned migration — `version` + `migrate`
+
+When the shape of a stored value changes between releases, bump `version` and provide `migrate` so users with the old shape on disk upgrade cleanly instead of loading a mismatched object:
+
+```tsx
+// v1 shipped { name: string }; v2 splits it into first / last:
+const profile = useStorage(
+  'profile',
+  { first: '', last: '' },
+  {
+    version: 2,
+    migrate: (old, from) => {
+      // `from` is the version the value was stored under. A value written
+      // BEFORE `version` existed (no envelope) is migrated as `from = 0`.
+      if (from < 2 && old && typeof old === 'object' && 'name' in old) {
+        const [first = '', last = ''] = String((old as { name: string }).name).split(' ')
+        return { first, last }
+      }
+      return old as { first: string; last: string }
+    },
+  },
+)
+```
+
+`version` stores the value inside a small JSON envelope carrying the version. On read, a version mismatch runs `migrate` (its result is used as-is — NOT re-run through `deserializer`). Works on every backend, and the migration is applied on **cross-tab sync** too: a tab holding the old shape upgrades when a newer tab writes.
 
 ## Error handling
 
-A corrupt or unparseable stored value will not crash your app. Deserialization is wrapped in a `try/catch`: on failure it falls back to the `defaultValue`, or to whatever `onError` returns:
+A corrupt or unparseable stored value will not crash your app. Deserialization is wrapped in a `try/catch`: on failure it falls back to the `defaultValue`, or to whatever `onError` returns. `onError` **also** fires on a WRITE failure (a `setItem` that throws — quota exceeded, blocked storage): the in-memory signal has already updated, so the return value is ignored — it's a notification so you can surface the quota error to the user.
 
 ```tsx
 const value = useStorage('key', 'fallback', {

@@ -29,6 +29,7 @@ import {
 
 interface SignalLike<T> {
   _v: T
+  direct(cb: () => void): () => void
 }
 
 const internal = <T,>(sig: unknown): SignalLike<T> => sig as SignalLike<T>
@@ -87,6 +88,26 @@ describe('storage signals — _bindText / _bindDirect compat (`_v` forwarding)',
     expect(internal<string>(note)._v).toBe('')
     note.set('hello')
     expect(internal<string>(note)._v).toBe('hello')
+  })
+
+  it('simulates the compiler `_bindText` fast path end-to-end (`_v` init + `.direct` update)', () => {
+    // This mirrors EXACTLY what the compiler-emitted `_bindText(source, node)`
+    // does for `{() => theme()}`: seed the text node from `source._v` (NOT a
+    // function call), then subscribe via `source.direct(...)`. Pre-fix `_v` was
+    // undefined → the node bound to '' and stayed empty.
+    const theme = useStorage('bind-fastpath', 'light')
+    const node = { data: '' as string }
+    const src = internal<string>(theme)
+    node.data = String(src._v) // initial fast-path read
+    // `.direct` is a notify-only subscription; the fast-path closure re-reads
+    // `_v` on each notification (which is why forwarding `_v` is load-bearing).
+    const dispose = src.direct(() => {
+      node.data = String(src._v)
+    })
+    expect(node.data).toBe('light')
+    theme.set('dark')
+    expect(node.data).toBe('dark') // .direct fired with the live value
+    dispose()
   })
 
   it('`_v` getter tracks the underlying signal even when the wrapper is held across mutations', () => {

@@ -1,4 +1,4 @@
-import type { StorageSignal } from './types'
+import type { StorageOptions, StorageSignal } from './types'
 
 // ─── Signal Registry ─────────────────────────────────────────────────────────
 
@@ -6,6 +6,14 @@ interface RegistryEntry<T = unknown> {
   signal: StorageSignal<T>
   defaultValue: T
   backend: string
+  /**
+   * The options the signal was created with. Held so the cross-tab `storage`
+   * event handler can deserialize an inbound raw value through the SAME
+   * serializer/deserializer + version/migrate pipeline the writer used —
+   * without it, a versioned or custom-serialized value synced from another tab
+   * would land as the raw envelope / raw string.
+   */
+  options?: StorageOptions<T>
   /**
    * Per-key consumer refcount. Incremented each `useStorage(key, …)` call
    * (including same-key cached returns); decremented on each `.remove()`.
@@ -44,8 +52,20 @@ export function setEntry<T>(
   key: string,
   signal: StorageSignal<T>,
   defaultValue: T,
+  options?: StorageOptions<T>,
 ): void {
-  registry.set(registryKey(backend, key), { signal, defaultValue, backend, refCount: 1 })
+  // Cast through `RegistryEntry` (T → unknown): `options` carries contravariant
+  // callbacks (`serializer`/`migrate`) so `StorageOptions<T>` isn't structurally
+  // assignable to the map's `StorageOptions<unknown>` slot under
+  // `exactOptionalPropertyTypes` — the registry is internally untyped by design
+  // (`getEntry<T>` casts back on read).
+  registry.set(registryKey(backend, key), {
+    signal,
+    defaultValue,
+    backend,
+    refCount: 1,
+    options,
+  } as RegistryEntry)
 }
 
 /**

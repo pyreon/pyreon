@@ -40,7 +40,7 @@ export function createStorage(
     try {
       const raw = backend.get(key)
       if (raw !== null) {
-        initialValue = deserialize(raw, defaultValue, options?.deserializer, options?.onError)
+        initialValue = deserialize(raw, defaultValue, options)
       }
     } catch {
       // Backend read failed — use default
@@ -54,9 +54,10 @@ export function createStorage(
       set: (value: T) => {
         sig.set(value)
         try {
-          backend.set(key, serialize(value, options?.serializer))
-        } catch {
-          // Write failed — signal still updates
+          backend.set(key, serialize(value, options))
+        } catch (e) {
+          // Write failed — signal still updates. Notify `onError` (return ignored).
+          options?.onError?.(e as Error)
         }
       },
     }) as unknown as StorageSignal<T>
@@ -71,7 +72,7 @@ export function createStorage(
       removeEntry(name, key)
     }
 
-    setEntry(name, key, storageSig, defaultValue)
+    setEntry(name, key, storageSig, defaultValue, options)
 
     return storageSig
   }

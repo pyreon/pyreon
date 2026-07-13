@@ -19,7 +19,9 @@ function onStorageEvent(e: StorageEvent): void {
   if (!entry) return
 
   const newValue =
-    e.newValue !== null ? deserialize(e.newValue, entry.defaultValue) : entry.defaultValue
+    e.newValue !== null
+      ? deserialize(e.newValue, entry.defaultValue, entry.options)
+      : entry.defaultValue
 
   entry.signal.set(newValue)
 }
@@ -136,7 +138,7 @@ export function useStorage<T>(
   if (storage) {
     const raw = storage.getItem(key)
     if (raw !== null) {
-      initialValue = deserialize(raw, defaultValue, options?.deserializer, options?.onError)
+      initialValue = deserialize(raw, defaultValue, options)
     }
   }
 
@@ -145,7 +147,7 @@ export function useStorage<T>(
   // Create the storage signal by extending the base signal
   const storageSig = createStorageSignal(sig, key, defaultValue, 'local', options)
 
-  setEntry('local', key, storageSig, defaultValue)
+  setEntry('local', key, storageSig, defaultValue, options)
   retainStorageListener()
 
   return storageSig
@@ -171,9 +173,11 @@ export function createStorageSignal<T>(
     /* v8 ignore next — defensive null storage guard */
     if (!storage) return
     try {
-      storage.setItem(key, serialize(value, options?.serializer))
-    } catch {
-      // Storage full or blocked — signal still updates
+      storage.setItem(key, serialize(value, options))
+    } catch (e) {
+      // Storage full or blocked — signal still updates. Surface the error to
+      // `onError` (notification; return ignored) so quota failures aren't silent.
+      options?.onError?.(e as Error)
     }
   }
 
@@ -187,10 +191,15 @@ export function createStorageSignal<T>(
 
   // Flush a pending debounced write immediately (timer fire, unload, or remove).
   const flush = (): void => {
+    // Defensive guards: flush is only ever enqueued alongside a live timer +
+    // pending write (scheduled together in scheduleWrite, torn down together
+    // here / in cancelPending), so the false/return sides are never reached.
+    /* v8 ignore next 4 */
     if (writeTimer !== null) {
       clearTimeout(writeTimer)
       writeTimer = null
     }
+    /* v8 ignore next */
     if (!hasPending) return
     hasPending = false
     pendingFlushes.delete(flush)

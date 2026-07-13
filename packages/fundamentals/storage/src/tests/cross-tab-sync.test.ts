@@ -1,6 +1,7 @@
 import { effect } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _resetRegistry, useStorage } from '../index'
+import { serialize } from '../utils'
 
 /**
  * Tests for cross-tab synchronization via the native `storage` event.
@@ -140,6 +141,42 @@ describe('useStorage — cross-tab sync', () => {
     }
 
     expect(count()).toBe(5)
+  })
+
+  it('deserializes a versioned envelope arriving cross-tab (uses the entry options)', () => {
+    // A versioned signal must decode an inbound envelope through the SAME
+    // pipeline the writer used — otherwise the raw envelope object leaks in.
+    const cfg = useStorage('cfg', { theme: 'light' }, { version: 2 })
+    window.dispatchEvent(
+      Object.assign(new Event('storage'), {
+        key: 'cfg',
+        newValue: serialize({ theme: 'dark' }, { version: 2 }),
+        storageArea: localStorage,
+      }),
+    )
+    expect(cfg()).toEqual({ theme: 'dark' })
+  })
+
+  it('migrates an older-version value arriving cross-tab', () => {
+    const profile = useStorage(
+      'profile',
+      { first: '', last: '' },
+      {
+        version: 2,
+        migrate: (old) => {
+          const [first = '', last = ''] = (old as { name: string }).name.split(' ')
+          return { first, last }
+        },
+      },
+    )
+    window.dispatchEvent(
+      Object.assign(new Event('storage'), {
+        key: 'profile',
+        newValue: serialize({ name: 'Ada Lovelace' }, { version: 1 }),
+        storageArea: localStorage,
+      }),
+    )
+    expect(profile()).toEqual({ first: 'Ada', last: 'Lovelace' })
   })
 
   it('cross-tab sync works independently for different keys', () => {

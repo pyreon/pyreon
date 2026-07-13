@@ -60,7 +60,9 @@ describe('gen-docs — storage snapshot', () => {
       >
       > **Cross-tab sync**: Only \`useStorage\` (localStorage) syncs across tabs via \`storage\` events. \`useSessionStorage\` is per-tab. Cookies and IndexedDB have no built-in cross-tab notification.
       >
-      > **IndexedDB async init**: The IndexedDB hook initializes synchronously with the default value, then hydrates asynchronously. Components reading the value in their first render see the default — the value updates reactively once the IDB read completes.
+      > **IndexedDB async init**: The IndexedDB hook initializes synchronously with the default value, then hydrates asynchronously. Components reading the value in their first render see the default — the value updates reactively once the IDB read completes. Init/read/write failures are routed to \`onError\`.
+      >
+      > **Versioned migration**: Set \`version\` to store values inside a small JSON envelope carrying the schema version; a later load with a HIGHER \`version\` runs \`migrate(oldValue, fromVersion)\` to transform the old shape. A legacy value written before versioning (no envelope) is treated as version \`0\`. Migration is applied on read AND on cross-tab sync (the entry's options travel with it), so a tab holding the old shape upgrades when a newer tab writes.
       "
     `)
   })
@@ -71,6 +73,6 @@ describe('gen-docs — storage snapshot', () => {
     // useIndexedDB, setCookieSource, createStorage
     expect(Object.keys(record).length).toBe(7)
     expect(record['storage/useStorage']!.notes).toContain('localStorage')
-    expect(record['storage/useStorage']!.mistakes?.split('\n').length).toBe(3)
+    expect(record['storage/useStorage']!.mistakes?.split('\n').length).toBe(5)
   })
 })

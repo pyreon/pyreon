@@ -74,11 +74,14 @@ Inherits `Signal<T>`: `()` (read), `.set(v)` (write), `.update(fn)`, `.peek()`, 
 
 ## Options (shared)
 
-| Option           | Type                          | Description                                              |
-| ---------------- | ----------------------------- | -------------------------------------------------------- |
-| `serializer?`    | `(value: T) => string`        | Default: `JSON.stringify`                                |
-| `deserializer?`  | `(raw: string) => T`          | Default: `JSON.parse`                                    |
-| `onError?`       | `(error: Error) => T \| void` | Called on deserialization fail; return fallback or void  |
+| Option            | Type                                       | Description                                                                                              |
+| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `serializer?`     | `(value: T) => string`                     | Default: `JSON.stringify`                                                                                |
+| `deserializer?`   | `(raw: string) => T`                       | Default: `JSON.parse`                                                                                    |
+| `onError?`        | `(error: Error) => T \| void`              | Called on deserialize failure (return a fallback / void) OR on a WRITE failure (quota/blocked — return ignored, notification only) |
+| `version?`        | `number`                                   | Persisted-schema version — wraps the value in a versioned envelope so a later load can `migrate` it       |
+| `migrate?`        | `(persisted: unknown, from: number) => T`  | Transform a value stored under an older `version` (a pre-versioning value is `from = 0`)                 |
+| `writeDebounceMs?`| `number`                                   | localStorage/sessionStorage only — coalesce the sync `setItem` (signal still updates synchronously)      |
 
 ## `useCookie` options
 
@@ -105,19 +108,53 @@ Extends `StorageOptions<T>` with:
 
 IndexedDB writes are debounced — rapid `.set()` calls coalesce to a single transaction. The signal updates synchronously; persistence is async.
 
-## `setCookieSource(header)` — SSR
+## `setCookieSource(source)` — SSR
 
-Cookies on the server come from the request header, not `document.cookie`. Call once per request:
+Cookies on the server come from the request header, not `document.cookie`. Pass the raw header string, an accessor `() => string`, or `null` to clear:
 
 ```ts
 import { setCookieSource, useCookie } from '@pyreon/storage'
 
-// In your SSR request handler:
+// Simplest — one request in flight (dev / serialized render):
 setCookieSource(request.headers.get('cookie') ?? '')
 
 // Then anywhere downstream:
 const locale = useCookie('locale', 'en') // reads from the request cookie on the server
 ```
+
+The source is a **single module-level slot**, so a bare STRING is shared across concurrent requests (safe only when rendering is serialized per process). For a server handling **concurrent** requests, pass an **accessor** bound to your per-request context — it's evaluated lazily at each cookie read, so each request resolves its own cookies:
+
+```ts
+// Concurrency-safe — accessor reads the current request out of your context
+// (e.g. the AsyncLocalStorage that `runWithRequestContext` maintains):
+setCookieSource(() => currentRequest().headers.get('cookie') ?? '')
+```
+
+## Versioned migration — `version` + `migrate`
+
+When the shape of a stored value changes between releases, bump `version` and provide `migrate` so users with the old shape upgrade cleanly instead of loading a stale/mismatched object:
+
+```ts
+// v1 shipped { name: string }; v2 splits it:
+const profile = useStorage(
+  'profile',
+  { first: '', last: '' },
+  {
+    version: 2,
+    migrate: (old, from) => {
+      // `from` is the version the value was stored under (a pre-versioning
+      // value — written before `version` existed — is `from = 0`).
+      if (from < 2 && old && typeof old === 'object' && 'name' in old) {
+        const [first = '', last = ''] = String((old as { name: string }).name).split(' ')
+        return { first, last }
+      }
+      return old as { first: string; last: string }
+    },
+  },
+)
+```
+
+`version` wraps the value in a small JSON envelope; on read, a version mismatch runs `migrate` (its result is used as-is, NOT re-run through `deserializer`). Works on every backend, and the migration is applied on **cross-tab sync** too — a tab holding the old shape upgrades when a newer tab writes.
 
 ## Custom backends — `createStorage`
 
@@ -176,7 +213,7 @@ Every storage signal wraps a base `signal()` with a facade that **forwards `_v` 
 - **IndexedDB writes are debounced** (default 100ms) — the signal updates immediately; persistence trails. On unload, in-flight writes complete (most browsers honor pending IndexedDB transactions).
 - **`useMemoryStorage` doesn't persist** — values clear on reload. Useful for SSR, tests, and request-scoped state that should NOT survive navigation.
 - **Don't write via call-shorthand** (`storageSignal(newValue)`) — that's a read with discarded arg. Use `.set(value)`. Caught by the opt-in lint rule `pyreon/no-storage-write-as-call` (auto-fixable).
-- **`onError` doesn't fire for IndexedDB read failures** — they fall back to the default silently. Use `try/catch` around `useIndexedDB` if you need explicit error handling.
+- **`onError` fires on both deserialize AND write failures** — a corrupt stored value calls `onError` (return a fallback or void); a `setItem`/cookie/IDB write that fails (quota exceeded, blocked storage) also calls `onError` as a NOTIFICATION (the in-memory signal already updated, so the return is ignored). Without `onError`, both fall back to the pre-existing silent behavior.
 
 ## Documentation
 
