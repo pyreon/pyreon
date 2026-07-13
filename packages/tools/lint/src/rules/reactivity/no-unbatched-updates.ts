@@ -85,12 +85,11 @@ let nonSignalSetReceivers = new Set<string>()
 /** Is this `.set()` call on a KNOWN non-signal collection receiver? */
 function isNonSignalSetCall(node: any): boolean {
   const obj = node?.callee?.object
-  if (!obj) return false
   // `m.set(...)` where `m = new Map()`.
-  if (obj.type === 'Identifier' && nonSignalSetReceivers.has(obj.name)) return true
+  if (obj?.type === 'Identifier' && nonSignalSetReceivers.has(obj.name)) return true
   // `new Map().set(...)` — inline construction.
   if (
-    obj.type === 'NewExpression' &&
+    obj?.type === 'NewExpression' &&
     obj.callee?.type === 'Identifier' &&
     NON_SIGNAL_SET_CTORS.has(obj.callee.name)
   ) {
