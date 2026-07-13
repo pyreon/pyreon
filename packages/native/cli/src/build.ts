@@ -248,6 +248,16 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('LocalHapticFeedback.current')) {
     imports.push('import androidx.compose.ui.platform.LocalHapticFeedback')
   }
+  // M3.2 share (`const share = useShare()`): the emitted code reads
+  // `LocalContext.current` to inject the Context into PyreonShare. Lives
+  // in androidx.compose.ui.platform (not the star-imported ui.*). No
+  // gated Android app used LocalContext before (clipboard's was a latent-
+  // missing import — no gated app exercised it), so add it here keyed on
+  // the emitted read. (The Intent / createChooser / ACTION_SEND symbols
+  // live inside PyreonShare.kt's own imports, not the emitted app code.)
+  if (emitted.includes('LocalContext.current')) {
+    imports.push('import androidx.compose.ui.platform.LocalContext')
+  }
   // Modal emit (<Modal>): Dialog is androidx.compose.ui.window — not in
   // the star-imported ui.* (single-package).
   if (emitted.includes('Dialog(')) {

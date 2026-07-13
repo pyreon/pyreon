@@ -340,7 +340,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | Networking (fetch/ws/http) | 8 | 0.5 | fetch R5 (success + error path asserted); websocket/http-verbs R2 |
 | Storage (kv/secure/db) | 7 | 0.3 | kv persistence ASSERTED (M1.2a): iOS terminate+relaunch (R4, local Simulator pass) + Android activity-recreation (proven by the PR device run / nightly); secure-storage + database still R2 |
 | Auth | 5 | 0.3 | gate/login flow R5; real IdP token flow R1–R2 |
-| Platform APIs (haptics/share/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.1 | clipboard/geolocation/push/payments/permissions/**haptics** exist at R2+; **haptics** (`useHaptics()`, M3.1 — the FIRST imperative platform-API hook, establishing the pattern M3.2–M3.9 reuse) reaches **R4-BUILD**: the counter's increment tap fires `PyreonHaptics().impact("light")` on both targets with no crash (iOS Simulator XCUITest pass, Android device run). **Honest caveat — this is a NON-BEHAVIORAL R4**: haptics produce no observable UI and the Simulator has no Taptic Engine, so "builds + runs + the tap fires it without crashing" is the ceiling (weaker than gestures' observable state-flip proof). share/notifs/camera/biometrics/files/deep-links/lifecycle ABSENT |
+| Platform APIs (haptics/share/notifs/camera/biometrics/files/deep links/lifecycle) | 10 | 0.2 | clipboard/geolocation/push/payments/permissions/**haptics**/**share** exist at R2+. **haptics** (`useHaptics()`, M3.1 — the FIRST imperative platform-API hook, establishing the pattern M3.2–M3.9 reuse) reaches **R4-BUILD** (increment tap fires `PyreonHaptics().impact("light")` on both targets, no crash) — a **NON-BEHAVIORAL R4** (haptics produce no observable UI; the Simulator has no Taptic Engine). **share** (`useShare()`, M3.2) reaches a **BEHAVIORAL R4**: tapping the Share button presents a `UIActivityViewController` from the key window and the XCUITest ASSERTS the system share sheet appears (iOS Simulator pass — an observable proof, unlike haptics; Android `Intent.createChooser(ACTION_SEND)`). notifs/camera/biometrics/files/deep-links/lifecycle ABSENT |
 | Animations & transitions | 6 | 0.0 | absent (v1 exclusion) |
 | Gestures | 4 | 0.6 | tap R5; **long-press** `<Press onLongPress>` R4 (M2.3 — counter reset via a simultaneous LongPressGesture, iOS Simulator pass; Android `combinedClickable(onLongClick)` proven by the device run); swipe/drag absent |
 | Adaptive / tablet layout | 5 | 0.0 | absent (no size classes) |
@@ -352,8 +352,8 @@ whenever a row changes; do not edit the totals without recomputing.
 | Payments | 2 | 0.0 | R2 runtime; no device test |
 | Background / push | 3 | 0.0 | R2 runtime; manual `.start()`; no device test |
 
-**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 applied):** device-proven (R4+) coverage
-**≈ 41%** (44.0 / 107 — the +1.0 is haptics' non-behavioral R4-build, see the Platform APIs row); compile-proven (R2+) upper bound **≈ 74%** —
+**Weighted totals (2026-07-08 baseline; M2.3 + M3.1 + M3.2 applied):** device-proven (R4+) coverage
+**≈ 42%** (45.0 / 107 — +1.0 haptics non-behavioral R4-build + +1.0 share behavioral R4, see the Platform APIs row); compile-proven (R2+) upper bound **≈ 74%** —
 i.e. roughly three-quarters of the weighted surface already *exists and
 typechecks*, but only about a third is *proven to behave* on a device.
 **The production goal is 70–90% at R4+**; the gap between the two

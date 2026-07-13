@@ -230,6 +230,38 @@ interface HapticFeedback {
 }
 `
 
+// PyreonShare-specific stubs — the android.content.Context + Intent
+// surface PyreonShare.kt uses, mirrored EXACTLY (no superset — a superset
+// stub masks; the rule kotlin-stubs.ts documents 4×). Gated behind
+// --service=PyreonShare. Own copy of Context (with startActivity) rather
+// than reusing ANDROID_CONTENT_STUBS — that one carries clipboard-only
+// members; per-service stubs stay minimal + independent.
+const ANDROID_SHARE_STUBS = `package android.content
+
+open class Context {
+  @Suppress("UNUSED_PARAMETER")
+  open fun startActivity(intent: Intent) {}
+}
+
+class Intent {
+  companion object {
+    const val ACTION_SEND = "android.intent.action.SEND"
+    const val EXTRA_TEXT = "android.intent.extra.TEXT"
+    const val FLAG_ACTIVITY_NEW_TASK = 0
+    @Suppress("UNUSED_PARAMETER")
+    fun createChooser(target: Intent, title: CharSequence?): Intent = Intent()
+  }
+  constructor()
+  @Suppress("UNUSED_PARAMETER")
+  constructor(action: String)
+  var type: String? = null
+  @Suppress("UNUSED_PARAMETER")
+  fun putExtra(name: String, value: String): Intent = this
+  @Suppress("UNUSED_PARAMETER")
+  fun addFlags(flags: Int): Intent = this
+}
+`
+
 // PyreonWebSocketOkHttp-specific stubs — the okhttp3 4.x surface the
 // transport file uses, mirrored EXACTLY (no superset — a superset stub
 // masks; the same rule the compiler's kotlin-stubs.ts documents 4×).
@@ -333,6 +365,10 @@ try {
   if (SERVICE === 'PyreonHaptics') {
     writeFileSync(hapticFeedbackPath, ANDROIDX_COMPOSE_HAPTIC_STUBS, 'utf8')
   }
+  const shareIntentPath = join(tempDir, 'AndroidContentShare.kt')
+  if (SERVICE === 'PyreonShare') {
+    writeFileSync(shareIntentPath, ANDROID_SHARE_STUBS, 'utf8')
+  }
   const okhttpPath = join(tempDir, 'OkHttp3.kt')
   if (SERVICE === 'PyreonWebSocketOkHttp') {
     writeFileSync(okhttpPath, OKHTTP3_STUBS, 'utf8')
@@ -363,6 +399,7 @@ try {
       : []
   // PyreonHaptics-only stub source (the Compose hapticfeedback package).
   const hapticStubs = SERVICE === 'PyreonHaptics' ? [hapticFeedbackPath] : []
+  const shareStubs = SERVICE === 'PyreonShare' ? [shareIntentPath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
   // compile needs the sibling PyreonWebSocket.kt source + the okhttp3 stubs.
   const okhttpExtras =
@@ -378,6 +415,7 @@ try {
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
         ...hapticStubs,
+        ...shareStubs,
         ...okhttpExtras,
         SOURCE_FILE,
       ]
@@ -389,6 +427,7 @@ try {
         kotlinxSerializationJsonPath,
         ...clipboardStubs,
         ...hapticStubs,
+        ...shareStubs,
         ...okhttpExtras,
         SOURCE_FILE,
         TEST_FILE,

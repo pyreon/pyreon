@@ -18,6 +18,8 @@ export type {
   UseHapticsResult,
 } from './useHaptics'
 export { useHaptics } from './useHaptics'
+export type { UseShareResult } from './useShare'
+export { useShare } from './useShare'
 export { useColorScheme } from './useColorScheme'
 export type { UseControllableState } from './useControllableState'
 export { useControllableState } from './useControllableState'

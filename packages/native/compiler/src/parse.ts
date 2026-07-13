@@ -3671,6 +3671,16 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useHaptics') {
     return { kind: 'haptics', name }
   }
+  // M3.2 — `const share = useShare()` from `@pyreon/hooks` → the
+  // PyreonShare wrapper. No arguments. Calls are member methods with
+  // STRING args (`share.text("hi")` / `share.url("...")` /
+  // `share.textUrl(t, u)` / `share.canShare()`) that flow through
+  // unchanged — the runtime container presents the platform share sheet,
+  // so (like useHaptics/useClipboard) NO `.value` rewrite and NO arg
+  // transformation.
+  if (calleeName === 'useShare') {
+    return { kind: 'share', name }
+  }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
@@ -5750,6 +5760,7 @@ function warnIfHookInsideRenderCallback(
     'useForm',
     'useClipboard',
     'useHaptics',
+    'useShare',
     'useColorScheme',
     'usePermissions',
     'useOnline',
