@@ -1,4 +1,4 @@
-import { useUrlState } from '@pyreon/url-state'
+import { batchUrlUpdates, useUrlState } from '@pyreon/url-state'
 
 export function UrlStateDemo() {
   // Schema mode — multiple URL params from a single call. Returns
@@ -11,6 +11,11 @@ export function UrlStateDemo() {
     showCompleted: false,
     tags: [] as string[],
   })
+
+  // A separate param that PUSHES a history entry per change (replace:false),
+  // so the browser Back/Forward buttons step through its values — exercising
+  // the real `popstate` re-read path.
+  const pushPage = useUrlState('pushPage', 1, { replace: false })
 
   return (
     <div>
@@ -111,14 +116,32 @@ export function UrlStateDemo() {
       </div>
 
       <div class="section">
+        <h3>History push (Back/Forward)</h3>
+        <p style="margin-bottom: 12px; font-size: 13px; color: #666">
+          This param uses <code>{'{ replace: false }'}</code> — each change
+          adds a history entry, so the browser Back button steps through
+          previous values (via <code>popstate</code>).
+        </p>
+        <div class="row">
+          <span data-testid="url-state-pushpage">pushPage {() => pushPage()}</span>
+          <button data-testid="url-state-push-next" onClick={() => pushPage.set(pushPage() + 1)}>
+            next (push) →
+          </button>
+        </div>
+      </div>
+
+      <div class="section">
         <h3>Reset</h3>
         <button
           data-testid="url-state-reset"
           onClick={() => {
-            state.page.set(1)
-            state.q.set('')
-            state.showCompleted.set(false)
-            state.tags.set([])
+            // Atomic multi-param update — one history entry, not four.
+            batchUrlUpdates(() => {
+              state.page.set(1)
+              state.q.set('')
+              state.showCompleted.set(false)
+              state.tags.set([])
+            })
           }}
         >
           Clear all params

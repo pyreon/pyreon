@@ -41,8 +41,16 @@ export interface UrlStateOptions<T = unknown> {
    */
   arrayFormat?: ArrayFormat
   /**
-   * Called when the URL param changes externally (popstate or another
-   * `useUrlState` call updating the same param).
+   * Remove the param from the URL when its value equals the default (keeps
+   * URLs short and canonical). Set to `false` to always write the param, even
+   * at its default value.
+   * @default true
+   */
+  clearOnDefault?: boolean
+  /**
+   * Called when the URL param changes externally — a `popstate` (back/forward)
+   * navigation, or another `useUrlState` signal bound to the SAME key writing a
+   * new value. NOT called for this signal's own `.set()` / `.reset()` / `.remove()`.
    */
   onChange?: (value: T) => void
 }

@@ -7,8 +7,8 @@
 // (NOT a mock / NOT a v8-ignore).
 import { describe, expect, it } from 'vitest'
 import { isClient } from '@pyreon/reactivity'
-import { getParam, getParamAll, setParamRepeated, setParams } from '../url'
-import { useUrlState } from '../index'
+import { commitParams, getParam, getParamAll, setParamRepeated, setParams } from '../url'
+import { batchUrlUpdates, useUrlState } from '../index'
 
 describe('SSR safety (node environment)', () => {
   it('isClient is false under the node environment', () => {
@@ -34,6 +34,25 @@ describe('SSR safety (node environment)', () => {
   it('setParamRepeated is a no-op in SSR and does not throw (url.ts L73 guard)', () => {
     expect(() => setParamRepeated('tags', ['a', 'b'], true)).not.toThrow()
     expect(() => setParamRepeated('tags', null, false)).not.toThrow()
+  })
+
+  it('commitParams is a no-op in SSR and does not throw', () => {
+    expect(() =>
+      commitParams(new Map([['page', '3']]), new Map([['tags', ['a']]]), true),
+    ).not.toThrow()
+  })
+
+  it('batchUrlUpdates is SSR-safe — signals update, no history calls, no throw', () => {
+    const page = useUrlState('page', 1)
+    const tags = useUrlState('tags', [] as string[], { arrayFormat: 'repeat' })
+    expect(() =>
+      batchUrlUpdates(() => {
+        page.set(3)
+        tags.set(['a', 'b'])
+      }),
+    ).not.toThrow()
+    expect(page()).toBe(3)
+    expect(tags()).toEqual(['a', 'b'])
   })
 
   // ── use-url-state.ts non-client branch ────────────────────────────────────

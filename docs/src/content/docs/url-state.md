@@ -209,6 +209,61 @@ page.set(1)  // back to default → URL has no ?page at all (not ?page=1)
 
 `reset()` relies on this: it sets the signal to the default, which removes the parameter. `remove()` force-removes the parameter regardless of the current value.
 
+### Keeping the default in the URL
+
+If a parameter must stay in the URL even at its default — for canonical shareable links, or so analytics always sees an explicit value — pass `clearOnDefault: false`:
+
+```tsx
+const sort = useUrlState('sort', 'name', { clearOnDefault: false })
+
+sort.set('date') // ?sort=date
+sort.set('name') // stays ?sort=name (not dropped)
+```
+
+`clearOnDefault` defaults to `true` (drop the param at the default). It applies to `.set()` and `.reset()`; `.remove()` always strips the parameter.
+
+## Cross-Hook Sync
+
+Two `useUrlState('page', 1)` calls in different components are **independent signals bound to the same parameter** — and they stay in sync. A raw `history.replaceState` does not emit `popstate`, so this needs coordination the hook provides: after any signal writes a key, every other signal bound to that key re-reads the URL and updates (firing its `onChange`).
+
+```tsx
+// In <Header/>
+const a = useUrlState('page', 1)
+// In <Pagination/>
+const b = useUrlState('page', 1)
+
+a.set(5)  // b() is now 5 too — b's onChange fires, a's does not
+```
+
+You don't have to lift the signal into a store to share URL state across the tree — binding the same key is enough. (Sharing one signal is still fine and marginally cheaper; cross-hook sync exists for the case where two independently-authored components happen to bind the same param.) The subscription is tied to the owning reactive scope, so a disposed component stops being notified.
+
+## Batched Updates
+
+Each `.set()` writes the URL once. Applying several parameters at once — an "apply filters" button, a saved-view restore — would therefore produce one history operation **per parameter**. Wrap the writes in `batchUrlUpdates` to collapse them into a single history entry:
+
+```tsx
+import { useUrlState, batchUrlUpdates } from '@pyreon/url-state'
+
+const { page, q, sort } = useUrlState({ page: 1, q: '', sort: 'name' })
+
+batchUrlUpdates(() => {
+  page.set(1)
+  q.set('hello')
+  sort.set('date')
+}) // → one replaceState: ?q=hello&sort=date
+```
+
+Inside a batch:
+
+- **Signal values update synchronously** — `page()` reflects the new value immediately; only the URL write is deferred to the end of the batch.
+- **Reactive notifications coalesce** — a subscriber reading several of the params re-runs once, not once per `.set()`.
+- **Debounce is bypassed** — batched writes land in the single flush, so a debounced signal writes immediately as part of the batch.
+- **One history op** — `replaceState` by default; if any write in the batch used `replace: false`, the single batched write is a `pushState`.
+
+:::warning[Batching matters most with `replace: false`]
+Without a batch, a three-parameter update with `replace: false` pushes **three** history entries, so the browser back button steps through each intermediate state. `batchUrlUpdates` makes the whole update one back-stack entry.
+:::
+
 ## Options
 
 ```tsx
@@ -222,14 +277,15 @@ const q = useUrlState('q', '', {
 })
 ```
 
-| Option        | Type                     | Default     | Description                                                              |
-| ------------- | ------------------------ | ----------- | ------------------------------------------------------------------------ |
-| `replace`     | `boolean`                | `true`      | `true` → `history.replaceState` (no history entry); `false` → `history.pushState` |
-| `debounce`    | `number`                 | `0`         | Debounce URL writes by this many milliseconds (signal still updates instantly) |
-| `arrayFormat` | `'comma' \| 'repeat'`    | `'comma'`   | Array encoding: `?tags=a,b` vs `?tags=a&tags=b`                           |
-| `serialize`   | `(value: T) => string`   | inferred    | Custom value → string. Must be paired with `deserialize`                 |
-| `deserialize` | `(raw: string) => T`     | inferred    | Custom string → value. Must be paired with `serialize`                   |
-| `onChange`    | `(value: T) => void`     | —           | Called on **external** changes only (popstate, or another signal writing the same param) |
+| Option           | Type                     | Default     | Description                                                              |
+| ---------------- | ------------------------ | ----------- | ------------------------------------------------------------------------ |
+| `replace`        | `boolean`                | `true`      | `true` → `history.replaceState` (no history entry); `false` → `history.pushState` |
+| `debounce`       | `number`                 | `0`         | Debounce URL writes by this many milliseconds (signal still updates instantly) |
+| `arrayFormat`    | `'comma' \| 'repeat'`    | `'comma'`   | Array encoding: `?tags=a,b` vs `?tags=a&tags=b`                           |
+| `clearOnDefault` | `boolean`                | `true`      | Drop the param from the URL when it equals the default. `false` keeps it written |
+| `serialize`      | `(value: T) => string`   | inferred    | Custom value → string. Must be paired with `deserialize`                 |
+| `deserialize`    | `(raw: string) => T`     | inferred    | Custom string → value. Must be paired with `serialize`                   |
+| `onChange`       | `(value: T) => void`     | —           | Called on **external** changes only (popstate, or another signal writing the same param) |
 
 :::note[`serialize` and `deserialize` are a pair]
 Custom (de)serialization only takes effect when **both** `serialize` and `deserialize` are supplied. If you pass only one, the inferred serializer for the default's type is used instead.
@@ -435,6 +491,14 @@ interface UrlRouter {
 }
 ```
 
+### `batchUrlUpdates(fn)`
+
+Collapse every `useUrlState` write invoked inside `fn` into ONE history entry (one `replaceState` / `pushState` / `router.replace`). Returns whatever `fn` returns. Signal values update synchronously inside the batch; debounce is bypassed; if any write used `replace: false`, the batched write is a `pushState`.
+
+```ts
+function batchUrlUpdates<T>(fn: () => T): T
+```
+
 ### `UrlStateSignal<T>`
 
 The callable signal returned for each parameter.
@@ -448,14 +512,15 @@ The callable signal returned for each parameter.
 
 ### `UrlStateOptions<T>`
 
-| Property      | Type                   | Default   | Description                                                              |
-| ------------- | ---------------------- | --------- | ------------------------------------------------------------------------ |
-| `replace`     | `boolean`              | `true`    | `replaceState` (true) vs `pushState` (false). Ignored when a router is set |
-| `debounce`    | `number`               | `0`       | Milliseconds to debounce URL writes (signal updates stay synchronous)    |
-| `arrayFormat` | `ArrayFormat`          | `'comma'` | Array encoding strategy                                                  |
-| `serialize`   | `(value: T) => string` | inferred  | Custom serializer; only used when paired with `deserialize`              |
-| `deserialize` | `(raw: string) => T`   | inferred  | Custom deserializer; only used when paired with `serialize`              |
-| `onChange`    | `(value: T) => void`   | —         | Called on external param changes (popstate / another signal), not on local writes |
+| Property         | Type                   | Default   | Description                                                              |
+| ---------------- | ---------------------- | --------- | ------------------------------------------------------------------------ |
+| `replace`        | `boolean`              | `true`    | `replaceState` (true) vs `pushState` (false). Ignored when a router is set |
+| `debounce`       | `number`               | `0`       | Milliseconds to debounce URL writes (signal updates stay synchronous)    |
+| `arrayFormat`    | `ArrayFormat`          | `'comma'` | Array encoding strategy                                                  |
+| `clearOnDefault` | `boolean`              | `true`    | Drop the param when it equals the default; `false` keeps it written      |
+| `serialize`      | `(value: T) => string` | inferred  | Custom serializer; only used when paired with `deserialize`              |
+| `deserialize`    | `(raw: string) => T`   | inferred  | Custom deserializer; only used when paired with `serialize`              |
+| `onChange`       | `(value: T) => void`   | —         | Called on external param changes (popstate / another signal), not on local writes |
 
 ### `ArrayFormat`
 
