@@ -64,6 +64,40 @@ describe('reactive style object — stale keys are removed', () => {
     expect(el.style.margin).toBe('')
   })
 
+  it('clears a property whose VALUE becomes null/undefined (the toggle idiom)', () => {
+    // The `{ background: active ? 'x' : null }` toggle: when the value flips to
+    // null the property must be UNSET, not set to the string "null" (an invalid
+    // CSS value the browser ignores, leaving the previous value in place — the
+    // "multiple toggles stay active" bug in the coolgrid docs preset selector).
+    const active = signal(true)
+    mount(
+      h('div', {
+        style: () => ({
+          fontWeight: active() ? '700' : '400',
+          background: active() ? 'orange' : null,
+          color: active() ? 'black' : undefined,
+        }),
+      }),
+      container,
+    )
+
+    const el = query(container, 'div')
+    expect(el.style.background).toBe('orange')
+    expect(el.style.color).toBe('black')
+    expect(el.style.fontWeight).toBe('700')
+
+    // Deactivate — the null/undefined values must clear, not persist.
+    active.set(false)
+    expect(el.style.background).toBe('')
+    expect(el.style.color).toBe('')
+    expect(el.style.fontWeight).toBe('400')
+
+    // Re-activate — the properties come back (tracking recovered correctly).
+    active.set(true)
+    expect(el.style.background).toBe('orange')
+    expect(el.style.color).toBe('black')
+  })
+
   it('handles object → string → object transitions without leaking keys', () => {
     const style = signal<string | Record<string, string>>({ color: 'red' })
 

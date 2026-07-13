@@ -29,6 +29,27 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Reactive style object with a `null`/`undefined` VALUE not clearing the
+    // property. No exception fires — the symptom is behavioral ("multiple
+    // toggles stay active", "background/style won't clear/reset", "old style
+    // persists"), so match the words a user pastes into `pyreon doctor
+    // diagnose` / MCP `diagnose`.
+    pattern:
+      /(style|background|color|css).*(won'?t|doesn'?t|not).*(clear|reset|remove|update|go away)|(multiple|all|previous).*(toggle|button|item|preset).*(active|highlight|selected|orange)|style.*(null|undefined).*(stuck|persist|stay)|null.*style.*(not|won'?t).*(clear|remove)/i,
+    diagnose: () => ({
+      cause:
+        'On versions before this fix, a reactive style OBJECT whose property VALUE was `null`/`undefined` did not clear that property. `{ background: active ? "orange" : null }` produced `String(null)` → `"null"`, and `setProperty("background", "null")` is an INVALID CSS value the browser silently ignores — leaving the previous value in place. The key was also still tracked as "present", so the stale-key sweep skipped it. Net effect: a single-select toggle (preset selector, tab bar) left EVERY previously-clicked item styled-active.',
+      fix: 'Upgrade `@pyreon/runtime-dom` — a `null`/`undefined` value in a reactive style object now removes the property (and stops tracking it), so `{ background: active ? "x" : null }` toggles cleanly. No app code change needed. If you cannot upgrade, use an empty string to unset instead (`background: active ? "x" : ""`), which `setProperty` treats as a removal.',
+      fixCode: `// The single-select toggle idiom now clears correctly:
+<button style={() => ({
+  background: isActive() ? 'var(--accent)' : null,   // null now UNSETS
+  color: isActive() ? 'var(--bg)' : null,
+})}>{name}</button>`,
+      related:
+        'Distinct from the "stale key removed when a key DISAPPEARS from the object" behavior (#233), which already worked. This fix covers a key that STAYS in the object with a `null`/`undefined` value — the common `cond ? value : null` toggle.',
+    }),
+  },
+  {
     // FW-2: a props-derived object SHORTHAND in a style/object literal. Before
     // the fix, the compiler inlined the prop-derived local into the shorthand
     // value WITHOUT expanding the `key:` prefix — the native (Rust) backend

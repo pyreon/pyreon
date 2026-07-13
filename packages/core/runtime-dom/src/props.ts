@@ -426,8 +426,19 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
     const next = new Set<string>()
     for (const k in obj) {
       const propName = k.startsWith('--') ? k : toKebabCase(k)
+      const v = obj[k]
+      // A `null`/`undefined` value means "unset this property" — the common
+      // `{ background: active ? 'x' : null }` toggle idiom. `String(null)` is
+      // `"null"`, an INVALID CSS value the browser silently ignores (leaving
+      // the previous value), so we must `removeProperty` and NOT track the key
+      // in `next` (else the stale-key sweep below would skip it and the old
+      // value would persist — the "multiple toggles stay active" bug).
+      if (v == null) {
+        el.style.removeProperty(propName)
+        continue
+      }
       next.add(propName)
-      const css = normalizeStyleValue(k, obj[k])
+      const css = normalizeStyleValue(k, v)
       el.style.setProperty(propName, css)
     }
     if (prev) {

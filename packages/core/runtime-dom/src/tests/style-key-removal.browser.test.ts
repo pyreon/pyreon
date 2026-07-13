@@ -51,4 +51,33 @@ describe('reactive style — stale keys removed (real browser)', () => {
     expect(el.style.padding).toBe('')
     unmount()
   })
+
+  it('clears a property whose VALUE becomes null — the toggle idiom', async () => {
+    // The coolgrid docs preset selector: `{ background: active ? 'x' : null }`.
+    // A real engine IGNORES `setProperty('background', 'null')` (invalid value),
+    // so before the fix the previous color persisted and every clicked preset
+    // stayed highlighted. Assert the null value truly clears against Chromium.
+    const active = signal(true)
+    const { container, unmount } = mountInBrowser(
+      h('div', {
+        id: 's3',
+        style: () => ({
+          background: active() ? 'rgb(255, 165, 0)' : null,
+          fontWeight: active() ? '700' : '400',
+        }),
+      }, 'x'),
+    )
+    const el = container.querySelector<HTMLDivElement>('#s3')!
+    expect(el.style.background).toBe('rgb(255, 165, 0)')
+
+    active.set(false)
+    await flush()
+    expect(el.style.background).toBe('')
+    expect(el.style.fontWeight).toBe('400')
+
+    active.set(true)
+    await flush()
+    expect(el.style.background).toBe('rgb(255, 165, 0)')
+    unmount()
+  })
 })
