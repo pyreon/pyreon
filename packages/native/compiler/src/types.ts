@@ -287,6 +287,22 @@ export type DeclIR =
    */
   | { kind: 'haptics'; name: string }
   /**
+   * M3.2 — share sheet via `const share = useShare()` from
+   * `@pyreon/hooks`. Emits the PyreonShare wrapper:
+   *   Swift  → @State private var share = PyreonShare()
+   *   Kotlin → val shareCtx = LocalContext.current
+   *            val share = remember { PyreonShare(shareCtx) }
+   *
+   * `useShare()` takes no arguments and has NO reactive state. Calls are
+   * member methods with STRING args (`share.text("hi")` / `share.url(...)`
+   * / `share.textUrl(t, u)` / `share.canShare()`) that flow through
+   * unchanged — the runtime container presents the platform share sheet
+   * (iOS UIActivityViewController from the key window; Android
+   * Intent.createChooser(ACTION_SEND)). Android needs a Context (hoisted
+   * from LocalContext, like clipboard); iOS grabs the key window itself.
+   */
+  | { kind: 'share'; name: string }
+  /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode
    * active" reads — NO runtime port needed (both SwiftUI and Compose

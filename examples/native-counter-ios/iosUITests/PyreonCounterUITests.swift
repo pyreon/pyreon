@@ -112,4 +112,38 @@ final class PyreonCounterUITests: XCTestCase {
             "Long-press did not reset the counter — onLongPress gesture not firing"
         )
     }
+
+    // M3.2 — SHARE (useShare) asserted on device. The shared Counter.tsx
+    // has `<Button onClick={() => share.url('https://pyreon.dev')}>Share`;
+    // PMTC emits `@State private var share = PyreonShare()` +
+    // `Button("Share") { share.url("https://pyreon.dev") }`. Tapping it
+    // presents a UIActivityViewController from the key window. UNLIKE
+    // haptics this is OBSERVABLE — the system share sheet appears — so
+    // this is a behavioral R4, not just "does not crash". The share sheet
+    // container carries the `ActivityListView` identifier on iOS 17+, and
+    // "Copy" is a reliable activity for a URL share; assert either appears.
+    func test_shareButtonPresentsShareSheet() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let shareButton = app.buttons["Share"]
+        XCTAssertTrue(
+            shareButton.waitForExistence(timeout: 30),
+            "Share button (useShare) did not appear"
+        )
+        shareButton.tap()
+
+        // The presented UIActivityViewController is a system sheet. Check
+        // multiple robust indicators (identifiers vary by iOS version).
+        let activityView = app.otherElements["ActivityListView"]
+        let copyButton = app.buttons["Copy"]
+        let appeared =
+            activityView.waitForExistence(timeout: 5)
+            || copyButton.waitForExistence(timeout: 5)
+        XCTAssertTrue(
+            appeared,
+            "Tapping Share did not present the system share sheet — "
+                + "PyreonShare failed to present a UIActivityViewController"
+        )
+    }
 }

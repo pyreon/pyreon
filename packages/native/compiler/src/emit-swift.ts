@@ -1913,6 +1913,14 @@ function emitSwiftDecl(
   if (d.kind === 'haptics') {
     return `@State private var ${swiftIdent(d.name)} = PyreonHaptics()`
   }
+  // M3.2: `const share = useShare()` → an @State PyreonShare. Methods
+  // (`share.text("hi")`) flow through unchanged — the runtime container
+  // presents a UIActivityViewController from the key window; no reactive
+  // field, no `.value` rewrite, no ctor arg (iOS grabs the key window
+  // internally).
+  if (d.kind === 'share') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonShare()`
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`

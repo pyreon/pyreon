@@ -1592,6 +1592,19 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonHaptics(${id}Haptic) }`,
     ].join('\n  ')
   }
+  // M3.2: `const share = useShare()` → a remembered PyreonShare. Android
+  // sharing goes through `context.startActivity(Intent.createChooser(…))`,
+  // so it needs a Context — hoisted from `LocalContext.current` into a
+  // sibling val (can't live in the non-Composable `remember` lambda) and
+  // injected, the same shape clipboard uses. Methods (`share.text("hi")`)
+  // flow through unchanged.
+  if (d.kind === 'share') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { PyreonShare(${id}Ctx) }`,
+    ].join('\n  ')
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` →
   // `val i18n = remember { PyreonI18n(...) }`. Method `i18n.t("key")`
   // flows through unchanged (PyreonI18n.t is defined on the runtime

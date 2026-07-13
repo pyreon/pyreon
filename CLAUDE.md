@@ -179,7 +179,7 @@ Honest capability matrix: `docs/src/content/docs/multiplatform.md`.
 | `@pyreon/feature` | Schema-driven CRUD primitives (queries/forms/tables/stores) |
 | `@pyreon/charts` | Reactive ECharts bridge, lazy-loaded |
 | `@pyreon/storage` | Reactive client-side storage — local/session/cookie/IndexedDB/memory |
-| `@pyreon/hooks` | 41 signal-based hooks |
+| `@pyreon/hooks` | 42 signal-based hooks |
 | `@pyreon/hotkeys` | Keyboard shortcuts — scope-aware, modifiers, conflict detection |
 | `@pyreon/permissions` | Reactive permissions — RBAC/ABAC/flags/tiers |
 | `@pyreon/machine` | Reactive state machines — constrained signals + typed transitions |
