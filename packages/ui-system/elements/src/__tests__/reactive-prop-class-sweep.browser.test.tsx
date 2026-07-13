@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest'
 import { Element } from '../Element'
 import { List } from '../List'
 import { Overlay } from '../Overlay'
+import { Portal } from '../Portal'
 import { Text } from '../Text'
 
 const raf = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
@@ -63,6 +64,30 @@ describe('Element — reactive layout props re-style the SAME element', () => {
     await flush()
     expect(container.textContent).toContain('ICON')
     expect(container.textContent).toContain('body')
+  })
+})
+
+describe('Portal — getter-shaped children render live into the wrapper', () => {
+  it('a reactive children PROP updates the portaled text in place', async () => {
+    const value = signal('p-1')
+    const { unmount } = mountInBrowser(
+      h(Portal as never, {
+        // `children={sig()}` compiles to `_rp(() => sig())` → a getter after
+        // makeReactiveProps. Portal's `hasGetterProps(props, ['children'])`
+        // gate must wrap it in an accessor so it re-reads on change; an eager
+        // `props.children` read would freeze it at 'p-1'.
+        children: _rp(() => h('span', { 'data-testid': 'portal-child' }, value())),
+      }),
+    )
+    await flush()
+    const child = document.querySelector('[data-testid="portal-child"]') as HTMLElement
+    expect(child, 'portal child should render into the wrapper').not.toBeNull()
+    expect(child.textContent).toBe('p-1')
+
+    value.set('p-2')
+    await flush()
+    expect(document.querySelector('[data-testid="portal-child"]')?.textContent).toBe('p-2')
+    unmount()
   })
 })
 

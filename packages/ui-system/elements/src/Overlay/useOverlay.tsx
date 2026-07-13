@@ -574,19 +574,43 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
         if (readCloseOn() === 'hover' && active()) scheduleHide()
       }
 
-      // We need to defer listener attachment until refs are available
-      const attachHoverListeners = () => {
-        if (triggerEl) {
-          triggerEl.addEventListener('mouseenter', onTriggerEnter)
-          triggerEl.addEventListener('mouseleave', onTriggerLeave)
-        }
-        if (contentEl) {
-          contentEl.addEventListener('mouseenter', onContentEnter)
-          contentEl.addEventListener('mouseleave', onContentLeave)
-        }
+      // The TRIGGER is rendered eagerly (present at mount), so its listeners
+      // attach once.
+      if (triggerEl) {
+        triggerEl.addEventListener('mouseenter', onTriggerEnter)
+        triggerEl.addEventListener('mouseleave', onTriggerLeave)
       }
 
-      attachHoverListeners()
+      // The CONTENT mounts LATER — it renders only while open (on hover-open),
+      // so `contentEl` is null when `setupListeners` runs. Attaching the
+      // content-hover listeners once here (as the code used to) attached NOTHING
+      // for the dominant hover case, so moving the pointer trigger→content
+      // never fired `onContentEnter` → the pending hide timer wasn't cancelled
+      // → the tooltip / dropdown closed out from under the pointer (you could
+      // never actually reach its content). Instead, (re)bind the content
+      // listeners to the live `contentEl` every time `isContentLoaded` flips —
+      // the same signal the position-on-open subscription rides. `contentRefCallback`
+      // sets `contentEl` THEN flips `isContentLoaded`, so the node is available
+      // when this fires; on close it sets `contentEl = null` then flips false,
+      // so we detach from the node we bound to.
+      let attachedContentEl: HTMLElement | null = null
+      const syncContentHoverListeners = () => {
+        const el = isContentLoaded() ? contentEl : null
+        if (el === attachedContentEl) return
+        if (attachedContentEl) {
+          attachedContentEl.removeEventListener('mouseenter', onContentEnter)
+          attachedContentEl.removeEventListener('mouseleave', onContentLeave)
+        }
+        if (el) {
+          el.addEventListener('mouseenter', onContentEnter)
+          el.addEventListener('mouseleave', onContentLeave)
+        }
+        attachedContentEl = el
+      }
+      // Content may already be open when listeners attach late (manual
+      // setupListeners after showContent) — bind now.
+      syncContentHoverListeners()
+      cleanups.push(isContentLoaded.subscribe(syncContentHoverListeners))
 
       cleanups.push(() => {
         clearHoverTimeout()
@@ -594,9 +618,10 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
           triggerEl.removeEventListener('mouseenter', onTriggerEnter)
           triggerEl.removeEventListener('mouseleave', onTriggerLeave)
         }
-        if (contentEl) {
-          contentEl.removeEventListener('mouseenter', onContentEnter)
-          contentEl.removeEventListener('mouseleave', onContentLeave)
+        if (attachedContentEl) {
+          attachedContentEl.removeEventListener('mouseenter', onContentEnter)
+          attachedContentEl.removeEventListener('mouseleave', onContentLeave)
+          attachedContentEl = null
         }
       })
     }

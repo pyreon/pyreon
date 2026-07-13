@@ -140,6 +140,10 @@ Same data/component model as `List`, four typed overloads (simple values, object
 
 ## `Overlay` + `useOverlay` — dropdowns / tooltips / popovers / modals
 
+`Overlay` takes a `trigger` and a content (`children`) render prop — each receives a
+`ref` it MUST attach to its root node (that's how the hook measures, positions,
+wires click-outside, and restores focus):
+
 ```tsx
 <Overlay
   openOn="click"
@@ -147,37 +151,48 @@ Same data/component model as `List`, four typed overloads (simple values, object
   type="dropdown"
   align="bottom"
   alignX="left"
-  offsetX={0}
   offsetY={4}
   closeOnEsc
-  hoverDelay={150}
-  trigger={<Button>Open menu</Button>}
+  trigger={(t) => <button ref={t.ref}>Open menu</button>}
 >
-  <DropdownMenu />
+  {(c) => (
+    <ul ref={c.ref}>
+      <li>Profile</li>
+      <li>Sign out</li>
+    </ul>
+  )}
 </Overlay>
 ```
+
+The content also receives the resolved `align` / `alignX` / `alignY` as LIVE
+reactive props, so a viewport-edge flip re-styles it in place — the content
+subtree is NOT remounted (any input the user is typing in a popover survives).
 
 For headless control, use the hook directly:
 
 ```tsx
-const overlay = useOverlay({
+const o = useOverlay({
   openOn: 'click',
   closeOn: 'clickOnTrigger',
   type: 'tooltip',
   align: 'top',
   onOpen: () => track('tooltip-open'),
 })
-// overlay.isOpen / overlay.toggle / overlay.open / overlay.close / overlay.position()
+// attach o.triggerRef to the anchor, o.contentRef to the floating node;
+// o.active() is the open-state signal; o.showContent() / o.hideContent()
+// control it; o.setContentPosition() reflows when the content SIZE changes.
 ```
 
 Built-in behaviour:
 - **Viewport-edge flipping** — automatically flips align when the content would overflow.
-- **Throttled positioning** — scroll + resize listeners throttled (default delay 60ms).
+- **Position-on-open** — content is anchored to the trigger the moment it opens (no scroll/resize needed).
+- **Throttled positioning** — scroll + resize listeners throttled (default `throttleDelay` 200ms).
 - **ESC + click-outside** — opt-in via `closeOnEsc` / `closeOn: 'clickOutsideContent'`.
-- **Hover delay** — `hoverDelay` debounces both open and close for `openOn: 'hover'`.
+- **Hover delay + reachable content** — `hoverDelay` debounces open/close for `openOn: 'hover'`, and the tooltip/dropdown STAYS OPEN while the pointer is over its content (the content-hover listeners re-bind as the content mounts).
+- **Focus management** — focus returns to the opener on close (all types); `type: 'modal'` also focuses into the content on open and traps Tab / Shift+Tab (the WAI-ARIA dialog pattern).
 - **Modal overflow lock** — `type: 'modal'` ref-counts `document.body` overflow so nested modals don't double-lock.
 
-`OverlayProvider` + `useOverlayContext` coordinate nested overlays (a parent dropdown can block its children's click-outside).
+`OverlayProvider` + `useOverlayContext` coordinate nested overlays (a child overlay blocks its parent from closing while open). A root `<OverlayProvider>` establishes the context with no-op defaults; its coordination props are optional.
 
 ## `Portal` — render into a different DOM location
 

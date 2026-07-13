@@ -13,15 +13,28 @@ export interface OverlayContext {
   setUnblocked: () => void
 }
 
-const context = createContext<OverlayContext>({} as OverlayContext)
+const NO_OP = () => {}
+
+const context = createContext<OverlayContext>({
+  blocked: false,
+  setBlocked: NO_OP,
+  setUnblocked: NO_OP,
+})
 
 export const useOverlayContext = () => useContext(context)
 
-const Component = (props: OverlayContext & { children: VNodeChild }) => {
-  const ctx = {
-    blocked: props.blocked,
-    setBlocked: props.setBlocked,
-    setUnblocked: props.setUnblocked,
+// Coordination props are OPTIONAL — a root `<OverlayProvider>{app}</OverlayProvider>`
+// establishes the overlay context with no-op defaults (the documented usage),
+// while the INTERNAL `<Provider {...ctx}>` spread from `useOverlay` supplies a
+// real `blocked` / `setBlocked` / `setUnblocked` so a nested overlay can block
+// its parent from closing. Making them required (the previous shape) made the
+// documented root-provider form a type error AND relied on `useOverlay`'s
+// `ctx.setBlocked?.()` optional chaining to survive the resulting `undefined`s.
+const Component = (props: Partial<OverlayContext> & { children?: VNodeChild }) => {
+  const ctx: OverlayContext = {
+    blocked: props.blocked ?? false,
+    setBlocked: props.setBlocked ?? NO_OP,
+    setUnblocked: props.setUnblocked ?? NO_OP,
   }
 
   provide(context, ctx)

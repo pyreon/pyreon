@@ -33,8 +33,16 @@ type Align = 'bottom' | 'top' | 'left' | 'right'
 type AlignX = 'left' | 'center' | 'right'
 type AlignY = 'bottom' | 'top' | 'center'
 
+// The ref the renderer MUST attach to its root node — the hook needs it to
+// measure/position, wire click-outside, and restore focus. Its key is `ref` by
+// default (override via `triggerRefName` / `contentRefName`). Typed here so the
+// idiomatic `trigger={(t) => <button ref={t.ref}>…}` typechecks (previously the
+// renderer prop types omitted `ref`, forcing consumers to `any`-cast it).
+type OverlayRef = (node: HTMLElement | null) => void
+
 type TriggerRenderer = (
   props: Partial<{
+    ref: OverlayRef
     active: boolean
     showContent: () => void
     hideContent: () => void
@@ -43,6 +51,7 @@ type TriggerRenderer = (
 
 type ContentRenderer = (
   props: Partial<{
+    ref: OverlayRef
     active: boolean
     showContent: () => void
     hideContent: () => void
@@ -160,6 +169,9 @@ const Component: PyreonComponent<Props> = (props) => {
                 [contentRefName]: contentRef,
                 // Inside the accessor these re-read `overlayProps` per
                 // open/close cycle — live for getter-shaped config props.
+                // Structural (drive the DOM shape) so they may re-run the
+                // accessor if a getter-shaped `type` flips — acceptable, that
+                // is a genuine structure change (dialog↔tooltip↔menu).
                 role:
                   readType() === 'modal'
                     ? 'dialog'
@@ -167,11 +179,39 @@ const Component: PyreonComponent<Props> = (props) => {
                       ? 'tooltip'
                       : undefined,
                 id: readType() === 'tooltip' ? tooltipId : undefined,
-                'aria-modal': readType() === 'modal' ? true : undefined,
-                active: active(),
-                align: align(),
-                alignX: alignX(),
-                alignY: alignY(),
+                // ARIA STATE attr — the literal STRING, never a boolean
+                // (a boolean `true` renders presence-only `aria-modal=""`,
+                // which assistive tech does NOT read as "true"; see
+                // anti-patterns "Boolean ARIA-STATE attributes"). The runtime
+                // now special-cases boolean aria, but passing the string is
+                // the defensive contract and matches SSR serialization.
+                'aria-modal': readType() === 'modal' ? 'true' : undefined,
+                // `active` / `align` / `alignX` / `alignY` are `_rp()`-branded
+                // accessors — the EXACT shape the compiler emits for
+                // `prop={signal()}` and the same shape the trigger's
+                // `aria-expanded` uses above. `makeReactiveProps` (mount
+                // pipeline) converts them to live getters, so a content
+                // renderer forwarding them (directly or through
+                // Element/rocketstyle, both descriptor-preserving) gets a
+                // reactive binding.
+                //
+                // Load-bearing WHY the accessor form (not a plain
+                // `alignX()` value read): reading these signals INSIDE this
+                // mount accessor subscribes it to them, so a viewport-edge
+                // FLIP (`innerAlignY` 'bottom'→'top', written by the position
+                // pass) re-ran the accessor → the whole Portal/content
+                // subtree REMOUNTED. That double-fired the content's onMount
+                // and dropped any internal state (an input the user was
+                // typing in a popover). Passing them as `_rp()` thunks keeps
+                // the align values LIVE for the content without the mount
+                // accessor ever reading them — so a flip re-styles in place,
+                // no remount. `active` stays gated by the outer `active()`
+                // read (the mount/unmount decision), so its accessor form is
+                // for consumer parity, not a remount fix.
+                active: _reactiveProp(() => active()),
+                align: _reactiveProp(() => align()),
+                alignX: _reactiveProp(() => alignX()),
+                alignY: _reactiveProp(() => alignY()),
                 ...(passHandlers() ? { showContent, hideContent } : {}),
               })}
             </Provider>
