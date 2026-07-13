@@ -4279,9 +4279,10 @@ tabbed.activeTab()   // Computed<Tab | null>
 
 useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
 useHotkey('escape', () => close(), { enableOnInputs: true })`,
-    notes: `Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: \`mod+s\`, \`ctrl+shift+p\`, \`escape\`, etc. \`mod\` is Command on Mac, Ctrl elsewhere. By default, shortcuts don't fire when focused on form elements (input, textarea, select) — override with \`enableOnInputs: true\`. Supports \`scope\` option for context-aware activation and \`description\` for introspection. See also: useHotkeyScope, registerHotkey.`,
-    mistakes: `- Forgetting e.preventDefault() for browser-reserved shortcuts (mod+s, mod+p) — the browser dialog fires alongside your handler
-- Registering the same shortcut in overlapping scopes without priority — both handlers fire; use scope isolation to prevent conflicts
+    notes: `Register a keyboard shortcut that auto-unregisters when the component unmounts. Shortcut format: \`mod+s\`, \`ctrl+shift+p\`, \`escape\`, etc. \`mod\` is Command on Mac, Ctrl elsewhere. By default, shortcuts don't fire when focused on form elements (input, textarea, select) — override with \`enableOnInputs: true\`. Supports \`scope\` option for context-aware activation and \`description\` for introspection. See also: useHotkeyScope, registerHotkey, getHotkeyConflicts.`,
+    mistakes: `- Forgetting e.preventDefault() for browser-reserved shortcuts (mod+s, mod+p) — the browser dialog fires alongside your handler. preventDefault is ON by default, but a stray { preventDefault: false } re-opens the browser dialog
+- Registering the same shortcut twice in the same scope — both handlers fire on every press. Audit with getHotkeyConflicts() (it also catches aliased duplicates like ctrl+s vs control+s)
+- Writing shift+? for a help shortcut — bind ? directly instead. A single-symbol key already implies shift, so ? fires on the real Shift+/ keystroke and shift+? never matches
 - Using useHotkey outside a component body — the onUnmount cleanup requires an active component setup context
 - Not activating the scope — useHotkey with a scope option does nothing unless useHotkeyScope(scope) is called or enableScope(scope) is invoked`,
   },
@@ -4295,9 +4296,10 @@ useHotkey('ctrl+z', () => undo(), { scope: 'editor' })
 // In a modal component:
 useHotkeyScope('modal')
 useHotkey('escape', () => close(), { scope: 'modal' })`,
-    notes: 'Activate a hotkey scope for the lifetime of the current component. When the component mounts, the scope is enabled; when it unmounts, the scope is disabled. Shortcuts registered with a matching `scope` option only fire when the scope is active. NOTE: scopes are NOT reference-counted — `disableScope` runs on every unmount, so if two components activate the same scope, the FIRST to unmount disables it for both. See also: useHotkey, enableScope, disableScope.',
+    notes: 'Activate a hotkey scope for the lifetime of the current component. When the component mounts, the scope is enabled; when it unmounts, the scope is disabled. Shortcuts registered with a matching `scope` option only fire when the scope is active. Scope activation is REFERENCE-COUNTED — two components that both activate `editor` keep it active until BOTH unmount, so stacked panels / nested modals stay correct. Multiple scopes can be active concurrently; a hotkey fires when ITS scope is active. See also: useHotkey, enableScope, disableScope.',
     mistakes: `- Using useHotkeyScope outside a component body — the lifecycle hooks require an active setup context
-- Activating the same scope from two components — scopes are NOT reference-counted, so the first component to unmount calls disableScope and the second component's matching hotkeys silently stop firing`,
+- Expecting scopes to be hierarchical — activating \`editor\` does not implicitly activate \`editor/code\`; a hotkey fires only when its EXACT scope string is active
+- Pairing imperative enableScope/disableScope unevenly — they are acquire/release, so an unmatched enableScope leaves the scope active until a matching disableScope releases it`,
   },
 
   'hotkeys/registerHotkey': {
@@ -4306,6 +4308,16 @@ useHotkey('escape', () => close(), { scope: 'modal' })`,
 // Later:
 unregister()`,
     notes: 'Imperative hotkey registration for non-component contexts (stores, global setup). Returns an unregister function. Unlike useHotkey, this does NOT auto-cleanup on unmount — caller is responsible for calling the returned unregister function. See also: useHotkey.',
+  },
+
+  'hotkeys/getHotkeyConflicts': {
+    signature: '() => ReadonlyArray<{ scope: string; shortcuts: string[]; descriptions: Array<string | undefined> }>',
+    example: `registerHotkey('ctrl+s', saveA)
+registerHotkey('control+s', saveB) // same combo, same (global) scope
+
+getHotkeyConflicts()
+// → [{ scope: 'global', shortcuts: ['ctrl+s', 'control+s'], descriptions: [undefined, undefined] }]`,
+    notes: 'Detect registered shortcuts that would fire on the SAME keystroke within the SAME scope. Matching is on the PARSED combo, not the source string, so aliased duplicates (`ctrl+s` vs `control+s`, or `mod+s` vs `ctrl+s` off Mac) are caught. Cross-scope overlaps are intentional scope LAYERING and are NOT reported. Use it for a "keyboard shortcut audit" panel, a settings UI that warns on duplicate bindings, or a dev-time assertion in tests. See also: getRegisteredHotkeys, registerHotkey.',
   },
   // <gen-docs:api-reference:end @pyreon/hotkeys>
 

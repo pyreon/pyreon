@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// `attachListener` / `detachListener` in registry.ts both short-circuit with
-// `if (isServer) return`. `isServer` (from @pyreon/reactivity) is
-// `typeof document === 'undefined'`, evaluated ONCE at module load. happy-dom
-// always provides `document`, so under the normal test env those true-arms are
-// unreachable. Here we reset the module graph, stub `document` away, and
-// dynamically re-import registry + reactivity so `isServer` evaluates to true.
+// `@pyreon/hotkeys` drives a browser `keydown` listener, so on the server it
+// registers nothing and mutates no shared module state. The registry + active
+// scopes are module-level singletons SHARED across every SSR request — pushing
+// entries or flipping scopes on the server would (a) leak unboundedly (no
+// unmount fires during `renderToString`) and (b) BLEED one request's hotkeys /
+// scopes into the next. These tests stub `document` away so the freshly
+// re-imported `@pyreon/reactivity` computes `isServer === true`, then assert
+// every mutating entry point is inert.
 
 describe('registry.ts — server-mode (isServer) guards', () => {
   let savedDocument: typeof globalThis.document
@@ -28,22 +30,29 @@ describe('registry.ts — server-mode (isServer) guards', () => {
     vi.resetModules()
   })
 
-  it('attachListener bails early when isServer is true (if@L72 true arm)', async () => {
+  it('registerHotkey is a no-op on the server — no entry recorded, no shared-state bleed', async () => {
     const { isServer } = await import('@pyreon/reactivity')
     expect(isServer).toBe(true)
 
     const registry = await import('../registry')
-    // registerHotkey calls attachListener(); with isServer true it must NOT
-    // attach a window listener and must NOT throw. The entry still records.
+    // The entry must NOT be recorded (would leak + bleed across requests), and
+    // registerHotkey must not throw. It returns an inert unregister.
     const unsub = registry.registerHotkey('ctrl+s', () => {})
-    expect(registry.getRegisteredHotkeys()).toHaveLength(1)
-
-    // detachListener (if@L158 true arm) is exercised on unsub when entries empty.
-    unsub()
     expect(registry.getRegisteredHotkeys()).toHaveLength(0)
+    expect(() => unsub()).not.toThrow()
   })
 
-  it('_resetHotkeys → detachListener bails early when isServer is true (if@L158 true arm)', async () => {
+  it('enableScope / disableScope are no-ops on the server — no scope bleed', async () => {
+    const registry = await import('../registry')
+    registry.enableScope('modal')
+    // The shared activeScopes signal must stay clean (only 'global').
+    expect(registry.getActiveScopes().peek().has('modal')).toBe(false)
+    expect(registry.getActiveScopes().peek().size).toBe(1)
+    // Releasing an un-acquired scope must also be inert.
+    expect(() => registry.disableScope('modal')).not.toThrow()
+  })
+
+  it('_resetHotkeys → detachListener bails early when isServer is true', async () => {
     const registry = await import('../registry')
     registry.registerHotkey('ctrl+s', () => {})
     // _resetHotkeys calls detachListener() which hits `if (isServer) return`.

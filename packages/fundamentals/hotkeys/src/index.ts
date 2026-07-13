@@ -41,6 +41,7 @@ export {
   disableScope,
   enableScope,
   getActiveScopes,
+  getHotkeyConflicts,
   getRegisteredHotkeys,
   registerHotkey,
 } from './registry'

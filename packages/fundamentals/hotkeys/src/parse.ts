@@ -56,16 +56,51 @@ export function parseShortcut(shortcut: string): KeyCombo {
 }
 
 /**
- * Check if a KeyboardEvent matches a KeyCombo.
+ * A single-character key whose typing inherently requires Shift on a standard
+ * layout (`?`, `!`, `@`, `+`, `<`, `:`, …). Letters, digits, and space are NOT
+ * symbols. `combo.key` is already lower-cased at parse time.
  */
-export function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
+function isSymbolKey(key: string): boolean {
+  return key.length === 1 && !/[a-z0-9 ]/.test(key)
+}
+
+/**
+ * Match core shared by {@link matchesCombo} and the dispatch hot path, taking a
+ * PRE-LOWERCASED `event.key` so the per-keydown dispatch loop computes
+ * `toLowerCase()` once instead of once per registered entry. Key is checked
+ * FIRST — it's the most selective field, so a non-matching keystroke rejects
+ * before touching the modifier bits. Not exported from the package.
+ *
+ * @internal
+ */
+export function matchesComboWithKey(
+  event: KeyboardEvent,
+  combo: KeyCombo,
+  eventKey: string,
+): boolean {
+  if (eventKey !== combo.key) return false
   if (event.ctrlKey !== combo.ctrl) return false
-  if (event.shiftKey !== combo.shift) return false
   if (event.altKey !== combo.alt) return false
   if (event.metaKey !== combo.meta) return false
 
-  const eventKey = event.key.toLowerCase()
-  return eventKey === combo.key
+  // Shift handling: for a single-character SYMBOL key (`?`, `!`, `+`, `/`, …),
+  // whether Shift was needed to type it is keyboard-layout-dependent, and the
+  // produced `event.key` already encodes the character. So the Shift modifier is
+  // NOT enforced for symbol keys — binding `?` fires on the real `Shift+/`
+  // keystroke (the canonical "show help" shortcut) without the author having to
+  // write `shift+?`, and the distinct `event.key` values keep `/` and `?` from
+  // colliding. Letters and named keys keep exact Shift-matching, so `a` never
+  // matches `Shift+A` and `arrowup` never matches `Shift+ArrowUp`.
+  if (isSymbolKey(combo.key)) return true
+  return event.shiftKey === combo.shift
+}
+
+/**
+ * Check if a KeyboardEvent matches a KeyCombo. See {@link matchesComboWithKey}
+ * for the Shift/symbol semantics.
+ */
+export function matchesCombo(event: KeyboardEvent, combo: KeyCombo): boolean {
+  return matchesComboWithKey(event, combo, event.key.toLowerCase())
 }
 
 /**

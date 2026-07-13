@@ -7,17 +7,17 @@ import manifest from '../manifest'
 
 describe('gen-docs — hotkeys snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/hotkeys — Keyboard shortcut management — scope-aware, modifier keys, conflict detection. By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnInputs: true\` in options to override. Escape is a common candidate for this override."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/hotkeys — Keyboard shortcut management — scope-aware, modifier keys, conflict detection. By default, shortcuts do NOT fire when focused on form elements (input, textarea, select, contenteditable). Pass \`enableOnInputs: true\` in options to override. Escape is a common candidate for this override."`)
   })
 
   it('renders to llms-full.txt section', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/hotkeys — Keyboard Shortcuts
 
-      Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports \`mod\` alias (Command on Mac, Ctrl elsewhere), multi-key combos, scope-based activation for context-aware shortcuts, and conflict detection. Component-scoped hooks auto-unregister on unmount. Imperative API available for non-component contexts.
+      Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports \`mod\` alias (Command on Mac, Ctrl elsewhere), multi-key combos, sequential combos (\`g t\`, Gmail/vim-style), reference-counted scope activation for context-aware shortcuts, shifted-symbol shortcuts (\`?\` fires on Shift+/), and conflict detection. Component-scoped hooks auto-unregister on unmount; a single shared \`keydown\` listener backs every shortcut. SSR-safe. Imperative API available for non-component contexts.
 
       \`\`\`typescript
-      import { useHotkey, useHotkeyScope, registerHotkey, getRegisteredHotkeys, enableScope, disableScope } from '@pyreon/hotkeys'
+      import { useHotkey, useHotkeyScope, registerHotkey, getRegisteredHotkeys, getHotkeyConflicts, enableScope, disableScope } from '@pyreon/hotkeys'
 
       // Global shortcut — auto-unregisters on unmount
       useHotkey('mod+s', (e) => {
@@ -28,10 +28,15 @@ describe('gen-docs — hotkeys snapshot', () => {
       // Platform-aware: mod = ⌘ on Mac, Ctrl on Windows/Linux
       useHotkey('mod+k', () => openCommandPalette())
 
-      // Multi-key combo
+      // Multi-key combo + shifted-symbol shortcut (? fires on Shift+/)
       useHotkey('ctrl+shift+p', () => openPreferences())
+      useHotkey('?', () => openHelp(), { description: 'Show shortcuts' })
 
-      // Scoped shortcuts — only active when scope is enabled
+      // Sequential combo — press g, then t within 1s (Gmail/vim-style)
+      useHotkey('g t', () => goToTop())
+
+      // Scoped shortcuts — only active when scope is enabled. Scope activation is
+      // reference-counted, so stacked components sharing a scope stay correct.
       useHotkeyScope('editor')  // activates 'editor' scope for this component's lifetime
 
       useHotkey('ctrl+z', () => undo(), { scope: 'editor', description: 'Undo' })
@@ -44,6 +49,7 @@ describe('gen-docs — hotkeys snapshot', () => {
 
       // Introspection
       const hotkeys = getRegisteredHotkeys()  // all registered shortcuts
+      const conflicts = getHotkeyConflicts()  // shortcuts colliding in the same scope
       enableScope('modal')                     // programmatically enable a scope
       disableScope('editor')                   // programmatically disable a scope
 
@@ -53,17 +59,21 @@ describe('gen-docs — hotkeys snapshot', () => {
       useHotkey('escape', () => closeModal(), { enableOnInputs: true })
       \`\`\`
 
-      > **Note**: By default, shortcuts do NOT fire when focused on form elements (input, textarea, select). Pass \`enableOnInputs: true\` in options to override. Escape is a common candidate for this override.
+      > **Note**: By default, shortcuts do NOT fire when focused on form elements (input, textarea, select, contenteditable). Pass \`enableOnInputs: true\` in options to override. Escape is a common candidate for this override.
       >
       > **mod alias**: \`mod\` maps to Command on macOS, Ctrl on Windows/Linux. Write \`mod+s\` instead of platform-specific \`ctrl+s\` / \`cmd+s\` for cross-platform shortcuts.
       >
-      > **Scopes**: Scoped shortcuts only fire when their scope is active. Activate with \`useHotkeyScope(scope)\` (component-scoped) or \`enableScope(scope)\` (imperative). Without activation, scoped handlers are silently dormant.
+      > **Scopes**: Scoped shortcuts only fire when their scope is active. Activate with \`useHotkeyScope(scope)\` (component-scoped) or \`enableScope(scope)\` (imperative). Activation is reference-counted, so stacked components sharing a scope keep it active until all release it. Without activation, scoped handlers are silently dormant.
+      >
+      > **Shifted symbols**: Bind a single symbol directly (\`?\`, \`!\`, \`+\`) — it fires on the real shifted keystroke that produces it (\`?\` on Shift+/). Don't write \`shift+?\`; the symbol already implies shift.
+      >
+      > **SSR-safe**: Registration and scope activation are no-ops on the server (the registry drives a browser \`keydown\` listener). \`getRegisteredHotkeys()\` is therefore client-runtime state — build SSR help panels from a static config, not the live registry.
       "
     `)
   })
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(3)
+    expect(Object.keys(record).length).toBe(4)
   })
 })
