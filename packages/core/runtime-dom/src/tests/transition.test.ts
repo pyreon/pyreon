@@ -485,11 +485,11 @@ describe('TransitionGroup', () => {
         h(
           TransitionGroup,
           { tag: 'ul' },
-          h(
-            For,
-            { each: () => rows(), by: (r: { id: number }) => r.id },
-            (r: { id: number; text: string }) => h('li', null, r.text),
-          ),
+          h(For as never, {
+            each: () => rows(),
+            by: (r: { id: number }) => r.id,
+            children: (r: { id: number; text: string }) => h('li', null, r.text),
+          }),
         ),
         el,
       )
@@ -510,11 +510,11 @@ describe('TransitionGroup', () => {
         h(
           TransitionGroup,
           {},
-          h(
-            For,
-            { each: () => rows(), by: (r: { id: number }) => r.id },
-            (r: { id: number; text: string }) => h('li', null, r.text),
-          ),
+          h(For as never, {
+            each: () => rows(),
+            by: (r: { id: number }) => r.id,
+            children: (r: { id: number; text: string }) => h('li', null, r.text),
+          }),
         ),
         el,
       )
