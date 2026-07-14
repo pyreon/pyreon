@@ -204,6 +204,25 @@ export interface TransformOptions {
   ssr?: boolean
 
   /**
+   * Compile-to-string SSR fast path (opt-in; requires `ssr: true`). When
+   * enabled, an eligible static-skeleton JSX subtree is lowered to an `_ssr`
+   * string template (`_ssr(["<li>…","</li>"], hole0, …)`) instead of a `h()`
+   * VNode tree — the SSR analog of the DOM `_tpl()` cloneNode fast path. The
+   * runtime `_ssr`/`_ssrChildren` resolve every dynamic hole through the SAME
+   * `renderNode` the h() path uses, so the produced HTML is BYTE-IDENTICAL to
+   * the h() walk it replaces (hydration is unaffected). Eligibility is
+   * deliberately conservative — the compiler bails to `h()` on ANY shape it
+   * can't prove renders byte-identically (dynamic attrs, `<select>`, spreads,
+   * component children, void-with-content, …). Default `false`. NOTE: the
+   * native (Rust) backend does not yet implement this — with the flag off both
+   * backends stay byte-identical (the equivalence gates run flag-off), and the
+   * fast path is exercised through the JS backend + dedicated differential
+   * tests. Native parity + a `pyreon({ ssrTemplate: true })` vite-plugin
+   * option are the tracked follow-up.
+   */
+  ssrTemplate?: boolean
+
+  /**
    * Known signal variable names from resolved imports.
    * The Vite plugin maintains a cross-module signal export registry and
    * passes imported signal names here so the compiler can auto-call them
@@ -937,6 +956,15 @@ export function transformJSX(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
+  // Compile-to-string SSR fast path (`ssrTemplate`) is implemented in the JS
+  // backend ONLY for now — the native backend ignores the flag, so route
+  // through JS when it's set (SSR compilation is build-time; the win is the
+  // per-request `_ssr` render). With the flag OFF (the default, and what every
+  // equivalence gate uses) native runs as before and both backends stay
+  // byte-identical. Native `ssrTemplate` parity is the tracked follow-up.
+  if (options.ssrTemplate === true && options.ssr === true) {
+    return transformJSX_JS(code, filename, options)
+  }
   // Try Rust native binary first (3.7-8.2x faster). The native backend now
   // implements ALL FOUR rocketstyle-collapse variants byte-identically (locked
   // by the cross-backend equivalence suite), so `collapseRocketstyle` is lowered
@@ -984,6 +1012,7 @@ export function transformJSX_JS(
   options: TransformOptions = {},
 ): TransformResult {
   const ssr = options.ssr === true
+  const ssrTemplate = ssr && options.ssrTemplate === true
 
   let program: N
   try {
@@ -1086,6 +1115,10 @@ export function transformJSX_JS(
   let needsSetStyleImportGlobal = false
   let needsSetClassImportGlobal = false
   let needsSetAttrImportGlobal = false
+  // Compile-to-string SSR fast path (`options.ssrTemplate`): which
+  // `@pyreon/runtime-server` helpers this module used.
+  let needsSsrImport = false
+  let needsSsrChildrenImport = false
 
   // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
   let needsCollapse = false
@@ -1402,6 +1435,275 @@ export function transformJSX_JS(
     const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
     replacements.push({ start, end, text: needsBraces ? `{${tplCall}}` : tplCall })
     needsTplImport = true
+    return true
+  }
+
+  // ── Compile-to-string SSR fast path (`options.ssrTemplate`) ────────────────
+  //
+  // Lowers an eligible static-skeleton element tree to a single
+  // `_ssr(["<li>…","</li>"], hole0, …)` string template — the SSR analog of
+  // the DOM `_tpl()` cloneNode path. Correctness rests entirely on the runtime
+  // resolving each hole through the SAME `renderNode` the h() path uses, so the
+  // produced bytes are byte-identical to walking the equivalent `h()` tree.
+  //
+  // Eligibility is CONSERVATIVE: `buildSsrCall` returns null (→ bail to h()) on
+  // ANY shape it can't prove renders byte-identically. A false negative (h()
+  // when `_ssr` would have worked) is fine; a false positive is a hydration bug.
+  //
+  // TWO serialization modes: elements the compiler WOULD recurse into (the root
+  // + directly-nested child elements) wrap dynamic children in `() =>` accessors
+  // → `<!--$-->…<!--/$-->` markers, matching `handleJsxExpression`'s wrap. A
+  // `.map` CALLBACK BODY is never compiler-recursed (the outer `.map` is wrapped
+  // whole), so inside it every expression child is a PLAIN VALUE child (no
+  // markers) — 'mapitem' mode emits bare holes throughout.
+
+  type SsrMode = 'recursed' | 'mapitem'
+
+  interface SsrBuf {
+    statics: string[]
+    holes: string[]
+  }
+
+  function ssrEmitStatic(buf: SsrBuf, s: string): void {
+    buf.statics[buf.statics.length - 1] += s
+  }
+  function ssrEmitHole(buf: SsrBuf, exprText: string): void {
+    buf.holes.push(exprText)
+    buf.statics.push('')
+  }
+
+  /**
+   * Bake one attribute onto the open tag. Returns false to BAIL the whole
+   * element. Mirrors `renderProp`/`renderPropValue` for the static subset;
+   * anything dynamic, renamed, URL-unsafe, or content-bearing bails.
+   */
+  function ssrSerializeAttr(buf: SsrBuf, attr: N): boolean {
+    if (attr.type === 'JSXSpreadAttribute') return false // spread → bail
+    if (attr.type !== 'JSXAttribute') return false
+    const name = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
+    if (!name) return false
+    // renderPropSkipped: key/ref/on* render NOTHING server-side — safe to omit.
+    if (name === 'key' || name === 'ref') return true
+    if (EVENT_RE.test(name)) return true
+    // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
+    if (name === 'innerHTML' || name === 'dangerouslySetInnerHTML') return false
+    // `toAttrName` maps camelCase/SVG/renamed names via a large runtime table
+    // we don't replicate — an uppercase char means the emitted name would need
+    // that map, so bail. Lowercase names (`class`/`id`/`href`/`data-*`/`aria-*`)
+    // map to themselves.
+    if (/[A-Z]/.test(name)) return false
+    const isAria = name.charCodeAt(0) === 97 /* a */ && name.startsWith('aria-')
+
+    // No value: `<x disabled>` → props.x = true.
+    if (!attr.value) {
+      // aria boolean true renders as the string "true"; others as a bare attr.
+      ssrEmitStatic(buf, isAria ? ` ${name}="true"` : ` ${name}`)
+      return true
+    }
+    // Raw JSX string-literal value (`title="…"`). Entity-safety bail: same as
+    // JSXText, oxc keeps `&amp;` LITERAL here but the h() path (esbuild) may
+    // decode it — bail on any `&`. A JS-string value (`title={'a & b'}`, the
+    // JSXExpressionContainer branch below) is unaffected (JS literals never
+    // HTML-decode), so those still bake.
+    if (
+      attr.value.type === 'StringLiteral' ||
+      (attr.value.type === 'Literal' && typeof attr.value.value === 'string')
+    ) {
+      const v = attr.value.value as string
+      if (v.includes('&')) return false
+      return ssrBakeStringAttr(buf, name, v)
+    }
+    // Expression container — only STATIC literals bake; anything else bails.
+    if (attr.value.type === 'JSXExpressionContainer') {
+      const raw = attr.value.expression
+      if (!raw || raw.type === 'JSXEmptyExpression') return false
+      const expr = unwrapTypeLayers(raw)
+      // string literal
+      if (
+        (expr.type === 'StringLiteral' || expr.type === 'Literal') &&
+        typeof expr.value === 'string'
+      ) {
+        return ssrBakeStringAttr(buf, name, expr.value)
+      }
+      // numeric literal — generic attrs only (class/style/url numeric edges bail)
+      if (
+        (expr.type === 'NumericLiteral' || expr.type === 'Literal') &&
+        typeof expr.value === 'number'
+      ) {
+        if (name === 'class' || name === 'style' || SSR_URL_ATTRS.has(name)) return false
+        ssrEmitStatic(buf, ` ${name}="${expr.value}"`)
+        return true
+      }
+      // boolean true — aria → "true"; anything else → bare attr (renderPropValue
+      // returns `toAttrName(key)` for `value === true`, BEFORE the class/style
+      // branches, so class/style also bake bare here).
+      if ((expr.type === 'BooleanLiteral' || expr.type === 'Literal') && expr.value === true) {
+        ssrEmitStatic(buf, isAria ? ` ${name}="true"` : ` ${name}`)
+        return true
+      }
+      // false / null / undefined → omit (no attribute).
+      if (
+        ((expr.type === 'BooleanLiteral' || expr.type === 'Literal') && expr.value === false) ||
+        expr.type === 'NullLiteral' ||
+        (expr.type === 'Literal' && expr.value === null) ||
+        (expr.type === 'Identifier' && expr.name === 'undefined')
+      ) {
+        return true
+      }
+      // dynamic / computed-static / template literal → bail.
+      return false
+    }
+    return false
+  }
+
+  /** Bake a static string-valued attribute, mirroring `renderPropValue`. */
+  function ssrBakeStringAttr(buf: SsrBuf, name: string, value: string): boolean {
+    if (name === 'class') {
+      // cx(string) === string; empty → renderPropValue returns null (omit).
+      if (value === '') return true
+      ssrEmitStatic(buf, ` class="${escapeHtmlSsr(value)}"`)
+      return true
+    }
+    if (name === 'style') {
+      // normalizeStyle(string) === string; empty → omit.
+      if (value === '') return true
+      ssrEmitStatic(buf, ` style="${escapeHtmlSsr(value)}"`)
+      return true
+    }
+    if (SSR_URL_ATTRS.has(name)) {
+      // Unsafe (`javascript:`/`data:`) → renderProp drops it (or keeps it only
+      // for safe image data URIs) — too subtle to bake; bail to h().
+      if (SSR_UNSAFE_URL_RE.test(value)) return false
+      ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
+      return true
+    }
+    ssrEmitStatic(buf, ` ${name}="${escapeHtmlSsr(value)}"`)
+    return true
+  }
+
+  /**
+   * `.map(item => <eligibleEl>)` fast path (recursed mode only). Bakes the
+   * accessor markers the h() wrap adds and emits
+   * `_ssrChildren(recv.map(param => <item _ssr>))`. Returns false to fall back
+   * to the general wrapped-hole delegation (still byte-identical, just not
+   * item-fast).
+   */
+  function ssrTryMap(buf: SsrBuf, expr: N): boolean {
+    if (expr.type !== 'CallExpression') return false
+    const callee = expr.callee
+    if (!callee || callee.type !== 'MemberExpression' || callee.computed) return false
+    if (callee.property?.type !== 'Identifier' || callee.property.name !== 'map') return false
+    const args = expr.arguments ?? []
+    if (args.length !== 1) return false
+    const cb = args[0]
+    if (!cb || cb.type !== 'ArrowFunctionExpression') return false
+    if (cb.body?.type === 'BlockStatement') return false // only concise arrows
+    const body = unwrapTypeLayers(cb.body)
+    if (body.type !== 'JSXElement') return false
+    if (isSelfClosing(body)) return false
+    const itemCall = buildSsrCall(body, 'mapitem')
+    if (itemCall === null) return false
+    const recv = sliceExpr(callee.object)
+    const params = cb.params ?? []
+    const paramText =
+      params.length === 0
+        ? ''
+        : code.slice(params[0]!.start as number, params[params.length - 1]!.end as number)
+    ssrEmitStatic(buf, '<!--$-->')
+    ssrEmitHole(buf, `_ssrChildren(${recv}.map((${paramText}) => ${itemCall}))`)
+    ssrEmitStatic(buf, '<!--/$-->')
+    needsSsrChildrenImport = true
+    return true
+  }
+
+  /** Serialize one expression child. Returns false to bail the element. */
+  function ssrSerializeExprChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
+    const raw = child.expression
+    if (!raw || raw.type === 'JSXEmptyExpression') return true // {} / {/* */} → nothing
+    const expr = unwrapTypeLayers(raw)
+    // mapitem mode: every expression child is a PLAIN VALUE child (the compiler
+    // never recursed into the map callback) → bare hole, no markers.
+    if (mode === 'mapitem') {
+      ssrEmitHole(buf, sliceExpr(expr))
+      return true
+    }
+    // recursed mode: matches handleJsxExpression's wrap decision.
+    if (ssrTryMap(buf, expr)) return true
+    if (shouldWrap(expr)) {
+      const sliced = sliceExpr(expr)
+      ssrEmitHole(buf, expr.type === 'ObjectExpression' ? `() => (${sliced})` : `() => ${sliced}`)
+    } else {
+      ssrEmitHole(buf, sliceExpr(expr))
+    }
+    return true
+  }
+
+  /** Serialize one child (text / element / expression). Returns false to bail. */
+  function ssrSerializeChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
+    if (child.type === 'JSXText') {
+      const cleaned = cleanJsxText(child.value ?? child.raw ?? '')
+      // Entity-safety bail: oxc keeps HTML entities (`&amp;`) LITERAL in
+      // JSXText, but the h() path's JSX runtime (esbuild) may DECODE them — so
+      // any `&` in baked text risks diverging from the current SSR bytes. Bail
+      // to h() (which owns the decode). `<`/`>` can't occur in JSXText (parse
+      // error); a JS-string child (`{'a & b'}`) is a hole, unaffected.
+      if (cleaned.includes('&')) return false
+      if (cleaned) ssrEmitStatic(buf, escapeHtmlSsr(cleaned))
+      return true
+    }
+    if (child.type === 'JSXElement') return ssrSerializeElement(buf, child, mode)
+    if (child.type === 'JSXExpressionContainer') return ssrSerializeExprChild(buf, child, mode)
+    // JSXFragment / JSXSpreadChild → bail.
+    return false
+  }
+
+  /** Serialize an element (open tag + attrs + children + close). False = bail. */
+  function ssrSerializeElement(buf: SsrBuf, el: N, mode: SsrMode): boolean {
+    const tag = jsxTagName(el)
+    if (!tag || !isLowerCase(tag)) return false // component / empty → bail
+    if (isSelfClosing(el)) return false // self-closing → bail (rare; go to h())
+    if (SSR_VOID_TAGS.has(tag)) return false // void tag w/ content → bail
+    if (tag === 'select' || tag === 'option') return false // PZ-09 complexity → bail
+    // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
+    // Rare; bail to let the h() path dedupe.
+    const seen = new Set<string>()
+    for (const a of jsxAttrs(el)) {
+      if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier') {
+        if (seen.has(a.name.name as string)) return false
+        seen.add(a.name.name as string)
+      }
+    }
+    ssrEmitStatic(buf, `<${tag}`)
+    for (const attr of jsxAttrs(el)) {
+      if (!ssrSerializeAttr(buf, attr)) return false
+    }
+    ssrEmitStatic(buf, '>')
+    for (const child of jsxChildren(el)) {
+      if (!ssrSerializeChild(buf, child, mode)) return false
+    }
+    ssrEmitStatic(buf, `</${tag}>`)
+    return true
+  }
+
+  /** Build the `_ssr([...statics], ...holes)` call text, or null to bail. */
+  function buildSsrCall(el: N, mode: SsrMode): string | null {
+    const buf: SsrBuf = { statics: [''], holes: [] }
+    if (!ssrSerializeElement(buf, el, mode)) return null
+    const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
+    const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
+    return `_ssr([${staticsArr}]${holesArr})`
+  }
+
+  function trySsrTemplateEmit(node: N): boolean {
+    if (isSelfClosing(node)) return false
+    const call = buildSsrCall(node, 'recursed')
+    if (call === null) return false
+    const start = node.start as number
+    const end = node.end as number
+    const parent = findParent(node)
+    const needsBraces = parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment')
+    replacements.push({ start, end, text: needsBraces ? `{${call}}` : call })
+    needsSsrImport = true
     return true
   }
 
@@ -2381,6 +2683,12 @@ export function transformJSX_JS(
         // resolved template; do not recurse into the subtree.
         return
       }
+      // Compile-to-string SSR fast path (opt-in via `options.ssrTemplate`).
+      // Emits `_ssr(...)` for eligible static-skeleton subtrees; falls through
+      // to the h() path on any non-eligible shape. JS backend only for now.
+      if (ssrTemplate && !isSelfClosing(node) && trySsrTemplateEmit(node)) {
+        return
+      }
       if (!isSelfClosing(node) && tryTemplateEmit(node)) {
         // Template emitted — don't recurse into this subtree (JSXElement is never a function)
         return
@@ -2469,6 +2777,14 @@ export function transformJSX_JS(
     preamble =
       `import { ${runtimeDomImports.join(', ')} } from "@pyreon/runtime-dom";${reactivityImports}\n` +
       preamble
+  }
+
+  // Compile-to-string SSR fast path helpers (`options.ssrTemplate`). Mutually
+  // exclusive with the `_tpl` DOM path (that only fires for `ssr: false`).
+  if (needsSsrImport) {
+    const ssrImports = ['_ssr']
+    if (needsSsrChildrenImport) ssrImports.push('_ssrChildren')
+    preamble = `import { ${ssrImports.join(', ')} } from "@pyreon/runtime-server";\n` + preamble
   }
 
   if (needsRpImport || needsWrapSpreadImport || needsCxImportGlobal) {
@@ -4107,6 +4423,58 @@ function escapeJsString(s: string): string {
 function escapeHtmlText(s: string): string {
   return s.replace(/&(?!(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]\w*);)/g, '&amp;').replace(/</g, '&lt;')
 }
+
+// ─── Compile-to-string SSR fast path (`options.ssrTemplate`) helpers ──────────
+//
+// These mirror `@pyreon/runtime-server` BYTE-FOR-BYTE so baked static bytes are
+// identical to what `renderElement`/`renderProp` produce for the same subtree.
+
+/**
+ * SSR text/attr escaping — replicates `@pyreon/runtime-server`'s `escapeHtml`
+ * EXACTLY (all five of `& < > " '`, unconditional). This is the escaping the
+ * h() SSR path applies to BOTH text children and generic attribute values
+ * (`renderPropValue`), so a compile-time bake using it is byte-identical.
+ * Distinct from `escapeHtmlText` (the DOM `<template>` path — entity-aware `&`,
+ * no `>"'`), which is WRONG for SSR string output.
+ */
+function escapeHtmlSsr(s: string): string {
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c === 38) out += '&amp;'
+    else if (c === 60) out += '&lt;'
+    else if (c === 62) out += '&gt;'
+    else if (c === 34) out += '&quot;'
+    else if (c === 39) out += '&#39;'
+    else out += s[i]
+  }
+  return out
+}
+
+// Void elements — `renderElement` emits `<tag />` for these regardless of
+// children, so an `_ssr` bake of a void tag with content would diverge. Bail.
+const SSR_VOID_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+])
+
+// URL-bearing attributes guarded by `@pyreon/core/url-guard` on the SSR path.
+// Single-sourced values mirrored here so the compiler can DECIDE (at bake time)
+// whether a static URL literal is safe. Kept in sync with url-guard.ts.
+const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
+const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 // React/Babel JSX whitespace algorithm (cleanJSXElementLiteralChild).
 // Same-line text is preserved verbatim so adjacent expressions keep their
