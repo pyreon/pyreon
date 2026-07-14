@@ -18,5 +18,12 @@ export default defineNodeConfig({
   // e2e/dev-error-printer.spec.ts). Aspiration stays 95/95 — raise back in
   // lockstep as targeted tests land (BELOW_FLOOR_EXEMPTIONS entry in
   // scripts/check-coverage.ts mirrors these numbers).
-  coverageThresholds: { statements: 89, branches: 83, functions: 93, lines: 92 },
+  // Ratcheted 89→91 stmts / 83→85 branches / 93→94 funcs / 92→94 lines
+  // (measured 91.79 / 85.56 / 94.77 / 95.10) after validate-emit.ts — the
+  // compile-time @pyreon/validate specializer — gained full behavioral
+  // coverage of its check vocabulary (string max/length/url/uuid/regex,
+  // number gt/lt/positive/negative/gte-lte) + the emitSchemaSource mini
+  // rewrite (56.3%→98.9% stmts). A ~0.5–1pp buffer under each measured value
+  // absorbs `test (native)`-cell variance in the jsx.ts native-equivalence tail.
+  coverageThresholds: { statements: 91, branches: 85, functions: 94, lines: 94 },
 })
