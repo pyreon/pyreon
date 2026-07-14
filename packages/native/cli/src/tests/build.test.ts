@@ -322,6 +322,25 @@ describe('@pyreon/native-cli build', () => {
     }
   })
 
+  it('Kotlin conditional imports: isSystemInDarkTheme pulls its foundation import (M2.5, device-found)', () => {
+    // Device-found (M2.5 dark mode): `useColorScheme()` emits
+    // `if (isSystemInDarkTheme()) "dark" else "light"`, but isSystemInDarkTheme
+    // is a top-level @Composable in the ROOT androidx.compose.foundation
+    // package — NOT star-imported (.layout/.lazy/.text are). The kotlinc
+    // validate stubs concatenate + provide it, so the validate loop stayed
+    // green while the REAL `gradle assembleDebug` failed with an unresolved
+    // reference — the counter was the first Android example to read
+    // useColorScheme. Bisect site: the isSystemInDarkTheme branch in
+    // conditionalKotlinImports.
+    const withScheme = conditionalKotlinImports(
+      'val colorScheme = if (isSystemInDarkTheme()) "dark" else "light"',
+    )
+    expect(withScheme).toContain('import androidx.compose.foundation.isSystemInDarkTheme')
+    // Absent when nothing reads the color scheme.
+    const without = conditionalKotlinImports('Text(text = "Count: ${count}")')
+    expect(without).not.toContain('isSystemInDarkTheme')
+  })
+
   it('Kotlin conditional imports: Scroll / Modal / remote-Image pull foundation / ui.window / coil', () => {
     // Vocabulary-completion (audit-found): <Scroll> emits verticalScroll/
     // rememberScrollState (root androidx.compose.foundation, NOT the
