@@ -147,7 +147,7 @@ The Pyreon Multi-Target Compiler emits SwiftUI + Compose from one `.tsx` source.
 - L3b `@pyreon/elements` (web-only-rich, rocketstyle/styler-coupled);
 - L4 `<NativeIOS>`/`<NativeAndroid>`/`<Web>` escape hatches.
 
-Canonical primitive maps: `packages/native/compiler/src/canonical-primitives.ts` (`SWIFT_NAMES`/`KOTLIN_NAMES`, 15 each). Cross-platform a11y vocab (`AccessibilityProps`): `accessibilityLabel`/`accessibilityHidden` lower per-target (web lowering ships; iOS/Android emit is a tracked follow-up).
+Canonical primitive maps: `packages/native/compiler/src/canonical-primitives.ts` (`SWIFT_NAMES`/`KOTLIN_NAMES`, 15 each). Cross-platform a11y vocab (`AccessibilityProps`): `accessibilityLabel`/`accessibilityHidden` lower per-target on ALL THREE targets — web (`aria-label`/`aria-hidden`), iOS (`.accessibilityLabel(...)`/`.accessibilityHidden(true)`), Android (`semantics { contentDescription }`/`clearAndSetSemantics {}`); emit R2-locked in `canonical-primitives.test.ts`. `accessibilityLabel` is iOS-DEVICE-PROVEN (native-counter XCUITest asserts a labelled element is queryable by its label, not its visible glyph — first R4 of an a11y lowering). `accessibilityHidden` stays R2: XCUITest string queries don't reliably reflect `.accessibilityHidden(true)` (tooling limitation, not an emit gap).
 
 **Per-platform import resolution**: on web `@pyreon/primitives` runs the real DOM impl; on iOS/Android the PMTC compiler intercepts the JSX and emits native code before the runtime — the import is type-anchor-only.
 

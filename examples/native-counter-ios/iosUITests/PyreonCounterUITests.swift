@@ -236,4 +236,47 @@ final class PyreonCounterUITests: XCTestCase {
                 + "non-environment constant)"
         )
     }
+
+    // A11y — the cross-platform AccessibilityProps vocab asserted in the REAL
+    // iOS accessibility tree (the first DEVICE assertion of an emit that has
+    // only ever been R2/compile-proven). The shared Counter.tsx has
+    // `<Text accessibilityLabel="A11y status ready">●</Text>`; PMTC emits
+    // `Text("●").accessibilityLabel("A11y status ready")`.
+    //
+    // DIFFERENTIATING behavioral R4 — it proves the label lowering actually
+    // reaches XCUITest's accessibility tree AND overrode the accessible name:
+    //   (1) the element is queryable by its LABEL ("A11y status ready"), and
+    //   (2) it is NOT queryable by its visible glyph "●" — so
+    //       `.accessibilityLabel` genuinely replaced the accessible name in
+    //       the live tree (a plain, un-labelled `Text("●")` WOULD be queryable
+    //       by "●").
+    //
+    // Scope note: `accessibilityHidden` stays R2/emit-locked (canonical-
+    // primitives.test.ts). XCUITest's `staticTexts` string queries do NOT
+    // reliably reflect `.accessibilityHidden(true)` (the automation snapshot
+    // still exposes SwiftUI Text by content even when VoiceOver skips it), so
+    // a device assertion on it would be flaky — a tooling limitation, not an
+    // emit gap.
+    func test_accessibilityLabelReachesTree() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Count: 0"].waitForExistence(timeout: 30),
+            "App did not render"
+        )
+
+        // (1) accessibilityLabel reached the tree — queryable by the LABEL.
+        XCTAssertTrue(
+            app.staticTexts["A11y status ready"].waitForExistence(timeout: 5),
+            "accessibilityLabel did not reach the iOS accessibility tree — "
+                + "the labelled element is not queryable by \"A11y status ready\""
+        )
+        // (2) The visible glyph "●" is NOT the accessible name (label overrode it).
+        XCTAssertFalse(
+            app.staticTexts["●"].exists,
+            "accessibilityLabel did NOT override the accessible name — the raw "
+                + "glyph \"●\" is still in the a11y tree"
+        )
+    }
 }
