@@ -74,6 +74,6 @@ describe('gen-docs — hotkeys snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(4)
+    expect(Object.keys(record).length).toBe(7)
   })
 })

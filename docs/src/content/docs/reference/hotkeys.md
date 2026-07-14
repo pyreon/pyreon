@@ -76,6 +76,9 @@ useHotkey('escape', () => closeModal(), { enableOnInputs: true })
 | [`useHotkeyScope`](#usehotkeyscope) | hook | Activate a hotkey scope for the lifetime of the current component. |
 | [`registerHotkey`](#registerhotkey) | function | Imperative hotkey registration for non-component contexts (stores, global setup). |
 | [`getHotkeyConflicts`](#gethotkeyconflicts) | function | Detect registered shortcuts that would fire on the SAME keystroke within the SAME scope. |
+| [`enableScope / disableScope / getActiveScopes`](#enablescope-disablescope-getactivescopes) | function | The reference-counted scope-activation API. |
+| [`getRegisteredHotkeys`](#getregisteredhotkeys) | function | Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitte |
+| [`parseShortcut / matchesCombo / formatCombo`](#parseshortcut-matchescombo-formatcombo) | function | The combo utilities. |
 
 ## API
 
@@ -180,6 +183,89 @@ getHotkeyConflicts()
 ```
 
 **See also:** `getRegisteredHotkeys` · `registerHotkey`
+
+---
+
+### enableScope / disableScope / getActiveScopes `function`
+
+```ts
+enableScope(scope: string) => void · disableScope(scope: string) => void · getActiveScopes() => Signal<Set<string>>
+```
+
+The reference-counted scope-activation API. `enableScope` ACQUIRES a scope (a modal, a panel) — it activates on the FIRST acquire and each further `enableScope` just bumps the refcount; `disableScope` RELEASES it, and the scope only deactivates once every acquire has been released. `'global'` is always active and cannot be enabled or disabled. `getActiveScopes()` returns the LIVE reactive `Signal<Set<string>>` of currently-active scope names. All three are no-ops on the server (scope state is client-runtime and must not bleed across requests).
+
+**Example**
+
+```tsx
+// acquire a scope while a modal is open, release on close:
+enableScope('modal')
+// ...later, when the modal closes:
+disableScope('modal')
+
+// read active scopes reactively:
+const active = getActiveScopes()
+const isModalActive = () => active().has('modal')
+```
+
+**Common mistakes**
+
+- Unbalanced acquire/release — every `enableScope(s)` MUST be matched by exactly one `disableScope(s)`. A missing release leaks the refcount and the scope stays active forever; an extra release is a harmless no-op (the count clamps at zero).
+- Trying to toggle `'global'` — `enableScope('global')` / `disableScope('global')` are no-ops; the global scope is always active.
+- Mutating the Set from `getActiveScopes()` — it returns the LIVE internal signal; call it to READ (`getActiveScopes()().has(s)`) and let `enableScope`/`disableScope` own the writes. Read it inside a reactive scope so it updates.
+
+**See also:** `useHotkeyScope` · `getRegisteredHotkeys`
+
+---
+
+### getRegisteredHotkeys `function`
+
+```ts
+getRegisteredHotkeys() => ReadonlyArray<{ shortcut: string; scope: string; description?: string }>
+```
+
+Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitted when the registration set none). Built for a help dialog / keyboard-shortcut cheat-sheet. Pairs with `getHotkeyConflicts` for a settings-panel audit.
+
+**Example**
+
+```tsx
+registerHotkey('mod+k', openPalette, { description: 'Command palette' })
+getRegisteredHotkeys()
+// → [{ shortcut: 'mod+k', scope: 'global', description: 'Command palette' }]
+```
+
+**Common mistakes**
+
+- Expecting it to be reactive — it is a SNAPSHOT mapped at call time. Call it again after registrations change (or inside a reactive scope that re-reads it) to reflect new hotkeys.
+
+**See also:** `getHotkeyConflicts` · `registerHotkey`
+
+---
+
+### parseShortcut / matchesCombo / formatCombo `function`
+
+```ts
+parseShortcut(shortcut: string) => KeyCombo · matchesCombo(event: KeyboardEvent, combo: KeyCombo) => boolean · formatCombo(combo: KeyCombo) => string
+```
+
+The combo utilities. `parseShortcut` turns a string (`'mod+shift+k'`) into a `KeyCombo` — lower-cased, `+`-split, with aliases (`esc`-&gt;`escape`, `del`-&gt;`delete`, `space`-&gt;space, `up`-&gt;`arrowup`, …) and `mod` resolving to META on Mac / CTRL elsewhere. `matchesCombo` tests a `KeyboardEvent` against a parsed combo. `formatCombo` renders a combo back to a display string (`Ctrl+Shift+K`; META shows as the `⌘` glyph on Mac).
+
+**Example**
+
+```tsx
+const combo = parseShortcut('mod+k')
+document.addEventListener('keydown', (e) => {
+  if (matchesCombo(e, combo)) openPalette()
+})
+formatCombo(combo) // → 'Ctrl+K' (or '⌘+K' on Mac)
+```
+
+**Common mistakes**
+
+- Enforcing Shift for a SYMBOL key — `matchesCombo` deliberately does NOT require the Shift modifier for a single-character symbol key (`?`, `!`, `+`, `/`), so `parseShortcut('?')` matches the real `Shift+/` keystroke (the canonical 'show help' binding). Letters and named keys (`a`, `arrowup`) keep exact Shift-matching.
+- `mod` is platform-dependent — `parseShortcut('mod+s')` yields META on Mac and CTRL elsewhere; do not hard-code `ctrl`/`meta` if you want cross-platform behavior.
+- Round-tripping `formatCombo` back through `parseShortcut` — `formatCombo` is for DISPLAY (it emits the `⌘` glyph on Mac and capitalizes keys); it is not guaranteed to re-parse. Keep the original shortcut string if you need to re-parse it.
+
+**See also:** `useHotkey` · `registerHotkey`
 
 ---
 
