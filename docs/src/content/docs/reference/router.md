@@ -212,6 +212,15 @@ const Admin = () => (
 )
 ```
 
+**Common mistakes**
+
+- SSR renders a BLANK page for a lazy route when the handler only ran `prefetchLoaderData` — that runs LOADERS ONLY, it does NOT resolve `lazy()` route components. `renderToString` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must ALSO call `router.preload(path, req)` (resolves lazy components into `_componentCache`) before rendering.
+- Forgetting the inner `<RouterView />` inside a LAYOUT component — nested child routes render by placing a SECOND `<RouterView />` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).
+- Expecting a param-only navigation (`/user/1 → /user/2`) to re-run the layout body — it does NOT. Each depth is a single atomic `computed` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.
+- Passing the route component as a prop or child to `<RouterView>` — it takes none except `announceRouteChanges` (a11y live-region opt-out). It reads the matched chain from `RouterContext`; configure routes in `createRouter`, never on RouterView.
+- In a `*-compat` app, wrapping `<RouterView>` in your OWN layout helper that uses `provide()`/`onMount()`/`effect()` at body scope without marking it `nativeCompat()` — the compat jsx runtime relocates its setup into a wrapper accessor. RouterView itself ships `nativeCompat`-marked; your helpers around it must be too.
+- Passing `layout` to `@pyreon/zero`'s `createApp`/`startClient` when fs-router already emits `_layout.tsx` — the layout is a parent route in the matched chain that RouterView renders, so the explicit `layout` mounts it a SECOND time (two navbars / two providers). Let `_layout.tsx` be the canonical registration; do not also pass `layout`.
+
 **See also:** `RouterProvider` · `createRouter`
 
 ---
@@ -293,6 +302,13 @@ const userId = route().params.id  // string
 route().query
 route().meta
 ```
+
+**Common mistakes**
+
+- `const { params } = useRoute()` — `useRoute()` returns an ACCESSOR (it IS `router.currentRoute`), so this destructures the FUNCTION object (which has no `params`) → `undefined`. Read it: `const route = useRoute(); route().params.id`.
+- Reading `route().params.id` OUTSIDE a reactive scope (in the raw component body) captures the value ONCE — it will NOT update on a same-component param change (`/user/1 → /user/2` re-renders the User leaf but the top-level `const` was already evaluated). Read inside JSX / `effect` / `computed` to track.
+- Treating the `<TPath>` type param as validated — `useRoute<"/user/:id">()` is your ASSERTION about the mounted path (the impl casts `as never`). A wrong literal gives wrong param types with no runtime error.
+- Calling `useRoute()` with no `<RouterProvider>` ancestor and no active router — throws `[Pyreon] No router installed`.
 
 **See also:** `useRouter` · `useSearchParams` · `useLoaderData`
 
@@ -419,6 +435,14 @@ const User = () => {
 }
 ```
 
+**Common mistakes**
+
+- Getting `undefined` when the route has NO `loader` — it reads `LoaderDataContext` (default `undefined`). The `<T>` generic is an unchecked CAST, not validation; `data.name` then throws on the undefined.
+- Wrapping `useLoaderData()` in an `effect` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.
+- SSR returning `undefined` at render time — loaders are async but `renderToString` is synchronous, so the handler must run loaders (`prefetchLoaderData` or `router.preload`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
+- Calling it in a component NOT rendered by `<RouterView>` (a sibling inside `<RouterProvider>`, a portal outside the route tree) — no `LoaderDataProvider` wraps it, so the context is the default `undefined`.
+- Expecting a nested LAYOUT's `useLoaderData()` to return the child PAGE's data — each depth is wrapped with its OWN `LoaderDataProvider`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.
+
 **See also:** `useMiddlewareData` · `useRoute`
 
 ---
@@ -534,6 +558,11 @@ search().page  // "1"
 setSearch({ page: "2" })
 ```
 
+**Common mistakes**
+
+- Object-destructuring the return (`params.page()`) — it is a `[get, set]` TUPLE like `useTypedSearchParams`: `const [search, setSearch] = useSearchParams(...)`, read via `search().page`.
+- Expecting auto-coerced types — `useSearchParams` values are RAW strings (`search().page` is `"1"`, not `1`). For typed, auto-coerced params (`"number"`/`"boolean"`), use `useTypedSearchParams`.
+
 **See also:** `useTypedSearchParams` · `useRoute`
 
 ---
@@ -581,6 +610,12 @@ onBeforeRouteLeave((to, from) => {
   if (hasUnsavedChanges()) return false  // cancel navigation
 })
 ```
+
+**Common mistakes**
+
+- Return-value inversion vs `useBlocker` — a GUARD returns `false` to CANCEL (and `undefined` to allow), while a BLOCKER returns `true` to BLOCK. They are opposite; mixing them up either lets navigations through or blocks them all.
+- Calling it in an event handler or `effect` — it must run during component SETUP (it registers on the current component's lifecycle and auto-removes on unmount). Called later, it never registers.
+- Returning a truthy non-string (e.g. an object) expecting a redirect — only a STRING return redirects (to that path); `false` cancels, `undefined` allows.
 
 **See also:** `onBeforeRouteUpdate` · `useBlocker`
 
