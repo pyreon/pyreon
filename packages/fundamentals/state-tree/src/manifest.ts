@@ -180,17 +180,27 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
       kind: 'function',
       signature: '(instance: ModelInstance) => Snapshot',
       summary:
-        'Recursively serialize a model instance into a plain JSON-safe snapshot. Reads all signal values via `.peek()` to avoid tracking subscriptions. Nested models are recursively serialized.',
+        'Recursively serialize a model instance into a plain JSON-safe snapshot. Reads all signal values via `.peek()` (a one-time read — NOT a reactive computed; it does not subscribe). Nested field-models AND arrays / plain-objects that HOLD model instances (`todos: Todo[]`, `byId: { [k]: Model }`) are recursively serialized; a `reference` field serializes as its stored ID, not the target node.',
       example: `const snap = getSnapshot(counter) // { count: 10 }`,
+      mistakes: [
+        'Expecting `getSnapshot` to be reactive — it reads via `.peek()`, so it is a one-time snapshot, not a `computed`. Call it again (e.g. inside `onSnapshot`) to get the next value.',
+        'Expecting a `reference` field to serialize the target node — it serializes as the stored ID (owned instances in arrays/objects DO deep-serialize; a reference is an id by design).',
+      ],
       seeAlso: ['applySnapshot', 'model'],
     },
     {
       name: 'applySnapshot',
       kind: 'function',
-      signature: '(instance: ModelInstance, snapshot: Snapshot) => void',
+      signature: '(instance: ModelInstance, snapshot: Partial<Snapshot>) => void',
       summary:
-        'Replace a model instance\'s state wholesale from a snapshot. Recursively applies to nested models. Triggers patch listeners with replace operations.',
-      example: `applySnapshot(counter, { count: 0 }) // reset to zero`,
+        'Apply a (possibly PARTIAL) snapshot to a model instance — updates only the keys PRESENT in the snapshot, leaving absent keys unchanged (a merge, not a clear). Nested field-models, arrays-of-instances (`todos: Todo[]`), and object-of-instances (`byId: { [k]: Model }`) reconcile IN PLACE: existing instances are updated from the matching elements, never replaced by plain snapshot objects, and array length changes beyond the current↔snapshot overlap are NOT reconciled (use the array\'s own mutation methods to add/remove). Schema mode routes through the validated `patch` helper, so an invalid snapshot is REJECTED. Emits `replace` patches.',
+      example: `applySnapshot(counter, { count: 0 })      // reset one field
+applySnapshot(app, { title: 'New' })      // merge — profile is left unchanged`,
+      mistakes: [
+        'Expecting a partial snapshot to CLEAR unmentioned fields — it merges: keys absent from the snapshot keep their current value. Pass a full snapshot to replace everything.',
+        'Expecting a longer array snapshot to grow the list — arrays-of-instances reconcile only up to the overlap (`min(current, snapshot)`); extra snapshot elements are NOT added (there is no element type to recreate them). Use the array\'s own add/remove action, then apply.',
+        'Applying an invalid snapshot in schema mode expecting a silent write — it routes through the validated `patch` and THROWS on a schema violation (the schema is the source of truth).',
+      ],
       seeAlso: ['getSnapshot', 'model'],
     },
     {
@@ -209,8 +219,12 @@ deepPatch({ prefs: { theme: 'dark', density: 'cozy' } }) // full nested object
       kind: 'function',
       signature: '(instance: ModelInstance, patch: Patch | Patch[]) => void',
       summary:
-        'Apply one or more JSON patches to a model instance. Accepts a single patch or an array for batch replay. Used with `onPatch` for undo/redo and state synchronization.',
+        'Apply one or more JSON patches to a model instance. Accepts a single patch or an array for batch replay. REPLACE-ONLY: every patch must be `{ op: "replace" }` — any other op (`add`/`remove`/`move`/…) THROWS `unsupported op`. This mirrors what `onPatch` emits (Pyreon is one signal per field, so a field holding an array/object emits a whole-value `replace`, never granular add/remove), so an `onPatch`→`applyPatch` undo/redo round-trip is closed; a hand-authored standard JSON-Patch with add/remove is not.',
       example: `applyPatch(counter, { op: 'replace', path: '/count', value: 0 })`,
+      mistakes: [
+        'Passing an `add` / `remove` / `move` patch (e.g. imported from a standard JSON-Patch diff) — `applyPatch` throws `unsupported op "<op>"`; it accepts ONLY `replace`. Feed it the `replace` ops `onPatch` emits, or convert your diff to whole-value replaces.',
+        'Expecting a granular array patch (`/todos/0`, add-at-index) — Pyreon emits a whole-value `replace` of the field (`/todos`); apply the whole array value, not an element op.',
+      ],
       seeAlso: ['onPatch', 'model'],
     },
     {
@@ -375,7 +389,7 @@ post.author.set(user)  // stores user's id
 post.author.id()   // 'u-42'`,
       mistakes: [
         'Reading `reference` resolution OUTSIDE the tree — the field resolves via `getRoot(node)`, so the referencing node and the target must share a root; an unrooted node resolves to `undefined`',
-        'Expecting array-held nodes to deep-serialize in `getSnapshot` — references serialize as the id; the TARGET node serializes under its own owner in the tree (and getSnapshot v1 does not recurse arrays-of-instances)',
+        'Expecting a `reference` field to deep-serialize its target — a reference serializes as the target\'s ID (so it round-trips), NOT as the node; the target serializes under its OWN owner in the tree. (Array-held OWNED instances — the `todos: Todo[]` shape — DO deep-serialize in `getSnapshot`; a reference is an id by design.)',
         'Referencing a model with no `identifier()` — `reference()`/`resolveIdentifier` throw without a declared identifier on the target type',
       ],
       seeAlso: ['identifier', 'resolveIdentifier', 'getRoot', 'model'],
@@ -388,6 +402,21 @@ post.author.id()   // 'u-42'`,
         'Find the model instance of `Type` whose identifier equals `id`, searching `root`\'s subtree (depth-first, cycle-safe; reads each node\'s owned state — fields, array elements, plain-object values — but does not follow references). Returns `undefined` if no match. Throws if `Type` has no `identifier()` declared. The resolver `reference()` fields use under the hood; also useful directly for ad-hoc lookups.',
       example: `const user = resolveIdentifier(store, User, 'u-42')`,
       seeAlso: ['reference', 'identifier', 'getRoot'],
+    },
+    {
+      name: 'resetHook',
+      kind: 'function',
+      signature: 'resetHook(id: string) => void; resetAllHooks() => void',
+      summary:
+        'Destroy `.asHook(id)` singletons. `.asHook(id)` stores ONE instance per id in a MODULE-LEVEL registry (created lazily on first call, shared for the process), so every consumer of `useX = Model.asHook("x")` gets the SAME instance — great for app-global state, a hazard for tests. `resetHook(id)` deletes that one singleton so the next `asHook(id)` call re-creates a fresh instance; `resetAllHooks()` clears the whole registry. Both are for TEST isolation (and hot-reload).',
+      example: `const useTodos = TodoList.asHook('todos')
+// tests:
+afterEach(() => resetAllHooks())   // else a mutation in one test leaks to the next`,
+      mistakes: [
+        'Not resetting between tests — the `asHook` singleton lives in a module-level Map for the whole process, NOT per-test. State mutated in one test persists into the next; call `resetAllHooks()` (or `resetHook(id)`) in `afterEach`.',
+        'Expecting `resetHook` to `destroy()` the old instance\'s subscriptions — it only DROPS the registry entry so the next `asHook` re-creates. If code still holds the old reference, call `destroy()` on it yourself.',
+      ],
+      seeAlso: ['model', 'destroy'],
     },
   ],
   gotchas: [

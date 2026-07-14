@@ -80,7 +80,9 @@ describe('gen-docs — state-tree snapshot', () => {
     // + destroy + isAlive + clone + getType (PR 2)
     // + volatile + onSnapshot + onAction (PR 3)
     // + getParent (tree helpers) = 17
-    expect(Object.keys(record).length).toBe(20)
+    // + resetHook (asHook singleton reset) = 21
+    expect(Object.keys(record).length).toBe(21)
+    expect(record['state-tree/resetHook']!.notes).toContain('singleton')
     expect(record['state-tree/model']!.notes).toContain('chainable builder')
     expect(record['state-tree/model']!.notes).toContain('schema')
     expect(record['state-tree/model']!.notes).toContain('async')
