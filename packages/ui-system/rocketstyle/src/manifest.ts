@@ -328,6 +328,23 @@ Button.meta.category   // 'action'
       seeAlso: ['rocketstyle', '.config()', '@pyreon/ui-core'],
     },
     {
+      name: 'context',
+      kind: 'constant',
+      signature: 'context: ReactiveContext<{ theme; mode; isDark; isLight; … }>',
+      summary:
+        'The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `<PyreonUI>` and rocketstyle `Provider` write, not a rocketstyle-specific one. `useContext(context)` returns a `() => { theme, mode, isDark, isLight, … }` ACCESSOR (reactive); rocketstyle\'s `Provider` and its per-component dimension resolution read the active theme + mode through it. Exposed for advanced consumers building their OWN theme/mode-aware primitives; app code uses `Provider` / `<PyreonUI>` + the built-in dimension resolution instead.',
+      example: `import { context } from '@pyreon/rocketstyle'
+import { useContext } from '@pyreon/core'
+
+const getCtx = useContext(context)   // () => { theme, mode, isDark, isLight }
+const { mode, isDark } = getCtx()    // call the accessor to read`,
+      mistakes: [
+        'Treating `useContext(context)` as the config object — it is the ACCESSOR `() => ctx` (a reactive context); CALL it to read: `const ctx = useContext(context)()`.',
+        'Creating a fresh context expecting rocketstyle to read it — `context` is re-exported from `@pyreon/ui-core`; `<PyreonUI>` and rocketstyle `Provider` all write THIS same object. Provide through them, not a new context.',
+      ],
+      seeAlso: ['Provider', 'rocketstyle', '@pyreon/ui-core'],
+    },
+    {
       name: 'isRocketComponent',
       kind: 'function',
       signature: '<T>(component: T) => boolean',

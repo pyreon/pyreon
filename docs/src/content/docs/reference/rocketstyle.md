@@ -93,6 +93,7 @@ const Badge = rsBadge({ name: 'Badge', component: 'span' })
 | [`.compose()`](#compose) | function | Wrap the component in named higher-order components. |
 | [`.statics()`](#statics) | function | Attach arbitrary static metadata. |
 | [`Provider`](#provider) | component | Tree-level theme + mode provider. |
+| [`context`](#context) | constant | The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `&lt;Pyr |
 | [`isRocketComponent`](#isrocketcomponent) | function | Runtime type guard — `true` when a value was created by `rocketstyle()` (checks the own `IS_ROCKETSTYLE` marker). |
 | [`resolveTheme`](#resolvetheme) | function | Resolve a `$rocketstyle` value inside `styled()` / `.styles()` interpolation functions — handles both the function-acces |
 | [`resolveModeVar`](#resolvemodevar) | function | Under `init({ cssVariables: true })`, `mode(light, dark)` pairs are emitted as hashed CSS custom properties (`var(--px-m |
@@ -445,6 +446,33 @@ import { Provider } from '@pyreon/rocketstyle'
 - Confusing this theme/mode provider with `.config({ provider: true })` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming
 
 **See also:** `rocketstyle` · `.config()` · `@pyreon/ui-core`
+
+---
+
+### context `constant`
+
+```ts
+context: ReactiveContext<{ theme; mode; isDark; isLight; … }>
+```
+
+The raw reactive context object backing `Provider` — RE-EXPORTED from `@pyreon/ui-core`, so it is the SAME context `<PyreonUI>` and rocketstyle `Provider` write, not a rocketstyle-specific one. `useContext(context)` returns a `() => { theme, mode, isDark, isLight, … }` ACCESSOR (reactive); rocketstyle's `Provider` and its per-component dimension resolution read the active theme + mode through it. Exposed for advanced consumers building their OWN theme/mode-aware primitives; app code uses `Provider` / `<PyreonUI>` + the built-in dimension resolution instead.
+
+**Example**
+
+```tsx
+import { context } from '@pyreon/rocketstyle'
+import { useContext } from '@pyreon/core'
+
+const getCtx = useContext(context)   // () => { theme, mode, isDark, isLight }
+const { mode, isDark } = getCtx()    // call the accessor to read
+```
+
+**Common mistakes**
+
+- Treating `useContext(context)` as the config object — it is the ACCESSOR `() => ctx` (a reactive context); CALL it to read: `const ctx = useContext(context)()`.
+- Creating a fresh context expecting rocketstyle to read it — `context` is re-exported from `@pyreon/ui-core`; `<PyreonUI>` and rocketstyle `Provider` all write THIS same object. Provide through them, not a new context.
+
+**See also:** `Provider` · `rocketstyle` · `@pyreon/ui-core`
 
 ---
 

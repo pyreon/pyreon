@@ -7820,6 +7820,18 @@ Button.meta.category   // 'action'
 - Confusing this theme/mode provider with \`.config({ provider: true })\` — the latter is the component-to-component PSEUDO-STATE channel, unrelated to theming`,
   },
 
+  'rocketstyle/context': {
+    signature: 'context: ReactiveContext<{ theme; mode; isDark; isLight; … }>',
+    example: `import { context } from '@pyreon/rocketstyle'
+import { useContext } from '@pyreon/core'
+
+const getCtx = useContext(context)   // () => { theme, mode, isDark, isLight }
+const { mode, isDark } = getCtx()    // call the accessor to read`,
+    notes: `The raw reactive context object backing \`Provider\` — RE-EXPORTED from \`@pyreon/ui-core\`, so it is the SAME context \`<PyreonUI>\` and rocketstyle \`Provider\` write, not a rocketstyle-specific one. \`useContext(context)\` returns a \`() => { theme, mode, isDark, isLight, … }\` ACCESSOR (reactive); rocketstyle's \`Provider\` and its per-component dimension resolution read the active theme + mode through it. Exposed for advanced consumers building their OWN theme/mode-aware primitives; app code uses \`Provider\` / \`<PyreonUI>\` + the built-in dimension resolution instead. See also: Provider, rocketstyle, @pyreon/ui-core.`,
+    mistakes: `- Treating \`useContext(context)\` as the config object — it is the ACCESSOR \`() => ctx\` (a reactive context); CALL it to read: \`const ctx = useContext(context)()\`.
+- Creating a fresh context expecting rocketstyle to read it — \`context\` is re-exported from \`@pyreon/ui-core\`; \`<PyreonUI>\` and rocketstyle \`Provider\` all write THIS same object. Provide through them, not a new context.`,
+  },
+
   'rocketstyle/isRocketComponent': {
     signature: '<T>(component: T) => boolean',
     example: `import { isRocketComponent } from '@pyreon/rocketstyle'
