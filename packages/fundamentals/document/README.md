@@ -52,7 +52,7 @@ const md = await doc.toMarkdown()
 const slack = await doc.toSlack()
 ```
 
-Builder methods mirror every renderer: `toHtml` / `toPdf` / `toDocx` / `toPptx` / `toXlsx` / `toEmail` / `toMarkdown` / `toText` / `toCsv` / `toSvg` / `toSlack` / `toTeams` / `toDiscord` / `toTelegram` / `toNotion` / `toConfluence` / `toWhatsApp` / `toGoogleChat`.
+Builder methods mirror every renderer: `toHtml` / `toPdf` / `toDocx` / `toPptx` / `toXlsx` / `toEmail` / `toMarkdown` / `toText` / `toCsv` / `toSvg` / `toSlack` / `toTeams` / `toDiscord` / `toTelegram` / `toNotion` / `toConfluence` / `toWhatsApp` / `toGoogleChat` / `toJson` / `toJsonl`.
 
 ## Primitives — 18 nodes
 
@@ -89,12 +89,13 @@ await render(doc, 'pdf', {
 ```ts
 import { download } from '@pyreon/document'
 
-await download(doc, 'pdf', 'report.pdf')
-await download(doc, 'docx', 'report.docx')
-await download(doc, 'xlsx', 'data.xlsx')
+await download(doc, 'report.pdf')
+await download(doc, 'report.docx')
+await download(doc, 'data.xlsx')
+await download(doc, 'tree.json')
 ```
 
-Renders + triggers a blob URL download. Browser-only.
+`download(node, filename, options?)` renders + triggers a blob URL download — the **file extension picks the format** (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, …). Browser-only.
 
 ## Custom renderers
 

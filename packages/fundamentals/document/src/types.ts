@@ -289,6 +289,10 @@ export interface DocumentBuilder {
   toConfluence(options?: RenderOptions): Promise<string>
   toWhatsApp(options?: RenderOptions): Promise<string>
   toGoogleChat(options?: RenderOptions): Promise<string>
+  /** Serialize the document tree to round-trippable JSON. */
+  toJson(options?: RenderOptions): Promise<string>
+  /** Serialize the document to newline-delimited JSON (one content block per line). */
+  toJsonl(options?: RenderOptions): Promise<string>
   /** Download the document (browser only). */
   download(filename: string, options?: RenderOptions): Promise<void>
 }

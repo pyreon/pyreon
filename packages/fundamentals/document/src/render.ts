@@ -77,6 +77,10 @@ registerRenderer('google-chat', () =>
   import('./renderers/google-chat').then((m) => m.googleChatRenderer),
 )
 
+registerRenderer('json', () => import('./renderers/json').then((m) => m.jsonRenderer))
+
+registerRenderer('jsonl', () => import('./renderers/json').then((m) => m.jsonlRenderer))
+
 // ─── Render Function ────────────────────────────────────────────────────────
 
 async function resolveRenderer(format: string): Promise<DocumentRenderer> {
@@ -196,4 +200,6 @@ export function _resetRenderers(): void {
   registerRenderer('google-chat', () =>
     import('./renderers/google-chat').then((m) => m.googleChatRenderer),
   )
+  registerRenderer('json', () => import('./renderers/json').then((m) => m.jsonRenderer))
+  registerRenderer('jsonl', () => import('./renderers/json').then((m) => m.jsonlRenderer))
 }

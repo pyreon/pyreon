@@ -266,6 +266,14 @@ export function createDocument(props: DocumentProps = {}): DocumentBuilder {
       return render(getNode(), 'google-chat', options) as Promise<string>
     },
 
+    async toJson(options?: RenderOptions) {
+      return render(getNode(), 'json', options) as Promise<string>
+    },
+
+    async toJsonl(options?: RenderOptions) {
+      return render(getNode(), 'jsonl', options) as Promise<string>
+    },
+
     async download(filename: string, options?: RenderOptions) {
       return download(getNode(), filename, options)
     },

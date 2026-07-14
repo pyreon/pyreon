@@ -30,6 +30,7 @@
     "bench:server": "bun scripts/bench/core/server.ts",
     "bench:validate": "bun scripts/bench/core/validate.ts",
     "bench:sync": "bun scripts/bench/core/sync.ts",
+    "bench:document": "bun scripts/bench/core/document.ts",
     "bench:dom": "bun scripts/bench/dom.ts",
     "bench:all": "bun scripts/bench/run-all.ts",
     "bench:compare": "bun scripts/bench/compare.ts",

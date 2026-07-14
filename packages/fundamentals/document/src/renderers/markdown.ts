@@ -5,6 +5,21 @@ function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
 
+/**
+ * Escape a value for a GFM table cell. A raw `|` splits the cell — corrupting
+ * the whole column structure (N pipes in a 1-column cell = N+1 apparent
+ * columns) — and a newline breaks the row onto its own line, producing a
+ * malformed table. Escape `\` → `\\` and `|` → `\|` (backslash first, so an
+ * author-supplied `\|` survives), and collapse newlines to the GFM in-cell
+ * line break `<br>` (the only line break a table cell supports).
+ */
+function mdTableCell(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, '<br>')
+}
+
 function renderChild(child: DocChild): string {
   if (typeof child === 'string') return child
   return renderNode(child)
@@ -96,7 +111,7 @@ function renderNode(node: DocNode): string {
       if (columns.length === 0) return ''
 
       // Header
-      const header = `| ${columns.map((c) => c.header).join(' | ')} |`
+      const header = `| ${columns.map((c) => mdTableCell(c.header)).join(' | ')} |`
 
       // Separator with alignment
       const separator = `| ${columns
@@ -110,7 +125,7 @@ function renderNode(node: DocNode): string {
 
       // Rows
       const body = rows
-        .map((row) => `| ${row.map((cell) => String(cell ?? '')).join(' | ')} |`)
+        .map((row) => `| ${row.map((cell) => mdTableCell(String(cell ?? ''))).join(' | ')} |`)
         .join('\n')
 
       let md = `${header}\n${separator}\n${body}\n\n`
