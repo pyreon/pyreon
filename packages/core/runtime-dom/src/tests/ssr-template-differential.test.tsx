@@ -172,6 +172,39 @@ const cases: DiffCase[] = [
       ),
   },
   {
+    name: 'proven-non-null .map row — String(id) + template-literal href BAKED',
+    // The realistic real-app shape: `data-id={String(r.id)}` (provably a string)
+    // and `href={`/item/${r.id}`}` (template literal, safe `/` start) both BAKE
+    // ` name="` + `_esc(v)` + `"`. Byte-identical to the h() path, which for a
+    // non-null value renders the same ` name="value"`.
+    src: 'const Node = <ul>{rows.map(r => <li data-id={String(r.id)}><a href={`/item/${r.id}`}>{r.name}</a></li>)}</ul>',
+    deps: { rows: rows() },
+    oracle: (d) =>
+      h('ul', null, () =>
+        (d.rows as { id: number; name: string }[]).map((r) =>
+          h('li', { 'data-id': String(r.id) }, h('a', { href: `/item/${r.id}` }, r.name)),
+        ),
+      ),
+  },
+  {
+    name: 'proven-non-null generic attrs — String/number-method/concat/ternary',
+    src: 'const Node = <div data-a={String(data.n)} data-b={data.n.toFixed(2)} data-c={"x-" + data.n} data-d={data.on ? "y" : "n"}>t</div>',
+    deps: { data: { n: 3.5, on: true } },
+    oracle: (d) => {
+      const it = d.data as { n: number; on: boolean }
+      return h(
+        'div',
+        {
+          'data-a': String(it.n),
+          'data-b': it.n.toFixed(2),
+          'data-c': `x-${it.n}`,
+          'data-d': it.on ? 'y' : 'n',
+        },
+        't',
+      )
+    },
+  },
+  {
     name: 'dynamic class (signal) via _ssrAttr',
     src: `const s = signal('active hot'); const Node = <div class={s()}>x</div>`,
     oracle: () => {
@@ -206,6 +239,19 @@ const cases: DiffCase[] = [
     src: `const Node = <a href={data.href}>x</a>`,
     deps: { data: { href: 'javascript:alert(1)' } },
     oracle: (d) => h('a', { href: (d.data as { href: string }).href }, 'x'),
+  },
+  {
+    name: 'NULL-valued bare dynamic attr is OMITTED (null-omit safety, not baked)',
+    // A bare member access is NOT provably non-null → runtime `_ssrAttrGen`,
+    // which OMITS a null value (matching renderProp / the h() path). Over-baking
+    // this (` data-x="" `) would diverge — the null-omit floor the fast path
+    // deliberately preserves. (Bisect target for the baking guard.)
+    src: `const Node = <div data-x={data.maybe} data-y={data.set}>t</div>`,
+    deps: { data: { maybe: null, set: 'ok' } },
+    oracle: (d) => {
+      const it = d.data as { maybe: string | null; set: string }
+      return h('div', { 'data-x': it.maybe, 'data-y': it.set }, 't')
+    },
   },
 ]
 

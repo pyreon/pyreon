@@ -75,17 +75,39 @@ describe('ssrTemplate — emission shapes', () => {
 })
 
 describe('ssrTemplate — dynamic attributes via _ssrAttr (renderProp verbatim)', () => {
-  test('generic dynamic attr → lean _ssrAttrGen; url attr → lean _ssrAttrUrl', () => {
+  test('bare dynamic attr → runtime helper; provably-safe url → baked', () => {
     const out = ssrFast(
       `const Row = (r) => <div class="row" data-id={r.id}><a href={"/i/" + r.id}>{r.label}</a></div>`,
     )
-    // `data-id` is generic (lean `_ssrAttrGen`); `href` is a lowercase URL attr
-    // (lean `_ssrAttrUrl` — same url-guard as renderProp); `r` is a component
-    // prop → the text read is wrapped (markers baked).
+    // `data-id={r.id}` is a BARE member access — not provably non-null → runtime
+    // `_ssrAttrGen`. `href={"/i/" + r.id}` is a string-concat starting with `/`
+    // → provably a safe string → BAKED (` href="` + `_esc(...)` + `"`).
     expect(out).toContain(
-      '_ssr(["<div class=\\"row\\"", "><a", "><!--$-->", "<!--/$--></a></div>"], _ssrAttrGen("data-id", r.id), _ssrAttrUrl("a", "href", "/i/" + r.id), _esc(r.label))',
+      '_ssr(["<div class=\\"row\\"", "><a href=\\"", "\\"><!--$-->", "<!--/$--></a></div>"], _ssrAttrGen("data-id", r.id), _esc("/i/" + r.id), _esc(r.label))',
     )
-    expect(out).toContain('_ssrAttrGen, _ssrAttrUrl } from "@pyreon/runtime-server"')
+  })
+
+  test('provably non-null attrs BAKE ` name="` + _esc(v) + `"` (dead null/omit branch)', () => {
+    // `String(x)` / `.toUpperCase()` → provably a string → generic bake.
+    expect(ssrFast(`const R = (r) => <div data-id={String(r.id)}>x</div>`)).toContain(
+      '_ssr(["<div data-id=\\"", "\\">x</div>"], _esc(String(r.id)))',
+    )
+    // template-literal href with a safe first quasi → provably-safe url → bake.
+    expect(ssrFast('const R = (r) => <a href={`/item/${r.id}`}>x</a>')).toContain(
+      '_ssr(["<a href=\\"", "\\">x</a>"], _esc(`/item/${r.id}`))',
+    )
+    // dynamic class / bare member / bare url stay on the runtime helper.
+    expect(ssrFast(`const s = signal('x'); const N = <div class={s()}>y</div>`)).toContain(
+      '_ssrAttr("div", "class", s())',
+    )
+    expect(ssrFast(`const R = (r) => <div data-id={r.id}>x</div>`)).toContain(
+      '_ssrAttrGen("data-id", r.id)',
+    )
+    // a template-literal url whose first quasi is a DYNAMIC start → not provably
+    // safe → keep the runtime url-guard helper.
+    expect(ssrFast('const R = (r) => <a href={`${r.scheme}://x`}>y</a>')).toContain(
+      '_ssrAttrUrl("a", "href", `${r.scheme}://x`)',
+    )
   })
 
   test('dynamic class (signal), camelCase name, object style → _ssrAttr (renderProp)', () => {

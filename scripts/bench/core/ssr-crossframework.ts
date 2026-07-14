@@ -91,6 +91,7 @@ interface Row {
   id: number
   label: string
   tag: string
+  prefix: string
 }
 interface Card {
   title: string
@@ -102,7 +103,7 @@ const TAGS = ['new', 'hot', 'sale', 'trend', 'pick']
 function makeRows(n: number): Row[] {
   const rows: Row[] = new Array(n)
   for (let i = 0; i < n; i++) {
-    rows[i] = { id: i, label: `Item number ${i}`, tag: TAGS[i % TAGS.length]! }
+    rows[i] = { id: i, label: `Item number ${i}`, tag: TAGS[i % TAGS.length]!, prefix: '/item/' }
   }
   return rows
 }
@@ -372,16 +373,17 @@ function normalize(html: string): string {
   return out
 }
 
-async function correctnessGate(
-  scenarios: {
-    label: string
-    py: () => Promise<string>
-    pyf: () => Promise<string>
-    re: () => string
-    pr: () => string
-    so: () => string
-  }[],
-): Promise<void> {
+interface Scenario {
+  label: string
+  py: () => Promise<string>
+  pyf: () => Promise<string>
+  pyfn?: () => Promise<string>
+  re: () => string
+  pr: () => string
+  so: () => string
+}
+
+async function correctnessGate(scenarios: Scenario[]): Promise<void> {
   for (const s of scenarios) {
     const py = normalize(await s.py())
     const pyf = normalize(await s.pyf())
@@ -389,8 +391,9 @@ async function correctnessGate(
     const pr = normalize(s.pr())
     const so = normalize(s.so())
     const disagree: string[] = []
-    // The fast path MUST be byte-identical to Pyreon's h() path (the #1 gate).
-    if (py !== pyf) disagree.push('pyreon-fast')
+    // Both fast-path variants MUST be byte-identical to Pyreon's h() path.
+    if (py !== pyf) disagree.push('pyreon-fast (provable)')
+    if (s.pyfn && py !== normalize(await s.pyfn())) disagree.push('pyreon-fast (nullable)')
     if (py !== re) disagree.push('react')
     if (py !== pr) disagree.push('preact')
     if (py !== so) disagree.push('solid')
@@ -411,8 +414,17 @@ async function correctnessGate(
 }
 
 // Pyreon COMPILED through its own SSR fast path (`ssrTemplate`) — the fair
-// analog of compiling Solid via babel-preset-solid. Same tree shape as the h()
-// builders above, compiled to `_ssr(...)` string templates and eval'd.
+// analog of compiling Solid via babel-preset-solid. TWO row variants (identical
+// output) exercise the two dynamic-attr code paths:
+//   PROVABLE  — `data-id={String(r.id)}` + `` href={`/item/${r.id}`} `` are
+//               SYNTACTICALLY provably non-null-non-boolean (and the url is
+//               provably safe), so the attr name+quotes BAKE into the template
+//               and only the value is escaped — exactly like Solid. This is the
+//               dominant real-app shape (devs stringify ids + template hrefs).
+//   NULLABLE  — bare `data-id={r.id}` + `href={r.href}` are NOT provably
+//               non-null, so the fast path keeps the runtime `_ssrAttr*` helper
+//               (null-omit safety, a real correctness advantage over Solid,
+//               which would emit `data-id=""` for a null id) — the ~15% floor.
 const PYREON_FAST_SRC = `
 export const Card = (c) => (
   <section class="card" data-variant="primary">
@@ -424,31 +436,54 @@ export const Card = (c) => (
 export const List = (rows) => (
   <div class="list">
     {rows.map((r) => (
-      <div class="row" data-id={r.id}>
+      <div class="row" data-id={String(r.id)}>
         <span class="id">{String(r.id)}</span>
-        <a class="label" href={"/item/" + r.id}>{r.label}</a>
+        <a class="label" href={\`/item/\${r.id}\`}>{r.label}</a>
         <span class="tag">{r.tag}</span>
       </div>
     ))}
   </div>
 )
 `
-function compilePyreonFast(): { Card: (c: Card) => unknown; List: (rows: Row[]) => unknown } {
-  const out = transformJSX_JS(PYREON_FAST_SRC, 'pyreon-fast.tsx', { ssr: true, ssrTemplate: true })
+const PYREON_FAST_NULLABLE_SRC = `
+export const List = (rows) => (
+  <div class="list">
+    {rows.map((r) => (
+      <div class="row" data-id={r.id}>
+        <span class="id">{String(r.id)}</span>
+        <a class="label" href={r.prefix + r.id}>{r.label}</a>
+        <span class="tag">{r.tag}</span>
+      </div>
+    ))}
+  </div>
+)
+`
+function evalPyreonFast(src: string, file: string): Record<string, (arg: never) => unknown> {
+  const out = transformJSX_JS(src, file, { ssr: true, ssrTemplate: true })
   if (!out.code.includes('_ssr(')) {
-    throw new Error('[ssr-bench] Pyreon fast path did not compile to _ssr — eligibility regressed')
+    throw new Error(`[ssr-bench] ${file} did not compile to _ssr — eligibility regressed`)
   }
   const body = out.code.replace(/^import\s+.*$/gm, '').replace(/^export /gm, '').trim()
   const names = ['_ssr', '_ssrChildren', '_ssrItem', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl']
+  const bindings = body.match(/(?:const|function)\s+(\w+)/g)?.map((m) => m.split(/\s+/)[1]) ?? []
   // eslint-disable-next-line no-new-func
-  const fn = new Function(...names, `${body}\nreturn { Card, List }`)
+  const fn = new Function(...names, `${body}\nreturn { ${bindings.join(', ')} }`)
   return fn(...names.map((n) => (pyreonRuntime as Record<string, unknown>)[n]))
+}
+function compilePyreonFast(): { Card: (c: Card) => unknown; List: (rows: Row[]) => unknown } {
+  return evalPyreonFast(PYREON_FAST_SRC, 'pyreon-fast.tsx') as {
+    Card: (c: Card) => unknown
+    List: (rows: Row[]) => unknown
+  }
 }
 
 // ─── Run ──────────────────────────────────────────────────────────────────────
 
 const solid = await compileSolid()
 const pyFast = compilePyreonFast()
+const pyFastNullable = evalPyreonFast(PYREON_FAST_NULLABLE_SRC, 'pyreon-fast-nullable.tsx') as {
+  List: (rows: Row[]) => unknown
+}
 
 const rows50 = makeRows(50)
 const rows1000 = makeRows(1000)
@@ -466,6 +501,7 @@ const scenarios = [
     label: 'list-50',
     py: () => pyreonRenderToString(pyList(rows50)),
     pyf: () => pyreonRenderToString(pyFast.List(rows50) as never),
+    pyfn: () => pyreonRenderToString(pyFastNullable.List(rows50) as never),
     re: () => reactRenderToString(reList(rows50)),
     pr: () => preactRender(prList(rows50)),
     so: () => solidRenderToString(() => solid.List({ rows: rows50 })),
@@ -474,6 +510,7 @@ const scenarios = [
     label: 'list-1000',
     py: () => pyreonRenderToString(pyList(rows1000)),
     pyf: () => pyreonRenderToString(pyFast.List(rows1000) as never),
+    pyfn: () => pyreonRenderToString(pyFastNullable.List(rows1000) as never),
     re: () => reactRenderToString(reList(rows1000)),
     pr: () => preactRender(prList(rows1000)),
     so: () => solidRenderToString(() => solid.List({ rows: rows1000 })),
@@ -498,12 +535,18 @@ for (const s of scenarios) {
   const prOps = await calibrate(s.pr, false)
   const soOps = await calibrate(s.so, false)
   const rowsOut: Sample[] = [
-    await measureAsync('@pyreon _ssr (fast path)', s.pyf, pyfOps),
+    await measureAsync('@pyreon _ssr (provable attrs)', s.pyf, pyfOps),
+  ]
+  if (s.pyfn) {
+    const pyfnOps = await calibrate(s.pyfn, true)
+    rowsOut.push(await measureAsync('@pyreon _ssr (nullable attrs)', s.pyfn, pyfnOps))
+  }
+  rowsOut.push(
     await measureAsync('@pyreon h() (baseline)', s.py, pyOps),
     measureSync('react-dom/server', s.re, reOps),
     measureSync('preact-render-to-string', s.pr, prOps),
     measureSync('solid-js/web', s.so, soOps),
-  ]
+  )
   report(s.label, avgBytes, rowsOut)
 }
 

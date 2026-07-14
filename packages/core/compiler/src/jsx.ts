@@ -1488,6 +1488,126 @@ export function transformJSX_JS(
     return true
   }
 
+  // ── Proven-non-null-non-boolean dynamic-attr baking ────────────────────────
+  // When a dynamic attr's value EXPRESSION is syntactically provably a
+  // string/number (never null/undefined/false/true), `renderProp`'s null-omit +
+  // boolean branches are DEAD, so ` name="` + `_esc(value)` + `"` is byte-
+  // identical to `renderProp` — and matches Solid's template baking (name +
+  // quotes static, only the value escaped at runtime). Anything not provable
+  // keeps the runtime `_ssrAttr*` (null-omit safety preserved).
+
+  /** The expression provably evaluates to a STRING (never null/bool). */
+  function ssrProvablyString(node: N): boolean {
+    node = unwrapTypeLayers(node)
+    if (
+      node.type === 'StringLiteral' ||
+      (node.type === 'Literal' && typeof node.value === 'string') ||
+      node.type === 'TemplateLiteral'
+    ) {
+      return true
+    }
+    if (node.type === 'CallExpression') {
+      const callee = node.callee
+      // `String(x)` global coercion → always a string.
+      if (callee?.type === 'Identifier' && callee.name === 'String') return true
+      // `x.method(...)` for a method that ALWAYS returns a string (unambiguous
+      // receiver — Array#join / Number#toFixed / String#* all return string).
+      if (
+        callee?.type === 'MemberExpression' &&
+        !callee.computed &&
+        callee.property?.type === 'Identifier' &&
+        SSR_STRING_METHODS.has(callee.property.name)
+      ) {
+        return true
+      }
+      return false
+    }
+    // `a + b` where EITHER operand is provably a string → string concat coerces
+    // the other side, so the whole expression is a string regardless of it.
+    if (node.type === 'BinaryExpression' && node.operator === '+') {
+      return ssrProvablyString(node.left) || ssrProvablyString(node.right)
+    }
+    if (node.type === 'ConditionalExpression') {
+      return ssrProvablyString(node.consequent) && ssrProvablyString(node.alternate)
+    }
+    return false
+  }
+
+  /** The expression provably evaluates to a string OR number (never null/bool). */
+  function ssrProvablyNonNullNonBoolean(node: N): boolean {
+    node = unwrapTypeLayers(node)
+    if (ssrProvablyString(node)) return true
+    if (
+      node.type === 'NumericLiteral' ||
+      (node.type === 'Literal' && typeof node.value === 'number')
+    ) {
+      return true
+    }
+    // `Number(x)` → always a number (NaN is still a number).
+    if (node.type === 'CallExpression' && node.callee?.type === 'Identifier' && node.callee.name === 'Number') {
+      return true
+    }
+    // `a + b` with both operands non-null-non-boolean → number-or-string.
+    if (node.type === 'BinaryExpression' && node.operator === '+') {
+      return ssrProvablyNonNullNonBoolean(node.left) && ssrProvablyNonNullNonBoolean(node.right)
+    }
+    if (node.type === 'ConditionalExpression') {
+      return (
+        ssrProvablyNonNullNonBoolean(node.consequent) &&
+        ssrProvablyNonNullNonBoolean(node.alternate)
+      )
+    }
+    return false
+  }
+
+  /** A URL char-code that `isUnsafeUrl`'s fast path proves SAFE (no leading ws,
+   * not the start of `javascript:`/`data:`): printable ASCII 33–126, ≠ j/J/d/D. */
+  function ssrUrlCharSafe(c: number): boolean {
+    return c > 32 && c < 127 && (c | 32) !== 106 && (c | 32) !== 100
+  }
+
+  /** The URL value provably starts with a safe char (so `isUnsafeUrl` is always
+   * false → the guard branch of `renderProp`/`_ssrAttrUrl` is dead). */
+  function ssrProvablySafeUrl(node: N): boolean {
+    node = unwrapTypeLayers(node)
+    if (
+      (node.type === 'StringLiteral' || node.type === 'Literal') &&
+      typeof node.value === 'string'
+    ) {
+      const s = node.value as string
+      return s.length > 0 && ssrUrlCharSafe(s.charCodeAt(0))
+    }
+    // Template literal: the first quasi's first char determines the start.
+    if (node.type === 'TemplateLiteral') {
+      const first = node.quasis?.[0]
+      const raw = (first?.value?.cooked ?? first?.value?.raw ?? '') as string
+      return raw.length > 0 && ssrUrlCharSafe(raw.charCodeAt(0))
+    }
+    // `left + right`: the start is `left`'s start.
+    if (node.type === 'BinaryExpression' && node.operator === '+') {
+      return ssrProvablySafeUrl(node.left)
+    }
+    if (node.type === 'ConditionalExpression') {
+      return ssrProvablySafeUrl(node.consequent) && ssrProvablySafeUrl(node.alternate)
+    }
+    return false
+  }
+
+  /** Bake a proven-non-null(-safe-for-url) dynamic attr as ` name="` + `_esc(v)`
+   * + `"` — byte-identical to renderProp with dead null/omit/guard branches.
+   * Returns false when not provable (caller keeps the runtime `_ssrAttr*`). */
+  function ssrTryBakeDynamicAttr(buf: SsrBuf, name: string, valueText: string, expr: N): boolean {
+    const generic = ssrAttrIsGeneric(name)
+    const url = !generic && SSR_URL_ATTRS.has(name)
+    if (!generic && !url) return false // class/style/aria/camelCase → renderProp
+    if (!ssrProvablyNonNullNonBoolean(expr)) return false
+    if (url && !ssrProvablySafeUrl(expr)) return false
+    ssrEmitStatic(buf, ` ${name}="`)
+    emitEscHole(buf, valueText)
+    ssrEmitStatic(buf, '"')
+    return true
+  }
+
   /** Emit a dynamic attribute — byte-identical to the h() element path.
    * Generic names take the lean `_ssrAttrGen(name, value)`; URL / class / style
    * / aria / camelCase names take `_ssrAttr(tag, name, value)` (renderProp). */
@@ -1589,9 +1709,14 @@ export function transformJSX_JS(
           return true
         }
       }
-      // DYNAMIC value (or object class/style, uppercase static, url-unsafe
-      // static) → `_ssrAttr` (renderProp verbatim → byte-identical).
-      emitSsrAttr(buf, tag, name, sliceExpr(expr))
+      // DYNAMIC value. A syntactically-proven non-null-non-boolean (and, for a
+      // url attr, proven-safe) value BAKES ` name="` + `_esc(v)` + `"` — Solid-
+      // style template baking, byte-identical because renderProp's null-omit /
+      // boolean / url-guard branches are provably dead. Otherwise the runtime
+      // `_ssrAttr*` (renderProp verbatim → null-omit safety) is kept.
+      const valueText = sliceExpr(expr)
+      if (ssrTryBakeDynamicAttr(buf, name, valueText, expr)) return true
+      emitSsrAttr(buf, tag, name, valueText)
       return true
     }
     return false
@@ -4536,6 +4661,25 @@ const SSR_VOID_TAGS = new Set([
 // Single-sourced values mirrored here so the compiler can DECIDE (at bake time)
 // whether a static URL literal is safe. Kept in sync with url-guard.ts.
 const SSR_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data'])
+// Methods that ALWAYS return a string on an unambiguous receiver — used to prove
+// a dynamic attr value is non-null-non-boolean (so its attr name+quotes can bake).
+// `Number#toFixed`/`Array#join`/`String#*` all return string; `slice`/`concat`/
+// `replace` are excluded (ambiguous receiver / can return an array).
+const SSR_STRING_METHODS = new Set([
+  'toFixed',
+  'toString',
+  'toLocaleString',
+  'join',
+  'padStart',
+  'padEnd',
+  'trim',
+  'trimStart',
+  'trimEnd',
+  'toUpperCase',
+  'toLowerCase',
+  'repeat',
+  'charAt',
+])
 const SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
 // React/Babel JSX whitespace algorithm (cleanJSXElementLiteralChild).
