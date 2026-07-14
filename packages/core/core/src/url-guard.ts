@@ -12,6 +12,35 @@ export const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster
 /** Matches the `javascript:` / `data:` URI prefixes the guard rejects by default. */
 export const UNSAFE_URL_RE = /^\s*(?:javascript|data):/i
 
+/**
+ * True iff `url` is a `javascript:` / `data:` URI (after optional leading
+ * whitespace) — i.e. `UNSAFE_URL_RE.test(url)`, but with a `charCodeAt(0)`
+ * fast path that skips the regex for the overwhelmingly-common safe case.
+ *
+ * PROVABLY equivalent to the regex: a `^\s*(?:javascript|data):` match needs
+ * the first non-whitespace char to be `j`/`J` (javascript) or `d`/`D` (data).
+ * A first char in printable ASCII (33–126) is NOT whitespace, so `\s*` matches
+ * nothing and the match must begin at index 0 — impossible unless that char is
+ * `j`/`J`/`d`/`D`. So a printable-ASCII first char that isn't one of those is
+ * DEFINITELY safe, no regex needed (`http…`→`h`, `/…`, `#…`, `mailto:`→`m`, …).
+ *
+ * Conservative on the margins (correctness > a few ns): anything ≤32 (ASCII
+ * whitespace/controls — leading whitespace the regex can skip) OR ≥127 (may be
+ * UNICODE whitespace like ` `, which `\s` matches) OR `j`/`J`/`d`/`D`
+ * falls through to the authoritative regex. `''` → `charCodeAt(0)` is `NaN`,
+ * fails `> 32`, hits the regex → `false` (matches the regex). `(c | 32)`
+ * lowercases an ASCII letter; within 33–126 only `j`/`J`→106 and `d`/`D`→100.
+ *
+ * SECURITY: `javascript:`, `JavaScript:`, `  javascript:`, `\tdata:`,
+ * ` javascript:`, `data:text/html` all still reach — and are still
+ * rejected by — the regex. Additive; the guard's behavior is unchanged.
+ */
+export function isUnsafeUrl(url: string): boolean {
+  const c = url.charCodeAt(0)
+  if (c > 32 && c < 127 && (c | 32) !== 106 && (c | 32) !== 100) return false
+  return UNSAFE_URL_RE.test(url)
+}
+
 // A `data:image/...` URI on an image-source attribute renders as a static,
 // non-executing image — the framework's own imagePlugin ships exactly these as
 // blur/color placeholders (`data:image/webp;base64,…`, `data:image/svg+xml,…`).

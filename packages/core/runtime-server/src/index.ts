@@ -30,13 +30,13 @@ import {
   Fragment,
   getContextStackLength,
   isSafeImageDataUri,
+  isUnsafeUrl,
   makeReactiveProps,
   normalizeStyleValue,
   popContext,
   runWithHooks,
   Suspense,
   setContextStackProvider,
-  UNSAFE_URL_RE,
   URL_ATTRS,
 } from '@pyreon/core'
 
@@ -1127,11 +1127,7 @@ export function _ssrAttrGen(name: string, value: unknown): string {
 export function _ssrAttrUrl(tag: string, name: string, value: unknown): string {
   if (value == null || value === false) return ''
   if (value === true) return ` ${name}`
-  if (
-    typeof value === 'string' &&
-    UNSAFE_URL_RE.test(value) &&
-    !isSafeImageDataUri(tag, name, value)
-  ) {
+  if (typeof value === 'string' && isUnsafeUrl(value) && !isSafeImageDataUri(tag, name, value)) {
     return ''
   }
   return ` ${name}="${escapeHtml(String(value))}"`
@@ -1296,7 +1292,7 @@ function renderProp(tag: string, key: string, value: unknown): string | null {
   if (
     URL_ATTRS.has(key) &&
     typeof value === 'string' &&
-    UNSAFE_URL_RE.test(value) &&
+    isUnsafeUrl(value) &&
     !isSafeImageDataUri(tag, key, value)
   ) {
     return null
