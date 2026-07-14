@@ -225,6 +225,17 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('horizontalScroll(')) {
     imports.push('import androidx.compose.foundation.horizontalScroll')
   }
+  // useColorScheme emit (`if (isSystemInDarkTheme()) "dark" else "light"`):
+  // isSystemInDarkTheme is a top-level @Composable in the ROOT
+  // androidx.compose.foundation package — NOT covered by the star-imported
+  // .layout/.lazy/.text sub-packages. Same stub-masked class as
+  // verticalScroll/clickable: the validate-kotlin loop concatenates stubs, so
+  // it resolves the symbol regardless of import and CANNOT catch a missing
+  // one — latent until the counter (M2.5) became the first Android example to
+  // read useColorScheme on a real `gradle assembleDebug` (the device gate).
+  if (emitted.includes('isSystemInDarkTheme(')) {
+    imports.push('import androidx.compose.foundation.isSystemInDarkTheme')
+  }
   // <Press> clickable modifiers live in the ROOT androidx.compose.foundation
   // package (NOT the star-imported .layout/.lazy/.text sub-packages), same
   // stub-masked class as verticalScroll. NO Android example had used <Press>
