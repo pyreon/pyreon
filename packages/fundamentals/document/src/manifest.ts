@@ -4,9 +4,9 @@ export default defineManifest({
   name: '@pyreon/document',
   title: 'Universal Document Rendering',
   tagline:
-    'Universal document rendering — 18 primitives, 14+ output formats',
+    'Universal document rendering — 18 primitives, 20 output formats',
   description:
-    'Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.',
+    'Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, JSON, JSONL, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.',
   category: 'universal',
   longExample: `import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
 
@@ -58,9 +58,10 @@ await doc.toDocx()      // Word document
 await doc.toSlack()     // Slack Block Kit
 await doc.toNotion()    // Notion blocks`,
   features: [
-    'render(node, format, options?) — render to any of 14+ output formats',
+    'render(node, format, options?) — render to any of 20 output formats',
     'createDocument(props?) — fluent builder API with .heading(), .text(), .table(), etc.',
     '18 JSX primitives: Document, Page, Heading, Text, Table, Image, List, Code, and more',
+    'json / jsonl formats: round-trippable DocNode tree + flat one-block-per-line stream',
     'Heavy renderers lazy-loaded (PDF, DOCX, XLSX, PPTX)',
     'download() helper for browser file downloads',
     'registerRenderer() for custom output formats',
@@ -71,7 +72,7 @@ await doc.toNotion()    // Notion blocks`,
       kind: 'function',
       signature: '(node: DocNode, format: OutputFormat, options?: RenderOptions) => Promise<RenderResult>',
       summary:
-        'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 14+ built-in formats plus custom renderers registered via `registerRenderer()`.',
+        'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines.',
       example: `const pdf = await render(doc, 'pdf')            // Uint8Array
 const html = await render(doc, 'html')           // string
 const email = await render(doc, 'email')         // Outlook-safe HTML
@@ -124,11 +125,17 @@ await render(doc, 'pdf')`,
     {
       name: 'download',
       kind: 'function',
-      signature: '(data: Uint8Array | string, filename: string) => void',
+      signature: '(node: DocNode, filename: string, options?: RenderOptions) => Promise<void>',
       summary:
-        'Browser helper that triggers a file download from rendered document data. Creates a temporary Blob URL and clicks a hidden anchor element. Works with both Uint8Array (PDF, DOCX) and string (HTML, Markdown) outputs from `render()`.',
-      example: `const pdf = await render(doc, 'pdf')
-download(pdf, 'report.pdf')`,
+        'Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the DocNode, NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server.',
+      example: `await download(doc, 'report.pdf')   // renders 'pdf', downloads
+await download(doc, 'report.docx')  // renders 'docx', downloads
+await download(doc, 'tree.json')    // renders 'json', downloads`,
+      mistakes: [
+        'Passing already-rendered bytes as the first arg — download() takes the DocNode and renders internally; the extension picks the format',
+        'Forgetting the file extension — download(doc, "report") throws; the extension is how the format is chosen',
+        'Calling it on the server — download() is browser-only and throws in Node',
+      ],
       seeAlso: ['render'],
     },
   ],
@@ -136,7 +143,15 @@ download(pdf, 'report.pdf')`,
     'Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total `lib/`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.',
     {
       label: 'Format return types',
-      note: 'Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, google-chat, svg) return string.',
+      note: 'Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, svg, json, jsonl, slack, teams, discord, telegram, notion, confluence, whatsapp, google-chat) return string.',
+    },
+    {
+      label: 'json vs jsonl',
+      note: 'The json format serializes the full DocNode tree and is round-trippable (JSON.parse → render again). The jsonl format flattens the tree to one content block per line (structural containers dropped) — the standard shape for chunking / embeddings / LLM ingestion. Both are pure (no lazy-load).',
+    },
+    {
+      label: 'Not every format expresses every primitive',
+      note: 'CSV/XLSX are tabular extractors (Table nodes only). Chat targets adapt tables to code blocks / fields and drop inline images on Telegram/WhatsApp. A PageBreak is a real break in PDF/DOCX, a visual rule in md/text/html, and a no-op in per-slide PPTX. See the "Primitive × Format Support Matrix" in the docs for the honest per-cell map.',
     },
     {
       label: 'JSX vs Builder',

@@ -483,6 +483,12 @@ export const docxRenderer: DocumentRenderer = {
         case 'quote':
           renderButtonOrQuote(ctx, n)
           break
+        case 'page-break':
+          // DOCX is a paginated format — a PageBreak must force a real
+          // page break, not be silently dropped. `docx.PageBreak` emits
+          // `<w:br w:type="page"/>` inside its paragraph.
+          children.push(new docx.Paragraph({ children: [new docx.PageBreak()] }))
+          break
       }
     }
 

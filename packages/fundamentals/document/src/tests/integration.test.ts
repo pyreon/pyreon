@@ -11,6 +11,7 @@ import {
   List,
   ListItem,
   Page,
+  PageBreak,
   Quote,
   render,
   Table,
@@ -537,6 +538,62 @@ describe('document metadata pass-through (PR #197)', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }
+  })
+
+  // Regression: <PageBreak/> was silently DROPPED in DOCX — processNode had
+  // no `case 'page-break'` and no default, so a paginated Word doc lost the
+  // break entirely (while HTML/PDF/md/text all honored it). Binary-verified
+  // by unzipping word/document.xml and asserting the `<w:br w:type="page"/>`
+  // element is present. Bisect-verified: remove the `case 'page-break'` arm
+  // → the assertion fails (element absent).
+  it('DOCX renderer emits a real page break for <PageBreak/> (binary verified)', { timeout: 30_000 }, async () => {
+    const { spawnSync } = await import('node:child_process')
+    const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { tmpdir } = await import('node:os')
+
+    const withBreak = Document({
+      children: Page({
+        children: [
+          Heading({ children: 'Page one' }),
+          PageBreak(),
+          Heading({ children: 'Page two' }),
+        ],
+      }),
+    })
+    const withoutBreak = Document({
+      children: Page({
+        children: [Heading({ children: 'Page one' }), Heading({ children: 'Page two' })],
+      }),
+    })
+
+    async function documentXml(node: Parameters<typeof render>[0]): Promise<string> {
+      const bytes = (await render(node, 'docx')) as Uint8Array
+      const tmp = mkdtempSync(join(tmpdir(), 'pyreon-docx-pb-'))
+      try {
+        const p = join(tmp, 'out.docx')
+        writeFileSync(p, bytes)
+        const r = spawnSync('unzip', ['-p', p, 'word/document.xml'], {
+          encoding: 'utf8',
+          timeout: 10_000,
+        })
+        if (r.error || r.status !== 0) {
+          throw new Error(
+            `Failed to unzip word/document.xml: ${r.error?.message ?? r.stderr}. Requires the system 'unzip' tool.`,
+          )
+        }
+        return r.stdout
+      } finally {
+        rmSync(tmp, { recursive: true, force: true })
+      }
+    }
+
+    const brokenXml = await documentXml(withoutBreak)
+    expect(brokenXml).not.toContain('w:type="page"')
+
+    const xml = await documentXml(withBreak)
+    // docx.PageBreak emits `<w:br w:type="page"/>`
+    expect(xml).toContain('w:type="page"')
   })
 
   // Same long timeout — second DOCX render in the same suite, but

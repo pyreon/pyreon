@@ -1,9 +1,9 @@
 ---
 title: Document
-description: Universal document rendering for Pyreon — one template, 18 output formats from PDF to Slack.
+description: Universal document rendering for Pyreon — one template, 20 output formats from PDF to Slack.
 ---
 
-`@pyreon/document` renders **one document template to many output formats**. Compose a format-agnostic node tree once — with JSX primitives or the fluent builder — then render it to PDF, DOCX, XLSX, PPTX, email, HTML, Markdown, plain text, CSV, SVG, or straight into Slack / Teams / Discord / Telegram / Notion / Confluence / WhatsApp / Google Chat payloads.
+`@pyreon/document` renders **one document template to many output formats**. Compose a format-agnostic node tree once — with JSX primitives or the fluent builder — then render it to PDF, DOCX, XLSX, PPTX, email, HTML, Markdown, plain text, CSV, SVG, JSON / JSONL, or straight into Slack / Teams / Discord / Telegram / Notion / Confluence / WhatsApp / Google Chat payloads.
 
 The heavy binary renderers (PDF, DOCX, XLSX, PPTX) are **lazy-loaded per format** — a document app that only ever emails never downloads the 3 MB PDF engine into its runtime path. Custom formats (receipt printers, internal schemas) are pluggable via `registerRenderer()`.
 
@@ -165,11 +165,13 @@ Both APIs are equivalent. JSX gives you conditional sections (`{cond && <Section
 
 ### Data
 
-| Format     | `render(node, …)` | Builder method  | Output                    |
-| ---------- | ----------------- | --------------- | ------------------------- |
-| Markdown   | `'md'`            | `.toMarkdown()` | Markdown with pipe tables |
-| Plain text | `'text'`          | `.toText()`     | Aligned ASCII tables      |
-| CSV        | `'csv'`           | `.toCsv()`      | Comma-separated rows      |
+| Format     | `render(node, …)` | Builder method  | Output                              |
+| ---------- | ----------------- | --------------- | ----------------------------------- |
+| Markdown   | `'md'`            | `.toMarkdown()` | GFM with pipe tables (cells escaped) |
+| Plain text | `'text'`          | `.toText()`     | Aligned ASCII tables                |
+| CSV        | `'csv'`           | `.toCsv()`      | Comma-separated rows                |
+| JSON       | `'json'`          | `.toJson()`     | Round-trippable `DocNode` tree      |
+| JSONL      | `'jsonl'`         | `.toJsonl()`    | One content block per line          |
 
 :::warning
 **Don't forget to `await`.** `render()` (and every builder `.toX()` method) is always async because format renderers are lazy-loaded. A missing `await` gives you a `Promise`, not the document.
@@ -179,9 +181,55 @@ Both APIs are equivalent. JSX gives you conditional sections (`{cond && <Section
 **Binary formats return `Uint8Array`, not a string.** `render(doc, 'pdf')`, `'docx'`, `'xlsx'`, and `'pptx'` resolve to `Uint8Array` — don't try to `.toString()` them or write them as text. Every other format resolves to a `string`. (`render`'s return type is `Promise<string | Uint8Array>`; narrow on the format you requested.)
 :::
 
+### JSON & JSONL — the machine-readable IR
+
+The `DocNode` tree is itself the format-agnostic intermediate representation, so two structured formats fall out of it directly:
+
+- **`'json'`** serializes the whole tree, pretty-printed. It is **round-trippable** — `JSON.parse(json)` yields a `DocNode` that `render()` accepts again, into any other format. Use it to inspect, diff, cache, or persist a resolved document tree.
+- **`'jsonl'`** flattens the tree to **one content block per line** in document order. Structural containers (`document` / `page` / `section` / `row` / `column`) are traversed but not emitted; every content node becomes a compact JSON object carrying its `type`, its props, the flattened `text`, and — for lists — a flat `items` array. This is the standard shape for ingestion pipelines: chunking for embeddings / RAG, streaming to a log sink, or feeding an LLM.
+
+```ts
+const json = await render(doc, 'json') // pretty DocNode tree
+const tree = JSON.parse(json) // → DocNode
+await render(tree, 'html') // round-trips into any format
+
+const jsonl = await render(doc, 'jsonl')
+const blocks = jsonl.split('\n').map((l) => JSON.parse(l))
+// → [{ type: 'heading', level: 1, text: 'Report' }, { type: 'text', text: '…' }, …]
+```
+
 :::note
-`'json'` and `'jsonl'` appear in the exported `OutputFormat` type but **have no built-in renderer** — calling `render(doc, 'json')` throws `No renderer registered for format 'json'`. Register your own with `registerRenderer('json', …)` if you need them, or use `.build()` and `JSON.stringify` the `DocNode` tree directly.
+For the full structural tree (metadata + nesting preserved) use `'json'`; for the flat, chunk-friendly content stream use `'jsonl'`. Both are pure — no external dependency, no lazy-load.
 :::
+
+## Primitive × Format Support Matrix
+
+Not every format can express every primitive — a spreadsheet has no concept of a block quote, a chat message has no page geometry. The renderers **adapt or intentionally drop** a primitive when a format can't express it; the table below is the honest per-cell map (grounded in the actual serializers, not aspirations).
+
+**Legend** — ● native construct · ◐ adapted / approximated · ○ not expressed (dropped by design)
+
+| Primitive | HTML/Email | PDF | DOCX | XLSX | PPTX | MD | Text | CSV | SVG | Chat¹ | Notion/Confluence | JSON/JSONL |
+| --------- | :--------: | :-: | :--: | :--: | :--: | :-: | :--: | :-: | :-: | :---: | :---------------: | :--------: |
+| Document (metadata) | ● | ● | ● | ◐ | ● | ●² | ◐ | ○ | ◐ | ◐ | ◐ | ● |
+| Page | ● | ● | ● | ◐ | ●³ | ◐ | ◐ | ◐ | ◐ | ◐ | ◐ | ● |
+| Section / Row / Column | ● | ●⁴ | ◐ | ◐ | ◐ | ◐ | ◐ | ◐ | ● | ◐ | ◐ | ● |
+| Heading | ● | ● | ● | ◐⁵ | ● | ● | ● | ○ | ● | ● | ● | ● |
+| Text | ● | ● | ● | ○ | ● | ● | ● | ○ | ● | ● | ● | ● |
+| Link | ● | ● | ● | ○ | ● | ● | ◐ | ○ | ● | ● | ● | ● |
+| Image | ● | ◐⁶ | ◐⁶ | ○ | ◐⁷ | ● | ◐ | ○ | ● | ◐⁸ | ● | ● |
+| Button | ● | ● | ● | ○ | ● | ◐ | ◐ | ○ | ● | ◐ | ◐ | ● |
+| Code | ● | ● | ● | ○ | ● | ● | ◐ | ○ | ● | ● | ● | ● |
+| Quote | ● | ● | ● | ○ | ● | ● | ◐ | ○ | ● | ● | ● | ● |
+| List / ListItem | ● | ● | ● | ○ | ● | ● | ● | ○ | ● | ◐ | ● | ● |
+| Table | ● | ● | ● | ● | ● | ●⁹ | ● | ● | ◐ | ◐¹⁰ | ● | ● |
+| Divider | ● | ● | ● | ○ | ● | ● | ● | ○ | ● | ◐ | ● | ● |
+| Spacer | ● | ● | ● | ○ | ● | ◐ | ◐ | ○ | ● | ○ | ◐ | ● |
+| PageBreak | ◐¹¹ | ● | ● | ○ | ○¹² | ◐ | ◐ | ○ | ◐ | ◐ | ◐ | ● |
+
+¹ **Chat** = Slack, Teams, Discord, Telegram, WhatsApp, Google Chat — each targets a different payload shape, so a cell is the common behavior; test against the real platform before relying on it.
+² Markdown emits document metadata as **YAML frontmatter**. ³ Each `<Page>` becomes a **slide** in PPTX. ⁴ PDF renders `direction="row"` sections/rows as pdfmake `columns`. ⁵ XLSX uses a heading as a **worksheet name**. ⁶ PDF/DOCX embed `data:` images; `http(s)`/local paths become a placeholder (they can't be fetched at render time). ⁷ PPTX embeds `data:` images only; `http(s)` URLs are skipped. ⁸ Slack/Discord/Google Chat embed **public `http` image URLs**; Telegram/WhatsApp drop inline images (send them separately via the platform API). ⁹ Markdown table cells escape `|` and `\` and collapse newlines to `<br>` so the column structure is never corrupted. ¹⁰ Chat targets render tables as a fenced code block, an ASCII grid, or embed fields (platform-dependent). ¹¹ HTML/Email emit a CSS `page-break-after` marker (visible only when the HTML is printed/paginated). ¹² PPTX models one slide per `<Page>`, so an in-page `PageBreak` is not a slide boundary.
+
+CSV and XLSX are **tabular extractors** — they walk the tree for `Table` nodes (XLSX also names sheets from headings) and ignore prose; that's by design, not a gap.
 
 ## Lazy-Loading & Bundle Cost
 

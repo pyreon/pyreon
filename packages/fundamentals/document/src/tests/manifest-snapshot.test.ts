@@ -7,14 +7,14 @@ import manifest from '../manifest'
 
 describe('gen-docs — document snapshot', () => {
   it('renders to llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/document — Universal document rendering — 18 primitives, 14+ output formats. Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total \`lib/\`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes."`)
+    expect(renderLlmsTxtLine(manifest)).toMatchInlineSnapshot(`"- @pyreon/document — Universal document rendering — 18 primitives, 20 output formats. Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total \`lib/\`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes."`)
   })
 
   it('renders to llms-full.txt section', () => {
     expect(renderLlmsFullSection(manifest)).toMatchInlineSnapshot(`
       "## @pyreon/document — Universal Document Rendering
 
-      Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.
+      Universal document rendering for Pyreon. One template, every output format: HTML, PDF, DOCX, XLSX, PPTX, email, Markdown, plain text, CSV, SVG, JSON, JSONL, Slack, Teams, Discord, Telegram, Notion, Confluence, WhatsApp, Google Chat. Heavy renderers are lazy-loaded — chunks (PDF ~3MB pdfmake + fonts, DOCX ~700KB, XLSX ~1.1MB, PPTX ~400KB) only load when invoked. The vendored architecture means one npm install covers every format; apps that never render to a heavy format never pay its chunk cost. Supports both JSX primitives and a fluent builder API.
 
       \`\`\`typescript
       import { Document, Page, Heading, Text, Table, Image, List, Code, Divider, render, createDocument, download } from '@pyreon/document'
@@ -70,7 +70,11 @@ describe('gen-docs — document snapshot', () => {
 
       > **Note**: Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total \`lib/\`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.
       >
-      > **Format return types**: Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, slack, teams, discord, telegram, notion, confluence, whatsapp, google-chat, svg) return string.
+      > **Format return types**: Binary formats (pdf, docx, xlsx, pptx) return Uint8Array. Text formats (html, email, md, text, csv, svg, json, jsonl, slack, teams, discord, telegram, notion, confluence, whatsapp, google-chat) return string.
+      >
+      > **json vs jsonl**: The json format serializes the full DocNode tree and is round-trippable (JSON.parse → render again). The jsonl format flattens the tree to one content block per line (structural containers dropped) — the standard shape for chunking / embeddings / LLM ingestion. Both are pure (no lazy-load).
+      >
+      > **Not every format expresses every primitive**: CSV/XLSX are tabular extractors (Table nodes only). Chat targets adapt tables to code blocks / fields and drop inline images on Telegram/WhatsApp. A PageBreak is a real break in PDF/DOCX, a visual rule in md/text/html, and a no-op in per-slide PPTX. See the "Primitive × Format Support Matrix" in the docs for the honest per-cell map.
       >
       > **JSX vs Builder**: Both APIs produce the same DocNode tree. JSX primitives are better for complex layouts with conditional sections. The builder API is better for programmatic generation (e.g. loop over data to build rows).
       >

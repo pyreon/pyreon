@@ -16,6 +16,9 @@ const FORMAT_MAP: Record<string, string> = {
   txt: 'text',
   csv: 'csv',
   svg: 'svg',
+  json: 'json',
+  jsonl: 'jsonl',
+  ndjson: 'jsonl',
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -29,6 +32,8 @@ const MIME_TYPES: Record<string, string> = {
   text: 'text/plain',
   csv: 'text/csv',
   svg: 'image/svg+xml',
+  json: 'application/json',
+  jsonl: 'application/x-ndjson',
 }
 
 /**

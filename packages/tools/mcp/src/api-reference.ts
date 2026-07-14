@@ -3992,7 +3992,7 @@ const html = await render(doc, 'html')           // string
 const email = await render(doc, 'email')         // Outlook-safe HTML
 const md = await render(doc, 'md')               // Markdown string
 const slack = await render(doc, 'slack')          // Slack Block Kit JSON`,
-    notes: 'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 14+ built-in formats plus custom renderers registered via `registerRenderer()`. See also: createDocument, Document, download, registerRenderer.',
+    notes: 'Render a document node tree to any supported format. Returns a string (HTML, Markdown, text, CSV, email, JSON, JSONL, Slack, Teams, etc.) or Uint8Array (PDF, DOCX, XLSX, PPTX) depending on the format. Heavy format renderers are lazy-loaded on first use. Supports 20 built-in formats plus custom renderers registered via `registerRenderer()`. The `json` format serializes the full DocNode tree (round-trippable — JSON.parse it back and render again); `jsonl` emits one content block per line for ingestion / chunking pipelines. See also: createDocument, Document, download, registerRenderer.',
     mistakes: `- Not awaiting the render call — render() is always async due to lazy-loaded format renderers
 - Expecting render("pdf") to return a string — PDF, DOCX, XLSX, PPTX return Uint8Array
 - Passing a VNode instead of a DocNode — render() expects the output of JSX primitives (Document, Page, etc.) or createDocument(), not arbitrary Pyreon VNodes`,
@@ -4028,10 +4028,14 @@ await render(doc, 'pdf')`,
   },
 
   'document/download': {
-    signature: '(data: Uint8Array | string, filename: string) => void',
-    example: `const pdf = await render(doc, 'pdf')
-download(pdf, 'report.pdf')`,
-    notes: 'Browser helper that triggers a file download from rendered document data. Creates a temporary Blob URL and clicks a hidden anchor element. Works with both Uint8Array (PDF, DOCX) and string (HTML, Markdown) outputs from `render()`. See also: render.',
+    signature: '(node: DocNode, filename: string, options?: RenderOptions) => Promise<void>',
+    example: `await download(doc, 'report.pdf')   // renders 'pdf', downloads
+await download(doc, 'report.docx')  // renders 'docx', downloads
+await download(doc, 'tree.json')    // renders 'json', downloads`,
+    notes: 'Browser helper that renders a document node tree and triggers a file download in one call. The FILE EXTENSION on `filename` selects the format (`.pdf` → pdf, `.md` → markdown, `.json` → json, `.jsonl`/`.ndjson` → jsonl, etc.) — it renders internally, so you pass the DocNode, NOT already-rendered bytes. Creates a temporary Blob URL and clicks a hidden anchor. Browser-only — throws on the server. See also: render.',
+    mistakes: `- Passing already-rendered bytes as the first arg — download() takes the DocNode and renders internally; the extension picks the format
+- Forgetting the file extension — download(doc, "report") throws; the extension is how the format is chosen
+- Calling it on the server — download() is browser-only and throws in Node`,
   },
   // <gen-docs:api-reference:end @pyreon/document>
 
