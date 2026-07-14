@@ -8,7 +8,7 @@
  */
 import { __resetReactiveDevtoolsForTesting, computed, signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { nodesForElement } from '../binding-registry'
+import { _tagTextBinding, nodesForElement } from '../binding-registry'
 import { _bindText } from '../template'
 
 // _bindText's structural source param ({ _v?, direct? }) — a signal/computed
@@ -81,6 +81,32 @@ describe('binding-registry — nodesForElement (DOM→signal)', () => {
     const bound = nodesForElement(el)
     expect(bound).toHaveLength(1)
     expect(bound[0]!.kind).toBe('derived')
+    el.remove()
+  })
+
+  it('returns [] when the element has no DOM document (SSR / detached host)', () => {
+    // The `!doc || no-createTreeWalker` guard is the SSR/production-safe path
+    // documented in `nodesForElement`'s JSDoc — a host with no `ownerDocument`
+    // (or a document object without `createTreeWalker`) yields no correlation
+    // rather than throwing. Model both halves of the guard.
+    expect(nodesForElement({ ownerDocument: null } as unknown as Element)).toEqual([])
+    expect(nodesForElement({ ownerDocument: {} as Document } as unknown as Element)).toEqual([])
+  })
+
+  it('skips a tagged text node whose source is not in the live graph', () => {
+    // `_bindText` tags a text node with its source's graph-node id. If that id
+    // is no longer present in `getReactiveGraph()` (disposed / GC'd source, or a
+    // stale tag surviving a devtools reset), the walker must SKIP it — never
+    // surface a phantom `BoundReactiveNode` with an undefined name/kind.
+    const el = document.createElement('span')
+    const text = document.createTextNode('x')
+    el.appendChild(text)
+    document.body.appendChild(el)
+
+    // A fabricated id that provably isn't in the (reset) reactive graph.
+    _tagTextBinding(text, 9_999_999)
+
+    expect(nodesForElement(el)).toEqual([])
     el.remove()
   })
 })
