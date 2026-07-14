@@ -1,6 +1,7 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
+import type { LinkTag } from '../context'
 import type { HeadContextValue } from '../index'
 import { createHeadContext, HeadProvider, useHead } from '../index'
 import { renderWithHead, serializeHead } from '../ssr'
@@ -42,6 +43,62 @@ describe('renderWithHead — SSR', () => {
     const { head } = await renderWithHead(h(Page, null))
     expect(head).toContain('rel="canonical"')
     expect(head).toContain('href="https://example.com/page"')
+  })
+
+  // The link reconciliation key falls back through href → rel → index. These
+  // exercise each fallback via its OBSERVABLE consequence (dedup vs no-dedup),
+  // not just line execution.
+  test('link key falls back when href is absent (rel-only + index)', async () => {
+    function Page() {
+      useHead({
+        link: [
+          { href: 'https://a.example' }, // href, no rel → key uses `rel || ''`
+          { rel: 'preconnect', href: 'https://b.example' },
+        ],
+      })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    // The href-only link is keyed distinctly and renders alongside the rel one.
+    expect(head).toContain('href="https://a.example"')
+    expect(head).toContain('rel="preconnect"')
+  })
+
+  test('two rel-only links with the SAME rel dedupe to one (key = link-<rel>)', async () => {
+    function Page() {
+      useHead({ link: [{ rel: 'preconnect' }, { rel: 'preconnect' }] })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    // Same fallback key → deduped to a single <link>.
+    expect((head.match(/rel="preconnect"/g) ?? []).length).toBe(1)
+  })
+
+  test('two keyless links (no href, no rel) both render via index keys', async () => {
+    function Page() {
+      useHead({ link: [{}, {}] })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    // Distinct index keys (`link-0`, `link-1`) → NOT deduped.
+    expect((head.match(/<link/g) ?? []).length).toBe(2)
+  })
+
+  test('toProps strips explicitly-undefined tag values', async () => {
+    function Page() {
+      // A data-built tag can carry an own `href` property valued `undefined`
+      // (e.g. `{ href: user.canonicalUrl }` where the field is absent).
+      // `Object.assign` reproduces that own-undefined property without the
+      // inline literal `exactOptionalPropertyTypes` forbids. toProps must DROP
+      // it, not serialize `href="undefined"`.
+      const link: LinkTag = { rel: 'canonical' }
+      Object.assign(link, { href: undefined })
+      useHead({ link: [link] })
+      return h('div', null)
+    }
+    const { head } = await renderWithHead(h(Page, null))
+    expect(head).toContain('rel="canonical"')
+    expect(head).not.toContain('href')
   })
 
   test('deduplication: innermost title wins', async () => {
