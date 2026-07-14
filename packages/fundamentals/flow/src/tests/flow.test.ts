@@ -1231,4 +1231,63 @@ describe('createFlow', () => {
       expect(flow.nodes()).toHaveLength(1)
     })
   })
+
+  describe('node measurements', () => {
+    it('starts empty and records a measurement reactively', () => {
+      const flow = createFlow({
+        nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: {} }],
+      })
+      expect(flow.measurements().size).toBe(0)
+
+      let fires = 0
+      let last: { width: number; height: number } | undefined
+      effect(() => {
+        fires++
+        last = flow.measurements().get('a')
+      })
+      expect(fires).toBe(1)
+
+      flow._setNodeMeasurement('a', 80, 40)
+      expect(fires).toBe(2)
+      expect(last).toEqual({ width: 80, height: 40 })
+    })
+
+    it('no-ops (does NOT re-notify) when the size is unchanged — the loop guard', () => {
+      const flow = createFlow({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: {} }] })
+      flow._setNodeMeasurement('a', 80, 40)
+
+      let fires = 0
+      effect(() => {
+        fires++
+        flow.measurements()
+      })
+      expect(fires).toBe(1)
+
+      flow._setNodeMeasurement('a', 80, 40) // same size → no signal write
+      expect(fires).toBe(1)
+
+      flow._setNodeMeasurement('a', 81, 40) // changed → one write
+      expect(fires).toBe(2)
+    })
+
+    it('clears a measurement on unmount, and clearing an absent id is a no-op', () => {
+      const flow = createFlow({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: {} }] })
+      flow._setNodeMeasurement('a', 80, 40)
+      expect(flow.measurements().get('a')).toEqual({ width: 80, height: 40 })
+
+      let fires = 0
+      effect(() => {
+        fires++
+        flow.measurements()
+      })
+      expect(fires).toBe(1)
+
+      flow._clearNodeMeasurement('missing') // absent → no write
+      expect(fires).toBe(1)
+
+      flow._clearNodeMeasurement('a')
+      expect(fires).toBe(2)
+      expect(flow.measurements().get('a')).toBeUndefined()
+    })
+  })
 })

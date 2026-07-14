@@ -239,6 +239,19 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   edgeMap: Computed<Map<string, FlowEdge>>
   /** Container dimensions — updated by the Flow component via ResizeObserver */
   containerSize: Signal<{ width: number; height: number }>
+  /**
+   * Per-node measured DOM dimensions, written by the NodeLayer's per-node
+   * `ResizeObserver` (client-only). Edge geometry reads this so an edge connects
+   * to the node's REAL rendered size instead of the 150×40 fallback — content-
+   * sized nodes (no explicit `width`/`height`) get correctly-anchored edges. An
+   * explicit `node.width`/`node.height` still wins; the map is empty under
+   * SSR / happy-dom (no layout), so those paths fall back to explicit-or-default.
+   */
+  measurements: Signal<Map<string, { width: number; height: number }>>
+  /** @internal — the NodeLayer records a node's measured size here. */
+  _setNodeMeasurement: (id: string, width: number, height: number) => void
+  /** @internal — the NodeLayer clears a node's measurement on unmount. */
+  _clearNodeMeasurement: (id: string) => void
 
   // ── Node operations ──────────────────────────────────────────────────────
 

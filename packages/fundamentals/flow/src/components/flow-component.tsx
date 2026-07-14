@@ -251,13 +251,24 @@ function computeEdgeGeometry(
   edge: FlowEdge,
   sourceNode: FlowNode,
   targetNode: FlowNode,
+  measured: Map<string, { width: number; height: number }>,
 ): EdgeGeometry {
-  const sourceW = sourceNode.width ?? 150
-  const sourceH = sourceNode.height ?? 40
-  const targetW = targetNode.width ?? 150
-  const targetH = targetNode.height ?? 40
+  // Precedence: explicit `node.width`/`height` (a deliberate consumer override)
+  // → measured DOM size (content-sized nodes with no explicit dims) → 150×40
+  // default (pre-measurement first frame / SSR). Anchors edges to the real node.
+  const sm = measured.get(sourceNode.id)
+  const tm = measured.get(targetNode.id)
+  const sourceW = sourceNode.width ?? sm?.width ?? 150
+  const sourceH = sourceNode.height ?? sm?.height ?? 40
+  const targetW = targetNode.width ?? tm?.width ?? 150
+  const targetH = targetNode.height ?? tm?.height ?? 40
 
-  const { sourcePosition, targetPosition } = getSmartHandlePositions(sourceNode, targetNode)
+  const { sourcePosition, targetPosition } = getSmartHandlePositions(sourceNode, targetNode, {
+    sourceW,
+    sourceH,
+    targetW,
+    targetH,
+  })
 
   const sourcePos = getHandlePosition(
     sourcePosition,
@@ -368,7 +379,10 @@ function EdgeLayer(props: {
             const sourceNode = nm.get(e.source)
             const targetNode = nm.get(e.target)
             if (!sourceNode || !targetNode) return null
-            return computeEdgeGeometry(e, sourceNode, targetNode)
+            // Read `measurements()` reactively so the edge re-derives its path the
+            // moment a node's real rendered size lands (first-frame snap from the
+            // 150×40 fallback to the measured box → the edge connects).
+            return computeEdgeGeometry(e, sourceNode, targetNode, instance.measurements())
           }
 
           let isSelected: () => boolean = () =>
@@ -541,8 +555,37 @@ function NodeLayer(props: {
         const NodeComponent =
           (initialNode.type && nodeTypes[initialNode.type]) || nodeTypes.default!
 
+        // Measure the rendered node so edge geometry anchors to the REAL size
+        // (not the 150×40 fallback). Mirrors the container `ref` idiom: observe
+        // on mount, disconnect + clear on unmount (Pyreon calls the ref with
+        // `null` when the wrapper is removed). Client-only by construction —
+        // happy-dom/SSR report offsetWidth 0, so the guard skips and edge
+        // geometry falls back to explicit-or-default (unit tests unaffected).
+        let nodeResizeObserver: ResizeObserver | null = null
+        const measureRef = (el: Element | null): void => {
+          if (nodeResizeObserver) {
+            nodeResizeObserver.disconnect()
+            nodeResizeObserver = null
+          }
+          if (!el) {
+            instance._clearNodeMeasurement(id)
+            return
+          }
+          const measure = (): void => {
+            const w = (el as HTMLElement).offsetWidth
+            const h = (el as HTMLElement).offsetHeight
+            if (w > 0 && h > 0) instance._setNodeMeasurement(id, w, h)
+          }
+          measure()
+          if (typeof ResizeObserver === 'function') {
+            nodeResizeObserver = new ResizeObserver(measure)
+            nodeResizeObserver.observe(el)
+          }
+        }
+
         return (
           <div
+            ref={measureRef}
             class={() => {
               const n = node()
               return `pyreon-flow-node ${n.class ?? ''} ${
@@ -551,7 +594,10 @@ function NodeLayer(props: {
             }}
             style={() => {
               const n = node()
-              return `position: absolute; transform: translate(${n.position.x}px, ${n.position.y}px); z-index: ${
+              // `pointer-events: auto` re-enables interaction on the node under the
+              // `pointer-events: none` viewport (see the viewport div) — without it
+              // the node inherits `none` and drag/click/select all stop working.
+              return `position: absolute; pointer-events: auto; transform: translate(${n.position.x}px, ${n.position.y}px); z-index: ${
                 isDragging() ? 1000 : isSelected() ? 100 : 0
               }; ${n.style ?? ''}`
             }}
@@ -838,6 +884,19 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     const target = e.target as HTMLElement
     if (target.closest('.pyreon-flow-node')) return
     if (target.closest('.pyreon-flow-handle')) return
+    // Bail when the pointer goes down on the flow's own UI chrome (Controls /
+    // MiniMap / Panel) or any interactive control. Otherwise the pan starts and
+    // `setPointerCapture`s the container, so the pointerup never reaches the
+    // button → the `click` never fires. This is exactly why the zoom / fit-view
+    // buttons "did nothing": their click was swallowed by the pan capture. Same
+    // class as the node-toolbar `.nodrag` bail in the node `onPointerDown`.
+    if (
+      target.closest(
+        '.pyreon-flow-controls, .pyreon-flow-minimap, .pyreon-flow-panel, .nodrag, button, input, textarea, select, a',
+      )
+    ) {
+      return
+    }
 
     // Shift+drag on empty space → selection box
     if (e.shiftKey && instance.config.multiSelect !== false) {
@@ -1188,10 +1247,26 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       {children}
       {() => {
         const vp = instance.viewport()
+        // `width/height: 100%` on the viewport is load-bearing, NOT cosmetic:
+        // without a definite size this absolutely-positioned, shrink-to-fit div
+        // collapses to 0×0 (all its children are absolutely positioned →
+        // contribute no content size), so the EdgeLayer <svg>'s `width/height:
+        // 100%` resolves to 0. A ZERO-AREA svg viewport paints NONE of its
+        // content, so every edge path stayed invisible even with correct
+        // geometry + a visible stroke. Sizing the viewport to the container
+        // (React Flow's model — `.react-flow__viewport { width:100%; height:100% }`)
+        // gives the svg a real paintable viewport; `overflow: visible` still lets
+        // nodes/edges extend past it (the container's `overflow: hidden` clips).
         return (
           <div
             class="pyreon-flow-viewport"
-            style={`position: absolute; transform-origin: 0 0; transform: translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom});`}
+            // `pointer-events: none` is paired with the full-size fix above: now
+            // that the viewport fills the container it would otherwise swallow
+            // every click meant for the sibling Controls / MiniMap panels and the
+            // container's own pan handler. `none` lets those pass through; the
+            // interactive descendants (node wrappers, edge paths) opt back in with
+            // `pointer-events: auto` / `stroke`. Mirrors React Flow's viewport.
+            style={`position: absolute; width: 100%; height: 100%; transform-origin: 0 0; transform: translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom}); pointer-events: none;`}
           >
             <EdgeLayer
               instance={instance}
