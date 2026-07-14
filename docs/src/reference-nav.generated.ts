@@ -184,6 +184,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/styler"
       },
       {
+        "text": "testing",
+        "slug": "reference/testing"
+      },
+      {
         "text": "toast",
         "slug": "reference/toast"
       },

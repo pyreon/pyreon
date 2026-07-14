@@ -2105,6 +2105,7 @@
         "@testing-library/dom": "^10.4.1",
       },
       "devDependencies": {
+        "@pyreon/manifest": "workspace:*",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
         "@testing-library/jest-dom": "^6.9.1",
