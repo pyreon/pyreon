@@ -1161,11 +1161,7 @@
       "peerDependencies": {
         "@pyreon/core": "workspace:^",
         "@pyreon/reactivity": "workspace:^",
-        "@pyreon/runtime-server": "*",
       },
-      "optionalPeers": [
-        "@pyreon/runtime-server",
-      ],
     },
     "packages/core/primitives": {
       "name": "@pyreon/primitives",
@@ -1804,16 +1800,6 @@
         "valibot": "^1.4.1",
         "zod": "^4.4.3",
       },
-      "peerDependencies": {
-        "arktype": "*",
-        "valibot": "*",
-        "zod": "*",
-      },
-      "optionalPeers": [
-        "arktype",
-        "valibot",
-        "zod",
-      ],
     },
     "packages/fundamentals/virtual": {
       "name": "@pyreon/virtual",

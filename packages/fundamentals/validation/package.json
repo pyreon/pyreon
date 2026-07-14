@@ -52,17 +52,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
-  "peerDependenciesMeta": {
-    "zod": {
-      "optional": true
-    },
-    "valibot": {
-      "optional": true
-    },
-    "arktype": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/core": "workspace:^",
