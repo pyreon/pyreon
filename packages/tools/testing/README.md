@@ -12,7 +12,7 @@ bun add -d @pyreon/testing
 import { render, screen, cleanup } from '@pyreon/testing'
 import { afterEach } from 'vitest'
 
-afterEach(cleanup) // or add '@pyreon/testing/vitest' to setupFiles (PR3)
+afterEach(cleanup) // or add '@pyreon/testing/vitest' to setupFiles
 
 test('renders the greeting', () => {
   render(<Greeting name="Ada" />)
