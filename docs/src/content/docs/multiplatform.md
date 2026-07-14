@@ -335,7 +335,7 @@ whenever a row changes; do not edit the totals without recomputing.
 | Core UI & layout (15 primitives) | 10 | 0.8 | R5 — Stack/Text/Button/Field/Press/List/Image/Icon asserted across the 4 device apps; Modal/Toggle/Scroll/Link not individually asserted |
 | Lists & keyed rendering | 8 | 0.7 | R5 — todomvc list mutations asserted; 10k-row perf unmeasured |
 | Navigation & routing | 8 | 0.8 | R5 — nav, typed params, guards, loaders asserted (router-demo); deep links absent |
-| State (signals/computed/stores) | 9 | 1.0 | R5 — counter increment + store mutation asserted both platforms |
+| State (signals/computed/stores) | 9 | 1.0 | R5 — counter increment + store mutation asserted both platforms; **`createMachine` state transition device-asserted (M2.6)** — the counter's Toggle button drives an `off`→`on` transition that re-renders on both platforms (iOS `PyreonMachine` is `@Observable`, Compose `mutableStateOf`), proving a Tier-2 state machine actually transitions + reacts on-device, not just compiles. Row already at 1.0 (state machines are a state construct), so this deepens the evidence without moving the fraction |
 | Forms & validation | 6 | 0.5 | R5 partial — useForm v2 device-proven (validators, bindings, submit gating); arrays/dynamic fields absent |
 | Networking (fetch/ws/http) | 8 | 0.5 | fetch R5 (success + error path asserted); websocket/http-verbs R2 |
 | Storage (kv/secure/db) | 7 | 0.3 | kv persistence ASSERTED (M1.2a): iOS terminate+relaunch (R4, local Simulator pass) + Android activity-recreation (proven by the PR device run / nightly); secure-storage + database still R2 |
