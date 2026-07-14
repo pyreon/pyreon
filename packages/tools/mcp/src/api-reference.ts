@@ -3718,6 +3718,227 @@ effect(() => { if (idle()) showAwayBanner() })`,
     notes: 'Reactive user-idle detection — `true` once no activity event (pointer / key / scroll / wheel by default) has fired for `timeoutMs` (default 60000), back to `false` on the next interaction. Every listener and the timer are removed on unmount. Use for auto-logout, "are you still there?" prompts, presence away-status, pausing background work. SSR-safe (listeners register in `onMount`). See also: useDocumentVisibility, useInterval, useOnline.',
     mistakes: '- Expecting it to fire once — `idle` is a live boolean signal that flips false again on the next activity event; read it reactively',
   },
+
+  'hooks/useToggle': {
+    signature: 'useToggle(initial?: boolean) => { value: () => boolean; toggle: () => void; setTrue: () => void; setFalse: () => void }',
+    example: `const menu = useToggle()
+<button onClick={menu.toggle}>Menu</button>
+<Show when={() => menu.value()}>…</Show>`,
+    notes: 'Boolean signal with named controls. Returns an OBJECT (not a tuple): `value` is a signal accessor, plus `toggle` / `setTrue` / `setFalse` mutators. For a numeric counter use `useCounter`. See also: useCounter, useDialog.',
+    mistakes: `- Destructuring it as a tuple (\`const [open, toggle] = useToggle()\`) — it returns an OBJECT \`{ value, toggle, setTrue, setFalse }\`; destructure by name.
+- Reading \`value\` without calling it — \`value\` is a signal accessor; read \`value()\` inside a reactive scope.`,
+  },
+
+  'hooks/useHover': {
+    signature: 'useHover() => { hovered: () => boolean; props: { onMouseEnter: () => void; onMouseLeave: () => void } }',
+    example: `const h = useHover()
+<div {...h.props}>{() => h.hovered() ? 'Hovering' : 'Idle'}</div>`,
+    notes: 'Track hover state. Returns a `hovered` signal accessor plus `props` you SPREAD onto the target element — the hook does not auto-attach any listener. See also: useFocus, useEventListener.',
+    mistakes: `- Forgetting to spread \`props\` onto the element — nothing updates without it (the hook attaches no listeners itself).
+- Expecting it to fire on touch — it uses \`onMouseEnter\`/\`onMouseLeave\` only, so it does not react on touch devices.`,
+  },
+
+  'hooks/useFocus': {
+    signature: 'useFocus() => { focused: () => boolean; props: { onFocus: () => void; onBlur: () => void } }',
+    example: `const f = useFocus()
+<input {...f.props} />`,
+    notes: 'Track focus state. Returns a `focused` signal accessor plus `props` (onFocus/onBlur) to SPREAD onto the element — no auto-attach. See also: useHover, useFocusTrap.',
+    mistakes: '- Forgetting to spread `props` — the hook registers no listeners itself; without the spread `focused` never changes.',
+  },
+
+  'hooks/useMediaQuery': {
+    signature: 'useMediaQuery(query: string) => () => boolean',
+    example: `const isWide = useMediaQuery('(min-width: 768px)')
+<Show when={() => isWide()}><Sidebar /></Show>`,
+    notes: 'Reactive `matchMedia`. Returns a `matches` signal accessor; subscribes to the media query on mount and updates on change (listener auto-removed on unmount). See also: useColorScheme, useReducedMotion, useBreakpoint.',
+    mistakes: `- Expecting a correct value on the FIRST render / during SSR — the signal is seeded \`false\` and only corrected in \`onMount\`, so the first render always reads \`false\` even if the query would match. Gate visual differences to avoid a flash.
+- Reading it without calling the accessor — \`useMediaQuery(q)\` returns \`() => boolean\`; call it in a reactive scope.`,
+  },
+
+  'hooks/useColorScheme': {
+    signature: `useColorScheme() => () => 'light' | 'dark'`,
+    example: `const scheme = useColorScheme()
+<body data-theme={() => scheme()} />`,
+    notes: `Reactive OS color-scheme accessor — \`computed\` over \`(prefers-color-scheme: dark)\` (wraps \`useMediaQuery\`). Returns \`'dark'\` / \`'light'\`. See also: useMediaQuery, useReducedMotion.`,
+    mistakes: `- Reads \`'light'\` on the first render / SSR regardless of OS preference — it inherits \`useMediaQuery\`'s seed-then-correct-on-mount behavior. Use a pre-paint script for a flash-free initial theme.
+- Returns an accessor — call \`scheme()\` to read.`,
+  },
+
+  'hooks/useSizeClass': {
+    signature: `useSizeClass() => () => 'compact' | 'regular'`,
+    example: `const size = useSizeClass()
+<Show when={() => size() === 'regular'}><TwoColumn /></Show>`,
+    notes: `Reactive size-class accessor — \`computed\` over \`(min-width: 600px)\` (wraps \`useMediaQuery\`), mapping wide → \`'regular'\`, narrow → \`'compact'\` (the SwiftUI/Android size-class analog for shared multi-platform code). See also: useMediaQuery, useBreakpoint.`,
+    mistakes: `- First render / SSR is always \`'compact'\` (inherits \`useMediaQuery\`'s pre-mount \`false\`).
+- Returns an accessor — call \`size()\`.`,
+  },
+
+  'hooks/useReducedMotion': {
+    signature: 'useReducedMotion() => () => boolean',
+    example: `const reduced = useReducedMotion()
+<Transition enter={() => reduced() ? '' : 'fade-in'}>…</Transition>`,
+    notes: 'Reactive accessor for `(prefers-reduced-motion: reduce)` (a thin `useMediaQuery` wrapper). Gate animations on it for accessibility. See also: useMediaQuery, useColorScheme.',
+    mistakes: `- First render / SSR reports \`false\` ("motion allowed") until \`onMount\` — inherits \`useMediaQuery\` seeding.
+- Returns an accessor — call it.`,
+  },
+
+  'hooks/useOnline': {
+    signature: 'useOnline() => () => boolean',
+    example: `const online = useOnline()
+<Show when={() => !online()}><OfflineBanner /></Show>`,
+    notes: 'Reactive network status accessor — seeded from `navigator.onLine` (or `true` on the server), updated by `online`/`offline` window events. SSR-safe (guards on `isClient`); listeners auto-removed via `onCleanup`. See also: useDocumentVisibility, useIdle.',
+    mistakes: `- Treating it as reliable connectivity — \`navigator.onLine\` only reflects the OS network interface, not real reachability; a captive portal or dead server still reads \`true\`.
+- Returns an accessor — call \`online()\`.`,
+  },
+
+  'hooks/useIntersection': {
+    signature: 'useIntersection(getEl: () => HTMLElement | null, options?: IntersectionObserverInit) => () => IntersectionObserverEntry | null',
+    example: `let el!: HTMLElement
+const entry = useIntersection(() => el)
+<div ref={(e) => (el = e)}>{() => entry()?.isIntersecting ? 'visible' : 'hidden'}</div>`,
+    notes: 'IntersectionObserver as a signal. On mount reads `getEl()` once and (if non-null) observes it, writing the latest entry into a signal it returns. Auto-disconnects on unmount. Returns `null` until the observer first fires. See also: useElementSize, useInfiniteScroll.',
+    mistakes: `- \`getEl()\` is read ONCE in \`onMount\` — the element is not tracked reactively, so an element that mounts LATER or changes identity will not be observed. Ensure the ref is set before mount.
+- Reading the accessor before the first observation — it is \`null\` until the observer fires; guard with \`entry()?.\`.`,
+  },
+
+  'hooks/usePrevious': {
+    signature: 'usePrevious<T>(getter: () => T) => () => T | undefined',
+    example: `const count = signal(0)
+const prev = usePrevious(() => count())
+// after count.set(5): prev() === 0`,
+    notes: 'Track the previous value of a reactive read. Runs an `effect` over `getter()`; returns an accessor for the value from BEFORE the last change (`undefined` until the getter changes once). See also: useLatest, useUpdateEffect.',
+    mistakes: `- Passing a plain value instead of a getter — \`usePrevious(count())\` snapshots once; pass \`() => count()\` so the effect tracks the signal.
+- Reading \`prev()\` on first render — it is \`undefined\` until the tracked value changes at least once.`,
+  },
+
+  'hooks/useWindowResize': {
+    signature: 'useWindowResize(debounceMs?: number) => () => { width: number; height: number }',
+    example: `const size = useWindowResize()
+<div>{() => size().width + '×' + size().height}</div>`,
+    notes: 'Reactive window size accessor (default debounce 200ms). Seeded from `window.innerWidth/Height` (or `{0,0}` on the server); a debounced `resize` listener updates it (listener + pending timer cleaned up on unmount). See also: useElementSize, useWindowScroll, useBreakpoint.',
+    mistakes: `- Expecting real dimensions on the first render / SSR — it seeds \`{ width: 0, height: 0 }\` on the server and until mount.
+- Returns an accessor — call \`size()\`.`,
+  },
+
+  'hooks/useInterval': {
+    signature: 'useInterval(callback: () => void, delay: number | null | (() => number | null)) => void',
+    example: `const paused = signal(false)
+useInterval(() => tick(), () => paused() ? null : 1000)`,
+    notes: 'Declarative `setInterval`. A number sets a fixed interval, `null` PAUSES, and a getter `() => number | null` makes the delay REACTIVE (an effect restarts/pauses the timer when the returned value changes). Auto-cleared on unmount. Returns nothing. See also: useTimeout, useIdle.',
+    mistakes: `- Passing \`delay: 0\` expecting a pause — use \`null\` to pause; \`0\` runs as fast as the event loop allows.
+- Expecting a NUMBER delay to react to a signal — only the getter form (\`() => number | null\`) is reactive; a plain number is read once at setup.
+- Relying on a fresh \`callback\` per render — the callback is captured once (Pyreon bodies run once); read reactive values INSIDE the callback.`,
+  },
+
+  'hooks/useTimeout': {
+    signature: 'useTimeout(callback: () => void, delay: number | null) => { reset: () => void; clear: () => void }',
+    example: `const t = useTimeout(() => hideToast(), 3000)
+<div onMouseEnter={t.clear} onMouseLeave={t.reset}>…</div>`,
+    notes: 'Declarative `setTimeout` that STARTS immediately at setup (fires once after `delay`ms unless `delay` is `null`). Returns `reset` (restart with the original delay) / `clear` (stop). Auto-cleared on unmount. See also: useInterval, useDebouncedValue.',
+    mistakes: `- Expecting it to be lazy — it fires ON MOUNT automatically; pass \`delay: null\` to disable, or call \`clear()\`.
+- \`callback\` and \`delay\` are captured once at setup — \`reset()\` reuses the original delay; there is no way to change the delay after creation.`,
+  },
+
+  'hooks/useDebouncedCallback': {
+    signature: 'useDebouncedCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void; flush: () => void }',
+    example: `const onSearch = useDebouncedCallback((q: string) => fetchResults(q), 300)
+<input onInput={(e) => onSearch(e.target.value)} />`,
+    notes: 'Returns a debounced wrapper that resets a timer on each call and invokes `callback` after `delay`ms of quiet, plus `.cancel()` (drop the pending call) and `.flush()` (invoke now with the last args). Pending timer auto-cancelled on unmount. See also: useThrottledCallback, useDebouncedValue.',
+    mistakes: `- Relying on the "always latest callback" behavior the JSDoc claims — the callback is captured ONCE at setup (Pyreon component bodies run once), so read reactive values INSIDE the callback rather than expecting a new callback identity to take effect.
+- Re-creating it per render in a loop — define it once at component setup; a fresh debouncer per call resets the timer every time.`,
+  },
+
+  'hooks/useThrottledCallback': {
+    signature: 'useThrottledCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void }',
+    example: 'const onScroll = useThrottledCallback(() => updateParallax(), 16)',
+    notes: `Returns a throttled wrapper (rate-limited to once per \`delay\`ms, via \`@pyreon/ui-core\`'s \`throttle\`) with a \`.cancel()\` method. Auto-cancelled on unmount. Use over debounce when you want steady updates during a continuous stream (scroll, drag). See also: useDebouncedCallback.`,
+    mistakes: `- Same "latest callback" caveat as \`useDebouncedCallback\` — the callback is captured once; read reactive values inside it.
+- Reaching for throttle when you want the value to settle AFTER the burst — that is debounce (\`useDebouncedCallback\`); throttle fires DURING the burst at a fixed rate.`,
+  },
+
+  'hooks/useLatest': {
+    signature: 'useLatest<T>(value: T) => { readonly current: T }',
+    example: `const latest = useLatest(props.onSave)
+// later, in a stale-closure-prone callback: latest.current?.()`,
+    notes: 'Wraps `value` in a mutable `{ current }` ref object. Does NOT auto-update — it captures once (Pyreon bodies run once); the caller must update `.current` manually or pass a reactive getter as the value. See also: usePrevious.',
+    mistakes: '- Expecting `.current` to auto-track a signal — it is set once from the argument. To keep it fresh, assign `latest.current = …` in an effect, or store a getter and call `latest.current()`.',
+  },
+
+  'hooks/useKeyboard': {
+    signature: `useKeyboard(key: string, handler: (event: KeyboardEvent) => void, options?: { event?: 'keydown' | 'keyup'; target?: EventTarget }) => void`,
+    example: `useKeyboard('Escape', () => closeModal())`,
+    notes: 'Registers a `keydown` (or `keyup`) listener on `options.target` (default `document`) that fires `handler` only when `event.key === key`. Auto-removed on unmount. For app-wide shortcuts with modifiers, prefer `@pyreon/hotkeys`. See also: useEventListener, useClickOutside.',
+    mistakes: `- Expecting modifier handling — it matches \`event.key\` EXACTLY (no Cmd/Ctrl/Shift logic); use \`@pyreon/hotkeys\` for chords.
+- \`options\` (event / target) is read once at setup — a later change to the target is not re-bound.`,
+  },
+
+  'hooks/useScrollLock': {
+    signature: 'useScrollLock() => { lock: () => void; unlock: () => void }',
+    example: `const { lock, unlock } = useScrollLock()
+onMount(() => { lock(); return unlock })`,
+    notes: 'Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). Uses a MODULE-LEVEL reference count so concurrent locks (nested modals) compose — the saved overflow restores only when the last lock releases. SSR-safe (both no-op on the server); an unmount while still locked auto-unlocks. See also: useDialog, useClickOutside.',
+    mistakes: `- Calling \`unlock()\` more times than \`lock()\` — the refcount composes across ALL components; an extra unlock can release another modal's lock. Pair each lock with exactly one unlock.
+- Setting \`body { overflow }\` yourself while a lock is active — the hook restores the value captured at the 0→1 transition, clobbering your change on release.`,
+  },
+
+  'hooks/useRootSize': {
+    signature: 'useRootSize() => { rootSize: number; pxToRem: (px: number) => string; remToPx: (rem: number) => number }',
+    example: `const { pxToRem } = useRootSize()
+<div style={{ padding: pxToRem(24) }}>…</div>`,
+    notes: 'Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. Requires a theme context (falls back to 16 otherwise). See also: useSpacing, useThemeValue.',
+    mistakes: '- `rootSize` is a plain number captured ONCE at call time — NOT reactive. The converters close over that snapshot, so a later whole-theme swap will not update an already-returned result (re-mount the consumer to pick up a new root size).',
+  },
+
+  'hooks/useSpacing': {
+    signature: 'useSpacing(base?: number) => (multiplier: number) => string',
+    example: `const spacing = useSpacing()
+<div style={{ gap: spacing(2) }}>…</div>  // "16px"`,
+    notes: 'Returns a `spacing(multiplier)` function producing a px string. The unit is `base ?? rootSize/2` (default 8px), read from the theme via `useRootSize`. See also: useRootSize, useThemeValue.',
+    mistakes: '- The unit is computed once from a non-reactive `rootSize` snapshot — the returned `spacing` function is static; a theme change will not affect an already-obtained function.',
+  },
+
+  'hooks/useThemeValue': {
+    signature: 'useThemeValue<T = unknown>(path: string) => T | undefined',
+    example: `const primary = useThemeValue<string>('colors.primary')`,
+    notes: 'Deep-reads a dot-path from the styler theme (e.g. `"colors.primary"`), returning the value or `undefined`. A convenience over `useTheme()` + manual traversal. See also: useRootSize, useSpacing.',
+    mistakes: '- Returns a PLAIN value captured once — NOT an accessor and NOT reactive; it will not update on a theme swap. For a value that tracks the theme, read `useThemeAccessor()` from `@pyreon/styler` inside a reactive scope.',
+  },
+
+  'hooks/useHaptics': {
+    signature: `useHaptics() => { impact: (style?: 'light' | 'medium' | 'heavy' | 'soft' | 'rigid') => void; notification: (type: 'success' | 'warning' | 'error') => void; selection: () => void }`,
+    example: `const haptics = useHaptics()
+<button onClick={() => { haptics.impact('light'); submit() }}>Pay</button>`,
+    notes: 'Imperative haptic feedback. Fire-and-forget methods that call `navigator.vibrate` on web (mapped patterns) and lower to native `PyreonHaptics` under PMTC. `impact` defaults to `medium`. See also: useShare, useNotifications.',
+    mistakes: '- Expecting feedback on desktop / unsupported browsers — it silently no-ops when `navigator.vibrate` is absent (iOS Safari has no web vibrate); the real device feedback comes from the native PMTC target.',
+  },
+
+  'hooks/useShare': {
+    signature: 'useShare() => { text: (text: string) => void; url: (url: string) => void; textUrl: (text: string, url: string) => void; canShare: () => boolean }',
+    example: `const share = useShare()
+<Show when={() => share.canShare()}>
+  <button onClick={() => share.url(location.href)}>Share</button>
+</Show>`,
+    notes: 'Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). `canShare()` feature-detects `navigator.share`; the share methods no-op where it is unavailable. See also: useHaptics, useLinking.',
+    mistakes: '- Expecting to detect a user CANCEL — the rejection from `navigator.share` is swallowed (no promise is returned), so a cancelled share surfaces nothing. Gate the button on `canShare()` and treat the call as fire-and-forget.',
+  },
+
+  'hooks/useLinking': {
+    signature: 'useLinking() => { openUrl: (url: string) => void }',
+    example: `const { openUrl } = useLinking()
+<button onClick={() => openUrl('https://pyreon.dev')}>Docs</button>`,
+    notes: 'Imperative external-link opener. `openUrl` calls `window.open(url, "_blank", "noopener,noreferrer")` on web and lowers to native `PyreonLinking` under PMTC. SSR-safe. See also: useShare.',
+    mistakes: '- Expecting configurable target/features — it always opens a new tab with `noopener,noreferrer` hard-coded. For in-app navigation use `@pyreon/router`, not this.',
+  },
+
+  'hooks/useNotifications': {
+    signature: 'useNotifications() => { requestPermission: () => void; notify: (title: string, body: string) => void }',
+    example: `const notifications = useNotifications()
+onMount(() => notifications.requestPermission())
+notifications.notify('Done', 'Your export is ready')`,
+    notes: 'Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). `notify` auto-requests permission on first use; `requestPermission` prompts ahead of time. See also: useHaptics.',
+    mistakes: `- Expecting \`notify\` to appear synchronously on first call — when permission is undecided it requests first and posts only AFTER the async grant (or never, if denied). Call \`requestPermission()\` ahead of time for immediate notifications.
+- These are LOCAL notifications only — not push; there is no server/remote delivery.`,
+  },
   // <gen-docs:api-reference:end @pyreon/hooks>
 
   // ═══════════════════════════════════════════════════════════════════════════
