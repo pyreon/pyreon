@@ -550,6 +550,13 @@ export interface BackgroundProps {
   variant?: 'dots' | 'lines' | 'cross'
   gap?: number
   size?: number
+  /**
+   * Pattern (dot/line) color. Omit to use the themeable
+   * `--pyreon-flow-bg-pattern` CSS var (fallback `#ddd`) — set that var to dim
+   * the grid on a dark canvas. An explicit value here always wins. Applied via
+   * `style` (not the SVG `fill`/`stroke` attribute) so a `var()` resolves and a
+   * global `svg { fill }` rule can't override it.
+   */
   color?: string
 }
 
