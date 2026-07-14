@@ -649,6 +649,28 @@ describe('middleware types', () => {
     const html = await res.text()
     expect(html).toContain('<style data-test="style">')
   })
+
+  test('a middleware-set cspNonce is stamped onto the loader script + styler <style> (full request chain)', async () => {
+    // The load-bearing integration link: middleware sets `ctx.locals.cspNonce`
+    // (exactly what zero's `cspMiddleware` does), the handler bridges ctx.locals
+    // into renderPage, and renderPage stamps every inline tag it emits. Proves
+    // the shipped ENTRY (createHandler), not just renderPage in isolation.
+    const App: ComponentFn = () => h('div', null, 'app')
+    const handler = createHandler({
+      App,
+      routes: [{ path: '/', component: App, loader: async () => ({ hello: 'world' }) }],
+      middleware: [
+        (ctx) => {
+          ;(ctx.locals as Record<string, unknown>).cspNonce = 'req-nonce-123'
+        },
+      ],
+      collectStyles: (nonce) => `<style data-test nonce="${nonce ?? ''}">.x{color:red}</style>`,
+    })
+    const res = await handler(new Request('http://localhost/'))
+    const html = await res.text()
+    expect(html).toContain('<script nonce="req-nonce-123">window.__PYREON_LOADER_DATA__=')
+    expect(html).toContain('<style data-test nonce="req-nonce-123">')
+  })
 })
 
 // ─── Islands ─────────────────────────────────────────────────────────────────

@@ -83,17 +83,21 @@ export interface HandlerOptions {
    * Return a `<style>` tag string to inject into `<head>`.
    * Used by @pyreon/styler's sheet.getStyleTag() to prevent FOUC in SSG.
    *
+   * Receives the per-request CSP nonce (or `undefined` at SSG/no-CSP) — forward
+   * it to `sheet.getStyleTag(nonce)` so a strict `style-src 'nonce-…'` policy
+   * admits the emitted `<style>`.
+   *
    * @example
    * import { sheet } from '@pyreon/styler'
    * createHandler({
-   *   collectStyles: () => {
-   *     const tag = sheet.getStyleTag()
+   *   collectStyles: (nonce) => {
+   *     const tag = sheet.getStyleTag(nonce)
    *     sheet.reset()
    *     return tag
    *   },
    * })
    */
-  collectStyles?: () => string
+  collectStyles?: (nonce?: string) => string
   /**
    * Per-boundary Suspense timeout in milliseconds, forwarded to
    * `renderToStream` for `mode: 'stream'` deploys. Defaults to 30_000
