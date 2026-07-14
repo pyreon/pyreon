@@ -85,7 +85,14 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
             ...(config?.height != null ? { height: config.height } : {}),
           })
 
-          chart.setOption(opts)
+          // NOTE: no `chart.setOption(opts)` here. Publishing the instance
+          // synchronously re-runs the reactive-update effect below (it is
+          // subscribed to `instance()`), which applies the FIRST setOption
+          // with the configured `notMerge`/`replaceMerge`/`lazyUpdate` — so a
+          // separate init-time setOption would be a redundant SECOND full
+          // apply on every mount (measured 2 setOption calls vs 1). The
+          // effect runs synchronously inside this `.set`, so the chart is
+          // fully configured before `onInit` fires.
           instance.set(chart)
           loading.set(false)
           error.set(null)
@@ -117,6 +124,7 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
       const opts = optionsFn()
       chart.setOption(opts, {
         notMerge: config?.notMerge ?? false,
+        ...(config?.replaceMerge != null ? { replaceMerge: config.replaceMerge } : {}),
         lazyUpdate: config?.lazyUpdate ?? true,
       })
       error.set(null)
