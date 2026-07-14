@@ -102,7 +102,19 @@ Every property accepts three shapes:
 
 // Object — explicit breakpoint keys
 { padding: { xs: 8, md: 16, xl: 24 } }
+
+// null/undefined slot in an array = SKIP → inherits the previous breakpoint
+{ color: ['red', null, 'blue'] }   // xs: red, sm: red (inherits), md: blue
 ```
+
+A `null` / `undefined` slot in a mobile-first array is a **skip**: it inherits the
+_previous_ breakpoint's value (mobile-first `min-width` cascade), exactly like a
+breakpoint object with a missing key. `['red', null, 'blue']` turns blue at `md`,
+not `sm` — the array and the object `{ xs: 'red', md: 'blue' }` normalize
+identically (styled-system / theme-ui share this semantic). An array shorter than
+the breakpoint list still fills trailing breakpoints with its last element
+(`[8, 12]` → `md`/`lg`/`xl` all `12`). `0` and `false` are real values, never
+treated as gaps.
 
 With `normalize: true` (default), missing breakpoints inherit from the previous one. The optimizer then DROPS declarations that don't actually change vs the previous breakpoint — so `{ color: { xs: 'red', sm: 'red' }, padding: { xs: 0, sm: '1rem' } }` emits only `padding: 1rem` at `@media (min-width: sm)`, not `color: red; padding: 1rem;`.
 
@@ -210,6 +222,14 @@ import type {
 - **Key-to-index lookup** — `styles()` iterates ~10-20 descriptors per component (matched against the user's theme keys) instead of ~257 (full descriptor table). The index builder walks every branch's identifying field (`d.key` / `d.keys` / `d.id` for the `'special'` branch — `fullScreen`, `clearFix`, `extendCss`, `backgroundImage`, `animation`).
 - **Module-level reusable containers** — `styles()` reuses module-scoped `Set<number>` and `fragments[]` containers cleared on each synchronous call, eliminating ~160 allocations per 80-component page.
 - **Optimizer drops re-emitted declarations** — `optimizeBreakpointDeltas()` removes properties that don't change vs the previous breakpoint, cutting bytes in mobile-first responsive cascades.
+
+Reproduce the responsive-resolution throughput (styles-flat / cold scalar-array-object resolve / cache-hit speedup / delta-pass), real pipeline + correctness gate:
+
+```bash
+bun scripts/bench/core/unistyle.ts
+```
+
+It is an INTERNAL-throughput bench (not a styled-system / theme-ui race): those systems resolve to a nested style OBJECT and don't run a mobile-first delta pass, so a "same output CSS" comparison isn't cleanly definable.
 
 ## Gotchas
 

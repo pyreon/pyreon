@@ -29,6 +29,21 @@ describe('optimizeBreakpointDeltas', () => {
       expect(out[2]).toBe('font-size: 16px;')
     })
 
+    it('re-emits a value that reverts to an earlier one (running cascade, not first-seen)', () => {
+      // A first-seen dedup would DROP md's `color: red` (red was already seen
+      // at xs) → the element would incorrectly stay blue from `md` up. The
+      // optimizer diffs against the RUNNING cascade (last emitted = blue at
+      // sm), so the revert to red MUST be re-emitted — never a dropped reset.
+      const out = optimizeBreakpointDeltas([
+        'color: red;', // xs
+        'color: blue;', // sm
+        'color: red;', // md — reverts to red
+      ])
+      expect(out[0]).toBe('color: red;')
+      expect(out[1]).toBe('color: blue;')
+      expect(out[2]).toBe('color: red;')
+    })
+
     it('emits empty string when a later breakpoint adds no deltas', () => {
       const out = optimizeBreakpointDeltas([
         'color: red; padding: 0;',
