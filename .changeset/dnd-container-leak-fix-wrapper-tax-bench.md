@@ -1,0 +1,9 @@
+---
+"@pyreon/dnd": patch
+---
+
+`useSortable` now disposes its **container** registration on `containerRef(null)` / re-register, plus a wrapper-overhead benchmark.
+
+- **Fix — container-registration leak (the F3 per-item leak's sibling).** `useSortable`'s `containerRef` registers three teardowns per element (auto-scroll + the reorder drop-target + a `keydown` listener). The `null`/re-register path was a pure no-op — `containerRef(null)` (fired on unmount) disposed nothing, and `containerRef(el2)` after `containerRef(el1)` pushed three more registrations without disposing the first. A collapsible board whose `<ul ref={containerRef}>` sits behind a `<Show>` (with the hook in the parent) re-fires `containerRef` on every toggle, leaking the auto-scroll + drop-target + keydown listener on each detached element until the whole sortable unmounted. `containerRef` now disposes the prior container registration on both `null` and re-register — symmetric with the per-item disposal — and `onCleanup` drains whatever remains. No API change. Bisect-verified: on the unfixed code three container-leak specs fail with `expected vi.fn() to be called 1 times, but got 0 times`; after the fix all pass.
+
+- **New — wrapper-overhead benchmark** (`bun run bench`, `bench/dnd-wrapper-tax.ts`). Measures the "wrapper tax": how much JS the signal-driven hooks add over a hand-rolled Pyreon+pdnd integration wiring the same reactive state. Runs the **real** pragmatic-drag-and-drop build under happy-dom, per-`(op × impl)` process isolation, correctness gate, pooled median + bootstrap CI95. Verdict: **near-zero tax** — `useDraggable` / `useDroppable` / `useSortable`-item mount→unmount lifecycles tie a hand-rolled baseline (CI overlap); `useDragMonitor` adds ~one closure allocation per mount (~40ns); per drag-event dispatch is at-or-near noise. Reactive DnD at ~raw-pdnd cost.

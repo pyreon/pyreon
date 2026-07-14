@@ -103,6 +103,7 @@ Behaviour:
 - `overEdge` signal — `'top'`/`'bottom'` (vertical) or `'left'`/`'right'` (horizontal)
 - Keyboard reordering with Alt+Arrow keys
 - ARIA: `role="listitem"`, `aria-roledescription`, `tabindex`
+- Fine-grained teardown: each **item** registration is disposed the moment its `itemRef` fires with `null` (or re-registers), and the **container** registration (auto-scroll + reorder drop-target + keyboard handler) is disposed on `containerRef(null)` / re-register — so a churning `<For>` list _and_ a `<Show>`-toggled container never leak listeners on detached elements.
 
 ### `useFileDrop({ element, onDrop, accept?, maxFiles?, disabled? })`
 
@@ -181,6 +182,10 @@ useDraggable({
 - **`useFileDrop` only fires on REAL file drags from the OS** — not from `useDraggable` (those go through pdnd's element adapter). The two adapters are isolated.
 - **`onDrop` receives accepted files only** — files rejected by `accept` / `maxFiles` are silently filtered. Pair with `onDragEnter` / `isOver` if you need user feedback on rejection.
 - **`@pyreon/dnd` does NOT bundle pdnd** — the pragmatic-drag-and-drop chunks come from your app's bundle graph. ~6KB minified for the element adapter (the common case).
+
+## Performance
+
+The signal-driven layer adds **near-zero overhead** over calling pdnd directly. A package-level benchmark (`bun run bench`) measures the _wrapper tax_ — the JS the ergonomic hook adds over a hand-rolled Pyreon+pdnd integration wiring the same reactive state — against the **real** pdnd build under happy-dom, with per-`(op × impl)` process isolation and a bootstrap CI95. `useDraggable` / `useDroppable` / `useSortable`-item mount→unmount lifecycles all tie the hand-rolled baseline (CI overlap); `useDragMonitor` adds ~one closure allocation per mount; per drag-event dispatch adds one optional-callback hop. Reactive DnD at ~raw-pdnd cost. (Real pointer-gesture timing is browser-dependent and out of scope for the micro-bench; author-judge disclosed.)
 
 ## Documentation
 

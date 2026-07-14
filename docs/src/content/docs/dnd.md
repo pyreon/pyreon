@@ -534,6 +534,24 @@ The element-bound hooks (`useDraggable`, `useDroppable`, `useFileDrop`, `useSort
 Because cleanup is wired into Pyreon's lifecycle, the natural way to "stop" a drag interaction is to unmount the component (e.g. behind a `<Show>`). There's no `dispose()` to call — the hooks have no public teardown method.
 :::
 
+`useSortable` disposes at a finer grain than component unmount. Each **per-item** registration is torn down individually when its `itemRef` fires with `null` (an item leaves the `<For>`) or re-registers with a new element — so a churning list never accumulates dead registrations. The **container** registration (auto-scroll + the reorder drop-target + the keyboard handler) is disposed the same way: a `<ul ref={containerRef}>` behind a `<Show>` (with the hook in the parent) can be collapsed and re-expanded any number of times without leaking listeners on the detached elements.
+
+## Performance — the wrapper tax
+
+`@pyreon/dnd` is a thin adapter: Pragmatic DnD owns the native-event lifecycle and hit-testing; the hooks add a signal per state field and route every teardown into `onCleanup`. A package-level benchmark (`bun run bench` from `packages/fundamentals/dnd`) measures the **wrapper tax** — how much JS the ergonomic hook adds over a hand-rolled Pyreon+pdnd integration that wires the same reactive state, deferred registration, and cleanup by hand. It runs the **real** Pragmatic DnD build under happy-dom, with per-`(op × impl)` process isolation and a bootstrap CI95 (the repo bench standard).
+
+The honest verdict is **near-zero tax** — a signal-driven layer at ~raw-pdnd cost:
+
+| Op (mount → unmount lifecycle)   | Wrapper tax vs hand-rolled raw pdnd |
+| -------------------------------- | ----------------------------------- |
+| `useDraggable`                   | none (CI overlap)                   |
+| `useDroppable`                   | none (CI overlap)                   |
+| `useSortable` item              | none (CI overlap)                   |
+| `useDragMonitor`                 | ~one extra closure allocation (~50ns/mount) |
+| per drag-event dispatch          | one optional-callback hop (negligible) |
+
+The `useSortable` item's per-item registration also writes the ARIA attributes (`role="listitem"`, `aria-roledescription`, `tabindex`) for you — accessibility the raw path would have to add itself. Real pointer-driven drag **gesture** timing is browser-dependent and out of scope for this micro-benchmark (this measures the wrapper's own JS, not the OS drag loop). Author-judge disclosed.
+
 ## TypeScript
 
 All option/result interfaces and the shared types are exported:

@@ -97,8 +97,14 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     onCrossListDrop: options.onCrossListDrop as ((item: unknown) => void) | undefined,
   })
 
-  // Shared (container-level) pdnd cleanups — drained once on unmount.
-  const cleanups: (() => void)[] = []
+  // Container-level pdnd teardown (auto-scroll + reorder drop-target + the
+  // keydown listener). A SINGLE disposer, replaced on re-register and cleared
+  // on unmount — symmetric with the per-item map below. A collapsible board
+  // whose `<ul ref={containerRef}>` sits behind a `<Show>` (with the hook in
+  // the parent) re-fires `containerRef` on every toggle; without disposal each
+  // toggle leaked the auto-scroll + drop-target + keydown listener on the now-
+  // detached element (the container sibling of the F3 per-item leak).
+  let containerCleanup: (() => void) | undefined
   // Per-item pdnd cleanups, keyed by sort key. Disposed individually on
   // item unmount / re-register so a churning list doesn't accumulate
   // dead registrations for the sortable's whole lifetime.
@@ -148,12 +154,19 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   }
 
   function containerRef(el: HTMLElement | null) {
-    // Pyreon's runtime calls refs with `null` on unmount; the per-element
-    // pdnd cleanups are already registered via `onCleanup` below, so we
-    // can no-op the unmount-time call.
+    // Dispose the prior container registration on BOTH unmount (el === null,
+    // fired by Pyreon's runtime) AND re-register (a new container element) so
+    // a toggled/re-mounted container can't leak its auto-scroll + drop-target +
+    // keydown listener. Symmetric with the per-item disposal below (F3).
+    if (containerCleanup) {
+      containerCleanup()
+      containerCleanup = undefined
+    }
     if (!el) return
+
+    const containerCleanups: (() => void)[] = []
     // Auto-scroll when dragging near container edges
-    cleanups.push(
+    containerCleanups.push(
       autoScrollForElements({
         element: el,
         canScroll: ({ source }) => acceptsSource(source),
@@ -162,7 +175,7 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
 
     // Container is a drop target for reorder finalization OR for
     // appending a cross-list item at the end of this column.
-    cleanups.push(
+    containerCleanups.push(
       dropTargetForElements({
         element: el,
         getData: () => ({ [SORT_ID]: sortableId, [SORT_GROUP]: groupId }),
@@ -245,7 +258,11 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
     }
 
     el.addEventListener('keydown', keyHandler)
-    cleanups.push(() => el.removeEventListener('keydown', keyHandler))
+    containerCleanups.push(() => el.removeEventListener('keydown', keyHandler))
+
+    containerCleanup = () => {
+      for (const fn of containerCleanups) fn()
+    }
   }
 
   function itemRef(key: string | number): (el: HTMLElement | null) => void {
@@ -367,8 +384,12 @@ export function useSortable<T>(options: UseSortableOptions<T>): UseSortableResul
   }
 
   onCleanup(() => {
-    for (const cleanup of cleanups) cleanup()
-    cleanups.length = 0
+    // Drain the live container registration (idempotent — containerRef(null)
+    // may already have cleared it) plus every per-item registration.
+    if (containerCleanup) {
+      containerCleanup()
+      containerCleanup = undefined
+    }
     for (const cleanup of itemCleanups.values()) cleanup()
     itemCleanups.clear()
     _sortableRegistry.delete(sortableId)
