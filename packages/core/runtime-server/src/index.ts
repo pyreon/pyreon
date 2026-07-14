@@ -1058,83 +1058,149 @@ function renderElement(vnode: VNode): MaybeAsync {
 
 // ─── Compile-to-string SSR fast path — runtime primitives ─────────────────────
 //
-// Emitted by the compiler for eligible static-skeleton subtrees. Correctness
-// rests on ONE invariant: a hole is resolved by the SAME `renderNode` the h()
-// path uses, so the produced bytes are identical to walking the equivalent
-// `h()` tree. `_esc` / `_ssr` / `_ssrChildren` are the only new public runtime
-// surface. See the `RawHtml` header comment above for the trust boundary.
+// Emitted by the compiler for eligible static-skeleton subtrees. The compiler
+// PRE-STRINGIFIES every hole (`_esc(text)` / `_ssrAttr(attr)` / nested `_ssr`
+// or `_ssrChildren` → `RawHtml`) and bakes the `<!--$-->` accessor markers into
+// the surrounding statics, so `_ssr` is a LEAN `+=` concat with ONE type check
+// per hole — no per-hole `renderNode` dispatch, no re-escape. Byte-identity is
+// preserved because `_esc` matches `renderNode`'s per-value output and
+// `_ssrAttr` reuses `renderProp` verbatim. `RawHtml` is the trust boundary that
+// lets a nested fast-path result compose through a component return (see its
+// header comment above).
 
 /**
- * Resolve one `_ssr` hole to its final HTML string (maybe-async).
- *
- * - `RawHtml` (a nested `_ssr` / `_ssrChildren` result) → append verbatim.
- * - a `Promise` (an async nested fast-path result) → await, then resolve.
- * - anything else → `renderNode`: a wrapped accessor gets `<!--$-->` markers,
- *   a bare string is escaped, a VNode/array mounts — EXACTLY as the h() child
- *   would render. This delegation is what guarantees byte-identity.
+ * Escape/serialize ONE text-position value to its final HTML — byte-identical
+ * to what the h() path's `renderNode` produces for that value. Primitives take
+ * the sync fast path (the dominant case: a string → escaped, number → String,
+ * null/false → ''); a VNode/array/component delegates to `renderNode` (so a
+ * VNode in a text position still MOUNTS exactly as the h() path would, possibly
+ * async). The result is FINAL (escaped text OR raw mounted HTML) — `_ssr`
+ * concatenates it verbatim.
  */
-function resolveHole(v: unknown): MaybeAsync {
-  // Hot-path atoms inlined to skip the extra `renderNode` call — each result is
-  // byte-identical to `renderNode(v)` for that type (string → escapeHtml, raw →
-  // verbatim, null/false → '', number → String). Everything else (functions →
-  // `<!--$-->` markers, VNodes → mount, Promises, arrays) delegates to
-  // `renderNode` so byte-identity is preserved by construction.
+export function _esc(v: unknown): MaybeAsync {
   if (typeof v === 'string') return escapeHtml(v)
-  if (v instanceof RawHtml) return v.value
-  if (v == null || v === false) return ''
   if (typeof v === 'number') return String(v)
-  if (typeof (v as { then?: unknown }).then === 'function') {
-    return (v as Promise<unknown>).then(resolveHole)
-  }
+  if (v == null || v === false) return ''
+  if (v === true) return 'true'
   return renderNode(v as VNodeChild)
 }
 
 /**
- * Escape a text value for HTML — the runtime `escapeHtml` exposed under the
- * compiler-facing name. Byte-identical to `renderNode(str)` for string inputs,
- * so a compiler that pre-escapes a provably-string text hole with `_esc`
- * produces the same bytes as delegating it through the h() path.
+ * Serialize ONE dynamic attribute to its final ` name="value"` fragment
+ * (leading space included) — or `''` when the attribute is absent
+ * (null/undefined/false/unsafe-URL). This is `renderProp` VERBATIM (the SAME
+ * function the h() element path uses), so it's byte-identical incl. the
+ * url-guard, class `cx()` / object-style normalization, boolean/aria rules,
+ * `toAttrName` name mapping, and escaping. The compiler emits this for the
+ * attribute shapes that NEED renderProp's full logic (URL / class / style /
+ * aria / camelCase name) — never `on*`/`ref`/`key`/`innerHTML` (those bail).
  */
-export const _esc: (str: string) => string = escapeHtml
-
-/**
- * Concatenate `statics` interleaved with resolved `holes` into a `RawHtml`
- * fragment. `statics.length === holes.length + 1`. Sync-fast (`+=` accumulator,
- * no array join — the fastest shape measured) with a per-hole promise hop only
- * when a hole is genuinely async (async component / nested async fast path),
- * mirroring `renderChildList`'s maybe-async continuation.
- */
-export function _ssr(statics: readonly string[], ...holes: unknown[]): RawHtml | Promise<RawHtml> {
-  return _ssrFrom(statics, holes, 0, statics[0] ?? '')
+export function _ssrAttr(tag: string, name: string, value: unknown): string {
+  const attr = renderProp(tag, name, value)
+  return attr === null ? '' : ` ${attr}`
 }
 
-function _ssrFrom(
+/**
+ * Lean fast-path for a GENERIC attribute — a lowercase name that is NOT
+ * `class`/`style`, NOT `aria-*`, and NOT URL-bearing. For that subset this is
+ * BYTE-IDENTICAL to `renderProp` (its `renderPropValue` generic branch:
+ * null/undefined/false → absent, true → bare name, else `name="escaped"`; a
+ * lowercase name maps to itself), but skips the url-guard regex, class/style
+ * `cx`/normalize branches, and the `toAttrName` map lookup — the hot path for
+ * `data-*` / `id` / `title` / `role` / `lang` etc. The compiler picks this vs
+ * `_ssrAttr` purely from the (statically-known) attribute NAME.
+ */
+export function _ssrAttrGen(name: string, value: unknown): string {
+  if (value == null || value === false) return ''
+  if (value === true) return ` ${name}`
+  return ` ${name}="${escapeHtml(String(value))}"`
+}
+
+/**
+ * Lean fast-path for a LOWERCASE URL-bearing attribute (`href`/`src`/`action`/
+ * `formaction`/`poster`/`cite`/`data`). BYTE-IDENTICAL to `renderProp` for
+ * those names — it runs the SAME url-guard (`UNSAFE_URL_RE` /
+ * `isSafeImageDataUri`) then the generic branch — but skips the class/style/
+ * aria/name-map branches. Emitted by the compiler only for the lowercase URL
+ * names (camelCase / other names still take `_ssrAttr`).
+ */
+export function _ssrAttrUrl(tag: string, name: string, value: unknown): string {
+  if (value == null || value === false) return ''
+  if (value === true) return ` ${name}`
+  if (
+    typeof value === 'string' &&
+    UNSAFE_URL_RE.test(value) &&
+    !isSafeImageDataUri(tag, name, value)
+  ) {
+    return ''
+  }
+  return ` ${name}="${escapeHtml(String(value))}"`
+}
+
+/** Normalize a resolved hole (string / RawHtml / else) to a raw HTML string. */
+function holeToString(h: unknown): string {
+  if (typeof h === 'string') return h
+  if (h instanceof RawHtml) return h.value
+  return String(h)
+}
+
+/**
+ * Concatenate `statics` interleaved with PRE-STRINGIFIED `holes` into a
+ * `RawHtml` fragment (`statics.length === holes.length + 1`). A hole is a plain
+ * string (from `_esc`/`_ssrAttr` — already escaped/formatted → appended raw), a
+ * `RawHtml` (nested `_ssr`/`_ssrChildren` → `.value`), or a `Promise` (an async
+ * text hole / nested async fast path → promotes the call, maybe-async).
+ */
+export function _ssr(statics: readonly string[], ...holes: unknown[]): RawHtml | Promise<RawHtml> {
+  const r = _ssrConcat(statics, holes, 0, statics[0] ?? '')
+  return typeof r === 'string' ? new RawHtml(r) : r.then((s) => new RawHtml(s))
+}
+
+/**
+ * The `.map(item => …)` item form — identical concat to `_ssr`, but returns a
+ * PLAIN string (no `RawHtml` wrap). A `.map` item is never a component return
+ * (so it needs no trust-boundary brand) and its holes are all pre-stringified
+ * (`_esc`/`_ssrAttr*`), so `_ssrChildren` concatenates the strings directly —
+ * skipping the per-item `RawHtml` alloc + unwrap. Byte-identical to `_ssr`.
+ */
+export function _ssrItem(statics: readonly string[], ...holes: unknown[]): MaybeAsync {
+  return _ssrConcat(statics, holes, 0, statics[0] ?? '')
+}
+
+/** Shared lean concat: `+=` over pre-stringified holes (string / RawHtml /
+ * Promise), maybe-async. Returns the plain string; callers brand as needed. */
+function _ssrConcat(
   statics: readonly string[],
   holes: readonly unknown[],
   start: number,
   acc: string,
-): RawHtml | Promise<RawHtml> {
+): MaybeAsync {
   for (let i = start; i < holes.length; i++) {
-    const r = resolveHole(holes[i])
-    if (typeof r === 'string') {
-      acc += r + (statics[i + 1] ?? '')
+    const h = holes[i]
+    if (typeof h === 'string') {
+      acc += h + (statics[i + 1] ?? '')
+    } else if (h instanceof RawHtml) {
+      acc += h.value + (statics[i + 1] ?? '')
     } else {
+      // Async hole (Promise<string> from `_esc(asyncVNode)` / Promise<RawHtml>
+      // from a nested async fast path). Promote + resume the concat after it.
       const next = i + 1
       const soFar = acc
       const between = statics[next] ?? ''
-      return r.then((s) => _ssrFrom(statics, holes, next, soFar + s + between))
+      return (h as Promise<unknown>).then((r) =>
+        _ssrConcat(statics, holes, next, soFar + holeToString(r) + between),
+      )
     }
   }
-  return new RawHtml(acc)
+  return acc
 }
 
 /**
- * Concatenate an array of rendered children (typically `arr.map(x => _ssr(…))`)
- * with NO separators or per-item markers — byte-identical to `renderChildList`
- * over the equivalent VNode array. Each item is resolved through `resolveHole`
- * so `RawHtml` items append raw and any async item promotes the whole call.
- * The `<!--$-->…<!--/$-->` accessor markers the wrapped `.map` needs are baked
- * into the surrounding `statics` by the compiler, not added here.
+ * Concatenate a `.map(item => _ssr(…))` array (each item a `RawHtml`) with NO
+ * separators or per-item markers — byte-identical to `renderChildList` over the
+ * equivalent VNode array. The `<!--$-->…<!--/$-->` markers the wrapped `.map`
+ * needs are baked into the surrounding statics by the compiler. Lean: inline
+ * the dominant `RawHtml` item; promote on a `Promise` item (async subtree).
  */
 export function _ssrChildren(items: readonly unknown[]): RawHtml | Promise<RawHtml> {
   return _ssrChildrenFrom(items, 0, '')
@@ -1146,20 +1212,17 @@ function _ssrChildrenFrom(
   acc: string,
 ): RawHtml | Promise<RawHtml> {
   for (let i = start; i < items.length; i++) {
-    // The dominant `.map(x => _ssr(…))` item is a RawHtml — inline it to skip a
-    // `resolveHole` call per item (byte-identical: raw appended verbatim).
     const it = items[i]
     if (it instanceof RawHtml) {
       acc += it.value
-      continue
-    }
-    const r = resolveHole(it)
-    if (typeof r === 'string') {
-      acc += r
+    } else if (typeof it === 'string') {
+      acc += it
     } else {
       const next = i + 1
       const soFar = acc
-      return r.then((s) => _ssrChildrenFrom(items, next, soFar + s))
+      return (it as Promise<unknown>).then((r) =>
+        _ssrChildrenFrom(items, next, soFar + holeToString(r)),
+      )
     }
   }
   return new RawHtml(acc)

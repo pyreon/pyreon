@@ -18,7 +18,7 @@ import type { VNode, VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
 import { signal } from '@pyreon/reactivity'
-import { _esc, _ssr, _ssrChildren, renderToString } from '@pyreon/runtime-server'
+import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrItem, renderToString } from '@pyreon/runtime-server'
 
 function mulberry32(seed: number) {
   let a = seed >>> 0
@@ -51,7 +51,11 @@ const STRINGS = ['plain', 'a<b>', 'x & y', `q"'z`, 'space here', '&amp;', '', '<
 const ATTR_STRINGS = ['plain', 'a<b>', 'x y z', `it's ok`, '', 'space here', '<script>']
 const TAGS = ['div', 'span', 'section', 'p', 'ul', 'li', 'main', 'b', 'em', 'article']
 const ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'role', 'aria-label', 'lang']
+// camelCase / renamed names exercise `_ssrAttr`'s toAttrName mapping (dynamic
+// attrs only — the compiler can't bake a renamed name).
+const DYN_ATTR_NAMES = ['class', 'id', 'title', 'data-x', 'tabIndex', 'className', 'aria-label']
 
+type AttrSpec = { name: string; value: string; dyn: boolean; ref?: string }
 type Node =
   | { k: 'text'; s: string }
   | { k: 'bare'; ref: string }
@@ -61,21 +65,24 @@ type Node =
 interface ElNode {
   k: 'el'
   tag: string
-  attrs: { name: string; value: string }[]
+  attrs: AttrSpec[]
   children: Node[]
 }
 
 // mode 'recursed' | 'mapitem' — mapitem children are plain value children.
 function genEl(r: () => number, depth: number, mode: 'recursed' | 'mapitem'): ElNode {
   const tag = pick(r, TAGS)
-  const attrs: { name: string; value: string }[] = []
+  const attrs: AttrSpec[] = []
   const nAttrs = Math.floor(r() * 3)
   const used = new Set<string>()
   for (let i = 0; i < nAttrs; i++) {
-    const name = pick(r, ATTR_NAMES)
+    // ~40% dynamic (a dep member access → `_ssrAttr`); else a static literal.
+    const dyn = r() < 0.4
+    const name = pick(r, dyn ? DYN_ATTR_NAMES : ATTR_NAMES)
     if (used.has(name)) continue
     used.add(name)
-    attrs.push({ name, value: pick(r, ATTR_STRINGS) })
+    if (dyn) attrs.push({ name, value: '', dyn: true, ref: pick(r, ['f0', 'f1', 'f2']) })
+    else attrs.push({ name, value: pick(r, ATTR_STRINGS), dyn: false })
   }
   const children: Node[] = []
   const nKids = depth >= 3 ? Math.floor(r() * 2) : 1 + Math.floor(r() * 2)
@@ -97,8 +104,8 @@ function genChild(r: () => number, depth: number, mode: 'recursed' | 'mapitem'):
 
 // ── spec → JSX source ────────────────────────────────────────────────────────
 // ATTR_STRINGS carries no `"`/`&`, so the value is verbatim-safe in `attr="…"`.
-function attrSrc(a: { name: string; value: string }): string {
-  return `${a.name}="${a.value}"`
+function attrSrc(a: AttrSpec): string {
+  return a.dyn ? `${a.name}={data.${a.ref}}` : `${a.name}="${a.value}"`
 }
 function elSrc(el: ElNode): string {
   const attrs = el.attrs.map((a) => ` ${attrSrc(a)}`).join('')
@@ -125,7 +132,10 @@ function childSrc(n: Node): string {
 // ── spec → h() oracle (applies the h()-path wrap rules) ──────────────────────
 function elOracle(el: ElNode, ctx: FuzzCtx, mode: 'recursed' | 'mapitem', it?: Record<string, string>): VNode {
   const props: Record<string, unknown> = {}
-  for (const a of el.attrs) props[a.name] = a.value
+  // A dynamic attr is a dep member access (`data.fN`) — NOT wrapped (deps
+  // aren't signals), so the h() oracle passes the bare value; renderProp does
+  // the escaping/name-map/cx in both paths.
+  for (const a of el.attrs) props[a.name] = a.dyn ? ctx.data[a.ref!] : a.value
   const kids = el.children.map((n) => childOracle(n, ctx, mode, it))
   return h(el.tag, Object.keys(props).length ? props : null, ...kids)
 }
@@ -181,7 +191,11 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
   const fn = new Function(
     '_ssr',
     '_ssrChildren',
+    '_ssrItem',
     '_esc',
+    '_ssrAttr',
+    '_ssrAttrGen',
+    '_ssrAttrUrl',
     'data',
     's0',
     's1',
@@ -189,7 +203,7 @@ function evalFast(src: string, ctx: FuzzCtx): VNode {
     'a1',
     `${body}\nreturn Node`,
   )
-  return fn(_ssr, _ssrChildren, _esc, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.arrs.a0, ctx.arrs.a1)
+  return fn(_ssr, _ssrChildren, _ssrItem, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, ctx.data, ctx.sigs.s0, ctx.sigs.s1, ctx.arrs.a0, ctx.arrs.a1)
 }
 
 const SEEDS = 250
