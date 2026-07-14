@@ -82,7 +82,7 @@ const styles = resolveStyles({ fontSize: '1.5rem', color: '#222', padding: '12px
 (vnode: unknown, options?: ExtractOptions) => DocNode
 ```
 
-Walk a Pyreon VNode tree and extract a `DocNode` tree for `@pyreon/document`. For each vnode whose component carries a `_documentType` marker it reads the marker → `DocNode.type`, resolves `_documentProps` → `DocNode.props` (pre-resolved vnode props → rocketstyle `__rs_attrs` fast path → full component invocation as legacy fallback), resolves `$rocketstyle` via `resolveStyles` → `DocNode.styles`, and recurses into children. Unmarked components are transparent (invoked; their children flatten into the parent); DOM elements (`div`, `span`) are transparent too. Function values in `_documentProps` and reactive accessor children are resolved (called) at extraction time. ALWAYS returns a `DocNode` — loose children are wrapped in `{ type: "document" }`.
+Walk a Pyreon VNode tree and extract a `DocNode` tree for `@pyreon/document`. For each vnode whose component carries a `_documentType` marker it reads the marker → `DocNode.type`, resolves `_documentProps` → `DocNode.props` (pre-resolved vnode props → rocketstyle `__rs_attrs` fast path → full component invocation as legacy fallback), resolves `$rocketstyle` via `resolveStyles` → `DocNode.styles`, and recurses into children. Transparent (children flatten into the parent, no node produced): unmarked components (invoked), DOM elements (`div`, `span`), `<>…</>` **Fragments**, and a component that returns a bare `VNodeChild[]` array. Function values in `_documentProps` and reactive accessor children are resolved (called) at extraction time. ALWAYS returns a `DocNode` — loose children are wrapped in `{ type: "document" }`.
 
 **Parameters**
 
@@ -124,6 +124,7 @@ const freshTree = extractDocumentTree(vnode)
 - Expecting a `DocNode | DocChild[] | null` return — the internal walker produces that union, but the public function ALWAYS returns a `DocNode`, wrapping loose children in `{ type: "document", props: {}, children }`
 - Marking a non-rocketstyle component with `_documentType` and relying on side effects in its body — the legacy fallback path INVOKES the component to find `_documentProps`; keep marked components pure
 - Expecting browser-only CSS (`transition`, `cursor`, `display`, animations) to reach the document — `resolveStyles` extracts only the properties `ResolvedStyles` supports and silently drops the rest
+- Assuming `<>…</>` grouping or a component returning multiple siblings via a Fragment (or a bare array) is a no-op — it is transparent (children flatten into the parent). This was a silent DROP before the 0.45.x fix: a fragment vnode matched no branch and its whole subtree vanished from the export with no error
 
 **See also:** `resolveStyles` · `ExtractOptions` · `DocumentMarker` · `@pyreon/document` · `@pyreon/document-primitives`
 
@@ -382,7 +383,7 @@ const node: DocNode = {
 
 > **Note:** Extraction is a snapshot — reactive accessor children and function-valued `_documentProps` are resolved (called) at extraction time, not subscribed; re-run `extractDocumentTree` after a signal change to export the live state.
 
-> **Marker contract:** A component is extractable when it carries `_documentType` — via rocketstyle `.statics()` (read from `.meta`) or as a direct static on a plain function. Unmarked components and DOM elements are transparent: their children flatten into the parent.
+> **Marker contract:** A component is extractable when it carries `_documentType` — via rocketstyle `.statics()` (read from `.meta`) or as a direct static on a plain function. Unmarked components, DOM elements, and `<>…</>` fragments are transparent: their children flatten into the parent.
 
 > **Test with real primitives:** Mock vnodes that pre-attach `_documentProps` bypass the rocketstyle `__rs_attrs` fast path — the PR #197 silent-metadata-drop hid exactly there. Pair every mock-vnode test with a real-`h()` primitive test (see `.claude/rules/test-environment-parity.md`).
 
