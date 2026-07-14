@@ -1,5 +1,5 @@
 import { h } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
 import { bindRichTextToSignal } from '../bind-signal'
@@ -213,6 +213,72 @@ describe('rich-text editor in real browser', () => {
     expect(JSON.stringify(draft())).toContain('from-editor')
 
     binding.dispose()
+    editor.dispose()
+    unmount()
+  })
+
+  // ── Selection-immune content computeds ───────────────────────────────────
+
+  it('a pure selection move does NOT re-run content computeds, but DOES re-run isActive', async () => {
+    // The engine bumps its transaction counter for BOTH content updates and
+    // selection moves. Content computeds (text/html/counts/canUndo) must track
+    // ONLY content — otherwise a live word-counter effect re-fires on every
+    // arrow-key. `isActive` (mark/node state depends on the cursor) must still
+    // track the selection.
+    const editor = createRichTextEditor({ content: '<p>hello world here</p>' })
+    const { unmount } = mountInBrowser(h(RichText, { instance: editor }))
+    await waitForView(editor)
+    await flush()
+
+    let textRuns = 0
+    let htmlRuns = 0
+    let charRuns = 0
+    let activeRuns = 0
+    const eText = effect(() => {
+      editor.text()
+      textRuns++
+    })
+    const eHtml = effect(() => {
+      editor.html()
+      htmlRuns++
+    })
+    const eChar = effect(() => {
+      editor.characterCount()
+      charRuns++
+    })
+    const eActive = effect(() => {
+      editor.isActive('bold')
+      activeRuns++
+    })
+    await flush()
+    // Each effect runs once on registration.
+    expect(textRuns).toBe(1)
+    expect(htmlRuns).toBe(1)
+    expect(charRuns).toBe(1)
+    expect(activeRuns).toBe(1)
+
+    // Move the cursor only — no content change (docChanged === false).
+    editor.chain()?.setTextSelection(2).run()
+    await flush()
+    editor.chain()?.setTextSelection(6).run()
+    await flush()
+
+    // Content computeds did not re-run; isActive did (twice — once per move).
+    expect(textRuns).toBe(1)
+    expect(htmlRuns).toBe(1)
+    expect(charRuns).toBe(1)
+    expect(activeRuns).toBe(3)
+
+    // A real content edit DOES re-run the content computeds (reactivity intact).
+    editor.chain()?.insertContent('!').run()
+    await flush()
+    expect(textRuns).toBe(2)
+    expect(charRuns).toBe(2)
+
+    eText.dispose()
+    eHtml.dispose()
+    eChar.dispose()
+    eActive.dispose()
     editor.dispose()
     unmount()
   })

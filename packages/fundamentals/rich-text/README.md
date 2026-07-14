@@ -9,12 +9,17 @@ engine, wrapped in Pyreon's fine-grained reactivity.
 - **Signal-backed document** — `editor.json` is a writable `Signal<JSONContent>`;
   `html` / `text` / `isEmpty` / `characterCount` / `wordCount` / `canUndo` /
   `canRedo` are computed signals; `editable` is a writable read-only toggle.
+  `characterCount` / `wordCount` / `isEmpty` derive from the document JSON, so
+  they report accurately **before the engine mounts** (stored-JSON draft lists),
+  count visible characters, and — like every content computed — never re-run on
+  a pure cursor move (only `isActive` tracks the selection).
 - **Toolbar-ready** — `editor.isActive('bold')` is a reactive accessor for
   active-state highlighting; commands run through `editor.chain()` plus
   `undo` / `redo` / `focus` / `blur` helpers.
 - **Lazy engine** — `@tiptap/*` is dynamically imported on mount, so it stays
-  out of the initial bundle. A re-mount keeps the current document, disposing
-  mid-load is leak-safe, and a mount failure routes to `onError`.
+  out of the initial bundle (a ~1.5 KB gz wrapper; the engine is a lazy chunk).
+  A re-mount keeps the current document, disposing mid-load is leak-safe, and a
+  mount failure routes to `onError`.
 - **Accessible** — the content area is a labeled `role="textbox"` multiline
   region.
 - **MIT throughout** — TipTap + ProseMirror are MIT; collaboration composes

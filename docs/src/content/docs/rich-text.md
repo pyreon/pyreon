@@ -71,9 +71,9 @@ const editor = createRichTextEditor({
 | `editor.json` | `Signal<JSONContent>` | The ProseMirror document. **Writable** — `editor.json.set(next)` replaces the content (loop-safe). |
 | `editor.html` | `Computed<string>` | Rendered HTML. |
 | `editor.text` | `Computed<string>` | Plain-text content. |
-| `editor.isEmpty` | `Computed<boolean>` | Whether the document is empty. |
-| `editor.characterCount` | `Computed<number>` | Plain-text character count. |
-| `editor.wordCount` | `Computed<number>` | Whitespace-delimited word count. |
+| `editor.isEmpty` | `Computed<boolean>` | Whether the document has text — derived from the JSON, so accurate before mount. |
+| `editor.characterCount` | `Computed<number>` | **Visible** character count — excludes `getText()`'s `\n\n` block separators; derived from the JSON, so it works before mount. |
+| `editor.wordCount` | `Computed<number>` | Whitespace-delimited word count (derived from the JSON; works before mount). |
 | `editor.canUndo` / `editor.canRedo` | `Computed<boolean>` | History availability — gate toolbar buttons on these. |
 | `editor.focused` | `Signal<boolean>` | Focus state. |
 | `editor.editable` | `Signal<boolean>` | **Writable** read-only toggle (see below). |
@@ -193,11 +193,21 @@ Pass `editable: false` to `createRichTextEditor` to start read-only.
 
 ## Character & word count
 
-`characterCount` and `wordCount` are computed signals derived from the document text — no extra extension required:
+`characterCount` and `wordCount` are computed signals derived from the document JSON — no extra extension required:
 
 ```tsx
 <span>{() => `${editor.wordCount()} words · ${editor.characterCount()} characters`}</span>
 ```
+
+Because they read the **document** (not the mounted engine), they have three useful properties:
+
+- **They work before mount.** A stored-ProseMirror-JSON draft reports its real character/word count and an accurate `isEmpty` without ever loading the (lazy) editor — perfect for a draft list where you never mount an editor per row. (An HTML _string_ needs the ProseMirror parser, so its counts populate on mount.)
+- **`characterCount` counts visible characters.** Two paragraphs of `aaa` and `bbb` are **6** characters, not the 8 `getText()` reports (it inserts a `\n\n` between blocks).
+- **They're selection-immune.** Moving the cursor never re-runs a count (or any content computed) — only `isActive` tracks the selection. A live word counter in your toolbar doesn't re-fire on every arrow-key.
+
+:::note[Schema-less by design]
+The counts walk the ProseMirror JSON directly (StarterKit-accurate). A custom node whose _rendered_ text differs from its concatenated text descendants may count differently than its live `getText()` — the 99% (StarterKit) case is exact.
+:::
 
 ## Two-way binding
 
@@ -286,7 +296,20 @@ The base package targets the browser (TipTap/ProseMirror need a real DOM). For S
 
 ## Bundle & lazy-loading
 
-The package's own code is ~1.1 KB gzipped — TipTap is externalized and dynamically imported on mount. Nothing of `@tiptap/*` ships in your initial bundle until a `<RichText>` renders, mirroring how `@pyreon/charts` defers ECharts and `@pyreon/code` defers CodeMirror grammars.
+The package's own wrapper code is ~1.5 KB gzipped — TipTap is externalized and dynamically imported on mount. Nothing of `@tiptap/*` ships in your initial bundle until a `<RichText>` renders, mirroring how `@pyreon/charts` defers ECharts and `@pyreon/code` defers CodeMirror grammars.
+
+### Wrapper overhead vs `@tiptap/react`
+
+`@pyreon/rich-text` and [`@tiptap/react`](https://tiptap.dev) both wrap the **same** TipTap/ProseMirror engine, so the fair comparison measures the _wrapper_, not ProseMirror (`bun scripts/bench/rich-text.ts`, esbuild + gzip -9, `NODE_ENV=production`):
+
+| Measured (gzipped) | `@pyreon/rich-text` | `@tiptap/react` |
+| --- | --- | --- |
+| **Wrapper glue** (engine + framework externalized) | **1.5 KB** | 8.5 KB |
+| **Initial entry chunk** (before the editor loads) | **1.5 KB** (engine is a lazy chunk) | 88.9 KB (engine eagerly imported) |
+
+The wrapper glue is ~5.7× smaller. The larger gap on the initial chunk is because `@pyreon/rich-text` lazy-imports the engine _by default_ (a dynamic `import()` in the mount path), whereas `@tiptap/react`'s `EditorContent` statically imports `@tiptap/core` — so the engine lands in the initial bundle unless you manually code-split it with `React.lazy` + `Suspense`.
+
+This is a **bundle** measurement (Rung R1, measured in-repo). Typing-latency and mount-time — the other wrapper-overhead axes — need a real-browser + React harness and are **not** measured here; a noisy latency bench is worse than none, so they're deferred rather than estimated.
 
 ## License
 

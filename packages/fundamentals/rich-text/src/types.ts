@@ -53,13 +53,24 @@ export interface RichTextEditor {
   json: Signal<JSONContent>
   /** Rendered HTML (computed; reads the live editor once mounted). */
   html: Computed<string>
-  /** Plain-text content (computed). */
+  /** Plain-text content (computed). Exact `getText()` once mounted. */
   text: Computed<string>
-  /** Whether the document is empty (computed). */
+  /**
+   * Whether the document has no text (computed). Derived from the document
+   * JSON, so it is accurate before mount / after dispose (a media-only doc
+   * reconciles on mount).
+   */
   isEmpty: Computed<boolean>
-  /** Plain-text character count (computed). */
+  /**
+   * Visible character count (computed) — sums text-node lengths, excluding the
+   * `\n\n` block separators `getText()` inserts. Derived from the document JSON,
+   * so a stored-JSON draft has a real count before the (lazy) engine mounts.
+   */
   characterCount: Computed<number>
-  /** Whitespace-delimited word count (computed). */
+  /**
+   * Whitespace-delimited word count (computed). Derived from the document JSON
+   * (block boundaries never merge words), so it works before mount.
+   */
   wordCount: Computed<number>
   /** Whether an undo step is available (computed). */
   canUndo: Computed<boolean>
