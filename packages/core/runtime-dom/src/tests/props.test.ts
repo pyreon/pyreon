@@ -1,6 +1,13 @@
 import { signal } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName, setupDelegation } from '../delegate'
-import { applyProp, applyProps, sanitizeHtml, setSanitizer } from '../props'
+import {
+  applyAttrProp,
+  applyProp,
+  applyProps,
+  applySelectValueProp,
+  sanitizeHtml,
+  setSanitizer,
+} from '../props'
 
 // ─── applyProps ──────────────────────────────────────────────────────────────
 
@@ -675,5 +682,116 @@ describe('applyProp — boolean ARIA state attributes render as strings', () => 
     const el = document.createElement('div')
     applyProp(el, 'aria-checked', 'mixed')
     expect(el.getAttribute('aria-checked')).toBe('mixed')
+  })
+})
+
+// ─── applyProps — getter-descriptor (reactive-prop) path ─────────────────────
+// `makeReactiveProps` turns compiler-emitted `_rp(() => signal())` wrappers into
+// GETTER descriptors. `applyProps` must detect the getter and wrap the read in a
+// `renderEffect` so the attribute tracks the signal — a plain value read would
+// fire the getter once and freeze the value (the descriptor-copy footgun class).
+describe('applyProps — reactive getter-descriptor props', () => {
+  it('binds a getter-shaped prop reactively (updates on signal change)', () => {
+    const title = signal('a')
+    const el = document.createElement('div')
+    const props: Record<string, unknown> = {}
+    Object.defineProperty(props, 'title', {
+      get: () => title(),
+      enumerable: true,
+      configurable: true,
+    })
+
+    const cleanup = applyProps(el, props)
+    expect(el.getAttribute('title')).toBe('a') // eager initial run
+
+    title.set('b')
+    expect(el.getAttribute('title')).toBe('b') // renderEffect tracked the signal
+
+    cleanup?.()
+    title.set('c')
+    expect(el.getAttribute('title')).toBe('b') // disposed — no further updates
+  })
+
+  it('still applies plain data-descriptor props statically (non-getter branch)', () => {
+    const el = document.createElement('div')
+    applyProps(el, { id: 'plain', title: 'hi' })
+    expect(el.id).toBe('plain')
+    expect(el.getAttribute('title')).toBe('hi')
+  })
+})
+
+// ─── applySelectValueProp — deferred <select value> (PZ-09) ──────────────────
+describe('applySelectValueProp', () => {
+  function selectWithOptions(...values: string[]): HTMLSelectElement {
+    const sel = document.createElement('select')
+    for (const v of values) {
+      const opt = document.createElement('option')
+      opt.value = v
+      opt.textContent = v
+      sel.appendChild(opt)
+    }
+    return sel
+  }
+
+  it('applies a static (non-getter) value against the mounted options', () => {
+    const sel = selectWithOptions('a', 'b', 'c')
+    const cleanup = applySelectValueProp(sel, { value: 'b' })
+    expect(sel.value).toBe('b')
+    expect(cleanup).toBeNull() // static value → no reactive cleanup
+  })
+
+  it('binds a getter-shaped value reactively (re-selects on signal change)', () => {
+    const sel = selectWithOptions('a', 'b', 'c')
+    const chosen = signal('a')
+    const props: Record<string, unknown> = {}
+    Object.defineProperty(props, 'value', {
+      get: () => chosen(),
+      enumerable: true,
+      configurable: true,
+    })
+
+    const cleanup = applySelectValueProp(sel, props)
+    expect(sel.value).toBe('a') // eager initial run sees the options
+
+    chosen.set('c')
+    expect(sel.value).toBe('c') // renderEffect re-applied the value
+
+    cleanup?.()
+    chosen.set('b')
+    expect(sel.value).toBe('c') // disposed
+  })
+})
+
+// ─── applyAttrProp (_setAttr) — the compiler template-path attr mirror ───────
+// Kept branch-for-branch identical to setStaticProp's value==null / boolean-aria
+// / boolean tail so the `_tpl()` fast path and the `h()` path never drift.
+describe('applyAttrProp (_setAttr template mirror)', () => {
+  it('renders boolean aria-* as the string "true"/"false" (a11y — not presence)', () => {
+    const el = document.createElement('div')
+    applyAttrProp(el, 'aria-checked', true)
+    expect(el.getAttribute('aria-checked')).toBe('true')
+    applyAttrProp(el, 'aria-checked', false)
+    expect(el.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('keeps HTML boolean attrs presence-based (disabled)', () => {
+    const el = document.createElement('button')
+    applyAttrProp(el, 'disabled', true)
+    expect(el.getAttribute('disabled')).toBe('') // presence
+    applyAttrProp(el, 'disabled', false)
+    expect(el.hasAttribute('disabled')).toBe(false) // absent
+  })
+
+  it('removes the attribute for null/undefined', () => {
+    const el = document.createElement('div')
+    el.setAttribute('title', 'x')
+    applyAttrProp(el, 'title', null)
+    expect(el.hasAttribute('title')).toBe(false)
+  })
+
+  it('stringifies non-boolean values', () => {
+    const el = document.createElement('div')
+    applyAttrProp(el, 'data-count', 5)
+    expect(el.getAttribute('data-count')).toBe('5')
   })
 })

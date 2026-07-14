@@ -33,7 +33,12 @@ export default defineNodeConfig({
   // recovery arms, binding-registry.ts. Aspiration stays 95 — raise back in
   // lockstep as targeted tests land (BELOW_FLOOR_EXEMPTIONS entry in
   // scripts/check-coverage.ts mirrors these numbers).
-  coverageThresholds: { statements: 93, lines: 94, branches: 86 },
+  // Ratcheted 93 → 94 stmts / 94 → 95 lines (measured 94.59 / 95.96) after the
+  // props.ts reactive getter-descriptor + applySelectValueProp + applyAttrProp
+  // aria-boolean paths and binding-registry.ts no-doc / stale-graph-node guards
+  // gained behavioral tests. Branches stay 86 (measured 86.61 — the residual is
+  // the compiler-emitted / timing arms covered only by real-Chromium e2e).
+  coverageThresholds: { statements: 94, lines: 95, branches: 86 },
   // --expose-gc makes `globalThis.gc` available in the fork workers so the
   // GC-observable retention regression (for-lis-scratch-release.test.tsx)
   // RUNS in CI instead of skipping. One flag, no behavioral change for the

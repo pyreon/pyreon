@@ -122,10 +122,10 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
       'Markdown content layer. The 2026-06 docs cutover (PRs #1448 + #1491) landed substantial integration-tier surface node vitest cannot reach: plugin.ts dev-server search middleware (configureServer), build-mode search-index emission (closeBundle), and optional-dependency dynamic imports (katex/mermaid success paths). Achieved node coverage at true-up: 87.39% statements / 80.79% branches (thresholds carry ~1pp variance margin). The integration paths are exercised daily by the real docs/ build + verify-modes; the Chromium harness (PR 7 follow-up) is the tracked lift back toward 95. Raise the package thresholds + this entry in lockstep as tests land.',
   },
   '@pyreon/runtime-dom': {
-    currentStatements: 93,
+    currentStatements: 94,
     currentBranches: 86,
     reason:
-      'DOM renderer. Branches at ~86% — residual gap in template fast paths, hydrate NativeItem swaps, transition timing arms only reachable via compiler-emitted templates in real Chromium (covered by ui-showcase e2e). Statements re-baselined 95 → 93 at the 2026-07 coverage-gate restoration (measured 93.98): devtools.ts reactive-overlay + DOM→signal picker machinery (e2e/reactive-overlay.spec.ts) and hydrate.ts parity-fuzz recovery arms landed with e2e-tier coverage.',
+      'DOM renderer. Branches at ~86% — residual gap in template fast paths, hydrate NativeItem swaps, transition timing arms only reachable via compiler-emitted templates in real Chromium (covered by ui-showcase e2e). Statements ratcheted 93 → 94 (measured 94.59) after the props.ts reactive getter-descriptor / applySelectValueProp / applyAttrProp aria-boolean paths and binding-registry.ts no-doc + stale-graph-node guards gained behavioral tests; the remaining sub-95 statements are devtools.ts reactive-overlay + DOM→signal picker machinery (e2e/reactive-overlay.spec.ts) and hydrate.ts parity-fuzz recovery arms that land with e2e-tier coverage.',
   },
   '@pyreon/vue-compat': {
     currentStatements: 95,
