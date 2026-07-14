@@ -85,7 +85,7 @@ const errors = await validate({ email: 'x', age: 5 })
 | [`arktypeSchema`](#arktypeschema) | function | Create a typed whole-form schema adapter from an ArkType type. |
 | [`arktypeField`](#arktypefield) | function | Create a per-field validator from an ArkType type. |
 | [`standardSchemaToValidator`](#standardschematovalidator) | function | Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@py |
-| [`isStandardSchema`](#isstandardschema) | function | Runtime type guard — detect a Standard Schema-compliant object by its `~standard` property (an object with a `validate`  |
+| [`isStandardSchema`](#isstandardschema) | function | Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `valida |
 | [`isPyreonAdapter`](#ispyreonadapter) | function | Runtime type guard — detect a Pyreon TypedSchemaAdapter (Tier A.1) by its `_infer` brand plus a callable `parse`. |
 | [`wrapStandardSchema`](#wrapstandardschema) | function | Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`&#123; ok: true, value &#125; \| &#123; ok: false |
 | [`extractParseFn`](#extractparsefn) | function | The primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accept EITHER a Pyreon TypedSchemaAdap |
@@ -278,10 +278,10 @@ const errors = await validate({ email: 'x', age: 5 })
 ### isStandardSchema `function`
 
 ```ts
-(value: unknown) => value is StandardSchemaShape<unknown>
+(value: unknown) => value is StandardSchemaLike<unknown>
 ```
 
-Runtime type guard — detect a Standard Schema-compliant object by its `~standard` property (an object with a `validate` function). Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump.
+Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `validate` function). Accepts a value whose `typeof` is `object` OR `function` — ArkType schemas are CALLABLE (`type("string")(input)` validates) yet still carry `~standard`, so a callable is a valid Standard Schema; a plain function WITHOUT `~standard` is still rejected. Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump.
 
 **Example**
 
@@ -296,6 +296,7 @@ if (isStandardSchema(schema)) {
 **Common mistakes**
 
 - Using it to detect a Pyreon adapter — those brand with `_infer`, not `~standard`; use isPyreonAdapter for that tier
+- Assuming it only matches objects — ArkType schemas are functions; the guard accepts a callable carrying `~standard` (a bare object-only guard silently rejected raw ArkType everywhere)
 
 **See also:** `isPyreonAdapter` · `standardSchemaToValidator`
 
