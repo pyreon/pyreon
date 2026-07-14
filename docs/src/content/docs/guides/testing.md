@@ -42,7 +42,7 @@ fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
 await waitFor(() => expect(screen.getByText('Welcome')).toBeTruthy())
 ```
 
-`fireEvent` dispatches **bubbling** events so they reach Pyreon's event-delegation root — a non-bubbling event would never fire a delegated handler. `waitFor(cb, { timeout, interval })` polls until `cb` stops throwing.
+`fireEvent` dispatches real DOM events across **both** halves of Pyreon's event model: delegated events (`click`, `input`, `change`, `keyDown`, `submit`, `pointerDown`, `focusIn`, …) bubble to the one listener on the mount container, and non-bubbling events (`focus`, `blur`, `mouseEnter`, `mouseLeave`) reach the direct `addEventListener` Pyreon attaches to the element — both are verified end-to-end in real Chromium. `fireEvent` returns `false` when a handler called `preventDefault()` on a cancelable event, `true` otherwise. `waitFor(cb, { timeout, interval })` polls until `cb` stops throwing (rejecting after `timeout`, ~1s by default); `waitForElementToBeRemoved(el)` resolves once `el` leaves the DOM.
 
 ## Hooks
 
