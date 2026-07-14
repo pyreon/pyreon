@@ -1,5 +1,54 @@
 # @pyreon/compiler
 
+## 0.45.0
+
+### Patch Changes
+
+- [#2215](https://github.com/pyreon/pyreon/pull/2215) [`747cced`](https://github.com/pyreon/pyreon/commit/747cced0efd3611bcff4f0d8ec01417ed5f19e45) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a compiler template fast-path bug where a **dynamic generic attribute** was
+  emitted as a raw `setAttribute(name, value)` with no null / boolean
+  normalization — so it diverged from the runtime `h()` path (`applyStaticProp`)
+  and from the SSR serializer.
+
+  In real (vite-plugin-compiled) apps this rendered the recommended ARIA shape
+  `aria-disabled={x ? 'true' : undefined}` as the literal `aria-disabled="undefined"`
+  on the nullish branch — an **invalid ARIA value** assistive tech reads as the
+  opposite/default state — and a dynamic boolean `hidden={cond}` as `hidden="false"`
+  (attribute present → element still hidden). It was also a latent SSR↔client
+  hydration mismatch (SSR omitted the attribute; the client set `="undefined"`).
+  It was masked in the `@pyreon/ui-primitives` browser tests because their config
+  uses the oxc automatic JSX runtime (which routes through `h()`→`applyProps`),
+  not the real compiler.
+
+  The compiler's `attrSetter` (both the JS and Rust backends) and the
+  `_bindDirect` bare-signal updater now emit a call to a new runtime helper
+  `_setAttr` (`applyAttrProp`), exported from `@pyreon/runtime-dom`, that mirrors
+  `applyStaticProp`'s generic-attribute normalization: `null`/`undefined` →
+  `removeAttribute`, boolean `aria-*` → `"true"`/`"false"`, boolean → presence /
+  absence, else `setAttribute(String(value))`. This is the aria/boolean/null
+  sibling of the earlier class/style (`_setClass`/`_setStyle`) template-path
+  fixes. Static string/number/boolean literals still bake into the template HTML
+  (the guard fires only for dynamic values); class, style, and DOM-property
+  (`value`/`checked`/…) attributes keep their existing routing.
+
+  Byte-identical across both compiler backends (native-equivalence + differential
+  fuzz), SSR-parity confirmed, and bisect-verified with a regression that compiles
+  through the real `transformJSX` and mounts (revert → `aria-disabled="undefined"` /
+  `hidden="false"` present; restore → absent).
+
+- [#2192](https://github.com/pyreon/pyreon/pull/2192) [`14a78e6`](https://github.com/pyreon/pyreon/commit/14a78e6a28139c4b2af62f338a5e8533f73a96a8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a compiler bug where a props-derived object **shorthand** in a style /
+  object literal (`const color = pick(props.v); <span style={{ color }} />`)
+  miscompiled. The native (Rust) backend inlined the prop-derived local into the
+  shorthand value without expanding the `key:` prefix, emitting a keyless
+  `{ (pick(props.v)) }` — a build-time syntax error (`Unexpected token '('.
+Expected a property name.`). The JS backend didn't crash but left the shorthand
+  captured-once (non-reactive), diverging from the native backend.
+
+  Both backends now **expand** a prop-derived shorthand to
+  `{ color: (pick(props.v)) }` — byte-identical to the explicit `{ color: color }`
+  form and reactive (the inlined value reads props inside the reactive accessor).
+  Static (non-props) shorthand `{ color }` is untouched. Locked by the
+  native-equivalence oracle + JS-output assertions; bisect-verified.
+
 ## 0.44.0
 
 ### Minor Changes

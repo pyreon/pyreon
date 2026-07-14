@@ -1,5 +1,15 @@
 # @pyreon/query
 
+## 0.45.0
+
+### Patch Changes
+
+- [#2188](https://github.com/pyreon/pyreon/pull/2188) [`353eb05`](https://github.com/pyreon/pyreon/commit/353eb058ec9008d9de2fdc80559a0713f180a7d4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix the `defineQueries` JSDoc `@example` (it showed the wrong call shape — a single function returning an object instead of an object of option-functions). Add an objective adapter head-to-head benchmark vs `@tanstack/react-query` (`bench:react-query`) — both wrap the same `@tanstack/query-core`, so it measures the adapter, not the engine — plus README/docs sections on the measured fine-grained-vs-react-render results (intra-component: 1 field-derivation + 0 component re-runs vs 8 + a whole-component re-render; cross-component is a tie thanks to react-query's tracked-props). Add consumer-shaped tests locking `select`, `keepPreviousData` on reactive keys, and optimistic `onMutate`/rollback pass-through.
+
+- Updated dependencies []:
+  - @pyreon/core@0.45.0
+  - @pyreon/reactivity@0.45.0
+
 ## 0.44.0
 
 ### Patch Changes

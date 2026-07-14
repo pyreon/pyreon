@@ -1,5 +1,58 @@
 # @pyreon/runtime-dom
 
+## 0.45.0
+
+### Patch Changes
+
+- [#2215](https://github.com/pyreon/pyreon/pull/2215) [`747cced`](https://github.com/pyreon/pyreon/commit/747cced0efd3611bcff4f0d8ec01417ed5f19e45) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a compiler template fast-path bug where a **dynamic generic attribute** was
+  emitted as a raw `setAttribute(name, value)` with no null / boolean
+  normalization — so it diverged from the runtime `h()` path (`applyStaticProp`)
+  and from the SSR serializer.
+
+  In real (vite-plugin-compiled) apps this rendered the recommended ARIA shape
+  `aria-disabled={x ? 'true' : undefined}` as the literal `aria-disabled="undefined"`
+  on the nullish branch — an **invalid ARIA value** assistive tech reads as the
+  opposite/default state — and a dynamic boolean `hidden={cond}` as `hidden="false"`
+  (attribute present → element still hidden). It was also a latent SSR↔client
+  hydration mismatch (SSR omitted the attribute; the client set `="undefined"`).
+  It was masked in the `@pyreon/ui-primitives` browser tests because their config
+  uses the oxc automatic JSX runtime (which routes through `h()`→`applyProps`),
+  not the real compiler.
+
+  The compiler's `attrSetter` (both the JS and Rust backends) and the
+  `_bindDirect` bare-signal updater now emit a call to a new runtime helper
+  `_setAttr` (`applyAttrProp`), exported from `@pyreon/runtime-dom`, that mirrors
+  `applyStaticProp`'s generic-attribute normalization: `null`/`undefined` →
+  `removeAttribute`, boolean `aria-*` → `"true"`/`"false"`, boolean → presence /
+  absence, else `setAttribute(String(value))`. This is the aria/boolean/null
+  sibling of the earlier class/style (`_setClass`/`_setStyle`) template-path
+  fixes. Static string/number/boolean literals still bake into the template HTML
+  (the guard fires only for dynamic values); class, style, and DOM-property
+  (`value`/`checked`/…) attributes keep their existing routing.
+
+  Byte-identical across both compiler backends (native-equivalence + differential
+  fuzz), SSR-parity confirmed, and bisect-verified with a regression that compiles
+  through the real `transformJSX` and mounts (revert → `aria-disabled="undefined"` /
+  `hidden="false"` present; restore → absent).
+
+- [#2195](https://github.com/pyreon/pyreon/pull/2195) [`5cf5387`](https://github.com/pyreon/pyreon/commit/5cf5387fb214108c694e3678a76a113b4d198fa4) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix a reactive style **object** not clearing a property whose value is
+  `null`/`undefined`. `{ background: active ? 'orange' : null }` produced
+  `String(null)` → `"null"`, and `setProperty('background', 'null')` is an invalid
+  CSS value the browser silently ignores — leaving the previous value in place
+  (the key was also still tracked as "present", so the stale-key sweep skipped
+  it). The visible symptom: a single-select toggle (the coolgrid docs preset
+  selector, a tab bar, etc.) left **every** previously-clicked item styled-active.
+
+  A `null`/`undefined` value now removes the property (via `removeProperty`) and
+  stops tracking it, so the `cond ? value : null` toggle idiom clears cleanly.
+  Distinct from the already-working "key disappears from the object" removal
+  ([#233](https://github.com/pyreon/pyreon/issues/233)) — this covers a key that stays with a `null` value.
+
+- Updated dependencies []:
+  - @pyreon/core@0.45.0
+  - @pyreon/reactivity@0.45.0
+  - @pyreon/sized-map@0.45.0
+
 ## 0.44.0
 
 ### Minor Changes

@@ -1,5 +1,79 @@
 # @pyreon/form
 
+## 0.45.0
+
+### Minor Changes
+
+- [#2209](https://github.com/pyreon/pyreon/pull/2209) [`e757b33`](https://github.com/pyreon/pyreon/commit/e757b33ea75a63d3b59751c22d0c290bdf8b71e0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - First-class dot-path (nested) LEAF fields. A field key containing a dot
+  (`'address.city'`) now declares a first-class leaf field, addressable exactly
+  like a top-level one — `register('address.city')`, `useField('address.city')`,
+  `setFieldValue('address.city', …)`, `validators: { 'address.city': … }`,
+  `errors()['address.city']`, `trigger('address.city')`, and blur validation all
+  route to it. Per-field validators and a **flat-keyed** schema
+  (`s.object({ 'address.city': … })`) route their error to the exact **leaf**;
+  a **nested** schema over a single object field still routes to the **ancestor**
+  object field. Two new exported pure helpers, `nestValues` and `flattenValues`,
+  convert between the flat form value shape and a nested API payload.
+
+  Fixes:
+
+  - **Bug**: `orphanSchemaErrorKeys` flagged an exact dot-path leaf key
+    (`address.city`) as an "orphan" because its top segment (`address`) is not a
+    field — so a leaf field + schema produced a spurious `submitError` and dev
+    warning even though the error had already routed to the leaf. It now checks
+    exact-field and deep-ancestor membership before flagging.
+  - **Security**: `nestValues` is hardened against prototype pollution — a crafted
+    flat key like `'__proto__.polluted'` / `'constructor.prototype.x'` is dropped
+    (the standard post-CVE `lodash.set` posture) instead of walking into a
+    prototype.
+
+  The value model stays FLAT (`values()` / `getValues()` / `onSubmit` keep the
+  dot-path keys, so field-name types stay honest — no `NestValues<T>` type
+  cascade). Not breaking. Remaining follow-ups: typed nested-value inference and
+  auto-splitting a nested-schema error to per-leaf fields.
+
+- [#2221](https://github.com/pyreon/pyreon/pull/2221) [`7176c25`](https://github.com/pyreon/pyreon/commit/7176c25c5f40b92eeeafede866dff557e2277e4a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Route nested schema errors to registered dot-path **leaf** fields (auto-split) —
+  finishing the runtime residual left by first-class dot-path leaf fields.
+
+  A DECLARATIVE schema (a raw Standard Schema or a `@pyreon/validation` typed
+  adapter — never a plain function) over a dot-path-leaf form now receives the
+  NESTED value shape, transiently rebuilt from the flat value model via
+  `nestValues` (only when the form declares dot-path leaf fields). So a REAL
+  nested schema like `z.object({ address: z.object({ city: z.string().min(1) }) })`
+  validates correctly, and its per-leaf-path error (`address.city`) auto-splits to
+  the registered LEAF field.
+
+  Routing now prefers the **most-specific** registered field:
+  `matchSchemaErrorForField(schemaErrors, name, fieldNames)` takes the field set,
+  so an ancestor object field no longer claims a nested key owned by a registered
+  leaf (or a deeper registered object ancestor). The both-registered tie-break
+  (object `address` + leaf `address.city`) resolves to **leaf-wins**; the ancestor
+  no longer double-claims (dev-warns, since holding "city" in two places is
+  confusing). When only the ancestor object field is registered, the nested error
+  still routes to it (the documented fallback, preserved), and a key matching no
+  field is still flagged as an orphan (form invalid + `submitError` + dev-warn) —
+  never silently dropped. A plain `SchemaValidateFn` always receives the FLAT
+  `TValues` (its type contract), so imperative schemas and every top-level /
+  object-field form are unchanged.
+
+  This closes the documented "a nested error surfaces on the ANCESTOR field, not a
+  per-leaf field" gap. The value model stays FLAT end-to-end (`values()` /
+  `onSubmit` keep the dot-path keys). Typed deep-path inference (`NestValues<T>`)
+  is still deferred — a nested declarative schema over a dot-path-leaf form needs
+  an `as never` cast today, since `schema` is typed against the flat keys; its type
+  cascade breaks generic wrappers like `@pyreon/feature`.
+
+  Bisect-verified: reverting the `fieldNames` leaf-preference makes the
+  `address.city` error land on the ancestor; reverting the nesting makes the real
+  nested schema's leaf error vanish and a valid nested payload fail validation.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/validation@0.45.0
+  - @pyreon/core@0.45.0
+  - @pyreon/reactivity@0.45.0
+
 ## 0.44.0
 
 ### Patch Changes

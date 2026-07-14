@@ -1,5 +1,24 @@
 # @pyreon/cli
 
+## 0.45.0
+
+### Patch Changes
+
+- [#2187](https://github.com/pyreon/pyreon/pull/2187) [`23dcb8d`](https://github.com/pyreon/pyreon/commit/23dcb8d5d36db664aba437abf792f1949530c746) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Canonicalize `repository.url` to npm's `git+https://…` form across every
+  published package, and add a `distribution/non-canonical-repository-url`
+  invariant to the distribution gate (`pyreon doctor` / `check-distribution`)
+  so it can't regress.
+
+  This removes the `npm warn publish "repository.url" was normalized to
+"git+https://github.com/pyreon/pyreon.git"` line npm printed once per
+  package on every release (69 lines of publish-log noise). The published
+  metadata is byte-identical to what npm was already auto-correcting to —
+  there is no runtime or API change.
+
+- Updated dependencies [[`747cced`](https://github.com/pyreon/pyreon/commit/747cced0efd3611bcff4f0d8ec01417ed5f19e45), [`14a78e6`](https://github.com/pyreon/pyreon/commit/14a78e6a28139c4b2af62f338a5e8533f73a96a8), [`f40448a`](https://github.com/pyreon/pyreon/commit/f40448a4743fbced6938e11d603c9124a4ff3c65), [`44dfab8`](https://github.com/pyreon/pyreon/commit/44dfab88fe302d41c19ced373c97e0eba5025378)]:
+  - @pyreon/compiler@0.45.0
+  - @pyreon/lint@0.45.0
+
 ## 0.44.0
 
 ### Patch Changes

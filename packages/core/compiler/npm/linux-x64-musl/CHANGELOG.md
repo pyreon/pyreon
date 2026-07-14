@@ -1,5 +1,7 @@
 # @pyreon/compiler-linux-x64-musl
 
+## 0.45.0
+
 ## 0.44.0
 
 ## 0.43.1
