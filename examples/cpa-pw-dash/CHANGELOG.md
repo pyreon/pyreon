@@ -1,5 +1,28 @@
 # cpa-pw-dash
 
+## 0.0.31
+
+### Patch Changes
+
+- Updated dependencies [[`747cced`](https://github.com/pyreon/pyreon/commit/747cced0efd3611bcff4f0d8ec01417ed5f19e45), [`e757b33`](https://github.com/pyreon/pyreon/commit/e757b33ea75a63d3b59751c22d0c290bdf8b71e0), [`7176c25`](https://github.com/pyreon/pyreon/commit/7176c25c5f40b92eeeafede866dff557e2277e4a), [`353eb05`](https://github.com/pyreon/pyreon/commit/353eb058ec9008d9de2fdc80559a0713f180a7d4), [`5cf5387`](https://github.com/pyreon/pyreon/commit/5cf5387fb214108c694e3678a76a113b4d198fa4), [`7d737ff`](https://github.com/pyreon/pyreon/commit/7d737ff41dd16112cd1c7746a8cc65cecccdaad0)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/table@1.0.0
+  - @pyreon/meta@1.0.0
+  - @pyreon/document-primitives@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/document@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/connector-document@1.0.0
+  - @pyreon/zero@1.0.0
+
 ## 0.0.30
 
 ### Patch Changes

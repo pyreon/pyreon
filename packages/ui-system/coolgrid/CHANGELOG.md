@@ -1,5 +1,16 @@
 # @pyreon/coolgrid
 
+## 0.45.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.45.0
+  - @pyreon/reactivity@0.45.0
+  - @pyreon/styler@0.45.0
+  - @pyreon/ui-core@0.45.0
+  - @pyreon/unistyle@0.45.0
+
 ## 0.44.0
 
 ### Patch Changes

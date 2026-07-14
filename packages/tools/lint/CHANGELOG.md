@@ -1,5 +1,62 @@
 # @pyreon/lint
 
+## 0.45.0
+
+### Patch Changes
+
+- [#2208](https://github.com/pyreon/pyreon/pull/2208) [`f40448a`](https://github.com/pyreon/pyreon/commit/f40448a4743fbced6938e11d603c9124a4ff3c65) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Restore `@pyreon/lint` to its 95% statement-coverage floor (the
+  `no-unbatched-updates` hardening in the previous release added an uncovered
+  `isNonSignalSetCall` branch). Behavior-preserving: simplified the
+  `isNonSignalSetCall` receiver guard to optional chaining (the `!obj` early
+  return was unreachable — the helper only runs after `isSetCall` proves a member
+  callee) and added behavioral tests for the inline `new Map().set()` receiver
+  plus the `maxPathSets` counting across sequence / labeled-loop / else-early-return
+  branches. No rule behavior change.
+
+- [#2194](https://github.com/pyreon/pyreon/pull/2194) [`44dfab8`](https://github.com/pyreon/pyreon/commit/44dfab88fe302d41c19ced373c97e0eba5025378) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Harden `@pyreon/lint` from the upstream 0.44.0 findings — three detection
+  bugs and five rule-precision fixes:
+
+  **Detection correctness**
+
+  - **`no-props-destructure` (LT-2)** now also catches the BODY form
+    (`function C(props) { const { a } = props }`), not just the signature form —
+    the exact reactivity bug the rule exists to prevent. Ports the compiler's
+    `detectPropsDestructuredBody` (conservative: only a bare `= props` at the
+    component top scope; never descends into nested handlers/effects).
+  - **`no-unbatched-updates` (LT-3)** no longer (A) sums `.set()` across `await`
+    boundaries (`batch()` can't span an `await`, so those are separate microtask
+    segments) nor (B) counts non-signal `.set()` on a `Map`/`URLSearchParams`/etc.
+  - **`no-window-in-ssr` (LT-4)** no longer (2) fires on a same-expression
+    `typeof window !== 'undefined' && window.x` guard, nor (3) flags a local
+    `const history = …` as `window.history` (it now tracks the shadow).
+
+  **Rule precision** — style/precision preferences that fired (or gated, under
+  `strict`/`lib`) on correct code are now opt-in and reworded:
+
+  - **`no-and-conditional` / `no-ternary-conditional` (LR-2)** — the compiler
+    lowers `&&`/ternary and `<Show>` to the same reactive `_mountSlot` accessor,
+    so they mount/swap/unmount identically; dropped the false "more efficient"
+    claim and made them `optIn`.
+  - **`no-bare-signal-in-jsx` (LR-1)** — `optIn` (matches its "Opt-in."
+    description; it can't tell a signal from a pure formatter).
+  - **`prefer-show-over-display` (LR-4)** — message now acknowledges `display`
+    toggling is a legitimate SSR-safe (stable-tree) technique; `optIn`.
+  - **`no-theme-outside-provider` (LR-9)** — `optIn`; cross-file context is the
+    point of `useTheme()`.
+  - **`overlay-a11y` (LR-10)** — accepts `<Overlay type="dialog|…">` as
+    satisfying a11y (the component derives ARIA from `type`).
+
+  The new body-form check is scoped off (in the monorepo `.pyreonlintrc.json`)
+  for `@pyreon/{flow,code,rich-text}` render-layer components: they legitimately
+  destructure `children`/stable-instance/static-config props, and the rule's
+  recommended `props.x` fix is _harmful_ for `children` (the compiler reactively
+  inlines `const x = props.x`, wrapping children in an accessor and breaking
+  structural rendering — verified against real-compiler flow e2e).
+
+- Updated dependencies [[`747cced`](https://github.com/pyreon/pyreon/commit/747cced0efd3611bcff4f0d8ec01417ed5f19e45), [`14a78e6`](https://github.com/pyreon/pyreon/commit/14a78e6a28139c4b2af62f338a5e8533f73a96a8)]:
+  - @pyreon/compiler@0.45.0
+  - @pyreon/sized-map@0.45.0
+
 ## 0.44.0
 
 ### Patch Changes

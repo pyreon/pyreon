@@ -1,5 +1,18 @@
 # @pyreon/feature
 
+## 0.45.0
+
+### Patch Changes
+
+- Updated dependencies [[`e757b33`](https://github.com/pyreon/pyreon/commit/e757b33ea75a63d3b59751c22d0c290bdf8b71e0), [`7176c25`](https://github.com/pyreon/pyreon/commit/7176c25c5f40b92eeeafede866dff557e2277e4a), [`353eb05`](https://github.com/pyreon/pyreon/commit/353eb058ec9008d9de2fdc80559a0713f180a7d4), [`7d737ff`](https://github.com/pyreon/pyreon/commit/7d737ff41dd16112cd1c7746a8cc65cecccdaad0)]:
+  - @pyreon/form@0.45.0
+  - @pyreon/query@0.45.0
+  - @pyreon/table@0.45.0
+  - @pyreon/validation@0.45.0
+  - @pyreon/core@0.45.0
+  - @pyreon/reactivity@0.45.0
+  - @pyreon/store@0.45.0
+
 ## 0.44.0
 
 ### Patch Changes

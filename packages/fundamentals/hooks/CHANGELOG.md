@@ -1,5 +1,39 @@
 # @pyreon/hooks
 
+## 0.45.0
+
+### Minor Changes
+
+- [#2191](https://github.com/pyreon/pyreon/pull/2191) [`8bd4301`](https://github.com/pyreon/pyreon/commit/8bd4301f104e4cf9e02f64fdef75194dfc9b35ce) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useLinking()` — open an external URL in the platform browser (`openUrl`). On the web it uses `window.open`; the PMTC native compiler lowers it to `PyreonLinking` on iOS (`UIApplication.shared.open`) and Android (`Intent.ACTION_VIEW`).
+
+  The third imperative platform-API hook in the multiplatform (M3) track, reusing the recognition → emit → runtime pipeline from `useShare` (same Context + `startActivity` shape on Android). Behavioral R4: the counter example's iOS XCUITest asserts the app leaves the foreground when the Open button hands a URL to the OS.
+
+- [#2196](https://github.com/pyreon/pyreon/pull/2196) [`428587b`](https://github.com/pyreon/pyreon/commit/428587b0379b286542e0f043c36a3b4901c391d3) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useNotifications()` — post a LOCAL notification (`notify` / `requestPermission`). On the web it uses the Notification API; the PMTC native compiler lowers it to `PyreonNotifications` on iOS (`UNUserNotificationCenter`) and Android (`NotificationManager` + a channel; requires the `POST_NOTIFICATIONS` runtime permission on API 33+, which `NotificationManagerCompat` degrades gracefully without).
+
+  The fourth imperative platform-API hook in the multiplatform (M3) track (distinct from `usePush`, which RECEIVES remote push). Reuses the recognition → emit → runtime pipeline from `useShare`. R4 is non-behavioral (the counter's iOS XCUITest asserts the Notify tap fires the call without crashing — a notification's permission prompt + auto-dismissing banner make a reliable behavioral springboard assert infeasible).
+
+- [#2206](https://github.com/pyreon/pyreon/pull/2206) [`5f71146`](https://github.com/pyreon/pyreon/commit/5f711460bef5b6da84d19e0728e4297641a7b8e1) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useSizeClass()` — the horizontal size-class read as `'compact' | 'regular'`, the cross-platform analog of SwiftUI's `horizontalSizeClass` and Android's width-based `WindowSizeClass`. `'regular'` is an expanded (tablet / landscape / split-view) width; `'compact'` is a phone-width column.
+
+  On the web it tracks a `(min-width: 600px)` media query and updates reactively on resize / rotation. The PMTC native compiler lowers it to a pure environment read with **no runtime port** (same shape as `useColorScheme`): iOS `@Environment(\.horizontalSizeClass)`, Android `LocalConfiguration.current.screenWidthDp >= 600`.
+
+  This is the M2.2 adaptive/tablet-layout foundation — the size-class READ; the size-class-driven layout primitive (Stack↔Inline) is a follow-up. R4 is behavioral and differentiating: the counter's iOS XCUITest asserts `Size: compact` on an iPhone Simulator, and the same suite asserts `Size: regular` on an iPad Simulator, proving the read reflects the real device environment.
+
+### Patch Changes
+
+- [#2185](https://github.com/pyreon/pyreon/pull/2185) [`d9b8af4`](https://github.com/pyreon/pyreon/commit/d9b8af4450615f0f6ed0ac58abcd4dca2f36ab97) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Correct 3 drifted `@pyreon/hooks` manifest `@example` blocks so they typecheck against the shipped export types, and gate-enforce them.
+
+  - **`useFocusReturn`**: the sibling `useFocusTrap` call in the example passed 2 args but `useFocusTrap` takes one `(getEl)` — dropped the extra arg.
+  - **`useBreakpoint`**: the signature + example claimed a flags object (`Signal<{ xs, sm, md, lg, xl }>` / `bp().md`), but the shipped hook returns `() => string` (the active breakpoint NAME accessor). Rewrote both (and the longExample comment) to compare `bp()` against a name.
+  - **`useUpdateEffect`**: the signature + example used React's `(effect, deps)` shape, but the shipped hook is watch-style `(source, callback)`. Rewrote the api example and the longExample line to the real shape.
+
+  `@pyreon/hooks` is removed from the `check-manifest-examples` gate's `NON_ENFORCED` list, so every hooks manifest example is now typecheck-enforced against the live exports (regenerated `@pyreon/mcp`'s api-reference accordingly). No runtime change.
+
+- Updated dependencies []:
+  - @pyreon/core@0.45.0
+  - @pyreon/reactivity@0.45.0
+  - @pyreon/styler@0.45.0
+  - @pyreon/ui-core@0.45.0
+
 ## 0.44.0
 
 ### Minor Changes

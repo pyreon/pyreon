@@ -1,5 +1,19 @@
 # @pyreon/example-native-tasks-web
 
+## 0.0.18
+
+### Patch Changes
+
+- Updated dependencies [[`747cced`](https://github.com/pyreon/pyreon/commit/747cced0efd3611bcff4f0d8ec01417ed5f19e45), [`e757b33`](https://github.com/pyreon/pyreon/commit/e757b33ea75a63d3b59751c22d0c290bdf8b71e0), [`7176c25`](https://github.com/pyreon/pyreon/commit/7176c25c5f40b92eeeafede866dff557e2277e4a), [`d9b8af4`](https://github.com/pyreon/pyreon/commit/d9b8af4450615f0f6ed0ac58abcd4dca2f36ab97), [`8bd4301`](https://github.com/pyreon/pyreon/commit/8bd4301f104e4cf9e02f64fdef75194dfc9b35ce), [`428587b`](https://github.com/pyreon/pyreon/commit/428587b0379b286542e0f043c36a3b4901c391d3), [`5f71146`](https://github.com/pyreon/pyreon/commit/5f711460bef5b6da84d19e0728e4297641a7b8e1), [`5cf5387`](https://github.com/pyreon/pyreon/commit/5cf5387fb214108c694e3678a76a113b4d198fa4)]:
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/primitives@1.0.0
+
 ## 0.0.17
 
 ### Patch Changes
