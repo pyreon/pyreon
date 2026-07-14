@@ -63,11 +63,6 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^"
   },
-  "peerDependenciesMeta": {
-    "@pyreon/runtime-server": {
-      "optional": true
-    }
-  },
   "dependencies": {
     "@pyreon/runtime-server": "workspace:^"
   },
