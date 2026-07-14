@@ -70,6 +70,23 @@ describe('Phase D2 — JSX auto-import for canonical primitives', () => {
     expect(out.match(/from '@pyreon\/primitives'/g)?.length).toBe(1)
   })
 
+  it('injects <TransitionGroup> from @pyreon/runtime-dom (bare tag, web-only)', async () => {
+    // A shared multi-platform source uses `<TransitionGroup>` BARE — it must
+    // NOT `import … from '@pyreon/runtime-dom'` itself (PMTC classifies any such
+    // file as web-only and skips its native emit). The web value is injected
+    // here instead, same as For/Show from @pyreon/core.
+    const plugin = pyreonPlugin()
+    const input = `
+      export function App() {
+        return <TransitionGroup><Stack>x</Stack></TransitionGroup>
+      }
+    `
+    const out = await runTransform(plugin, input)
+    expect(out).toContain(`import { TransitionGroup } from '@pyreon/runtime-dom'`)
+    // Stack still comes from primitives (multi-source injection).
+    expect(out).toContain(`import { Stack } from '@pyreon/primitives'`)
+  })
+
   it('does NOT shadow local-declared names', async () => {
     const plugin = pyreonPlugin()
     const input = `

@@ -19,16 +19,31 @@ export interface TransitionGroupProps<T = unknown> {
   leaveTo?: string
   /** Class applied during FLIP move animation. Default: "{name}-move" */
   moveClass?: string
-  /** Reactive list source */
-  items: () => T[]
-  /** Stable key extractor */
-  keyFn: (item: T, index: number) => string | number
   /**
-   * Render a single DOM-element VNode for each item.
+   * Reactive list source (full-animation API). When provided, `keyFn` +
+   * `render` drive the per-item enter/leave/FLIP animation. Omit it (and pass
+   * `children` instead) for the plain-container shape — see `children`.
+   */
+  items?: () => T[]
+  /** Stable key extractor (required with `items`) */
+  keyFn?: (item: T, index: number) => string | number
+  /**
+   * Render a single DOM-element VNode for each item (required with `items`).
    * Must return a VNode whose `type` is a string (e.g. "div", "li") so
    * the component can inject a ref and read the underlying DOM node.
    */
-  render: (item: T, index: number) => VNode
+  render?: (item: T, index: number) => VNode
+  /**
+   * Children shape (no `items`): TransitionGroup is a plain animated CONTAINER
+   * wrapping a keyed list you supply yourself (e.g. a `<For>`). The wrapped
+   * list owns keyed reconciliation; this just mounts it inside the container
+   * element. This is the shape PMTC lowers on native
+   * (`<TransitionGroup><For/></TransitionGroup>` → SwiftUI VStack + `.animation`
+   * / Compose `animateContentSize`), so one `.tsx` renders on web + iOS +
+   * Android. Per-item CSS enter/leave is a no-op in this mode (the wrapped
+   * list owns its rows); use the `items`/`keyFn`/`render` API for that.
+   */
+  children?: VNodeChild
   // Lifecycle callbacks
   onBeforeEnter?: (el: HTMLElement) => void
   onAfterEnter?: (el: HTMLElement) => void
@@ -79,6 +94,29 @@ type ItemEntry = {
  */
 export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChild {
   const tag = props.tag ?? 'div'
+
+  // Children mode: no `items` render-prop → TransitionGroup is a plain animated
+  // container around whatever keyed list it wraps (e.g. a `<For>`). The wrapped
+  // list owns keyed reconciliation, so we just mount its children into the
+  // container. This is the shape PMTC lowers on native, so the SAME .tsx
+  // renders on web + iOS + Android. (Per-item enter/leave CSS is a no-op here;
+  // use the items/keyFn/render API below for that.)
+  if (typeof props.items !== 'function') {
+    return h(tag, {}, props.children)
+  }
+  const itemsFn = props.items
+  const keyFn = props.keyFn
+  const render = props.render
+  if (!keyFn || !render) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[Pyreon] <TransitionGroup items={...}> also needs `keyFn` and `render`; ' +
+          'rendering children as a plain container instead.',
+      )
+    }
+    return h(tag, {}, props.children)
+  }
+
   const n = props.name ?? 'pyreon'
   const cls = {
     ef: props.enterFrom ?? `${n}-enter-from`,
@@ -196,7 +234,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     const newEntries: ItemEntry[] = []
     for (let i = 0; i < items.length; i++) {
       const item = items[i] as T
-      const key = props.keyFn(item, i)
+      const key = keyFn(item, i)
       if (entries.has(key)) continue
       const itemRef = createRef<HTMLElement>()
       // Both render AND mountChild must run untracked — child component
@@ -208,7 +246,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
       // entries → the inner reactivity is lost. Same shape as the
       // mountFor / mountKeyedList fix in nodes.ts.
       const cleanup = runUntracked(() => {
-        const rawVNode = props.render(item, i)
+        const rawVNode = render(item, i)
         const vnode: VNode =
           typeof rawVNode.type === 'string'
             ? { ...rawVNode, props: { ...rawVNode.props, ref: itemRef } as Props }
@@ -289,7 +327,7 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
 
   const reorderEntries = (items: T[], container: HTMLElement) => {
     for (let i = 0; i < items.length; i++) {
-      const key = props.keyFn(items[i] as T, i)
+      const key = keyFn(items[i] as T, i)
       const entry = entries.get(key)
       if (!entry || entry.leaving || !entry.ref.current) continue
       container.appendChild(entry.ref.current)
@@ -309,8 +347,8 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
     const container = containerRef.current
     if (!container) return
 
-    const items = props.items()
-    const newKeys = new Set(items.map((item, i) => props.keyFn(item, i)))
+    const items = itemsFn()
+    const newKeys = new Set(items.map((item, i) => keyFn(item, i)))
     const isFirst = firstRun
     firstRun = false
 

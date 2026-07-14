@@ -29,6 +29,35 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // <TransitionGroup> on web — two footguns from the multi-platform shape.
+    // (1) The bare tag is only auto-lowered by PMTC on native; on web it needs
+    //     a real value in scope, else `TransitionGroup is not defined` at mount
+    //     (the whole app fails to render — an empty root element).
+    // (2) The web component historically REQUIRED an items/keyFn/render
+    //     render-prop; wrapping a keyed <For> as children threw
+    //     `props.items is not a function`. Children mode now renders the wrapped
+    //     list. Symptom-matched on the two thrown messages + "transitiongroup".
+    pattern:
+      /transitiongroup is not defined|props\.items is not a function|transitiongroup.*(not defined|undefined|keyfn|render prop|children|items)/i,
+    diagnose: () => ({
+      cause:
+        '`<TransitionGroup>` is a web value from `@pyreon/runtime-dom`; on native PMTC lowers the bare tag by name (no import needed). In a shared multi-platform `.tsx`, using the tag without importing it on the WEB target throws `TransitionGroup is not defined` at mount and the whole app fails to render (an empty root element). Separately, the web component historically required an `items`/`keyFn`/`render` render-prop, so wrapping a keyed `<For>` as CHILDREN threw `props.items is not a function`.',
+      fix: 'Import it on the web target: `import { TransitionGroup } from "@pyreon/runtime-dom"`. For the children shape (`<TransitionGroup><For .../></TransitionGroup>`), upgrade `@pyreon/runtime-dom` — it now renders the wrapped keyed list as a plain container when no `items` accessor is given. For the full per-item enter/leave animation, use the render-prop API with all three of `items`, `keyFn`, and `render`.',
+      fixCode: `import { TransitionGroup } from '@pyreon/runtime-dom'
+
+// Children (container) shape — wrap a keyed <For>:
+<TransitionGroup>
+  <For each={rows} by={(r) => r.id}>{(r) => <li>{r.text}</li>}</For>
+</TransitionGroup>
+
+// Full-animation shape — items/keyFn/render:
+<TransitionGroup items={() => rows()} keyFn={(r) => r.id}
+  render={(r) => <li>{r.text}</li>} />`,
+      related:
+        'A tag PMTC lowers by name on native still needs a real web value in scope. `items` supplied without `keyFn`/`render` now dev-warns and degrades to the plain container instead of throwing.',
+    }),
+  },
+  {
     // Reactive style object with a `null`/`undefined` VALUE not clearing the
     // property. No exception fires — the symptom is behavioral ("multiple
     // toggles stay active", "background/style won't clear/reset", "old style

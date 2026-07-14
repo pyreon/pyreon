@@ -46,6 +46,12 @@ import { useStorage } from '@pyreon/storage'
 // Same .tsx file works on all three targets.
 import { For, Show } from '@pyreon/core'
 import { Stack, Inline, Text, Button, Field, Toggle } from '@pyreon/primitives'
+// `<TransitionGroup>` (the animated keyed-list wrapper) is used BARE — no
+// import. On native, PMTC lowers the tag via its emit table (SwiftUI VStack +
+// `.animation`, Compose `animateContentSize`). On web, @pyreon/vite-plugin's
+// jsxAutoImport pass supplies its DOM-package component (same mechanism as
+// For/Show above). The source must NOT import that DOM package itself — PMTC
+// classifies any such file as web-only and skips its native emit.
 
 type Todo = { id: number; text: string; done: boolean }
 type Filter = 'all' | 'active' | 'completed'
