@@ -172,6 +172,25 @@ m.isFinal()      // true → onDone fired`,
       ],
       seeAlso: ['createMachine'],
     },
+    {
+      name: 'Machine.matches / nextEvents / reset / dispose',
+      kind: 'function',
+      signature:
+        'matches(...states: S[]) => boolean — nextEvents() => E[] — reset() => void — dispose() => void',
+      summary:
+        'The instance query + control surface (all reactive where noted). `matches(...states)` — reactive; true when the current state is ANY of the given (a variadic OR: `matches("loading", "error")`). `nextEvents()` — reactive; the current state\'s DECLARED `on` event keys (does NOT evaluate guards and does NOT include eventless `always`). `reset()` — set the state back to `initial` and re-run the initial `always` cascade. `dispose()` — remove ALL lifecycle listeners (`onEnter`/`onExit`/`onTransition`/`onDone`) and clean up.',
+      example: `m.matches('loading', 'error')  // in loading OR error (reactive)
+m.nextEvents()                 // ['FETCH', 'CANCEL'] — declared events from here
+m.reset()                      // back to initial (+ its always cascade)
+m.dispose()                    // drop all listeners`,
+      mistakes: [
+        '`matches("a", "b")` is an OR, not an AND — it is true when the current state is `a` OR `b`. A machine is in exactly one state, so an AND across two states is never true.',
+        'Reading `nextEvents()` as "events that would currently SUCCEED" — it returns the current state\'s DECLARED `on` keys WITHOUT evaluating guards, and excludes eventless `always`. Use `can(event, payload?)` to test whether a specific event would actually transition.',
+        'Expecting `reset()` to land on the LITERAL `initial` when that state has an `always` — reset re-runs the initial cascade, so a transient initial resolves to its cascade target (never the transient state itself).',
+        'Expecting `dispose()` to stop or freeze the machine — it only removes listeners; `send()` still transitions the state afterward (now silently). Drop your references to let it GC.',
+      ],
+      seeAlso: ['createMachine'],
+    },
   ],
   gotchas: [
     {
