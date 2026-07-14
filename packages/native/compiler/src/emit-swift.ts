@@ -5035,8 +5035,18 @@ function emitSwiftTransitionGroup(
   const body = e.children.map((c) => inner + emitSwiftChild(c, indent + 2)).join('\n')
   const container = `VStack {\n${body}\n${p}}`
   const driver = findForEachDriverSwift(e)
+  // Drive the animation off the list's `.count`, NOT the list itself:
+  // SwiftUI's `.animation(_:value:)` requires an `Equatable` value, and the
+  // list element (a PMTC-emitted struct like `Todo`) does NOT conform to
+  // `Equatable` — `.animation(.default, value: theList)` fails to compile with
+  // "referencing instance method 'animation(_:value:)' on 'Array' requires that
+  // 'Todo' conform to 'Equatable'". `.count` is `Int` (Equatable) and changes
+  // exactly on enter/leave — which IS `<TransitionGroup>`'s documented contract
+  // ("animate the enter/leave of a keyed list"). Device-found: the string-match
+  // R2 test never compiled the emit, so the uncompilable form shipped; a real
+  // `xcodebuild` (M2.8 device-assertion) surfaced it.
   return driver !== undefined
-    ? `${container}\n${p}.animation(.default, value: ${driver})`
+    ? `${container}\n${p}.animation(.default, value: ${driver}.count)`
     : container
 }
 

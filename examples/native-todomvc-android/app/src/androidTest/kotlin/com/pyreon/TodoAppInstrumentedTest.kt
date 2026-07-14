@@ -30,11 +30,13 @@
 
 package com.pyreon
 
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -91,5 +93,33 @@ class TodoAppInstrumentedTest {
             composeRule.onAllNodesWithText(marker).fetchSemanticsNodes().isNotEmpty()
         }
         composeRule.onNodeWithText(marker).assertIsDisplayed()
+    }
+
+    // M2.8 — ANIMATED KEYED LIST (<TransitionGroup>) asserted on device — the
+    // Android half of the iOS `test_animatedListAddRemove`. The shared
+    // TodoApp.tsx wraps the todo `<For>` in `<TransitionGroup>`, which PMTC
+    // lowers to `Column(modifier = Modifier.animateContentSize()) { … }`.
+    //
+    // SCOPE (honest): the animation timing isn't queryable, so this is a
+    // COMPILE-load-bearing + BEHAVIORAL-on-the-list proof — a broken emit or
+    // the missing androidx.compose.animation.animateContentSize import fails
+    // `assembleDebug`; this exercises the animated-list ENTER + LEAVE:
+    //   (1) adding a uniquely-marked todo makes a row ENTER the animated list;
+    //   (2) tapping that row's Remove (last, since appended) makes it LEAVE.
+    @Test
+    fun animatedListAddRemove() {
+        val marker = "anim-" + UUID.randomUUID().toString().substring(0, 8)
+
+        composeRule.onNodeWithTag("new-todo").performTextInput(marker)
+        composeRule.onNodeWithTag("new-todo").performImeAction()
+        // (1) ENTER.
+        composeRule.onNodeWithText(marker).assertIsDisplayed()
+
+        // (2) LEAVE — remove the just-added (last) row via its Remove button.
+        val removeNodes = composeRule.onAllNodesWithText("Remove")
+        val count = removeNodes.fetchSemanticsNodes().size
+        removeNodes[count - 1].performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(marker).assertDoesNotExist()
     }
 }

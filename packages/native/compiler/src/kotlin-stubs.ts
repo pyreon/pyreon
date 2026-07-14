@@ -402,6 +402,12 @@ object Modifier {
   fun verticalScroll(state: ScrollState): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun horizontalScroll(state: ScrollState): Modifier = this
+  // --- M2.8: <TransitionGroup> animated keyed list. Real Compose ships
+  // animateContentSize() as a Modifier extension from
+  // androidx.compose.animation (the CLI emits the matching conditional
+  // import; this stub mirrors the real surface so the kotlinc validate gate
+  // resolves it without the import, like verticalScroll above).
+  fun animateContentSize(): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun weight(weight: Float): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships

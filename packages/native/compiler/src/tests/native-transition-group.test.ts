@@ -32,9 +32,15 @@ describe('Phase 5.3 — <TransitionGroup> native emit', () => {
     const out = transform(LIST_SRC, { target: 'swift' }).code
     expect(out).toContain('VStack {')
     expect(out).toContain('ForEach(items, id: \\.id)')
-    // The list animation is keyed on the For's `each` list — so SwiftUI
-    // animates item insert/remove.
-    expect(out).toContain('.animation(.default, value: items)')
+    // The list animation is driven by the For's `each` list `.count` — so
+    // SwiftUI animates item insert/remove (enter/leave changes the count).
+    // It must be `.count` (Int, Equatable), NOT the list itself: a
+    // PMTC-emitted struct element (`Item`) does not conform to `Equatable`, so
+    // `.animation(.default, value: items)` fails to COMPILE ("requires that
+    // 'Item' conform to 'Equatable'"). Device-found via a real `xcodebuild`
+    // (the string-match assertion below never compiled the emit).
+    expect(out).toContain('.animation(.default, value: items.count)')
+    expect(out).not.toContain('.animation(.default, value: items)')
   })
 
   it('Kotlin: Column with Modifier.animateContentSize() wrapping the For', () => {
