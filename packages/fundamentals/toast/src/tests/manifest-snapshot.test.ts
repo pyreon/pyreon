@@ -77,6 +77,6 @@ describe('gen-docs — toast snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).length).toBe(2)
     expect(record['toast/toast']!.notes).toContain('imperative')
-    expect(record['toast/toast']!.mistakes?.split('\n').length).toBe(4)
+    expect(record['toast/toast']!.mistakes?.split('\n').length).toBe(8)
   })
 })

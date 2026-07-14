@@ -5750,7 +5750,11 @@ toast.dismiss()    // all`,
     mistakes: `- Forgetting to render \`<Toaster />\` — toasts are created but have no visual container to render into
 - Calling \`toast.update()\` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
 - Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\`
-- Expecting \`toast.dismiss(id)\` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for \`toast.remove(id)\` when you need it gone instantly`,
+- Expecting \`toast.dismiss(id)\` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for \`toast.remove(id)\` when you need it gone instantly
+- \`toast.loading()\` never auto-dismisses — it is created with \`duration: 0\` (persistent). You MUST resolve it yourself via \`toast.update(id, …)\` / \`toast.dismiss(id)\` / \`toast.remove(id)\`, or use \`toast.promise()\` which settles it for you. A forgotten loading toast stays on screen forever.
+- Reading \`duration: 0\` as "dismiss immediately" — \`duration <= 0\` skips the auto-dismiss timer entirely, so the toast is PERSISTENT. To remove one now, call \`toast.remove(id)\`; \`0\` means "stay until dismissed".
+- \`toast.update(id, …)\` only changes \`message\` / \`type\` / \`duration\` / \`description\` — NOT \`icon\` or \`action\`. To swap the icon or action button, dismiss and re-create the toast.
+- \`toast.promise(p, …)\` still REJECTS — it returns the ORIGINAL promise, so a rejection propagates past the error toast; add your own \`.catch()\` if you need to handle it. \`success\` / \`error\` may also be FUNCTIONS receiving the resolved value / error (e.g. \`success: (data) => "Saved " + data.id\`).`,
   },
 
   'toast/Toaster': {
