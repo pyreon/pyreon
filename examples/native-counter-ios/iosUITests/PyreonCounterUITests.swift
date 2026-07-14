@@ -354,4 +354,40 @@ final class PyreonCounterUITests: XCTestCase {
                 + "rendered instead of the configured German \"Hallo!\""
         )
     }
+
+    // Dark mode (useColorScheme) asserted in the REAL render tree — the first
+    // DEVICE assertion of a hook that shipped "emit-only by design" (R2). The
+    // shared Counter.tsx has `const colorScheme = useColorScheme()` and renders
+    // `<Text>Theme: {colorScheme}</Text>`; PMTC emits
+    // `@Environment(\.colorScheme) private var pyreonColorScheme` + a computed
+    // `colorScheme: String { pyreonColorScheme == .dark ? "dark" : "light" }` +
+    // `Text("Theme: \(colorScheme)")`.
+    //
+    // BEHAVIORAL R4: the rendered value reflects the REAL Simulator appearance.
+    // The nightly gate runs the default (light) appearance, so the committed
+    // assertion is "Theme: light". The DIFFERENTIATING counterpart is proven
+    // LOCALLY by flipping `xcrun simctl ui <sim> appearance dark` and re-running
+    // (the render becomes "Theme: dark") — so the emit reads the live
+    // `@Environment(\.colorScheme)` channel, not a baked constant (a constant
+    // would render the same string under both appearances). Same pattern as
+    // useSizeClass (iPhone `Size: compact` committed, iPad `Size: regular`
+    // proven locally).
+    func test_colorSchemeReadsLightAppearance() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Theme: light"].waitForExistence(timeout: 30),
+            "Expected \"Theme: light\" under the default (light) Simulator "
+                + "appearance — useColorScheme did not read "
+                + "@Environment(\\.colorScheme) (or emitted a non-environment "
+                + "constant)"
+        )
+        // The dark-appearance string must NOT appear under light.
+        XCTAssertFalse(
+            app.staticTexts["Theme: dark"].exists,
+            "\"Theme: dark\" rendered under the light Simulator appearance — "
+                + "the color-scheme read is inverted or constant"
+        )
+    }
 }

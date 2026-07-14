@@ -104,4 +104,18 @@ class CounterInstrumentedTest {
     fun i18nTranslatedStringRendersConfiguredLocale() {
         composeRule.onNodeWithText("Greeting: Hallo!").assertIsDisplayed()
     }
+
+    // Dark mode (useColorScheme) asserted in the REAL Compose semantics tree —
+    // the Android half of the iOS `test_colorSchemeReadsLightAppearance`. The
+    // shared Counter.tsx has `const colorScheme = useColorScheme()` and renders
+    // `<Text>Theme: {colorScheme}</Text>`; PMTC emits
+    // `val colorScheme = if (isSystemInDarkTheme()) "dark" else "light"` +
+    // `Text(text = "Theme: ${colorScheme}")`. The default instrumentation
+    // environment is the light theme, so the node reads "Theme: light" — that
+    // the SAME source produces this on Compose is the "one shared codebase →
+    // both platforms" proof for the color-scheme read.
+    @Test
+    fun colorSchemeReadsLightAppearance() {
+        composeRule.onNodeWithText("Theme: light").assertIsDisplayed()
+    }
 }

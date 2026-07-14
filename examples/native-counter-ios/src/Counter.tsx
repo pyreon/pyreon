@@ -8,7 +8,7 @@
 // SwiftUI's @State is a var, not a method).
 
 import { signal } from '@pyreon/reactivity'
-import { useHaptics, useShare, useLinking, useNotifications, useSizeClass } from '@pyreon/hooks'
+import { useHaptics, useShare, useLinking, useNotifications, useSizeClass, useColorScheme } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 
 export function Counter() {
@@ -44,6 +44,16 @@ export function Counter() {
   // device gate asserts `Size: compact` on an iPhone (and `Size: regular`
   // on an iPad locally), proving the read reflects the REAL environment.
   const sizeClass = useSizeClass()
+  // Dark-mode proof — the current color scheme, read reactively. The sibling
+  // of useSizeClass (both are reactive @Environment reads with NO runtime
+  // port / NO permission). Native: iOS `@Environment(\.colorScheme)` →
+  // "light"/"dark", Android `if (isSystemInDarkTheme()) "dark" else "light"`.
+  // Web: `matchMedia('(prefers-color-scheme: dark)')`. OBSERVABLE +
+  // differentiating — the device gate asserts `Theme: light` under the default
+  // Simulator appearance, and `Theme: dark` under `simctl ui appearance dark`
+  // (proven locally), so the read reflects the REAL system appearance rather
+  // than a baked constant (a constant would show the same value in both).
+  const colorScheme = useColorScheme()
   // Tier-2 i18n proof — `createI18n({ locale, messages, fallbackLocale? })`
   // (from `@pyreon/i18n/core`) lowers to the PyreonI18n reactive container:
   // iOS `@State private var i18n = PyreonI18n(locale: "de", messages: […])`,
@@ -66,6 +76,7 @@ export function Counter() {
     <VStack>
       <Text>Count: {count}</Text>
       <Text>Size: {sizeClass}</Text>
+      <Text>Theme: {colorScheme}</Text>
       <Text>Greeting: {i18n.t('hello')}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
           DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
