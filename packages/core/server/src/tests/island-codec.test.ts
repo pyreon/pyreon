@@ -219,4 +219,42 @@ describe('decodeIslandProps — forward-compat + robustness', () => {
       v: { source: '[bad' },
     })
   })
+
+  // Forward-compat / defensive decode: a tagged value that FAILS its per-type
+  // validation must be returned VERBATIM (never partially decoded / never
+  // thrown). Distinct from the shape above — these reach each type's final
+  // `return value` fall-through, not the shared "missing field" branch.
+  describe('malformed tagged values decode to the raw payload', () => {
+    it('regex with valid source+flags but an invalid pattern (constructor throws)', () => {
+      // `new RegExp('(', '')` throws → the catch returns the payload verbatim.
+      const payload = { __pyreon_t: 'r', v: { source: '(', flags: '' } }
+      const out = decodeIslandProps(payload)
+      expect(out).toBe(payload) // same reference, not a RegExp
+      expect(out).not.toBeInstanceOf(RegExp)
+    })
+
+    it('Map tag whose value is not an entry array', () => {
+      const payload = { __pyreon_t: 'm', v: 'not-an-array' }
+      const out = decodeIslandProps(payload)
+      expect(out).toBe(payload)
+      expect(out).not.toBeInstanceOf(Map)
+    })
+
+    it('Set tag whose value is not an array', () => {
+      const payload = { __pyreon_t: 's', v: 42 }
+      const out = decodeIslandProps(payload)
+      expect(out).toBe(payload)
+      expect(out).not.toBeInstanceOf(Set)
+    })
+
+    it('escape ("e") tag whose value is not a plain object', () => {
+      const payload = { __pyreon_t: 'e', v: 'not-an-object' }
+      expect(decodeIslandProps(payload)).toBe(payload)
+    })
+
+    it('an unknown future tag is left verbatim (forward-compatible)', () => {
+      const payload = { __pyreon_t: 'Z', v: 1 }
+      expect(decodeIslandProps(payload)).toBe(payload)
+    })
+  })
 })
