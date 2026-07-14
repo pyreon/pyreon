@@ -8384,4 +8384,97 @@ const node: DocNode = {
     notes: 'The format-agnostic document node — re-exported from `@pyreon/document` (along with `DocChild = DocNode | string`, the `NodeType` union of 18 node kinds, and `ResolvedStyles`) so extracted trees stay assignment-compatible across the package boundary without a duplicate type identity. See also: extractDocumentTree, @pyreon/document.',
   },
   // <gen-docs:api-reference:end @pyreon/connector-document>
+
+  // <gen-docs:api-reference:start @pyreon/testing>
+
+  'testing/render': {
+    signature: 'render(ui: VNodeChild, options?: { container?: HTMLElement; baseElement?: HTMLElement }) => RenderResult',
+    example: `const { getByText, unmount, container } = render(<Greeting name="Ada" />)
+expect(getByText('Hello, Ada')).toBeInTheDocument()
+unmount()`,
+    notes: 'Mount a Pyreon VNode into an isolated container (a fresh `<div>` appended to `baseElement`, default `document.body`) via `mount()` from `@pyreon/runtime-dom`, and return a Testing-Library-bound result: the full query set spread in, plus `container`, `baseElement`, `unmount()`, and `debug()` (returns `container.innerHTML`). Synchronous. Registers the result so `cleanup()` can tear it down. See also: cleanup, renderHook.',
+    mistakes: `- Forgetting to unmount — \`render\` does NOT self-clean; call \`cleanup()\` (or add \`@pyreon/testing/vitest\` to setupFiles for auto \`afterEach(cleanup)\`), or you leak DOM + reactive subscriptions across tests.
+- Expecting queries to be scoped to the container — the bound queries resolve from \`baseElement\` (\`document.body\`), NOT \`container\`. This is intentional (matches @testing-library/react) so Portal / Overlay / Modal content rendered OUTSIDE the container is still findable; for container-only assertions use \`within(result.container)\`.
+- Awaiting it — \`render\` is synchronous; there is no promise to await (use \`waitFor\` for async DOM updates).`,
+  },
+
+  'testing/cleanup': {
+    signature: 'cleanup() => void',
+    example: `import { cleanup } from '@pyreon/testing'
+afterEach(cleanup)`,
+    notes: 'Unmount every live `render()` result (each `unmount()` disposes the tree + removes its container). Snapshots the set first so it is order-independent and idempotent. Synchronous. See also: render.',
+    mistakes: `- Assuming it runs automatically — it is NOT auto-registered by the main entry. Auto \`afterEach(cleanup)\` fires ONLY when you add \`@pyreon/testing/vitest\` to your vitest \`setupFiles\` (that entry also extends \`expect\` with jest-dom matchers); otherwise call \`cleanup()\` yourself.
+- Awaiting it — \`cleanup\` is synchronous.`,
+  },
+
+  'testing/renderHook': {
+    signature: 'renderHook<Result, Props = undefined>(hook: (props: () => Props) => Result, options?: { initialProps?: Props }) => { result: { readonly current: Result }; rerender: (props: Props) => void; unmount: () => void }',
+    example: `const { result, rerender } = renderHook((props) => useDouble(props), { initialProps: 2 })
+expect(result.current()).toBe(4)
+rerender(3) // updates the props signal; the hook re-reads it only if it reads props() reactively`,
+    notes: 'Test a hook in isolation. Mounts a probe component that invokes `hook(() => props())` ONCE, capturing the return into `result.current` (a live getter). `rerender(next)` updates the backing props signal; `unmount()` tears down. Synchronous. See also: render.',
+    mistakes: `- Expecting \`rerender(next)\` to RE-INVOKE the hook — the hook runs ONCE (Pyreon components/hooks run once, unlike @testing-library/react). \`rerender\` only sets the props signal, so a hook sees new props ONLY if it reads \`props()\` inside a \`computed\` / \`effect\`.
+- Reading \`result.current\` as a plain value — it is a live getter; a hook that returns a signal/accessor updates through it, but a hook that returns a captured-once value will not.`,
+  },
+
+  'testing/expectSignal': {
+    signature: 'expectSignal(target: unknown) => { toHaveChangedTimes(n: number): void; toHaveRecomputedTimes(n: number): void }',
+    example: `const total = computed(() => qty() * price())
+total()          // materialize
+qty.set(2)
+expectSignal(total).toHaveRecomputedTimes(1)`,
+    notes: `Assert how many times a signal/computed fired, by reading its node's \`fires\` count from Pyreon's reactive graph (\`getReactiveGraph()\`). Catches over-computation / thrash a DOM assertion cannot see. Synchronous; dev/test build only. See also: expectEffect, expectNoReactiveLeak.`,
+    mistakes: `- \`toHaveChangedTimes\` and \`toHaveRecomputedTimes\` are the SAME check (both assert \`fires === n\`) — they differ only in the error wording. There is no semantic distinction at runtime; pick whichever reads clearer.
+- Passing a non-reactive value — the target must be a signal/computed (a reactive-graph node); anything else throws \`[Pyreon] expectSignal: target is not a reactive node\`.
+- Running against a production build — the reactive graph is tree-shaken out in production (\`NODE_ENV === "production"\`), so these matchers only work in dev/test.
+- Counting a computed that was never READ — a lazy computed has zero fires until something materializes it; call \`total()\` (or mount a reader) before asserting.`,
+  },
+
+  'testing/expectEffect': {
+    signature: 'expectEffect(handle: unknown) => { toReRunWhen(action: () => void): void; notToReRunWhen(action: () => void): void }',
+    example: `const e = effect(() => { theme() })
+expectEffect(e).toReRunWhen(() => theme.set('dark'))
+expectEffect(e).notToReRunWhen(() => unrelated.set(1))`,
+    notes: `Assert whether an effect re-runs in response to an action. Samples the effect node's \`fires\` before and after invoking \`action()\`: \`toReRunWhen\` requires it grew (ran at least once), \`notToReRunWhen\` requires it stayed equal. \`handle\` is the \`Effect\` object returned by \`effect(...)\`. Synchronous; dev/test build only. See also: expectSignal, expectNoReactiveLeak.`,
+    mistakes: `- Passing something other than the \`effect(...)\` return value — \`handle\` must be the \`Effect\` node; a non-node throws.
+- Using an ASYNC \`action\` — it must be synchronous (\`() => void\`); fires triggered after the synchronous \`action()\` returns are not captured.
+- Reading \`toReRunWhen\` as "exactly once" — it asserts "at least once" (\`after > before\`); use \`expectSignal(...).toHaveChangedTimes\` for an exact count.`,
+  },
+
+  'testing/expectGarbageCollected': {
+    signature: 'expectGarbageCollected(factory: () => object) => Promise<void>',
+    example: `await expectGarbageCollected(() => {
+  const view = mountSomething()
+  view.unmount()
+  return view
+})`,
+    notes: 'ASYNC. Assert an object is reclaimable: `factory()` builds it, the strong ref is dropped, a two-pass GC runs (with a macrotask between passes to finalize DOM-shaped graphs), and it throws if a `WeakRef` to it still resolves (retained = leak). Requires `--expose-gc`. See also: expectNoReactiveLeak.',
+    mistakes: `- Not running under \`--expose-gc\` — without \`globalThis.gc\` it THROWS an actionable error naming \`execArgv: ["--expose-gc"]\` (it never silently passes). Configure your vitest pool \`execArgv\`.
+- Forgetting to \`await\` it — it is async; an un-awaited call passes vacuously.
+- Leaking the object into an outer scope in the \`factory\` — if a closure/variable outside the factory still references it, the assertion (correctly) fails.`,
+  },
+
+  'testing/expectNoReactiveLeak': {
+    signature: 'expectNoReactiveLeak(action: () => void | Promise<void>) => Promise<void>',
+    example: `await expectNoReactiveLeak(async () => {
+  const { unmount } = render(<Widget />)
+  unmount()
+})`,
+    notes: 'ASYNC. Assert an action (typically a mount + unmount) leaves no retained reactive-graph nodes: GCs to a baseline `getReactiveGraph().nodes.length`, `await`s `action()`, GCs again, and throws if the node count grew and stayed grown. Catches subscription / effect-scope retention leaks. Requires `--expose-gc`. See also: expectGarbageCollected, expectEffect.',
+    mistakes: `- Not running under \`--expose-gc\` — throws the same actionable error as \`expectGarbageCollected\` (never silently passes).
+- Forgetting to \`await\` it — it is async.
+- Expecting it to pinpoint the leak — it only reports that net node growth occurred; use heap-snapshot tooling to attribute it.`,
+  },
+
+  'testing/Testing Library re-exports': {
+    signature: 'screen, fireEvent, waitFor, waitForElementToBeRemoved, within, getByRole, getByText, getByTestId, getBy*/queryBy*/findBy*, prettyDOM, configure, getConfig, getRoles, logRoles, isInaccessible, createEvent, … (verbatim from @testing-library/dom)',
+    example: `import { screen, fireEvent, waitFor } from '@pyreon/testing'
+
+fireEvent.input(screen.getByLabelText('Email'), { target: { value: 'a@b.co' } })
+await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Saved'))`,
+    notes: 'The full `@testing-library/dom` surface is re-exported VERBATIM — same functions, same signatures, same ARIA + accessible-name edge-case handling as React/Vue/Solid Testing Library. Import `screen`, `fireEvent`, `waitFor`, `within`, and the `getBy*`/`queryBy*`/`findBy*` query families straight from `@pyreon/testing`. Their behavior is documented upstream at testing-library.com. See also: render, cleanup.',
+    mistakes: `- Expecting \`findBy*\` / \`waitFor\` to be synchronous — the async query + wait helpers return Promises and must be \`await\`ed (this is upstream Testing-Library behavior, not Pyreon-specific).
+- Reaching for \`screen\` without a prior \`render\` — \`screen\` queries \`document.body\`; nothing is there until a \`render()\` mounts into it.`,
+  },
+  // <gen-docs:api-reference:end @pyreon/testing>
 }
