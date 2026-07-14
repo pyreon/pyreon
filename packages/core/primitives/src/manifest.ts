@@ -242,14 +242,37 @@ export function App() {
       seeAlso: ['Web'],
     },
     {
-      name: 'Web',
+      name: 'Web / NativeIOS / NativeAndroid',
       kind: 'component',
-      signature: '(props: { children }) => VNode  // + <NativeIOS> / <NativeAndroid>',
+      signature:
+        'Web(props: { children }) => VNodeChild · NativeIOS(props: { children }) => VNodeChild · NativeAndroid(props: { children }) => VNodeChild',
       summary:
-        'Per-platform escape hatches. `<Web>` renders its children only on web; `<NativeIOS>` only on iOS; `<NativeAndroid>` only on Android. Use for the rare genuinely-per-platform UI branch that the canonical primitives can\'t express.',
-      example: `<NativeIOS><Text>iOS-only</Text></NativeIOS><Web><Text>web-only</Text></Web>`,
-      mistakes: ['Overusing them — defeats "one source"; reach for them only when a target genuinely needs different UI'],
-      seeAlso: ['WebView'],
+        "The Layer-4 per-platform escape hatch — one source carries a platform-specific subtree and exactly ONE branch renders per target. `<Web>` renders its children on WEB only (a layout-transparent Fragment, no wrapper element); `<NativeIOS>` / `<NativeAndroid>` render NOTHING on web (they return null — their children are emitted only on the iOS / Android target by PMTC). Reach for these for the rare genuinely-per-platform UI branch the 15 canonical primitives can't express (a web-only-rich chart/flow/table view vs a native equivalent or a `<WebView>` embed).",
+      example: `<Web>{/* web-only-rich: <Chart>, <Flow>, <Table> */}</Web>
+<NativeIOS>{/* Swift Charts, or a <WebView> embed */}</NativeIOS>
+<NativeAndroid>{/* Compose chart, or a <WebView> embed */}</NativeAndroid>`,
+      mistakes: [
+        'Overusing them — defeats the one-source model; reach for them only when a target genuinely needs different UI.',
+        'Putting web-visible content in `<NativeIOS>` / `<NativeAndroid>` — both render NOTHING on web (they are no-ops there); only `<Web>` content reaches the browser.',
+      ],
+      seeAlso: ['WebView', 'init / resetPrimitivesConfig'],
+    },
+    {
+      name: 'init / resetPrimitivesConfig',
+      kind: 'function',
+      signature:
+        'init(options: { navigate?: (to: string) => void }) => void · resetPrimitivesConfig() => void',
+      summary:
+        "One-time app-boot configuration for `@pyreon/primitives`. The package is deliberately router-AGNOSTIC (a consumer using only `<Stack>`/`<Text>` never pulls a router into their graph), so `<Link>` needs a navigation handler supplied ONCE via `init({ navigate })`. With it, `<Link>` intercepts plain left-clicks and routes via `navigate` (SPA — no full reload); WITHOUT it, `<Link>` is a plain `<a href>` that does a normal full-page navigation — so links always WORK, `init` only UPGRADES them to SPA. `init` merges with any previous config (later calls override the keys they set). `resetPrimitivesConfig()` clears it back to defaults (primarily for tests / teardown). The config is a module-level singleton and SSR-safe (the server renders a static `<a href>`; `navigate` is read only inside a client click handler).",
+      example: `import { init } from '@pyreon/primitives'
+
+// at app boot, wire your router's navigate so <Link> does SPA navigation:
+init({ navigate: (to) => myRouter.push(to) })`,
+      mistakes: [
+        'Wondering why `<Link>` does a FULL PAGE RELOAD — you did not call `init({ navigate })`. Without a navigate handler, `<Link>` falls back to a plain `<a href>` full-load; call `init` once at app boot with your router push.',
+        'Expecting it to import a router — it is router-AGNOSTIC by design (works with any router, or none); YOU supply the `navigate` closure so the package never depends on `@pyreon/router`.',
+      ],
+      seeAlso: ['Link', 'Web / NativeIOS / NativeAndroid'],
     },
   ],
 })
