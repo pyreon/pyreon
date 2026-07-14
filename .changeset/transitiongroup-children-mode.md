@@ -1,5 +1,6 @@
 ---
 "@pyreon/runtime-dom": minor
+"@pyreon/compiler": patch
 ---
 
 `<TransitionGroup>` now additively supports a **children (container) shape** in
