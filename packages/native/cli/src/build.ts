@@ -236,6 +236,18 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('isSystemInDarkTheme(')) {
     imports.push('import androidx.compose.foundation.isSystemInDarkTheme')
   }
+  // <Transition show> emit (`AnimatedVisibility(visible = …) { … }`):
+  // AnimatedVisibility lives in androidx.compose.animation — NOT covered by any
+  // star-imported package (runtime / foundation.layout|lazy|text / material /
+  // ui). Same stub-masked class as isSystemInDarkTheme: the validate-kotlin
+  // loop concatenates stubs, so it resolves the symbol regardless of import and
+  // CANNOT catch a missing one — added PROACTIVELY here (caught while probing
+  // the emit for the M2.7 animations device-assertion, before any real
+  // `gradle assembleDebug` failed on it — the counter is the first Android
+  // example to render a <Transition>).
+  if (emitted.includes('AnimatedVisibility(')) {
+    imports.push('import androidx.compose.animation.AnimatedVisibility')
+  }
   // <Press> clickable modifiers live in the ROOT androidx.compose.foundation
   // package (NOT the star-imported .layout/.lazy/.text sub-packages), same
   // stub-masked class as verticalScroll. NO Android example had used <Press>
