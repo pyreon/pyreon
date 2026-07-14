@@ -133,6 +133,32 @@ describe('edge paths — additional branches', () => {
     expect(upward.targetPosition).toBe(Position.Bottom)
   })
 
+  it('getSmartHandlePositions honors explicit measured dims over node.width', () => {
+    // Two nodes whose top-left x's are close (200 apart) but which, at the
+    // default 150 width, have overlapping-ish centers. With SMALL measured
+    // widths the horizontal center distance dominates → Right/Left; the `dims`
+    // override is what edge geometry passes so the handle side matches the REAL
+    // rendered box, not the 150 fallback.
+    const src = { id: '1', position: { x: 0, y: 0 }, data: {} }
+    const tgt = { id: '2', position: { x: 200, y: 30 }, data: {} }
+
+    const withMeasured = getSmartHandlePositions(src, tgt, {
+      sourceW: 60,
+      sourceH: 24,
+      targetW: 60,
+      targetH: 24,
+    })
+    expect(withMeasured.sourcePosition).toBe(Position.Right)
+    expect(withMeasured.targetPosition).toBe(Position.Left)
+
+    // Without dims it falls back to node.width (undefined → 150), a different
+    // center math — the point is that the param is READ, not ignored.
+    const src2 = { id: '1', position: { x: 0, y: 0 }, data: {}, width: 60, height: 24 }
+    const tgt2 = { id: '2', position: { x: 200, y: 30 }, data: {}, width: 60, height: 24 }
+    const viaNodeWidth = getSmartHandlePositions(src2, tgt2)
+    expect(viaNodeWidth).toEqual(withMeasured)
+  })
+
   it('getSmartHandlePositions with configured handles', () => {
     const result = getSmartHandlePositions(
       {

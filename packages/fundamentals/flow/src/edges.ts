@@ -65,15 +65,20 @@ export function collectEdgeMarkers(
  * Auto-detect the best handle position based on relative node positions.
  * If the node has configured handles, uses those. Otherwise picks the
  * closest edge (top/right/bottom/left) based on direction to the other node.
+ *
+ * `dims` supplies the effective (measured-or-explicit) node sizes so the
+ * center-to-center direction is computed against the REAL rendered node box;
+ * omitted → falls back to `node.width`/`node.height` (then the 150×40 default).
  */
 export function getSmartHandlePositions(
   sourceNode: FlowNode,
   targetNode: FlowNode,
+  dims?: { sourceW: number; sourceH: number; targetW: number; targetH: number },
 ): { sourcePosition: Position; targetPosition: Position } {
-  const sw = sourceNode.width ?? 150
-  const sh = sourceNode.height ?? 40
-  const tw = targetNode.width ?? 150
-  const th = targetNode.height ?? 40
+  const sw = dims?.sourceW ?? sourceNode.width ?? 150
+  const sh = dims?.sourceH ?? sourceNode.height ?? 40
+  const tw = dims?.targetW ?? targetNode.width ?? 150
+  const th = dims?.targetH ?? targetNode.height ?? 40
 
   const dx = targetNode.position.x + tw / 2 - (sourceNode.position.x + sw / 2)
   const dy = targetNode.position.y + th / 2 - (sourceNode.position.y + sh / 2)

@@ -75,6 +75,17 @@ export function createFlow<TData = Record<string, unknown>>(
   const viewport = signal({ x: 0, y: 0, zoom: 1 })
   const containerSize = signal({ width: 800, height: 600 })
 
+  // Per-node measured DOM dimensions — written by the NodeLayer's per-node
+  // ResizeObserver (client-only) and read by edge geometry so an edge connects
+  // to the REAL rendered node size instead of the 150×40 fallback. Kept in a
+  // SEPARATE signal from the nodes array on purpose: a measurement must never
+  // mutate user node data (which would churn drag/position reactivity), and only
+  // edge geometry — not the node wrappers — re-derives when a size changes. The
+  // measured size wins over the fallback but NOT over an explicit `node.width` /
+  // `node.height`; happy-dom / SSR have no layout so the map stays empty there
+  // and the explicit-or-default path is used (unit tests are unaffected).
+  const measurements = signal(new Map<string, { width: number; height: number }>())
+
   // Track selected state separately for O(1) lookups
   const selectedNodeIds = signal(new Set<string>())
   const selectedEdgeIds = signal(new Set<string>())
@@ -1099,12 +1110,38 @@ export function createFlow<TData = Record<string, unknown>>(
     fitView()
   }
 
+  // Record a node's measured size. No-ops when the size is unchanged so a
+  // stable node never re-notifies `measurements` (the loop guard: measure →
+  // signal write → edge geometry re-derives, but the node wrappers don't read
+  // `measurements`, so they never re-measure). Immutable Map swap → signal fires.
+  const _setNodeMeasurement = (id: string, width: number, height: number): void => {
+    const cur = measurements.peek()
+    const existing = cur.get(id)
+    if (existing && existing.width === width && existing.height === height) return
+    const next = new Map(cur)
+    next.set(id, { width, height })
+    measurements.set(next)
+  }
+
+  // Drop a node's measurement on unmount so a removed id can't strand a stale
+  // dimension (which would misplace an edge if the id were later reused).
+  const _clearNodeMeasurement = (id: string): void => {
+    const cur = measurements.peek()
+    if (!cur.has(id)) return
+    const next = new Map(cur)
+    next.delete(id)
+    measurements.set(next)
+  }
+
   return {
     nodes,
     edges,
     viewport,
     zoom,
     containerSize,
+    measurements,
+    _setNodeMeasurement,
+    _clearNodeMeasurement,
     selectedNodes,
     selectedEdges,
     nodeMap,

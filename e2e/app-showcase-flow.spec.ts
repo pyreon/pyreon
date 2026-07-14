@@ -69,6 +69,22 @@ test.describe('app-showcase /flow', () => {
     expect(edgeIsRealSvg.ns).toBe('http://www.w3.org/2000/svg')
     expect(edgeIsRealSvg.len).toBeGreaterThan(0)
 
+    // …AND the edge <svg> must have a non-zero RENDERED box. A zero-area svg
+    // viewport paints NONE of its content, so a 0×0 svg = invisible edges even
+    // though the paths above have valid geometry + length (the getTotalLength
+    // check passes either way). This is the "viewport div collapsed to 0×0 →
+    // svg width/height:100% resolved to 0" regression that made flow edges
+    // never visually render — a path COUNT + geometry length can't catch it.
+    const edgeSvgBox = await page
+      .locator('svg.pyreon-flow-edges')
+      .first()
+      .evaluate((el) => {
+        const r = el.getBoundingClientRect()
+        return { w: r.width, h: r.height }
+      })
+    expect(edgeSvgBox.w).toBeGreaterThan(0)
+    expect(edgeSvgBox.h).toBeGreaterThan(0)
+
     // Sanity: no console errors at mount. The flow component lazy-loads
     // elkjs only on `instance.layout()` call, NOT on initial mount, so a
     // clean mount path means `<Flow>` + nodes + edges all wired without
@@ -179,10 +195,10 @@ test.describe('app-showcase /flow', () => {
   })
 
   test('wheel scroll over the canvas zooms the viewport transform', async ({ page }) => {
-    // The `.pyreon-flow-viewport` element is a 0×0 wrapper whose CSS
-    // `transform` carries the canvas pan + zoom — so it's "hidden" to
-    // Playwright's default `waitFor` (which checks visibility = non-zero
-    // box). `state: 'attached'` only requires DOM presence.
+    // The `.pyreon-flow-viewport` element carries the canvas pan + zoom in its
+    // CSS `transform`. It now fills the container (so the edge svg has a real
+    // paintable box) but is `pointer-events: none`; `state: 'attached'` only
+    // requires DOM presence and is robust regardless of its visibility state.
     const viewport = page.locator('.pyreon-flow-viewport').first()
     await viewport.waitFor({ state: 'attached' })
 
@@ -209,6 +225,28 @@ test.describe('app-showcase /flow', () => {
         }),
       )
     })
+
+    await expect
+      .poll(async () => viewport.evaluate((el) => getComputedStyle(el).transform), {
+        timeout: 2000,
+      })
+      .not.toBe(before)
+  })
+
+  test('clicking the Controls zoom-in button zooms (pan capture does not swallow the click)', async ({
+    page,
+  }) => {
+    const viewport = page.locator('.pyreon-flow-viewport').first()
+    await viewport.waitFor({ state: 'attached' })
+    const before = await viewport.evaluate((el) => getComputedStyle(el).transform)
+
+    // A REAL coordinate click. The container's pan handler used to
+    // `setPointerCapture` on the pointerdown that bubbled up from the button, so
+    // the button never received pointerup → its `click` never fired → the zoom /
+    // fit-view buttons "did nothing". A synthetic `.click()` bypasses the pointer
+    // sequence and would hide the bug; a real Playwright click reproduces it, so
+    // this is the load-bearing gate for the pan-bail-on-controls fix.
+    await page.locator('.pyreon-flow-controls button[title="Zoom in"]').first().click()
 
     await expect
       .poll(async () => viewport.evaluate((el) => getComputedStyle(el).transform), {
