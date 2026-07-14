@@ -310,6 +310,37 @@ isDynamic((p) => p.color) // true → dynamic path
 isDynamic("12px")          // false → static, cached`,
       seeAlso: ['resolve', 'styled'],
     },
+    {
+      name: 'hash / hashUpdate / hashFinalize / HASH_INIT',
+      kind: 'function',
+      signature:
+        'hash(str: string) => string — hashUpdate(state: number, str: string) => number — hashFinalize(state: number) => string — HASH_INIT: number',
+      summary:
+        'The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. `hash(str)` is the one-shot form → a base-36 string. The streaming trio composes it: `hashUpdate(HASH_INIT, "ab")` folds bytes into a running 32-bit numeric state, `hashFinalize(state)` renders `(state >>> 0).toString(36)`, and `hashUpdate(hashUpdate(HASH_INIT, "ab"), "cd") === hash("abcd")`. Exported for tooling/consumers that need the SAME class-name hash styler emits (e.g. precomputing a class name before injection). Low-level — most apps never call it.',
+      example: `import { hash, hashUpdate, hashFinalize, HASH_INIT } from "@pyreon/styler"
+hash("color:red")  // e.g. "1a2b3c"
+hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")`,
+      mistakes: [
+        'Using it for anything security-sensitive — FNV-1a is NON-cryptographic (fast, collision-cheap for CSS keys, NOT collision-resistant against adversarial input).',
+        'Feeding the base-36 STRING from `hashFinalize` back into `hashUpdate` — the streaming state is the 32-bit NUMBER; keep folding numbers with `hashUpdate` and call `hashFinalize` ONCE at the end.',
+      ],
+      seeAlso: ['createSheet', 'styled'],
+    },
+    {
+      name: 'setStyleExtraction',
+      kind: 'function',
+      signature:
+        'setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void',
+      summary:
+        'Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). `@pyreon/ui-core`\'s `init({ styleExtraction: true })` calls this to enable CPSE and inject the `cpseRewrite` function — which lives in `@pyreon/unistyle` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the `@pyreon/ui-core` init flag; it is exported only so ui-core can wire it.',
+      example: `// Apps enable CPSE through ui-core, not this call:
+import { init } from "@pyreon/ui-core"
+init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood`,
+      mistakes: [
+        'Calling `setStyleExtraction(true)` directly to turn on CPSE — without the `rewrite` from `@pyreon/unistyle` (which `@pyreon/ui-core` supplies) it enables the branch with no rewriter. Use `init({ styleExtraction: true })` from `@pyreon/ui-core`.',
+      ],
+      seeAlso: ['styled', 'createSheet'],
+    },
   ],
   gotchas: [
     {
