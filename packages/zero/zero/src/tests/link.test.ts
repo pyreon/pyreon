@@ -174,13 +174,19 @@ describe('prefetchRoute', () => {
     expect(prefetchLink?.getAttribute('as')).toBe('document')
   })
 
-  it('injects a <link rel="modulepreload"> as well', async () => {
+  it('does NOT inject a <link rel="modulepreload"> pointing at the route path', async () => {
+    // Regression guard: a `modulepreload` whose href is the ROUTE PATH is an
+    // SSR HTML URL → the browser fetches it as a module → strict-MIME "Failed
+    // to load module script" on every hovered link. The chunk is warmed via the
+    // router's real lazy loader instead (see link-prefetch.test.ts). This test
+    // asserts the broken hint is never emitted.
     const { prefetchRoute } = await import('../link')
     prefetchRoute('/dashboard')
 
-    const links = document.head.querySelectorAll('link[rel="modulepreload"]')
-    const preload = Array.from(links).find((l) => l.getAttribute('href') === '/dashboard')
-    expect(preload).toBeTruthy()
+    const preloads = document.head.querySelectorAll('link[rel="modulepreload"]')
+    expect(preloads.length).toBe(0)
+    // The valid document prefetch is still there.
+    expect(document.head.querySelector('link[rel="prefetch"][href="/dashboard"]')).toBeTruthy()
   })
 
   it('deduplicates — same href only injected once', async () => {
@@ -189,7 +195,7 @@ describe('prefetchRoute', () => {
     prefetchRoute('/dedup-test')
 
     const links = document.head.querySelectorAll('link[href="/dedup-test"]')
-    // One prefetch + one modulepreload = 2, not 4
-    expect(links.length).toBe(2)
+    // Only the document prefetch link is injected (no modulepreload), deduped.
+    expect(links.length).toBe(1)
   })
 })

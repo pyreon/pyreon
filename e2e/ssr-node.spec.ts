@@ -220,3 +220,53 @@ test.describe('SSR node deploy artifact', () => {
     expect(errors, errors.join('\n')).toHaveLength(0)
   })
 })
+
+/**
+ * @pyreon/zero `<Link>` prefetch — the modulepreload MIME bug.
+ *
+ * `doPrefetch` used to inject `<link rel="modulepreload" href={routePath}>`.
+ * The href is the ROUTE PATH, which this SSR server returns as `text/html`, so
+ * the browser fetched it as a module script and logged strict-MIME "Failed to
+ * load module script" on EVERY hovered link. The fix warms the real chunk via
+ * `router.preload(...)` and keeps only the valid `rel="prefetch" as="document"`
+ * hint. This runs against the real built SSR server (route paths return HTML),
+ * so it observes the ACTUAL browser console error — happy-dom can't.
+ *
+ * Bisect-verified: reverting `link.tsx` to the modulepreload injection fails
+ * this spec with a captured "Failed to load module script" error + a
+ * `link[rel="modulepreload"][href="/about"]` present in <head>.
+ */
+test.describe('zero <Link> prefetch — no modulepreload MIME error', () => {
+  test('hovering a <Link> warms the route without a broken modulepreload', async ({ page }) => {
+    const moduleErrors: string[] = []
+    page.on('console', (m) => {
+      if (m.type() === 'error' && /Failed to load module script/i.test(m.text())) {
+        moduleErrors.push(m.text())
+      }
+    })
+    // Some browsers surface the strict-MIME failure as a page error too.
+    page.on('pageerror', (e) => {
+      if (/Failed to load module script/i.test(e.message)) moduleErrors.push(e.message)
+    })
+
+    await page.goto('/link-prefetch-probe')
+    const link = page.locator('[data-testid="link-prefetch-probe"] a[href="/about"]')
+    await expect(link).toBeVisible()
+
+    await link.hover()
+    // Let the prefetch inject its hints and (in the broken version) let the
+    // module fetch resolve to the failing MIME check.
+    await page.waitForTimeout(600)
+
+    // 1. No strict-MIME console error from a modulepreload against an HTML route.
+    expect(moduleErrors, moduleErrors.join('\n')).toHaveLength(0)
+    // 2. No modulepreload hint pointing at the route path (the bug's DOM mutation).
+    await expect(
+      page.locator('head link[rel="modulepreload"][href="/about"]'),
+    ).toHaveCount(0)
+    // 3. The valid document prefetch IS present (the good half of doPrefetch).
+    await expect(
+      page.locator('head link[rel="prefetch"][href="/about"][as="document"]'),
+    ).toHaveCount(1)
+  })
+})
