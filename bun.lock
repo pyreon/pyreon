@@ -2186,8 +2186,10 @@
         "@pyreon/document": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/elements": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/reactivity": "workspace:^",
+        "@pyreon/rocketstyle": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",

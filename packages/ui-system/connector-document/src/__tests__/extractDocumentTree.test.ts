@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { Fragment, h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { describe, expect, it } from 'vitest'
 import type { DocumentMarker } from '../extractDocumentTree'
@@ -568,5 +568,142 @@ describe('extractDocumentTree — T3.1 hoisted-attrs fast path', () => {
     expect(result.type).toBe('heading')
     expect(result.props.level).toBe(3)
     expect(callCount).toBeGreaterThan(0)
+  })
+})
+
+// ─── Fragment + multi-sibling extraction (silent-drop fix) ───────────────
+//
+// A `<>…</>` fragment compiles to `h(Fragment, null, …)`, whose vnode
+// `type` is the symbol `Symbol.for('Pyreon.Fragment')`. Before the fix,
+// a fragment vnode matched NEITHER the function nor the string branch in
+// `extractNode`, so it fell through to `return null` and its ENTIRE
+// subtree was silently dropped from the export — no error. Two idiomatic
+// shapes hit this: a bare `<>` grouping doc children, and any wrapper
+// component that returns multiple siblings (the standard reason to use a
+// Fragment). A component returning a bare `VNodeChild[]` array (e.g.
+// `() => items.map(...)`) hit the same class in the function branch.
+//
+// These use REAL `h(Fragment, …)` from @pyreon/core (the actual symbol
+// identity is what's under test — a hand-mocked `{ type: someSymbol }`
+// would not catch it), so they bisect-verify against the pre-fix drop.
+describe('extractDocumentTree — Fragment + array-return transparency', () => {
+  it('flattens a Fragment child of a doc primitive into the parent (was dropped)', () => {
+    const List = docComponent('list')
+    const Item = docComponent('list-item')
+
+    const tree = h(
+      List,
+      {},
+      h(Fragment, null, h(Item, {}, 'one'), h(Item, {}, 'two')),
+    )
+
+    const result = extractDocumentTree(tree)
+    expect(result.type).toBe('list')
+    // Pre-fix: children === [] (the Fragment vnode dropped both items).
+    expect(result.children).toHaveLength(2)
+    expect((result.children[0] as any).type).toBe('list-item')
+    expect((result.children[0] as any).children).toEqual(['one'])
+    expect((result.children[1] as any).children).toEqual(['two'])
+  })
+
+  it('flattens a wrapper component that RETURNS a Fragment of siblings (was dropped)', () => {
+    const Doc = docComponent('document')
+    const Heading = docComponent('heading')
+    const Text = docComponent('text')
+    // The idiomatic "return multiple siblings" shape.
+    const Group = (_props: any) =>
+      h(Fragment, null, h(Heading, { _documentProps: { level: 1 } }, 'H'), h(Text, {}, 'T'))
+
+    const tree = h(Doc, {}, h(Group, {}))
+    const result = extractDocumentTree(tree)
+
+    expect(result.type).toBe('document')
+    expect(result.children).toHaveLength(2)
+    expect((result.children[0] as any).type).toBe('heading')
+    expect((result.children[1] as any).type).toBe('text')
+  })
+
+  it('flattens a wrapper component that RETURNS a bare array of siblings (was dropped)', () => {
+    const Doc = docComponent('document')
+    const Heading = docComponent('heading')
+    const Text = docComponent('text')
+    // A component returning a bare VNodeChild[] — valid, no Fragment.
+    const Group = (_props: any): any => [
+      h(Heading, { _documentProps: { level: 2 } }, 'X'),
+      h(Text, {}, 'Y'),
+    ]
+
+    const tree = h(Doc, {}, h(Group, {}))
+    const result = extractDocumentTree(tree)
+
+    expect(result.type).toBe('document')
+    expect(result.children).toHaveLength(2)
+    expect((result.children[0] as any).type).toBe('heading')
+    expect((result.children[0] as any).props.level).toBe(2)
+    expect((result.children[1] as any).type).toBe('text')
+  })
+
+  it('wraps a Fragment ROOT in a document node with its children', () => {
+    const Heading = docComponent('heading')
+    const Text = docComponent('text')
+    const tree = h(Fragment, null, h(Heading, {}, 'H'), h(Text, {}, 'T'))
+
+    const result = extractDocumentTree(tree)
+    expect(result.type).toBe('document')
+    expect(result.children).toHaveLength(2)
+  })
+
+  it('flattens nested fragments and preserves loose text + sibling order', () => {
+    const List = docComponent('list')
+    const Item = docComponent('list-item')
+    const tree = h(
+      List,
+      {},
+      h(
+        Fragment,
+        null,
+        h(Item, {}, 'one'),
+        h(Fragment, null, h(Item, {}, 'two'), 'loose text'),
+      ),
+    )
+
+    const result = extractDocumentTree(tree)
+    // Order preserved: item(one), item(two), 'loose text'.
+    expect(result.children).toHaveLength(3)
+    expect((result.children[0] as any).children).toEqual(['one'])
+    expect((result.children[1] as any).children).toEqual(['two'])
+    expect(result.children[2]).toBe('loose text')
+  })
+
+  it('an empty Fragment child contributes nothing and never throws', () => {
+    const List = docComponent('list')
+    const tree = h(List, {}, h(Fragment, null))
+    const result = extractDocumentTree(tree)
+    expect(result.type).toBe('list')
+    expect(result.children).toEqual([])
+  })
+
+  it('a wrapper returning an EMPTY array contributes nothing and never throws', () => {
+    const Doc = docComponent('document')
+    const Empty = (_props: any): any => []
+    const result = extractDocumentTree(h(Doc, {}, h(Empty, {})))
+    expect(result.type).toBe('document')
+    expect(result.children).toEqual([])
+  })
+
+  it('resolves reactive accessor children inside a Fragment and skips falsy siblings (was dropped)', () => {
+    const List = docComponent('list')
+    const Item = docComponent('list-item')
+    // A falsy conditional child (the `cond && <x/>` shape resolving to `false`)
+    // must be skipped, while the accessor sibling resolves.
+    const show = Math.random() < 0 // always false, but not a constant expression
+    const tree = h(
+      List,
+      {},
+      h(Fragment, null, () => h(Item, {}, 'dyn'), show && h(Item, {}, 'skipped')),
+    )
+    const result = extractDocumentTree(tree)
+    expect(result.children).toHaveLength(1)
+    expect((result.children[0] as any).children).toEqual(['dyn'])
   })
 })

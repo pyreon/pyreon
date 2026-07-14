@@ -55,7 +55,7 @@ describe('gen-docs — connector-document snapshot', () => {
 
       > **Note**: Extraction is a snapshot — reactive accessor children and function-valued \`_documentProps\` are resolved (called) at extraction time, not subscribed; re-run \`extractDocumentTree\` after a signal change to export the live state.
       >
-      > **Marker contract**: A component is extractable when it carries \`_documentType\` — via rocketstyle \`.statics()\` (read from \`.meta\`) or as a direct static on a plain function. Unmarked components and DOM elements are transparent: their children flatten into the parent.
+      > **Marker contract**: A component is extractable when it carries \`_documentType\` — via rocketstyle \`.statics()\` (read from \`.meta\`) or as a direct static on a plain function. Unmarked components, DOM elements, and \`<>…</>\` fragments are transparent: their children flatten into the parent.
       >
       > **Test with real primitives**: Mock vnodes that pre-attach \`_documentProps\` bypass the rocketstyle \`__rs_attrs\` fast path — the PR #197 silent-metadata-drop hid exactly there. Pair every mock-vnode test with a real-\`h()\` primitive test (see \`.claude/rules/test-environment-parity.md\`).
       >
@@ -68,6 +68,6 @@ describe('gen-docs — connector-document snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).length).toBe(10)
     expect(record['connector-document/extractDocumentTree']!.notes).toContain('DocNode')
-    expect(record['connector-document/extractDocumentTree']!.mistakes?.split('\n').length).toBe(6)
+    expect(record['connector-document/extractDocumentTree']!.mistakes?.split('\n').length).toBe(7)
   })
 })

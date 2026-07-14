@@ -4,6 +4,8 @@ Bridge between `@pyreon/ui-system` JSX trees and `@pyreon/document` for multi-fo
 
 `@pyreon/connector-document` walks a Pyreon JSX tree of document-primitive components (`DocDocument`, `DocHeading`, `DocText`, …) and produces a serializable `DocNode` tree that `@pyreon/document` can render to PDF, DOCX, XLSX, PPTX, email, Markdown, HTML, and 10+ other formats. Components carry `_documentType` markers (set via `attrs().statics()` on rocketstyle primitives, or directly on user components); the extractor finds them, resolves `_documentProps` and `$rocketstyle` styles, and recursively walks children. The hot path is fast — for real rocketstyle primitives it runs the accumulated `.attrs()` chain directly instead of invoking the full component (no JSX tree creation, no dimension resolution).
 
+Transparent containers — `<>…</>` fragments, DOM elements (`<div>`), unmarked wrapper components, and components that return a bare array of siblings — flatten into the parent: you can group and organize document primitives with idiomatic JSX without producing spurious nodes.
+
 ## Install
 
 ```bash
@@ -101,6 +103,7 @@ import type { DocNode, DocChild, NodeType, ResolvedStyles } from '@pyreon/connec
 
 ## Gotchas
 
+- **Fragments and multi-sibling wrappers are transparent, not dropped.** `<>…</>` grouping, a wrapper component that returns a Fragment, and a component that returns a bare `VNodeChild[]` array all flatten their doc-primitive children into the parent. (Before 0.45.x this was a silent drop — a fragment vnode matched no extractor branch and its whole subtree vanished from the export with no error.)
 - **Reactive accessor children are resolved at extraction time, not subscribed.** Each `extractDocumentTree(vnode)` call reads the live value once. To produce a document that reflects later signal changes, call extract again.
 - **`$rocketstyle` is keyed by object identity.** A theme that was constructed fresh on every render won't share the same resolved-styles bundle across extractions — minor perf concern only.
 - **Unsupported CSS is silently dropped** in `resolveStyles`. `transition`, `cursor`, `display`, animations, and any non-document property fall away. The same primitive will render correctly in the browser and produce a clean PDF without modification.

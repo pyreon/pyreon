@@ -32,10 +32,21 @@ export interface ExtractOptions {
 }
 
 type VNodeLike = {
-  type: string | ((...args: any[]) => any)
+  // `symbol` covers the Fragment vnode (`<>…</>` → `h(Fragment, …)`), whose
+  // `type` is `Symbol.for('Pyreon.Fragment')`. Kept structural — the connector
+  // never imports @pyreon/core at runtime; it walks the vnode shape directly.
+  type: string | symbol | ((...args: any[]) => any)
   props: Record<string, any>
   children: unknown[]
 }
+
+// `@pyreon/core`'s `Fragment` is `Symbol.for('Pyreon.Fragment')` (see
+// `packages/core/core/src/h.ts`). Resolving it from the GLOBAL symbol
+// registry returns the identical symbol even across a dual-`@pyreon/core`
+// instance split — so this comparison is instance-safe WITHOUT importing
+// (and coupling the connector to) the core runtime. `<>…</>` compiles to
+// `h(Fragment, null, …)`; a fragment vnode groups children with no wrapper.
+const FRAGMENT_TYPE: symbol = Symbol.for('Pyreon.Fragment')
 
 function isVNode(value: unknown): value is VNodeLike {
   return value != null && typeof value === 'object' && 'type' in value && 'props' in value
@@ -241,6 +252,24 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
     return node
   }
 
+  // Fragment (`<>…</>` → `h(Fragment, null, …)`) — a transparent grouping
+  // container with no wrapper element. Flatten its children into the parent,
+  // exactly like the DOM-element (`typeof type === 'string'`) branch below.
+  //
+  // Without this, a fragment vnode's `type` (a symbol) matches neither the
+  // function nor the string branch, so it fell through to the final
+  // `return null` and its ENTIRE subtree was silently dropped from the
+  // export. Two idiomatic shapes hit this: a bare `<>` grouping doc
+  // primitives as a child, and any wrapper component that returns multiple
+  // siblings by wrapping them in a Fragment (the standard way to return
+  // more than one node). Both produced an empty list/section in the
+  // exported document with no error.
+  if (type === FRAGMENT_TYPE) {
+    const docChildren = extractChildren(children ?? [], options)
+    if (docChildren.length > 0) return docChildren
+    return null
+  }
+
   // Component function WITHOUT _documentType — call it to get its VNode output
   if (typeof type === 'function') {
     const mergedProps = { ...props }
@@ -252,6 +281,16 @@ function extractNode(vnode: VNodeLike, options: ExtractOptions): DocNode | DocCh
 
     if (isVNode(result)) {
       return extractNode(result, options)
+    }
+
+    // A component may legitimately return MULTIPLE siblings as a bare array
+    // (`() => items.map(...)`) — a valid `VNodeChild`. Flatten + extract them
+    // instead of dropping the whole return (the same silent-drop class as the
+    // Fragment branch above; `extractChildren` handles nested arrays/accessors).
+    if (Array.isArray(result)) {
+      const docChildren = extractChildren(result, options)
+      if (docChildren.length > 0) return docChildren
+      return null
     }
 
     // The component returned a primitive or null
