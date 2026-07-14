@@ -162,6 +162,13 @@ const meta = getMeta(emailSchema)
 const label = meta?.label ?? humanize(fieldName)
 ```
 
+**Common mistakes**
+
+- Metadata is a Symbol slot on ONE schema object; modifiers create NEW instances that don't copy it — `withField(s.string(), {...}).optional()` returns an OptionalSchema without the slot, so `getMeta` yields `undefined`. Attach metadata to the OUTERMOST schema (after `.optional()`/`.transform()`)
+- `getMeta` returns `undefined` for any un-`withField`ed schema — always be defensive: `getMeta(x)?.label ?? fallback`
+- `resolveMetaField` only handles `label` / `hint` / `placeholder` — other i18n keys aren't resolvable through it
+- i18n resolution needs a `t` that does NOT echo the key — without `t` (or when `t` returns the key unchanged) it falls back to the literal metadata value
+
 **See also:** `withField` · `resolveMetaField`
 
 ---
@@ -247,6 +254,13 @@ watch($result, async (current) => {
 })
 ```
 
+**Common mistakes**
+
+- It does NOT discard stale results — it's an async `computed` with no version counter / AbortSignal, so rapid source changes leave overlapping promises; the CALLER must await only the latest (wrap in `watch()`)
+- Read `source` synchronously at the top of your accessors — the async computed tracks only the `source` read that runs before the first `await`; a signal read placed after an await won't re-trigger
+- Don't call it per render — it allocates a `Computed`; create it once per (schema, source) pair at setup
+- The `~standard` path it uses drops the Pyreon `pending` server-check info — call `schema.parseAsync()` directly if you need to surface deferred server checks
+
 **See also:** `parseReactive`
 
 ---
@@ -312,6 +326,14 @@ Resolve an array of issues to strings via the same per-issue logic as formatErro
 const { t } = useI18n()
 const messages = formatErrors(result.issues ?? [], t)
 ```
+
+**Common mistakes**
+
+- Resolution order is strict — `issue.key` + a `t` that returns a NON-key string resolves; else `issue.fallback`; else `issue.message`. WITHOUT a `t` argument i18n keys never resolve and it drops straight to fallback/message
+- A missing translation is SILENT: if `t(key)` echoes the key back (no entry) it falls through to `fallback`/`message` rather than showing the raw key — always set a `fallback` alongside a `key`
+- Native Zod/Valibot/ArkType issues carry no `key`/`params`/`fallback`, so it returns their raw `.message` regardless of `t` — only Pyreon-issue shapes route through i18n
+- `params` are the SECOND arg of `t(issue.key, issue.params)` — your i18n interpolation must read them from there
+- `formatErrorsByPath` keeps only the FIRST issue per path unless you pass `joinWith`, and path-less/form-level issues land under the `''` key
 
 **See also:** `formatError` · `formatErrorsByPath`
 
@@ -391,6 +413,15 @@ if (r.ok && r.pending?.length) showChecking()   // 'email-unique' pending
 const verdict = await signup.parseAsync(formData, { context: { db } })
 ```
 
+**Common mistakes**
+
+- A client `r.ok === true` is NOT verification — with no validator installed `serverCheck` is a NO-OP that passes the value and only records a `pending` entry; the SERVER `parseAsync` is the authoritative re-validation
+- Forgetting to `registerServerCheck(key, fn)` on the server (e.g. not importing the server-only module) silently PASSES — an unregistered key defers to `pending`, it never fails
+- A registered ASYNC check promotes the parse to async, so plain `.parse()` bails with a `[Pyreon] schema is async — use parseAsync` issue — call `schema.parseAsync(input, { context })`
+- The DB handle / request only reaches your validator via `parseAsync(input, { context })` — plain `.parse()` leaves `ctx.context` undefined
+- Import `registerServerCheck` only from `@pyreon/validate/server` (a side-effecting server-only entry) — importing it into client code drags the heavy validators into the client bundle
+- Any schema with a `serverCheck` anywhere in its tree skips the JIT (it can't await) and silently runs the slower interpreter path
+
 **See also:** `registerServerCheck` · `parseAsync`
 
 ---
@@ -434,6 +465,14 @@ s.number().catch(0).parse('nope')          // → { ok: true, value: 0 }
 s.string().min(3).catch('x').parse('ab')   // → { ok: true, value: 'x' }
 s.string().catch((input) => String(input)) // fallback derived from the raw input
 ```
+
+**Common mistakes**
+
+- `.catch()` swallows EVERY issue this schema produced (type failures AND check/refine/transform failures alike) — a genuinely broken input is masked as `ok: true`; scope it narrowly, not around a whole object
+- A FUNCTION passed to `.catch()` is ALWAYS an input→fallback mapper (called with the raw original input), never a literal fallback — you cannot use `.catch()` to return a function value
+- The fallback is returned verbatim and is NOT re-validated — a fallback that doesn't satisfy the schema's type still passes through as `ok: true`
+- `.catch()` is terminal + position-independent with LAST-wins semantics — `s.string().catch('a').catch('b')` always yields `'b'`
+- The catch fn receives the RAW original input (captured before the `default`/modifier prelude), not the typed or defaulted value
 
 **See also:** `readonly` · `default`
 
@@ -491,6 +530,13 @@ Union this schema with another — `a.or(b)` ≡ `s.union(a, b)` (Zod's `.or`). 
 s.string().or(s.number()) // Schema<string | number>
 ```
 
+**Common mistakes**
+
+- `.or()` / `s.union(...)` members MUST be schemas — a non-schema member (or fewer than two) throws a clear `[Pyreon]` error ONLY when `NODE_ENV !== "production"`; a production build strips the guard and a bad member crashes cryptically as `member["~standard"] is undefined` deep in parse
+- A union surfaces NO per-member issues — a total miss yields one opaque `invalid_union` "Did not match any allowed type", so you can't tell which member was closest; members are tried in order, first-match wins
+- `.or()`/`.and()`/`.array()` throw `COMPOSITION_UNREGISTERED` if the composition factory was never registered — a bare `import { string }` that never references `s`/`union`/`intersection` skips registration
+- An async member inside a SYNC union parse pushes an `async member … use parseAsync` issue rather than awaiting
+
 **See also:** `and` · `array`
 
 ---
@@ -547,6 +593,14 @@ s.object({ pw: s.string(), confirm: s.string() }).superRefine((v, ctx) => {
 })
 ```
 
+**Common mistakes**
+
+- Report problems ONLY via `ctx.addIssue(...)` — the callback returns void, so `return false` or returning a message does nothing
+- It runs ONLY if the base schema produced zero issues — if the underlying type/checks already failed, your cross-field refinement never executes
+- `addIssue({ path })` APPENDS to the field's current path — pass a RELATIVE `path: ["confirm"]`, not an absolute path, or the issue lands at the wrong nested location
+- Do NOT make the callback async — the signature is sync `=> void` and issues are collected right after it returns, so anything pushed after an `await` is lost
+- `superRefine` returns a NEW wrapper schema, not `this` — capture the return value
+
 **See also:** `refine` · `pipe`
 
 ---
@@ -564,6 +618,12 @@ Transform the raw input BEFORE `schema` validates it (Zod's `z.preprocess`) — 
 ```tsx
 s.preprocess((v) => String(v).trim(), s.string().min(1))
 ```
+
+**Common mistakes**
+
+- Argument order is `(fn, target)` — `fn` maps the RAW input first, then `target` validates the mapped value; the output type is `target`'s
+- No type flows from `fn` into `target` — `fn` is typed `(unknown) => unknown`, so nothing enforces that its return matches what `target` expects; that alignment is on you
+- Keep `fn` TOTAL (never throw) — `.parse()` does NOT try/catch a sync throw from `fn` (only `parseAsync` does), so a throwing preprocess propagates out of `.parse()`
 
 **See also:** `pipe` · `transform`
 
@@ -583,6 +643,12 @@ Reject `undefined` (Zod 4's `.nonoptional`) — re-requires a present value, e.g
 s.string().optional().nonoptional() // rejects undefined again
 ```
 
+**Common mistakes**
+
+- It rejects `undefined` at RUNTIME (pushes a "Required" issue) — it is not merely a type cast; the runtime guard is what enforces presence
+- It rejects ONLY `undefined`, NOT `null` — `s.string().nullish().nonoptional()` still accepts `null`
+- The default message is `"Required"`
+
 **See also:** `optional`
 
 ---
@@ -601,6 +667,14 @@ Coerce a boolean-ish STRING to a real boolean (Zod 4's `z.stringbool`). Type-che
 s.stringbool().parse('yes') // → { ok: true, value: true }
 s.stringbool({ truthy: ['si'], falsy: ['no'] })
 ```
+
+**Common mistakes**
+
+- The default truthy set is exactly `true`/`1`/`yes`/`on`/`y`/`enabled` and falsy `false`/`0`/`no`/`off`/`n`/`disabled` — anything else (`'2'`, `'maybe'`, and crucially the EMPTY string) is a validation ERROR, not `false`
+- An unset env var read as `''` FAILS `stringbool` (empty string is in neither set) — add `.default(false)` / `.optional()` when a missing var should mean false
+- It accepts ONLY strings — a real boolean or number emits a type issue; use `s.coerce.boolean()` (JS truthiness on any input) if you need that, they are NOT interchangeable
+- Passing `truthy`/`falsy` REPLACES the defaults, it does not extend them — `stringbool({ truthy: ['yes'] })` makes `'1'`/`'true'`/`'on'` invalid
+- Matching is case-insensitive + trimmed, truthy checked before falsy — `' TRUE '` works, and a token in BOTH sets resolves to `true`
 
 **See also:** `coerce`
 
@@ -658,6 +732,12 @@ Asserts `input instanceof Ctor` (Zod's `z.instanceof`). The canonical way to val
 s.instanceof(File) // validate an uploaded File
 s.instanceof(Date, 'need a Date')
 ```
+
+**Common mistakes**
+
+- It uses native `input instanceof ctor`, so CROSS-REALM instances FAIL — a `Date`/`File`/`URL` from an iframe, worker, or vm has a different constructor identity and won't validate
+- It cannot survive an SSR→client (or any JSON) boundary — a hydrated plain object / date string is not an instance, so `instanceof(Date)` rejects deserialized data; validate the serialized shape (an ISO string) and reconstruct instead
+- The output is the input unchanged — `instanceof` ASSERTS, it does not construct or coerce an instance
 
 **See also:** `custom`
 
