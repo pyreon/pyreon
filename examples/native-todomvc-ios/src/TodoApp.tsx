@@ -46,6 +46,12 @@ import { useStorage } from '@pyreon/storage'
 // Same .tsx file works on all three targets.
 import { For, Show } from '@pyreon/core'
 import { Stack, Inline, Text, Button, Field, Toggle } from '@pyreon/primitives'
+// `<TransitionGroup>` (the animated keyed-list wrapper) is a web value on the
+// browser target — the DOM renderer that runs the CSS enter/leave. On native
+// it's a type-only anchor: PMTC lowers the bare `<TransitionGroup>` tag via its
+// emit table (SwiftUI VStack + `.animation`, Compose `animateContentSize`),
+// same as the `@pyreon/primitives` tags above.
+import { TransitionGroup } from '@pyreon/runtime-dom'
 
 type Todo = { id: number; text: string; done: boolean }
 type Filter = 'all' | 'active' | 'completed'

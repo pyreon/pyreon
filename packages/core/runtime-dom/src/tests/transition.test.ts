@@ -1,5 +1,5 @@
 import type { ComponentFn } from '@pyreon/core'
-import { h } from '@pyreon/core'
+import { For, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { query, queryOptional } from '@pyreon/test-utils'
 import {
@@ -465,6 +465,91 @@ describe('TransitionGroup', () => {
 
     await new Promise<void>((r) => setTimeout(r, 50))
     expect(el.querySelector('span')).not.toBeNull()
+  })
+
+  // ─── Children (container) mode ────────────────────────────────────────────
+  // The shape PMTC lowers on native — `<TransitionGroup>` wrapping a keyed
+  // `<For>` as CHILDREN, with no items/keyFn/render render-prop. Regression
+  // for the native-todomvc-web mount break: the shared multi-platform TodoApp
+  // uses this shape, and without children-mode the web component threw
+  // `props.items is not a function` and the app never mounted.
+  describe('children (container) mode', () => {
+    test('renders a wrapped <For> as children (no items render-prop)', async () => {
+      const el = container()
+      const rows = signal([
+        { id: 1, text: 'a' },
+        { id: 2, text: 'b' },
+      ])
+
+      mount(
+        h(
+          TransitionGroup,
+          { tag: 'ul' },
+          h(
+            For,
+            { each: () => rows(), by: (r: { id: number }) => r.id },
+            (r: { id: number; text: string }) => h('li', null, r.text),
+          ),
+        ),
+        el,
+      )
+
+      await new Promise<void>((r) => setTimeout(r, 20))
+      const ul = el.querySelector('ul')
+      expect(ul).not.toBeNull()
+      const lis = el.querySelectorAll('li')
+      expect(lis.length).toBe(2)
+      expect(lis[0]?.textContent).toBe('a')
+    })
+
+    test('add + remove flow through the wrapped list (the e2e core)', async () => {
+      const el = container()
+      const rows = signal<{ id: number; text: string }[]>([{ id: 1, text: 'first' }])
+
+      mount(
+        h(
+          TransitionGroup,
+          {},
+          h(
+            For,
+            { each: () => rows(), by: (r: { id: number }) => r.id },
+            (r: { id: number; text: string }) => h('li', null, r.text),
+          ),
+        ),
+        el,
+      )
+      await new Promise<void>((r) => setTimeout(r, 20))
+      expect(el.querySelectorAll('li').length).toBe(1)
+
+      rows.set([...rows(), { id: 2, text: 'second' }])
+      await new Promise<void>((r) => setTimeout(r, 20))
+      expect(el.querySelectorAll('li').length).toBe(2)
+
+      rows.set(rows().filter((r) => r.id !== 1))
+      await new Promise<void>((r) => setTimeout(r, 20))
+      const remaining = [...el.querySelectorAll('li')].map((n) => n.textContent)
+      expect(remaining).toEqual(['second'])
+    })
+
+    test('items without keyFn/render warns + degrades to a plain container', async () => {
+      const el = container()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const items = signal([{ id: 1 }])
+
+      expect(() =>
+        mount(
+          h(TransitionGroup, { items: () => items() }, h('span', null, 'child')),
+          el,
+        ),
+      ).not.toThrow()
+
+      await new Promise<void>((r) => setTimeout(r, 20))
+      expect(el.querySelector('span')?.textContent).toBe('child')
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('also needs `keyFn` and `render`'),
+      )
+      warn.mockRestore()
+    })
   })
 })
 
