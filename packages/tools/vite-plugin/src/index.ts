@@ -617,6 +617,13 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
       names: ['Stack', 'Inline', 'Text', 'Button', 'Press', 'Field', 'Toggle'],
     },
     { source: '@pyreon/core', names: ['For', 'Show'] },
+    // `<TransitionGroup>` (animated keyed list) renders on web via its
+    // @pyreon/runtime-dom component; PMTC lowers the bare tag on native. A
+    // shared multi-platform source must NOT import @pyreon/runtime-dom directly
+    // (PMTC classifies any file importing runtime-dom as web-only and skips its
+    // native emit), so — like For/Show from @pyreon/core — the web value is
+    // auto-injected here instead of imported in source.
+    { source: '@pyreon/runtime-dom', names: ['TransitionGroup'] },
   ]
   const jsxAutoImportMappings = jsxAutoImportUserCfg.mappings ?? defaultMappings
   const collapseComponentFilter = collapseUserCfg.components
