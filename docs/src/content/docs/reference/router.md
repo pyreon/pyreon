@@ -108,6 +108,11 @@ const User = () => {
 | [`useBlocker`](#useblocker) | hook | Block navigations while a condition holds. |
 | [`onBeforeRouteLeave`](#onbeforerouteleave) | function | Register a per-component navigation guard that fires when leaving the current route. |
 | [`onBeforeRouteUpdate`](#onbeforerouteupdate) | function | Register a per-component navigation guard that fires when the route updates but the same component stays mounted (e.g.,  |
+| [`useNavigate`](#usenavigate) | function | Returns an imperative navigate function. |
+| [`useParams`](#useparams) | function | Returns a SNAPSHOT map of the current route's path params (`{ id: '42' }` for `/user/:id`). |
+| [`useValidatedSearch`](#usevalidatedsearch) | function | Returns a REACTIVE ACCESSOR `() => T` for the current route's VALIDATED search params. |
+| [`notFound / NotFoundBoundary`](#notfound-notfoundboundary) | function | The Next.js-style 404 pair. |
+| [`lazy`](#lazy) | function | Code-split a route component. |
 
 ## API
 
@@ -640,6 +645,145 @@ onBeforeRouteUpdate((to, from) => {
 ```
 
 **See also:** `onBeforeRouteLeave` · `useRoute`
+
+---
+
+### useNavigate `function`
+
+```ts
+useNavigate() => (path: string) => void
+```
+
+Returns an imperative navigate function. Resolves the active router (context first, module singleton fallback) and returns `(path) => router.push(path)`. The returned function ALWAYS pushes (never replaces) and is typed `void` — the underlying `push()` Promise&lt;NavigationResult&gt; is dropped. Mirrors the `useNavigate()` shape on the native (Swift/Kotlin) targets for cross-target source parity.
+
+**Example**
+
+```tsx
+const navigate = useNavigate()
+// call it from an event handler / onMount / effect — never the render body:
+const goHome = () => navigate('/')
+```
+
+**Common mistakes**
+
+- Awaiting the result — the returned function is typed `void` (it drops `push()`'s Promise). To observe the NavigationResult ('committed' | 'cancelled' | 'superseded'), or to `replace()` instead of push, call `useRouter().push()` / `.replace()` directly.
+- Calling `navigate()` synchronously in the component body — that fires during render and infinite-loops. Defer it (event handler, `onMount`, `effect`); the `pyreon/no-imperative-navigate-in-render` lint rule catches this.
+- Calling `useNavigate()` before a router exists (outside a `<RouterProvider>` with no module router set) — it throws `[Pyreon] No router installed`.
+
+**See also:** `useRouter` · `RouterLink`
+
+---
+
+### useParams `function`
+
+```ts
+useParams<T extends Record<string, string> = Record<string, string>>() => T
+```
+
+Returns a SNAPSHOT map of the current route's path params (`{ id: '42' }` for `/user/:id`). Values are always STRINGS at runtime — the generic `T` is caller-supplied typing only, it does NOT coerce. It reads `router.currentRoute().params` once at call time, so the snapshot is captured when the hook runs; to track param changes across navigation, read `useRoute()().params` in a reactive scope instead.
+
+**Example**
+
+```tsx
+const params = useParams<{ id: string }>()   // snapshot at setup
+
+// for params that update on navigation, use the reactive route accessor:
+const route = useRoute<'/user/:id'>()
+// route().params.id re-reads on every navigation
+```
+
+**Common mistakes**
+
+- Treating the returned object as LIVE — it is a one-time snapshot from the component body. On a `/user/1` -&gt; `/user/2` navigation (same component stays mounted), the captured object does NOT update. Read `useRoute()().params` in a reactive scope to track changes.
+- Assuming param values are typed — at runtime they are always strings; `useParams<{ id: number }>()` types but does NOT coerce. Parse yourself (`Number(params.id)`).
+
+**See also:** `useRoute` · `useNavigate`
+
+---
+
+### useValidatedSearch `function`
+
+```ts
+useValidatedSearch<T extends Record<string, unknown> = Record<string, unknown>>() => () => T
+```
+
+Returns a REACTIVE ACCESSOR `() => T` for the current route's VALIDATED search params. It takes NO argument — validation is configured on the ROUTE record via `validateSearch(raw)` (run during navigation; supports arbitrary validators like Zod / Valibot), and this hook surfaces its result off `currentRoute().search` (an empty `{}` when no `validateSearch` is set). Structural sharing (shallow-equal caching) means unrelated query-param changes do not re-trigger downstream reads.
+
+**Example**
+
+```tsx
+// route config: { path: '/search', validateSearch: (raw) => schema.parse(raw) }
+const search = useValidatedSearch<{ q: string; page: number }>()
+// read the accessor inside a reactive scope:
+const page = () => search().page
+```
+
+**Common mistakes**
+
+- Passing a schema to the hook — it takes NO argument. The schema goes on the route record's `validateSearch` config; `useValidatedSearch()` only READS the already-validated result.
+- Confusing it with the other two search hooks: `useTypedSearchParams(schema)` takes a `{ key: 'string' | 'number' | 'boolean' }` shape, coerces primitives itself, and returns a `[get, set]` tuple; `useSearchParams(defaults?)` returns raw strings with no coercion. `useValidatedSearch` is READ-ONLY (no setter), argument-less, and defers to the route validator (arbitrary shapes).
+- Reading the accessor once and caching the value — call `search()` inside a reactive scope so it re-reads on navigation.
+
+**See also:** `useTypedSearchParams` · `useSearchParams`
+
+---
+
+### notFound / NotFoundBoundary `function`
+
+```ts
+notFound(message?: string) => never · NotFoundBoundary(props: { fallback: ComponentFn | VNodeChild; children?: VNodeChild }) => VNodeChild
+```
+
+The Next.js-style 404 pair. `notFound()` THROWS a branded Error (message defaults to 'Not Found') from inside a loader or component; `isNotFoundError` detects the brand (`Symbol.for('pyreon.notFound')`, realm-shared). `NotFoundBoundary` wraps the core `ErrorBoundary`: it renders `children` normally, and when a `notFound()` is thrown in its subtree it renders `fallback` (invoked as a component with `{ error, reset }` when its arity is &lt;= 1, else returned as a plain VNodeChild). It RE-THROWS any non-notFound error so real errors still propagate to an outer error boundary.
+
+**Example**
+
+```tsx
+async function loadUser(params: { id: string }) {
+  const user = await fetchUser(params.id)
+  if (!user) notFound()          // throws — code below is unreachable
+  return user
+}
+
+const app = (
+  <NotFoundBoundary fallback={() => <h1>404 — not found</h1>}>
+    <RouterView />
+  </NotFoundBoundary>
+)
+```
+
+**Common mistakes**
+
+- Expecting code after `notFound()` to run — it THROWS (`=> never`) and never returns, so a guard-then-continue pattern does not work (everything after it is unreachable).
+- Using `NotFoundBoundary` as a general error boundary — it ONLY handles `notFound()` throws; every other error is RE-THROWN to the nearest outer `ErrorBoundary`.
+- Confusing `notFound()` with the route-record `notFoundComponent` / fs-router `_404.tsx` — those are the route-level no-match fallback; `notFound()` drives the `NotFoundBoundary` in the rendered subtree (a different mechanism).
+
+**See also:** `redirect` · `RouterView`
+
+---
+
+### lazy `function`
+
+```ts
+lazy(loader: () => Promise<ComponentFn | { default: ComponentFn }>, options?: { loading?: ComponentFn; error?: ComponentFn; hmrId?: string }) => LazyComponent
+```
+
+Code-split a route component. Returns a LazyComponent DESCRIPTOR (a branded object, NOT a rendered component) to assign as a route `component`. The loader may resolve a bare component OR an ES-module `{ default }` namespace (so `() => import('./Page')` works). `options.loading` / `options.error` supply Suspense fallbacks; `options.hmrId` is the dev-only module id fs-router emits for hot-swap. The ROUTER caches resolved chunks in a bounded LRU (`maxCacheSize`, default 100); `lazy()` itself does not dedupe.
+
+**Example**
+
+```tsx
+const routes = [
+  { path: '/reports', component: lazy(() => import('./Reports')) },
+]
+```
+
+**Common mistakes**
+
+- Calling the result like a component (`lazy(...)()`) — it is an inert DESCRIPTOR; assign it to a route `component` and the router resolves it (into `_componentCache`) on navigation.
+- Assuming `lazy()` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; `router.preload()` warms it before SSR renderToString, which is required so a lazy route is not blank on the server).
+
+**See also:** `createRouter` · `RouterView`
 
 ---
 
