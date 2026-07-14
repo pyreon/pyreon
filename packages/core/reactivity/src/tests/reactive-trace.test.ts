@@ -111,7 +111,11 @@ describe('reactive-trace ring buffer', () => {
     try {
       expect(getReactiveTrace()).toEqual([])
     } finally {
-      process.env.NODE_ENV = prev
+      // Restore exactly — `delete` when it was unset, else reassign. A bare
+      // `process.env.NODE_ENV = prev` fails under `exactOptionalPropertyTypes`
+      // (prev is `string | undefined`, the target is `string`).
+      if (prev === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prev
     }
   })
 })
