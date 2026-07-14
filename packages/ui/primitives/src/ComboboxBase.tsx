@@ -2,6 +2,7 @@ import type { ComponentFn, VNodeChild } from '@pyreon/core'
 import { createUniqueId, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
 import { batch, computed, signal } from '@pyreon/reactivity'
+import { createTypeahead, typeaheadMatch } from './keyboard'
 
 export interface ComboboxOption {
   value: string
@@ -54,7 +55,14 @@ export interface ComboboxState {
   remove: (value: string) => void
   /** Clear selection. */
   clear: () => void
-  /** Handle keyboard navigation. */
+  /**
+   * Handle keyboard navigation (WAI-ARIA listbox pattern). ArrowUp/ArrowDown
+   * move the active option (ArrowDown opens a closed listbox), Home/End jump
+   * to the first/last option, Enter selects, Escape closes, Tab closes, and
+   * printable characters type-ahead to the next option whose label starts with
+   * the typed buffer (buffer resets after ~500ms idle; a repeated same letter
+   * cycles through matches). Wire it on the input's `onKeyDown`.
+   */
   onKeyDown: (e: KeyboardEvent) => void
   /** Get label for a value. */
   getLabel: (value: string) => string
@@ -86,6 +94,8 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
   const query = signal('')
   const isOpen = signal(false)
   const highlightedIndex = signal(0)
+  // Per-instance typeahead buffer (WAI-ARIA listbox "type-to-select").
+  const typeahead = createTypeahead()
 
   const filtered = computed(() => {
     const q = query().toLowerCase()
@@ -142,16 +152,51 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       highlightedIndex.set(Math.max(highlightedIndex() - 1, 0))
+    } else if (e.key === 'Home') {
+      // WAI-ARIA listbox: move active option to the first. Opens the listbox
+      // when closed (consistent with ArrowDown), so there is something to move.
+      e.preventDefault()
+      if (opts.length === 0) return
+      if (!isOpen()) isOpen.set(true)
+      highlightedIndex.set(0)
+    } else if (e.key === 'End') {
+      // WAI-ARIA listbox: move active option to the last.
+      e.preventDefault()
+      if (opts.length === 0) return
+      if (!isOpen()) isOpen.set(true)
+      highlightedIndex.set(opts.length - 1)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const opt = opts[highlightedIndex()]
       if (opt && isOpen()) select(opt.value)
       else isOpen.set(true)
     } else if (e.key === 'Escape') {
+      typeahead.clear()
       isOpen.set(false)
       query.set('')
     } else if (e.key === 'Tab') {
+      typeahead.clear()
       if (isOpen()) isOpen.set(false)
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // WAI-ARIA listbox typeahead: printable characters jump the active
+      // option to the next one whose label starts with the accumulated buffer
+      // (buffer resets after ~500ms idle; a repeated same letter cycles). Only
+      // preventDefault + move when a match is found, so an editable consumer's
+      // free-text filter (wired on `onInput`) still receives non-matching keys.
+      const search = typeahead.push(e.key)
+      if (search) {
+        // When closed there is no ACTIVE option yet (highlightedIndex defaults
+        // to 0), so search from the start inclusively (-1 → next-from = 0) and
+        // the first keystroke lands on the first match. When open, search from
+        // AFTER the active option so a repeated letter cycles (APG semantics).
+        const from = isOpen() ? highlightedIndex() : -1
+        const match = typeaheadMatch(opts.map((o) => o.label), search, from)
+        if (match >= 0) {
+          e.preventDefault()
+          if (!isOpen()) isOpen.set(true)
+          highlightedIndex.set(match)
+        }
+      }
     }
   }
 
