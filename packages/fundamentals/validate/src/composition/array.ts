@@ -9,7 +9,7 @@
 import { Schema as SchemaBase, attachCheck, makeCheckIssue, registerArrayFactory } from '../core/schema'
 import type { Schema } from '../core/schema'
 import { typeIssue } from '../core/issue'
-import type { CheckOpts, ParseCtx } from '../core/ops'
+import { mutablePath, type CheckOpts, type ParseCtx } from '../core/ops'
 
 export class ArraySchema<T> extends SchemaBase<T[]> {
   readonly _kind = 'array' as const
@@ -32,7 +32,7 @@ export class ArraySchema<T> extends SchemaBase<T[]> {
     // Promise. The all-sync path is unchanged — no Promise allocation.
     let pending: Array<{ slot: number; promise: Promise<unknown> }> | null = null
     for (let i = 0; i < input.length; i++) {
-      ctx.path.push(i)
+      mutablePath(ctx).push(i)
       try {
         const before = ctx.issues.length
         const v = this.element._runInto(input[i], ctx)

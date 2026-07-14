@@ -136,14 +136,32 @@ const aDU = type({ kind: "'circle'", radius: 'number' }).or({ kind: "'rect'", w:
 const validDU = { kind: 'rect', w: 3, h: 4 }
 const invalidDU = { kind: 'rect', w: 'x', h: 4 }
 
+// E) scalars — the shapes where validation is trivial and per-parse allocation
+// dominates. `bare string` isolates the pure `.parse()` overhead; `int 0..150`
+// isolates a small check chain. Kept alongside the composite shapes so the
+// scalar story is measured, not asserted.
+const pyrStr = s.string()
+const zStr = z.string()
+const vStr = v.string()
+const aStr = type('string')
+const validStr = 'hello world'
+const invalidStr = 42
+
+const pyrInt = s.number().int().between(0, 150)
+const zInt = z.number().int().min(0).max(150)
+const vInt = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(150))
+const aInt = type('0 <= number.integer <= 150')
+const validInt = 30
+const invalidInt = 999
+
 // ─── Parse adapters (each returns boolean ok — never throws) ───────────────────
 
 const ARK_ERR = type.errors
 const adapters = {
-  pyreon: { user: pyrUser, nested: pyrNested, arr: pyrArr, du: pyrDU, run: (sch: any, x: unknown) => sch.parse(x).ok },
-  zod: { user: zUser, nested: zNested, arr: zArr, du: zDU, run: (sch: any, x: unknown) => sch.safeParse(x).success },
-  valibot: { user: vUser, nested: vNested, arr: vArr, du: vDU, run: (sch: any, x: unknown) => v.safeParse(sch, x).success },
-  arktype: { user: aUser, nested: aNested, arr: aArr, du: aDU, run: (sch: any, x: unknown) => !(sch(x) instanceof ARK_ERR) },
+  pyreon: { user: pyrUser, nested: pyrNested, arr: pyrArr, du: pyrDU, str: pyrStr, int: pyrInt, run: (sch: any, x: unknown) => sch.parse(x).ok },
+  zod: { user: zUser, nested: zNested, arr: zArr, du: zDU, str: zStr, int: zInt, run: (sch: any, x: unknown) => sch.safeParse(x).success },
+  valibot: { user: vUser, nested: vNested, arr: vArr, du: vDU, str: vStr, int: vInt, run: (sch: any, x: unknown) => v.safeParse(sch, x).success },
+  arktype: { user: aUser, nested: aNested, arr: aArr, du: aDU, str: aStr, int: aInt, run: (sch: any, x: unknown) => !(sch(x) instanceof ARK_ERR) },
 } as const
 
 // ─── Correctness gate (a validator that doesn't validate can't "win") ──────────
@@ -159,6 +177,10 @@ function assertCorrect(): void {
       ['arr invalid', a.run(a.arr, invalidArr) === false],
       ['du valid', a.run(a.du, validDU) === true],
       ['du invalid', a.run(a.du, invalidDU) === false],
+      ['str valid', a.run(a.str, validStr) === true],
+      ['str invalid', a.run(a.str, invalidStr) === false],
+      ['int valid', a.run(a.int, validInt) === true],
+      ['int invalid', a.run(a.int, invalidInt) === false],
     ]
     for (const [name, ok] of checks) {
       if (!ok) throw new Error(`[validate-bench] correctness FAIL: ${lib} ${name}`)
@@ -173,7 +195,9 @@ console.log('\n=== @pyreon/validate parse benchmark ===')
 console.log(`  Bun ${Bun.version} · ${process.platform}/${process.arch} · NODE_ENV=production`)
 assertCorrect()
 
-const shapes: [string, 'user' | 'nested' | 'arr' | 'du', unknown, unknown][] = [
+const shapes: [string, 'user' | 'nested' | 'arr' | 'du' | 'str' | 'int', unknown, unknown][] = [
+  ['Scalar string', 'str', validStr, invalidStr],
+  ['Scalar int (0..150)', 'int', validInt, invalidInt],
   ['Small object (5 fields)', 'user', validUser, invalidUser],
   ['Nested object', 'nested', validNested, invalidNested],
   ['Array of 20 objects', 'arr', validArr, invalidArr],

@@ -13,7 +13,7 @@
 
 import { makeIssue } from '../core/issue'
 import type { PathSegment } from '../core/issue'
-import type { ParseCtx } from '../core/ops'
+import { mutablePath, type ParseCtx } from '../core/ops'
 import { Schema as SchemaBase, registerUnionFactory } from '../core/schema'
 import type { Schema } from '../core/schema'
 import { EnumSchema, LiteralSchema, NativeEnumSchema } from '../primitives/literal'
@@ -97,7 +97,7 @@ export class UnionSchema<T extends readonly AnySchema[]> extends SchemaBase<Infe
       // reflects this union's position — reinstate the snapshot around the
       // member's SYNC run (its own async parts snapshot internally, per the
       // serverCheck pattern), then restore whatever was there.
-      const saved = ctx.path.splice(0, ctx.path.length, ...pathSnap)
+      const saved = mutablePath(ctx).splice(0, ctx.path.length, ...pathSnap)
       const r = members[j]!._runInto(input, ctx)
       ctx.path.splice(0, ctx.path.length, ...saved)
       const vv = r instanceof Promise ? await r : r

@@ -6,7 +6,7 @@
  */
 
 import { makeIssue } from '../core/issue'
-import type { CheckOpts, Op, ParseCtx } from '../core/ops'
+import { mutablePath, type CheckOpts, type Op, type ParseCtx } from '../core/ops'
 import { attachCheck, makeCheckIssue, Schema as SchemaBase } from '../core/schema'
 import type { Schema } from '../core/schema'
 
@@ -58,7 +58,7 @@ export class MapSchema<K, V> extends SchemaBase<Map<K, V>> {
     let pending: Array<Promise<[unknown, unknown]>> | null = null
     let i = 0
     for (const [k, v] of input) {
-      ctx.path.push(i)
+      mutablePath(ctx).push(i)
       try {
         const before = ctx.issues.length
         const kv = this.key._runInto(k, ctx)
@@ -127,7 +127,7 @@ export class SetSchema<V> extends SchemaBase<Set<V>> {
     let pending: Array<Promise<unknown>> | null = null
     let i = 0
     for (const v of input) {
-      ctx.path.push(i)
+      mutablePath(ctx).push(i)
       try {
         const before = ctx.issues.length
         const vv = this.value._runInto(v, ctx)

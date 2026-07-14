@@ -239,6 +239,34 @@ export interface PendingCheck {
   readonly key: string
 }
 
+/**
+ * Shared, NEVER-mutated empty-path sentinel. `makeCtx` starts every parse's
+ * `path` here so a parse that never descends into a keyed position (a scalar,
+ * or a flat object/array the JIT validates with path elision) allocates ZERO
+ * path arrays — halving the per-parse ctx allocation (measured ~2× throughput
+ * on scalar/flat-object valid parses, the dominant shapes). READS work
+ * directly on the sentinel (`.slice()` / spread of an empty array). The ONLY
+ * places that MUTATE `path` — the composition interpreters' key/index
+ * push/pop, the union path-restore splice, and the JIT's flush / format-check
+ * wrappers — go through {@link mutablePath} first, which swaps the sentinel
+ * for a fresh per-parse array on first write. FROZEN so a missed write site
+ * throws loudly (caught by the test + differential-fuzz suite) rather than
+ * silently corrupting the shared sentinel across parses. Typed as the mutable
+ * `PathSegment[]` (the ctx field's type) — a deliberate, safe lie, since
+ * nothing ever writes through this reference.
+ */
+export const EMPTY_PATH: PathSegment[] = Object.freeze([]) as unknown as PathSegment[]
+
+/**
+ * Return a WRITABLE `ctx.path`, swapping the shared {@link EMPTY_PATH}
+ * sentinel for a fresh per-parse array on first mutation. Call before any
+ * `push`/`splice`; subsequent reads + the paired `pop` see the real array.
+ */
+export function mutablePath(ctx: ParseCtx): PathSegment[] {
+  if (ctx.path === EMPTY_PATH) ctx.path = []
+  return ctx.path
+}
+
 export function makeCtx(): ParseCtx {
-  return { issues: [], path: [] }
+  return { issues: [], path: EMPTY_PATH }
 }

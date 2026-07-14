@@ -29,12 +29,24 @@ export type FormatValidator = (value: string) => boolean
 const installed = new Map<string, FormatValidator>()
 
 /**
+ * Bumped on every install/uninstall. A per-op memoized resolver
+ * ({@link makeFormatResolver}) caches its resolved validator against this
+ * version, so the common case (registry never touched after startup, or
+ * touched once when `/server` loads) pays an int compare instead of a
+ * `Map.get(name)` string-hash lookup on EVERY parse. The version is the
+ * cache-invalidation trigger: a late `/server` install bumps it → the next
+ * parse re-resolves and picks up the superior validator.
+ */
+let formatVersion = 0
+
+/**
  * Install a superior validator for a named format (called by
  * `@pyreon/validate/server`). Overrides the lightweight default for every
  * schema using that format. Idempotent (last install wins).
  */
 export function installFormatValidator(name: string, fn: FormatValidator): void {
   installed.set(name, fn)
+  formatVersion++
 }
 
 /** The installed superior validator for `name`, or `undefined` (→ light default). */
@@ -45,6 +57,7 @@ export function getFormatValidator(name: string): FormatValidator | undefined {
 /** Remove an installed validator (test isolation / opt-out). */
 export function uninstallFormatValidator(name: string): void {
   installed.delete(name)
+  formatVersion++
 }
 
 /**
@@ -54,6 +67,28 @@ export function uninstallFormatValidator(name: string): void {
  */
 export function resolveFormat(name: string, light: FormatValidator): FormatValidator {
   return installed.get(name) ?? light
+}
+
+/**
+ * Build a MEMOIZED resolver for a format check — the hot-path form of
+ * {@link resolveFormat}. Created ONCE per format-check op (at schema
+ * construction); returns a `(value) => boolean` predicate that caches the
+ * resolved validator against {@link formatVersion} so the steady state is a
+ * single int compare + the validator call — no per-parse `Map.get` string
+ * hash. Byte-identical verdict to `resolveFormat(name, light)(value)`; a
+ * `/server` install bumps the version so a schema built on the client and
+ * parsed after `/server` loads still swaps to the superior validator.
+ */
+export function makeFormatResolver(name: string, light: FormatValidator): FormatValidator {
+  let cachedVersion = -1
+  let cached: FormatValidator = light
+  return (value: string): boolean => {
+    if (cachedVersion !== formatVersion) {
+      cached = installed.get(name) ?? light
+      cachedVersion = formatVersion
+    }
+    return cached(value)
+  }
 }
 
 // ─── Server-only check registry (`.serverCheck`) ────────────────────────────

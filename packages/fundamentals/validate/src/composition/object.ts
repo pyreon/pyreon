@@ -18,7 +18,7 @@
  */
 
 import { makeIssue, typeIssue } from '../core/issue'
-import type { ParseCtx } from '../core/ops'
+import { mutablePath, type ParseCtx } from '../core/ops'
 import { NullishSchema, OptionalSchema, Schema as SchemaBase } from '../core/schema'
 import type { Schema } from '../core/schema'
 import { EnumSchema } from '../primitives/literal'
@@ -101,7 +101,7 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
         const catchall = this._catchall
         for (const key of Object.keys(source)) {
           if (key in known) continue
-          ctx.path.push(key)
+          mutablePath(ctx).push(key)
           try {
             assignSafe(result, key, runFieldValidator(catchall, source[key], ctx))
           } finally {
@@ -136,7 +136,7 @@ export class ObjectSchema<TShape extends Shape> extends SchemaBase<InferShape<TS
     // is unchanged — no Promise allocation, no behavior change.
     let pending: Array<{ key: string; promise: Promise<unknown> }> | null = null
     for (const key of Object.keys(known)) {
-      ctx.path.push(key)
+      mutablePath(ctx).push(key)
       try {
         const value = known[key]!._runInto(source[key], ctx)
         if (value instanceof Promise) {

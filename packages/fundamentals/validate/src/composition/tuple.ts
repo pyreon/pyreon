@@ -4,7 +4,7 @@
  * length + each position; extra elements are rejected.
  */
 
-import type { ParseCtx } from '../core/ops'
+import { mutablePath, type ParseCtx } from '../core/ops'
 import { makeIssue, typeIssue } from '../core/issue'
 import { Schema as SchemaBase } from '../core/schema'
 import type { Schema } from '../core/schema'
@@ -65,7 +65,7 @@ export class TupleSchema<T extends readonly AnySchema[], Rest = never> extends S
     // once it settles. `parseAsync` awaits the collected Promise; a sync
     // `parse()` sees it at the root and reports async-in-sync.
     const runElement = (schema: AnySchema, i: number): void => {
-      ctx.path.push(i)
+      mutablePath(ctx).push(i)
       try {
         const before = ctx.issues.length
         const v = schema._runInto(input[i], ctx)
