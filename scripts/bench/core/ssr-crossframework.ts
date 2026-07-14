@@ -357,10 +357,19 @@ function report(title: string, avgBytes: number, rows: Sample[]): void {
 // ─── Correctness gate (a renderer that doesn't render can't "win") ────────────
 
 function normalize(html: string): string {
-  // React SSR may inject `<!-- -->` comment markers between adjacent dynamic
-  // text siblings; our trees have none, but strip defensively so a benign
-  // marker-only difference doesn't mask a real structural match.
-  return html.replace(/<!--\s*-->/g, '')
+  // React/Solid SSR may inject HTML comment markers (`<!-- -->`, `<!--$-->`,
+  // `<!--/-->`) between/around dynamic siblings; our trees have none, so strip
+  // ALL comments so a benign marker-only difference doesn't mask a real
+  // structural match. Loop until stable so overlapping/adjacent markers can't
+  // leave a residual `<!--` (satisfies CodeQL's complete-sanitization check;
+  // this is trusted framework output, not untrusted input).
+  let out = html
+  let prev: string
+  do {
+    prev = out
+    out = out.replace(/<!--[\s\S]*?-->/g, '')
+  } while (out !== prev)
+  return out
 }
 
 async function correctnessGate(
