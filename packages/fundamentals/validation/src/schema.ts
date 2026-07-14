@@ -151,11 +151,27 @@ export function isPyreonAdapter(
 /**
  * Detect a Standard Schema-compliant schema (Tier A.2). Spec:
  * https://standardschema.dev/
+ *
+ * A Standard Schema may be an OBJECT (zod ≥3.24, valibot ≥1, `@pyreon/validate`'s
+ * `s`) OR a FUNCTION — **ArkType schemas are callable** (`type("string")(input)`
+ * validates) that ALSO carry the `~standard` entrypoint. So the guard accepts a
+ * value whose `typeof` is `'object'` OR `'function'`, as long as it carries a
+ * well-formed `~standard` with a `validate` fn. Purely additive: object schemas
+ * behave exactly as before; only function-carrying-`~standard` (ArkType) is
+ * newly accepted. A plain function WITHOUT `~standard` still returns `false`.
+ *
+ * Detection returned `false` for callable schemas from this package's inception,
+ * so raw ArkType silently failed Standard-Schema detection everywhere — every
+ * consumer that routes "is this a Standard Schema? then validate through it"
+ * (`@pyreon/form`, `@pyreon/store`, `@pyreon/state-tree`, `@pyreon/validate`,
+ * `@pyreon/feature`) SKIPPED validation for a raw ArkType schema, reporting
+ * VALID while the schema would REJECT.
  */
 export function isStandardSchema(
   value: unknown,
-): value is StandardSchemaShape<unknown> {
-  if (value == null || typeof value !== 'object') return false
+): value is StandardSchemaLike<unknown> {
+  if (value == null || (typeof value !== 'object' && typeof value !== 'function'))
+    return false
   const std = (value as { '~standard'?: unknown })['~standard']
   return (
     std != null &&

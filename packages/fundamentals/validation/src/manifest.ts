@@ -177,9 +177,9 @@ const errors = await validate({ email: 'x', age: 5 })
     {
       name: 'isStandardSchema',
       kind: 'function',
-      signature: '(value: unknown) => value is StandardSchemaShape<unknown>',
+      signature: '(value: unknown) => value is StandardSchemaLike<unknown>',
       summary:
-        'Runtime type guard — detect a Standard Schema-compliant object by its `~standard` property (an object with a `validate` function). Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump.',
+        'Runtime type guard — detect a Standard Schema-compliant schema by its `~standard` property (an object carrying a `validate` function). Accepts a value whose `typeof` is `object` OR `function` — ArkType schemas are CALLABLE (`type("string")(input)` validates) yet still carry `~standard`, so a callable is a valid Standard Schema; a plain function WITHOUT `~standard` is still rejected. Used by the universal gate to decide whether a `schema` option is a raw Standard Schema (→ standardSchemaToValidator) vs a Pyreon TypedSchemaAdapter (→ isPyreonAdapter) vs a plain validator function. Zero library imports — pure duck-typing, so it never breaks on a validator-library major bump.',
       example: `import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 
 if (isStandardSchema(schema)) {
@@ -187,6 +187,7 @@ if (isStandardSchema(schema)) {
 }`,
       mistakes: [
         'Using it to detect a Pyreon adapter — those brand with `_infer`, not `~standard`; use isPyreonAdapter for that tier',
+        'Assuming it only matches objects — ArkType schemas are functions; the guard accepts a callable carrying `~standard` (a bare object-only guard silently rejected raw ArkType everywhere)',
       ],
       seeAlso: ['isPyreonAdapter', 'standardSchemaToValidator'],
     },

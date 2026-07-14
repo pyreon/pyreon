@@ -111,7 +111,11 @@ useForm({
 
 ### ArkType
 
-ArkType is synchronous — call the type directly, no `safeParse` arg:
+ArkType is synchronous — call the type directly, no `safeParse` arg. ArkType ≥2 is
+Standard-Schema-compliant, so you can also pass a raw `type(...)` **directly** (no
+`arktypeSchema()` adapter) anywhere a raw Standard Schema is accepted — ArkType
+schemas are *callable* (functions) that still carry `~standard`, and `isStandardSchema`
+detects them (schema-driven `@pyreon/store` / `@pyreon/state-tree`):
 
 ```ts
 import { type } from 'arktype'
@@ -148,7 +152,7 @@ Issue paths flatten to dot-strings (`address.city`); the first message per path 
 
 Companion helpers:
 
-- **`isStandardSchema(value)`** — type guard detecting the `~standard` property. Used to route a `schema` option to the raw-schema path.
+- **`isStandardSchema(value)`** — type guard detecting the `~standard` property. Accepts a value whose `typeof` is `object` **or `function`** — **ArkType schemas are callable** (`type("string")(input)` validates) yet carry `~standard`, so a raw `type(...)` is a valid Standard Schema; a plain function without `~standard` is still rejected. Used to route a `schema` option to the raw-schema path.
 - **`isPyreonAdapter(value)`** — type guard detecting a Pyreon `TypedSchemaAdapter` (the `_infer` brand + a callable `parse`).
 - **`wrapStandardSchema(schema)`** — convert a Standard Schema into a synchronous `SchemaParseResult` parser returning the *coerced value* (not form errors). Surfaces async validation as a `Promise` return. `@internal` — most consumers go through `extractParseFn`.
 - **`extractParseFn(schema)`** — the primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accepts either a `TypedSchemaAdapter` or a raw Standard Schema and returns one uniform sync parser. Throws a `[Pyreon]`-prefixed error if the value is neither shape.
