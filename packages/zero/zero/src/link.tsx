@@ -1,6 +1,6 @@
 import { createRef, isServer } from '@pyreon/core'
 import type { CheckHref, LinkConfig } from '@pyreon/router'
-import { classifyHref, toRouterPath, useRouter } from '@pyreon/router'
+import { classifyHref, getActiveRouter, toRouterPath, useRouter } from '@pyreon/router'
 import type { RoutePath } from './route-types'
 import { useIntersectionObserver } from './utils/use-intersection-observer'
 
@@ -107,7 +107,7 @@ const MAX_PREFETCH_CACHE = 200
 // with no cleanup).
 const prefetched = new Map<string, Element[]>()
 
-function doPrefetch(href: string) {
+function doPrefetch(href: string, router: ReturnType<typeof useRouter> | null) {
   // Prefetch only fires from browser-mounted Link interactions (hover /
   // click intent). Explicit guard documents the SSR-safety contract.
   if (isServer) return
@@ -123,36 +123,48 @@ function doPrefetch(href: string) {
   }
 
   const injected: Element[] = []
+  // Warm the next-navigation HTML document — valid, cheap, and browser-
+  // scheduled at low priority. `as="document"` is correct here: `href` IS a
+  // navigable route path.
   const docLink = document.createElement('link')
   docLink.rel = 'prefetch'
   docLink.href = href
   docLink.as = 'document'
   document.head.appendChild(docLink)
   injected.push(docLink)
-
-  try {
-    const chunkHint = document.createElement('link')
-    chunkHint.rel = 'modulepreload'
-    chunkHint.href = href
-    document.head.appendChild(chunkHint)
-    injected.push(chunkHint)
-  } catch {
-    // modulepreload is a hint, not critical
-  }
-
   prefetched.set(href, injected)
+
+  // Warm the route's real JS chunk via the router's own lazy loader — the
+  // Vite-resolved `import()` inside the matched route record, populated into
+  // the component cache so the imminent SPA navigation renders synchronously.
+  // `skipLoaders: true` keeps it a pure CODE prefetch (no loader/data fetches,
+  // no side effects on hover). Best-effort: a failed prefetch never surfaces.
+  //
+  // We deliberately do NOT inject `<link rel="modulepreload" href={href}>`:
+  // `href` is the ROUTE PATH, which an SSR server returns as `text/html`, so a
+  // modulepreload against it ALWAYS trips strict-MIME "Failed to load module
+  // script" — a console error on every hovered link plus a wasted HTML fetch.
+  // The per-route chunk URL is not knowable from the client path (it lives in
+  // the route record's loader closure), so preloading through the router is the
+  // only reliable way to warm the actual chunk.
+  // `?.catch` (not `.catch`) — when no router is active `router?.preload(...)`
+  // short-circuits to undefined, and `.catch` on undefined would throw.
+  void router?.preload(href, undefined, { skipLoaders: true })?.catch(() => {})
 }
 
 /**
- * Prefetch a route's JS chunk by injecting `<link rel="prefetch">` into the
- * document head. Deduplicates — calling with the same href twice is a no-op.
+ * Warm a route ahead of navigation: prefetches the next-navigation HTML
+ * document (`<link rel="prefetch" as="document">`) AND imports the route's real
+ * JS chunk via the active router's lazy loader (code only — loaders are NOT
+ * run). Deduplicates — calling with the same href twice is a no-op. No-ops on
+ * the server and when no router is active.
  *
  * @example
  * prefetchRoute('/about')
  * prefetchRoute('/dashboard')
  */
 export function prefetchRoute(href: string): void {
-  doPrefetch(href)
+  doPrefetch(href, getActiveRouter())
 }
 
 /**
@@ -218,13 +230,13 @@ export function useLink<const T extends string = string>(props: LinkProps<T>): U
 
   function handleMouseEnter() {
     if (strategy === 'hover' && isInternal()) {
-      doPrefetch(routerPath())
+      doPrefetch(routerPath(), router)
     }
   }
 
   function handleTouchStart() {
     if ((strategy === 'hover' || strategy === 'viewport') && isInternal()) {
-      doPrefetch(routerPath())
+      doPrefetch(routerPath(), router)
     }
   }
 
@@ -232,7 +244,7 @@ export function useLink<const T extends string = string>(props: LinkProps<T>): U
     useIntersectionObserver(
       () => elementRef.current ?? undefined,
       () => {
-        if (isInternal()) doPrefetch(routerPath())
+        if (isInternal()) doPrefetch(routerPath(), router)
       },
     )
   }

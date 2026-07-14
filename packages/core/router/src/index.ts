@@ -87,6 +87,8 @@ export {
 // Router factory + hooks
 export {
   createRouter,
+  getActiveRouter,
+  setActiveRouter,
   onBeforeRouteLeave,
   onBeforeRouteUpdate,
   RouterContext,
