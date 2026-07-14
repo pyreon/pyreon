@@ -93,6 +93,9 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 | [`TabbedEditor`](#tabbededitor) | component | Mount component for a `createTabbedEditor` instance. |
 | [`loadLanguage`](#loadlanguage) | function | Lazy-load a language grammar and return its CodeMirror `Extension`. |
 | [`minimapExtension`](#minimapextension) | function | CodeMirror extension that renders a canvas-based code overview minimap. |
+| [`useEditorSignal`](#useeditorsignal) | function | Component hook that two-way-binds an editor to a signal WITH automatic cleanup. |
+| [`getAvailableLanguages`](#getavailablelanguages) | function | Return every supported language identifier (the keys of the internal grammar-loader registry) — for building a language  |
+| [`darkTheme / lightTheme / resolveTheme`](#darktheme-lighttheme-resolvetheme) | constant | The built-in editor themes. |
 
 ## API
 
@@ -300,6 +303,83 @@ const editor = createEditor({ value: longCode, minimap: true })
 ```
 
 **See also:** `createEditor`
+
+---
+
+### useEditorSignal `function`
+
+```ts
+useEditorSignal<T>(options: BindEditorToSignalOptions<T>) => void
+```
+
+Component hook that two-way-binds an editor to a signal WITH automatic cleanup. It wraps `bindEditorToSignal` and registers `onUnmount(() => binding.dispose())`, so you do not manage the binding lifecycle yourself — unlike `bindEditorToSignal`, which returns a `{ dispose }` handle for user-owned lifecycles. Options: `{ editor, signal, serialize, parse, onParseError? }` — `signal` is any `SignalLike<T>`, `serialize` projects the value into editor text, `parse` reads it back.
+
+**Example**
+
+```tsx
+function MyEditor() {
+  const code = signal('console.log(1)')
+  const editor = createEditor({ value: code(), language: 'javascript' })
+  useEditorSignal({ editor, signal: code, serialize: (v) => v, parse: (t) => t })
+  return <CodeEditor instance={editor} />
+}
+```
+
+**Common mistakes**
+
+- Calling it outside a component — it relies on `onUnmount` for cleanup, so it only works during component setup. For a manually-managed lifecycle use `bindEditorToSignal` (which returns a `{ dispose }` handle) and call `dispose()` yourself.
+- Expecting a return value — it returns `void` (no binding handle); disposal is automatic. If you need to tear the binding down early, use `bindEditorToSignal` instead.
+- A non-deterministic `serialize`/`parse` pair — the binding round-trips through both, so `serialize(parse(serialize(x)))` must equal `serialize(x)` or the editor and the signal fight each other.
+
+**See also:** `bindEditorToSignal` · `createEditor`
+
+---
+
+### getAvailableLanguages `function`
+
+```ts
+getAvailableLanguages() => EditorLanguage[]
+```
+
+Return every supported language identifier (the keys of the internal grammar-loader registry) — for building a language picker. Pairs with `loadLanguage(id)`, which lazy-loads a grammar on demand. The set covers the bundled CodeMirror grammars plus `'plain'` (no highlighting).
+
+**Example**
+
+```tsx
+const languages = getAvailableLanguages()
+// → ['javascript', 'typescript', 'python', 'plain', …]
+```
+
+**Common mistakes**
+
+- Assuming a returned id is already loaded — `getAvailableLanguages()` lists what CAN be loaded; the grammar itself is lazy. Pass the id to `createEditor({ language })` (or `loadLanguage(id)`) to actually load it.
+
+**See also:** `loadLanguage` · `createEditor`
+
+---
+
+### darkTheme / lightTheme / resolveTheme `constant`
+
+```ts
+darkTheme: Extension · lightTheme: Extension · resolveTheme(theme: EditorTheme) => Extension
+```
+
+The built-in editor themes. `lightTheme` and `darkTheme` are CodeMirror `Extension`s (a clean light palette and a VS-Code-inspired dark one). `darkTheme` carries the `{ dark: true }` facet — the flag CodeMirror's dark-aware features AND this package's minimap key on (NOT a CSS class). `resolveTheme(theme)` maps `'light'`/`'dark'` to those extensions and passes a custom `Extension` through unchanged (`EditorTheme = 'light' | 'dark' | Extension`). You normally set `createEditor({ theme })` and let it resolve — reach for the raw extensions only when composing your own CodeMirror state.
+
+**Example**
+
+```tsx
+const editor = createEditor({ value: code, theme: 'dark' })   // resolved internally
+// or compose the raw extension yourself:
+const extensions = [darkTheme /* , ...other CM extensions */]
+```
+
+**Common mistakes**
+
+- Toggling dark mode by swapping a CSS class — CodeMirror keys its dark-aware behavior (and this package's minimap) on the `EditorView.darkTheme` FACET carried by `darkTheme`, not a class. Provide `darkTheme` (or `theme: 'dark'`) so the facet is set.
+- Passing a theme NAME other than 'light'/'dark' to `resolveTheme` — only those two strings map to a preset; any other value must be a real CodeMirror `Extension` (it is returned as-is).
+
+**See also:** `createEditor` · `minimapExtension`
 
 ---
 
