@@ -2221,6 +2221,8 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 >
 > **Toolbars**: Build a toolbar with `editor.chain()?.toggleBold().run()` for commands + `editor.isActive("bold")` for active state. `isActive` is reactive — call it inside a reactive scope (`class={() => editor.isActive("bold") ? "active" : ""}`), not at component-body top level, or the highlight won't update. Gate undo/redo buttons on `editor.canUndo()` / `editor.canRedo()`.
 >
+> **Counts**: `characterCount`/`wordCount`/`isEmpty` are derived from the document JSON (not the mounted engine): they report before mount (a stored-JSON draft list needs no editor instance), count VISIBLE characters (excluding `getText()`'s `\n\n` block separators), and are selection-immune. Schema-less by design (StarterKit-accurate); a custom node whose rendered text differs from its text descendants may count differently than its live `getText()`. String (HTML) content parses on mount, so its counts populate once mounted — stored ProseMirror JSON is the pre-mount case.
+>
 > **Collaboration**: For real-time collaboration, compose with `@pyreon/sync`: bind the editor to the same `Y.Doc` XML fragment (`createYjsDoc().yDoc.getXmlFragment(...)`) via TipTap's collaboration extension, and reuse `@pyreon/sync` transports + `syncedAwareness` for presence — no paid cloud required.
 >
 > **License**: TipTap + ProseMirror are MIT throughout. Avoid TipTap Pro modules (Cloud, Comments, Content AI, doc-conversion) which are paid/commercially-licensed.

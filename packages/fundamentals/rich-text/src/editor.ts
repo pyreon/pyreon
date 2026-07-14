@@ -4,6 +4,79 @@ import type { RichTextConfig, RichTextEditor } from './types'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
 
+// ── Pure ProseMirror-JSON walkers ──────────────────────────────────────────
+// text / character-count / word-count / isEmpty derive DIRECTLY from the
+// document JSON (`baseJson`), not the mounted TipTap engine. Three payoffs:
+//   1. They work BEFORE mount + AFTER dispose — a stored-JSON draft reports a
+//      real character/word count and an accurate `isEmpty` without ever
+//      loading the (lazy) engine (draft lists, SSR previews).
+//   2. They re-derive only when the DOCUMENT changes (`baseJson`), never on a
+//      pure selection move — moving the cursor no longer re-runs a live
+//      word-counter effect (the engine bumps one counter for BOTH update and
+//      selection events; content computeds must not subscribe to selection).
+//   3. `characterCount` counts the VISIBLE characters, not the `\n\n` block
+//      separators TipTap's `getText()` inserts between blocks (`aaa`+`bbb`
+//      across two paragraphs is 6, not 8).
+// Schema-less by design (StarterKit-accurate). A custom node whose rendered
+// text differs from its concatenated text descendants may count differently
+// than its live `getText()` — documented; the 99% (StarterKit) case is exact.
+
+/** Push every text node's string (depth-first) into `acc`. */
+function collectTextNodes(node: JSONContent, acc: string[]): void {
+  if (node.type === 'text') {
+    if (node.text) acc.push(node.text)
+    return
+  }
+  const kids = node.content
+  if (kids) for (const child of kids) collectTextNodes(child, acc)
+}
+
+/** Total VISIBLE character count — sum of every text node's length. */
+function countChars(node: JSONContent): number {
+  const acc: string[] = []
+  collectTextNodes(node, acc)
+  let total = 0
+  for (const s of acc) total += s.length
+  return total
+}
+
+/**
+ * Concatenate each textblock's inline text (marks joined without a separator,
+ * so a mark-split word stays one word), one string per block.
+ */
+function collectBlockTexts(node: JSONContent, out: string[]): void {
+  const kids = node.content
+  if (!kids || kids.length === 0) return
+  // A textblock has at least one direct text child; concatenate its inline
+  // text as a single block. Otherwise it's a container — recurse into it.
+  if (kids.some((c) => c.type === 'text')) {
+    const acc: string[] = []
+    collectTextNodes(node, acc)
+    out.push(acc.join(''))
+  } else {
+    for (const child of kids) collectBlockTexts(child, out)
+  }
+}
+
+/** Whitespace-delimited word count (block boundaries never merge words). */
+function countWords(node: JSONContent): number {
+  const blocks: string[] = []
+  collectBlockTexts(node, blocks)
+  let total = 0
+  for (const b of blocks) {
+    const t = b.trim()
+    if (t !== '') total += t.split(/\s+/).length
+  }
+  return total
+}
+
+/** Best-effort plain text — blocks joined with `\n\n` (matches `getText`). */
+function extractText(node: JSONContent): string {
+  const blocks: string[] = []
+  collectBlockTexts(node, blocks)
+  return blocks.join('\n\n')
+}
+
 /**
  * Create a reactive WYSIWYG rich-text editor instance.
  *
@@ -44,8 +117,14 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   const focused = signal(false)
   const view = signal<Editor | null>(null)
   const baseEditable = signal(initialEditable)
-  // Bumped on every transaction so the read-through computeds re-derive.
+  // Two transaction counters, deliberately split. `docVersion` bumps only on a
+  // CONTENT change (`onUpdate`); `selectionVersion` bumps on a selection move
+  // (`onSelectionUpdate`). Content computeds that read the live engine
+  // (`html` / `canUndo` / `canRedo`) subscribe to `docVersion` ONLY, so a cursor
+  // move doesn't re-run them; `isActive` (mark/node state depends on BOTH the
+  // marks present and where the cursor sits) subscribes to both.
   const docVersion = signal(0)
+  const selectionVersion = signal(0)
 
   // `editable` is a writable facade: reads delegate to baseEditable; `.set`
   // flips the live editor's editable state (when mounted) then commits to base
@@ -94,21 +173,26 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
   })
 
   const readEditor = (): Editor | null => {
-    docVersion() // subscribe — re-derive on each transaction
+    docVersion() // subscribe — re-derive on each CONTENT change (not selection)
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     return view.peek()
   }
 
+  // Engine-derived, CONTENT-reactive (read the live editor once mounted; skip
+  // selection-only churn by subscribing to `docVersion`, not selection).
   const html = computed(() => readEditor()?.getHTML() ?? (typeof content === 'string' ? content : ''))
-  const text = computed(() => readEditor()?.getText() ?? '')
-  const isEmpty = computed(() => readEditor()?.isEmpty ?? true)
-  const characterCount = computed(() => readEditor()?.getText().length ?? 0)
-  const wordCount = computed(() => {
-    const t = readEditor()?.getText().trim() ?? ''
-    return t === '' ? 0 : t.split(/\s+/).length
-  })
   const canUndo = computed(() => readEditor()?.can().undo() ?? false)
   const canRedo = computed(() => readEditor()?.can().redo() ?? false)
+
+  // Document-derived (pure walkers over `baseJson`). They track the DOCUMENT,
+  // not the engine — so they work before mount / after dispose, don't re-run on
+  // a pure cursor move, and count visible characters (no `\n\n` separators).
+  // `text` prefers the live engine's exact `getText()` when mounted (custom
+  // node serializers), falling back to the walker before mount.
+  const text = computed(() => readEditor()?.getText() ?? extractText(baseJson()))
+  const characterCount = computed(() => countChars(baseJson()))
+  const wordCount = computed(() => countWords(baseJson()))
+  const isEmpty = computed(() => countChars(baseJson()) === 0)
 
   /**
    * Whether a mark/node is active at the current selection — reactive (reads
@@ -118,7 +202,10 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
    * scope (a `() => …` thunk in JSX, an `effect`, a `computed`).
    */
   const isActive = (name: string | Record<string, unknown>, attrs?: Record<string, unknown>): boolean => {
-    docVersion() // subscribe — re-derive on each transaction / selection change
+    // Active-state depends on BOTH content (which marks/nodes exist) AND the
+    // selection (where the cursor sits) — subscribe to both counters.
+    docVersion()
+    selectionVersion()
     // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
     const e = view.peek()
     if (!e) return false
@@ -194,7 +281,7 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
             onChange?.(next)
           }
         },
-        onSelectionUpdate: () => docVersion.update((v) => v + 1),
+        onSelectionUpdate: () => selectionVersion.update((v) => v + 1),
         onFocus: () => focused.set(true),
         onBlur: () => focused.set(false),
       })

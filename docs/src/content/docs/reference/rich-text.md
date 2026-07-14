@@ -16,7 +16,7 @@ Reactive WYSIWYG rich-text editor for Pyreon, built as a thin signal layer over 
 - createRichTextEditor — reactive instance with writable Signal&lt;JSONContent&gt; json
 - RichText JSX component — lazy-loads TipTap on mount; a11y-labeled role="textbox"
 - bindRichTextToSignal — two-way binding (json or html) with built-in loop prevention
-- Computed html / text / isEmpty / characterCount / wordCount / canUndo / canRedo signals
+- Computed html / text / isEmpty / characterCount / wordCount / canUndo / canRedo signals — counts derive from the document JSON (work before mount, visible-char count, selection-immune)
 - editor.isActive(name) — reactive toolbar primitive; editable — writable read-only signal
 - TipTap command chain via editor.chain() + undo/redo/focus/blur helpers
 - MIT throughout (TipTap + ProseMirror); collaboration composes with @pyreon/sync
@@ -74,7 +74,7 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 (config?: RichTextConfig) => RichTextEditor
 ```
 
-Create a reactive WYSIWYG editor instance. `editor.json` is a writable Signal&lt;JSONContent&gt; — `editor.json()` reads reactively, `editor.json.set(next)` replaces the editor content (loop-safe). `html`/`text`/`isEmpty`/`characterCount`/`wordCount`/`canUndo`/`canRedo` are computed signals; `editable` is a writable Signal&lt;boolean&gt; (runtime read-only toggle); `editor.isActive('bold')` is the reactive toolbar primitive. Commands run through `editor.chain()` (toggleBold/toggleHeading/toggleBulletList/…) plus `undo`/`redo`/`focus`/`blur` helpers. The TipTap `Editor` (over ProseMirror) is created lazily when mounted via `<RichText>`, so `@tiptap/*` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, onChange, and onError (mount failures route here instead of an unhandled rejection). The instance is framework-independent — mount it via `<RichText instance={editor} />`.
+Create a reactive WYSIWYG editor instance. `editor.json` is a writable Signal&lt;JSONContent&gt; — `editor.json()` reads reactively, `editor.json.set(next)` replaces the editor content (loop-safe). `html`/`text`/`isEmpty`/`characterCount`/`wordCount`/`canUndo`/`canRedo` are computed signals; `editable` is a writable Signal&lt;boolean&gt; (runtime read-only toggle); `editor.isActive('bold')` is the reactive toolbar primitive. `characterCount`/`wordCount`/`isEmpty` derive from the document JSON, so they report accurately BEFORE the (lazy) engine mounts (stored-JSON draft lists), count VISIBLE characters (not the `\n\n` block separators `getText()` inserts), and — like `text`/`html`/`canUndo` — re-derive only on a CONTENT change, never a pure cursor move (a live word-counter effect doesn't re-fire on every arrow-key); `isActive` still tracks the selection. Commands run through `editor.chain()` (toggleBold/toggleHeading/toggleBulletList/…) plus `undo`/`redo`/`focus`/`blur` helpers. The TipTap `Editor` (over ProseMirror) is created lazily when mounted via `<RichText>`, so `@tiptap/*` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, onChange, and onError (mount failures route here instead of an unhandled rejection). The instance is framework-independent — mount it via `<RichText instance={editor} />`.
 
 **Example**
 
@@ -162,6 +162,8 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 > **Accessibility:** The content area is a `role="textbox"` `aria-multiline` region; supply `ariaLabel` (defaults to "Rich text editor") so screen readers announce a name.
 
 > **Toolbars:** Build a toolbar with `editor.chain()?.toggleBold().run()` for commands + `editor.isActive("bold")` for active state. `isActive` is reactive — call it inside a reactive scope (`class={() => editor.isActive("bold") ? "active" : ""}`), not at component-body top level, or the highlight won't update. Gate undo/redo buttons on `editor.canUndo()` / `editor.canRedo()`.
+
+> **Counts:** `characterCount`/`wordCount`/`isEmpty` are derived from the document JSON (not the mounted engine): they report before mount (a stored-JSON draft list needs no editor instance), count VISIBLE characters (excluding `getText()`'s `\n\n` block separators), and are selection-immune. Schema-less by design (StarterKit-accurate); a custom node whose rendered text differs from its text descendants may count differently than its live `getText()`. String (HTML) content parses on mount, so its counts populate once mounted — stored ProseMirror JSON is the pre-mount case.
 
 > **Collaboration:** For real-time collaboration, compose with `@pyreon/sync`: bind the editor to the same `Y.Doc` XML fragment (`createYjsDoc().yDoc.getXmlFragment(...)`) via TipTap's collaboration extension, and reuse `@pyreon/sync` transports + `syncedAwareness` for presence — no paid cloud required.
 

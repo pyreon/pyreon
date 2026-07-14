@@ -74,6 +74,65 @@ describe('createRichTextEditor (pre-mount, no TipTap)', () => {
     expect(editor.isActive('heading', { level: 2 })).toBe(false)
   })
 
+  it('derives text / counts / isEmpty from JSON content BEFORE mount', () => {
+    // A stored-JSON draft reports real counts + an accurate isEmpty without
+    // ever loading the (lazy) TipTap engine. (Regression: pre-fix these read
+    // the un-mounted engine and returned 0 / "" / true for a non-empty doc.)
+    const editor = createRichTextEditor({ content: doc('one two three') })
+    expect(editor.characterCount()).toBe('one two three'.length) // 13
+    expect(editor.wordCount()).toBe(3)
+    expect(editor.isEmpty()).toBe(false)
+    expect(editor.text()).toBe('one two three')
+
+    const empty = createRichTextEditor()
+    expect(empty.characterCount()).toBe(0)
+    expect(empty.wordCount()).toBe(0)
+    expect(empty.isEmpty()).toBe(true)
+  })
+
+  it('characterCount excludes block separators; wordCount does not merge blocks', () => {
+    // Two paragraphs: 6 visible characters ("aaa" + "bbb"), 2 words — NOT the 8
+    // characters getText() reports (it inserts a "\n\n" between blocks).
+    const twoBlocks: JSONContent = {
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'aaa' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'bbb' }] },
+      ],
+    }
+    const editor = createRichTextEditor({ content: twoBlocks })
+    expect(editor.characterCount()).toBe(6)
+    expect(editor.wordCount()).toBe(2)
+    expect(editor.text()).toBe('aaa\n\nbbb')
+  })
+
+  it('a mark-split word counts as one word', () => {
+    // "hel" + bold "lo" are two adjacent text nodes in one paragraph — one word.
+    const marked: JSONContent = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'hel' },
+            { type: 'text', text: 'lo', marks: [{ type: 'bold' }] },
+          ],
+        },
+      ],
+    }
+    const editor = createRichTextEditor({ content: marked })
+    expect(editor.wordCount()).toBe(1)
+    expect(editor.characterCount()).toBe(5)
+  })
+
+  it('json.set updates the derived counts before mount', () => {
+    const editor = createRichTextEditor()
+    expect(editor.wordCount()).toBe(0)
+    editor.json.set(doc('four words go here'))
+    expect(editor.wordCount()).toBe(4)
+    expect(editor.characterCount()).toBe('four words go here'.length)
+  })
+
   it('editable defaults from config and is a writable signal before mount', () => {
     const editor = createRichTextEditor()
     expect(editor.editable()).toBe(true)
