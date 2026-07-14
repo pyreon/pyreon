@@ -194,7 +194,7 @@ Honest capability matrix: `docs/src/content/docs/multiplatform.md`.
 | `@pyreon/rx` | Signal-aware reactive transforms — 39 functions |
 | `@pyreon/toast` | Toasts — `toast()` + variants, `<Toaster>`, a11y |
 | `@pyreon/url-state` | URL-synced state — `useUrlState`, schema mode, type coercion, SSR-safe |
-| `@pyreon/dnd` | Signal-driven DnD — wraps `@atlaskit/pragmatic-drag-and-drop` |
+| `@pyreon/dnd` | Signal-driven DnD — wraps `@atlaskit/pragmatic-drag-and-drop`. Every pdnd teardown wired into `onCleanup`; `useSortable` disposes per-item AND container registrations on ref-`null`/re-register (a `<Show>`-toggled container no longer leaks — the F3 per-item leak's sibling). Wrapper-tax bench (`bench/dnd-wrapper-tax.ts`, real pdnd + happy-dom, per-op process isolation): near-zero overhead vs hand-rolled raw pdnd — draggable/droppable/sortable-item lifecycles tie, monitor +~1 closure/mount |
 | `@pyreon/sync` | Local-first CRDT sync — a synced signal IS a signal; Yjs engine, IndexedDB, cross-tab + WebSocket, presence/live-cursors, relay server w/ authz |
 | `@pyreon/a11y` | A11y primitives — `announce()` (zero-setup live regions), `<VisuallyHidden>`, `createA11yId` |
 

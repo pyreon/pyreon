@@ -16,7 +16,7 @@ Signal-driven drag and drop for Pyreon. A thin wrapper over Atlassian's `pragmat
 - Sortable: auto-scroll near container edges, closest-edge detection, Alt+Arrow keyboard reordering, ARIA wiring
 - Cross-list boards via groupId — onCrossListDrop (source removes) + onCrossListReceive (destination inserts)
 - Native file drop with accept (extension / MIME glob / exact MIME) and maxFiles filtering + page-wide isDraggingFiles
-- Automatic teardown via onCleanup — per-item pdnd registrations disposed individually in churning &lt;For&gt; lists
+- Automatic teardown via onCleanup — sortable disposes per-item AND container pdnd registrations individually (churning &lt;For&gt; lists and &lt;Show&gt;-toggled containers never leak)
 - SSR-safe: every hook short-circuits on the server and returns inert zero-state accessors
 
 ## Complete example

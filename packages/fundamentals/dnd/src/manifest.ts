@@ -65,7 +65,7 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
     'Sortable: auto-scroll near container edges, closest-edge detection, Alt+Arrow keyboard reordering, ARIA wiring',
     'Cross-list boards via groupId — onCrossListDrop (source removes) + onCrossListReceive (destination inserts)',
     'Native file drop with accept (extension / MIME glob / exact MIME) and maxFiles filtering + page-wide isDraggingFiles',
-    'Automatic teardown via onCleanup — per-item pdnd registrations disposed individually in churning <For> lists',
+    'Automatic teardown via onCleanup — sortable disposes per-item AND container pdnd registrations individually (churning <For> lists and <Show>-toggled containers never leak)',
     'SSR-safe: every hook short-circuits on the server and returns inert zero-state accessors',
   ],
   api: [
