@@ -13,7 +13,17 @@ import type { BackgroundProps } from '../types'
  * ```
  */
 export function Background(props: BackgroundProps): VNodeChild {
-  const { variant = 'dots', gap = 20, size = 1, color = '#ddd' } = props
+  const { variant = 'dots', gap = 20, size = 1 } = props
+
+  // Pattern color lives in `style` (CSS), NOT the `fill`/`stroke` presentation
+  // attribute — same reason as the edge stroke (see flow-component.tsx): a
+  // `var()` is INVALID in a presentation attr (dropped → the SVG default black),
+  // and a presentation attr is also overridable by a stray global `svg { fill }`
+  // rule. In `style` the `var()` resolves AND inline style wins. Default is the
+  // themeable `--pyreon-flow-bg-pattern` (with the historical `#ddd` as
+  // fallback) so a dark-themed consumer can dim it — the light-mode #ddd dots
+  // are harsh on a dark canvas. An explicit `color` prop still wins.
+  const patternColor = props.color ?? 'var(--pyreon-flow-bg-pattern, #ddd)'
 
   const patternId = `flow-bg-${variant}`
 
@@ -34,7 +44,7 @@ export function Background(props: BackgroundProps): VNodeChild {
             height={String(gap)}
             {...{ patternUnits: 'userSpaceOnUse' }}
           >
-            <circle cx={String(size)} cy={String(size)} r={String(size)} fill={color} />
+            <circle cx={String(size)} cy={String(size)} r={String(size)} style={`fill: ${patternColor}`} />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill={`url(#${patternId})`} />
@@ -64,7 +74,7 @@ export function Background(props: BackgroundProps): VNodeChild {
               y1={String(gap)}
               x2={String(gap)}
               y2={String(gap)}
-              stroke={color}
+              style={`stroke: ${patternColor}`}
               stroke-width={String(size)}
             />
             <line
@@ -72,7 +82,7 @@ export function Background(props: BackgroundProps): VNodeChild {
               y1="0"
               x2={String(gap)}
               y2={String(gap)}
-              stroke={color}
+              style={`stroke: ${patternColor}`}
               stroke-width={String(size)}
             />
           </pattern>
@@ -104,7 +114,7 @@ export function Background(props: BackgroundProps): VNodeChild {
             y1={String(gap / 2)}
             x2={String(gap / 2 + size * 2)}
             y2={String(gap / 2)}
-            stroke={color}
+            style={`stroke: ${patternColor}`}
             stroke-width={String(size)}
           />
           <line
@@ -112,7 +122,7 @@ export function Background(props: BackgroundProps): VNodeChild {
             y1={String(gap / 2 - size * 2)}
             x2={String(gap / 2)}
             y2={String(gap / 2 + size * 2)}
-            stroke={color}
+            style={`stroke: ${patternColor}`}
             stroke-width={String(size)}
           />
         </pattern>

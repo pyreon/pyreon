@@ -3501,6 +3501,10 @@ a.px-footer-item:hover {
   --pyreon-flow-accent: var(--link);
   --pyreon-flow-edge: var(--text-dim);
   --pyreon-flow-edge-label: var(--text-muted);
+  /* Dots default to a light #ddd — harsh on the dark canvas and distracting
+     from the content. Map to the low-contrast border token so the grid is a
+     faint hint in both themes, not a texture that competes with the nodes. */
+  --pyreon-flow-bg-pattern: var(--border);
   --pyreon-flow-panel-bg: var(--bg-elevated);
   --pyreon-flow-panel-border: var(--border);
   --pyreon-flow-panel-shadow: rgba(0, 0, 0, 0.25);
