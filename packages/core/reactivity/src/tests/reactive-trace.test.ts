@@ -99,4 +99,23 @@ describe('reactive-trace ring buffer', () => {
     clearReactiveTrace()
     expect(getReactiveTrace()).toEqual([])
   })
+
+  test('getReactiveTrace short-circuits to [] under NODE_ENV=production', () => {
+    // The reader is prod-gated (the write-side records are NODE_ENV-gated, so a
+    // real prod build never fills the buffer). Populate in the default test env,
+    // then prove the prod gate suppresses the read even with a non-empty buffer.
+    signal(0, { name: 'p' }).set(1)
+    expect(getReactiveTrace()).toHaveLength(1)
+    const prev = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      expect(getReactiveTrace()).toEqual([])
+    } finally {
+      // Restore exactly — `delete` when it was unset, else reassign. A bare
+      // `process.env.NODE_ENV = prev` fails under `exactOptionalPropertyTypes`
+      // (prev is `string | undefined`, the target is `string`).
+      if (prev === undefined) delete process.env.NODE_ENV
+      else process.env.NODE_ENV = prev
+    }
+  })
 })
