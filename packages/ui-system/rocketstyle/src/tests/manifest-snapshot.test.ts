@@ -86,8 +86,10 @@ describe('gen-docs — rocketstyle snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(13)
+    expect(Object.keys(record).length).toBe(14)
     expect(record['rocketstyle/rocketstyle']!.notes).toContain('Factory')
     expect(record['rocketstyle/rocketstyle']!.mistakes?.split('\n').length).toBe(7)
+    // The raw context export (backing Provider) is now documented.
+    expect(record['rocketstyle/context']!.notes).toContain('reactive context')
   })
 })
