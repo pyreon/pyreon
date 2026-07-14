@@ -141,7 +141,7 @@ describe('gen-docs — hooks snapshot', () => {
     expect(ctrl.notes).toContain('controlled/uncontrolled')
 
     const focusTrap = record['hooks/useFocusTrap']!
-    expect(focusTrap.mistakes?.split('\n').length).toBe(2)
+    expect(focusTrap.mistakes?.split('\n').length).toBe(3)
 
     const infinite = record['hooks/useInfiniteScroll']!
     expect(infinite.mistakes?.split('\n').length).toBe(3)

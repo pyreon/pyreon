@@ -37,6 +37,7 @@
     "bench:hooks": "NODE_ENV=production bun bench/hooks-bench.ts",
     "lint": "oxlint .",
     "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
@@ -51,8 +52,11 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
+    "@vitest/browser-playwright": "^4.1.8",
     "@vitus-labs/tools-rolldown": "^2.5.0"
   },
   "engines": {

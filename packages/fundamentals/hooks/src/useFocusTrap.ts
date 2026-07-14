@@ -1,21 +1,257 @@
 import { onMount } from '@pyreon/core'
-
-const FOCUSABLE =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+import { isServer, watch } from '@pyreon/reactivity'
 
 /**
- * Trap Tab/Shift+Tab focus within a container element.
+ * Where focus should land when the trap ACTIVATES.
+ *
+ * - `false` / omitted — leave focus where it is (the pre-0.x default; the
+ *   caller or a native `<dialog>` owns initial focus).
+ * - `true` — focus the first tabbable descendant of the container.
+ * - a CSS selector string — focus the first matching descendant.
+ * - an element or `() => element` — focus that node.
  */
-export function useFocusTrap(getEl: () => HTMLElement | null): void {
-  // Listener defined inside `onMount` so its `document` references are
-  // co-located with their browser-only registration.
+export type InitialFocusTarget =
+  | boolean
+  | string
+  | HTMLElement
+  | (() => HTMLElement | null)
+
+export interface UseFocusTrapOptions {
+  /**
+   * Whether the trap is armed. Pass a getter (`() => isOpen()`) to arm/disarm
+   * it reactively — while inactive the keydown listener is removed and no
+   * cycling happens. Defaults to `true` (armed for the hook's whole lifetime).
+   */
+  active?: boolean | (() => boolean)
+  /**
+   * Move focus INTO the container when the trap activates. Defaults to `false`
+   * (no focus move — byte-identical to the pre-0.x single-arg behavior). Set
+   * `true` for the first tabbable, or a selector / element / getter to target a
+   * specific node. Skipped when focus is already inside the container.
+   */
+  initialFocus?: InitialFocusTarget
+}
+
+// Superset of the WHATWG "focusable area" set, mirroring focus-trap /
+// react-aria. `[tabindex]` (any value) is collected then filtered by effective
+// tabindex so `tabindex="-1"` on ANY element is excluded — not just the generic
+// `[tabindex]` case the old selector special-cased.
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'area[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'audio[controls]',
+  'video[controls]',
+  'iframe',
+  '[contenteditable]:not([contenteditable="false"])',
+  'details > summary:first-of-type',
+  '[tabindex]',
+].join(',')
+
+/**
+ * The element's effective tabindex for ORDERING. An explicit numeric
+ * `tabindex` attribute wins; otherwise the element (matched by the focusable
+ * selector) is natural-order tabindex 0. We read the ATTRIBUTE rather than the
+ * `el.tabIndex` IDL property because DOM implementations disagree on the
+ * default IDL value for intrinsically-focusable elements (a bare `<button>` is
+ * `0` in Chromium but has been observed as `-1` in some polyfills) — the
+ * attribute is portable.
+ */
+function orderTabIndex(el: HTMLElement): number {
+  const attr = el.getAttribute('tabindex')
+  if (attr !== null) {
+    const n = Number.parseInt(attr, 10)
+    if (!Number.isNaN(n)) return n
+  }
+  return 0
+}
+
+/** Tabbable = not explicitly removed from the tab order (`tabindex < 0`). */
+function isTabbable(el: HTMLElement): boolean {
+  const attr = el.getAttribute('tabindex')
+  if (attr !== null) {
+    const n = Number.parseInt(attr, 10)
+    if (!Number.isNaN(n) && n < 0) return false
+  }
+  return true
+}
+
+/**
+ * A form control disabled directly OR by an ancestor `<fieldset disabled>`
+ * (except within that fieldset's first `<legend>`, which stays interactive).
+ */
+function isDisabled(el: HTMLElement): boolean {
+  if ((el as HTMLButtonElement | HTMLInputElement).disabled) return true
+  const fieldset = el.closest('fieldset[disabled]')
+  if (fieldset) {
+    const legend = fieldset.querySelector(':scope > legend')
+    if (!legend || !legend.contains(el)) return true
+  }
+  return false
+}
+
+/**
+ * Whether the element is invisible / inert and therefore un-tabbable. Uses the
+ * element's own `checkVisibility()` in real browsers (authoritative for
+ * `display:none` up the ancestor chain, `visibility:hidden/collapse`, and
+ * `content-visibility`, paired with a client-rect zero-size check). Falls back
+ * to computed CSS via the element's OWN view in layout-less environments
+ * (happy-dom / jsdom) — always through `el.ownerDocument.defaultView`, never a
+ * bare `getComputedStyle`/`window` global, so this stays SSR-safe + iframe-correct.
+ */
+function isHidden(el: HTMLElement): boolean {
+  if (el.closest('[inert]')) return true
+  if (el.hasAttribute('hidden')) return true
+
+  const withCheck = el as HTMLElement & {
+    checkVisibility?: (opts?: {
+      visibilityProperty?: boolean
+      contentVisibilityAuto?: boolean
+    }) => boolean
+  }
+  /* v8 ignore start — real-browser-only branch (happy-dom has no
+     checkVisibility); exercised by useFocusTrap.browser.test.ts's
+     "skips display:none / [hidden] / inert nodes" + "video[controls]" specs. */
+  if (typeof withCheck.checkVisibility === 'function') {
+    if (
+      !withCheck.checkVisibility({
+        visibilityProperty: true,
+        contentVisibilityAuto: true,
+      })
+    ) {
+      return true
+    }
+    // Real layout available — a zero-size box has no client rects.
+    return el.getClientRects().length === 0
+  }
+  /* v8 ignore stop */
+
+  const view = el.ownerDocument.defaultView
+  /* v8 ignore next — a detached element with no defaultView is unreachable in
+     the node/happy-dom suite (ownerDocument.defaultView is always set); the
+     guard exists purely for SSR/robustness. */
+  if (!view) return false
+  const style = view.getComputedStyle(el)
+  return (
+    style.display === 'none' ||
+    style.visibility === 'hidden' ||
+    style.visibility === 'collapse'
+  )
+}
+
+/**
+ * Tabbable descendants of `container`, in TAB order: positive-`tabindex`
+ * elements first (ascending, document order as tiebreak), then the natural /
+ * `tabindex="0"` group in document order. Hidden, inert, disabled, and
+ * `tabindex="-1"` nodes are filtered out.
+ *
+ * Exported for the sibling browser test + potential internal reuse; NOT
+ * re-exported from the package entry (it stays an implementation detail).
+ */
+export function getFocusable(container: HTMLElement): HTMLElement[] {
+  const nodes = Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((el) => isTabbable(el) && !isDisabled(el) && !isHidden(el))
+
+  const positive: HTMLElement[] = []
+  const natural: HTMLElement[] = []
+  for (const el of nodes) {
+    if (orderTabIndex(el) > 0) positive.push(el)
+    else natural.push(el)
+  }
+  // V8's sort is stable, and `nodes` is already in document order, so equal
+  // tabindex values keep their document order.
+  positive.sort((a, b) => orderTabIndex(a) - orderTabIndex(b))
+  return [...positive, ...natural]
+}
+
+/** Resolve an {@link InitialFocusTarget} against the container. */
+function resolveInitialFocus(
+  container: HTMLElement,
+  target: InitialFocusTarget | undefined,
+): HTMLElement | null {
+  if (target === undefined || target === false) return null
+  if (target === true) return getFocusable(container)[0] ?? null
+  if (typeof target === 'string') {
+    return container.querySelector<HTMLElement>(target)
+  }
+  if (typeof target === 'function') return target()
+  return target
+}
+
+/**
+ * Trap Tab / Shift+Tab focus within a container element, with optional
+ * reactive arming + initial-focus placement.
+ *
+ * The second argument accepts either a plain `active` getter/boolean (the
+ * shorthand documented on this hook) or a full options object:
+ *
+ * @example
+ * ```tsx
+ * const isOpen = signal(false)
+ * const modalRef = signal<HTMLElement | null>(null)
+ *
+ * // Shorthand: arm/disarm reactively.
+ * useFocusTrap(() => modalRef(), () => isOpen())
+ *
+ * // Options object: also move focus to the first field on open.
+ * useFocusTrap(() => modalRef(), {
+ *   active: () => isOpen(),
+ *   initialFocus: true, // or '[name=email]', or an element, or a getter
+ * })
+ * ```
+ *
+ * Backward-compatible: the original single-argument call
+ * (`useFocusTrap(() => el)`) is unchanged — armed for the hook's lifetime, no
+ * focus move. SSR-safe (no-op on the server) and self-cleaning (the listener +
+ * reactive watcher are removed on unmount).
+ */
+export function useFocusTrap(
+  getEl: () => HTMLElement | null,
+  options?: UseFocusTrapOptions | boolean | (() => boolean),
+): void {
+  if (isServer) return
+
+  // Normalize the overloaded 2nd arg. A boolean / function is the `active`
+  // shorthand (the form the README + manifest already document positionally);
+  // an object is the full options bag; undefined is the single-arg call.
+  let opts: UseFocusTrapOptions
+  if (typeof options === 'object' && options !== null) {
+    opts = options
+  } else if (options === undefined) {
+    opts = {}
+  } else {
+    opts = { active: options }
+  }
+
+  const rawActive = opts.active
+  const isActive: () => boolean =
+    rawActive === undefined
+      ? () => true
+      : typeof rawActive === 'function'
+        ? rawActive
+        : () => rawActive
+
+  // Listener + DOM access live inside `onMount` so their browser-only
+  // references are co-located with their browser-only registration.
   onMount(() => {
+    let attached = false
+
     const listener = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return
+      if (!isActive()) return
       const el = getEl()
       if (!el) return
+      // Only act while focus is actually inside THIS container. A global
+      // document listener that trapped regardless of focus location would
+      // fight a NESTED trap (the inner trap's edges aren't ours) and could
+      // hijack Tab while focus sits elsewhere entirely.
+      if (!el.contains(document.activeElement)) return
 
-      const focusable = Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE))
+      const focusable = getFocusable(el)
       if (focusable.length === 0) return
 
       const first = focusable[0] as HTMLElement
@@ -33,7 +269,47 @@ export function useFocusTrap(getEl: () => HTMLElement | null): void {
         }
       }
     }
-    document.addEventListener('keydown', listener)
-    return () => document.removeEventListener('keydown', listener)
+
+    const attach = () => {
+      if (attached) return
+      document.addEventListener('keydown', listener)
+      attached = true
+    }
+    const detach = () => {
+      if (!attached) return
+      document.removeEventListener('keydown', listener)
+      attached = false
+    }
+
+    const applyInitialFocus = () => {
+      const el = getEl()
+      if (!el) return
+      // Don't steal focus that's already inside the container.
+      if (el.contains(document.activeElement)) return
+      resolveInitialFocus(el, opts.initialFocus)?.focus?.()
+    }
+
+    // Arm / disarm on the reactive `active` state. `immediate` runs the current
+    // state at mount, so a trap that mounts already-active is armed straight
+    // away (matching the pre-0.x always-on behavior for the default case).
+    const stop = watch(
+      isActive,
+      (active) => {
+        if (active) {
+          attach()
+          applyInitialFocus()
+        } else {
+          detach()
+        }
+      },
+      { immediate: true },
+    )
+
+    return () => {
+      stop()
+      detach()
+    }
   })
 }
+
+export default useFocusTrap

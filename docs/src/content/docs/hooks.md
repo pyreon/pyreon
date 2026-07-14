@@ -667,30 +667,52 @@ const ListNavigator = defineComponent(() => {
 
 ## useFocusTrap
 
-Trap Tab and Shift+Tab navigation within a container element. When the user tabs past the last focusable element, focus wraps to the first, and vice versa. Essential for accessible modals and dialogs.
+Trap Tab and Shift+Tab navigation within a container element. When the user tabs past the last focusable element, focus wraps to the first, and vice versa. Essential for accessible modals and dialogs. The trap only acts while focus is actually inside its container, so nested traps do not fight each other.
 
-Focusable elements include: `a[href]`, `button:not([disabled])`, `textarea:not([disabled])`, `input:not([disabled])`, `select:not([disabled])`, and `[tabindex]:not([tabindex="-1"])`.
+The focusable query is spec-grade: it includes `a[href]`, `button`, `input`, `select`, `textarea`, `audio[controls]`, `video[controls]`, `[contenteditable]`, `details > summary`, and any `[tabindex]`; it filters out `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `Element.checkVisibility` in real browsers); and it orders positive-`tabindex` elements first (ascending) before the natural / `tabindex="0"` group.
 
 ### Signature
 
 ```ts
-function useFocusTrap(getEl: () => HTMLElement | null): void
+function useFocusTrap(
+  getEl: () => HTMLElement | null,
+  options?: UseFocusTrapOptions | boolean | (() => boolean),
+): void
+
+interface UseFocusTrapOptions {
+  /** Arm the trap reactively — a getter arms/disarms it without unmounting. Default `true`. */
+  active?: boolean | (() => boolean)
+  /** Move focus into the container on activation. Default `false` (no move). */
+  initialFocus?: boolean | string | HTMLElement | (() => HTMLElement | null)
+}
 ```
 
 ### Parameters
 
-| Parameter | Type                        | Description                            |
-| --------- | --------------------------- | -------------------------------------- |
-| `getEl`   | `() => HTMLElement \| null` | Getter returning the container element |
+| Parameter | Type                                                     | Description                                                                                                   |
+| --------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `getEl`   | `() => HTMLElement \| null`                              | Getter returning the container element. Read live on every Tab, so the trap is inert while it returns `null`. |
+| `options` | `UseFocusTrapOptions \| boolean \| (() => boolean)`      | Optional. An options object, or a plain `active` boolean / getter shorthand.                                  |
 
 ### Example
 
 ```ts
+import { signal } from '@pyreon/reactivity'
 import { useFocusTrap } from '@pyreon/hooks'
 
-let modalEl: HTMLElement | null = null
+const modalRef = signal<HTMLElement | null>(null)
 
-useFocusTrap(() => modalEl)
+// Single-arg (unchanged): inert while the ref is null, no focus move.
+useFocusTrap(() => modalRef())
+
+// Arm reactively + move focus to the first field on open.
+useFocusTrap(() => modalRef(), {
+  active: () => isOpen(),
+  initialFocus: true, // or a selector like '[name=email]', an element, or a getter
+})
+
+// Positional shorthand for `active`:
+useFocusTrap(() => modalRef(), () => isOpen())
 ```
 
 ### Accessible Modal Example
@@ -1483,7 +1505,7 @@ const SmartTooltip = defineComponent<{ text: string }>((props) => {
 | `useFocus`          | `() => UseFocusResult`                                         | Track focus/blur state with spreadable props        |
 | `useClickOutside`   | `(getEl, handler) => void`                                     | Call handler on clicks outside an element           |
 | `useKeyboard`       | `(key, handler, options?) => void`                             | Listen for specific key presses                     |
-| `useFocusTrap`      | `(getEl) => void`                                              | Trap Tab focus within a container                   |
+| `useFocusTrap`      | `(getEl, options?) => void`                                    | Trap Tab focus within a container; optional reactive `active` + `initialFocus` |
 | `useElementSize`    | `(getEl) => () => Size`                                        | Observe element dimensions via ResizeObserver       |
 | `useWindowResize`   | `(debounceMs?) => () => WindowSize`                            | Track window size with debouncing                   |
 | `useWindowScroll`   | `() => UseWindowScrollResult`                                  | Reactive `{ x, y }` scroll offset + `scrollTo`      |

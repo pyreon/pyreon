@@ -269,10 +269,15 @@ describe('api-reference', () => {
       expect(entry?.signature).toContain('defaultValue: T')
     })
 
-    it('useFocusTrap documents the ref-gated (no active flag) contract', () => {
+    it('useFocusTrap documents the active + initialFocus options contract', () => {
       const entry = API_REFERENCE['hooks/useFocusTrap']
-      expect(entry?.mistakes?.split('\n').length).toBe(2)
-      expect(entry?.signature).toBe('(getEl: () => HTMLElement | null) => void')
+      expect(entry?.mistakes?.split('\n').length).toBe(3)
+      // Ref-gated single-arg form is preserved; the optional 2nd arg adds
+      // active + initialFocus.
+      expect(entry?.signature).toContain('getEl: () => HTMLElement | null')
+      expect(entry?.signature).toContain('active')
+      expect(entry?.signature).toContain('initialFocus')
+      // Return-on-close is still a separate concern.
       expect(entry?.notes).toContain('useFocusReturn')
     })
 

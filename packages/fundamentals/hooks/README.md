@@ -32,8 +32,9 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
   const panelRef = signal<HTMLElement | null>(null)
   const scroll = useScrollLock()
   useClickOutside(() => panelRef(), () => setOpen(false))
-  // The trap is live-gated on the ref: null (panel unmounted) => inert.
-  useFocusTrap(() => panelRef())
+  // Live-gated on the ref (null => inert). `initialFocus` moves focus to the
+  // first field on open; `active` can arm/disarm without unmounting.
+  useFocusTrap(() => panelRef(), { active: () => open(), initialFocus: true })
   useEventListener('keydown', (e) => {
     if (e.key === 'Escape') setOpen(false)
   })
@@ -70,7 +71,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useClickOutside(ref, handler)` | Click-outside dismissal |
 | `useFocus()` | `{ focused, props: { onFocus, onBlur } }` |
 | `useHover()` | `{ hovered, props: { onMouseEnter, onMouseLeave } }` |
-| `useFocusTrap(ref)` | Tab/Shift-Tab trap inside `ref()`. Inert while `ref()` is null. Pair with `useFocusReturn` for return-on-close. |
+| `useFocusTrap(ref, options?)` | Tab/Shift-Tab trap inside `ref()`. Inert while `ref()` is null. Optional `{ active, initialFocus }` (or a positional `active` getter): arm reactively + move focus in on open. Spec-grade focusable query (contenteditable / media / hidden-filtering / tabindex order). Pair with `useFocusReturn` for return-on-close. |
 | `useFocusReturn(isOpen, opts?)` | Restore focus to the trigger when `isOpen()` flips false |
 | `useElementSize(ref)` | `Signal<{ width, height }>` via `ResizeObserver` |
 | `useWindowResize(debounceMs?)` | `() => { width, height }` debounced viewport size |
@@ -161,7 +162,7 @@ Pass `value` as a function (`() => props.checked`) so the controlled read tracks
 - **Every hook is SSR-safe**. Do NOT wrap hook calls in `if (typeof window !== 'undefined')` — the hook does it for you, and your wrapper would skip SSR-rendered shell registration.
 - **Never reach for `addEventListener` / `removeEventListener` directly in primitives** — use `useEventListener`. Same for observers (`useIntersection` / `useElementSize`) and timers (`useInterval` / `useTimeout`). The cleanup is the hook's job.
 - **`useBreakpoint` reads the theme**, `useMediaQuery` is raw — the former for layout decisions tied to the design system, the latter for one-off queries like `(prefers-contrast: more)`.
-- **`useFocusTrap(getEl)` gates on the ref, not an `active` flag** — the getter is read live on every Tab, so the trap is inert while `getEl()` returns `null`. Render the trapped element conditionally (a `<Show>` / reactive accessor) and the trap turns on/off with it. For return-on-close focus, add `useFocusReturn(() => isOpen())`.
+- **`useFocusTrap(getEl, options?)` gates on the ref OR an `active` flag** — the getter is read live on every Tab, so the trap is inert while `getEl()` returns `null`; render the trapped element conditionally (a `<Show>` / reactive accessor) and it turns on/off with it. For an element you keep mounted, pass `{ active: () => isOpen() }` (or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) to disarm the listener without unmounting. By default the trap does NOT move focus — pass `{ initialFocus: true }` (or a selector / element / getter) to focus the first field on activation. For return-on-close focus, add `useFocusReturn(() => isOpen())`.
 - **`useInfiniteScroll` sentinel must live inside the scrollable container** — `overflow: hidden` with no scroll means `IntersectionObserver` never fires.
 - **`useDialog`** — the `<dialog>` must be present in the initial render (not gated behind `<Show>`) so the ref callback fires before `dialog.open()`.
 - **`useDebouncedValue`** — the debounced signal still holds the OLD value during the debounce window. Effects downstream of it are correct; imperative reads in the same tick are stale.

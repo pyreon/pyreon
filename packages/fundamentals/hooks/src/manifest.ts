@@ -174,16 +174,21 @@ effect(() => console.log('Box is', size().width, 'x', size().height))`,
     {
       name: 'useFocusTrap',
       kind: 'hook',
-      signature: '(getEl: () => HTMLElement | null) => void',
+      signature:
+        '(getEl: () => HTMLElement | null, options?: { active?: boolean | (() => boolean); initialFocus?: boolean | string | HTMLElement | (() => HTMLElement | null) } | boolean | (() => boolean)) => void',
       summary:
-        'Trap Tab/Shift+Tab focus inside the element returned by `getEl()`. Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every Tab, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally (a reactive `<Show>` / accessor) and the trap turns on/off with it, no separate `active` flag needed. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`.',
-      example: `// The dialog renders only while open, so getEl() is null (inert) when closed.
-let dialogEl: HTMLElement | null = null
-useFocusTrap(() => dialogEl)
-useFocusReturn(() => isOpen())  // returns focus to the opener on close`,
+        'Trap Tab/Shift+Tab focus inside the element returned by `getEl()`. Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every Tab, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())` — while inactive the keydown listener is removed) and moves focus INTO the container on activation (`initialFocus: true` for the first tabbable, or a selector / element / getter; default is no focus move, backward-compatible). The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. The trap only acts while focus is actually inside its container, so nested traps do not fight. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`.',
+      example: `// Reactive arming + move focus to the first field on open.
+const modalRef = signal<HTMLElement | null>(null)
+useFocusTrap(() => modalRef(), { active: () => isOpen(), initialFocus: true })
+useFocusReturn(() => isOpen())   // returns focus to the opener on close
+
+// Or the single-arg form: inert while getEl() is null, no focus move.
+useFocusTrap(() => modalRef())`,
       mistakes: [
-        'Keeping the element permanently mounted (e.g. `display: none`) and expecting the trap to disable when hidden — the trap is gated on `getEl()` returning null, not on visibility; unmount the element (or a `<Show>`) to deactivate',
-        'Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only cycles Tab within the container while it is present',
+        'Keeping the element permanently mounted (e.g. `display: none`) and expecting the trap to disable when hidden — either unmount it (so `getEl()` returns null) or pass `active: () => isOpen()` to disarm the listener without unmounting; visibility alone does not gate it',
+        'Expecting the trap to MOVE focus into the container on open — by default it only cycles Tab at the edges. Pass `initialFocus: true` (or a selector / element / getter) to place focus on activation, and pair with `useFocusReturn` to restore it on close',
+        'Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only cycles Tab within the container',
       ],
       seeAlso: ['useFocusReturn', 'useScrollLock', 'useDialog', 'useClickOutside'],
     },
