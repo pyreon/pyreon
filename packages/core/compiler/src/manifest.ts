@@ -38,6 +38,7 @@ const { code, warnings } = transformJSX(
         'Expecting `transformJSX` to throw on a native panic — it never does; it silently falls back to the JS backend (correctness-equivalent, just slower)',
         'Passing user component source WITHOUT `ssr: true` when feeding the result to `@pyreon/runtime-server` — SSR needs the `h()` VNode tree, not `_tpl()` clone templates',
         'Assuming bare `{count}` is auto-called for an IMPORTED signal without seeding `knownSignals` — the compiler only tracks `const count = signal(...)` declared in the same file unless told otherwise',
+        'Treating the output as standalone/portable — the emitted code calls internal runtime helpers (`_tpl`, `_bind`, `_rp`, `_setChild`, …) that only `@pyreon/runtime-dom` + `@pyreon/core` provide. Unlike Babel\'s JSX→`React.createElement` (where the runtime is just React), transformed code cannot run without the Pyreon runtime.',
       ],
       seeAlso: ['transformJSX_JS', 'analyzeReactivity'],
     },
@@ -52,6 +53,10 @@ const { code, warnings } = transformJSX(
 
 // Backend-deterministic — never dispatches to the native binary.
 const { code } = transformJSX_JS("<div>{name()}</div>", "x.tsx")`,
+      mistakes: [
+        'Reaching for it in a production build to be "safe" — it is the SLOW fallback (the native binary is 3.7-8.9× faster). Use `transformJSX`; it already falls back to this path per-call inside a try/catch. Call `transformJSX_JS` directly only when you need backend-deterministic output (tests, the Reactivity-Lens sidecar).',
+        'Expecting a simpler/lighter transform than the native path — the output is BYTE-IDENTICAL (locked by the cross-backend equivalence + fuzz tests). It is not a reduced pass, just the same pass in JS.',
+      ],
       seeAlso: ['transformJSX'],
     },
     {
@@ -176,6 +181,12 @@ if (hasReactPatterns(src)) report(detectReactPatterns(src, file))`,
 
 const d = diagnoseError("props.when is not a function")
 if (d) console.log(d.cause, d.fix)`,
+      mistakes: [
+        'Importing it from the main `@pyreon/compiler` barrel for CLIENT-SIDE use — the barrel transitively `import ts from "typescript"` (via the AST detectors/migrators), dragging the heavy Node-only TS compiler API into the browser bundle. For browser use (the dev throw-time error printer) import from the browser-safe `@pyreon/compiler/diagnose` subpath — `diagnoseError` + its `ERROR_PATTERNS` are pure regex/strings with ZERO `typescript` dependency.',
+        'Feeding it a structured Error object — it matches the error STRING (`error.message`), not an `Error` instance. Pass `err.message`.',
+        'Treating a `null` return as a failure — `null` just means "no known pattern matched"; callers fall back to showing the raw message. Only a non-null `ErrorDiagnosis` carries a cause/fix.',
+      ],
+      seeAlso: ['detectPyreonPatterns'],
     },
     {
       name: 'detectPyreonPatterns',
@@ -352,6 +363,11 @@ apiFilePathToPattern("api/posts/[id].ts") // "/api/posts/:id"`,
 
 deriveIslandName("Counter", islandRelPath(root, "/app/src/islands.ts"))
 // "Counter$<6-char-hash>"`,
+      mistakes: [
+        'Passing a `relPath` that is NOT the `islandRelPath(root, absPath)` output (an absolute path, a differently-rooted path, or a Windows backslash path) — the `fnv1a6` hash then differs from the one the transform + prescan + project scanner compute, so the injected marker name and the registry name DIVERGE and the island silently fails to hydrate. Always normalize via `islandRelPath` (root-relative, forward-slash).',
+        'Deriving for a bindingless `island(…)` call (no `const X = …`) — there is no `varName` to build from; give the island an explicit `name:` instead (the runtime throws with guidance when no name reaches it).',
+        'Expecting the derived name to override an explicit `name:` — an explicit `name:` on the island options WINS; derivation only supplies the auto-name when none is given.',
+      ],
       seeAlso: ['generateContext'],
     },
   ],
