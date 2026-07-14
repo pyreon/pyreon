@@ -178,4 +178,23 @@ describe('ErrorBoundary', () => {
     expect(dispatchToErrorBoundary('second-error')).toBe(true)
     expect(getter()).toBe('Error: second-error')
   })
+
+  test('onUnmount pops its own boundary (identity cleanup)', () => {
+    // The boundary registers `onUnmount(() => popErrorBoundary(handler))` so a
+    // renderer-driven unmount removes THIS boundary's handler by identity (the
+    // #725-class sibling-order fix). `runWithHooks` returns the collected hooks,
+    // so we can fire the unmount cleanup node-side without a renderer.
+    const { hooks } = runWithHooks(
+      () => ErrorBoundary({ fallback: (e) => `fb:${String(e)}`, children: 'c' }),
+      {},
+    )
+    // Mounted → the handler is on the stack and catches.
+    expect(dispatchToErrorBoundary('boom')).toBe(true)
+    // Exactly one unmount cleanup was registered.
+    expect(hooks.unmount).toHaveLength(1)
+    // Fire it → popErrorBoundary(handler) removes this boundary.
+    for (const fn of hooks.unmount!) fn()
+    // Popped → nothing left to catch.
+    expect(dispatchToErrorBoundary('after')).toBe(false)
+  })
 })
