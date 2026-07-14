@@ -2687,6 +2687,14 @@ import { isDynamic } from "@pyreon/styler"
 
 isDynamic((p) => p.color) // true → dynamic path
 isDynamic("12px")          // false → static, cached
+
+import { hash, hashUpdate, hashFinalize, HASH_INIT } from "@pyreon/styler"
+hash("color:red")  // e.g. "1a2b3c"
+hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")
+
+// Apps enable CPSE through ui-core, not this call:
+import { init } from "@pyreon/ui-core"
+init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood
 ```
 
 > **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use); `keyframes` stringifies to an animation NAME; `createGlobalStyle` returns a `ComponentFn` that must be MOUNTED. None of them inject CSS at call time — only on resolution/mount.
