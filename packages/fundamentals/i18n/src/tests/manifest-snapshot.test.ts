@@ -107,9 +107,12 @@ describe('gen-docs — i18n snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(8)
+    expect(Object.keys(record).length).toBe(10)
     expect(record['i18n/createI18n']!.notes).toContain('reactive')
-    expect(record['i18n/createI18n']!.mistakes?.split('\n').length).toBe(3)
+    expect(record['i18n/createI18n']!.mistakes?.split('\n').length).toBe(6)
+    // The two previously-undocumented public exports are now covered.
+    expect(record['i18n/resolvePluralCategory']!.signature).toContain('count: number')
+    expect(record['i18n/parseRichText']!.notes).toContain('Trans')
     // Formatter methods are documented for MCP get_api.
     expect(record['i18n/n']!.signature).toContain('Intl.NumberFormatOptions')
     expect(record['i18n/d']!.signature).toContain('Intl.DateTimeFormatOptions')
