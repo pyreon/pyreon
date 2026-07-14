@@ -1,7 +1,10 @@
 name: Deploy Docs
 
 # Builds the Pyreon-native docs site (`docs/`) and deploys to GitHub
-# Pages. Replaces the legacy VitePress workflow + the side-by-side
+# Pages. The `build` job ALSO runs on PRs (docs source / docs-dep
+# packages) as a verification-only gate so a docs-SITE build break is
+# caught pre-merge (see the `pull_request` trigger note); only a push to
+# main deploys. Replaces the legacy VitePress workflow + the side-by-side
 # `docs-zero-preview.yml` (both removed in the cutover).
 #
 # Production URL: https://pyreon.dev (custom apex domain, served by
@@ -33,10 +36,35 @@ on:
       - 'packages/core/compiler/**'
       - 'packages/core/head/**'
       - '.github/workflows/docs.yml'
+  # Also run the BUILD job (not deploy) on PRs touching the docs source or the
+  # framework packages the docs build depends on — so a docs-SITE build break
+  # (e.g. MDX-invalid content: an unbackticked `<Foo>` generic that the
+  # zero-content compiler parses as an unclosed JSX tag) is caught PRE-merge as
+  # a PR check, instead of only reddening this main-only deploy AFTER it lands.
+  # The four docs PR checks (Doc Claims / Doc Examples / Docs Generated Fresh /
+  # Docs Sync) don't build the site, so nothing else catches this class. The
+  # `deploy` job + artifact upload are gated to push events below, so a PR
+  # build-and-verifies WITHOUT deploying to the live pyreon.dev site.
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'packages/zero/zero/**'
+      - 'packages/zero/zero-content/**'
+      - 'packages/tools/vite-plugin/**'
+      - 'packages/core/router/**'
+      - 'packages/core/runtime-dom/**'
+      - 'packages/core/runtime-server/**'
+      - 'packages/core/reactivity/**'
+      - 'packages/core/core/**'
+      - 'packages/core/compiler/**'
+      - 'packages/core/head/**'
+      - '.github/workflows/docs.yml'
   workflow_dispatch:
 
 concurrency:
-  group: deploy-docs
+  # Per-ref so a PR's build can't cancel main's in-flight deploy (and vice
+  # versa). On main this still coalesces rapid pushes to the latest deploy.
+  group: deploy-docs-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -75,6 +103,10 @@ jobs:
           bunx vite build
 
       - name: Upload pages artifact
+        # Only the main-push build feeds the deploy; a PR build is
+        # verification-only (catch a docs-site build break), so it skips the
+        # upload.
+        if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs/dist
@@ -84,6 +116,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: build
+    # Deploy only on a real push to main. On PRs the `build` job runs as a
+    # verification-only gate (it caught nothing to deploy), so skip deploy —
+    # a PR must never publish to the live pyreon.dev site.
+    if: github.event_name == 'push'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
