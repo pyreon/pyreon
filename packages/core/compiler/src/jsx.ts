@@ -1119,6 +1119,11 @@ export function transformJSX_JS(
   // `@pyreon/runtime-server` helpers this module used.
   let needsSsrImport = false
   let needsSsrChildrenImport = false
+  let needsSsrItemImport = false
+  let needsEscImport = false
+  let needsSsrAttrImport = false
+  let needsSsrAttrGenImport = false
+  let needsSsrAttrUrlImport = false
 
   // ── P0 rocketstyle-collapse state ─────────────────────────────────────────
   let needsCollapse = false
@@ -1472,12 +1477,44 @@ export function transformJSX_JS(
     buf.statics.push('')
   }
 
+  /** A generic attribute (`_ssrAttrGen` fast path is byte-identical): lowercase
+   * name, not class/style, not aria-*, not URL-bearing. Everything else needs
+   * `renderProp`'s full logic (`_ssrAttr`). */
+  function ssrAttrIsGeneric(name: string): boolean {
+    if (/[A-Z]/.test(name)) return false
+    if (name === 'class' || name === 'style') return false
+    if (name.charCodeAt(0) === 97 && name.startsWith('aria-')) return false
+    if (SSR_URL_ATTRS.has(name)) return false
+    return true
+  }
+
+  /** Emit a dynamic attribute — byte-identical to the h() element path.
+   * Generic names take the lean `_ssrAttrGen(name, value)`; URL / class / style
+   * / aria / camelCase names take `_ssrAttr(tag, name, value)` (renderProp). */
+  function emitSsrAttr(buf: SsrBuf, tag: string, name: string, valueText: string): void {
+    if (ssrAttrIsGeneric(name)) {
+      ssrEmitHole(buf, `_ssrAttrGen(${JSON.stringify(name)}, ${valueText})`)
+      needsSsrAttrGenImport = true
+    } else if (SSR_URL_ATTRS.has(name)) {
+      // Lowercase URL attr — lean url-guard helper (byte-identical to renderProp).
+      ssrEmitHole(buf, `_ssrAttrUrl(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`)
+      needsSsrAttrUrlImport = true
+    } else {
+      ssrEmitHole(buf, `_ssrAttr(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`)
+      needsSsrAttrImport = true
+    }
+  }
+
   /**
-   * Bake one attribute onto the open tag. Returns false to BAIL the whole
-   * element. Mirrors `renderProp`/`renderPropValue` for the static subset;
-   * anything dynamic, renamed, URL-unsafe, or content-bearing bails.
+   * Serialize one attribute. Provable-static, lowercase-safe values BAKE into
+   * the open tag (fast); everything else — DYNAMIC values, object class/style,
+   * camelCase/renamed names, URL-unsafe literals — emits `_ssrAttr(tag, name,
+   * expr)`, which reuses `renderProp` VERBATIM and is therefore byte-identical.
+   * Returns false to BAIL the whole element (spread, innerHTML content, or a
+   * raw JSX-string value carrying `&` — an oxc↔esbuild entity-decode divergence
+   * the compiler can't reproduce).
    */
-  function ssrSerializeAttr(buf: SsrBuf, attr: N): boolean {
+  function ssrSerializeAttr(buf: SsrBuf, attr: N, tag: string): boolean {
     if (attr.type === 'JSXSpreadAttribute') return false // spread → bail
     if (attr.type !== 'JSXAttribute') return false
     const name = attr.name?.type === 'JSXIdentifier' ? attr.name.name : ''
@@ -1487,61 +1524,43 @@ export function transformJSX_JS(
     if (EVENT_RE.test(name)) return true
     // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
     if (name === 'innerHTML' || name === 'dangerouslySetInnerHTML') return false
-    // `toAttrName` maps camelCase/SVG/renamed names via a large runtime table
-    // we don't replicate — an uppercase char means the emitted name would need
-    // that map, so bail. Lowercase names (`class`/`id`/`href`/`data-*`/`aria-*`)
-    // map to themselves.
-    if (/[A-Z]/.test(name)) return false
     const isAria = name.charCodeAt(0) === 97 /* a */ && name.startsWith('aria-')
+    // `toAttrName` maps camelCase/SVG/renamed names via a runtime table we don't
+    // replicate at BAKE time — so an uppercase-named attr can only go through
+    // `_ssrAttr` (renderProp does the mapping), never a compile-time bake.
+    const hasUpper = /[A-Z]/.test(name)
 
     // No value: `<x disabled>` → props.x = true.
     if (!attr.value) {
-      // aria boolean true renders as the string "true"; others as a bare attr.
+      if (hasUpper) {
+        emitSsrAttr(buf, tag, name, 'true')
+        return true
+      }
       ssrEmitStatic(buf, isAria ? ` ${name}="true"` : ` ${name}`)
       return true
     }
-    // Raw JSX string-literal value (`title="…"`). Entity-safety bail: same as
-    // JSXText, oxc keeps `&amp;` LITERAL here but the h() path (esbuild) may
-    // decode it — bail on any `&`. A JS-string value (`title={'a & b'}`, the
-    // JSXExpressionContainer branch below) is unaffected (JS literals never
-    // HTML-decode), so those still bake.
+    // Raw JSX string-literal value (`title="…"`). Entity-safety bail: oxc keeps
+    // `&amp;` LITERAL here but the h() path (esbuild) may decode it — a raw JSX
+    // string carrying `&` can't be reproduced from the compiler → bail. (A JS
+    // string, `title={'a & b'}`, is unaffected — JS literals never HTML-decode.)
     if (
       attr.value.type === 'StringLiteral' ||
       (attr.value.type === 'Literal' && typeof attr.value.value === 'string')
     ) {
       const v = attr.value.value as string
       if (v.includes('&')) return false
-      return ssrBakeStringAttr(buf, name, v)
+      // Bake the lowercase-safe case; URL-unsafe / uppercase → _ssrAttr (which
+      // runs the SAME url-guard / name-map renderProp does).
+      if (!hasUpper && ssrBakeStringAttr(buf, name, v)) return true
+      emitSsrAttr(buf, tag, name, escapeJsString(v))
+      return true
     }
-    // Expression container — only STATIC literals bake; anything else bails.
+    // Expression container.
     if (attr.value.type === 'JSXExpressionContainer') {
       const raw = attr.value.expression
       if (!raw || raw.type === 'JSXEmptyExpression') return false
       const expr = unwrapTypeLayers(raw)
-      // string literal
-      if (
-        (expr.type === 'StringLiteral' || expr.type === 'Literal') &&
-        typeof expr.value === 'string'
-      ) {
-        return ssrBakeStringAttr(buf, name, expr.value)
-      }
-      // numeric literal — generic attrs only (class/style/url numeric edges bail)
-      if (
-        (expr.type === 'NumericLiteral' || expr.type === 'Literal') &&
-        typeof expr.value === 'number'
-      ) {
-        if (name === 'class' || name === 'style' || SSR_URL_ATTRS.has(name)) return false
-        ssrEmitStatic(buf, ` ${name}="${expr.value}"`)
-        return true
-      }
-      // boolean true — aria → "true"; anything else → bare attr (renderPropValue
-      // returns `toAttrName(key)` for `value === true`, BEFORE the class/style
-      // branches, so class/style also bake bare here).
-      if ((expr.type === 'BooleanLiteral' || expr.type === 'Literal') && expr.value === true) {
-        ssrEmitStatic(buf, isAria ? ` ${name}="true"` : ` ${name}`)
-        return true
-      }
-      // false / null / undefined → omit (no attribute).
+      // false / null / undefined → omit (compile-time; renderProp would too).
       if (
         ((expr.type === 'BooleanLiteral' || expr.type === 'Literal') && expr.value === false) ||
         expr.type === 'NullLiteral' ||
@@ -1550,8 +1569,30 @@ export function transformJSX_JS(
       ) {
         return true
       }
-      // dynamic / computed-static / template literal → bail.
-      return false
+      // Provable static literals bake (lowercase-safe); else fall to _ssrAttr.
+      if (!hasUpper) {
+        if (
+          (expr.type === 'StringLiteral' || expr.type === 'Literal') &&
+          typeof expr.value === 'string'
+        ) {
+          if (ssrBakeStringAttr(buf, name, expr.value)) return true
+        } else if (
+          (expr.type === 'NumericLiteral' || expr.type === 'Literal') &&
+          typeof expr.value === 'number'
+        ) {
+          if (name !== 'class' && name !== 'style' && !SSR_URL_ATTRS.has(name)) {
+            ssrEmitStatic(buf, ` ${name}="${expr.value}"`)
+            return true
+          }
+        } else if ((expr.type === 'BooleanLiteral' || expr.type === 'Literal') && expr.value === true) {
+          ssrEmitStatic(buf, isAria ? ` ${name}="true"` : ` ${name}`)
+          return true
+        }
+      }
+      // DYNAMIC value (or object class/style, uppercase static, url-unsafe
+      // static) → `_ssrAttr` (renderProp verbatim → byte-identical).
+      emitSsrAttr(buf, tag, name, sliceExpr(expr))
+      return true
     }
     return false
   }
@@ -1616,24 +1657,36 @@ export function transformJSX_JS(
     return true
   }
 
+  /** Emit a text/expression child as `_esc(expr)` — byte-identical to
+   * `renderNode(value)` (primitive → escaped, VNode → mounted). */
+  function emitEscHole(buf: SsrBuf, exprText: string): void {
+    ssrEmitHole(buf, `_esc(${exprText})`)
+    needsEscImport = true
+  }
+
   /** Serialize one expression child. Returns false to bail the element. */
   function ssrSerializeExprChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
     const raw = child.expression
     if (!raw || raw.type === 'JSXEmptyExpression') return true // {} / {/* */} → nothing
     const expr = unwrapTypeLayers(raw)
     // mapitem mode: every expression child is a PLAIN VALUE child (the compiler
-    // never recursed into the map callback) → bare hole, no markers.
+    // never recursed into the map callback) → `_esc(expr)`, no markers.
     if (mode === 'mapitem') {
-      ssrEmitHole(buf, sliceExpr(expr))
+      emitEscHole(buf, sliceExpr(expr))
       return true
     }
     // recursed mode: matches handleJsxExpression's wrap decision.
     if (ssrTryMap(buf, expr)) return true
     if (shouldWrap(expr)) {
-      const sliced = sliceExpr(expr)
-      ssrEmitHole(buf, expr.type === 'ObjectExpression' ? `() => (${sliced})` : `() => ${sliced}`)
+      // The h() path wraps a dynamic child in `() => expr` → renderNode adds
+      // `<!--$-->…<!--/$-->` markers. Bake the markers into the statics + emit
+      // `_esc(expr)`: byte-identical, since renderNode(() => v) === `<!--$-->` +
+      // renderNode(v) + `<!--/$-->` and `_esc(v)` === renderNode(v).
+      ssrEmitStatic(buf, '<!--$-->')
+      emitEscHole(buf, sliceExpr(expr))
+      ssrEmitStatic(buf, '<!--/$-->')
     } else {
-      ssrEmitHole(buf, sliceExpr(expr))
+      emitEscHole(buf, sliceExpr(expr))
     }
     return true
   }
@@ -1675,7 +1728,7 @@ export function transformJSX_JS(
     }
     ssrEmitStatic(buf, `<${tag}`)
     for (const attr of jsxAttrs(el)) {
-      if (!ssrSerializeAttr(buf, attr)) return false
+      if (!ssrSerializeAttr(buf, attr, tag)) return false
     }
     ssrEmitStatic(buf, '>')
     for (const child of jsxChildren(el)) {
@@ -1685,13 +1738,17 @@ export function transformJSX_JS(
     return true
   }
 
-  /** Build the `_ssr([...statics], ...holes)` call text, or null to bail. */
+  /** Build the `_ssr([...statics], ...holes)` call text, or null to bail. A
+   * `.map` ITEM (mapitem mode) uses `_ssrItem` — a plain-string variant that
+   * `_ssrChildren` concatenates without a per-item `RawHtml` wrap. */
   function buildSsrCall(el: N, mode: SsrMode): string | null {
     const buf: SsrBuf = { statics: [''], holes: [] }
     if (!ssrSerializeElement(buf, el, mode)) return null
     const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
     const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
-    return `_ssr([${staticsArr}]${holesArr})`
+    const fn = mode === 'mapitem' ? '_ssrItem' : '_ssr'
+    if (mode === 'mapitem') needsSsrItemImport = true
+    return `${fn}([${staticsArr}]${holesArr})`
   }
 
   function trySsrTemplateEmit(node: N): boolean {
@@ -2784,6 +2841,11 @@ export function transformJSX_JS(
   if (needsSsrImport) {
     const ssrImports = ['_ssr']
     if (needsSsrChildrenImport) ssrImports.push('_ssrChildren')
+    if (needsSsrItemImport) ssrImports.push('_ssrItem')
+    if (needsEscImport) ssrImports.push('_esc')
+    if (needsSsrAttrImport) ssrImports.push('_ssrAttr')
+    if (needsSsrAttrGenImport) ssrImports.push('_ssrAttrGen')
+    if (needsSsrAttrUrlImport) ssrImports.push('_ssrAttrUrl')
     preamble = `import { ${ssrImports.join(', ')} } from "@pyreon/runtime-server";\n` + preamble
   }
 
