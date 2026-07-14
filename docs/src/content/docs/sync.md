@@ -352,6 +352,8 @@ The awareness is **owned by the doc**, shared by every transport and every `sync
 
 :::warning
 **Presence is O(N) in peer count.** Every awareness change rebuilds the full peers snapshot and re-runs each `others()` consumer — fine for the typical handful-to-dozens of collaborators, but throttle cursor publishes (above) so a large swarm doesn't re-render on every mouse move. This is a v1 limit, not free.
+
+Quantified (`scripts/bench/core/sync.ts`, R1 on an M3 Max): a raw `y-protocols` cursor publish is a flat ~260 ns; the `syncedAwareness` wrapper adds ~100 ns at 1 peer, ~860 ns at 50, ~3.5 µs at 200 — the snapshot + signal fan-out is the O(N) part. Even at 200 peers the wrapped publish still sustains ~265 k ops/s, so the tax only matters when *many* peers publish at a high rate at once — the case throttling addresses.
 :::
 
 ## Offline persistence — IndexedDB

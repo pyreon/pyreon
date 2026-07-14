@@ -4,7 +4,8 @@
 // (NOT Node's global undici WebSocket, which deadlocks under v8 coverage).
 import { afterEach, describe, expect, it } from 'vitest'
 import { WebSocket as WsClient } from 'ws'
-import { encodeAwarenessUpdate } from 'y-protocols/awareness'
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness'
+import * as Y from 'yjs'
 import { createYjsDoc } from '../crdt/yjs-adapter'
 import {
   getDocAwareness,
@@ -147,6 +148,48 @@ describe('syncedAwareness — view edges', () => {
     const pa = syncedAwareness<{ name: string }>(a, { name: 'A' })
     pa.dispose()
     expect(() => pa.dispose()).not.toThrow() // `if (disposed) return` true side
+    a.destroy()
+  })
+
+  it('a DISPOSED view STOPS tracking — a later awareness change does NOT update its signals (listener-detach invariant)', () => {
+    // The load-bearing lifecycle invariant (anti-patterns.md "A per-view
+    // dispose() destroying a SHARED, lazily-cached resource"): dispose() must
+    // detach ONLY this view's `change` observer. The sibling-view + doc.destroy
+    // tests lock that dispose does NOT KILL the shared awareness; this locks the
+    // OTHER half — that dispose actually DETACHES (no leaked listener that keeps
+    // the disposed view tracking + re-setting its signals forever). Neither half
+    // alone is sufficient: a dispose() that forgot `aw.off('change', …)` passes
+    // every existing test (the shared awareness is untouched) yet leaks.
+    const a = createYjsDoc()
+    const pa = syncedAwareness<{ name: string }>(a, { name: 'A' })
+
+    // A remote peer joins while the view is LIVE → others() reflects it.
+    const src = new Awareness(new Y.Doc())
+    src.setLocalState({ name: 'Live' })
+    applyAwarenessUpdate(pa.awareness, encodeAwarenessUpdate(src, [src.clientID]), 'test')
+    expect(pa.others().some((p) => p.state.name === 'Live')).toBe(true)
+
+    pa.dispose() // detach THIS view's `change` observer
+    const frozen = pa.others() // capture the exact array identity at dispose
+
+    // A SECOND remote peer joins AFTER dispose. The SHARED awareness still
+    // records it (transports + any other view would see it) — but the disposed
+    // view's signal must stay frozen at the pre-dispose snapshot.
+    const src2 = new Awareness(new Y.Doc())
+    src2.setLocalState({ name: 'AfterDispose' })
+    applyAwarenessUpdate(pa.awareness, encodeAwarenessUpdate(src2, [src2.clientID]), 'test')
+
+    // Same array identity ⇒ the signal was NEVER re-set ⇒ `change` observer gone.
+    // (A leaked listener would run `others.set(freshSnapshot)` → new identity.)
+    expect(pa.others()).toBe(frozen)
+    expect(pa.others().some((p) => p.state.name === 'AfterDispose')).toBe(false)
+    // …but the SHARED awareness DID record the join — proving the view merely
+    // stopped listening (a listener detach), not that it killed the awareness.
+    const shared = [...pa.awareness.getStates().values()]
+    expect(shared.some((s) => (s as { name?: string } | null)?.name === 'AfterDispose')).toBe(true)
+
+    src.destroy()
+    src2.destroy()
     a.destroy()
   })
 
