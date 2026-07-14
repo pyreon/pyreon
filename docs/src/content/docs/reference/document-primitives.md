@@ -176,7 +176,7 @@ Root container for a document tree — produces a `_documentType: "document"` no
 
 **Common mistakes**
 
-- Passing a CALLED accessor — `title={getTitle()}` — captures the value ONCE (the rocketstyle `.attrs()` callback runs a single time at mount). Pass the accessor ITSELF — `title={getTitle}` or `title={() => `$&#123;user().name&#125; — Resume`}` — so `extractDocumentTree` resolves the LIVE value on every export.
+- Passing a CALLED accessor — `title={getTitle()}` — captures the value ONCE (the rocketstyle `.attrs()` callback runs a single time at mount). Pass the accessor ITSELF — `title={getTitle}` or `title={() => userName()}` — so `extractDocumentTree` resolves the LIVE value on every export.
 - Expecting a plain string `title="Q4"` to update when a signal changes — a string is STATIC (captured verbatim into `_documentProps`); only a `() => string` accessor is re-resolved at extraction time. Use an accessor when the value comes from a signal.
 - Passing `title={maybeUndefined}` and expecting an empty-string title — a `null`/`undefined` value is OMITTED from the export metadata (the field is simply absent), never stored as `title: undefined`.
 
