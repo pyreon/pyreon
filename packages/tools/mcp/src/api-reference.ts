@@ -5460,6 +5460,9 @@ init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the ho
 
 <Text tag="span">Inline label</Text>`,
     notes: 'Inline typography primitive — the text counterpart to `Element`. Carries typography props and renders an inline element; use it for runs of text that need the design-system typography contract rather than a raw `<span>`. Like `Element`, visual styling belongs in the styler/rocketstyle layer; `Text` owns the inline-flow structure. See also: Element.',
+    mistakes: `- Expecting a signal-driven \`tag={sig()}\` / \`paragraph={sig()}\` to swap the rendered element — \`tag\` and \`paragraph\` are STATIC (mount-time) by design; the styled layer applies \`as\` once per mount and a reactive tag swap is architecturally unsupported. To change the tag, REMOUNT (e.g. wrap in \`<Show>\`).
+- Passing BOTH \`children\` and \`label\` expecting them to concatenate — Text resolves \`children ?? label\`, so \`children\` WINS and \`label\` is ignored. \`label\` is the inline-syntax alternative to \`children\`, not an extra slot.
+- Driving structure through a signal but styling through a static value — it is the inverse: \`css\` IS reactive (a signal-driven \`css\` re-resolves with a class swap, no remount), while \`tag\` is NOT. Put dynamic STYLING in \`css\`; put dynamic STRUCTURE behind a remount.`,
   },
 
   'elements/List': {
@@ -5543,11 +5546,16 @@ const o = useOverlay({ openOn: "hover", type: "tooltip", hoverDelay: 150 })
   },
 
   'elements/Util': {
-    signature: 'Util(props: UtilProps): VNodeChild',
+    signature: 'Util(props: { children: VNodeChild; className?: string | string[]; style?: object }): VNodeChild',
     example: `import { Util } from "@pyreon/elements"
 
-<Util>{children}</Util>`,
-    notes: 'A bare utility primitive — the minimal structural wrapper when you need an Element-family node without layout semantics (no flex direction / align). Use it for thin passthrough containers where `Element` would impose unwanted flex defaults. See also: Element.',
+// No wrapper div — the child gets the class/style merged in:
+<Util className="highlight" style={{ opacity: 0.5 }}>
+  <SomeChild />
+</Util>`,
+    notes: 'Injects a `className` and/or inline `style` into its CHILD, adding NO DOM node of its own — it CLONES the child (via core `render`) with the merged props. Use it to stamp a class or inline style onto a child you do not otherwise control (a component that forwards to a single DOM node) without introducing an extra wrapper element. Reactive: a getter-shaped `className={cls()}` re-reads per change. It is NOT an Element-family layout node — it has no `tag` / `direction` / `alignX` / `alignY` / `gap`. See also: Element.',
+    mistakes: `- Expecting Util to render its own wrapper element (a \`<div>\`) — it adds NO DOM node; it CLONES its child and merges \`className\`/\`style\` onto it. There is no \`tag\`.
+- Passing layout props (\`direction\` / \`alignX\` / \`gap\`) — Util only accepts \`children\` / \`className\` / \`style\`; layout props are ignored. Use \`Element\` for layout.`,
   },
 
   'elements/Provider': {

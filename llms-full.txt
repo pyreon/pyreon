@@ -2807,7 +2807,10 @@ import Iterator from "@pyreon/elements/helpers/Iterator"
 
 import { Util } from "@pyreon/elements"
 
-<Util>{children}</Util>
+// No wrapper div — the child gets the class/style merged in:
+<Util className="highlight" style={{ opacity: 0.5 }}>
+  <SomeChild />
+</Util>
 
 import { Provider } from "@pyreon/elements"
 ```
