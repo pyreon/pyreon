@@ -58,6 +58,8 @@ const typedChart = useChart<MyOption>(() => ({
   features: [
     'useChart<TOption>(optionsFn, config?) — low-level reactive hook with full lifecycle control',
     'Chart component with declarative options, event binding, and auto-resize',
+    'onEvents map for ANY ECharts event (legendselectchanged, datazoom, brushselected, …), leak-safe binding',
+    'showLoading — reactive toggle of the ECharts loading overlay',
     'Zero-byte lazy loading — chart types auto-detected and dynamically imported',
     'Generic TOption for strict typed options via ComposeOption<SeriesUnion>',
     '@pyreon/charts/manual entry for explicit tree-shaking control',
@@ -93,17 +95,25 @@ const typedChart = useChart<MyOption>(() => ({
       kind: 'component',
       signature: '(props: ChartProps) => VNodeChild',
       summary:
-        'Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers (`onClick`, `onMouseover`, etc.) that bind to the ECharts instance. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases.',
+        'Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers. `onEvents` binds ANY ECharts event by name (`legendselectchanged`, `datazoom`, `finished`, …), with `onClick`/`onMouseover`/`onMouseout` as shorthands — binding is leak-safe (handler changes swap listeners, all removed on unmount). `showLoading` reactively toggles the ECharts loading overlay. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases.',
       example: `<Chart
   options={() => ({
+    legend: {},
     series: [{ type: 'pie', data: [{ value: 60, name: 'A' }, { value: 40, name: 'B' }] }],
   })}
   style="height: 300px"
-  onClick={(params) => alert(params.name)}
+  showLoading={isFetching()}
+  onEvents={{
+    legendselectchanged: (p) => console.log('toggled', p.name),
+    datazoom: (_p, instance) => syncOtherChart(instance.getOption()),
+  }}
 />`,
       mistakes: [
         'Missing style height on the Chart component — same as useChart, ECharts requires explicit container dimensions',
         'Passing a static options object — wrap in `() => ({...})` so signal reads inside are tracked reactively',
+        'Using onClick/onMouseover/onMouseout for a non-mouse event — those are only shorthands; reach for the general `onEvents` map (e.g. `onEvents={{ legendselectchanged: fn }}`) for any other ECharts event',
+        'Expecting `theme` to swap at runtime — it is applied once at init (ECharts cannot hot-swap a theme); remount the chart (key it on the theme signal) to change themes',
+        'Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass `notMerge` or `replaceMerge="series"`',
       ],
       seeAlso: ['useChart'],
     },
@@ -121,6 +131,14 @@ const typedChart = useChart<MyOption>(() => ({
     {
       label: 'Manual entry',
       note: '`@pyreon/charts/manual` skips auto-detection — you register ECharts components yourself via `use()` for maximum tree-shaking control.',
+    },
+    {
+      label: 'Events',
+      note: '`onEvents` is the general handler map — any ECharts event by name (`legendselectchanged`, `datazoom`, `brushselected`, `finished`, …); each handler gets `(params, instance)`. `onClick`/`onMouseover`/`onMouseout` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.',
+    },
+    {
+      label: 'Theme is not reactive',
+      note: 'ECharts cannot hot-swap a theme, so `theme` is applied ONCE at init. To switch themes at runtime (dark mode), remount the chart by keying it on the theme signal, or drive per-series colors with signals instead.',
     },
   ],
 })

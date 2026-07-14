@@ -72,13 +72,47 @@ Component shorthand wrapping `useChart` — pass a reactive options function, ge
 | `renderer?`    | `'canvas' \| 'svg'`           | Default: `'canvas'`                                |
 | `locale?`      | `string`                      | ECharts locale                                     |
 | `notMerge?`    | `boolean`                     | Replace options instead of merging (default false) |
+| `replaceMerge?`| `string \| string[]`          | Component types to REPLACE (not merge) per update  |
 | `lazyUpdate?`  | `boolean`                     | Batch updates (default `true`)                     |
 | `onInit?`      | `(instance: ECharts) => void` | Called once when chart is created                  |
+| `showLoading?` | `boolean`                     | Reactive — toggles ECharts' loading overlay        |
+| `loadingOption?`| `Record<string, unknown>`    | Options for the loading overlay                    |
 | `style?`       | `string`                      | CSS for the container                              |
 | `class?`       | `string`                      | CSS class                                          |
-| `onClick?`     | `(params) => void`            | Click event                                        |
-| `onMouseover?` | `(params) => void`            | Mouseover                                          |
-| `onMouseout?`  | `(params) => void`            | Mouseout                                           |
+| `ariaLabel?`   | `string`                      | Text alternative → `role="img"` + `aria-label`     |
+| `onEvents?`    | `Record<string, (params, instance) => void>` | **Any** ECharts event, keyed by name  |
+| `onClick?`     | `(params, instance) => void`  | Shorthand for `onEvents.click`                     |
+| `onMouseover?` | `(params, instance) => void`  | Shorthand for `onEvents.mouseover`                 |
+| `onMouseout?`  | `(params, instance) => void`  | Shorthand for `onEvents.mouseout`                  |
+
+### Events — `onEvents`
+
+`onClick`/`onMouseover`/`onMouseout` are shorthands. For **any** ECharts event
+(`legendselectchanged`, `datazoom`, `brushselected`, `finished`, …), use the
+general `onEvents` map — each handler receives `(params, instance)`. Binding is
+leak-safe: changing a handler removes the old listener and binds the new one
+(no pile-up), and all listeners are removed on unmount.
+
+```tsx
+<Chart
+  options={() => ({ legend: {}, series: [{ type: 'pie', data: segments() }] })}
+  onEvents={{
+    legendselectchanged: (p) => console.log('toggled', p.name),
+    datazoom: (_p, instance) => syncOtherChart(instance.getOption()),
+  }}
+  style="height: 300px"
+/>
+```
+
+### Loading overlay — `showLoading`
+
+Reactive toggle of ECharts' built-in loading spinner (distinct from
+`useChart`'s `loading` signal, which tracks lazy MODULE loading before the
+instance exists):
+
+```tsx
+<Chart options={() => data.chartOption()} showLoading={data.isFetching()} />
+```
 
 ## `useChart(() => options, config?)`
 
@@ -193,6 +227,20 @@ Canvas renders the whole chart as one `<canvas>` element. SVG creates hundreds o
 - **`loading` is `true` until the first chart renders** — show a placeholder, or accept a brief blank container. The manual entry skips this since modules are registered up-front.
 - **Option-function throws are captured into `error`** — they do NOT crash the component. Read `chart.error()` to surface them.
 - **`onUnmount` disposes the chart + observer** — no manual cleanup needed. Storing `chart.instance()` elsewhere and using it after unmount throws.
+- **`theme` is applied once at init, NOT reactive.** ECharts cannot hot-swap a theme — it must dispose and re-create the instance. To switch themes at runtime (e.g. dark mode), remount the chart by keying it on the theme: wrap `<Chart theme={t()} .../>` in a `{() => { const k = t(); return <Chart theme={k} .../> }}` accessor, or set the theme once and use ECharts CSS variables / per-series colors driven by signals. (Reactive theme swap is a tracked follow-up.)
+- **Merge vs replace on update.** Reactive updates `setOption(merge)` by default — a signal change that REMOVES a series/point leaves the old one merged. Pass `notMerge` (replace everything) or `replaceMerge="series"` (replace just the named components) when your data shrinks.
+
+## Performance — wrapper overhead vs echarts-for-react
+
+Both `@pyreon/charts` and [`echarts-for-react`](https://github.com/hustcc/echarts-for-react) wrap the same ECharts engine, so the only thing that differs is the **wrapper's own JS work** around it. Measured with an identical stubbed engine (so per-call ECharts cost is byte-identical and near-zero — isolating the wrapper), real React 19 + real `echarts-for-react` vs the real `<Chart>` + `useChart`:
+
+| Phase | `@pyreon/charts` | `echarts-for-react` | verdict |
+| --- | --- | --- | --- |
+| **Reactive update** (per data change) | ~0.2µs | ~1.9µs | **~11× faster** |
+| Dispose | ~14µs | ~27µs | ~1.9× faster |
+| Mount → ready | ~100µs | ~62µs | **~1.65× slower** |
+
+The update win is the fine-grained-reactivity story: a signal change re-runs one effect that calls `setOption` — no component re-render, no VDOM diff, no prop deep-compare. The mount **loss** is the honest price of lazy loading (the async ECharts module loader + effect setup). Reproduce: `bun run --filter=@pyreon/charts bench`. *Author-run micro-bench (Bun/JSC + happy-dom, stubbed engine) — magnitudes/ratios are the signal, not the last digit; it measures wrapper JS, not chart render speed (identical ECharts for both).*
 
 ## Documentation
 

@@ -45,6 +45,7 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "bench": "NODE_ENV=production bun bench/wrapper-overhead.bench.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
   },
@@ -59,7 +60,11 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.8",
-    "echarts": "^6.1.0"
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.2",
+    "happy-dom": "^20.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "publishConfig": {
     "access": "public"

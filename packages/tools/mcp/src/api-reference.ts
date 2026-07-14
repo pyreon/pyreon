@@ -4151,14 +4151,22 @@ flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })`,
     signature: '(props: ChartProps) => VNodeChild',
     example: `<Chart
   options={() => ({
+    legend: {},
     series: [{ type: 'pie', data: [{ value: 60, name: 'A' }, { value: 40, name: 'B' }] }],
   })}
   style="height: 300px"
-  onClick={(params) => alert(params.name)}
+  showLoading={isFetching()}
+  onEvents={{
+    legendselectchanged: (p) => console.log('toggled', p.name),
+    datazoom: (_p, instance) => syncOtherChart(instance.getOption()),
+  }}
 />`,
-    notes: 'Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers (`onClick`, `onMouseover`, etc.) that bind to the ECharts instance. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases. See also: useChart.',
+    notes: 'Declarative chart component that wraps `useChart` internally. Accepts `options` (reactive function), `style`/`class` for the container, and event handlers. `onEvents` binds ANY ECharts event by name (`legendselectchanged`, `datazoom`, `finished`, …), with `onClick`/`onMouseover`/`onMouseout` as shorthands — binding is leak-safe (handler changes swap listeners, all removed on unmount). `showLoading` reactively toggles the ECharts loading overlay. Renders a div with the chart — auto-resizes and cleans up on unmount. Simpler than useChart for most use cases. See also: useChart.',
     mistakes: `- Missing style height on the Chart component — same as useChart, ECharts requires explicit container dimensions
-- Passing a static options object — wrap in \`() => ({...})\` so signal reads inside are tracked reactively`,
+- Passing a static options object — wrap in \`() => ({...})\` so signal reads inside are tracked reactively
+- Using onClick/onMouseover/onMouseout for a non-mouse event — those are only shorthands; reach for the general \`onEvents\` map (e.g. \`onEvents={{ legendselectchanged: fn }}\`) for any other ECharts event
+- Expecting \`theme\` to swap at runtime — it is applied once at init (ECharts cannot hot-swap a theme); remount the chart (key it on the theme signal) to change themes
+- Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass \`notMerge\` or \`replaceMerge="series"\``,
   },
   // <gen-docs:api-reference:end @pyreon/charts>
   // ═══════════════════════════════════════════════════════════════════════════

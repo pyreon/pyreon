@@ -1,18 +1,17 @@
 import type { VNodeChild } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, onCleanup } from '@pyreon/reactivity'
 import type { EChartsOption } from 'echarts'
-import type { ECElementEvent } from 'echarts/core'
-import type { ChartProps } from './types'
+import type { ChartEventHandler, ChartEventParams, ChartProps } from './types'
 import { useChart } from './use-chart'
 
 // Bare `process.env.NODE_ENV !== 'production'` — bundler-agnostic library
 // convention used by React/Vue/Solid. See .claude/rules/anti-patterns.md.
 
 /**
- * Handler type that bridges our duck-typed ChartEventParams with
- * echarts' internal ECElementEvent. Used for event binding casts.
+ * The listener shape ECharts' generic `on(eventName: string, handler)`
+ * overload accepts. Our wrapped handlers read `args[0]` as the event params.
  */
-type ECHandler = (params: ECElementEvent) => boolean | undefined
+type ECHandler = (...args: unknown[]) => void
 
 /**
  * Reactive chart component. Wraps useChart in a div with automatic
@@ -26,6 +25,17 @@ type ECHandler = (params: ECElementEvent) => boolean | undefined
  *     series: [{ type: 'bar', data: revenue() }],
  *     tooltip: {},
  *   })}
+ *   style="height: 400px"
+ * />
+ *
+ * // Any ECharts event (not just the mouse shorthands) + reactive loading
+ * <Chart
+ *   options={() => ({ legend: {}, series: [{ type: 'pie', data: segments() }] })}
+ *   showLoading={isFetching()}
+ *   onEvents={{
+ *     legendselectchanged: (p) => console.log('toggled', p.name),
+ *     datazoom: (_p, instance) => syncOtherChart(instance.getOption()),
+ *   }}
  *   style="height: 400px"
  * />
  *
@@ -47,21 +57,59 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
     ...(props.renderer != null ? { renderer: props.renderer } : {}),
     ...(props.locale != null ? { locale: props.locale } : {}),
     ...(props.notMerge != null ? { notMerge: props.notMerge } : {}),
+    ...(props.replaceMerge != null ? { replaceMerge: props.replaceMerge } : {}),
     ...(props.lazyUpdate != null ? { lazyUpdate: props.lazyUpdate } : {}),
     ...(props.onInit != null ? { onInit: props.onInit } : {}),
   })
 
-  // Bind events when instance is ready
+  // Bind events when the instance is ready.
+  //
+  // `onEvents` is the general form (any ECharts event); `onClick` /
+  // `onMouseover` / `onMouseout` are shorthands merged in (shorthand WINS on
+  // a key collision). Binding is leak-safe: `onCleanup` runs `inst.off(...)`
+  // for every listener this pass bound BEFORE the effect re-runs, so a
+  // reactive handler prop that re-fires this effect can never pile up
+  // duplicate listeners (the latent bug of a bare `inst.on(...)` that never
+  // `.off()`s). All listeners are also removed on dispose.
   effect(() => {
     const inst = chart.instance()
     if (!inst) return
 
-    // Handlers are duck-typed ChartEventParams — cast through unknown
-    // to ECHandler because echarts/core and echarts export incompatible
-    // private class types for ECElementEvent.
-    if (props.onClick) inst.on('click', props.onClick as unknown as ECHandler)
-    if (props.onMouseover) inst.on('mouseover', props.onMouseover as unknown as ECHandler)
-    if (props.onMouseout) inst.on('mouseout', props.onMouseout as unknown as ECHandler)
+    const handlers: Record<string, ChartEventHandler> = { ...props.onEvents }
+    if (props.onClick) handlers.click = props.onClick
+    if (props.onMouseover) handlers.mouseover = props.onMouseover
+    if (props.onMouseout) handlers.mouseout = props.onMouseout
+
+    // Each entry: the event name + the exact wrapped listener we registered,
+    // so `.off()` removes precisely what we `.on()`'d (ECharts allows many
+    // listeners per event — removing by name alone would drop the user's own).
+    const bound: [string, ECHandler][] = []
+    for (const name in handlers) {
+      const fn = handlers[name]
+      if (!fn) continue
+      // Wrap so the handler also gets the live instance as a 2nd arg. ECharts'
+      // generic string-event overload types the params as `unknown`, so read
+      // `args[0]` back to our duck-typed ChartEventParams.
+      const wrapped: ECHandler = (...args) => fn(args[0] as ChartEventParams, inst)
+      inst.on(name, wrapped)
+      bound.push([name, wrapped])
+    }
+    onCleanup(() => {
+      for (const [name, wrapped] of bound) inst.off(name, wrapped)
+    })
+  })
+
+  // ECharts built-in loading overlay — reactive. `showLoading` toggles
+  // `inst.showLoading()`/`hideLoading()` as the signal flips; `loadingOption`
+  // customizes the overlay. Distinct from `chart.loading` (module load).
+  effect(() => {
+    const inst = chart.instance()
+    if (!inst) return
+    if (props.showLoading) {
+      inst.showLoading('default', props.loadingOption)
+    } else {
+      inst.hideLoading()
+    }
   })
 
   // Surface load/render errors. Without this, a chart that fails to mount

@@ -73,6 +73,10 @@ describe('gen-docs — charts snapshot', () => {
       > **Lazy loading**: ECharts modules are auto-detected from your options (series types, components) and dynamically imported. First render has an async loading phase — check \`loading()\` or \`<Chart>\` handles it internally. Zero ECharts bytes in your initial bundle.
       >
       > **Manual entry**: \`@pyreon/charts/manual\` skips auto-detection — you register ECharts components yourself via \`use()\` for maximum tree-shaking control.
+      >
+      > **Events**: \`onEvents\` is the general handler map — any ECharts event by name (\`legendselectchanged\`, \`datazoom\`, \`brushselected\`, \`finished\`, …); each handler gets \`(params, instance)\`. \`onClick\`/\`onMouseover\`/\`onMouseout\` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
+      >
+      > **Theme is not reactive**: ECharts cannot hot-swap a theme, so \`theme\` is applied ONCE at init. To switch themes at runtime (dark mode), remount the chart by keying it on the theme signal, or drive per-series colors with signals instead.
       "
     `)
   })

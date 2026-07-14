@@ -51,6 +51,14 @@ export interface ChartEventParams {
   [key: string]: unknown
 }
 
+/**
+ * A chart event handler. Receives the ECharts event params plus the live
+ * ECharts instance (so a handler can call `instance.dispatchAction(...)`
+ * without capturing the ref). Mirrors echarts-for-react's `onEvents`
+ * handler shape `(params, instance) => void`.
+ */
+export type ChartEventHandler = (params: ChartEventParams, instance: ECharts) => void
+
 // ─── Chart config ────────────────────────────────────────────────────────────
 
 /**
@@ -65,6 +73,13 @@ export interface UseChartConfig {
   locale?: string
   /** Whether to replace all options instead of merging — default: false */
   notMerge?: boolean
+  /**
+   * Component types to REPLACE (rather than merge) on each reactive update —
+   * ECharts `setOption` `replaceMerge`. Use when a signal change should drop
+   * removed components/series instead of leaving stale merged state (e.g.
+   * `'series'`). Distinct from `notMerge` (which replaces everything).
+   */
+  replaceMerge?: string | string[]
   /** Whether to batch updates — default: true */
   lazyUpdate?: boolean
   /** Device pixel ratio — default: window.devicePixelRatio */
@@ -108,10 +123,30 @@ export interface ChartProps<TOption extends EChartsOption = EChartsOption> exten
   locale?: string
   /** Replace options instead of merging — default false */
   notMerge?: boolean
+  /**
+   * Component types to REPLACE (not merge) on each reactive update — ECharts
+   * `setOption` `replaceMerge`. E.g. `'series'` drops removed series instead
+   * of leaving stale merged state.
+   */
+  replaceMerge?: string | string[]
   /** Batch updates — default true */
   lazyUpdate?: boolean
   /** Called once when the ECharts instance is created */
   onInit?: (instance: ECharts) => void
+  /**
+   * Show the ECharts built-in loading overlay. Reactive — pass a signal read
+   * (`showLoading={loading()}`) to toggle it while your data is in flight.
+   * This is ECharts' `showLoading()`/`hideLoading()`, distinct from the
+   * `loading` signal on `useChart` (which tracks lazy MODULE loading before
+   * the instance exists).
+   */
+  showLoading?: boolean
+  /**
+   * Options for the loading overlay (text, color, spinnerRadius, …), passed to
+   * ECharts `showLoading('default', loadingOption)`. Only applies while
+   * `showLoading` is true.
+   */
+  loadingOption?: Record<string, unknown>
   /** CSS style for the container div */
   style?: string
   /** CSS class for the container div */
@@ -125,10 +160,26 @@ export interface ChartProps<TOption extends EChartsOption = EChartsOption> exten
    * "Bar chart: monthly revenue, trending up from January to June".
    */
   ariaLabel?: string
-  /** Click event handler */
-  onClick?: (params: ChartEventParams) => void
-  /** Mouseover event handler */
-  onMouseover?: (params: ChartEventParams) => void
-  /** Mouseout event handler */
-  onMouseout?: (params: ChartEventParams) => void
+  /**
+   * Arbitrary ECharts event handlers, keyed by event name — the general form
+   * that covers every ECharts event (`'legendselectchanged'`, `'datazoom'`,
+   * `'finished'`, `'brushselected'`, `'click'`, …). Mirrors echarts-for-react's
+   * `onEvents`. Each handler receives `(params, instance)`. Reactive: if a
+   * handler prop changes, the old listener is removed and the new one bound
+   * (no listener pile-up). The `onClick`/`onMouseover`/`onMouseout` shorthands
+   * below are merged in and WIN on a key collision.
+   *
+   * @example
+   * onEvents={{
+   *   legendselectchanged: (p) => console.log('legend', p.name),
+   *   datazoom: (p, inst) => syncOtherChart(inst.getOption()),
+   * }}
+   */
+  onEvents?: Record<string, ChartEventHandler>
+  /** Click event handler (shorthand for `onEvents.click`) */
+  onClick?: ChartEventHandler
+  /** Mouseover event handler (shorthand for `onEvents.mouseover`) */
+  onMouseover?: ChartEventHandler
+  /** Mouseout event handler (shorthand for `onEvents.mouseout`) */
+  onMouseout?: ChartEventHandler
 }
