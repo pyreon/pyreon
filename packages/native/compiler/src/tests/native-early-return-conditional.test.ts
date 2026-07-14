@@ -56,12 +56,21 @@ describe('early-return conditional rendering — folds to a ternary (was a silen
     })
   }
 
-  it('swift: the fold emits a ternary of views (result-builder-safe shape)', () => {
+  it('swift: the fold emits a view if/else (result-builder-safe shape)', () => {
     const out = transform(
       `export function App({ ok }: { ok: boolean }) { if (ok) return <Text>Yes</Text>; return <Text>No</Text> }`,
       { target: 'swift' },
     )
-    expect(out.code).toMatch(/ok \? Text\("Yes"\) : Text\("No"\)/)
+    // M2.2b — the fold lowers to a `@ViewBuilder` `if ok { … } else { … }`,
+    // NOT a `? :` operator: swiftc rejects `? :` between DIFFERENT view types
+    // (HStack vs VStack), so if/else (buildEither) is the general
+    // result-builder-safe form. Same-typed Text branches would also compile
+    // under `? :`, but the emit is uniform across view-branch shapes.
+    expect(out.code).toMatch(/if ok \{/)
+    expect(out.code).toContain('Text("Yes")')
+    expect(out.code).toMatch(/\} else \{/)
+    expect(out.code).toContain('Text("No")')
+    expect(out.code).not.toMatch(/ok \? Text/)
   })
 
   it('an imperative `if` (mutation, no JSX return) STILL warns — no result-builder lowering', () => {

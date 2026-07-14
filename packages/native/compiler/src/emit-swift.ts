@@ -1511,10 +1511,10 @@ function emitSwiftComponent(c: ComponentIR): string {
   const _hasOnMount = c.decls.some((d) => d.kind === 'on-mount')
   if (_hasFetchDecl || _hasOnMount) {
     lines.push(`    ZStack {`)
-    lines.push(`      ${emitSwiftExpr(c.returnExpr, 6)}`)
+    lines.push(`      ${emitSwiftReturnExpr(c.returnExpr, 6)}`)
     lines.push(`    }`)
   } else {
-    lines.push(`    ${emitSwiftExpr(c.returnExpr, 4)}`)
+    lines.push(`    ${emitSwiftReturnExpr(c.returnExpr, 4)}`)
   }
   _emittingLayoutComponentSwift = false
   // Phase 4: append a mount-time `.task { }` per useFetch decl. SwiftUI
@@ -6820,6 +6820,47 @@ function swiftExprProducesView(e: ExprIR): boolean {
   return false
 }
 
+/**
+ * Lower a VIEW-producing ternary `cond ? then : otherwise` to a SwiftUI
+ * `if cond { then } else { otherwise }`. SwiftUI's `@ViewBuilder` accepts
+ * if/else (buildEither) but REJECTS the `? :` operator between DIFFERENT
+ * View types — `sizeClass == "regular" ? HStack {…} : VStack {…}` fails with
+ * "result values in '? :' expression have mismatching types". Each branch
+ * recurses through `emitSwiftChild`, which Text-wraps a non-view branch and
+ * passes a view branch through, so both one-view-one-value and two-view
+ * ternaries lower correctly. The Kotlin backend already emits
+ * `if (cond) A else B`, so this aligns the two backends. Callers gate on
+ * `swiftExprProducesView` — VALUE ternaries (`? "a" : "b"`) stay `? :`.
+ */
+function emitSwiftViewTernary(
+  t: { cond: ExprIR; then: ExprIR; otherwise: ExprIR },
+  indent: number,
+): string {
+  const cond = swiftCondition(t.cond, (x) => emitSwiftExpr(x, indent))
+  const pad = ' '.repeat(indent + 2)
+  const base = ' '.repeat(indent)
+  const thenStr = emitSwiftChild({ kind: 'expr', expr: t.then }, indent + 2)
+  const elseStr = emitSwiftChild({ kind: 'expr', expr: t.otherwise }, indent + 2)
+  return `if ${cond} {\n${pad}${thenStr}\n${base}} else {\n${pad}${elseStr}\n${base}}`
+}
+
+/**
+ * Emit a component's root return expression. A view-producing ternary at the
+ * `var body: some View {` root (the natural adaptive shape
+ * `return sizeClass() === 'regular' ? <Inline> : <Stack>`) needs the same
+ * if/else lowering as a ternary CHILD (see `emitSwiftViewTernary`); anything
+ * else emits via the normal expression path.
+ */
+function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
+  if (
+    expr.kind === 'ternary' &&
+    (swiftExprProducesView(expr.then) || swiftExprProducesView(expr.otherwise))
+  ) {
+    return emitSwiftViewTernary(expr, indent)
+  }
+  return emitSwiftExpr(expr, indent)
+}
+
 function emitSwiftChild(c: ChildIR, indent: number): string {
   if (c.kind === 'text') return `Text(${JSON.stringify(c.value)})`
   if (!swiftExprProducesView(c.expr)) {
@@ -6847,6 +6888,19 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     const pad = ' '.repeat(indent + 2)
     const inner = emitSwiftChild({ kind: 'expr', expr: c.expr.right }, indent + 2)
     return `if ${cond} {\n${pad}${inner}\n${' '.repeat(indent)}}`
+  }
+  // `{cond ? <ViewA> : <ViewB>}` — a ternary between VIEW branches. SwiftUI's
+  // ViewBuilder rejects `? :` between DIFFERENT view types (HStack vs VStack →
+  // "result values in '? :' expression have mismatching types"), so lower to
+  // `if cond { A } else { B }` (buildEither) — the same shape the `&&` case
+  // above uses, and what the Kotlin backend already emits. VALUE ternaries
+  // (`? "a" : "b"`) are not view-producing, so they fall through to
+  // `emitSwiftExpr` and stay a `? :` expression.
+  if (
+    c.expr.kind === 'ternary' &&
+    (swiftExprProducesView(c.expr.then) || swiftExprProducesView(c.expr.otherwise))
+  ) {
+    return emitSwiftViewTernary(c.expr, indent)
   }
   return emitSwiftExpr(c.expr, indent)
 }

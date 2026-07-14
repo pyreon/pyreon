@@ -295,7 +295,7 @@ describe('view-child Text-wrap', () => {
     expect(out).toContain('Text(text = "${if (done) "done" else "todo"}")')
   })
 
-  it('Swift: JSX-producing ternary child stays a raw view emit', () => {
+  it('Swift: JSX-producing ternary child lowers to a view if/else (not stringified)', () => {
     const out = tx(
       `
       import { signal } from '@pyreon/reactivity'
@@ -307,7 +307,17 @@ describe('view-child Text-wrap', () => {
       `,
       'swift',
     )
-    expect(out).toContain('flag ? Text("A") : Text("B")')
+    // M2.2b — a JSX-producing ternary child lowers to a `@ViewBuilder`
+    // `if flag { … } else { … }`, NOT a `? :` operator (swiftc rejects `? :`
+    // between different view types like HStack/VStack). Same-typed branches
+    // (both Text) would typecheck under `? :`, but the emit is uniform +
+    // matches the Kotlin backend. The invariant this test protects — the
+    // ternary is a VIEW emit, NOT stringified into a Text interpolation —
+    // still holds.
+    expect(out).toContain('if flag {')
+    expect(out).toContain('Text("A")')
+    expect(out).toContain('} else {')
+    expect(out).toContain('Text("B")')
     expect(out).not.toContain('Text("\\(flag ? Text(')
   })
 

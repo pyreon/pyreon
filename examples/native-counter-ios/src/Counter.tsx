@@ -47,6 +47,16 @@ export function Counter() {
     <VStack>
       <Text>Count: {count}</Text>
       <Text>Size: {sizeClass}</Text>
+      {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
+          DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
+          rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
+          PMTC compiler lowers a view-branch ternary to `if cond { … } else
+          { … }`. That this counter COMPILES + runs is the device proof the
+          if/else lowering produces valid Swift/Compose; the compact branch
+          ("Layout: narrow") renders on a phone. */}
+      {sizeClass() === 'regular'
+        ? <Inline><Text>Layout: wide</Text></Inline>
+        : <Stack><Text>Layout: narrow</Text></Stack>}
       {/* A11y device proof — the cross-platform AccessibilityProps vocab
           lowers per-target: iOS `.accessibilityLabel(...)`, Android
           `semantics { contentDescription }`. Differentiating device
