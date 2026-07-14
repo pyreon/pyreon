@@ -9,6 +9,7 @@
 
 import { signal } from '@pyreon/reactivity'
 import { useHaptics, useShare, useLinking, useNotifications, useSizeClass } from '@pyreon/hooks'
+import { createI18n } from '@pyreon/i18n/core'
 
 export function Counter() {
   const count = signal<number>(0)
@@ -43,10 +44,29 @@ export function Counter() {
   // device gate asserts `Size: compact` on an iPhone (and `Size: regular`
   // on an iPad locally), proving the read reflects the REAL environment.
   const sizeClass = useSizeClass()
+  // Tier-2 i18n proof — `createI18n({ locale, messages, fallbackLocale? })`
+  // (from `@pyreon/i18n/core`) lowers to the PyreonI18n reactive container:
+  // iOS `@State private var i18n = PyreonI18n(locale: "de", messages: […])`,
+  // Android `val i18n = remember { PyreonI18n(initialLocale = "de", …) }`.
+  // `i18n.t('hello')` flows through unchanged to the runtime `.t()`, which
+  // resolves `messages[locale][key]` (→ the German "Hallo!" here, NOT the
+  // English "Hello!" nor the raw key "hello"). OBSERVABLE + differentiating:
+  // the device gate asserts the rendered text is the CONFIGURED-locale value
+  // "Greeting: Hallo!", proving BOTH table resolution AND locale selection at
+  // runtime — a key-passthrough would show "hello", the wrong locale "Hello!".
+  const i18n = createI18n({
+    locale: 'de',
+    fallbackLocale: 'en',
+    messages: {
+      en: { hello: 'Hello!' },
+      de: { hello: 'Hallo!' },
+    },
+  })
   return (
     <VStack>
       <Text>Count: {count}</Text>
       <Text>Size: {sizeClass}</Text>
+      <Text>Greeting: {i18n.t('hello')}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
           DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
           rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
