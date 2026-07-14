@@ -56,13 +56,20 @@ describe('collectOptionText — <select value> fallback text', () => {
 describe('SSR component-error logging', () => {
   it('names a throwing NAMELESS component as <Anonymous> and emits the error marker', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    // The comma operator strips the inferred function name → `.name === ''`,
-    // so the catch falls back to 'Anonymous'. The streaming renderer swallows a
-    // non-Suspense error + emits a marker (the string renderer rethrows).
-    const Anon = (0, () => {
-      throw new Error('boom')
-    }) as unknown as ComponentFn
-    const html = await collectStream(renderToStream(h(Anon, null)))
+    // An arrow passed DIRECTLY as an argument has `.name === ''` (no binding to
+    // infer a name from), so the catch falls back to 'Anonymous'. The streaming
+    // renderer swallows a non-Suspense error + emits a marker (the string
+    // renderer rethrows).
+    const html = await collectStream(
+      renderToStream(
+        h(
+          (() => {
+            throw new Error('boom')
+          }) as unknown as ComponentFn,
+          null,
+        ),
+      ),
+    )
     expect(html).toContain('<!--pyreon-error-->')
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Anonymous>'), expect.anything())
     spy.mockRestore()
