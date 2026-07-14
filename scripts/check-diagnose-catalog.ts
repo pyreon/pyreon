@@ -38,6 +38,12 @@
  *   the gate independently.
  * - Storybook stories (`*.stories.ts(x)`) — render-side docs; no error
  *   surface.
+ * - `src/manifest.ts` — the `defineManifest` docs-metadata source consumed
+ *   by `gen-docs` (→ llms / MCP api-reference). It has zero runtime
+ *   behavior and is stripped from the published tarball (`publish.ts`
+ *   drops `src/`), so it can never introduce user-visible error surface.
+ *   It's the one docs file that happens to be `.ts` — same bucket as
+ *   CHANGELOG / README, which are already excluded by extension.
  * - Generated `lib/` output — gitignored, never committed; included here
  *   as defense-in-depth in case someone ever commits build output.
  *
@@ -119,6 +125,11 @@ export function isSensitiveSourceFile(file: string): boolean {
 
   // 3. Exclude test code (shared classifier)
   if (isTestPath(file)) return false
+
+  // 4. Exclude the docs-metadata manifest — `defineManifest` source consumed
+  //    by gen-docs; zero runtime behavior, stripped from the tarball. Same
+  //    "documentation, never grows the error catalog" bucket as README/CHANGELOG.
+  if (file.endsWith('/src/manifest.ts')) return false
 
   return true
 }

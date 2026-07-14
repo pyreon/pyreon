@@ -88,6 +88,9 @@ dispose()`,
         'Alias for `mount`. Provided for API familiarity — both names point to the same function.',
       example: `import { render } from "@pyreon/runtime-dom"
 render(<App />, document.getElementById("app")!)`,
+      mistakes: [
+        '`render` is an EXACT alias for `mount` (same function reference) — its foot-guns are `mount`\'s (null container throws; props are reactive-vs-static per the compiler; call the returned function to unmount + dispose effects). Do NOT expect any `render`-specific behavior',
+      ],
       seeAlso: ['mount'],
     },
     {
@@ -159,15 +162,19 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
     {
       name: 'KeepAlive',
       kind: 'component',
-      signature: '<KeepAlive include={pattern} exclude={pattern} max={number}>{children}</KeepAlive>',
+      signature: '<KeepAlive active={() => boolean}>{children}</KeepAlive>',
       summary:
-        'Cache component instances across mount/unmount cycles so their state (signals, scroll position, form inputs) is preserved when they are toggled out and back in. `include`/`exclude` filter by component name. `max` limits cache size (LRU eviction). Useful for tab panels and multi-step forms.',
-      example: `const tab = signal<"a" | "b">("a")
-
-<KeepAlive>
-  <Show when={tab() === "a"}><ExpensiveFormA /></Show>
-  <Show when={tab() === "b"}><ExpensiveFormB /></Show>
-</KeepAlive>`,
+        "Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab).",
+      example: `// One KeepAlive per route — each keeps its own subtree mounted + hidden.
+<KeepAlive active={() => route() === "/a"}><RouteA /></KeepAlive>
+<KeepAlive active={() => route() === "/b"}><RouteB /></KeepAlive>`,
+      mistakes: [
+        '`active` is an ACCESSOR — write `active={() => cond()}`, not `active={cond}`; a bare non-signal expression is captured once and never re-hides (the compiler auto-calls a KNOWN signal, but an arbitrary expression needs the thunk)',
+        'KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component\'s effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper',
+        'It is the OPPOSITE of `<Show>`/ternary — those DESTROY + recreate state on toggle; reach for KeepAlive precisely when you need state PRESERVED across hide/show (form drafts, scroll, heavy trees)',
+        'Each KeepAlive slot keeps its OWN children mounted — wrapping N routes in N KeepAlives keeps ALL N subtrees mounted + their effects live simultaneously, not just the active one',
+        'There is NO `include`/`exclude`/`max`/name-based cache or LRU eviction (that is Vue\'s KeepAlive) — visibility is driven solely by the `active` accessor',
+      ],
       seeAlso: ['Transition', 'Show'],
     },
     {
@@ -182,6 +189,11 @@ _tpl("<div class=\\"box\\"> </div>", (__root) => {
   const __d0 = _bindText(text, __t0)
   return () => { __d0() }
 })`,
+      mistakes: [
+        'COMPILER-EMITTED — never hand-write `_tpl()`; the html string + the bind walks (`.firstChild`/`.nextSibling` captures) are generated to match the JSX exactly, and a hand-written mismatch corrupts the ref walks',
+        'The html is parsed + cached per DISTINCT string (module-level) then `cloneNode(true)`d — a dynamically-built html string defeats the cache (a `<template>` parse per unique string)',
+        'Bindings run against the CLONE after ALL node references are captured (the two-phase ref-hoist) — this is what keeps a dynamic slot before static siblings from corrupting their walks; the capture-before-mutate ordering is load-bearing, not cosmetic',
+      ],
       seeAlso: ['_bindText', '_bindDirect'],
     },
     {
@@ -196,6 +208,12 @@ _tpl("<div> </div>", (__root) => {
   const __d0 = _bindText(count, __t0) // the SIGNAL, not a thunk
   return () => { __d0() }
 })`,
+      mistakes: [
+        "COMPILER-EMITTED — don't hand-write `_bindText`; write JSX `{signal()}` and let the compiler emit it (it emits only for a bare signal IDENTIFIER)",
+        "The `source` MUST expose `._v` (read DIRECTLY for the initial value, not via a call) — a custom signal-wrapper that forwards `.direct`/`.peek` but NOT `_v` binds `''` and never updates (the `storage-signal-v-forwarding` bug class); build wrappers with `wrapSignal(base, { set })`, which forwards `_v` by construction",
+        'It cannot bind a detached method (`obj.method` loses `this`) — the compiler emits it only for a simple signal identifier',
+        "A signal whose VALUE later becomes a VNode / VNode[] UPGRADES the binding to a subtree mount at the text node's position (the polymorphic upgrade); plain string/number values stay on the `.data` fast path",
+      ],
       seeAlso: ['_tpl', '_bindDirect'],
     },
     {
@@ -203,10 +221,16 @@ _tpl("<div> </div>", (__root) => {
       kind: 'function',
       signature: 'sanitizeHtml(html: string): string',
       summary:
-        'Sanitize an HTML string using the registered sanitizer (set via `setSanitizer()`). Falls back to the identity function if no sanitizer is registered. Used by the runtime when setting `innerHTML` on elements.',
+        "Sanitize an HTML string for `innerHTML`. If a custom sanitizer was registered via `setSanitizer()` (e.g. DOMPurify) it is used; OTHERWISE a built-in tag-allowlist fallback runs (the browser Sanitizer API on Chrome 105+, else a DOMParser-based allowlist that strips unsafe elements + attributes) — it is NOT an identity passthrough. DOM-only: the runtime calls it when applying `dangerouslySetInnerHTML` / `innerHTML`, never during SSR.",
       example: `import { setSanitizer, sanitizeHtml } from "@pyreon/runtime-dom"
 setSanitizer(DOMPurify.sanitize)
 const clean = sanitizeHtml(userInput)`,
+      mistakes: [
+        "WITHOUT `setSanitizer` it is NOT a passthrough — a built-in tag-allowlist sanitizer strips unsafe elements/attributes; but that allowlist is CONSERVATIVE, so legitimate-but-uncommon markup may be stripped — register a policy via `setSanitizer(DOMPurify.sanitize)` if you need specific tags",
+        '`setSanitizer(fn)` is GLOBAL and replaces the built-in fallback for EVERY `innerHTML`/`dangerouslySetInnerHTML` in the app — a weaker custom sanitizer reduces safety everywhere',
+        'It is DOM-only (uses the Sanitizer API / DOMParser) — never call it during SSR; the runtime only invokes it on the client innerHTML path',
+        '`setSanitizer(null)` RESTORES the built-in allowlist fallback — it does NOT disable sanitization',
+      ],
       seeAlso: ['setSanitizer'],
     },
     {

@@ -38,6 +38,8 @@ import {
  *  - Test / spec / story files anywhere under `src/` → NOT sensitive.
  *  - Files inside `src/tests/` / `src/__tests__/` at any depth → NOT
  *    sensitive.
+ *  - `src/manifest.ts` (the `defineManifest` docs-metadata source) → NOT
+ *    sensitive; a docs-excellence manifest edit must not trip the gate.
  *  - `.ts` / `.tsx` files directly under `src/` (and any non-test
  *    subdirectory of `src/`) → sensitive.
  *  - Non-sensitive packages (anything outside the 5 names) → NOT
@@ -197,6 +199,34 @@ describe('isSensitiveSourceFile', () => {
           'packages/core/runtime-dom/src/transition.browser.test.tsx',
         ),
       ).toBe(false)
+    })
+  })
+
+  describe('rejects the docs-metadata manifest (docs-only, never grows the error catalog)', () => {
+    it('rejects src/manifest.ts — the defineManifest docs source consumed by gen-docs', () => {
+      // A docs-excellence PR enriching a core package's manifest.ts (mistakes[]
+      // catalogs → MCP api-reference) must NOT trip the diagnose gate: manifest.ts
+      // has zero runtime behavior and is stripped from the published tarball.
+      for (const pkg of [
+        'runtime-dom',
+        'runtime-server',
+        'core',
+        'compiler',
+        'router',
+      ]) {
+        expect(
+          isSensitiveSourceFile(`packages/core/${pkg}/src/manifest.ts`),
+        ).toBe(false)
+      }
+    })
+
+    it('still matches a real source file named like manifest but not at src/ root', () => {
+      // Precision guard: the exclusion is the exact `src/manifest.ts` convention.
+      // A hypothetical `src/foo/manifest.ts` is NOT the docs-metadata file and
+      // stays sensitive (defensive — the convention is always src/manifest.ts).
+      expect(
+        isSensitiveSourceFile('packages/core/router/src/foo/manifest.ts'),
+      ).toBe(true)
     })
   })
 
