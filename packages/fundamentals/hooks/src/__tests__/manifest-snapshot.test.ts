@@ -118,7 +118,12 @@ describe('gen-docs — hooks snapshot', () => {
 
   it('renders @pyreon/hooks to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(hooksManifest)
-    expect(Object.keys(record).length).toBe(20)
+    expect(Object.keys(record).length).toBe(45)
+    // The 25 previously-undocumented hooks are now in api[].
+    expect(Object.keys(record)).toContain('hooks/useToggle')
+    expect(Object.keys(record)).toContain('hooks/useMediaQuery')
+    expect(Object.keys(record)).toContain('hooks/useScrollLock')
+    expect(Object.keys(record)).toContain('hooks/useIntersection')
     expect(Object.keys(record)).toContain('hooks/useControllableState')
     expect(Object.keys(record)).toContain('hooks/useFocusReturn')
     expect(Object.keys(record)).toContain('hooks/useFetch')
