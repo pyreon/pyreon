@@ -19,6 +19,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KOTLIN_COMPOSE_STUBS } from './kotlin-stubs'
+import { SWIFT_UI_STUBS } from './swift-stubs'
 
 export interface ValidationResult {
   /** True iff the source was accepted as syntactically valid. */
@@ -208,6 +209,85 @@ export function validateSwiftTypecheck(source: string): ValidationResult {
     return {
       ok: false,
       error: output || e.message || 'swiftc -typecheck failed with no output',
+    }
+  } finally {
+    try {
+      rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // Cleanup best-effort.
+    }
+  }
+}
+
+/** The framework modules `SWIFT_UI_STUBS` replaces — stripped from the emit so
+ *  its symbols resolve to the stubs (a single-module compile), never to the real
+ *  Apple SDK (absent on Linux). `Foundation` is NOT here: it's real + available. */
+const SWIFT_STUBBED_IMPORTS = /^import (?:SwiftUI|PyreonRuntime|PyreonRouter)\s*$/gm
+
+/**
+ * Validate Swift source via `swiftc -typecheck` against a minimal STUB of the
+ * SwiftUI + PyreonRuntime surface (see swift-stubs.ts) — the Swift sibling of
+ * `validateKotlin`. Unlike `validateSwiftTypecheck` (which needs the REAL SwiftUI
+ * SDK, so it only runs on macOS), this needs ONLY `swiftc`, so it runs on the
+ * plain Linux PR runner — closing the per-PR type-check gap that let a type error
+ * like `.animation(_:value:)`-needs-Equatable ship past `swiftc -parse`.
+ *
+ * The emit's `import SwiftUI` / `import PyreonRuntime` / `import PyreonRouter` are
+ * stripped and the stub is concatenated, so those symbols resolve within one
+ * module (exactly how `validateKotlin` concatenates its Compose stubs). `import
+ * Foundation` is guaranteed (kept if present, prepended if not) — Foundation is
+ * real on the Linux toolchain, so `String.trimmingCharacters`, `Codable`, etc.
+ * type-check for real rather than against a stub.
+ *
+ * SCOPE: the stub covers the surface the two shipped example apps emit. Emit that
+ * references symbols outside the stub (Spacer / ScrollView / Image / @Observable /
+ * PyreonRouter / fetch / …) will fail here until the stub is expanded — a tracked
+ * follow-up. Callers pass emit known to be within the stub surface.
+ *
+ * Honors PYREON_SKIP_NATIVE_VALIDATE (force skip) and PYREON_REQUIRE_NATIVE_VALIDATE
+ * (fail-on-absent) identically to `validateSwift` / `validateKotlin`.
+ */
+export function validateSwiftWithStubs(source: string): ValidationResult {
+  if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
+    return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
+  }
+  if (!isSwiftcAvailable()) {
+    if (process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1') {
+      return {
+        ok: false,
+        error: 'swiftc not found on PATH (PYREON_REQUIRE_NATIVE_VALIDATE=1 requested).',
+      }
+    }
+    return { ok: true, skipped: true, skipReason: 'swiftc not on PATH' }
+  }
+
+  // Strip the stubbed-module imports so their symbols bind to the stub, and
+  // guarantee `import Foundation` (real on Linux) for String/Codable/etc.
+  const stripped = source.replace(SWIFT_STUBBED_IMPORTS, '')
+  const foundation = /^import Foundation\s*$/m.test(stripped) ? '' : 'import Foundation\n'
+
+  const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-swift-stubs-'))
+  const stubsPath = join(tempDir, 'PyreonSwiftStubs.swift')
+  const inputPath = join(tempDir, 'Input.swift')
+  writeFileSync(stubsPath, SWIFT_UI_STUBS, 'utf8')
+  writeFileSync(inputPath, foundation + stripped, 'utf8')
+
+  try {
+    // Both files compiled as one module; the stubs satisfy SwiftUI/PyreonRuntime
+    // references. -typecheck performs full name + type resolution (no codegen).
+    execFileSync('swiftc', ['-typecheck', stubsPath, inputPath], {
+      stdio: 'pipe',
+      encoding: 'utf8',
+    })
+    return { ok: true }
+  } catch (err) {
+    const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; message?: string }
+    const stderr = typeof e.stderr === 'string' ? e.stderr : e.stderr?.toString('utf8') ?? ''
+    const stdout = typeof e.stdout === 'string' ? e.stdout : e.stdout?.toString('utf8') ?? ''
+    const output = [stderr, stdout].filter(Boolean).join('\n').trim()
+    return {
+      ok: false,
+      error: output || e.message || 'swiftc -typecheck (stubs) failed with no output',
     }
   } finally {
     try {
