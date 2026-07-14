@@ -138,6 +138,152 @@ await download(doc, 'tree.json')    // renders 'json', downloads`,
       ],
       seeAlso: ['render'],
     },
+    {
+      name: 'Heading',
+      kind: 'component',
+      signature:
+        "(props: { level?: 1 | 2 | 3 | 4 | 5 | 6; color?: string; align?: 'left' | 'center' | 'right'; children?: DocChild }) => DocNode",
+      summary:
+        "A heading block. `level` DEFAULTS TO 1 (h1) when omitted — pass 2–6 for h2–h6 (a caller-supplied `level` overrides the default). Children are the heading text (a raw string, or inline primitives). Produces { type: 'heading', props: { level, color?, align? }, children }.",
+      example: `<Heading level={2} color="#666">Section title</Heading>`,
+      mistakes: [
+        'Assuming `level` auto-derives from nesting depth — it is always 1 unless you pass one; there is no document-wide heading counter.',
+        "Passing a plain OBJECT as a child — normalizeChildren THROWS '[@pyreon/document] Invalid child: plain objects are not valid document children'. Children must be strings, numbers, or document nodes.",
+      ],
+      seeAlso: ['Text', 'Page'],
+    },
+    {
+      name: 'Text',
+      kind: 'component',
+      signature:
+        "(props: { size?: number; color?: string; bold?: boolean; italic?: boolean; underline?: boolean; strikethrough?: boolean; align?: 'left' | 'center' | 'right' | 'justify'; lineHeight?: number; children?: DocChild }) => DocNode",
+      summary:
+        "A paragraph / run of text with inline styling props (bold, italic, underline, strikethrough, size, color, align, lineHeight). A raw string child is kept as a bare string in `children` — Text does NOT wrap it in a nested node. Produces { type: 'text', props, children }.",
+      example: `<Text bold align="center">Q4 2026 performance summary.</Text>`,
+      seeAlso: ['Heading', 'Quote'],
+    },
+    {
+      name: 'Table',
+      kind: 'component',
+      signature:
+        "(props: { columns: (string | TableColumn)[]; rows: (string | number)[][]; headerStyle?: { background?: string; color?: string; bold?: boolean }; striped?: boolean; bordered?: boolean; caption?: string; keepTogether?: boolean }) => DocNode",
+      summary:
+        "A data table. `columns` (headers, each a string or { header, width?, align? }) and `rows` (a 2D array) are REQUIRED and live entirely in PROPS — Table has NO children. Every cell is a scalar `string | number`. Produces { type: 'table', props, children: [] }.",
+      example: `<Table
+  columns={['Region', 'Revenue', 'Growth']}
+  rows={[['US', '$1.2M', '+15%'], ['EU', '$800K', '+8%']]}
+  striped
+/>`,
+      mistakes: [
+        'Putting rich content in a cell — cells are scalar `string | number` only; you cannot nest a Text/Link/Image DocNode inside a cell.',
+        'Passing rows as children — Table ignores children entirely (forced to []); all data goes in the `columns` + `rows` props.',
+        '`headerStyle` is its own 3-field shape ({ background?, color?, bold? }) — not the full Text style object; per-column align lives on the `TableColumn` entries in `columns`.',
+      ],
+      seeAlso: ['render'],
+    },
+    {
+      name: 'List / ListItem',
+      kind: 'component',
+      signature:
+        '(List: { ordered?: boolean; children?: DocChild }) => DocNode · (ListItem: { children?: DocChild }) => DocNode',
+      summary:
+        "A bulleted (default) or numbered list. `List` takes `ordered` (unordered when omitted — there is no applied default, undefined is falsy) and `ListItem` children. NOTE: the JSX `<List items={[…]} />` shorthand in the builder/examples is convenience sugar; the primitive itself nests `ListItem` children. `ListItem` DISCARDS every prop except `children` — it always renders { type: 'list-item', props: {}, children }.",
+      example: `<List ordered>
+  <ListItem>First</ListItem>
+  <ListItem>Second</ListItem>
+</List>`,
+      mistakes: [
+        'Setting any prop other than `children` on `ListItem` (an id, a style) — it is silently dropped; the primitive hard-codes empty props.',
+        'Expecting `ordered` to have a truthy default — omitting it yields an UNORDERED list (undefined → falsy).',
+      ],
+      seeAlso: ['Text'],
+    },
+    {
+      name: 'Code',
+      kind: 'component',
+      signature: '(props: { language?: string; children?: DocChild }) => DocNode',
+      summary:
+        "A code block. `language` is a hint for syntax highlighting in formats that support it (has NO default — undefined when omitted). Children are the raw code string. Produces { type: 'code', props, children }.",
+      example: `<Code language="sql">SELECT region, SUM(revenue) FROM sales GROUP BY region</Code>`,
+      seeAlso: ['Text'],
+    },
+    {
+      name: 'Link',
+      kind: 'component',
+      signature: "(props: { href: string; color?: string; children?: DocChild }) => DocNode",
+      summary:
+        "An inline hyperlink. `href` is REQUIRED; children are the visible link text. Produces { type: 'link', props, children }.",
+      example: `<Link href="https://example.com">Read the report</Link>`,
+      seeAlso: ['Button', 'Text'],
+    },
+    {
+      name: 'Image',
+      kind: 'component',
+      signature:
+        "(props: { src: string; width?: number; height?: number; alt?: string; align?: 'left' | 'center' | 'right'; caption?: string }) => DocNode",
+      summary:
+        "An image. `src` is REQUIRED; `width`/`height` are NUMBERS (pixels), not CSS strings. Image has NO children (forced to []). With `render(doc, fmt, { baseUrl })` a relative `src` is rewritten absolute before rendering. Produces { type: 'image', props, children: [] }.",
+      example: `<Image src="/charts/q4.png" width={480} alt="Q4 revenue" caption="Fig 1" />`,
+      mistakes: [
+        'Passing a CSS string for `width`/`height` (e.g. "50%") — they are typed `number` (pixels); use `render` options or a Section for relative sizing.',
+        'Relying on a relative `src` without `baseUrl` — chat/email targets need absolute URLs; pass `render(doc, fmt, { baseUrl })` so relative srcs are rewritten. (Telegram/WhatsApp drop inline images entirely.)',
+      ],
+      seeAlso: ['render'],
+    },
+    {
+      name: 'Button',
+      kind: 'component',
+      signature:
+        "(props: { href: string; background?: string; color?: string; borderRadius?: number; padding?: number | [number, number]; align?: 'left' | 'center' | 'right'; children?: DocChild }) => DocNode",
+      summary:
+        "A call-to-action button — a LINK styled as a button (renders as an Outlook-safe 'bulletproof button' in email, a styled link in PDF/DOCX). `href` is REQUIRED; children are the label. Produces { type: 'button', props, children }.",
+      example: `<Button href="https://app.example.com/invoice/42" background="#4f46e5" color="#fff">View invoice</Button>`,
+      mistakes: [
+        'Expecting an `onClick` handler or a `variant` prop — Button has NEITHER; it is purely a styled link and REQUIRES `href` (documents have no runtime event loop).',
+      ],
+      seeAlso: ['Link'],
+    },
+    {
+      name: 'Page / Section / Row / Column / Divider / Spacer / Quote / PageBreak',
+      kind: 'component',
+      signature:
+        "Page({ size?: PageSize; orientation?: 'portrait' | 'landscape'; margin?: number | number[]; header?: DocNode; footer?: DocNode; children? }) · Section({ direction?: 'column' | 'row'; gap?; padding?; background?; borderRadius?; border?; children? }) · Row({ gap?: number; align?; children? }) · Column({ width?: number | string; align?; children? }) · Divider({ color?; thickness? }) · Spacer({ height: number }) · Quote({ borderColor?; children? }) · PageBreak()",
+      summary:
+        "The structural / layout primitives. `Page` is a page boundary (`size` 'A4'|'A3'|'A5'|'letter'|'legal'|'tabloid', orientation, margins, optional `header`/`footer` DocNodes). `Section`/`Row`/`Column` are layout boxes (gap, align, padding, background). `Divider` is a horizontal rule (no children, all props optional — `Divider()` works bare). `Spacer` adds vertical space (`height: number` is REQUIRED). `Quote` is a blockquote (children). `PageBreak()` takes NO arguments — a hard break in PDF/DOCX, a visual rule in md/text/html, a no-op in per-slide PPTX.",
+      example: `<Page size="A4" orientation="portrait">
+  <Section gap={16}>
+    <Heading>Title</Heading>
+    <Spacer height={12} />
+    <Quote>An important note.</Quote>
+    <Divider />
+  </Section>
+  <PageBreak />
+</Page>`,
+      mistakes: [
+        '`Spacer` without `height` — it is the only required field on these primitives; omitting it is a type error.',
+        'Calling `PageBreak({ ... })` with props — it takes NO arguments and always emits empty props/children.',
+        'Expecting `Column` to enforce a parent `Row` (or `Row` to require `Column` children) — neither is enforced at runtime; children are typed `unknown` and just normalized.',
+      ],
+      seeAlso: ['Document', 'render'],
+    },
+    {
+      name: 'registerRenderer / unregisterRenderer / isDocNode',
+      kind: 'function',
+      signature:
+        'registerRenderer(format: string, renderer: DocumentRenderer | (() => Promise<DocumentRenderer>)) => void · unregisterRenderer(format: string) => void · isDocNode(value: unknown) => value is DocNode',
+      summary:
+        "The extension + guard API. `registerRenderer` adds (or REPLACES) a format's renderer — pass a `DocumentRenderer` object ({ render(node, options?) }) or a lazy `() => Promise<DocumentRenderer>` loader (every built-in format is a lazy loader; the resolved renderer is cached back into the registry on first use). `unregisterRenderer` deletes a format (no-op if absent). `isDocNode` is a structural type guard.",
+      example: `import { registerRenderer, render } from '@pyreon/document'
+
+registerRenderer('rtf', { render: async (node) => toRtf(node) })
+const rtf = await render(doc, 'rtf')`,
+      mistakes: [
+        'registerRenderer SILENTLY OVERWRITES an existing format (it is a bare Map.set, no guard) — re-registering `html` replaces the built-in renderer with no warning.',
+        "Trusting isDocNode to validate the tree — it only checks `value` is an object carrying `type`, `props`, and `children` keys; it does NOT verify `type` is a real node type or that the shapes are valid (a hand-rolled { type: 'x', props: 0, children: 0 } passes).",
+        "Rendering to an unregistered format — render() rejects with [@pyreon/document] No renderer registered for format 'X'. Available: … (the message enumerates the currently-registered keys). The markdown key is 'md', not 'markdown'.",
+      ],
+      seeAlso: ['render', 'createDocument'],
+    },
   ],
   gotchas: [
     'Heavy format renderers are lazy-loaded: PDF (~3MB via pdfmake + bundled fonts), DOCX (~700KB via docx), XLSX (~1.1MB via exceljs), PPTX (~400KB via pptxgenjs). First render of each format triggers the dynamic import; subsequent renders are instant. The vendored architecture means apps download all renderer chunks during npm install (14MB total `lib/`), but consumer-side bundlers tree-shake to only ship the renderers an app actually invokes.',
