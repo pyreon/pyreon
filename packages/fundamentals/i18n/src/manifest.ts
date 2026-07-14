@@ -110,8 +110,11 @@ i18n.locale.set('fr')  // switch reactively`,
         'Reading `t(key)` outside a reactive scope and expecting updates on locale change — `t()` is a reactive signal read, wrap in JSX thunk or `effect()`',
         'Using `@pyreon/i18n` on the backend — use `@pyreon/i18n/core` instead, it has zero JSX/core dependencies',
         'Forgetting `fallbackLocale` — missing keys in the current locale return the key string instead of falling back to another language',
+        'Calling the plural suffix directly — `t("items_one")` bypasses selection. Call the BASE key with a `count`: `t("items", { count: 3 })`; the `_one`/`_other`/… suffix is chosen by the CLDR plural CATEGORY of `count` for the current locale.',
+        'Defining only `_one`/`_other` for every language — the plural category is locale-specific (`Intl.PluralRules`), not `count === 1`. Slavic locales need `_few`/`_many`, Arabic needs `_zero`/`_two`; a locale missing its required category falls through to `_other`. Provide the per-locale keys (or a custom `pluralRules`).',
+        '`count` is the RESERVED key that drives pluralization — passing the number under any other name (`n`, `num`, `value`) interpolates it but does NOT pluralize. Use `{ count }`.',
       ],
-      seeAlso: ['I18nProvider', 'useI18n', 'Trans', 'interpolate', 'n', 'd', 'rt'],
+      seeAlso: ['I18nProvider', 'useI18n', 'Trans', 'interpolate', 'n', 'd', 'rt', 'resolvePluralCategory'],
     },
     {
       name: 'n',
@@ -170,6 +173,10 @@ i18n.rt(-1, 'day', { numeric: 'auto' })// "yesterday"`,
       example: `<I18nProvider value={i18n}>
   <App />
 </I18nProvider>`,
+      mistakes: [
+        'The prop is `value` — `<I18nProvider value={i18n}>`, NOT `i18n={…}` / `instance={…}`. A wrong prop name leaves the context null and every `useI18n()` below throws.',
+        'Importing it from `@pyreon/i18n/core` — the provider (and `useI18n` / `Trans`) is JSX and lives ONLY in the full `@pyreon/i18n` entry; `/core` is framework-agnostic.',
+      ],
       seeAlso: ['useI18n', 'createI18n'],
     },
     {
@@ -180,6 +187,10 @@ i18n.rt(-1, 'day', { numeric: 'auto' })// "yesterday"`,
         'Consume the nearest `I18nProvider` value. Returns the same `I18nInstance` with `t`, `locale`, `addMessages`, etc. Only available from the full `@pyreon/i18n` entry.',
       example: `const { t, locale } = useI18n()
 return <div>{t('greeting', { name: 'User' })}</div>`,
+      mistakes: [
+        'Calling it with no `<I18nProvider>` ancestor — it THROWS (`useI18n() must be used within an <I18nProvider>`); the context default is null. Wrap the tree in a provider.',
+        'Destructuring `{ locale }` and reading it as a value — `locale` is a SIGNAL; call `locale()` to read (and track) the current locale, and `locale.set("fr")` to change it. Destructuring the instance itself is fine — `t`/`n`/`d`/`rt` are stable bound functions (this is NOT the reactive-props destructure trap).',
+      ],
       seeAlso: ['I18nProvider', 'createI18n'],
     },
     {
@@ -201,11 +212,48 @@ return <div>{t('greeting', { name: 'User' })}</div>`,
     {
       name: 'interpolate',
       kind: 'function',
-      signature: '(template: string, values?: InterpolationValues) => string',
+      signature:
+        '(template: string, values?: InterpolationValues, options?: { format?: (value: unknown, spec: string) => string }) => string',
       summary:
-        'Pure string interpolation — replaces `{{name}}` placeholders with values from the map. Available from both entries. Use directly when you need interpolation without the full i18n instance (e.g. server-side email templates).',
+        'Pure string interpolation — replaces `{{name}}` placeholders with values from the map (ReDoS-safe single-pass regex). Available from both entries. Use directly when you need interpolation without the full i18n instance (e.g. server-side email templates). The optional `options.format` resolver handles inline `{{val, spec}}` specs — the i18n instance supplies one bound to its locale + formatters; a bare call has none.',
       example: `interpolate('Hello, {{name}}!', { name: 'World' })  // 'Hello, World!'`,
+      mistakes: [
+        'Expecting a missing value to blank the placeholder — an `undefined`/absent value leaves the LITERAL `{{key}}` in the output (not an empty string). Make the `values` keys match the placeholders.',
+        'Expecting bare `interpolate()` to FORMAT inline specs — without `options.format`, `interpolate("{{amount, currency}}", { amount: 9.99 })` returns `"9.99"` (unformatted); the spec is ignored. Use `i18n.t()` (which binds the locale-aware formatter) for `{{amount, currency}}`-style output.',
+        'Expecting arbitrary placeholder text — only a single `{{word}}` token (`\\w+`) is a placeholder; `{{not a key}}` (spaces/punctuation) is left literal by design. Object values are `JSON.stringify`d; a non-serializable value renders the raw placeholder + a dev warning.',
+      ],
+      seeAlso: ['createI18n', 'resolvePluralCategory', 'parseRichText'],
+    },
+    {
+      name: 'resolvePluralCategory',
+      kind: 'function',
+      signature: '(locale: string, count: number, customRules?: PluralRules) => string',
+      summary:
+        'Resolve the CLDR plural category for a `count` in a `locale` — returns one of `"zero"` / `"one"` / `"two"` / `"few"` / `"many"` / `"other"`. Uses `customRules[locale](count)` if provided, else a per-locale-memoized `Intl.PluralRules` (construction is the dominant cost; `.select()` is cheap), falling back to `count === 1 ? "one" : "other"` only when `Intl.PluralRules` is unavailable. Exported from both `@pyreon/i18n` and `@pyreon/i18n/core`; it is the primitive `t()` uses internally to pick a `_one`/`_other`/… suffix.',
+      example: `resolvePluralCategory('en', 1)   // "one"
+resolvePluralCategory('en', 5)   // "other"
+resolvePluralCategory('ru', 2)   // "few"  (Russian)
+resolvePluralCategory('ar', 0)   // "zero" (Arabic)`,
+      mistakes: [
+        'Treating the return as a count-based boolean — it is a locale-specific CLDR CATEGORY, not `count === 1`. English collapses to one/other, but Russian/Arabic/Polish return few/many/two/zero; branch on the returned string, do not re-derive from `count`.',
+        'Assuming the same categories across locales — `resolvePluralCategory("en", 0)` is `"other"` while `resolvePluralCategory("ar", 0)` is `"zero"`. Design your message keys around the categories the TARGET locale actually produces.',
+      ],
       seeAlso: ['createI18n'],
+    },
+    {
+      name: 'parseRichText',
+      kind: 'function',
+      signature: '(text: string) => (string | { tag: string; children: string })[]',
+      summary:
+        'The low-level parser behind `<Trans>` — splits a translated string into an array of plain-text segments and `{ tag, children }` rich parts, matching flat `<tag>content</tag>` runs (regex `/<(\\w+)>([^<]*)<\\/\\1>/g`). Exported for advanced callers that map rich segments to something other than JSX (e.g. terminal ANSI, a native renderer). Most apps should use `<Trans>` instead.',
+      example: `parseRichText("Hello <bold>world</bold>, <link>here</link>")
+// ["Hello ", { tag: "bold", children: "world" }, ", ", { tag: "link", children: "here" }]`,
+      mistakes: [
+        'Expecting NESTED tags to parse — the children class is `[^<]*`, so `<b><i>x</i></b>` does NOT match as a nested structure; keep rich tags flat and non-overlapping.',
+        'Using hyphenated tags or attributes — tag names are `\\w+` only; `<my-tag>` / `<a href="…">` won\'t match. Use plain single-word tags (`<link>`, `<bold>`) and map them in `<Trans components>`.',
+        'Reaching for it when `<Trans>` suffices — `parseRichText` returns data, not VNodes; `<Trans>` does the parse AND the component mapping. Use this only for non-JSX render targets.',
+      ],
+      seeAlso: ['Trans', 'interpolate'],
     },
   ],
   gotchas: [
