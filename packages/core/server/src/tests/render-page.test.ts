@@ -207,3 +207,69 @@ describe('renderPage — styles + locals + routeModules', () => {
     }
   })
 })
+
+describe('renderPage — CSP nonce threading', () => {
+  test('loader-data script carries the request nonce from locals.cspNonce', async () => {
+    const router = makeRouter(
+      [{ path: '/', component: Page, loader: async () => ({ x: 1 }) }],
+      '/',
+    )
+    const result = await renderPage(() => h(RouterView, null), router as never, '/', {
+      locals: { cspNonce: 'nonceXYZ' },
+    })
+    expect(result.kind).toBe('html')
+    if (result.kind !== 'html') return
+    expect(result.loaderScript).toContain(
+      '<script nonce="nonceXYZ">window.__PYREON_LOADER_DATA__=',
+    )
+  })
+
+  test('collectStyles receives the nonce; the styler <style> lands in head with it', async () => {
+    const router = makeRouter([{ path: '/', component: Page }], '/')
+    let received: string | undefined = 'UNSET'
+    const result = await renderPage(() => h(RouterView, null), router as never, '/', {
+      locals: { cspNonce: 'nonceXYZ' },
+      collectStyles: (nonce) => {
+        received = nonce
+        return `<style data-x nonce="${nonce}">.a{color:red}</style>`
+      },
+    })
+    expect(received).toBe('nonceXYZ')
+    expect(result.kind).toBe('html')
+    if (result.kind === 'html') {
+      expect(result.head).toContain('<style data-x nonce="nonceXYZ">')
+    }
+  })
+
+  test('no cspNonce → no nonce attribute anywhere (byte-identical to before)', async () => {
+    const router = makeRouter(
+      [{ path: '/', component: Page, loader: async () => ({ x: 1 }) }],
+      '/',
+    )
+    let received: string | undefined = 'UNSET'
+    const result = await renderPage(() => h(RouterView, null), router as never, '/', {
+      collectStyles: (nonce) => {
+        received = nonce
+        return '<style data-x="1">.a{color:red}</style>'
+      },
+    })
+    expect(received).toBeUndefined()
+    expect(result.kind).toBe('html')
+    if (result.kind !== 'html') return
+    expect(result.loaderScript).toContain('<script>window.__PYREON_LOADER_DATA__=')
+    expect(result.loaderScript).not.toContain('nonce=')
+  })
+
+  test('a nonce with dangerous chars is sanitized to a bare token', async () => {
+    const router = makeRouter(
+      [{ path: '/', component: Page, loader: async () => ({ x: 1 }) }],
+      '/',
+    )
+    const result = await renderPage(() => h(RouterView, null), router as never, '/', {
+      locals: { cspNonce: 'ab"c> <\'x' },
+    })
+    expect(result.kind).toBe('html')
+    if (result.kind !== 'html') return
+    expect(result.loaderScript).toContain('<script nonce="abcx">')
+  })
+})

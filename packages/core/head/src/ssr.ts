@@ -31,7 +31,21 @@ export interface RenderWithHeadResult {
   bodyAttrs: Record<string, string>
 }
 
-export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> {
+export interface RenderWithHeadOptions {
+  /**
+   * CSP nonce for the current request. Stamped onto every inline `<script>` /
+   * `<style>` tag head emits, so a strict `script-src`/`style-src 'nonce-…'`
+   * policy admits them. Pass the per-request value (`useRequestLocals().cspNonce`);
+   * omit for SSG / no-CSP (no attribute is added). A user-supplied `nonce` on a
+   * specific tag wins — this only fills tags that don't already carry one.
+   */
+  nonce?: string | undefined
+}
+
+export async function renderWithHead(
+  app: VNode,
+  options?: RenderWithHeadOptions,
+): Promise<RenderWithHeadResult> {
   const ctx = createHeadContext()
 
   // HeadInjector runs inside renderToString's ALS scope, so pushContext reaches
@@ -43,7 +57,7 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
 
   const html = await renderToString(h(HeadInjector as ComponentFn, null))
   const titleTemplate = ctx.resolveTitleTemplate()
-  const head = serializeHead(ctx.resolve(), titleTemplate)
+  const head = serializeHead(ctx.resolve(), titleTemplate, options?.nonce)
   return {
     html,
     head,
@@ -71,16 +85,21 @@ export async function renderWithHead(app: VNode): Promise<RenderWithHeadResult> 
 export function serializeHead(
   tags: HeadTag[],
   titleTemplate?: string | ((title: string) => string),
+  nonce?: string,
 ): string {
   let out = ''
   for (let i = 0; i < tags.length; i++) {
     if (i > 0) out += '\n  '
-    out += serializeTag(tags[i] as HeadTag, titleTemplate)
+    out += serializeTag(tags[i] as HeadTag, titleTemplate, nonce)
   }
   return out
 }
 
-function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) => string)): string {
+function serializeTag(
+  tag: HeadTag,
+  titleTemplate?: string | ((title: string) => string),
+  nonce?: string,
+): string {
   if (tag.tag === 'title') {
     const raw = tag.children || ''
     const title = titleTemplate
@@ -99,6 +118,12 @@ function serializeTag(tag: HeadTag, titleTemplate?: string | ((title: string) =>
     for (const k in props) {
       open += ` ${k}="${esc(props[k] as string)}"`
     }
+  }
+  // CSP: stamp the request nonce on inline/executable tags so a strict
+  // `script-src`/`style-src 'nonce-…'` policy admits them. Only `<script>` and
+  // `<style>` are nonce-eligible; a user-supplied `nonce` prop wins (skip).
+  if (nonce && (tag.tag === 'script' || tag.tag === 'style') && !(props && 'nonce' in props)) {
+    open += ` nonce="${esc(nonce)}"`
   }
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
   const content = tag.children || ''

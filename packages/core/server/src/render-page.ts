@@ -44,7 +44,7 @@ import {
   stringifyLoaderData,
 } from '@pyreon/router'
 import { runWithRequestContext } from '@pyreon/runtime-server'
-import { provideRequestLocals } from './middleware'
+import { provideRequestLocals, useRequestLocals } from './middleware'
 
 /**
  * Structural minimum of the router surface `renderPage` touches. Both
@@ -82,8 +82,12 @@ export interface RenderPageOptions {
    * `sheet.getStyleTag()`). A returned tag is prepended to the head —
    * UNLESS it is empty (`...></style>` with no rules), which is skipped so
    * styler-less pages don't carry a useless empty `<style>` element.
+   *
+   * Receives the per-request CSP nonce (from `useRequestLocals().cspNonce`, or
+   * `undefined` at SSG/no-CSP). Forward it to `sheet.getStyleTag(nonce)` so the
+   * emitted `<style>` is admitted by a strict `style-src 'nonce-…'` policy.
    */
-  collectStyles?: (() => string) | undefined
+  collectStyles?: ((nonce?: string) => string) | undefined
   /**
    * Middleware locals to bridge into the component tree (runtime SSR —
    * CSP nonce, auth user, etc.). Provided inside the request context so
@@ -171,19 +175,32 @@ export async function renderPage(
       { router } as never,
       h(App, null),
     )
-    const { html: appHtml, head } = await renderWithHead(app)
+    // Per-request CSP nonce (set by e.g. zero's `cspMiddleware` onto
+    // `useRequestLocals().cspNonce`). Read ONCE here — the single string-mode
+    // choke point, already inside the request context — and thread it to every
+    // inline tag this pipeline emits so a strict `script-src`/`style-src
+    // 'nonce-…'` policy admits them. Empty at SSG build / no-CSP → no attribute
+    // (byte-identical to before). Sanitized to a bare token so it can never
+    // break out of the attribute.
+    const rawNonce = useRequestLocals().cspNonce
+    const cspNonce
+      = typeof rawNonce === 'string' && rawNonce ? rawNonce.replace(/["'<>\s]/g, '') : undefined
+    const nonceAttr = cspNonce ? ` nonce="${cspNonce}"` : ''
+
+    const { html: appHtml, head } = await renderWithHead(app, { nonce: cspNonce })
 
     // Styler (or any CSS-in-JS) tag goes BEFORE @pyreon/head's tags so the
     // cascade orders correctly against user-added <style>/<link> tags. An
-    // empty tag (`...></style>`) is skipped — no styler in use.
-    const styleTag = options.collectStyles ? options.collectStyles() : ''
+    // empty tag (`...></style>`) is skipped — no styler in use. The nonce is
+    // forwarded so the styler's `<style>` carries it too.
+    const styleTag = options.collectStyles ? options.collectStyles(cspNonce) : ''
     const styleIsEmpty = !styleTag || styleTag.indexOf('></style>') !== -1
     const finalHead = styleIsEmpty ? head : `${styleTag}\n${head}`
 
     const loaderData = serializeLoaderData(router as never)
     let loaderScript
       = loaderData && Object.keys(loaderData).length > 0
-        ? `<script>window.__PYREON_LOADER_DATA__=${stringifyLoaderData(loaderData)}</script>`
+        ? `<script${nonceAttr}>window.__PYREON_LOADER_DATA__=${stringifyLoaderData(loaderData)}</script>`
         : ''
 
     // SSR store-state hydration — decoupled bridge (set by @pyreon/store on
@@ -197,7 +214,7 @@ export async function renderPage(
     if (dehydrateStores) {
       const storeState = dehydrateStores()
       if (storeState && Object.keys(storeState).length > 0) {
-        loaderScript += `<script>window.__PYREON_STORE_STATE__=${stringifyLoaderData(storeState)}</script>`
+        loaderScript += `<script${nonceAttr}>window.__PYREON_STORE_STATE__=${stringifyLoaderData(storeState)}</script>`
       }
     }
 

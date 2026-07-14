@@ -169,11 +169,16 @@ export function __resolveRenderMode(path) {
 // and shipping the full rule set in every page's <style> tag matches
 // how static SSG sites handle CSS — every page is self-contained,
 // cacheable by the browser, no per-route CSS code splitting needed.
+// NOTE: this is TEMPLATE TEXT emitted verbatim into the generated
+// __pyreon-zero-ssg-entry.js — it must be plain JS (no TS type annotations,
+// or the generated .js fails to parse). The nonce param is forwarded for CSP
+// (renderPage calls collectStyles(nonce); SSG has no per-request nonce, so it
+// arrives undefined → getStyleTag(undefined) → no nonce, which is correct).
 let __pyreonGetStylerTag = () => ""
 try {
   const stylerMod = await import("@pyreon/styler")
   if (stylerMod && stylerMod.sheet && typeof stylerMod.sheet.getStyleTag === "function") {
-    __pyreonGetStylerTag = () => stylerMod.sheet.getStyleTag()
+    __pyreonGetStylerTag = (nonce) => stylerMod.sheet.getStyleTag(nonce)
   }
 } catch {
   // No @pyreon/styler in the project — leave the no-op stub in place.
