@@ -5780,6 +5780,9 @@ const tree = helper.getDocNode()`,
   <DocPage>...</DocPage>
 </DocDocument>`,
     notes: 'Root container for a document tree — produces a `_documentType: "document"` node. Accepts optional metadata: `title`, `author`, `subject`. Each accepts either a plain string OR a `() => string` accessor; function values are stored in `_documentProps` and resolved at extraction time so each export call reads the LIVE value from any underlying signal. See also: DocPage, extractDocNode.',
+    mistakes: `- Passing a CALLED accessor — \`title={getTitle()}\` — captures the value ONCE (the rocketstyle \`.attrs()\` callback runs a single time at mount). Pass the accessor ITSELF — \`title={getTitle}\` or \`title={() => userName()}\` — so \`extractDocumentTree\` resolves the LIVE value on every export.
+- Expecting a plain string \`title="Q4"\` to update when a signal changes — a string is STATIC (captured verbatim into \`_documentProps\`); only a \`() => string\` accessor is re-resolved at extraction time. Use an accessor when the value comes from a signal.
+- Passing \`title={maybeUndefined}\` and expecting an empty-string title — a \`null\`/\`undefined\` value is OMITTED from the export metadata (the field is simply absent), never stored as \`title: undefined\`.`,
   },
 
   'document-primitives/DocPage': {
@@ -5885,6 +5888,8 @@ const tree = helper.getDocNode()`,
   ]}
 />`,
     notes: 'Tabular data. `columns` defines the header cells (label, key, optional alignment). `rows` is an array of data rows keyed by column key. `striped` adds alternating row backgrounds; `bordered` adds cell borders; `caption` renders an accessible table caption. Both `rows` and `columns` are filtered before reaching the DOM via `.attrs(..., { filter: [...] })` because `HTMLTableElement.rows` / `.cells` are read-only DOM properties — assignment would crash. See also: DocList, DocSection.',
+    mistakes: `- Keying \`rows\` by position or label — each row object is keyed by \`column.key\`, NOT by order. A \`columns\` entry whose \`key\` matches no field in a row renders an EMPTY cell, and a row field with no matching column \`key\` is dropped. Keep \`columns[].key\` and the \`rows[]\` object keys in sync.
+- Expecting \`columns\` / \`rows\` (and \`headerStyle\` / \`striped\` / \`bordered\` / \`caption\`) to reach the DOM as attributes — they are \`_documentProps\`-only, stripped by DocTable's \`.attrs(…, { filter })\` before render because \`HTMLTableElement.rows\` is a read-only property (assigning it throws \`Cannot set property rows\`). Only relevant if you author your OWN table primitive on a \`<table>\` base — apply the same filter.`,
   },
 
   'document-primitives/DocList': {
@@ -5899,6 +5904,8 @@ const tree = helper.getDocNode()`,
   <DocListItem>Second step</DocListItem>
 </DocList>`,
     notes: 'Bulleted (default) or numbered (`ordered`) list. Children are typically `DocListItem` instances. Outputs map this to the right native list type — HTML `<ul>` / `<ol>`, Markdown `-` / `1.`, DOCX list styles. See also: DocListItem.',
+    mistakes: `- Setting \`ordered\` on \`DocListItem\` — it does nothing. The marker (bullet vs number) is decided by the PARENT \`DocList\`'s \`ordered\` prop, which sets the list \`tag\` (\`ul\`/\`ol\`); \`DocListItem\` carries no marker info (\`_documentProps: {}\`).
+- Putting raw text or a bare \`DocText\` directly under \`DocList\` instead of wrapping each entry in \`DocListItem\` — list entries come from \`DocListItem\` (\`_documentType: "list-item"\`); a non-item child is not a list row. Nest a \`DocList\` INSIDE a \`DocListItem\` for sublists.`,
   },
 
   'document-primitives/DocListItem': {
