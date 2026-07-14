@@ -86,4 +86,22 @@ class CounterInstrumentedTest {
 
         composeRule.onNodeWithText("Count: 0").assertIsDisplayed()
     }
+
+    // Tier-2 i18n (createI18n) asserted in the REAL Compose semantics tree —
+    // the Android half of the iOS `test_i18nTranslatedStringRendersConfigured
+    // Locale`. The shared Counter.tsx has `const i18n = createI18n({ locale:
+    // 'de', fallbackLocale: 'en', messages: { en: { hello: 'Hello!' }, de: {
+    // hello: 'Hallo!' } } })` and renders `<Text>Greeting: {i18n.t('hello')}
+    // </Text>`; PMTC emits `val i18n = remember { PyreonI18n(initialLocale =
+    // "de", messages = mapOf(…)) }` + `Text(text = "Greeting: ${i18n.t("hello
+    // ")}")`. That the SAME source produces this on Compose is the "one shared
+    // codebase → both platforms" proof.
+    //
+    // DIFFERENTIATING: the rendered node must read the configured-locale ('de')
+    // value "Greeting: Hallo!" — proving PyreonI18n.t resolved messages["de"]
+    // ["hello"] (NOT the raw key "hello", NOT the English "Hello!").
+    @Test
+    fun i18nTranslatedStringRendersConfiguredLocale() {
+        composeRule.onNodeWithText("Greeting: Hallo!").assertIsDisplayed()
+    }
 }

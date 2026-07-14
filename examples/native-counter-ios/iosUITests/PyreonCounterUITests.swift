@@ -308,4 +308,50 @@ final class PyreonCounterUITests: XCTestCase {
             "The regular-width branch rendered on a compact phone"
         )
     }
+
+    // Tier-2 i18n (createI18n) asserted in the REAL render tree — the first
+    // DEVICE assertion of an emit that has only ever been R2/compile-proven
+    // (tier2-i18n-emit.test.ts). The shared Counter.tsx has
+    // `const i18n = createI18n({ locale: 'de', fallbackLocale: 'en', messages:
+    // { en: { hello: 'Hello!' }, de: { hello: 'Hallo!' } } })` and renders
+    // `<Text>Greeting: {i18n.t('hello')}</Text>`; PMTC emits
+    // `@State private var i18n = PyreonI18n(locale: "de", messages: […])` +
+    // `Text("Greeting: \(i18n.t("hello"))")`.
+    //
+    // DIFFERENTIATING behavioral R4 — the rendered text proves BOTH that the
+    // runtime `.t()` resolved the message table AND that it selected the
+    // CONFIGURED locale:
+    //   (1) queryable as "Greeting: Hallo!" — the German ('de') value, so the
+    //       container honored `locale: 'de'` and looked the key up in the table;
+    //   (2) NOT "Greeting: hello" — a passthrough stub would return the raw key;
+    //   (3) NOT "Greeting: Hello!" — the English value would mean the wrong
+    //       locale (or the fallback) was used.
+    func test_i18nTranslatedStringRendersConfiguredLocale() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Count: 0"].waitForExistence(timeout: 30),
+            "App did not render"
+        )
+
+        // (1) The configured-locale ('de') translation resolved in the tree.
+        XCTAssertTrue(
+            app.staticTexts["Greeting: Hallo!"].waitForExistence(timeout: 5),
+            "createI18n did not resolve to the configured-locale value — "
+                + "expected \"Greeting: Hallo!\" (de), PyreonI18n.t did not "
+                + "look up messages[\"de\"][\"hello\"] at runtime"
+        )
+        // (2) The raw key did NOT leak through (would mean .t() is a passthrough).
+        XCTAssertFalse(
+            app.staticTexts["Greeting: hello"].exists,
+            "PyreonI18n.t returned the raw key instead of resolving the table"
+        )
+        // (3) The English value must NOT appear (would mean the wrong locale).
+        XCTAssertFalse(
+            app.staticTexts["Greeting: Hello!"].exists,
+            "PyreonI18n resolved the WRONG locale — the English \"Hello!\" "
+                + "rendered instead of the configured German \"Hallo!\""
+        )
+    }
 }
