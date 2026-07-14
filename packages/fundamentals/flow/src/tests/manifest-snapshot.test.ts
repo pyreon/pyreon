@@ -129,6 +129,11 @@ describe('gen-docs — flow snapshot', () => {
       'flow/MiniMap',
       'flow/Handle',
       'flow/Panel',
+      'flow/NodeResizer',
+      'flow/NodeToolbar',
+      'flow/MarkerType / Position',
+      'flow/edge-path-helpers',
+      'flow/computeLayout',
     ])
     // Spot-check the highest-density entry — createFlow is the
     // flagship API and carries the largest mistakes list.

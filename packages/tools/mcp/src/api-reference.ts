@@ -4526,6 +4526,75 @@ flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })`,
 </Flow>`,
     notes: 'Overlay panel positioned absolutely relative to the flow viewport. Use for toolbars, legend badges, or contextual action buttons. Pass any JSX as children — the panel is a plain positioned container, not a predefined chrome component. `style` / `class` customise the container. See also: Flow, Controls.',
   },
+
+  'flow/NodeResizer': {
+    signature: 'NodeResizer(props: { nodeId: string; instance: FlowInstance; minWidth?: number; minHeight?: number; handleSize?: number; showEdgeHandles?: boolean }) => VNodeChild',
+    example: `import { NodeResizer } from '@pyreon/flow'
+
+const ResizableNode = (props) => (
+  <div style={{ position: 'relative' }}>          {/* required — see mistakes */}
+    <NodeResizer nodeId={props.id} instance={flow} minWidth={80} />
+    {props.data.label}
+  </div>
+)`,
+    notes: 'Render drag handles inside a custom node to resize it. Draws absolutely-positioned corner handles (`nw`/`ne`/`sw`/`se`) — plus edge handles when `showEdgeHandles` — that drag via pointer-capture (no document listeners), convert the client delta by the current `viewport.zoom`, and call `instance.updateNode(nodeId, { width, height, position })`. `w`/`n`-side drags also shift `position` so the opposite edge stays fixed. Defaults: `minWidth` 50, `minHeight` 30, `handleSize` 8px. See also: NodeToolbar, Handle, useFlow.',
+    mistakes: `- Expecting it to read the flow from context like React Flow — it does NOT; you MUST pass \`instance={flow}\` (your \`createFlow()\` handle) AND \`nodeId\` explicitly.
+- Mounting it in a node whose host element is not \`position: relative\` — the handles are \`position: absolute\` and will anchor to the wrong ancestor. Wrap the node content in a \`position: relative\` element.`,
+  },
+
+  'flow/NodeToolbar': {
+    signature: `NodeToolbar(props: { position?: 'top' | 'bottom' | 'left' | 'right'; offset?: number; showOnSelect?: boolean; selected?: boolean | (() => boolean); style?: string; class?: string; children?: VNodeChild }) => VNodeChild`,
+    example: `import { NodeToolbar } from '@pyreon/flow'
+
+const NodeWithToolbar = (props) => (
+  <div style={{ position: 'relative' }}>
+    <NodeToolbar selected={props.selected}>       {/* pass the accessor */}
+      <button onClick={() => flow.removeNode(props.id)}>Delete</button>
+    </NodeToolbar>
+    {props.data.label}
+  </div>
+)`,
+    notes: 'A floating toolbar placed beside its host node (default `position: "top"`, `offset` 8px). Returns a REACTIVE thunk that reads `selected` and renders `null` when `showOnSelect` (default true) and the node is not selected — so it shows/hides with live selection. Put action buttons for a node (delete, duplicate, edit) here. See also: NodeResizer, Handle.',
+    mistakes: `- Expecting it to escape node clipping like React Flow — it is NOT a portal; it renders inline as an absolutely-positioned div, so an ancestor \`overflow: hidden\` CLIPS it. The host node must be \`position: relative\`.
+- Passing a bare boolean \`selected={someValue}\` — that snapshots selection and never updates. Pass the reactive accessor (the custom node's \`props.selected\`, which is \`() => boolean\`) so show/hide tracks live selection.`,
+  },
+
+  'flow/MarkerType / Position': {
+    signature: `enum MarkerType { Arrow = 'arrow', ArrowClosed = 'arrowclosed' } · enum Position { Top = 'top', Right = 'right', Bottom = 'bottom', Left = 'left' }`,
+    example: `import { MarkerType, Position } from '@pyreon/flow'
+
+const edges = [{ id: 'e1', source: 'a', target: 'b',
+  markerEnd: { type: MarkerType.ArrowClosed } }]`,
+    notes: `The two flow enums. \`MarkerType\` is the edge-arrowhead shape — \`Arrow\` (open stroked chevron) or \`ArrowClosed\` (filled triangle, the default edge-end marker). \`Position\` is a node's handle/edge attachment side — \`Top\`/\`Right\`/\`Bottom\`/\`Left\` — consumed by the edge-path helpers and \`getHandlePosition\`. Both match React Flow's enums exactly. See also: edge-path-helpers, Handle.`,
+  },
+
+  'flow/edge-path-helpers': {
+    signature: 'getBezierPath / getSmoothStepPath / getStraightPath / getStepPath / getWaypointPath / getEdgePath => { path: string; labelX: number; labelY: number } · getHandlePosition / getSmartHandlePositions',
+    example: `import { getBezierPath } from '@pyreon/flow'
+
+const MyEdge = (props) => {
+  const { path, labelX, labelY } = getBezierPath({
+    sourceX: props.sourceX, sourceY: props.sourceY,
+    targetX: props.targetX, targetY: props.targetY,
+  })
+  return <path d={path} />
+}`,
+    notes: 'SVG-path builders for CUSTOM edge components. `getBezierPath`, `getSmoothStepPath`, `getStraightPath`, `getStepPath`, `getWaypointPath` take a single OPTIONS object (`{ sourceX, sourceY, sourcePosition?, targetX, targetY, targetPosition?, … }`) and return an `EdgePathResult` object `{ path, labelX, labelY }`. `getEdgePath(type, sourceX, sourceY, sourcePos, targetX, targetY, targetPos)` is the POSITIONAL-arg dispatcher (unknown type → bezier). `getHandlePosition(position, nodeX, nodeY, nodeW, nodeH)` returns the `{ x, y }` anchor on a node edge; `getSmartHandlePositions(sourceNode, targetNode)` auto-picks the closest facing sides. See also: MarkerType / Position, Handle.',
+    mistakes: `- Destructuring the return as a TUPLE (\`const [path, labelX, labelY] = getBezierPath(...)\`) — React Flow returns an array, but @pyreon/flow returns an OBJECT \`{ path, labelX, labelY }\`. Destructure by NAME.
+- Calling \`getEdgePath\` / \`getHandlePosition\` with an options object — those two take POSITIONAL args (unlike the five object-param helpers). \`getStraightPath\` also takes no \`*Position\` params.`,
+  },
+
+  'flow/computeLayout': {
+    signature: `computeLayout<TData>(nodes: FlowNode<TData>[], edges: FlowEdge[], algorithm?: 'layered' | 'force' | 'stress' | 'tree' | 'radial' | 'box' | 'rectpacking', options?: { direction?: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT'; nodeSpacing?: number; layerSpacing?: number; edgeRouting?: 'orthogonal' | 'splines' | 'polyline' }) => Promise<Array<{ id: string; position: { x: number; y: number } }>>`,
+    example: `import { computeLayout } from '@pyreon/flow'
+
+const positioned = await computeLayout(flow.nodes(), flow.edges(), 'layered', { direction: 'DOWN' })
+for (const { id, position } of positioned) flow.updateNode(id, { position })`,
+    notes: 'Auto-layout via a lazy-loaded `elkjs` (cached singleton — zero bundle cost until first call). Runs the ELK `algorithm` (default `layered`) over the graph and returns a NEW array of `{ id, position }` pairs (positions only). Async. See also: createFlow, useFlow.',
+    mistakes: `- Forgetting to \`await\` it — \`computeLayout\` is ASYNC (it lazy-loads elkjs).
+- Expecting it to move your nodes — it does NOT mutate \`nodes\`; it returns only \`{ id, position }\` pairs (no width/height/data). Map the positions back onto your node objects (e.g. via \`updateNode\`).
+- Passing \`direction\` / \`layerSpacing\` / \`edgeRouting\` to a non-\`layered\` algorithm — those apply only to \`layered\` (and \`direction\` to \`tree\`); ELK silently ignores them (a dev-mode warning fires).`,
+  },
   // <gen-docs:api-reference:end @pyreon/flow>
 
   // ═══════════════════════════════════════════════════════════════════════════
