@@ -279,4 +279,33 @@ final class PyreonCounterUITests: XCTestCase {
                 + "glyph \"●\" is still in the a11y tree"
         )
     }
+
+    // M2.2b — ADAPTIVE LAYOUT (size-class-driven Stack↔Inline). The shared
+    // Counter.tsx has `{sizeClass() === 'regular' ? <Inline>…wide…</Inline> :
+    // <Stack>…narrow…</Stack>}` — a ternary between DIFFERENT container types.
+    // SwiftUI's ViewBuilder rejects `cond ? HStack {…} : VStack {…}`
+    // ("result values in '? :' have mismatching types"), so PMTC lowers a
+    // view-branch ternary to `if cond { HStack } else { VStack }`.
+    //
+    // The load-bearing device proof is that this counter COMPILES at all — a
+    // pre-fix `? :` emit would fail `xcodebuild` (typecheck error), so a
+    // green build IS the proof the if/else lowering is valid Swift. This test
+    // additionally asserts the COMPACT branch renders on the iPhone Simulator
+    // (`.regular` picks the HStack branch, `.compact` the VStack branch).
+    func test_adaptiveLayoutRendersCompactBranch() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Layout: narrow"].waitForExistence(timeout: 30),
+            "Adaptive Stack↔Inline did not render the compact branch on an "
+                + "iPhone — the size-class view-ternary did not lower/select "
+                + "correctly"
+        )
+        // The regular-width branch must NOT be selected on a compact phone.
+        XCTAssertFalse(
+            app.staticTexts["Layout: wide"].exists,
+            "The regular-width branch rendered on a compact phone"
+        )
+    }
 }
