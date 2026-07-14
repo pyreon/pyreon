@@ -13,7 +13,8 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
 } from '@pyreon/table'
-import { zodSchema } from '@pyreon/validation'
+import type { StandardSchemaLike } from '@pyreon/validation'
+import { standardSchemaToValidator, zodSchema } from '@pyreon/validation'
 import { defaultInitialValues, extractFields } from './schema'
 import type {
   Feature,
@@ -83,19 +84,54 @@ function createFetcher(baseFetcher: typeof fetch = fetch) {
 
 // ─── Schema validation ────────────────────────────────────────────────────────
 
+/**
+ * Detect a Standard Schema (`~standard`) validator — Valibot, ArkType,
+ * modern Zod, `@pyreon/validate`'s `s`, Effect Schema, etc.
+ *
+ * Accepts BOTH object-shaped and CALLABLE schemas: ArkType's `type(...)`
+ * returns a function (with a `~standard` property), so a `typeof === 'object'`
+ * guard silently rejects it. `@pyreon/validation`'s `isStandardSchema` has
+ * exactly that over-narrow guard (a cross-package bug that also breaks raw
+ * ArkType in `@pyreon/form`/`store`/`state-tree`), so feature detects the
+ * contract directly here. `standardSchemaToValidator` itself handles the
+ * callable form fine — only the guard was too strict.
+ */
+function hasStandardSchema(schema: unknown): schema is StandardSchemaLike {
+  if (schema == null) return false
+  const kind = typeof schema
+  if (kind !== 'object' && kind !== 'function') return false
+  const std = (schema as { '~standard'?: { validate?: unknown } })['~standard']
+  return std != null && typeof std === 'object' && typeof std.validate === 'function'
+}
+
 function createValidator<TValues extends Record<string, unknown>>(
   schema: unknown,
   customValidate?: SchemaValidateFn<TValues>,
 ): SchemaValidateFn<TValues> | undefined {
   if (customValidate) return customValidate
 
+  // Zod (v3/v4): the schema object exposes `safeParseAsync` — route it through
+  // @pyreon/validation's typed zod adapter (the original path, kept first so
+  // Zod behaviour is byte-identical).
   if (
     schema &&
     typeof schema === 'object' &&
-    'safeParseAsync' in schema &&
     typeof (schema as Record<string, unknown>).safeParseAsync === 'function'
   ) {
-    return zodSchema(schema as Parameters<typeof zodSchema>[0]).validator as SchemaValidateFn<TValues>
+    return zodSchema(schema as Parameters<typeof zodSchema>[0])
+      .validator as SchemaValidateFn<TValues>
+  }
+
+  // Valibot / ArkType / any other Standard Schema (`~standard`) validator.
+  // These carry NO `safeParseAsync`, so the Zod branch above skips them.
+  // Without this branch a Valibot/ArkType feature silently received NO form
+  // validation despite the documented "Zod / Valibot / ArkType" support — the
+  // silent-schema-drop class (see anti-patterns "a whole-form schema error
+  // keyed by a path that doesn't match…"). `standardSchemaToValidator`
+  // produces the same field-keyed error record the form consumes, mirroring
+  // @pyreon/form's own `resolveSchemaValidator`.
+  if (hasStandardSchema(schema)) {
+    return standardSchemaToValidator<TValues>(schema)
   }
 
   return undefined
@@ -144,6 +180,35 @@ export function defineFeature<TValues extends Record<string, unknown>>(
     : autoInitialValues
 
   const validate = createValidator<TValues>(schema, config.validate)
+
+  // Field introspection (`extractFields`) only understands Zod's shape. A real
+  // NON-Zod Standard Schema validator (Valibot, ArkType, …) yields ZERO fields,
+  // so the auto-derived form registers no fields and the first `setFieldValue`
+  // throws a confusing "[@pyreon/form] Field … does not exist". Validation and
+  // the query hooks are schema-agnostic and still work — but the user must
+  // supply `initialValues` (for useForm) + `columns` (for useTable) explicitly.
+  // Warn ONCE (per defineFeature call) with the actionable fix instead of
+  // leaving the downstream error to be traced. Gated on a REAL Standard Schema
+  // (never a plain type-only `{ _output }` map) that is NOT Zod, and only when
+  // no explicit `initialValues` was given (the case that actually breaks).
+  const looksLikeZod =
+    typeof (schema as unknown as Record<string, unknown>).safeParseAsync === 'function'
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    fields.length === 0 &&
+    !config.initialValues &&
+    !looksLikeZod &&
+    hasStandardSchema(schema)
+  ) {
+    console.warn(
+      `[Pyreon] defineFeature("${name}"): schema field introspection only ` +
+        `supports Zod, so no fields were derived from this schema. Validation ` +
+        `and the query hooks still work, but useForm() will have no fields ` +
+        `(setFieldValue throws) and useTable() will have no columns. Pass ` +
+        `initialValues (and columns for useTable) explicitly, e.g. ` +
+        `defineFeature({ name: "${name}", schema, api, initialValues: { … } }).`,
+    )
+  }
 
   const queryKeyBase = [name] as const
   const queryKey = (suffix?: string | number): QueryKey =>
