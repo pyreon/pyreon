@@ -81,10 +81,10 @@ interface FloorExemption {
 const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
   // ── Statements + branches < floor ───────────────────────────────────
   '@pyreon/compiler': {
-    currentStatements: 89,
-    currentBranches: 83,
+    currentStatements: 91,
+    currentBranches: 85,
     reason:
-      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Re-baselined 92/85 → 89/83 at the 2026-07 coverage-gate restoration (measured 89.12/83.14): beyond the long-standing jsx.ts edge-case tail, the PMTC/audit-era modules landed with integration-tier coverage — validate-emit.ts + native-audit.ts (swiftc/kotlinc loops run in the `test (native)` CI cell, not vitest) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting compiler to 95/95 is multi-PR work tracked as a long-tail effort.',
+      'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
   },
   // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
   // Each entry's `currentBranches` mirrors the package's vitest.config.ts
