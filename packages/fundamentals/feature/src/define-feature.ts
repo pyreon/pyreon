@@ -13,8 +13,7 @@ import {
   getPaginationRowModel,
   getSortedRowModel,
 } from '@pyreon/table'
-import type { StandardSchemaLike } from '@pyreon/validation'
-import { standardSchemaToValidator, zodSchema } from '@pyreon/validation'
+import { isStandardSchema, standardSchemaToValidator, zodSchema } from '@pyreon/validation'
 import { defaultInitialValues, extractFields } from './schema'
 import type {
   Feature,
@@ -84,26 +83,6 @@ function createFetcher(baseFetcher: typeof fetch = fetch) {
 
 // ─── Schema validation ────────────────────────────────────────────────────────
 
-/**
- * Detect a Standard Schema (`~standard`) validator — Valibot, ArkType,
- * modern Zod, `@pyreon/validate`'s `s`, Effect Schema, etc.
- *
- * Accepts BOTH object-shaped and CALLABLE schemas: ArkType's `type(...)`
- * returns a function (with a `~standard` property), so a `typeof === 'object'`
- * guard silently rejects it. `@pyreon/validation`'s `isStandardSchema` has
- * exactly that over-narrow guard (a cross-package bug that also breaks raw
- * ArkType in `@pyreon/form`/`store`/`state-tree`), so feature detects the
- * contract directly here. `standardSchemaToValidator` itself handles the
- * callable form fine — only the guard was too strict.
- */
-function hasStandardSchema(schema: unknown): schema is StandardSchemaLike {
-  if (schema == null) return false
-  const kind = typeof schema
-  if (kind !== 'object' && kind !== 'function') return false
-  const std = (schema as { '~standard'?: { validate?: unknown } })['~standard']
-  return std != null && typeof std === 'object' && typeof std.validate === 'function'
-}
-
 function createValidator<TValues extends Record<string, unknown>>(
   schema: unknown,
   customValidate?: SchemaValidateFn<TValues>,
@@ -130,7 +109,13 @@ function createValidator<TValues extends Record<string, unknown>>(
   // keyed by a path that doesn't match…"). `standardSchemaToValidator`
   // produces the same field-keyed error record the form consumes, mirroring
   // @pyreon/form's own `resolveSchemaValidator`.
-  if (hasStandardSchema(schema)) {
+  //
+  // `isStandardSchema` detects BOTH object-shaped AND callable `~standard`
+  // schemas (Valibot / ArkType / Zod v4 / `@pyreon/validate`'s `s`) — ArkType's
+  // `type(...)` is a FUNCTION carrying `~standard`. (feature used to duck-type
+  // this locally because validation's guard was over-narrow; #2243 fixed the
+  // guard to accept callables, so the local workaround is gone.)
+  if (isStandardSchema(schema)) {
     return standardSchemaToValidator<TValues>(schema)
   }
 
@@ -198,7 +183,7 @@ export function defineFeature<TValues extends Record<string, unknown>>(
     fields.length === 0 &&
     !config.initialValues &&
     !looksLikeZod &&
-    hasStandardSchema(schema)
+    isStandardSchema(schema)
   ) {
     console.warn(
       `[Pyreon] defineFeature("${name}"): schema field introspection only ` +
