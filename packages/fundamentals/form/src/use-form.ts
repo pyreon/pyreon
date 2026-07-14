@@ -113,17 +113,30 @@ export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
   schemaInput: unknown,
 ): SchemaValidateFn<TValues> | undefined {
   if (schemaInput == null) return undefined
-  if (typeof schemaInput === 'function') return schemaInput as SchemaValidateFn<TValues>
-  if (typeof schemaInput === 'object') {
-    if ('_infer' in schemaInput && 'validator' in schemaInput) {
-      return (schemaInput as { validator: SchemaValidateFn<TValues> }).validator
-    }
-    // `isStandardSchema` narrows to the strict `StandardSchemaShape`; the bridge
-    // takes the lax `StandardSchemaLike` — bridge the two with one cast.
-    if (isStandardSchema(schemaInput)) {
-      return standardSchemaToValidator<TValues>(schemaInput as StandardSchemaLike)
-    }
+  // A `@pyreon/validation` typed adapter (`{ _infer, validator }`) — always a
+  // plain object; unwrap to its pre-built validator.
+  if (
+    typeof schemaInput === 'object' &&
+    '_infer' in schemaInput &&
+    'validator' in schemaInput
+  ) {
+    return (schemaInput as { validator: SchemaValidateFn<TValues> }).validator
   }
+  // A raw Standard Schema — MUST be checked BEFORE the bare-`function` fallback
+  // below, because an ArkType schema is a CALLABLE that carries `~standard`
+  // (`type("string")` returns a function). If the `typeof === 'function'` arm
+  // ran first (as it did before this fix), a raw ArkType schema hit it and was
+  // mistreated as a hand-written `SchemaValidateFn` — invoked with the wrong
+  // signature, silently no-opping validation. `isStandardSchema` (fixed in
+  // @pyreon/validation, #2243, to accept callables) now recognizes both
+  // zod/valibot OBJECT schemas AND ArkType CALLABLE schemas; it narrows to the
+  // strict shape while the bridge takes the lax `StandardSchemaLike` — one cast.
+  if (isStandardSchema(schemaInput)) {
+    return standardSchemaToValidator<TValues>(schemaInput as StandardSchemaLike)
+  }
+  // Fallback: a hand-written whole-form `SchemaValidateFn` — a plain function
+  // WITHOUT `~standard`.
+  if (typeof schemaInput === 'function') return schemaInput as SchemaValidateFn<TValues>
   throw new Error(
     '[Pyreon] `schema` must be a SchemaValidateFn, a TypedSchemaAdapter ' +
       '(from @pyreon/validation), or a Standard Schema-compliant object ' +

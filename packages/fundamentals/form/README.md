@@ -309,6 +309,8 @@ const form = useForm({
 
 It also still accepts a plain `SchemaValidateFn` (`(values) => Partial<Record<key, string>>`) and a `@pyreon/validation` typed adapter (`zodSchema` / `valibotSchema` / `arktypeSchema` — the compile-time-typed form). Per-field validators run first; schema errors merge after.
 
+A **raw ArkType** schema is a special case worth calling out: `type({ ... })` returns a **callable** (`typeof === 'function'`) that also carries `~standard`. `useForm` checks Standard-Schema detection **before** the plain-function fallback, so a raw ArkType schema is recognized as a schema and validated through `~standard` — a hand-written `SchemaValidateFn` (a function *without* `~standard`) still takes the function path unchanged.
+
 The `~standard` contract + bridge live in `@pyreon/validation`; `@pyreon/form` depends on it and re-exports `ValidationError` / `ValidateFn` / `SchemaValidateFn`, so the historical `import { ValidationError } from '@pyreon/form'` keeps working.
 
 ### Dot-path leaf fields + nested schema errors
