@@ -13,5 +13,10 @@ export default defineNodeConfig({
   // the compiled path (jit-differential + emit-equivalence suites). Aspiration
   // stays 99 — raise back in lockstep as interpreter-path tests land
   // (BELOW_FLOOR_EXEMPTIONS entry in scripts/check-coverage.ts mirrors these).
-  coverageThresholds: { statements: 95, branches: 90, functions: 98, lines: 97 },
+  // Ratcheted 95→96 stmts / 90→91 branches after json-schema.ts reached 100%
+  // (measured 97.06 / 93.40; CI-linux baseline ~95.12/90.11 + the same pure
+  // toJsonSchema conversion coverage clears 96/91 on both platforms). The
+  // residual gap is the interpreter failure arms redundant with the JIT path
+  // (documented in scripts/check-coverage.ts).
+  coverageThresholds: { statements: 96, branches: 91, functions: 98, lines: 97 },
 })

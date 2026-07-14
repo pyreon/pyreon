@@ -193,7 +193,16 @@ describe('toJsonSchema — wrappers, metadata, approximations', () => {
   })
 
   it('unrepresentable kinds: throw by default, {} under `any` policy', () => {
-    for (const schema of [s.date(), s.bigint(), s.undefined(), s.map(s.string(), s.number())]) {
+    for (const schema of [
+      s.date(),
+      s.bigint(),
+      s.undefined(),
+      s.map(s.string(), s.number()),
+      s.void(),
+      s.nan(),
+      s.symbol(),
+      s.instanceof(Date),
+    ]) {
       expect(() => toJsonSchema(schema as never)).toThrow(/\[Pyreon\] toJsonSchema/)
       expect(toJsonSchema(schema as never, { unrepresentable: 'any' })).toEqual({ ...HDR })
     }
@@ -204,5 +213,73 @@ describe('toJsonSchema — wrappers, metadata, approximations', () => {
       properties: { when: {} },
       required: ['when'],
     })
+  })
+
+  it('an unknown/future schema kind is unrepresentable (default arm)', () => {
+    const bogus = { _kind: 'zzz-future', _ops: [] } as never
+    expect(() => toJsonSchema(bogus)).toThrow(/\[Pyreon\] toJsonSchema/)
+    expect(toJsonSchema(bogus, { unrepresentable: 'any' })).toEqual({ ...HDR })
+  })
+
+  it('nonoptional unwraps to its source shape', () => {
+    expect(toJsonSchema(s.string().optional().nonoptional())).toEqual({ ...HDR, type: 'string' })
+  })
+})
+
+describe('toJsonSchema — check → constraint mapping', () => {
+  it('string: nonEmpty → minLength, includes → pattern', () => {
+    expect(toJsonSchema(s.string().nonEmpty())).toEqual({ ...HDR, type: 'string', minLength: 1 })
+    expect(toJsonSchema(s.string().includes('ab'))).toEqual({ ...HDR, type: 'string', pattern: 'ab' })
+  })
+
+  it('number: negative/nonPositive → exclusiveMaximum/maximum, finite → no-op', () => {
+    expect(toJsonSchema(s.number().negative())).toEqual({ ...HDR, type: 'number', exclusiveMaximum: 0 })
+    expect(toJsonSchema(s.number().nonPositive())).toEqual({ ...HDR, type: 'number', maximum: 0 })
+    expect(toJsonSchema(s.number().finite())).toEqual({ ...HDR, type: 'number' })
+  })
+
+  it('array: length → min+maxItems, nonEmpty → minItems', () => {
+    expect(toJsonSchema(s.array(s.string()).length(3))).toEqual({
+      ...HDR,
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 3,
+      maxItems: 3,
+    })
+    expect(toJsonSchema(s.array(s.string()).nonEmpty())).toEqual({
+      ...HDR,
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 1,
+    })
+  })
+
+  it('set (collection) → uniqueItems array with min/max/size → item bounds', () => {
+    const base = { ...HDR, type: 'array' as const, uniqueItems: true, items: { type: 'string' } }
+    expect(toJsonSchema(s.set(s.string()).min(2))).toEqual({ ...base, minItems: 2 })
+    expect(toJsonSchema(s.set(s.string()).max(5))).toEqual({ ...base, maxItems: 5 })
+    expect(toJsonSchema(s.set(s.string()).size(3))).toEqual({ ...base, minItems: 3, maxItems: 3 })
+  })
+
+  // `check:*:nonempty` and the mini-form `optional` op are members of the PUBLIC
+  // op union (core/ops.ts) that the JIT + converter must handle, but no
+  // chainable method emits them today (`.nonEmpty()` lowers to minLength/min;
+  // `.optional()` sets the `_kind`). Lock the converter's forward-compat mapping
+  // by constructing the op directly.
+  it('forward-compat: nonempty ops map to length bounds', () => {
+    const str = s.string()
+    str._ops.push({ kind: 'check:string:nonempty' })
+    expect(toJsonSchema(str)).toEqual({ ...HDR, type: 'string', minLength: 1 })
+
+    const arr = s.array(s.string())
+    arr._ops.push({ kind: 'check:array:nonempty' })
+    expect(toJsonSchema(arr)).toEqual({ ...HDR, type: 'array', items: { type: 'string' }, minItems: 1 })
+  })
+
+  it('forward-compat: a mini-form optional op in a field marks it non-required', () => {
+    const field = s.string()
+    field._ops.push({ kind: 'optional' })
+    // No `required` array — the field is optional via its op, not its `_kind`.
+    expect(toJsonSchema(s.object({ x: field })).required).toBeUndefined()
   })
 })
