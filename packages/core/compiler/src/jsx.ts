@@ -1500,12 +1500,18 @@ export function transformJSX_JS(
       ssrEmitStatic(buf, isAria ? ` ${name}="true"` : ` ${name}`)
       return true
     }
-    // String-literal value.
+    // Raw JSX string-literal value (`title="…"`). Entity-safety bail: same as
+    // JSXText, oxc keeps `&amp;` LITERAL here but the h() path (esbuild) may
+    // decode it — bail on any `&`. A JS-string value (`title={'a & b'}`, the
+    // JSXExpressionContainer branch below) is unaffected (JS literals never
+    // HTML-decode), so those still bake.
     if (
       attr.value.type === 'StringLiteral' ||
       (attr.value.type === 'Literal' && typeof attr.value.value === 'string')
     ) {
-      return ssrBakeStringAttr(buf, name, attr.value.value as string)
+      const v = attr.value.value as string
+      if (v.includes('&')) return false
+      return ssrBakeStringAttr(buf, name, v)
     }
     // Expression container — only STATIC literals bake; anything else bails.
     if (attr.value.type === 'JSXExpressionContainer') {
@@ -1636,6 +1642,12 @@ export function transformJSX_JS(
   function ssrSerializeChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
     if (child.type === 'JSXText') {
       const cleaned = cleanJsxText(child.value ?? child.raw ?? '')
+      // Entity-safety bail: oxc keeps HTML entities (`&amp;`) LITERAL in
+      // JSXText, but the h() path's JSX runtime (esbuild) may DECODE them — so
+      // any `&` in baked text risks diverging from the current SSR bytes. Bail
+      // to h() (which owns the decode). `<`/`>` can't occur in JSXText (parse
+      // error); a JS-string child (`{'a & b'}`) is a hole, unaffected.
+      if (cleaned.includes('&')) return false
       if (cleaned) ssrEmitStatic(buf, escapeHtmlSsr(cleaned))
       return true
     }

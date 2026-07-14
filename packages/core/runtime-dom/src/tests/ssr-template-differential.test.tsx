@@ -74,9 +74,17 @@ const cases: DiffCase[] = [
     oracle: () => h('div', { title: 'a"b&c<d' }, 'x'),
   },
   {
-    name: 'static text escaping',
+    name: 'static text escaping (expr-literal child)',
     src: `const Node = <p>{'a & b < c > d'}</p>`,
     oracle: () => h('p', null, 'a & b < c > d'),
+  },
+  {
+    name: 'baked JSXText escaping (quotes in a static text node)',
+    // JSXText (not an expr child) is baked at compile time via the SSR escaper.
+    // `<`/`>` parse-error in JSXText and `&` bails (entity safety), so `"`/`'`
+    // are the bake-position escaping this case locks (→ &quot; / &#39;).
+    src: `const Node = <p>say "hi" it's me</p>`,
+    oracle: () => h('p', null, `say "hi" it's me`),
   },
   {
     name: 'wrapped dynamic text child (signal) — markers',
@@ -132,8 +140,8 @@ const cases: DiffCase[] = [
   },
   {
     name: 'safe url attr baked',
-    src: `const Node = <a href="/foo?a=1&b=2">go</a>`,
-    oracle: () => h('a', { href: '/foo?a=1&b=2' }, 'go'),
+    src: `const Node = <a href="/foo/bar">go</a>`,
+    oracle: () => h('a', { href: '/foo/bar' }, 'go'),
   },
 ]
 

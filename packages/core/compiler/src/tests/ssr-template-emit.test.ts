@@ -60,17 +60,21 @@ describe('ssrTemplate — emission shapes', () => {
     expect(out).toContain('const A = _ssr(["<ul><li>a</li><li>b</li></ul>"])')
   })
 
-  test('SSR text escaping bakes all five metacharacters', () => {
+  test('static string-literal child is a bare hole (renderNode escapes)', () => {
     const out = ssrFast(`const A = <p>{'a & b < c > d " e \\' f'}</p>`)
-    // Static string-literal child is a bare hole (renderNode escapes it); assert
-    // the fast path is taken and the shape is a single hole.
     expect(out).toContain('const A = _ssr(["<p>", "</p>"], ')
   })
 
+  test('baked JSXText is SSR-escaped at compile time (quotes)', () => {
+    // `"`/`'` are the escapable chars that can appear in JSXText (`<`/`>`
+    // parse-error, `&` bails for entity safety). → &quot; / &#39;.
+    const out = ssrFast(`const A = <p>say "hi" it's me</p>`)
+    expect(out).toContain(`const A = _ssr(["<p>say &quot;hi&quot; it&#39;s me</p>"])`)
+  })
+
   test('safe URL attr bakes; import is _ssr only', () => {
-    const out = ssrFast(`const A = <a href="/foo?a=1&b=2">go</a>`)
-    // `&` is SSR-escaped to `&amp;` in the baked attr value (matches renderProp).
-    expect(out).toContain('const A = _ssr(["<a href=\\"/foo?a=1&amp;b=2\\">go</a>"])')
+    const out = ssrFast(`const A = <a href="/foo/bar">go</a>`)
+    expect(out).toContain('const A = _ssr(["<a href=\\"/foo/bar\\">go</a>"])')
     expect(out).toContain('import { _ssr } from "@pyreon/runtime-server"')
   })
 })
@@ -86,6 +90,9 @@ describe('ssrTemplate — bail catalogue (stays on h())', () => {
     ['select value', `const N = <select value="b"><option>a</option></select>`],
     ['camelCase attr (needs runtime name map)', `const N = <div tabIndex={0}>y</div>`],
     ['object style', `const N = <div style={{ color: 'red' }}>y</div>`],
+    ['& in JSXText (entity-decode ambiguity)', `const N = <p>Tom &amp; Jerry</p>`],
+    ['bare & in JSXText', `const N = <p>fish & chips</p>`],
+    ['& in raw JSX string attr', `const N = <a title="Tom &amp; Jerry">x</a>`],
     ['innerHTML content prop', `const N = <div innerHTML={'<x>'}></div>`],
     ['dangerouslySetInnerHTML', `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`],
     ['duplicate attribute', `const N = <div id="a" id="b">y</div>`],
