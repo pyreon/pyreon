@@ -69,10 +69,13 @@ describe('gen-docs — storage snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    // 7 entries: useStorage, useCookie, useSessionStorage, useMemoryStorage,
-    // useIndexedDB, setCookieSource, createStorage
-    expect(Object.keys(record).length).toBe(7)
+    // 9 entries: useStorage, useCookie, useSessionStorage, useMemoryStorage,
+    // useIndexedDB, setCookieSource, createStorage, removeStorage, clearStorage
+    expect(Object.keys(record).length).toBe(9)
     expect(record['storage/useStorage']!.notes).toContain('localStorage')
     expect(record['storage/useStorage']!.mistakes?.split('\n').length).toBe(5)
+    // The imperative clear/remove helpers are now documented.
+    expect(record['storage/clearStorage']!.notes).toContain('MANAGED')
+    expect(record['storage/removeStorage']!.notes).toContain('RESET')
   })
 })

@@ -3950,6 +3950,32 @@ const secret = useEncrypted('api-key', '')`,
 - Throwing synchronously from setItem — backend errors should be either logged + swallowed (graceful degradation, the signal still updates) OR propagated via a rejected Promise for async backends. A thrown error breaks the calling \`.set()\` and leaves the in-memory signal in a state inconsistent with the backend.
 - Forgetting that the backend must implement ALL three (\`get\`, \`set\`, \`remove\`) — \`.remove()\` calls the backend \`remove\`, and omitting it makes the hook crash on cleanup paths.`,
   },
+
+  'storage/removeStorage': {
+    signature: `removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb' }) => void`,
+    example: `import { removeStorage } from '@pyreon/storage'
+
+removeStorage('theme')                       // localStorage
+removeStorage('step', { type: 'session' })   // sessionStorage
+removeStorage('locale', { type: 'cookie' })  // deletes the cookie`,
+    notes: 'Imperatively remove a single key from storage and RESET its signal to the default value. Default backend is `local`; pass `{ type: "session" | "cookie" | "indexeddb" }` for the others. Works whether or not a `useStorage`-family signal is currently registered for the key: a registered key routes through `signal.remove()` (reactive reset + storage delete), an unregistered key clears the raw storage directly (`removeItem` / cookie `max-age=0`). See also: clearStorage, useStorage.',
+    mistakes: `- Expecting the signal to read \`undefined\` afterward — \`removeStorage(key)\` RESETS the signal to its \`useStorage\` DEFAULT (a \`useStorage("theme", "light")\` reads \`"light"\` again, not \`undefined\`).
+- Omitting \`{ type }\` for a non-local backend — it defaults to \`local\`; use \`removeStorage("locale", { type: "cookie" })\` for a cookie, etc.
+- Mixing up the arg shape with \`clearStorage\` — \`removeStorage\` takes the backend in an OPTIONS object (\`{ type }\`), while \`clearStorage\` takes it POSITIONALLY (\`clearStorage("session")\`). The two are asymmetric.`,
+  },
+
+  'storage/clearStorage': {
+    signature: `clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => void`,
+    example: `import { clearStorage } from '@pyreon/storage'
+
+clearStorage()          // all MANAGED localStorage entries
+clearStorage('session') // all managed sessionStorage entries
+clearStorage('all')     // every backend`,
+    notes: `Imperatively clear all storage entries MANAGED by @pyreon/storage for one backend (default \`local\`) or \`all\` backends. Each managed entry's signal is RESET to its default value (reactive — components reading it re-render to the default). It only touches keys @pyreon/storage tracks (created via \`useStorage\` / \`useSessionStorage\` / \`useCookie\` / \`useIndexedDB\`); unmanaged keys in the same backend are LEFT ALONE — it is NOT \`localStorage.clear()\`. See also: removeStorage, useStorage.`,
+    mistakes: `- Expecting \`clearStorage()\` to wipe the whole backend like \`localStorage.clear()\` — it only clears keys MANAGED by @pyreon/storage (registered via the hooks); unmanaged keys are untouched. Call the native \`localStorage.clear()\` for a full wipe.
+- Assuming it clears every backend — it defaults to \`local\` only; pass \`"all"\` for everything, or the specific backend name (\`"session"\`/\`"cookie"\`/\`"indexeddb"\`).
+- Expecting cleared signals to read \`undefined\` — each entry RESETS to its \`useStorage\` DEFAULT value (reactive), not \`undefined\`.`,
+  },
   // <gen-docs:api-reference:end @pyreon/storage>
 
   // ═══════════════════════════════════════════════════════════════════════════
