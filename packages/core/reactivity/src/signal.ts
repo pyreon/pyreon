@@ -254,6 +254,31 @@ function _subscribe(this: SignalFn<unknown>, listener: () => void): () => void {
 }
 
 /**
+ * @internal Temporarily remove a `subscribe()`-registered `listener` from
+ * `sig` WITHOUT allocating a disposer, then restore it with
+ * {@link _resumeSubscriber}. This lets a caller that drives a coordinated
+ * BATCH of writes to signals it owns silence ONE specific subscriber across
+ * those writes — the subscriber's notifications would otherwise round-trip
+ * the batch queue purely to rebuild change information the caller already
+ * has (the keys it wrote + their old/new values).
+ *
+ * The paired functions encapsulate the `_s` Set inside `@pyreon/reactivity`
+ * (its owner) rather than exposing it to consumers, and add ZERO cost to the
+ * hot write path — the Set's shape is unchanged. Consumer: `@pyreon/store`'s
+ * `patch()` fast path. `_suspendSubscriber` is a no-op if `listener` isn't
+ * currently subscribed; `_resumeSubscriber` re-adds it (idempotent).
+ */
+export function _suspendSubscriber<T>(sig: Signal<T>, listener: () => void): void {
+  ;(sig as unknown as SignalFn<T>)._s?.delete(listener)
+}
+
+/** @internal Restore a listener removed by {@link _suspendSubscriber}. */
+export function _resumeSubscriber<T>(sig: Signal<T>, listener: () => void): void {
+  const s = sig as unknown as SignalFn<T>
+  ;(s._s ??= new Set()).add(listener)
+}
+
+/**
  * Register a direct updater — lighter than subscribe().
  * Used by compiler-emitted _bindText/_bindDirect for zero-overhead DOM bindings.
  *
