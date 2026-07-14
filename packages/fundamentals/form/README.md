@@ -330,14 +330,15 @@ const form = useForm({
 // form.errors()                          → { 'address.city': 'City is required' }
 ```
 
-**Two error-routing modes:**
+**Error routing — most-specific field wins:**
 
-- **Leaf routing** — per-field validators, or a **flat-keyed schema** (`s.object({ 'address.city': s.string().min(1) })`), route their error to the exact **leaf** field.
-- **Ancestor routing** — a **nested schema** over a single object field (`initialValues: { address: { city: '' } }` → field `address`, schema `z.object({ address: z.object({ city }) })`) routes its dot-path error to the **ancestor** object field.
+- **Leaf routing** — per-field validators, a **flat-keyed schema** (`s.object({ 'address.city': s.string().min(1) })`), OR a **real nested schema** (`z.object({ address: z.object({ city: z.string().min(1) }) })`) all route their error to the exact **leaf** field. A declarative nested schema is fed the **nested** value shape (transiently rebuilt from the flat model), so it validates correctly and its per-leaf-path error auto-splits to the matching leaf field.
+- **Ancestor routing** — a nested error with **no** registered leaf field routes to the nearest registered **ancestor** object field (e.g. `initialValues: { address: { city: '' } }` → field `address`, schema `z.object({ address: z.object({ city }) })` → error on `address`).
+- **Both registered** (object `address` **and** leaf `address.city`) → the **leaf wins**; the object ancestor no longer double-claims it (dev-warns, since holding "city" in two places is confusing).
 
-The value model is **flat**: `values()` / `getValues()` / `onSubmit` return the flat dot-path keys (so field-name types stay honest — no type footgun), and `nestValues(form.values())` / `flattenValues(serverData)` convert to and from a nested API payload. A schema error whose key matches **no** field (a shape mismatch, or the path-less `""` whole-form key) marks the form invalid, sets `submitError`, and dev-warns — never silently dropped. Declaring **both** an object field `address` **and** a leaf `address.city` dev-warns (the error would show on both). Both the submit and blur paths honor this.
+Only a **declarative** schema (raw Standard Schema / typed adapter) is fed the nested shape; a plain `SchemaValidateFn` function always receives the flat `TValues` (its type contract). The value model is **flat**: `values()` / `getValues()` / `onSubmit` return the flat dot-path keys (so field-name types stay honest — no type footgun), and `nestValues(form.values())` / `flattenValues(serverData)` convert to and from a nested API payload. A schema error whose key matches **no** field (a shape mismatch, or the path-less `""` whole-form key) marks the form invalid, sets `submitError`, and dev-warns — never silently dropped. Both the submit and blur paths honor this.
 
-Not yet typed: `values()` / `onSubmit` carry the flat dot-path keys, not a nested `NestValues<T>` inference; and a **nested** schema's error is not auto-split to per-leaf fields (use a flat-keyed schema or per-field validators for leaf routing). Both are tracked follow-ups.
+Not yet typed: `values()` / `onSubmit` / `schema` carry the flat dot-path keys, not a nested `NestValues<T>` inference — so a nested declarative schema over a dot-path-leaf form needs an `as never` cast today. That's a tracked follow-up (its type cascade breaks generic wrappers like `@pyreon/feature`).
 
 ## Devtools
 

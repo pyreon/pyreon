@@ -5,7 +5,7 @@ import type { SchemaValidateFn, StandardSchemaLike } from '@pyreon/validation'
 import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
 import type { FieldDefinition, InferFieldValues } from './field'
 import { isFieldDefinition } from './field'
-import { findPathAncestorConflict, nearestAncestorField } from './path'
+import { findPathAncestorConflict, nearestAncestorField, nestValues } from './path'
 import type {
   FieldErrorProps,
   FieldLabelProps,
@@ -27,22 +27,41 @@ import type {
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
- * Match a schema-error record to a top-level field: an exact key match, else
- * the first NESTED key whose top-level segment is this field (e.g.
- * `"address.city"` → field `"address"`). The zod/valibot/arktype adapters
- * flatten a nested issue to a dot-path key (`issuesToRecord`), so without this
- * the error for an object-valued field would match no top-level field and be
- * silently dropped — the form would report valid while the schema rejected.
- * Pure + exported for unit testing.
+ * Match a schema-error record to a field, routing each key to the MOST-SPECIFIC
+ * registered field: an exact key match first (a top-level `email` OR a
+ * first-class dot-path LEAF field `address.city`), else the first NESTED key
+ * whose nearest registered ancestor is this field (e.g. `"address.city"` →
+ * object field `"address"`). The zod/valibot/arktype adapters flatten a nested
+ * issue to a dot-path key (`issuesToRecord`), so without this the error for an
+ * object-valued field would match no top-level field and be silently dropped —
+ * the form would report valid while the schema rejected. Pure + exported for
+ * unit testing.
+ *
+ * LEAF-PREFERENCE tie-break: when the registered field set is passed, an
+ * ancestor object field (`address`) does NOT claim a nested key that is ITSELF
+ * a registered leaf field (`address.city`) or that a deeper registered object
+ * ancestor owns — so a nested error auto-splits to the leaf field, never
+ * double-surfacing on both. Omitting `fieldNames` keeps the legacy
+ * first-nested-key behavior (the pure unit tests exercise the 2-arg form).
  */
 export function matchSchemaErrorForField(
   schemaErrors: Record<string, ValidationError | undefined>,
   name: string,
+  fieldNames?: ReadonlySet<string>,
 ): ValidationError | undefined {
   if (schemaErrors[name] !== undefined) return schemaErrors[name]
   const prefix = `${name}.`
   for (const key in schemaErrors) {
-    if (key.startsWith(prefix) && schemaErrors[key] !== undefined) return schemaErrors[key]
+    if (schemaErrors[key] === undefined) continue
+    if (!key.startsWith(prefix)) continue
+    if (fieldNames !== undefined) {
+      // A more-specific registered field owns this key: the leaf itself
+      // (exact match), or a deeper registered object ancestor. `name` claims
+      // the key ONLY when it is the key's NEAREST registered ancestor.
+      if (fieldNames.has(key)) continue
+      if (nearestAncestorField(key, fieldNames) !== name) continue
+    }
+    return schemaErrors[key]
   }
   return undefined
 }
@@ -217,6 +236,17 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // (zod/valibot/arktype — accepted directly, no adapter, no `as never` cast).
   const schema = resolveSchemaValidator<TValues>(schemaInput)
 
+  // A DECLARATIVE schema (a raw Standard Schema OR a @pyreon/validation typed
+  // adapter — anything that is NOT a plain function) describes the NESTED
+  // domain shape. When the form declares dot-path LEAF fields, such a schema
+  // receives the NESTED value shape (`{ address: { city } }` rebuilt from flat
+  // `{ 'address.city' }`) so a nested zod/valibot/arktype/`s` schema validates
+  // correctly, and its per-leaf-path errors (`address.city`) auto-split back to
+  // the matching leaf fields (see `getSchemaInput`). A plain `SchemaValidateFn`
+  // is the user's own code reading the form's flat `TValues` — it ALWAYS
+  // receives the flat shape (its declared type contract), never nested.
+  const schemaIsDeclarative = schemaInput != null && typeof schemaInput !== 'function'
+
   // Mutable per-field validator map — seeded from `options.validators`, extended
   // at runtime by `registerField` (dynamic fields). The field closures read
   // `fieldValidators[name]`, so a validator added post-creation is picked up.
@@ -250,9 +280,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   const fieldNames: Set<string> = new Set(fieldEntries.map(([n]) => String(n)))
 
   // Dev-only ambiguity guard: declaring BOTH an object field `address` AND a
-  // dot-path leaf `address.city` means a schema error keyed `address.city`
-  // matches both (leaf exactly, object via ancestor routing) → the message
-  // shows twice. Not corrupting (the flat value model keeps the keys separate),
+  // dot-path leaf `address.city` is confusing — a schema error keyed
+  // `address.city` deterministically routes to the more-specific LEAF field
+  // (the object field no longer double-claims it), but you now hold "city" in
+  // two places. Not corrupting (the flat value model keeps the keys separate),
   // so this warns rather than throws — pick one style per branch.
   if (process.env.NODE_ENV !== 'production') {
     const conflict = findPathAncestorConflict([...fieldNames])
@@ -260,7 +291,8 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       console.warn(
         `[@pyreon/form] Ambiguous field declaration: an object field "${conflict[0]}" AND a ` +
           `dot-path leaf field "${conflict[1]}" are both declared. A schema/validator error keyed ` +
-          `"${conflict[1]}" would surface on BOTH. Declare EITHER the object field (nested errors ` +
+          `"${conflict[1]}" routes to the LEAF field "${conflict[1]}" (the object field "${conflict[0]}" ` +
+          `no longer receives nested errors a leaf owns). Declare EITHER the object field (nested errors ` +
           `route to it) OR the leaf field(s) (each surfaces its own error) — not both.`,
       )
     }
@@ -334,6 +366,24 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     return values
   }
 
+  // Values as seen by the SCHEMA. The form's value model stays FLAT end-to-end
+  // (`values()` / `getValues()` / `onSubmit` keep flat dot-path keys), but a
+  // DECLARATIVE schema over a dot-path-leaf form is authored against the NESTED
+  // domain shape — so we transiently rebuild the nested shape here. This is the
+  // "auto-split" enabler: a nested schema then produces per-leaf-path errors
+  // (`address.city`) that route to the registered leaf fields. Only nests when
+  // a dot-path leaf field is actually registered (checked live so a
+  // `registerField('a.b')` is picked up); every other form feeds the flat shape
+  // verbatim → zero behavior change. A plain SchemaValidateFn is never nested.
+  const getSchemaInput = (): Record<string, unknown> => {
+    const flat = getValues() as Record<string, unknown>
+    if (!schemaIsDeclarative) return flat
+    for (const n of fieldNames) {
+      if (n.includes('.')) return nestValues(flat)
+    }
+    return flat
+  }
+
   // Helper for submit — excludes disabled fields from payload.
   // Form-level disabled always takes priority over field-level.
   const getSubmitValues = (): TValues => {
@@ -380,16 +430,23 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     // can't be reused across an unregister/re-register of the same name.
     schemaFieldVersions[name] = ++_versionCounter
     const v = schemaFieldVersions[name]
-    const allValues = getValues()
-    const result = await schema(allValues)
+    // Cast: `getSchemaInput` may return the NESTED runtime view (not literally
+    // `TValues`, which is the flat model) — the schema validates it
+    // structurally. Typed deep-path inference is deferred (#2209).
+    const result = await schema(getSchemaInput() as TValues)
     // Discard stale result if a newer blur on the same field has fired.
     if (disposed || schemaFieldVersions[name] !== v) return
     const field = fields[name]
     /* v8 ignore next — `name` always comes from the registered `fields` map; defensive guard. */
     if (!field) return
-    // Match exact OR nested (`address.city` → `address`) so an object-valued
-    // field surfaces its schema error on blur instead of silently passing.
-    field.error.set(matchSchemaErrorForField(result as Record<string, ValidationError | undefined>, name))
+    // Route to this field: exact match (a leaf `address.city` or top-level),
+    // else the nested error whose nearest registered ancestor is `name` (an
+    // object field `address` surfaces `address.city`). Passing `fieldNames`
+    // applies the leaf-preference tie-break so an object field never claims a
+    // key a registered leaf owns.
+    field.error.set(
+      matchSchemaErrorForField(result as Record<string, ValidationError | undefined>, name, fieldNames),
+    )
   }
 
   // Clear all pending debounce timers
@@ -842,7 +899,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       // schema validation, not N times.
       if (schema) {
         try {
-          const schemaErrors = (await schema(allValues)) as Record<
+          // Cast: nested runtime view vs the flat `TValues` model — deferred
+          // deep-path typing (#2209); validated structurally by the schema.
+          const schemaErrors = (await schema(getSchemaInput() as TValues)) as Record<
             string,
             ValidationError | undefined
           >
@@ -850,10 +909,13 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
           batch(() => {
             for (const [name] of fieldEntries) {
               if (fields[name].error.peek() !== undefined) continue
-              // Match exact OR nested (`address.city` → object field `address`),
-              // so a nested schema rejection surfaces on its ancestor field
-              // instead of being silently dropped.
-              const schemaError = matchSchemaErrorForField(schemaErrors, name)
+              // Route to the most-specific registered field: exact (a leaf
+              // `address.city` or top-level), else the nested error whose
+              // nearest registered ancestor is `name` (object field `address`
+              // surfaces `address.city`). `fieldNames` applies the
+              // leaf-preference tie-break so a nested error auto-splits to the
+              // leaf field and an ancestor never double-claims it.
+              const schemaError = matchSchemaErrorForField(schemaErrors, name, fieldNames)
               if (schemaError !== undefined) fields[name].error.set(schemaError)
             }
             // Any schema-error key whose top-level segment is NOT a registered
