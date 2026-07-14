@@ -3846,6 +3846,19 @@ m.isFinal()      // true → onDone fired`,
     notes: `Mark a terminal state with \`final: true\`. \`machine.isFinal()\` reads reactively true while the machine is in any final state (use it in JSX / effects), and \`machine.onDone(cb)\` listeners fire whenever a final state is entered (by event OR by an \`always\` cascade), receiving the triggering event. Final states model "the machine is done" — e.g. a wizard's \`complete\` state or a fetch's terminal \`success\`/\`failure\`. See also: createMachine.`,
     mistakes: '- Expecting a final state to block further `send()` — Pyreon does not freeze final states; if a final state declares `on` transitions they still fire. Omit `on` for true terminals',
   },
+
+  'machine/Machine.matches / nextEvents / reset / dispose': {
+    signature: 'matches(...states: S[]) => boolean — nextEvents() => E[] — reset() => void — dispose() => void',
+    example: `m.matches('loading', 'error')  // in loading OR error (reactive)
+m.nextEvents()                 // ['FETCH', 'CANCEL'] — declared events from here
+m.reset()                      // back to initial (+ its always cascade)
+m.dispose()                    // drop all listeners`,
+    notes: `The instance query + control surface (all reactive where noted). \`matches(...states)\` — reactive; true when the current state is ANY of the given (a variadic OR: \`matches("loading", "error")\`). \`nextEvents()\` — reactive; the current state's DECLARED \`on\` event keys (does NOT evaluate guards and does NOT include eventless \`always\`). \`reset()\` — set the state back to \`initial\` and re-run the initial \`always\` cascade. \`dispose()\` — remove ALL lifecycle listeners (\`onEnter\`/\`onExit\`/\`onTransition\`/\`onDone\`) and clean up. See also: createMachine.`,
+    mistakes: `- \`matches("a", "b")\` is an OR, not an AND — it is true when the current state is \`a\` OR \`b\`. A machine is in exactly one state, so an AND across two states is never true.
+- Reading \`nextEvents()\` as "events that would currently SUCCEED" — it returns the current state's DECLARED \`on\` keys WITHOUT evaluating guards, and excludes eventless \`always\`. Use \`can(event, payload?)\` to test whether a specific event would actually transition.
+- Expecting \`reset()\` to land on the LITERAL \`initial\` when that state has an \`always\` — reset re-runs the initial cascade, so a transient initial resolves to its cascade target (never the transient state itself).
+- Expecting \`dispose()\` to stop or freeze the machine — it only removes listeners; \`send()\` still transitions the state afterward (now silently). Drop your references to let it GC.`,
+  },
   // <gen-docs:api-reference:end @pyreon/machine>
 
   // ═══════════════════════════════════════════════════════════════════════════
