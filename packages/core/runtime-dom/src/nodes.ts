@@ -742,11 +742,27 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ): number => {
+    // New entries are physically mounted at the tail (before tailMarker), in
+    // newKeys iteration order. The subsequent LIS reorder (forLisReorder) reads
+    // each entry's `pos` as its CURRENT (pre-reorder) DOM position to decide
+    // which entries stay vs. move — so a new entry's `pos` MUST reflect its
+    // physical tail position, NOT its target logical index. Recording the
+    // logical index `i` made a new row whose slot sat between two survivors
+    // look "already in order" (its pos straddled the survivors' stale pos), so
+    // the LIS never moved it off the tail — stranding it (e.g. [1,2,3,4] →
+    // [1,5,3] rendered [1,3,5]). Every survivor's pos ∈ [0, currentKeys.length)
+    // by the post-update invariant (fresh/replace/reorder all set pos = logical
+    // index), so `currentKeys.length + added` places each new row strictly
+    // AFTER all survivors while preserving the new rows' relative mount order.
+    // The reorder overwrites pos with the final logical index afterward; the
+    // small-k path ignores pos for placement (it relocates via survivor
+    // anchors) so this tail pos is inert there.
+    const tailBase = currentKeys.length
     let added = 0
     for (let i = 0; i < n; i++) {
       const key = newKeys[i] as string | number
       if (cache.has(key)) continue
-      renderInto(items[i] as T, key, i, liveParent, tailMarker)
+      renderInto(items[i] as T, key, tailBase + added, liveParent, tailMarker)
       added++
     }
     return added
