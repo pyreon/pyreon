@@ -248,6 +248,15 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('AnimatedVisibility(')) {
     imports.push('import androidx.compose.animation.AnimatedVisibility')
   }
+  // <TransitionGroup> emit (`Column(modifier = Modifier.animateContentSize())`):
+  // animateContentSize is a Modifier extension in androidx.compose.animation --
+  // NOT star-imported, exactly like AnimatedVisibility. Added PROACTIVELY (the
+  // M2.8 animated-list device-assertion is the first Android example to render
+  // a <TransitionGroup>; caught while probing the emit, before any real
+  // `gradle assembleDebug` failed on the unresolved reference).
+  if (emitted.includes('animateContentSize(')) {
+    imports.push('import androidx.compose.animation.animateContentSize')
+  }
   // <Press> clickable modifiers live in the ROOT androidx.compose.foundation
   // package (NOT the star-imported .layout/.lazy/.text sub-packages), same
   // stub-masked class as verticalScroll. NO Android example had used <Press>

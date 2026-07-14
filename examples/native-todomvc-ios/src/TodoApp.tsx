@@ -101,15 +101,24 @@ export function TodoApp() {
         data-testid="new-todo"
       />
 
-      <For each={visible} by={(t) => t.id}>
-        {(t) => (
-          <TodoRow
-            todo={t}
-            onToggle={() => toggle(t.id)}
-            onRemove={() => remove(t.id)}
-          />
-        )}
-      </For>
+      {/* M2.8 animated keyed list — <TransitionGroup> animates the enter/
+          leave of the <For> rows. Native: iOS wraps the ForEach in a stable
+          VStack carrying `.animation(.default, value: visible)` (SwiftUI
+          animates ForEach insert/remove keyed on the list); Android wraps the
+          list in `Column(modifier = Modifier.animateContentSize())`. The
+          web-only CSS enter/leave props are ignored on native. Adding/removing
+          a todo now flows through the animated list path. */}
+      <TransitionGroup>
+        <For each={visible} by={(t) => t.id}>
+          {(t) => (
+            <TodoRow
+              todo={t}
+              onToggle={() => toggle(t.id)}
+              onRemove={() => remove(t.id)}
+            />
+          )}
+        </For>
+      </TransitionGroup>
 
       <Inline gap={2} align="center">
         <Text>{remaining} remaining</Text>

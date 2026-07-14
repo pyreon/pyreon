@@ -108,9 +108,12 @@ describe('TodoMVC compile baseline', () => {
           VStack(spacing: 8) {
             TextField("What needs to be done?", text: $draft)
               .onSubmit { addTodo() }.accessibilityIdentifier("new-todo")
-            ForEach(visible, id: \\.id) { t in
-              TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
+            VStack {
+              ForEach(visible, id: \\.id) { t in
+                TodoRow(todo: t, onToggle: { toggle(t.id) }, onRemove: { remove(t.id) })
+              }
             }
+            .animation(.default, value: visible.count)
             HStack(alignment: .center, spacing: 8) {
               Text("\\(remaining) remaining")
               Button("All") { filter = .all }

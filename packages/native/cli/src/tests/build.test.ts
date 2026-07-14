@@ -358,6 +358,22 @@ describe('@pyreon/native-cli build', () => {
     expect(without).not.toContain('AnimatedVisibility')
   })
 
+  it('Kotlin conditional imports: animateContentSize pulls its animation import (M2.8, proactive)', () => {
+    // M2.8 animated lists: `<TransitionGroup>` emits `Column(modifier =
+    // Modifier.animateContentSize()) { … }`; animateContentSize is a Modifier
+    // extension in androidx.compose.animation -- NOT star-imported, like
+    // AnimatedVisibility. Added PROACTIVELY (caught while probing the emit,
+    // before the device gate failed). Bisect site: the animateContentSize
+    // branch in conditionalKotlinImports.
+    const withGroup = conditionalKotlinImports(
+      'Column(modifier = Modifier.animateContentSize()) { LazyColumn { } }',
+    )
+    expect(withGroup).toContain('import androidx.compose.animation.animateContentSize')
+    // Absent when nothing renders a <TransitionGroup>.
+    const without = conditionalKotlinImports('Text(text = "Count: ${count}")')
+    expect(without).not.toContain('animateContentSize')
+  })
+
   it('Kotlin conditional imports: Scroll / Modal / remote-Image pull foundation / ui.window / coil', () => {
     // Vocabulary-completion (audit-found): <Scroll> emits verticalScroll/
     // rememberScrollState (root androidx.compose.foundation, NOT the

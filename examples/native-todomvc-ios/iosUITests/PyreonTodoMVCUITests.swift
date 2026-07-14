@@ -95,4 +95,49 @@ final class PyreonTodoMVCUITests: XCTestCase {
             "Todo '\(marker)' did not survive relaunch — useStorage persistence broken"
         )
     }
+
+    // M2.8 — ANIMATED KEYED LIST (<TransitionGroup>) asserted on device. The
+    // shared TodoApp.tsx wraps the todo `<For>` in `<TransitionGroup>`, which
+    // PMTC lowers to an animated list: iOS wraps the `ForEach` in a stable
+    // `VStack` carrying `.animation(.default, value: visible)`; Android
+    // `Column(modifier = Modifier.animateContentSize())`.
+    //
+    // SCOPE (honest, like the M2.2b adaptive proof): the animation TIMING is
+    // not queryable, so this is a COMPILE-load-bearing + BEHAVIORAL-on-the-list
+    // proof — a broken <TransitionGroup> emit (or the missing
+    // androidx.compose.animation.animateContentSize import on Android) fails the
+    // build, and this exercises the animated-list ENTER + LEAVE end-to-end:
+    //   (1) adding a uniquely-marked todo makes a new row ENTER the animated
+    //       list (the `.animation`/`animateContentSize`-wrapped For);
+    //   (2) tapping that row's Remove makes it LEAVE.
+    // The just-added todo is appended last, so the last "Remove" button is its.
+    func test_animatedListAddRemove() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let root = app.otherElements["todo-app"].firstMatch
+        XCTAssertTrue(root.waitForExistence(timeout: 30), "Root view did not appear")
+
+        let marker = "anim-\(UUID().uuidString.prefix(8))"
+        let field = app.textFields["new-todo"].firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "new-todo field did not appear")
+        field.tap()
+        field.typeText(marker + "\n")
+
+        // (1) ENTER — the new row appears in the TransitionGroup-wrapped list.
+        XCTAssertTrue(
+            app.staticTexts[marker].firstMatch.waitForExistence(timeout: 10),
+            "Added todo '\(marker)' did not enter the animated list"
+        )
+
+        // (2) LEAVE — remove the just-added (last) row via its Remove button.
+        let removeButtons = app.buttons.matching(
+            NSPredicate(format: "label == %@", "Remove"))
+        XCTAssertGreaterThan(removeButtons.count, 0, "No Remove buttons in the list")
+        removeButtons.element(boundBy: removeButtons.count - 1).tap()
+        XCTAssertTrue(
+            app.staticTexts[marker].firstMatch.waitForNonExistence(timeout: 10),
+            "Removed todo '\(marker)' did not leave the animated list"
+        )
+    }
 }
