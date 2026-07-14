@@ -259,6 +259,28 @@ function extractStyler(output: string, results: Record<string, BenchMetric>): vo
   }
 }
 
+function extractUnistyle(output: string, results: Record<string, BenchMetric>): void {
+  // The unistyle responsive-resolution bench prints `    <label>  <ops> ops/s`
+  // rows. Capture the headline hot-path rows by label.
+  const labels: Record<string, string> = {
+    'styles() flat': 'styles-flat',
+    scalar: 'resolve-scalar',
+    'mobile-first array': 'resolve-array',
+    'breakpoint object': 'resolve-object',
+    'cache hit': 'cache-hit',
+    'delta pass': 'delta-optimize',
+  }
+  for (const line of output.split('\n')) {
+    const row = line.match(/^\s+(.+?)\s{2,}([\d.]+[KM]?)\s+ops\/s/)
+    if (!row) continue
+    const key = labels[row[1]!.trim()]
+    if (!key) continue
+    const ops = parseOpsValue(row[2]!)
+    if (Number.isNaN(ops)) continue
+    results[`unistyle/${key}`] = { mean: ops, unit: 'ops/s' }
+  }
+}
+
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 const results: Record<string, BenchMetric> = {}
@@ -275,6 +297,7 @@ const benchmarks = [
   { script: 'scripts/bench/core/head.ts', extractor: extractHead, name: 'head' },
   { script: 'scripts/bench/core/server.ts', extractor: extractServer, name: 'server' },
   { script: 'scripts/bench/core/styler.ts', extractor: extractStyler, name: 'styler' },
+  { script: 'scripts/bench/core/unistyle.ts', extractor: extractUnistyle, name: 'unistyle' },
 ]
 
 for (const { script, extractor, name } of benchmarks) {

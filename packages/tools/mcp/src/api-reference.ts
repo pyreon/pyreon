@@ -4994,7 +4994,8 @@ const responsive = makeItResponsive({ key: '$box', css, styles, normalize: true 
     notes: 'Build a styled-component interpolation from a `styles` callback. This is NOT a value resolver — it returns a FUNCTION that, given component props, reads the theme (via `key` or `props.theme`) and emits the mobile-first `@media` cascade. The `styles` callback (a `MakeItResponsiveStyles`) receives the resolved per-breakpoint `{ theme, css, rootSize }` and returns the CSS for that breakpoint; when the theme carries responsive per-breakpoint values, makeItResponsive normalizes then transforms then optimizes them into `@media (min-width)` blocks (mobile-first, only deltas emitted). `key` scopes which prop bag holds the theme; `normalize` toggles the breakpoint normalization; pass the `css` tag from `@pyreon/ui-core` `config`. Drop the returned interpolation into a styled template literal. See also: createMediaQueries, styles.',
     mistakes: `- Passing \`{ value, property }\` — makeItResponsive is a styled-component interpolation factory, not a value resolver; provide a \`styles\` callback plus the \`css\` tag from \`@pyreon/ui-core\` config
 - Passing CSS-spec property names (\`borderTopWidth\`) inside the styles callback — unistyle uses property-first naming (\`borderWidthTop\`); the responsive transformer expects the unistyle convention
-- Forgetting to pass an enriched theme — without \`theme.__PYREON__\` (populated by \`enrichTheme\`), per-breakpoint values fall back to the base value at every breakpoint`,
+- Forgetting to pass an enriched theme — without \`theme.__PYREON__\` (populated by \`enrichTheme\`), per-breakpoint values fall back to the base value at every breakpoint
+- Expecting a \`null\` slot in a mobile-first array to fill from the LAST element — a \`null\`/\`undefined\` slot is a SKIP that inherits the PREVIOUS breakpoint (\`["red", null, "blue"]\` = xs red, sm inherits red, md blue), identical to a breakpoint object with a missing key`,
   },
 
   'unistyle/styles': {
@@ -5031,24 +5032,29 @@ extendCss(undefined)                         // → ''             (nullish → 
   },
 
   'unistyle/stripUnit': {
-    signature: 'stripUnit(value: string | number): number',
+    signature: 'stripUnit(value: string | number, unitReturn?: boolean): number | string | [number | string, string | undefined]',
     example: `import { stripUnit } from '@pyreon/unistyle'
 
-stripUnit('16px')   // → 16
-stripUnit('1.5rem') // → 1.5
-stripUnit(16)       // → 16`,
-    notes: 'Strip the unit suffix from a CSS value and return the numeric part (`"16px"` → `16`, `"1.5rem"` → `1.5`). Returns the input unchanged when already a number. Useful for arithmetic on theme values declared as strings (`"16px"`) without manually parsing. See also: value, values.',
+stripUnit('16px')       // → 16
+stripUnit('1.5rem')     // → 1.5
+stripUnit(16)           // → 16
+stripUnit('24px', true) // → [24, 'px']
+stripUnit('auto', true) // → ['auto', undefined]`,
+    notes: 'Strip the unit suffix from a CSS value and return the numeric part (`"16px"` → `16`, `"1.5rem"` → `1.5`). A number passes through unchanged, and a string that is NOT a `<number><unit>` shape (e.g. `"calc(…)"`, `"auto"`) is returned verbatim. Pass `unitReturn: true` to get the `[value, unit]` tuple instead (`"24px"` → `[24, "px"]`; an unmatched string → `[value, undefined]`). Useful for arithmetic on theme values declared as strings without hand-parsing. See also: value, values.',
   },
 
   'unistyle/value': {
-    signature: 'value(input: PropertyValue, fallback?: PropertyValue): UnitValue',
+    signature: `value(input: string | number | null | undefined, rootSize?: number, outputUnit?: 'rem' | 'px' | '%' | 'em' | 'vh' | 'vw' | string): string | number | null`,
     example: `import { value } from '@pyreon/unistyle'
 
-value(16)         // → { value: 16, unit: 'px' }
-value('1.5rem')   // → { value: 1.5, unit: 'rem' }
-value('50%')      // → { value: 50, unit: '%' }
-value('garbage', 0) // → { value: 0, unit: 'px' }`,
-    notes: 'Parse and validate a single property value into a `UnitValue` shape (`{ value, unit }`). Accepts numbers (treated as pixels), strings with units (`"16px"`, `"1rem"`, `"50%"`), or objects already in `UnitValue` form. Optional `fallback` is returned when the input is invalid. The companion `values()` does the same over an array. See also: stripUnit, values.',
+value(16)            // → '1rem'   (16 / rootSize 16)
+value(24)            // → '1.5rem'
+value(0)             // → 0        (always unitless)
+value('16px')        // → '1rem'   (px → rem)
+value('2em')         // → '2em'    (other units pass through)
+value('calc(100% - 8px)') // → 'calc(100% - 8px)'  (verbatim passthrough)
+value(16, 16, 'px')  // → '16px'   (outputUnit override)`,
+    notes: 'Convert ONE numeric/string CSS value to its final unit string. A unitless number is divided by `rootSize` (default 16) and emitted in `outputUnit` (default `rem`): `value(16)` → `"1rem"`, `value(24)` → `"1.5rem"`, `value(8)` → `"0.5rem"`. `0` always stays unitless (`0`). A `px` string is converted to rem (`value("16px")` → `"1rem"`); any other-unit string (`"2em"`, `"50%"`) and any non-numeric string (`"calc(100% - 8px)"`, `"var(--x)"`, `"auto"`) pass through verbatim — this passthrough is what lets `themeToCssVars` var leaves flow untouched. `null`/`undefined`/`""` return `null`. Pass `outputUnit: "px"` to keep a unitless number in pixels (`value(16, 16, "px")` → `"16px"`). The companion `values()` picks the first non-nullish item then applies the same conversion. NOTE: the second parameter is `rootSize` (the px→rem divisor), NOT a fallback. See also: stripUnit, values.',
   },
 
   'unistyle/themeToCssVars': {

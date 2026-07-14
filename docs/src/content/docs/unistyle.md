@@ -653,50 +653,43 @@ This means TypeScript correctly narrows the return type based on the second argu
 
 Converts a number or string to a CSS value string. The conversion rules are:
 
-| Input            | Output      | Rule                                             |
-| ---------------- | ----------- | ------------------------------------------------ |
-| String           | Passthrough | Strings are returned unchanged                   |
-| `0`              | `'0'`       | Zero is always just `'0'`                        |
-| `0 < \|n\| <= 1` | `'Nrem'`    | Fractional values are treated as rem multipliers |
-| `\|n\| > 1`      | `'Npx'`     | Numbers greater than 1 become pixels             |
+| Input                                | Output      | Rule                                                                   |
+| ------------------------------------ | ----------- | ---------------------------------------------------------------------- |
+| `0`                                  | `0`         | Zero is always unitless                                                |
+| unitless number `n`                  | `'(n/rootSize)rem'` | Divided by `rootSize` (default 16) and emitted in `rem`        |
+| `'<n>px'` string                     | `'(n/rootSize)rem'` | A `px` string is converted to rem                             |
+| other-unit string (`'2em'`, `'50%'`) | Passthrough | Returned verbatim                                                      |
+| non-numeric string (`'calc(…)'`, `'var(…)'`, `'auto'`) | Passthrough | Returned verbatim — how `themeToCssVars` var leaves flow through |
+| `null` / `undefined` / `''`          | `null`      | Not a value                                                            |
 
 ```ts
 import { value } from '@pyreon/unistyle'
 
-// Strings pass through unchanged
-value('2rem') // => '2rem'
-value('50%') // => '50%'
-value('100vh') // => '100vh'
-value('auto') // => 'auto'
+// Unitless numbers are divided by rootSize (default 16) and emitted in rem
+value(16) // => '1rem'      (16 / 16)
+value(24) // => '1.5rem'
+value(8) // => '0.5rem'
+value(0) // => 0            (always unitless)
+
+// A px string is converted to rem; other units pass through
+value('16px') // => '1rem'
 value('2em') // => '2em'
+value('50%') // => '50%'
+value('calc(100% - 8px)') // => 'calc(100% - 8px)'  (verbatim passthrough)
+value('auto') // => 'auto'
 
-// Zero
-value(0) // => '0'
+// Negative numbers follow the same px→rem division
+value(-16) // => '-1rem'
+value(-10) // => '-0.625rem'
 
-// Fractional (0 < |n| <= 1) → rem
-value(0.5) // => '0.5rem'
-value(1) // => '1rem'
-value(0.25) // => '0.25rem'
-
-// Greater than 1 → px
-value(16) // => '16px'
-value(32) // => '32px'
-value(100) // => '100px'
-
-// Negative values follow the same rules
-value(-0.5) // => '-0.5rem'
-value(-1) // => '-1rem'
-value(-10) // => '-10px'
+// The second parameter is rootSize (the divisor); the third is the output unit
+value(20, 20) // => '1rem'   (20 / rootSize 20)
+value(16, 16, 'px') // => '16px'  (keep a unitless number in px)
 ```
 
-**Design rationale:** The `value()` function implements a convention where small numbers (0-1) represent relative sizing (rem) and larger numbers represent absolute sizing (px). This makes it natural to write:
+**Design rationale:** authoring in raw pixel numbers (`padding: 16`, `fontSize: 24`) is natural, and `value()` turns every unitless number into a `rootSize`-relative `rem` so a single root-font-size change rescales the whole UI. `0` stays unitless (a bare `0` needs no unit), and any string that already carries a unit — or that isn't a plain `<number><unit>` shape at all (`calc(…)`, `var(…)`, `clamp(…)`) — passes through untouched, which is exactly what lets `themeToCssVars` var leaves survive the value pipeline.
 
-```ts
-value(0.5) // Half a rem — relative to root font size
-value(16) // 16 pixels — absolute
-```
-
-**The `rootSize` parameter:** The second parameter exists for future extensibility but does not currently affect the output.
+**The `rootSize` parameter** is the px→rem divisor (default 16). It is load-bearing — `value(16)` is `'1rem'` at `rootSize: 16` but `'0.8rem'` at `rootSize: 20`.
 
 ### `values(...vals)`
 
