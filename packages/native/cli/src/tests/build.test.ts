@@ -341,6 +341,23 @@ describe('@pyreon/native-cli build', () => {
     expect(without).not.toContain('isSystemInDarkTheme')
   })
 
+  it('Kotlin conditional imports: AnimatedVisibility pulls its animation import (M2.7, proactive)', () => {
+    // M2.7 animations: `<Transition show>` emits `AnimatedVisibility(visible =
+    // …) { … }`, which lives in androidx.compose.animation — NOT covered by any
+    // star-imported package. Same stub-masked class as isSystemInDarkTheme: the
+    // kotlinc validate stubs provide it regardless of import, so the validate
+    // loop can't catch a missing import — added PROACTIVELY (caught while
+    // probing the emit, before the device gate failed). Bisect site: the
+    // AnimatedVisibility branch in conditionalKotlinImports.
+    const withTransition = conditionalKotlinImports(
+      'AnimatedVisibility(visible = boxVisible) { Text(text = "Animated Box") }',
+    )
+    expect(withTransition).toContain('import androidx.compose.animation.AnimatedVisibility')
+    // Absent when nothing renders a <Transition>.
+    const without = conditionalKotlinImports('Text(text = "Count: ${count}")')
+    expect(without).not.toContain('AnimatedVisibility')
+  })
+
   it('Kotlin conditional imports: Scroll / Modal / remote-Image pull foundation / ui.window / coil', () => {
     // Vocabulary-completion (audit-found): <Scroll> emits verticalScroll/
     // rememberScrollState (root androidx.compose.foundation, NOT the

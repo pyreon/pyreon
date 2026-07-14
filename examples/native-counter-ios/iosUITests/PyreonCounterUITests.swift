@@ -440,4 +440,53 @@ final class PyreonCounterUITests: XCTestCase {
                 + "did not update"
         )
     }
+
+    // M2.7 — ANIMATIONS (<Transition show>) asserted in the REAL render tree.
+    // The shared Counter.tsx has `<Transition show={() => boxVisible()}><Text>
+    // Animated Box</Text></Transition>` with a Toggle Box button flipping the
+    // `boxVisible` signal; PMTC lowers `<Transition>` to an animated show-gate:
+    // iOS `ZStack { if boxVisible { Text("Animated Box").transition(.opacity) } }
+    // .animation(.default, value: boxVisible)`, Android `AnimatedVisibility(
+    // visible = boxVisible) { … }`.
+    //
+    // DIFFERENTIATING behavioral R4 (on the show/hide; the fade TIMING itself
+    // is not asserted — XCUITest can't observe an opacity curve): the animated
+    // child toggles visibility through the platform animation path. A dropped
+    // <Transition> (or a broken show-gate) would leave the child permanently
+    // visible or permanently absent. Sequence:
+    //   (1) launch — `show` defaults visible, so "Animated Box" is present;
+    //   (2) tap Toggle Box — the `.transition(.opacity)` fade-out completes and
+    //       the child is removed from the tree;
+    //   (3) tap Toggle Box again — it animates back in.
+    func test_transitionAnimatesShowHide() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let box = app.staticTexts["Animated Box"]
+        // (1) Visible on launch.
+        XCTAssertTrue(
+            box.waitForExistence(timeout: 30),
+            "Animated Box not visible on launch — the <Transition> show-gate "
+                + "did not render its child (show defaults to visible)"
+        )
+
+        let toggle = app.buttons["Toggle Box"]
+        XCTAssertTrue(toggle.exists, "Toggle Box button missing")
+
+        // (2) Hide → the animated child is removed after the opacity fade-out.
+        toggle.tap()
+        XCTAssertTrue(
+            box.waitForNonExistence(timeout: 5),
+            "Animated Box still present after Toggle Box — the animated "
+                + "show-gate did not remove the child on show=false"
+        )
+
+        // (3) Show → it animates back in.
+        toggle.tap()
+        XCTAssertTrue(
+            box.waitForExistence(timeout: 5),
+            "Animated Box did not reappear after a second Toggle Box — the "
+                + "show-gate did not re-mount the child on show=true"
+        )
+    }
 }

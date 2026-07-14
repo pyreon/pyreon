@@ -14,6 +14,17 @@ import { createMachine } from '@pyreon/machine'
 
 export function Counter() {
   const count = signal<number>(0)
+  // M2.7 animations proof — a `<Transition show>` animates a child's
+  // visibility. Native: iOS `.transition(.opacity)` on an `if show { … }`
+  // gate driven by `.animation(.default, value:)` on a stable ZStack; Android
+  // `AnimatedVisibility(visible = show) { … }`. The web-only CSS-class
+  // enter/leave props are ignored on native (each platform animates through
+  // its own system). OBSERVABLE + differentiating — the Toggle Box button
+  // flips `boxVisible`, and the device gate asserts the animated child
+  // ("Animated Box") disappears then reappears, proving the animated
+  // show-gate compiles + toggles on-device (the animation vocabulary v1 is
+  // conditional-visibility fade; spring/keyframe/gesture-driven absent).
+  const boxVisible = signal<boolean>(true)
   // M3.1 platform-API proof — a haptic fires on each increment tap.
   // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
   // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
@@ -126,6 +137,10 @@ export function Counter() {
       <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
       <Button onClick={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
       <Button onClick={() => power.send('TOGGLE')}>Toggle Power</Button>
+      <Button onClick={() => boxVisible.set(!boxVisible())}>Toggle Box</Button>
+      <Transition show={() => boxVisible()}>
+        <Text>Animated Box</Text>
+      </Transition>
       {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
           Native: iOS `.onLongPressGesture { count = 0 }`, Android
           `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms

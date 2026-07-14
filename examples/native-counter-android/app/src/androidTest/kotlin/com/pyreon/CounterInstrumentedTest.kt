@@ -138,4 +138,26 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Toggle Power").performClick()
         composeRule.onNodeWithText("Power: on").assertIsDisplayed()
     }
+
+    // M2.7 — ANIMATIONS (<Transition show>) asserted in the REAL Compose
+    // semantics tree — the Android half of the iOS
+    // `test_transitionAnimatesShowHide`. The shared Counter.tsx has
+    // `<Transition show={() => boxVisible()}><Text>Animated Box</Text>
+    // </Transition>` + a Toggle Box button; PMTC emits `AnimatedVisibility(
+    // visible = boxVisible) { Text(text = "Animated Box") }`. The compose test
+    // rule advances the clock through the enter/exit animations before each
+    // assertion, so `assertDoesNotExist` sees the post-exit tree.
+    //
+    // DIFFERENTIATING: launch shows "Animated Box"; a Toggle Box click hides it
+    // (AnimatedVisibility exit → removed); a second click brings it back.
+    @Test
+    fun transitionAnimatesShowHide() {
+        composeRule.onNodeWithText("Animated Box").assertIsDisplayed()
+        composeRule.onNodeWithText("Toggle Box").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Animated Box").assertDoesNotExist()
+        composeRule.onNodeWithText("Toggle Box").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Animated Box").assertIsDisplayed()
+    }
 }
