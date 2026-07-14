@@ -103,9 +103,12 @@ const tasks = defineFeature({
   // Required: unique name — used as the @pyreon/store ID and query-key namespace
   name: 'tasks',
 
-  // Required: a validation schema (Zod / Valibot / ArkType). Duck-typed —
-  // anything with `safeParseAsync` enables auto-validation; Zod's `_output`
-  // drives TypeScript inference of the entity type.
+  // Required: a validation schema. Validation works for Zod AND any Standard
+  // Schema (Valibot / ArkType / modern Zod / `@pyreon/validate`'s `s`).
+  // NOTE: field INTROSPECTION (auto form fields, table columns, create-form
+  // defaults) is Zod-only — with a Valibot/ArkType schema you must supply
+  // `initialValues` + table `columns` explicitly. Zod's `_output` drives
+  // TypeScript inference of the entity type.
   schema: z.object({
     title: z.string().min(1),
     status: z.enum(['todo', 'in-progress', 'done']),
@@ -130,7 +133,7 @@ const tasks = defineFeature({
 | Property        | Type                              | Required | Description                                                                                                |
 | --------------- | --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------- |
 | `name`          | `string`                          | Yes      | Unique feature name. Used as the `@pyreon/store` ID and the query-key namespace.                           |
-| `schema`        | validation schema                 | Yes      | Zod / Valibot / ArkType schema. Duck-typed via `safeParseAsync`. Zod's `_output` infers the entity type.   |
+| `schema`        | validation schema                 | Yes      | Zod, or any Standard Schema (Valibot / ArkType / `s`) — see [Validators & introspection](#validators--introspection). Zod's `_output` infers the entity type. |
 | `api`           | `string`                          | Yes      | REST base path, e.g. `'/api/tasks'`. Endpoint URLs derive from RESTful conventions.                        |
 | `initialValues` | `Partial<TValues>`                | No       | Override the schema-derived defaults used to seed `useForm` create-mode.                                   |
 | `validate`      | `SchemaValidateFn<TValues>`       | No       | Custom validation function. When provided, replaces auto-detection from the schema.                        |
@@ -156,6 +159,37 @@ const tasks = defineFeature({
 | `useForm`     | `(opts?: FeatureFormOptions) => FormState<TValues>`                 | Form with create / edit modes + schema validation.         |
 | `useTable`    | `(data, opts?: FeatureTableOptions) => FeatureTableResult<TValues>` | Table with schema-inferred columns.                        |
 | `useStore`    | `() => StoreApi<FeatureStore<TValues>>`                             | Reactive client-side cache.                                |
+
+### Validators & introspection
+
+`defineFeature` uses the schema for **two independent jobs**, and they have different validator coverage:
+
+| Job | What it powers | Validator support |
+| --- | --- | --- |
+| **Validation** | `useForm` submit/blur validation | **Zod AND any Standard Schema** — Valibot, ArkType (its callable schema included), modern Zod, `@pyreon/validate`'s `s`. A raw schema is routed through `standardSchemaToValidator`; errors land on the right field. |
+| **Field introspection** | `feature.fields`, auto create-form `initialValues`, auto `useTable` columns | **Zod only.** `extractFields` reads Zod's `_def.shape` / `_zod.def.shape`. There is no cross-library shape-introspection standard, so a Valibot / ArkType schema yields **no** fields. |
+
+The query hooks (`useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`) and `useStore` are **schema-agnostic** — they only touch `api` and the row type, so every validator works with them.
+
+:::note
+**Using Valibot / ArkType?** Validation works out of the box, but because field introspection is Zod-only you must supply what would otherwise be derived:
+
+```ts
+const users = defineFeature({
+  name: 'users',
+  schema: v.object({ name: v.pipe(v.string(), v.minLength(2)), email: v.pipe(v.string(), v.email()) }),
+  api: '/api/users',
+  initialValues: { name: '', email: '' }, // required — useForm() has no auto fields
+})
+
+users.useForm()      // validates via Valibot; fields come from initialValues
+users.useList()      // works — schema-agnostic
+```
+
+Because `useTable` derives its columns from Zod introspection, a non-Zod-schema table has no auto columns — build it with `@pyreon/table`'s `useTable` directly (passing an explicit `ColumnDef[]`).
+
+`defineFeature` emits a one-time dev warning if a non-Zod schema yields no fields and no `initialValues` was provided, so the confusing downstream `Field … does not exist` error never surprises you.
+:::
 
 ## API Conventions
 
@@ -727,7 +761,7 @@ const overdue = useQuery(() => ({
 
 ### `@pyreon/validation`
 
-When the schema exposes `safeParseAsync`, it's wrapped with `@pyreon/validation`'s `zodSchema()` adapter to drive form validation. Zod, Valibot, and ArkType all work via duck-typing. Pass `validate` in the config to override with a custom validator.
+A Zod schema (it exposes `safeParseAsync`) is wrapped with `@pyreon/validation`'s `zodSchema()` adapter. Any other **Standard Schema** — Valibot, ArkType, `@pyreon/validate`'s `s`, or modern Zod — is routed through `standardSchemaToValidator` (detecting the `~standard` contract, callable schemas like ArkType included). Either way, submit/blur validation produces a per-field error record the form surfaces on the right field. Pass `validate` in the config to override with a custom validator.
 
 ### `@pyreon/table`
 

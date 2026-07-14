@@ -12,9 +12,10 @@ Schema-driven feature factory for Pyreon. Define a validation schema (Zod / Vali
 ## Features
 
 - defineFeature(&#123; name, schema, api &#125;) — single declaration generates 11 reactive members
-- schema is a real Zod / Valibot / ArkType validator — TValues is inferred from it for end-to-end type safety
+- Validation works for Zod AND any Standard Schema — Valibot, ArkType (callable schema included), modern Zod, or @pyreon/validate’s `s`; errors surface on the right field
+- Field introspection (auto form fields, table columns, create-form defaults) is Zod-only — a non-Zod schema needs explicit initialValues + columns; a one-time dev warning flags it
 - Auto-generated useList, useById, useSearch with @pyreon/query
-- Auto-generated useCreate, useUpdate, useDelete mutations
+- Auto-generated useCreate, useUpdate, useDelete mutations — each invalidates the list query on success
 - Auto-generated useForm (returns a @pyreon/form FormState) with schema validation
 - Auto-generated useTable with column inference via @pyreon/table
 - Auto-generated useStore (StoreApi&lt;FeatureStore&gt;) for cached items / selection / loading
@@ -120,7 +121,7 @@ const View = () => {
 <T>(config: FeatureConfig<T>) => Feature<T>
 ```
 
-Define a schema-driven CRUD feature. `config` is `{ name, schema, api, validate?, initialValues?, fetcher? }` — `schema` is a real Zod / Valibot / ArkType validator (duck-typed via `safeParseAsync`; Zod carries `_output` so TValues is inferred), and `api` is the string base path (e.g. `/api/posts`). Returns a Feature object with auto-generated reactive members: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`, `queryKey`, plus `name` / `api` / `schema` / `fields`. Composes @pyreon/query (data fetching), @pyreon/form (FormState), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). REST endpoints are derived from `api`: `GET /` (list), `GET /:id` (item), `POST /` (create), `PUT /:id` (update), `DELETE /:id` (delete).
+Define a schema-driven CRUD feature. `config` is `{ name, schema, api, validate?, initialValues?, fetcher? }`. `schema` does TWO independent jobs: VALIDATION works for Zod OR any Standard Schema (Valibot / ArkType — its callable schema included — / modern Zod / @pyreon/validate’s `s`), routed through @pyreon/validation so errors surface on the right field; FIELD INTROSPECTION (auto form fields, table columns, create-form defaults via `fields`) is Zod-ONLY, so a Valibot/ArkType feature must pass `initialValues` explicitly (a one-time dev warning flags it). `api` is the string base path (e.g. `/api/posts`); Zod carries `_output` so TValues is inferred. Returns a Feature object with auto-generated reactive members: `useList`, `useById`, `useSearch`, `useCreate`, `useUpdate`, `useDelete`, `useForm`, `useTable`, `useStore`, `queryKey`, plus `name` / `api` / `schema` / `fields`. The query hooks + `useStore` are schema-agnostic (they only touch `api`). Composes @pyreon/query (data fetching), @pyreon/form (FormState), @pyreon/validation (schema validation), @pyreon/store (global state), and @pyreon/table (table configuration). REST endpoints are derived from `api`: `GET /` (list), `GET /:id` (item), `POST /` (create), `PUT /:id` (update), `DELETE /:id` (delete); each mutation invalidates the list query on success.
 
 **Example**
 
@@ -145,7 +146,8 @@ Posts.useTable(() => items() ?? [], { columns: ['title'] })
 
 - Forgetting to install peer dependencies — defineFeature composes @pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table internally
 - Using defineFeature without a QueryClient provider — useList/useById/useSearch/useCreate/useUpdate/useDelete all depend on @pyreon/query which requires a QueryClient in context
-- Passing a plain string-map (`{ title: "string" }`) as the schema — `schema` must be a real validator with `safeParseAsync` (a Zod / Valibot / ArkType object such as `z.object({ title: z.string() })`); a non-validator yields no fields and no validation
+- Passing a plain string-map (`{ title: "string" }`) as the schema — `schema` must be a real validator (a Zod object such as `z.object({ title: z.string() })`, or any Standard Schema); a non-validator yields no fields and no validation
+- Expecting auto form fields / table columns from a Valibot or ArkType schema — field INTROSPECTION is Zod-only (validation works for all of them). With a non-Zod schema, `useForm()` has no fields (setFieldValue throws) and `useTable()` has no columns until you supply `initialValues` + build the table via @pyreon/table directly. defineFeature dev-warns when this happens.
 - Passing `api` as an object (`{ baseUrl: "…" }`) — `api` is a plain string base path; there are no per-endpoint override fields (the REST routes are derived from it)
 - Passing a bare id to useForm — useForm takes an OPTIONS object: `useForm({ mode: "edit", id })` for edit, `useForm()` (or `useForm({ initialValues })`) for create
 - Passing options as useTable’s first argument — useTable takes the DATA first (`useTable(data, { columns })`), not `useTable({ columns })`
@@ -284,7 +286,7 @@ const form = useForm({ initialValues: initial, ... })
 
 > **Note:** defineFeature composes 5 packages internally (@pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table). All must be installed, and a QueryClient provider must be mounted in the component tree for the query hooks to work.
 
-> **Schema is a validator:** The schema is a real Zod / Valibot / ArkType validator (duck-typed via `safeParseAsync`), not a string map. TValues — the row type flowing through every generated hook — is inferred from it (Zod via `_output`, ArkType via `infer`). Add a `reference({ name })` field for a foreign key.
+> **Schema is a validator — two jobs, different coverage:** The schema is a real validator, not a string map. It drives (1) VALIDATION — works for Zod OR any Standard Schema (Valibot / ArkType / modern Zod / `s`), errors routed to the right field; and (2) FIELD INTROSPECTION (auto form fields, table columns, create-form defaults) — Zod-ONLY. With a non-Zod schema, supply `initialValues` explicitly (useForm) and build tables via @pyreon/table directly; a one-time dev warning flags the empty-fields case. TValues is inferred from Zod’s `_output` / ArkType’s `infer`. Add a `reference({ name })` field for a foreign key.
 
 > **API base path:** The `api` field is a plain string base path (e.g. `/api/posts`). REST endpoints are derived from it — `GET /` (list), `GET /:id` (item), `POST /` (create), `PUT /:id` (update), `DELETE /:id` (delete). There are no per-endpoint override fields; supply a custom `fetcher` for non-conventional transport.
 

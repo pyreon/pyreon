@@ -96,7 +96,7 @@ describe('gen-docs — feature snapshot', () => {
 
       > **Note**: defineFeature composes 5 packages internally (@pyreon/query, @pyreon/form, @pyreon/validation, @pyreon/store, @pyreon/table). All must be installed, and a QueryClient provider must be mounted in the component tree for the query hooks to work.
       >
-      > **Schema is a validator**: The schema is a real Zod / Valibot / ArkType validator (duck-typed via \`safeParseAsync\`), not a string map. TValues — the row type flowing through every generated hook — is inferred from it (Zod via \`_output\`, ArkType via \`infer\`). Add a \`reference({ name })\` field for a foreign key.
+      > **Schema is a validator — two jobs, different coverage**: The schema is a real validator, not a string map. It drives (1) VALIDATION — works for Zod OR any Standard Schema (Valibot / ArkType / modern Zod / \`s\`), errors routed to the right field; and (2) FIELD INTROSPECTION (auto form fields, table columns, create-form defaults) — Zod-ONLY. With a non-Zod schema, supply \`initialValues\` explicitly (useForm) and build tables via @pyreon/table directly; a one-time dev warning flags the empty-fields case. TValues is inferred from Zod’s \`_output\` / ArkType’s \`infer\`. Add a \`reference({ name })\` field for a foreign key.
       >
       > **API base path**: The \`api\` field is a plain string base path (e.g. \`/api/posts\`). REST endpoints are derived from it — \`GET /\` (list), \`GET /:id\` (item), \`POST /\` (create), \`PUT /:id\` (update), \`DELETE /:id\` (delete). There are no per-endpoint override fields; supply a custom \`fetcher\` for non-conventional transport.
       >

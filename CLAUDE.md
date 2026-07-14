@@ -180,7 +180,7 @@ Honest capability matrix: `docs/src/content/docs/multiplatform.md`.
 | `@pyreon/table` | TanStack Table adapter |
 | `@pyreon/virtual` | TanStack Virtual adapter |
 | `@pyreon/i18n` | Reactive i18n — async namespaces, plurals, interpolation, Intl formatters |
-| `@pyreon/feature` | Schema-driven CRUD primitives (queries/forms/tables/stores) |
+| `@pyreon/feature` | Schema-driven CRUD primitives (queries/forms/tables/stores). Schema does TWO jobs: VALIDATION works for Zod OR any Standard Schema (Valibot/ArkType — callable schema included — /modern Zod/`s`, via `standardSchemaToValidator`); FIELD INTROSPECTION (auto form fields/table columns/create-defaults via `extractFields`) is **Zod-only** — a non-Zod schema needs explicit `initialValues` (+ build tables via `@pyreon/table` directly), dev-warned once. Query hooks + `useStore` are schema-agnostic; each mutation invalidates the list query |
 | `@pyreon/charts` | Reactive ECharts bridge, lazy-loaded (`<Chart>`/`useChart`); `onEvents` general event map (any ECharts event, leak-safe bind), reactive `showLoading` overlay, `replaceMerge`; theme is init-only (not reactive — remount to swap). Wrapper-overhead micro-bench vs echarts-for-react: ~11× faster reactive update (fine-grained signal→setOption vs React re-render+deep-compare), ~1.9× faster dispose, ~1.65× SLOWER mount (lazy-loader cost — the price of zero-bundle). `bun run --filter=@pyreon/charts bench` |
 | `@pyreon/storage` | Reactive client-side storage — local/session/cookie/IndexedDB/memory |
 | `@pyreon/hooks` | 45 signal-based hooks |

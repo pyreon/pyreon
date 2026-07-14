@@ -78,10 +78,10 @@ function EditUser({ id }: { id: number }) {
 | Option           | Type                        | Description                                                              |
 | ---------------- | --------------------------- | ------------------------------------------------------------------------ |
 | `name`           | `string`                    | Unique feature name — used for store ID and query-key namespace          |
-| `schema`         | Zod-compatible schema       | Validation schema (Zod v3 / v4, duck-typed; ArkType / Valibot also work) |
+| `schema`         | validation schema           | Validation: Zod **or** any Standard Schema (Valibot / ArkType / `s`). Field introspection (auto fields / columns / defaults) is **Zod-only** — see [Validators & introspection](#validators--introspection) |
 | `api`            | `string`                    | REST base path (e.g. `'/api/users'`)                                     |
-| `initialValues?` | `Partial<TValues>`          | Default create-form values (auto-generated from schema field types if omitted) |
-| `validate?`      | `SchemaValidateFn<TValues>` | Custom schema-level validation (overrides schema-from-`safeParseAsync`)  |
+| `initialValues?` | `Partial<TValues>`          | Default create-form values (auto-generated from schema field types if omitted; **required** for a non-Zod schema — introspection yields no fields) |
+| `validate?`      | `SchemaValidateFn<TValues>` | Custom schema-level validation (overrides schema auto-detection)         |
 | `fetcher?`       | `typeof fetch`              | Custom fetch (e.g. for auth headers); defaults to global `fetch`         |
 
 `TValues` is inferred from `schema._output` (Zod v3/v4 carry it) — all generated hooks are end-to-end typed.
@@ -183,9 +183,19 @@ const authorField = posts.fields.find((f) => f.name === 'authorId')
 // { name: 'authorId', type: 'reference', referenceTo: 'users', label: 'Author Id' }
 ```
 
+## Validators & introspection
+
+`schema` does two independent jobs with different validator coverage:
+
+- **Validation** (`useForm` submit/blur) works for **Zod and any Standard Schema** — Valibot, ArkType (callable schema included), modern Zod, or `@pyreon/validate`'s `s`. A raw schema is routed through `@pyreon/validation`'s `standardSchemaToValidator`; errors surface on the right field.
+- **Field introspection** (`feature.fields`, auto create-form `initialValues`, auto `useTable` columns) is **Zod-only** — `extractFields` reads Zod's shape, and there's no cross-library shape-introspection standard.
+- The query hooks + `useStore` are **schema-agnostic** and work with every validator.
+
+With a **Valibot / ArkType** schema, supply `initialValues` explicitly (so `useForm` has fields) and build tables with `@pyreon/table`'s `useTable` directly (feature's `useTable` derives columns from Zod introspection). `defineFeature` emits a one-time dev warning if a non-Zod schema yields no fields and no `initialValues` was given.
+
 ## Schema introspection
 
-Every feature exposes `fields: FieldInfo[]` extracted from the schema at runtime (duck-typed against Zod v3 + v4). Powers auto-generated form fields, table columns, and reference detection.
+Every feature exposes `fields: FieldInfo[]` extracted from the schema at runtime (duck-typed against Zod v3 + v4 — **Zod-only**, see above). Powers auto-generated form fields, table columns, and reference detection.
 
 ```ts
 function AutoForm({ feature }: { feature: Feature<any> }) {
