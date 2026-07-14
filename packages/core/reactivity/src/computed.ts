@@ -1,4 +1,4 @@
-import { _markRecompute } from './batch'
+import { _markLazyRecompute, _markRecompute } from './batch'
 import { _errorHandler } from './effect'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
@@ -230,7 +230,10 @@ function computedLazy<T>(
     if (read._d1) read._d1()
     else if (read._d) for (const f of read._d) f()
   }
-  _markRecompute(recompute)
+  // LAZY marker → the batch router runs this recompute inline (dirty-mark-only,
+  // idempotent via the `_dirty` guard above) instead of routing it through the
+  // tier-1 queue. Pure-computed cascades resolve during the notify phase.
+  _markLazyRecompute(recompute)
 
   read.dispose = () => {
     read._disposed = true
