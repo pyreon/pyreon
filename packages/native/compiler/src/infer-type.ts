@@ -1629,24 +1629,33 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
         case 'flatten':
         case 'unique':
           return { kind: 'array', element: { kind: 'unknown' } }
-        // Scalar accessors — return the element type (Swift first/last
-        // are Optional<T>, but the IR has no Optional kind; Swift
-        // accepts the unwrapped type at the consumer site because
-        // these properties are typed contextually).
+        // Scalar accessors — Swift `.first`/`.last`/`.first(where:)` and Kotlin
+        // `.first`/`.last`/`.find` ALL return Optional<T> (nil on empty), and JS
+        // `rx.first(arr)` returns `T | undefined`. The computed MUST be annotated
+        // `T?` — returning the bare element type emitted `var x: T { arr.first }`,
+        // which does NOT typecheck (`T?` → `T`, "cannot convert"). Mirrors the
+        // `.find` ARRAY-method case above; the nullable union maps to `T?` / `T?`
+        // via swiftUnionType / kotlinUnionType.
         case 'first':
         case 'last':
         case 'find':
-          return elementType
+          return { kind: 'union', branches: [elementType, { kind: 'undefined' }] }
         // Boolean predicates.
         case 'some':
         case 'every':
           return { kind: 'boolean' }
-        // Numeric aggregations.
-        case 'count':
-        case 'sum':
+        // min / max return Optional (nil on an EMPTY array — same contextual-
+        // typing bug as first/last). count / sum / average / reduce always
+        // produce a value (reduce has a seed), so they stay a bare number.
         case 'min':
         case 'max':
+          return { kind: 'union', branches: [{ kind: 'number' }, { kind: 'undefined' }] }
+        // average = sum / count → always Double (the emit computes
+        // `Double(sum) / Double(count)`), so annotate the computed Double, not Int.
         case 'average':
+          return { kind: 'number', float: true }
+        case 'count':
+        case 'sum':
         case 'reduce':
           return { kind: 'number' }
       }

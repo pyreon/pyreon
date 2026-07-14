@@ -78,20 +78,22 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // (mirrors validate-kotlin.test.ts's fixture loop). Adding a symbol to a
     // listed fixture that the stub doesn't cover fails HERE, per-PR, on Linux.
     //
-    // EXCLUDED (10 of 37) — NOT yet type-checked against the stub, by category:
-    //   • Service-runtime + @Observable surface (a coherent follow-up, M-gate.1b/2):
+    // NEWLY INCLUDED (M-gate.1c) — 3 fixtures the gate previously SURFACED as real
+    // emit bugs, now FIXED in the emitter and locked here: rx-full (`.first`/`.last`/
+    // `.find`/`.min`/`.max`/`.average` now infer Optional / Double — infer-type.ts
+    // rx-call case), rx-lowering + tier2-machine (a null-returning component now emits
+    // `EmptyView()`, not the uncompilable `var body: some View { nil }`).
+    //
+    // EXCLUDED (7 of 37) — NOT yet type-checked against the stub, by category:
+    //   • Service-runtime + @Observable surface (a coherent follow-up, M-gate.1d):
     //       router-hooks · showcase-finance · showcase-tasks · tier2-store ·
     //       tier2-state-tree · tier2-form — need faithful stubs for PyreonRouter /
     //       RouterProvider / useNavigate / useParams / PyreonStoreProtocol /
     //       PyreonModelProtocol / PyreonForm / PyreonAuth / PyreonDatabase /
     //       PyreonFetch, plus the `@Observable` macro (can't be stubbed by a struct).
-    //   • REAL emit bugs the gate SURFACED (follow-up, M-gate.1c — fix the emitter):
-    //       rx-full        — `.first`/`.last`/`.find`/`.min`/`.max` emit an OPTIONAL
-    //                        assigned to a non-optional binding (uncompilable Swift).
-    //       rx-lowering    — a null-returning component emits `var body: some View
-    //       tier2-machine     { nil }` (should be `EmptyView()`).
-    //       tier2-rx       — a fixture-declared `interface Todo` is not synthesized
-    //                        into a `struct Todo` (interface-handling frontier).
+    //   • interface-synthesis frontier (follow-up):
+    //       tier2-rx — a fixture-declared `interface Todo` is not synthesized into a
+    //                  `struct Todo` (`interface` is a warned out-of-subset construct).
     const TYPECHECK_FIXTURES = [
       '01-stateless.tsx',
       '02-signal.tsx',
@@ -111,10 +113,13 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       'lifecycle-errorboundary.tsx',
       'lifecycle-keepalive.tsx',
       'lifecycle-suspense.tsx',
+      'rx-full.tsx',
+      'rx-lowering.tsx',
       'showcase-analytics.tsx',
       'synth-prop-types.tsx',
       'tier2-feature.tsx',
       'tier2-i18n.tsx',
+      'tier2-machine.tsx',
       'tier2-permissions.tsx',
       'tier2-validate.tsx',
       'tier2-validation.tsx',
