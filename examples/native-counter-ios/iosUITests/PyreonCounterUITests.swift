@@ -390,4 +390,54 @@ final class PyreonCounterUITests: XCTestCase {
                 + "the color-scheme read is inverted or constant"
         )
     }
+
+    // Tier-2 state machine (createMachine) asserted in the REAL render tree —
+    // the first DEVICE assertion of a @pyreon/machine transition (the emit has
+    // only ever been R2/compile-proven, tier2-machine-emit-broken.test.ts). The
+    // shared Counter.tsx has `const power = createMachine({ initial: 'off',
+    // states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } }
+    // })`, renders `<Text>Power: {power()}</Text>`, and a Toggle button calls
+    // `power.send('TOGGLE')`; PMTC emits `@State private var power =
+    // PyreonMachine(initial: "off", transitions: […])` +
+    // `Text("Power: \(power())")` + `Button("Toggle Power") { power.send("TOGGLE") }`.
+    //
+    // DIFFERENTIATING behavioral R4 — this is a stronger proof than a static
+    // read: it exercises an actual STATE TRANSITION driven by a tap AND the
+    // reactive re-render it triggers (PyreonMachine is @Observable, so SwiftUI
+    // recomposes on `send`):
+    //   (1) launch shows the initial state "Power: off";
+    //   (2) tapping "Toggle Power" applies the off --TOGGLE--> on transition
+    //       and the text updates to "Power: on".
+    // A dropped/broken machine (or one whose send didn't re-render) would stay
+    // on "Power: off".
+    func test_stateMachineTransitionsOnTap() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // (1) Initial state.
+        XCTAssertTrue(
+            app.staticTexts["Power: off"].waitForExistence(timeout: 30),
+            "createMachine did not render its initial state — expected "
+                + "\"Power: off\" (PyreonMachine initial not seeded, or the "
+                + "declaration was dropped)"
+        )
+
+        // (2) Transition on tap → reactive re-render.
+        let toggle = app.buttons["Toggle Power"]
+        XCTAssertTrue(toggle.exists, "Toggle Power button missing")
+        toggle.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Power: on"].waitForExistence(timeout: 5),
+            "The off --TOGGLE--> on transition did not re-render — PyreonMachine "
+                + ".send did not apply the transition or did not trigger a "
+                + "SwiftUI re-render (@Observable)"
+        )
+        // The old state must be gone (proves a real swap, not an additive draw).
+        XCTAssertFalse(
+            app.staticTexts["Power: off"].exists,
+            "\"Power: off\" still present after the transition — the state text "
+                + "did not update"
+        )
+    }
 }

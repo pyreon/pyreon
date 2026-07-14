@@ -10,6 +10,7 @@
 import { signal } from '@pyreon/reactivity'
 import { useHaptics, useShare, useLinking, useNotifications, useSizeClass, useColorScheme } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
+import { createMachine } from '@pyreon/machine'
 
 export function Counter() {
   const count = signal<number>(0)
@@ -72,12 +73,27 @@ export function Counter() {
       de: { hello: 'Hallo!' },
     },
   })
+  // Tier-2 state-machine proof — `createMachine({ initial, states })` (from
+  // `@pyreon/machine`) lowers to the PyreonMachine reactive container (iOS
+  // `@State private var power = PyreonMachine(initial: "off", transitions: […])`,
+  // Android `val power = remember { PyreonMachine(…) }`). `power()` reads the
+  // current state; `power.send('TOGGLE')` applies the transition. Both runtimes
+  // back the state reactively (Swift `@Observable`, Compose `mutableStateOf`),
+  // so a transition RE-RENDERS. STRONG interactive device proof: the Toggle
+  // button drives a real state transition — the device gate asserts the text
+  // flips `Power: off` → `Power: on` on tap (a dropped/broken machine would
+  // never transition).
+  const power = createMachine({
+    initial: 'off',
+    states: { off: { on: { TOGGLE: 'on' } }, on: { on: { TOGGLE: 'off' } } },
+  })
   return (
     <VStack>
       <Text>Count: {count}</Text>
       <Text>Size: {sizeClass}</Text>
       <Text>Theme: {colorScheme}</Text>
       <Text>Greeting: {i18n.t('hello')}</Text>
+      <Text>Power: {power()}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
           DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
           rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
@@ -109,6 +125,7 @@ export function Counter() {
       <Button onClick={() => share.url('https://pyreon.dev')}>Share</Button>
       <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
       <Button onClick={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
+      <Button onClick={() => power.send('TOGGLE')}>Toggle Power</Button>
       {/* M2.3 gesture proof — a long-press-only <Press> resets the count.
           Native: iOS `.onLongPressGesture { count = 0 }`, Android
           `combinedClickable(onLongClick = { count = 0 })`. Web: 500ms

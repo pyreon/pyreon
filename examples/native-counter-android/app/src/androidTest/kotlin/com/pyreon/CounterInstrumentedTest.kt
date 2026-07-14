@@ -118,4 +118,24 @@ class CounterInstrumentedTest {
     fun colorSchemeReadsLightAppearance() {
         composeRule.onNodeWithText("Theme: light").assertIsDisplayed()
     }
+
+    // Tier-2 state machine (createMachine) asserted in the REAL Compose
+    // semantics tree — the Android half of the iOS
+    // `test_stateMachineTransitionsOnTap`. The shared Counter.tsx has
+    // `const power = createMachine({ initial: 'off', … })`, renders
+    // `<Text>Power: {power()}</Text>`, and a Toggle button calls
+    // `power.send('TOGGLE')`; PMTC emits `val power = remember { PyreonMachine(
+    // initial = "off", …) }` + `Text(text = "Power: ${power()}")` +
+    // `Button(onClick = { power.send("TOGGLE") })`. PyreonMachine backs its
+    // state with `mutableStateOf`, so `send` recomposes.
+    //
+    // DIFFERENTIATING: launch shows the initial "Power: off"; a click on
+    // "Toggle Power" applies the off --TOGGLE--> on transition and the node
+    // becomes "Power: on" (a dropped/broken machine would stay "off").
+    @Test
+    fun stateMachineTransitionsOnTap() {
+        composeRule.onNodeWithText("Power: off").assertIsDisplayed()
+        composeRule.onNodeWithText("Toggle Power").performClick()
+        composeRule.onNodeWithText("Power: on").assertIsDisplayed()
+    }
 }
