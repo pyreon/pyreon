@@ -224,6 +224,53 @@ export function validateSwiftTypecheck(source: string): ValidationResult {
  *  Apple SDK (absent on Linux). `Foundation` is NOT here: it's real + available. */
 const SWIFT_STUBBED_IMPORTS = /^import (?:SwiftUI|PyreonRuntime|PyreonRouter)\s*$/gm
 
+/** Names of top-level types the emitted source declares (struct/enum/class/actor/protocol). */
+function emitDeclaredTypeNames(source: string): Set<string> {
+  const names = new Set<string>()
+  const re = /(?:^|\n)[ \t]*(?:(?:public|private|internal|fileprivate|final|open)\s+)*(?:struct|enum|class|actor|protocol)\s+([A-Za-z_][A-Za-z0-9_]*)/g
+  for (const m of source.matchAll(re)) names.add(m[1]!)
+  return names
+}
+
+/**
+ * Remove from `stub` every top-level `(public )?(struct|enum|class|actor|protocol)
+ * NAME … { … }` block whose NAME is in `names`, matching braces so a multi-line
+ * declaration is removed whole. Extensions are left alone (they add members, not a
+ * conflicting type). Used to emulate real multi-module shadowing (see caller).
+ */
+function shadowStubDeclarations(stub: string, emit: string): string {
+  const names = emitDeclaredTypeNames(emit)
+  if (names.size === 0) return stub
+  let result = stub
+  for (const name of names) {
+    const openRe = new RegExp(
+      `(?:^|\\n)(?:public |private )?(?:struct|enum|class|actor|protocol)\\s+${name}\\b[^{]*\\{`,
+    )
+    // Loop in case (unlikely) more than one stub declaration shares the name.
+    for (;;) {
+      const m = openRe.exec(result)
+      if (!m) break
+      // Brace-match from the opening `{` at the end of the match.
+      let depth = 0
+      let end = -1
+      for (let i = m.index + m[0].length - 1; i < result.length; i++) {
+        const ch = result[i]
+        if (ch === '{') depth++
+        else if (ch === '}') {
+          depth--
+          if (depth === 0) {
+            end = i + 1
+            break
+          }
+        }
+      }
+      if (end === -1) break // unbalanced — leave as-is rather than corrupt
+      result = result.slice(0, m.index) + result.slice(end)
+    }
+  }
+  return result
+}
+
 /**
  * Validate Swift source via `swiftc -typecheck` against a minimal STUB of the
  * SwiftUI + PyreonRuntime surface (see swift-stubs.ts) — the Swift sibling of
@@ -266,10 +313,17 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
   const stripped = source.replace(SWIFT_STUBBED_IMPORTS, '')
   const foundation = /^import Foundation\s*$/m.test(stripped) ? '' : 'import Foundation\n'
 
+  // A component the emit declares with the SAME name as a stubbed SwiftUI type
+  // (e.g. a user component `Toggle`) SHADOWS that symbol in a real multi-module
+  // build — the local module type wins for bare references. Our single-module
+  // concat would instead see it as an "invalid redeclaration". Drop the stub's
+  // copy of any type the emit declares so the concat behaves like real shadowing.
+  const stub = shadowStubDeclarations(SWIFT_UI_STUBS, stripped)
+
   const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-native-swift-stubs-'))
   const stubsPath = join(tempDir, 'PyreonSwiftStubs.swift')
   const inputPath = join(tempDir, 'Input.swift')
-  writeFileSync(stubsPath, SWIFT_UI_STUBS, 'utf8')
+  writeFileSync(stubsPath, stub, 'utf8')
   writeFileSync(inputPath, foundation + stripped, 'utf8')
 
   try {
