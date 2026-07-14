@@ -7,6 +7,12 @@
  *   1. `syncedAwareness` recompute — runs on EVERY awareness change, including
  *      every remote cursor move. `snapshot()` iterates `getStates()` (O(N)) and
  *      `others` re-filters (O(N)). At N live cursors this is O(N) per frame.
+ *      The `Presence wrapper tax` section then frames this FAIRLY: it measures a
+ *      local cursor publish through the FULL `syncedAwareness` wrapper vs a bare
+ *      `y-protocols` `setLocalStateField`, at N peers — the DELTA is the wrapper's
+ *      per-publish overhead (the change-observer snapshot + signal fan-out). Near-
+ *      zero at a handful of peers, growing O(N) as the room fills (the documented
+ *      "throttle cursor publishes past dozens of peers" limit, now quantified).
  *   2. `syncedList` rebuild — the Y.Array observer does `base.set(yarr.toArray())`,
  *      an O(N) materialization per change (the keyed <For> keeps the DOM surgical;
  *      this measures only the array rebuild).
@@ -25,6 +31,17 @@
  * counts (dozens), reaching ~10–30µs only at 200–500 peers. syncedList
  * `toArray` rebuild ≈ O(N), ~1–10µs for typical lists (100–1000 items),
  * ~tens of µs at 5000. Remote-op→signal propagation ~5µs/write.
+ *
+ * PRESENCE WRAPPER TAX (a local cursor publish, wrapped vs raw y-protocols, R1
+ * measured Apple M3 Max / bun 1.3.14): raw `setLocalStateField` is FLAT ~260ns
+ * (O(1) — publish never touches the peer set); the `syncedAwareness` wrapper adds
+ * ~100ns at 1 peer, ~290ns at 10, ~860ns at 50, ~3.5µs at 200 — i.e. O(N) in the
+ * room's peer count (the change-observer snapshot + signal fan-out). The tax is
+ * negligible at the typical handful-to-dozens of collaborators, and even at 200
+ * peers the wrapped path still sustains ~265k publishes/s — orders of magnitude
+ * above any real mouse-move rate. The wrapper is honest overhead-over-raw, not a
+ * hidden cost: throttle cursor publishes only when MANY peers publish at high
+ * rate at once (the same v1 limit the package already documents).
  *
  * Two speculative optimizations were considered + REJECTED on these numbers
  * (do-not-re-propose without a NEW real-app measurement):
@@ -56,7 +73,11 @@ import { syncedSignal } from '../../../packages/fundamentals/sync/src/index'
 // (the `bun` export condition isn't applied to a bare specifier here). All
 // existing benches (reactivity, router, head, …) do the same. Only PUBLIC
 // entry points are used (`src/index`, `src/yjs`), no internal module reach.
-import { createYjsDoc, getDocAwareness } from '../../../packages/fundamentals/sync/src/yjs'
+import {
+  createYjsDoc,
+  getDocAwareness,
+  syncedAwareness,
+} from '../../../packages/fundamentals/sync/src/yjs'
 
 interface BenchResult {
   label: string
@@ -78,6 +99,33 @@ function bench(label: string, fn: () => void, durationMs = 1500): BenchResult {
     label,
     opsPerSec: Math.round((ops / elapsed) * 1000),
     avgNs: Math.round((elapsed / ops) * 1_000_000),
+  }
+}
+
+/**
+ * Median-of-runs wrapper for the high-CV presence microbenches. Runs `bench`
+ * `runs` times and returns the MEDIAN ops/sec + avg-ns, with lo/hi (min/max
+ * ops/sec across runs) as a crude spread indicator — these are µs-scale writes,
+ * so the median + spread is the honest signal, not a single hot-loop mean. We
+ * deliberately do NOT force `Bun.gc(true)` between runs (JSC jettisons compiled
+ * code on a forced GC → re-tier bimodality that fakes losses).
+ */
+function benchMedian(
+  label: string,
+  fn: () => void,
+  runs = 5,
+  durationMs = 600,
+): BenchResult & { lo: number; hi: number } {
+  const samples: BenchResult[] = []
+  for (let i = 0; i < runs; i++) samples.push(bench(label, fn, durationMs))
+  samples.sort((a, b) => a.opsPerSec - b.opsPerSec)
+  const mid = samples[Math.floor(runs / 2)]
+  return {
+    label,
+    opsPerSec: mid.opsPerSec,
+    avgNs: mid.avgNs,
+    lo: samples[0].opsPerSec,
+    hi: samples[runs - 1].opsPerSec,
   }
 }
 
@@ -118,6 +166,95 @@ function benchAwareness(): BenchResult[] {
     results.push(bench(`awareness recompute (N=${n} peers)`, recompute))
   }
   return results
+}
+
+// ── Presence WRAPPER TAX — local cursor publish (the mousemove hot path) ──────
+// The FAIR framing: what does the `syncedAwareness` WRAPPER add over calling
+// y-protocols directly? A live cursor publish is the dominant presence hot path
+// (fired on every mousemove). We measure the SAME publish two ways at N peers in
+// the room and report the DELTA (the wrapper tax):
+//   • RAW      — `awareness.setLocalStateField('cursor', …)` on a bare Awareness
+//                with NO wrapper listener (the y-protocols baseline).
+//   • WRAPPED  — `syncedAwareness.setLocalField('cursor', …)`, which drives the
+//                same y-protocols write PLUS the wrapper's `change` observer:
+//                a full O(N) `snapshot()` + `others`/`states`/`local` signal.set.
+// Cursor coords are randomized per op (a real move, so `change` actually fires;
+// the alloc cancels in the delta). Populating the room with N remote peers makes
+// the wrapper's per-publish snapshot O(N) — so the tax GROWS with peer count,
+// which is exactly the documented "presence is O(N) per change" story, now
+// QUANTIFIED as an overhead-over-raw rather than an absolute.
+function populatePeers(aw: import('y-protocols/awareness').Awareness, n: number): void {
+  for (let i = 0; i < n; i++) {
+    const src = new Awareness(new Y.Doc())
+    src.setLocalState({ name: `peer${i}`, cursor: { x: i, y: i } })
+    applyAwarenessUpdate(aw, encodeAwarenessUpdate(src, [src.clientID]), 'bench')
+    src.destroy()
+  }
+}
+
+interface WrapperTaxRow {
+  n: number
+  rawNs: number
+  wrappedNs: number
+  taxNs: number
+  wrappedOps: number
+  wrappedLo: number
+  wrappedHi: number
+}
+
+function benchPresenceWrapperTax(): WrapperTaxRow[] {
+  const rows: WrapperTaxRow[] = []
+  for (const n of [1, 10, 50, 200]) {
+    // RAW baseline — bare Awareness, no wrapper listener.
+    const rawDoc = new Y.Doc()
+    const awRaw = new Awareness(rawDoc)
+    awRaw.setLocalState({ name: 'me', cursor: { x: 0, y: 0 } })
+    populatePeers(awRaw, n)
+    const raw = benchMedian(`raw setLocalStateField (N=${n})`, () =>
+      awRaw.setLocalStateField('cursor', { x: Math.random(), y: Math.random() }),
+    )
+
+    // WRAPPED — the full syncedAwareness path (change → snapshot O(N) → signal.set).
+    const wDoc = createYjsDoc()
+    const presence = syncedAwareness<{ name: string; cursor: { x: number; y: number } }>(wDoc, {
+      name: 'me',
+      cursor: { x: 0, y: 0 },
+    })
+    populatePeers(getDocAwareness(wDoc), n)
+    const wrapped = benchMedian(`wrapped setLocalField (N=${n})`, () =>
+      presence.setLocalField('cursor', { x: Math.random(), y: Math.random() }),
+    )
+
+    rows.push({
+      n,
+      rawNs: raw.avgNs,
+      wrappedNs: wrapped.avgNs,
+      taxNs: wrapped.avgNs - raw.avgNs,
+      wrappedOps: wrapped.opsPerSec,
+      wrappedLo: wrapped.lo,
+      wrappedHi: wrapped.hi,
+    })
+
+    presence.dispose()
+    wDoc.destroy()
+    awRaw.destroy()
+    rawDoc.destroy()
+  }
+  return rows
+}
+
+function printWrapperTax(rows: WrapperTaxRow[]): void {
+  const title = 'Presence wrapper tax — cursor publish (raw y-protocols vs syncedAwareness)'
+  console.log(`\n── ${title} ${'─'.repeat(Math.max(0, 78 - title.length - 4))}`)
+  console.log(
+    `${'peers'.padStart(6)}${'raw ns'.padStart(12)}${'wrapped ns'.padStart(14)}${'tax ns'.padStart(12)}${'wrapped ops/s'.padStart(16)}${'ops lo–hi'.padStart(20)}`,
+  )
+  console.log('-'.repeat(80))
+  for (const r of rows) {
+    console.log(
+      `${String(r.n).padStart(6)}${r.rawNs.toLocaleString().padStart(12)}${r.wrappedNs.toLocaleString().padStart(14)}${r.taxNs.toLocaleString().padStart(12)}${r.wrappedOps.toLocaleString().padStart(16)}${`${r.wrappedLo.toLocaleString()}–${r.wrappedHi.toLocaleString()}`.padStart(20)}`,
+    )
+  }
 }
 
 // ── syncedList rebuild at N items ─────────────────────────────────────────────
@@ -162,6 +299,7 @@ function benchRemoteOp(): BenchResult[] {
 
 console.log('\n@pyreon/sync — CRDT→signal hot-path benchmark (NODE_ENV=production)')
 printSection('Awareness recompute (per cursor move)', benchAwareness())
+printWrapperTax(benchPresenceWrapperTax())
 printSection('syncedList rebuild (per change)', benchSyncedList())
 printSection('Remote op → signal (signature path, per-write ns)', benchRemoteOp())
 console.log()
