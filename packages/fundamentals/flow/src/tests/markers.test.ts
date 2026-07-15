@@ -21,8 +21,10 @@ import { MarkerType } from '../types'
 describe('resolveMarker', () => {
   it('normalizes a bare MarkerType to a fully-defaulted marker', () => {
     expect(resolveMarker(MarkerType.Arrow)).toEqual({
+      // Default colour is the themeable edge var so an unstyled arrowhead
+      // matches its line (see DEFAULT_MARKER_COLOR).
       type: 'arrow',
-      color: '#999',
+      color: 'var(--pyreon-flow-edge, #999)',
       width: 10,
       height: 7,
       strokeWidth: 1,
@@ -47,9 +49,18 @@ describe('resolveMarker', () => {
 
 describe('markerId', () => {
   it('is deterministic and config-keyed — identical configs share an id', () => {
-    const a = resolveMarker({ type: MarkerType.Arrow, color: '#999' })!
-    const b = resolveMarker(MarkerType.Arrow)! // same after defaults
+    const a = resolveMarker(MarkerType.Arrow)!
+    const b = resolveMarker(MarkerType.Arrow)! // same defaults → same id
     expect(markerId(a)).toBe(markerId(b))
+  })
+
+  it('an explicit colour that equals the fallback does NOT collide with the var default', () => {
+    // Default → `var(--pyreon-flow-edge, #999)`; explicit `#999` is a different
+    // colour (a fixed grey, not the themeable var), so the ids must differ or
+    // one <marker> def would wrongly serve both.
+    const def = resolveMarker(MarkerType.Arrow)!
+    const explicit = resolveMarker({ type: MarkerType.Arrow, color: '#999' })!
+    expect(markerId(def)).not.toBe(markerId(explicit))
   })
 
   it('differs by type, color, and size', () => {
@@ -107,10 +118,15 @@ describe('collectEdgeMarkers', () => {
       { source: 'c', target: 'd', markerStart: MarkerType.Arrow, markerEnd: { type: MarkerType.Arrow, color: '#f00' } },
     ]
     const defs = collectEdgeMarkers(edges, DEFAULT_MARKER_END)
-    // arrowclosed/#999 (default, deduped from 2 edges), arrow/#999 (start), arrow/#f00 (end) = 3
+    // arrowclosed/var (default end, deduped from 2 edges), arrow/var (default
+    // start), arrow/#f00 (explicit end) = 3
     expect(defs.size).toBe(3)
     const types = [...defs.values()].map((m) => `${m.type}-${m.color}`).sort()
-    expect(types).toEqual(['arrow-#999', 'arrow-#f00', 'arrowclosed-#999'])
+    expect(types).toEqual([
+      'arrow-#f00',
+      'arrow-var(--pyreon-flow-edge, #999)',
+      'arrowclosed-var(--pyreon-flow-edge, #999)',
+    ])
   })
 
   it('emits nothing when every edge is arrowless', () => {

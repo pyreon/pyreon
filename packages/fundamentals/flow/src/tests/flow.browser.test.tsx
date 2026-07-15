@@ -361,8 +361,8 @@ describe('flow in real browser', () => {
         { id: '4', position: { x: 600, y: 0 }, data: {} },
       ],
       edges: [
-        { id: 'def', source: '1', target: '2' }, // default → filled arrowclosed/#999
-        { id: 'open', source: '2', target: '3', markerEnd: MarkerType.Arrow }, // open arrow/#999
+        { id: 'def', source: '1', target: '2' }, // default → filled arrowclosed / edge-var colour
+        { id: 'open', source: '2', target: '3', markerEnd: MarkerType.Arrow }, // open arrow / edge-var colour
         {
           id: 'red',
           source: '3',
@@ -378,19 +378,24 @@ describe('flow in real browser', () => {
 
     const svg = container.querySelector('.pyreon-flow-edges')!
     const markers = [...svg.querySelectorAll('defs marker')]
-    // Distinct configs: arrowclosed/#999 (default end + red's start → deduped),
-    // arrow/#999 (open end), arrow/#ff0000 (red end) = 3 defs.
+    // Distinct configs: arrowclosed/var (default end + red's start → deduped),
+    // arrow/var (open end), arrow/#ff0000 (red end) = 3 defs.
     expect(markers.length).toBe(3)
 
     // Shape per type: ArrowClosed → filled <polygon>, Arrow → stroked <polyline>.
+    // Colour lives in `style` (not a `fill`/`stroke` attribute) so a `var()` can
+    // resolve; an unstyled marker defaults to the themeable edge var.
     const closed = markers.find((m) => m.id.includes('-arrowclosed-'))!
     expect(closed.querySelector('polygon')).not.toBeNull()
-    expect(closed.querySelector('polygon')!.getAttribute('fill')).toBe('#999')
+    expect(closed.querySelector('polygon')!.getAttribute('style')).toContain(
+      'fill: var(--pyreon-flow-edge',
+    )
     const arrows = markers.filter((m) => m.id.includes('-arrow-'))
     expect(arrows.length).toBe(2)
     arrows.forEach((m) => expect(m.querySelector('polyline')).not.toBeNull())
     const red = arrows.find((m) => m.id.includes('-ff0000-'))!
-    expect(red.querySelector('polyline')!.getAttribute('stroke')).toBe('#ff0000')
+    // Computed, not the raw attribute: the browser normalizes `#ff0000` → rgb().
+    expect(getComputedStyle(red.querySelector('polyline')!).stroke).toBe('rgb(255, 0, 0)')
 
     // Per-edge refs: 3 of the 4 edge paths carry marker-end; the markerEnd:null
     // edge has none. Exactly one edge carries a marker-start.
