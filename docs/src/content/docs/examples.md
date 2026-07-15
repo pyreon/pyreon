@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 48 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 50 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 48 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 50 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Coolgrid
 
@@ -178,6 +178,14 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Counter Store Signals Derived
 
 <Example file="./examples/store/counter-store-signals-derived" />
+
+### Global Shared Store
+
+<Example file="./examples/store/global-shared-store" />
+
+### Store Color Channels
+
+<Example file="./examples/store/store-color-channels" />
 
 ### Todo Store List Derived Count
 
