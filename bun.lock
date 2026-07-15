@@ -69,6 +69,7 @@
         "@pyreon/head": "workspace:*",
         "@pyreon/hotkeys": "workspace:*",
         "@pyreon/machine": "workspace:*",
+        "@pyreon/permissions": "workspace:*",
         "@pyreon/reactivity": "workspace:*",
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",

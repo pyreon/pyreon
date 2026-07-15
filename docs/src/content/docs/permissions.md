@@ -211,6 +211,8 @@ can.set({
 can.set(fromRole('viewer'))
 ```
 
+<Example file="./examples/permissions/rbac-role-tiles" title="RBAC — a role switch lights the permitted tiles" />
+
 ### `can.patch(map)` — Merge
 
 `patch` merges the given keys into the existing map: keys present in the argument are overwritten or added, **keys not in the argument are preserved**.
@@ -273,6 +275,8 @@ can('billing.refunds.issue') // false — the more-specific 'billing.refunds.**'
 ```
 
 This is the CASL `cannot`-over-`can` shape expressed in flat keys: a broad subtree grant plus a specific deny, with the deny winning because it is more specific.
+
+<Example file="./examples/permissions/wildcard-grant-tiles" title="Wildcard — one grant lights the whole namespace" />
 
 ### `*` — Everything
 
