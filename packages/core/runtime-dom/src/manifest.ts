@@ -169,7 +169,7 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
 <KeepAlive active={() => route() === "/a"}><RouteA /></KeepAlive>
 <KeepAlive active={() => route() === "/b"}><RouteB /></KeepAlive>`,
       mistakes: [
-        '`active` is an ACCESSOR — write `active={() => cond()}`, not `active={cond}`; a bare non-signal expression is captured once and never re-hides (the compiler auto-calls a KNOWN signal, but an arbitrary expression needs the thunk)',
+        '`active` MUST be a thunk — write `active={() => cond()}`, not `active={cond}`; the runtime calls `props.active?.()`, so any non-function value (a boolean, or a bare signal the compiler auto-calls to a value) THROWS `TypeError: props.active is not a function` at mount — there is no `<Show when>`-style value-form normalization; only omitting `active` entirely defaults to visible',
         'KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component\'s effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper',
         'It is the OPPOSITE of `<Show>`/ternary — those DESTROY + recreate state on toggle; reach for KeepAlive precisely when you need state PRESERVED across hide/show (form drafts, scroll, heavy trees)',
         'Each KeepAlive slot keeps its OWN children mounted — wrapping N routes in N KeepAlives keeps ALL N subtrees mounted + their effects live simultaneously, not just the active one',
@@ -209,9 +209,9 @@ _tpl("<div> </div>", (__root) => {
   return () => { __d0() }
 })`,
       mistakes: [
-        "COMPILER-EMITTED — don't hand-write `_bindText`; write JSX `{signal()}` and let the compiler emit it (it emits only for a bare signal IDENTIFIER)",
+        "COMPILER-EMITTED — don't hand-write `_bindText`; write JSX `{signal()}` or `{row.label()}` and let the compiler emit it (bare identifiers AND non-computed member chains qualify; computed access like `row[k]()` stays on the general path)",
         "The `source` MUST expose `._v` (read DIRECTLY for the initial value, not via a call) — a custom signal-wrapper that forwards `.direct`/`.peek` but NOT `_v` binds `''` and never updates (the `storage-signal-v-forwarding` bug class); build wrappers with `wrapSignal(base, { set })`, which forwards `_v` by construction",
-        'It cannot bind a detached method (`obj.method` loses `this`) — the compiler emits it only for a simple signal identifier',
+        "Hand-writing a member-chain bind without the `caller` arg loses `this` — for `{row.label()}` the compiler emits `_bindText(row.label, node, () => row.label())`; the 3rd arg is what preserves `this` on the slow path (a detached `obj.method` alone would lose it)",
         "A signal whose VALUE later becomes a VNode / VNode[] UPGRADES the binding to a subtree mount at the text node's position (the polymorphic upgrade); plain string/number values stay on the `.data` fast path",
       ],
       seeAlso: ['_tpl', '_bindDirect'],
@@ -221,14 +221,15 @@ _tpl("<div> </div>", (__root) => {
       kind: 'function',
       signature: 'sanitizeHtml(html: string): string',
       summary:
-        "Sanitize an HTML string for `innerHTML`. If a custom sanitizer was registered via `setSanitizer()` (e.g. DOMPurify) it is used; OTHERWISE a built-in tag-allowlist fallback runs (the browser Sanitizer API on Chrome 105+, else a DOMParser-based allowlist that strips unsafe elements + attributes) — it is NOT an identity passthrough. DOM-only: the runtime calls it when applying `dangerouslySetInnerHTML` / `innerHTML`, never during SSR.",
+        "Sanitize an HTML string. If a custom sanitizer was registered via `setSanitizer()` (e.g. DOMPurify) it is used; OTHERWISE a built-in DOMParser-based tag-allowlist runs (strips unsafe elements + attributes) — it is NOT an identity passthrough, and it never uses the browser Sanitizer API (that lives only in the runtime's `innerHTML` PROP sink, which prefers native `el.setHTML()` on Chrome 105+ and falls back to `sanitizeHtml`). DOM-only: the runtime invokes it only on the client `innerHTML` prop path — `dangerouslySetInnerHTML` is intentionally RAW (never sanitized; React parity), and SSR never calls it.",
       example: `import { setSanitizer, sanitizeHtml } from "@pyreon/runtime-dom"
 setSanitizer(DOMPurify.sanitize)
 const clean = sanitizeHtml(userInput)`,
       mistakes: [
+        "Assuming `dangerouslySetInnerHTML` is sanitized — it is NOT: the runtime assigns `__html` RAW (React parity — the developer owns sanitization), and no `setSanitizer` policy applies to it; sanitize untrusted HTML yourself, e.g. `dangerouslySetInnerHTML={{ __html: sanitizeHtml(userHtml) }}`",
         "WITHOUT `setSanitizer` it is NOT a passthrough — a built-in tag-allowlist sanitizer strips unsafe elements/attributes; but that allowlist is CONSERVATIVE, so legitimate-but-uncommon markup may be stripped — register a policy via `setSanitizer(DOMPurify.sanitize)` if you need specific tags",
-        '`setSanitizer(fn)` is GLOBAL and replaces the built-in fallback for EVERY `innerHTML`/`dangerouslySetInnerHTML` in the app — a weaker custom sanitizer reduces safety everywhere',
-        'It is DOM-only (uses the Sanitizer API / DOMParser) — never call it during SSR; the runtime only invokes it on the client innerHTML path',
+        "`setSanitizer(fn)` is GLOBAL but does NOT cover every `innerHTML` sink — on browsers with the native Sanitizer API the `innerHTML` PROP path prefers `el.setHTML()` (bypassing your custom policy); only direct `sanitizeHtml()` calls and the no-`setHTML` fallback use it, and `dangerouslySetInnerHTML` never does",
+        'It is DOM-only (uses DOMParser) — never call it during SSR; the runtime only invokes it on the client innerHTML prop path',
         '`setSanitizer(null)` RESTORES the built-in allowlist fallback — it does NOT disable sanitization',
       ],
       seeAlso: ['setSanitizer'],

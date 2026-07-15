@@ -78,7 +78,7 @@ const { code, warnings } = transformJSX(
 - Expecting `transformJSX` to throw on a native panic — it never does; it silently falls back to the JS backend (correctness-equivalent, just slower)
 - Passing user component source WITHOUT `ssr: true` when feeding the result to `@pyreon/runtime-server` — SSR needs the `h()` VNode tree, not `_tpl()` clone templates
 - Assuming bare `{count}` is auto-called for an IMPORTED signal without seeding `knownSignals` — the compiler only tracks `const count = signal(...)` declared in the same file unless told otherwise
-- Treating the output as standalone/portable — the emitted code calls internal runtime helpers (`_tpl`, `_bind`, `_rp`, `_setChild`, …) that only `@pyreon/runtime-dom` + `@pyreon/core` provide. Unlike Babel's JSX→`React.createElement` (where the runtime is just React), transformed code cannot run without the Pyreon runtime.
+- Treating the output as standalone/portable — the emitted code calls internal runtime helpers (`_tpl`/`_setChild` from `@pyreon/runtime-dom`, `_bind` from `@pyreon/reactivity`, `_rp` from `@pyreon/core`, …) that only the Pyreon packages provide. Unlike Babel's JSX→`React.createElement` (where the runtime is just React), transformed code cannot run without the Pyreon runtime.
 
 **See also:** `transformJSX_JS` · `analyzeReactivity`
 
