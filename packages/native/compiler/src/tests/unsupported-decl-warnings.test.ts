@@ -1,10 +1,10 @@
-// Loud-warning sweep — top-level `interface` / TS `enum` / `class`
-// declarations are silently DROPPED by PMTC (they emit nothing, so native
-// code referencing them fails to compile on the real swiftc/kotlinc build —
-// which the parse-only PR gate can't catch). They now produce an actionable
-// `result.warnings` entry redirecting to the supported shape. Supported
-// shapes (string-literal union alias → enum, object alias → struct,
-// components, stores) must NOT warn.
+// Loud-warning sweep — top-level TS `enum` / `class` (and GENERIC-or-`extends`
+// `interface`) declarations are silently DROPPED by PMTC (they emit nothing, so
+// native code referencing them fails to compile on the real swiftc/kotlinc build
+// — which the parse-only PR gate can't catch). They produce an actionable
+// `result.warnings` entry redirecting to the supported shape. Supported shapes
+// (string-literal union alias → enum, object alias OR object-shape `interface`
+// → struct, components, stores) must NOT warn.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -16,11 +16,19 @@ const declWarnings = (src: string) =>
   transform(src, { target: 'swift' }).warnings.filter((w) => w.includes('NOT compiled to native'))
 
 describe('loud warnings for silently-dropped top-level declarations', () => {
-  it('`interface` warns + redirects to a `type X = { … }` alias', () => {
-    const w = declWarnings(wrap('interface User { id: number }'))
+  it('object-shape `interface` is SYNTHESIZED into a struct (no unsupported-decl warning)', () => {
+    // parse.ts:tryStructFromInterface — a top-level object-shape interface now
+    // emits a struct/data-class, same as a `type X = { … }` alias.
+    const src = wrap('interface User { id: number }')
+    expect(declWarnings(src).length).toBe(0)
+    expect(transform(src, { target: 'swift' }).code).toContain('struct User')
+    expect(transform(src, { target: 'kotlin' }).code).toContain('data class User')
+  })
+
+  it('GENERIC `interface` still warns (out of the synthesizable subset)', () => {
+    const w = declWarnings(wrap('interface Box<T> { value: T }'))
     expect(w.length).toBe(1)
-    expect(w[0]).toContain('`interface User`')
-    expect(w[0]).toContain("type User = { … }")
+    expect(w[0]).toContain('`interface Box`')
   })
 
   it('TS `enum` warns + redirects to a string-literal union alias', () => {
@@ -37,9 +45,13 @@ describe('loud warnings for silently-dropped top-level declarations', () => {
     expect(w[0]).toContain('functions + signals')
   })
 
-  it('exported `interface` / `enum` warn too', () => {
+  it('exported object-shape `interface` SYNTHESIZES; exported `enum` still warns', () => {
     const w = declWarnings(wrap('export interface P { id: number }\nexport enum E { A, B }'))
-    expect(w.length).toBe(2)
+    expect(w.length).toBe(1)
+    expect(w[0]).toContain('enum E')
+    expect(transform(wrap('export interface P { id: number }'), { target: 'swift' }).code).toContain(
+      'struct P',
+    )
   })
 
   it('NO false positive: string-union alias, object alias, component, signal', () => {

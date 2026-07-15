@@ -144,18 +144,19 @@ function FinanceRealtimeApp() {
   </Stack>)
 }`
 
+  // The archetype's `interface User { … }` is now SYNTHESIZED into a struct /
+  // data class by the emit itself (parse.ts:tryStructFromInterface), so the emit
+  // is self-sufficient — no manual `User` prepend (which would now REDECLARE it).
   it.skipIf(!isSwiftcAvailable())('archetype emits Swift that parses on real swiftc', () => {
     const out = transform(ARCHETYPE, { target: 'swift' }).code
-    const r = validateSwift(
-      'import SwiftUI\nstruct User { let id: String; let name: String }\n' + out,
-    )
+    const r = validateSwift('import SwiftUI\n' + out)
     if (!r.ok) throw new Error(`swiftc rejected:\n${r.error}\n---\n${out}`)
     expect(r.ok).toBe(true)
   })
 
   it.skipIf(!isKotlincAvailable())('archetype emits Kotlin that compiles on real kotlinc', () => {
     const out = transform(ARCHETYPE, { target: 'kotlin' }).code
-    const r = validateKotlin('class User(val id: String, val name: String)\n' + out)
+    const r = validateKotlin(out)
     if (!r.ok) throw new Error(`kotlinc rejected:\n${r.error}\n---\n${out}`)
     expect(r.ok).toBe(true)
   })
