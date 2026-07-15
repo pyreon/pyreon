@@ -447,6 +447,10 @@ struct Ctx<'a> {
     program: &'a Program<'a>,
     line_index: LineIndex,
     ssr: bool,
+    /// Compile-to-string SSR fast path (`options.ssrTemplate`). Only true when
+    /// `ssr` is ALSO true (mutually exclusive with the `_tpl` DOM path). Mirrors
+    /// the JS backend's `ssrTemplate = ssr && options.ssrTemplate === true`.
+    ssr_template: bool,
 
     replacements: Vec<Replacement>,
     warnings: Vec<CompilerWarning>,
@@ -468,6 +472,17 @@ struct Ctx<'a> {
     needs_set_child_at_import: bool,
     needs_apply_props_import: bool,
     needs_mount_slot_import: bool,
+
+    // Compile-to-string SSR fast path helpers (`@pyreon/runtime-server`).
+    // Mutually exclusive with the `_tpl` DOM path (that only fires for
+    // `ssr: false`). Mirror the JS backend's `needsSsr*` flags 1:1.
+    needs_ssr_import: bool,
+    needs_ssr_children_import: bool,
+    needs_ssr_item_import: bool,
+    needs_esc_import: bool,
+    needs_ssr_attr_import: bool,
+    needs_ssr_attr_gen_import: bool,
+    needs_ssr_attr_url_import: bool,
 
     props_names: FxHashSet<String>,
     prop_derived_vars: FxHashMap<String, Span>,
@@ -586,6 +601,7 @@ impl<'a> Ctx<'a> {
         source: &'a str,
         program: &'a Program<'a>,
         ssr: bool,
+        ssr_template: bool,
         collect_lens: bool,
         collapse: Option<CollapseConfig>,
     ) -> Self {
@@ -593,6 +609,14 @@ impl<'a> Ctx<'a> {
             source,
             program,
             collapse,
+            ssr_template,
+            needs_ssr_import: false,
+            needs_ssr_children_import: false,
+            needs_ssr_item_import: false,
+            needs_esc_import: false,
+            needs_ssr_attr_import: false,
+            needs_ssr_attr_gen_import: false,
+            needs_ssr_attr_url_import: false,
             needs_collapse: false,
             needs_collapse_h: false,
             needs_collapse_dyn: false,
@@ -765,6 +789,38 @@ impl<'a> Ctx<'a> {
                 "import {{ {} }} from \"@pyreon/runtime-dom\";{}\n{}",
                 imports.join(", "),
                 reactivity,
+                result
+            );
+        }
+
+        // Compile-to-string SSR fast path helpers (`options.ssrTemplate`).
+        // Mutually exclusive with the `_tpl` DOM path above. Prepended AFTER
+        // the tpl import (so it lands above it) and BEFORE the core import
+        // (which lands above this) — byte-identical ordering to the JS
+        // `build_result` (collapse > core > runtime-server > runtime-dom > hoists).
+        if self.needs_ssr_import {
+            let mut ssr_imports = vec!["_ssr"];
+            if self.needs_ssr_children_import {
+                ssr_imports.push("_ssrChildren");
+            }
+            if self.needs_ssr_item_import {
+                ssr_imports.push("_ssrItem");
+            }
+            if self.needs_esc_import {
+                ssr_imports.push("_esc");
+            }
+            if self.needs_ssr_attr_import {
+                ssr_imports.push("_ssrAttr");
+            }
+            if self.needs_ssr_attr_gen_import {
+                ssr_imports.push("_ssrAttrGen");
+            }
+            if self.needs_ssr_attr_url_import {
+                ssr_imports.push("_ssrAttrUrl");
+            }
+            result = format!(
+                "import {{ {} }} from \"@pyreon/runtime-server\";\n{}",
+                ssr_imports.join(", "),
                 result
             );
         }
@@ -3642,6 +3698,7 @@ pub fn transform_jsx(
     known_signals: Option<Vec<String>>,
     reactivity_lens: Option<bool>,
     collapse: Option<CollapseConfig>,
+    ssr_template: Option<bool>,
 ) -> TransformResult {
     let source_type = SourceType::from_path(&filename)
         .unwrap_or_default()
@@ -3663,7 +3720,10 @@ pub fn transform_jsx(
     }
 
     let collect_lens = reactivity_lens == Some(true);
-    let mut ctx = Ctx::new(&code, &ret.program, ssr, collect_lens, collapse);
+    // `ssrTemplate` only takes effect under SSR (mutually exclusive with the
+    // client `_tpl` DOM path). Mirrors the JS gate `ssr && options.ssrTemplate === true`.
+    let ssr_template = ssr && ssr_template == Some(true);
+    let mut ctx = Ctx::new(&code, &ret.program, ssr, ssr_template, collect_lens, collapse);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -4209,6 +4269,15 @@ fn handle_jsx_element(el: &JSXElement, ctx: &mut Ctx) {
         return;
     }
 
+    // Compile-to-string SSR fast path (opt-in via `options.ssrTemplate`).
+    // Emits `_ssr(...)` for eligible static-skeleton subtrees; falls through
+    // to the h() path on any non-eligible shape. Byte-identical to the JS
+    // backend's `trySsrTemplateEmit` (native-equivalence oracle). Placed at
+    // the SAME walk position as the JS `if (ssrTemplate && … trySsrTemplateEmit)`.
+    if ctx.ssr_template && !is_self_closing(el) && try_ssr_template_emit(el, ctx) {
+        return;
+    }
+
     // Try template emit (non-self-closing only)
     if !is_self_closing(el) && try_template_emit(el, ctx) {
         return;
@@ -4577,6 +4646,689 @@ fn hoist_or_wrap(expr: &Expression, ctx: &mut Ctx) {
     } else if should_wrap(expr, ctx) {
         wrap_expr(expr, ctx);
     }
+}
+
+// ─── Compile-to-string SSR fast path (`options.ssrTemplate`) ─────────────────
+//
+// Byte-for-byte port of the JS backend's `ssrTemplate` emit (jsx.ts). Lowers an
+// eligible static-skeleton element tree to a single `_ssr(["<li>…","</li>"],
+// hole0, …)` string template — the SSR analog of the DOM `_tpl()` cloneNode
+// path. Correctness rests on the runtime resolving each hole through the SAME
+// `renderNode` the h() path uses; eligibility is CONSERVATIVE (bail to h() on
+// any shape not provably byte-identical). The parity oracle is
+// `native-equivalence.test.ts` (JS↔Rust byte-identity) + the seeded
+// `fuzz-equivalence.test.ts`.
+
+#[derive(Clone, Copy, PartialEq)]
+enum SsrMode {
+    Recursed,
+    MapItem,
+}
+
+struct SsrBuf {
+    statics: Vec<String>,
+    holes: Vec<String>,
+}
+
+impl SsrBuf {
+    fn new() -> Self {
+        SsrBuf {
+            statics: vec![String::new()],
+            holes: Vec::new(),
+        }
+    }
+    fn emit_static(&mut self, s: &str) {
+        // statics is never empty (seeded with one "" element).
+        let last = self.statics.last_mut().unwrap();
+        last.push_str(s);
+    }
+    fn emit_hole(&mut self, expr_text: String) {
+        self.holes.push(expr_text);
+        self.statics.push(String::new());
+    }
+}
+
+/// SSR text/attr escaping — replicates `@pyreon/runtime-server`'s `escapeHtml`
+/// (all five of `& < > " '`, unconditional). Mirrors the JS backend's
+/// `escapeHtmlSsr` byte-for-byte. Only ASCII chars are transformed, so
+/// `chars()` iteration is byte-identical to the JS charCode loop.
+fn escape_html_ssr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Void elements — `renderElement` emits `<tag />` regardless of children, so a
+/// bake with content would diverge. Bail. Mirrors JS `SSR_VOID_TAGS`.
+fn ssr_is_void_tag(tag: &str) -> bool {
+    matches!(
+        tag,
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+    )
+}
+
+/// URL-bearing attributes guarded by `@pyreon/core/url-guard` on the SSR path.
+/// Mirrors JS `SSR_URL_ATTRS` (kept in sync with url-guard.ts).
+fn ssr_is_url_attr(name: &str) -> bool {
+    matches!(
+        name,
+        "href" | "src" | "action" | "formaction" | "poster" | "cite" | "data"
+    )
+}
+
+/// Methods that ALWAYS return a string on an unambiguous receiver — used to
+/// prove a dynamic attr value is non-null-non-boolean. Mirrors JS
+/// `SSR_STRING_METHODS`.
+fn ssr_is_string_method(name: &str) -> bool {
+    matches!(
+        name,
+        "toFixed"
+            | "toString"
+            | "toLocaleString"
+            | "join"
+            | "padStart"
+            | "padEnd"
+            | "trim"
+            | "trimStart"
+            | "trimEnd"
+            | "toUpperCase"
+            | "toLowerCase"
+            | "repeat"
+            | "charAt"
+    )
+}
+
+/// JS regex `\s` char set (for `SSR_UNSAFE_URL_RE = /^\s*(?:javascript|data):/i`).
+/// Faithful to ECMAScript's `\s`: ASCII ws + NBSP + the Unicode-space set +
+/// U+FEFF; NOT `char::is_whitespace` (which excludes U+FEFF and includes U+0085).
+fn is_js_regex_space(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0009}'
+            | '\u{000A}'
+            | '\u{000B}'
+            | '\u{000C}'
+            | '\u{000D}'
+            | '\u{0020}'
+            | '\u{00A0}'
+            | '\u{1680}'
+            | '\u{2000}'..='\u{200A}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202F}'
+            | '\u{205F}'
+            | '\u{3000}'
+            | '\u{FEFF}'
+    )
+}
+
+fn starts_with_ci(s: &str, prefix: &str) -> bool {
+    s.len() >= prefix.len() && s.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+}
+
+/// `/^\s*(?:javascript|data):/i` — case-insensitive, leading-JS-`\s`-tolerant.
+fn ssr_unsafe_url(value: &str) -> bool {
+    let rest = value.trim_start_matches(is_js_regex_space);
+    starts_with_ci(rest, "javascript:") || starts_with_ci(rest, "data:")
+}
+
+/// A generic attribute (`_ssrAttrGen` fast path is byte-identical): lowercase
+/// name, not class/style, not aria-*, not URL-bearing. Mirrors JS
+/// `ssrAttrIsGeneric`.
+fn ssr_attr_is_generic(name: &str) -> bool {
+    if name.bytes().any(|b| b.is_ascii_uppercase()) {
+        return false;
+    }
+    if name == "class" || name == "style" {
+        return false;
+    }
+    if name.as_bytes().first() == Some(&97) && name.starts_with("aria-") {
+        return false;
+    }
+    if ssr_is_url_attr(name) {
+        return false;
+    }
+    true
+}
+
+/// A URL char-code that `isUnsafeUrl`'s fast path proves SAFE (no leading ws,
+/// not the start of `javascript:`/`data:`): printable ASCII 33–126, ≠ j/J/d/D.
+/// Mirrors JS `ssrUrlCharSafe`.
+fn ssr_url_char_safe(c: u32) -> bool {
+    c > 32 && c < 127 && (c | 32) != 106 && (c | 32) != 100
+}
+
+/// The expression provably evaluates to a STRING (never null/bool). Mirrors JS
+/// `ssrProvablyString`.
+fn ssr_provably_string(node: &Expression) -> bool {
+    let node = unwrap_type_layers(node);
+    match node {
+        Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => true,
+        Expression::CallExpression(call) => match &call.callee {
+            Expression::Identifier(id) if id.name.as_str() == "String" => true,
+            Expression::StaticMemberExpression(m) => ssr_is_string_method(m.property.name.as_str()),
+            _ => false,
+        },
+        Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
+            ssr_provably_string(&b.left) || ssr_provably_string(&b.right)
+        }
+        Expression::ConditionalExpression(c) => {
+            ssr_provably_string(&c.consequent) && ssr_provably_string(&c.alternate)
+        }
+        _ => false,
+    }
+}
+
+/// The expression provably evaluates to a string OR number (never null/bool).
+/// Mirrors JS `ssrProvablyNonNullNonBoolean`.
+fn ssr_provably_non_null_non_boolean(node: &Expression) -> bool {
+    let node = unwrap_type_layers(node);
+    if ssr_provably_string(node) {
+        return true;
+    }
+    match node {
+        Expression::NumericLiteral(_) => true,
+        Expression::CallExpression(call) => {
+            matches!(&call.callee, Expression::Identifier(id) if id.name.as_str() == "Number")
+        }
+        Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
+            ssr_provably_non_null_non_boolean(&b.left)
+                && ssr_provably_non_null_non_boolean(&b.right)
+        }
+        Expression::ConditionalExpression(c) => {
+            ssr_provably_non_null_non_boolean(&c.consequent)
+                && ssr_provably_non_null_non_boolean(&c.alternate)
+        }
+        _ => false,
+    }
+}
+
+/// The URL value provably starts with a safe char (so `isUnsafeUrl` is always
+/// false → the guard branch is dead). Mirrors JS `ssrProvablySafeUrl`.
+fn ssr_provably_safe_url(node: &Expression) -> bool {
+    let node = unwrap_type_layers(node);
+    match node {
+        Expression::StringLiteral(s) => {
+            let v = s.value.as_str();
+            v.chars()
+                .next()
+                .map_or(false, |c| ssr_url_char_safe(c as u32))
+        }
+        Expression::TemplateLiteral(t) => {
+            let raw = t.quasis.first().map_or("", |q| {
+                q.value
+                    .cooked
+                    .as_ref()
+                    .map_or(q.value.raw.as_str(), |a| a.as_str())
+            });
+            raw.chars()
+                .next()
+                .map_or(false, |c| ssr_url_char_safe(c as u32))
+        }
+        Expression::BinaryExpression(b) if b.operator == BinaryOperator::Addition => {
+            ssr_provably_safe_url(&b.left)
+        }
+        Expression::ConditionalExpression(c) => {
+            ssr_provably_safe_url(&c.consequent) && ssr_provably_safe_url(&c.alternate)
+        }
+        _ => false,
+    }
+}
+
+/// false / null / undefined attr value → omit (compile-time). Mirrors the JS
+/// omit branch in `ssrSerializeAttr`.
+fn is_false_null_undefined(expr: &Expression) -> bool {
+    match expr {
+        Expression::BooleanLiteral(b) => !b.value,
+        Expression::NullLiteral(_) => true,
+        Expression::Identifier(id) => id.name.as_str() == "undefined",
+        _ => false,
+    }
+}
+
+/// Emit a text/expression child as `_esc(expr)`. Mirrors JS `emitEscHole`.
+fn emit_esc_hole(buf: &mut SsrBuf, expr_text: String, ctx: &mut Ctx) {
+    buf.emit_hole(format!("_esc({})", expr_text));
+    ctx.needs_esc_import = true;
+}
+
+/// Emit a dynamic attribute — generic → `_ssrAttrGen`, URL → `_ssrAttrUrl`,
+/// everything else → `_ssrAttr`. Mirrors JS `emitSsrAttr`.
+fn emit_ssr_attr(buf: &mut SsrBuf, tag: &str, name: &str, value_text: String, ctx: &mut Ctx) {
+    if ssr_attr_is_generic(name) {
+        buf.emit_hole(format!(
+            "_ssrAttrGen({}, {})",
+            escape_js_string(name),
+            value_text
+        ));
+        ctx.needs_ssr_attr_gen_import = true;
+    } else if ssr_is_url_attr(name) {
+        buf.emit_hole(format!(
+            "_ssrAttrUrl({}, {}, {})",
+            escape_js_string(tag),
+            escape_js_string(name),
+            value_text
+        ));
+        ctx.needs_ssr_attr_url_import = true;
+    } else {
+        buf.emit_hole(format!(
+            "_ssrAttr({}, {}, {})",
+            escape_js_string(tag),
+            escape_js_string(name),
+            value_text
+        ));
+        ctx.needs_ssr_attr_import = true;
+    }
+}
+
+/// Bake a proven-non-null(-safe-for-url) dynamic attr as ` name="` + `_esc(v)`
+/// + `"`. Returns false when not provable. Mirrors JS `ssrTryBakeDynamicAttr`.
+fn ssr_try_bake_dynamic_attr(
+    buf: &mut SsrBuf,
+    name: &str,
+    value_text: &str,
+    expr: &Expression,
+    ctx: &mut Ctx,
+) -> bool {
+    let generic = ssr_attr_is_generic(name);
+    let url = !generic && ssr_is_url_attr(name);
+    if !generic && !url {
+        return false;
+    }
+    if !ssr_provably_non_null_non_boolean(expr) {
+        return false;
+    }
+    if url && !ssr_provably_safe_url(expr) {
+        return false;
+    }
+    buf.emit_static(&format!(" {}=\"", name));
+    emit_esc_hole(buf, value_text.to_string(), ctx);
+    buf.emit_static("\"");
+    true
+}
+
+/// Bake a static string-valued attribute, mirroring `renderPropValue`.
+/// Mirrors JS `ssrBakeStringAttr`. Returns false (bail) only for an unsafe
+/// URL literal.
+fn ssr_bake_string_attr(buf: &mut SsrBuf, name: &str, value: &str) -> bool {
+    if name == "class" {
+        if value.is_empty() {
+            return true;
+        }
+        buf.emit_static(&format!(" class=\"{}\"", escape_html_ssr(value)));
+        return true;
+    }
+    if name == "style" {
+        if value.is_empty() {
+            return true;
+        }
+        buf.emit_static(&format!(" style=\"{}\"", escape_html_ssr(value)));
+        return true;
+    }
+    if ssr_is_url_attr(name) {
+        if ssr_unsafe_url(value) {
+            return false;
+        }
+        buf.emit_static(&format!(" {}=\"{}\"", name, escape_html_ssr(value)));
+        return true;
+    }
+    buf.emit_static(&format!(" {}=\"{}\"", name, escape_html_ssr(value)));
+    true
+}
+
+/// Serialize one attribute. Returns false to BAIL the whole element. Mirrors JS
+/// `ssrSerializeAttr` (including its per-serialize import-flag side effects).
+fn ssr_serialize_attr(
+    buf: &mut SsrBuf,
+    item: &JSXAttributeItem,
+    tag: &str,
+    ctx: &mut Ctx,
+) -> bool {
+    let attr = match item {
+        JSXAttributeItem::Attribute(a) => a,
+        JSXAttributeItem::SpreadAttribute(_) => return false, // spread → bail
+    };
+    let name = match &attr.name {
+        JSXAttributeName::Identifier(id) => id.name.as_str(),
+        _ => return false, // namespaced → bail
+    };
+    if name.is_empty() {
+        return false;
+    }
+    // renderPropSkipped: key/ref/on* render NOTHING server-side — safe to omit.
+    if name == "key" || name == "ref" {
+        return true;
+    }
+    if is_event_handler(name) {
+        return true;
+    }
+    // innerHTML / dangerouslySetInnerHTML are INNER CONTENT, not attrs → bail.
+    if name == "innerHTML" || name == "dangerouslySetInnerHTML" {
+        return false;
+    }
+    let is_aria = name.as_bytes().first() == Some(&97) && name.starts_with("aria-");
+    let has_upper = name.bytes().any(|b| b.is_ascii_uppercase());
+
+    match &attr.value {
+        // No value: `<x disabled>` → props.x = true.
+        None => {
+            if has_upper {
+                emit_ssr_attr(buf, tag, name, "true".to_string(), ctx);
+            } else if is_aria {
+                buf.emit_static(&format!(" {}=\"true\"", name));
+            } else {
+                buf.emit_static(&format!(" {}", name));
+            }
+            true
+        }
+        // Raw JSX string-literal value (`title="…"`). Entity-safety bail.
+        Some(JSXAttributeValue::StringLiteral(s)) => {
+            let v = s.value.as_str();
+            if v.contains('&') {
+                return false;
+            }
+            if !has_upper && ssr_bake_string_attr(buf, name, v) {
+                return true;
+            }
+            emit_ssr_attr(buf, tag, name, escape_js_string(v), ctx);
+            true
+        }
+        // Expression container.
+        Some(JSXAttributeValue::ExpressionContainer(c)) => {
+            let raw = match jsx_expr_as_expression(&c.expression) {
+                Some(e) => e,
+                None => return false, // empty / non-expression → bail
+            };
+            let expr = unwrap_type_layers(raw);
+            // false / null / undefined → omit.
+            if is_false_null_undefined(expr) {
+                return true;
+            }
+            // Provable static literals bake (lowercase-safe); else fall to helper.
+            if !has_upper {
+                match expr {
+                    Expression::StringLiteral(s) => {
+                        if ssr_bake_string_attr(buf, name, s.value.as_str()) {
+                            return true;
+                        }
+                    }
+                    Expression::NumericLiteral(n) => {
+                        if name != "class" && name != "style" && !ssr_is_url_attr(name) {
+                            buf.emit_static(&format!(" {}=\"{}\"", name, n.value));
+                            return true;
+                        }
+                    }
+                    Expression::BooleanLiteral(b) if b.value => {
+                        if is_aria {
+                            buf.emit_static(&format!(" {}=\"true\"", name));
+                        } else {
+                            buf.emit_static(&format!(" {}", name));
+                        }
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+            // DYNAMIC value.
+            let value_text = slice_expr(expr, ctx);
+            if ssr_try_bake_dynamic_attr(buf, name, &value_text, expr, ctx) {
+                return true;
+            }
+            emit_ssr_attr(buf, tag, name, value_text, ctx);
+            true
+        }
+        // JSXElement / JSXFragment value → bail.
+        _ => false,
+    }
+}
+
+/// `.map(item => <eligibleEl>)` fast path (recursed mode only). Mirrors JS
+/// `ssrTryMap`. Returns false to fall back to the general wrapped-hole path.
+fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, ctx: &mut Ctx) -> bool {
+    let call = match expr {
+        Expression::CallExpression(c) => c,
+        _ => return false,
+    };
+    let member = match &call.callee {
+        Expression::StaticMemberExpression(m) => m,
+        _ => return false,
+    };
+    if member.property.name.as_str() != "map" {
+        return false;
+    }
+    if call.arguments.len() != 1 {
+        return false;
+    }
+    let cb = match call.arguments.first().and_then(|a| a.as_expression()) {
+        Some(Expression::ArrowFunctionExpression(a)) => a,
+        _ => return false,
+    };
+    // Only concise arrows (block body → bail). oxc: `expression == true` = concise.
+    if !cb.expression {
+        return false;
+    }
+    let body_expr = match cb.body.statements.first() {
+        Some(Statement::ExpressionStatement(stmt)) => &stmt.expression,
+        _ => return false,
+    };
+    let body = unwrap_type_layers(body_expr);
+    let body_el = match body {
+        Expression::JSXElement(el) => el,
+        _ => return false,
+    };
+    if is_self_closing(body_el) {
+        return false;
+    }
+    let item_call = match build_ssr_call(body_el, SsrMode::MapItem, ctx) {
+        Some(s) => s,
+        None => return false,
+    };
+    let recv = slice_expr(&member.object, ctx);
+    // Param text: flat ESTree param list start..end (items, then rest).
+    let items = &cb.params.items;
+    let first_start = items
+        .first()
+        .map(|p| p.span().start)
+        .or_else(|| cb.params.rest.as_ref().map(|r| r.span().start));
+    let last_end = cb
+        .params
+        .rest
+        .as_ref()
+        .map(|r| r.span().end)
+        .or_else(|| items.last().map(|p| p.span().end));
+    let param_text = match (first_start, last_end) {
+        (Some(s), Some(e)) => ctx.source[s as usize..e as usize].to_string(),
+        _ => String::new(),
+    };
+    buf.emit_static("<!--$-->");
+    buf.emit_hole(format!(
+        "_ssrChildren({}.map(({}) => {}))",
+        recv, param_text, item_call
+    ));
+    buf.emit_static("<!--/$-->");
+    ctx.needs_ssr_children_import = true;
+    true
+}
+
+/// Serialize one expression child. Returns false to bail. Mirrors JS
+/// `ssrSerializeExprChild`.
+fn ssr_serialize_expr_child(
+    buf: &mut SsrBuf,
+    container: &JSXExpressionContainer,
+    mode: SsrMode,
+    ctx: &mut Ctx,
+) -> bool {
+    let raw = match &container.expression {
+        JSXExpression::EmptyExpression(_) => return true, // {} / {/* */} → nothing
+        _ => match jsx_expr_as_expression(&container.expression) {
+            Some(e) => e,
+            None => return true,
+        },
+    };
+    let expr = unwrap_type_layers(raw);
+    // mapitem mode: every expression child is a PLAIN VALUE child → `_esc`, no markers.
+    if mode == SsrMode::MapItem {
+        let t = slice_expr(expr, ctx);
+        emit_esc_hole(buf, t, ctx);
+        return true;
+    }
+    // recursed mode: matches handleJsxExpression's wrap decision.
+    if ssr_try_map(buf, expr, ctx) {
+        return true;
+    }
+    if should_wrap(expr, ctx) {
+        // The h() path wraps a dynamic child in `() => expr` → `<!--$-->…<!--/$-->`
+        // markers. Bake the markers + `_esc(expr)`: byte-identical.
+        buf.emit_static("<!--$-->");
+        let t = slice_expr(expr, ctx);
+        emit_esc_hole(buf, t, ctx);
+        buf.emit_static("<!--/$-->");
+    } else {
+        let t = slice_expr(expr, ctx);
+        emit_esc_hole(buf, t, ctx);
+    }
+    true
+}
+
+/// Serialize one child (text / element / expression). False = bail. Mirrors JS
+/// `ssrSerializeChild`.
+fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &mut Ctx) -> bool {
+    match child {
+        JSXChild::Text(t) => {
+            let cleaned = clean_jsx_text(t.value.as_str());
+            // Entity-safety bail: a baked `&` risks diverging from the h() decode.
+            if cleaned.contains('&') {
+                return false;
+            }
+            if !cleaned.is_empty() {
+                buf.emit_static(&escape_html_ssr(&cleaned));
+            }
+            true
+        }
+        JSXChild::Element(el) => ssr_serialize_element(buf, el, mode, ctx),
+        JSXChild::ExpressionContainer(c) => ssr_serialize_expr_child(buf, c, mode, ctx),
+        // JSXFragment / JSXSpreadChild → bail.
+        _ => false,
+    }
+}
+
+/// Serialize an element (open tag + attrs + children + close). False = bail.
+/// Mirrors JS `ssrSerializeElement`.
+fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: &mut Ctx) -> bool {
+    let tag = jsx_tag_name(el);
+    if tag.is_empty() || !is_lower_case(tag) {
+        return false; // component / empty → bail
+    }
+    if is_self_closing(el) {
+        return false; // self-closing → bail
+    }
+    if ssr_is_void_tag(tag) {
+        return false; // void tag w/ content → bail
+    }
+    if tag == "select" || tag == "option" {
+        return false; // PZ-09 complexity → bail
+    }
+    // Duplicate plain attrs (JSX last-wins) — baking both is parser-first-wins.
+    let mut seen: FxHashSet<&str> = FxHashSet::default();
+    for a in &el.opening_element.attributes {
+        if let JSXAttributeItem::Attribute(attr) = a {
+            if let JSXAttributeName::Identifier(id) = &attr.name {
+                if !seen.insert(id.name.as_str()) {
+                    return false;
+                }
+            }
+        }
+    }
+    buf.emit_static(&format!("<{}", tag));
+    for attr in &el.opening_element.attributes {
+        if !ssr_serialize_attr(buf, attr, tag, ctx) {
+            return false;
+        }
+    }
+    buf.emit_static(">");
+    for child in &el.children {
+        if !ssr_serialize_child(buf, child, mode, ctx) {
+            return false;
+        }
+    }
+    buf.emit_static(&format!("</{}>", tag));
+    true
+}
+
+/// Build the `_ssr([...statics], ...holes)` call text, or None to bail. A `.map`
+/// ITEM (mapitem mode) uses `_ssrItem`. Mirrors JS `buildSsrCall`.
+fn build_ssr_call(el: &JSXElement, mode: SsrMode, ctx: &mut Ctx) -> Option<String> {
+    let mut buf = SsrBuf::new();
+    if !ssr_serialize_element(&mut buf, el, mode, ctx) {
+        return None;
+    }
+    let statics_arr = buf
+        .statics
+        .iter()
+        .map(|s| escape_js_string(s))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let holes_arr = if buf.holes.is_empty() {
+        String::new()
+    } else {
+        format!(", {}", buf.holes.join(", "))
+    };
+    let fn_name = match mode {
+        SsrMode::MapItem => {
+            ctx.needs_ssr_item_import = true;
+            "_ssrItem"
+        }
+        SsrMode::Recursed => "_ssr",
+    };
+    Some(format!("{}([{}]{})", fn_name, statics_arr, holes_arr))
+}
+
+/// Emit a `_ssr(...)` replacement for an eligible element, or bail. Mirrors JS
+/// `trySsrTemplateEmit`.
+fn try_ssr_template_emit(el: &JSXElement, ctx: &mut Ctx) -> bool {
+    if is_self_closing(el) {
+        return false;
+    }
+    let call = match build_ssr_call(el, SsrMode::Recursed, ctx) {
+        Some(s) => s,
+        None => return false,
+    };
+    let start = el.span().start;
+    let end = el.span().end;
+    // `parent_is_jsx` matches the JS `findParent → JSXElement||JSXFragment` test
+    // (set by the parent's children walk — same source-order boundary the
+    // template path's `needs_braces` already relies on).
+    let needs_braces = ctx.parent_is_jsx;
+    let text = if needs_braces {
+        format!("{{{}}}", call)
+    } else {
+        call
+    };
+    ctx.add_replacement(start, end, text);
+    ctx.needs_ssr_import = true;
+    true
 }
 
 // ─── Template emit ───────────────────────────────────────────────────────────

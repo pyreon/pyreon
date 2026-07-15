@@ -15,6 +15,8 @@ let nativeTransform:
       ssr: boolean,
       knownSignals: string[] | null,
       reactivityLens?: boolean,
+      collapse?: unknown,
+      ssrTemplate?: boolean,
     ) => {
       code: string
       usesTemplates?: boolean | null
@@ -48,6 +50,15 @@ function compareWithSignals(input: string, knownSignals: string[]) {
 function compareSsr(input: string) {
   const js = transformJSX_JS(input, 'test.tsx', { ssr: true })
   const rs = nativeTransform!(input, 'test.tsx', true, null)
+  expect(rs.code).toBe(js.code)
+}
+
+// Compile-to-string SSR fast path (`ssrTemplate`) parity. The native backend
+// must emit the SAME `_ssr(...)` string template the JS oracle does — the
+// blocker that kept `ssrTemplate` JS-only until native parity landed.
+function compareSsrTemplate(input: string) {
+  const js = transformJSX_JS(input, 'test.tsx', { ssr: true, ssrTemplate: true })
+  const rs = nativeTransform!(input, 'test.tsx', true, null, false, undefined, true)
   expect(rs.code).toBe(js.code)
 }
 
@@ -1108,6 +1119,104 @@ describeNative('Native vs JS equivalence — select value binding (PZ-09)', () =
   test('SSR mode is unaffected (no template emit)', () => {
     compareSsr('<select value="b"><option value="a">A</option></select>')
   })
+})
+
+// ─── Compile-to-string SSR fast path (`ssrTemplate`) parity ──────────────────
+// The native backend must emit the SAME `_ssr(...)` string template the JS
+// oracle does. This was the blocker for `ssrTemplate` default-on: JS emitted
+// `_ssr` while native emitted `h()`. Every case here is compared BYTE-identical
+// JS↔Rust with the flag ON; bail shapes (where the compiler falls to h()) must
+// ALSO agree — so the h() output for those matches between backends too.
+describeNative('SSR compile-to-string fast path (ssrTemplate) parity', () => {
+  test('fully static element (no holes)', () => {
+    compareSsrTemplate(`const A = <div class="x" id="y">hello</div>`)
+  })
+  test('dynamic prop text child (baked markers + _esc)', () => {
+    compareSsrTemplate(`function C(props) { return <div>{props.x}</div> }`)
+  })
+  test('mixed static text + wrapped hole preserves order', () => {
+    compareSsrTemplate(`function C(props) { return <p>a {props.x} b</p> }`)
+  })
+  test('nested elements inline into parent statics (card shape)', () => {
+    compareSsrTemplate(
+      `const Card = (u) => <div class="card"><h2 class="name">{u.name}</h2><p class="bio">{u.bio}</p><a class="link" href={u.url}>visit</a></div>`,
+    )
+  })
+  test('.map fast path (list) — _ssrChildren + _ssrItem', () => {
+    compareSsrTemplate(
+      `const L = (rows) => <ul>{rows.map(r => <li class="row">{r.name}</li>)}</ul>`,
+    )
+  })
+  test('.map with no-param callback', () => {
+    compareSsrTemplate(`const L = (rows) => <ul>{rows.map(() => <li>x</li>)}</ul>`)
+  })
+  test('baked JSXText SSR-escaped at compile time (quotes)', () => {
+    compareSsrTemplate(`const A = <p>say "hi" it's me</p>`)
+  })
+  test('safe static URL attr bakes', () => {
+    compareSsrTemplate(`const A = <a href="/foo/bar">go</a>`)
+  })
+  test('bare dynamic attr → _ssrAttrGen; provably-safe url concat → baked', () => {
+    compareSsrTemplate(
+      `const Row = (r) => <div class="row" data-id={r.id}><a href={"/i/" + r.id}>{r.label}</a></div>`,
+    )
+  })
+  test('provably non-null attrs bake (String / method / Number / template url)', () => {
+    compareSsrTemplate(`const R = (r) => <div data-id={String(r.id)}>x</div>`)
+    compareSsrTemplate(`const R = (r) => <div data-x={r.n.toFixed(2)}>x</div>`)
+    compareSsrTemplate(`const R = (r) => <div data-x={Number(r.n)}>x</div>`)
+    compareSsrTemplate('const R = (r) => <a href={`/item/${r.id}`}>x</a>')
+  })
+  test('signal class stays on runtime helper (_ssrAttr)', () => {
+    compareSsrTemplate(`const s = signal('x'); const N = <div class={s()}>y</div>`)
+  })
+  test('camelCase name + object style → _ssrAttr', () => {
+    compareSsrTemplate(`const N = <div tabIndex={0}>y</div>`)
+    compareSsrTemplate(`const N = <div style={{ color: 'red' }}>y</div>`)
+  })
+  test('numeric-literal generic attr bakes', () => {
+    compareSsrTemplate(`const N = <div data-n={42}>y</div>`)
+  })
+  test('boolean attrs (present / omitted / aria string)', () => {
+    compareSsrTemplate(`const N = <div hidden>y</div>`)
+    compareSsrTemplate(`const N = <div hidden={true}>y</div>`)
+    compareSsrTemplate(`const N = <div hidden={false}>y</div>`)
+    compareSsrTemplate(`const N = <div aria-hidden>y</div>`)
+  })
+  test('unsafe url literal → _ssrAttrUrl (guard drops)', () => {
+    compareSsrTemplate(`const N = <a href="javascript:alert(1)">x</a>`)
+  })
+  test('template-literal url with dynamic first quasi → _ssrAttrUrl', () => {
+    compareSsrTemplate('const R = (r) => <a href={`${r.scheme}://x`}>y</a>')
+  })
+  test('conditional child (shouldWrap → markers)', () => {
+    compareSsrTemplate(`const N = (c) => <div>{c ? <span>a</span> : null}</div>`)
+  })
+  test('signal auto-call text child', () => {
+    compareSsrTemplate(`const s = signal(0); const N = <p>count: {s()}</p>`)
+  })
+  test('empty-string class/style omit; empty expr child', () => {
+    compareSsrTemplate(`const N = <div class="">{}</div>`)
+  })
+  // Bail catalogue — the compiler falls to h(); both backends must AGREE on
+  // that h() output byte-for-byte (they already did — this locks it under the flag).
+  const bails: [string, string][] = [
+    ['spread attribute', `const N = <div {...props}>y</div>`],
+    ['component child', `const N = <div><Widget /></div>`],
+    ['void element', `const N = <img src="/a.png" />`],
+    ['select value', `const N = <select value="b"><option>a</option></select>`],
+    ['& in JSXText', `const N = <p>Tom &amp; Jerry</p>`],
+    ['bare & in JSXText', `const N = <p>fish & chips</p>`],
+    ['& in raw JSX string attr', `const N = <a title="Tom &amp; Jerry">x</a>`],
+    ['innerHTML content prop', `const N = <div innerHTML={'<x>'}></div>`],
+    ['dangerouslySetInnerHTML', `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`],
+    ['duplicate attribute', `const N = <div id="a" id="b">y</div>`],
+    ['fragment child', `const N = <div><>{x}</></div>`],
+    ['<For> list', `const N = <ul><For each={rows} by={r => r.id}>{r => <li>{r.name}</li>}</For></ul>`],
+  ]
+  for (const [name, src] of bails) {
+    test(`bail agrees: ${name}`, () => compareSsrTemplate(src))
+  }
 })
 
 // ─── Reactivity-lens parity (Phase 3) ───────────────────────────────────────
