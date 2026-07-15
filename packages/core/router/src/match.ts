@@ -736,18 +736,33 @@ function decodeSafe(s: string): string {
 // construction.
 
 /**
+ * First internal `/` offset (>= 1) from the most recent SUCCESSFUL
+ * `scanCleanPath` call, or -1 for a single-segment path (no internal slash).
+ * The fast lane reads this to slice the first segment for its dispatch-map key
+ * WITHOUT a second `indexOf('/', 1)` pass — `scanCleanPath` already visited
+ * that boundary while counting segments. Single-threaded synchronous read
+ * immediately after the scan (same module-local memo pattern as
+ * `_lastRoutes`/`_lastIndex`); only read when `scanCleanPath` returned >= 0,
+ * so an early `-1` return never leaves an observable stale value.
+ */
+let _scanFirstSlash = -1
+
+/**
  * Single-pass scan of a clean path (no query/hash): returns the segment
  * count when the path is "plain" (no `%`, no `//`, no trailing slash), or
- * -1 when the general split-based matcher must be used instead.
+ * -1 when the general split-based matcher must be used instead. On success it
+ * also records the first internal `/` offset in `_scanFirstSlash` (see above).
  */
 function scanCleanPath(path: string): number {
   const len = path.length
   let count = 0
   let prevSlash = true
+  let firstSlash = -1
   for (let i = path.charCodeAt(0) === 47 /* / */ ? 1 : 0; i < len; i++) {
     const c = path.charCodeAt(i)
     if (c === 47 /* / */) {
       if (prevSlash) return -1 // `//` — empty segment
+      if (firstSlash < 0) firstSlash = i // first internal boundary (for the fast-lane key)
       prevSlash = true
     } else {
       if (c === 37 /* % */) return -1 // encoded char — needs decode path
@@ -758,6 +773,7 @@ function scanCleanPath(path: string): number {
     }
   }
   if (prevSlash && len > 1) return -1 // trailing slash
+  _scanFirstSlash = firstSlash
   return count
 }
 
@@ -767,11 +783,22 @@ function scanCleanPath(path: string): number {
  * segments slice exactly once (no decode needed — the scan guaranteed no
  * `%`); splats slice the remainder in one operation (joining decoded
  * segments is unnecessary for the same reason).
+ *
+ * `firstSlash`: when >= 0, the caller has already PROVEN segment 0 is a static
+ * match (it reached this route through `segmentDispatch`/`segmentMap`, which
+ * are keyed by the route's static `firstSegment` === the path's first segment),
+ * and `firstSlash` is the offset of the first internal `/`. We then skip
+ * segment 0 entirely and resume matching at segment 1 (offset `firstSlash + 1`)
+ * — eliding one `indexOf('/')` + one `startsWith` per matched dynamic route,
+ * the exact re-comparison the dispatch key already performed. Pass -1 (the
+ * `dynamicFirst`/param-first path, whose segment 0 is NOT pre-validated) to
+ * match from segment 0 as before.
  */
 function matchFlattenedFast(
   f: FlattenedRoute,
   path: string,
   pathLen: number,
+  firstSlash: number,
 ): Record<string, string> | null {
   if (!isSegmentCountCompatible(f, pathLen)) return null
 
@@ -779,8 +806,11 @@ function matchFlattenedFast(
   const segments = f.segments
   const count = f.segmentCount
   const len = path.length
-  let offset = 1 // skip the leading '/'
-  for (let i = 0; i < count; i++) {
+  // firstSlash >= 0 ⇒ segment 0 already matched via the dispatch key; resume at
+  // segment 1 just past the first internal '/'. Else start at the leading '/'.
+  let i = firstSlash >= 0 ? 1 : 0
+  let offset = firstSlash >= 0 ? firstSlash + 1 : 1
+  for (; i < count; i++) {
     const seg = segments[i]
     if (!seg) return null
     if (seg.isSplat) {
@@ -804,12 +834,6 @@ function matchFlattenedFast(
     offset = end + 1
   }
   return params ?? {}
-}
-
-/** Offset-based first-segment extraction (single slice, no parts array) */
-function firstSegmentOf(path: string): string {
-  const end = path.indexOf('/', 1)
-  return end === -1 ? path.slice(1) : path.slice(1, end)
 }
 
 // ─── Path matching (compiled) ────────────────────────────────────────────────
@@ -1076,7 +1100,10 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
   const fastLen = scanCleanPath(cleanPath)
   if (fastLen >= 0) {
     if (fastLen > 0) {
-      const first = firstSegmentOf(cleanPath)
+      // `_scanFirstSlash` was just set by `scanCleanPath` — reuse it to slice
+      // the first segment instead of re-scanning with `indexOf('/', 1)`.
+      const first =
+        _scanFirstSlash < 0 ? cleanPath.slice(1) : cleanPath.slice(1, _scanFirstSlash)
       const dispatch = index.segmentDispatch[first]
       if (dispatch !== undefined) {
         // Candidates: count-indexed when the bucket is all-fixed (null =
@@ -1086,7 +1113,10 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
           for (let i = 0; i < candidates.length; i++) {
             const f = candidates[i]
             if (!f) continue
-            const params = matchFlattenedFast(f, cleanPath, fastLen)
+            // Every candidate in this bucket is keyed by `first` (its static
+            // `firstSegment`), so segment 0 is a guaranteed match — skip it via
+            // `_scanFirstSlash`.
+            const params = matchFlattenedFast(f, cleanPath, fastLen, _scanFirstSlash)
             if (params) {
               return {
                 path: cleanPath,
@@ -1106,7 +1136,8 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
     for (let i = 0; i < dyn.length; i++) {
       const f = dyn[i]
       if (!f) continue
-      const params = matchFlattenedFast(f, cleanPath, fastLen)
+      // Param-first routes: segment 0 is NOT pre-validated — match from the top.
+      const params = matchFlattenedFast(f, cleanPath, fastLen, -1)
       if (params) {
         return {
           path: cleanPath,
