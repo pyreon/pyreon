@@ -4916,7 +4916,10 @@ function kotlinFieldPlaceholder(
   if (typeof stat === 'string') return JSON.stringify(stat)
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'placeholder')
   if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
-    return emitKotlinExpr(attr.value, 0)
+    // Unwrap a zero-arg accessor arrow: `placeholder={() => hint()}` is a
+    // reactive VALUE → `Text(hint)`, not `Text({ hint })` (a lambda where a
+    // String is expected).
+    return emitKotlinExpr(unwrapAccessorArrow(attr.value), 0)
   }
   return undefined
 }
@@ -4977,9 +4980,14 @@ function emitKotlinField(
   // G1 contract: when present, the user's arrow callback is threaded
   // verbatim with arrow-param preservation, producing the idiomatic
   // shape `onValueChange = { t -> sig = t }` (NOT auto-derived).
+  // Accept BOTH `onChangeText` (canonical) AND web-style `onChange` — the Swift
+  // Field emit already accepts both (`changetext || change`). Without `change`
+  // here, a shared source using `onChange` compiled to a controlled TextField on
+  // iOS but fell through to a literal `Field(...)` (uncompilable) on Android —
+  // a one-source-two-outcomes cross-platform break.
   const onChangeText = e.attrs.find(
     (a): a is Extract<AttrIR, { kind: 'event' }> =>
-      a.kind === 'event' && a.name === 'changetext',
+      a.kind === 'event' && (a.name === 'changetext' || a.name === 'change'),
   )
   // Signal-bound `value` is the contract that distinguishes the
   // specialized emit from the generic fallback. `onChangeText` is
@@ -5028,7 +5036,8 @@ function emitKotlinField(
     ? kotlinIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)
     : ''
   const valueExpr =
-    formBinding?.value ?? (isBareSignal ? sig : emitKotlinExpr(valueAttr!.value, indent))
+    formBinding?.value ??
+    (isBareSignal ? sig : emitKotlinExpr(unwrapAccessorArrow(valueAttr!.value), indent))
   const onValueChange =
     formBinding?.onChange ??
     (onChangeText ? emitKotlinAction(onChangeText.handler, indent + 2) : `{ ${sig} = it }`)
