@@ -5128,9 +5128,12 @@ function emitKotlinToggle(
   const isSignalShape =
     valueAttr.value.kind === 'identifier' &&
     _signalNames.has(valueAttr.value.name)
+  // Unwrap a zero-arg accessor arrow: `value={() => on()}` is a reactive read →
+  // Compose `checked = on` (+ `onCheckedChange = { on = it }`), not the lambda
+  // `checked = { on }` (a `() -> Boolean` where a `Boolean` is expected).
   const checkedExpr = isSignalShape
     ? kotlinIdent((valueAttr.value as Extract<typeof valueAttr.value, { kind: 'identifier' }>).name)
-    : emitKotlinExpr(valueAttr.value, indent)
+    : emitKotlinExpr(unwrapAccessorArrow(valueAttr.value), indent)
   if (!isSignalShape && !onChange) {
     return emitKotlinGeneric(e, indent)
   }
