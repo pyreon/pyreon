@@ -610,6 +610,23 @@ describe('useOverlay', () => {
       cleanup()
     })
 
+    it('closeOn=hover: falls back to the 100ms default when hoverDelay is not set', () => {
+      const o = useOverlay({ openOn: 'hover', closeOn: 'hover' })
+      const triggerEl = mockElement()
+      o.triggerRef(triggerEl)
+      const cleanup = o.setupListeners()
+
+      triggerEl.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
+      expect(o.active()).toBe(true)
+
+      triggerEl.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+      vi.advanceTimersByTime(99)
+      expect(o.active()).toBe(true) // default delay not yet elapsed
+      vi.advanceTimersByTime(1)
+      expect(o.active()).toBe(false)
+      cleanup()
+    })
+
     it('mouseenter on content cancels hide timeout', () => {
       const o = useOverlay({ openOn: 'hover', closeOn: 'hover', hoverDelay: 100 })
       const triggerEl = mockElement()

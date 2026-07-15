@@ -280,6 +280,9 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
       )
     }
     // Capture the element to return focus to on close (typically the trigger).
+    // The server arm is unreachable from the node suite (happy-dom always has
+    // a document) — same contract as the other isServer guards in this file.
+    /* v8 ignore next */
     if (!isServer) {
       _prevFocusEl = document.activeElement as HTMLElement | null
     }
