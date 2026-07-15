@@ -4395,8 +4395,17 @@ function extractEnterSubmitAction(attrs: AttrIR[]): ExprIR | undefined {
  * on the non-optional link.
  */
 function swiftInterpSegment(e: ExprIR, indent: number): string {
-  const emitted = emitSwiftExpr(e, indent)
-  if (typeIsOptional(inferType(e, _activeInferCtx))) {
+  // Unwrap a zero-arg accessor arrow FIRST — the web-idiomatic reactive-text
+  // shape `<Text>{() => sig()}</Text>` (and `{() => a() + b()}`, `{() => cond ? …}`)
+  // arrives as an arrow. Without this it emits `\({ sig })` — a Swift CLOSURE
+  // interpolated into the string, which renders "(Function)" at runtime (swiftc
+  // only WARNS, so -typecheck can't catch it). Same unwrap the `<Show when>` /
+  // modifier paths already apply. Unwrapping before inferType also matters: an
+  // arrow's type is a function (never optional), so the nil-render path below
+  // would never fire for an arrow-wrapped optional.
+  const expr = unwrapAccessorArrow(e)
+  const emitted = emitSwiftExpr(expr, indent)
+  if (typeIsOptional(inferType(expr, _activeInferCtx))) {
     return `\\((${emitted}).map { "\\($0)" } ?? "")`
   }
   return `\\(${emitted})`
@@ -4411,18 +4420,24 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
   for (const c of e.children) {
     if (c.kind === 'text') {
       parts.push(escapeSwiftInterp(c.value))
-    } else if (c.expr.kind === 'template') {
+      continue
+    }
+    // Unwrap a zero-arg accessor arrow so `{() => `Hi ${n}`}` still hits the
+    // template fast-path below (and `{() => sig()}` the value path) — see
+    // swiftInterpSegment.
+    const childExpr = unwrapAccessorArrow(c.expr)
+    if (childExpr.kind === 'template') {
       // Splice a template child's segments directly into the Text's own
       // interpolation so `<Text>{`Hi ${n}`}</Text>` emits `Text("Hi \(n)")`
       // — not the redundant `Text("\("Hi \(n)")")` (a string interpolated
       // into a string).
-      const t = c.expr
+      const t = childExpr
       for (let i = 0; i < t.quasis.length; i++) {
         parts.push(escapeSwiftStringSegment(t.quasis[i] ?? ''))
         if (i < t.exprs.length) parts.push(`\\(${emitSwiftExpr(t.exprs[i]!, indent)})`)
       }
     } else {
-      parts.push(swiftInterpSegment(c.expr, indent))
+      parts.push(swiftInterpSegment(childExpr, indent))
     }
   }
   return `Text("${parts.join('')}")`

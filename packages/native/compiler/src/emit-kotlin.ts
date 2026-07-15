@@ -3604,17 +3604,23 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   for (const c of e.children) {
     if (c.kind === 'text') {
       parts.push(escapeKotlinInterp(c.value))
-    } else if (c.expr.kind === 'template') {
+      continue
+    }
+    // Unwrap a zero-arg accessor arrow so `{() => `Hi ${n}`}` still hits the
+    // template fast-path below (and `{() => sig()}` the value path) — see
+    // kotlinInterpSegment.
+    const childExpr = unwrapAccessorArrow(c.expr)
+    if (childExpr.kind === 'template') {
       // Splice a template child's segments directly into the Text's own
       // interpolation so `<Text>{`Hi ${n}`}</Text>` emits `Text(text = "Hi
       // ${n}")` — not the redundant `Text(text = "${"Hi ${n}"}")`.
-      const t = c.expr
+      const t = childExpr
       for (let i = 0; i < t.quasis.length; i++) {
         parts.push(escapeKotlinStringSegment(t.quasis[i] ?? ''))
         if (i < t.exprs.length) parts.push(`\${${emitKotlinExpr(t.exprs[i]!, indent)}}`)
       }
     } else {
-      parts.push(kotlinInterpSegment(c.expr, indent))
+      parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
   return `Text(text = "${parts.join('')}"${fontArg}${modArg})`
@@ -3628,8 +3634,14 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
  * `swiftInterpSegment`.
  */
 function kotlinInterpSegment(e: ExprIR, indent: number): string {
-  const emitted = emitKotlinExpr(e, indent)
-  if (typeIsOptional(inferType(e, _kotlinExprInferCtx))) {
+  // Unwrap a zero-arg accessor arrow FIRST — `<Text>{() => sig()}</Text>`
+  // arrives as an arrow and would otherwise emit `${{ sig }}` (a Kotlin lambda
+  // in the string template), which renders the lambda's toString at runtime.
+  // Same unwrap the `<Show when>` / modifier paths apply; unwrapping before
+  // inferType also fixes optional inference (an arrow's type is never optional).
+  const expr = unwrapAccessorArrow(e)
+  const emitted = emitKotlinExpr(expr, indent)
+  if (typeIsOptional(inferType(expr, _kotlinExprInferCtx))) {
     return `\${${emitted} ?: ""}`
   }
   return `\${${emitted}}`
