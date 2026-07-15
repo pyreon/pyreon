@@ -6637,6 +6637,32 @@ const tree = helper.getDocNode()`,
 </DocPage>`,
     notes: 'Explicit page boundary inside a `DocPage`. Forces the renderer to start a new page at this point in paginated outputs (PDF, DOCX). In flow outputs (HTML, Markdown), it renders as visible whitespace or is omitted entirely. Use for explicit pagination control beyond what `DocPage` boundaries already provide. See also: DocPage.',
   },
+
+  'document-primitives/DocumentPreview': {
+    signature: `DocumentPreview(props: { size?: 'A4' | 'A3' | 'A5' | 'letter' | 'legal'; showPageBreaks?: boolean; children }) => VNode`,
+    example: `<DocumentPreview size="A4">
+  <DocPage>
+    <DocHeading level="h1">Report</DocHeading>
+    <DocText>Preview me at real A4 dimensions.</DocText>
+  </DocPage>
+</DocumentPreview>`,
+    notes: `A paper-sized PREVIEW wrapper for a document-primitive tree — it renders the Doc* subtree as centered white pages (gray backdrop + drop-shadow) at real paper dimensions so you can preview a document in the browser before exporting. \`size\` picks the page format (\`'A4'\` default, plus A3/A5/letter/legal); \`showPageBreaks\` toggles page-break visualization. It carries the \`_documentType: 'document'\` static, so it ALSO serves as the extraction root — \`extractDocumentTree\` treats it like a \`DocDocument\`, so you typically do not nest a separate \`<DocDocument>\` inside it. See also: DocDocument, createDocumentExport.`,
+    mistakes: `- Treating it as export-only chrome — it is a BROWSER preview wrapper (paper backdrop + page sizing); the actual export runs through \`createDocumentExport\` / \`extractDocumentTree\`.
+- Nesting a \`<DocDocument>\` inside it — \`DocumentPreview\` already carries \`_documentType: 'document'\` and is the extraction root, so wrapping it in another document root double-nests the document node.
+- Passing a size it does not define — only 'A4' / 'A3' / 'A5' / 'letter' / 'legal' map to paper dimensions; an unknown size falls back to the base with no page sizing.`,
+  },
+
+  'document-primitives/documentTheme': {
+    signature: 'documentTheme: { colors; fonts; sizes; spacing }  // type DocumentTheme = typeof documentTheme',
+    example: `import { documentTheme } from '@pyreon/document-primitives'
+
+const brandTheme = {
+  ...documentTheme,
+  colors: { ...documentTheme.colors, primary: '#0ea5e9' },
+}`,
+    notes: 'The default theme object for document styling/export — a plain nested config of `colors` (primary / text / background / border / header / striped-row), `fonts` (heading / body / mono font stacks), `sizes` (h1–h6 + body / caption / label point sizes), and `spacing` (xs–xl). Reference it or spread-override it when customizing how a document renders and exports. Exported alongside the `DocumentTheme` type (`typeof documentTheme`). See also: DocDocument.',
+    mistakes: '- Mutating `documentTheme` in place — it is a shared module-level object; spread-clone it (`{ ...documentTheme, ... }`) to override, or you change it for every consumer.',
+  },
   // <gen-docs:api-reference:end @pyreon/document-primitives>
 
   // <gen-docs:api-reference:start @pyreon/zero>
