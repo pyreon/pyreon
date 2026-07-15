@@ -149,6 +149,8 @@ The setup function runs inside a **store-owned effect scope**. That matters in t
 
 Two definitions with the **same id** don't merge: the registry returns the first instance and the second definition is inert (Pyreon warns once per id in dev when the setup functions differ). This is also what an HMR re-eval of a store module looks like — state is preserved, but edited actions/computeds do NOT apply until `resetStore(id)` or a full page reload.
 
+<Example file="./examples/store/global-shared-store" title="Singleton — two panels, one store, bars grow together" />
+
 ### Store Families — parameterized stores
 
 For keyed instances (one store per entity), derive the ID — `defineStore` is cheap and the registry is the cache:
@@ -191,6 +193,8 @@ const Counter = defineComponent(() => {
   )
 })
 ```
+
+<Example file="./examples/store/store-color-channels" title="Per-field writes — store.r.set() recolors the swatch" />
 
 ## Re-exported Reactivity Primitives
 
