@@ -160,6 +160,8 @@ const active = rx.filter(users, (u) => u.active) // Computed<User[]>
 const big = rx.filter([1, 2, 3, 4, 5], (n) => n > 3) // [4, 5] (plain)
 ```
 
+<Example file="./examples/rx/rx-pipe-filter-bars" title="pipe(filter, map) — green bars appear as values cross the threshold" />
+
 ### `map`
 
 Transform each item to a new value. The mapper receives `(item, index)`.
@@ -171,6 +173,8 @@ const names = rx.map(users, (u) => u.name) // Computed<string[]>
 :::warning[`rx.map` is a data transform, not a JSX list renderer]
 `rx.map` derives a reactive array — it is not the keyed-list primitive. To render a list, feed its output to `<For each={...} by={...}>`; spreading a freshly-mapped array straight into JSX loses keying and referential stability (every re-derive yields fresh objects).
 :::
+
+<Example file="./examples/rx/rx-map-derived-bars" title="map — the derived row stays twice the source, automatically" />
 
 ### `flatMap`
 
