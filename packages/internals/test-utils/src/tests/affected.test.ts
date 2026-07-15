@@ -5,6 +5,7 @@ import {
   filterByCategory,
   isDocsOnlyChange,
   isRootFile,
+  isScriptFile,
   transitiveDependents,
   type Workspace,
 } from '../../../../../scripts/affected'
@@ -307,6 +308,28 @@ describe('filterByCategory', () => {
   it('safely ignores names that are not in the workspace set', () => {
     const stale = new Set(['@pyreon/does-not-exist', '@pyreon/core'])
     expect([...filterByCategory(stale, WS, 'core', ROOT)]).toEqual(['@pyreon/core'])
+  })
+})
+
+describe('isScriptFile — must AGREE with e2e-affected on scripts/**', () => {
+  // REGRESSION LOCK (found via PR #2321): e2e-affected.ts treats ANY
+  // `scripts/**` change as unknown-blast-radius → run ALL suites, but this
+  // classifier used to miss `.json` (import-budgets.json, bundle-budgets.json,
+  // lint-baseline.json) → `affected` empty → Bootstrap skipped → the e2e
+  // matrix (needs: bootstrap) skipped → the fail-closed E2E aggregator errored
+  // on the decide-says-run/suite-skipped contradiction. A scripts-json-only PR
+  // was structurally un-mergeable. The deciders must agree on scripts/**.
+  it('classifies gate-input JSON data files under scripts/ as script files', () => {
+    expect(isScriptFile('scripts/import-budgets.json')).toBe(true)
+    expect(isScriptFile('scripts/bundle-budgets.json')).toBe(true)
+    expect(isScriptFile('lint-baseline.json')).toBe(false) // root ratchet file — not scripts/
+  })
+
+  it('still classifies script code files and rejects non-script paths', () => {
+    expect(isScriptFile('scripts/affected.ts')).toBe(true)
+    expect(isScriptFile('scripts/bench/core/router.ts')).toBe(true)
+    expect(isScriptFile('scripts/README.md')).toBe(false)
+    expect(isScriptFile('packages/core/core/src/index.ts')).toBe(false)
   })
 })
 
