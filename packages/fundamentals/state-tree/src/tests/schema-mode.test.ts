@@ -310,6 +310,41 @@ describe('schema-mode model — Standard Schema (Tier A.2)', () => {
     expect(u.name()).toBe('Bob')
     expect(() => u.set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
   })
+
+  // Raw VALIBOT (not the valibotSchema() adapter — that's Tier A.1 above).
+  // Regression for the `wrapStandardSchema` `'value' in r` discriminant bug:
+  // valibot's FAILURE result carries BOTH `value` (the raw input) and
+  // `issues`, so schema-mode validation was a SILENT no-op for raw valibot —
+  // an invalid set()/patch() did NOT throw and wrote the raw invalid value
+  // into the tree. The suite previously ran raw zod but never raw valibot
+  // (the "real library, one lib short" trap).
+  it('raw VALIBOT schema validates set / patch (state unchanged on reject)', () => {
+    const RawValibot = v.object({
+      name: v.pipe(v.string(), v.minLength(1)),
+      age: v.number(),
+    })
+    const User = model({
+      schema: RawValibot,
+      initial: { name: 'Alice', age: 30 },
+    })
+    const u = User.create() as unknown as Record<string, unknown> & {
+      set: (next: { name: string; age: number }) => void
+      patch: (partial: Partial<{ name: string; age: number }>) => void
+      name: { (): string }
+      age: { (): number }
+    }
+    u.set({ name: 'Bob', age: 40 })
+    expect(u.age()).toBe(40)
+
+    // Pre-fix: no throw, and `age` became the string 'nope' (corrupted tree).
+    expect(() => u.set({ name: 'Bob', age: 'nope' as unknown as number })).toThrow(
+      /Schema validation failed/,
+    )
+    expect(u.age()).toBe(40)
+
+    expect(() => u.patch({ name: '' })).toThrow(/Schema validation failed/)
+    expect(u.name()).toBe('Bob')
+  })
 })
 
 // ─── Tier B: User-authored adapter ──────────────────────────────────────────
