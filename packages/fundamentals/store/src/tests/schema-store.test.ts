@@ -378,6 +378,39 @@ describe('schema-driven defineStore — Standard Schema (Tier A.2)', () => {
     expect(u.store.age()).toBe(41)
     expect(() => u.set({ name: '', age: 30 })).toThrow(/Schema validation failed/)
   })
+
+  // Raw VALIBOT (not the valibotSchema() adapter — that's Tier A.1 above).
+  // Regression for the `wrapStandardSchema` `'value' in r` discriminant bug:
+  // valibot's FAILURE result carries BOTH `value` (the raw input) and
+  // `issues`, so a raw valibot schema was a SILENT validation no-op — an
+  // invalid set()/patch() did NOT throw and wrote the raw invalid value into
+  // state. The suite previously ran raw zod + raw arktype but never raw
+  // valibot (the "real library, one lib short" trap).
+  const RawValibotSchema = v.object({
+    name: v.pipe(v.string(), v.minLength(1)),
+    age: v.number(),
+  })
+
+  it('auto-detects raw VALIBOT schema and REJECTS invalid writes (state unchanged)', () => {
+    const useUser = defineStore('std-valibot-1', {
+      schema: RawValibotSchema,
+      initial: { name: 'Alice', age: 30 },
+    })
+    const u = useUser()
+    expect(u.store.name()).toBe('Alice')
+
+    u.set({ name: 'Bob', age: 40 })
+    expect(u.store.age()).toBe(40)
+
+    // Pre-fix: no throw, and `age` became the string 'nope' (corrupted state).
+    expect(() => u.set({ name: 'Bob', age: 'nope' as unknown as number })).toThrow(
+      /Schema validation failed/,
+    )
+    expect(u.store.age()).toBe(40)
+
+    expect(() => u.patch({ name: '' })).toThrow(/Schema validation failed/)
+    expect(u.store.name()).toBe('Bob')
+  })
 })
 
 // ─── Collision handling ──────────────────────────────────────────────────────

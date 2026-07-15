@@ -207,14 +207,24 @@ export function wrapStandardSchema<T extends Record<string, unknown>>(
           >
         }>
       }
-      if ('value' in r) {
-        return { ok: true, value: r.value as T }
+      // Discriminate on `issues`, NEVER on `'value' in r`. The Standard
+      // Schema spec's discriminant is `issues` ("if `issues` is undefined,
+      // validation succeeded") — and real libraries carry BOTH keys on
+      // failure: valibot's failure result is
+      // `{ typed: false, value: <raw input>, issues: [...] }`. The prior
+      // `'value' in r` success check therefore accepted every raw-valibot
+      // FAILURE as success and handed the raw INVALID input to the caller —
+      // a silent validation no-op that wrote corrupt state in schema-mode
+      // `defineStore` / state-tree `model`. Mirrors the proven-correct
+      // `standardSchemaToValidator` above (issues-first).
+      if (r.issues != null && r.issues.length > 0) {
+        const issues = r.issues.map((issue) => ({
+          path: flattenIssuePath(issue.path),
+          message: issue.message,
+        }))
+        return { ok: false, issues }
       }
-      const issues = (r.issues ?? []).map((issue) => ({
-        path: flattenIssuePath(issue.path),
-        message: issue.message,
-      }))
-      return { ok: false, issues }
+      return { ok: true, value: r.value as T }
     } catch (err) {
       return {
         ok: false,
