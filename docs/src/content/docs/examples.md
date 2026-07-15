@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 48 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 50 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 48 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 50 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Coolgrid
 
@@ -118,6 +118,14 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Permissions Reactive Can
 
 <Example file="./examples/permissions/permissions-reactive-can" />
+
+### Rbac Role Tiles
+
+<Example file="./examples/permissions/rbac-role-tiles" />
+
+### Wildcard Grant Tiles
+
+<Example file="./examples/permissions/wildcard-grant-tiles" />
 
 ## Query
 
