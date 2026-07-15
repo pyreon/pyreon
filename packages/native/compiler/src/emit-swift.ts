@@ -6222,7 +6222,10 @@ function emitSwiftLink(
     // behaviour; user gets a clear kind of error from the compiler).
     return emitSwiftGeneric(e, indent)
   }
-  const toExpr = emitSwiftExpr(toAttr.value, indent)
+  // Unwrap a zero-arg accessor arrow: `to={() => url()}` is a reactive read, so
+  // PyreonLink's `to` (a String) must be `url`, not the closure `{ url }`
+  // (a `() -> String` where a String is expected — a compile error).
+  const toExpr = emitSwiftExpr(unwrapAccessorArrow(toAttr.value), indent)
   const pad = ' '.repeat(indent + 2)
   if (e.children.length === 0) {
     return `PyreonLink(${toExpr}) { }`

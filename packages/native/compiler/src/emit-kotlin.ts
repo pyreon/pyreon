@@ -5176,7 +5176,10 @@ function emitKotlinLink(
   if (!toAttr) {
     return emitKotlinGeneric(e, indent)
   }
-  const toExpr = emitKotlinExpr(toAttr.value, indent)
+  // Unwrap a zero-arg accessor arrow: `to={() => url()}` is a reactive read →
+  // PyreonLink's `to` (a String) must be `url`, not the lambda `{ url }`
+  // (a `() -> String` where a String is expected).
+  const toExpr = emitKotlinExpr(unwrapAccessorArrow(toAttr.value), indent)
   const pad = ' '.repeat(indent + 2)
   const inner = ' '.repeat(indent + 4)
   if (e.children.length === 0) {
