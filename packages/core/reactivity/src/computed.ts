@@ -1,8 +1,8 @@
-import { _markLazyRecompute, _markRecompute } from './batch'
+import { _markLazyRecompute, _markRecompute, propagateLazyDirty } from './batch'
 import { _errorHandler } from './effect'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
-import { notifySubscribers, runCollect, runVerify, trackSubscriber } from './tracking'
+import { runCollect, runVerify, trackSubscriber } from './tracking'
 
 // Dev-time counter sink — see packages/internals/perf-harness for contract.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -226,7 +226,9 @@ function computedLazy<T>(
   recompute = () => {
     if (read._disposed || read._dirty) return
     read._dirty = true
-    if (read._s) notifySubscribers(read._s)
+    // Dirty-propagation cascade — bypass the batch router for lazy-recompute
+    // subscribers (the diamond/deep-chain hot path). See propagateLazyDirty.
+    if (read._s) propagateLazyDirty(read._s)
     if (read._d1) read._d1()
     else if (read._d) for (const f of read._d) f()
   }
@@ -331,7 +333,9 @@ function computedWithEquals<T>(
       _errorHandler(err)
       return
     }
-    if (read._s) notifySubscribers(read._s)
+    // Same lazy-subscriber bypass as the lazy variant — an eager computed
+    // feeding other lazy computeds still cascades through the cheap path.
+    if (read._s) propagateLazyDirty(read._s)
     if (read._d1) read._d1()
     else if (read._d) for (const f of read._d) f()
   }
