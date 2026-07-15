@@ -163,11 +163,23 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
   // common case (subscribers still fire immediately after the write). Only
   // the dedup semantics change, which is a bug fix.
   //
+  // No-subscriber fast path — the value write above is the whole job. Skip the
+  // batch window entirely (openInlineBatch/closeInlineBatch + try/finally):
+  // with nothing to notify there is no cascade to drain, and while batchDepth
+  // is 0 the pending queues are provably empty (every enqueue is gated on
+  // isBatching(), every drain clears to empty). This is the dominant shape for
+  // a freshly-created / write-only signal (no reader tracked yet) and for
+  // imperative state a component writes but nothing renders.
+  const _d1 = this._d1
+  const _d = this._d
+  const _s = this._s
+  if (_d1 === null && _d === null && _s === null) return
+  //
   // Short-circuit when already inside a batch so we don't wrap redundantly.
   if (isBatching()) {
-    if (this._d1) enqueuePendingNotification(this._d1)
-    else if (this._d) notifyDirect(this._d)
-    if (this._s) notifySubscribers(this._s)
+    if (_d1) enqueuePendingNotification(_d1)
+    else if (_d) notifyDirect(_d)
+    if (_s) notifySubscribers(_s)
   } else {
     // INLINE batch window — no `batch(closure)` allocation, and the
     // notifications THIS write owns dispatch DIRECTLY instead of taking a
@@ -194,15 +206,15 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
     //   prior visited-Set promotion path.
     openInlineBatch()
     try {
-      if (this._d1) {
-        this._d1()
-      } else if (this._d) notifyDirect(this._d)
-      if (this._s) {
-        if (this._s.size === 1) {
-          const sub = this._s.values().next().value as () => void
+      if (_d1) {
+        _d1()
+      } else if (_d) notifyDirect(_d)
+      if (_s) {
+        if (_s.size === 1) {
+          const sub = _s.values().next().value as () => void
           sub()
         } else {
-          notifySubscribers(this._s)
+          notifySubscribers(_s)
         }
       }
     } finally {
@@ -223,22 +235,26 @@ function _trigger(this: SignalFn<unknown>) {
   // byte-identical (see the long `_set` comment on why the inline path exists);
   // wrapping it in a call would tax the hottest write path for a rare escape
   // hatch's benefit.
+  const _d1 = this._d1
+  const _d = this._d
+  const _s = this._s
+  if (_d1 === null && _d === null && _s === null) return
   if (isBatching()) {
-    if (this._d1) enqueuePendingNotification(this._d1)
-    else if (this._d) notifyDirect(this._d)
-    if (this._s) notifySubscribers(this._s)
+    if (_d1) enqueuePendingNotification(_d1)
+    else if (_d) notifyDirect(_d)
+    if (_s) notifySubscribers(_s)
   } else {
     openInlineBatch()
     try {
-      if (this._d1) {
-        this._d1()
-      } else if (this._d) notifyDirect(this._d)
-      if (this._s) {
-        if (this._s.size === 1) {
-          const sub = this._s.values().next().value as () => void
+      if (_d1) {
+        _d1()
+      } else if (_d) notifyDirect(_d)
+      if (_s) {
+        if (_s.size === 1) {
+          const sub = _s.values().next().value as () => void
           sub()
         } else {
-          notifySubscribers(this._s)
+          notifySubscribers(_s)
         }
       }
     } finally {
