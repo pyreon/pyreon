@@ -625,7 +625,7 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
       example: `const { lock, unlock } = useScrollLock()
 onMount(() => { lock(); return unlock })`,
       mistakes: [
-        'Calling `unlock()` more times than `lock()` — the refcount composes across ALL components; an extra unlock can release another modal\'s lock. Pair each lock with exactly one unlock.',
+        'Expecting one instance to NEST — a per-instance `isLocked` guard makes repeat `lock()`/`unlock()` calls no-ops, so one instance holds at most ONE refcount unit (an extra `unlock()` can never release another component\'s lock); use a separate `useScrollLock()` per independently-lifecycled lock.',
         'Setting `body { overflow }` yourself while a lock is active — the hook restores the value captured at the 0→1 transition, clobbering your change on release.',
       ],
       seeAlso: ['useDialog', 'useClickOutside'],
