@@ -25,6 +25,7 @@
     "@pyreon/router": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/rx": "workspace:*",
     "@pyreon/server": "workspace:*",
     "@pyreon/storage": "workspace:*",
     "@pyreon/store": "workspace:*",

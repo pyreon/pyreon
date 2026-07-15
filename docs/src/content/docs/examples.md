@@ -169,6 +169,14 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/rx/rx-composable-reactive-pipeline" />
 
+### Rx Map Derived Bars
+
+<Example file="./examples/rx/rx-map-derived-bars" />
+
+### Rx Pipe Filter Bars
+
+<Example file="./examples/rx/rx-pipe-filter-bars" />
+
 ## State Tree
 
 ### State Tree History Undo
