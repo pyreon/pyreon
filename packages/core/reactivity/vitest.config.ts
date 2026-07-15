@@ -24,4 +24,23 @@ export default defineNodeConfig({
   // createSelector.ts — ratchet back up as tests land, per the lint-baseline
   // pattern. 96 stays above the repo-wide 95-branch floor.
   coverageThresholds: { statements: 98, lines: 99, branches: 96 },
+  overrides: {
+    test: {
+      // --stack-size=4000 (KB, ~4 MB — safely below the 8 MB default OS stack
+      // of the vitest fork-pool child process, so a genuine overflow stays a
+      // CATCHABLE RangeError, never a segfault). The deep-chain regression
+      // (`batch-glitch-freedom.test.ts`) drives a depth-10,000 lazy-computed
+      // chain, whose lazy PULL-READ is inherently recursive (evaluating a deep
+      // dirty chain recurses through each computed's user closure — the same
+      // shape in 0.45.0, where the deep-chain WAS "correct at 10,000"). The
+      // default V8 JS-stack (~984 KB) overflows that read at ~2,700, which is
+      // BELOW the depth where the pre-fix RECURSIVE write-time dirty cascade
+      // overflowed — masking the very bug the test locks. This bump restores
+      // the standalone-Bun headroom the "correct at 10,000" bar assumes: the
+      // read survives past 20,000 while the (reverted) recursive cascade still
+      // overflows well under 10,000. One flag, additive headroom only — no
+      // behavioral change for the other suites.
+      execArgv: ['--stack-size=4000'],
+    },
+  },
 })
