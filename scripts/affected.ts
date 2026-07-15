@@ -88,9 +88,21 @@ export function isRootFile(path: string): boolean {
   return false
 }
 
-/** A standalone tooling script under `scripts/` (mapped to @pyreon/test-utils). */
+/**
+ * A standalone tooling script under `scripts/` (mapped to @pyreon/test-utils).
+ *
+ * `.json` is included deliberately: gate-INPUT data files (`import-budgets.json`,
+ * `bundle-budgets.json`, `lint-baseline.json`, …) live here, their logic is
+ * tested from @pyreon/test-utils, and — load-bearing — `e2e-affected.ts`
+ * treats ANY `scripts/**` change as unknown-blast-radius → run ALL suites.
+ * If this classifier returns false for a shape e2e-affected returns true for,
+ * `affected` comes back empty → Bootstrap skips → the e2e matrix (needs:
+ * bootstrap) skips → the fail-closed E2E aggregator errors on the
+ * decide-says-run/suite-skipped contradiction, making a scripts-json-only PR
+ * structurally un-mergeable. The two deciders MUST agree on `scripts/**`.
+ */
 export function isScriptFile(path: string): boolean {
-  return path.startsWith('scripts/') && /\.(ts|tsx|js|mjs|cjs)$/.test(path)
+  return path.startsWith('scripts/') && /\.(ts|tsx|js|mjs|cjs|json)$/.test(path)
 }
 
 /** The package whose tests cover `scripts/**` (affected target for script edits). */
