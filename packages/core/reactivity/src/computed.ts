@@ -1,4 +1,9 @@
-import { _markLazyRecompute, _markRecompute, propagateLazyDirty } from './batch'
+import {
+  _markLazyRecompute,
+  _markRecompute,
+  enqueuePendingNotification,
+  propagateLazyDirty,
+} from './batch'
 import { _errorHandler } from './effect'
 import { _captureCallerLocation, _rdRecordFire, _rdRegister } from './reactive-devtools'
 import { getCurrentScope } from './scope'
@@ -226,11 +231,27 @@ function computedLazy<T>(
   recompute = () => {
     if (read._disposed || read._dirty) return
     read._dirty = true
-    // Dirty-propagation cascade — bypass the batch router for lazy-recompute
-    // subscribers (the diamond/deep-chain hot path). See propagateLazyDirty.
+    // DEFER direct-subscriber dispatch to the batch DRAIN — do NOT fire inline.
+    //
+    // A lazy recompute runs INLINE during the write's notify phase (see
+    // batch.ts `propagateLazyDirty`), so `read._v` is TORN at this point in a
+    // multi-write `batch(() => { a.set(); b.set() })` — `a` is written but `b`
+    // is not yet. Firing the `_d1`/`_d` DIRECT subscriber (the compiled
+    // `{someComputed()}` `_bindText`/`_bindDirect` shape) inline would read the
+    // half-updated value AND re-fire on the next write (#2284 regression:
+    // `[12, 30]` instead of one settled `[30]`; a torn read that THROWS would
+    // even dispatch a phantom production error through `_errorHandler`).
+    // Enqueuing into the effect tier makes each direct subscriber fire ONCE, in
+    // the drain, after all writes + tier-1 eager recomputes have settled — the
+    // exact glitch-free deferral a SIGNAL's `_d1` already gets under batch (see
+    // `_set`). Idempotent: a re-entered recompute sees `_dirty === true` above
+    // and early-returns, so the enqueue happens once per batch even before the
+    // effect-tier's own `_eq` dedup.
+    if (read._d1) enqueuePendingNotification(read._d1)
+    else if (read._d) for (const f of read._d) enqueuePendingNotification(f)
+    // Dirty-propagation cascade — iterative (explicit stack) so a deep chain
+    // can't overflow. See propagateLazyDirty.
     if (read._s) propagateLazyDirty(read._s)
-    if (read._d1) read._d1()
-    else if (read._d) for (const f of read._d) f()
   }
   // LAZY marker → the batch router runs this recompute inline (dirty-mark-only,
   // idempotent via the `_dirty` guard above) instead of routing it through the

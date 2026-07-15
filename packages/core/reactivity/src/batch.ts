@@ -345,51 +345,109 @@ export function isBatching(): boolean {
   return batchDepth > 0
 }
 
+// ─── Lazy-computed dirty cascade (depth-bounded recursion) ───────────────────
+//
+// A pure lazy-computed cascade (a diamond `a→{b,c}→d`, a deep chain) is nothing
+// but dirty-flag marking: every hop is one lazy recompute dirty-marking the
+// NEXT lazy recompute. Routing each hop through the generic batch enqueue paid,
+// per node, a `notifySubscribers` call + an `enqueuePendingNotification` call +
+// TWO `WeakSet.has` (`_recomputes` then `_lazyRecomputes`) — the write-time
+// cascade was measured as the entire diamond/chain gap vs @preact/signals-core
+// (Preact's write-time dirty propagation is a bare linked-list flag walk).
+//
+// #2284/#2296 made the hop an INLINE recursive call (one `_lazyRecomputes.has`,
+// no queue) — fast, but UNBOUNDED: a deep chain (~8000+) overflowed the JS
+// stack; the caught RangeError cleared a computed's `_dirty` with a STALE value
+// → a silent lost update (the tail never re-derived). 0.45.0 propagated
+// iteratively and was correct at 10,000.
+//
+// This keeps the FAST recursive hop for the common shallow case (a `_cascadeDepth`
+// counter tracks nesting) and switches to an EXPLICIT stack ONLY past
+// `MAX_CASCADE_RECURSION` — so a diamond / a depth-50 chain pays zero stack/array
+// overhead (byte-identical to #2296's inline recursion) while a genuinely deep
+// chain is chunked (recurse ~N, defer the tail, unwind, recurse ~N again) with a
+// BOUNDED live stack and no overflow. A pure recursion-only or pure-iterative
+// form was measured: pure-iterative regressed the diamond ~12% (the push/pop +
+// re-push per hop on 4 nodes); the hybrid restores it.
+//
+// A deferred recompute popped from the stack re-enters at `_cascadeDepth === 0`,
+// so it recurses another full `MAX_CASCADE_RECURSION` window before deferring
+// again — the live JS stack never exceeds ~`MAX_CASCADE_RECURSION` cascade
+// frames regardless of chain length. `_lazyDirtyDraining` makes the OUTERMOST
+// entry own the stack drain.
+//
+// This is NOT on the signal fan-out path (`_set` → `notifySubscribers` for a
+// multi-subscriber signal), so the wide-fan-out / batch-50 hot paths are
+// untouched.
+const _lazyDirtyStack: Array<() => void> = []
+let _lazyDirtyDraining = false
+let _cascadeDepth = 0
+// Recurse inline up to this nesting depth, then defer to the stack. ~2 JS
+// frames per hop (`propagateLazyDirty` + `recompute`), so 500 ≈ 1000 frames —
+// comfortably below the default V8 JS-stack ceiling (a bare recursive cascade
+// overflowed ~2,600 in a default-stack Node fork) with wide margin, while
+// keeping the chunk count for even a 10k chain trivial (~20).
+const MAX_CASCADE_RECURSION = 500
+
 /**
- * Propagate dirtiness from a lazy computed to its subscribers WITHOUT the
- * `notifySubscribers → enqueuePendingNotification → WeakSet-routing` indirection.
- *
- * A pure lazy-computed cascade (a diamond `a→{b,c}→d`, a deep chain) is nothing
- * but dirty-flag marking: every hop is one lazy recompute dirty-marking the
- * NEXT lazy recompute. Routing each hop through the generic batch enqueue paid,
- * per node, a `notifySubscribers` call + an `enqueuePendingNotification` call +
- * TWO `WeakSet.has` (`_recomputes` then `_lazyRecomputes`) — the write-time
- * cascade was measured as the entire diamond/chain gap vs @preact/signals-core
- * (Preact's write-time dirty propagation is a bare linked-list flag walk).
- *
- * Here a LAZY-recompute subscriber (the dominant case) runs INLINE via ONE
- * `_lazyRecomputes.has` — byte-identical BEHAVIOR to what
- * `enqueuePendingNotification` does for a lazy recompute (run it inline), minus
- * the effect-path routing it doesn't need. A NON-lazy subscriber (an effect, an
- * eager `{ equals }` computed, a raw `subscribe()` listener) falls through to
- * `enqueuePendingNotification`, so its routing/queueing is unchanged.
+ * Propagate dirtiness from a lazy computed (or an eager `{ equals }` computed
+ * whose value changed) to its subscribers.
  *
  * Called ONLY from a computed's `recompute`, which always runs under an open
  * batch window (a signal write opens one before dispatch; the tier-1 drain
  * holds `batchDepth = 1`), so `enqueuePendingNotification`'s `isBatching()`
  * invariant holds. A lazy recompute is dirty-mark-only (it reads nothing), so
- * running one inline cannot mutate `subs` (this computed's own `_s`) mid-walk —
- * the size cap is belt-and-braces parity with `notifySubscribers`.
- *
- * This function is NOT on the signal fan-out path (`_set` → `notifySubscribers`
- * for a multi-subscriber signal), so the wide-fan-out / batch-50 hot paths are
- * untouched.
+ * processing one cannot mutate any `_s` mid-walk.
  */
 export function propagateLazyDirty(subs: Set<() => void>): void {
-  // Single-subscriber fast path — the deep-chain shape (each computed has
-  // exactly one downstream computed). Avoids the iterator allocation.
-  if (subs.size === 1) {
-    const sub = subs.values().next().value as () => void
-    if (_lazyRecomputes.has(sub)) sub()
-    else enqueuePendingNotification(sub)
-    return
+  // Read the module counter into a local ONCE (V8 keeps it in a register across
+  // the call — cheaper than the per-hop module read/write the naive form pays);
+  // bump it ONCE per call (a whole subscriber level shares one depth), not per
+  // subscriber. Split: lazy recomputes propagate the dirty flag (recurse inline
+  // while shallow, else defer to the stack); everything else (effects, eager
+  // `{ equals }` computeds, raw `subscribe()` listeners) enqueues into the
+  // two-tier flush exactly as before.
+  const depth = _cascadeDepth
+  if (depth >= MAX_CASCADE_RECURSION) {
+    // Too deep — defer every lazy branch to the explicit stack; each re-enters
+    // at depth 0 and recurses another full window.
+    for (const sub of subs) {
+      if (_lazyRecomputes.has(sub)) _lazyDirtyStack.push(sub)
+      else enqueuePendingNotification(sub)
+    }
+  } else {
+    _cascadeDepth = depth + 1
+    // Single-subscriber fast path — the deep-chain shape (each computed has
+    // exactly one downstream). Avoids the extra `for..of` iterator step.
+    if (subs.size === 1) {
+      const sub = subs.values().next().value as () => void
+      // `recompute` marks dirty (idempotent via its own `_dirty` guard — a
+      // diamond re-visit early-returns) + enqueues its direct subscribers for
+      // the drain.
+      if (_lazyRecomputes.has(sub)) sub()
+      else enqueuePendingNotification(sub)
+    } else {
+      for (const sub of subs) {
+        if (_lazyRecomputes.has(sub)) sub()
+        else enqueuePendingNotification(sub)
+      }
+    }
+    _cascadeDepth = depth
   }
-  const size = subs.size
-  let i = 0
-  for (const sub of subs) {
-    if (i++ >= size) break
-    if (_lazyRecomputes.has(sub)) sub()
-    else enqueuePendingNotification(sub)
+  // Drive the deferred stack ONLY from the outermost frame (depth 0) with work
+  // pending — a re-entrant call from within the drain just leaves its pushes for
+  // the active loop.
+  if (depth === 0 && _lazyDirtyStack.length > 0 && !_lazyDirtyDraining) {
+    _lazyDirtyDraining = true
+    try {
+      while (_lazyDirtyStack.length > 0) _lazyDirtyStack.pop()!()
+    } finally {
+      // Normal completion drains to empty; on an unexpected throw, discard the
+      // partial stack so the next cascade starts clean (dirty-marking never
+      // throws — this is belt-and-braces).
+      _lazyDirtyStack.length = 0
+      _lazyDirtyDraining = false
+    }
   }
 }
 
