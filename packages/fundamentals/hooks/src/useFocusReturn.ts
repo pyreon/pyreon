@@ -33,6 +33,7 @@ export function useFocusReturn(
   isOpen: () => boolean,
   options: UseFocusReturnOptions = {},
 ): void {
+  /* v8 ignore next — SSR/isServer guard; tests run with happy-dom */
   if (isServer) return
 
   let captured: HTMLElement | null = null

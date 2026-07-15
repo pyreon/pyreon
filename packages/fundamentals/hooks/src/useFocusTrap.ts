@@ -213,6 +213,7 @@ export function useFocusTrap(
   getEl: () => HTMLElement | null,
   options?: UseFocusTrapOptions | boolean | (() => boolean),
 ): void {
+  /* v8 ignore next — SSR/isServer guard; tests run with happy-dom */
   if (isServer) return
 
   // Normalize the overloaded 2nd arg. A boolean / function is the `active`
