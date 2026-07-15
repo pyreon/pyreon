@@ -345,6 +345,54 @@ export function isBatching(): boolean {
   return batchDepth > 0
 }
 
+/**
+ * Propagate dirtiness from a lazy computed to its subscribers WITHOUT the
+ * `notifySubscribers → enqueuePendingNotification → WeakSet-routing` indirection.
+ *
+ * A pure lazy-computed cascade (a diamond `a→{b,c}→d`, a deep chain) is nothing
+ * but dirty-flag marking: every hop is one lazy recompute dirty-marking the
+ * NEXT lazy recompute. Routing each hop through the generic batch enqueue paid,
+ * per node, a `notifySubscribers` call + an `enqueuePendingNotification` call +
+ * TWO `WeakSet.has` (`_recomputes` then `_lazyRecomputes`) — the write-time
+ * cascade was measured as the entire diamond/chain gap vs @preact/signals-core
+ * (Preact's write-time dirty propagation is a bare linked-list flag walk).
+ *
+ * Here a LAZY-recompute subscriber (the dominant case) runs INLINE via ONE
+ * `_lazyRecomputes.has` — byte-identical BEHAVIOR to what
+ * `enqueuePendingNotification` does for a lazy recompute (run it inline), minus
+ * the effect-path routing it doesn't need. A NON-lazy subscriber (an effect, an
+ * eager `{ equals }` computed, a raw `subscribe()` listener) falls through to
+ * `enqueuePendingNotification`, so its routing/queueing is unchanged.
+ *
+ * Called ONLY from a computed's `recompute`, which always runs under an open
+ * batch window (a signal write opens one before dispatch; the tier-1 drain
+ * holds `batchDepth = 1`), so `enqueuePendingNotification`'s `isBatching()`
+ * invariant holds. A lazy recompute is dirty-mark-only (it reads nothing), so
+ * running one inline cannot mutate `subs` (this computed's own `_s`) mid-walk —
+ * the size cap is belt-and-braces parity with `notifySubscribers`.
+ *
+ * This function is NOT on the signal fan-out path (`_set` → `notifySubscribers`
+ * for a multi-subscriber signal), so the wide-fan-out / batch-50 hot paths are
+ * untouched.
+ */
+export function propagateLazyDirty(subs: Set<() => void>): void {
+  // Single-subscriber fast path — the deep-chain shape (each computed has
+  // exactly one downstream computed). Avoids the iterator allocation.
+  if (subs.size === 1) {
+    const sub = subs.values().next().value as () => void
+    if (_lazyRecomputes.has(sub)) sub()
+    else enqueuePendingNotification(sub)
+    return
+  }
+  const size = subs.size
+  let i = 0
+  for (const sub of subs) {
+    if (i++ >= size) break
+    if (_lazyRecomputes.has(sub)) sub()
+    else enqueuePendingNotification(sub)
+  }
+}
+
 export function enqueuePendingNotification(notify: () => void): void {
   // Route based on callback kind. Computed recomputes go to the tier-1 Set;
   // everything else is an effect-tier notify, queued into the intrusive-flag
