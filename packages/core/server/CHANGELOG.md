@@ -1,5 +1,31 @@
 # @pyreon/server
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2252](https://github.com/pyreon/pyreon/pull/2252) [`b55d3c4`](https://github.com/pyreon/pyreon/commit/b55d3c405195d64586a284cb7dc3c3b144a36a70) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(server,head): thread the per-request CSP nonce onto every SSR-emitted inline tag
+
+  `cspMiddleware` + `useNonce` generated a per-request nonce and put it in the CSP header, but the nonce never reached the inline tags the SSR pipeline emits — so a strict nonce-based CSP (`script-src`/`style-src 'nonce-…'`, no `'unsafe-inline'`) blocked the loader-data hydration script (→ `useLoaderData()` undefined after hydration) and every CSS-in-JS `<style>` (→ unstyled page). The header promised CSP support the render didn't deliver.
+
+  Now the nonce threads end-to-end from the single string-mode choke point:
+
+  - **`renderPage`** reads `useRequestLocals().cspNonce` once (already inside the request context) and stamps it on the loader-data + store-state inline `<script>`s, forwards it to `collectStyles(nonce)` (styler `<style>`), and passes `renderWithHead(app, { nonce })` (head-injected `<script>`/`<style>`).
+  - **`@pyreon/head`**: `renderWithHead(app, { nonce })` / `serializeHead(tags, titleTemplate, nonce)` stamp the nonce on inline `<script>`/`<style>` tags (a user-supplied `nonce` on a tag wins; `<meta>`/`<link>` are never nonced). Wires the previously-declared-but-dead `HeadContext.nonce` intent.
+  - **`collectStyles`** signature widened to `(nonce?: string) => string` (backward-compatible optional param); zero's SSG styler wiring forwards it.
+
+  Lower packages stay decoupled — they _accept_ a nonce, never read request state. Everything is backward-compatible: no nonce (SSG build / no-CSP) → no attribute → byte-identical output. The client styler already inherits the nonce from the reused SSR `<style>` (`.nonce` IDL property; PR [#2173](https://github.com/pyreon/pyreon/issues/2173)). **Fundamental limits (documented):** SSG/SPA can't carry a per-request nonce (use hash-based CSP); the client-entry `<script src>` relies on `script-src 'self'` (a `'strict-dynamic'` setup needs a separate template nonce). Streaming `renderToStream` nonce threading is a tracked follow-on.
+
+### Patch Changes
+
+- Updated dependencies [[`b55d3c4`](https://github.com/pyreon/pyreon/commit/b55d3c405195d64586a284cb7dc3c3b144a36a70), [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`f807c5e`](https://github.com/pyreon/pyreon/commit/f807c5e4e1f64da2a1786b1c3578861c77749d8d), [`cfb2862`](https://github.com/pyreon/pyreon/commit/cfb2862480f48fa3eeaf647e17e25c70e8bb5a3d), [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9), [`bdea687`](https://github.com/pyreon/pyreon/commit/bdea687b11ce312ce5a9aaec3a96a44bb6c48d30), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d), [`33d9b55`](https://github.com/pyreon/pyreon/commit/33d9b555bb501b4341c1c5cc92400b162323ced5), [`22d82cf`](https://github.com/pyreon/pyreon/commit/22d82cf46bad096765f5cb174d2bf3fdadb49902), [`4ec01d8`](https://github.com/pyreon/pyreon/commit/4ec01d8b5cd9a95b04a01deb5ac2a26605dc1974), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435), [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435), [`6164409`](https://github.com/pyreon/pyreon/commit/6164409767c2b7a9668a004ab085406ae8e2178b)]:
+  - @pyreon/head@0.46.0
+  - @pyreon/runtime-dom@0.46.0
+  - @pyreon/router@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/runtime-server@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

@@ -1,5 +1,42 @@
 # @pyreon/hooks
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2257](https://github.com/pyreon/pyreon/pull/2257) [`182bcd2`](https://github.com/pyreon/pyreon/commit/182bcd29a6fcbebbd8a7b171da0d7e03a74d01a2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(hooks): `useFocusTrap` gains an optional second argument — `active` (arm/disarm the trap reactively without unmounting, via a getter or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and `initialFocus` (move focus into the container on activation: `true` for the first tabbable, or a selector / element / getter; default off, backward-compatible). The focusable query is now spec-grade: it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `Element.checkVisibility` in real browsers); and orders positive-`tabindex` first. The trap now only acts while focus is inside its container, so nested traps no longer fight. Fully backward-compatible — the existing single-argument call is unchanged. Adds a real-Chromium browser test for the focus / Tab-cycling / visibility semantics happy-dom can't verify.
+
+### Patch Changes
+
+- [#2305](https://github.com/pyreon/pyreon/pull/2305) [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix 4 audit-found manifest inaccuracies that shipped wrong claims to AI assistants via MCP
+
+  - **runtime-dom (safety-inverted):** `dangerouslySetInnerHTML` is intentionally RAW (React parity — developer owns sanitization); the manifest claimed it was sanitized. Also corrected: the Sanitizer API (`el.setHTML`) lives only in the `innerHTML` PROP sink (where it bypasses a custom `setSanitizer` policy), `sanitizeHtml()` itself is always the custom-or-DOMParser allowlist; `_bindText` is emitted for non-computed member chains too (with a `caller` 3rd arg preserving `this`), not "only a bare signal identifier"; KeepAlive's non-thunk `active={cond}` THROWS `TypeError` at mount (no `<Show when>`-style value normalization), it is not "captured once".
+  - **validate:** `parseReactiveAsync` DOES supersede stale results (internal version counter — an awaited stale frame resolves to the latest run's verdict); the mistakes entry claimed the opposite. The true residual caveat is no AbortSignal (in-flight validators run to completion). Also updated the stale union prod-crash string (`member._runInto is not a function`, not `member["~standard"] is undefined`).
+  - **router:** `onBeforeRouteLeave` called outside setup DOES register (unconditional `router.beforeEach`) — the real failure mode is a LEAKED guard (the `onUnmount` auto-removal never attaches), not "never registers". RouterView also accepts an optional `router` prop.
+  - **hooks:** `useScrollLock`'s per-instance `isLocked` guard makes an extra `unlock()` a no-op — it can NOT release another component's lock; corrected to teach the real limitation (one instance holds at most one refcount unit and does not nest).
+  - **validation:** schema libraries are detected by duck-typing `~standard` with zero dependency records — they are no longer declared as optional peer dependencies.
+  - **compiler:** `_bind` is imported from `@pyreon/reactivity` (not runtime-dom/core).
+
+- [#2268](https://github.com/pyreon/pyreon/pull/2268) [`4a41603`](https://github.com/pyreon/pyreon/commit/4a41603158b79fb1303711aab4b2220e52d532b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(hooks): document the 25 hooks missing from the manifest api[] (20 → 45 — every
+  public export is now documented). Each entry has a source-verified signature +
+  summary + real foot-guns, read from the hook bodies: the reactive accessors
+  (useMediaQuery / useColorScheme / useSizeClass / useReducedMotion / useOnline /
+  useIntersection / usePrevious / useWindowResize / useToggle / useHover / useFocus)
+  that must be CALLED and seed a pre-mount default (SSR first-render caveat); the
+  theme-derived hooks (useRootSize / useSpacing / useThemeValue) that capture a
+  NON-reactive snapshot; the callback hooks (useDebouncedCallback /
+  useThrottledCallback / useInterval / useTimeout) that capture the callback ONCE
+  despite "always latest" JSDoc; useScrollLock's module-level refcount; useToggle's
+  object (not tuple) shape; and the imperative native hooks (useHaptics / useShare /
+  useLinking / useNotifications) that no-op off-target. Does NOT change the hook COUNT
+  (these exports already existed) — check-doc-claims 36 unaffected. Regenerates the
+  MCP api-reference hooks region + snapshot (count 20 → 45). Docs/manifest only.
+- Updated dependencies [[`3471a7f`](https://github.com/pyreon/pyreon/commit/3471a7fd609fc47c318aa06d206a6ed122f3c7fc), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/styler@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/ui-core@0.46.0
+
 ## 0.45.0
 
 ### Minor Changes

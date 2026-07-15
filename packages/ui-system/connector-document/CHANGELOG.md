@@ -1,5 +1,17 @@
 # @pyreon/connector-document
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2261](https://github.com/pyreon/pyreon/pull/2261) [`8ef7d39`](https://github.com/pyreon/pyreon/commit/8ef7d39cab4ada6736620a82529aef33041af780) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(connector-document): extract Fragment (`<>…</>`) and bare-array children instead of silently dropping them
+
+  `extractDocumentTree` dispatched each vnode by `typeof type` (string vs function) with a final `return null`. A `<>…</>` fragment compiles to `h(Fragment, …)` whose `type` is a symbol, so a fragment vnode matched no branch and its entire subtree vanished from the exported document with no error. The same silent-drop hit any wrapper component that returned multiple siblings via a Fragment, and any component returning a bare `VNodeChild[]` array. Fragments and bare-array returns are now transparent — their doc-primitive children flatten into the parent, matching DOM-element/unmarked-component transparency. This is the same silent-drop class as PR [#197](https://github.com/pyreon/pyreon/issues/197)'s metadata drop, in the same package; it survived because the connector's own suite only fed hand-rolled marked-function fixtures and never grouped siblings with `<>` or a real rocketstyle primitive. Adds real-`h(Fragment)` + real-rocketstyle-primitive regression locks.
+
+- Updated dependencies [[`7e81ff0`](https://github.com/pyreon/pyreon/commit/7e81ff0e5c7aad2589e7fa39547246717c2e3576), [`3c1054a`](https://github.com/pyreon/pyreon/commit/3c1054aa98ac501980b69922edc7a0e76b1bfdc9), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/document@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

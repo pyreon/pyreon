@@ -1,5 +1,20 @@
 # @pyreon/core
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2287](https://github.com/pyreon/pyreon/pull/2287) [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(url-guard): `isUnsafeUrl` first-char fast path — skip the regex for the safe common case
+
+  The shared URL-injection guard (`@pyreon/core/url-guard`, used by BOTH the SSR `renderProp` and the client `setStaticProp`/DOMParser sanitizer) tested `UNSAFE_URL_RE = /^\s*(?:javascript|data):/i` on every URL-bearing attribute. New `isUnsafeUrl(url)` adds a `charCodeAt(0)` fast path that is PROVABLY equivalent: a `^\s*(?:javascript|data):` match needs the first non-whitespace char to be `j`/`J` or `d`/`D`, so a first char in printable ASCII (33–126) that isn't one of those cannot match — return safe without the regex (`http…`→`h`, `/…`, `#…`, `mailto:`→`m`, digits, …). Conservative on the margins: whitespace (≤32, ASCII controls the regex can skip) and non-ASCII (≥127, possibly UNICODE whitespace like ` `/` ` which `\s` matches — a naive `c > 32` predicate would WRONGLY pass these) fall through to the authoritative regex.
+
+  Security is unchanged — every `javascript:` / `JavaScript:` / ` javascript:` / `\tdata:` / ` javascript:` still reaches and is rejected by the regex; `data:image/*` on image contexts still allowed. Locked by a 5000-seed equivalence fuzz + an explicit unicode-whitespace matrix (bisect-verified: the naive `c > 32` predicate fails both the equivalence and security tests on ` javascript:`). `renderProp`, the client guard, and the SSR fast-path's `_ssrAttrUrl` all route through it, so both render paths get the win and stay byte-identical.
+
+### Patch Changes
+
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5)]:
+  - @pyreon/reactivity@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

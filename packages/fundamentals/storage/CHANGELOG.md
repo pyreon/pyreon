@@ -1,5 +1,22 @@
 # @pyreon/storage
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2267](https://github.com/pyreon/pyreon/pull/2267) [`176983a`](https://github.com/pyreon/pyreon/commit/176983ae452c8d0789371ef6bda742e80ba8ba6a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(storage): document the two missing public exports `removeStorage` and
+  `clearStorage` (both exported from index.ts but absent from api[]). Verified
+  against clear.ts: `removeStorage(key, { type? })` removes a single key and RESETS
+  its signal to the default (not undefined); `clearStorage(type = 'local' | 'all')`
+  clears only keys MANAGED by @pyreon/storage (NOT `localStorage.clear()` — unmanaged
+  keys are untouched) and resets each managed signal to its default. Documented the
+  real API asymmetry (removeStorage takes `{ type }` as an options object, clearStorage
+  takes the backend positionally). The `_reset*` exports are underscore-internal →
+  correctly excluded. Regenerates the MCP api-reference storage region + snapshot
+  (entry count 7 → 9). Docs/manifest only — no runtime behavior change.
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5)]:
+  - @pyreon/reactivity@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

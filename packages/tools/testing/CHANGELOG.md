@@ -1,5 +1,51 @@
 # @pyreon/testing
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2269](https://github.com/pyreon/pyreon/pull/2269) [`1dc9cce`](https://github.com/pyreon/pyreon/commit/1dc9cce9d0ca8b5376f581b41edb0f6f2630b779) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(testing): migrate @pyreon/testing to the manifest-driven docs pipeline (the
+  last real-API package without a manifest — 51 → 52 manifests). Adds
+  `src/manifest.ts` documenting the 7 Pyreon-native APIs (render / cleanup /
+  renderHook + the reactive-graph matchers expectSignal / expectEffect /
+  expectGarbageCollected / expectNoReactiveLeak) with source-verified footguns —
+  including that render's queries bind to `baseElement` not `container`, cleanup is
+  NOT auto-registered without the `/vitest` setup entry, renderHook runs the hook
+  ONCE (Pyreon semantics), expectSignal's two matchers are the same check, and the
+  GC matchers require `--expose-gc` — plus one grouped entry for the verbatim
+  @testing-library/dom re-exports. Wires it into gen-docs (llms.txt / llms-full.txt /
+  MCP api-reference), adds the @pyreon/manifest devDep + a manifest-snapshot test.
+  Docs/manifest only — no runtime behavior change.
+
+- [#2228](https://github.com/pyreon/pyreon/pull/2228) [`b09187a`](https://github.com/pyreon/pyreon/commit/b09187a1a3cb3352316cff72bfd68883d8720ead) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `@pyreon/testing` — finish the Testing-Library-parity story. The `fireEvent` /
+  `waitFor` / `renderHook` / jest-dom-matcher surface shipped in prior releases;
+  this hardens the real-Chromium coverage the parity bar requires (happy-dom can't
+  exercise real event dispatch, visibility, or focus):
+
+  - `fireEvent` is now proven through **both** halves of Pyreon's event model in a
+    real browser: delegated events (`click`/`input`/`change`/`keyDown`/`submit`/
+    `pointerDown`/`dblClick`/`focusIn`) that must bubble to the mount-container
+    delegation root, AND non-bubbling events (`focus`/`blur`/`mouseEnter`/
+    `mouseLeave`) that reach Pyreon's direct `addEventListener`. Also locks the
+    `preventDefault → false` boolean return and the generic `fireEvent(el, event)`
+    / `createEvent` form.
+  - `waitFor` is proven to resolve on a signal-driven DOM change AND to **reject**
+    on timeout (not hang); `waitForElementToBeRemoved` is covered.
+  - `renderHook` reactive-value + `rerender` semantics are locked in a real mount.
+  - The full jest-dom matcher set (`toBeVisible`/`toHaveFocus` — real
+    `getComputedStyle`/`activeElement`, `toBeDisabled`/`toBeEnabled`/`toBeChecked`/
+    `toHaveValue`/`toHaveClass`/`toHaveAttribute`/`toHaveTextContent`/
+    `toBeInTheDocument`/`toBeEmptyDOMElement`) is exercised in real Chromium, each
+    passing on the true case and throwing on the false case.
+
+  Docs/README updated to reflect the now-complete surface (the "landing across
+  follow-up PRs" caveat is removed).
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9), [`bdea687`](https://github.com/pyreon/pyreon/commit/bdea687b11ce312ce5a9aaec3a96a44bb6c48d30), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`22d82cf`](https://github.com/pyreon/pyreon/commit/22d82cf46bad096765f5cb174d2bf3fdadb49902), [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/runtime-dom@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

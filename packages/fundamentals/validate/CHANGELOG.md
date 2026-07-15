@@ -1,5 +1,35 @@
 # @pyreon/validate
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2305](https://github.com/pyreon/pyreon/pull/2305) [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix 4 audit-found manifest inaccuracies that shipped wrong claims to AI assistants via MCP
+
+  - **runtime-dom (safety-inverted):** `dangerouslySetInnerHTML` is intentionally RAW (React parity — developer owns sanitization); the manifest claimed it was sanitized. Also corrected: the Sanitizer API (`el.setHTML`) lives only in the `innerHTML` PROP sink (where it bypasses a custom `setSanitizer` policy), `sanitizeHtml()` itself is always the custom-or-DOMParser allowlist; `_bindText` is emitted for non-computed member chains too (with a `caller` 3rd arg preserving `this`), not "only a bare signal identifier"; KeepAlive's non-thunk `active={cond}` THROWS `TypeError` at mount (no `<Show when>`-style value normalization), it is not "captured once".
+  - **validate:** `parseReactiveAsync` DOES supersede stale results (internal version counter — an awaited stale frame resolves to the latest run's verdict); the mistakes entry claimed the opposite. The true residual caveat is no AbortSignal (in-flight validators run to completion). Also updated the stale union prod-crash string (`member._runInto is not a function`, not `member["~standard"] is undefined`).
+  - **router:** `onBeforeRouteLeave` called outside setup DOES register (unconditional `router.beforeEach`) — the real failure mode is a LEAKED guard (the `onUnmount` auto-removal never attaches), not "never registers". RouterView also accepts an optional `router` prop.
+  - **hooks:** `useScrollLock`'s per-instance `isLocked` guard makes an extra `unlock()` a no-op — it can NOT release another component's lock; corrected to teach the real limitation (one instance holds at most one refcount unit and does not nest).
+  - **validation:** schema libraries are detected by duck-typing `~standard` with zero dependency records — they are no longer declared as optional peer dependencies.
+  - **compiler:** `_bind` is imported from `@pyreon/reactivity` (not runtime-dom/core).
+
+- [#2236](https://github.com/pyreon/pyreon/pull/2236) [`f1bcdf2`](https://github.com/pyreon/pyreon/commit/f1bcdf23baf538154f43f6eba995e862e62d958e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(validate): source-verified foot-gun catalogs (`mistakes[]`) added to 11 flagship
+  APIs (serverCheck, catch, stringbool, formatErrors, or/union, superRefine, instanceof,
+  getMeta, preprocess, parseReactiveAsync, nonoptional). Regenerates the MCP api-reference
+  validate region. No runtime behavior change — manifest/docs only.
+
+- [#2289](https://github.com/pyreon/pyreon/pull/2289) [`9cf96a3`](https://github.com/pyreon/pyreon/commit/9cf96a33645154a18b68506c7d6ae76db0687317) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Faster valid-path parsing for scalars + flat objects — Pyreon's `s` runtime now beats ArkType on flat-object, nested, number-range, and array valid-parse (was behind on flat-object-with-email + number-range).
+
+  Three JIT/runtime optimizations, all semantics-preserving (JIT↔interpreter differential fuzz + format-registry-routing tests green; error messages, paths, and the client/server `/server` validator swap unchanged):
+
+  - **Format-check JIT inlining.** A format check (`.email()`/`.url()`/`.uuid()`/`.regex()`/…) now exposes a pure `_pred` predicate that the JIT calls on the valid path, invoking the issue-pushing closure ONLY on failure. The old path called a `wrapCheckWithPath` wrapper that pushed/popped `ctx.path` (with a `try/finally`) on EVERY valid parse — the dominant per-field cost of an object with a format field, which kept flat-object-with-email ~1.16× behind ArkType. The resolver is memoized against a registry version counter, so the per-parse `Map.get(name)` string-hash lookup is gone too.
+  - **Lazy `EMPTY_PATH` sentinel.** `makeCtx` starts every parse's `path` at a shared frozen empty-array sentinel; a scalar / flat-object parse (path-elided by the JIT) allocates ZERO path arrays. Only a keyed descent that actually writes swaps in a real array (`mutablePath`). Roughly doubles ctx-allocation throughput — the dominant cost of a trivial scalar parse.
+  - **Sync-only JIT body.** When a compiled schema tree has no fallback/array subtree (no source of an async result), the generated validator omits the async `A`/`B` pending lists + the `Promise.all` root barrier + the per-call `NOOP` closure — a leaner body the engine optimizes better.
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d), [`87ba16e`](https://github.com/pyreon/pyreon/commit/87ba16e3dc9cfa44ef03f8e2cb229a3b6fd11d47), [`661a748`](https://github.com/pyreon/pyreon/commit/661a7485a93abb9fc64592e25c5214b0a27d8597)]:
+  - @pyreon/validation@0.46.0
+  - @pyreon/reactivity@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

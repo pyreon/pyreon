@@ -1,5 +1,213 @@
 # @pyreon/mcp
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2278](https://github.com/pyreon/pyreon/pull/2278) [`e667b43`](https://github.com/pyreon/pyreon/commit/e667b43196a4377e2677161d37ba09b8a70dc991) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(code): document the 5 missing editor-helper exports in the manifest — `useEditorSignal`, `getAvailableLanguages`, and the theme trio (`darkTheme`/`lightTheme`/`resolveTheme`). Source-verified: `useEditorSignal` wraps `bindEditorToSignal` with `onUnmount` auto-cleanup and returns `void` (use `bindEditorToSignal` for a manual `{ dispose }` lifecycle); `getAvailableLanguages` lists loadable grammar ids (lazy, incl. `'plain'`); `darkTheme` carries the `{ dark: true }` facet that CodeMirror's dark-aware features and the minimap key on (not a CSS class); `resolveTheme` maps `'light'`/`'dark'` and passes a custom `Extension` through. Regenerates the MCP api-reference + docs-site reference page.
+
+- [#2244](https://github.com/pyreon/pyreon/pull/2244) [`7d88cbb`](https://github.com/pyreon/pyreon/commit/7d88cbb45f95d90085c67d4c24d2b0c96a4dabdf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(compiler): source-verified `mistakes[]` foot-gun catalogs added to
+  transformJSX_JS, diagnoseError, and deriveIslandName (+ one more on transformJSX);
+  mistakes[] blocks 4 → 8. Every footgun verified against the worktree source:
+  diagnoseError must be imported from the browser-safe `@pyreon/compiler/diagnose`
+  subpath for client use (the main barrel transitively `import ts from "typescript"`
+  via the AST detectors, dragging the TS compiler API into the browser bundle —
+  confirmed index.ts re-exports it AND react-intercept/pyreon-intercept/ts.ts all
+  import typescript); transformJSX_JS is the slow fallback with byte-identical output
+  (not a lighter pass); deriveIslandName's fnv1a6 diverges if relPath isn't the
+  `islandRelPath` normalization; transformJSX output isn't standalone (needs the
+  Pyreon runtime helpers). Regenerates the MCP api-reference compiler region.
+  Docs/manifest only — no runtime behavior change.
+
+- [#2247](https://github.com/pyreon/pyreon/pull/2247) [`ffe82fa`](https://github.com/pyreon/pyreon/commit/ffe82fad66324137f28f8ec7ba41042c8a01ee60) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(document-primitives): source-verified `mistakes[]` foot-gun catalogs added to
+  the flagship components that had none — DocDocument (3), DocTable (2), DocList (2);
+  mistakes[] blocks 1 → 4. Every footgun verified against the worktree source:
+  DocDocument stores title/author/subject accessors in `_documentProps` and the
+  `.attrs()` callback runs ONCE at mount, so a called accessor (`title={getTitle()}`)
+  captures once while a plain string is static and null is omitted; DocTable rows are
+  keyed by `column.key` and columns/rows are `_documentProps`-only (filtered before
+  the DOM because `HTMLTableElement.rows` is read-only); DocList's `ordered` sets the
+  tag while DocListItem carries no marker (`_documentProps: {}`). Regenerates the MCP
+  api-reference document-primitives region. Docs/manifest only — no runtime change.
+
+- [#2283](https://github.com/pyreon/pyreon/pull/2283) [`e3bf73d`](https://github.com/pyreon/pyreon/commit/e3bf73dd28bae832b5b90c18b1ac3b847643eafb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(document-primitives): document `DocumentPreview` and `documentTheme` in the manifest. `DocumentPreview` is a paper-sized (A4/A3/A5/letter/legal) browser preview wrapper that ALSO serves as the extraction root (`_documentType: 'document'`, so you don't nest a separate `<DocDocument>`); `documentTheme` is the default colors/fonts/sizes/spacing config for export styling (spread-clone to override — it's a shared module-level object). Source-verified against `DocumentPreview.ts`/`theme.ts`. The re-exported `extractDocumentTree` is already content-covered by the `extractDocNode` entry. Regenerates the MCP api-reference + docs-site reference page.
+
+- [#2271](https://github.com/pyreon/pyreon/pull/2271) [`7e81ff0`](https://github.com/pyreon/pyreon/commit/7e81ff0e5c7aad2589e7fa39547246717c2e3576) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(document): document the 17 JSX primitives + the renderer extension API in the manifest — `Heading`, `Text`, `Table`, `List`/`ListItem`, `Code`, `Link`, `Image`, `Button`, the structural set (`Page`/`Section`/`Row`/`Column`/`Divider`/`Spacer`/`Quote`/`PageBreak`), and `registerRenderer`/`unregisterRenderer`/`isDocNode`. All signatures, defaults, and footguns are source-verified (Heading `level` defaults to 1; `ListItem` discards every prop except `children`; `Table` cells are scalar `string | number` with data in props not children; `Button` has no `onClick`/`variant` and requires `href`; `registerRenderer` silently overwrites; `isDocNode` is a structural-only guard; a plain-object child throws). Regenerates the MCP api-reference + docs-site reference page.
+
+- [#2262](https://github.com/pyreon/pyreon/pull/2262) [`c60aafd`](https://github.com/pyreon/pyreon/commit/c60aafd122bd5d80ac443069f7c6fe3aa65c27b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(elements): source-verified mistakes[] for Text + a Util doc-bug fix.
+  Text had no mistakes — added three verified against Text/component.tsx: `tag`/
+  `paragraph` are STATIC (mount-time, reactive tag swap unsupported — remount to
+  change); `children` takes precedence over `label` (`children ?? label`); `css` is
+  reactive while `tag` is not. Util was MISCHARACTERIZED as an "Element-family
+  structural wrapper without layout semantics" — the source (Util/component.tsx)
+  shows it adds NO DOM node of its own: it CLONES its child, injecting
+  `className`/`style` (props are `{ children, className, style }`, no `tag`/layout).
+  Corrected the signature + summary + added two mistakes. mistakes[] blocks 6 → 9.
+  Regenerates the MCP api-reference + llms-full elements sections + docs reference
+  page. Docs/manifest only — no runtime behavior change.
+
+- [#2305](https://github.com/pyreon/pyreon/pull/2305) [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix 4 audit-found manifest inaccuracies that shipped wrong claims to AI assistants via MCP
+
+  - **runtime-dom (safety-inverted):** `dangerouslySetInnerHTML` is intentionally RAW (React parity — developer owns sanitization); the manifest claimed it was sanitized. Also corrected: the Sanitizer API (`el.setHTML`) lives only in the `innerHTML` PROP sink (where it bypasses a custom `setSanitizer` policy), `sanitizeHtml()` itself is always the custom-or-DOMParser allowlist; `_bindText` is emitted for non-computed member chains too (with a `caller` 3rd arg preserving `this`), not "only a bare signal identifier"; KeepAlive's non-thunk `active={cond}` THROWS `TypeError` at mount (no `<Show when>`-style value normalization), it is not "captured once".
+  - **validate:** `parseReactiveAsync` DOES supersede stale results (internal version counter — an awaited stale frame resolves to the latest run's verdict); the mistakes entry claimed the opposite. The true residual caveat is no AbortSignal (in-flight validators run to completion). Also updated the stale union prod-crash string (`member._runInto is not a function`, not `member["~standard"] is undefined`).
+  - **router:** `onBeforeRouteLeave` called outside setup DOES register (unconditional `router.beforeEach`) — the real failure mode is a LEAKED guard (the `onUnmount` auto-removal never attaches), not "never registers". RouterView also accepts an optional `router` prop.
+  - **hooks:** `useScrollLock`'s per-instance `isLocked` guard makes an extra `unlock()` a no-op — it can NOT release another component's lock; corrected to teach the real limitation (one instance holds at most one refcount unit and does not nest).
+  - **validation:** schema libraries are detected by duck-typing `~standard` with zero dependency records — they are no longer declared as optional peer dependencies.
+  - **compiler:** `_bind` is imported from `@pyreon/reactivity` (not runtime-dom/core).
+
+- [#2270](https://github.com/pyreon/pyreon/pull/2270) [`0b73239`](https://github.com/pyreon/pyreon/commit/0b73239fe3603b1e47454c4fb893f4519ef1ef6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(flow): document 5 missing public exports in the manifest — `NodeResizer`, `NodeToolbar`, the `MarkerType`/`Position` enums, the edge-path helpers (`getBezierPath`/`getSmoothStepPath`/`getStraightPath`/`getStepPath`/`getWaypointPath`/`getEdgePath`/`getHandlePosition`/`getSmartHandlePositions`), and `computeLayout` — with source-verified signatures, examples, and footgun catalogs (object-not-tuple edge-path return, NodeToolbar is not a portal, computeLayout is async + non-mutating). Regenerates llms/MCP api-reference.
+
+- [#2268](https://github.com/pyreon/pyreon/pull/2268) [`4a41603`](https://github.com/pyreon/pyreon/commit/4a41603158b79fb1303711aab4b2220e52d532b0) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(hooks): document the 25 hooks missing from the manifest api[] (20 → 45 — every
+  public export is now documented). Each entry has a source-verified signature +
+  summary + real foot-guns, read from the hook bodies: the reactive accessors
+  (useMediaQuery / useColorScheme / useSizeClass / useReducedMotion / useOnline /
+  useIntersection / usePrevious / useWindowResize / useToggle / useHover / useFocus)
+  that must be CALLED and seed a pre-mount default (SSR first-render caveat); the
+  theme-derived hooks (useRootSize / useSpacing / useThemeValue) that capture a
+  NON-reactive snapshot; the callback hooks (useDebouncedCallback /
+  useThrottledCallback / useInterval / useTimeout) that capture the callback ONCE
+  despite "always latest" JSDoc; useScrollLock's module-level refcount; useToggle's
+  object (not tuple) shape; and the imperative native hooks (useHaptics / useShare /
+  useLinking / useNotifications) that no-op off-target. Does NOT change the hook COUNT
+  (these exports already existed) — check-doc-claims 36 unaffected. Regenerates the
+  MCP api-reference hooks region + snapshot (count 20 → 45). Docs/manifest only.
+
+- [#2277](https://github.com/pyreon/pyreon/pull/2277) [`4483a64`](https://github.com/pyreon/pyreon/commit/4483a647f8cb7444b800ed1eb775bf3794291c3a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(hotkeys): document the 7 missing imperative + utility exports in the manifest — the reference-counted scope API (`enableScope`/`disableScope`/`getActiveScopes`), `getRegisteredHotkeys`, and the combo utilities (`parseShortcut`/`matchesCombo`/`formatCombo`). All signatures and footguns are source-verified: scope enable/disable is refcounted (`'global'` immutable, server no-op, must balance acquire/release); `getActiveScopes` returns the live signal; `getRegisteredHotkeys` is a snapshot; `matchesCombo` skips Shift-enforcement for symbol keys (so `?` matches Shift+/); `parseShortcut`'s `mod` is META on Mac / CTRL elsewhere; `formatCombo` renders the ⌘ glyph on Mac and is display-only (not round-trippable). Regenerates the MCP api-reference + docs-site reference page.
+
+- [#2249](https://github.com/pyreon/pyreon/pull/2249) [`a2f4ce5`](https://github.com/pyreon/pyreon/commit/a2f4ce5f88d6c5fbfc4ce8ecfbd732a6d0fb6801) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(i18n): source-verified `mistakes[]` foot-gun catalogs + two previously-undocumented
+  public exports. Added `resolvePluralCategory` and `parseRichText` to the manifest api[]
+  (both are exported from index.ts/core.ts but were absent). Enriched mistakes[]
+  (5 → 10 blocks) on createI18n (plural key naming / CLDR-category-not-count===1 /
+  reserved `count` key), interpolate (missing value stays literal / bare call ignores
+  format specs / `\w+`-only placeholders — signature also corrected to include the
+  `options.format` param), I18nProvider (`value` prop / JSX-only entry), useI18n
+  (throws without provider / `locale` is a signal). Every fact verified against source
+  (pluralization.ts Intl.PluralRules, interpolation.ts literal-passthrough,
+  trans.tsx flat-tag regex, context.ts throw). Regenerates the MCP api-reference
+  i18n region. Docs/manifest only — no runtime behavior change.
+
+- [#2254](https://github.com/pyreon/pyreon/pull/2254) [`356a9d6`](https://github.com/pyreon/pyreon/commit/356a9d6f4cdcb3f0b3ad50994cd28e0ff6c35fbb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(machine): document the instance query + control surface. The manifest was
+  already excellent (dense summaries + 5 gotchas), but four reactive public methods
+  were only mentioned in passing — now a grouped api[] entry: `matches(...states)`
+  (variadic OR), `nextEvents()` (declared `on` keys — NOT guard-filtered, excludes
+  `always`, verified machine.ts:182), `reset()` (initial + its `always` cascade),
+  `dispose()` (clears all listeners; the machine still transitions afterward). Each
+  carries a source-verified foot-gun. Regenerates the MCP api-reference machine
+  region + snapshot test (entry count 4 → 5). Docs/manifest only — no runtime change.
+
+- [#2280](https://github.com/pyreon/pyreon/pull/2280) [`ac1e2f4`](https://github.com/pyreon/pyreon/commit/ac1e2f445468139132b32f1e27f0f21f2d0d3a08) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(primitives): document `init`/`resetPrimitivesConfig` and name the full escape-hatch trio in the manifest. Adds the router-agnostic runtime-config entry (`init({ navigate })` upgrades `<Link>` from a full-reload `<a href>` to SPA navigation; `resetPrimitivesConfig` clears it for tests) — a real footgun that was undocumented. Also renames the escape-hatch entry `Web` → `Web / NativeIOS / NativeAndroid` so all three components are discoverable by name, with a source-verified summary (`<NativeIOS>`/`<NativeAndroid>` return null on web; PMTC emits their children only on the native target). Regenerates the MCP api-reference + docs-site reference page.
+
+- [#2258](https://github.com/pyreon/pyreon/pull/2258) [`421ca82`](https://github.com/pyreon/pyreon/commit/421ca82e6d0ab950ff7c47bfc0870142c6308526) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(rocketstyle): document the `context` export. The rocketstyle manifest was
+  already excellent (13 mistakes blocks + 5 gotchas covering useBooleans-false,
+  \_rsMemo cache-key-post-normalization, component-swap chain reset, layout/CSS
+  split, introspection surface — all flagship entries verified accurate, no doc
+  bug). The one gap was the `context` public export (mentioned in Provider's summary
+  but not its own api[] entry). Documented it: the raw reactive context re-exported
+  from `@pyreon/ui-core` (the SAME object `<PyreonUI>`/Provider write), whose
+  `useContext(context)` returns a `() => { theme, mode, isDark, isLight }` accessor.
+  Verified against context/context.ts. Regenerates the MCP api-reference rocketstyle
+  region + snapshot (count 13 → 14). Docs/manifest only — no runtime behavior change.
+
+- [#2240](https://github.com/pyreon/pyreon/pull/2240) [`f807c5e`](https://github.com/pyreon/pyreon/commit/f807c5e4e1f64da2a1786b1c3578861c77749d8d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(router): source-verified `mistakes[]` foot-gun catalogs added to the flagship
+  APIs that had none — RouterView, useLoaderData, useRoute, useSearchParams,
+  onBeforeRouteLeave. Every entry verified against the worktree source: RouterView's
+  SSR-blank-on-lazy (`prefetchLoaderData` runs loaders only; the handler must also
+  `router.preload`), the single atomic `depthEntry` computed (param changes don't
+  remount the layout), useLoaderData's non-reactive context read + per-depth
+  provider, useRoute's accessor/destructure trap, useSearchParams' tuple shape, and
+  the guard return-value inversion vs useBlocker (guard `false`=cancel/string=redirect
+  vs blocker `true`=block — confirmed at router.ts:756-757). Regenerates the MCP
+  api-reference router region. Docs/manifest only — no runtime behavior change.
+
+- [#2274](https://github.com/pyreon/pyreon/pull/2274) [`cfb2862`](https://github.com/pyreon/pyreon/commit/cfb2862480f48fa3eeaf647e17e25c70e8bb5a3d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(router): document 6 missing public exports in the manifest — `useNavigate`, `useParams`, `useValidatedSearch`, the `notFound`/`NotFoundBoundary` 404 pair, and `lazy`. `useNavigate`+`useParams` are two of the most-used router hooks framework-wide and had no api[] entry. All signatures, return shapes, and footguns are source-verified: `useNavigate` returns a `void`-typed pusher (drops the NavigationResult); `useParams` returns a string SNAPSHOT (not a live accessor); `useValidatedSearch` is an argument-less READ-ONLY accessor distinct from `useTypedSearchParams`/`useSearchParams`; `notFound()` throws a `Symbol.for('pyreon.notFound')`-branded error and `NotFoundBoundary` re-throws non-notFound errors; `lazy()` returns an inert descriptor cached by the router (not `lazy` itself). Regenerates the MCP api-reference + docs-site reference page.
+
+- [#2238](https://github.com/pyreon/pyreon/pull/2238) [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(runtime-dom): source-verified `mistakes[]` foot-gun catalogs added to render,
+  KeepAlive, \_bindText, \_tpl, sanitizeHtml — and TWO doc-bug fixes caught by
+  source-verification: KeepAlive's signature/summary/example were documenting Vue's
+  `include`/`exclude`/`max` API when the real prop is `active={() => boolean}`
+  (CSS-hides children, keeps them mounted); sanitizeHtml's summary claimed an
+  "identity function" fallback when the real fallback is a tag-allowlist sanitizer.
+  Regenerates the MCP api-reference runtime-dom region. Docs/manifest only — no
+  runtime behavior change.
+
+- [#2250](https://github.com/pyreon/pyreon/pull/2250) [`f813643`](https://github.com/pyreon/pyreon/commit/f81364338273f6664c1c236f76fd0424b50d3fe2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(state-tree): source-verified `mistakes[]` + a missing public export + two
+  doc-bug fixes. Added `resetHook`/`resetAllHooks` to api[] (exported from index.ts
+  but absent — the `.asHook(id)` singleton test-isolation footgun). Enriched
+  mistakes[] (11 → 15 blocks): applyPatch (REPLACE-ONLY — throws `unsupported op` on
+  add/remove, verified patch.ts), getSnapshot (non-reactive peek; recurses
+  arrays-of-instances), applySnapshot (partial MERGE not wholesale; in-place array
+  reconcile up to overlap; schema mode re-validates + rejects). Fixed two stale
+  claims caught by verifying against source: the `reference` mistake said "getSnapshot
+  v1 does not recurse arrays-of-instances" (snapshot.ts now DOES) and applySnapshot's
+  summary said "wholesale" (it's a partial merge — `Partial<Snapshot>`, absent keys
+  preserved). Regenerates the MCP api-reference state-tree region + snapshot test
+  (entry count 20 → 21). Docs/manifest only — no runtime behavior change.
+
+- [#2267](https://github.com/pyreon/pyreon/pull/2267) [`176983a`](https://github.com/pyreon/pyreon/commit/176983ae452c8d0789371ef6bda742e80ba8ba6a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(storage): document the two missing public exports `removeStorage` and
+  `clearStorage` (both exported from index.ts but absent from api[]). Verified
+  against clear.ts: `removeStorage(key, { type? })` removes a single key and RESETS
+  its signal to the default (not undefined); `clearStorage(type = 'local' | 'all')`
+  clears only keys MANAGED by @pyreon/storage (NOT `localStorage.clear()` — unmanaged
+  keys are untouched) and resets each managed signal to its default. Documented the
+  real API asymmetry (removeStorage takes `{ type }` as an options object, clearStorage
+  takes the backend positionally). The `_reset*` exports are underscore-internal →
+  correctly excluded. Regenerates the MCP api-reference storage region + snapshot
+  (entry count 7 → 9). Docs/manifest only — no runtime behavior change.
+
+- [#2256](https://github.com/pyreon/pyreon/pull/2256) [`3471a7f`](https://github.com/pyreon/pyreon/commit/3471a7fd609fc47c318aa06d206a6ed122f3c7fc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(styler): document the two remaining public exports missing from the manifest.
+  The styler manifest was already at a high bar (12 mistakes blocks, 5 gotchas
+  covering descriptor-copy prop forwarding, CSP nonce, singleton sheet, theme
+  reactivity). This closes the "every public export in api[]" gap: the FNV-1a hash
+  primitives (`hash`/`hashUpdate`/`hashFinalize`/`HASH_INIT` — the class-name/rule
+  dedup hash, with the streaming-vs-one-shot contract + the non-cryptographic
+  caveat) and `setStyleExtraction` (the internal CPSE dependency-injection seam that
+  `@pyreon/ui-core`'s `init({ styleExtraction: true })` uses to thread in
+  `@pyreon/unistyle`'s rewriter — apps enable CPSE via the init flag, not this call).
+  Both verified against source (hash.ts, styled.tsx). Regenerates the MCP
+  api-reference + llms-full styler sections + snapshot key list. Docs/manifest only —
+  no runtime behavior change.
+
+- [#2269](https://github.com/pyreon/pyreon/pull/2269) [`1dc9cce`](https://github.com/pyreon/pyreon/commit/1dc9cce9d0ca8b5376f581b41edb0f6f2630b779) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(testing): migrate @pyreon/testing to the manifest-driven docs pipeline (the
+  last real-API package without a manifest — 51 → 52 manifests). Adds
+  `src/manifest.ts` documenting the 7 Pyreon-native APIs (render / cleanup /
+  renderHook + the reactive-graph matchers expectSignal / expectEffect /
+  expectGarbageCollected / expectNoReactiveLeak) with source-verified footguns —
+  including that render's queries bind to `baseElement` not `container`, cleanup is
+  NOT auto-registered without the `/vitest` setup entry, renderHook runs the hook
+  ONCE (Pyreon semantics), expectSignal's two matchers are the same check, and the
+  GC matchers require `--expose-gc` — plus one grouped entry for the verbatim
+  @testing-library/dom re-exports. Wires it into gen-docs (llms.txt / llms-full.txt /
+  MCP api-reference), adds the @pyreon/manifest devDep + a manifest-snapshot test.
+  Docs/manifest only — no runtime behavior change.
+
+- [#2264](https://github.com/pyreon/pyreon/pull/2264) [`43c6912`](https://github.com/pyreon/pyreon/commit/43c69129e24f8ef8f9390428218b2619b1559486) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(toast): source-verified mistakes[] for the flagship `toast()` API (4 → 8).
+  Added four footguns verified by reading toast.ts: `toast.loading()` never
+  auto-dismisses (created with `duration: 0` — must be resolved via update/dismiss/
+  remove or `toast.promise`); `duration: 0` means PERSISTENT not instant (the timer
+  is skipped for `duration <= 0`; use `toast.remove` to clear now); `toast.update()`
+  only changes message/type/duration/description (NOT icon/action); `toast.promise()`
+  returns the ORIGINAL promise so a rejection still propagates (add your own catch),
+  and its success/error may be functions receiving the resolved value/error. The
+  existing summary (dismiss soft vs remove hard, methods list) verified accurate —
+  no doc bug. Regenerates the MCP api-reference toast region + snapshot (mistakes
+  4 → 8). Docs/manifest only — no runtime behavior change.
+
+- [#2236](https://github.com/pyreon/pyreon/pull/2236) [`f1bcdf2`](https://github.com/pyreon/pyreon/commit/f1bcdf23baf538154f43f6eba995e862e62d958e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(validate): source-verified foot-gun catalogs (`mistakes[]`) added to 11 flagship
+  APIs (serverCheck, catch, stringbool, formatErrors, or/union, superRefine, instanceof,
+  getMeta, preprocess, parseReactiveAsync, nonoptional). Regenerates the MCP api-reference
+  validate region. No runtime behavior change — manifest/docs only.
+
+- [#2243](https://github.com/pyreon/pyreon/pull/2243) [`87ba16e`](https://github.com/pyreon/pyreon/commit/87ba16e3dc9cfa44ef03f8e2cb229a3b6fd11d47) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(validation): `isStandardSchema` accepts callable schemas (raw ArkType works framework-wide)
+
+  `isStandardSchema` bailed with `typeof value !== 'object'` before reading `~standard` — but **ArkType schemas are FUNCTIONS** (`type("string")(input)` validates) that also carry `~standard`. So a raw ArkType schema failed Standard-Schema detection, and every consumer that routes "is this a Standard Schema? then validate through it" (`@pyreon/store` / `@pyreon/state-tree` via `extractParseFn`, the `standardSchemaToValidator` bridge, `@pyreon/validate`, `@pyreon/feature`) silently SKIPPED validation for it — a store/state-tree declared with a raw ArkType schema either reported VALID while the schema would REJECT or threw at definition time (raw ArkType was unusable).
+
+  The guard now accepts a value whose `typeof` is `object` **or** `function`, as long as it carries a well-formed `~standard.validate`. Purely additive: object schemas (Zod/Valibot) behave exactly as before; only a function-carrying-`~standard` (ArkType) is newly accepted, and a plain function without `~standard` is still rejected. The return type narrows from the deprecated `StandardSchemaShape` to the canonical `StandardSchemaLike` (identical type — no consumer cascade). The sibling bridges (`standardSchemaToValidator` / `wrapStandardSchema`) already invoked `schema['~standard'].validate` (the Standard-Schema entrypoint, not a Zod-specific `.safeParse`), so only DETECTION was broken.
+
+  Regenerates the MCP api-reference validation region. Known residual (separate consumer bug, follow-up): `@pyreon/form`'s `resolveSchemaValidator` short-circuits `typeof === 'function'` before `isStandardSchema`, so a raw ArkType schema passed to `useForm({ schema })` is still mistreated as a `SchemaValidateFn`.
+
+- Updated dependencies [[`7d88cbb`](https://github.com/pyreon/pyreon/commit/7d88cbb45f95d90085c67d4c24d2b0c96a4dabdf), [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`4ec01d8`](https://github.com/pyreon/pyreon/commit/4ec01d8b5cd9a95b04a01deb5ac2a26605dc1974), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435), [`1d73037`](https://github.com/pyreon/pyreon/commit/1d730373c9adcbeef3a6575e7af199f27e69c7bd), [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728)]:
+  - @pyreon/compiler@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

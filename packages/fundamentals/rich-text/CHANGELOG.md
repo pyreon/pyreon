@@ -1,5 +1,22 @@
 # @pyreon/rich-text
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2226](https://github.com/pyreon/pyreon/pull/2226) [`c986860`](https://github.com/pyreon/pyreon/commit/c9868607cc737696c39127b3565587ce8b1234db) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Content computeds are now selection-immune, character/word counts are document-derived, and `characterCount` counts visible characters.
+
+  - **Selection moves no longer re-run content computeds.** The editor's single transaction counter was bumped by both content (`onUpdate`) and selection (`onSelectionUpdate`) events, so a pure cursor move re-ran every content computed (`text`/`html`/`characterCount`/`wordCount`/`canUndo`/`canRedo`) — a live word-counter effect re-fired on every arrow-key. The counter is now split (`docVersion` for content, `selectionVersion` for selection); content computeds subscribe to content only, while `isActive` still tracks the selection.
+  - **`characterCount`/`wordCount`/`isEmpty` derive from the document JSON**, so they report accurately before the (lazy) engine mounts — a stored-ProseMirror-JSON draft has a real count without loading an editor — and after dispose.
+  - **`characterCount` counts visible characters**, excluding the `\n\n` block separators `getText()` inserts between blocks (two paragraphs of `aaa`/`bbb` is 6, not 8).
+
+  No API changes. Pre-mount count/text/isEmpty semantics for stored-JSON content are the only behavior change (previously 0/""/true).
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9), [`bdea687`](https://github.com/pyreon/pyreon/commit/bdea687b11ce312ce5a9aaec3a96a44bb6c48d30), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`22d82cf`](https://github.com/pyreon/pyreon/commit/22d82cf46bad096765f5cb174d2bf3fdadb49902), [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/runtime-dom@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

@@ -1,5 +1,34 @@
 # @pyreon/feature
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2242](https://github.com/pyreon/pyreon/pull/2242) [`1241013`](https://github.com/pyreon/pyreon/commit/124101364479fefa0313c9cbe269fb0789a56994) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(feature): validation now works for Valibot / ArkType (any Standard Schema), not just Zod
+
+  `defineFeature`'s `createValidator` only recognised Zod (it gated on `safeParseAsync`), so a Valibot or ArkType schema silently received **no** form validation despite the documented "Zod / Valibot / ArkType" support — the form reported valid while the schema rejected (the silent-schema-drop class). It now routes any Standard Schema (`~standard`) through `@pyreon/validation`'s `standardSchemaToValidator`, and — unlike `isStandardSchema` — accepts **callable** schemas, so ArkType's `type(...)` (a function carrying `~standard`) is detected too. Errors surface on the right field.
+
+  Honest boundary: field **introspection** (`extractFields` → auto form fields, table columns, create-form defaults) remains **Zod-only** — there is no cross-library shape-introspection standard. A non-Zod feature now emits a one-time dev warning naming the fix (supply `initialValues` explicitly; build tables via `@pyreon/table` directly) instead of the confusing downstream `[@pyreon/form] Field … does not exist` crash. The query hooks (`useList`/`useById`/`useSearch`/`useCreate`/`useUpdate`/`useDelete`) and `useStore` are schema-agnostic and work with every validator.
+
+  All new tests exercise the real composed primitives (real `QueryClient` + `mount` + `@pyreon/form` + `@pyreon/table`) with real Zod, Valibot, and ArkType schemas.
+
+### Patch Changes
+
+- [#2272](https://github.com/pyreon/pyreon/pull/2272) [`b23cd38`](https://github.com/pyreon/pyreon/commit/b23cd38a2bdea6ff7965c6700902f1e595422fd7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Remove the redundant local `hasStandardSchema` duck-type in `@pyreon/feature` and route Standard-Schema detection through `@pyreon/validation`'s exported `isStandardSchema`.
+
+  The local workaround existed ONLY because validation's `isStandardSchema` used to carry an over-narrow `typeof value !== 'object'` guard that silently rejected callable ArkType schemas (`type(...)` returns a FUNCTION carrying `~standard`). [#2243](https://github.com/pyreon/pyreon/issues/2243) fixed that guard to accept `typeof === 'object' || 'function'`, so the two functions are now behaviorally identical and the local copy is dead weight. This completes the ArkType raw-schema detection arc ([#2242](https://github.com/pyreon/pyreon/issues/2242) → [#2243](https://github.com/pyreon/pyreon/issues/2243) → [#2253](https://github.com/pyreon/pyreon/issues/2253)).
+
+  No behavior change — a raw callable ArkType schema is still detected and produces validation (locked by the existing `schema-validators.test.tsx` ArkType case, bisect-verified against a narrowed object-only guard).
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`7798a6a`](https://github.com/pyreon/pyreon/commit/7798a6a6a9e70f977483564b23eb1bf9a554b3fa), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d), [`2963c27`](https://github.com/pyreon/pyreon/commit/2963c270f8fa5f6b2d178b6d8fb6d2bd21d3df89), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435), [`87ba16e`](https://github.com/pyreon/pyreon/commit/87ba16e3dc9cfa44ef03f8e2cb229a3b6fd11d47), [`661a748`](https://github.com/pyreon/pyreon/commit/661a7485a93abb9fc64592e25c5214b0a27d8597)]:
+  - @pyreon/validation@0.46.0
+  - @pyreon/form@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/store@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/query@0.46.0
+  - @pyreon/table@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

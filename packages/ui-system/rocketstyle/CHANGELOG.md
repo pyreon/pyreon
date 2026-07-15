@@ -1,5 +1,26 @@
 # @pyreon/rocketstyle
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2258](https://github.com/pyreon/pyreon/pull/2258) [`421ca82`](https://github.com/pyreon/pyreon/commit/421ca82e6d0ab950ff7c47bfc0870142c6308526) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(rocketstyle): document the `context` export. The rocketstyle manifest was
+  already excellent (13 mistakes blocks + 5 gotchas covering useBooleans-false,
+  \_rsMemo cache-key-post-normalization, component-swap chain reset, layout/CSS
+  split, introspection surface — all flagship entries verified accurate, no doc
+  bug). The one gap was the `context` public export (mentioned in Provider's summary
+  but not its own api[] entry). Documented it: the raw reactive context re-exported
+  from `@pyreon/ui-core` (the SAME object `<PyreonUI>`/Provider write), whose
+  `useContext(context)` returns a `() => { theme, mode, isDark, isLight }` accessor.
+  Verified against context/context.ts. Regenerates the MCP api-reference rocketstyle
+  region + snapshot (count 13 → 14). Docs/manifest only — no runtime behavior change.
+- Updated dependencies [[`3471a7f`](https://github.com/pyreon/pyreon/commit/3471a7fd609fc47c318aa06d206a6ed122f3c7fc), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/styler@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/ui-core@0.46.0
+  - @pyreon/sized-map@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

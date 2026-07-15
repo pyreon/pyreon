@@ -1,5 +1,32 @@
 # @pyreon/document-primitives
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2247](https://github.com/pyreon/pyreon/pull/2247) [`ffe82fa`](https://github.com/pyreon/pyreon/commit/ffe82fad66324137f28f8ec7ba41042c8a01ee60) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(document-primitives): source-verified `mistakes[]` foot-gun catalogs added to
+  the flagship components that had none — DocDocument (3), DocTable (2), DocList (2);
+  mistakes[] blocks 1 → 4. Every footgun verified against the worktree source:
+  DocDocument stores title/author/subject accessors in `_documentProps` and the
+  `.attrs()` callback runs ONCE at mount, so a called accessor (`title={getTitle()}`)
+  captures once while a plain string is static and null is omitted; DocTable rows are
+  keyed by `column.key` and columns/rows are `_documentProps`-only (filtered before
+  the DOM because `HTMLTableElement.rows` is read-only); DocList's `ordered` sets the
+  tag while DocListItem carries no marker (`_documentProps: {}`). Regenerates the MCP
+  api-reference document-primitives region. Docs/manifest only — no runtime change.
+
+- [#2283](https://github.com/pyreon/pyreon/pull/2283) [`e3bf73d`](https://github.com/pyreon/pyreon/commit/e3bf73dd28bae832b5b90c18b1ac3b847643eafb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(document-primitives): document `DocumentPreview` and `documentTheme` in the manifest. `DocumentPreview` is a paper-sized (A4/A3/A5/letter/legal) browser preview wrapper that ALSO serves as the extraction root (`_documentType: 'document'`, so you don't nest a separate `<DocDocument>`); `documentTheme` is the default colors/fonts/sizes/spacing config for export styling (spread-clone to override — it's a shared module-level object). Source-verified against `DocumentPreview.ts`/`theme.ts`. The re-exported `extractDocumentTree` is already content-covered by the `extractDocNode` entry. Regenerates the MCP api-reference + docs-site reference page.
+
+- Updated dependencies [[`8ef7d39`](https://github.com/pyreon/pyreon/commit/8ef7d39cab4ada6736620a82529aef33041af780), [`7e81ff0`](https://github.com/pyreon/pyreon/commit/7e81ff0e5c7aad2589e7fa39547246717c2e3576), [`c60aafd`](https://github.com/pyreon/pyreon/commit/c60aafd122bd5d80ac443069f7c6fe3aa65c27b7), [`421ca82`](https://github.com/pyreon/pyreon/commit/421ca82e6d0ab950ff7c47bfc0870142c6308526), [`3471a7f`](https://github.com/pyreon/pyreon/commit/3471a7fd609fc47c318aa06d206a6ed122f3c7fc), [`3c1054a`](https://github.com/pyreon/pyreon/commit/3c1054aa98ac501980b69922edc7a0e76b1bfdc9), [`2609196`](https://github.com/pyreon/pyreon/commit/260919603f0f3cdd0c401cdc2c820e742e211db6), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/connector-document@0.46.0
+  - @pyreon/document@0.46.0
+  - @pyreon/elements@0.46.0
+  - @pyreon/rocketstyle@0.46.0
+  - @pyreon/styler@0.46.0
+  - @pyreon/unistyle@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/ui-core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

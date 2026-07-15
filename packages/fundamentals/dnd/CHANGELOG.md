@@ -1,5 +1,19 @@
 # @pyreon/dnd
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2234](https://github.com/pyreon/pyreon/pull/2234) [`3a23643`](https://github.com/pyreon/pyreon/commit/3a23643d28c9c7d603f535324b9cbbd0111d2c60) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useSortable` now disposes its **container** registration on `containerRef(null)` / re-register, plus a wrapper-overhead benchmark.
+
+  - **Fix — container-registration leak (the F3 per-item leak's sibling).** `useSortable`'s `containerRef` registers three teardowns per element (auto-scroll + the reorder drop-target + a `keydown` listener). The `null`/re-register path was a pure no-op — `containerRef(null)` (fired on unmount) disposed nothing, and `containerRef(el2)` after `containerRef(el1)` pushed three more registrations without disposing the first. A collapsible board whose `<ul ref={containerRef}>` sits behind a `<Show>` (with the hook in the parent) re-fires `containerRef` on every toggle, leaking the auto-scroll + drop-target + keydown listener on each detached element until the whole sortable unmounted. `containerRef` now disposes the prior container registration on both `null` and re-register — symmetric with the per-item disposal — and `onCleanup` drains whatever remains. No API change. Bisect-verified: on the unfixed code three container-leak specs fail with `expected vi.fn() to be called 1 times, but got 0 times`; after the fix all pass.
+
+  - **New — wrapper-overhead benchmark** (`bun run bench`, `bench/dnd-wrapper-tax.ts`). Measures the "wrapper tax": how much JS the signal-driven hooks add over a hand-rolled Pyreon+pdnd integration wiring the same reactive state. Runs the **real** pragmatic-drag-and-drop build under happy-dom, per-`(op × impl)` process isolation, correctness gate, pooled median + bootstrap CI95. Verdict: **near-zero tax** — `useDraggable` / `useDroppable` / `useSortable`-item mount→unmount lifecycles tie a hand-rolled baseline (CI overlap); `useDragMonitor` adds ~one closure allocation per mount (~40ns); per drag-event dispatch is at-or-near noise. Reactive DnD at ~raw-pdnd cost.
+
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

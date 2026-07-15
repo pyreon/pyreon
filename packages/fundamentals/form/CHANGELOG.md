@@ -1,5 +1,20 @@
 # @pyreon/form
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2253](https://github.com/pyreon/pyreon/pull/2253) [`7798a6a`](https://github.com/pyreon/pyreon/commit/7798a6a6a9e70f977483564b23eb1bf9a554b3fa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(form): detect callable Standard Schemas (raw ArkType) before the SchemaValidateFn fallback
+
+  `useForm({ schema })` is documented to accept a RAW Standard Schema (zod / valibot / arktype / `@pyreon/validate`'s `s`) directly — no adapter, no `as never` cast. But `resolveSchemaValidator` short-circuited `typeof schema === 'function'` → treat as a hand-written `SchemaValidateFn` BEFORE it ever tried `isStandardSchema`. **ArkType schemas are callables** (`type({...})` returns a function that carries `~standard`), so a raw ArkType schema hit the function arm and was invoked as the whole-form validator with the wrong signature — silently reporting VALID for invalid input. Zod/valibot (object schemas) were unaffected.
+
+  Reordered the resolver so `isStandardSchema` is checked BEFORE the bare-function fallback: a callable-that-is-a-Standard-Schema (ArkType) is now recognized as a schema and routed through `standardSchemaToValidator`. This completes the chain started by `@pyreon/validation` [#2243](https://github.com/pyreon/pyreon/issues/2243) (`isStandardSchema` accepts callables). A genuine hand-written `SchemaValidateFn` (a function WITHOUT `~standard`) still hits the function fallback; the typed-adapter and zod/valibot object paths are unchanged.
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435), [`87ba16e`](https://github.com/pyreon/pyreon/commit/87ba16e3dc9cfa44ef03f8e2cb229a3b6fd11d47), [`661a748`](https://github.com/pyreon/pyreon/commit/661a7485a93abb9fc64592e25c5214b0a27d8597)]:
+  - @pyreon/validation@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Minor Changes

@@ -1,5 +1,37 @@
 # @pyreon/head
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2252](https://github.com/pyreon/pyreon/pull/2252) [`b55d3c4`](https://github.com/pyreon/pyreon/commit/b55d3c405195d64586a284cb7dc3c3b144a36a70) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(server,head): thread the per-request CSP nonce onto every SSR-emitted inline tag
+
+  `cspMiddleware` + `useNonce` generated a per-request nonce and put it in the CSP header, but the nonce never reached the inline tags the SSR pipeline emits — so a strict nonce-based CSP (`script-src`/`style-src 'nonce-…'`, no `'unsafe-inline'`) blocked the loader-data hydration script (→ `useLoaderData()` undefined after hydration) and every CSS-in-JS `<style>` (→ unstyled page). The header promised CSP support the render didn't deliver.
+
+  Now the nonce threads end-to-end from the single string-mode choke point:
+
+  - **`renderPage`** reads `useRequestLocals().cspNonce` once (already inside the request context) and stamps it on the loader-data + store-state inline `<script>`s, forwards it to `collectStyles(nonce)` (styler `<style>`), and passes `renderWithHead(app, { nonce })` (head-injected `<script>`/`<style>`).
+  - **`@pyreon/head`**: `renderWithHead(app, { nonce })` / `serializeHead(tags, titleTemplate, nonce)` stamp the nonce on inline `<script>`/`<style>` tags (a user-supplied `nonce` on a tag wins; `<meta>`/`<link>` are never nonced). Wires the previously-declared-but-dead `HeadContext.nonce` intent.
+  - **`collectStyles`** signature widened to `(nonce?: string) => string` (backward-compatible optional param); zero's SSG styler wiring forwards it.
+
+  Lower packages stay decoupled — they _accept_ a nonce, never read request state. Everything is backward-compatible: no nonce (SSG build / no-CSP) → no attribute → byte-identical output. The client styler already inherits the nonce from the reused SSR `<style>` (`.nonce` IDL property; PR [#2173](https://github.com/pyreon/pyreon/issues/2173)). **Fundamental limits (documented):** SSG/SPA can't carry a per-request nonce (use hash-based CSP); the client-entry `<script src>` relies on `script-src 'self'` (a `'strict-dynamic'` setup needs a separate template nonce). Streaming `renderToStream` nonce threading is a tracked follow-on.
+
+### Patch Changes
+
+- [#2259](https://github.com/pyreon/pyreon/pull/2259) [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - chore: remove orphaned `peerDependenciesMeta` entries
+
+  Both packages declared `peerDependenciesMeta` entries with no matching `peerDependencies`, which package managers materialize as inert optional `*` peers:
+
+  - **@pyreon/validation** — `zod` / `valibot` / `arktype` marked optional-peer, but validation is library-agnostic and DUCK-TYPES the schema interface (`src/zod.ts`: type-only imports, "so we don't require zod as a hard dep"). It never imports them, so they are neither dependencies nor peers — they're devDependencies used only by validation's own adapter tests. The declaration was dead and misleadingly narrow (validation accepts ANY Standard Schema, not just these three).
+  - **@pyreon/head** — `@pyreon/runtime-server` marked optional-peer, but it is already a real `dependencies` entry (`head/ssr` imports `renderToString` from it). The peer meta was redundant.
+
+  No consumer-facing change: these entries were inert. Removing them makes the manifests accurate. The lockfile update is surgical (only the derived optional-peer records for these two packages).
+
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`4ec01d8`](https://github.com/pyreon/pyreon/commit/4ec01d8b5cd9a95b04a01deb5ac2a26605dc1974), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/runtime-server@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes
