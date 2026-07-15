@@ -2,7 +2,7 @@ import { batch } from '../batch'
 import { computed } from '../computed'
 import { onSignalUpdate } from '../debug'
 import { effect } from '../effect'
-import { signal } from '../signal'
+import { _resumeSubscriber, _suspendSubscriber, signal } from '../signal'
 
 describe('signal', () => {
   test('reads initial value', () => {
@@ -469,5 +469,73 @@ describe('signal', () => {
       expect(s()).toBe(6)
       expect(s.peek()).toBe(6)
     })
+  })
+})
+
+describe('_suspendSubscriber / _resumeSubscriber', () => {
+  test('suspend stops a specific subscriber from firing; resume restores it', () => {
+    const s = signal(0)
+    let fired = 0
+    const listener = () => {
+      fired++
+    }
+    s.subscribe(listener)
+
+    s.set(1)
+    expect(fired).toBe(1)
+
+    _suspendSubscriber(s, listener)
+    s.set(2)
+    expect(fired).toBe(1) // suspended — did not fire
+
+    _resumeSubscriber(s, listener)
+    s.set(3)
+    expect(fired).toBe(2) // restored
+  })
+
+  test('suspend affects ONLY the given listener; siblings still fire', () => {
+    const s = signal(0)
+    let a = 0
+    let b = 0
+    const la = () => {
+      a++
+    }
+    const lb = () => {
+      b++
+    }
+    s.subscribe(la)
+    s.subscribe(lb)
+
+    _suspendSubscriber(s, la)
+    s.set(1)
+    expect(a).toBe(0) // suspended
+    expect(b).toBe(1) // sibling still fires
+
+    _resumeSubscriber(s, la)
+    s.set(2)
+    expect(a).toBe(1)
+    expect(b).toBe(2)
+  })
+
+  test('suspend is a no-op when the listener is not subscribed', () => {
+    const s = signal(0)
+    const orphan = () => {}
+    // Signal has no subscriber set yet (`_s` is null) — must not throw.
+    expect(() => _suspendSubscriber(s, orphan)).not.toThrow()
+    // Even with an existing set, suspending an unknown listener is a no-op.
+    s.subscribe(() => {})
+    expect(() => _suspendSubscriber(s, orphan)).not.toThrow()
+  })
+
+  test('resume adds the listener even if the signal had no subscriber set yet', () => {
+    const s = signal(0)
+    let fired = 0
+    const listener = () => {
+      fired++
+    }
+    // `_s` is null — resume must create the set and add the listener.
+    _resumeSubscriber(s, listener)
+    s.set(1)
+    expect(fired).toBe(1)
   })
 })

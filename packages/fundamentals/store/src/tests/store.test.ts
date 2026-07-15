@@ -2,6 +2,7 @@ import {
   addStorePlugin,
   computed,
   defineStore,
+  effect,
   type MutationInfo,
   resetAllStores,
   resetStore,
@@ -254,6 +255,110 @@ describe('patch', () => {
     // Should not throw
     api.patch({ count: 5, greet: 'nope' as any, nonExistent: 99 })
     expect(api.store.count()).toBe(5)
+  })
+
+  test('unchanged fields in an object patch emit no event', () => {
+    const useStore = defineStore('patch-unchanged', () => ({
+      count: signal(1),
+      name: signal('a'),
+    }))
+    const api = useStore()
+    const mutations: MutationInfo[] = []
+    api.subscribe((m) => mutations.push(m))
+    // count is set to its current value (1) → no change → no event; only name changes.
+    api.patch({ count: 1, name: 'b' })
+    expect(mutations).toHaveLength(1)
+    expect(mutations[0]!.events).toEqual([{ key: 'name', oldValue: 'a', newValue: 'b' }])
+  })
+
+  test('re-entrant effect writes during a subscribed patch merge into ONE notification', () => {
+    // A user effect reads `count` and writes TWO other store fields when it
+    // changes. During a subscribed `patch({ count })`, that effect fires inside
+    // the patch's batch drain and writes `total` + `label`. The store must still
+    // emit EXACTLY ONE 'patch' notification, carrying the patched key AND both
+    // effect-driven keys — not separate 'direct' notifications. Locks the
+    // `patchInProgress` merge (and the lazy `patchEvents` allocation across
+    // multiple buffered writes) in the with-subscriber detach path.
+    const useStore = defineStore('patch-reentrant', () => ({
+      count: signal(0),
+      total: signal(0),
+      label: signal(''),
+    }))
+    const api = useStore()
+    const e = effect(() => {
+      const c = api.store.count()
+      if (c > 0) {
+        api.store.total.set(c * 10)
+        api.store.label.set(`c=${c}`)
+      }
+    })
+    const mutations: MutationInfo[] = []
+    api.subscribe((m) => mutations.push(m))
+    api.patch({ count: 5 })
+    expect(api.store.count()).toBe(5)
+    expect(api.store.total()).toBe(50)
+    expect(api.store.label()).toBe('c=5')
+    // Exactly one notification, of type 'patch', carrying all three keys.
+    expect(mutations).toHaveLength(1)
+    expect(mutations[0]!.type).toBe('patch')
+    const byKey = Object.fromEntries(mutations[0]!.events.map((ev) => [ev.key, ev.newValue]))
+    expect(byKey).toEqual({ count: 5, total: 50, label: 'c=5' })
+    e.dispose()
+  })
+
+  test('functional patch with a subscriber emits one patch notification (and reuses the signal map)', () => {
+    const useStore = defineStore('patch-fn-sub', () => ({
+      count: signal(0),
+      name: signal('a'),
+    }))
+    const api = useStore()
+    const mutations: MutationInfo[] = []
+    api.subscribe((m) => mutations.push(m))
+    api.patch((s) => {
+      ;(s.count as { set(v: number): void }).set(7)
+      ;(s.name as { set(v: string): void }).set('b')
+    })
+    // Second functional patch reuses the cached signal map (built on the first).
+    api.patch((s) => (s.count as { set(v: number): void }).set(8))
+    expect(api.store.count()).toBe(8)
+    expect(mutations).toHaveLength(2)
+    expect(mutations[0]!.type).toBe('patch')
+    expect(mutations[0]!.events).toHaveLength(2)
+    expect(mutations[1]!.events).toEqual([{ key: 'count', oldValue: 7, newValue: 8 }])
+  })
+
+  test('functional patch that writes nothing emits no notification', () => {
+    const useStore = defineStore('patch-fn-noop', () => ({ count: signal(0) }))
+    const api = useStore()
+    const mutations: MutationInfo[] = []
+    api.subscribe((m) => mutations.push(m))
+    api.patch(() => {
+      /* no signal writes */
+    })
+    expect(mutations).toHaveLength(0)
+  })
+
+  test('object patch with a subscriber ignores + warns on unknown keys', () => {
+    const useStore = defineStore('patch-sub-unknown', () => ({ count: signal(0) }))
+    const api = useStore()
+    const mutations: MutationInfo[] = []
+    api.subscribe((m) => mutations.push(m))
+    api.patch({ count: 3, nope: 99 as never })
+    expect(api.store.count()).toBe(3)
+    expect(mutations).toHaveLength(1)
+    expect(mutations[0]!.events).toEqual([{ key: 'count', oldValue: 0, newValue: 3 }])
+  })
+
+  test('object patch of all-unchanged values with a subscriber emits nothing', () => {
+    const useStore = defineStore('patch-sub-noop', () => ({
+      count: signal(1),
+      name: signal('a'),
+    }))
+    const api = useStore()
+    const mutations: MutationInfo[] = []
+    api.subscribe((m) => mutations.push(m))
+    api.patch({ count: 1, name: 'a' })
+    expect(mutations).toHaveLength(0)
   })
 })
 
