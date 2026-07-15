@@ -213,12 +213,17 @@ const App = (props: { s: string }) => <td>before {cell(props.s)} after</td>`)
     expect(out).toContain('<td>before <!> after</td>')
   })
 
-  it('SSR mode is untouched (the SSR renderer already mounts the shape)', () => {
+  it('h() SSR path is untouched (the SSR renderer already mounts the shape)', () => {
+    // Pinned to the h() SSR path (`ssrTemplate: false`) — the compile-to-string
+    // fast path (now default-on under `ssr`) lowers this to a `_ssr(...)` +
+    // `_esc(cell(props.s))`, whose renderToString is byte-identical to the h()
+    // accessor wrap (proven in ssr-template-differential). This case locks the
+    // h() escape-hatch shape: `{cell(...)}` → `{() => cell(...)}`, no `_mountSlot`.
     const out = transformJSX_JS(
       `const cell = (v: string) => <b>{v}</b>
 const App = (props: { s: string }) => <td>{cell(props.s)}</td>`,
       'test.tsx',
-      { ssr: true },
+      { ssr: true, ssrTemplate: false },
     ).code
     expect(out).toContain('<td>{() => cell(props.s)}</td>')
     expect(out).not.toContain('_mountSlot')

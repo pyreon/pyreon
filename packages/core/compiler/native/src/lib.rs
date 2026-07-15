@@ -3721,8 +3721,9 @@ pub fn transform_jsx(
 
     let collect_lens = reactivity_lens == Some(true);
     // `ssrTemplate` only takes effect under SSR (mutually exclusive with the
-    // client `_tpl` DOM path). Mirrors the JS gate `ssr && options.ssrTemplate === true`.
-    let ssr_template = ssr && ssr_template == Some(true);
+    // client `_tpl` DOM path). DEFAULT-ON: `ssr && ssrTemplate !== false`
+    // (mirrors the JS gate). Explicit `Some(false)` opts out.
+    let ssr_template = ssr && ssr_template != Some(false);
     let mut ctx = Ctx::new(&code, &ret.program, ssr, ssr_template, collect_lens, collapse);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)

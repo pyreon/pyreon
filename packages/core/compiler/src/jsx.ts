@@ -205,21 +205,22 @@ export interface TransformOptions {
   ssr?: boolean
 
   /**
-   * Compile-to-string SSR fast path (opt-in; requires `ssr: true`). When
-   * enabled, an eligible static-skeleton JSX subtree is lowered to an `_ssr`
-   * string template (`_ssr(["<li>…","</li>"], hole0, …)`) instead of a `h()`
-   * VNode tree — the SSR analog of the DOM `_tpl()` cloneNode fast path. The
-   * runtime `_ssr`/`_ssrChildren` resolve every dynamic hole through the SAME
-   * `renderNode` the h() path uses, so the produced HTML is BYTE-IDENTICAL to
-   * the h() walk it replaces (hydration is unaffected). Eligibility is
-   * deliberately conservative — the compiler bails to `h()` on ANY shape it
-   * can't prove renders byte-identically (dynamic attrs, `<select>`, spreads,
-   * component children, void-with-content, …). Default `false`. NOTE: the
-   * native (Rust) backend does not yet implement this — with the flag off both
-   * backends stay byte-identical (the equivalence gates run flag-off), and the
-   * fast path is exercised through the JS backend + dedicated differential
-   * tests. Native parity + a `pyreon({ ssrTemplate: true })` vite-plugin
-   * option are the tracked follow-up.
+   * Compile-to-string SSR fast path. **DEFAULT-ON when `ssr: true`** (pass
+   * `false` to opt out — the h() SSR escape hatch). An eligible static-skeleton
+   * JSX subtree is lowered to an `_ssr` string template (`_ssr(["<li>…",
+   * "</li>"], hole0, …)`) instead of a `h()` VNode tree — the SSR analog of the
+   * DOM `_tpl()` cloneNode fast path. The runtime `_ssr`/`_ssrChildren` resolve
+   * every dynamic hole through the SAME `renderNode` the h() path uses, so the
+   * produced HTML is BYTE-IDENTICAL to the h() walk it replaces (hydration is
+   * unaffected). Eligibility is deliberately conservative — the compiler bails
+   * to `h()` on ANY shape it can't prove renders byte-identically (dynamic
+   * attrs stay on `renderProp` via `_ssrAttr`; `<select>`, spreads, component
+   * children, void-with-content, entity-carrying JSXText, `<For>`, … bail).
+   * Implemented in BOTH backends byte-identically (JS `jsx.ts` + Rust
+   * `native/src/lib.rs`), locked by `native-equivalence` + `fuzz-equivalence`
+   * (3 modes/seed) + the `ssr-template-differential` renderToString≡h() gate +
+   * the `ssr-node`/`ssr-showcase` real-Chromium e2e. `undefined` (unset) → on
+   * under `ssr`; `false` → off; `true` → on.
    */
   ssrTemplate?: boolean
 
@@ -975,7 +976,7 @@ export function transformJSX(
         options.knownSignals ?? null,
         options.reactivityLens === true,
         options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
-        options.ssrTemplate === true,
+        options.ssrTemplate,
       )
     } catch {
       // Native transform failed — fall through to JS implementation
@@ -1008,7 +1009,7 @@ export function transformJSX_JS(
   options: TransformOptions = {},
 ): TransformResult {
   const ssr = options.ssr === true
-  const ssrTemplate = ssr && options.ssrTemplate === true
+  const ssrTemplate = ssr && options.ssrTemplate !== false
 
   let program: N
   try {

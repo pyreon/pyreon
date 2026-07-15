@@ -19,10 +19,16 @@ const ssrFast = (src: string): string =>
   transformJSX_JS(src, 'test.tsx', { ssr: true, ssrTemplate: true }).code
 const ssrPlain = (src: string): string => transformJSX_JS(src, 'test.tsx', { ssr: true }).code
 
-describe('ssrTemplate — opt-in gate', () => {
-  test('flag OFF leaves the h() path untouched (no _ssr)', () => {
+describe('ssrTemplate — default-on gate + opt-out', () => {
+  test('SSR default-on emits _ssr (no explicit flag)', () => {
     const src = `const A = <div class="x">{name}</div>`
-    expect(ssrPlain(src)).not.toContain('_ssr')
+    expect(ssrPlain(src)).toContain('_ssr(')
+  })
+  test('explicit ssrTemplate:false opts out (h() path, no _ssr)', () => {
+    const src = `const A = <div class="x">{name}</div>`
+    expect(transformJSX_JS(src, 'test.tsx', { ssr: true, ssrTemplate: false }).code).not.toContain(
+      '_ssr(',
+    )
   })
   test('ssrTemplate requires ssr:true (client build unaffected)', () => {
     const src = `const A = <div class="x">hi</div>`

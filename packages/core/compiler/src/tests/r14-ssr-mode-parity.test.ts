@@ -1,20 +1,25 @@
 /**
  * Compiler hardening — Round 14 (SSR-mode robustness; no bug found).
  *
- * Rounds 1–13 were all client-mode. SSR mode (`{ ssr: true }`) disables
- * template emission (`if (ssr) return false`) and leaves JSX as
- * accessor-wrapped expressions for the SSR renderer. Probed 8 adversarial
- * shapes — all emit parseable code, and the correctness-critical contracts
- * hold in SSR exactly as in client mode: prop-derived consts still inline,
- * signals still auto-call, and the R11 shadow fix still suppresses a
- * destructured callback param. This locks SSR-mode parity for the bug fixes
- * so a future SSR-path change can't silently regress them.
+ * Rounds 1–13 were all client-mode. This locks the h() SSR codegen path
+ * (`{ ssr: true, ssrTemplate: false }` — the explicit opt-out of the
+ * compile-to-string fast path, which disables template emission and leaves
+ * JSX as accessor-wrapped expressions for the SSR renderer). Probed 8
+ * adversarial shapes — all emit parseable code, and the correctness-critical
+ * contracts hold in SSR exactly as in client mode: prop-derived consts still
+ * inline, signals still auto-call, and the R11 shadow fix still suppresses a
+ * destructured callback param. This locks h()-SSR-mode parity for the bug
+ * fixes so a future SSR-path change can't silently regress them. (The
+ * compile-to-string default-on path has its own parity gates —
+ * `ssr-template-emit`, `native-equivalence`, `fuzz-equivalence`,
+ * `ssr-template-differential`.)
  */
 import { parseSync } from 'oxc-parser'
 import { describe, expect, it } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
-const ssr = (c: string): string => transformJSX_JS(c, 'c.tsx', { ssr: true }).code ?? ''
+const ssr = (c: string): string =>
+  transformJSX_JS(c, 'c.tsx', { ssr: true, ssrTemplate: false }).code ?? ''
 const parses = (o: string): boolean => {
   try {
     return (parseSync('o.tsx', o).errors?.length ?? 0) === 0
