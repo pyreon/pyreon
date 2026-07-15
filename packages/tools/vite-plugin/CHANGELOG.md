@@ -1,5 +1,66 @@
 # @pyreon/vite-plugin
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2302](https://github.com/pyreon/pyreon/pull/2302) [`c213e8c`](https://github.com/pyreon/pyreon/commit/c213e8c51b896a340690e0f273ca08feb34114dc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(vite-plugin): `ssrTemplate` compile-to-string SSR fast path — default-on with a resolvability safety net
+
+  The compile-to-string SSR fast path (`ssrTemplate`) — which lowers eligible
+  static-skeleton JSX to a single `_ssr(["<li>…","</li>"], hole0, …)` string
+  template (card ~9× Solid, list-50 clear lead) — is now **default-on** via
+  `@pyreon/vite-plugin`, so every SSR app gets it automatically.
+
+  Safe by construction: the emit injects `import { _ssr, … } from
+"@pyreon/runtime-server"` into app source, and `_ssr` returns an
+  `instanceof`-branded `RawHtml` the app's OWN `renderToString` must recognize.
+  So the plugin's new `ssrTemplate` option defaults to **AUTO** — it probes (once,
+  via Vite's own resolver) whether `@pyreon/runtime-server` resolves from the app,
+  enables `_ssr` when it does, and **gracefully falls back to the h() SSR path
+  (never a build/500 crash) + warns once in dev** when it doesn't. This closes the
+  class where a default-on transform 500s an app that can't resolve
+  `@pyreon/runtime-server` (e.g. a strict/isolated dep layout where it's only a
+  transitive dep). `pyreon({ ssrTemplate: true })` forces it on (you accept the
+  dep requirement); `false` forces the h() path.
+
+  The `@pyreon/compiler` primitive default stays **opt-in** (a bare
+  `transformJSX({ ssr: true })` must not silently inject a hard dep) — the
+  vite-plugin owns the default-on policy.
+
+  Validated end-to-end: islands-showcase (server-based, runtime-server
+  unresolvable → degrades to h(), 9/9 e2e green, no crash) vs ssr-showcase /
+  ssr-node (zero-based, resolvable → `_ssr` fast path, 22/22 + 12/12 e2e green,
+  `_ssr(` in the built server). Gate logic bisect-verified in
+  `ssr-template-gate.test.ts`.
+
+### Patch Changes
+
+- [#2266](https://github.com/pyreon/pyreon/pull/2266) [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<TransitionGroup>` now works in shared multi-platform (`.tsx`) sources that
+  render on web + iOS + Android.
+
+  - `@pyreon/runtime-dom`'s `<TransitionGroup>` additively supports a **children
+    (container) shape** in addition to the `items`/`keyFn`/`render` render-prop
+    API: with no `items` accessor it renders whatever keyed list it wraps (e.g. a
+    `<For>`) inside its container element. This is the shape PMTC lowers on native
+    (SwiftUI `VStack` + `.animation` / Compose `animateContentSize`). Existing
+    render-prop callers are unaffected; `items` without `keyFn`/`render` now
+    dev-warns and degrades to the container instead of throwing.
+  - `@pyreon/vite-plugin`'s jsxAutoImport now supplies `TransitionGroup` from
+    `@pyreon/runtime-dom` on web (same mechanism as `For`/`Show` from
+    `@pyreon/core`), so a shared source uses the **bare** `<TransitionGroup>` tag
+    with no import — critical because PMTC classifies any file that imports
+    `@pyreon/runtime-dom` as web-only and skips its native emit.
+  - Adds a `diagnose` catalog entry for the two `<TransitionGroup>` web errors
+    (`TransitionGroup is not defined`, `props.items is not a function`).
+
+  Fixes a web mount crash where wrapping a `<For>` in `<TransitionGroup>` threw
+  and the app never mounted.
+
+- Updated dependencies [[`7d88cbb`](https://github.com/pyreon/pyreon/commit/7d88cbb45f95d90085c67d4c24d2b0c96a4dabdf), [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9), [`bdea687`](https://github.com/pyreon/pyreon/commit/bdea687b11ce312ce5a9aaec3a96a44bb6c48d30), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`22d82cf`](https://github.com/pyreon/pyreon/commit/22d82cf46bad096765f5cb174d2bf3fdadb49902), [`4ec01d8`](https://github.com/pyreon/pyreon/commit/4ec01d8b5cd9a95b04a01deb5ac2a26605dc1974), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435), [`1d73037`](https://github.com/pyreon/pyreon/commit/1d730373c9adcbeef3a6575e7af199f27e69c7bd), [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/compiler@0.46.0
+  - @pyreon/runtime-dom@0.46.0
+  - @pyreon/reactivity@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

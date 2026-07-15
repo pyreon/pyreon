@@ -1,5 +1,72 @@
 # @pyreon/router
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2245](https://github.com/pyreon/pyreon/pull/2245) [`6164409`](https://github.com/pyreon/pyreon/commit/6164409767c2b7a9668a004ab085406ae8e2178b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(zero): route prefetch injected `rel="modulepreload"` at the route path → strict-MIME error on every hovered link
+
+  `<Link>` / `useLink` / `createLink` / `prefetchRoute`'s hover + viewport prefetch (`doPrefetch`) injected `<link rel="modulepreload" href={routePath}>`. The href is the navigation PATH, which an SSR server returns as `text/html`, so the browser fetched it as a module script and logged `Failed to load module script: Expected a JavaScript-or-Wasm module script but the server responded with a MIME type of "text/html"` on **every** hovered link — plus a wasted HTML round-trip. Navigation still worked (the real chunk loads via the router's lazy loader on nav), so it was cosmetic-but-noisy, in dev and any SSR deployment.
+
+  The chunk is now warmed correctly through the router's own lazy loader: `router.preload(path, undefined, { skipLoaders: true })` imports the real Vite-resolved chunk into the component cache (code only — no loader/data side effects on hover), always the correct chunk URL. Only the valid `rel="prefetch" as="document"` document hint is injected. `@pyreon/router` now exports `getActiveRouter` / `setActiveRouter` (the standalone `prefetchRoute` resolves the active router the same way the hooks do).
+
+### Patch Changes
+
+- [#2305](https://github.com/pyreon/pyreon/pull/2305) [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix 4 audit-found manifest inaccuracies that shipped wrong claims to AI assistants via MCP
+
+  - **runtime-dom (safety-inverted):** `dangerouslySetInnerHTML` is intentionally RAW (React parity — developer owns sanitization); the manifest claimed it was sanitized. Also corrected: the Sanitizer API (`el.setHTML`) lives only in the `innerHTML` PROP sink (where it bypasses a custom `setSanitizer` policy), `sanitizeHtml()` itself is always the custom-or-DOMParser allowlist; `_bindText` is emitted for non-computed member chains too (with a `caller` 3rd arg preserving `this`), not "only a bare signal identifier"; KeepAlive's non-thunk `active={cond}` THROWS `TypeError` at mount (no `<Show when>`-style value normalization), it is not "captured once".
+  - **validate:** `parseReactiveAsync` DOES supersede stale results (internal version counter — an awaited stale frame resolves to the latest run's verdict); the mistakes entry claimed the opposite. The true residual caveat is no AbortSignal (in-flight validators run to completion). Also updated the stale union prod-crash string (`member._runInto is not a function`, not `member["~standard"] is undefined`).
+  - **router:** `onBeforeRouteLeave` called outside setup DOES register (unconditional `router.beforeEach`) — the real failure mode is a LEAKED guard (the `onUnmount` auto-removal never attaches), not "never registers". RouterView also accepts an optional `router` prop.
+  - **hooks:** `useScrollLock`'s per-instance `isLocked` guard makes an extra `unlock()` a no-op — it can NOT release another component's lock; corrected to teach the real limitation (one instance holds at most one refcount unit and does not nest).
+  - **validation:** schema libraries are detected by duck-typing `~standard` with zero dependency records — they are no longer declared as optional peer dependencies.
+  - **compiler:** `_bind` is imported from `@pyreon/reactivity` (not runtime-dom/core).
+
+- [#2240](https://github.com/pyreon/pyreon/pull/2240) [`f807c5e`](https://github.com/pyreon/pyreon/commit/f807c5e4e1f64da2a1786b1c3578861c77749d8d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(router): source-verified `mistakes[]` foot-gun catalogs added to the flagship
+  APIs that had none — RouterView, useLoaderData, useRoute, useSearchParams,
+  onBeforeRouteLeave. Every entry verified against the worktree source: RouterView's
+  SSR-blank-on-lazy (`prefetchLoaderData` runs loaders only; the handler must also
+  `router.preload`), the single atomic `depthEntry` computed (param changes don't
+  remount the layout), useLoaderData's non-reactive context read + per-depth
+  provider, useRoute's accessor/destructure trap, useSearchParams' tuple shape, and
+  the guard return-value inversion vs useBlocker (guard `false`=cancel/string=redirect
+  vs blocker `true`=block — confirmed at router.ts:756-757). Regenerates the MCP
+  api-reference router region. Docs/manifest only — no runtime behavior change.
+
+- [#2274](https://github.com/pyreon/pyreon/pull/2274) [`cfb2862`](https://github.com/pyreon/pyreon/commit/cfb2862480f48fa3eeaf647e17e25c70e8bb5a3d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(router): document 6 missing public exports in the manifest — `useNavigate`, `useParams`, `useValidatedSearch`, the `notFound`/`NotFoundBoundary` 404 pair, and `lazy`. `useNavigate`+`useParams` are two of the most-used router hooks framework-wide and had no api[] entry. All signatures, return shapes, and footguns are source-verified: `useNavigate` returns a `void`-typed pusher (drops the NavigationResult); `useParams` returns a string SNAPSHOT (not a live accessor); `useValidatedSearch` is an argument-less READ-ONLY accessor distinct from `useTypedSearchParams`/`useSearchParams`; `notFound()` throws a `Symbol.for('pyreon.notFound')`-branded error and `NotFoundBoundary` re-throws non-notFound errors; `lazy()` returns an inert descriptor cached by the router (not `lazy` itself). Regenerates the MCP api-reference + docs-site reference page.
+
+- [#2291](https://github.com/pyreon/pyreon/pull/2291) [`33d9b55`](https://github.com/pyreon/pyreon/commit/33d9b555bb501b4341c1c5cc92400b162323ced5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(router): faster dynamic route matching — win the realistic-size averages
+
+  Two semantics-preserving cuts to the `resolveRoute` fast lane (`match.ts`),
+  both hot on every param-bearing / splat / catch-all match:
+
+  - **Fold `firstSegmentOf` into `scanCleanPath`.** The clean-path scan already
+    walks past the first internal `/` while counting segments; it now records
+    that offset so the fast lane slices the dispatch-map key directly instead of
+    re-scanning with `indexOf('/', 1)`.
+  - **Skip the segment-0 re-comparison in `matchFlattenedFast`.** Every candidate
+    reached through `segmentDispatch`/`segmentMap` is keyed by its static
+    `firstSegment` (=== the path's first segment), so segment 0 is a proven
+    match; matching now resumes at segment 1, eliding one `indexOf('/')` + one
+    `startsWith` per matched dynamic route. `dynamicFirst` (param-first) routes
+    still match from the top.
+
+  Measured (200-route table, 8-router pooled-CI95 protocol, `scripts/bench/core/router.ts`,
+  Apple M3 Max / Bun 1.3): `dynamic (1 param)` 102→78ns — now an OUTRIGHT win
+  (find-my-way 85, radix3 88); dynamic-2 157→139, nested-dynamic 156→140,
+  splat 120→102, catch-all 86→81. Pyreon now wins the realistic-size **averages
+  outright at both 50 and 200 routes** (1.00× vs find-my-way 1.05–1.10× / radix3
+  1.12×; was 3rd at 200 routes). Static/nested-static unchanged (already fastest).
+
+  Byte-identical to the prior implementation over a 300k-random-path differential
+  (query/hash/`//`/`%`/trailing-slash/optional/splat/nested/param-first/miss);
+  all 680 router tests pass.
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9), [`bdea687`](https://github.com/pyreon/pyreon/commit/bdea687b11ce312ce5a9aaec3a96a44bb6c48d30), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`22d82cf`](https://github.com/pyreon/pyreon/commit/22d82cf46bad096765f5cb174d2bf3fdadb49902), [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/runtime-dom@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/sized-map@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

@@ -1,5 +1,93 @@
 # @pyreon/flow
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2270](https://github.com/pyreon/pyreon/pull/2270) [`0b73239`](https://github.com/pyreon/pyreon/commit/0b73239fe3603b1e47454c4fb893f4519ef1ef6c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(flow): document 5 missing public exports in the manifest — `NodeResizer`, `NodeToolbar`, the `MarkerType`/`Position` enums, the edge-path helpers (`getBezierPath`/`getSmoothStepPath`/`getStraightPath`/`getStepPath`/`getWaypointPath`/`getEdgePath`/`getHandlePosition`/`getSmartHandlePositions`), and `computeLayout` — with source-verified signatures, examples, and footgun catalogs (object-not-tuple edge-path return, NodeToolbar is not a portal, computeLayout is async + non-mutating). Regenerates llms/MCP api-reference.
+
+- [#2265](https://github.com/pyreon/pyreon/pull/2265) [`3975f81`](https://github.com/pyreon/pyreon/commit/3975f81006e73829dbcda382eb4d91c4cd4ed829) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(flow): `<Background>` pattern color is themeable + not overridable (dots readability)
+
+  The dot/line pattern color was set via the SVG `fill`/`stroke` **presentation attribute** with a hardcoded `#ddd` default — the same bug class the edge stroke already fixed. Two consequences: a `var()` couldn't be used (presentation attrs drop `var()`), so the pattern wasn't themeable and a light-`#ddd` grid was harsh/distracting on a dark canvas; and a global `svg { fill: … }` rule could override it (silently forcing the dots to the wrong color).
+
+  Now the pattern color is applied via `style` (CSS) — where `var()` resolves and inline style wins over a stylesheet rule — defaulting to the themeable `--pyreon-flow-bg-pattern` var (fallback `#ddd`). Set that var to dim the grid on a dark theme; an explicit `color` prop still wins. Light-mode default is unchanged (`#ddd`).
+
+- [#2279](https://github.com/pyreon/pyreon/pull/2279) [`17ebfa8`](https://github.com/pyreon/pyreon/commit/17ebfa86a542cab9f644b45145c562bb0abae739) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(flow): edges now visually render + connect, and Controls buttons work
+
+  Three coupled bugs meant flow edges never actually painted and the zoom/fit
+  buttons did nothing — all found by looking at the rendered pixels, not just the
+  DOM (the existing e2e counted `<path>` elements + geometry length, which pass
+  even when nothing is drawn).
+
+  - **Zero-area edge svg → invisible edges.** The `.pyreon-flow-viewport` div is
+    absolutely positioned and shrink-to-fit, so it collapsed to 0×0 and the edge
+    `<svg width/height:100%>` resolved to 0×0. A zero-area svg viewport paints
+    none of its content, so every edge path existed in the DOM with correct
+    geometry yet rendered nothing. Fixed by sizing the viewport `100%` (React
+    Flow's model) with `overflow: visible`.
+  - **Node auto-measurement.** Edge geometry fell back to a `150×40` node size when
+    `node.width`/`height` weren't set, starting edges ~70px off content-sized
+    nodes. A per-node `ResizeObserver` now records the real rendered size in the
+    new `instance.measurements` signal, and geometry prefers
+    `node.width ?? measured ?? 150` — so edges anchor correctly without hardcoded
+    pixel widths (SSR/happy-dom fall back to explicit-or-default).
+  - **Dead Controls buttons.** The container's pan `pointerdown` handler
+    `setPointerCapture`d on a press over the Controls, so the button never got
+    pointerup and its click was swallowed — the zoom/fit buttons "did nothing".
+    The pan now bails when the pointer lands on the flow's UI chrome (Controls /
+    MiniMap / Panel) or any interactive control, mirroring the node `.nodrag`
+    bail. The full-size viewport is `pointer-events: none` (nodes + edge paths opt
+    back in) so it can't swallow panel/pan interactions.
+
+  All three are bisect-verified in real Chromium
+  (`flow/src/tests/edge-render.browser.test.tsx` + a strengthened
+  `e2e/app-showcase-flow.spec.ts` that now asserts the edge svg has a non-zero
+  rendered box and that a real coordinate click on the zoom button zooms).
+
+- [#2300](https://github.com/pyreon/pyreon/pull/2300) [`d4679c0`](https://github.com/pyreon/pyreon/commit/d4679c0ef6cac6cdad7ab7ae7747033a4d3c4a3e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(flow): floating edge endpoints — arrows meet nodes at the natural angle
+
+  Auto-routed edges used to dock at a fixed side's midpoint (e.g. the left-edge
+  centre), so the arrow always entered horizontally/vertically while the line
+  approached at an angle — a visible kink where the curve flattened into the
+  arrowhead.
+
+  Edges with no explicit handles (and no waypoints) now use **floating
+  endpoints**: each end connects where the source↔target centre line crosses that
+  node's perimeter, paired with the closest side for the bezier tangent — so the
+  edge leaves and enters at the real approach angle and the arrowhead
+  (`orient="auto"`) points along the line (React Flow's floating-edge model). It
+  recomputes reactively on drag. Nodes that declare `sourceHandles`/`targetHandles`
+  — or waypoint routes — keep their fixed docking points unchanged.
+
+  New pure helpers `getNodeIntersection` / `getFloatingEndpoints` are exported and
+  unit-tested; a bisect-verified browser test asserts an auto edge leaves the
+  source perimeter facing the target rather than the fixed side midpoint.
+
+- [#2297](https://github.com/pyreon/pyreon/pull/2297) [`ff5ffae`](https://github.com/pyreon/pyreon/commit/ff5ffae2e94da2629b012e1ca72e73a842dd4897) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(flow): unified, smaller, line-coloured edge arrowheads
+
+  Follow-up polish to the edge-rendering fix — the arrowheads now read as a
+  natural continuation of the line into the box:
+
+  - **Line-coloured by default.** `DEFAULT_MARKER_COLOR` is now the themeable
+    `var(--pyreon-flow-edge, [#999](https://github.com/pyreon/pyreon/issues/999))` — the SAME var the edge stroke uses — so an
+    unstyled arrow matches its line (a natural line→arrow→box connection) and
+    re-themes with it, instead of a fixed grey that stood apart. The glyph applies
+    colour via `style` because a `var()` is invalid in an SVG presentation
+    attribute; `markerId` sanitizes the var to a stable dedup token distinct from
+    an explicit `[#999](https://github.com/pyreon/pyreon/issues/999)` (no def collision). An explicit `color` still wins.
+  - **Predictable, smaller size.** The `<marker>` now uses
+    `markerUnits="userSpaceOnUse"`, so `width`/`height` are literal px rather than
+    scaled by the (1.5px) edge stroke — a `width:10` arrow is 10px, not ~15px, and
+    thick edges no longer balloon their arrows.
+
+  The docs flow examples drop their per-edge rainbow of custom markers and use the
+  clean unified default.
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9), [`bdea687`](https://github.com/pyreon/pyreon/commit/bdea687b11ce312ce5a9aaec3a96a44bb6c48d30), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`22d82cf`](https://github.com/pyreon/pyreon/commit/22d82cf46bad096765f5cb174d2bf3fdadb49902), [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/runtime-dom@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

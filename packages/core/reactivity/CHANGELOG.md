@@ -1,5 +1,101 @@
 # @pyreon/reactivity
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2286](https://github.com/pyreon/pyreon/pull/2286) [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(store): faster with-subscriber `patch()` + write→notify path
+
+  The with-subscriber bulk `patch()` no longer round-trips every field write
+  through the reactivity batch queue. When a store has subscribers, `patch()`
+  now suspends each patched field's internal change-detector for the duration of
+  its own write (via two new internal `@pyreon/reactivity` helpers,
+  `_suspendSubscriber` / `_resumeSubscriber`), writes the fields in one batch,
+  then emits a single mutation built directly from the values it wrote — user
+  computeds/effects reading those fields still recompute exactly once. A
+  re-entrant effect that writes another store field during the drain is still
+  merged into the same single notification.
+
+  Measured (Apple M3 Max, `NODE_ENV=production`, pooled median ns/op vs
+  `zustand/vanilla`): with-subscriber `patch 2 fields` ~198→~140ns (2.3× →
+  ~1.7× vs Zustand — a ~29% cut, though still short of Zustand's native
+  single-object merge); `write → 1 subscriber` ~41→~36ns via caching field
+  signals in a dense array (removes a per-notify dynamic `raw[key]` lookup). The
+  no-subscriber `patch` fast path and the per-field `store.x.set()` hot path are
+  unchanged. Reproduce: `cd packages/fundamentals/store && bun run bench:stores`.
+
+- [#2311](https://github.com/pyreon/pyreon/pull/2311) [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(reactivity): defer lazy-computed direct-subscriber dispatch to the drain — restores batch() glitch-freedom + iterative deep-chain cascade
+
+  Two behavioral regressions vs 0.45.0 introduced by [#2284](https://github.com/pyreon/pyreon/issues/2284)/[#2296](https://github.com/pyreon/pyreon/issues/2296)'s lazy-computed inline dirty-propagation:
+
+  - **batch() glitch-freedom for computed direct bindings.** A lazy computed's `recompute` runs inline during a write's notify phase; it also fired the computed's `_d1`/`_d` DIRECT subscriber (the compiled `{someComputed()}` `_bindText`/`_bindDirect` binding) inline, on a torn mid-batch value. A `batch(() => { a.set(); b.set() })` fired `[12, 30]` instead of one settled `[30]`, and a torn eval that threw dispatched a phantom error through the effect error handler. Fix: the recompute now MARKS dirty inline but ENQUEUES the direct subscribers to the batch drain, so they fire once with settled values — the same deferral a signal's `_d1` already gets under batch.
+
+  - **Deep-chain write-time cascade overflow → silent stale.** The inline dirty cascade was recursive; a chain deeper than ~8000 overflowed the stack, the caught RangeError cleared a computed's `_dirty` with a stale value (silent lost update). Fix: recurse inline for the common shallow case (byte-parity with [#2296](https://github.com/pyreon/pyreon/issues/2296)) and switch to an explicit stack past a bounded depth, so the live stack is bounded at any chain length (0.45.0 was correct at 10,000).
+
+  Perf held at [#2296](https://github.com/pyreon/pyreon/issues/2296) parity (wide fan-out ~1.0×/flipped, batch-50 ~1.15× ahead, effect propagation ~1.35× ahead, diamond ~1.28× behind, deep chain ~1.48× behind); heap-neutral. Pure computed cascades still never enter the effect queue.
+
+- [#2284](https://github.com/pyreon/pyreon/pull/2284) [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(reactivity): array+flag effect queue + lazy-computed inline propagation — flips wide fan-out & batch-50 vs Preact, ~2× diamond / ~1.5× chain
+
+  Three changes to the batch/notify hot paths, benchmarked against `@preact/signals-core` (`NODE_ENV=production`, median of clean runs on Apple M3 Max / Bun):
+
+  - **Array+flag effect queue** (`batch.ts`). The tier-2 effect drain was two `Set`s (`pendingEffects`, `_nextEffectPass`) + a scratch visited `Set`. Set hashing on function-object keys dominated the wide-fan-out path; a structurally-faithful micro-bench measured the enqueue+drain of 100 effect closures at **~8×** with an array + a per-effect tri-state membership flag (`_eq`) + a monotonic pass-GENERATION counter (`_vg`) instead. Within-pass dedup is `_eq === Cur`; cross-pass re-fire (ErrorBoundary's self-dispatch) routes an already-ran effect (`_vg === _passGen`) to a `nextEffects` array; the O(1) `_passGen++` replaces the Set's per-pass `.clear()`. This is the array-of-closures analogue of Preact's intrusive-linked-list + NOTIFIED-bitflag batching. Flag fields are created **lazily** the first time an effect is enqueued, so an effect that never re-fires stays a bare closure and retained heap is **neutral** (+effect stays 929 B).
+  - **Lazy-computed inline dirty-propagation** (`batch.ts` + `computed.ts`). A default (lazy) computed's `recompute` is dirty-mark-only and idempotent (guarded by its `_dirty` flag), so it now propagates INLINE during the write's notify phase — a Preact-style write-time DFS — instead of routing through the pending-recompute queue. A pure-computed cascade (a diamond `a→{b,c}→d`, a deep chain) settles entirely during notify and never enters `drainQueues`. Eager (`{ equals }`) computeds still settle in the tier-1 queue before any effect fires (deep-cascade correctness unchanged).
+  - **Signal no-subscriber write fast path** (`signal.ts`). `set`/`trigger` skip the inline-batch window (open/close + try/finally) entirely when the signal has zero subscribers — the dominant shape for write-only imperative state and a just-created signal.
+
+  Measured deltas vs Preact:
+
+  | micro-bench                  | before               | after                                               |
+  | ---------------------------- | -------------------- | --------------------------------------------------- |
+  | wide fan-out (1→100 effects) | Preact ~2.75× ahead  | **Pyreon ~1.03× (flipped; ~2.8× absolute speedup)** |
+  | batch 50 signals             | ~tied / Preact ~1.2× | **Pyreon ~1.06×**                                   |
+  | effect propagation           | Pyreon ~1.3×         | Pyreon ~1.25× (kept)                                |
+  | computed diamond             | Preact ~2.7× ahead   | Preact ~1.4× (halved)                               |
+  | deep chain (depth 50)        | Preact ~2.0× ahead   | Preact ~1.5×                                        |
+  | signal create+read+write     | Preact ~1.4×         | Preact ~1.4× (unchanged)                            |
+
+  Behaviour is unchanged: all 703 reactivity tests pass (two-tier flush ordering, diamond/cascade dedup, re-entrant self-writes, MAX_PASSES cap, verify-mode dep reuse, single-subscriber slot, effectScope disposal, computed equals-gating), plus `@pyreon/core` (598) and `@pyreon/runtime-dom` (953) downstream. Retained heap neutral on all four primitives. Deep lazy-computed cascades are now recursive on write; verified correct + non-overflowing up to depth 10,000.
+
+- [#2296](https://github.com/pyreon/pyreon/pull/2296) [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(reactivity): cheaper lazy-computed dirty cascade (`propagateLazyDirty`) — narrows diamond/deep-chain vs Preact
+
+  A default (lazy) computed's `recompute` is dirty-mark-only, so a pure-computed
+  cascade (a diamond `a→{b,c}→d`, a deep chain) is nothing but dirty-flag
+  propagation from one lazy recompute to the next. Previously that walked
+  `notifySubscribers → enqueuePendingNotification`, paying **two `WeakSet.has`
+  lookups + two function calls per hop** to route each subscriber (the batch
+  router can't assume a computed's subscriber is another lazy computed).
+
+  `propagateLazyDirty` (`batch.ts`) runs a lazy-recompute subscriber INLINE via a
+  single `_lazyRecomputes.has` — byte-identical behavior to what
+  `enqueuePendingNotification` gives a lazy recompute, minus the effect-path
+  routing it doesn't need. Non-lazy subscribers (effects, eager `{ equals }`
+  computeds, raw `subscribe()` listeners) still fall through to
+  `enqueuePendingNotification`, so their queueing is unchanged. Called ONLY from
+  computed `recompute` (never from `_set`'s signal fan-out path), so the
+  wide-fan-out / batch-50 / effect-propagation hot paths are untouched.
+
+  - **Diamond** narrowed ~1.37× → ~1.29× Preact-ahead; **deep chain (depth 50)**
+    ~1.73× → ~1.45× Preact-ahead (measured, Bun/JSC; ratios portable, absolutes
+    machine-dependent). Bisect-verified: reverting the helper regresses both back
+    toward baseline.
+  - **Heap-neutral** — no new per-primitive fields (signal 152 B, +computed 913 B,
+    +effect 929 B, unchanged). All previously-won metrics hold (effect
+    propagation ~1.36× ahead, batch-50 ~1.10× ahead, wide fan-out ~1.03× ahead).
+  - Corrects a stale residual diagnosis: a split write/read profile puts the
+    ENTIRE diamond/chain gap in the WRITE phase (Pyreon's `runVerify` re-eval is
+    ≈ or faster than Preact's version-refresh). The residual is Pyreon's eager
+    PUSH dirty-marking — a signal write dirty-marks the whole downstream computed
+    subgraph — vs Preact's lazy PULL model, which skips that work for an
+    UNOBSERVED computed chain. Fully closing it needs a per-primitive version
+    model, a retained-heap regression left unshipped.
+
+- [#2315](https://github.com/pyreon/pyreon/pull/2315) [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(reactivity): `{ equals }` computeds settle regardless of subscription order — dirty-at-notify + clear-flag-before-run tier-1 drain (topo-staleness fix)
+
+  Fixes a pre-existing (0.45.0-identical) staleness bug: an `{ equals }` computed re-evaluated only inside its queued recompute and never set `_dirty` on notification. Tier-1 drains in SUBSCRIPTION order, not topological order — so `outer = computed(() => s() + inner(), { equals })` that subscribed to `s` before `inner` drained first, pull-read `inner()`'s stale cache, and `inner`'s later re-notify was dropped by the drain's dedup (already visited) → `outer()` was PERMANENTLY stale until the next write, falsifying the "computeds settle before effects" contract (a torn stale-pull that threw also dispatched a phantom error through the effect error handler).
+
+  The fix: every computed — `{ equals }` included — is now dirty-marked at NOTIFY time (so a tier-1 visitor pull-reads dirty deps fresh and visit order stops mattering), the `{ equals }` refresh is unified into the read's dirty branch (one evaluation per drain, pull or push), and the tier-1 drain clears each entry's membership flag BEFORE running it so a genuine post-visit re-dirty (through a lazy intermediate) re-runs instead of being dedup-dropped. Tier-1 storage is now the same array + intrusive-flag design as the tier-2 effect queue.
+
+  Perf: the five headline bench metrics hold exactly (wide fan-out ~1.0×/flipped, batch-50 ~1.15× ahead, effect propagation ~1.35× ahead, diamond ~1.27× behind, deep chain ~1.51× behind vs Preact); the `{ equals }` unbatched write now costs the same as the default lazy variant's (the prior inline-eval speed was the bug), and multi-write batches over `{ equals }` computeds got ~30% faster. Heap-neutral. `{ equals }` direct (`_bindText`/`_bindDirect`) subscribers now dispatch in the drain with settled values, consistent with the lazy variant.
+
 ## 0.45.0
 
 ## 0.44.0

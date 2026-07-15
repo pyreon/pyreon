@@ -1,5 +1,24 @@
 # @pyreon/i18n
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2249](https://github.com/pyreon/pyreon/pull/2249) [`a2f4ce5`](https://github.com/pyreon/pyreon/commit/a2f4ce5f88d6c5fbfc4ce8ecfbd732a6d0fb6801) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(i18n): source-verified `mistakes[]` foot-gun catalogs + two previously-undocumented
+  public exports. Added `resolvePluralCategory` and `parseRichText` to the manifest api[]
+  (both are exported from index.ts/core.ts but were absent). Enriched mistakes[]
+  (5 → 10 blocks) on createI18n (plural key naming / CLDR-category-not-count===1 /
+  reserved `count` key), interpolate (missing value stays literal / bare call ignores
+  format specs / `\w+`-only placeholders — signature also corrected to include the
+  `options.format` param), I18nProvider (`value` prop / JSX-only entry), useI18n
+  (throws without provider / `locale` is a signal). Every fact verified against source
+  (pluralization.ts Intl.PluralRules, interpolation.ts literal-passthrough,
+  trans.tsx flat-tag regex, context.ts throw). Regenerates the MCP api-reference
+  i18n region. Docs/manifest only — no runtime behavior change.
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

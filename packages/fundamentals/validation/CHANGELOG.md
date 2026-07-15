@@ -1,5 +1,43 @@
 # @pyreon/validation
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2305](https://github.com/pyreon/pyreon/pull/2305) [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix 4 audit-found manifest inaccuracies that shipped wrong claims to AI assistants via MCP
+
+  - **runtime-dom (safety-inverted):** `dangerouslySetInnerHTML` is intentionally RAW (React parity — developer owns sanitization); the manifest claimed it was sanitized. Also corrected: the Sanitizer API (`el.setHTML`) lives only in the `innerHTML` PROP sink (where it bypasses a custom `setSanitizer` policy), `sanitizeHtml()` itself is always the custom-or-DOMParser allowlist; `_bindText` is emitted for non-computed member chains too (with a `caller` 3rd arg preserving `this`), not "only a bare signal identifier"; KeepAlive's non-thunk `active={cond}` THROWS `TypeError` at mount (no `<Show when>`-style value normalization), it is not "captured once".
+  - **validate:** `parseReactiveAsync` DOES supersede stale results (internal version counter — an awaited stale frame resolves to the latest run's verdict); the mistakes entry claimed the opposite. The true residual caveat is no AbortSignal (in-flight validators run to completion). Also updated the stale union prod-crash string (`member._runInto is not a function`, not `member["~standard"] is undefined`).
+  - **router:** `onBeforeRouteLeave` called outside setup DOES register (unconditional `router.beforeEach`) — the real failure mode is a LEAKED guard (the `onUnmount` auto-removal never attaches), not "never registers". RouterView also accepts an optional `router` prop.
+  - **hooks:** `useScrollLock`'s per-instance `isLocked` guard makes an extra `unlock()` a no-op — it can NOT release another component's lock; corrected to teach the real limitation (one instance holds at most one refcount unit and does not nest).
+  - **validation:** schema libraries are detected by duck-typing `~standard` with zero dependency records — they are no longer declared as optional peer dependencies.
+  - **compiler:** `_bind` is imported from `@pyreon/reactivity` (not runtime-dom/core).
+
+- [#2259](https://github.com/pyreon/pyreon/pull/2259) [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - chore: remove orphaned `peerDependenciesMeta` entries
+
+  Both packages declared `peerDependenciesMeta` entries with no matching `peerDependencies`, which package managers materialize as inert optional `*` peers:
+
+  - **@pyreon/validation** — `zod` / `valibot` / `arktype` marked optional-peer, but validation is library-agnostic and DUCK-TYPES the schema interface (`src/zod.ts`: type-only imports, "so we don't require zod as a hard dep"). It never imports them, so they are neither dependencies nor peers — they're devDependencies used only by validation's own adapter tests. The declaration was dead and misleadingly narrow (validation accepts ANY Standard Schema, not just these three).
+  - **@pyreon/head** — `@pyreon/runtime-server` marked optional-peer, but it is already a real `dependencies` entry (`head/ssr` imports `renderToString` from it). The peer meta was redundant.
+
+  No consumer-facing change: these entries were inert. Removing them makes the manifests accurate. The lockfile update is surgical (only the derived optional-peer records for these two packages).
+
+- [#2243](https://github.com/pyreon/pyreon/pull/2243) [`87ba16e`](https://github.com/pyreon/pyreon/commit/87ba16e3dc9cfa44ef03f8e2cb229a3b6fd11d47) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(validation): `isStandardSchema` accepts callable schemas (raw ArkType works framework-wide)
+
+  `isStandardSchema` bailed with `typeof value !== 'object'` before reading `~standard` — but **ArkType schemas are FUNCTIONS** (`type("string")(input)` validates) that also carry `~standard`. So a raw ArkType schema failed Standard-Schema detection, and every consumer that routes "is this a Standard Schema? then validate through it" (`@pyreon/store` / `@pyreon/state-tree` via `extractParseFn`, the `standardSchemaToValidator` bridge, `@pyreon/validate`, `@pyreon/feature`) silently SKIPPED validation for it — a store/state-tree declared with a raw ArkType schema either reported VALID while the schema would REJECT or threw at definition time (raw ArkType was unusable).
+
+  The guard now accepts a value whose `typeof` is `object` **or** `function`, as long as it carries a well-formed `~standard.validate`. Purely additive: object schemas (Zod/Valibot) behave exactly as before; only a function-carrying-`~standard` (ArkType) is newly accepted, and a plain function without `~standard` is still rejected. The return type narrows from the deprecated `StandardSchemaShape` to the canonical `StandardSchemaLike` (identical type — no consumer cascade). The sibling bridges (`standardSchemaToValidator` / `wrapStandardSchema`) already invoked `schema['~standard'].validate` (the Standard-Schema entrypoint, not a Zod-specific `.safeParse`), so only DETECTION was broken.
+
+  Regenerates the MCP api-reference validation region. Known residual (separate consumer bug, follow-up): `@pyreon/form`'s `resolveSchemaValidator` short-circuits `typeof === 'function'` before `isStandardSchema`, so a raw ArkType schema passed to `useForm({ schema })` is still mistreated as a `SchemaValidateFn`.
+
+- [#2308](https://github.com/pyreon/pyreon/pull/2308) [`661a748`](https://github.com/pyreon/pyreon/commit/661a7485a93abb9fc64592e25c5214b0a27d8597) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(validation): discriminate Standard Schema results on `issues`, never on `'value' in r`
+
+  `wrapStandardSchema` (the internal bridge behind `extractParseFn`) discriminated SUCCESS on the presence of a `value` key — but the Standard Schema spec's discriminant is `issues` ("if `issues` is undefined, validation succeeded"), and **valibot's FAILURE result carries BOTH** (`{ typed: false, value: <raw input>, issues: [...] }`).
+
+  Consequence: a RAW valibot schema (Tier A.2 — passed directly, no `valibotSchema()` adapter) driving a schema-mode `defineStore({ schema })` (`@pyreon/store`) or `model({ schema })` (`@pyreon/state-tree`) was a **silent validation no-op** — `extractParseFn(v.object({ age: v.number() }))({ age: 'nope' })` returned `{ ok: true, value: { age: 'nope' } }`, so an invalid `set`/`patch` did NOT throw and wrote the raw invalid value into state (data corruption). Raw zod / arktype were unaffected (their failure results carry no `value` key); `@pyreon/form`/`@pyreon/feature` were unaffected (they route through `standardSchemaToValidator`, which already checked `issues` first).
+
+  The discriminant now mirrors the proven-correct `standardSchemaToValidator`: failure iff `issues` is a non-empty array, success otherwise. The bug dates to the package's inception ([#910](https://github.com/pyreon/pyreon/issues/910)); it slipped because store/state-tree schema suites exercised raw ARKTYPE + the valibot ADAPTER, never raw VALIBOT (the "real library, one lib short" trap). Regression coverage now runs the full raw-library matrix (valibot + zod + arktype) at both the bridge and store/state-tree end-to-end levels.
+
 ## 0.45.0
 
 ## 0.44.0

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/rich-text",
-  "version": "0.45.0",
+  "version": "0.46.0",
   "description": "Reactive WYSIWYG rich-text editor for Pyreon — signal-backed layer over TipTap (ProseMirror); collaboration composes with @pyreon/sync",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/rich-text#readme",

@@ -1,5 +1,100 @@
 # @pyreon/compiler
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2281](https://github.com/pyreon/pyreon/pull/2281) [`4ec01d8`](https://github.com/pyreon/pyreon/commit/4ec01d8b5cd9a95b04a01deb5ac2a26605dc1974) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(runtime-server,compiler): opt-in compile-to-string SSR fast path (`_ssr`)
+
+  Adds the SSR analog of the DOM `_tpl()` cloneNode fast path: an eligible static-skeleton JSX subtree can lower to an `_ssr(["<li>…","</li>"], hole0, …)` string template instead of a `h()` VNode tree, so `renderToString` concatenates precompiled HTML instead of walking a per-request VNode tree.
+
+  - **runtime-server** — new public primitives `_ssr`, `_ssrChildren`, `_esc`. `_ssr`/`_ssrChildren` return a `RawHtml`-branded fragment (the SafeString trust boundary) so a nested fast-path result is concatenated verbatim while a plain string hole is still escaped. Every dynamic hole is resolved through the SAME `renderNode` the h() path uses, so the produced HTML is **byte-identical** to the h() walk it replaces — hydration is unaffected. `renderNode`/`streamNode` recognize `RawHtml` (and a Promise root) so `_ssr` composes through component boundaries and async holes. Maybe-async: sync subtrees pay zero promise hops.
+  - **compiler** — new opt-in `TransformOptions.ssrTemplate` (requires `ssr: true`, default `false`). The JS backend lowers eligible elements (`buildSsrCall`); eligibility is deliberately conservative and bails to `h()` on any shape it can't prove renders byte-identically (dynamic attrs, `<select>`/void-with-content, spreads, component children, camelCase/URL-unsafe attrs, object styles, `innerHTML`, `&` in baked JSXText / raw JSX string attrs — oxc keeps HTML entities literal but the h() path's JSX runtime may decode them, so any `&` there bails, …). A `.map(item => <el>)` child compiles to `_ssrChildren(arr.map(item => _ssr(…)))` with the accessor markers baked in, so list items skip VNode allocation too.
+
+  Opt-in and JS-backend-only in this release: with the flag OFF (the default, and what the cross-backend equivalence gates use) both backends stay byte-identical. The native (Rust) backend does not yet implement `ssrTemplate` — the dispatcher routes to the JS backend when the flag is set. Native parity + a `pyreon({ ssrTemplate: true })` vite-plugin option are the tracked follow-up.
+
+  Measured (Apple M3 Max, Bun, `NODE_ENV=production`, `scripts/bench/core/ssr-template-fastpath.ts`) on ELIGIBLE shapes (static attrs + dynamic text): the fast path renders **~2× faster than Pyreon's current SSR** (card 2.0×, list-50 1.8×, list-1000 2.0×) and 2.3–2.5× faster than `react-dom/server`. Honest limit: the conservative eligibility bails on per-row DYNAMIC attributes (`href`/`data-*`/`id`), so list rows carrying those (e.g. the `bench:ssr-cross` harness's shape) fall back to `h()` — extending eligibility to dynamic attrs is the highest-value follow-up.
+
+- [#2287](https://github.com/pyreon/pyreon/pull/2287) [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(ssr): lean concat + dynamic-attribute eligibility for the `_ssr` fast path
+
+  Builds on the opt-in compile-to-string SSR fast path (`ssrTemplate`): makes it ~2–3× faster and much more broadly eligible, while keeping FULL byte-identity to the h() path.
+
+  - **Lean concat.** The compiler now PRE-STRINGIFIES every hole — `_esc(text)`, an `_ssrAttr*` for a dynamic attribute, or a nested `_ssr`/`_ssrChildren` — and bakes the `<!--$-->` accessor markers into the surrounding statics, so `_ssr` is a `+=` accumulator with one type check per hole (no per-hole `renderNode` dispatch, no re-escape). New `_ssrItem` is the `.map` item form: a plain string that `_ssrChildren` concatenates with no per-item `RawHtml` wrap. `_esc` is now a smart escaper (primitive → escaped/`String`; a VNode in a text position still MOUNTS, possibly async).
+  - **Dynamic attributes are now eligible** (previously bailed to `h()`). New `_ssrAttr` reuses `renderProp` VERBATIM — byte-identical incl. the url-guard, class `cx` / object-style normalize, boolean/aria rules, `toAttrName` name-map, and null-omit — with byte-identical LEAN fast paths for the common shapes: `_ssrAttrGen` (generic lowercase name) and `_ssrAttrUrl` (lowercase url name). So `<li data-id={r.id} href={h}>` rows now hit the fast path; the compiler still bails on spreads / `<select>` / component children / `innerHTML` / `&`-entity JSX strings.
+  - **Proven-non-null attr baking.** When a dynamic attr's value EXPRESSION is syntactically provably non-null-non-boolean (`String(x)`, template literals, `` `${...}` ``, `.toFixed()`/`.toString()`/`.join()`, numeric literals, `+`-concat with a string operand, `a ? b : c` of provable branches — and, for a URL attr, a provably-safe start), the `renderProp` null-omit / boolean / url-guard branches are provably DEAD, so the attr name + quotes BAKE into the statics and only the value is escaped (like Solid's template baking) — byte-identical to the h() path. A genuinely-nullable attr (`data-id={r.id}`) keeps the runtime helper (null-omit safety — a real correctness advantage over Solid's `null → name=""`). Bisect-verified: forcing the baking on for a null-able value diverges (the runtime null-omit is load-bearing).
+
+  The objective cross-framework bench (`bun run bench:ssr-cross`) now COMPILES the Pyreon side through the fast path (the fair analog of Solid's babel compile), guarded by its byte-identical correctness gate. Measured (M3 Max, Bun, real babel-Solid, prod): **card 12.3M/s (~9× over Solid, ~6× over Pyreon h())**, **list-50 111K/s (ties Solid — CI-overlap)**, **list-1000 6.4K/s (1.12× behind Solid, 2.8× over h())** — faster than `react-dom/server` on all three. The residual list-1000 gap is the byte-identity url-guard on `href` (Solid inlines a plain escape).
+
+  Still opt-in and JS-backend-only: `ssrTemplate` CANNOT be defaulted-on until the native (Rust) backend implements it, or `native-equivalence` for `ssr: true` would diverge (JS `_ssr` vs native `h()`). Native parity → default-on is the tracked follow-up.
+
+- [#2293](https://github.com/pyreon/pyreon/pull/2293) [`1d73037`](https://github.com/pyreon/pyreon/commit/1d730373c9adcbeef3a6575e7af199f27e69c7bd) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(compiler): native `_ssr` compile-to-string SSR fast path (byte-identical to JS)
+
+  The compile-to-string SSR fast path (`ssrTemplate`) — which lowers an eligible
+  static-skeleton element tree to a single `_ssr(["<li>…","</li>"], hole0, …)`
+  string template (the SSR analog of the DOM `_tpl()` cloneNode path) — is now
+  implemented in the **Rust native backend**, byte-identical to the JS backend.
+
+  Previously `ssrTemplate` was JS-only: the native backend emitted `h()`, so a
+  `transformJSX({ ssr: true, ssrTemplate: true })` call was force-routed through
+  the JS implementation. Now the flag is threaded to the native binary (7th arg)
+  and both backends emit the identical `_ssr(...)` / `_ssrAttr` / `_ssrItem` /
+  `_esc` / `<!--$-->`-marker output.
+
+  Parity is locked by the byte-identical `native-equivalence` oracle (new
+  `ssrTemplate` parity cases: static, dynamic-attr, `.map` list, safe/unsafe URL,
+  nested, conditional child, bail catalogue) and the seeded `fuzz-equivalence`
+  gate, which now compares THREE modes per seed (client, SSR h(), SSR
+  compile-to-string) — 300 seeds × 3 modes byte-identical, plus a 10k-seed
+  stress pass (0 divergence, ~9.7k real `_ssr` emissions).
+
+  This removes the blocker for making `ssrTemplate` default-on. The flag remains
+  opt-in; the default is unchanged.
+
+### Patch Changes
+
+- [#2244](https://github.com/pyreon/pyreon/pull/2244) [`7d88cbb`](https://github.com/pyreon/pyreon/commit/7d88cbb45f95d90085c67d4c24d2b0c96a4dabdf) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(compiler): source-verified `mistakes[]` foot-gun catalogs added to
+  transformJSX_JS, diagnoseError, and deriveIslandName (+ one more on transformJSX);
+  mistakes[] blocks 4 → 8. Every footgun verified against the worktree source:
+  diagnoseError must be imported from the browser-safe `@pyreon/compiler/diagnose`
+  subpath for client use (the main barrel transitively `import ts from "typescript"`
+  via the AST detectors, dragging the TS compiler API into the browser bundle —
+  confirmed index.ts re-exports it AND react-intercept/pyreon-intercept/ts.ts all
+  import typescript); transformJSX_JS is the slow fallback with byte-identical output
+  (not a lighter pass); deriveIslandName's fnv1a6 diverges if relPath isn't the
+  `islandRelPath` normalization; transformJSX output isn't standalone (needs the
+  Pyreon runtime helpers). Regenerates the MCP api-reference compiler region.
+  Docs/manifest only — no runtime behavior change.
+
+- [#2305](https://github.com/pyreon/pyreon/pull/2305) [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix 4 audit-found manifest inaccuracies that shipped wrong claims to AI assistants via MCP
+
+  - **runtime-dom (safety-inverted):** `dangerouslySetInnerHTML` is intentionally RAW (React parity — developer owns sanitization); the manifest claimed it was sanitized. Also corrected: the Sanitizer API (`el.setHTML`) lives only in the `innerHTML` PROP sink (where it bypasses a custom `setSanitizer` policy), `sanitizeHtml()` itself is always the custom-or-DOMParser allowlist; `_bindText` is emitted for non-computed member chains too (with a `caller` 3rd arg preserving `this`), not "only a bare signal identifier"; KeepAlive's non-thunk `active={cond}` THROWS `TypeError` at mount (no `<Show when>`-style value normalization), it is not "captured once".
+  - **validate:** `parseReactiveAsync` DOES supersede stale results (internal version counter — an awaited stale frame resolves to the latest run's verdict); the mistakes entry claimed the opposite. The true residual caveat is no AbortSignal (in-flight validators run to completion). Also updated the stale union prod-crash string (`member._runInto is not a function`, not `member["~standard"] is undefined`).
+  - **router:** `onBeforeRouteLeave` called outside setup DOES register (unconditional `router.beforeEach`) — the real failure mode is a LEAKED guard (the `onUnmount` auto-removal never attaches), not "never registers". RouterView also accepts an optional `router` prop.
+  - **hooks:** `useScrollLock`'s per-instance `isLocked` guard makes an extra `unlock()` a no-op — it can NOT release another component's lock; corrected to teach the real limitation (one instance holds at most one refcount unit and does not nest).
+  - **validation:** schema libraries are detected by duck-typing `~standard` with zero dependency records — they are no longer declared as optional peer dependencies.
+  - **compiler:** `_bind` is imported from `@pyreon/reactivity` (not runtime-dom/core).
+
+- [#2266](https://github.com/pyreon/pyreon/pull/2266) [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<TransitionGroup>` now works in shared multi-platform (`.tsx`) sources that
+  render on web + iOS + Android.
+
+  - `@pyreon/runtime-dom`'s `<TransitionGroup>` additively supports a **children
+    (container) shape** in addition to the `items`/`keyFn`/`render` render-prop
+    API: with no `items` accessor it renders whatever keyed list it wraps (e.g. a
+    `<For>`) inside its container element. This is the shape PMTC lowers on native
+    (SwiftUI `VStack` + `.animation` / Compose `animateContentSize`). Existing
+    render-prop callers are unaffected; `items` without `keyFn`/`render` now
+    dev-warns and degrades to the container instead of throwing.
+  - `@pyreon/vite-plugin`'s jsxAutoImport now supplies `TransitionGroup` from
+    `@pyreon/runtime-dom` on web (same mechanism as `For`/`Show` from
+    `@pyreon/core`), so a shared source uses the **bare** `<TransitionGroup>` tag
+    with no import — critical because PMTC classifies any file that imports
+    `@pyreon/runtime-dom` as web-only and skips its native emit.
+  - Adds a `diagnose` catalog entry for the two `<TransitionGroup>` web errors
+    (`TransitionGroup is not defined`, `props.items is not a function`).
+
+  Fixes a web mount crash where wrapping a `<For>` in `<TransitionGroup>` threw
+  and the app never mounted.
+
 ## 0.45.0
 
 ### Patch Changes

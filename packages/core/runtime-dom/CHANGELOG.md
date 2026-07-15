@@ -1,5 +1,90 @@
 # @pyreon/runtime-dom
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2266](https://github.com/pyreon/pyreon/pull/2266) [`853c9b6`](https://github.com/pyreon/pyreon/commit/853c9b615459fa891bb0876d0b2d05d478deb728) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<TransitionGroup>` now works in shared multi-platform (`.tsx`) sources that
+  render on web + iOS + Android.
+
+  - `@pyreon/runtime-dom`'s `<TransitionGroup>` additively supports a **children
+    (container) shape** in addition to the `items`/`keyFn`/`render` render-prop
+    API: with no `items` accessor it renders whatever keyed list it wraps (e.g. a
+    `<For>`) inside its container element. This is the shape PMTC lowers on native
+    (SwiftUI `VStack` + `.animation` / Compose `animateContentSize`). Existing
+    render-prop callers are unaffected; `items` without `keyFn`/`render` now
+    dev-warns and degrades to the container instead of throwing.
+  - `@pyreon/vite-plugin`'s jsxAutoImport now supplies `TransitionGroup` from
+    `@pyreon/runtime-dom` on web (same mechanism as `For`/`Show` from
+    `@pyreon/core`), so a shared source uses the **bare** `<TransitionGroup>` tag
+    with no import — critical because PMTC classifies any file that imports
+    `@pyreon/runtime-dom` as web-only and skips its native emit.
+  - Adds a `diagnose` catalog entry for the two `<TransitionGroup>` web errors
+    (`TransitionGroup is not defined`, `props.items is not a function`).
+
+  Fixes a web mount crash where wrapping a `<For>` in `<TransitionGroup>` threw
+  and the app never mounted.
+
+### Patch Changes
+
+- [#2305](https://github.com/pyreon/pyreon/pull/2305) [`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs: fix 4 audit-found manifest inaccuracies that shipped wrong claims to AI assistants via MCP
+
+  - **runtime-dom (safety-inverted):** `dangerouslySetInnerHTML` is intentionally RAW (React parity — developer owns sanitization); the manifest claimed it was sanitized. Also corrected: the Sanitizer API (`el.setHTML`) lives only in the `innerHTML` PROP sink (where it bypasses a custom `setSanitizer` policy), `sanitizeHtml()` itself is always the custom-or-DOMParser allowlist; `_bindText` is emitted for non-computed member chains too (with a `caller` 3rd arg preserving `this`), not "only a bare signal identifier"; KeepAlive's non-thunk `active={cond}` THROWS `TypeError` at mount (no `<Show when>`-style value normalization), it is not "captured once".
+  - **validate:** `parseReactiveAsync` DOES supersede stale results (internal version counter — an awaited stale frame resolves to the latest run's verdict); the mistakes entry claimed the opposite. The true residual caveat is no AbortSignal (in-flight validators run to completion). Also updated the stale union prod-crash string (`member._runInto is not a function`, not `member["~standard"] is undefined`).
+  - **router:** `onBeforeRouteLeave` called outside setup DOES register (unconditional `router.beforeEach`) — the real failure mode is a LEAKED guard (the `onUnmount` auto-removal never attaches), not "never registers". RouterView also accepts an optional `router` prop.
+  - **hooks:** `useScrollLock`'s per-instance `isLocked` guard makes an extra `unlock()` a no-op — it can NOT release another component's lock; corrected to teach the real limitation (one instance holds at most one refcount unit and does not nest).
+  - **validation:** schema libraries are detected by duck-typing `~standard` with zero dependency records — they are no longer declared as optional peer dependencies.
+  - **compiler:** `_bind` is imported from `@pyreon/reactivity` (not runtime-dom/core).
+
+- [#2238](https://github.com/pyreon/pyreon/pull/2238) [`d9a8dd8`](https://github.com/pyreon/pyreon/commit/d9a8dd80627239d864ebd70de830b50d72eae4c9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(runtime-dom): source-verified `mistakes[]` foot-gun catalogs added to render,
+  KeepAlive, \_bindText, \_tpl, sanitizeHtml — and TWO doc-bug fixes caught by
+  source-verification: KeepAlive's signature/summary/example were documenting Vue's
+  `include`/`exclude`/`max` API when the real prop is `active={() => boolean}`
+  (CSS-hides children, keeps them mounted); sanitizeHtml's summary claimed an
+  "identity function" fallback when the real fallback is a tag-allowlist sanitizer.
+  Regenerates the MCP api-reference runtime-dom region. Docs/manifest only — no
+  runtime behavior change.
+
+- [#2290](https://github.com/pyreon/pyreon/pull/2290) [`bdea687`](https://github.com/pyreon/pyreon/commit/bdea687b11ce312ce5a9aaec3a96a44bb6c48d30) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom): `<For>` new key added into a slot vacated by a removal now lands at its logical position
+
+  In `mountFor`'s general (LIS) reconciler path, a new key inserted into a slot freed by a removal was stranded at the physical tail instead of its logical position — e.g. `[1,2,3,4] → [1,5,3]` rendered `[1,3,5]`. Root cause: `mountNewForEntries` mounts new entries before `tailMarker` (at the tail) but recorded their `pos` as the NEW logical index. `forLisReorder` reads `pos` as each entry's CURRENT DOM position to decide which rows stay vs. move, so a new row whose index straddled two survivors' stale positions looked "already in order" and was never moved off the tail. The small-k reorder path (unchanged list length) was unaffected — it places via survivor anchors, not `pos`.
+
+  Fix: a new entry that has a SURVIVOR after it in `newKeys` (prepend / middle insert) gets a sentinel `pos` that `computeForLis` skips, so it is never an LIS "stay" member and always falls to `applyForMoves`, which threads it in before its logical successor. A new entry in the TRAILING all-new run (append) keeps a strictly-increasing `pos` above every survivor so the LIS extends it as a stay — append does zero moves. This preserves the prepend + append zero-probe fast paths (locked by `@pyreon/perf-harness`'s `big-list` counters) and leaves pure shuffles/reversals byte-identical (no new keys → no sentinels). Also teaches `pyreon doctor diagnose` / MCP `diagnose` the behavioral symptom (a `<For>` list rendering in the wrong order after add+remove).
+
+- [#2288](https://github.com/pyreon/pyreon/pull/2288) [`22d82cf`](https://github.com/pyreon/pyreon/commit/22d82cf46bad096765f5cb174d2bf3fdadb49902) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(runtime-dom): pure-contiguous-removal fast path in `mountFor`
+
+  Add `tryContiguousRemoval` — a Solid-`mapArray`-style common-prefix + common-suffix
+  diff of `currentKeys` vs `newKeys`. When a `<For>` update is exactly a single
+  contiguous run deleted (no adds, no survivor reorder — the krausest `remove` op),
+  it unmounts just the removed rows and skips the general path's per-key `cache.has`
+  probe, full-cache stale `Set` scan, AND the all-stay LIS entirely — replacing ~4n
+  Map/Set operations with an O(n) primitive `===` scan plus the O(removed) teardown
+  that is genuinely required.
+
+  Isolated (reflow-free happy-dom) A/B: a 1000-row middle-remove reconcile drops
+  ~72µs → ~25µs (~2.8×). The improvement is JS-only — the real-Chromium `remove`
+  benchmark is browser-reflow-dominated (~6.8ms for a 1000-row table), so this
+  saving sits below the ~100µs timing-resolution floor there and `remove` remains a
+  statistical tie with Solid (Pyreon nominally leads 6.80ms vs 6.90ms both before and
+  after). The win matters most on slower CPUs and larger lists, where the O(n)
+  Map/Set work is a larger share of the total.
+
+  Gated precisely: fires only when `n < currentKeys.length` AND the prefix+suffix
+  cover every survivor; reorders, adds, and scattered (non-contiguous) removals fall
+  through to the general reconciler unchanged. Emits a new dev counter
+  `runtime.mountFor.removeFast`.
+
+- [#2287](https://github.com/pyreon/pyreon/pull/2287) [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(url-guard): `isUnsafeUrl` first-char fast path — skip the regex for the safe common case
+
+  The shared URL-injection guard (`@pyreon/core/url-guard`, used by BOTH the SSR `renderProp` and the client `setStaticProp`/DOMParser sanitizer) tested `UNSAFE_URL_RE = /^\s*(?:javascript|data):/i` on every URL-bearing attribute. New `isUnsafeUrl(url)` adds a `charCodeAt(0)` fast path that is PROVABLY equivalent: a `^\s*(?:javascript|data):` match needs the first non-whitespace char to be `j`/`J` or `d`/`D`, so a first char in printable ASCII (33–126) that isn't one of those cannot match — return safe without the regex (`http…`→`h`, `/…`, `#…`, `mailto:`→`m`, digits, …). Conservative on the margins: whitespace (≤32, ASCII controls the regex can skip) and non-ASCII (≥127, possibly UNICODE whitespace like ` `/` ` which `\s` matches — a naive `c > 32` predicate would WRONGLY pass these) fall through to the authoritative regex.
+
+  Security is unchanged — every `javascript:` / `JavaScript:` / ` javascript:` / `\tdata:` / ` javascript:` still reaches and is rejected by the regex; `data:image/*` on image contexts still allowed. Locked by a 5000-seed equivalence fuzz + an explicit unicode-whitespace matrix (bisect-verified: the naive `c > 32` predicate fails both the equivalence and security tests on ` javascript:`). `renderProp`, the client guard, and the SSR fast-path's `_ssrAttrUrl` all route through it, so both render paths get the win and stay byte-identical.
+
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/sized-map@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

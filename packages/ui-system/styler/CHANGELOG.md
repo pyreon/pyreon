@@ -1,5 +1,25 @@
 # @pyreon/styler
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2256](https://github.com/pyreon/pyreon/pull/2256) [`3471a7f`](https://github.com/pyreon/pyreon/commit/3471a7fd609fc47c318aa06d206a6ed122f3c7fc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(styler): document the two remaining public exports missing from the manifest.
+  The styler manifest was already at a high bar (12 mistakes blocks, 5 gotchas
+  covering descriptor-copy prop forwarding, CSP nonce, singleton sheet, theme
+  reactivity). This closes the "every public export in api[]" gap: the FNV-1a hash
+  primitives (`hash`/`hashUpdate`/`hashFinalize`/`HASH_INIT` — the class-name/rule
+  dedup hash, with the streaming-vs-one-shot contract + the non-cryptographic
+  caveat) and `setStyleExtraction` (the internal CPSE dependency-injection seam that
+  `@pyreon/ui-core`'s `init({ styleExtraction: true })` uses to thread in
+  `@pyreon/unistyle`'s rewriter — apps enable CPSE via the init flag, not this call).
+  Both verified against source (hash.ts, styled.tsx). Regenerates the MCP
+  api-reference + llms-full styler sections + snapshot key list. Docs/manifest only —
+  no runtime behavior change.
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

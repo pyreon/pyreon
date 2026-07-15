@@ -1,5 +1,13 @@
 # @pyreon/ui-theme
 
+## 0.13.33
+
+### Patch Changes
+
+- Updated dependencies [[`421ca82`](https://github.com/pyreon/pyreon/commit/421ca82e6d0ab950ff7c47bfc0870142c6308526), [`2609196`](https://github.com/pyreon/pyreon/commit/260919603f0f3cdd0c401cdc2c820e742e211db6)]:
+  - @pyreon/rocketstyle@0.46.0
+  - @pyreon/unistyle@0.46.0
+
 ## 0.13.32
 
 ### Patch Changes

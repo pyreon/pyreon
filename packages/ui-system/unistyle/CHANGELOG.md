@@ -1,5 +1,28 @@
 # @pyreon/unistyle
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2237](https://github.com/pyreon/pyreon/pull/2237) [`2609196`](https://github.com/pyreon/pyreon/commit/260919603f0f3cdd0c401cdc2c820e742e211db6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(unistyle): mobile-first array gaps now inherit the previous breakpoint (skip), not the last element
+
+  - **A `null`/`undefined` slot in a mobile-first array is a SKIP** — it now inherits the PREVIOUS breakpoint's value (mobile-first `min-width` cascade), matching a breakpoint object with a missing key and styled-system / theme-ui. The prior `handleArrayCb` did `arr[i] ?? arr[arr.length - 1]`, which filled EVERY gap with the LAST array element:
+
+    - `color: ['red', null, 'blue']` turned blue at `sm` instead of `md` — one breakpoint too early (a user-visible wrong-color bug), and
+    - `[a, null, b, null, null]` (trailing element `null`) dropped interior gaps to `null`.
+
+    Arrays and breakpoint objects of the same shape now normalize identically. The trailing-fill contract (an array shorter than the breakpoint list fills the remaining breakpoints with its last element — `[8, 12]` → `md`/`lg`/`xl` all `12`) is unchanged, and `0` / `false` are preserved as real values (never treated as gaps).
+
+  - **Docs accuracy**: the `value()` API doc was flatly wrong (signature claimed a `fallback` second param + a `{ value, unit }` return; examples claimed `value(16)` → `'16px'` / a "small→rem, large→px" convention). `value()` divides a unitless number by `rootSize` and emits `rem` (`value(16)` → `'1rem'`); `px` strings convert to rem; other-unit and non-numeric strings (`calc()`/`var()`) pass through verbatim. Corrected across the manifest (MCP/llms), the docs-site `value()` section, and `stripUnit`'s tuple form.
+
+  No public API changes. Adds an internal responsive-resolution throughput benchmark at `scripts/bench/core/unistyle.ts` (`styles()` flat / cold scalar·array·object resolve / render-cache hit / delta pass) with a correctness gate and median + 95% CI; the render-cache verbatim-return hit measures ~60× the cold breakpoint-object resolve.
+
+- Updated dependencies [[`3471a7f`](https://github.com/pyreon/pyreon/commit/3471a7fd609fc47c318aa06d206a6ed122f3c7fc), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/styler@0.46.0
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/ui-core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

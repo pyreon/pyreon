@@ -1,5 +1,24 @@
 # @pyreon/charts
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2233](https://github.com/pyreon/pyreon/pull/2233) [`43103c5`](https://github.com/pyreon/pyreon/commit/43103c50716ea3bc41d79281ac72947807301558) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(charts): general `onEvents` map, reactive `showLoading`, and `replaceMerge`
+
+  - **`onEvents`** — bind ANY ECharts event by name (`legendselectchanged`, `datazoom`, `brushselected`, `finished`, …), not just the three `onClick`/`onMouseover`/`onMouseout` shorthands (which now merge into the same map). Each handler receives `(params, instance)`. Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all listeners are removed on unmount.
+  - **`showLoading` / `loadingOption`** — reactively toggle ECharts' built-in loading overlay (distinct from `useChart`'s module-`loading` signal).
+  - **`replaceMerge`** — forwarded to `setOption` so a signal change can REPLACE (not merge) named components/series.
+  - Perf: removed a redundant init-time `setOption` (the reactive-update effect already applies the first option with the configured merge opts) — one `setOption` per mount instead of two.
+
+  Event handler type widened from `(params) => void` to `(params, instance) => void` (extra optional arg — non-breaking). New export: `ChartEventHandler`.
+
+### Patch Changes
+
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

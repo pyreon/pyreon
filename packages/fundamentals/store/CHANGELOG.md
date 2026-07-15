@@ -1,5 +1,35 @@
 # @pyreon/store
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2286](https://github.com/pyreon/pyreon/pull/2286) [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(store): faster with-subscriber `patch()` + write→notify path
+
+  The with-subscriber bulk `patch()` no longer round-trips every field write
+  through the reactivity batch queue. When a store has subscribers, `patch()`
+  now suspends each patched field's internal change-detector for the duration of
+  its own write (via two new internal `@pyreon/reactivity` helpers,
+  `_suspendSubscriber` / `_resumeSubscriber`), writes the fields in one batch,
+  then emits a single mutation built directly from the values it wrote — user
+  computeds/effects reading those fields still recompute exactly once. A
+  re-entrant effect that writes another store field during the drain is still
+  merged into the same single notification.
+
+  Measured (Apple M3 Max, `NODE_ENV=production`, pooled median ns/op vs
+  `zustand/vanilla`): with-subscriber `patch 2 fields` ~198→~140ns (2.3× →
+  ~1.7× vs Zustand — a ~29% cut, though still short of Zustand's native
+  single-object merge); `write → 1 subscriber` ~41→~36ns via caching field
+  signals in a dense array (removes a per-notify dynamic `raw[key]` lookup). The
+  no-subscriber `patch` fast path and the per-field `store.x.set()` hot path are
+  unchanged. Reproduce: `cd packages/fundamentals/store && bun run bench:stores`.
+
+- [#2307](https://github.com/pyreon/pyreon/pull/2307) [`2963c27`](https://github.com/pyreon/pyreon/commit/2963c270f8fa5f6b2d178b6d8fb6d2bd21d3df89) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Make `patch()` exception-safe. The with-subscriber fast path ([#2286](https://github.com/pyreon/pyreon/issues/2286)) detaches each field's change-detector across its write; a throwing getter on the patch object, a throwing `sig.set`, or a raw subscriber that throws during the batch drain could leave a detector deleted (silently un-notifying later direct writes) or wedge `patchInProgress` (buffering + dropping later notifications). Reads that can throw are now hoisted before the suspend, the per-key write resumes the detector in `finally`, and the flag reset + event emit run in a `finally` around the drain (both the value and functional forms). Zero hot-path cost — the patch-with-subscriber bench holds within noise of the [#2286](https://github.com/pyreon/pyreon/issues/2286) win.
+
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d), [`87ba16e`](https://github.com/pyreon/pyreon/commit/87ba16e3dc9cfa44ef03f8e2cb229a3b6fd11d47), [`661a748`](https://github.com/pyreon/pyreon/commit/661a7485a93abb9fc64592e25c5214b0a27d8597)]:
+  - @pyreon/validation@0.46.0
+  - @pyreon/reactivity@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

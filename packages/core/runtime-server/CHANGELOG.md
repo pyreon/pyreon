@@ -1,5 +1,38 @@
 # @pyreon/runtime-server
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2281](https://github.com/pyreon/pyreon/pull/2281) [`4ec01d8`](https://github.com/pyreon/pyreon/commit/4ec01d8b5cd9a95b04a01deb5ac2a26605dc1974) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(runtime-server,compiler): opt-in compile-to-string SSR fast path (`_ssr`)
+
+  Adds the SSR analog of the DOM `_tpl()` cloneNode fast path: an eligible static-skeleton JSX subtree can lower to an `_ssr(["<li>…","</li>"], hole0, …)` string template instead of a `h()` VNode tree, so `renderToString` concatenates precompiled HTML instead of walking a per-request VNode tree.
+
+  - **runtime-server** — new public primitives `_ssr`, `_ssrChildren`, `_esc`. `_ssr`/`_ssrChildren` return a `RawHtml`-branded fragment (the SafeString trust boundary) so a nested fast-path result is concatenated verbatim while a plain string hole is still escaped. Every dynamic hole is resolved through the SAME `renderNode` the h() path uses, so the produced HTML is **byte-identical** to the h() walk it replaces — hydration is unaffected. `renderNode`/`streamNode` recognize `RawHtml` (and a Promise root) so `_ssr` composes through component boundaries and async holes. Maybe-async: sync subtrees pay zero promise hops.
+  - **compiler** — new opt-in `TransformOptions.ssrTemplate` (requires `ssr: true`, default `false`). The JS backend lowers eligible elements (`buildSsrCall`); eligibility is deliberately conservative and bails to `h()` on any shape it can't prove renders byte-identically (dynamic attrs, `<select>`/void-with-content, spreads, component children, camelCase/URL-unsafe attrs, object styles, `innerHTML`, `&` in baked JSXText / raw JSX string attrs — oxc keeps HTML entities literal but the h() path's JSX runtime may decode them, so any `&` there bails, …). A `.map(item => <el>)` child compiles to `_ssrChildren(arr.map(item => _ssr(…)))` with the accessor markers baked in, so list items skip VNode allocation too.
+
+  Opt-in and JS-backend-only in this release: with the flag OFF (the default, and what the cross-backend equivalence gates use) both backends stay byte-identical. The native (Rust) backend does not yet implement `ssrTemplate` — the dispatcher routes to the JS backend when the flag is set. Native parity + a `pyreon({ ssrTemplate: true })` vite-plugin option are the tracked follow-up.
+
+  Measured (Apple M3 Max, Bun, `NODE_ENV=production`, `scripts/bench/core/ssr-template-fastpath.ts`) on ELIGIBLE shapes (static attrs + dynamic text): the fast path renders **~2× faster than Pyreon's current SSR** (card 2.0×, list-50 1.8×, list-1000 2.0×) and 2.3–2.5× faster than `react-dom/server`. Honest limit: the conservative eligibility bails on per-row DYNAMIC attributes (`href`/`data-*`/`id`), so list rows carrying those (e.g. the `bench:ssr-cross` harness's shape) fall back to `h()` — extending eligibility to dynamic attrs is the highest-value follow-up.
+
+- [#2287](https://github.com/pyreon/pyreon/pull/2287) [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(ssr): lean concat + dynamic-attribute eligibility for the `_ssr` fast path
+
+  Builds on the opt-in compile-to-string SSR fast path (`ssrTemplate`): makes it ~2–3× faster and much more broadly eligible, while keeping FULL byte-identity to the h() path.
+
+  - **Lean concat.** The compiler now PRE-STRINGIFIES every hole — `_esc(text)`, an `_ssrAttr*` for a dynamic attribute, or a nested `_ssr`/`_ssrChildren` — and bakes the `<!--$-->` accessor markers into the surrounding statics, so `_ssr` is a `+=` accumulator with one type check per hole (no per-hole `renderNode` dispatch, no re-escape). New `_ssrItem` is the `.map` item form: a plain string that `_ssrChildren` concatenates with no per-item `RawHtml` wrap. `_esc` is now a smart escaper (primitive → escaped/`String`; a VNode in a text position still MOUNTS, possibly async).
+  - **Dynamic attributes are now eligible** (previously bailed to `h()`). New `_ssrAttr` reuses `renderProp` VERBATIM — byte-identical incl. the url-guard, class `cx` / object-style normalize, boolean/aria rules, `toAttrName` name-map, and null-omit — with byte-identical LEAN fast paths for the common shapes: `_ssrAttrGen` (generic lowercase name) and `_ssrAttrUrl` (lowercase url name). So `<li data-id={r.id} href={h}>` rows now hit the fast path; the compiler still bails on spreads / `<select>` / component children / `innerHTML` / `&`-entity JSX strings.
+  - **Proven-non-null attr baking.** When a dynamic attr's value EXPRESSION is syntactically provably non-null-non-boolean (`String(x)`, template literals, `` `${...}` ``, `.toFixed()`/`.toString()`/`.join()`, numeric literals, `+`-concat with a string operand, `a ? b : c` of provable branches — and, for a URL attr, a provably-safe start), the `renderProp` null-omit / boolean / url-guard branches are provably DEAD, so the attr name + quotes BAKE into the statics and only the value is escaped (like Solid's template baking) — byte-identical to the h() path. A genuinely-nullable attr (`data-id={r.id}`) keeps the runtime helper (null-omit safety — a real correctness advantage over Solid's `null → name=""`). Bisect-verified: forcing the baking on for a null-able value diverges (the runtime null-omit is load-bearing).
+
+  The objective cross-framework bench (`bun run bench:ssr-cross`) now COMPILES the Pyreon side through the fast path (the fair analog of Solid's babel compile), guarded by its byte-identical correctness gate. Measured (M3 Max, Bun, real babel-Solid, prod): **card 12.3M/s (~9× over Solid, ~6× over Pyreon h())**, **list-50 111K/s (ties Solid — CI-overlap)**, **list-1000 6.4K/s (1.12× behind Solid, 2.8× over h())** — faster than `react-dom/server` on all three. The residual list-1000 gap is the byte-identity url-guard on `href` (Solid inlines a plain escape).
+
+  Still opt-in and JS-backend-only: `ssrTemplate` CANNOT be defaulted-on until the native (Rust) backend implements it, or `native-equivalence` for `ssr: true` would diverge (JS `_ssr` vs native `h()`). Native parity → default-on is the tracked follow-up.
+
+### Patch Changes
+
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

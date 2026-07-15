@@ -1,5 +1,24 @@
 # @pyreon/document
 
+## 0.46.0
+
+### Minor Changes
+
+- [#2239](https://github.com/pyreon/pyreon/pull/2239) [`3c1054a`](https://github.com/pyreon/pyreon/commit/3c1054aa98ac501980b69922edc7a0e76b1bfdc9) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(document): implement json/jsonl renderers + fix two silent-drop bugs (markdown table cell escaping, docx page-break)
+
+  - **json / jsonl formats** — previously in the `OutputFormat` type (and documented as "20 output formats" in README/CLAUDE.md) but with NO registered renderer, so `render(doc, 'json')` threw at runtime. Now implemented: `json` serializes the round-trippable `DocNode` tree; `jsonl` emits one content block per line (chunking/embedding/ingestion shape). Added `toJson()`/`toJsonl()` builder methods + `.json`/`.jsonl`/`.ndjson` download extensions.
+  - **markdown table cell escaping** — a raw `|` in a cell split the column structure (N pipes ⇒ N+1 apparent columns, mismatching the separator row = corrupt GFM table) and a newline broke the row. Cells now escape `\`/`|` and collapse newlines to `<br>`.
+  - **docx page-break** — `<PageBreak/>` was silently dropped in DOCX (its `processNode` switch had no `case 'page-break'` and no default) while HTML/PDF/md/text all honored it. Now emits a real `<w:br w:type="page"/>`.
+  - docs: published the primitive × format support matrix; corrected the `download(node, filename, options?)` signature in README + manifest; added a render-throughput bench (`bun run bench:document`).
+
+### Patch Changes
+
+- [#2271](https://github.com/pyreon/pyreon/pull/2271) [`7e81ff0`](https://github.com/pyreon/pyreon/commit/7e81ff0e5c7aad2589e7fa39547246717c2e3576) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(document): document the 17 JSX primitives + the renderer extension API in the manifest — `Heading`, `Text`, `Table`, `List`/`ListItem`, `Code`, `Link`, `Image`, `Button`, the structural set (`Page`/`Section`/`Row`/`Column`/`Divider`/`Spacer`/`Quote`/`PageBreak`), and `registerRenderer`/`unregisterRenderer`/`isDocNode`. All signatures, defaults, and footguns are source-verified (Heading `level` defaults to 1; `ListItem` discards every prop except `children`; `Table` cells are scalar `string | number` with data in props not children; `Button` has no `onClick`/`variant` and requires `href`; `registerRenderer` silently overwrites; `isDocNode` is a structural-only guard; a plain-object child throws). Regenerates the MCP api-reference + docs-site reference page.
+
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/core@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

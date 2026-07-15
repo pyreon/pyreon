@@ -1,5 +1,25 @@
 # @pyreon/state-tree
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2250](https://github.com/pyreon/pyreon/pull/2250) [`f813643`](https://github.com/pyreon/pyreon/commit/f81364338273f6664c1c236f76fd0424b50d3fe2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(state-tree): source-verified `mistakes[]` + a missing public export + two
+  doc-bug fixes. Added `resetHook`/`resetAllHooks` to api[] (exported from index.ts
+  but absent — the `.asHook(id)` singleton test-isolation footgun). Enriched
+  mistakes[] (11 → 15 blocks): applyPatch (REPLACE-ONLY — throws `unsupported op` on
+  add/remove, verified patch.ts), getSnapshot (non-reactive peek; recurses
+  arrays-of-instances), applySnapshot (partial MERGE not wholesale; in-place array
+  reconcile up to overlap; schema mode re-validates + rejects). Fixed two stale
+  claims caught by verifying against source: the `reference` mistake said "getSnapshot
+  v1 does not recurse arrays-of-instances" (snapshot.ts now DOES) and applySnapshot's
+  summary said "wholesale" (it's a partial merge — `Partial<Snapshot>`, absent keys
+  preserved). Regenerates the MCP api-reference state-tree region + snapshot test
+  (entry count 20 → 21). Docs/manifest only — no runtime behavior change.
+- Updated dependencies [[`8f0912c`](https://github.com/pyreon/pyreon/commit/8f0912c3a36055aa625d582777850c0c3ecfbc04), [`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`c67cbb9`](https://github.com/pyreon/pyreon/commit/c67cbb9795c8f6cfed4669f34d7f726e26f0e10d), [`87ba16e`](https://github.com/pyreon/pyreon/commit/87ba16e3dc9cfa44ef03f8e2cb229a3b6fd11d47), [`661a748`](https://github.com/pyreon/pyreon/commit/661a7485a93abb9fc64592e25c5214b0a27d8597)]:
+  - @pyreon/validation@0.46.0
+  - @pyreon/reactivity@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

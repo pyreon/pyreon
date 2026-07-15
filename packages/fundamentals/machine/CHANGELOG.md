@@ -1,5 +1,20 @@
 # @pyreon/machine
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2254](https://github.com/pyreon/pyreon/pull/2254) [`356a9d6`](https://github.com/pyreon/pyreon/commit/356a9d6f4cdcb3f0b3ad50994cd28e0ff6c35fbb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(machine): document the instance query + control surface. The manifest was
+  already excellent (dense summaries + 5 gotchas), but four reactive public methods
+  were only mentioned in passing — now a grouped api[] entry: `matches(...states)`
+  (variadic OR), `nextEvents()` (declared `on` keys — NOT guard-filtered, excludes
+  `always`, verified machine.ts:182), `reset()` (initial + its `always` cascade),
+  `dispose()` (clears all listeners; the machine still transitions afterward). Each
+  carries a source-verified foot-gun. Regenerates the MCP api-reference machine
+  region + snapshot test (entry count 4 → 5). Docs/manifest only — no runtime change.
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5)]:
+  - @pyreon/reactivity@0.46.0
+
 ## 0.45.0
 
 ### Patch Changes

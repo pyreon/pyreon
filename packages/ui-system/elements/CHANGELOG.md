@@ -1,5 +1,27 @@
 # @pyreon/elements
 
+## 0.46.0
+
+### Patch Changes
+
+- [#2262](https://github.com/pyreon/pyreon/pull/2262) [`c60aafd`](https://github.com/pyreon/pyreon/commit/c60aafd122bd5d80ac443069f7c6fe3aa65c27b7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - docs(elements): source-verified mistakes[] for Text + a Util doc-bug fix.
+  Text had no mistakes — added three verified against Text/component.tsx: `tag`/
+  `paragraph` are STATIC (mount-time, reactive tag swap unsupported — remount to
+  change); `children` takes precedence over `label` (`children ?? label`); `css` is
+  reactive while `tag` is not. Util was MISCHARACTERIZED as an "Element-family
+  structural wrapper without layout semantics" — the source (Util/component.tsx)
+  shows it adds NO DOM node of its own: it CLONES its child, injecting
+  `className`/`style` (props are `{ children, className, style }`, no `tag`/layout).
+  Corrected the signature + summary + added two mistakes. mistakes[] blocks 6 → 9.
+  Regenerates the MCP api-reference + llms-full elements sections + docs reference
+  page. Docs/manifest only — no runtime behavior change.
+- Updated dependencies [[`75a49be`](https://github.com/pyreon/pyreon/commit/75a49befac42202c8237911aa4b111efbbfb1a61), [`cc5250d`](https://github.com/pyreon/pyreon/commit/cc5250d4022638286a0bf89facffb5a585fe2a18), [`19c1ce1`](https://github.com/pyreon/pyreon/commit/19c1ce12a54305ac875d1b19682ecf084addc607), [`f67f3fe`](https://github.com/pyreon/pyreon/commit/f67f3fe451f0aeeb74a024501d30f593ce50b7ff), [`d93e7d3`](https://github.com/pyreon/pyreon/commit/d93e7d3f9a4d679b25a3fc646d99673c2fe276c5), [`2609196`](https://github.com/pyreon/pyreon/commit/260919603f0f3cdd0c401cdc2c820e742e211db6), [`3124522`](https://github.com/pyreon/pyreon/commit/31245225c087922575846fa644f93523ff6e1435)]:
+  - @pyreon/reactivity@0.46.0
+  - @pyreon/unistyle@0.46.0
+  - @pyreon/core@0.46.0
+  - @pyreon/ui-core@0.46.0
+  - @pyreon/sized-map@0.46.0
+
 ## 0.45.0
 
 ### Minor Changes
