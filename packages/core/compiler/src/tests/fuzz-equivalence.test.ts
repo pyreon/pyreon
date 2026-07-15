@@ -30,7 +30,15 @@ import { describe, expect, test } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
 let nativeTransform:
-  | ((code: string, filename: string, ssr: boolean, known: string[] | null) => { code: string })
+  | ((
+      code: string,
+      filename: string,
+      ssr: boolean,
+      known: string[] | null,
+      reactivityLens?: boolean,
+      collapse?: unknown,
+      ssrTemplate?: boolean,
+    ) => { code: string })
   | null = null
 try {
   const path = require('node:path')
@@ -204,17 +212,27 @@ function genComponent(seed: number): string {
 // ─── The gate ───────────────────────────────────────────────────────────────
 const SEEDS = 300 // ~1.2s locally; every seed is reproducible by number
 
+// Three compilation modes exercised per seed: client (`ssr:false`), SSR h()
+// (`ssr:true`), and SSR compile-to-string (`ssr:true, ssrTemplate:true`). The
+// third exercises the native `_ssr` emit across the whole grammar — the
+// combinatoric oracle for the native-parity landing.
+const MODES: { label: string; ssr: boolean; ssrTemplate: boolean }[] = [
+  { label: 'client', ssr: false, ssrTemplate: false },
+  { label: 'ssr', ssr: true, ssrTemplate: false },
+  { label: 'ssr-template', ssr: true, ssrTemplate: true },
+]
+
 describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
-  test(`${SEEDS} seeds × 2 modes are byte-identical`, () => {
+  test(`${SEEDS} seeds × 3 modes are byte-identical`, () => {
     const failures: string[] = []
     let firstDivergence = ''
     for (let seed = 1; seed <= SEEDS; seed++) {
       const src = genComponent(seed)
-      for (const ssr of [false, true]) {
-        const js = transformJSX_JS(src, 'fuzz.tsx', { ssr }).code
-        const rs = nativeTransform!(src, 'fuzz.tsx', ssr, null).code
+      for (const { label, ssr, ssrTemplate } of MODES) {
+        const js = transformJSX_JS(src, 'fuzz.tsx', { ssr, ssrTemplate }).code
+        const rs = nativeTransform!(src, 'fuzz.tsx', ssr, null, false, undefined, ssrTemplate).code
         if (js !== rs) {
-          failures.push(`seed=${seed} ssr=${ssr}`)
+          failures.push(`seed=${seed} mode=${label}`)
           if (!firstDivergence) {
             const jl = js.split('\n')
             const rl = rs.split('\n')
@@ -225,7 +243,7 @@ describeNative('seeded differential fuzz — JS ≡ Rust, client + SSR', () => {
                 break
               }
             }
-            firstDivergence = `\n── first divergent source (seed=${seed} ssr=${ssr}) ──\n${src}\n── first differing line ──\n${diff}`
+            firstDivergence = `\n── first divergent source (seed=${seed} mode=${label}) ──\n${src}\n── first differing line ──\n${diff}`
           }
         }
       }

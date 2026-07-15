@@ -42,6 +42,8 @@ export interface NativeBinding {
     // here keeps load-native config-free; jsx.ts casts transformJsx to the
     // precisely-typed NativeTransformFn at the call site.
     collapse?: unknown,
+    // Optional compile-to-string SSR fast path flag (`options.ssrTemplate`).
+    ssrTemplate?: boolean,
   ) => unknown
 }
 

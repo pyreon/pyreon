@@ -82,6 +82,7 @@ type NativeTransformFn = (
   knownSignals: string[] | null,
   reactivityLens: boolean,
   collapse?: NativeCollapseConfig,
+  ssrTemplate?: boolean,
 ) => TransformResult
 const nativeBinding = loadNativeBinding(import.meta.url)
 const nativeTransformJsx: NativeTransformFn | null = nativeBinding
@@ -956,19 +957,13 @@ export function transformJSX(
   filename = 'input.tsx',
   options: TransformOptions = {},
 ): TransformResult {
-  // Compile-to-string SSR fast path (`ssrTemplate`) is implemented in the JS
-  // backend ONLY for now — the native backend ignores the flag, so route
-  // through JS when it's set (SSR compilation is build-time; the win is the
-  // per-request `_ssr` render). With the flag OFF (the default, and what every
-  // equivalence gate uses) native runs as before and both backends stay
-  // byte-identical. Native `ssrTemplate` parity is the tracked follow-up.
-  if (options.ssrTemplate === true && options.ssr === true) {
-    return transformJSX_JS(code, filename, options)
-  }
   // Try Rust native binary first (3.7-8.2x faster). The native backend now
   // implements ALL FOUR rocketstyle-collapse variants byte-identically (locked
   // by the cross-backend equivalence suite), so `collapseRocketstyle` is lowered
   // to the napi shape and threaded as the 6th arg instead of forcing the JS path.
+  // The compile-to-string SSR fast path (`ssrTemplate`) is ALSO implemented
+  // byte-identically in the native backend (threaded as the 7th arg + locked by
+  // native-equivalence / fuzz-equivalence), so it no longer forces the JS path.
   // Per-call try/catch: if the native binary panics on an edge case (bad UTF-8,
   // unexpected AST shape), fall back gracefully instead of crashing the dev server.
   if (nativeTransformJsx) {
@@ -980,6 +975,7 @@ export function transformJSX(
         options.knownSignals ?? null,
         options.reactivityLens === true,
         options.collapseRocketstyle ? toNativeCollapse(options.collapseRocketstyle) : undefined,
+        options.ssrTemplate === true,
       )
     } catch {
       // Native transform failed — fall through to JS implementation
