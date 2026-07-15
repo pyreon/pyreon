@@ -5739,7 +5739,10 @@ function swiftFieldPlaceholder(e: Extract<ExprIR, { kind: 'jsx-element' }>): str
   if (typeof stat === 'string') return JSON.stringify(stat)
   const attr = e.attrs.find((a) => a.kind === 'attr' && a.name === 'placeholder')
   if (attr !== undefined && attr.kind === 'attr' && attr.value.kind !== 'literal') {
-    return emitSwiftExpr(attr.value, 0)
+    // Unwrap a zero-arg accessor arrow: `placeholder={() => hint()}` is a
+    // reactive VALUE, so the SwiftUI TextField title must be `hint`, not the
+    // closure `{ hint }` (a type error — the title parameter wants a String).
+    return emitSwiftExpr(unwrapAccessorArrow(attr.value), 0)
   }
   return '""'
 }
@@ -6059,7 +6062,10 @@ function emitSwiftField(
   } else if (isBareSignal) {
     textArg = `$${swiftIdent((valueAttr!.value as Extract<ExprIR, { kind: 'identifier' }>).name)}`
   } else if (valueAttr !== undefined && onChangeAttr !== undefined) {
-    const getExpr = emitSwiftExpr(valueAttr.value, indent + 4)
+    // Unwrap a zero-arg accessor arrow: `value={() => v()}` is a reactive read,
+    // so the Binding get must return `v`, not the closure `{ v }` (which would
+    // make the get return `() -> String`, not `String` — a type error).
+    const getExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent + 4)
     const writeBody = stripSwiftClosureBody(emitSwiftAction(onChangeAttr.handler, indent + 4))
     const handlerParam =
       onChangeAttr.handler.kind === 'arrow' && onChangeAttr.handler.params.length > 0

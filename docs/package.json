@@ -27,6 +27,7 @@
     "@pyreon/runtime-server": "workspace:*",
     "@pyreon/server": "workspace:*",
     "@pyreon/storage": "workspace:*",
+    "@pyreon/store": "workspace:*",
     "@pyreon/sync": "workspace:*",
     "@pyreon/toast": "workspace:*",
     "@pyreon/virtual": "workspace:*",

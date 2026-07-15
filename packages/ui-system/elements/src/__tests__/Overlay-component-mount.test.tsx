@@ -126,4 +126,117 @@ describe('Overlay component — active modal render (mount)', () => {
 
     cleanup()
   })
+
+  it('content render prop receives LIVE active/align/alignX/alignY accessors', () => {
+    // The content props are `_rp()`-branded thunks (the compiler shape for
+    // `prop={signal()}`); `makeReactiveProps` in the mount pipeline converts
+    // them to getters, so a plain read here resolves the CURRENT value.
+    const { cleanup } = mountOverlay({
+      openOn: 'manual',
+      closeOn: 'manual',
+      isOpen: true,
+      align: 'top',
+      alignX: 'right',
+      alignY: 'top',
+      trigger: (p: { ref?: unknown }) =>
+        h('button', { ref: p.ref, 'data-testid': 'trigger-4' }, 'open'),
+      children: (p: {
+        ref?: unknown
+        active?: unknown
+        align?: unknown
+        alignX?: unknown
+        alignY?: unknown
+      }) =>
+        h(
+          'div',
+          {
+            ref: p.ref,
+            'data-testid': 'content-4',
+            'data-active': String(p.active),
+            'data-align': String(p.align),
+            'data-alignx': String(p.alignX),
+            'data-aligny': String(p.alignY),
+          },
+          'body',
+        ),
+    })
+
+    const content = document.querySelector('[data-testid="content-4"]')
+    expect(content).not.toBeNull()
+    expect(content!.getAttribute('data-active')).toBe('true')
+    expect(content!.getAttribute('data-align')).toBe('top')
+    expect(content!.getAttribute('data-alignx')).toBe('right')
+    expect(content!.getAttribute('data-aligny')).toBe('top')
+
+    cleanup()
+  })
+
+  it('hover overlay opens on trigger enter and detaches content listeners on close', async () => {
+    // Exercises the full content-hover lifecycle: open (content mounts →
+    // syncContentHoverListeners ATTACHES to the live contentEl) then close
+    // (contentRef(null) → isContentLoaded flips false → DETACH from the node
+    // we bound to). The explicit `hoverDelay` also covers the configured
+    // (non-default) delay read.
+    const { cleanup } = mountOverlay({
+      openOn: 'hover',
+      closeOn: 'hover',
+      hoverDelay: 1,
+      trigger: (p: { ref?: unknown }) =>
+        h('button', { ref: p.ref, 'data-testid': 'trigger-5' }, 'hover me'),
+      children: (p: { ref?: unknown }) =>
+        h('div', { ref: p.ref, 'data-testid': 'content-5' }, 'tip'),
+    })
+
+    const trigger = document.querySelector('[data-testid="trigger-5"]')!
+    expect(document.querySelector('[data-testid="content-5"]')).toBeNull()
+
+    // Pointer enters the trigger → hover-open → content mounts + listeners bind.
+    trigger.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+    expect(document.querySelector('[data-testid="content-5"]')).not.toBeNull()
+
+    // Pointer moves trigger→content: onContentEnter cancels the pending hide.
+    const content = document.querySelector('[data-testid="content-5"]')!
+    trigger.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+    content.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.querySelector('[data-testid="content-5"]')).not.toBeNull()
+
+    // Pointer leaves the content → scheduleHide(hoverDelay) → close: content
+    // unmounts and the sync pass detaches from the (now stale) content node.
+    content.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(document.querySelector('[data-testid="content-5"]')).toBeNull()
+
+    cleanup()
+  })
+
+  it('repositions the content one frame after a manual open (rAF path)', async () => {
+    // showContent → content mounts → isContentLoaded flips → repositionOnOpen
+    // defers a frame, re-checks, and runs setContentPosition on the live node.
+    let show: (() => void) | undefined
+    const { cleanup } = mountOverlay({
+      openOn: 'manual',
+      closeOn: 'manual',
+      isOpen: false,
+      type: 'modal', // also exercises the modal arm of the open path
+      trigger: (p: { ref?: unknown; showContent?: unknown }) => {
+        show = p.showContent as () => void
+        return h('button', { ref: p.ref, 'data-testid': 'trigger-6' }, 'open')
+      },
+      children: (p: { ref?: unknown }) =>
+        h('div', { ref: p.ref, 'data-testid': 'content-6' }, 'modal body'),
+    })
+
+    expect(document.querySelector('[data-testid="content-6"]')).toBeNull()
+    show!()
+    const content = document.querySelector('[data-testid="content-6"]')
+    expect(content).not.toBeNull()
+
+    // Let the deferred rAF measurement land with the overlay still open.
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)))
+    // Position pass ran against the live content — the overlay stayed mounted.
+    expect(document.querySelector('[data-testid="content-6"]')).not.toBeNull()
+
+    cleanup()
+  })
 })

@@ -187,6 +187,14 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/store/counter-store-signals-derived" />
 
+### Global Shared Store
+
+<Example file="./examples/store/global-shared-store" />
+
+### Store Color Channels
+
+<Example file="./examples/store/store-color-channels" />
+
 ### Todo Store List Derived Count
 
 <Example file="./examples/store/todo-store-list-derived-count" />

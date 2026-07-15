@@ -202,6 +202,82 @@ describe('useFocusTrap', () => {
     expect(document.activeElement).toBe(btn1)
   })
 
+  it('guards in the listener when a NON-reactive active getter flips false', async () => {
+    // A plain (non-signal) getter: the watch can't observe the flip, so the
+    // listener stays attached and its own `isActive()` guard is what bails.
+    let on = true
+    useFocusTrap(() => container, () => on)
+    mountCallbacks.forEach((cb) => {
+      cb()
+    })
+    await tick()
+
+    on = false // untracked flip — listener remains attached
+    btn3.focus()
+    const e = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+    const prevented = vi.spyOn(e, 'preventDefault')
+    document.dispatchEvent(e)
+    expect(prevented).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(btn3)
+  })
+
+  it('bails when focus is inside the container but nothing is tabbable', async () => {
+    // tabindex="-1" is programmatically focusable but excluded from the trap's
+    // tabbable set → the listener reaches the empty-focusable guard.
+    const holder = document.createElement('div')
+    holder.setAttribute('tabindex', '-1')
+    container.textContent = ''
+    container.appendChild(holder)
+    useFocusTrap(() => container)
+    mountCallbacks.forEach((cb) => {
+      cb()
+    })
+    await tick()
+
+    holder.focus()
+    expect(container.contains(document.activeElement)).toBe(true)
+    const e = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+    const prevented = vi.spyOn(e, 'preventDefault')
+    expect(() => document.dispatchEvent(e)).not.toThrow()
+    expect(prevented).not.toHaveBeenCalled()
+  })
+
+  it('attach is idempotent when the watch re-fires with active still true', async () => {
+    // `watch` notifies on every dep change (no value gate), so an active
+    // getter whose signal changes value while staying truthy re-invokes
+    // attach() on an already-attached listener.
+    const n = signal(1)
+    useFocusTrap(() => container, () => n() > 0)
+    mountCallbacks.forEach((cb) => {
+      cb()
+    })
+    await tick()
+
+    n.set(2) // true → true re-fire; attach() early-returns
+    await tick()
+
+    // Still exactly ONE listener: a single Tab at the edge wraps once.
+    btn3.focus()
+    const e = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+    const prevented = vi.spyOn(e, 'preventDefault')
+    document.dispatchEvent(e)
+    expect(prevented).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).toBe(btn1)
+  })
+
+  it('initialFocus:true is a no-op when the container has no focusables', async () => {
+    container.textContent = '' // strip the buttons — nothing focusable inside
+    useFocusTrap(() => container, { active: true, initialFocus: true })
+    expect(() => {
+      mountCallbacks.forEach((cb) => {
+        cb()
+      })
+    }).not.toThrow()
+    await tick()
+    // resolveInitialFocus fell through its `?? null` arm — focus untouched.
+    expect(container.contains(document.activeElement)).toBe(false)
+  })
+
   it('accepts a plain boolean active (positional shorthand)', async () => {
     // active: false as a literal boolean → never armed.
     useFocusTrap(() => container, false)
@@ -406,6 +482,17 @@ describe('getFocusable — robust query', () => {
       'natural-a',
       'natural-b',
     ])
+  })
+
+  it('excludes a directly-disabled control that matches via [tabindex]', () => {
+    // `button:not([disabled])` already filters plain disabled buttons, but a
+    // disabled control carrying tabindex matches the `[tabindex]` selector —
+    // the isDisabled() direct-`disabled` arm is what excludes it.
+    container.innerHTML = `
+      <button id="on">x</button>
+      <button id="off" disabled tabindex="0">y</button>
+    `
+    expect(ids(getFocusable(container))).toEqual(['on'])
   })
 
   it('skips form controls disabled by an ancestor <fieldset disabled>', () => {
