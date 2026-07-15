@@ -1295,7 +1295,13 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentKotlin = isLayout
-  lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
+  // A component that returns `null` / `undefined` renders NOTHING — a @Composable
+  // returns Unit, so emit an empty body rather than a stray `null` expression
+  // statement (valid-but-pointless in Kotlin; the Swift sibling `nil` was a hard
+  // error — see emit-swift.ts:emitSwiftReturnExpr).
+  if (!(c.returnExpr.kind === 'literal' && c.returnExpr.value == null)) {
+    lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
+  }
   _emittingLayoutComponentKotlin = false
   lines.push(`}`)
   _activePropsParamName = undefined

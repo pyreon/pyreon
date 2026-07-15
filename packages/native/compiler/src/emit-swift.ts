@@ -6862,6 +6862,13 @@ function emitSwiftViewTernary(
  * else emits via the normal expression path.
  */
 function emitSwiftReturnExpr(expr: ExprIR, indent: number): string {
+  // A component that returns `null` / `undefined` renders NOTHING — the SwiftUI
+  // equivalent is `EmptyView()`, NOT the bare `nil` the literal path emits (a
+  // `var body: some View { nil }` is uncompilable: `nil` has no contextual type
+  // and isn't a View). Mirrors Compose's `Unit`/empty-composable for the same case.
+  if (expr.kind === 'literal' && expr.value == null) {
+    return 'EmptyView()'
+  }
   if (
     expr.kind === 'ternary' &&
     (swiftExprProducesView(expr.then) || swiftExprProducesView(expr.otherwise))
