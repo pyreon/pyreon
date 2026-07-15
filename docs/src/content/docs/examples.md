@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 54 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 56 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 54 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 56 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Coolgrid
 
@@ -83,9 +83,17 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 ## Hotkeys
 
+### Hotkeys Key Tiles
+
+<Example file="./examples/hotkeys/hotkeys-key-tiles" />
+
 ### Hotkeys Keypress Recorder
 
 <Example file="./examples/hotkeys/hotkeys-keypress-recorder" />
+
+### Hotkeys Move Dot
+
+<Example file="./examples/hotkeys/hotkeys-move-dot" />
 
 ## i18n
 

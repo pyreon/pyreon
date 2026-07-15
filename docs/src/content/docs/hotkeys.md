@@ -106,6 +106,8 @@ and surrounding whitespace within each `+`-segment is trimmed.
 modifier+modifier+...+key
 ```
 
+<Example file="./examples/hotkeys/hotkeys-key-tiles" title="Number keys 1–4 (or a click) each toggle their tile" />
+
 The last non-modifier token is the **key**; everything else is a modifier.
 
 ```tsx
@@ -208,6 +210,8 @@ of round-tripping it through `parseShortcut`.
 `useHotkey(shortcut, handler, options?)` registers a shortcut and ties it to the calling
 component. When the component unmounts, the shortcut is automatically unregistered — you
 never write cleanup code.
+
+<Example file="./examples/hotkeys/hotkeys-move-dot" title="Arrow keys (or the pads) move the dot" />
 
 ```tsx
 import { useHotkey } from '@pyreon/hotkeys'
