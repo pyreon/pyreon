@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   getBezierPath,
+  getFloatingEndpoints,
+  getNodeIntersection,
   getSmartHandlePositions,
   getSmoothStepPath,
   getWaypointPath,
@@ -177,6 +179,45 @@ describe('edge paths — additional branches', () => {
     // Should use configured handle positions
     expect(result.sourcePosition).toBe(Position.Bottom)
     expect(result.targetPosition).toBe(Position.Top)
+  })
+
+  it('getNodeIntersection exits the box on the side facing the target', () => {
+    const box = { x: 0, y: 0, width: 100, height: 40 } // center (50, 20)
+    // Directly right → right-edge midpoint.
+    expect(getNodeIntersection(box, { x: 500, y: 20 })).toEqual({ x: 100, y: 20 })
+    // Directly up → top-edge midpoint.
+    expect(getNodeIntersection(box, { x: 50, y: -500 })).toEqual({ x: 50, y: 0 })
+    // Diagonal → lands ON a perimeter edge (whichever the ray reaches first).
+    const p = getNodeIntersection(box, { x: 500, y: 500 })
+    expect(p.x === 100 || p.y === 40).toBe(true)
+    // Degenerate (target at center) → returns the center.
+    expect(getNodeIntersection(box, { x: 50, y: 20 })).toEqual({ x: 50, y: 20 })
+  })
+
+  it('getFloatingEndpoints connects perimeter-to-perimeter along the center line', () => {
+    const source = { id: 'a', position: { x: 0, y: 0 }, data: {} }
+    const dims = { sourceW: 100, sourceH: 40, targetW: 100, targetH: 40 }
+
+    // Horizontal layout → source exits RIGHT, target enters LEFT, at the facing
+    // edge midpoints — the natural docking points for a straight-across edge.
+    const h = getFloatingEndpoints(source, { id: 'b', position: { x: 300, y: 0 }, data: {} }, dims)
+    expect(h.source.position).toBe(Position.Right)
+    expect(h.target.position).toBe(Position.Left)
+    expect(h.source.x).toBe(100)
+    expect(h.target.x).toBe(300)
+
+    // Vertical layout → Bottom → Top.
+    const v = getFloatingEndpoints(source, { id: 'c', position: { x: 0, y: 300 }, data: {} }, dims)
+    expect(v.source.position).toBe(Position.Bottom)
+    expect(v.target.position).toBe(Position.Top)
+
+    // Diagonal layout → each endpoint sits on the perimeter facing the other
+    // node (not a fixed midpoint), so the arrow enters at the natural angle.
+    const d = getFloatingEndpoints(source, { id: 'e', position: { x: 300, y: 300 }, data: {} }, dims)
+    // Target's connection point faces up-left (toward the source), so its y is
+    // above the target's vertical centre (320).
+    expect(d.target.y).toBeLessThan(320)
+    expect(d.source.y).toBeGreaterThan(20)
   })
 
   it('getWaypointPath with single waypoint', () => {

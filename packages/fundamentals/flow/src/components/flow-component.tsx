@@ -4,6 +4,7 @@ import {
   collectEdgeMarkers,
   DEFAULT_MARKER_END,
   getEdgePath,
+  getFloatingEndpoints,
   getHandlePosition,
   getSmartHandlePositions,
   getWaypointPath,
@@ -272,27 +273,51 @@ function computeEdgeGeometry(
   const targetW = targetNode.width ?? tm?.width ?? 150
   const targetH = targetNode.height ?? tm?.height ?? 40
 
-  const { sourcePosition, targetPosition } = getSmartHandlePositions(sourceNode, targetNode, {
-    sourceW,
-    sourceH,
-    targetW,
-    targetH,
-  })
+  // Auto-routed edges (no explicit handles, no waypoints) use FLOATING
+  // endpoints: connect where the center-to-center line crosses each node's
+  // perimeter so the edge approaches at the natural angle instead of docking at
+  // a fixed side's midpoint (which forces a horizontal/vertical kink). Nodes
+  // that declare handles — or waypoint routes — keep their fixed docking points.
+  const sourceHasHandle = (sourceNode.sourceHandles?.length ?? 0) > 0
+  const targetHasHandle = (targetNode.targetHandles?.length ?? 0) > 0
+  const useFloating =
+    !sourceHasHandle && !targetHasHandle && !(edge.waypoints && edge.waypoints.length > 0)
 
-  const sourcePos = getHandlePosition(
-    sourcePosition,
-    sourceNode.position.x,
-    sourceNode.position.y,
-    sourceW,
-    sourceH,
-  )
-  const targetPos = getHandlePosition(
-    targetPosition,
-    targetNode.position.x,
-    targetNode.position.y,
-    targetW,
-    targetH,
-  )
+  let sourcePos: { x: number; y: number }
+  let targetPos: { x: number; y: number }
+  let sourcePosition: Position
+  let targetPosition: Position
+
+  if (useFloating) {
+    const fe = getFloatingEndpoints(sourceNode, targetNode, { sourceW, sourceH, targetW, targetH })
+    sourcePos = { x: fe.source.x, y: fe.source.y }
+    targetPos = { x: fe.target.x, y: fe.target.y }
+    sourcePosition = fe.source.position
+    targetPosition = fe.target.position
+  } else {
+    const smart = getSmartHandlePositions(sourceNode, targetNode, {
+      sourceW,
+      sourceH,
+      targetW,
+      targetH,
+    })
+    sourcePosition = smart.sourcePosition
+    targetPosition = smart.targetPosition
+    sourcePos = getHandlePosition(
+      sourcePosition,
+      sourceNode.position.x,
+      sourceNode.position.y,
+      sourceW,
+      sourceH,
+    )
+    targetPos = getHandlePosition(
+      targetPosition,
+      targetNode.position.x,
+      targetNode.position.y,
+      targetW,
+      targetH,
+    )
+  }
 
   const { path, labelX, labelY } = edge.waypoints?.length
     ? getWaypointPath({
