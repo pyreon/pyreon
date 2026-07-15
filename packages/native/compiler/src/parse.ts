@@ -166,6 +166,10 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     // tryEnumFromTypeAlias above) OR a non-object alias (`type Foo = string`).
     const st = tryStructFromTypeAlias(node, ctx)
     if (st) structs.push(st)
+    // Same struct synthesis for a top-level `interface X { … }` (bails + warns
+    // itself on generics/extends/empty — see tryStructFromInterface).
+    const stIface = tryStructFromInterface(node, ctx)
+    if (stIface) structs.push(stIface)
     // Gap 4 Strategy-B v1: `const useFoo = defineStore("foo", () => ...)`
     // detected at top-level scope and extracted as a StoreDefnIR.
     // The setup body's signal decls become fields on the emitted
@@ -307,12 +311,11 @@ function warnUnsupportedTopLevelDecl(node: AnyNode, ctx: ParseCtx): void {
     node.type === 'ExportNamedDeclaration' && node.declaration
       ? (node.declaration as AnyNode)
       : node
-  if (decl.type === 'TSInterfaceDeclaration') {
-    const name = (decl.id?.name as string | undefined) ?? 'an interface'
-    ctx.warnings.push(
-      `Top-level \`interface ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC synthesizes a struct/data-class from an object-literal type alias, not an interface — use \`type ${name} = { … }\` instead.`,
-    )
-  } else if (decl.type === 'TSEnumDeclaration') {
+  // NOTE: a top-level `interface X { … }` is now SYNTHESIZED into a struct by
+  // `tryStructFromInterface` (same as an object-shape `type` alias); it warns
+  // itself only when it can't (generics / extends / empty). So no interface arm
+  // here — enum + class still emit nothing and redirect to the supported form.
+  if (decl.type === 'TSEnumDeclaration') {
     const name = (decl.id?.name as string | undefined) ?? 'an enum'
     ctx.warnings.push(
       `Top-level TS \`enum ${name}\` is NOT compiled to native (it emits nothing → native code referencing it won't compile). PMTC maps a string-literal UNION type alias to a native enum, not a TS \`enum\` declaration — use \`type ${name} = 'a' | 'b'\` instead.`,
@@ -2321,6 +2324,52 @@ function tryStructFromTypeAlias(node: AnyNode, ctx: ParseCtx): StructIR | null {
   if (parsed.kind !== 'object') return null
   if (parsed.fields.length === 0) {
     ctx.warnings.push(`Struct ${name}: skipped — empty object type.`)
+    return null
+  }
+  return { name, fields: parsed.fields }
+}
+
+/**
+ * Sibling of `tryStructFromTypeAlias` for a top-level `interface X { … }`
+ * declaration (bare or `export`-wrapped). An interface's members
+ * (`decl.body.body`, a list of `TSPropertySignature`) are the SAME node shape
+ * as a `TSTypeLiteral`'s `.members`, so we wrap them in a synthetic type-literal
+ * and reuse `parseTypeAnnotation` — `type X = { … }` and `interface X { … }`
+ * produce IDENTICAL structs (field parsing / optional-chain bails /
+ * index-signature skips stay in one place).
+ *
+ * Emits the "not synthesized" warning ITSELF on a bail (generic params,
+ * `extends`, empty) — so a SUCCESSFULLY-synthesized interface never warns
+ * (the `warnUnsupportedTopLevelDecl` interface arm was removed), but a shape we
+ * can't synthesize still redirects the author to a supported form.
+ */
+function tryStructFromInterface(node: AnyNode, ctx: ParseCtx): StructIR | null {
+  let iface: AnyNode | null = null
+  if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'TSInterfaceDeclaration'
+  ) {
+    iface = node.declaration
+  } else if (node.type === 'TSInterfaceDeclaration') {
+    iface = node
+  }
+  if (!iface) return null
+  const name = iface.id?.name as string | undefined
+  if (!name) return null
+  // Generic + `extends` interfaces are out of the synthesizable subset (the
+  // parent's fields aren't in this body) — warn + bail, same as before.
+  if (iface.typeParameters?.params?.length > 0 || (iface.extends?.length ?? 0) > 0) {
+    ctx.warnings.push(
+      `Top-level \`interface ${name}\` with generics or \`extends\` is NOT compiled to native — use a non-generic object-shape \`interface ${name} { … }\` / \`type ${name} = { … }\`.`,
+    )
+    return null
+  }
+  const members = iface.body?.body as AnyNode[] | undefined
+  if (!members) return null
+  const parsed = parseTypeAnnotation({ type: 'TSTypeLiteral', members } as AnyNode, ctx)
+  if (parsed.kind !== 'object') return null
+  if (parsed.fields.length === 0) {
+    ctx.warnings.push(`Struct ${name}: skipped — empty interface.`)
     return null
   }
   return { name, fields: parsed.fields }
