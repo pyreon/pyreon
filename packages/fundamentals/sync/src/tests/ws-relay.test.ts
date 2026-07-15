@@ -20,6 +20,26 @@ import { syncedSignal } from '../synced-signal'
 // type for the transport's `WebSocketImpl` option and for the raw garbage senders.
 const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 
+// SINGLE SOURCE OF TRUTH for how long ONE `waitFor` may spend before it fails.
+// This constant feeds BOTH the `waitFor` default below AND the wall-clock
+// backstop derivation (`TEST_TIMEOUT_MS`), so the two can NEVER drift apart.
+// That drift was the residual bug behind the recurring flake: the backstop
+// formula still used a stale 15s per wait while the `waitFor` default had been
+// bumped to 20s — so `RECONNECTS with backoff` (3 real 20s waits = 60s composed)
+// got a backstop of exactly 60s, EQUAL to its sum, and vitest killed it at the
+// boundary with an opaque "test timed out" instead of the descriptive one.
+//
+// Escalation history on loaded CI runners — localhost WS frames arrive LATE
+// while timers stay on time, so the tick-counted deadline below does NOT
+// self-extend (no loop starvation); it behaves as a plain wall-clock ceiling for
+// frame arrival: 8s flaked twice (2026-06-11), 15s flaked, 20s flaked (#2190,
+// "two clients converge" — which surfaced the DESCRIPTIVE `waitFor: timed out`,
+// proving the backstop already exceeded that spec's sum but 20s of budget was
+// simply too small under contention). 30s is the next step up with real headroom,
+// and — crucially — it is now tuned in ONE place that the backstop tracks
+// automatically, so the "bump the budget, forget the backstop" cycle can't repeat.
+const WAIT_BUDGET_MS = process.env.CI ? 30_000 : 8000
+
 // TICK-COUNTED deadline, deliberately NOT wall-clock. CI runs this file under
 // parallel-load contention (+ v8 instrumentation in `Coverage (Full)`), and the
 // observed flake shape was a ~30s event-loop starvation window: the loopback
@@ -29,14 +49,9 @@ const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 // 27292708996 / 27272xxx on PRs #1498/#1505/#1509). Counting SCHEDULED ticks
 // (each ≈10ms of timer time) makes the deadline self-extend under starvation —
 // ticks don't run when the loop is starved — while behaving identically to the
-// old wall-clock deadline on a healthy machine. vitest's own per-test timeout
-// stays the hard wall-clock backstop.
-// CI runners under parallel load deliver localhost WS frames LATE while
-// timers stay on time — 8s burned through twice on 2026-06-11 (different
-// specs each time, all 3 vitest retries, blocking the release PR), while
-// the same commit passes locally in <1s. 15s keeps headroom under
-// vitest's 20s per-test timeout.
-const waitFor = (cond: () => boolean, timeoutMs = process.env.CI ? 20_000 : 8000): Promise<void> =>
+// old wall-clock deadline on a healthy machine. `TEST_TIMEOUT_MS` below is the
+// hard wall-clock backstop, derived to always exceed the composed budget.
+const waitFor = (cond: () => boolean, timeoutMs = WAIT_BUDGET_MS): Promise<void> =>
   new Promise((resolve, reject) => {
     const maxTicks = Math.ceil(timeoutMs / 10)
     let ticks = 0
@@ -48,24 +63,22 @@ const waitFor = (cond: () => boolean, timeoutMs = process.env.CI ? 20_000 : 8000
     tick()
   })
 
-// The wall-clock backstop must EXCEED the worst-case sum of a test's internal
-// `waitFor` budgets, or vitest kills the test before any deadline can fire —
-// you get an opaque "test timed out" instead of the descriptive
-// `waitFor: timed out`, and a healthy relay looks like a broken one.
+// The vitest wall-clock backstop must EXCEED a test's worst-case COMPOSED
+// `waitFor` budget, or vitest kills the test at the boundary — you get an opaque
+// "test timed out" instead of the descriptive `waitFor: timed out`, and a healthy
+// relay looks broken. DERIVED (never guessed) from the single-source
+// `WAIT_BUDGET_MS` × the most sequential waits any spec composes, plus headroom
+// for relay spin-up/down and the fixed inter-wait sleeps.
 //
-// The old 20s default was sized against ONE 15s `waitFor`. But waits COMPOSE:
-// `RECONNECTS with backoff` awaits three sequentially (connect → drop →
-// recover) = 45s of tick budget; `two clients converge` awaits two = 30s. Both
-// exceed 20s. Worse, the tick-counted deadline above is deliberately
-// starvation-TOLERANT (it counts SCHEDULED ticks, so it self-extends when the
-// event loop is starved) — exactly the CI condition it exists for — which
-// pushes its wall-clock past 20s while its own budget is still unspent. That is
-// why this file flaked as an opaque timeout on loaded runners (all 3 retries)
-// while passing in <1s locally.
-//
-// Backstop = worst case (3 sequential waits) + headroom for server setup/teardown.
+// `RECONNECTS with backoff` is the worst case: three sequential waits
+// (connect → drop → recover) with a relay teardown + fresh listen between them.
+// Every other spec composes ≤2 waits, so this ONE describe-level backstop covers
+// the whole file — no per-test override needed. Per-test magic numbers were
+// themselves a drift source (the old 50s overrides now sit BELOW 2×30s=60s and
+// would violate the invariant); deriving from `WAIT_BUDGET_MS` retires them.
 const MAX_SEQUENTIAL_WAITS = 3
-const TEST_TIMEOUT_MS = (process.env.CI ? 15_000 : 8000) * MAX_SEQUENTIAL_WAITS + 15_000
+const SETUP_TEARDOWN_HEADROOM_MS = 15_000
+const TEST_TIMEOUT_MS = MAX_SEQUENTIAL_WAITS * WAIT_BUDGET_MS + SETUP_TEARDOWN_HEADROOM_MS
 
 describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, () => {
   let server: SyncServer | undefined
@@ -96,11 +109,9 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     sa.set('hello over WS') // a writes after both are connected — propagates to b
     await waitFor(() => sb() === 'hello over WS')
     expect(sb()).toBe('hello over WS')
-    // 50s wall-clock backstop: two sequential 20s tick-counted waits (40s sum)
-    // need the backstop to EXCEED the sum (per the file rule above), or vitest
-    // kills the test at the boundary with an opaque "test timed out" instead of
-    // the descriptive `waitFor: timed out`. Was 30s == 2×15s (== sum, violated).
-  }, 50_000)
+    // Two sequential waits (connect + propagate); inherits the derived
+    // describe-level backstop, which exceeds the 2×WAIT_BUDGET_MS composed sum.
+  })
 
   it('REJECTS an unauthorized connection (authorize → false)', async () => {
     server = await createSyncServer({ port: 0, authorize: ({ token }) => token === 'secret' })
@@ -238,12 +249,11 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     sa.set('over shared server')
     await waitFor(() => sb() === 'over shared server')
     expect(sb()).toBe('over shared server')
-    // Same 50s backstop as the first spec (two 20s waits = 40s sum; backstop
-    // must exceed it). This spec is the one that timed out on 2026-07-13 main
-    // (#2148 window) — the sync `waitFor` genuinely burned its old 15s
-    // scheduled-tick budget under localhost-WS delivery contention; 20s adds
-    // the headroom, and the 50s backstop keeps the descriptive deadline first.
-  }, 50_000)
+    // Two sequential waits; inherits the derived describe-level backstop. This
+    // spec timed out on 2026-07-13 main (#2148 window) — the sync `waitFor`
+    // burned its old scheduled-tick budget under localhost-WS delivery
+    // contention; the larger WAIT_BUDGET_MS absorbs it.
+  })
 
   it('RECONNECTS with backoff after the relay drops, then comes back', async () => {
     // Fixed http server so the relay can be torn down + brought back on the SAME
@@ -334,8 +344,11 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     await new Promise((r) => setTimeout(r, 150)) // let the relay (not) choke on them
 
     // The relay is still alive: a real write from A still converges to B.
+    // Uses the single WAIT_BUDGET_MS (not a tighter hardcoded sub-budget) — this
+    // is the same localhost-WS propagation wait as every other spec, so it must
+    // get the same contention headroom.
     sa.set('survived')
-    await waitFor(() => sb() === 'survived', 6000)
+    await waitFor(() => sb() === 'survived')
     expect(sb()).toBe('survived')
     evil.close()
   })
