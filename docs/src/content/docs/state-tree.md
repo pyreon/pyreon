@@ -343,6 +343,8 @@ b.count() // 0  — independent
 
 Views are computed signals derived from state. They automatically recompute when their dependencies change and are fully reactive in effects and templates.
 
+<Example file="./examples/state-tree/st-model-views-bars" title="Views — the derived bar stays twice the state bar" />
+
 ```ts
 import { model } from '@pyreon/state-tree'
 import { computed, effect } from '@pyreon/reactivity'
@@ -414,6 +416,8 @@ item.total() // 330
 ## Actions
 
 Actions are functions that mutate state. They are wrapped with the middleware runner, so every action invocation passes through any registered middleware.
+
+<Example file="./examples/state-tree/st-model-progress-tiles" title="Actions — next/back light the tiles, the view glows when complete" />
 
 ### Sync Actions
 
