@@ -1136,7 +1136,7 @@ const { code, warnings } = transformJSX(
     mistakes: `- Expecting \`transformJSX\` to throw on a native panic — it never does; it silently falls back to the JS backend (correctness-equivalent, just slower)
 - Passing user component source WITHOUT \`ssr: true\` when feeding the result to \`@pyreon/runtime-server\` — SSR needs the \`h()\` VNode tree, not \`_tpl()\` clone templates
 - Assuming bare \`{count}\` is auto-called for an IMPORTED signal without seeding \`knownSignals\` — the compiler only tracks \`const count = signal(...)\` declared in the same file unless told otherwise
-- Treating the output as standalone/portable — the emitted code calls internal runtime helpers (\`_tpl\`, \`_bind\`, \`_rp\`, \`_setChild\`, …) that only \`@pyreon/runtime-dom\` + \`@pyreon/core\` provide. Unlike Babel's JSX→\`React.createElement\` (where the runtime is just React), transformed code cannot run without the Pyreon runtime.`,
+- Treating the output as standalone/portable — the emitted code calls internal runtime helpers (\`_tpl\`/\`_setChild\` from \`@pyreon/runtime-dom\`, \`_bind\` from \`@pyreon/reactivity\`, \`_rp\` from \`@pyreon/core\`, …) that only the Pyreon packages provide. Unlike Babel's JSX→\`React.createElement\` (where the runtime is just React), transformed code cannot run without the Pyreon runtime.`,
   },
 
   'compiler/transformJSX_JS': {
@@ -1432,7 +1432,7 @@ const Admin = () => (
     mistakes: `- SSR renders a BLANK page for a lazy route when the handler only ran \`prefetchLoaderData\` — that runs LOADERS ONLY, it does NOT resolve \`lazy()\` route components. \`renderToString\` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must ALSO call \`router.preload(path, req)\` (resolves lazy components into \`_componentCache\`) before rendering.
 - Forgetting the inner \`<RouterView />\` inside a LAYOUT component — nested child routes render by placing a SECOND \`<RouterView />\` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).
 - Expecting a param-only navigation (\`/user/1 → /user/2\`) to re-run the layout body — it does NOT. Each depth is a single atomic \`computed\` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.
-- Passing the route component as a prop or child to \`<RouterView>\` — it takes none except \`announceRouteChanges\` (a11y live-region opt-out). It reads the matched chain from \`RouterContext\`; configure routes in \`createRouter\`, never on RouterView.
+- Passing the route component as a prop or child to \`<RouterView>\` — it takes none except \`router?\` (explicit router override; defaults to the context/active router) and \`announceRouteChanges\` (a11y live-region opt-out). It reads the matched chain from \`RouterContext\`; configure routes in \`createRouter\`, never on RouterView.
 - In a \`*-compat\` app, wrapping \`<RouterView>\` in your OWN layout helper that uses \`provide()\`/\`onMount()\`/\`effect()\` at body scope without marking it \`nativeCompat()\` — the compat jsx runtime relocates its setup into a wrapper accessor. RouterView itself ships \`nativeCompat\`-marked; your helpers around it must be too.
 - Passing \`layout\` to \`@pyreon/zero\`'s \`createApp\`/\`startClient\` when fs-router already emits \`_layout.tsx\` — the layout is a parent route in the matched chain that RouterView renders, so the explicit \`layout\` mounts it a SECOND time (two navbars / two providers). Let \`_layout.tsx\` be the canonical registration; do not also pass \`layout\`.`,
   },
@@ -1631,7 +1631,7 @@ blocker.remove()`,
 })`,
     notes: 'Register a per-component navigation guard that fires when leaving the current route. Return `false` to cancel, a string path to redirect, or `undefined` to allow. Must be called during component setup. See also: onBeforeRouteUpdate, useBlocker.',
     mistakes: `- Return-value inversion vs \`useBlocker\` — a GUARD returns \`false\` to CANCEL (and \`undefined\` to allow), while a BLOCKER returns \`true\` to BLOCK. They are opposite; mixing them up either lets navigations through or blocks them all.
-- Calling it in an event handler or \`effect\` — it must run during component SETUP (it registers on the current component's lifecycle and auto-removes on unmount). Called later, it never registers.
+- Calling it in an event handler or \`effect\` — the guard DOES register (it goes through \`router.beforeEach\` unconditionally), but only the \`onUnmount\` auto-removal is setup-bound: outside component setup the cleanup never attaches, so the guard LEAKS (keeps firing after the component unmounts). Call it during setup, or hold the returned remover and call it yourself.
 - Returning a truthy non-string (e.g. an object) expecting a redirect — only a STRING return redirects (to that path); \`false\` cancels, \`undefined\` allows.`,
   },
 
@@ -2037,7 +2037,7 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
 <KeepAlive active={() => route() === "/a"}><RouteA /></KeepAlive>
 <KeepAlive active={() => route() === "/b"}><RouteB /></KeepAlive>`,
     notes: 'Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab). See also: Transition, Show.',
-    mistakes: `- \`active\` is an ACCESSOR — write \`active={() => cond()}\`, not \`active={cond}\`; a bare non-signal expression is captured once and never re-hides (the compiler auto-calls a KNOWN signal, but an arbitrary expression needs the thunk)
+    mistakes: `- \`active\` MUST be a thunk — write \`active={() => cond()}\`, not \`active={cond}\`; the runtime calls \`props.active?.()\`, so any non-function value (a boolean, or a bare signal the compiler auto-calls to a value) THROWS \`TypeError: props.active is not a function\` at mount — there is no \`<Show when>\`-style value-form normalization; only omitting \`active\` entirely defaults to visible
 - KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component's effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper
 - It is the OPPOSITE of \`<Show>\`/ternary — those DESTROY + recreate state on toggle; reach for KeepAlive precisely when you need state PRESERVED across hide/show (form drafts, scroll, heavy trees)
 - Each KeepAlive slot keeps its OWN children mounted — wrapping N routes in N KeepAlives keeps ALL N subtrees mounted + their effects live simultaneously, not just the active one
@@ -2067,9 +2067,9 @@ _tpl("<div> </div>", (__root) => {
   return () => { __d0() }
 })`,
     notes: `Compiler-internal: bind a SIGNAL (anything carrying \`._v\` + \`.direct\`) to a text node via \`TextNode.data\` assignment, returning a dispose function. The fast path BYPASSES the effect system entirely — it subscribes via the signal's \`.direct()\` single-subscriber slot (no Set, no deps array, no tracking-stack push); \`renderEffect\` is only the fallback for bare callables. Writes the initial value synchronously at bind time (which is why the baked \`" "\` template placeholder never renders). Each text node gets its own independent binding for fine-grained reactivity. See also: _tpl, _bindDirect.`,
-    mistakes: `- COMPILER-EMITTED — don't hand-write \`_bindText\`; write JSX \`{signal()}\` and let the compiler emit it (it emits only for a bare signal IDENTIFIER)
+    mistakes: `- COMPILER-EMITTED — don't hand-write \`_bindText\`; write JSX \`{signal()}\` or \`{row.label()}\` and let the compiler emit it (bare identifiers AND non-computed member chains qualify; computed access like \`row[k]()\` stays on the general path)
 - The \`source\` MUST expose \`._v\` (read DIRECTLY for the initial value, not via a call) — a custom signal-wrapper that forwards \`.direct\`/\`.peek\` but NOT \`_v\` binds \`''\` and never updates (the \`storage-signal-v-forwarding\` bug class); build wrappers with \`wrapSignal(base, { set })\`, which forwards \`_v\` by construction
-- It cannot bind a detached method (\`obj.method\` loses \`this\`) — the compiler emits it only for a simple signal identifier
+- Hand-writing a member-chain bind without the \`caller\` arg loses \`this\` — for \`{row.label()}\` the compiler emits \`_bindText(row.label, node, () => row.label())\`; the 3rd arg is what preserves \`this\` on the slow path (a detached \`obj.method\` alone would lose it)
 - A signal whose VALUE later becomes a VNode / VNode[] UPGRADES the binding to a subtree mount at the text node's position (the polymorphic upgrade); plain string/number values stay on the \`.data\` fast path`,
   },
 
@@ -2078,10 +2078,11 @@ _tpl("<div> </div>", (__root) => {
     example: `import { setSanitizer, sanitizeHtml } from "@pyreon/runtime-dom"
 setSanitizer(DOMPurify.sanitize)
 const clean = sanitizeHtml(userInput)`,
-    notes: 'Sanitize an HTML string for `innerHTML`. If a custom sanitizer was registered via `setSanitizer()` (e.g. DOMPurify) it is used; OTHERWISE a built-in tag-allowlist fallback runs (the browser Sanitizer API on Chrome 105+, else a DOMParser-based allowlist that strips unsafe elements + attributes) — it is NOT an identity passthrough. DOM-only: the runtime calls it when applying `dangerouslySetInnerHTML` / `innerHTML`, never during SSR. See also: setSanitizer.',
-    mistakes: `- WITHOUT \`setSanitizer\` it is NOT a passthrough — a built-in tag-allowlist sanitizer strips unsafe elements/attributes; but that allowlist is CONSERVATIVE, so legitimate-but-uncommon markup may be stripped — register a policy via \`setSanitizer(DOMPurify.sanitize)\` if you need specific tags
-- \`setSanitizer(fn)\` is GLOBAL and replaces the built-in fallback for EVERY \`innerHTML\`/\`dangerouslySetInnerHTML\` in the app — a weaker custom sanitizer reduces safety everywhere
-- It is DOM-only (uses the Sanitizer API / DOMParser) — never call it during SSR; the runtime only invokes it on the client innerHTML path
+    notes: `Sanitize an HTML string. If a custom sanitizer was registered via \`setSanitizer()\` (e.g. DOMPurify) it is used; OTHERWISE a built-in DOMParser-based tag-allowlist runs (strips unsafe elements + attributes) — it is NOT an identity passthrough, and it never uses the browser Sanitizer API (that lives only in the runtime's \`innerHTML\` PROP sink, which prefers native \`el.setHTML()\` on Chrome 105+ and falls back to \`sanitizeHtml\`). DOM-only: the runtime invokes it only on the client \`innerHTML\` prop path — \`dangerouslySetInnerHTML\` is intentionally RAW (never sanitized; React parity), and SSR never calls it. See also: setSanitizer.`,
+    mistakes: `- Assuming \`dangerouslySetInnerHTML\` is sanitized — it is NOT: the runtime assigns \`__html\` RAW (React parity — the developer owns sanitization), and no \`setSanitizer\` policy applies to it; sanitize untrusted HTML yourself, e.g. \`dangerouslySetInnerHTML={{ __html: sanitizeHtml(userHtml) }}\`
+- WITHOUT \`setSanitizer\` it is NOT a passthrough — a built-in tag-allowlist sanitizer strips unsafe elements/attributes; but that allowlist is CONSERVATIVE, so legitimate-but-uncommon markup may be stripped — register a policy via \`setSanitizer(DOMPurify.sanitize)\` if you need specific tags
+- \`setSanitizer(fn)\` is GLOBAL but does NOT cover every \`innerHTML\` sink — on browsers with the native Sanitizer API the \`innerHTML\` PROP path prefers \`el.setHTML()\` (bypassing your custom policy); only direct \`sanitizeHtml()\` calls and the no-\`setHTML\` fallback use it, and \`dangerouslySetInnerHTML\` never does
+- It is DOM-only (uses DOMParser) — never call it during SSR; the runtime only invokes it on the client innerHTML prop path
 - \`setSanitizer(null)\` RESTORES the built-in allowlist fallback — it does NOT disable sanitization`,
   },
 
@@ -2723,7 +2724,7 @@ watch($result, async (current) => {
   showFeedback(r)
 })`,
     notes: `Async variant of parseReactive. The outer Computed re-evaluates synchronously on source change; the inner Promise resolves once the validator finishes. Stale results are superseded automatically — each re-run bumps an internal version, and a validation that finishes after a newer one started resolves to the NEWEST run's result, so an awaited stale frame can never deliver a stale verdict. See also: parseReactive.`,
-    mistakes: `- It does NOT discard stale results — it's an async \`computed\` with no version counter / AbortSignal, so rapid source changes leave overlapping promises; the CALLER must await only the latest (wrap in \`watch()\`)
+    mistakes: `- Adding your own debounce/version counter to guard against stale results — unnecessary: each re-run bumps an internal version and a stale frame's promise FORWARDS to the newest run's result, so an awaited stale frame resolves to the LATEST run's verdict. What it does NOT do is abort the in-flight validator (no AbortSignal — a slow async refine still runs to completion; only its result is superseded)
 - Read \`source\` synchronously at the top of your accessors — the async computed tracks only the \`source\` read that runs before the first \`await\`; a signal read placed after an await won't re-trigger
 - Don't call it per render — it allocates a \`Computed\`; create it once per (schema, source) pair at setup
 - The \`~standard\` path it uses drops the Pyreon \`pending\` server-check info — call \`schema.parseAsync()\` directly if you need to surface deferred server checks`,
@@ -2852,7 +2853,7 @@ const r = cfg.parse({ port: 80 })
     signature: '<U>(other: Schema<U>) => UnionSchema<readonly [Schema<T>, Schema<U>]>',
     example: 's.string().or(s.number()) // Schema<string | number>',
     notes: `Union this schema with another — \`a.or(b)\` ≡ \`s.union(a, b)\` (Zod's \`.or\`). Output type is \`T | U\`. See also: and, array.`,
-    mistakes: `- \`.or()\` / \`s.union(...)\` members MUST be schemas — a non-schema member (or fewer than two) throws a clear \`[Pyreon]\` error ONLY when \`NODE_ENV !== "production"\`; a production build strips the guard and a bad member crashes cryptically as \`member["~standard"] is undefined\` deep in parse
+    mistakes: `- \`.or()\` / \`s.union(...)\` members MUST be schemas — a non-schema member (or fewer than two) throws a clear \`[Pyreon]\` error ONLY when \`NODE_ENV !== "production"\`; a production build strips the guard and a bad member crashes cryptically at parse time (\`member._runInto is not a function\` / reading \`_runInto\` of undefined)
 - A union surfaces NO per-member issues — a total miss yields one opaque \`invalid_union\` "Did not match any allowed type", so you can't tell which member was closest; members are tried in order, first-match wins
 - \`.or()\`/\`.and()\`/\`.array()\` throw \`COMPOSITION_UNREGISTERED\` if the composition factory was never registered — a bare \`import { string }\` that never references \`s\`/\`union\`/\`intersection\` skips registration
 - An async member inside a SYNC union parse pushes an \`async member … use parseAsync\` issue rather than awaiting`,
@@ -3959,7 +3960,7 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
     example: `const { lock, unlock } = useScrollLock()
 onMount(() => { lock(); return unlock })`,
     notes: 'Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). Uses a MODULE-LEVEL reference count so concurrent locks (nested modals) compose — the saved overflow restores only when the last lock releases. SSR-safe (both no-op on the server); an unmount while still locked auto-unlocks. See also: useDialog, useClickOutside.',
-    mistakes: `- Calling \`unlock()\` more times than \`lock()\` — the refcount composes across ALL components; an extra unlock can release another modal's lock. Pair each lock with exactly one unlock.
+    mistakes: `- Expecting one instance to NEST — a per-instance \`isLocked\` guard makes repeat \`lock()\`/\`unlock()\` calls no-ops, so one instance holds at most ONE refcount unit (an extra \`unlock()\` can never release another component's lock); use a separate \`useScrollLock()\` per independently-lifecycled lock.
 - Setting \`body { overflow }\` yourself while a lock is active — the hook restores the value captured at the 0→1 transition, clobbering your change on release.`,
   },
 

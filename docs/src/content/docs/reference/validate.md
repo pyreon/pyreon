@@ -256,7 +256,7 @@ watch($result, async (current) => {
 
 **Common mistakes**
 
-- It does NOT discard stale results — it's an async `computed` with no version counter / AbortSignal, so rapid source changes leave overlapping promises; the CALLER must await only the latest (wrap in `watch()`)
+- Adding your own debounce/version counter to guard against stale results — unnecessary: each re-run bumps an internal version and a stale frame's promise FORWARDS to the newest run's result, so an awaited stale frame resolves to the LATEST run's verdict. What it does NOT do is abort the in-flight validator (no AbortSignal — a slow async refine still runs to completion; only its result is superseded)
 - Read `source` synchronously at the top of your accessors — the async computed tracks only the `source` read that runs before the first `await`; a signal read placed after an await won't re-trigger
 - Don't call it per render — it allocates a `Computed`; create it once per (schema, source) pair at setup
 - The `~standard` path it uses drops the Pyreon `pending` server-check info — call `schema.parseAsync()` directly if you need to surface deferred server checks
@@ -532,7 +532,7 @@ s.string().or(s.number()) // Schema<string | number>
 
 **Common mistakes**
 
-- `.or()` / `s.union(...)` members MUST be schemas — a non-schema member (or fewer than two) throws a clear `[Pyreon]` error ONLY when `NODE_ENV !== "production"`; a production build strips the guard and a bad member crashes cryptically as `member["~standard"] is undefined` deep in parse
+- `.or()` / `s.union(...)` members MUST be schemas — a non-schema member (or fewer than two) throws a clear `[Pyreon]` error ONLY when `NODE_ENV !== "production"`; a production build strips the guard and a bad member crashes cryptically at parse time (`member._runInto is not a function` / reading `_runInto` of undefined)
 - A union surfaces NO per-member issues — a total miss yields one opaque `invalid_union` "Did not match any allowed type", so you can't tell which member was closest; members are tried in order, first-match wins
 - `.or()`/`.and()`/`.array()` throw `COMPOSITION_UNREGISTERED` if the composition factory was never registered — a bare `import { string }` that never references `s`/`union`/`intersection` skips registration
 - An async member inside a SYNC union parse pushes an `async member … use parseAsync` issue rather than awaiting

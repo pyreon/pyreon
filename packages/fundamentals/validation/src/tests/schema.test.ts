@@ -189,7 +189,14 @@ describe('wrapStandardSchema', () => {
     }
   })
 
-  it('handles missing issues array (returns empty)', () => {
+  it('treats `issues: undefined` as SUCCESS (the spec discriminant), even with no `value` key', () => {
+    // Standard Schema spec: "if `issues` is undefined, validation succeeded".
+    // This synthetic result carries NEITHER a `value` nor issues — the
+    // degenerate success shape (`value: undefined`). The prior assertion
+    // (`ok: false, issues: []`) encoded the OLD `'value' in r` success
+    // discriminant, which mis-accepted raw-valibot FAILURES (whose results
+    // carry BOTH `value` and `issues`) — see
+    // standard-schema-result-discriminant.test.ts for the full regression.
     const noIssues = {
       '~standard': {
         version: 1 as const,
@@ -200,9 +207,9 @@ describe('wrapStandardSchema', () => {
     }
     const parse = wrapStandardSchema<{ x: string }>(noIssues as never)
     const result = parse({ x: 'y' })
-    expect(result.ok).toBe(false)
-    if (!result.ok) {
-      expect(result.issues).toEqual([])
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value).toBeUndefined()
     }
   })
 

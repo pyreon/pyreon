@@ -116,6 +116,8 @@ machine.send('SELECT', { id: 42 })
 machine.send('PAUSE') // ignored when in 'idle' — no transition defined
 ```
 
+<Example file="./examples/machine/toggle-on-off" title="Toggle — the smallest state machine" />
+
 ## Guards
 
 Use guards for conditional transitions:
@@ -230,6 +232,8 @@ function App() {
   }
 }
 ```
+
+<Example file="./examples/machine/traffic-light-cycle" title="Traffic light — matches() drives the visual" />
 
 ### `can()`
 
