@@ -41,6 +41,21 @@ final class PyreonCounterUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    override func tearDownWithError() throws {
+        // Return every test to a clean slate. THE CI-flake root cause this
+        // guards: a test that leaves a system modal open (the Share sheet) or
+        // the app backgrounded (Linking → Safari) makes the harness's next
+        // launch hang — `Failed to terminate … : Failed to terminate` →
+        // `Timed out while launching application via Xcode` — which WEDGES the
+        // Simulator so EVERY later test in the run fails to launch. Explicitly
+        // terminating the app here tears down any app-owned modal with it, so a
+        // wedge can never cascade past a single test. (todomvc's suite already
+        // does this — the counter suite was the one that lacked it.) The
+        // per-test dismissals below make the app already-clean, so this
+        // terminate is fast and cannot itself hang on a modal.
+        XCUIApplication().terminate()
+    }
+
     func test_appLaunchesAndIncrementsCounter() throws {
         let app = XCUIApplication()
         app.launch()
@@ -145,6 +160,21 @@ final class PyreonCounterUITests: XCTestCase {
             "Tapping Share did not present the system share sheet — "
                 + "PyreonShare failed to present a UIActivityViewController"
         )
+
+        // DISMISS the share sheet before the test ends. An OPEN
+        // UIActivityViewController blocks clean app termination, which wedges
+        // the Simulator and cascades launch-timeouts into every later test in
+        // the run — the exact CI flake this file used to produce. Dismiss via
+        // the "Close" button (iOS 16/17 layout) if present, else tap the dimmed
+        // backdrop above the bottom sheet; then confirm it's gone so teardown's
+        // terminate can't hang on it.
+        let closeButton = app.buttons["Close"]
+        if closeButton.exists {
+            closeButton.tap()
+        } else {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.04)).tap()
+        }
+        _ = activityView.waitForNonExistence(timeout: 5)
     }
 
     // M3.2b — LINKING (useLinking) asserted on device. The shared
@@ -177,6 +207,13 @@ final class PyreonCounterUITests: XCTestCase {
             "Tapping Open did not hand the URL to the OS — the app stayed "
                 + "foreground and Safari did not launch (PyreonLinking.openUrl failed)"
         )
+
+        // Bring the app back to the foreground so it doesn't end the test
+        // backgrounded behind Safari — a backgrounded app + a foregrounded
+        // Safari is another state that can slow/wedge the next test's launch.
+        // `activate()` foregrounds the counter; teardown then terminates it
+        // from a clean, foreground state.
+        app.activate()
     }
 
     // M3.3 — NOTIFICATIONS (useNotifications) asserted on device. The shared
@@ -208,6 +245,18 @@ final class PyreonCounterUITests: XCTestCase {
             "App did not remain alive after the Notify tap — "
                 + "PyreonNotifications.notify crashed"
         )
+
+        // Dismiss the notification-permission system alert if it appeared. It's
+        // owned by Springboard (not the app), so app-terminate at teardown
+        // won't clear it — left up, it can linger over the next test's launch.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for label in ["Allow", "Don't Allow", "Don’t Allow", "OK"] {
+            let button = springboard.buttons[label]
+            if button.waitForExistence(timeout: 2) {
+                button.tap()
+                break
+            }
+        }
     }
 
     // M2.2 — SIZE CLASS (useSizeClass) asserted on device. The shared
