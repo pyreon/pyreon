@@ -113,7 +113,7 @@ describe('batch() glitch-freedom for computed direct bindings (Bug A)', () => {
 })
 
 describe('iterative deep-chain dirty cascade (Bug B)', () => {
-  test('a depth-10,000 chain with a direct tail subscriber settles correctly, no overflow', () => {
+  test('a depth-8,000 chain with a direct tail subscriber settles correctly, no overflow', () => {
     // The WRITE-time dirty cascade is the target: on main it recursed
     // (`propagateLazyDirty → recompute → …`) and overflowed the JS stack at a
     // deep chain; the caught RangeError left a computed `_dirty`-cleared with a
@@ -125,12 +125,19 @@ describe('iterative deep-chain dirty cascade (Bug B)', () => {
     // near the stack ceiling), we build clean state by reading BOTTOM-UP once
     // (each read is O(1)-shallow because its dep is already clean), which also
     // warms the read code path. The direct subscriber's drain-time read of the
-    // tail then fits within the `--stack-size` headroom this suite configures
-    // (matching the standalone environment where 0.45.0 was "correct at 10k").
+    // tail then fits within the `--stack-size` headroom this suite configures.
+    //
+    // DEPTH is 8,000 — the audit's measured pre-fix overflow threshold,
+    // bisect-verified to FAIL against the recursive cascade — not 10,000,
+    // because V8 COVERAGE instrumentation fattens stack frames enough that the
+    // (0.45.0-identical) recursive pull-read overflows at 10k under
+    // `--coverage` even with the bumped stack. The "correct at 10,000" bar is
+    // held by the pure-cascade lock below (bottom-up reads — no deep
+    // recursion anywhere with the fix, coverage-proof).
     const errors: unknown[] = []
     setErrorHandler((err) => errors.push(err))
     try {
-      const DEPTH = 10_000
+      const DEPTH = 8_000
       const head = signal(0)
       const nodes: Array<() => number> = []
       let prev: () => number = head

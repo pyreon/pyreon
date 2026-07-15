@@ -1,7 +1,10 @@
 import {
-  _markLazyRecompute,
   _markRecompute,
+  closeInlineBatch,
+  enqueueEagerRefresh,
   enqueuePendingNotification,
+  isBatching,
+  openInlineBatch,
   propagateLazyDirty,
 } from './batch'
 import { _errorHandler } from './effect'
@@ -137,6 +140,38 @@ function cleanupLocalDeps(deps: Set<() => void>[], fn: () => void): void {
   deps.length = 0
 }
 
+/** The dispatch half of {@link propagateEagerChange} — factored out so its
+ * subscriber/direct branch sides exist ONCE, shared by both window arms. */
+function dispatchEagerChange(read: ComputedFn<unknown>): void {
+  if (read._s) propagateLazyDirty(read._s)
+  if (read._d1) enqueuePendingNotification(read._d1)
+  else if (read._d) for (const f of read._d) enqueuePendingNotification(f)
+}
+
+/**
+ * Propagate an `{ equals }` computed's REAL value change: dirty-cascade its
+ * subscribers + defer its direct (`_bindText`/`_bindDirect`) updaters to the
+ * batch drain (glitch-freedom — same rationale as the lazy variant).
+ *
+ * `enqueuePendingNotification` requires an open batch window — a tier-1 drain
+ * visit / mid-batch pull always has one; a stranded-dirty read outside any
+ * window (a prior drain aborted by a throwing raw listener) opens its own.
+ * Module-level (not a per-instance closure) so eager computeds allocate
+ * nothing extra.
+ */
+function propagateEagerChange(read: ComputedFn<unknown>): void {
+  if (isBatching()) {
+    dispatchEagerChange(read)
+  } else {
+    openInlineBatch()
+    try {
+      dispatchEagerChange(read)
+    } finally {
+      closeInlineBatch()
+    }
+  }
+}
+
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
   // Dev warning for async computed callbacks.
   // `computed(async () => …)` returns `Computed<Promise<T>>`, which silently
@@ -253,10 +288,11 @@ function computedLazy<T>(
     // can't overflow. See propagateLazyDirty.
     if (read._s) propagateLazyDirty(read._s)
   }
-  // LAZY marker → the batch router runs this recompute inline (dirty-mark-only,
-  // idempotent via the `_dirty` guard above) instead of routing it through the
-  // tier-1 queue. Pure-computed cascades resolve during the notify phase.
-  _markLazyRecompute(recompute)
+  // Recompute marker → the batch router + `propagateLazyDirty` run this
+  // recompute inline (dirty-mark-only, idempotent via the `_dirty` guard
+  // above) instead of routing it through the queues. Pure-computed cascades
+  // resolve during the notify phase.
+  _markRecompute(recompute)
 
   read.dispose = () => {
     read._disposed = true
@@ -281,10 +317,35 @@ function computedLazy<T>(
 }
 
 /**
- * Computed with custom equality — eager evaluation on notification.
+ * Computed with custom equality — dirty-marked on notification, GUARANTEED to
+ * re-evaluate in the tier-1 drain (before any effect), and only notifies
+ * downstream if `equals(prev, next)` returns false.
  *
- * Re-evaluates immediately when deps change and only notifies downstream
- * if `equals(prev, next)` returns false.
+ * ── Topo-staleness fix (2026-07, pre-existing since 0.45.0) ──
+ * The old design re-evaluated ONLY inside its queued `recompute` and never set
+ * `_dirty` on notification. Tier-1 drains in SUBSCRIPTION order, not
+ * topological order — so `outer = computed(() => s() + inner(), { equals })`
+ * that subscribed to `s` BEFORE `inner` drained first, pull-read `inner()`
+ * (enqueued-but-not-dirty → STALE cache), and `inner`'s later re-notify of
+ * `outer` was dropped by the tier-1 Set-dedup (already visited) → `outer()`
+ * was PERMANENTLY stale until the next write.
+ *
+ * New shape (the same architecture as the lazy variant, plus the equals
+ * notify-gate + guaranteed tier-1 evaluation):
+ *   - `recompute` (the source-subscribed callback) is an inline dirty-marking
+ *     NOTIFY — it marks `_dirty` + enqueues the READ into the tier-1 queue
+ *     (`enqueueEagerRefresh`). Marked `_markRecompute` so both
+ *     `propagateLazyDirty` and the enqueue router run it INLINE during the
+ *     write's notify phase — dirtiness is established BEFORE any drain visit.
+ *   - The READ's dirty branch is the single evaluator ("refresh"): verify-eval
+ *     + equals gate + propagate-on-change. A drain visit whose value was
+ *     already pulled fresh by an earlier visitor skips via the `_dirty` guard
+ *     (zero double evaluation); a pull-read of a dirty dep evaluates it
+ *     in place, so subscription order no longer matters.
+ *   - Direct (`_d1`/`_d`) subscribers are DEFERRED to the drain
+ *     (`enqueuePendingNotification`) — same glitch-freedom rationale as the
+ *     lazy variant's fix (a pull-refresh can run mid-batch on torn values;
+ *     the deferred updater fires once, at the drain, reading settled `_v`).
  */
 function computedWithEquals<T>(
   fn: () => T,
@@ -300,21 +361,38 @@ function computedWithEquals<T>(
   const read = (() => {
     trackSubscriber(read as unknown as { _s: Set<() => void> | null })
     if (read._dirty) {
-      if (process.env.NODE_ENV !== 'production')
+      if (process.env.NODE_ENV !== 'production') {
         _countSink.__pyreon_count__?.('reactivity.computedRecompute')
+        _rdRecordFire(read)
+      }
+      const wasInitialized = initialized
+      let next: T
       try {
-        // Collect-only: in the equals variant, `_dirty` is true ONLY before
-        // the first successful eval — recompute (the sole re-evaluator)
-        // runs eagerly and clears it before any read can observe it. A
-        // throwing first read retries here with `tracked` still false, so
-        // collect is exact; verified re-evals live in `recompute` below.
-        read._value = runCollect(recompute, deps, fn)
-        tracked = true
+        // Collect-then-verify, same as the lazy variant: first eval COLLECTS
+        // deps; re-evals VERIFY the previous dep list positionally.
+        if (tracked) {
+          next = runVerify(recompute, deps, fn)
+        } else {
+          next = runCollect(recompute, deps, fn)
+          tracked = true
+        }
       } catch (err) {
         _errorHandler(err)
+        read._dirty = false
+        initialized = true
+        return read._value // keep the previous value on a throwing eval
       }
       read._dirty = false
       initialized = true
+      // equals gate: keep the OLD value (stable reference — the memo
+      // semantic) and notify nobody when structurally equal.
+      if (!(wasInitialized && equals(read._value, next))) {
+        read._value = next
+        // Propagate the change (never on the FIRST eval — the actively-
+        // tracking reader that triggered it is already subscribed and would
+        // spuriously re-run).
+        if (wasInitialized) propagateEagerChange(read)
+      }
     }
     return read._value
   }) as unknown as ComputedFn<T>
@@ -328,37 +406,26 @@ function computedWithEquals<T>(
   read._d = null
 
   recompute = () => {
-    // Defensive: `recompute` is the source-subscriber callback, unsubscribed
-    // on dispose, so a disposed computed is never re-driven by a source — this
-    // guard only fires if a recompute is already queued when dispose lands.
-    /* v8 ignore next */
-    if (read._disposed) return
-    if (process.env.NODE_ENV !== 'production') {
-      _countSink.__pyreon_count__?.('reactivity.computedRecompute')
-      _rdRecordFire(read)
-    }
-    try {
-      // Same collect-then-verify shape as the read path above.
-      let next: T
-      if (tracked) {
-        next = runVerify(recompute, deps, fn)
-      } else {
-        next = runCollect(recompute, deps, fn)
-        tracked = true
+    // Inline dirty-marking NOTIFY (runs during the write's notify phase — see
+    // the function-level comment). Idempotent via the `_dirty` guard, exactly
+    // like the lazy variant. `enqueueEagerRefresh` books the guaranteed tier-1
+    // evaluation; the unbatched-notify arm (a raw caller outside any write
+    // window) opens its own window so the refresh still runs synchronously.
+    if (read._disposed || read._dirty) return
+    read._dirty = true
+    if (isBatching()) {
+      enqueueEagerRefresh(read as unknown as () => void)
+    } else {
+      // Raw external dispatch outside any write window (every in-tree notify
+      // runs under one — signal writes open it; the drain holds depth 1):
+      // open our own so the refresh still runs synchronously before return.
+      openInlineBatch()
+      try {
+        enqueueEagerRefresh(read as unknown as () => void)
+      } finally {
+        closeInlineBatch()
       }
-      if (initialized && equals(read._value, next)) return
-      read._value = next
-      read._dirty = false
-      initialized = true
-    } catch (err) {
-      _errorHandler(err)
-      return
     }
-    // Same lazy-subscriber bypass as the lazy variant — an eager computed
-    // feeding other lazy computeds still cascades through the cheap path.
-    if (read._s) propagateLazyDirty(read._s)
-    if (read._d1) read._d1()
-    else if (read._d) for (const f of read._d) f()
   }
   _markRecompute(recompute)
 
