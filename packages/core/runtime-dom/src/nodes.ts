@@ -464,6 +464,14 @@ function computeForLis(lis: LisState, n: number): number {
   let lastV = -1
   for (let i = 0; i < n; i++) {
     const v = entries[i]?.pos ?? 0
+    // Sentinel skip: a NEW entry mounted this update at the tail with a survivor
+    // after it in newKeys (prepend / middle insert) carries pos = -1 — it MUST
+    // move to its logical slot, never STAY, so it is excluded from the LIS
+    // entirely (never a tail/tailIdx/pred node). applyForMoves then threads it
+    // in before its successor (its stay bit is left 0). Pure reorders (no new
+    // keys) never set a negative pos → this branch never fires → byte-identical
+    // LIS + probe count. See mountNewForEntries for the pos assignment.
+    if (v < 0) continue
     // Tier 1: extend LIS.
     if (v > lastV) {
       tails[lisLen] = v
@@ -809,11 +817,47 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ): number => {
+    // New entries are physically mounted at the tail (before tailMarker), in
+    // newKeys iteration order. The subsequent LIS reorder (forLisReorder) reads
+    // each entry's `pos` as its CURRENT (pre-reorder) DOM position to decide
+    // which entries STAY vs. MOVE, so a new entry's recorded `pos` must not lie
+    // about where it physically is. Recording the target logical index `i` made
+    // a new row whose slot sat between two survivors look "already in order"
+    // (its pos straddled the survivors' stale pos), so the LIS never moved it
+    // off the tail — stranding it (e.g. [1,2,3,4] → [1,5,3] rendered [1,3,5]).
+    //
+    // Two shapes, split by whether a SURVIVOR follows the new entry in newKeys:
+    //
+    //  • NEW entry with a survivor after it (prepend / middle insert) MUST move
+    //    off the tail to its logical slot. It gets a SENTINEL pos (-1) that
+    //    `computeForLis` SKIPS, so it is never an LIS member and always falls to
+    //    `applyForMoves`, which threads it in before its logical successor. This
+    //    also keeps the PREPEND fast path at zero probes: the survivors form a
+    //    monotone run the LIS extends, and every new row is a skipped sentinel.
+    //
+    //  • NEW entry in the TRAILING all-new run (append) is already at its
+    //    logical position; it keeps a strictly-increasing pos ABOVE every
+    //    survivor (`currentKeys.length + added`; survivors ∈ [0,
+    //    currentKeys.length) by the post-update invariant that fresh/replace/
+    //    reorder all set pos = logical index) so the LIS extends it as a STAY —
+    //    append does ZERO moves and ZERO probes.
+    //
+    // `lastSurvivorIdx` is computed BEFORE any new key is added to the cache, so
+    // `cache.has` cleanly separates survivors from the rows about to be mounted.
+    // (Both sentinel and trailing pos are overwritten with the final logical
+    // index by the reorder's pos-refresh; the small-k path ignores pos for
+    // placement — it relocates via survivor anchors — so this is inert there.)
+    let lastSurvivorIdx = -1
+    for (let i = 0; i < n; i++) {
+      if (cache.has(newKeys[i] as string | number)) lastSurvivorIdx = i
+    }
+    const tailBase = currentKeys.length
     let added = 0
     for (let i = 0; i < n; i++) {
       const key = newKeys[i] as string | number
       if (cache.has(key)) continue
-      renderInto(items[i] as T, key, i, liveParent, tailMarker)
+      const pos = i > lastSurvivorIdx ? tailBase + added : -1
+      renderInto(items[i] as T, key, pos, liveParent, tailMarker)
       added++
     }
     return added

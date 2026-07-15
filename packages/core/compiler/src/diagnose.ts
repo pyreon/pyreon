@@ -561,6 +561,26 @@ const { nonce } = useRequestLocals()`,
     }),
   },
   {
+    // <For> keyed reconciler — a NEW key added into a slot VACATED by a removal
+    // landed at the physical TAIL instead of its logical position. No exception
+    // fires — the symptom is behavioral (wrong DOM order), so match the words a
+    // user pastes into `pyreon doctor diagnose` / MCP `diagnose`. Kept specific
+    // to list/<For> ORDER wording so it can't shadow the generic entries.
+    pattern:
+      /<?for>?\b.*(wrong|incorrect|out.?of).*order|list.*(wrong|incorrect|out.?of).*order|(new|added|inserted).*(row|item|element|key).*(end|tail|bottom|last)|(row|item|key).*(strand|stuck|end up).*(end|tail|bottom)|list.*order.*(after|when).*(add|remov|insert|delet)/i,
+    diagnose: () => ({
+      cause:
+        'On `@pyreon/runtime-dom` versions before this fix, adding a NEW key into a slot VACATED by a removal (e.g. `[1,2,3,4]` → `[1,5,3]`) placed the new row at the physical TAIL instead of its logical position, rendering `[1,3,5]`. In the general LIS reconciler path (taken when the list LENGTH changes, i.e. an add + a remove together), the new entry was mounted at the tail but recorded its `pos` as its NEW logical index. The LIS reads `pos` as the entry\'s CURRENT DOM position to decide which rows stay vs. move, so a new row whose index sat between two survivors looked "already in order" and was never moved off the tail. The small-k reorder path (used when the list length is unchanged) was unaffected because it places via survivor anchors, not `pos`.',
+      fix: 'Upgrade `@pyreon/runtime-dom` — a new `<For>` entry that has a survivor after it in the new order is now excluded from the reorder\'s "already-ordered" set and moved to its logical slot, while trailing appended rows stay put (so the prepend/append fast paths are unaffected). No app code change needed. If you cannot upgrade, force a full re-render for that update (change the container `key`, or clear then re-set the array) so the reconciler rebuilds from scratch instead of reordering.',
+      fixCode: `// This now renders [1,5,3] (was [1,3,5] before the fix):
+const items = signal([1, 2, 3, 4])
+<For each={items} by={(x) => x}>{(x) => <li>{x}</li>}</For>
+items.set([1, 5, 3])  // remove 2 & 4, add 5 in the middle`,
+      related:
+        'The mount-order-vs-logical-position class: any reconciler that mounts new nodes at a fixed anchor (the tail) but feeds a position-based reorder must record the node\'s ACTUAL physical position, not its target logical index — the reorder trusts that position to decide moves.',
+    }),
+  },
+  {
     pattern: /useHook.*outside.*component/i,
     diagnose: () => ({
       cause:
