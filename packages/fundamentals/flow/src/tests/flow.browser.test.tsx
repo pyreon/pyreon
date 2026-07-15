@@ -416,6 +416,29 @@ describe('flow in real browser', () => {
     unmount()
   })
 
+  it('auto edges float to the perimeter facing the target (natural angle)', async () => {
+    // Shallow-diagonal layout: a fixed handle would exit the source's RIGHT edge
+    // at its vertical MIDDLE (y=20); floating exits lower (facing the target,
+    // which sits below), so the edge leaves at the real approach angle.
+    const flow = createFlow({
+      nodes: [
+        { id: 'a', position: { x: 0, y: 0 }, width: 100, height: 40, data: {} },
+        { id: 'b', position: { x: 400, y: 120 }, width: 100, height: 40, data: {} },
+      ],
+      edges: [{ id: 'e', source: 'a', target: 'b' }],
+    })
+    const { container, unmount } = mountInBrowser(h(Flow, { instance: flow }))
+    await flush()
+
+    const d = container.querySelector('svg.pyreon-flow-edges path')!.getAttribute('d')!
+    const [, sx, sy] = d.match(/^M([\d.]+),([\d.]+)/)!
+    // Exits the right edge (x≈100) but BELOW the vertical middle (y>20) — the
+    // floating perimeter point, not the fixed right-middle (y===20).
+    expect(Number(sx)).toBeCloseTo(100, 0)
+    expect(Number(sy)).toBeGreaterThan(20)
+    unmount()
+  })
+
   it('marker defs update reactively when an edge with a new marker config is added', async () => {
     const flow = createFlow({
       nodes: [

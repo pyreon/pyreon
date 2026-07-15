@@ -147,6 +147,77 @@ export function getHandlePosition(
   }
 }
 
+interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * The point where the ray from `box`'s center toward `toward` exits the box
+ * perimeter — the "floating" connection point that faces the other node, so an
+ * edge enters/leaves at the natural angle instead of a fixed side midpoint.
+ */
+export function getNodeIntersection(box: Box, toward: XYPosition): XYPosition {
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  const dx = toward.x - cx
+  const dy = toward.y - cy
+  if (dx === 0 && dy === 0) return { x: cx, y: cy }
+  // Scale the direction so it lands on whichever side (x or y) it reaches first.
+  const scaleX = dx !== 0 ? box.width / 2 / Math.abs(dx) : Number.POSITIVE_INFINITY
+  const scaleY = dy !== 0 ? box.height / 2 / Math.abs(dy) : Number.POSITIVE_INFINITY
+  const scale = Math.min(scaleX, scaleY)
+  return { x: cx + dx * scale, y: cy + dy * scale }
+}
+
+/** Which side of `box` a perimeter `point` sits on — drives the bezier tangent. */
+function sideOfPoint(box: Box, point: XYPosition): Position {
+  const eps = 1
+  if (Math.abs(point.x - box.x) <= eps) return Position.Left
+  if (Math.abs(point.x - (box.x + box.width)) <= eps) return Position.Right
+  if (Math.abs(point.y - box.y) <= eps) return Position.Top
+  return Position.Bottom
+}
+
+/**
+ * Floating endpoints — connect each node where the center-to-center line crosses
+ * its perimeter, paired with the closest side for the bezier tangent. This makes
+ * an auto-routed edge approach the box at the natural angle (React Flow's
+ * floating-edge model) instead of always docking at a fixed side's midpoint.
+ * The caller only uses this when neither node declares explicit handles.
+ */
+export function getFloatingEndpoints(
+  sourceNode: FlowNode,
+  targetNode: FlowNode,
+  dims: { sourceW: number; sourceH: number; targetW: number; targetH: number },
+): {
+  source: { x: number; y: number; position: Position }
+  target: { x: number; y: number; position: Position }
+} {
+  const sBox: Box = {
+    x: sourceNode.position.x,
+    y: sourceNode.position.y,
+    width: dims.sourceW,
+    height: dims.sourceH,
+  }
+  const tBox: Box = {
+    x: targetNode.position.x,
+    y: targetNode.position.y,
+    width: dims.targetW,
+    height: dims.targetH,
+  }
+  const sCenter = { x: sBox.x + sBox.width / 2, y: sBox.y + sBox.height / 2 }
+  const tCenter = { x: tBox.x + tBox.width / 2, y: tBox.y + tBox.height / 2 }
+  const sPoint = getNodeIntersection(sBox, tCenter)
+  const tPoint = getNodeIntersection(tBox, sCenter)
+  return {
+    source: { x: sPoint.x, y: sPoint.y, position: sideOfPoint(sBox, sPoint) },
+    target: { x: tPoint.x, y: tPoint.y, position: sideOfPoint(tBox, tPoint) },
+  }
+}
+
 /**
  * Calculate a cubic bezier edge path between two points.
  *
