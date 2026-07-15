@@ -1065,49 +1065,72 @@ function defineSetupStore<T extends Record<string, unknown>>(
           // bulk `patch()` lose to a shallow-merge store — and does it with no
           // scratch arrays and one closure (the batch), matching the theoretical
           // minimum for a signal-per-field store.
-          batch(() => {
-            for (const key of Object.keys(arg)) {
-              const idx = kidx.get(key)
-              if (idx === undefined) {
-                warnUnknownPatchKey(key)
-                continue
+          //
+          // Exception safety (a suspend/mutate/resume window over shared
+          // subscriber state MUST leave the set consistent on ANY throw path):
+          //  - `arg[key]` is read BEFORE `_suspendSubscriber` — a throwing
+          //    getter/Proxy then aborts with the detector still ATTACHED (a
+          //    delete-then-throw would silently un-notify every later direct
+          //    write to that field until the next patch re-added it).
+          //  - `sig.set` runs in `try { … } finally { _resumeSubscriber }` — a
+          //    write that throws (a wrapped signal whose write side-effect
+          //    fails) still re-attaches the detector before propagating.
+          //  - `patchInProgress = false` + the event merge + the emit run in a
+          //    `finally` around the whole drain — a raw `field.subscribe`
+          //    listener that throws straight past the batch queue can't wedge
+          //    the flag (which would buffer + drop every later direct write's
+          //    event) or drop the notification for the fields that WERE written.
+          try {
+            batch(() => {
+              for (const key of Object.keys(arg)) {
+                const idx = kidx.get(key)
+                if (idx === undefined) {
+                  warnUnknownPatchKey(key)
+                  continue
+                }
+                // Read the value FIRST — before suspending — so a throwing
+                // getter leaves the detector attached (see the block comment).
+                const newValue = arg[key]
+                const sig = so[idx] as SignalLike
+                const det = dets[idx] as () => void
+                _suspendSubscriber(sig as unknown as Signal<unknown>, det)
+                const oldValue = sig.peek()
+                if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
+                try {
+                  sig.set(newValue)
+                } finally {
+                  _resumeSubscriber(sig as unknown as Signal<unknown>, det)
+                }
+                if (!Object.is(oldValue, newValue)) {
+                  events.push({ key, newValue, oldValue })
+                  prevs[idx] = newValue
+                }
               }
-              const sig = so[idx] as SignalLike
-              const det = dets[idx] as () => void
-              _suspendSubscriber(sig as unknown as Signal<unknown>, det)
-              const oldValue = sig.peek()
-              const newValue = arg[key]
-              if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
-              sig.set(newValue)
-              _resumeSubscriber(sig as unknown as Signal<unknown>, det)
-              if (!Object.is(oldValue, newValue)) {
-                events.push({ key, newValue, oldValue })
-                prevs[idx] = newValue
+            })
+          } finally {
+            patchInProgress = false
+            // Merge any events a re-entrant effect buffered during the drain
+            // (empty in the common case → no concat, no alloc). When `patchEvents`
+            // is non-EMPTY a re-entrant write occurred, which means a patched
+            // signal must have changed to trigger it, so `events` is already
+            // non-empty — `concat` (never a bare swap) is always correct.
+            let finalEvents = events
+            if (patchEvents !== EMPTY_EVENTS) {
+              finalEvents = events.concat(patchEvents)
+              patchEvents = EMPTY_EVENTS
+            }
+            // Emit ONE store notification with the events we built directly.
+            if (finalEvents.length > 0) {
+              // Build the state snapshot inline off the hoisted `so` local rather
+              // than calling `getState()` (a closure hop that re-reads the same
+              // captured arrays) — the snapshot IS a hot-path allocation.
+              const sk = signalKeys
+              const state: Record<string, unknown> = {}
+              for (let j = 0; j < sk.length; j++) {
+                state[sk[j] as string] = (so[j] as SignalLike).peek()
               }
+              emitToSubscribers({ storeId: id, type: 'patch', events: finalEvents }, state)
             }
-          })
-          patchInProgress = false
-          // Merge any events a re-entrant effect buffered during the drain
-          // (empty in the common case → no concat, no alloc). When `patchEvents`
-          // is non-EMPTY a re-entrant write occurred, which means a patched
-          // signal must have changed to trigger it, so `events` is already
-          // non-empty — `concat` (never a bare swap) is always correct.
-          let finalEvents = events
-          if (patchEvents !== EMPTY_EVENTS) {
-            finalEvents = events.concat(patchEvents)
-            patchEvents = EMPTY_EVENTS
-          }
-          // Emit ONE store notification with the events we built directly.
-          if (finalEvents.length > 0) {
-            // Build the state snapshot inline off the hoisted `so` local rather
-            // than calling `getState()` (a closure hop that re-reads the same
-            // captured arrays) — the snapshot IS a hot-path allocation.
-            const sk = signalKeys
-            const state: Record<string, unknown> = {}
-            for (let j = 0; j < sk.length; j++) {
-              state[sk[j] as string] = (so[j] as SignalLike).peek()
-            }
-            emitToSubscribers({ storeId: id, type: 'patch', events: finalEvents }, state)
           }
           return
         }
@@ -1127,18 +1150,25 @@ function defineSetupStore<T extends Record<string, unknown>>(
         }
 
         patchArg = partialOrFn
-        batch(ensureApply())
-        patchArg = null
-
-        if (hasSubs) {
-          patchInProgress = false
-          // Emit a single notification for the patch.
-          if (patchEvents.length > 0) {
-            emitToSubscribers({ storeId: id, type: 'patch', events: patchEvents }, getState())
+        // Exception safety (functional form): a throwing patch body — or a raw
+        // subscriber firing during the drain — must not leave `patchInProgress`
+        // wedged (which buffers + drops every later direct write's event) nor
+        // drop the notification for the writes that DID land before the throw.
+        // `patchArg` reset + flag reset + emit all run in a `finally`.
+        try {
+          batch(ensureApply())
+        } finally {
+          patchArg = null
+          if (hasSubs) {
+            patchInProgress = false
+            // Emit a single notification for the patch.
+            if (patchEvents.length > 0) {
+              emitToSubscribers({ storeId: id, type: 'patch', events: patchEvents }, getState())
+            }
+            // Release the emitted buffer to its subscribers; the shared frozen
+            // empty array stands in until the next subscribed patch.
+            patchEvents = EMPTY_EVENTS
           }
-          // Release the emitted buffer to its subscribers; the shared frozen
-          // empty array stands in until the next subscribed patch.
-          patchEvents = EMPTY_EVENTS
         }
       },
 
