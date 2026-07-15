@@ -1,4 +1,4 @@
-import { useFlow, Flow, Background, MiniMap, Controls, MarkerType } from '@pyreon/flow'
+import { useFlow, Flow, Background, MiniMap, Controls } from '@pyreon/flow'
 import type { Signal } from '@pyreon/reactivity'
 
 /**
@@ -38,26 +38,10 @@ export default function NodeGraphDragSelectConnect(_props: {
       { id: 'c', type: 'output', position: { x: 380, y: 30 }, data: { label: 'End' } },
     ],
     edges: [
-      {
-        id: 'a-b',
-        source: 'a',
-        target: 'b',
-        // Filled triangle (the default shape) — larger + indigo so it pops.
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1', width: 18, height: 14 },
-      },
-      {
-        id: 'b-c',
-        source: 'b',
-        target: 'c',
-        // Open chevron — the other marker shape, same colour for contrast.
-        markerEnd: {
-          type: MarkerType.Arrow,
-          color: '#6366f1',
-          width: 18,
-          height: 14,
-          strokeWidth: 2,
-        },
-      },
+      // No explicit markerEnd → the unified default arrowhead: a small filled
+      // triangle in the LINE colour, so each edge reads as one connected stroke.
+      { id: 'a-b', source: 'a', target: 'b' },
+      { id: 'b-c', source: 'b', target: 'c' },
     ],
   })
 

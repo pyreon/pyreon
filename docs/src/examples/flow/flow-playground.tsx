@@ -1,4 +1,4 @@
-import { useFlow, Flow, Background, MiniMap, Controls, MarkerType } from '@pyreon/flow'
+import { useFlow, Flow, Background, MiniMap, Controls } from '@pyreon/flow'
 import { signal } from '@pyreon/reactivity'
 import type { Signal } from '@pyreon/reactivity'
 
@@ -27,11 +27,6 @@ import type { Signal } from '@pyreon/reactivity'
  * accepted and ignored.
  */
 export default function FlowPlayground(_props: { shared?: Signal<unknown> }) {
-  const indigo = '#6366f1'
-  const teal = '#14b8a6'
-  const amber = '#f59e0b'
-  const green = '#22c55e'
-
   const flow = useFlow({
     fitView: true,
     nodes: [
@@ -43,15 +38,14 @@ export default function FlowPlayground(_props: { shared?: Signal<unknown> }) {
       { id: 'notify', type: 'output', position: { x: 680, y: 220 }, data: { label: 'Notify' } },
     ],
     edges: [
-      // Filled closed arrowhead (the default shape), recoloured.
-      { id: 'e1', source: 'source', target: 'validate', markerEnd: { type: MarkerType.ArrowClosed, color: indigo, width: 16, height: 12 } },
-      // Open chevron — the other marker shape.
-      { id: 'e2', source: 'source', target: 'transform', markerEnd: { type: MarkerType.Arrow, color: teal, width: 16, height: 12, strokeWidth: 2 } },
-      { id: 'e3', source: 'validate', target: 'merge', markerEnd: { type: MarkerType.ArrowClosed, color: indigo, width: 16, height: 12 } },
-      { id: 'e4', source: 'transform', target: 'merge', markerEnd: { type: MarkerType.Arrow, color: teal, width: 16, height: 12, strokeWidth: 2 } },
-      { id: 'e5', source: 'merge', target: 'store', markerEnd: { type: MarkerType.ArrowClosed, color: green, width: 16, height: 12 } },
-      // Marker on BOTH ends.
-      { id: 'e6', source: 'merge', target: 'notify', markerStart: { type: MarkerType.ArrowClosed, color: amber, width: 14, height: 11 }, markerEnd: { type: MarkerType.ArrowClosed, color: amber, width: 14, height: 11 } },
+      // No explicit markers → the unified default arrowhead: a small filled
+      // triangle in the LINE colour, so every edge reads as one connected stroke.
+      { id: 'e1', source: 'source', target: 'validate' },
+      { id: 'e2', source: 'source', target: 'transform' },
+      { id: 'e3', source: 'validate', target: 'merge' },
+      { id: 'e4', source: 'transform', target: 'merge' },
+      { id: 'e5', source: 'merge', target: 'store' },
+      { id: 'e6', source: 'merge', target: 'notify' },
     ],
   })
 

@@ -7,7 +7,12 @@ import { MarkerType, Position } from './types'
 // `<defs>` block. These helpers are pure + exported so they can be unit-tested
 // without mounting a flow.
 
-const DEFAULT_MARKER_COLOR = '#999'
+// Default marker colour = the SAME themeable var the edge stroke uses, so an
+// unstyled arrowhead matches its line (a natural line→arrow→box connection)
+// and re-themes with it. `MarkerGlyph` sets it via `style` (a `var()` is invalid
+// in an SVG presentation attribute); `markerId` sanitizes it to a stable dedup
+// token distinct from an explicit `#999`, so the two never collapse to one def.
+const DEFAULT_MARKER_COLOR = 'var(--pyreon-flow-edge, #999)'
 const DEFAULT_MARKER_W = 10
 const DEFAULT_MARKER_H = 7
 const DEFAULT_MARKER_STROKE = 1

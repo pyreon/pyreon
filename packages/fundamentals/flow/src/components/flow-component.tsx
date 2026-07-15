@@ -40,15 +40,19 @@ function defaultEndMarker(instance: FlowInstance<any>): EdgeMarkerSpec | null {
  */
 function MarkerGlyph(props: { marker: EdgeMarker, pts: string }): VNodeChild {
   const m = props.marker
+  // No explicit color → inherit the LINE color (the SAME themeable var the edge
+  // stroke uses) so the arrowhead reads as a continuation of the line instead of
+  // a separate colored blob. `fill`/`stroke` go through `style` because a `var()`
+  // is INVALID in an SVG presentation attribute (it'd be dropped → black/none),
+  // the same reason the edge stroke lives in `style` (see the edge <path>).
+  const color = m.color ?? 'var(--pyreon-flow-edge, #999)'
   if (m.type === MarkerType.ArrowClosed) {
-    return <polygon points={props.pts} fill={m.color ?? '#999'} />
+    return <polygon points={props.pts} style={`fill: ${color};`} />
   }
   return (
     <polyline
       points={props.pts}
-      fill="none"
-      stroke={m.color ?? '#999'}
-      stroke-width={String(m.strokeWidth ?? 1)}
+      style={`fill: none; stroke: ${color}; stroke-width: ${m.strokeWidth ?? 1};`}
     />
   )
 }
@@ -68,6 +72,11 @@ function MarkerDef(props: { id: string, marker: EdgeMarker }): VNodeChild {
       refX={String(w)}
       refY={String(h / 2)}
       orient="auto-start-reverse"
+      // px sizing, NOT the default `strokeWidth` units — otherwise the arrowhead
+      // is scaled by the (1.5px) edge stroke, so `width:16` renders ~24px and
+      // thicker edges balloon their arrows. userSpaceOnUse keeps markers a
+      // predictable, line-thickness-independent size.
+      markerUnits="userSpaceOnUse"
     >
       <MarkerGlyph marker={m} pts={pts} />
     </marker>
