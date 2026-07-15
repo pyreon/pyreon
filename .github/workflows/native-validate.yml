@@ -100,7 +100,12 @@ jobs:
     needs: decide
     if: needs.decide.outputs.run == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Derived, not guessed (the ws-relay backstop rule): measured runtime is
+    # 22m26s–24m20s across recent PRs, so the previous `25` left <1 min of
+    # headroom — any slow runner tripped it (job timeout reports as
+    # "cancelled", which cost a release-PR diagnosis on #2230). Budget =
+    # worst measured (~24.5m) + ~40% runner-variance headroom.
+    timeout-minutes: 35
     permissions:
       contents: read
     steps:
