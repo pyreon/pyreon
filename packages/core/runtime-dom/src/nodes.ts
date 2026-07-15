@@ -736,6 +736,73 @@ export function mountFor<T>(
     }
   }
 
+  /**
+   * Fast path for a pure contiguous removal — the krausest `remove` op (delete
+   * one row from a full list). Diffs `currentKeys` against `newKeys` with a
+   * common-prefix + common-suffix scan (mirrors Solid's `mapArray` fast path).
+   * When `newKeys` is exactly `currentKeys` with a single contiguous run
+   * deleted — no adds, no reorder of survivors — the DOM already matches the
+   * target once the removed rows are unmounted. That lets us skip the general
+   * path's per-key `cache.has` probe (`mountNewForEntries`), the full-cache
+   * `Set` build + scan (`removeStaleForEntries`), AND the O(n) all-stay LIS
+   * (`forLisReorder`) entirely — replacing ~4n Map/Set operations with a cheap
+   * `===` prefix/suffix scan + the O(removed) teardown that is genuinely
+   * required work.
+   *
+   * SAFETY: only fires when `n < currentKeys.length` (a net shrink) AND the
+   * prefix+suffix cover every survivor (`p + s === n`). That gate guarantees
+   * (a) nothing was ADDED — every `newKeys[i]` maps to a distinct `currentKeys`
+   * position — so no tail-mounted entry can carry a stale pos, and (b) the
+   * survivors keep their old relative order — so no DOM moves are needed. A
+   * remove-plus-reorder or remove-plus-add fails `p + s === n` and falls
+   * through to the general reconciler unchanged. Keys are unique, so the
+   * removed run cannot reappear in `newKeys`.
+   *
+   * Teardown is byte-identical to `removeStaleForEntries` (cleanup → detach
+   * anchor → drop from cache + decrement `cleanupCount`) so multi-node entries
+   * behave exactly as on the general path.
+   */
+  const tryContiguousRemoval = (n: number, newKeys: (string | number)[]): boolean => {
+    const oldLen = currentKeys.length
+    if (n >= oldLen) return false // not a shrink — let the general path decide
+
+    // Longest common prefix.
+    let p = 0
+    while (p < n && currentKeys[p] === newKeys[p]) p++
+    // Longest common suffix, not overlapping the prefix.
+    let s = 0
+    const maxS = n - p
+    while (s < maxS && currentKeys[oldLen - 1 - s] === newKeys[n - 1 - s]) s++
+
+    // Pure contiguous removal ⟺ prefix + suffix account for every survivor.
+    if (p + s !== n) return false
+
+    // Unmount the removed run `currentKeys[p .. oldLen - s)`.
+    for (let i = p; i < oldLen - s; i++) {
+      const key = currentKeys[i] as string | number
+      const entry = cache.get(key)
+      if (!entry) continue
+      if (entry.cleanup) {
+        _emitCleanup()
+        entry.cleanup()
+        cleanupCount--
+      }
+      entry.anchor.parentNode?.removeChild(entry.anchor)
+      cache.delete(key)
+    }
+
+    // Refresh the shifted suffix's `pos` to its new indices `[p .. n)`. Prefix
+    // entries keep their pos (unchanged index). Keeping `pos === current index`
+    // means the NEXT reorder's Tier-2 LIS fast path stays contiguous.
+    for (let i = p; i < n; i++) {
+      const entry = cache.get(newKeys[i] as string | number)
+      if (entry) entry.pos = i
+    }
+    if (process.env.NODE_ENV !== 'production')
+      _countSink.__pyreon_count__?.('runtime.mountFor.removeFast')
+    return true
+  }
+
   const mountNewForEntries = (
     items: T[],
     n: number,
@@ -789,6 +856,15 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ) => {
+    // Fast path: pure contiguous removal (the krausest `remove` op). A cheap
+    // prefix/suffix `===` scan replaces the general path's per-key cache probe,
+    // full-cache Set scan, and all-stay LIS — see tryContiguousRemoval. Falls
+    // through unchanged when it isn't a clean single-run removal.
+    if (tryContiguousRemoval(n, newKeys)) {
+      currentKeys = newKeys
+      return
+    }
+
     // Mount new entries FIRST and count them. If nothing was added AND the
     // cache now holds exactly `n` entries, every newKey was already cached and
     // the counts match — i.e. a PURE REORDER (same key set, new order: swap /
