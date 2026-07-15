@@ -203,6 +203,24 @@ export interface PyreonPluginOptions {
   collapse?: boolean | PyreonCollapseOptions
 
   /**
+   * Compile-to-string SSR fast path (`ssrTemplate`). Lowers an eligible
+   * static-skeleton JSX subtree to a single `_ssr(["<li>…","</li>"], hole0, …)`
+   * string template (the SSR analog of the DOM `_tpl()` cloneNode path — card
+   * ~9× Solid, list-50 clear lead). Every hole resolves through the SAME
+   * `renderNode` the h() path uses, so the produced HTML is BYTE-IDENTICAL and
+   * hydration is unaffected.
+   *
+   * DEFAULT (`undefined`): **auto** — the plugin enables it for the SSR module
+   * graph ONLY when `@pyreon/runtime-server` is resolvable from the app (the
+   * `_ssr`/`_esc` helpers live there, and `_ssr` returns an `instanceof`-branded
+   * `RawHtml` that the app's OWN `renderToString` must recognize). When it is NOT
+   * resolvable, the plugin gracefully FALLS BACK to the h() SSR path (never a
+   * build/500 crash) and warns once in dev. `true` forces it on (you accept the
+   * `@pyreon/runtime-server` dep requirement); `false` forces the h() path.
+   */
+  ssrTemplate?: boolean
+
+  /**
    * Opt-in compile-time validator emission for `@pyreon/validate`. When `true`,
    * production builds append `X._attachCompiledVerdict(…)` to every module-level
    * `const X = s.<schema>` whose IR is fully emittable, so the runtime `X.is(v)`
@@ -581,6 +599,20 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   // Dev throw-time fix printer (Theme 6.1b) — on by default in dev.
   const devErrorPrinterEnabled = options?.devErrorPrinter !== false
   const lpihIntervalMs = lpihUserCfg.intervalMs ?? 250
+
+  // ── Compile-to-string SSR fast path (`ssrTemplate`) config ────────────────
+  // Default is AUTO: the plugin enables the `_ssr` compile-to-string emit for
+  // the SSR graph only when `@pyreon/runtime-server` is resolvable from the app
+  // (that package owns the injected `_ssr`/`_esc` helpers, and `_ssr` returns an
+  // `instanceof`-branded `RawHtml` the app's OWN `renderToString` must
+  // recognize). When it is not resolvable, we fall back to the h() SSR path so a
+  // default-on transform can NEVER crash an app — see anti-patterns "A compiler
+  // transform that injects a bare framework-package import into USER source".
+  // `true`/`false` are explicit overrides. Probed once (lazily) per plugin
+  // instance and cached in `ssrTemplateAuto`.
+  const ssrTemplateOpt = options?.ssrTemplate
+  let ssrTemplateAuto: boolean | undefined // undefined until first SSR probe
+  let ssrTemplateAutoWarned = false
 
   // ── Compiled-validator emission config (opt-in, build-only) ───────────────
   const compileValidatorsEnabled = options?.compileValidators === true
@@ -1167,8 +1199,43 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         }
       }
 
+      // ── Resolve the effective ssrTemplate flag (compile-to-string SSR) ──────
+      // Only relevant under SSR. Explicit `true`/`false` override; the default
+      // (undefined) is AUTO — enabled only when `@pyreon/runtime-server`
+      // resolves from the app (probed once via Vite's OWN resolver, the same one
+      // SSR eval uses, so the answer matches whether the injected `_ssr` import
+      // would actually resolve at render time — same instance, no 500). This is
+      // the safety net: a default-on transform must never crash an app that
+      // can't resolve `@pyreon/runtime-server` (e.g. a strict/isolated dep
+      // layout where it's only a transitive dep) — it falls back to h().
+      let ssrTemplate = false
+      if (isSsr) {
+        if (ssrTemplateOpt === true) {
+          ssrTemplate = true
+        } else if (ssrTemplateOpt === false) {
+          ssrTemplate = false
+        } else {
+          if (ssrTemplateAuto === undefined) {
+            const resolvedRs = await this.resolve('@pyreon/runtime-server', id, {
+              skipSelf: true,
+            })
+            ssrTemplateAuto = resolvedRs != null
+            if (!ssrTemplateAuto && !ssrTemplateAutoWarned && !isBuild) {
+              ssrTemplateAutoWarned = true
+              this.warn(
+                '[Pyreon] SSR compile-to-string fast path is OFF: `@pyreon/runtime-server` is not resolvable from this app. ' +
+                  'Add it to your dependencies to enable the faster `_ssr` render, or pass `pyreon({ ssrTemplate: false })` to silence this. ' +
+                  'Falling back to the h() SSR path (no behavior change).',
+              )
+            }
+          }
+          ssrTemplate = ssrTemplateAuto
+        }
+      }
+
       const result = transformJSX(sourceForJsx, id, {
         ssr: isSsr,
+        ...(ssrTemplate ? { ssrTemplate: true } : {}),
         knownSignals,
         ...(collapseRocketstyle ? { collapseRocketstyle } : {}),
       })
