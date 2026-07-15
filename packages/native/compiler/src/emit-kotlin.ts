@@ -4413,8 +4413,18 @@ function kotlinTextArg(
   }
   const parts: string[] = []
   for (const c of e.children) {
-    if (c.kind === 'text') parts.push(escapeKotlinInterp(c.value))
-    else parts.push(`\${${emitKotlinExpr(c.expr, indent)}}`)
+    if (c.kind === 'text') {
+      parts.push(escapeKotlinInterp(c.value))
+      continue
+    }
+    // Unwrap a zero-arg accessor arrow — `<Heading>{() => sig()}</Heading>`
+    // arrives as an arrow and would otherwise emit `${{ sig }}` (a Kotlin
+    // lambda in the string template) → renders the lambda's toString. This is
+    // the Kotlin twin of the Text value-interpolation fix; `kotlinTextArg` is a
+    // SEPARATE (Heading-only) text builder, so it needs the same unwrap. (Swift
+    // Heading reuses the shared `emitSwiftTextCore` and so has no twin bug.)
+    const childExpr = unwrapAccessorArrow(c.expr)
+    parts.push(`\${${emitKotlinExpr(childExpr, indent)}}`)
   }
   return `"${parts.join('')}"`
 }
@@ -5655,8 +5665,14 @@ function unwrapAccessorArrow(e: ExprIR): ExprIR {
 }
 
 function emitKotlinSignalRead(e: ExprIR): string {
-  if (e.kind === 'identifier') return kotlinIdent(e.name)
-  return emitKotlinExpr(e, 0)
+  // Unwrap a zero-arg accessor arrow FIRST — see emit-swift's
+  // emitSwiftSignalRead. A JSX value arriving as `() => sig()` (e.g.
+  // `<Image src={() => url()} />`) must READ the value, not emit a Kotlin
+  // lambda `{ url }` (→ `model = { url }`, which Coil renders wrong).
+  // Idempotent for the callers that already pre-unwrap.
+  const expr = unwrapAccessorArrow(e)
+  if (expr.kind === 'identifier') return kotlinIdent(expr.name)
+  return emitKotlinExpr(expr, 0)
 }
 
 function extractStaticText(children: ChildIR[]): string | null {

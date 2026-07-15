@@ -6956,12 +6956,21 @@ function unwrapAccessorArrow(e: ExprIR): ExprIR {
 
 /** Read a value that may be a bare signal reference or an arbitrary expr. */
 function emitSwiftSignalRead(e: ExprIR): string {
+  // Unwrap a zero-arg accessor arrow FIRST — a JSX value can arrive as
+  // `() => sig()` (e.g. `<Image src={() => url()} />`), and this helper's JOB is
+  // to READ the value. Without the unwrap it emits `emitSwiftExpr(() => url())`
+  // → a native closure `{ url }` (→ `URL(string: { url })`, a type error /
+  // garbage). Most call sites already pre-unwrap (`<Show when>`, `.disabled`);
+  // unwrapping HERE makes the un-pre-unwrapped callers (Image src) correct too
+  // and removes the "caller must remember to unwrap" footgun. Idempotent —
+  // unwrapAccessorArrow returns a non-arrow unchanged.
+  const expr = unwrapAccessorArrow(e)
   // In Pyreon JSX, a bare identifier in a prop position like `when={visible}`
   // refers to the signal accessor. In Swift, the @State variable is read by
   // name. So `visible` → `visible`. Keyword-escape via `swiftIdent` —
   // a user-defined signal named `class` should emit as `` `class` ``.
-  if (e.kind === 'identifier') return swiftIdent(e.name)
-  return emitSwiftExpr(e, 0)
+  if (expr.kind === 'identifier') return swiftIdent(expr.name)
+  return emitSwiftExpr(expr, 0)
 }
 
 /** Extract a static text body if all children are JSXText / single text child. */
