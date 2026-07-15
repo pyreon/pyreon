@@ -20,7 +20,7 @@ import { transformJSX_JS } from '@pyreon/compiler'
 import type { VNode } from '@pyreon/core'
 import { Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { _esc, _ssr, _ssrChildren, renderToString } from '@pyreon/runtime-server'
+import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrItem, renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, hydrateRoot, mount, onHydrationMismatch } from '../index'
 
 function stripImports(code: string): string {
@@ -37,8 +37,8 @@ function evalSsr(src: string, deps: Record<string, unknown> = {}): unknown {
   const out = transformJSX_JS(src, 'case.tsx', { ssr: true, ssrTemplate: true })
   const body = stripImports(out.code)
   // Every differential source names its renderable binding `Node`.
-  const depNames = ['_ssr', '_ssrChildren', '_esc', 'signal', ...Object.keys(deps)]
-  const depValues = [_ssr, _ssrChildren, _esc, signal, ...Object.values(deps)]
+  const depNames = ['_ssr', '_ssrChildren', '_ssrItem', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl', 'signal', ...Object.keys(deps)]
+  const depValues = [_ssr, _ssrChildren, _ssrItem, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, signal, ...Object.values(deps)]
   // eslint-disable-next-line no-new-func
   const fn = new Function(...depNames, `${body}\nreturn Node`)
   return fn(...depValues)
@@ -143,6 +143,116 @@ const cases: DiffCase[] = [
     src: `const Node = <a href="/foo/bar">go</a>`,
     oracle: () => h('a', { href: '/foo/bar' }, 'go'),
   },
+  // ── Dynamic attributes (via _ssrAttr — renderProp verbatim) ──
+  {
+    name: 'dynamic attrs — data-id + href (the objective-bench row shape)',
+    // `data` is a free var (not a signal/prop) → the text/attr reads are NOT
+    // wrapped, so the h() oracle uses bare values (no <!--$--> markers).
+    src: `const Node = <div class="row" data-id={data.id}><span class="id">{String(data.id)}</span><a class="label" href={"/item/" + data.id}>{data.label}</a></div>`,
+    deps: { data: { id: 7, label: 'Widget & Co' } },
+    oracle: (d) => {
+      const it = d.data as { id: number; label: string }
+      return h(
+        'div',
+        { class: 'row', 'data-id': it.id },
+        h('span', { class: 'id' }, String(it.id)),
+        h('a', { class: 'label', href: `/item/${it.id}` }, it.label),
+      )
+    },
+  },
+  {
+    name: 'dynamic .map row with per-row dynamic attrs (beats-Solid shape)',
+    src: `const Node = <ul>{rows.map(r => <li class="row" data-id={r.id}><a href={"/i/" + r.id}>{r.name}</a></li>)}</ul>`,
+    deps: { rows: rows() },
+    oracle: (d) =>
+      h('ul', null, () =>
+        (d.rows as { id: number; name: string }[]).map((r) =>
+          h('li', { class: 'row', 'data-id': r.id }, h('a', { href: `/i/${r.id}` }, r.name)),
+        ),
+      ),
+  },
+  {
+    name: 'proven-non-null .map row — String(id) + template-literal href BAKED',
+    // The realistic real-app shape: `data-id={String(r.id)}` (provably a string)
+    // and `href={`/item/${r.id}`}` (template literal, safe `/` start) both BAKE
+    // ` name="` + `_esc(v)` + `"`. Byte-identical to the h() path, which for a
+    // non-null value renders the same ` name="value"`.
+    src: 'const Node = <ul>{rows.map(r => <li data-id={String(r.id)}><a href={`/item/${r.id}`}>{r.name}</a></li>)}</ul>',
+    deps: { rows: rows() },
+    oracle: (d) =>
+      h('ul', null, () =>
+        (d.rows as { id: number; name: string }[]).map((r) =>
+          h('li', { 'data-id': String(r.id) }, h('a', { href: `/item/${r.id}` }, r.name)),
+        ),
+      ),
+  },
+  {
+    name: 'proven-non-null generic attrs — String/number-method/concat/ternary',
+    src: 'const Node = <div data-a={String(data.n)} data-b={data.n.toFixed(2)} data-c={"x-" + data.n} data-d={data.on ? "y" : "n"}>t</div>',
+    deps: { data: { n: 3.5, on: true } },
+    oracle: (d) => {
+      const it = d.data as { n: number; on: boolean }
+      return h(
+        'div',
+        {
+          'data-a': String(it.n),
+          'data-b': it.n.toFixed(2),
+          'data-c': `x-${it.n}`,
+          'data-d': it.on ? 'y' : 'n',
+        },
+        't',
+      )
+    },
+  },
+  {
+    name: 'dynamic class (signal) via _ssrAttr',
+    src: `const s = signal('active hot'); const Node = <div class={s()}>x</div>`,
+    oracle: () => {
+      const s = signal('active hot')
+      return h('div', { class: () => s() }, 'x')
+    },
+  },
+  {
+    name: 'dynamic object class + object style via _ssrAttr',
+    // `data` is a free var → object attrs are NOT wrapped; renderProp does the
+    // cx()/normalizeStyle work in both paths.
+    src: `const Node = <div class={{ active: data.on, off: !data.on }} style={{ color: data.c, marginTop: 4 }}>y</div>`,
+    deps: { data: { on: true, c: 'red' } },
+    oracle: (d) => {
+      const it = d.data as { on: boolean; c: string }
+      return h(
+        'div',
+        { class: { active: it.on, off: !it.on }, style: { color: it.c, marginTop: 4 } },
+        'y',
+      )
+    },
+  },
+  {
+    name: 'camelCase dynamic attr name mapped via _ssrAttr',
+    src: `const Node = <div tabIndex={data.i} className={data.c}>x</div>`,
+    deps: { data: { i: -1, c: 'field' } },
+    oracle: (d) =>
+      h('div', { tabIndex: (d.data as { i: number }).i, className: (d.data as { c: string }).c }, 'x'),
+  },
+  {
+    name: 'dynamic unsafe URL is dropped by _ssrAttr (renderProp guard)',
+    src: `const Node = <a href={data.href}>x</a>`,
+    deps: { data: { href: 'javascript:alert(1)' } },
+    oracle: (d) => h('a', { href: (d.data as { href: string }).href }, 'x'),
+  },
+  {
+    name: 'NULL-valued bare dynamic attr is OMITTED (null-omit safety, not baked)',
+    // A bare member access is NOT provably non-null → runtime `_ssrAttrGen`,
+    // which OMITS a null value (matching renderProp / the h() path). Over-baking
+    // this (` data-x="" `) would diverge — the null-omit floor the fast path
+    // deliberately preserves. (Bisect target for the baking guard.)
+    src: `const Node = <div data-x={data.maybe} data-y={data.set}>t</div>`,
+    deps: { data: { maybe: null, set: 'ok' } },
+    oracle: (d) => {
+      const it = d.data as { maybe: string | null; set: string }
+      return h('div', { 'data-x': it.maybe, 'data-y': it.set }, 't')
+    },
+  },
 ]
 
 describe('SSR fast path — byte-identical to h() (compiled → eval → render)', () => {
@@ -159,15 +269,14 @@ describe('SSR fast path — byte-identical to h() (compiled → eval → render)
 
 describe('SSR fast path — conservative bail catalogue (stays on h())', () => {
   const bails: [string, string][] = [
-    ['unsafe javascript: url', `const N = <a href="javascript:evil()">x</a>`],
-    ['dynamic attribute', `const s = signal('x'); const N = <div class={s()}>y</div>`],
     ['spread attribute', `const N = <div {...props}>y</div>`],
     ['component child', `const N = <div><Widget /></div>`],
-    ['void element with content path', `const N = <img src="/a.png" />`],
+    ['void element (self-closing)', `const N = <img src="/a.png" />`],
     ['select element', `const N = <select value="b"><option>a</option></select>`],
-    ['camelCase attr name (needs runtime map)', `const N = <div tabIndex={0}>y</div>`],
-    ['object style attr', `const N = <div style={{ color: 'red' }}>y</div>`],
-    ['innerHTML', `const N = <div innerHTML={'<x>'}></div>`],
+    ['innerHTML content prop', `const N = <div innerHTML={'<x>'}></div>`],
+    ['dangerouslySetInnerHTML content prop', `const N = <div dangerouslySetInnerHTML={{ __html: '<x>' }}></div>`],
+    ['& in baked JSXText (entity divergence)', `const N = <p>Tom &amp; Jerry</p>`],
+    ['& in raw JSX string attr', `const N = <a title="Tom &amp; Jerry">x</a>`],
   ]
   for (const [name, src] of bails) {
     test(`bails: ${name}`, () => {

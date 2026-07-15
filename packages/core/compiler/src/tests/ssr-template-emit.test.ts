@@ -37,32 +37,27 @@ describe('ssrTemplate — emission shapes', () => {
     )
   })
 
-  test('dynamic prop-derived text child is wrapped (markers via renderNode)', () => {
+  test('dynamic prop text child: baked <!--$--> markers + _esc', () => {
     const out = ssrFast(`function C(props) { return <div>{props.x}</div> }`)
-    expect(out).toContain('return _ssr(["<div>", "</div>"], () => props.x)')
+    expect(out).toContain('return _ssr(["<div><!--$-->", "<!--/$--></div>"], _esc(props.x))')
   })
 
-  test('mixed static text + hole preserves order + bakes text', () => {
+  test('mixed static text + wrapped hole preserves order (markers baked)', () => {
     const out = ssrFast(`function C(props) { return <p>a {props.x} b</p> }`)
-    expect(out).toContain('_ssr(["<p>a ", " b</p>"], () => props.x)')
+    expect(out).toContain('_ssr(["<p>a <!--$-->", "<!--/$--> b</p>"], _esc(props.x))')
   })
 
-  test('.map fast path bakes accessor markers + _ssrChildren', () => {
+  test('.map fast path: markers + _ssrChildren, items via _ssrItem (plain string)', () => {
     const out = ssrFast(`const L = (rows) => <ul>{rows.map(r => <li class="row">{r.name}</li>)}</ul>`)
     expect(out).toContain(
-      '_ssr(["<ul><!--$-->", "<!--/$--></ul>"], _ssrChildren(rows.map((r) => _ssr(["<li class=\\"row\\">", "</li>"], r.name))))',
+      '_ssr(["<ul><!--$-->", "<!--/$--></ul>"], _ssrChildren(rows.map((r) => _ssrItem(["<li class=\\"row\\">", "</li>"], _esc(r.name)))))',
     )
-    expect(out).toContain('import { _ssr, _ssrChildren } from "@pyreon/runtime-server"')
+    expect(out).toContain('import { _ssr, _ssrChildren, _ssrItem, _esc } from "@pyreon/runtime-server"')
   })
 
   test('nested elements inline into the parent statics', () => {
     const out = ssrFast(`const A = <ul><li>a</li><li>b</li></ul>`)
     expect(out).toContain('const A = _ssr(["<ul><li>a</li><li>b</li></ul>"])')
-  })
-
-  test('static string-literal child is a bare hole (renderNode escapes)', () => {
-    const out = ssrFast(`const A = <p>{'a & b < c > d " e \\' f'}</p>`)
-    expect(out).toContain('const A = _ssr(["<p>", "</p>"], ')
   })
 
   test('baked JSXText is SSR-escaped at compile time (quotes)', () => {
@@ -72,24 +67,73 @@ describe('ssrTemplate — emission shapes', () => {
     expect(out).toContain(`const A = _ssr(["<p>say &quot;hi&quot; it&#39;s me</p>"])`)
   })
 
-  test('safe URL attr bakes; import is _ssr only', () => {
+  test('safe static URL attr bakes; import is _ssr only', () => {
     const out = ssrFast(`const A = <a href="/foo/bar">go</a>`)
     expect(out).toContain('const A = _ssr(["<a href=\\"/foo/bar\\">go</a>"])')
     expect(out).toContain('import { _ssr } from "@pyreon/runtime-server"')
   })
 })
 
+describe('ssrTemplate — dynamic attributes via _ssrAttr (renderProp verbatim)', () => {
+  test('bare dynamic attr → runtime helper; provably-safe url → baked', () => {
+    const out = ssrFast(
+      `const Row = (r) => <div class="row" data-id={r.id}><a href={"/i/" + r.id}>{r.label}</a></div>`,
+    )
+    // `data-id={r.id}` is a BARE member access — not provably non-null → runtime
+    // `_ssrAttrGen`. `href={"/i/" + r.id}` is a string-concat starting with `/`
+    // → provably a safe string → BAKED (` href="` + `_esc(...)` + `"`).
+    expect(out).toContain(
+      '_ssr(["<div class=\\"row\\"", "><a href=\\"", "\\"><!--$-->", "<!--/$--></a></div>"], _ssrAttrGen("data-id", r.id), _esc("/i/" + r.id), _esc(r.label))',
+    )
+  })
+
+  test('provably non-null attrs BAKE ` name="` + _esc(v) + `"` (dead null/omit branch)', () => {
+    // `String(x)` / `.toUpperCase()` → provably a string → generic bake.
+    expect(ssrFast(`const R = (r) => <div data-id={String(r.id)}>x</div>`)).toContain(
+      '_ssr(["<div data-id=\\"", "\\">x</div>"], _esc(String(r.id)))',
+    )
+    // template-literal href with a safe first quasi → provably-safe url → bake.
+    expect(ssrFast('const R = (r) => <a href={`/item/${r.id}`}>x</a>')).toContain(
+      '_ssr(["<a href=\\"", "\\">x</a>"], _esc(`/item/${r.id}`))',
+    )
+    // dynamic class / bare member / bare url stay on the runtime helper.
+    expect(ssrFast(`const s = signal('x'); const N = <div class={s()}>y</div>`)).toContain(
+      '_ssrAttr("div", "class", s())',
+    )
+    expect(ssrFast(`const R = (r) => <div data-id={r.id}>x</div>`)).toContain(
+      '_ssrAttrGen("data-id", r.id)',
+    )
+    // a template-literal url whose first quasi is a DYNAMIC start → not provably
+    // safe → keep the runtime url-guard helper.
+    expect(ssrFast('const R = (r) => <a href={`${r.scheme}://x`}>y</a>')).toContain(
+      '_ssrAttrUrl("a", "href", `${r.scheme}://x`)',
+    )
+  })
+
+  test('dynamic class (signal), camelCase name, object style → _ssrAttr (renderProp)', () => {
+    const s = (src: string) => ssrFast(src)
+    expect(s(`const s = signal('x'); const N = <div class={s()}>y</div>`)).toContain(
+      '_ssrAttr("div", "class", s())',
+    )
+    expect(s(`const N = <div tabIndex={0}>y</div>`)).toContain('_ssrAttr("div", "tabIndex", 0)')
+    expect(s(`const N = <div style={{ color: 'red' }}>y</div>`)).toContain(
+      '_ssrAttr("div", "style", { color: \'red\' })',
+    )
+  })
+
+  test('unsafe URL literal routes through _ssrAttrUrl (url-guard drops it)', () => {
+    expect(ssrFast(`const N = <a href="javascript:alert(1)">x</a>`)).toContain(
+      '_ssrAttrUrl("a", "href", "javascript:alert(1)")',
+    )
+  })
+})
+
 describe('ssrTemplate — bail catalogue (stays on h())', () => {
   const bails: [string, string][] = [
-    ['unsafe javascript: url', `const N = <a href="javascript:alert(1)">x</a>`],
-    ['unsafe data: url', `const N = <a href="data:text/html,x">x</a>`],
-    ['dynamic class attr', `const s = signal('x'); const N = <div class={s()}>y</div>`],
     ['spread attribute', `const N = <div {...props}>y</div>`],
     ['component child', `const N = <div><Widget /></div>`],
     ['void element', `const N = <img src="/a.png" />`],
     ['select value', `const N = <select value="b"><option>a</option></select>`],
-    ['camelCase attr (needs runtime name map)', `const N = <div tabIndex={0}>y</div>`],
-    ['object style', `const N = <div style={{ color: 'red' }}>y</div>`],
     ['& in JSXText (entity-decode ambiguity)', `const N = <p>Tom &amp; Jerry</p>`],
     ['bare & in JSXText', `const N = <p>fish & chips</p>`],
     ['& in raw JSX string attr', `const N = <a title="Tom &amp; Jerry">x</a>`],

@@ -1,5 +1,5 @@
 import type { ClassValue, Props } from '@pyreon/core'
-import { cx, isSafeImageDataUri, normalizeStyleValue, toKebabCase, UNSAFE_URL_RE, URL_ATTRS } from '@pyreon/core'
+import { cx, isSafeImageDataUri, isUnsafeUrl, normalizeStyleValue, toKebabCase, URL_ATTRS } from '@pyreon/core'
 
 import { batch, renderEffect } from '@pyreon/reactivity'
 import { DELEGATED_EVENTS, delegatedPropName } from './delegate'
@@ -132,7 +132,7 @@ function stripUnsafeAttrs(el: Element): void {
       el.removeAttribute(attr.name)
     } else if (
       URL_ATTRS.has(attr.name) &&
-      UNSAFE_URL_RE.test(attr.value) &&
+      isUnsafeUrl(attr.value) &&
       !isSafeImageDataUri(el.tagName, attr.name, attr.value)
     ) {
       el.removeAttribute(attr.name)
@@ -515,7 +515,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   if (
     URL_ATTRS.has(key) &&
     typeof value === 'string' &&
-    UNSAFE_URL_RE.test(value) &&
+    isUnsafeUrl(value) &&
     !isSafeImageDataUri(el.tagName, key, value)
   ) {
     if (process.env.NODE_ENV !== 'production') {

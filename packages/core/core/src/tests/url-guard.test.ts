@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isSafeImageDataUri, UNSAFE_URL_RE, URL_ATTRS } from '../url-guard'
+import { isSafeImageDataUri, isUnsafeUrl, UNSAFE_URL_RE, URL_ATTRS } from '../url-guard'
 
 // Canonical single-source matrix for the URL-attribute injection guard now
 // shared by `@pyreon/runtime-dom` (client) and `@pyreon/runtime-server` (SSR).
@@ -20,6 +20,106 @@ describe('url-guard — URL_ATTRS / UNSAFE_URL_RE', () => {
     expect(UNSAFE_URL_RE.test('  DATA:image/png;base64,x')).toBe(true)
     expect(UNSAFE_URL_RE.test('https://example.com')).toBe(false)
     expect(UNSAFE_URL_RE.test('/relative/path')).toBe(false)
+  })
+})
+
+describe('url-guard — isUnsafeUrl (charCodeAt fast path)', () => {
+  // `isUnsafeUrl` MUST be behaviorally identical to `UNSAFE_URL_RE.test` — it
+  // just adds a first-char fast path. This exhaustive matrix (incl. unicode
+  // whitespace, which `\s` matches and a naive `c > 32` fast path would MISS)
+  // is the equivalence gate; a divergence is a security hole or a false block.
+  const cases: string[] = [
+    // must BLOCK (unsafe)
+    'javascript:alert(1)',
+    'JavaScript:alert(1)',
+    'JAVASCRIPT:alert(1)',
+    'jAvAsCrIpT:x',
+    ' javascript:x',
+    '   javascript:x',
+    '\tjavascript:x',
+    '\njavascript:x',
+    '\r\njavascript:x',
+    '\fjavascript:x',
+    '\u000bjavascript:x', // vertical tab
+    'data:text/html,<script>',
+    'DATA:text/html,x',
+    ' data:text/html,x',
+    '\tdata:text/html,x',
+    // unicode-whitespace-prefixed (the `\s` set — a `c > 32` fast path would
+    // wrongly pass these; the conservative predicate routes ≥127 to the regex)
+    '\u00a0javascript:x', // NBSP (160)
+    '\u2028data:text/html,x', // line separator
+    '\u2029javascript:x', // paragraph separator
+    '\u3000data:text/html,x', // ideographic space
+    '\ufeffjavascript:x', // BOM
+    '\u1680javascript:x', // ogham space mark
+    '\u205fdata:x', // medium math space
+    // must ALLOW (safe) — first char hits the fast path
+    'https://example.com',
+    'http://example.com',
+    '/relative/path',
+    './rel',
+    '../rel',
+    '#anchor',
+    '?a=1&b=2',
+    'mailto:a@b.com',
+    'tel:+123',
+    'ftp://host',
+    'data', // no colon — not a scheme
+    'javascriptx', // no colon
+    'javascript', // no colon
+    'javascript ', // no colon
+    'HTTP://X',
+    'Data', // no colon
+    '',
+    ' ', // single space, no scheme → safe
+    'x',
+    'D', // bare 'D', no colon → safe (falls to regex, no match)
+    'j', // bare 'j', no colon → safe
+    'data-uri-ish/path', // starts with 'd' → regex, no `data:` → safe
+    'javascriptural/thing', // starts with 'j' → regex, no `javascript:` → safe
+  ]
+
+  it('is byte-for-byte equivalent to UNSAFE_URL_RE.test on the full matrix', () => {
+    for (const url of cases) {
+      expect(isUnsafeUrl(url)).toBe(UNSAFE_URL_RE.test(url))
+    }
+  })
+
+  it('BLOCKS every javascript:/data: variant (security invariant)', () => {
+    for (const url of cases) {
+      const lower = url.trimStart().toLowerCase()
+      if (lower.startsWith('javascript:') || lower.startsWith('data:')) {
+        expect(isUnsafeUrl(url)).toBe(true)
+      }
+    }
+    // and the unicode-whitespace ones explicitly (the `.trimStart()` above uses
+    // JS whitespace which matches `\s`, but be explicit for the security bar):
+    expect(isUnsafeUrl('\u00a0javascript:x')).toBe(true)
+    expect(isUnsafeUrl('\ufeffdata:text/html,x')).toBe(true)
+    expect(isUnsafeUrl('\u3000javascript:x')).toBe(true)
+  })
+
+  it('ALLOWS common safe URLs via the fast path (no false blocks)', () => {
+    for (const url of ['https://x', '/a', './a', '#a', '?a=1', 'mailto:x', 'tel:1', '']) {
+      expect(isUnsafeUrl(url)).toBe(false)
+    }
+  })
+
+  it('random-string fuzz stays equivalent to the regex', () => {
+    const chars =
+      'jJdDaAtScRiPvhttp:/.#? \t\n\u00a0\u2028\ufeff-_012xyz'.split('')
+    let a = 1234567
+    const rnd = () => {
+      a = (a * 1103515245 + 12345) & 0x7fffffff
+      return a / 0x7fffffff
+    }
+    for (let i = 0; i < 5000; i++) {
+      const len = Math.floor(rnd() * 14)
+      let s = ''
+      for (let k = 0; k < len; k++) s += chars[Math.floor(rnd() * chars.length)]
+      expect(isUnsafeUrl(s)).toBe(UNSAFE_URL_RE.test(s))
+    }
   })
 })
 
