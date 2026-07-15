@@ -6,7 +6,7 @@
  * own data property (never mutates the prototype).
  */
 
-import type { ParseCtx } from '../core/ops'
+import { mutablePath, type ParseCtx } from '../core/ops'
 import { typeIssue } from '../core/issue'
 import { Schema as SchemaBase } from '../core/schema'
 import type { Schema } from '../core/schema'
@@ -42,7 +42,7 @@ export class RecordSchema<K extends PropertyKey, V> extends SchemaBase<Record<K,
     const beforeAll = ctx.issues.length
     let pending: Array<{ key: string; promise: Promise<unknown> }> | null = null
     for (const key of Object.keys(source)) {
-      ctx.path.push(key)
+      mutablePath(ctx).push(key)
       try {
         const before = ctx.issues.length
         // Validate the KEY (if a key schema is set). Keys from Object.keys are

@@ -11,8 +11,8 @@
  */
 
 import { typeIssue } from '../core/issue'
-import type { CheckOpts, ParseCtx } from '../core/ops'
-import { resolveFormat } from '../core/registry'
+import type { CheckOpts, Op, ParseCtx } from '../core/ops'
+import { makeFormatResolver, type FormatValidator } from '../core/registry'
 import { Schema as SchemaBase, attachCheck, makeCheckIssue, type Schema } from '../core/schema'
 
 // ─── Email precision tiers (server/client split) ──────────────────────
@@ -289,23 +289,62 @@ export class StringSchema extends SchemaBase<string> {
 
   // ─── Format checks ─────────────────────────────────────────────────
 
+  /**
+   * Attach a registry-routed format check (email/url/uuid/…). Builds ONE
+   * memoized resolver ({@link makeFormatResolver}) shared by both paths:
+   *   - `_checkFn` (interpreter) — pushes the issue with the live `ctx.path`.
+   *   - `_pred` (JIT) — the pure `(value) => boolean` predicate the compiled
+   *     validator calls on the VALID path (no `ctx`, no path push); the JIT
+   *     invokes `_checkFn` only when `_pred` fails, so the valid path never
+   *     touches the path array or the issue machinery. `_pred`'s verdict is
+   *     the resolver applied to a value the JIT has already type-checked as a
+   *     string — byte-identical to `_checkFn`'s "valid" condition.
+   * Centralizes the identical `typeof + resolveFormat + makeCheckIssue`
+   * shape every format check used to repeat inline.
+   */
+  private _format(
+    kind: Extract<Op, { kind: `check:string:${string}`; opts?: CheckOpts | undefined }>['kind'],
+    name: string,
+    light: FormatValidator,
+    code: string,
+    message: string,
+    key: string,
+    fallback: string,
+    opts?: CheckOpts,
+    params: Readonly<Record<string, unknown>> = {},
+  ): this {
+    const resolve = makeFormatResolver(name, light)
+    const op = attachCheck({ kind, opts } as Op, (value, ctx) => {
+      if (typeof value !== 'string') return
+      if (resolve(value)) return
+      ctx.issues.push(makeCheckIssue(code, message, key, params, fallback, ctx, opts))
+    })
+    ;(op as { _pred?: FormatValidator })._pred = resolve
+    this._ops.push(op)
+    this._invalidateCompile()
+    return this
+  }
+
   regex(re: RegExp, opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:regex', re, opts }, (value, ctx) => {
-        if (typeof value !== 'string' || re.test(value)) return
-        ctx.issues.push(
-          makeCheckIssue(
-            'invalid_format',
-            'Invalid format',
-            'validate.string.regex-mismatch',
-            { pattern: re.source },
-            'Invalid format',
-            ctx,
-            opts,
-          ),
-        )
-      }),
-    )
+    const op = attachCheck({ kind: 'check:string:regex', re, opts }, (value, ctx) => {
+      if (typeof value !== 'string' || re.test(value)) return
+      ctx.issues.push(
+        makeCheckIssue(
+          'invalid_format',
+          'Invalid format',
+          'validate.string.regex-mismatch',
+          { pattern: re.source },
+          'Invalid format',
+          ctx,
+          opts,
+        ),
+      )
+    })
+    // JIT predicate: the value is already type-checked as a string at the
+    // call site, so the pure `re.test` is the valid-condition (closure runs
+    // only on failure → no valid-path issue machinery).
+    ;(op as { _pred?: FormatValidator })._pred = (value: string): boolean => re.test(value)
+    this._ops.push(op)
     this._invalidateCompile()
     return this
   }
@@ -329,18 +368,16 @@ export class StringSchema extends SchemaBase<string> {
    */
   email(opts?: CheckOpts & { precision?: EmailPrecision }): this {
     const precision = opts?.precision ?? 'standard'
-    const light = (v: string): boolean => validateEmail(v, precision)
-    this._ops.push(
-      attachCheck({ kind: 'check:string:email', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('email', light)(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid email', 'validate.string.email', {}, 'Invalid email', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:email',
+      'email',
+      (v: string): boolean => validateEmail(v, precision),
+      'invalid_format',
+      'Invalid email',
+      'validate.string.email',
+      'Invalid email',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /**
@@ -353,240 +390,224 @@ export class StringSchema extends SchemaBase<string> {
    * ship to the browser.
    */
   phone(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:phone', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('phone', validatePhone)(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid phone number', 'validate.string.phone', {}, 'Invalid phone number', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:phone',
+      'phone',
+      validatePhone,
+      'invalid_format',
+      'Invalid phone number',
+      'validate.string.phone',
+      'Invalid phone number',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate an IPv4 or IPv6 address. Regex-based (sufficient client + server). */
   ip(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:ip', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('ip', validateIp)(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid IP address', 'validate.string.ip', {}, 'Invalid IP address', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:ip',
+      'ip',
+      validateIp,
+      'invalid_format',
+      'Invalid IP address',
+      'validate.string.ip',
+      'Invalid IP address',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate a credit-card number (Luhn checksum + 12–19 digits, separators stripped). */
   creditCard(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:creditcard', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('creditcard', validateCreditCard)(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid card number', 'validate.string.creditcard', {}, 'Invalid card number', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:creditcard',
+      'creditcard',
+      validateCreditCard,
+      'invalid_format',
+      'Invalid card number',
+      'validate.string.creditcard',
+      'Invalid card number',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   url(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:url', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('url', (v: string) => URL_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid URL', 'validate.string.url', {}, 'Invalid URL', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:url',
+      'url',
+      (v: string): boolean => URL_RE.test(v),
+      'invalid_format',
+      'Invalid URL',
+      'validate.string.url',
+      'Invalid URL',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   uuid(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:uuid', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('uuid', (v: string) => UUID_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid UUID', 'validate.string.uuid', {}, 'Invalid UUID', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:uuid',
+      'uuid',
+      (v: string): boolean => UUID_RE.test(v),
+      'invalid_format',
+      'Invalid UUID',
+      'validate.string.uuid',
+      'Invalid UUID',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate a CUID2 (lowercase alphanumeric, starts with a letter). */
   cuid2(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:cuid2', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('cuid2', (v: string) => CUID2_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid CUID2', 'validate.string.cuid2', {}, 'Invalid CUID2', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:cuid2',
+      'cuid2',
+      (v: string): boolean => CUID2_RE.test(v),
+      'invalid_format',
+      'Invalid CUID2',
+      'validate.string.cuid2',
+      'Invalid CUID2',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate a ULID (Crockford base32, 26 chars). */
   ulid(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:ulid', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('ulid', (v: string) => ULID_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid ULID', 'validate.string.ulid', {}, 'Invalid ULID', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:ulid',
+      'ulid',
+      (v: string): boolean => ULID_RE.test(v),
+      'invalid_format',
+      'Invalid ULID',
+      'validate.string.ulid',
+      'Invalid ULID',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate a Nano ID (URL-safe alphabet `A-Za-z0-9_-`). */
   nanoid(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:nanoid', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('nanoid', (v: string) => NANOID_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid Nano ID', 'validate.string.nanoid', {}, 'Invalid Nano ID', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:nanoid',
+      'nanoid',
+      (v: string): boolean => NANOID_RE.test(v),
+      'invalid_format',
+      'Invalid Nano ID',
+      'validate.string.nanoid',
+      'Invalid Nano ID',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate an emoji string (one or more emoji code points). */
   emoji(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:emoji', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('emoji', (v: string) => EMOJI_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid emoji', 'validate.string.emoji', {}, 'Invalid emoji', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:emoji',
+      'emoji',
+      (v: string): boolean => EMOJI_RE.test(v),
+      'invalid_format',
+      'Invalid emoji',
+      'validate.string.emoji',
+      'Invalid emoji',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate standard base64 (alphabet `A-Za-z0-9+/`, optional `=` padding). */
   base64(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:base64', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('base64', (v: string) => BASE64_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid base64', 'validate.string.base64', {}, 'Invalid base64', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:base64',
+      'base64',
+      (v: string): boolean => BASE64_RE.test(v),
+      'invalid_format',
+      'Invalid base64',
+      'validate.string.base64',
+      'Invalid base64',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate a JWT shape (three base64url segments: header.payload.signature). */
   jwt(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:jwt', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('jwt', (v: string) => JWT_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid JWT', 'validate.string.jwt', {}, 'Invalid JWT', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:jwt',
+      'jwt',
+      (v: string): boolean => JWT_RE.test(v),
+      'invalid_format',
+      'Invalid JWT',
+      'validate.string.jwt',
+      'Invalid JWT',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate a cuid (v1) — starts with `c`, then 8+ non-space/non-dash chars. */
   cuid(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:cuid', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('cuid', (v: string) => CUID_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid cuid', 'validate.string.cuid', {}, 'Invalid cuid', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:cuid',
+      'cuid',
+      (v: string): boolean => CUID_RE.test(v),
+      'invalid_format',
+      'Invalid cuid',
+      'validate.string.cuid',
+      'Invalid cuid',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate URL-safe base64 (alphabet `A-Za-z0-9_-`, optional `=` padding). */
   base64url(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:base64url', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('base64url', (v: string) => BASE64URL_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid base64url', 'validate.string.base64url', {}, 'Invalid base64url', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:base64url',
+      'base64url',
+      (v: string): boolean => BASE64URL_RE.test(v),
+      'invalid_format',
+      'Invalid base64url',
+      'validate.string.base64url',
+      'Invalid base64url',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate CIDR notation — IPv4 (`x.x.x.x/0-32`) or IPv6 (`…/0-128`). */
   cidr(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:cidr', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('cidr', isCidr)(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid CIDR', 'validate.string.cidr', {}, 'Invalid CIDR', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:cidr',
+      'cidr',
+      isCidr,
+      'invalid_format',
+      'Invalid CIDR',
+      'validate.string.cidr',
+      'Invalid CIDR',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate an ISO 8601 duration (`P3Y6M4DT12H30M5S`, `PT1H`, `P1W`, …). */
   duration(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:duration', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('duration', (v: string) => DURATION_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid ISO 8601 duration', 'validate.string.duration', {}, 'Invalid ISO 8601 duration', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:duration',
+      'duration',
+      (v: string): boolean => DURATION_RE.test(v),
+      'invalid_format',
+      'Invalid ISO 8601 duration',
+      'validate.string.duration',
+      'Invalid ISO 8601 duration',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /** Validate an E.164 phone number (`+` then 1–15 digits, first non-zero). */
   e164(opts?: CheckOpts): this {
-    this._ops.push(
-      attachCheck({ kind: 'check:string:e164', opts }, (value, ctx) => {
-        if (typeof value !== 'string') return
-        if (resolveFormat('e164', (v: string) => E164_RE.test(v))(value)) return
-        ctx.issues.push(
-          makeCheckIssue('invalid_format', 'Invalid E.164 phone number', 'validate.string.e164', {}, 'Invalid E.164 phone number', ctx, opts),
-        )
-      }),
+    return this._format(
+      'check:string:e164',
+      'e164',
+      (v: string): boolean => E164_RE.test(v),
+      'invalid_format',
+      'Invalid E.164 phone number',
+      'validate.string.e164',
+      'Invalid E.164 phone number',
+      opts,
     )
-    this._invalidateCompile()
-    return this
   }
 
   /**
@@ -595,69 +616,39 @@ export class StringSchema extends SchemaBase<string> {
    * `.iso.time()`.
    */
   readonly iso = {
-    date: (opts?: CheckOpts): this => {
-      this._ops.push(
-        attachCheck({ kind: 'check:string:iso:date', opts }, (value, ctx) => {
-          if (typeof value !== 'string') return
-          if (resolveFormat('iso-date', (v: string) => ISO_DATE_RE.test(v))(value)) return
-          ctx.issues.push(
-            makeCheckIssue(
-              'invalid_format',
-              'Invalid ISO date (YYYY-MM-DD)',
-              'validate.string.iso-date',
-              {},
-              'Invalid ISO date (YYYY-MM-DD)',
-              ctx,
-              opts,
-            ),
-          )
-        }),
-      )
-      this._invalidateCompile()
-      return this
-    },
-    dateTime: (opts?: CheckOpts): this => {
-      this._ops.push(
-        attachCheck({ kind: 'check:string:iso:datetime', opts }, (value, ctx) => {
-          if (typeof value !== 'string') return
-          if (resolveFormat('iso-datetime', (v: string) => ISO_DATETIME_RE.test(v))(value)) return
-          ctx.issues.push(
-            makeCheckIssue(
-              'invalid_format',
-              'Invalid ISO datetime',
-              'validate.string.iso-datetime',
-              {},
-              'Invalid ISO datetime',
-              ctx,
-              opts,
-            ),
-          )
-        }),
-      )
-      this._invalidateCompile()
-      return this
-    },
-    time: (opts?: CheckOpts): this => {
-      this._ops.push(
-        attachCheck({ kind: 'check:string:iso:time', opts }, (value, ctx) => {
-          if (typeof value !== 'string') return
-          if (resolveFormat('iso-time', (v: string) => ISO_TIME_RE.test(v))(value)) return
-          ctx.issues.push(
-            makeCheckIssue(
-              'invalid_format',
-              'Invalid ISO time (HH:MM:SS)',
-              'validate.string.iso-time',
-              {},
-              'Invalid ISO time (HH:MM:SS)',
-              ctx,
-              opts,
-            ),
-          )
-        }),
-      )
-      this._invalidateCompile()
-      return this
-    },
+    date: (opts?: CheckOpts): this =>
+      this._format(
+        'check:string:iso:date',
+        'iso-date',
+        (v: string): boolean => ISO_DATE_RE.test(v),
+        'invalid_format',
+        'Invalid ISO date (YYYY-MM-DD)',
+        'validate.string.iso-date',
+        'Invalid ISO date (YYYY-MM-DD)',
+        opts,
+      ),
+    dateTime: (opts?: CheckOpts): this =>
+      this._format(
+        'check:string:iso:datetime',
+        'iso-datetime',
+        (v: string): boolean => ISO_DATETIME_RE.test(v),
+        'invalid_format',
+        'Invalid ISO datetime',
+        'validate.string.iso-datetime',
+        'Invalid ISO datetime',
+        opts,
+      ),
+    time: (opts?: CheckOpts): this =>
+      this._format(
+        'check:string:iso:time',
+        'iso-time',
+        (v: string): boolean => ISO_TIME_RE.test(v),
+        'invalid_format',
+        'Invalid ISO time (HH:MM:SS)',
+        'validate.string.iso-time',
+        'Invalid ISO time (HH:MM:SS)',
+        opts,
+      ),
   }
 
   // ─── Substring checks ──────────────────────────────────────────────

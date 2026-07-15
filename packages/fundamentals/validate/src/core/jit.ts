@@ -34,7 +34,7 @@
 
 import { makeIssue, typeIssue } from './issue'
 import type { PathSegment } from './issue'
-import type { ParseCtx } from './ops'
+import { mutablePath, type ParseCtx } from './ops'
 import type { Schema, SyncValidator } from './schema'
 
 // Schemas with a simple `typeof`/identity type-check we can inline.
@@ -61,6 +61,12 @@ type CheckOpLike = {
   hi?: number // check:number:between upper bound
   s?: string // check:string:starts-with / ends-with / includes needle
   _checkFn?: (v: unknown, ctx: ParseCtx) => void
+  // Pure predicate for a format check (email/url/uuid/regex/…): TRUE when the
+  // (already type-checked) value PASSES. When present, the JIT calls this on
+  // the VALID path and invokes `_checkFn` (path push + issue) ONLY on failure
+  // — so a format check costs one predicate call, not a wrapped closure that
+  // pushes/pops `ctx.path` on every valid parse.
+  _pred?: (v: unknown) => boolean
 }
 
 /** Inline expression that is TRUE when `v` is the WRONG type for `kind`. */
@@ -207,7 +213,11 @@ type CheckFn = (v: unknown, ctx: ParseCtx) => void
 function wrapCheckWithPath(fn: CheckFn, suffix: ReadonlyArray<string>, hasDynIdx: boolean): CheckFn {
   if (suffix.length === 0 && !hasDynIdx) return fn
   return (v: unknown, c: ParseCtx, idx?: number) => {
-    const p = c.path
+    // Materialize a writable path — `c.path` may be the shared EMPTY_PATH
+    // sentinel (a valid parse never pushes). This wrapper is invoked only on
+    // a format-check FAILURE (the JIT gates it behind the `_pred` predicate),
+    // so the swap is a cold-path cost, never on the valid path.
+    const p = mutablePath(c)
     let n = 0
     if (idx !== undefined) {
       p.push(idx)
@@ -290,21 +300,28 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       const idxArg = ps.dynIdx ? `, ${ps.dynIdx}` : ''
       return ops
         .map((op) => {
-          const cond = inlineCheckCond(op, ve)
           // Check closures read `ctx.path` when they push an issue — under
           // path elision they get a wrapper that reinstates the pending
           // segments around the call (identity when nothing is pending, so
-          // the root-scalar path is unchanged). Cheap inline conds call the
-          // closure on FAILURE only; format checks call it always (the
-          // wrapper's push/pop then costs the same as the old per-field
-          // P.push — never more).
+          // the root-scalar path is unchanged). Cheap inline conds + format
+          // predicates call the closure on FAILURE only; a plain closure
+          // (no inline cond, no `_pred`) is called always (the wrapper's
+          // push/pop then costs the same as the old per-field P.push).
           const call = `${cap(wrapCheckWithPath(op._checkFn!, ps.suffix, ps.dynIdx !== null))}(${ve}, ctx${idxArg});`
-          // Inline ONLY cheap literal conditions (length / numeric compares):
-          // the valid path then pays no closure CALL. Format/regex checks
-          // deliberately stay closure-calls — MEASURED 3.5× FASTER than
-          // inlining `H[k].test(v)` into the generated function (a small
-          // monomorphic closure is better optimized than regex-via-array-
-          // indirection in `new Function` code).
+          // Failure condition — inline ONLY cheap literal conditions (length /
+          // numeric compares) so the valid path pays no closure CALL. A format
+          // check (email/url/uuid/regex/…) exposes a pure `_pred` predicate:
+          // emit `if (!Hpred(v)) { <wrapped closure> }` so the valid path runs
+          // just the predicate (the value is already type-guarded as a string
+          // at this site, so `_pred`'s verdict equals the closure's) and the
+          // wrapper's `ctx.path` push/pop + issue machinery run ONLY on
+          // failure. Previously the format-check closure was called on EVERY
+          // valid parse — the dominant per-field cost of an object with a
+          // format field (`.email()` etc.). Format/regex predicates
+          // deliberately stay closure PREDICATES (not inlined `H[k].test(v)`)
+          // — a small monomorphic closure is better optimized than a
+          // regex-via-array-indirection inside `new Function` code.
+          const cond = inlineCheckCond(op, ve) ?? (op._pred ? `!${cap(op._pred)}(${ve})` : null)
           return cond ? `if (${cond}) { ${call} }` : call
         })
         .join(' ')
@@ -316,19 +333,42 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         ? `Object.defineProperty(${target}, ${kl}, { value: ${valExpr}, enumerable: true, writable: true, configurable: true });`
         : `${target}[${kl}] = ${valExpr};`
 
+    // Captured lazily on the FIRST flush that actually pushes — a scalar /
+    // flat-object never flushes, so it never references `mutablePath` at all.
+    let mutRef: string | null = null
+
     // Emit the real `ctx.path` pushes for the pending segments (an enclosing
     // array's dynamic index + the static key suffix) and the matching pops.
     // Used before an array element loop / a `_runInto` fallback — the two
-    // places that need the REAL path to be current.
+    // places that need the REAL path to be current. `P` starts as the shared
+    // EMPTY_PATH sentinel; the first flush materializes it (`P = mutablePath
+    // (ctx)`) so the pushes hit a writable per-parse array. `mutablePath` is
+    // idempotent, so a later format-check-failure wrapper (which also swaps)
+    // and `P` stay pointing at the same array.
     const flushPath = (ps: PathState): { pre: string; post: string } => {
       const pushes: string[] = []
       if (ps.dynIdx) pushes.push(`P.push(${ps.dynIdx});`)
       for (const seg of ps.suffix) pushes.push(`P.push(${JSON.stringify(seg)});`)
       const n = (ps.dynIdx ? 1 : 0) + ps.suffix.length
-      return { pre: pushes.join(' '), post: n === 0 ? '' : Array(n).fill('P.pop();').join(' ') }
+      if (n === 0) return { pre: '', post: '' }
+      if (mutRef === null) mutRef = cap(mutablePath)
+      return { pre: `P = ${mutRef}(ctx); ${pushes.join(' ')}`, post: Array(n).fill('P.pop();').join(' ') }
     }
 
     const lines: string[] = []
+
+    // Whether the emitted body references the async pending machinery (the
+    // `A`/`B` lists + the `Promise.all` root barrier). ONLY a `_runInto`
+    // fallback (the sole source of a Promise result) or an inline array (whose
+    // element-slot + own-check codegen reads `A`) can reference it. A pure
+    // scalar / flat-object-of-primitives references NONE of it — the dominant
+    // scalar + flat-object shapes — so those emit a LEAN body: no `var A/B/
+    // NOOP`, a bare `return value` barrier. Measured ~10% faster (the mere
+    // presence of the `Promise.all(A).then(closure)` return + the per-call
+    // `NOOP` arrow made the optimizer conservative even though the branch is
+    // dead on the all-sync path). Correctness is unchanged — the machinery is
+    // only elided when nothing emits code that reads it.
+    let usesAsyncMachinery = false
 
     // Bound generated-function size + codegen recursion on a pathologically
     // deep schema: beyond this nesting depth a subtree uses its `_runInto`
@@ -394,6 +434,9 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         return
       }
       if (depth <= MAX_DEPTH && isInlineArray(field) && field.element) {
+        // The array codegen reads `A` (element-slot bookkeeping + own-check
+        // deferral), so a schema containing an array keeps the async machinery.
+        usesAsyncMachinery = true
         const ti = cap((val: unknown, c: ParseCtx, idx?: number) => {
           c.issues.push(typeIssue('array', val, jitEffectivePath(c, sfx, idx)))
         })
@@ -460,6 +503,9 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       const run = cap((val: unknown, c: ParseCtx) => field._runInto(val, c))
       const fv = nv()
       const { pre, post } = flushPath(ps)
+      // A fallback is the ONLY subtree that can return a Promise → its
+      // `onAsync` arm reads `A`/`B`, so the async machinery is required.
+      usesAsyncMachinery = true
       lines.push(
         `${pre} let ${fv} = ${run}(${srcVar}, ctx); ${post} if (${fv} && typeof ${fv}.then === "function") { ${onAsync(fv)} } else { ${onValid(fv)} }`,
       )
@@ -501,16 +547,20 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       }
     }
 
-    lines.push(`var P = ctx.path;`)
-    // Function-level pending lists — async fallback subtrees defer here:
-    // `A[i]` is the promise, `B[i]` the paired apply-callback run with the
-    // resolved value at the root barrier (in deferral = field order, matching
-    // the interpreter's pend loop; per-settlement application would key-order
-    // the output by settlement order). NOOP pads `B` for self-applying
-    // entries (deferred array checks).
-    lines.push(`var A = null; var B = null; var NOOP = () => {};`)
-    const BARRIER = (r: string) =>
-      `return A === null ? ${r} : Promise.all(A).then((vs) => { for (var z = 0; z < vs.length; z++) B[z](vs[z]); return ${r}; });`
+    // The root return barrier. When the tree references the async machinery
+    // (a fallback or array subtree — set by the time the root barrier is
+    // EMITTED, which always follows the subtree that could set it), an all-sync
+    // parse leaves `A === null` and returns the value directly; a deferred one
+    // awaits `Promise.all(A)` then applies the paired `B` callbacks in
+    // deferral (= field) order. A pure scalar / flat-object references neither,
+    // so the barrier is a bare `return value` (no dead Promise.all closure to
+    // keep the optimizer conservative). `BARRIER` reads `usesAsyncMachinery`
+    // at emit time — safe because it is only ever emitted after the subtree it
+    // returns has been fully generated.
+    const BARRIER = (r: string): string =>
+      usesAsyncMachinery
+        ? `return A === null ? ${r} : Promise.all(A).then((vs) => { for (var z = 0; z < vs.length; z++) B[z](vs[z]); return ${r}; });`
+        : `return ${r};`
     // Validate the root via the same recursive generator: on a valid value
     // `return` it (behind the pending barrier when anything deferred); if the
     // root type-guard fails the issue was pushed and we fall through to
@@ -518,7 +568,17 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
     genValue(root, 'input', BARRIER, (p) => `return ${p};`, 0, { dynIdx: null, suffix: [] })
     lines.push(BARRIER('input'))
 
-    const body = lines.join('\n')
+    // Function-level pending lists — async fallback subtrees defer here:
+    // `A[i]` is the promise, `B[i]` the paired apply-callback run with the
+    // resolved value at the root barrier (in deferral = field order, matching
+    // the interpreter's pend loop; per-settlement application would key-order
+    // the output by settlement order). NOOP pads `B` for self-applying
+    // entries (deferred array checks). Declared ONLY when the body references
+    // them (see {@link usesAsyncMachinery}) — a scalar / flat-object omits them.
+    const prelude = usesAsyncMachinery
+      ? `var P = ctx.path;\nvar A = null; var B = null; var NOOP = () => {};`
+      : `var P = ctx.path;`
+    const body = `${prelude}\n${lines.join('\n')}`
     // eslint-disable-next-line no-new-func
     const factory = new Function('H', `return function jitValidate(input, ctx) {\n${body}\n}`) as (
       h: unknown[],
