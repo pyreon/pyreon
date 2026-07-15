@@ -6165,7 +6165,10 @@ function emitSwiftToggle(
     // No onChange handler — can't write back. Fall through to generic.
     return emitSwiftGeneric(e, indent)
   }
-  const valueExpr = emitSwiftExpr(valueAttr.value, indent)
+  // Unwrap a zero-arg accessor arrow: `value={() => on()}` is a reactive read,
+  // so the Binding get must return `on`, not the closure `{ on }` (which makes
+  // `get: { { on } }` a double closure returning `() -> Bool`, not `Bool`).
+  const valueExpr = emitSwiftExpr(unwrapAccessorArrow(valueAttr.value), indent)
   // emitSwiftAction returns a `{ body }` closure — extract the body
   // so we can embed it inside `Binding(set: { _ in body })`.
   const writeClosure = emitSwiftAction(onChange.handler, indent + 4)
