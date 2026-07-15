@@ -201,6 +201,17 @@ public struct PyreonPermissions {
   public func any(_ perms: String...) -> Bool { false }
   public func not(_ perm: String) -> Bool { false }
 }
+// PyreonNetworkStatus — mirror of @pyreon/native-runtime-swift's
+// PyreonNetworkStatus.swift surface the emit touches: the no-arg constructor
+// plus the isOnline Bool read (bare, since the real type is @Observable).
+// The @Observable macro drives runtime reactivity, NOT the type-level compile,
+// so a plain class type-checks an @State PyreonNetworkStatus + net.isOnline
+// identically. useOnline() returns a web ACCESSOR read as net() — the emit
+// lowers that call to this net.isOnline Bool read.
+public final class PyreonNetworkStatus {
+  public private(set) var isOnline: Bool
+  public init(isOnline: Bool = true) { self.isOnline = isOnline }
+}
 public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never

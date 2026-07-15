@@ -387,7 +387,7 @@ uses the hook at all.
 | `usePayments` | — | ❌ (manual `.start()`) | R2 |
 | `usePermissions` | — | ❌ (unit-tested; no device use) | R2–R3 |
 | `useClipboard` | — | ❌ | R2 |
-| `useOnline` | — | ❌ | R2 |
+| `useOnline` | — | ❌ (unit-tested emit + swiftc/kotlinc compile-proof of the shared `net()` accessor; no device use) | R2–R3 |
 | `useColorScheme` | counter | ✅ (M2.5) — `Text("Theme: \(colorScheme)")` reads `@Environment(\.colorScheme)`; the counter XCUITest asserts "Theme: light" under the default Simulator appearance and "Theme: dark" under `simctl ui appearance dark` (proven locally), so the read reflects the LIVE system appearance, not a constant (a constant would render the same string in both). Still emit-only (no runtime port); Android asserts the same node in Compose (`isSystemInDarkTheme()`, CI-gated) | R4 (iOS local + Android CI) |
 
 **Assertion queue** (the follow-up PR order; each moves a row to R5 and
@@ -667,8 +667,13 @@ Kotlin runtime the emitted code drives):
   `.value` rewrite).
 - **`useOnline`** → a `PyreonNetworkStatus` container with a reactive
   `isOnline` flag (real `NWPathMonitor` on iOS; the Compose side takes the
-  app's connectivity callback). `net.isOnline` reads plainly on SwiftUI,
-  `.value` on Compose.
+  app's connectivity callback). Because the WEB `useOnline()` returns an
+  ACCESSOR (`() => boolean`), ONE shared source reads it as `net()` — the
+  emit lowers that accessor call to the container's `isOnline` read
+  (`net.isOnline` on SwiftUI, `net.isOnline.value` on Compose). The direct
+  `net.isOnline` member read also compiles on native (a native-only shape
+  with no web equivalent), so both idioms work — prefer `net()` for
+  cross-platform parity.
 - **`useClipboard`** → a `PyreonClipboard` container with a `copy(text)`
   method + a reactive `copied: Bool` flag that auto-resets to false ~2s
   after each copy (matches the web `@pyreon/hooks` contract). Wraps
