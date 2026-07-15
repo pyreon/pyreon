@@ -2585,6 +2585,15 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         if (_machineNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}()`
         }
+        // `useOnline()` returns a web ACCESSOR (`() => boolean`), so shared code
+        // reads it as `net()`. Lower that accessor call to `net.isOnline.value`
+        // (the MutableState-backed reactive Bool on PyreonNetworkStatus) so ONE
+        // source works web + native — the bare `net` fall-through emitted `if (net)`,
+        // uncompilable (the container isn't a Bool). The `net.isOnline` member
+        // form is handled separately (→ `.isOnline.value`); this covers `net()`.
+        if (_netStatusNames.has(e.callee.name)) {
+          return `${kotlinIdent(e.callee.name)}.isOnline.value`
+        }
         return kotlinIdent(e.callee.name)
       }
       // TS-method translation (Phase 2 follow-up). When the callee is a

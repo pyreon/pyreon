@@ -880,6 +880,15 @@ class PyreonPermissions(initial: Set<String>) {
   operator fun invoke(key: String): Boolean = can(key)
 }
 
+// PyreonNetworkStatus — mirror of @pyreon/native-runtime-kotlin's
+// PyreonNetworkStatus.kt surface the emit touches: the no-arg constructor
+// plus the isOnline MutableState<Boolean> field, read as net.isOnline.value.
+// useOnline() returns a web ACCESSOR read as net() — the emit lowers that
+// call to this net.isOnline.value reactive-Bool read.
+class PyreonNetworkStatus(isOnline: Boolean = true) {
+  val isOnline: MutableState<Boolean> = mutableStateOf(isOnline)
+}
+
 // PyreonStore — Gap 4 Strategy-B v1 marker interface for emitted
 // per-store singleton classes. Real impl in @pyreon/native-runtime-
 // kotlin's PyreonStore.kt. Empty by design — purely a documentation

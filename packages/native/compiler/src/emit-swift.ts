@@ -183,6 +183,12 @@ let _signalNames: Set<string> = new Set()
  * (parens dropped) and from function `addTodo()` (parens preserved).
  */
 let _machineNames: Set<string> = new Set()
+/** Per-component: `useOnline()` decl names. A web `useOnline()` returns an
+ *  ACCESSOR (`() => boolean`), so shared code reads it as `net()`; on native
+ *  the accessor call lowers to the `net.isOnline` read on the PyreonNetworkStatus
+ *  container (same accessor semantics as useColorScheme). Without this, `net()`
+ *  emitted a bare `net` → `if net { }` (uncompilable — the container isn't Bool). */
+let _netStatusNames: Set<string> = new Set()
 /** Per-component: form decl names — drives the dict-member subscript
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
@@ -1304,6 +1310,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // Gap 4 PR-2: track machine names so `m()` keeps parens (Swift
   // callAsFunction).
   _machineNames = new Set()
+  _netStatusNames = new Set()
   _i18nNames = new Set()
   _formNamesSwift = new Set()
   _fetchNamesSwift = new Set()
@@ -1343,6 +1350,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // Keep machine names OUT of _signalNames (parens preserved) and
     // OUT of _functionNames (it's a property, not a free function).
     if (d.kind === 'machine') _machineNames.add(d.name)
+    if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
@@ -3063,6 +3071,14 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // `m()` invokes `callAsFunction()` and reads the current state.
         if (_machineNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}()`
+        }
+        // `useOnline()` returns a web ACCESSOR (`() => boolean`), so shared code
+        // reads it as `net()`. Lower that accessor call to the container's
+        // `isOnline` property so ONE source works on web + native (the bare
+        // `net` fall-through emitted `if net { }` — uncompilable, not a Bool).
+        // The `net.isOnline` member form still works (passes through as-is).
+        if (_netStatusNames.has(e.callee.name)) {
+          return `${swiftIdent(e.callee.name)}.isOnline`
         }
         return swiftIdent(e.callee.name)
       }
