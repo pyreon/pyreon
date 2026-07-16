@@ -145,7 +145,14 @@ const kindOf = (file: string): AssetKind => {
   return 'other'
 }
 
-const walk = (dir: string, out: string[] = []): string[] => {
+/**
+ * One `statSync` per file, captured at walk time — every consumer reuses the
+ * size instead of re-stat'ing (no check-then-use pair: a dist file changing
+ * mid-summary is a build-tooling race we tolerate, and the later
+ * `readFileSync` calls are individually try/catch-guarded, CodeQL
+ * `js/file-system-race`).
+ */
+const walk = (dir: string, out: Array<{ path: string; size: number }> = []): Array<{ path: string; size: number }> => {
   let names: string[]
   try {
     names = readdirSync(dir)
@@ -154,11 +161,25 @@ const walk = (dir: string, out: string[] = []): string[] => {
   }
   for (const name of names) {
     const full = join(dir, name)
-    const st = statSync(full)
+    let st
+    try {
+      st = statSync(full)
+    } catch {
+      continue // vanished between readdir and stat — skip
+    }
     if (st.isDirectory()) walk(full, out)
-    else out.push(full)
+    else out.push({ path: full, size: st.size })
   }
   return out
+}
+
+/** Gzipped byte size, or null when the file can't be read (racing writer). */
+const gzipSizeOf = (file: string): number | null => {
+  try {
+    return gzipSync(readFileSync(file)).length
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -176,16 +197,14 @@ export function collectBuildStats(outDir: string, assetsDir = 'assets'): BuildSt
   }
 
   const assetsRoot = join(outDir, assetsDir)
-  const clientAssets: AssetStat[] = walk(assetsRoot).map((full) => {
-    const rel = relative(outDir, full).split('\\').join('/')
-    const st = statSync(full)
-    const compressible = COMPRESSIBLE.has(extOf(full))
-    const kind = kindOf(full)
+  const clientAssets: AssetStat[] = walk(assetsRoot).map(({ path, size }) => {
+    const rel = relative(outDir, path).split('\\').join('/')
+    const kind = kindOf(path)
     return {
       file: rel,
       kind,
-      bytes: st.size,
-      gzipBytes: compressible ? gzipSync(readFileSync(full)).length : null,
+      bytes: size,
+      gzipBytes: COMPRESSIBLE.has(extOf(path)) ? gzipSizeOf(path) : null,
       // Entry marker = the INITIAL SCRIPT/STYLE payload. Restricted to
       // js/css: fonts/images referenced by index.html (preload links) would
       // otherwise flood the marker and drown the chunks it exists to surface.
@@ -196,18 +215,22 @@ export function collectBuildStats(outDir: string, assetsDir = 'assets'): BuildSt
   let prerenderedCount = 0
   let prerenderedBytes = 0
   const serverDir = join(outDir, 'server')
-  for (const full of walk(outDir)) {
-    if (full.startsWith(serverDir + '/') || full.startsWith(serverDir + '\\')) continue
-    if (extOf(full) !== '.html') continue
+  for (const { path, size } of walk(outDir)) {
+    if (path.startsWith(serverDir + '/') || path.startsWith(serverDir + '\\')) continue
+    if (extOf(path) !== '.html') continue
     prerenderedCount++
-    prerenderedBytes += statSync(full).size
+    prerenderedBytes += size
   }
 
   const server: BuildStats['server'] = []
   try {
     for (const name of readdirSync(serverDir)) {
-      const full = join(serverDir, name)
-      const st = statSync(full)
+      let st
+      try {
+        st = statSync(join(serverDir, name))
+      } catch {
+        continue
+      }
       if (st.isFile()) server.push({ file: `server/${name}`, bytes: st.size })
     }
   } catch {
