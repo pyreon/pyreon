@@ -51,7 +51,7 @@
   },
   "dependencies": {
     "magic-string": "^0.30.21",
-    "oxc-parser": "^0.138.0",
+    "oxc-parser": "^0.140.0",
     "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {
