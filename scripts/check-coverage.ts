@@ -56,6 +56,10 @@ const PACKAGE_DIRS = [
   'packages/ui-system',
   'packages/tools',
   'packages/zero',
+  // The component library, its behavior primitives, and theme. Previously
+  // UNSCANNED by this gate — so ui-components/ui-primitives coverage was
+  // never enforced and sat RED locally with nobody catching it.
+  'packages/ui',
 ]
 const DEFAULT_THRESHOLD = 95
 const MINIMUM_FLOOR = 95
@@ -85,6 +89,18 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentBranches: 85,
     reason:
       'JSX transform compiler. PR #1079 excluded load-native.ts (napi-rs binary loader) + event-names.ts (DOM-event remap data). Ratcheted 89/83 → 91/85 (measured 91.79/85.56) after validate-emit.ts — the pure TS-compiler-API compile-time @pyreon/validate specializer — gained full behavioral coverage (56.3%→98.9% stmts) of its check vocabulary + emitSchemaSource mini rewrite. Residual gap is the jsx.ts codegen edge-case tail (dual-backend, covered by native-equivalence + fuzz-equivalence in the `test (native)` cell) plus the syntactic audit modules (native-audit/content-audit/island-audit/ssg-audit) and diagnose.ts (exercised by e2e/dev-error-printer.spec.ts). Lifting to 95/95 is multi-PR work tracked as a long-tail effort.',
+  },
+  '@pyreon/ui-components': {
+    currentStatements: 49,
+    currentBranches: 72,
+    reason:
+      '67-component rocketstyle library. This is the FIRST PR to bring packages/ui under the coverage gate (it was entirely unscanned). Honest first baseline (measured 49.48/72.22, functions 16.09, lines 50.35): the library is imported by the export-existence test but almost never RENDERED, so definition-chain statements are covered while the .theme/.states/.sizes callbacks (the bulk of functions) are not. `includeIndexInCoverage` un-excludes the component index.ts files (same vacuous-barrel trap @pyreon/store fixed in #2167). This is the low end of a deliberate ratchet — the UI-excellence effort adds per-component mount/interaction tests phase by phase; raise these thresholds + this entry in lockstep as coverage climbs, never lower.',
+  },
+  '@pyreon/ui-primitives': {
+    currentStatements: 62,
+    currentBranches: 54,
+    reason:
+      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). First baseline under the gate (measured 62.99/54.79, functions 63.68, lines 66.85): the 11 browser tests exercise ARIA + keyboard surfaces but not the full state machines (Checkbox/Switch/Combobox/FileUpload/keyboard.ts navigateByRole largely unexercised — which is why interaction bugs shipped). Ratchet target as the UI-excellence effort adds interaction tests; raise in lockstep, never lower.',
   },
   // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
   // Each entry's `currentBranches` mirrors the package's vitest.config.ts

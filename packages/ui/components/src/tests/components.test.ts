@@ -94,8 +94,8 @@ describe('Rocketstyle components have displayName', () => {
 })
 
 describe('Export count', () => {
-  it('exports at least 58 components', () => {
+  it('exports at least 67 components', () => {
     const count = Object.keys(exports).length
-    expect(count).toBeGreaterThanOrEqual(58)
+    expect(count).toBeGreaterThanOrEqual(67)
   })
 })
