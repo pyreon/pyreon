@@ -12,13 +12,18 @@
  *   - primitive `typeof` type-checks + cheap check conditions
  *   - array element loops, recursing into object/array/primitive elements
  *   - nested objects (recursed inline, not a per-field closure call)
+ *   - discriminated unions: a raw-value discriminant `switch` (`===` ≡ the
+ *     interpreter's `Map.get` SameValueZero for every tag except NaN; a
+ *     NaN-tagged union keeps a captured `Map.get`-fed small-int switch)
+ *     whose member object bodies inline like any other object
  * while CAPTURING the existing per-check closures + type-issue makers, so
  * the validation logic — and therefore correctness — is identical to the
  * interpreter; only the dispatch is flattened.
  *
  * A subtree it can't inline (optional/nullable/default, transform/refine,
- * union/record/tuple/map/set/intersection/lazy/coerce, serverCheck, nested
- * objects with their own checks or non-strip key policy) falls back to that
+ * plain union/record/tuple/map/set/intersection/lazy/coerce, serverCheck,
+ * nested objects with their own checks or non-strip key policy, a
+ * discriminated-union MEMBER with its own ops) falls back to that
  * subtree's `_runInto` (captured closure) — so the rest still inlines. A
  * fallback that resolves ASYNCHRONOUSLY (async `.refine`/`.transform`/
  * registered `.serverCheck` under `parseAsync`) is deferred onto a pending
@@ -51,6 +56,8 @@ interface FieldLike {
   _unknownKeys?: string
   _catchall?: unknown // object catchall schema — disqualifies inline (unknown-key validation)
   _coerce?: boolean // overridden _compileType (coercion) → never inline
+  discriminant?: string // discriminated-union tag key
+  _duTagMap?: ReadonlyMap<unknown, FieldLike> // discriminated-union tag → member
   _runInto(input: unknown, ctx: ParseCtx): unknown
 }
 
@@ -256,18 +263,40 @@ const isInlineArray = (s: FieldLike): boolean =>
   s._kind === 'array' && !!s.element && Array.isArray(s._ops) && s._ops.every((op) => op.kind.startsWith('check:'))
 
 /**
+ * A discriminated union we can compile a dispatch switch for: no own ops
+ * (a modifier/check/transform/refine on the DU itself would run in
+ * compileSchema's pipeline, which the inline emission replaces) and no
+ * coercion override. Members inline through the normal object codegen when
+ * they qualify (`isPlainObject`), else fall back to their `_runInto`
+ * closure per dispatch case — exactly the interpreter's dispatch target.
+ */
+const isInlineDU = (s: FieldLike): boolean =>
+  s._kind === 'discriminatedUnion' &&
+  Array.isArray(s._ops) &&
+  s._ops.length === 0 &&
+  !s._coerce &&
+  typeof s.discriminant === 'string' &&
+  s._duTagMap instanceof Map
+
+/**
  * Whether a field's VALID value is provably never `undefined` — lets
  * `genObjectBody` drop the redundant `if (r !== undefined || (k in src))`
- * strip-assignment guard. True for inline objects/arrays (freshly built) and
- * inline primitives whose type-guard excludes `undefined` (everything except
- * the `undefined` kind and `literal`, whose literal value could itself be
- * `undefined`). Anything routed to the `_runInto` fallback (optional / default
- * / nullable / union / …) can legitimately yield `undefined`, so it is NOT
- * covered here and keeps the guard.
+ * strip-assignment guard (and lets `genObjectValue` construct the output as
+ * one object literal). True for inline objects/arrays (freshly built) and
+ * inline primitives whose type-guard excludes `undefined` — everything
+ * except the `undefined` kind and a `literal` whose literal value IS
+ * `undefined` (a defined-literal's type-guard `v !== value` excludes
+ * `undefined` like any other typeof guard). Anything routed to the
+ * `_runInto` fallback (optional / default / nullable / union / …) can
+ * legitimately yield `undefined`, so it is NOT covered here and keeps the
+ * guard.
  */
 function fieldDefinedWhenValid(field: FieldLike): boolean {
   if (isPlainObject(field) || isInlineArray(field)) return true
-  if (isInlinePrimitive(field)) return field._kind !== 'undefined' && field._kind !== 'literal'
+  if (isInlinePrimitive(field)) {
+    if (field._kind === 'undefined') return false
+    return field._kind !== 'literal' || field.value !== undefined
+  }
   return false
 }
 
@@ -278,13 +307,15 @@ function fieldDefinedWhenValid(field: FieldLike): boolean {
  */
 export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
   const root = schema as unknown as FieldLike
-  // JIT a composite root (object/array) OR an inline-primitive root (string /
-  // number / … with only checks). A primitive root inlines its `typeof` +
-  // cheap check conditions with zero closure calls on the valid path —
-  // beating the interpreter's per-check closure dispatch. Other roots (union,
-  // record, coerce, modifier-wrapped, …) gain nothing from flattening, so the
-  // interpreter handles them.
-  if (!isPlainObject(root) && !isInlineArray(root) && !isInlinePrimitive(root)) return null
+  // JIT a composite root (object/array/discriminated-union) OR an
+  // inline-primitive root (string / number / … with only checks). A primitive
+  // root inlines its `typeof` + cheap check conditions with zero closure
+  // calls on the valid path — beating the interpreter's per-check closure
+  // dispatch. A discriminated-union root compiles to a discriminant SWITCH
+  // whose member bodies inline. Other roots (plain union, record, coerce,
+  // modifier-wrapped, …) gain nothing from flattening, so the interpreter
+  // handles them.
+  if (!isPlainObject(root) && !isInlineArray(root) && !isInlinePrimitive(root) && !isInlineDU(root)) return null
 
   try {
     const helpers: unknown[] = []
@@ -422,14 +453,8 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         const ti = cap((val: unknown, c: ParseCtx, idx?: number) => {
           c.issues.push(typeIssue('object', val, jitEffectivePath(c, sfx, idx)))
         })
-        const outV = nv()
         lines.push(`if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${ti}(${srcVar}, ctx${idxArg}); } else {`)
-        lines.push(`let ${outV} = {};`)
-        genObjectBody(field.shape as Record<string, FieldLike>, srcVar, outV, depth + 1, ps)
-        // A pending descendant patches `outV` by reference when it settles, so
-        // handing the object to `onValid` NOW is correct — the root return
-        // barrier awaits every pending entry before the value escapes.
-        lines.push(onValid(outV))
+        genObjectValue(field.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps)
         lines.push(`}`)
         return
       }
@@ -494,6 +519,141 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
         lines.push(`}`)
         return
       }
+      if (depth <= MAX_DEPTH && isInlineDU(field)) {
+        const disc = field.discriminant!
+        const tagMap = field._duTagMap!
+        // Issue makers captured for byte-parity with the interpreter
+        // (DiscriminatedUnionSchema._compileType) — same codes/keys/params/
+        // paths, reconstructed from the elided suffix at the failure site.
+        const notObj = cap((_val: unknown, c: ParseCtx, idx?: number) => {
+          c.issues.push(
+            makeIssue({
+              code: 'invalid_type',
+              key: 'validate.discriminated-union.not-object',
+              fallback: 'Expected an object',
+              message: 'Expected an object',
+              path: jitEffectivePath(c, sfx, idx),
+            }),
+          )
+        })
+        const badTag = cap((tag: unknown, c: ParseCtx, idx?: number) => {
+          c.issues.push(
+            makeIssue({
+              code: 'invalid_union_discriminator',
+              key: 'validate.discriminated-union.bad-discriminator',
+              params: { discriminant: disc, received: tag, expected: [...tagMap.keys()] },
+              fallback: `Invalid discriminator value for "${disc}"`,
+              message: `Invalid discriminator value for "${disc}"`,
+              path: [...jitEffectivePath(c, sfx, idx), disc],
+            }),
+          )
+        })
+        // Dispatch — two emissions, chosen at CODEGEN time:
+        //
+        //  FAST (the overwhelmingly common shape — every tag bakeable as a
+        //  literal token): `switch (tag) { case "circle": … }` on the RAW
+        //  value. `switch` compares with `===`, which is IDENTICAL to the
+        //  interpreter's `Map.get` SameValueZero for every value EXCEPT NaN
+        //  (±0 agree under both). String/finite-number/boolean/null/
+        //  undefined tags all bake; the raw switch drops the helper-array
+        //  load + `Map.get` call from the hot path entirely.
+        //
+        //  GENERAL (any non-bakeable tag — NaN, or an exotic literal): a
+        //  captured `Map<tag, memberIndex>` + `switch` on the small int, so
+        //  the lookup IS `Map.get`'s SameValueZero (a raw `===` switch
+        //  would diverge on a NaN tag — locked by the DU differential).
+        //
+        // Members dedup — an enum discriminant registers several tags for
+        // ONE member (grouped `case` labels in the fast emission).
+        const caseMembers: FieldLike[] = []
+        const memberCase = new Map<FieldLike, number>()
+        const memberTags = new Map<FieldLike, unknown[]>()
+        const dispatch = new Map<unknown, number>()
+        for (const [tag, m] of tagMap) {
+          const member = m as FieldLike
+          let ci = memberCase.get(member)
+          if (ci === undefined) {
+            ci = caseMembers.length
+            memberCase.set(member, ci)
+            memberTags.set(member, [])
+            caseMembers.push(member)
+          }
+          memberTags.get(member)!.push(tag)
+          dispatch.set(tag, ci)
+        }
+        // A tag emitted as a source token compared with `===` — or null when
+        // no token preserves SameValueZero (NaN) / no literal form exists.
+        const tagToken = (tag: unknown): string | null => {
+          if (typeof tag === 'string') return JSON.stringify(tag)
+          if (typeof tag === 'number') return Number.isNaN(tag) ? null : numLit(tag)
+          if (typeof tag === 'boolean') return tag ? 'true' : 'false'
+          if (tag === null) return 'null'
+          if (tag === undefined) return 'undefined'
+          return null
+        }
+        const allBakeable = [...tagMap.keys()].every((t) => tagToken(t) !== null)
+        const tagV = nv()
+        lines.push(
+          `if (typeof ${srcVar} !== "object" || ${srcVar} === null || Array.isArray(${srcVar})) { ${notObj}(${srcVar}, ctx${idxArg}); } else {`,
+        )
+        lines.push(`let ${tagV} = ${srcVar}[${keyLit(disc)}];`)
+        lines.push(allBakeable ? `switch (${tagV}) {` : `switch (${cap(dispatch)}.get(${tagV})) {`)
+        for (let ci = 0; ci < caseMembers.length; ci++) {
+          const member = caseMembers[ci]!
+          if (allBakeable) {
+            // grouped labels — every tag of this member falls into one body
+            lines.push(memberTags.get(member)!.map((t) => `case ${tagToken(t)!}:`).join(' ') + ' {')
+          } else {
+            lines.push(`case ${ci}: {`)
+          }
+          if (depth + 1 <= MAX_DEPTH && isPlainObject(member)) {
+            // Inline the member's strip-clone body directly. The DU guard
+            // above already proved `srcVar` is a non-null non-array object,
+            // so the member's own (byte-identical) type-guard is provably
+            // dead — skipping it here is a pure win with no reachable-
+            // semantics change (the interpreter's dispatch target re-checks
+            // and always passes).
+            //
+            // Under the FAST (raw-switch) emission, the member's own
+            // DISCRIMINANT field is provably settled too, when it is a bare
+            // inline literal: the matched `case` token `===` the field's
+            // literal value, so its type-check can't fail, and a
+            // non-`undefined` tag always assigns. Preset it — the member
+            // body then skips the re-read + identity check and assigns the
+            // already-read tag (single-read; identical for data properties,
+            // which is all the schema contract covers). An `undefined`
+            // literal tag keeps the full field body (its strip-guard is
+            // load-bearing: `{ }` vs `{ t: undefined }` differ).
+            const discField = (member.shape as Record<string, FieldLike>)[disc]
+            const preset =
+              allBakeable &&
+              discField !== undefined &&
+              isInlinePrimitive(discField) &&
+              discField._kind === 'literal' &&
+              discField.value !== undefined &&
+              fieldCheckOps(discField).length === 0
+                ? { key: disc, varExpr: tagV }
+                : undefined
+            genObjectValue(member.shape as Record<string, FieldLike>, srcVar, onValid, onAsync, depth + 1, ps, preset)
+          } else {
+            // Non-inlinable member (own checks / strict / catchall / depth
+            // cap) — its captured `_runInto` closure, exactly the
+            // interpreter's dispatch target (incl. async Promise routing
+            // through `onAsync`).
+            genValue(member, srcVar, onValid, onAsync, depth + 1, ps)
+          }
+          lines.push(`break; }`)
+        }
+        // Unknown tag (no case label matched / `Map.get` → undefined): push
+        // the interpreter's `invalid_union_discriminator` issue and DON'T
+        // produce a value — the parse has failed (root falls through to
+        // `return input`; a nested position leaves the field unassigned,
+        // unobservable on a failed parse).
+        lines.push(`default: ${badTag}(${tagV}, ctx${idxArg});`)
+        lines.push(`}`)
+        lines.push(`}`)
+        return
+      }
       // Fallback: this subtree's compiled validator against the shared ctx —
       // which must observe the REAL current path (issues, pending serverCheck
       // entries, async snapshots), so the pending segments are flushed around
@@ -511,8 +671,94 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       )
     }
 
-    function genObjectBody(shape: Record<string, FieldLike>, srcVar: string, outVar: string, depth: number, ps: PathState): void {
+    // Produce a validated plain-object VALUE from `srcVar` (already object-
+    // type-guarded by the caller) and hand it to `onValid`. Two emissions:
+    //
+    //  LITERAL (every non-preset field an inline primitive that is provably
+    //  non-`undefined` when valid): emit each field's read + type/check
+    //  lines, then construct the output in ONE object literal — the engine
+    //  allocates the final shape directly, no empty-object + per-key
+    //  structure transitions (measured faster in both mid-tier and top-tier
+    //  JIT states). Field checks still run in shape order (issue order
+    //  identical); on a FAILED parse the literal may carry a raw value for
+    //  the failed key where the assign-emission would omit the key — both
+    //  are unobservable (`parse()` discards the value when issues exist).
+    //  A `"__proto__"` key uses the COMPUTED form (`["__proto__"]: v`) —
+    //  a plain literal key would set the PROTOTYPE; the computed form
+    //  creates the own property, exactly like the assign-emission's
+    //  `Object.defineProperty`.
+    //
+    //  ASSIGN (anything else — fallback/optional/literal-valued/nested
+    //  composite fields): the classic `let out = {}` + guarded per-field
+    //  assigns via `genObjectBody` (strip-guard + async-deferral semantics
+    //  live there).
+    const genObjectValue = (
+      shape: Record<string, FieldLike>,
+      srcVar: string,
+      onValid: (r: string) => string,
+      onAsync: (p: string) => string,
+      depth: number,
+      ps: PathState,
+      preset?: { key: string; varExpr: string },
+    ): void => {
+      const keys = Object.keys(shape)
+      const literalOk = keys.every((key) => {
+        if (preset !== undefined && key === preset.key) return true
+        const f = shape[key]!
+        // inline primitive whose valid value can never be `undefined` — the
+        // strip-guard is then provably a no-op and the unconditional literal
+        // inclusion is byte-identical on the OK path
+        return isInlinePrimitive(f) && fieldDefinedWhenValid(f)
+      })
+      if (literalOk) {
+        const parts: string[] = []
+        for (const key of keys) {
+          const kl = keyLit(key)
+          const litKey = key === '__proto__' ? `[${kl}]` : kl
+          if (preset !== undefined && key === preset.key) {
+            parts.push(`${litKey}: ${preset.varExpr}`)
+            continue
+          }
+          const field = shape[key]!
+          const vV = nv()
+          lines.push(`let ${vV} = ${srcVar}[${kl}];`)
+          // guard + checks only — the value lands in the literal below
+          genValue(field, vV, () => '', onAsync, depth, { dynIdx: ps.dynIdx, suffix: [...ps.suffix, key] })
+          parts.push(`${litKey}: ${vV}`)
+        }
+        // Bind to a temp and hand the VAR to `onValid` — several onValid
+        // shapes interpolate their argument more than once (the guarded
+        // strip-assign), which would construct the literal twice.
+        const litV = nv()
+        lines.push(`let ${litV} = { ${parts.join(', ')} };`)
+        lines.push(onValid(litV))
+        return
+      }
+      const outV = nv()
+      lines.push(`let ${outV} = {};`)
+      genObjectBody(shape, srcVar, outV, depth, ps, preset)
+      // A pending descendant patches `outV` by reference when it settles, so
+      // handing the object to `onValid` NOW is correct — the root return
+      // barrier awaits every pending entry before the value escapes.
+      lines.push(onValid(outV))
+    }
+
+    function genObjectBody(
+      shape: Record<string, FieldLike>,
+      srcVar: string,
+      outVar: string,
+      depth: number,
+      ps: PathState,
+      // A field whose value is ALREADY read + proven valid by the caller (the
+      // DU discriminant under the raw-switch emission): assign the given var
+      // at the field's shape position, skipping the re-read + type check.
+      preset?: { key: string; varExpr: string },
+    ): void {
       for (const key of Object.keys(shape)) {
+        if (preset !== undefined && key === preset.key) {
+          lines.push(assign(outVar, keyLit(key), key, preset.varExpr))
+          continue
+        }
         const field = shape[key]!
         const kl = keyLit(key)
         const vV = nv()
