@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 65 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 67 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 65 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 67 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Coolgrid
 
@@ -97,9 +97,17 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 
 <Example file="./examples/hooks/usecounter-clamped" />
 
+### Usefocus Ring Tiles
+
+<Example file="./examples/hooks/usefocus-ring-tiles" />
+
 ### Usehover Color Tiles
 
 <Example file="./examples/hooks/usehover-color-tiles" />
+
+### Useprevious Lag Swatches
+
+<Example file="./examples/hooks/useprevious-lag-swatches" />
 
 ### Usetoggle Disclosure Pattern
 
