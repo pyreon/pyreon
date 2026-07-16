@@ -1,0 +1,175 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+/**
+ * PRIMITIVE-FIRST — the library's keystone architectural rule.
+ *
+ * Every INTERACTIVE component must delegate its behavior + accessibility to a
+ * headless `*Base` primitive from `@pyreon/ui-primitives`, via
+ * `.config({ component: XBase })`, and add ONLY styling on top. A styled `<div>`
+ * with missing (or hand-rolled) keyboard handling and ARIA is a bug — that is
+ * exactly how `Tree`, `Menu`, `Popover`, `Accordion` and the whole DatePicker
+ * family shipped as inert shells while a fully-built, keyboard-tested
+ * `TreeBase` sat orphaned.
+ *
+ * `KNOWN_HOLLOW` is a SHRINKING allowlist of the components that violate the
+ * rule today. It works like `lint-baseline.json` / `BELOW_FLOOR_EXEMPTIONS`:
+ *
+ *   - NEVER add an entry. A new interactive component must wrap a primitive.
+ *   - Each PR that builds a primitive and wires its component REMOVES its entry.
+ *   - Drift is detected in BOTH directions: if a listed component starts
+ *     delegating, this test FAILS telling you to delete the entry, so the
+ *     allowlist can never silently rot into a permanent excuse list.
+ */
+
+const COMPONENTS_DIR = join(import.meta.dirname, '..', 'components')
+
+/**
+ * Components whose whole job involves behavior + a11y (keyboard nav, focus
+ * management, ARIA roles/state). Presentational components (Badge, Card,
+ * Loader…) are deliberately NOT here — they carry static ARIA defaults in
+ * `.attrs()` instead, which is a different contract.
+ *
+ * Stepper / Pagination / NavLink are excluded on purpose: they need
+ * `aria-current`, not a behavior primitive.
+ */
+const INTERACTIVE = [
+  'Accordion',
+  'Autocomplete',
+  'Calendar',
+  'Checkbox',
+  'ColorPicker',
+  'Combobox',
+  'DatePicker',
+  'DateRangePicker',
+  'DateTimePicker',
+  'Dialog',
+  'Drawer',
+  'FileUpload',
+  'HoverCard',
+  'Menu',
+  'Modal',
+  'MonthPicker',
+  'MultiSelect',
+  'NumberInput',
+  'PinInput',
+  'Popover',
+  'Radio',
+  'SegmentedControl',
+  'Select',
+  'Slider',
+  'Spoiler',
+  'Switch',
+  'Tabs',
+  'TimePicker',
+  'Tree',
+] as const
+
+/** Interactive components that do NOT yet delegate. Only ever shrinks. */
+const KNOWN_HOLLOW: Record<string, string> = {
+  Tree: 'TreeBase exists, is fully keyboard-tested, and is ORPHANED — wire it up (one .config away).',
+  Menu: 'Needs a MenuBase (role=menu/menuitem, roving tabindex, typeahead, Esc + focus return).',
+  Popover: 'Needs a PopoverBase built on @pyreon/elements useOverlay (open state, Esc, click-outside, positioning).',
+  HoverCard: 'Inherits the hollow Popover via `Popover.config()`. Fixed when Popover gets PopoverBase.',
+  Accordion: 'Needs an AccordionBase (button aria-expanded/aria-controls, region, single/multiple, arrow nav).',
+  PinInput: 'Needs a PinInputBase (auto-advance, Backspace, paste-distribute, per-cell aria-label).',
+  NumberInput: 'Needs a NumberInputBase (spinbutton, arrow/Page step, clamp) — currently renders a TEXT input.',
+  SegmentedControl: 'Should reuse RadioGroupBase (radiogroup semantics) — items are plain buttons today.',
+  Spoiler: 'Needs disclosure behavior (aria-expanded + controllable open) — a styled box today.',
+  DatePicker: 'Needs a DatePickerBase (compose PopoverBase + CalendarBase) — a styled div today.',
+  DateRangePicker: 'Inherits hollow DatePicker; also needs CalendarBase range mode. JSDoc currently overclaims.',
+  DateTimePicker: 'Inherits hollow DatePicker; also needs a time surface.',
+  TimePicker: 'Inherits hollow DatePicker; needs its own time-list behavior.',
+  MonthPicker: 'Needs CalendarBase in month view.',
+}
+
+type Classification =
+  | { kind: 'delegates' }
+  | { kind: 'extends'; parent: string }
+  | { kind: 'hollow' }
+
+/**
+ * Classify a component from its source. Two ways to satisfy the rule:
+ *  1. DIRECT   — imports a `*Base` from @pyreon/ui-primitives and passes it as
+ *                `.config({ component: XBase })`.
+ *  2. INHERITED — re-configures another component (`X = Y.config({ name })`),
+ *                 which inherits Y's `component` (this is how Autocomplete
+ *                 legitimately rides on Combobox → ComboboxBase).
+ */
+function classify(name: string): Classification {
+  const src = readFileSync(join(COMPONENTS_DIR, name, 'index.ts'), 'utf-8')
+
+  if (src.includes('@pyreon/ui-primitives') && /component:\s*\w+Base/.test(src)) {
+    return { kind: 'delegates' }
+  }
+
+  // `import Parent from '../Parent'` + `Parent.config(`
+  const imported = [...src.matchAll(/import\s+(\w+)\s+from\s+'\.\.\/(\w+)'/g)]
+  for (const [, local, dir] of imported) {
+    if (local && dir && new RegExp(`\\b${local}\\.config\\(`).test(src)) {
+      return { kind: 'extends', parent: dir }
+    }
+  }
+
+  return { kind: 'hollow' }
+}
+
+/** Resolve the re-config chain: does this component (transitively) delegate? */
+function delegates(name: string, seen = new Set<string>()): boolean {
+  if (seen.has(name)) return false // cycle guard
+  seen.add(name)
+  const c = classify(name)
+  if (c.kind === 'delegates') return true
+  if (c.kind === 'extends') return delegates(c.parent, seen)
+  return false
+}
+
+describe('primitive-first architecture', () => {
+  it('the INTERACTIVE list only names components that exist', () => {
+    const dirs = new Set(
+      readdirSync(COMPONENTS_DIR, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name),
+    )
+    for (const name of INTERACTIVE) expect(dirs.has(name), `${name} is not a component`).toBe(true)
+  })
+
+  it('KNOWN_HOLLOW only lists INTERACTIVE components', () => {
+    for (const name of Object.keys(KNOWN_HOLLOW)) {
+      expect(INTERACTIVE as readonly string[], `${name} is allowlisted but not INTERACTIVE`).toContain(name)
+    }
+  })
+
+  for (const name of INTERACTIVE) {
+    const allowlisted = name in KNOWN_HOLLOW
+
+    if (allowlisted) {
+      // Drift detection: when someone finally wires this up, this test fails and
+      // tells them to delete the entry — the allowlist can only shrink.
+      it(`${name} is still hollow (allowlisted) — delete its KNOWN_HOLLOW entry once wired`, () => {
+        expect(
+          delegates(name),
+          `${name} now delegates to a primitive. Remove it from KNOWN_HOLLOW in this file — the allowlist only shrinks.`,
+        ).toBe(false)
+      })
+    } else {
+      it(`${name} delegates behavior + a11y to a *Base primitive`, () => {
+        expect(
+          delegates(name),
+          `${name} is an interactive component but does not wrap a primitive from @pyreon/ui-primitives. ` +
+            `Give it \`.config({ component: XBase })\` (or re-config a component that has one). ` +
+            `Do NOT add it to KNOWN_HOLLOW — that list only shrinks.`,
+        ).toBe(true)
+      })
+    }
+  }
+
+  it('reports the burn-down: every allowlisted component is tracked debt', () => {
+    const remaining = Object.keys(KNOWN_HOLLOW).length
+    const total = INTERACTIVE.length
+    // Locks the count so progress is visible and regressions are impossible.
+    expect(remaining).toBeLessThanOrEqual(14)
+    expect(total - remaining).toBeGreaterThanOrEqual(15)
+  })
+})
