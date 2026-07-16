@@ -29,6 +29,32 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // Hand-evaluated ssrTemplate output missing one of the runtime helpers.
+    // The compile-to-string SSR fast path (default-on under vite-plugin)
+    // emits calls to `_ssr` / `_ssrItem` / `_ssrChildren` / `_ssrForKeyed` /
+    // `_esc` / `_ssrAttr` variants imported from `@pyreon/runtime-server`.
+    // Apps never see this (the import is injected), but a bench harness /
+    // REPL / custom eval pipeline that strips imports and injects helpers by
+    // hand throws `X is not defined` for whichever helper it forgot — and
+    // the helper SET grows across versions (`_ssrForKeyed` is newer than
+    // `_ssr`), so a once-complete hand list silently rots.
+    pattern: /_ssr(ForKeyed|Children|Item|Attr(Gen|Url)?)? is not defined|_esc is not defined/i,
+    diagnose: () => ({
+      cause:
+        'Compiled SSR output (the `ssrTemplate` compile-to-string fast path, ON by default under the vite-plugin) references helpers imported from `@pyreon/runtime-server` (`_ssr`, `_ssrItem`, `_ssrChildren`, `_ssrForKeyed`, `_esc`, `_ssrAttr`/`_ssrAttrGen`/`_ssrAttrUrl`). A hand-rolled eval pipeline (bench harness, REPL, snippet runner) that strips the emitted imports and injects helpers manually is missing the named one — the helper set grows across versions, so a hand-maintained list rots.',
+      fix: 'Let the emitted `import { … } from "@pyreon/runtime-server"` resolve naturally (bundle or run where that package resolves). If you must strip imports and inject by hand, inject the FULL current helper set — or disable the fast path for that pipeline with `transformJSX(src, file, { ssr: true })` (omit `ssrTemplate`), which falls back to plain `h()` output with identical bytes.',
+      fixCode: `import * as rts from '@pyreon/runtime-server'
+const deps = {
+  _ssr: rts._ssr, _ssrItem: rts._ssrItem, _ssrChildren: rts._ssrChildren,
+  _ssrForKeyed: rts._ssrForKeyed, _esc: rts._esc,
+  _ssrAttr: rts._ssrAttr, _ssrAttrGen: rts._ssrAttrGen, _ssrAttrUrl: rts._ssrAttrUrl,
+}
+new Function(...Object.keys(deps), compiledBody)(...Object.values(deps))`,
+      related:
+        'The fast path is byte-identical to the h() SSR walk (hydration-safe by contract); disabling it only costs render speed, never correctness.',
+    }),
+  },
+  {
     // <TransitionGroup> on web — two footguns from the multi-platform shape.
     // (1) The bare tag is only auto-lowered by PMTC on native; on web it needs
     //     a real value in scope, else `TransitionGroup is not defined` at mount

@@ -11,16 +11,16 @@
  * compilation of the SAME source and asserts no mismatch — closing the loop
  * that the fast path is hydration-safe.
  *
- * The native (Rust) backend does not implement `ssrTemplate` yet, so the fast
- * path is exercised through `transformJSX_JS` here; the equivalence gates run
- * with the flag OFF (both backends bail to h() → byte-identical). See
+ * The native (Rust) backend ships `ssr_template` parity (JS ↔ native emit
+ * byte-equality is locked in the compiler's `ssr-template-emit.test.ts`);
+ * this file exercises the JS emit — same text by that lock. See
  * `TransformOptions.ssrTemplate`.
  */
 import { transformJSX_JS } from '@pyreon/compiler'
 import type { VNode } from '@pyreon/core'
-import { Fragment, h } from '@pyreon/core'
+import { For, Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
-import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrItem, renderToString } from '@pyreon/runtime-server'
+import { _esc, _ssr, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, _ssrChildren, _ssrForKeyed, _ssrItem, renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, hydrateRoot, mount, onHydrationMismatch } from '../index'
 
 function stripImports(code: string): string {
@@ -37,8 +37,8 @@ function evalSsr(src: string, deps: Record<string, unknown> = {}): unknown {
   const out = transformJSX_JS(src, 'case.tsx', { ssr: true, ssrTemplate: true })
   const body = stripImports(out.code)
   // Every differential source names its renderable binding `Node`.
-  const depNames = ['_ssr', '_ssrChildren', '_ssrItem', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl', 'signal', ...Object.keys(deps)]
-  const depValues = [_ssr, _ssrChildren, _ssrItem, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, signal, ...Object.values(deps)]
+  const depNames = ['_ssr', '_ssrChildren', '_ssrItem', '_ssrForKeyed', '_esc', '_ssrAttr', '_ssrAttrGen', '_ssrAttrUrl', 'signal', 'For', ...Object.keys(deps)]
+  const depValues = [_ssr, _ssrChildren, _ssrItem, _ssrForKeyed, _esc, _ssrAttr, _ssrAttrGen, _ssrAttrUrl, signal, For, ...Object.values(deps)]
   // eslint-disable-next-line no-new-func
   const fn = new Function(...depNames, `${body}\nreturn Node`)
   return fn(...depValues)
@@ -63,6 +63,42 @@ const rows = () => [
 ]
 
 const cases: DiffCase[] = [
+  {
+    name: 'fused keyed <For> child — parent skeleton compiles (_ssrForKeyed)',
+    src: `const Node = <ul class="list"><For each={data} by={(r) => r.id}>{(r) => <li class="row" data-id={r.id}><span>{r.name}</span><span class={r.id % 2 === 0 ? 'a' : 'b'}>{r.tag}</span></li>}</For></ul>`,
+    deps: { data: rows() },
+    oracle: (deps) =>
+      h(
+        'ul',
+        { class: 'list' },
+        h(For as never, { each: deps.data, by: (r: { id: number }) => r.id } as never, (r: { id: number; name: string; tag: string }) =>
+          h(
+            'li',
+            { class: 'row', 'data-id': r.id },
+            h('span', null, r.name),
+            h('span', { class: r.id % 2 === 0 ? 'a' : 'b' }, r.tag),
+          ),
+        ),
+      ),
+  },
+  {
+    name: 'fused keyed <For> — empty list',
+    src: `const Node = <ul class="list"><For each={data} by={(r) => r.id}>{(r) => <li class="row" data-id={r.id}><span>{r.name}</span><span class={r.id % 2 === 0 ? 'a' : 'b'}>{r.tag}</span></li>}</For></ul>`,
+    deps: { data: [] },
+    oracle: (deps) =>
+      h(
+        'ul',
+        { class: 'list' },
+        h(For as never, { each: deps.data, by: (r: { id: number }) => r.id } as never, (r: { id: number; name: string; tag: string }) =>
+          h(
+            'li',
+            { class: 'row', 'data-id': r.id },
+            h('span', null, r.name),
+            h('span', { class: r.id % 2 === 0 ? 'a' : 'b' }, r.tag),
+          ),
+        ),
+      ),
+  },
   {
     name: 'fully static element + attrs',
     src: `const Node = <div class="card" id="a" role="note">Hello</div>`,

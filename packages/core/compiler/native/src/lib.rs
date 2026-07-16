@@ -479,6 +479,7 @@ struct Ctx<'a> {
     needs_ssr_import: bool,
     needs_ssr_children_import: bool,
     needs_ssr_item_import: bool,
+    needs_ssr_for_keyed_import: bool,
     needs_esc_import: bool,
     needs_ssr_attr_import: bool,
     needs_ssr_attr_gen_import: bool,
@@ -613,6 +614,7 @@ impl<'a> Ctx<'a> {
             needs_ssr_import: false,
             needs_ssr_children_import: false,
             needs_ssr_item_import: false,
+            needs_ssr_for_keyed_import: false,
             needs_esc_import: false,
             needs_ssr_attr_import: false,
             needs_ssr_attr_gen_import: false,
@@ -805,6 +807,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_ssr_item_import {
                 ssr_imports.push("_ssrItem");
+            }
+            if self.needs_ssr_for_keyed_import {
+                ssr_imports.push("_ssrForKeyed");
             }
             if self.needs_esc_import {
                 ssr_imports.push("_esc");
@@ -5238,6 +5243,113 @@ fn ssr_serialize_expr_child(
 
 /// Serialize one child (text / element / expression). False = bail. Mirrors JS
 /// `ssrSerializeChild`.
+/// Fused keyed-`<For>` child fast path (recursed mode). Mirrors JS
+/// `ssrTryForKeyed` — a `<For each={E} by={B}>{(p) => <eligible-el>}</For>`
+/// child emits ONE `_ssrForKeyed(E, B, (p) => <item _ssr>)` hole instead of
+/// bailing the whole parent template. Conditions are EXACT (any other prop,
+/// spread, non-arrow / block-bodied child, or ineligible item element →
+/// bail to h()). The emitted text must stay byte-equal to the JS backend.
+fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
+    if jsx_tag_name(el) != "For" {
+        return false;
+    }
+    let mut each_text: Option<String> = None;
+    let mut by_text: Option<String> = None;
+    for attr in &el.opening_element.attributes {
+        let a = match attr {
+            JSXAttributeItem::Attribute(a) => a,
+            JSXAttributeItem::SpreadAttribute(_) => return false,
+        };
+        let name = match &a.name {
+            JSXAttributeName::Identifier(id) => id.name.as_str(),
+            _ => return false,
+        };
+        let c = match &a.value {
+            Some(JSXAttributeValue::ExpressionContainer(c)) => c,
+            _ => return false,
+        };
+        let expr = match jsx_expr_as_expression(&c.expression) {
+            Some(e) => unwrap_type_layers(e),
+            None => return false,
+        };
+        match name {
+            "each" => each_text = Some(slice_expr(expr, ctx)),
+            "by" => by_text = Some(slice_expr(expr, ctx)),
+            _ => return false,
+        }
+    }
+    let (each_text, by_text) = match (each_text, by_text) {
+        (Some(e), Some(b)) => (e, b),
+        _ => return false,
+    };
+    // Exactly one meaningful child: the render-callback expression container.
+    let mut holder: Option<&JSXExpressionContainer> = None;
+    for child in &el.children {
+        match child {
+            JSXChild::Text(t) => {
+                if !clean_jsx_text(t.value.as_str()).is_empty() {
+                    return false;
+                }
+            }
+            JSXChild::ExpressionContainer(c) => {
+                if holder.is_some() {
+                    return false;
+                }
+                holder = Some(c);
+            }
+            _ => return false,
+        }
+    }
+    let holder = match holder {
+        Some(h) => h,
+        None => return false,
+    };
+    let cb = match jsx_expr_as_expression(&holder.expression).map(unwrap_type_layers) {
+        Some(Expression::ArrowFunctionExpression(a)) => a,
+        _ => return false,
+    };
+    if !cb.expression {
+        return false; // block body → bail (concise arrows only)
+    }
+    let body_expr = match cb.body.statements.first() {
+        Some(Statement::ExpressionStatement(stmt)) => &stmt.expression,
+        _ => return false,
+    };
+    let body_el = match unwrap_type_layers(body_expr) {
+        Expression::JSXElement(el) => el,
+        _ => return false,
+    };
+    if is_self_closing(body_el) {
+        return false;
+    }
+    let item_call = match build_ssr_call(body_el, SsrMode::Recursed, ctx) {
+        Some(s) => s,
+        None => return false,
+    };
+    // Param text: same extraction as ssr_try_map.
+    let items = &cb.params.items;
+    let first_start = items
+        .first()
+        .map(|p| p.span().start)
+        .or_else(|| cb.params.rest.as_ref().map(|r| r.span().start));
+    let last_end = cb
+        .params
+        .rest
+        .as_ref()
+        .map(|r| r.span().end)
+        .or_else(|| items.last().map(|p| p.span().end));
+    let param_text = match (first_start, last_end) {
+        (Some(s), Some(e)) => ctx.source[s as usize..e as usize].to_string(),
+        _ => String::new(),
+    };
+    buf.emit_hole(format!(
+        "_ssrForKeyed({}, {}, ({}) => {})",
+        each_text, by_text, param_text, item_call
+    ));
+    ctx.needs_ssr_for_keyed_import = true;
+    true
+}
+
 fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &mut Ctx) -> bool {
     match child {
         JSXChild::Text(t) => {
@@ -5251,7 +5363,12 @@ fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &
             }
             true
         }
-        JSXChild::Element(el) => ssr_serialize_element(buf, el, mode, ctx),
+        JSXChild::Element(el) => {
+            if mode == SsrMode::Recursed && ssr_try_for_keyed(buf, el, ctx) {
+                return true;
+            }
+            ssr_serialize_element(buf, el, mode, ctx)
+        }
         JSXChild::ExpressionContainer(c) => ssr_serialize_expr_child(buf, c, mode, ctx),
         // JSXFragment / JSXSpreadChild → bail.
         _ => false,

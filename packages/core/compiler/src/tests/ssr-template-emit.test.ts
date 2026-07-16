@@ -9,9 +9,10 @@
  * `@pyreon/runtime-dom`'s `ssr-template-differential.test.tsx`; this file locks
  * the codegen shape so a refactor can't silently change it.
  *
- * The native (Rust) backend does not implement `ssrTemplate` yet — the
- * equivalence gates run with the flag OFF so both backends stay byte-identical;
- * see `TransformOptions.ssrTemplate`.
+ * The native (Rust) backend implements `ssr_template` parity — the fuzz
+ * equivalence gate runs a dedicated ssrTemplate mode, and the For-fusion
+ * suite below asserts JS ↔ native byte-equality explicitly (the fuzz grammar
+ * does not generate `<For>`).
  */
 import { transformJSX_JS } from '../jsx'
 
@@ -146,4 +147,46 @@ describe('ssrTemplate — bail catalogue (stays on h())', () => {
       expect(ssrFast(src)).not.toContain('_ssr(')
     })
   }
+})
+
+describe('ssrTemplate — fused keyed <For> (_ssrForKeyed)', () => {
+  const FOR_SRC = `const A = (props) => (
+    <ul class="list">
+      <For each={props.rows} by={(r) => r.id}>
+        {(r) => (
+          <li class="row" data-id={r.id}>
+            <span class="id">{r.id}</span>
+            <span class={r.id % 2 === 0 ? 'a' : 'b'}>{'$' + r.price}</span>
+          </li>
+        )}
+      </For>
+    </ul>
+  )`
+
+  test('For child emits ONE _ssrForKeyed hole — the parent skeleton compiles', () => {
+    const out = ssrFast(FOR_SRC)
+    expect(out).toContain('_ssr(["<ul class=\\"list\\">", "</ul>"], _ssrForKeyed(props.rows, (r) => r.id, (r) => _ssr(')
+    expect(out).toContain('_ssrForKeyed')
+    // the import rides the runtime-server preamble
+    expect(out).toMatch(/import \{ [^}]*_ssrForKeyed[^}]* \} from "@pyreon\/runtime-server"/)
+  })
+
+  test('JS ↔ native byte-equality for the fusion shape (fuzz grammar has no <For>)', async () => {
+    const { transformJSX } = await import('../index')
+    const js = transformJSX_JS(FOR_SRC, 'x.tsx', { ssr: true, ssrTemplate: true }).code
+    const native = transformJSX(FOR_SRC, 'x.tsx', { ssr: true, ssrTemplate: true }).code
+    expect(native).toBe(js)
+  })
+
+  test('bails (h() authoritative): fallback prop / spread / block body / component item', () => {
+    const bail = (s: string) => expect(ssrFast(s)).not.toContain('_ssrForKeyed')
+    bail(`const A = (p) => <ul><For each={p.r} by={(r) => r.id} fallback={<i/>}>{(r) => <li>{r.x}</li>}</For></ul>`)
+    bail(`const A = (p) => <ul><For {...p.forProps}>{(r) => <li>{r.x}</li>}</For></ul>`)
+    bail(`const A = (p) => <ul><For each={p.r} by={(r) => r.id}>{(r) => { return <li>{r.x}</li> }}</For></ul>`)
+    bail(`const A = (p) => <ul><For each={p.r} by={(r) => r.id}>{(r) => <Row r={r} />}</For></ul>`)
+  })
+
+  test('flag OFF: For fixture keeps the plain h() path (no _ssr at all)', () => {
+    expect(ssrPlain(FOR_SRC)).not.toContain('_ssr')
+  })
 })
