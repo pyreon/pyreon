@@ -52,7 +52,7 @@ function decodeQueryComponent(raw: string): string {
  * `js/remote-property-injection`). A null-prototype object has no prototype
  * chain, so every user key is a plain OWN data property. This is the standard
  * `qs` / `query-string` hardening — layer ONE of two (see
- * `isSafeQueryKey` for layer two, which the null prototype does NOT cover).
+ * `DANGEROUS_QUERY_KEYS` for layer two, which the null prototype does NOT cover).
  */
 function emptyQueryRecord<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>
@@ -71,9 +71,10 @@ function emptyQueryRecord<T>(): Record<string, T> {
  * source; a genuine app query param by these names has no legitimate use.
  */
 const DANGEROUS_QUERY_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-function isSafeQueryKey(key: string): boolean {
-  return !DANGEROUS_QUERY_KEYS.has(key)
-}
+// NOTE: the `DANGEROUS_QUERY_KEYS.has(key)` test is written INLINE at each
+// write site, not wrapped in a helper — CodeQL's sanitizer-guard recognition
+// (js/remote-property-injection) is intra-procedural; a predicate call across
+// a function boundary leaves the alert open even though the guard is real.
 
 export function parseQuery(qs: string): Record<string, string> {
   if (!qs) return emptyQueryRecord()
@@ -82,11 +83,11 @@ export function parseQuery(qs: string): Record<string, string> {
     const eqIdx = part.indexOf('=')
     if (eqIdx < 0) {
       const key = decodeQueryComponent(part)
-      if (key && isSafeQueryKey(key)) result[key] = ''
+      if (key && !DANGEROUS_QUERY_KEYS.has(key)) result[key] = ''
     } else {
       const key = decodeQueryComponent(part.slice(0, eqIdx))
       const val = decodeQueryComponent(part.slice(eqIdx + 1))
-      if (key && isSafeQueryKey(key)) result[key] = val
+      if (key && !DANGEROUS_QUERY_KEYS.has(key)) result[key] = val
     }
   }
   return result
@@ -113,7 +114,7 @@ export function parseQueryMulti(qs: string): Record<string, string | string[]> {
       key = decodeQueryComponent(part.slice(0, eqIdx))
       val = decodeQueryComponent(part.slice(eqIdx + 1))
     }
-    if (!key || !isSafeQueryKey(key)) continue
+    if (!key || DANGEROUS_QUERY_KEYS.has(key)) continue
     const existing = result[key]
     if (existing === undefined) {
       result[key] = val
