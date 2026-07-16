@@ -46,7 +46,7 @@ export interface HeadProviderProps extends Props {
  * // Composes with `renderWithHead` out of the box — no plumbing needed:
  * const { html, head } = await renderWithHead(h(HeadProvider, null, h(App, null)))
  */
-export const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
+const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
   // `useContext(HeadContext)` returns `null` when no outer provider exists
   // (the context's defaultValue). The `??` chain therefore resolves to:
   //   explicit prop  →  inherited outer ctx  →  fresh ctx
@@ -62,4 +62,11 @@ export const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // HeadProvider's provide(HeadContext, ...) call runs inside Pyreon's setup
 // frame, not the compat wrapper's runUntracked accessor.
-nativeCompat(HeadProvider)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _HeadProvider = /* @__PURE__ */ nativeCompat(HeadProvider)
+export { _HeadProvider as HeadProvider }

@@ -40,7 +40,7 @@ export interface FormProps<TValues extends Record<string, unknown>> extends Prop
  * </Form>
  * ```
  */
-export const Form: ComponentFn<FormProps<Record<string, unknown>>> = (props) => {
+const Form: ComponentFn<FormProps<Record<string, unknown>>> = (props) => {
   // Sync disabled/readOnly props to form signals
   const syncDisabled = () => {
     const v = props.disabled
@@ -82,7 +82,7 @@ export interface SubmitProps extends Props {
  * Submit button that auto-disables while the form is submitting or disabled.
  * Must be inside a `<Form>` or `<FormProvider>`.
  */
-export const Submit: ComponentFn<SubmitProps> = (props) => {
+const Submit: ComponentFn<SubmitProps> = (props) => {
   const form = useFormContext()
   return h(
     'button',
@@ -99,5 +99,19 @@ export const Submit: ComponentFn<SubmitProps> = (props) => {
 // Form's effect()-based prop sync runs once at setup (not per-render via the
 // compat wrapper) AND the inner FormProvider is invoked through h() so its
 // provide() reaches Pyreon's setup frame.
-nativeCompat(Form)
-nativeCompat(Submit)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _Form = /* @__PURE__ */ nativeCompat(Form)
+export { _Form as Form }
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _Submit = /* @__PURE__ */ nativeCompat(Submit)
+export { _Submit as Submit }

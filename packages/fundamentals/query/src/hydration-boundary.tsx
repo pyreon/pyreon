@@ -34,7 +34,7 @@ export interface HydrationBoundaryProps {
  *   h(HydrationBoundary, { state }, () => h(App, null)),
  * )
  */
-export function HydrationBoundary(props: HydrationBoundaryProps): VNodeChild {
+function HydrationBoundary(props: HydrationBoundaryProps): VNodeChild {
   const client = useQueryClient()
   if (props.state) hydrate(client, props.state, props.options)
   const ch = props.children
@@ -44,4 +44,11 @@ export function HydrationBoundary(props: HydrationBoundaryProps): VNodeChild {
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so the
 // `useQueryClient()` (useContext) lookup + hydrate() run in Pyreon's setup
 // frame, BEFORE children mount. Same rationale as QueryClientProvider.
-nativeCompat(HydrationBoundary)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _HydrationBoundary = /* @__PURE__ */ nativeCompat(HydrationBoundary)
+export { _HydrationBoundary as HydrationBoundary }

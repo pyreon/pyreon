@@ -17,7 +17,7 @@ export const QueryClientContext = createContext<QueryClient | null>(null)
  * const client = new QueryClient()
  * mount(h(QueryClientProvider, { client }, h(App, null)), el)
  */
-export function QueryClientProvider(props: QueryClientProviderProps): VNode {
+function QueryClientProvider(props: QueryClientProviderProps): VNode {
   provide(QueryClientContext, props.client)
 
   // client.mount() activates window focus refetching and online/offline handling.
@@ -34,8 +34,14 @@ export function QueryClientProvider(props: QueryClientProviderProps): VNode {
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // QueryClientProvider's provide() + onMount() (focusManager / onlineManager
 // activation) run inside Pyreon's setup frame.
-nativeCompat(QueryClientProvider)
-
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _QueryClientProvider = /* @__PURE__ */ nativeCompat(QueryClientProvider)
+export { _QueryClientProvider as QueryClientProvider }
 /**
  * Returns the nearest QueryClient provided by <QueryClientProvider>.
  * Throws if called outside of one.

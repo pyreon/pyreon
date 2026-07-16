@@ -76,6 +76,11 @@ Component.PYREON__COMPONENT = name
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // Container's provide(ContainerContext, ...) reaches descendant Row/Col.
-nativeCompat(Component)
 
-export default Component
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+export default /* @__PURE__ */ nativeCompat(Component)

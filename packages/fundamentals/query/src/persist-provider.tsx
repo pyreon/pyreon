@@ -40,7 +40,7 @@ export interface PersistQueryClientProviderProps {
  *   <App />
  * </PersistQueryClientProvider>
  */
-export function PersistQueryClientProvider(props: PersistQueryClientProviderProps): VNodeChild {
+function PersistQueryClientProvider(props: PersistQueryClientProviderProps): VNodeChild {
   const isRestoring = signal(true)
 
   provide(QueryClientContext, props.client)
@@ -87,4 +87,11 @@ export function PersistQueryClientProvider(props: PersistQueryClientProviderProp
 
 // Marked native — provide() + onMount() must run in Pyreon's setup frame under
 // compat runtimes (same rationale as QueryClientProvider).
-nativeCompat(PersistQueryClientProvider)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _PersistQueryClientProvider = /* @__PURE__ */ nativeCompat(PersistQueryClientProvider)
+export { _PersistQueryClientProvider as PersistQueryClientProvider }

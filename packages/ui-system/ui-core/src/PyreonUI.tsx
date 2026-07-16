@@ -150,7 +150,7 @@ function autoInit(): void {
  * <PyreonUI theme={theme} mode="system">
  * ```
  */
-export function PyreonUI(props: PyreonUIProps): VNodeChild {
+function PyreonUI(props: PyreonUIProps): VNodeChild {
   autoInit()
 
   // IMPORTANT: do NOT destructure props. Components run once in Pyreon, and
@@ -334,4 +334,11 @@ export function PyreonUI(props: PyreonUIProps): VNodeChild {
 // Pyreon's setup frame. Critical for compat-mode apps that wrap their tree
 // with <PyreonUI> at the top level — without the marker, theme/mode never
 // propagate to descendants.
-nativeCompat(PyreonUI)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _PyreonUI = /* @__PURE__ */ nativeCompat(PyreonUI)
+export { _PyreonUI as PyreonUI }

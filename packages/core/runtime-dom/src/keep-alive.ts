@@ -38,7 +38,7 @@ export interface KeepAliveProps extends Props {
  *   <KeepAlive active={() => route() === "/b"}><RouteB /></KeepAlive>
  * </>
  */
-export function KeepAlive(props: KeepAliveProps): VNodeChild {
+function KeepAlive(props: KeepAliveProps): VNodeChild {
   const containerRef = createRef<HTMLElement>()
   let childCleanup: (() => void) | null = null
   let childMounted = false
@@ -80,4 +80,11 @@ export function KeepAlive(props: KeepAliveProps): VNodeChild {
 
 // Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
 // KeepAlive uses onMount + effect + mountChild that need Pyreon's setup frame.
-nativeCompat(KeepAlive)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside the built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the whole component body in every consumer bundle
+// that never imports it. The PURE annotation lets the bundler drop the
+// call — and the body — exactly when the export is unused; when used,
+// `nativeCompat` returns the SAME fn with the marker applied.
+const _KeepAlive = /* @__PURE__ */ nativeCompat(KeepAlive)
+export { _KeepAlive as KeepAlive }

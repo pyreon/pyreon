@@ -49,7 +49,7 @@ export interface QueryDevtoolsProps {
  *   {import.meta.env.DEV ? <QueryDevtools initialIsOpen={false} /> : null}
  * </QueryClientProvider>
  */
-export function QueryDevtools(props: QueryDevtoolsProps): VNode {
+function QueryDevtools(props: QueryDevtoolsProps): VNode {
   // `??` short-circuits — useQueryClient() (which throws when no provider is
   // mounted) is only called when no explicit client prop is passed.
   const client = props.client ?? useQueryClient()
@@ -85,4 +85,11 @@ export function QueryDevtools(props: QueryDevtoolsProps): VNode {
 // Mark native — compat-mode jsx() runtimes skip wrapCompatComponent so the
 // useQueryClient() (useContext) lookup + onMount lifecycle run in Pyreon's
 // setup frame. Same rationale as QueryClientProvider.
-nativeCompat(QueryDevtools)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _QueryDevtools = /* @__PURE__ */ nativeCompat(QueryDevtools)
+export { _QueryDevtools as QueryDevtools }
