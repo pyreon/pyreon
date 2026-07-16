@@ -30,7 +30,7 @@ import type { VNodeChild, VNodeChildAtom } from './types'
  *     <MyComponent />
  *   </ErrorBoundary>
  */
-export function ErrorBoundary(props: {
+function ErrorBoundary(props: {
   /**
    * Rendered when a child throws. Receives the caught error and a `reset`
    * function — calling `reset()` clears the error and re-renders children.
@@ -90,4 +90,11 @@ export function ErrorBoundary(props: {
 // Mark as native so compat-mode jsx() runtimes (react/preact/vue/solid-compat)
 // skip wrapCompatComponent — ErrorBoundary uses pushErrorBoundary/onUnmount,
 // which need Pyreon's setup frame (compat wrapping breaks dispatchToErrorBoundary).
-nativeCompat(ErrorBoundary)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _ErrorBoundary = /* @__PURE__ */ nativeCompat(ErrorBoundary)
+export { _ErrorBoundary as ErrorBoundary }

@@ -93,7 +93,7 @@ export function useRouteAnnouncer(options: RouteAnnouncerOptions = {}): void {
  * </RouterProvider>
  * ```
  */
-export function RouteAnnouncer(props: RouteAnnouncerOptions = {}): null {
+function RouteAnnouncer(props: RouteAnnouncerOptions = {}): null {
   useRouteAnnouncer(props)
   return null
 }
@@ -101,4 +101,11 @@ export function RouteAnnouncer(props: RouteAnnouncerOptions = {}): null {
 // `h()` directly — its `onMount` (in `useRouteAnnouncer`) must run in Pyreon's
 // setup frame, not the compat wrapper's accessor, or the afterEach cleanup
 // registers against the wrong scope.
-nativeCompat(RouteAnnouncer)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _RouteAnnouncer = /* @__PURE__ */ nativeCompat(RouteAnnouncer)
+export { _RouteAnnouncer as RouteAnnouncer }

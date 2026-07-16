@@ -34,7 +34,7 @@ export interface IsRestoringProviderProps {
  * directly — `<PersistQueryClientProvider>` provides it for you. Use it
  * standalone only for a custom restoration flow.
  */
-export function IsRestoringProvider(props: IsRestoringProviderProps): VNodeChild {
+function IsRestoringProvider(props: IsRestoringProviderProps): VNodeChild {
   provide(IsRestoringContext, () =>
     typeof props.value === 'function' ? (props.value as () => boolean)() : props.value,
   )
@@ -43,8 +43,14 @@ export function IsRestoringProvider(props: IsRestoringProviderProps): VNodeChild
 }
 
 // Marked native so provide() runs in Pyreon's setup frame under compat runtimes.
-nativeCompat(IsRestoringProvider)
-
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _IsRestoringProvider = /* @__PURE__ */ nativeCompat(IsRestoringProvider)
+export { _IsRestoringProvider as IsRestoringProvider }
 /**
  * Subscribe `observer` via `listener`, DEFERRING the subscription until
  * `isRestoring()` is `false`. The faithful-to-TanStack gate that keeps a query

@@ -21,7 +21,7 @@ export interface I18nProviderProps extends Props {
  *   <App />
  * </I18nProvider>
  */
-export function I18nProvider(props: I18nProviderProps): VNode {
+function I18nProvider(props: I18nProviderProps): VNode {
   provide(I18nContext, props.value)
 
   const ch = props.children
@@ -30,8 +30,14 @@ export function I18nProvider(props: I18nProviderProps): VNode {
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // provide(I18nContext, ...) runs inside Pyreon's setup frame.
-nativeCompat(I18nProvider)
-
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _I18nProvider = /* @__PURE__ */ nativeCompat(I18nProvider)
+export { _I18nProvider as I18nProvider }
 /**
  * Access the i18n instance from the nearest I18nProvider.
  * Must be called within a component tree wrapped by I18nProvider.

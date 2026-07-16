@@ -60,7 +60,7 @@ function getContainerStyle(position: ToastPosition, gap: number, offset: number)
  * }
  * ```
  */
-export function Toaster(props?: ToasterProps): VNodeChild {
+function Toaster(props?: ToasterProps): VNodeChild {
   if (typeof document === 'undefined') return null
 
   const position = props?.position ?? 'top-right'
@@ -245,4 +245,11 @@ function ToastItem(props: { id: string }): VNodeChild {
 // Toaster's effect()/onCleanup-based style injection + Portal mounting run
 // inside Pyreon's setup frame (compat wrapping breaks the Portal's reactive
 // re-render path).
-nativeCompat(Toaster)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _Toaster = /* @__PURE__ */ nativeCompat(Toaster)
+export { _Toaster as Toaster }

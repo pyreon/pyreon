@@ -28,7 +28,7 @@ export interface RouterProviderProps extends Props {
   children?: VNodeChild
 }
 
-export const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
+const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
   const router = props.router as RouterInstance
   // Push router into the context stack — isolated per request in SSR via ALS,
   // isolated per component tree in CSR.
@@ -83,7 +83,7 @@ export interface RouterViewProps extends Props {
  *   return <div><Sidebar /><RouterView /></div>
  * }
  */
-export const RouterView: ComponentFn<RouterViewProps> = (props) => {
+const RouterView: ComponentFn<RouterViewProps> = (props) => {
   const router = ((props.router as RouterInstance | undefined) ??
     useContext(RouterContext)) as RouterInstance | null
   if (!router) return null
@@ -556,7 +556,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
  * accepting dynamic `string`s and external URLs. The runtime is
  * {@link RouterLinkImpl}; this const only refines the call signature.
  */
-export const RouterLink = RouterLinkImpl as {
+export const RouterLink = /* @__PURE__ */ nativeCompat(RouterLinkImpl) as {
   <const T extends string>(props: RouterLinkProps<T>): VNodeChild
 }
 
@@ -825,9 +825,22 @@ function isStaleChunk(err: unknown): boolean {
 // provide() / useContext() / onUnmount() / effect() / IntersectionObserver
 // setup runs inside Pyreon's lifecycle frame instead of the compat wrapper's
 // runUntracked accessor.
-nativeCompat(RouterProvider)
-nativeCompat(RouterView)
-nativeCompat(RouterLinkImpl)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _RouterProvider = /* @__PURE__ */ nativeCompat(RouterProvider)
+export { _RouterProvider as RouterProvider }
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _RouterView = /* @__PURE__ */ nativeCompat(RouterView)
+export { _RouterView as RouterView }
 
 // ─── DefaultChromeLayout ─────────────────────────────────────────────────────
 //
@@ -852,8 +865,15 @@ nativeCompat(RouterLinkImpl)
 // every Pyreon app imports something from `./components.tsx` (RouterProvider,
 // RouterView, RouterLink), which triggers the setter before any resolveRoute
 // call can fire.
-export const DefaultChromeLayout: ComponentFn = () =>
+const DefaultChromeLayout: ComponentFn = () =>
   h('main', { 'data-pyreon-default-chrome': '' }, h(RouterView, null))
 
-nativeCompat(DefaultChromeLayout)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _DefaultChromeLayout = /* @__PURE__ */ nativeCompat(DefaultChromeLayout)
+export { _DefaultChromeLayout as DefaultChromeLayout }
 _setDefaultChromeLayout(DefaultChromeLayout)

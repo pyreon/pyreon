@@ -17,7 +17,7 @@ const PermissionsContext = createContext<Permissions | null>(null)
  * </PermissionsProvider>
  * ```
  */
-export function PermissionsProvider(props: {
+function PermissionsProvider(props: {
   value: Permissions
   children?: VNodeChild
 }): VNodeChild {
@@ -28,8 +28,14 @@ export function PermissionsProvider(props: {
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // provide(PermissionsContext, ...) runs inside Pyreon's setup frame.
-nativeCompat(PermissionsProvider)
-
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _PermissionsProvider = /* @__PURE__ */ nativeCompat(PermissionsProvider)
+export { _PermissionsProvider as PermissionsProvider }
 /**
  * Access the nearest permissions instance from context.
  * Must be used within a `<PermissionsProvider>`.

@@ -49,7 +49,7 @@ export const useThemeAccessor = <T extends object = Theme>(): (() => T) =>
  * @internal Low-level provider — use `PyreonUI` from `@pyreon/ui-core` instead.
  * @deprecated Prefer `<PyreonUI theme={theme}>`
  */
-export function ThemeProvider({
+function ThemeProvider({
   theme,
   children,
 }: {
@@ -62,4 +62,11 @@ export function ThemeProvider({
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // provide(ThemeContext, ...) reaches Pyreon's setup frame.
-nativeCompat(ThemeProvider)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _ThemeProvider = /* @__PURE__ */ nativeCompat(ThemeProvider)
+export { _ThemeProvider as ThemeProvider }

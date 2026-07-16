@@ -21,7 +21,7 @@ export interface FormProviderProps<TValues extends Record<string, unknown>> exte
  *   <SubmitButton />
  * </FormProvider>
  */
-export function FormProvider<TValues extends Record<string, unknown>>(
+function FormProvider<TValues extends Record<string, unknown>>(
   props: FormProviderProps<TValues>,
 ): VNode {
   provide(FormContext, props.form as FormState<Record<string, unknown>>)
@@ -32,8 +32,14 @@ export function FormProvider<TValues extends Record<string, unknown>>(
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // provide(FormContext, ...) runs inside Pyreon's setup frame.
-nativeCompat(FormProvider)
-
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the component body in every consumer bundle that
+// never imports it (see runtime-dom's native-compat-treeshake lock). The
+// PURE call is droppable exactly when the export is unused; when used it
+// returns the SAME fn with the marker applied.
+const _FormProvider = /* @__PURE__ */ nativeCompat(FormProvider)
+export { _FormProvider as FormProvider }
 /**
  * Access the form instance from the nearest `FormProvider`.
  * Must be called within a component tree wrapped by `FormProvider`.
