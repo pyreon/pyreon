@@ -323,8 +323,11 @@ async function setupSvelte(): Promise<RenderFn> {
 }
 
 const FRAMEWORKS = {
-  pyreon: () => setupPyreon(false),
-  'pyreon-ssrtpl': () => setupPyreon(true),
+  // `pyreon` = the SHIPPED default: vite-plugin enables ssrTemplate by default
+  // since #2302 (resolvability safety net). `pyreon-h-walk` keeps the flag-off
+  // VNode walk as a transparency column (the pre-#2302 shipped path).
+  pyreon: () => setupPyreon(true),
+  'pyreon-h-walk': () => setupPyreon(false),
   react: setupReact,
   vue: setupVue,
   svelte: setupSvelte,
@@ -431,7 +434,7 @@ console.log(
   '(steady-state warm-process throughput; each framework COMPILED idiomatic — see header. app/element created PER RENDER; 8 rotated datasets; correctness-gated.)\n',
 )
 
-const FWS: Framework[] = ['pyreon', 'react', 'vue', 'svelte']
+const FWS: Framework[] = ['pyreon', 'pyreon-h-walk', 'react', 'vue', 'svelte']
 const jsonOut: Record<string, unknown>[] = []
 for (const n of SIZES) {
   const cells = new Map<Framework, Cell>()
