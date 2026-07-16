@@ -135,10 +135,14 @@ variants, identity-verified matches:
   50/200 routes (150ns+).
 - React Router's linear scan degrades with table size (10µs → 67µs → 280µs
   per resolve); Pyreon stays flat.
+- **`miss → catch-all` flipped to an outright Pyreon win** (first-char
+  fail-fast mask: ★25–27ns vs find-my-way's 41–47 — the first-character
+  fail a radix tree gets for free, now table-driven).
 - **Losses, disclosed:** find-my-way/radix3 still edge the param-heavier
-  rows (dynamic-2/nested-dynamic ~1.1×; splat/catch-all ~1.3–1.7×
-  find-my-way) — while returning less than Pyreon's `ResolvedRoute` (params
-  + parsed query + merged meta + matched chain).
+  rows (dynamic-2/nested-dynamic ~1.1×; splat ~1.35× find-my-way) — while
+  returning less than Pyreon's `ResolvedRoute` (params + parsed query +
+  merged meta + matched chain); the splat residual is quantified as that
+  richer return envelope.
 
 Reproduce: `bun run bench:router`
 
@@ -162,8 +166,8 @@ process-isolated. Headline verdicts (losses included):
 
 | Package | vs | Verdict |
 | --- | --- | --- |
-| `@pyreon/store` | Zustand / Jotai | Wins the per-field hot path (dispatch ~6.5×, write→1-subscriber ~2.4×, no-sub patch ~1.7×); 🤝 ties read. **Loses `setup` ~12.6×** (per-field signals, paid once per store id) and with-subscriber `patch` ~1.7× — the per-key event-model contract, documented trade-off. |
-| `@pyreon/validate` | Zod / Valibot / ArkType | **Fastest or CI-tied on 11 of 12 rows** of the megamorphic multi-schema suite (arrays 1.41×, DU 1.25× over ArkType; error path 20–53× over ArkType, 33–44× over Zod). **The one loss:** bare scalar-string valid — Valibot's minimal pipe leads 1.44× (Result-envelope fixed cost). |
+| `@pyreon/store` | Zustand / Jotai | Wins the per-field hot path (dispatch ~6.5×, write→1-subscriber ~2.4×, no-sub patch ~1.7×); 🤝 ties read. **Loses `setup` ~12.6×** (per-field signals, paid once per store id — documented trade-off). The former with-subscriber `patch` ~1.7× loss flipped to a **~1.2× win** (sole-subscriber detector suspension + cached detach closure). |
+| `@pyreon/validate` | Zod / Valibot / ArkType | **Fastest or CI-tied on all 12 rows** of the megamorphic multi-schema suite (flat-object 1.46×, arrays 1.37×, scalar-int 2.4×, DU 1.89× over ArkType; error path 20–53× over ArkType, 33–44× over Zod). The former last loss — bare scalar-string valid vs Valibot's minimal pipe — closed to a 🤝 CI-tie (8.8 vs 8.0ns) by the pure-JIT reused-ctx seam; the monomorphic scalar losses flipped in the same pass. |
 | `@pyreon/query` | @tanstack/react-query | Same query-core underneath. Intra-component data change: **1 field derivation + 0 re-renders vs 8 + 1 re-render**; ~4× faster data-flip→DOM. Cross-component tracked-props: 🤝 tie. Mount: 🤝 tie. |
 | `@pyreon/table` | @tanstack/react-table | Same table-core. Single-cell edit **7–9× faster than naive react-table**, ~1.1× vs hand-memoized — with zero `React.memo` boilerplate. **Losses:** mount ~2× and replace ~1.1–1.3× (per-cell reactive-binding setup — the price of the update wins), sort ~2× vs memo-row. |
 | `@pyreon/virtual` | @tanstack/react-virtual | Same virtual-core. Steady-state scroll **1.3× faster**; row-recycle counts tied with memoized React. **Loss:** fixed-size mount ~1.1× slower (one-time ~16µs on a 10k list). |
@@ -234,9 +238,12 @@ isolation, correctness gates):
 
 Honesty section, kept current: retained memory is mid-pack (not leading);
 SSR at scale trails Vue/Svelte's string-concat compilers ~1.2–1.4×; Preact
-leads computed diamond/chain/create micro-ops; find-my-way keeps router
-splat/catch-all; ArkType keeps monomorphic bare-scalar validation (~1.7×);
-store setup and bulk-patch-with-subscribers favor Zustand's shallow-merge
+leads computed chain (~1.25×) and signal create (~1.4×) — both structurally
+priced (chain by the eager-push model whose lazy-pull alternative costs
+retained heap; create by the callable-signal API itself, a closure per
+signal vs Preact's class instance) — with diamond now a near-tie; find-my-way
+keeps router splat (~1.35×, the richer ResolvedRoute envelope; catch-all
+flipped to a Pyreon win); store `setup` favors Zustand's single-object
 contract; table/virtual/charts pay a mount premium for their fine-grained
 update wins. Each of these is either actively being closed or is a priced,
 documented trade-off — never hidden.
