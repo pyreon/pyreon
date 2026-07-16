@@ -667,6 +667,81 @@ final class PyreonRuntimeTests: XCTestCase {
         )
     }
 
+    // MARK: - PyreonAppState (useAppState reactive lifecycle phase)
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAppStateDefaultsActive() throws {
+        XCTAssertEqual(PyreonAppState().phase, "active")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAppStateInitialValue() throws {
+        XCTAssertEqual(PyreonAppState(phase: "background").phase, "background")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAppStateUpdateTransitions() throws {
+        let state = PyreonAppState()
+        state.update("background")
+        XCTAssertEqual(state.phase, "background")
+        state.update("inactive")
+        XCTAssertEqual(state.phase, "inactive")
+        state.update("active")
+        XCTAssertEqual(state.phase, "active")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAppStateStopBeforeStartIsNoop() throws {
+        let state = PyreonAppState(phase: "inactive")
+        XCTAssertFalse(state.isMonitoring)
+        state.stop() // must not crash
+        XCTAssertFalse(state.isMonitoring)
+        XCTAssertEqual(state.phase, "inactive", "initial value preserved through bare stop()")
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAppStateStartStopIdempotent() throws {
+        let state = PyreonAppState()
+        state.start()
+        XCTAssertTrue(state.isMonitoring)
+        state.start() // second start while running → no-op
+        XCTAssertTrue(state.isMonitoring)
+        state.stop()
+        XCTAssertFalse(state.isMonitoring)
+        state.stop() // double-stop → no-op
+        XCTAssertFalse(state.isMonitoring)
+    }
+
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAppStateUpdateIndependentOfLifecycle() throws {
+        let state = PyreonAppState()
+        state.update("background") // writes before any start()
+        XCTAssertEqual(state.phase, "background")
+        state.start()
+        state.stop()
+        state.update("active") // still writes after stop()
+        XCTAssertEqual(state.phase, "active")
+    }
+
+    /// `phase` MUST be `@Observable` — the whole point of the container is
+    /// SwiftUI re-render on a phase flip.
+    @available(iOS 17.0, macOS 14.0, *)
+    func testPyreonAppStatePhaseIsObservable() throws {
+        let state = PyreonAppState()
+        let flag = ObservationFlag()
+        withObservationTracking {
+            _ = state.phase
+        } onChange: {
+            flag.fired = true
+        }
+        state.update("background")
+        XCTAssertTrue(
+            flag.fired,
+            "phase MUST be SwiftUI-observable — else the useAppState() emit's " +
+            "re-render contract is broken."
+        )
+    }
+
     // MARK: - PyreonClipboard
     //
     // Round-2 audit fix: PyreonClipboard.swift had ZERO test coverage

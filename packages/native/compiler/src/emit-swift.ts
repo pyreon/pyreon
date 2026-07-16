@@ -189,6 +189,11 @@ let _machineNames: Set<string> = new Set()
  *  container (same accessor semantics as useColorScheme). Without this, `net()`
  *  emitted a bare `net` → `if net { }` (uncompilable — the container isn't Bool). */
 let _netStatusNames: Set<string> = new Set()
+/** Per-component: `useAppState()` decl names. `useAppState()` returns a web
+ *  ACCESSOR (`() => 'active'|…`), so shared code reads it as `state()`; on
+ *  native the accessor call lowers to the `state.phase` read on the
+ *  PyreonAppState container (same accessor semantics as useOnline). */
+let _appStateNames: Set<string> = new Set()
 /** Per-component: form decl names — drives the dict-member subscript
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
@@ -1311,6 +1316,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   // callAsFunction).
   _machineNames = new Set()
   _netStatusNames = new Set()
+  _appStateNames = new Set()
   _i18nNames = new Set()
   _formNamesSwift = new Set()
   _fetchNamesSwift = new Set()
@@ -1351,6 +1357,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     // OUT of _functionNames (it's a property, not a free function).
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
+    if (d.kind === 'app-state') _appStateNames.add(d.name)
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
@@ -1859,6 +1866,11 @@ function emitSwiftDecl(
   // `net.isOnline` read is a plain @Observable property (no rewrite on Swift).
   if (d.kind === 'network-status') {
     return `@State private var ${swiftIdent(d.name)} = PyreonNetworkStatus()`
+  }
+  // Phase 5 (M3.7): `const state = useAppState()` → an @State PyreonAppState.
+  // The `state.phase` read is a plain @Observable String property (no rewrite).
+  if (d.kind === 'app-state') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonAppState()`
   }
   // Phase 5: native data/services hooks → @State container instantiation.
   // Swift containers expose reactive fields via @Observable (read bare, no
@@ -3079,6 +3091,12 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
         // The `net.isOnline` member form still works (passes through as-is).
         if (_netStatusNames.has(e.callee.name)) {
           return `${swiftIdent(e.callee.name)}.isOnline`
+        }
+        // `useAppState()` accessor `state()` → the `phase` String read (bare
+        // @Observable property). Same footgun as useOnline — without this,
+        // `state()` falls to a bare `state` → `if state {` (uncompilable).
+        if (_appStateNames.has(e.callee.name)) {
+          return `${swiftIdent(e.callee.name)}.phase`
         }
         return swiftIdent(e.callee.name)
       }

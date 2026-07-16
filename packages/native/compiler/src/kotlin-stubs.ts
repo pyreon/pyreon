@@ -889,6 +889,15 @@ class PyreonNetworkStatus(isOnline: Boolean = true) {
   val isOnline: MutableState<Boolean> = mutableStateOf(isOnline)
 }
 
+// PyreonAppState — mirror of @pyreon/native-runtime-kotlin's PyreonAppState.kt
+// surface the emit touches: the no-arg constructor + the phase
+// MutableState<String> field, read as state.phase.value. useAppState() returns
+// a web ACCESSOR read as state() — the emit lowers that call to
+// state.phase.value.
+class PyreonAppState(phase: String = "active") {
+  val phase: MutableState<String> = mutableStateOf(phase)
+}
+
 // PyreonStore — Gap 4 Strategy-B v1 marker interface for emitted
 // per-store singleton classes. Real impl in @pyreon/native-runtime-
 // kotlin's PyreonStore.kt. Empty by design — purely a documentation

@@ -132,6 +132,9 @@ let _formNames: Set<string> = new Set()
  * plain @Observable property, so it needs no rewrite.
  */
 let _netStatusNames: Set<string> = new Set()
+/** Per-component: `useAppState()` decl names — drives `state()` → `.phase.value`
+ *  and `state.phase` → `.phase.value` (the Compose MutableState read). */
+let _appStateNames: Set<string> = new Set()
 /**
  * Phase 5: native data/services hook decl names → per-hook MutableState
  * field-read rewrite (append `.value`). Each maps a binding name to the
@@ -1127,6 +1130,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
+  _appStateNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
   _pushNames = new Set()
@@ -1176,6 +1180,7 @@ function emitKotlinComponent(c: ComponentIR): string {
     // Phase 4.2: track useForm decls so reactive-field reads append `.value`.
     if (d.kind === 'form') _formNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
+    if (d.kind === 'app-state') _appStateNames.add(d.name)
     // Phase 5: native data/services hook decl names (for the .value rewrite).
     if (d.kind === 'geolocation') _geoNames.add(d.name)
     if (d.kind === 'websocket') _wsNames.add(d.name)
@@ -1312,6 +1317,7 @@ function emitKotlinComponent(c: ComponentIR): string {
   _fetchNames = new Set()
   _formNames = new Set()
   _netStatusNames = new Set()
+  _appStateNames = new Set()
   _geoNames = new Set()
   _wsNames = new Set()
   _pushNames = new Set()
@@ -1498,6 +1504,10 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   // Phase 4: `const net = useOnline()` → a remembered PyreonNetworkStatus.
   if (d.kind === 'network-status') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonNetworkStatus() }`
+  }
+  // Phase 5 (M3.7): `const state = useAppState()` → a remembered PyreonAppState.
+  if (d.kind === 'app-state') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonAppState() }`
   }
   // Phase 5: native data/services hooks → remembered container. Reactive
   // FIELD reads append `.value` (see emitKotlinExpr); methods + Bool getters
@@ -2591,6 +2601,9 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         // source works web + native — the bare `net` fall-through emitted `if (net)`,
         // uncompilable (the container isn't a Bool). The `net.isOnline` member
         // form is handled separately (→ `.isOnline.value`); this covers `net()`.
+        if (_appStateNames.has(e.callee.name)) {
+          return `${kotlinIdent(e.callee.name)}.phase.value`
+        }
         if (_netStatusNames.has(e.callee.name)) {
           return `${kotlinIdent(e.callee.name)}.isOnline.value`
         }
@@ -3073,6 +3086,14 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
         e.property === 'isOnline'
       ) {
         return `${kotlinIdent(e.object.name)}.isOnline.value`
+      }
+      // Phase 5 (M3.7): a useAppState decl's `phase` is Compose MutableState.
+      if (
+        e.object.kind === 'identifier' &&
+        _appStateNames.has(e.object.name) &&
+        e.property === 'phase'
+      ) {
+        return `${kotlinIdent(e.object.name)}.phase.value`
       }
       // Phase 5: native data/services hooks. Each container's reactive fields
       // are Compose `MutableState` (read `.value`); Bool getters

@@ -63,7 +63,7 @@ Same source. Three idiomatic outputs (web rendered live; iOS/Android emitted as 
 - `@pyreon/store`, `@pyreon/machine`, `@pyreon/state-tree`, `@pyreon/i18n`, `@pyreon/permissions`
 - `@pyreon/form` (validated forms — **device-proven**), `@pyreon/storage` (platform-storage backend)
 - the native `@pyreon/router` port (`useNavigate`/`useParams`/`useLoaderData`, nested routes, `beforeEnter`)
-- the **subset** of `@pyreon/hooks` with ports: `useFetch`, `useOnline`/`useNetworkStatus`, `useClipboard`, `useColorScheme`
+- the **subset** of `@pyreon/hooks` with ports: `useFetch`, `useOnline`/`useNetworkStatus`, `useAppState`, `useClipboard`, `useColorScheme`
 
 **❌ Web-only by design** (a hard DOM/canvas/vendor dependency the compiler has no path for — these will NOT be *native-rendered* as SwiftUI/Compose; PMTC can't compile echarts/CodeMirror/elkjs/etc. But several CAN be **hosted in a `<WebView>`** — see the bridge escape hatch right after this table):
 
@@ -388,6 +388,7 @@ uses the hook at all.
 | `usePermissions` | — | ❌ (unit-tested; no device use) | R2–R3 |
 | `useClipboard` | — | ❌ | R2 |
 | `useOnline` | — | ❌ (unit-tested emit + swiftc/kotlinc compile-proof of the shared `net()` accessor; no device use) | R2–R3 |
+| `useAppState` | — | ❌ (unit-tested emit + swiftc/kotlinc compile-proof of the shared `state()` accessor + runtime state-machine tests; no device use) | R2–R3 |
 | `useColorScheme` | counter | ✅ (M2.5) — `Text("Theme: \(colorScheme)")` reads `@Environment(\.colorScheme)`; the counter XCUITest asserts "Theme: light" under the default Simulator appearance and "Theme: dark" under `simctl ui appearance dark` (proven locally), so the read reflects the LIVE system appearance, not a constant (a constant would render the same string in both). Still emit-only (no runtime port); Android asserts the same node in Compose (`isSystemInDarkTheme()`, CI-gated) | R4 (iOS local + Android CI) |
 
 **Assertion queue** (the follow-up PR order; each moves a row to R5 and
@@ -674,6 +675,17 @@ Kotlin runtime the emitted code drives):
   `net.isOnline` member read also compiles on native (a native-only shape
   with no web equivalent), so both idioms work — prefer `net()` for
   cross-platform parity.
+- **`useAppState`** → a `PyreonAppState` container with a reactive `phase`
+  String (`"active"` | `"inactive"` | `"background"`), driven by
+  `UIApplication` lifecycle notifications on iOS and an app-injected
+  `ProcessLifecycleOwner` source on Android (the same injected-source shape
+  `PyreonNetworkStatus`/`PyreonStorage` use to stay Android-SDK-free for the
+  kotlinc stub gate). The WEB `useAppState()` returns an ACCESSOR
+  (`() => 'active' | 'inactive' | 'background'`), so ONE shared source reads it
+  as `state()` — the emit lowers that accessor call to `state.phase` (SwiftUI
+  `@Observable`) / `state.phase.value` (Compose `MutableState`). The direct
+  `state.phase` member read also works. Use it to pause a live poll while
+  backgrounded or dim UI while inactive — identical source on all three targets.
 - **`useClipboard`** → a `PyreonClipboard` container with a `copy(text)`
   method + a reactive `copied: Bool` flag that auto-resets to false ~2s
   after each copy (matches the web `@pyreon/hooks` contract). Wraps
