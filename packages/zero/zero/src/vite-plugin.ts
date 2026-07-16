@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+import { innerBuildFlagSet } from './build-flags'
+import { collectBuildStats, detectColorLevel, formatBuildSummary } from './build-summary'
 import { Readable } from 'node:stream'
 import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -951,7 +953,82 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 	// `<script>{themeScript}</script>` head step, automated.
 	if (userConfig.theme) plugins.push(themeScriptInjectPlugin());
 
+	// End-of-build summary (default ON, `buildSummary: false` opts out) —
+	// appended LAST so its closeBundle runs after every zero post-step
+	// (SSG prerender, SSR bundle, adapter staging) and reads the FINISHED
+	// dist tree. Informational only; never fails the build.
+	if (userConfig.buildSummary !== false) plugins.push(buildSummaryPlugin());
+
 	return plugins;
+}
+
+/**
+ * Prints the branded end-of-build summary (client assets with raw + gzip
+ * sizes, server bundle, prerendered pages, wall-clock time) once per
+ * TOP-LEVEL CLIENT build. Skips server builds (`build.ssr`) and zero's
+ * recursive inner sub-builds (their re-instantiated chain includes this
+ * plugin too — `innerBuildFlagSet()` is set for their whole lifetime), so
+ * hybrid builds print exactly one summary. Collection + formatting are pure
+ * (`build-summary.ts`); this plugin is only the timing + printing shell.
+ *
+ * `closeBundle` is a PARALLEL rollup hook — without `sequential: true` this
+ * handler races the ssg/ssr post-steps (prerender, server bundle, adapter
+ * staging) and reads a half-finished dist. `sequential` awaits every
+ * previously-registered closeBundle first; being appended last + `order:
+ * 'post'` puts it at the very end of the build.
+ */
+function buildSummaryPlugin(): Plugin {
+	let root = process.cwd();
+	let outDir = "dist";
+	let assetsDir = "assets";
+	let isServerBuild = false;
+	let startedAt = 0;
+	let resolvedOnce = false;
+	return {
+		name: "pyreon-zero-build-summary",
+		apply: "build",
+		configResolved(cfg) {
+			// FIRST resolution only: zero's recursive inner sub-builds REUSE this
+			// plugin instance (their chain is built from the same config), so
+			// configResolved re-fires with the SERVER sub-build's config —
+			// clobbering outDir/ssr right before the outer (sequential, post)
+			// closeBundle finally runs. The outer client build resolves first;
+			// that's the build this summary describes.
+			if (resolvedOnce) return;
+			resolvedOnce = true;
+			root = cfg.root;
+			outDir = cfg.build.outDir;
+			assetsDir = cfg.build.assetsDir;
+			isServerBuild = Boolean(cfg.build.ssr);
+		},
+		buildStart() {
+			// First build only — inner sub-builds re-fire this on the reused
+			// instance and would clobber the wall-clock start (same reuse as
+			// configResolved above).
+			if (startedAt === 0) startedAt = performance.now();
+		},
+		closeBundle: {
+			sequential: true,
+			order: "post",
+			handler() {
+				if (isServerBuild || innerBuildFlagSet()) return;
+				try {
+					const dist = isAbsolute(outDir) ? outDir : join(root, outDir);
+					const stats = collectBuildStats(dist, assetsDir);
+					const lines = formatBuildSummary(stats, {
+						color: detectColorLevel(),
+						elapsedMs: performance.now() - startedAt,
+					});
+					for (const line of lines) {
+						// oxlint-disable-next-line no-console
+						console.log(line);
+					}
+				} catch {
+					/* summary is informational only — never fail a finished build */
+				}
+			},
+		},
+	};
 }
 
 /**

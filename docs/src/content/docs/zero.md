@@ -105,7 +105,7 @@ export default {
 }
 ```
 
-`zeroPlugin()` returns `Plugin[]` — `[mainPlugin]` for `ssr`/`spa`/`isr`, `[mainPlugin, ssgPlugin]` for `ssg`. Vite's plugins array natively accepts nested arrays, so `plugins: [pyreon(), zero()]` works unchanged in all modes.
+`zeroPlugin()` returns `Plugin[]` — the main plugin plus mode companions (the SSG plugin for `ssg` and hybrid server modes, the SSR plugin for `ssr`/`isr`) and the build-summary plugin. Vite's plugins array natively accepts nested arrays, so `plugins: [pyreon(), zero()]` works unchanged in all modes.
 
 For type-safe config, use `defineConfig` from `@pyreon/zero/server` (or `@pyreon/zero/config`):
 
@@ -141,6 +141,37 @@ export default defineConfig({
 | `ai`         | `AiPluginConfig`                                                              | —       | Auto-wires `aiPlugin` (llms.txt, llms-full.txt, /.well-known/ai-plugin.json, OpenAPI spec) |
 
 `resolveConfig(userConfig?)` merges user config with the defaults above (`mode: 'ssr'`, `base: '/'`, `port: 3000`, `adapter: 'node'`). When no `ssr.mode` is set, the server picks the effective default at runtime: `'stream'` for `mode: 'ssr'`, `'string'` for every other mode — pass `ssr: { mode: 'string' }` to opt an SSR app back into buffered rendering.
+
+## Build Output
+
+Every production build ends with a branded summary of what it produced — after the SSG prerender, SSR bundle, and deploy-adapter staging have all finished:
+
+```
+  ▲ pyreon zero production build
+
+  Client assets
+    entry  assets/index-CfGHbruy.js      92.0 kB │ gzip   31.3 kB
+    entry  assets/index-Gt2BXkg9.css      3.9 kB │ gzip    1.2 kB
+    js     assets/blog-K42cx7wd.js         852 B │ gzip     466 B
+    Σ      4 js 94.5 kB (gzip 32.8 kB)  ·  1 css 3.9 kB (gzip 1.2 kB)  ·  13 other 262.2 kB
+
+  Server bundle
+    file   server/entry-server.js        301.2 kB
+
+  ○ 9 prerendered pages (158.8 kB html)
+  ✓ Build complete in 463 ms
+```
+
+- **entry** marks the scripts/styles the built `index.html` loads directly — the initial payload; lazy route chunks list below it, sorted by gzip cost, with long tails collapsed to `+ N more`.
+- The per-route mode table (`○ ssg · λ ssr · ⟳ isr · ⚡ spa`) prints above the summary, colorized in the same palette.
+- Colors use the Pyreon ember ramp and degrade automatically: truecolor → 16-color ANSI → plain (`NO_COLOR`, non-TTY, and `TERM=dumb` are respected; `FORCE_COLOR` opts back in for CI log viewers).
+- The summary is informational only — it can never fail a build — and prints exactly once per top-level build (zero's recursive inner sub-builds stay silent).
+
+Opt out for minimal logs (log scrapers, size-diff tooling):
+
+```ts
+zero({ buildSummary: false })
+```
 
 ## File-System Routing
 

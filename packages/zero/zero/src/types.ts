@@ -315,6 +315,17 @@ export interface ZeroConfig {
   }
 
   /**
+   * End-of-build summary (default ON). After every zero post-step (SSG
+   * prerender, SSR bundle, adapter staging) finishes, prints a branded
+   * overview of what the build produced: client assets with raw + gzip
+   * sizes (entry chunks marked), per-kind totals, the server bundle,
+   * prerendered page count, and wall-clock time. Colors degrade
+   * truecolor → 16-color → plain (`NO_COLOR` / non-TTY). Set `false`
+   * for minimal logs (CI log scrapers, size-diff tooling).
+   */
+  buildSummary?: boolean
+
+  /**
    * Build-time per-route performance advisor (opt-in). When set, after the
    * client build the advisor reads the Vite manifest + dist and prints, per
    * route, the perf opportunities it finds — route JS over budget and

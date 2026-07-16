@@ -283,17 +283,21 @@ describe('zero vite-plugin config', () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin({ mode: 'spa', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(1)
+      // + the always-on build-summary plugin (appended LAST in every mode;
+      // opt-out via buildSummary: false)
+      expect(plugins).toHaveLength(2)
       expect(plugins[0].name).toBe('pyreon-zero')
+      expect(plugins[1].name).toBe('pyreon-zero-build-summary')
     })
 
     it('mode: "ssg" returns main plugin AND ssg plugin', async () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin({ mode: 'ssg', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(2)
+      expect(plugins).toHaveLength(3)
       expect(plugins[0].name).toBe('pyreon-zero')
       expect(plugins[1].name).toBe('pyreon-zero-ssg')
+      expect(plugins[2].name).toBe('pyreon-zero-build-summary')
     })
 
     it('mode: "ssr" returns main plugin AND ssr plugin', async () => {
@@ -308,10 +312,11 @@ describe('zero vite-plugin config', () => {
       // to prerender renderMode='ssg' routes. ORDER IS LOAD-BEARING: ssg
       // runs before ssr so prerendered files exist when adapter staging
       // copies the client dir.
-      expect(plugins).toHaveLength(3)
+      expect(plugins).toHaveLength(4)
       expect(plugins[0].name).toBe('pyreon-zero')
       expect(plugins[1].name).toBe('pyreon-zero-ssg')
       expect(plugins[2].name).toBe('pyreon-zero-ssr')
+      expect(plugins[3].name).toBe('pyreon-zero-build-summary')
     })
 
     it('mode: "isr" returns main plugin AND ssr plugin (same plugin handles both)', async () => {
@@ -321,10 +326,11 @@ describe('zero vite-plugin config', () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin({ mode: 'isr', image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(3)
+      expect(plugins).toHaveLength(4)
       expect(plugins[0].name).toBe('pyreon-zero')
       expect(plugins[1].name).toBe('pyreon-zero-ssg')
       expect(plugins[2].name).toBe('pyreon-zero-ssr')
+      expect(plugins[3].name).toBe('pyreon-zero-build-summary')
     })
 
     it('default mode (no config) is "ssr" → returns main plugin AND ssr plugin', async () => {
@@ -333,10 +339,11 @@ describe('zero vite-plugin config', () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugins = zeroPlugin({ image: false, font: false }) as any
       expect(Array.isArray(plugins)).toBe(true)
-      expect(plugins).toHaveLength(3)
+      expect(plugins).toHaveLength(4)
       expect(plugins[0].name).toBe('pyreon-zero')
       expect(plugins[1].name).toBe('pyreon-zero-ssg')
       expect(plugins[2].name).toBe('pyreon-zero-ssr')
+      expect(plugins[3].name).toBe('pyreon-zero-build-summary')
     })
   })
 })
