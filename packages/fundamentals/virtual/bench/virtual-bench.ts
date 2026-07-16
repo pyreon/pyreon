@@ -452,17 +452,128 @@ async function reactRemeasureCounts(): Promise<RemeasureResult> {
 // TIMING CHILD (op × impl) — isolated process, prints JSON samples
 // ═════════════════════════════════════════════════════════════════════════════
 
-type Impl = 'pyreon' | 'react'
+type Impl = 'pyreon' | 'pyreon-tpl' | 'react'
 const childOp = process.argv[2]
 const childImpl = process.argv[3] as Impl | undefined
 
+// ── Real-compiler fixtures (impl 'pyreon-tpl') ───────────────────────────────
+// The h() fixtures below are a disclosed self-handicap: no vite-plugin app pays
+// the runtime-VNode mount tax. 'pyreon-tpl' compiles the SAME fixture (1:1 —
+// same For/by keys, same style bindings, same row text) through the REAL
+// two-stage pipeline every shipped app runs: (1) @pyreon/compiler transformJSX
+// templates the DOM subtrees (per-row `_tpl` + style bind), (2) esbuild's
+// automatic JSX runtime lowers the remaining component JSX (`<For>`, the shell)
+// with jsxImportSource '@pyreon/core' — exactly Vite's esbuild pass. Injection
+// via `new Function` mirrors runtime-dom's compiler-integration tests.
+// NOTE: `\${`-escapes below keep the inner template literals INSIDE the source.
+const SCROLL_APP_SOURCE = `
+const App = () => {
+  const v = useVirtualizer(() => ({
+    count: N,
+    getScrollElement: () => container,
+    estimateSize: () => ROW,
+    overscan: OVERSCAN,
+  }))
+  return (
+    <div style={() => \`height:\${v.totalSize()}px;position:relative\`}>
+      <For each={() => v.virtualItems()} by={(it) => it.index}>
+        {(it) => {
+          const m = v.item(it.index)
+          return <div style={() => \`transform:translateY(\${m.start()}px);height:\${m.size()}px\`}>{\`Row \${it.index}\`}</div>
+        }}
+      </For>
+    </div>
+  )
+}
+`
+const MOUNT_APP_SOURCE = `
+const App = () => {
+  const v = useVirtualizer(() => ({
+    count: N,
+    getScrollElement: () => container,
+    estimateSize: () => ROW,
+    overscan: OVERSCAN,
+  }))
+  return (
+    <div style={() => \`height:\${v.totalSize()}px;position:relative\`}>
+      <For each={() => v.virtualItems()} by={(it) => it.index}>
+        {(it) => <div style={\`transform:translateY(\${it.start}px)\`}>{\`Row \${it.index}\`}</div>}
+      </For>
+    </div>
+  )
+}
+`
+const MOUNT_FG_APP_SOURCE = `
+const App = () => {
+  const v = useVirtualizer(() => ({
+    count: N,
+    getScrollElement: () => container,
+    estimateSize: () => ROW,
+    overscan: OVERSCAN,
+  }))
+  return (
+    <div style={() => \`height:\${v.totalSize()}px;position:relative\`}>
+      <For each={() => v.virtualItems()} by={(it) => it.index}>
+        {(it) => <div style={() => \`transform:translateY(\${v.item(it.index).start()}px)\`}>{\`Row \${it.index}\`}</div>}
+      </For>
+    </div>
+  )
+}
+`
+
+async function compileApp(
+  source: string,
+  closure: Record<string, unknown>,
+): Promise<() => unknown> {
+  const core = await import('@pyreon/core')
+  const reactivity = await import('@pyreon/reactivity')
+  const rd = await import('@pyreon/runtime-dom')
+  const jsxRuntime = await import('@pyreon/core/jsx-runtime')
+  // Relative compiler import: not a dep of @pyreon/virtual (bench-only usage).
+  const { transformJSX } = await import('../../../core/compiler/src/index')
+  const esbuild = await import('esbuild')
+  const stage1 = transformJSX(source, 'bench-app.tsx').code
+  const stage2 = esbuild.transformSync(stage1, {
+    loader: 'tsx',
+    jsx: 'automatic',
+    jsxImportSource: '@pyreon/core',
+  }).code
+  const body = stage2.replace(/^import\s+.*$/gm, '').trim()
+  const deps: Record<string, unknown> = {
+    _tpl: (rd as any)._tpl,
+    _bind: (reactivity as any)._bind,
+    _bindText: (rd as any)._bindText,
+    _bindDirect: (rd as any)._bindDirect,
+    _setChild: (rd as any)._setChild,
+    _setChildAt: (rd as any)._setChildAt,
+    _mountSlot: (rd as any)._mountSlot,
+    bindPolymorphicText: (rd as any).bindPolymorphicText,
+    _applyProps: (rd as any)._applyProps,
+    _setStyle: (rd as any)._setStyle,
+    _setClass: (rd as any)._setClass,
+    _setAttr: (rd as any)._setAttr,
+    _rp: (core as any)._rp,
+    _cx: (core as any).cx,
+    _wrapSpread: (core as any)._wrapSpread,
+    h: core.h,
+    Fragment: core.Fragment,
+    jsx: (jsxRuntime as any).jsx,
+    jsxs: (jsxRuntime as any).jsxs,
+    document,
+    ...closure,
+  }
+  const fn = new Function(...Object.keys(deps), `${body}\nreturn App`)
+  return fn(...Object.values(deps)) as () => unknown
+}
+
 if (childOp) {
-  if (childImpl !== 'pyreon' && childImpl !== 'react') throw new Error(`bad impl: ${childImpl}`)
+  if (childImpl !== 'pyreon' && childImpl !== 'pyreon-tpl' && childImpl !== 'react')
+    throw new Error(`bad impl: ${childImpl}`)
 
   if (childOp === 'scroll') {
     // Steady-state: drive ONE scroll → DOM reflects the moved window. The cost
     // each adapter pays to surface one scroll.
-    if (childImpl === 'pyreon') {
+    if (childImpl === 'pyreon' || childImpl === 'pyreon-tpl') {
       const { h, For } = await import('@pyreon/core')
       const { mount } = await import('@pyreon/runtime-dom')
       const { useVirtualizer } = await import('../src/use-virtualizer')
@@ -470,32 +581,46 @@ if (childOp) {
       const host = document.createElement('div')
       container.appendChild(host)
       type V = ReturnType<typeof useVirtualizer<HTMLElement, HTMLElement>>
-      let v!: V
-      const App = () => {
-        v = useVirtualizer<HTMLElement, HTMLElement>(() => ({
-          count: N,
-          getScrollElement: () => container,
-          estimateSize: () => ROW,
-          overscan: OVERSCAN,
-        }))
-        return h(
-          'div',
-          { style: () => `height:${v.totalSize()}px;position:relative` },
-          h(
-            For as unknown as (props: unknown) => unknown,
-            { each: () => v.virtualItems(), by: (it: { index: number }) => it.index },
-            (it: { index: number }) => {
-              const m = v.item(it.index)
-              return h(
-                'div',
-                { style: () => `transform:translateY(${m.start()}px);height:${m.size()}px` },
-                `Row ${it.index}`,
-              )
-            },
-          ),
-        )
+      let App: () => unknown
+      if (childImpl === 'pyreon-tpl') {
+        App = await compileApp(SCROLL_APP_SOURCE, { useVirtualizer, For, container, N, ROW, OVERSCAN })
+      } else {
+        let v!: V
+        App = () => {
+          v = useVirtualizer<HTMLElement, HTMLElement>(() => ({
+            count: N,
+            getScrollElement: () => container,
+            estimateSize: () => ROW,
+            overscan: OVERSCAN,
+          }))
+          return h(
+            'div',
+            { style: () => `height:${v.totalSize()}px;position:relative` },
+            h(
+              For as unknown as (props: unknown) => unknown,
+              { each: () => v.virtualItems(), by: (it: { index: number }) => it.index },
+              (it: { index: number }) => {
+                const m = v.item(it.index)
+                return h(
+                  'div',
+                  { style: () => `transform:translateY(${m.start()}px);height:${m.size()}px` },
+                  `Row ${it.index}`,
+                )
+              },
+            ),
+          )
+        }
       }
-      mount(h(App, {}), host)
+      mount(h(App as (props: unknown) => unknown, {}), host)
+      // correctness (untimed): the window starts at row 0 and MOVES on scroll
+      const firstRowText = () =>
+        (host.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent
+      if (firstRowText() !== 'Row 0')
+        throw new Error(`[correctness] ${childImpl} scroll mount: first row "${firstRowText()}" ≠ "Row 0"`)
+      driveScroll(container, 200 * ROW)
+      if (firstRowText() === 'Row 0')
+        throw new Error(`[correctness] ${childImpl} scroll: window did not move on scroll`)
+      driveScroll(container, 0)
       let off = 0
       const samples = measureSamples(
         () => {
@@ -539,6 +664,15 @@ if (childOp) {
       const root = createRoot(container)
       flushSync(() => root.render(h(List)))
       await new Promise((r) => setTimeout(r, 0))
+      // correctness (untimed, symmetric with the pyreon cells)
+      const firstRowText = () =>
+        (container.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent
+      if (firstRowText() !== 'Row 0')
+        throw new Error(`[correctness] react scroll mount: first row "${firstRowText()}" ≠ "Row 0"`)
+      flushSync(() => driveScroll(container, 200 * ROW))
+      if (firstRowText() === 'Row 0')
+        throw new Error('[correctness] react scroll: window did not move on scroll')
+      flushSync(() => driveScroll(container, 0))
       let off = 0
       const samples = measureSamples(
         () => {
@@ -560,38 +694,62 @@ if (childOp) {
     // pattern (the default); `mount-fg` uses the fine-grained item() pattern to
     // disclose the per-row signal-alloc tax dynamic lists pay.
     const fineGrained = childOp === 'mount-fg'
-    if (childImpl === 'pyreon') {
+    if (childImpl === 'pyreon' || childImpl === 'pyreon-tpl') {
       const { h, For } = await import('@pyreon/core')
       const { mount } = await import('@pyreon/runtime-dom')
       const { useVirtualizer } = await import('../src/use-virtualizer')
       const container = makeContainer()
       type V = ReturnType<typeof useVirtualizer<HTMLElement, HTMLElement>>
-      const App = () => {
-        let v!: V
-        v = useVirtualizer<HTMLElement, HTMLElement>(() => ({
-          count: N,
-          getScrollElement: () => container,
-          estimateSize: () => ROW,
-          overscan: OVERSCAN,
-        }))
-        return h(
-          'div',
-          { style: () => `height:${v.totalSize()}px;position:relative` },
-          h(
-            For as unknown as (props: unknown) => unknown,
-            { each: () => v.virtualItems(), by: (it: { index: number }) => it.index },
-            (it: { index: number }) =>
-              fineGrained
-                ? h('div', { style: () => `transform:translateY(${v.item(it.index).start()}px)` }, `Row ${it.index}`)
-                : h('div', { style: `transform:translateY(${it.start}px)` }, `Row ${it.index}`),
-          ),
-        )
+      let App: () => unknown
+      if (childImpl === 'pyreon-tpl') {
+        App = await compileApp(fineGrained ? MOUNT_FG_APP_SOURCE : MOUNT_APP_SOURCE, {
+          useVirtualizer,
+          For,
+          container,
+          N,
+          ROW,
+          OVERSCAN,
+        })
+      } else {
+        App = () => {
+          let v!: V
+          v = useVirtualizer<HTMLElement, HTMLElement>(() => ({
+            count: N,
+            getScrollElement: () => container,
+            estimateSize: () => ROW,
+            overscan: OVERSCAN,
+          }))
+          return h(
+            'div',
+            { style: () => `height:${v.totalSize()}px;position:relative` },
+            h(
+              For as unknown as (props: unknown) => unknown,
+              { each: () => v.virtualItems(), by: (it: { index: number }) => it.index },
+              (it: { index: number }) =>
+                fineGrained
+                  ? h('div', { style: () => `transform:translateY(${v.item(it.index).start()}px)` }, `Row ${it.index}`)
+                  : h('div', { style: `transform:translateY(${it.start}px)` }, `Row ${it.index}`),
+            ),
+          )
+        }
+      }
+      // correctness (untimed): one mount renders the window with the right rows
+      {
+        const host = document.createElement('div')
+        container.appendChild(host)
+        const dispose = mount(h(App as (props: unknown) => unknown, {}), host)
+        const rows = host.firstElementChild?.children.length ?? 0
+        const first = (host.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent
+        if (rows === 0 || first !== 'Row 0')
+          throw new Error(`[correctness] ${childImpl} ${childOp}: rows=${rows} first="${first}"`)
+        if (typeof dispose === 'function') dispose()
+        host.remove()
       }
       const samples = measureSamples(
         () => {
           const host = document.createElement('div')
           container.appendChild(host)
-          const dispose = mount(h(App, {}), host)
+          const dispose = mount(h(App as (props: unknown) => unknown, {}), host)
           if (typeof dispose === 'function') dispose()
           host.remove()
         },
@@ -624,6 +782,15 @@ if (childOp) {
             h(Row, { key: vi.key, index: vi.index, transform: `translateY(${vi.start}px)` }),
           ),
         )
+      }
+      // correctness (untimed, symmetric with the pyreon cells)
+      {
+        flushSync(() => root.render(h(List)))
+        const rows = container.firstElementChild?.children.length ?? 0
+        const first = (container.firstElementChild?.firstElementChild as HTMLElement | null)?.textContent
+        if (rows === 0 || first !== 'Row 0')
+          throw new Error(`[correctness] react ${childOp}: rows=${rows} first="${first}"`)
+        flushSync(() => root.render(null))
       }
       const samples = measureSamples(
         () => {
@@ -746,32 +913,41 @@ const verdictVs = (p: { med: number; ci: [number, number] }, r: { med: number; c
       ? `${ratio.toFixed(1)}× faster (Pyreon)`
       : `${(1 / ratio).toFixed(1)}× SLOWER (Pyreon)`
 }
-const cell = (label: string, p: { med: number }, r: { med: number }, verdict: string) =>
+// pyr-tpl (the compiled path every vite-plugin app ships) is the ratio
+// baseline; pyr-h() is the hand-h() runtime-VNode path, kept for transparency.
+const cell = (label: string, pt: { med: number }, ph: { med: number }, r: { med: number }, verdict: string) =>
   console.log(
-    `  ${label.padEnd(52)} pyreon ${fmt(Math.round(p.med)).padStart(9)} ns   react ${fmt(Math.round(r.med)).padStart(11)} ns   ${verdict}`,
+    `  ${label.padEnd(52)} pyr-tpl ${fmt(Math.round(pt.med)).padStart(9)} ns   pyr-h() ${fmt(Math.round(ph.med)).padStart(9)} ns   react ${fmt(Math.round(r.med)).padStart(11)} ns   ${verdict}`,
   )
 
+const pScrollTpl = runTimingCell('scroll', 'pyreon-tpl')
 const pScroll = runTimingCell('scroll', 'pyreon')
 const rScroll = runTimingCell('scroll', 'react')
-cell('drive 1 scroll → DOM', pScroll, rScroll, verdictVs(pScroll, rScroll))
+cell('drive 1 scroll → DOM', pScrollTpl, pScroll, rScroll, verdictVs(pScrollTpl, rScroll))
 
+const pMountTpl = runTimingCell('mount', 'pyreon-tpl')
 const pMount = runTimingCell('mount', 'pyreon')
 const rMount = runTimingCell('mount', 'react')
-cell(`mount ${fmt(N)}-item list (fixed-size) → DOM (+unmount)`, pMount, rMount, verdictVs(pMount, rMount))
+cell(`mount ${fmt(N)}-item list (fixed-size) → DOM (+unmount)`, pMountTpl, pMount, rMount, verdictVs(pMountTpl, rMount))
 
 // Pareto disclosure: the fine-grained item() mount pays a one-time per-row
 // signal-alloc tax. Report it against the SAME fixed-size Pyreon mount above.
+const pMountFgTpl = runTimingCell('mount-fg', 'pyreon-tpl')
 const pMountFg = runTimingCell('mount-fg', 'pyreon')
 console.log(
-  `  ${`mount ${fmt(N)}-item list (item()/dynamic) → DOM (+unmount)`.padEnd(52)} pyreon ${fmt(Math.round(pMountFg.med)).padStart(9)} ns   ${(pMountFg.med / pMount.med).toFixed(1)}× the fixed-size mount (per-row signal alloc)`,
+  `  ${`mount ${fmt(N)}-item list (item()/dynamic) → DOM (+unmount)`.padEnd(52)} pyr-tpl ${fmt(Math.round(pMountFgTpl.med)).padStart(9)} ns   pyr-h() ${fmt(Math.round(pMountFg.med)).padStart(9)} ns   ${(pMountFgTpl.med / pMountTpl.med).toFixed(1)}× the fixed-size mount (per-row signal alloc)`,
 )
 console.log(
   '\n  (react ns INCLUDES its render + VDOM reconcile — that IS react-virtual\'s cost to surface a scroll;',
 )
 console.log(
-  '   it has no separate "apply" step. Fixed-size mount ~ties react; the fine-grained item() mount pays a one-time',
+  '   it has no separate "apply" step. pyr-tpl = the fixture compiled through the REAL transformJSX (what',
 )
-console.log('   per-row signal-alloc tax that the per-scroll/remeasure win amortizes. ns machine-dependent — ratio is portable.)\n')
+console.log(
+  '   vite-plugin apps ship) — the verdict baseline; pyr-h() = hand-h() runtime VNodes (transparency).',
+)
+console.log('   The fine-grained item() mount pays a one-time per-row signal-alloc tax that the per-scroll/remeasure')
+console.log('   win amortizes. ns machine-dependent — ratio is portable.)\n')
 
 // ═══ SECTION 4 — engine control (getVirtualItems is byte-identical) ══════════
 
