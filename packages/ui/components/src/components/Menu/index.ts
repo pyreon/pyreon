@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el } from '../../factory'
 
 const Menu = el
   .config({ name: 'Menu' })
@@ -37,11 +37,7 @@ export const MenuItem = el
       backgroundColor: t.color.system.base[100],
       outline: 'none',
     },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .sizes((t) => ({
     small: {

@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing, focusRingTone } from '../../factory'
 
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
@@ -13,18 +13,11 @@ const ActionIcon = el
     hover: {
       transform: 'scale(1.05)',
     },
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-    },
+    focus: focusRing(t),
     active: {
       transform: 'scale(0.95)',
     },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .states((t) => ({
     primary: {
@@ -47,7 +40,7 @@ const ActionIcon = el
       hover: {
         backgroundColor: t.color.system.error[800],
       },
-      focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
+      focus: focusRingTone(t, 'error'),
     },
   }))
   .sizes((t) => ({

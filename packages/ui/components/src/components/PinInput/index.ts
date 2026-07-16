@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { el, focusRingTone } from '../../factory'
 
 const PinInput = el
   .config({ name: 'PinInput' })
@@ -28,10 +28,7 @@ export const PinInputCell = el
     color: t.color.system.dark[800],
     outline: 'none',
     transition: t.transition.fast,
-    focus: {
-      borderColor: t.color.system.primary.base,
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-    },
+    focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },
   }))
   .sizes((t) => ({
     small: { width: '36px', height: '36px', fontSize: t.fontSize.base },

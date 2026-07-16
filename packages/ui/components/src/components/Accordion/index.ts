@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 
 const Accordion = el
   .config({ name: 'Accordion' })
@@ -36,16 +36,8 @@ export const AccordionTrigger = el
     hover: {
       backgroundColor: t.color.system.base[50],
     },
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-      borderRadius: t.borderRadius.small,
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
 
 export const AccordionContent = el

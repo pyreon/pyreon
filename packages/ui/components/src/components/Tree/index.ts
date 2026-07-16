@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el } from '../../factory'
 
 const Tree = el
   .config({ name: 'Tree' })
@@ -30,11 +30,7 @@ export const TreeItem = el
       backgroundColor: t.color.system.base[100],
       outline: 'none',
     },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .states((t) => ({
     selected: {

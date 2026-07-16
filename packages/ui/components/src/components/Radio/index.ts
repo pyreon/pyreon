@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
 
 const Radio = el.config({ name: 'Radio', component: RadioBase })
@@ -10,16 +10,8 @@ const Radio = el.config({ name: 'Radio', component: RadioBase })
     color: t.color.system.base[700],
     fontSize: t.fontSize.small,
     transition: t.transition.fast,
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-      borderRadius: t.borderRadius.pill,
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    focus: { ...focusRing(t), borderRadius: t.borderRadius.pill },
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .sizes((t) => ({
     small: { fontSize: t.fontSize.xSmall, gap: t.spacing.xxSmall },

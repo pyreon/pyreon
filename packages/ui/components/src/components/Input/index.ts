@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRingTone } from '../../factory'
 
 const Input = el
   .config({ name: 'Input' })
@@ -30,15 +30,8 @@ const Input = el
     lineHeight: t.lineHeight.base,
     transition: t.transition.fast,
     outline: 'none',
-    focus: {
-      borderColor: t.color.system.primary.base,
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      backgroundColor: t.color.system.base[50],
-    },
+    focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },
+    disabled: { ...disabledState(), backgroundColor: t.color.system.base[50] },
     placeholder: {
       color: t.color.system.base[400],
     },
@@ -46,11 +39,11 @@ const Input = el
   .states((t) => ({
     error: {
       borderColor: t.color.system.error.base,
-      focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
+      focus: focusRingTone(t, 'error'),
     },
     success: {
       borderColor: t.color.system.success.base,
-      focus: { boxShadow: `0 0 0 3px ${t.color.system.success[200]}` },
+      focus: focusRingTone(t, 'success'),
     },
   }))
   .sizes((t) => ({
@@ -133,15 +126,8 @@ export const Textarea = el
     transition: t.transition.fast,
     outline: 'none',
     resize: 'vertical',
-    focus: {
-      borderColor: t.color.system.primary.base,
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      backgroundColor: t.color.system.base[50],
-    },
+    focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },
+    disabled: { ...disabledState(), backgroundColor: t.color.system.base[50] },
     placeholder: {
       color: t.color.system.base[400],
     },
@@ -149,11 +135,11 @@ export const Textarea = el
   .states((t) => ({
     error: {
       borderColor: t.color.system.error.base,
-      focus: { boxShadow: `0 0 0 3px ${t.color.system.error[200]}` },
+      focus: focusRingTone(t, 'error'),
     },
     success: {
       borderColor: t.color.system.success.base,
-      focus: { boxShadow: `0 0 0 3px ${t.color.system.success[200]}` },
+      focus: focusRingTone(t, 'success'),
     },
   }))
   .sizes((t) => ({
