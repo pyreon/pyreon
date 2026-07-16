@@ -55,27 +55,36 @@ export function TreeDemo() {
         >
           {(state: TreeState) => (
             <div {...state.treeProps()} onKeyDown={state.onKeyDown} tabIndex={0}>
-              {state.visibleNodes().map(({ node, depth }) => (
-                <TreeItem
-                  {...state.getItemProps(node.id, depth, !!node.children?.length)}
-                  state={state.isSelected(node.id) ? 'selected' : undefined}
-                  style={`padding-left: ${12 + depth * 20}px`}
-                  onClick={() => {
-                    if (node.children?.length) state.toggleExpand(node.id)
-                    else state.select(node.id)
-                  }}
-                  onFocus={() => state.focus(node.id)}
-                >
-                  {node.children?.length ? (
-                    <span style="margin-right: 4px; font-size: 10px;">
-                      {state.isExpanded(node.id) ? '▼' : '▶'}
-                    </span>
-                  ) : (
-                    <span style="margin-right: 4px; font-size: 10px; opacity: 0.3;">•</span>
-                  )}
-                  {node.label}
-                </TreeItem>
-              ))}
+              {/*
+                REACTIVE accessor, not a bare .map(): `getItemProps` (and
+                isSelected/isExpanded) return SNAPSHOTS read at call time.
+                Rendering once froze the selected styling, `aria-selected` and
+                the roving `tabIndex` — clicking highlighted nothing and a
+                screen reader was never told what was selected.
+              */}
+              {() =>
+                state.visibleNodes().map(({ node, depth }) => (
+                  <TreeItem
+                    {...state.getItemProps(node.id, depth, !!node.children?.length)}
+                    state={state.isSelected(node.id) ? 'selected' : undefined}
+                    style={`padding-left: ${12 + depth * 20}px`}
+                    onClick={() => {
+                      if (node.children?.length) state.toggleExpand(node.id)
+                      else state.select(node.id)
+                    }}
+                    onFocus={() => state.focus(node.id)}
+                  >
+                    {node.children?.length ? (
+                      <span style="margin-right: 4px; font-size: 10px;">
+                        {state.isExpanded(node.id) ? '▼' : '▶'}
+                      </span>
+                    ) : (
+                      <span style="margin-right: 4px; font-size: 10px; opacity: 0.3;">•</span>
+                    )}
+                    {node.label}
+                  </TreeItem>
+                ))
+              }
             </div>
           )}
         </TreeBase>
