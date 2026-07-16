@@ -54,9 +54,9 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.6.3",
-    "arktype": "^2.2.0",
+    "arktype": "^2.2.3",
     "bun-types": "^1.3.14",
-    "jotai": "^2.10.0",
+    "jotai": "^2.20.2",
     "valibot": "^1.4.1",
     "zod": "^4.4.3",
     "zustand": "^5.0.0"

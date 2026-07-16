@@ -27,7 +27,7 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@types/chrome": "^0.2.1",
+    "@types/chrome": "^0.2.2",
     "playwright": "^1.60.0"
   }
 }

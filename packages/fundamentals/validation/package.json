@@ -61,7 +61,7 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/store": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "arktype": "^2.2.0",
+    "arktype": "^2.2.3",
     "valibot": "^1.4.1",
     "zod": "^4.4.3"
   },

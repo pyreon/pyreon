@@ -24,6 +24,12 @@
  * `TS2578 Unused '@ts-expect-error'` on the `createServer` line.
  */
 
+/* oxlint-disable import/namespace --
+ * This file DELIBERATELY accesses members that are ABSENT from the
+ * `@pyreon/zero` namespace — that absence IS the assertion (each access is
+ * paired with `@ts-expect-error`). oxlint 1.74's import/namespace rule
+ * correctly reports "not found in imported namespace" for these, which is
+ * exactly the state this regression test locks in. */
 import { describe, expect, it } from 'vitest'
 import * as ZeroMain from '@pyreon/zero'
 

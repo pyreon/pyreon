@@ -86,7 +86,19 @@ When bisect-verifying an e2e spec that runs against a Vite dev server (anything 
 
 **Applies to**: any package whose code runs inside Vite's plugin chain. Today that's `@pyreon/vite-plugin` and `@pyreon/zero`. Adding a new plugin package: document its bisect-bisect-rebuild cycle here.
 
-## Cross-tab Playwright specs — kill Vite HMR per-context
+## Dependency-version bisect — never trust an incremental bun layout
+
+When bisecting an EXTERNAL dependency version (edit package.json → `bun install` → run tests → flip → repeat), bun's incremental install can leave STALE peer-hash instance dirs in `node_modules/.bun` with stale internal symlinks — so the on-disk resolution silently disagrees with the lockfile. The 2026-07 deps-update PR produced a fully wrong culprit attribution this way: every local "pass" ran vitest linked against `vite@8.0.16` while the lockfile (and CI's fresh install) resolved 8.1.5 — the variable under test never actually flipped, and vitest 4.1.10 was blamed for a failure vite 8.1.5 caused. Local-pass/CI-fail on an identical commit is the signature of this trap.
+
+Recipe for each bisect step:
+
+1. Edit the version (package.json / overrides).
+2. `mv node_modules /tmp/<trash-N>` (a plain `bun install` after an in-place edit is NOT sufficient; neither is `bun install --force` — both preserved the stale peer-hash dirs when this was hit).
+3. `bun install`.
+4. **Verify the RESOLVED link before trusting the run**: `readlink node_modules/.bun/<consumer>@<ver>*/node_modules/<dep>` must point at the version you think you're testing.
+5. Run the failing suite.
+
+A cheaper mid-cycle sanity check when a full clean install is too slow: step 4 alone — if the link disagrees with the lockfile, the layout is stale and the data point is invalid.
 
 When a Playwright spec opens a second tab via `context.newPage()` against a Vite dev server, the second tab's `page2.goto('/')` is seen by Vite as a new client connecting. Vite's pre-bundle / module-graph traversal sends an HMR update to **all** connected clients (including tab 1) over the `@vite/client` WebSocket. Tab 1 then reloads — destroying any `addEventListener('storage', …)` / `window.<global>` / signal subscriptions the test body just registered. The spec then times out at the assertion that depended on the destroyed listener.
 
