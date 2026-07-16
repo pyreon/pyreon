@@ -804,6 +804,13 @@ function scanCleanPath(path: string): number {
   let count = 0
   let prevSlash = true
   let firstSlash = -1
+  // NOTE (2026-07 negative result, kept so nobody re-tries it): a native
+  // `indexOf`-based rewrite (memchr %-scan + slash-hopping) MEASURED SLOWER
+  // in a same-conditions A/B — splat +15%, dynamic-1 +15% — because JSC's
+  // per-call `indexOf` overhead exceeds this JIT-tightened char loop at
+  // realistic path lengths (2-6 segments). The char loop is the fastest
+  // known implementation; behavior is locked against a frozen oracle copy
+  // in `scan-clean-path.test.ts`.
   for (let i = path.charCodeAt(0) === 47 /* / */ ? 1 : 0; i < len; i++) {
     const c = path.charCodeAt(i)
     if (c === 47 /* / */) {
@@ -821,6 +828,20 @@ function scanCleanPath(path: string): number {
   if (prevSlash && len > 1) return -1 // trailing slash
   _scanFirstSlash = firstSlash
   return count
+}
+
+/**
+ * Test-only white-box hooks for the scan-equivalence fuzz
+ * (`scan-clean-path.test.ts`): the scan and its `_scanFirstSlash` side
+ * channel are module-internal, and the differential oracle needs BOTH
+ * outputs to prove the native-scan rewrite behavior-identical to the
+ * previous char-loop implementation.
+ * @internal
+ */
+export const _scanCleanPathForTest = scanCleanPath
+/** @internal */
+export function _scanFirstSlashForTest(): number {
+  return _scanFirstSlash
 }
 
 /**
