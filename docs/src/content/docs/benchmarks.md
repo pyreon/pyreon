@@ -85,7 +85,19 @@ raw string concatenation, which is the bar Pyreon's compile-to-string fast
 path is closing release by release. (This table is the newest suite in the
 repo and the most actively moving target.)
 
+A second, runtime-tree variant (`bun run bench:ssr-cross`) compares
+`renderToString` implementations on the same logical VNode/element tree
+without each framework's template compiler — useful for isolating renderer
+overhead from compiler wins.
+
 Reproduce: `cd examples/benchmark && bun bench:ssr`
+
+## Real-app TodoMVC
+
+A complete TodoMVC (store + list + filters + edits) driven headlessly
+against real `react-dom@19`: **~5.7–16× faster** per interaction. µs-scale
+and high-variance by nature — the magnitude, not the exact ratio, is the
+signal (disclosed in the suite).
 
 ## Reactivity core
 
@@ -161,6 +173,11 @@ process-isolated. Headline verdicts (losses included):
 | `@pyreon/machine` | XState | Large constant-factor wins on common ops — XState buys statechart features Pyreon deliberately offloads to signals. |
 | `@pyreon/state-tree` | MobX-State-Tree | Faster on the action/patch/reactive hot path. |
 | `@pyreon/toast` | react-hot-toast / sonner | Mounted DOM-commit path **21–40× faster than react-hot-toast**. Cold-start ingest: sonner leads ~2× (smaller code path; labeled cold-start by construction — sonner can't be warmed cross-lib). |
+| `@pyreon/form` | @tanstack/form-core | Store-primitive tier (disclosed: not the full keystroke→paint path): update-field **~94× faster** (40ns vs 3.8µs), reset ~7.6×, read-all ~2.4×; setup 🤝 tied. |
+| `@pyreon/permissions` | CASL | Exact allow/deny ~4.5×, wildcard/broad-grant ~19×, multi-check ~3.7× faster — correctness-gated (both systems agree on every check); the two permission MODELS differ (flat keys + predicates vs ability rules), disclosed in the bench header. |
+| `@pyreon/hotkeys` | tinykeys / hotkeys-js / mousetrap | Dispatch hit 120ns (fastest; tinykeys 743, mousetrap 213), miss 72ns (🤝 with mousetrap's 83 — and Pyreon runs a scope + input-focus filter per event that tinykeys/mousetrap don't), register+teardown fastest. |
+| `@pyreon/rx` | chained per-op computeds | `pipe()` collapses an N-step chain into ONE computed — exactly N× fewer nodes and recomputes per change (a structural win, measured per-N in the bench). |
+| `@pyreon/rich-text` | @tiptap/react | Wrapper glue **1.5KB vs 8.5KB gz** (both lazy-load the same TipTap engine); content computeds don't re-run on pure cursor moves (split doc/selection version counters). |
 | `@pyreon/dnd` | raw pragmatic-drag-and-drop | 🤝 no measurable wrapper tax on any lifecycle (draggable/droppable/sortable/monitor). |
 
 Reproduce: `bun run --filter='@pyreon/<pkg>' bench` (per package), or the
@@ -188,6 +205,30 @@ every PR (`scripts/bundle-budgets.json` locks every package):
 - `mount`-only import of `@pyreon/runtime-dom`: **~7.4KB** (kitchen-sink ~9.8KB)
 - Every published package ships source maps; main-entry size and canonical
   minimal-import size are both ratcheted in CI.
+
+## Framework-internal suites
+
+Not competitor claims — these are Pyreon-only regression harnesses that lock
+hot paths against drift, run with the same discipline (production define,
+isolation, correctness gates):
+
+- **SSR handler throughput** (`bun run bench:ssr`, `bun run bench:server`) —
+  TanStack-methodology scenarios (empty / 5-route / 100-link / 26-nested
+  layouts) for `renderToString` and the full `createHandler` pipeline.
+- **Styler / Unistyle engine** (`bun run bench:styler`, `bun run
+  bench:unistyle`) — resolve → normalize → hash → insert hot paths and the
+  responsive-breakpoint engine.
+- **Sync (CRDT)** (`bun run bench:sync`) — synced-signal throughput sanity
+  over the Yjs engine seam.
+- **Document renderers** (`bun run bench:document`) — the 18-primitive /
+  20-format render matrix.
+- **Hooks wrapper tax** (`@pyreon/hooks` bench) — hook wrappers vs raw
+  signals (the deltas mirror the reactivity standings above).
+- **Compiler rocketstyle collapse** — the opt-in build-time collapse
+  measures 44× on eligible literal-prop mounts (styler resolves 22 → 0).
+- **Perf counters + leak sweep** — 66 named dev-mode counters
+  (`@pyreon/perf-harness`) and a nightly heap-slope leak sweep gate the
+  memory story continuously.
 
 ## What we don't win (the standing list)
 
