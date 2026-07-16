@@ -1,5 +1,5 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import { mergeProps, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
 import { batch, computed, signal } from '@pyreon/reactivity'
 
@@ -39,8 +39,13 @@ export interface ColorPickerState {
   /**
    * ARIA props for the picker container — `role="group"` + a label so
    * assistive tech announces the grouped sliders as one color picker.
+   *
+   * Also carries the component-level props forwarded from the consumer
+   * (rocketstyle className/style, data-*, id…), since the container is the
+   * element a ColorPicker wrapper's `.theme()` describes. Spread it on your
+   * picker container.
    */
-  groupProps: () => { role: 'group'; 'aria-label': string }
+  groupProps: () => Record<string, unknown>
   /**
    * ARIA slider props for the HUE control (0–360°). Spread onto the hue
    * track/thumb element; wire arrow keys to `setHSB(next, saturation(),
@@ -153,7 +158,7 @@ function hsbToRgb(h: number, s: number, b: number): { r: number; g: number; b: n
 // ─── ColorPickerBase ─────────────────────────────────────────────────────────
 
 export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
-  const [own] = splitProps(props, [
+  const [own, rest] = splitProps(props, [
     'value', 'defaultValue', 'onChange', 'alpha', 'children',
   ])
 
@@ -310,7 +315,19 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
     setHSB: updateFromHSB,
     setAlpha: (a) => _alpha.set(Math.max(0, Math.min(1, a))),
     rgb,
-    groupProps: () => ({ role: 'group' as const, 'aria-label': 'Color picker' }),
+    // Forward the component-level props (rocketstyle className/style, data-*,
+    // id…) onto the GROUP container — the element ColorPicker's .theme()
+    // actually describes (a card: bg/radius/padding/shadow). This primitive
+    // renders no element of its own, so without this the whole rocketstyle
+    // chain computed a class that reached NO element and the component rendered
+    // UNSTYLED. mergeProps (descriptor-safe) is required over object spread so a
+    // getter-shaped reactive prop is not frozen; the primitive's own ARIA is
+    // passed last and therefore wins.
+    groupProps: () =>
+      mergeProps(rest as Record<string, unknown>, {
+        role: 'group',
+        'aria-label': 'Color picker',
+      } as Record<string, unknown>),
     hueSliderProps: () => {
       const h = Math.round(_hue())
       return {

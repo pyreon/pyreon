@@ -67,6 +67,18 @@ export interface CalendarState {
   /** Check if a date is in the current view month. */
   isCurrentMonth: (date: CalendarDate) => boolean
   /**
+   * Props to spread on your calendar CONTAINER — the outermost element wrapping
+   * the header (month label + nav) and the date grid.
+   *
+   * Carries the component-level props forwarded from the consumer (rocketstyle
+   * className/style, data-*, id…). This primitive renders no element of its
+   * own, so a Calendar wrapper's `.theme()` — a card around header + grid — has
+   * nothing to land on unless you spread this. It is deliberately separate from
+   * {@link gridProps}: the card is NOT the grid, and styling the grid would
+   * leave the header outside the card.
+   */
+  rootProps: () => Record<string, unknown>
+  /**
    * ARIA props for the date-grid container — `role="grid"` plus the current
    * month as `aria-label`. Reactive (the label changes on navigation): call
    * it. Spread onto the element wrapping the weekday headers + week rows.
@@ -169,7 +181,7 @@ function addMonths(date: CalendarDate, delta: number): CalendarDate {
  * Renders nothing itself — passes CalendarState to children render function.
  */
 export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
-  const [own] = splitProps(props, [
+  const [own, rest] = splitProps(props, [
     'value', 'defaultValue', 'onChange', 'min', 'max',
     'disabledDates', 'locale', 'firstDayOfWeek', 'children',
   ])
@@ -399,6 +411,20 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     moveFocus(next)
   }
 
+  // Forward the component-level props (rocketstyle className/style, data-*,
+  // id…) onto the calendar CONTAINER — the element Calendar's .theme() actually
+  // describes (a card wrapping header + grid). This primitive renders no element
+  // of its own, so without this the whole rocketstyle chain computed a class
+  // that reached NO element and the component rendered UNSTYLED. `gridProps` is
+  // the wrong target: the card is not the grid, and styling the grid would leave
+  // the header outside the card.
+  //
+  // Unlike the sibling primitives there is nothing to merge — the container
+  // carries no ARIA of its own (role="grid" belongs to `gridProps`) — so `rest`
+  // is forwarded verbatim. Returning it by reference (rather than spreading into
+  // a copy) is what keeps a getter-shaped reactive prop live: a spread would
+  // fire the getters and freeze them.
+  const rootProps = () => rest as Record<string, unknown>
   const gridProps = () => ({ role: 'grid' as const, 'aria-label': monthLabel() })
   const rowProps = { role: 'row' as const }
   const columnHeaderProps = { role: 'columnheader' as const }
@@ -444,6 +470,7 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     isDisabled: isDateDisabled,
     isToday: (d) => dateEquals(d, today),
     isCurrentMonth: (d) => d.month === _viewMonth() && d.year === _viewYear(),
+    rootProps,
     gridProps,
     rowProps,
     columnHeaderProps,
