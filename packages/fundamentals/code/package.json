@@ -62,7 +62,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@uiw/react-codemirror": "^4.25.4",
-    "@vitest/browser-playwright": "^4.1.8",
+    "@vitest/browser-playwright": "^4.1.10",
     "@vitus-labs/tools-lint": "^2.6.3",
     "monaco-editor": "^0.55.0",
     "react": "^19.2.0",
