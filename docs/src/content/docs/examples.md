@@ -1,11 +1,11 @@
 ---
 title: "Examples"
-description: "A gallery of 58 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
+description: "A gallery of 60 runnable Pyreon examples — every one mounted live on this page, grouped by topic."
 ---
 
 # Examples
 
-Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 58 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
+Every example below is a **real, typechecked Pyreon component mounted live on this page** — no sandbox, no install. 60 examples across 32 topics. (Generated from `docs/src/examples/` by `docs/scripts/gen-examples-gallery.ts`.)
 
 ## Coolgrid
 
@@ -18,6 +18,14 @@ Every example below is a **real, typechecked Pyreon component mounted live on th
 ### Component Body Runs Once Only Thunks Re Run
 
 <Example file="./examples/core/component-body-runs-once-only-thunks-re-run" />
+
+### Core Error Boundary
+
+<Example file="./examples/core/core-error-boundary" />
+
+### Core Switch Match
+
+<Example file="./examples/core/core-switch-match" />
 
 ### H Reactive Children Reactive Class
 

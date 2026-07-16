@@ -1056,6 +1056,8 @@ function PermissionGate(props: { children: VNodeChild }) {
 
 Multi-branch conditional rendering. Evaluates each `Match` child in order and renders the first whose `when()` is truthy. Falls back to the `fallback` prop if no match is found.
 
+<Example file="./examples/core/core-switch-match" title="Switch / Match — cycle the signal, one panel shows at a time" />
+
 ```tsx
 import { Switch, Match } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -1323,6 +1325,8 @@ The `Suspense` component checks if a child VNode's type has a `__loading()` sign
 ### ErrorBoundary
 
 Catches errors thrown by child components and renders a fallback UI instead of crashing the entire tree. Also reports caught errors to any registered telemetry handlers.
+
+<Example file="./examples/core/core-error-boundary" title="ErrorBoundary — break shows the fallback, reset recovers" />
 
 ```tsx
 import { ErrorBoundary } from '@pyreon/core'
