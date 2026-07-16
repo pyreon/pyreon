@@ -9040,5 +9040,163 @@ await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Saved')
     mistakes: `- Expecting \`findBy*\` / \`waitFor\` to be synchronous — the async query + wait helpers return Promises and must be \`await\`ed (this is upstream Testing-Library behavior, not Pyreon-specific).
 - Reaching for \`screen\` without a prior \`render\` — \`screen\` queries \`document.body\`; nothing is there until a \`render()\` mounts into it.`,
   },
+
+  'testing/renderForm': {
+    signature: `renderForm<TValues>(setup: () => FormState<TValues>) => { form: FormState<TValues>; fill: (values: Partial<TValues>) => void; submit: () => Promise<void>; unmount: () => void } (from '@pyreon/testing/form')`,
+    example: `import { renderForm, expectForm } from '@pyreon/testing/form'
+
+const { form, fill, submit } = renderForm(() =>
+  useForm({ initialValues: { email: '' }, validators: { email: required }, onSubmit }),
+)
+fill({ email: 'ada@lovelace.dev' })
+await submit()
+expectForm(form).toBeValid()`,
+    notes: 'renderHook-style harness for `useForm` — runs your setup inside a probe component (no hand-written form component) and returns the `form` plus two drivers. `fill(values)` drives the form MODEL: per entry it runs `setFieldValue` + `setTouched` (mimicking type-then-blur) — no DOM events. `submit()` awaits the FULL `handleSubmit` pipeline (validators, focus-first-error, `onSubmit`). Synchronous setup; `submit` is async. Import from the `@pyreon/testing/form` subpath (optional peer `@pyreon/form`). See also: expectForm, fillForm, renderHook.',
+    mistakes: `- \`fill()\` on an unregistered field — throws an actionable error naming the known fields. Declare the field in \`useForm({ initialValues })\` or register it via \`form.registerField()\` first.
+- Expecting \`fill()\` to fire DOM events — it drives the MODEL (\`setFieldValue\` + \`setTouched\`). For a RENDERED form (register()-bound inputs) use \`fillForm(container, values)\` instead.
+- Not awaiting \`submit()\` — the submit pipeline (async validators + \`onSubmit\`) settles asynchronously; assertions before the await race it.
+- Asserting field errors before any validator ran — \`validateOn\` defaults to 'blur'; a freshly-created form has no errors yet. \`fill()\` marks fields touched but blur-validation is driven by events — \`await submit()\` (or \`await form.validate()\`) to force full validation.
+- Reading \`form\` after \`unmount()\` — the probe is disposed; signals still read but the form no longer participates in a component tree.`,
+  },
+
+  'testing/fillForm': {
+    signature: `fillForm(scope: HTMLElement, values: Record<string, string | number | boolean | File | File[]>) => void (from '@pyreon/testing/form')`,
+    example: `render(<SignupForm />)
+fillForm(document.body, { Email: 'ada@lovelace.dev', 'Accept terms': true })
+await submitForm(document.body)`,
+    notes: `Fill a REAL rendered form by ACCESSIBLE LABEL: keys are \`getByLabelText\` matchers (register()'s \`labelProps()\` wires the label↔input association; plain \`<label for>\` works too). Fires real \`input\` + \`blur\` events so \`register()\`'s handlers run — validation (default \`validateOn: 'blur'\`), dirty + touched tracking. Checkboxes/radios take a boolean (clicked only on state mismatch); file inputs take \`File | File[]\`; numbers are stringified. Synchronous. See also: submitForm, renderForm.`,
+    mistakes: `- Keying by FIELD NAME instead of LABEL TEXT — keys resolve via \`getByLabelText\`, not \`register()\` field keys (register ids are opaque \`createUniqueId()\`s). An unlabelled input is unreachable — add a \`<label {...form.labelProps(field)}>\` (which is the a11y-correct markup anyway).
+- Passing a string to a checkbox (throws — pass a boolean) or a non-File to a file input (throws — pass File | File[]).
+- Asserting async-validator errors immediately — \`fillForm\` is synchronous; blur-triggered ASYNC validators settle later (\`await waitFor(...)\` / \`expect.poll\`).
+- Using it for an unrendered form — that is \`renderForm().fill()\` territory; \`fillForm\` needs real inputs in the DOM.`,
+  },
+
+  'testing/submitForm': {
+    signature: `submitForm(scope: HTMLElement) => Promise<void> (from '@pyreon/testing/form')`,
+    example: `fillForm(container, { Email: 'ada@lovelace.dev' })
+await submitForm(container)`,
+    notes: 'Submit a REAL rendered form: locates the `<form>` element (scope itself, a descendant, or an ancestor via `closest`) and fires a real `submit` event — exactly what `<Form of={form}>` wires to `handleSubmit`. Resolves after one macrotask so sync validators + a sync `onSubmit` settle; throws an actionable error when no `<form>` exists in scope. See also: fillForm, renderForm.',
+    mistakes: `- No \`<form>\` element — fields rendered without \`<Form of={form}>\` (or a plain \`<form>\`) throw; the submit event needs a form to dispatch on.
+- Asserting an ASYNC \`onSubmit\`/validator result right after the await — only one macrotask is flushed; wrap the assertion in \`waitFor(...)\`.
+- Calling \`form.handleSubmit()\` directly when you meant to test the DOM wiring — \`submitForm\` proves the event→handler path a direct call skips.`,
+  },
+
+  'testing/expectForm': {
+    signature: `expectForm(form: FormState) => { toBeValid(); toBeInvalid(); toHaveFieldError(field, match?); toHaveNoFieldError(field); toBeDirty(); toBePristine(); toHaveValues(partial) } (from '@pyreon/testing/form')`,
+    example: `await submit()
+expectForm(form).toHaveFieldError('email', /invalid/)
+expectForm(form).toBeDirty()
+expectForm(form).toHaveValues({ email: 'ada@lovelace.dev' })`,
+    notes: `Fluent assertions over a \`FormState\` (the package's \`expectSignal\` convention — no \`expect.extend\`). \`toBeValid\`/\`toBeInvalid\` read \`form.isValid()\` (reflects validators that have RUN); \`toHaveFieldError(field, match?)\` asserts a current error, optionally matching a string (exact) or RegExp; \`toBeDirty\`/\`toBePristine\` read \`isDirty()\`; \`toHaveValues(partial)\` subset-compares current values (===, JSON deep-equal for objects). All throw \`[Pyreon]\`-prefixed errors naming the actual state. See also: renderForm, fillForm.`,
+    mistakes: `- \`toBeValid()\` on a form whose validators never ran — a fresh form has no errors so it IS "valid"; force validation first (\`await form.validate()\` or a submit) when you mean "the data passes the validators".
+- String \`match\` is an EXACT comparison, not substring — use a RegExp (\`/invalid/\`) for partial matching.
+- \`toHaveValues\` is a SUBSET compare — extra fields never fail it; assert the full object via \`expect(form.values()).toEqual(...)\` when you need exhaustiveness.`,
+  },
+
+  'testing/renderWithTheme': {
+    signature: `renderWithTheme(ui: VNodeChild, options?: { theme?; mode?: 'light' | 'dark' | 'system'; wrapper?; container?; baseElement? }) => RenderResult & { setMode(mode): void; mode(): ThemeModeInput } (from '@pyreon/testing/ui')`,
+    example: `const { getByRole, setMode } = renderWithTheme(<Button state="primary">Go</Button>, { theme })
+setMode('dark') // reactive re-style — same element, new classes`,
+    notes: `Render \`ui\` wrapped in \`<PyreonUI theme mode>\` so rocketstyle / styler / ui-components resolve a real theme. \`mode\` is backed by an internal signal passed as a getter — \`setMode('dark')\` flips REACTIVELY (components re-style in place, no remount). \`wrapper\` composes an OUTER provider (router, query) around the tree. Import from \`@pyreon/testing/ui\` (optional peer \`@pyreon/ui-core\`). See also: expectComputedStyle, render.`,
+    mistakes: `- Omitting \`theme\` at the root — PyreonUI falls back to \`{}\`, so styled components see theme fields as \`undefined\` (no crash, wrong styles). Pass a real theme for style assertions.
+- Expecting \`setMode\` to remount — it flips a signal; element identity is preserved (assert on the SAME node).
+- Nesting a second PyreonUI in \`ui\` with its own mode — the inner provider wins for its subtree; \`setMode\` only drives the harness-level provider.`,
+  },
+
+  'testing/expectComputedStyle': {
+    signature: `expectComputedStyle(element: Element, expected: Record<string, string | number>) => void — plus normalizeCssValue(property, value) (from '@pyreon/testing/ui')`,
+    example: `expectComputedStyle(button, { color: 'red', fontWeight: 700 })`,
+    notes: `Computed-style assertion with VALUE NORMALIZATION on both sides: each value round-trips through \`getComputedStyle\` on a body-attached probe, so in a real browser \`'red'\`, \`'#ff0000'\` and \`'rgb(255, 0, 0)'\` compare equal regardless of how the engine serializes. Accepts camelCase or kebab-case property names. Values the engine REJECTS fall back to trimmed-lowercase raw comparison (graceful degradation under happy-dom's partial parser). Throws a \`[Pyreon]\`-prefixed diff (raw + normalized, both sides). See also: renderWithTheme.`,
+    mistakes: `- Relying on it in happy-dom for CLASS-based styles — happy-dom's \`getComputedStyle\` is partial (cascade/inheritance/media queries incomplete), so class-rule assertions can false-negative there. Computed-style assertions belong in \`*.browser.test.tsx\` (real Chromium); in happy-dom assert structure (class presence) instead.
+- Expecting RELATIVE units to match — computed serialization resolves \`em\`/\`rem\` against the PROBE's body-level context, not your element's. Use absolute expectations (\`px\`, numeric weights, color functions).
+- jest-dom overlap: \`toHaveStyle\` exists for inline-style-ish checks; this helper is specifically for COMPUTED values with cross-format color normalization.`,
+  },
+
+  'testing/renderWithRouter': {
+    signature: `renderWithRouter(ui: VNodeChild | null, options: { routes?: RouteRecord[]; route?: string; mode?: 'hash' | 'history'; router?: Router; wrapper?; container?; baseElement? }) => Promise<RenderResult & { router: Router; navigate(path): Promise<NavigationResult> }> (from '@pyreon/testing/router')`,
+    example: `const { router, navigate, getByText } = await renderWithRouter(null, {
+  routes: [{ path: '/posts/:id', component: Post, loader: fetchPost }],
+  route: '/posts/1',
+})
+expectRouter(router).toBeAt('/posts/:id')
+await navigate('/posts/2')`,
+    notes: `ASYNC render harness for \`@pyreon/router\`. Creates a router pinned to \`route\` (default \`'/'\`), then \`await router.preload(route)\` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (\`useLoaderData()\` populated, no loading fallbacks). Mounts \`ui\` inside \`<RouterProvider>\` (pass \`null\` for a bare \`<RouterView/>\`); \`unmount()\` destroys the router. \`navigate(path)\` = \`router.push\` — resolves with \`NavigationResult\` AFTER guards + loaders + DOM commit. See also: expectRouter, render.`,
+    mistakes: `- Not awaiting \`renderWithRouter\` itself — it is ASYNC (initial lazy components + loaders resolve before mount); an un-awaited call hands you a Promise, not a render result.
+- Not awaiting \`navigate()\` — assertions race the guards/loaders pipeline; the promise resolves only after the DOM committed.
+- Ignoring the \`NavigationResult\` — \`'cancelled'\` (guard/blocker refused) and \`'superseded'\` (a newer navigation won) resolve WITHOUT an error; assert the result when the test depends on the navigation landing.
+- Passing both \`routes\` and \`router\` — \`router\` wins and \`routes\` is ignored; a pre-built router must already carry its route table.
+- Reusing one router across tests — RouterProvider \`destroy()\`s it on unmount; create per test (the default path does).`,
+  },
+
+  'testing/expectRouter': {
+    signature: `expectRouter(router: Router) => { toBeAt(expected: string): void; notToBeAt(expected: string): void } (from '@pyreon/testing/router')`,
+    example: `expectRouter(router).toBeAt('/posts/:id')
+expectRouter(router).notToBeAt('/login')`,
+    notes: `Fluent current-route assertion. \`expected\` matches either the CONCRETE path (\`'/posts/1'\`) or any matched record's PATTERN (\`'/posts/:id'\`) — so tests can assert the route SHAPE without hardcoding params. Failure messages name the current path + the matched pattern chain. See also: renderWithRouter.`,
+    mistakes: `- Asserting mid-navigation — \`currentRoute\` only flips after the navigation COMMITS; \`await navigate(...)\` first.
+- Query strings — \`toBeAt\` compares the resolved \`path\` (no search params); assert query state via \`router.currentRoute().query\`.`,
+  },
+
+  'testing/installStoreReset': {
+    signature: `installStoreReset() => void (from '@pyreon/testing/store')`,
+    example: `import { installStoreReset } from '@pyreon/testing/store'
+installStoreReset() // top of the test file
+test('a', () => { useCart().store.add(item) })
+test('b', () => { /* fresh cart here */ })`,
+    notes: `Registers \`afterEach(resetAllStores)\` for the current test file (or suite-wide from a vitest \`setupFiles\` module): every \`defineStore\` singleton is DISPOSED (effectScope stopped, plugin cleanups run) + dropped between tests, so neither state NOR setup-scope effects leak across tests. Composes \`@pyreon/store\`'s own \`resetAllStores\` (which disposes since the same PR that shipped this helper). Import from \`@pyreon/testing/store\` (optional peers \`@pyreon/store\` + \`vitest\`). See also: withFreshStore.`,
+    mistakes: `- Calling it INSIDE a \`test()\` — \`afterEach\` must be registered at file/describe scope (vitest collection phase), not during a test run.
+- Expecting references captured in test A to work in test B — the reset DISPOSES the old instance; re-call \`useStore()\` per test (it rebuilds from setup).
+- Using it for per-component state — \`defineStore\` is app-global by design; per-tree state should be \`signal()\` + context, which needs no reset.`,
+  },
+
+  'testing/withFreshStore': {
+    signature: `withFreshStore<TStore extends { id: string }, TReturn>(useStore: () => TStore, fn: (store: TStore) => TReturn) => TReturn (from '@pyreon/testing/store')`,
+    example: `await withFreshStore(useCart, async (cart) => {
+  cart.store.items.set([item])
+  expect(cart.state.items).toHaveLength(1)
+}) // cart disposed — next useCart() rebuilds`,
+    notes: `Scoped isolation for ONE store: disposes any pre-existing instance with the same id, hands \`fn\` a GUARANTEED-FRESH instance, and disposes it afterwards — even when \`fn\` throws, and (async-aware) after a returned promise settles. Other stores are untouched (unlike \`resetAllStores\`). Returns \`fn\`'s result. See also: installStoreReset.`,
+    mistakes: `- Holding the \`store\` reference after the callback — it is DISPOSED on exit; a later \`useStore()\` returns a NEW instance.
+- Forgetting to await the async form — disposal is chained onto the promise; an un-awaited call can leak the fresh instance into the next assertion.
+- Assuming other stores are reset too — only the one id is touched; use \`installStoreReset()\` / \`resetAllStores()\` for registry-wide isolation.`,
+  },
+
+  'testing/renderWithI18n': {
+    signature: `renderWithI18n(ui: VNodeChild, options: { locale?; messages?; fallbackLocale?; i18n?: I18nInstance; wrapper?; container?; baseElement? }) => RenderResult & { i18n: I18nInstance; t: I18nInstance['t']; setLocale(locale): void } (from '@pyreon/testing/i18n')`,
+    example: `const { getByText, setLocale, t } = renderWithI18n(<Nav />, {
+  locale: 'en',
+  messages: { en: { home: 'Home' }, cs: { home: 'Domů' } },
+})
+setLocale('cs')
+getByText(t('home')) // 'Domů'`,
+    notes: 'Render `ui` under `<I18nProvider>` — pass `locale` + `messages` (any `createI18n` option flows through) or a pre-built `i18n` instance. Returns the instance, a bound `t()` for assertions, and `setLocale()` — locale flips are reactive (translated text patches in place, no remount). Import from `@pyreon/testing/i18n` (optional peer `@pyreon/i18n`). See also: render.',
+    mistakes: `- Passing neither \`locale\` nor \`i18n\` — throws an actionable error; the provider needs an instance.
+- Async \`loader\`-based namespaces — \`renderWithI18n\` does not await \`loadNamespace\`; \`await i18n.loadNamespace(...)\` yourself (or use static \`messages\`, the test-friendly path).
+- Asserting via a stale string after \`setLocale\` — assert through the bound \`t()\` (it reads the CURRENT locale) or re-query the DOM.`,
+  },
+
+  'testing/expectToast': {
+    signature: `expectToast(match?: string | RegExp, options?: { type?: ToastType; includeExiting?: boolean }) => Toast — plus findToast(match?, options?) => Promise<Toast>, getToasts(options?) => Toast[], clearToasts() => void (from '@pyreon/testing/toast')`,
+    example: `saveProfile() // raises toast.success('Profile saved')
+expectToast(/saved/i, { type: 'success' })
+await findToast(/synced/)   // async producer
+afterEach(clearToasts)`,
+    notes: 'Toast assertions against the STORE (`toast()` works headless, so these work with OR without a mounted `<Toaster>` — no portal traversal). `expectToast` asserts a matching toast exists NOW (substring or RegExp against string `message`/`description`, optional `type` filter; soft-dismissed `exiting` toasts excluded unless `includeExiting`) and returns it; failure lists the current toasts. `findToast` is the `waitFor`-wrapped async form for toasts raised by async flows. `clearToasts()` hard-resets the store incl. auto-dismiss timers — call it in `afterEach`. See also: render.',
+    mistakes: `- Forgetting \`clearToasts()\` between tests — the store is module-level; leftover toasts + auto-dismiss timers bleed across tests.
+- String/RegExp matching a VNODE message — only STRING \`message\`/\`description\` are matched (VNodes are labelled \`<VNode message>\` in the failure listing); assert VNode toasts via DOM queries (\`screen.getByText\` — the Toaster host is in \`document.body\`, which \`render()\`-bound queries cover).
+- Using \`expectToast\` for a toast raised asynchronously — it asserts NOW; use \`await findToast(...)\`.
+- A soft-dismissed toast 'still existing' — \`toast.dismiss()\` flips it to \`exiting\` (still in the store for the leave animation); matchers exclude it by default, \`{ includeExiting: true }\` opts in.`,
+  },
+
+  'testing/renderWithQueryClient': {
+    signature: `renderWithQueryClient(ui: VNodeChild, options?: { client?: QueryClient; wrapper?; container?; baseElement? }) => RenderResult & { client: QueryClient; setQueryData: QueryClient['setQueryData'] } — plus createTestQueryClient(config?) => QueryClient (from '@pyreon/testing/query')`,
+    example: `const { setQueryData, findByText } = renderWithQueryClient(<Todos />)
+setQueryData(['todos'], [{ id: 1, title: 'write tests' }])
+await findByText('write tests')`,
+    notes: 'Render `ui` under `<QueryClientProvider>` with a FRESH ISOLATED test client per call (the TanStack testing convention): `retry: false` for queries AND mutations (failures fail NOW instead of retry-looping past the test timeout) + `gcTime: Infinity` (no GC timers keeping the process alive). `setQueryData` is a bound passthrough for seeding/patching cache state. `createTestQueryClient(config)` builds the same client standalone — your `defaultOptions` merge OVER the test defaults. Import from `@pyreon/testing/query` (optional peer `@pyreon/query`). See also: render.',
+    mistakes: `- Sharing one client across tests — cache state (and error state) bleeds; take the default fresh-client path, or create per test.
+- Expecting retries — the test client sets \`retry: false\`; a test that EXERCISES retry behavior must override \`defaultOptions.queries.retry\` explicitly.
+- Seeding AFTER the component mounted with \`staleTime: 0\` and asserting no refetch — \`setQueryData\` marks data fresh at write time, but an already-mounted observer may have a fetch in flight; seed BEFORE render (create the client via \`createTestQueryClient\`, seed, pass as \`client\`) for deterministic first paint.`,
+  },
   // <gen-docs:api-reference:end @pyreon/testing>
 }

@@ -83,6 +83,36 @@ await expectNoReactiveLeak(() => {                            // mount+unmount l
 
 Run the suite with `--expose-gc` (`execArgv: ['--expose-gc']` in the vitest config's pool options); without it these throw an actionable error rather than silently pass — a leak test that no-ops is worse than none.
 
+## Library helpers (subpaths)
+
+Seven subpaths kill the provider/setup boilerplate for code built on Pyreon's libraries. Each is gated on its **optional peer** (`@pyreon/testing/form` needs `@pyreon/form` installed, etc.) — the main entry stays dependency-light. Every render harness takes a `wrapper` option so providers compose (theme + router + query together); there is deliberately no mega `renderApp`.
+
+| Subpath | API | Peer |
+| --- | --- | --- |
+| `/form` | `renderForm` (headless `useForm` harness: `fill`/`submit`), `fillForm`/`submitForm` (rendered forms, by accessible label), `expectForm` (`toBeValid`/`toHaveFieldError`/`toBeDirty`/`toHaveValues`, …) | `@pyreon/form` |
+| `/ui` | `renderWithTheme` (PyreonUI wrap + reactive `setMode`), `expectComputedStyle` (normalized computed-style assertion), `normalizeCssValue` | `@pyreon/ui-core` |
+| `/router` | `renderWithRouter` (async — initial route SETTLED: lazy components + loaders pre-resolved; `navigate()` resolves after commit), `expectRouter` (`toBeAt('/posts/:id')` — pattern or concrete path) | `@pyreon/router` |
+| `/store` | `installStoreReset` (afterEach `resetAllStores`), `withFreshStore` (scoped fresh singleton), re-exported `resetStore`/`resetAllStores` | `@pyreon/store` |
+| `/i18n` | `renderWithI18n` (I18nProvider wrap + reactive `setLocale` + bound `t()`) | `@pyreon/i18n` |
+| `/toast` | `expectToast`/`findToast`/`getToasts`/`clearToasts` (store-level — headless or with a mounted `<Toaster>`) | `@pyreon/toast` |
+| `/query` | `renderWithQueryClient` + `createTestQueryClient` (fresh isolated client, retry off, `gcTime: Infinity`) + `setQueryData` passthrough | `@pyreon/query` |
+
+```tsx
+import { renderForm, expectForm } from '@pyreon/testing/form'
+import { renderWithRouter, expectRouter } from '@pyreon/testing/router'
+
+const { form, fill, submit } = renderForm(() => useForm({ initialValues: { email: '' }, onSubmit }))
+fill({ email: 'ada@lovelace.dev' })
+await submit()
+expectForm(form).toBeValid()
+
+const { router, navigate } = await renderWithRouter(null, { routes, route: '/posts/1' })
+expectRouter(router).toBeAt('/posts/:id')
+await navigate('/posts/2') // settles guards + loaders + DOM before resolving
+```
+
+Honest limit: `expectComputedStyle` normalizes through the engine's computed-style serialization — full color canonicalization needs a real browser; happy-dom's `getComputedStyle` is partial, so class-based computed-style assertions belong in `*.browser.test.tsx`.
+
 ## Environment
 
 Works in happy-dom (node) for structural assertions and in a real browser (`@vitest/browser`) for interaction/layout. Because Pyreon uses event delegation, interaction tests belong in a real browser — see the package's own browser smoke tests for the pattern.

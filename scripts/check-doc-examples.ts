@@ -83,6 +83,15 @@ function discoverPyreonPaths(): Record<string, string[]> {
   const subpaths: Record<string, string> = {
     '@pyreon/core/jsx-runtime': 'packages/core/core/src/jsx-runtime.ts',
     '@pyreon/core/jsx-dev-runtime': 'packages/core/core/src/jsx-dev-runtime.ts',
+    // @pyreon/testing library-helper subpaths (each maps exports-key → src file
+    // per the vl_rolldown convention, so the alias is mechanical).
+    '@pyreon/testing/form': 'packages/tools/testing/src/form.ts',
+    '@pyreon/testing/ui': 'packages/tools/testing/src/ui.ts',
+    '@pyreon/testing/router': 'packages/tools/testing/src/router.ts',
+    '@pyreon/testing/store': 'packages/tools/testing/src/store.ts',
+    '@pyreon/testing/i18n': 'packages/tools/testing/src/i18n.ts',
+    '@pyreon/testing/toast': 'packages/tools/testing/src/toast.ts',
+    '@pyreon/testing/query': 'packages/tools/testing/src/query.ts',
   }
   for (const [alias, p] of Object.entries(subpaths)) {
     if (existsSync(join(REPO_ROOT, p))) paths[alias] = [p]
