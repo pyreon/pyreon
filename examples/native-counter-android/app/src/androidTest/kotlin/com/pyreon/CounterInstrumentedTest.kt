@@ -33,6 +33,7 @@ package com.pyreon
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -159,5 +160,35 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Toggle Box").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("Animated Box").assertIsDisplayed()
+    }
+
+    // M4.5 — the ASYNC-AWAIT LOWERING asserted in the REAL Compose semantics
+    // tree (the Android half of the iOS `test_biometricAsyncGateRunsOnDevice`).
+    // The shared Counter.tsx has an Unlock button whose handler is `async () =>
+    // { const ok = await bio.authenticate('Unlock'); lockStatus.set(ok ?
+    // 'unlocked' : 'denied') }`; PMTC wraps it in `Button(onClick = {
+    // pyreonAsyncScope.launch { val ok = bio.authenticate("Unlock"); lockStatus
+    // = … } })` + a composable-top `val pyreonAsyncScope =
+    // rememberCoroutineScope()`. A Kotlin suspend call carries no `await`
+    // keyword — the coroutine provides the context.
+    //
+    // DETERMINISTIC: the v1 `PyreonBiometrics.authenticate` scaffold resolves
+    // `false` (real BiometricPrompt + FragmentActivity is a tracked follow-up),
+    // so the observable outcome is "Lock: denied", produced from INSIDE the
+    // launched coroutine after the suspend call returned:
+    //   (1) launch shows the initial "Lock: idle";
+    //   (2) a click on Unlock runs the coroutine and flips the text to
+    //       "Lock: denied".
+    // `waitUntil` bridges the coroutine dispatch — a dropped async scope (or a
+    // flip that never re-rendered) would leave "Lock: idle".
+    @Test
+    fun biometricAsyncGateRunsOnDevice() {
+        composeRule.onNodeWithText("Lock: idle").assertIsDisplayed()
+        composeRule.onNodeWithText("Unlock").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Lock: denied").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Lock: denied").assertIsDisplayed()
+        composeRule.onNodeWithText("Lock: idle").assertDoesNotExist()
     }
 }

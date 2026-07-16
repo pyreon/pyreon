@@ -111,7 +111,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/feature`](packages/fundamentals/feature/) | Schema-driven CRUD — auto-generated queries, forms, tables, stores |
 | [`@pyreon/charts`](packages/fundamentals/charts/) | Reactive ECharts bridge with lazy loading |
 | [`@pyreon/storage`](packages/fundamentals/storage/) | Reactive storage — localStorage, sessionStorage, cookies, IndexedDB |
-| [`@pyreon/hooks`](packages/fundamentals/hooks/) | 46 hooks — useHover, useFocus, useBreakpoint, useClipboard, useHaptics, useShare, useLinking, useNotifications, useDialog, useTimeAgo, etc. |
+| [`@pyreon/hooks`](packages/fundamentals/hooks/) | 47 hooks — useHover, useFocus, useBreakpoint, useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useDialog, useTimeAgo, etc. |
 | [`@pyreon/hotkeys`](packages/fundamentals/hotkeys/) | Keyboard shortcuts — scope-aware, modifier keys, conflict detection |
 | [`@pyreon/permissions`](packages/fundamentals/permissions/) | Reactive RBAC/ABAC — wildcards, predicates, feature flags |
 | [`@pyreon/machine`](packages/fundamentals/machine/) | Reactive state machines — type-safe transitions, guards |

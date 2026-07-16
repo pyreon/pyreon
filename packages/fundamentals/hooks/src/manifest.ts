@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '46 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '47 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 46 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 47 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   longExample: `import {
   // State
@@ -29,7 +29,7 @@ export default defineManifest({
   // Timing
   useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo,
   // Interaction
-  useClipboard, useHaptics, useShare, useLinking, useNotifications, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle,
+  useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle,
   // Composition
   useMergedRef, useUpdateEffect, useIsomorphicLayoutEffect,
 } from '@pyreon/hooks'
@@ -95,12 +95,12 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
-    '46 signal-based hooks across 7 categories',
+    '47 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
     'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion, useThemeValue, useSpacing, useRootSize',
     'Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo',
-    'Interaction: useClipboard, useHaptics, useShare, useLinking, useNotifications, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle',
+    'Interaction: useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle',
     'Data: useFetch — thin reactive JSON fetch ({ data, error, isPending, refetch }); the web half of the multiplatform useFetch contract',
     'Composition: useMergedRef, useUpdateEffect, useIsomorphicLayoutEffect',
     'Every hook is SSR-safe and auto-cleans on unmount',
@@ -716,6 +716,26 @@ notifications.notify('Done', 'Your export is ready')`,
         'These are LOCAL notifications only — not push; there is no server/remote delivery.',
       ],
       seeAlso: ['useHaptics'],
+    },
+    {
+      name: 'useBiometrics',
+      kind: 'hook',
+      signature: 'useBiometrics() => { authenticate: (reason: string) => Promise<boolean>; isAvailable: () => boolean }',
+      summary:
+        'A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on the web. The FIRST @pyreon/hooks service with an ASYNC RESULT: `authenticate(reason)` returns a `Promise<boolean>` you `await`. Under PMTC this lowers to the native biometric APIs, and the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. WEB v1: a real assertion is a WebAuthn ceremony (needs a server-issued challenge + a registered credential), so the web `authenticate` resolves `false` and `isAvailable` feature-detects `window.PublicKeyCredential` — native is the primary target.',
+      example: `const bio = useBiometrics()
+const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
+
+<button onClick={async () => {
+  const ok = await bio.authenticate('Unlock your vault')
+  status.set(ok ? 'unlocked' : 'denied')
+}}>Unlock</button>`,
+      mistakes: [
+        'Calling `bio.authenticate(...)` WITHOUT `await` inside a plain (non-async) handler — it returns a `Promise<boolean>`, not a boolean, so the gate never applies. Mark the handler `async` and `await` the result (PMTC wraps that async handler in a native `Task`/coroutine scope).',
+        'Expecting the WEB `authenticate` to actually authenticate — v1 resolves `false` (a real WebAuthn assertion needs a server challenge + a registered credential, out of scope for a client-only hook). For web biometric auth drive the WebAuthn API with your backend; the native paths (Face ID / Touch ID / BiometricPrompt) are the real gate.',
+        'Treating a `false` result as an error — `authenticate` never rejects; failure, cancellation, and an unavailable / unenrolled device all resolve `false`. Branch on the boolean, do not wrap it in `try/catch`.',
+      ],
+      seeAlso: ['useNotifications', 'useShare'],
     },
   ],
   gotchas: [

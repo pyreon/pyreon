@@ -538,4 +538,56 @@ final class PyreonCounterUITests: XCTestCase {
                 + "show-gate did not re-mount the child on show=true"
         )
     }
+
+    // M4.5 — the ASYNC-AWAIT LOWERING asserted in the REAL render tree. This is
+    // the device proof that the lowering RUNS, not just compiles (the compile
+    // half is locked by native-async.test.ts's swiftc gate). The shared
+    // Counter.tsx has an Unlock button whose handler is `async () => { const ok
+    // = await bio.authenticate('Unlock'); lockStatus.set(ok ? 'unlocked' :
+    // 'denied') }`; PMTC wraps it in a Swift `Button("Unlock") { Task { let ok =
+    // await bio.authenticate("Unlock"); lockStatus = … } }` (a sync action slot
+    // cannot `await`).
+    //
+    // DETERMINISTIC on-device: the CI Simulator has NO enrolled biometrics, so
+    // `PyreonBiometrics.authenticate` short-circuits via `canEvaluatePolicy` and
+    // resolves `false` with NO system prompt (biometrics-only policy — never a
+    // passcode fallback). So the observable outcome is "Lock: denied", produced
+    // from INSIDE the Task after the await completed:
+    //   (1) launch — `lockStatus` seeds "idle";
+    //   (2) tap Unlock — the Task runs, awaits the gate (false, no prompt), and
+    //       the post-await `lockStatus = "denied"` re-renders the text.
+    // A dropped async scope (an un-wrapped `await` in a sync closure) would not
+    // compile; a lowering that ran the flip OUTSIDE/BEFORE the await would leave
+    // "idle". Because the gate never prompts here, no modal can wedge the sim.
+    func test_biometricAsyncGateRunsOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // (1) Initial state — the async handler has not run yet.
+        XCTAssertTrue(
+            app.staticTexts["Lock: idle"].waitForExistence(timeout: 30),
+            "Expected the initial \"Lock: idle\" — the lockStatus signal was not "
+                + "seeded (or the Lock text was dropped from the emit)"
+        )
+
+        // (2) Tap Unlock → the async Task { await … } runs and flips the text.
+        let unlock = app.buttons["Unlock"]
+        XCTAssertTrue(unlock.exists, "Unlock button missing")
+        unlock.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["Lock: denied"].waitForExistence(timeout: 5),
+            "\"Lock: denied\" never appeared after tapping Unlock — the async "
+                + "handler was not wrapped in a Task (so the awaited "
+                + "bio.authenticate never ran) or the post-await lockStatus "
+                + "re-render did not fire. On an unenrolled Simulator the gate "
+                + "resolves false with no prompt, so this is deterministic."
+        )
+        // The old state must be gone — proves a real re-render, not an additive draw.
+        XCTAssertFalse(
+            app.staticTexts["Lock: idle"].exists,
+            "\"Lock: idle\" still present after Unlock — the post-await signal "
+                + "flip did not re-render inside the Task scope"
+        )
+    }
 }

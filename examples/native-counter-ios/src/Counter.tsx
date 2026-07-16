@@ -8,7 +8,7 @@
 // SwiftUI's @State is a var, not a method).
 
 import { signal } from '@pyreon/reactivity'
-import { useHaptics, useShare, useLinking, useNotifications, useSizeClass, useColorScheme } from '@pyreon/hooks'
+import { useHaptics, useShare, useLinking, useNotifications, useBiometrics, useSizeClass, useColorScheme } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
 
@@ -25,6 +25,13 @@ export function Counter() {
   // show-gate compiles + toggles on-device (the animation vocabulary v1 is
   // conditional-visibility fade; spring/keyframe/gesture-driven absent).
   const boxVisible = signal<boolean>(true)
+  // M4.5 / M3.5 async-lowering + biometrics proof — the current biometric-gate
+  // outcome, flipped from INSIDE an async handler. Starts "idle"; the Unlock
+  // button's `async` handler awaits `bio.authenticate(...)` and sets this to
+  // "unlocked"/"denied". On an UNENROLLED simulator/emulator (the CI default)
+  // the gate resolves `false` deterministically with NO system prompt, so the
+  // observable outcome is "Lock: denied" — a clean, hang-free device assertion.
+  const lockStatus = signal<string>('idle')
   // M3.1 platform-API proof — a haptic fires on each increment tap.
   // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
   // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
@@ -49,6 +56,18 @@ export function Counter() {
   // channel). Web: Notification API. R4 asserts the tap does not crash
   // (the banner + permission prompt make a full behavioral assert flaky).
   const notifs = useNotifications()
+  // M4.5 / M3.5 platform-API proof — a biometric gate whose `authenticate`
+  // returns a Promise<boolean>. THE first async-result service: the Unlock
+  // handler is `async` and `await`s `bio.authenticate('Unlock')`, so PMTC's
+  // async-await lowering wraps that handler in a Swift `Task { … }` / Kotlin
+  // `pyreonAsyncScope.launch { … }` (a sync action slot can't await). This is
+  // the DEVICE proof that the lowering RUNS (not just compiles): the awaited
+  // call completes and the post-await `lockStatus.set(…)` re-renders the text.
+  // Native: iOS `PyreonBiometrics().authenticate(_:)` (LAContext), Android
+  // `PyreonBiometrics().authenticate(...)` (v1 scaffold; real BiometricPrompt +
+  // FragmentActivity is a tracked follow-up). Web: feature-detects
+  // `PublicKeyCredential`, resolves false (WebAuthn ceremony needs a server).
+  const bio = useBiometrics()
   // M2.2 adaptive proof — the current horizontal size class, read reactively.
   // Native: iOS `@Environment(\.horizontalSizeClass)` → "compact"/"regular",
   // Android `LocalConfiguration.current.screenWidthDp >= 600`. Web:
@@ -105,6 +124,7 @@ export function Counter() {
       <Text>Theme: {colorScheme}</Text>
       <Text>Greeting: {i18n.t('hello')}</Text>
       <Text>Power: {power()}</Text>
+      <Text>Lock: {lockStatus()}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
           DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
           rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
@@ -136,6 +156,20 @@ export function Counter() {
       <Button onClick={() => share.url('https://pyreon.dev')}>Share</Button>
       <Button onClick={() => linking.openUrl('https://pyreon.dev')}>Open</Button>
       <Button onClick={() => notifs.notify('Pyreon', 'A local notification')}>Notify</Button>
+      {/* M4.5 async-lowering device proof — an ASYNC handler that awaits the
+          biometric gate. PMTC wraps this `async () => { … await … }` in a Swift
+          `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`; a sync action
+          slot cannot await. On an unenrolled Simulator/emulator the gate
+          resolves false (no prompt), so `lockStatus` flips "idle" → "denied",
+          proving the async scope executed AND the post-await re-render fired. */}
+      <Button
+        onClick={async () => {
+          const ok = await bio.authenticate('Unlock')
+          lockStatus.set(ok ? 'unlocked' : 'denied')
+        }}
+      >
+        Unlock
+      </Button>
       <Button onClick={() => power.send('TOGGLE')}>Toggle Power</Button>
       <Button onClick={() => boxVisible.set(!boxVisible())}>Toggle Box</Button>
       <Transition show={() => boxVisible()}>
