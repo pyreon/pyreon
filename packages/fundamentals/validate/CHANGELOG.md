@@ -1,5 +1,15 @@
 # @pyreon/validate
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2334](https://github.com/pyreon/pyreon/pull/2334) [`bfaa59d`](https://github.com/pyreon/pyreon/commit/bfaa59df337af89ebf2a8521f6de4e6a294a9984) Thanks [@vitbokisch](https://github.com/vitbokisch)! - JIT-compile discriminated-union roots. `tryCompileJit` now accepts a plain `s.discriminatedUnion(...)` root (and inlines nested DU fields/elements): the discriminant dispatch compiles to a raw-value `switch` when every tag is literal-bakeable (`===` is exactly the interpreter's `Map.get` SameValueZero for everything except NaN — a NaN tag keeps the captured-`Map` small-int dispatch), the matched member's object body inlines through the object codegen with the already-read discriminant preset (single read, no re-check), and non-inlinable members (own checks / strict / catchall) fall back to their `_runInto` closures per case, async members included. Additionally, all-inline-primitive object bodies now construct their strip-clone as ONE object literal (final shape in a single allocation — no empty-object + per-key structure transitions). Interpreter-identical semantics locked by a new DU differential suite (NaN tags, enum discriminants, `__proto__` fields, fallback members, async members, nested DUs) plus DU-root arms in the partial-inline and async differential fuzzers.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.47.0
+  - @pyreon/validation@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

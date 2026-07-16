@@ -1,5 +1,17 @@
 # @pyreon/kinetic
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2350](https://github.com/pyreon/pyreon/pull/2350) [`dfe2641`](https://github.com/pyreon/pyreon/commit/dfe2641aed4e595d580799b31b30e2392f3b8130) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `nextFrame` now batches all same-burst callbacks into ONE shared double-rAF (2 rAF registrations for a 1000-child stagger instead of 2000) — measured −24% wall on stagger-1000 in real Chromium, flipping it from a 1.27× loss vs Motion One to a statistical tie, and widening the enter-500/stagger-300 wins. A callback registered after the batch's outer frame opens a NEW batch (its "from" state still paints before the transition state applies), the batch is identity-keyed to the scheduling `requestAnimationFrame` (a swapped stub/polyfill can't strand callbacks), and cancel now removes the callback from its batch — effective in every phase, never touching batch siblings, SSR/post-teardown safe by construction.
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715), [`34d68e1`](https://github.com/pyreon/pyreon/commit/34d68e1e00088c589b8362468144951d648527f2)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/runtime-dom@0.47.0
+  - @pyreon/reactivity@0.47.0
+  - @pyreon/sized-map@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

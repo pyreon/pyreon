@@ -1,5 +1,15 @@
 # @pyreon/attrs
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2340](https://github.com/pyreon/pyreon/pull/2340) [`b6e51ae`](https://github.com/pyreon/pyreon/commit/b6e51aebee2a509867f5b9a987717cda814f845b) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix dev-mode `data-attrs` attachment freezing every reactive prop: the debug attribute was merged with an object spread (`{ ...filteredProps, 'data-attrs': name }`), which fires compiler-emitted getter props once and collapses them to static snapshots — so attrs-wrapped components had live props in production but dead props in dev/test. The merge now copies descriptors via `mergeProps` from `@pyreon/core`, making dev behavior identical to production plus the debug attribute.
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/ui-core@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

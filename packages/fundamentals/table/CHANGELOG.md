@@ -1,5 +1,15 @@
 # @pyreon/table
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2345](https://github.com/pyreon/pyreon/pull/2345) [`17dbb42`](https://github.com/pyreon/pyreon/commit/17dbb42544f53a553bde5e8fcb57a7a99888cc28) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bench-only: both wall-clock benches now measure the REAL compiled path (`pyr-tpl` — the fixture compiled through `transformJSX` + esbuild automatic JSX runtime, what vite-plugin apps ship) alongside the hand-`h()` transparency column, with untimed real-DOM correctness gates on every cell. No shipped runtime code changed. Measured outcome: virtual's steady-state scroll is 1.3× faster than react-virtual on the compiled path; table's ~2× mount gap is confirmed as per-cell reactive-binding setup (the compiled fixture closes only ~10% of it), not an h() harness artifact.
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/reactivity@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

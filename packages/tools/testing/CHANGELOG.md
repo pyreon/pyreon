@@ -1,5 +1,44 @@
 # @pyreon/testing
 
+## 0.47.0
+
+### Minor Changes
+
+- [#2351](https://github.com/pyreon/pyreon/pull/2351) [`bf658a0`](https://github.com/pyreon/pyreon/commit/bf658a0eb6495dc9bd7724997bdd6471043a6fe7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(testing): library-specific helper subpaths — `/form`, `/ui`, `/router`, `/store`, `/i18n`, `/toast`, `/query` — each gated on its library as an OPTIONAL peer (the main entry stays dependency-light).
+
+  - `@pyreon/testing/form` — `renderForm(() => useForm(...))` (renderHook-style headless harness: `fill` via setFieldValue+touched, `submit` awaits the full handleSubmit pipeline), `fillForm(scope, values)`/`submitForm(scope)` (REAL rendered forms, fields located by accessible LABEL, driven through real input/blur/submit events), `expectForm(form)` fluent assertions (`toBeValid`/`toBeInvalid`/`toHaveFieldError`/`toHaveNoFieldError`/`toBeDirty`/`toBePristine`/`toHaveValues`).
+  - `@pyreon/testing/ui` — `renderWithTheme(ui, { theme, mode })` (PyreonUI wrap + reactive `setMode`, no remount), `expectComputedStyle(el, decls)` + `normalizeCssValue` (computed-serialization value normalization — `'red'`/`'#ff0000'`/`'rgb(255, 0, 0)'` compare equal in a real browser; happy-dom limits documented honestly).
+  - `@pyreon/testing/router` — `await renderWithRouter(ui, { routes, route })` (initial route SETTLED before mount: lazy components + loaders pre-resolved via `router.preload`, so `useLoaderData()` is populated on first render; `navigate()` resolves after guards+loaders+DOM commit with the `NavigationResult`), `expectRouter(router).toBeAt('/posts/:id')` (pattern OR concrete path).
+  - `@pyreon/testing/store` — `installStoreReset()` (afterEach `resetAllStores`) + `withFreshStore(useStore, fn)` (scoped guaranteed-fresh singleton, disposed after — sync/async/throw-safe) + re-exported `resetStore`/`resetAllStores`.
+  - `@pyreon/testing/i18n` — `renderWithI18n(ui, { locale, messages })` with reactive `setLocale` + a bound `t()`.
+  - `@pyreon/testing/toast` — `expectToast`/`findToast`/`getToasts`/`clearToasts` (store-level: work headless or with a mounted `<Toaster>`; type filter + soft-dismiss awareness).
+  - `@pyreon/testing/query` — `renderWithQueryClient(ui, { client? })` + `createTestQueryClient()` (fresh isolated client per test, `retry: false`, `gcTime: Infinity` — the TanStack testing convention) + `setQueryData` passthrough.
+
+  Every render harness accepts a `wrapper` option so providers COMPOSE (theme+router+query together) — deliberately no mega `renderApp`. Assertions follow the package's fluent convention (`expectSignal` precedent), never `expect.extend`.
+
+  `@pyreon/store` fix (load-bearing for the isolation helpers, and a standalone leak fix): `resetStore(id)` / `resetAllStores()` now DISPOSE the store — stop its effectScope (setup/plugin computeds + effects) and run plugin cleanups — before dropping the registry entry. Previously a reset orphaned the entry while its scope kept firing on external signals forever (leak class B). Foreign registry values (custom `setRegistryProvider`) degrade to the old plain delete.
+
+### Patch Changes
+
+- [#2341](https://github.com/pyreon/pyreon/pull/2341) [`6a3fc45`](https://github.com/pyreon/pyreon/commit/6a3fc45ac6cb94e02066a3a0de8bd518564bd5ab) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix the `/matchers` and `/vitest` entries shipping broken:
+
+  - `lib/matchers.js` was an EMPTY module — the library build's `treeshake.moduleSideEffects: false` silently dropped the bare side-effect `import '@testing-library/jest-dom/vitest'`, so `import '@pyreon/testing/matchers'` registered nothing. Registration is now an explicit `expect.extend` on bindings imported from `vitest` + `@testing-library/jest-dom/matchers` (bound imports cannot be tree-shaken), and a missing optional peer now fails loudly at module resolution instead of silently no-opping.
+  - `@pyreon/testing/vitest` registered cleanup via `globalThis.afterEach`, which silently no-ops for projects running without `globals: true` (the vitest default) — containers leaked across tests and surfaced as confusing "Found multiple elements" failures. `afterEach` is now imported from `vitest`, which works regardless of the `globals` setting.
+  - Both entries' shipped `.d.ts` were a bare `export {}` — the jest-dom `Assertion` type augmentation never reached published consumers. Each entry now declares the vitest module augmentation explicitly, and it survives into the built types.
+  - `package.json` `sideEffects` now lists the two registration entries so consumer bundlers don't drop the bare imports either; `vitest` is declared as an optional peer.
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715), [`34d68e1`](https://github.com/pyreon/pyreon/commit/34d68e1e00088c589b8362468144951d648527f2), [`bf658a0`](https://github.com/pyreon/pyreon/commit/bf658a0eb6495dc9bd7724997bdd6471043a6fe7), [`577f40f`](https://github.com/pyreon/pyreon/commit/577f40fc3282672818c8b31a4f595b1dbb295d19)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/runtime-dom@0.47.0
+  - @pyreon/store@0.47.0
+  - @pyreon/toast@0.47.0
+  - @pyreon/form@0.47.0
+  - @pyreon/reactivity@0.47.0
+  - @pyreon/router@0.47.0
+  - @pyreon/i18n@0.47.0
+  - @pyreon/query@0.47.0
+  - @pyreon/ui-core@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

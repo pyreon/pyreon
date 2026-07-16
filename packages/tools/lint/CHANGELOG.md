@@ -1,5 +1,15 @@
 # @pyreon/lint
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2335](https://github.com/pyreon/pyreon/pull/2335) [`a5163c8`](https://github.com/pyreon/pyreon/commit/a5163c8f2cedd56fe37a4fce0b1f87fe7f4061ec) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update parser/editor runtime dependencies: oxc-parser + @oxc-project/types 0.138.0 → 0.140.0 (compiler dual-backend equivalence + differential fuzz green), @codemirror/state 6.6.0 → 6.7.1 / @codemirror/view 6.43.0 → 6.43.6 / @codemirror/lang-markdown 6.5.1 (tree-wide coherence overrides bumped in lockstep; real-Chromium editor suite green). No API changes.
+
+- Updated dependencies [[`a5163c8`](https://github.com/pyreon/pyreon/commit/a5163c8f2cedd56fe37a4fce0b1f87fe7f4061ec)]:
+  - @pyreon/compiler@0.47.0
+  - @pyreon/sized-map@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

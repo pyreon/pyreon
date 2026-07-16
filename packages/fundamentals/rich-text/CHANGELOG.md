@@ -1,5 +1,16 @@
 # @pyreon/rich-text
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2333](https://github.com/pyreon/pyreon/pull/2333) [`30e0b0e`](https://github.com/pyreon/pyreon/commit/30e0b0e7bad325bd12cacb2331a93f1968657a57) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external runtime dependencies to latest (safe batch): @tiptap/\* 3.28.0, ws 8.21.1, shiki 4.3.1, @clack/prompts 1.7.0. No API changes. (vite stays held at 8.0.16 tree-wide — 8.1.x breaks the zero-content compiled-JSX test pipeline; see PR for the bisect.)
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715), [`34d68e1`](https://github.com/pyreon/pyreon/commit/34d68e1e00088c589b8362468144951d648527f2)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/runtime-dom@0.47.0
+  - @pyreon/reactivity@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/validate",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "description": "Pyreon DX layer over Standard Schema — withField metadata, reactive parse, i18n-aware error formatting. Works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator.",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/validate#readme",
   "bugs": {
