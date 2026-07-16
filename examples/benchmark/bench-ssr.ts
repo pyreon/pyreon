@@ -252,6 +252,9 @@ async function setupPyreon(ssrTemplate = false): Promise<RenderFn> {
     _ssr: rts._ssr,
     _ssrItem: rts._ssrItem,
     _ssrChildren: rts._ssrChildren,
+    // _ssrForKeyed exists only on branches carrying the For-fusion; undefined
+    // on older runtime-server is fine — the emit that references it is newer.
+    _ssrForKeyed: (rts as Record<string, unknown>)._ssrForKeyed,
     _ssrAttr: rts._ssrAttr,
     _ssrAttrGen: rts._ssrAttrGen,
     _ssrAttrUrl: rts._ssrAttrUrl,
