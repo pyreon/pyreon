@@ -49,6 +49,7 @@ import { createStore as createZustand } from 'zustand/vanilla'
 import { createJSONStorage as zustandJSON, persist } from 'zustand/middleware'
 import { createStorage } from '../src/custom'
 import { _resetRegistry } from '../src/registry'
+import type { StorageBackend } from '../src/types'
 
 declare const Bun: {
   spawnSync: (
@@ -127,24 +128,50 @@ type Impl = Record<ImplName, () => void>
 let keyId = 0
 function makePyreon() {
   const store = makeMemStorage()
-  const use = createStorage(store, 'bench')
-  return use(`bench-${keyId++}`, 0)
+  // Adapt the shared localStorage-shaped shim to Pyreon's `StorageBackend`
+  // ({ get, set, remove }) — symmetric with jotai/zustand, whose
+  // `createJSONStorage(() => store)` adapters wrap the same shim.
+  //
+  // THE BUG THIS FIXES (present since the bench's first commit): the raw shim
+  // was passed straight to `createStorage`, so `backend.set` was `undefined`
+  // and EVERY Pyreon write THREW a TypeError that `createStorage`'s
+  // quota-guard try/catch silently swallowed (`onError` unset). The "write"
+  // rows measured throw/catch machinery (~600ns), not the write path (~40ns)
+  // — and Pyreon never actually persisted, while jotai/zustand did. The old
+  // correctness gate only asserted the in-memory signal round-trip, so it
+  // couldn't catch it; it now asserts write-through-to-storage for all three.
+  // Explicitly typed so a future shape drift is a red squiggle even though
+  // bench/ sits outside the package tsconfig's `include` (no typecheck gate).
+  const backend: StorageBackend = {
+    get: (k: string) => store.getItem(k),
+    set: (k: string, v: string) => {
+      store.setItem(k, v)
+    },
+    remove: (k: string) => {
+      store.removeItem(k)
+    },
+  }
+  const use = createStorage(backend, 'bench')
+  const key = `bench-${keyId++}`
+  return { sig: use(key, 0), key, mem: store.mem }
 }
 function makeJotai() {
   const store = makeMemStorage()
   const jstore = createJotai()
-  const a = atomWithStorage(`bench-${keyId++}`, 0, jotaiJSON<number>(() => store))
-  return { jstore, a }
+  const key = `bench-${keyId++}`
+  const a = atomWithStorage(key, 0, jotaiJSON<number>(() => store))
+  return { jstore, a, key, mem: store.mem }
 }
 function makeZustand() {
   const store = makeMemStorage()
+  const key = `bench-${keyId++}`
   const zs = createZustand<{ v: number; setV: (x: number) => void }>()(
     persist(
       (set) => ({ v: 0, setV: (x: number) => set({ v: x }) }),
-      { name: `bench-${keyId++}`, storage: zustandJSON(() => store) },
+      { name: key, storage: zustandJSON(() => store) },
     ),
   )
-  return zs
+  return { zs, key, mem: store.mem }
 }
 
 // ── ops ──────────────────────────────────────────────────────────────────────
@@ -164,13 +191,13 @@ const OPS: Record<string, OpSpec> = {
       const z = makeZustand()
       return {
         pyreon: () => {
-          sink += p()
+          sink += p.sig()
         },
         jotai: () => {
           sink += j.jstore.get(j.a)
         },
         zustand: () => {
-          sink += z.getState().v
+          sink += z.zs.getState().v
         },
       }
     },
@@ -184,13 +211,13 @@ const OPS: Record<string, OpSpec> = {
       let i = 0
       return {
         pyreon: () => {
-          p.set(++i)
+          p.sig.set(++i)
         },
         jotai: () => {
           j.jstore.set(j.a, ++i)
         },
         zustand: () => {
-          z.getState().setV(++i)
+          z.zs.getState().setV(++i)
         },
       }
     },
@@ -201,25 +228,25 @@ const OPS: Record<string, OpSpec> = {
       const p = makePyreon()
       const j = makeJotai()
       const z = makeZustand()
-      p.subscribe(() => {
+      p.sig.subscribe(() => {
         sink++
       })
       j.jstore.sub(j.a, () => {
         sink++
       })
-      z.subscribe(() => {
+      z.zs.subscribe(() => {
         sink++
       })
       let i = 0
       return {
         pyreon: () => {
-          p.set(++i)
+          p.sig.set(++i)
         },
         jotai: () => {
           j.jstore.set(j.a, ++i)
         },
         zustand: () => {
-          z.getState().setV(++i)
+          z.zs.getState().setV(++i)
         },
       }
     },
@@ -230,14 +257,14 @@ const OPS: Record<string, OpSpec> = {
     between: () => _resetRegistry(),
     make: () => ({
       pyreon: () => {
-        sink += makePyreon()()
+        sink += makePyreon().sig()
       },
       jotai: () => {
         const j = makeJotai()
         sink += j.jstore.get(j.a)
       },
       zustand: () => {
-        sink += makeZustand().getState().v
+        sink += makeZustand().zs.getState().v
       },
     }),
   },
@@ -268,26 +295,41 @@ function assert(cond: boolean, msg: string): void {
   const p = makePyreon()
   const j = makeJotai()
   const z = makeZustand()
-  assert(p() === 0 && j.jstore.get(j.a) === 0 && z.getState().v === 0, 'read 0')
-  p.set(5)
+  assert(p.sig() === 0 && j.jstore.get(j.a) === 0 && z.zs.getState().v === 0, 'read 0')
+  p.sig.set(5)
   j.jstore.set(j.a, 5)
-  z.getState().setV(5)
-  assert(p() === 5 && j.jstore.get(j.a) === 5 && z.getState().v === 5, 'write → 5')
+  z.zs.getState().setV(5)
+  assert(p.sig() === 5 && j.jstore.get(j.a) === 5 && z.zs.getState().v === 5, 'write → 5')
+  // WRITE-THROUGH-TO-STORAGE — the assertion whose absence let a silently-
+  // throwing Pyreon cell ship in this bench's first version (the raw
+  // localStorage-shaped shim made `backend.set` undefined; every write threw
+  // into createStorage's quota try/catch and nothing ever persisted, while
+  // the in-memory round-trip above still passed). Each lib's serialized form
+  // differs (Pyreon: bare value; jotai: bare value; zustand: {state,version}
+  // envelope) — assert the persisted string EXISTS and decodes to the value.
+  assert(p.mem.get(p.key) === '5', `pyreon write-through (mem=${String(p.mem.get(p.key))})`)
+  assert(j.mem.get(j.key) === '5', `jotai write-through (mem=${String(j.mem.get(j.key))})`)
+  const zRaw = z.mem.get(z.key)
+  assert(
+    typeof zRaw === 'string' && (JSON.parse(zRaw) as { state: { v: number } }).state.v === 5,
+    `zustand write-through (mem=${String(zRaw)})`,
+  )
   let pf = 0
   let jf = 0
   let zf = 0
-  const up = p.subscribe(() => pf++)
+  const up = p.sig.subscribe(() => pf++)
   const uj = j.jstore.sub(j.a, () => jf++)
-  const uz = z.subscribe(() => zf++)
-  p.set(6)
+  const uz = z.zs.subscribe(() => zf++)
+  p.sig.set(6)
   j.jstore.set(j.a, 6)
-  z.getState().setV(6)
+  z.zs.getState().setV(6)
   assert(pf >= 1 && jf >= 1 && zf >= 1, `subscriber fire (p=${pf} j=${jf} z=${zf})`)
+  assert(p.mem.get(p.key) === '6', 'pyreon write-through after subscribe')
   up()
   uj()
   uz()
   _resetRegistry()
-  console.log('✓ correctness gate passed — all three libraries agree\n')
+  console.log('✓ correctness gate passed — all three agree, write-through-to-storage verified\n')
 }
 
 interface Cell {
