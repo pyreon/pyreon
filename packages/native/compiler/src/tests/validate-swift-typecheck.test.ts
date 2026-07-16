@@ -93,17 +93,25 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // String] so the { v in … } closure param infers String — a loose Any would
     // MASK). Both stubbed in swift-stubs.ts, mirroring router-swift / runtime-swift.
     //
-    // EXCLUDED (4 of 37) — the @Observable service surface (a coherent follow-up):
-    // showcase-finance · showcase-tasks · tier2-store · tier2-state-tree. Each emits
-    // an @Observable class (PyreonStore_* / PyreonModel_*), and the emit does NOT
-    // `import Observation` — on Apple platforms `import SwiftUI` transitively
-    // re-exports it, but the Linux stub build strips SwiftUI, so @Observable would be
-    // unresolved. Unblocking them needs the harness to guarantee `import Observation`
-    // in the input file (real on the Linux 6.0 toolchain) + PyreonStoreProtocol /
-    // PyreonModelProtocol / PyreonAuth / PyreonDatabase / PyreonFetch / LazyVStack /
-    // Color / .task stubs — a follow-up (M-gate.1e). Verified locally: with those
-    // stubs the two SMALL fixtures type-check on macOS (only the missing protocol
-    // errored), so the residual gap is purely the Observation-import mechanism.
+    // NEWLY INCLUDED (M-gate.1e) — the two SMALL @Observable fixtures (tier2-store
+    // + tier2-state-tree). Each emits an `@Observable final class` (PyreonStore_* /
+    // PyreonModel_*) that the emit does NOT `import Observation` for — on Apple
+    // platforms `import SwiftUI` transitively re-exports it, but the stub build
+    // strips SwiftUI, so `@Observable` would be unresolved. `validateSwiftWithStubs`
+    // now GUARANTEES `import Observation` whenever the emit uses `@Observable`
+    // (Observation ships in the Swift 5.9+ stdlib on macOS AND the open-source
+    // Linux toolchain), guarded by `isObservationAvailable()` so a toolchain
+    // WITHOUT Observation SKIPS these rather than going red (Linux-parity-safe).
+    // Plus the two marker protocols PyreonStoreProtocol / PyreonModelProtocol
+    // (`: AnyObject {}`, mirroring runtime-swift). Bisect-locked below.
+    //
+    // EXCLUDED (2 of 37) — the two LARGE @Observable showcase apps (showcase-finance
+    // 221 lines · showcase-tasks 410 lines). They emit @Observable too but ALSO need
+    // a larger stub surface (PyreonAuth / PyreonDatabase / PyreonFetch / LazyVStack /
+    // Color / Font.custom / .foregroundColor / .task / RouterProvider /
+    // navigationDestination) + a real closure-inference check on their `{ v in }` /
+    // `{ _values in }` shapes (which MAY surface real emit bugs) — a coherent
+    // follow-up (M-gate.1f) now that the Observation-import mechanism is proven here.
     const TYPECHECK_FIXTURES = [
       '01-stateless.tsx',
       '02-signal.tsx',
@@ -134,6 +142,8 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       'tier2-machine.tsx',
       'tier2-permissions.tsx',
       'tier2-rx.tsx',
+      'tier2-state-tree.tsx',
+      'tier2-store.tsx',
       'tier2-validate.tsx',
       'tier2-validation.tsx',
       'webview-data-bridge.tsx',

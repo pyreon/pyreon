@@ -23,16 +23,18 @@
 // convenient superset — a superset stub is itself a masking source"). Any new
 // modifier added here must carry the same constraint the real SwiftUI declares.
 //
-// SCOPE. This stub covers the 2 shipped example apps + 33 of 37 compiler fixtures
+// SCOPE. This stub covers the 2 shipped example apps + 35 of 37 compiler fixtures
 // (canonical primitives, common SwiftUI modifiers, i18n/machine/permissions/link/
 // webview, plus the router-hook surface — PyreonRouter / EnvironmentValues.pyreonRouter
-// / useNavigate / useParams — and PyreonForm, added in M-gate.1d). NOT yet covered
-// (tracked follow-up M-gate.1e): the 4 @Observable service fixtures (showcase-finance
-// / showcase-tasks / tier2-store / tier2-state-tree) — each emits an @Observable class
-// with NO `import Observation`, which needs `import Observation` guaranteed in the
-// input file (real on the Linux 6.0 toolchain, but absent because SwiftUI — its usual
-// transitive provider — is stripped) plus PyreonStoreProtocol / PyreonModelProtocol /
-// PyreonAuth / PyreonDatabase / PyreonFetch / LazyVStack / Color / .task stubs.
+// / useNavigate / useParams — and PyreonForm, added in M-gate.1d; the two SMALL
+// @Observable fixtures tier2-store / tier2-state-tree, added in M-gate.1e via the
+// PyreonStoreProtocol / PyreonModelProtocol marker protocols below + the
+// `import Observation` guarantee `validateSwiftWithStubs` adds when the emit uses
+// `@Observable`). NOT yet covered (tracked follow-up M-gate.1f): the 2 LARGE
+// @Observable showcase apps (showcase-finance / showcase-tasks) — they emit
+// @Observable too but ALSO need PyreonAuth / PyreonDatabase / PyreonFetch /
+// LazyVStack / Color / .task stubs + a real closure-inference check on their
+// `{ v in }` / `{ _values in }` shapes (which MAY surface real emit bugs).
 //
 // When adding a symbol: keep ARGUMENT types faithful (a wrong-typed arg must still
 // be caught), and mirror any LOAD-BEARING generic constraint exactly (like
@@ -181,6 +183,13 @@ public struct PyreonLinking { public init() {}; public func openUrl(_ u: String)
 public struct PyreonNotifications { public init() {}; public func notify(_ title: String, _ body: String) {} }
 // M3.5: authenticate is ASYNC — awaited inside a Task { … } (the M4.5 lowering).
 public struct PyreonBiometrics { public init() {}; public func authenticate(_ reason: String) async -> Bool { false } }
+// Marker protocols the @Observable store/model emit conforms to — mirror
+// runtime-swift's PyreonStore.swift / PyreonModel.swift EXACTLY (empty,
+// AnyObject-bound so a final class can conform). The @Observable macro (from the
+// Observation module, guaranteed imported by validateSwiftWithStubs when the
+// emit uses it) drives runtime reactivity; these only satisfy conformance.
+public protocol PyreonStoreProtocol: AnyObject {}
+public protocol PyreonModelProtocol: AnyObject {}
 public struct PyreonMachine {
   public init(initial: String, transitions: [String: [String: String]]) {}
   public func callAsFunction() -> String { "" }

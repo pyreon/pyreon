@@ -151,6 +151,54 @@ export function _resetSwiftUICache(): void {
 }
 
 /**
+ * Detect whether the `Observation` module (and its `@Observable` macro) is
+ * resolvable for `swiftc -typecheck`. The store/state-tree emit declares an
+ * `@Observable final class` but does NOT `import Observation` — on Apple
+ * platforms it is implicitly available (and SwiftUI re-exports it), but the stub
+ * build strips SwiftUI and a non-Apple toolchain needs the explicit import, so
+ * `validateSwiftWithStubs` adds it. `Observation` ships in the Swift 5.9+ stdlib
+ * on macOS AND the open-source Linux toolchain, so this probe is normally true
+ * wherever `swiftc` exists — but we probe rather than assume, so an older/partial
+ * toolchain SKIPS the @Observable fixtures instead of going red (the
+ * Linux-parity-safe graceful degradation). Probed by type-checking a trivial
+ * `@Observable` class WITH an explicit `import Observation`. Cached for the
+ * process lifetime.
+ */
+let _observationAvailable: boolean | undefined
+export function isObservationAvailable(): boolean {
+  if (_observationAvailable !== undefined) return _observationAvailable
+  if (!isSwiftcAvailable()) {
+    _observationAvailable = false
+    return false
+  }
+  const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-observation-probe-'))
+  const filename = join(tempDir, 'probe.swift')
+  writeFileSync(
+    filename,
+    'import Observation\n@Observable final class _PyreonObservationProbe { var x: Int = 0 }\n',
+    'utf8',
+  )
+  try {
+    execFileSync('swiftc', ['-typecheck', filename], { stdio: 'ignore' })
+    _observationAvailable = true
+  } catch {
+    _observationAvailable = false
+  } finally {
+    try {
+      rmSync(tempDir, { recursive: true, force: true })
+    } catch {
+      // best-effort
+    }
+  }
+  return _observationAvailable
+}
+
+/** For testing: reset the cached Observation-availability result. */
+export function _resetObservationCache(): void {
+  _observationAvailable = undefined
+}
+
+/**
  * Validate Swift source via `swiftc -typecheck` against the REAL SwiftUI
  * SDK — full semantic analysis, no stubs, no masking. This is the
  * type-level gate that `validateSwift` (parse-only) deliberately can't
@@ -313,6 +361,23 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
   const stripped = source.replace(SWIFT_STUBBED_IMPORTS, '')
   const foundation = /^import Foundation\s*$/m.test(stripped) ? '' : 'import Foundation\n'
 
+  // The store/state-tree emit declares an `@Observable final class` but does NOT
+  // `import Observation` (on Apple platforms it is implicit + SwiftUI re-exports
+  // it; the stub build strips SwiftUI, and a non-Apple toolchain needs the
+  // explicit import). Guarantee the import when the emit uses the macro. If the
+  // toolchain lacks Observation, SKIP rather than fail — the Linux-parity-safe
+  // graceful degradation (an @Observable fixture stays effectively excluded on an
+  // Observation-less toolchain instead of going red). NOTE: macOS resolves
+  // `@Observable` WITHOUT the import (implicit), so this guarantee is load-bearing
+  // only on a toolchain that strips the implicit Observation (the Linux CI gate) —
+  // the local bisect target is the PyreonStoreProtocol/PyreonModelProtocol stubs.
+  const usesObservable = /@Observable\b/.test(stripped)
+  if (usesObservable && !isObservationAvailable()) {
+    return { ok: true, skipped: true, skipReason: 'Observation module unavailable on this toolchain' }
+  }
+  const observation =
+    usesObservable && !/^import Observation\s*$/m.test(stripped) ? 'import Observation\n' : ''
+
   // A component the emit declares with the SAME name as a stubbed SwiftUI type
   // (e.g. a user component `Toggle`) SHADOWS that symbol in a real multi-module
   // build — the local module type wins for bare references. Our single-module
@@ -324,7 +389,7 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
   const stubsPath = join(tempDir, 'PyreonSwiftStubs.swift')
   const inputPath = join(tempDir, 'Input.swift')
   writeFileSync(stubsPath, stub, 'utf8')
-  writeFileSync(inputPath, foundation + stripped, 'utf8')
+  writeFileSync(inputPath, foundation + observation + stripped, 'utf8')
 
   try {
     // Both files compiled as one module; the stubs satisfy SwiftUI/PyreonRuntime
