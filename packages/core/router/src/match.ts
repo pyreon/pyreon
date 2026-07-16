@@ -50,14 +50,34 @@ function decodeQueryComponent(raw: string): string {
  * user-controlled, so a plain `{}` would let `?__proto__=…` / `?constructor=…`
  * write to inherited slots — prototype/property injection (CodeQL
  * `js/remote-property-injection`). A null-prototype object has no prototype
- * chain, so every user key is a plain OWN data property: injection is
- * structurally impossible, and `?__proto__=x` becomes a retrievable own key
- * rather than a footgun that shadows `Object.prototype`. This is the standard
- * `qs` / `query-string` hardening.
+ * chain, so every user key is a plain OWN data property. This is the standard
+ * `qs` / `query-string` hardening — layer ONE of two (see
+ * `DANGEROUS_QUERY_KEYS` for layer two, which the null prototype does NOT cover).
  */
 function emptyQueryRecord<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>
 }
+
+/**
+ * Layer TWO of the query hardening: dangerous keys are DROPPED at the parse
+ * boundary, never stored — even as own properties of the null-prototype
+ * record. The null prototype protects the record ITSELF, but an own
+ * `__proto__` key still escapes into CONSUMER objects: `Object.assign(target,
+ * query)` (and any `target[k] = query[k]` copy loop) uses [[Set]] semantics,
+ * so copying an own `__proto__` data property onto an ordinary object mutates
+ * the TARGET's prototype — pollution one hop downstream, outside this
+ * module's control. Dropping the qs-convention key set (`__proto__`,
+ * `constructor`, `prototype`) closes that hop and the CodeQL finding at the
+ * source; a genuine app query param by these names has no legitimate use.
+ */
+const DANGEROUS_QUERY_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+// NOTE on CodeQL `js/remote-property-injection`: that query recognizes only
+// ALLOWLIST/constant-prefix sanitizers by design — a blocklist guard (this
+// one) is never credited, so the two alerts on the write sites below are
+// DISMISSED with rationale rather than "fixed". Arbitrary user-chosen keys
+// are the PURPOSE of a query-param record; the real risks are covered by
+// the two layers above (null-prototype record + dangerous keys dropped),
+// both locked by bisect-verified specs in tests/match.test.ts.
 
 export function parseQuery(qs: string): Record<string, string> {
   if (!qs) return emptyQueryRecord()
@@ -66,11 +86,11 @@ export function parseQuery(qs: string): Record<string, string> {
     const eqIdx = part.indexOf('=')
     if (eqIdx < 0) {
       const key = decodeQueryComponent(part)
-      if (key) result[key] = ''
+      if (key && !DANGEROUS_QUERY_KEYS.has(key)) result[key] = ''
     } else {
       const key = decodeQueryComponent(part.slice(0, eqIdx))
       const val = decodeQueryComponent(part.slice(eqIdx + 1))
-      if (key) result[key] = val
+      if (key && !DANGEROUS_QUERY_KEYS.has(key)) result[key] = val
     }
   }
   return result
@@ -97,7 +117,7 @@ export function parseQueryMulti(qs: string): Record<string, string | string[]> {
       key = decodeQueryComponent(part.slice(0, eqIdx))
       val = decodeQueryComponent(part.slice(eqIdx + 1))
     }
-    if (!key) continue
+    if (!key || DANGEROUS_QUERY_KEYS.has(key)) continue
     const existing = result[key]
     if (existing === undefined) {
       result[key] = val

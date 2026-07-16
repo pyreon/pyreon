@@ -55,21 +55,26 @@ describe('parseQuery — edge cases', () => {
   })
 
   // Security: query KEYS are user-controlled, so the parsed record MUST NOT let
-  // `?__proto__=…` / `?constructor=…` reach the prototype chain
-  // (CodeQL js/remote-property-injection). Fixed with a null-prototype record.
+  // `?__proto__=…` / `?constructor=…` reach any prototype chain (CodeQL
+  // js/remote-property-injection). TWO layers: a null-prototype record (the
+  // record itself can't be polluted) AND dangerous keys DROPPED at the parse
+  // boundary — an own `__proto__` data property would otherwise escape into
+  // consumer objects via `Object.assign(target, query)` ([[Set]] semantics
+  // mutate the TARGET's prototype). The earlier revision of this block
+  // asserted the dangerous keys were STORED as own keys — codifying the
+  // downstream-pollution hop; the invariant (no pollution anywhere) is kept,
+  // the assertions now state the corrected truth (keys dropped).
   describe('property-injection safety', () => {
     test('result has a null prototype', () => {
       expect(Object.getPrototypeOf(parseQuery('a=1'))).toBeNull()
       expect(Object.getPrototypeOf(parseQuery(''))).toBeNull()
     })
 
-    test('__proto__ / constructor / prototype are plain OWN keys, not prototype writes', () => {
-      const q = parseQuery('__proto__=evil&constructor=x&prototype=y')
-      // Retrievable as own data properties (not the inherited accessor/ctor)
-      expect(q.__proto__).toBe('evil')
-      expect(q.constructor as unknown).toBe('x')
-      expect(q.prototype as unknown).toBe('y')
-      expect(Object.keys(q).sort()).toEqual(['__proto__', 'constructor', 'prototype'])
+    test('__proto__ / constructor / prototype keys are DROPPED, ordinary keys kept', () => {
+      const q = parseQuery('__proto__=evil&constructor=x&prototype=y&ok=1')
+      expect(Object.keys(q)).toEqual(['ok'])
+      expect(q.ok).toBe('1')
+      expect(Object.getOwnPropertyDescriptor(q, '__proto__')).toBeUndefined()
     })
 
     test('does not pollute Object.prototype', () => {
@@ -79,12 +84,21 @@ describe('parseQuery — edge cases', () => {
       expect(Object.getPrototypeOf({})).toBe(Object.prototype)
     })
 
-    test('parseQueryMulti is equally injection-safe', () => {
-      const q = parseQueryMulti('__proto__=a&__proto__=b&constructor=c')
-      expect(Object.getPrototypeOf(q)).toBeNull()
-      expect(q.__proto__).toEqual(['a', 'b'])
-      expect(q.constructor as unknown).toBe('c')
+    test('copying the parsed record onto an ordinary object cannot pollute (the layer-two hop)', () => {
+      const q = parseQuery('__proto__[polluted]=1&__proto__=x')
+      const target: Record<string, unknown> = {}
+      Object.assign(target, q)
+      expect(Object.getPrototypeOf(target)).toBe(Object.prototype)
       expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+    })
+
+    test('parseQueryMulti is equally injection-safe', () => {
+      const q = parseQueryMulti('__proto__=a&__proto__=b&constructor=c&ok=1')
+      expect(Object.getPrototypeOf(q)).toBeNull()
+      expect(Object.keys(q)).toEqual(['ok'])
+      const target: Record<string, unknown> = {}
+      Object.assign(target, q)
+      expect(Object.getPrototypeOf(target)).toBe(Object.prototype)
     })
   })
 })

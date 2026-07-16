@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   cmpSemver,
   NATIVE_SENTINELS,
+  NPM_NAME_RE,
   repoVersion,
   resolveSentinels,
   SENTINELS,
@@ -116,5 +117,36 @@ describe('check-published-state — existence sweep (first-publish-bootstrap cla
       '../../../../../scripts/check-published-state'
     )
     expect(classifyExistence([{ pkg: '@pyreon/core', npm: '0.46.0' }]).absent).toEqual([])
+  })
+})
+
+// URL-boundary validation for names read from workspace package.jsons before
+// they're embedded in the registry fetch URL (CodeQL js/file-access-to-http:
+// the flow file→network is this script's PURPOSE; the validation makes the
+// constructed URL safe by construction — no traversal / query / fragment /
+// extra path segments can reach fetch).
+describe('NPM_NAME_RE — registry-URL boundary', () => {
+  it('accepts every real workspace package-name shape', () => {
+    for (const name of ['@pyreon/zero', '@pyreon/ui-core', 'lodash', 'query-string', '@a/b.c-d_e~f']) {
+      expect(NPM_NAME_RE.test(name)).toBe(true)
+    }
+  })
+
+  it('rejects URL-structure smuggling', () => {
+    for (const name of [
+      '../etc/passwd',
+      '@scope/../up',
+      '@scope/name/extra',
+      'name?query=1',
+      'name#frag',
+      'name/latest',
+      '.hidden',
+      '_underscore',
+      'UPPER',
+      '',
+      '@/name',
+    ]) {
+      expect(NPM_NAME_RE.test(name)).toBe(false)
+    }
   })
 })
