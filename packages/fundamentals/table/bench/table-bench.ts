@@ -185,35 +185,164 @@ async function reactSamples(
 }
 
 // ─── Pyreon variant runner ────────────────────────────────────────────────────
-async function pyreonSamples(n: number, scenario: Scenario): Promise<number[]> {
-  const { For, h } = await import('@pyreon/core')
-  const { signal } = await import('@pyreon/reactivity')
-  const { mount } = await import('@pyreon/runtime-dom')
+//
+// TWO Pyreon variants:
+//  - 'pyreon-tpl'  — the fixture JSX compiled through the REAL `transformJSX`
+//    (the `_tpl` cloneNode + fine-grained-binding output every vite-plugin app
+//    ships). This is the PRIMARY column: it is what users get.
+//  - 'pyreon-h'    — the same fixture hand-built with `h()` calls (the runtime
+//    VNode path). Kept for transparency: earlier versions of this bench ONLY
+//    measured this variant and flagged the "~2× mount" loss against themselves
+//    — a disclosed SELF-handicap, since no compiled app pays the h() mount tax.
+//
+// The compiled variant's JSX source mirrors the h() fixture 1:1 (same For/by
+// keys, same per-cell flexRenderCell accessor, same data-rowid attr).
+const BENCH_APP_SOURCE = `
+const App = () => {
+  const table = useTable(() => ({
+    data: data(),
+    columns: columnDefs,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getRowId: (r) => String(r.id),
+  }))
+  setTableAccessor(table)
+  return (
+    <table>
+      <tbody>
+        <For each={() => table().getRowModel().rows} by={(r) => r.id}>
+          {(row) => {
+            const rowId = row.id
+            return (
+              <tr data-rowid={rowId}>
+                <For each={() => row.getVisibleCells()} by={(c) => c.id}>
+                  {(cell) => {
+                    const colId = cell.column.id
+                    return <td>{() => String(flexRenderCell(table, rowId, colId))}</td>
+                  }}
+                </For>
+              </tr>
+            )
+          }}
+        </For>
+      </tbody>
+    </table>
+  )
+}
+`
+
+async function pyreonSamples(n: number, scenario: Scenario, useCompiled: boolean): Promise<number[]> {
+  const core = await import('@pyreon/core')
+  const { For, h } = core
+  const reactivity = await import('@pyreon/reactivity')
+  const { signal } = reactivity
+  const rd = await import('@pyreon/runtime-dom')
+  const { mount } = rd
   const { useTable, flexRenderCell, getCoreRowModel, getSortedRowModel } = await import('../src/index')
 
   const base = makeData(n)
   const data = signal<Row[]>(base)
   let tableAccessor!: () => any
-  function App() {
-    const table = useTable(() => ({
-      data: data(),
-      columns: columnDefs as any,
-      getCoreRowModel: getCoreRowModel(),
-      getSortedRowModel: getSortedRowModel(),
-      getRowId: (r: Row) => String(r.id),
-    }))
-    tableAccessor = table
-    return h('table', {}, h('tbody', {}, () =>
-      h(For, { each: () => table().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
-        const rowId = row.id
-        return h('tr', { 'data-rowid': rowId },
-          h(For, { each: () => row.getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
-            const colId = cell.column.id
-            return h('td', {}, () => String(flexRenderCell(table, rowId, colId)))
-          }),
-        )
-      }),
-    ))
+  const setTableAccessor = (t: () => any) => {
+    tableAccessor = t
+  }
+
+  let App: () => unknown
+  if (useCompiled) {
+    // Compile the fixture through the REAL two-stage pipeline every vite-plugin
+    // app runs: (1) Pyreon's transformJSX templates the DOM subtrees (the
+    // per-row `_tpl` + `_setAttr` + text-bind output — the N-scaling part);
+    // (2) esbuild's automatic JSX runtime lowers the REMAINING component JSX
+    // (`<For>`, the table shell) to `jsx()/jsxs()` calls, exactly as Vite's
+    // esbuild pass does with jsxImportSource '@pyreon/core'. Injection via
+    // `new Function` mirrors runtime-dom's compiler-integration tests.
+    // Relative compiler import: not a dep of @pyreon/table (bench-only usage).
+    const { transformJSX } = await import('../../../core/compiler/src/index')
+    const esbuild = await import('esbuild')
+    const jsxRuntime = await import('@pyreon/core/jsx-runtime')
+    const stage1 = transformJSX(BENCH_APP_SOURCE, 'bench-app.tsx').code
+    const stage2 = esbuild.transformSync(stage1, {
+      loader: 'tsx',
+      jsx: 'automatic',
+      jsxImportSource: '@pyreon/core',
+    }).code
+    const body = stage2.replace(/^import\s+.*$/gm, '').trim()
+    const deps: Record<string, unknown> = {
+      // runtime helpers the compiled output may reference
+      _tpl: (rd as any)._tpl,
+      _bind: (reactivity as any)._bind,
+      _bindText: (rd as any)._bindText,
+      _bindDirect: (rd as any)._bindDirect,
+      _setChild: (rd as any)._setChild,
+      _setChildAt: (rd as any)._setChildAt,
+      _mountSlot: (rd as any)._mountSlot,
+      bindPolymorphicText: (rd as any).bindPolymorphicText,
+      _applyProps: (rd as any)._applyProps,
+      _setStyle: (rd as any)._setStyle,
+      _setClass: (rd as any)._setClass,
+      _setAttr: (rd as any)._setAttr,
+      _rp: (core as any)._rp,
+      _cx: (core as any).cx,
+      _wrapSpread: (core as any)._wrapSpread,
+      h,
+      Fragment: core.Fragment,
+      jsx: (jsxRuntime as any).jsx,
+      jsxs: (jsxRuntime as any).jsxs,
+      document,
+      // fixture closure deps
+      For,
+      useTable,
+      flexRenderCell,
+      getCoreRowModel,
+      getSortedRowModel,
+      data,
+      columnDefs,
+      setTableAccessor,
+    }
+    const fn = new Function(...Object.keys(deps), `${body}\nreturn App`)
+    App = fn(...Object.values(deps)) as () => unknown
+  } else {
+    App = function AppH() {
+      const table = useTable(() => ({
+        data: data(),
+        columns: columnDefs as any,
+        getCoreRowModel: getCoreRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+        getRowId: (r: Row) => String(r.id),
+      }))
+      tableAccessor = table
+      return h('table', {}, h('tbody', {}, () =>
+        h(For, { each: () => table().getRowModel().rows, by: (r: any) => r.id }, (row: any) => {
+          const rowId = row.id
+          return h('tr', { 'data-rowid': rowId },
+            h(For, { each: () => row.getVisibleCells(), by: (c: any) => c.id }, (cell: any) => {
+              const colId = cell.column.id
+              return h('td', {}, () => String(flexRenderCell(table, rowId, colId)))
+            }),
+          )
+        }),
+      ))
+    }
+  }
+
+  // CORRECTNESS (real assertion, not a sink): one untimed mount must produce
+  // the full n×COLS cell grid with non-empty content — added when the compiled
+  // variant landed, since a broken compile that mounts nothing would otherwise
+  // post fantastic samples (the storage-bench silently-throwing-cell lesson).
+  {
+    const c = document.createElement('div')
+    const dispose = mount(h(App), c)
+    const tds = c.querySelectorAll('td')
+    if (tds.length !== n * COLS) {
+      throw new Error(
+        `[correctness] pyreon${useCompiled ? '-tpl' : '-h'} mount: expected ${n * COLS} tds, got ${tds.length}`,
+      )
+    }
+    const firstCell = c.querySelector('tr[data-rowid] td')
+    if (!firstCell || (firstCell.textContent ?? '') === '') {
+      throw new Error(`[correctness] pyreon${useCompiled ? '-tpl' : '-h'} mount: empty first cell`)
+    }
+    if (typeof dispose === 'function') dispose()
   }
 
   if (scenario === 'mount') {
@@ -253,12 +382,13 @@ async function pyreonSamples(n: number, scenario: Scenario): Promise<number[]> {
 }
 
 type Scenario = 'mount' | 'update-1cell' | 'replace' | 'sort'
-type Variant = 'react-naive' | 'react-memo-row' | 'pyreon'
+type Variant = 'react-naive' | 'react-memo-row' | 'pyreon-tpl' | 'pyreon-h'
 const SCENARIOS: Scenario[] = ['mount', 'update-1cell', 'replace', 'sort']
 const SIZES = [100, 1000] as const
 
 async function runOne(variant: Variant, n: number, scenario: Scenario): Promise<number[]> {
-  if (variant === 'pyreon') return pyreonSamples(n, scenario)
+  if (variant === 'pyreon-tpl') return pyreonSamples(n, scenario, true)
+  if (variant === 'pyreon-h') return pyreonSamples(n, scenario, false)
   return reactSamples(n, variant === 'react-memo-row', scenario)
 }
 
@@ -303,12 +433,16 @@ console.log(`(both wrap @tanstack/table-core@8.21.3; ${COLS} columns; ratio = re
 const pad = (s: string, w: number) => s.padEnd(w)
 const padL = (s: string, w: number) => s.padStart(w)
 console.log(
-  `${pad('scenario', 16)} ${padL('N', 5)}   ${padL('pyreon', 9)} ${padL('rt-naive', 9)} ${padL('rt-memo', 9)}   ${padL('vs naive', 16)} ${padL('vs memo-row', 16)}`,
+  `${pad('scenario', 16)} ${padL('N', 5)}   ${padL('pyr-tpl', 9)} ${padL('pyr-h()', 9)} ${padL('rt-naive', 9)} ${padL('rt-memo', 9)}   ${padL('vs naive', 16)} ${padL('vs memo-row', 16)}`,
 )
-console.log('─'.repeat(100))
+console.log('─'.repeat(112))
 for (const scenario of SCENARIOS) {
   for (const n of SIZES) {
-    const p = runCell('pyreon', n, scenario)
+    // pyr-tpl (the REAL compiled output every vite-plugin app ships) is the
+    // PRIMARY cell the ratio columns compare against; pyr-h() is shown for
+    // transparency (the runtime-VNode path this bench used to self-handicap on).
+    const p = runCell('pyreon-tpl', n, scenario)
+    const ph = runCell('pyreon-h', n, scenario)
     const rn = runCell('react-naive', n, scenario)
     const rm = runCell('react-memo-row', n, scenario)
     const verdict = (c: Cell) => {
@@ -318,10 +452,10 @@ for (const scenario of SCENARIOS) {
       return tie ? `🤝 ${base}` : base
     }
     console.log(
-      `${pad(scenario, 16)} ${padL(String(n), 5)}   ${padL(p.med.toFixed(3), 9)} ${padL(rn.med.toFixed(3), 9)} ${padL(rm.med.toFixed(3), 9)}   ${padL(verdict(rn), 16)} ${padL(verdict(rm), 16)}`,
+      `${pad(scenario, 16)} ${padL(String(n), 5)}   ${padL(p.med.toFixed(3), 9)} ${padL(ph.med.toFixed(3), 9)} ${padL(rn.med.toFixed(3), 9)} ${padL(rm.med.toFixed(3), 9)}   ${padL(verdict(rn), 16)} ${padL(verdict(rm), 16)}`,
     )
   }
 }
 console.log(
-  `\n(happy-dom JS+DOM-op work, NOT browser paint. Pooled median of 20-25 runs × ${CELL_REPEATS} processes per cell. rt-memo-row = idiomatic React.memo(row) on original identity + immutable updates. ratio is the portable signal.)`,
+  `\n(happy-dom JS+DOM-op work, NOT browser paint. Pooled median of 20-25 runs × ${CELL_REPEATS} processes per cell. pyr-tpl = fixture compiled through the REAL transformJSX (what vite-plugin apps ship) — the ratio columns' baseline; pyr-h() = the hand-h() runtime-VNode path (transparency). rt-memo-row = idiomatic React.memo(row) on original identity + immutable updates. ratio is the portable signal.)`,
 )
