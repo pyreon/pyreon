@@ -79,7 +79,7 @@
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@types/mdast": "^4.0.4",
-    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.8",
     "mdast-util-directive": "^3.0.0",
     "mdast-util-mdx-jsx": "^3.2.0"
   },

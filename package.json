@@ -109,8 +109,8 @@
     "@types/node": "^26.1.1",
     "@unhead/ssr": "^3.1.8",
     "@unhead/vue": "^3.1.8",
-    "@vitest/browser": "^4.1.10",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/browser": "^4.1.9",
+    "@vitest/coverage-v8": "^4.1.9",
     "@vitus-labs/tools-rolldown": "^2.6.3",
     "@vitus-labs/tools-typescript": "^2.6.3",
     "@vitus-labs/tools-vitest": "^2.6.3",
@@ -139,7 +139,7 @@
     "unhead": "^3.1.8",
     "valibot": "^1.4.2",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.9",
     "vue-router": "^5.2.0",
     "zod": "^4.4.3"
   },
@@ -153,6 +153,6 @@
   },
   "dependencies": {
     "@tanstack/query-core": "^5.101.2",
-    "@vitest/browser-playwright": "^4.1.10"
+    "@vitest/browser-playwright": "^4.1.9"
   }
 }

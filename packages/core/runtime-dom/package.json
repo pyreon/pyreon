@@ -63,7 +63,7 @@
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.8",
     "esbuild": "^0.28.0",
     "happy-dom": "^20.9.0",
     "rolldown": "^1.2.0",

@@ -53,7 +53,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.10",
+    "@vitest/browser-playwright": "^4.1.8",
     "@vitus-labs/tools-lint": "^2.6.3"
   },
   "publishConfig": {
