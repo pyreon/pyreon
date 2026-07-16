@@ -248,12 +248,12 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   popoverTargetAction?: 'toggle' | 'show' | 'hide' | undefined
   inert?: boolean | undefined
   // ARIA
-  'aria-label'?: string | (() => string) | undefined
-  'aria-hidden'?: Booleanish | (() => Booleanish) | undefined
-  'aria-disabled'?: Booleanish | (() => Booleanish) | undefined
-  'aria-expanded'?: Booleanish | (() => Booleanish) | undefined
-  'aria-selected'?: Booleanish | (() => Booleanish) | undefined
-  'aria-checked'?: Booleanish | 'mixed' | (() => Booleanish | 'mixed') | undefined
+  'aria-label'?: string | (() => string | undefined) | undefined
+  'aria-hidden'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-disabled'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-expanded'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-selected'?: Booleanish | (() => Booleanish | undefined) | undefined
+  'aria-checked'?: Booleanish | 'mixed' | (() => Booleanish | 'mixed' | undefined) | undefined
   'aria-current'?:
     | Booleanish
     | 'page'
@@ -270,7 +270,7 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   'aria-describedby'?: string | (() => string | undefined) | undefined
   'aria-labelledby'?: string | undefined
   'aria-placeholder'?: string | undefined
-  'aria-required'?: Booleanish | (() => Booleanish) | undefined
+  'aria-required'?: Booleanish | (() => Booleanish | undefined) | undefined
   'aria-invalid'?:
     | Booleanish
     | 'grammar'
@@ -288,7 +288,7 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   'aria-multiline'?: Booleanish | undefined
   'aria-multiselectable'?: Booleanish | undefined
   'aria-orientation'?: 'horizontal' | 'vertical' | undefined
-  'aria-readonly'?: Booleanish | (() => Booleanish) | undefined
+  'aria-readonly'?: Booleanish | (() => Booleanish | undefined) | undefined
   'aria-sort'?: 'none' | 'ascending' | 'descending' | 'other' | undefined
   'aria-autocomplete'?: 'none' | 'inline' | 'list' | 'both' | undefined
   'aria-colcount'?: number | undefined
