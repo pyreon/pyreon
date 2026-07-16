@@ -1981,6 +1981,12 @@ function emitSwiftDecl(
   if (d.kind === 'notifications') {
     return `@State private var ${swiftIdent(d.name)} = PyreonNotifications()`
   }
+  // M3.5: `const bio = useBiometrics()` → a PyreonBiometrics instance. Its
+  // `authenticate(_:)` is async; consumers `await bio.authenticate(...)` inside
+  // an `async` handler (the M4.5 Task {} wrap). LAContext needs no Context arg.
+  if (d.kind === 'biometrics') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonBiometrics()`
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`
@@ -2604,6 +2610,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
       return String(e.value)
     case 'identifier':
       return swiftIdent(e.name)
+    case 'await':
+      // M4.5: `await x.method()` — emit the `await` keyword before the awaited
+      // expression. Only reachable inside an `async` arrow, whose action
+      // emitter wraps the body in a `Task { … }` async scope.
+      return `await ${emitSwiftExpr(e.expr, indent)}`
     case 'call': {
       // `Object.keys(<object-typed expr>)` → static `[String]` of the
       // struct field names. A synthesized struct's keys are statically
@@ -4578,8 +4589,19 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
       // the condition to `if t != nil`. Restored after, so the seeding is
       // scoped to this body (re-entrant-safe for nested handlers).
       const savedLocals = seedHandlerLocals(inlinedStmts, _exprInferCtx)
-      const lines = inlinedStmts.map((s) => pad + emitSwiftStatement(s, indent + 2)).join('\n')
+      // M4.5: an `async () => { … await … }` handler wraps its body in a
+      // `Task { … }` so the synchronous SwiftUI action slot (`() -> Void`) can
+      // launch async work. The `await` sub-expressions emit inside it.
+      const isAsync = handler.async === true
+      const bodyIndent = isAsync ? indent + 4 : indent + 2
+      const bodyPad = ' '.repeat(bodyIndent)
+      const lines = inlinedStmts
+        .map((s) => bodyPad + emitSwiftStatement(s, bodyIndent))
+        .join('\n')
       _exprInferCtx.locals = savedLocals
+      if (isAsync) {
+        return `{\n${pad}Task {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
+      }
       return `{\n${lines}\n${' '.repeat(indent)}}`
     }
     // Round-1 audit fix: empty arrow body `() => {}` parses (see
@@ -4590,6 +4612,11 @@ function emitSwiftAction(handler: ExprIR, indent: number): string {
     // fail swiftc). Emit a truly empty closure instead.
     if (handler.body.kind === 'literal' && handler.body.value === '') {
       return '{ }'
+    }
+    // M4.5: single-expression async handler (`async () => await x.method()`)
+    // still needs the `Task { … }` async scope.
+    if (handler.async === true) {
+      return `{ Task { ${emitSwiftExpr(handler.body, indent)} } }`
     }
     return `{ ${emitSwiftExpr(handler.body, indent)} }`
   }
