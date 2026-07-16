@@ -225,12 +225,12 @@ type RenderFn = (rows: RowData[]) => string | Promise<string>
 
 const TMP = join(import.meta.dir, '.ssr-bench-tmp')
 
-async function setupPyreon(): Promise<RenderFn> {
+async function setupPyreon(ssrTemplate = false): Promise<RenderFn> {
   const { transformJSX } = await import('@pyreon/compiler')
   const esbuild = await import('esbuild')
   const core = await import('@pyreon/core')
   const { renderToString } = await import('@pyreon/runtime-server')
-  const stage1 = transformJSX(PYREON_SRC, 'ssr-app.tsx', { ssr: true }).code
+  const stage1 = transformJSX(PYREON_SRC, 'ssr-app.tsx', { ssr: true, ssrTemplate }).code
   const stage2 = esbuild.transformSync(stage1, {
     loader: 'tsx',
     jsx: 'automatic',
@@ -239,6 +239,7 @@ async function setupPyreon(): Promise<RenderFn> {
   const body = stage2.replace(/^import\s+.*$/gm, '').trim()
   const jsxRuntime = await import('@pyreon/core/jsx-runtime')
   const coreAny = core as unknown as Record<string, unknown>
+  const rts = (await import('@pyreon/runtime-server')) as unknown as Record<string, unknown>
   const deps: Record<string, unknown> = {
     h: core.h,
     Fragment: core.Fragment,
@@ -248,6 +249,13 @@ async function setupPyreon(): Promise<RenderFn> {
     _cx: coreAny.cx,
     jsx: (jsxRuntime as Record<string, unknown>).jsx,
     jsxs: (jsxRuntime as Record<string, unknown>).jsxs,
+    _ssr: rts._ssr,
+    _ssrItem: rts._ssrItem,
+    _ssrChildren: rts._ssrChildren,
+    _ssrAttr: rts._ssrAttr,
+    _ssrAttrGen: rts._ssrAttrGen,
+    _ssrAttrUrl: rts._ssrAttrUrl,
+    _esc: rts._esc,
     NAV,
   }
   const fn = new Function(...Object.keys(deps), `${body}\nreturn App`)
@@ -315,7 +323,8 @@ async function setupSvelte(): Promise<RenderFn> {
 }
 
 const FRAMEWORKS = {
-  pyreon: setupPyreon,
+  pyreon: () => setupPyreon(false),
+  'pyreon-ssrtpl': () => setupPyreon(true),
   react: setupReact,
   vue: setupVue,
   svelte: setupSvelte,
