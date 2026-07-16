@@ -18,6 +18,7 @@
     "@pyreon/flow": "workspace:*",
     "@pyreon/form": "workspace:*",
     "@pyreon/head": "workspace:*",
+    "@pyreon/hooks": "workspace:*",
     "@pyreon/hotkeys": "workspace:*",
     "@pyreon/machine": "workspace:*",
     "@pyreon/permissions": "workspace:*",

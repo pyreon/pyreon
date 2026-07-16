@@ -371,6 +371,8 @@ const { hovered, props } = useHover()
 >Hover me</div>
 ```
 
+<Example file="./examples/hooks/usehover-color-tiles" title="useHover — hover to color the tiles" />
+
 ### Tooltip Example
 
 ```tsx
@@ -491,6 +493,8 @@ useClickOutside(
   },
 )
 ```
+
+<Example file="./examples/hooks/useclickoutside-dismiss-panel" title="useClickOutside — press outside to dismiss" />
 
 ### Dropdown Menu Example
 
