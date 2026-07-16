@@ -226,6 +226,75 @@ describe('@pyreon/store — patch() exception safety', () => {
     api.dispose()
   })
 
+  it('a raw field.subscribe listener still fires during a with-subscriber patch (multi-listener fallback)', () => {
+    // With a user listener sharing the field's subscriber set (size 2), the
+    // sole-subscriber O(1) suspend fast path must NOT engage — only the
+    // store's own detector is silenced (per-listener fallback), and the raw
+    // listener is notified through the batch queue exactly as before.
+    const use = defineStore('sole-fallback-raw', () => ({ a: signal(0), b: signal(0) }))
+    const api = use()
+    const muts: MutationInfo[] = []
+    api.subscribe((m) => muts.push(m))
+    let rawFired = 0
+    const off = api.store.a.subscribe(() => rawFired++)
+
+    api.patch({ a: 1, b: 2 })
+    expect(rawFired).toBe(1) // user listener heard the write
+    expect(muts).toHaveLength(1) // store notification still exactly one
+    expect(muts[0]!.events).toHaveLength(2)
+    off()
+    api.dispose()
+  })
+
+  it('a mid-patch store-unsubscribe (detector teardown) cannot suspend a USER listener left sole on a field', () => {
+    // The detectorEpoch guard's load-bearing spec: a hostile patch-object
+    // getter unsubscribes the LAST store subscriber mid-patch, which
+    // deactivates the per-field detectors — leaving a raw user listener as
+    // the SOLE `_s` entry on `b`. Without the epoch guard, the sole-subscriber
+    // swap would detach the USER's listener for `b`'s write (a silently
+    // missed notification). With it, the loop falls back to the per-listener
+    // suspend (a no-op for the already-removed detector) and the user
+    // listener is notified — identical to the pre-optimization behavior.
+    const use = defineStore('sole-epoch-guard', () => ({ a: signal(0), b: signal(0) }))
+    const api = use()
+    const offStore = api.subscribe(() => {})
+    let userFired = 0
+    const offUser = api.store.b.subscribe(() => userFired++)
+
+    api.patch({
+      get a(): number {
+        offStore() // last store subscriber leaves → detectors deactivate → epoch bump
+        return 1
+      },
+      b: 2,
+    })
+
+    expect(api.store.a()).toBe(1)
+    expect(api.store.b()).toBe(2)
+    expect(userFired).toBe(1) // pre-guard: 0 — the swap suspended the user's listener
+    offUser()
+    api.dispose()
+  })
+
+  it('the detach machinery survives repeated patch cycles (swap/restore is idempotent across patches)', () => {
+    const use = defineStore('sole-multi-cycle', () => ({ a: signal(0), b: signal(0) }))
+    const api = use()
+    const muts: MutationInfo[] = []
+    api.subscribe((m) => muts.push(m))
+
+    for (let n = 1; n <= 5; n++) api.patch({ a: n, b: n * 10 })
+    expect(muts).toHaveLength(5)
+    expect(muts.every((m) => m.type === 'patch' && m.events.length === 2)).toBe(true)
+
+    // Detector still live after the swap cycles: direct writes notify.
+    muts.length = 0
+    api.store.a.set(99)
+    expect(muts).toHaveLength(1)
+    expect(muts[0]!.type).toBe('direct')
+    expect(muts[0]!.events).toEqual([{ key: 'a', oldValue: 5, newValue: 99 }])
+    api.dispose()
+  })
+
   it('re-entrant patch writes still merge into the single notification', () => {
     const use = defineStore('exc-happy-reentrant', () => ({ a: signal(0), c: signal(0) }))
     const api = use()

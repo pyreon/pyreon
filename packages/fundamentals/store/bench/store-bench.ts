@@ -41,12 +41,16 @@
  * honest vanilla-store numbers, not its React render path.
  *
  * HONEST READ of the numbers (don't cherry-pick): Pyreon wins the hot path
- * (per-field dispatch + write→notify) and ties Zustand on read, but LOSES to
- * Zustand on `setup` (Pyreon's per-field signals + global registry vs Zustand's
- * bare closure) and on with-subscriber `patch` (Pyreon's per-key mutation-event
- * model vs Zustand's single shallow merge). Both losses are disclosed in the
- * table notes. Pyreon dominates Jotai's vanilla store everywhere because the
- * atom-state-map indirection is heavy per get/set.
+ * (per-field dispatch + write→notify + both patch shapes) and ties Zustand on
+ * read, but LOSES to Zustand on `setup` (Pyreon's per-field signals + global
+ * registry vs Zustand's bare closure) — the one disclosed loss. The
+ * with-subscriber `patch` row flipped from a 1.7× loss to a win when the
+ * per-key detector suspension moved to the O(1) `_suspendSoleSubscriber` Set
+ * swap (the function-key Set delete/add hashing was ~25% of the old path) +
+ * a cached batch closure — the per-key `{key,oldValue,newValue}` event model
+ * itself is NOT the bottleneck it was believed to be. Pyreon dominates
+ * Jotai's vanilla store everywhere because the atom-state-map indirection is
+ * heavy per get/set.
  */
 process.env.NODE_ENV = 'production'
 
@@ -271,7 +275,7 @@ const OPS: Record<string, OpSpec> = {
     },
   },
   'patch 2 fields (with subscriber)': {
-    note: 'REALISTIC — a listener is attached, so every lib does its full notify path. Pyreon does MORE per notify (per-key {key,oldValue,newValue} events + state snapshot vs Zustand\'s single shallow merge + (state, prevState)). Jotai sets 2 atoms.',
+    note: 'REALISTIC — a listener is attached, so every lib does its full notify path. Pyreon still does MORE per notify (per-key {key,oldValue,newValue} events + state snapshot vs Zustand\'s single shallow merge + (state, prevState)) yet wins via the O(1) sole-subscriber detector suspension + cached batch closure. Jotai sets 2 atoms.',
     make: () => {
       const p = makePyreon()
       const z = makeZustand()

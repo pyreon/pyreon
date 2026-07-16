@@ -2,7 +2,13 @@ import { batch } from '../batch'
 import { computed } from '../computed'
 import { onSignalUpdate } from '../debug'
 import { effect } from '../effect'
-import { _resumeSubscriber, _suspendSubscriber, signal } from '../signal'
+import {
+  _resumeSoleSubscriber,
+  _resumeSubscriber,
+  _suspendSoleSubscriber,
+  _suspendSubscriber,
+  signal,
+} from '../signal'
 
 describe('signal', () => {
   test('reads initial value', () => {
@@ -537,5 +543,104 @@ describe('_suspendSubscriber / _resumeSubscriber', () => {
     _resumeSubscriber(s, listener)
     s.set(1)
     expect(fired).toBe(1)
+  })
+})
+
+describe('_suspendSoleSubscriber / _resumeSoleSubscriber', () => {
+  test('sole subscriber: suspend detaches the whole set (O(1) swap); resume restores it', () => {
+    const s = signal(0)
+    let fired = 0
+    const listener = () => {
+      fired++
+    }
+    s.subscribe(listener)
+
+    const saved = _suspendSoleSubscriber(s)
+    expect(saved).not.toBeNull() // sole subscriber → fast path taken
+    s.set(1)
+    expect(fired).toBe(0) // suspended — did not fire
+
+    _resumeSoleSubscriber(s, saved as Set<() => void>, listener)
+    s.set(2)
+    expect(fired).toBe(1) // restored
+  })
+
+  test('resume restores the SAME Set object (identity preserved for verify-mode dep reuse)', () => {
+    const s = signal(0)
+    const listener = () => {}
+    s.subscribe(listener)
+
+    const saved = _suspendSoleSubscriber(s) as Set<() => void>
+    _resumeSoleSubscriber(s, saved, listener)
+    // Suspend again — the detached set must be the ORIGINAL object, not a copy.
+    const savedAgain = _suspendSoleSubscriber(s)
+    expect(savedAgain).toBe(saved)
+    _resumeSoleSubscriber(s, savedAgain as Set<() => void>, listener)
+  })
+
+  test('returns null when the signal has no subscriber set (caller must fall back)', () => {
+    const s = signal(0)
+    expect(_suspendSoleSubscriber(s)).toBeNull()
+  })
+
+  test('returns null when >1 subscriber shares the set (caller must fall back)', () => {
+    const s = signal(0)
+    let a = 0
+    let b = 0
+    const la = () => {
+      a++
+    }
+    s.subscribe(la)
+    s.subscribe(() => {
+      b++
+    })
+
+    expect(_suspendSoleSubscriber(s)).toBeNull() // multi → no swap
+    // The fallback pair still works and siblings are unaffected.
+    _suspendSubscriber(s, la)
+    s.set(1)
+    expect(a).toBe(0)
+    expect(b).toBe(1)
+    _resumeSubscriber(s, la)
+  })
+
+  test('a NEW listener subscribing during the suspension window is not clobbered by resume', () => {
+    const s = signal(0)
+    let ours = 0
+    let theirs = 0
+    const listener = () => {
+      ours++
+    }
+    s.subscribe(listener)
+
+    const saved = _suspendSoleSubscriber(s) as Set<() => void>
+    expect(saved).not.toBeNull()
+    // A newcomer subscribes while `_s` is detached — `_subscribe` lazily
+    // creates a fresh Set (the exact shape a wrapped signal's `set` side-effect
+    // could produce mid-patch).
+    s.subscribe(() => {
+      theirs++
+    })
+
+    _resumeSoleSubscriber(s, saved, listener)
+    s.set(1)
+    expect(ours).toBe(1) // our listener folded back in
+    expect(theirs).toBe(1) // newcomer's subscription survived the resume
+  })
+
+  test('during the window a write to a signal with no other channels is silent (no throw, no notify)', () => {
+    const s = signal(0)
+    let fired = 0
+    const listener = () => {
+      fired++
+    }
+    s.subscribe(listener)
+
+    const saved = _suspendSoleSubscriber(s) as Set<() => void>
+    // `_s === null` → the write takes _set's no-subscriber early return.
+    expect(() => s.set(5)).not.toThrow()
+    expect(s.peek()).toBe(5)
+    expect(fired).toBe(0)
+    _resumeSoleSubscriber(s, saved, listener)
   })
 })
