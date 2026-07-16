@@ -315,6 +315,44 @@ describe('compiler integration — _setAttr null/boolean-aria normalization', ()
     expect(input.hasAttribute('aria-invalid')).toBe(false)
   })
 
+  // Regression (upstream report, 2026-07): a BARE IDENTIFIER holding an
+  // accessor — `aria-selected={active}` where `active` is a function — reaches
+  // `_setAttr` as the raw function (the compiler cannot prove it's callable;
+  // only syntactically-visible functions/signal calls get wrapped). The h()
+  // path (`applyProp`) and SSR (`renderProp`) both resolve callables; the
+  // template path stringified the CLOSURE SOURCE into the attribute (also an
+  // SSR↔client hydration mismatch). `applyAttrProp` now resolves function
+  // values first. Bisect: revert its function branch → both specs below fail
+  // with the attribute containing "() =>".
+  it('aria-selected={accessor} — a bare identifier holding a function resolves to its value', () => {
+    const accessor = () => 'true' as const
+    const { container } = compileAndMount(
+      '<div><button aria-selected={accessor}>x</button></div>',
+      { accessor },
+    )
+    const btn = container.querySelector('button')!
+    expect(btn.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('aria-selected={props.active} holding an accessor — tracks its signal through the _bind frame', () => {
+    const on = signal(false)
+    const active = () => (on() ? 'true' : undefined)
+    const { container } = compileComponent(
+      'const Probe = (props) => <div><button aria-selected={props.active}>x</button></div>',
+      { active },
+    )
+    const btn = container.querySelector('button')!
+    // undefined branch → attribute ABSENT (function resolves, then the null
+    // branch removes — never the stringified closure).
+    expect(btn.hasAttribute('aria-selected')).toBe(false)
+
+    on.set(true)
+    expect(btn.getAttribute('aria-selected')).toBe('true')
+
+    on.set(false)
+    expect(btn.hasAttribute('aria-selected')).toBe(false)
+  })
+
   it('hidden={cond} — boolean false is ABSENT (not hidden="false"), true is present', () => {
     const off = compileAndMount('<div hidden={cond}>a</div>', { cond: false })
     const divOff = off.container.querySelector('div')!
