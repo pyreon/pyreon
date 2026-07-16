@@ -2017,6 +2017,31 @@ export function transformJSX_JS(
         isStableReference(expr) &&
         !referencesSignalVar(expr)
       ) {
+        // #2348: a stable reference whose root is the component's PROPS param
+        // (`{props.title}`) — or a prop-derived const the inlining pass
+        // rewrites into one — is GETTER-BACKED: reading it once at jsx() time
+        // fires the compiler-emitted `_rp` getter eagerly and FREEZES the
+        // value, while the IDENTICAL expression as a component attr gets
+        // `_rp(() => …)` (live) and under a DOM element gets
+        // `bindPolymorphicText` (live). The "reading once captures the same
+        // value" justification below only holds for non-reactive sources, so
+        // props-backed stable refs get the `() => expr` accessor (the same
+        // shape signal-call children already arrive in). Plain stable refs
+        // (module consts, loop items, locals) keep the bare carve-out that
+        // protects structural children consumers (kinetic). Both branches
+        // operate on the type-UNWRAPPED expression (casts are runtime-erased;
+        // keeps both backends' slicers byte-identical under `as`/`!`).
+        const propBacked =
+          readsFromProps(unwrapTypeLayers(expr)) || referencesPropDerived(unwrapTypeLayers(expr))
+        if (propBacked) {
+          const start = expr.start as number
+          const end = expr.end as number
+          const unwrapped = unwrapTypeLayers(expr)
+          const sliced = sliceExpr(unwrapped)
+          replacements.push({ start, end, text: `() => ${sliced}` })
+          lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
+          return
+        }
         // Skip the carve-out for signal references — `<Comp>{count}</Comp>`
         // (bare signal identifier) is the user's deliberate "make this
         // reactive at the call site" pattern. Auto-call + wrap converts to

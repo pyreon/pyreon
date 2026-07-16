@@ -795,6 +795,31 @@ const rows = items.map((i) => <li>{i}</li>);  // -> mounts each <li>
         'Same family as the SVG-namespace `_tpl` fix: an SVG-rooted template string (`<g><path…`) was parsed as HTML and rendered nothing. Both ship together — flow edges need the namespace fix AND the `_setClass` fix to render.',
     }),
   },
+  {
+    // #2348 — component-child {props.x} frozen on PRE-fix compilers. The
+    // stable-reference carve-out emitted props-backed reads BARE in component
+    // CHILD position: the jsx() runtime fired the compiler-emitted `_rp`
+    // getter once and the child froze, while the identical expression as a
+    // component ATTR (`_rp(() => …)`) or under a DOM element
+    // (`bindPolymorphicText`) stayed live. Fixed: props-backed stable refs
+    // (props-member reads, splitProps holders, prop-derived consts) now emit
+    // the `() => expr` accessor in child position; plain stable refs stay
+    // bare. This entry teaches the RESIDUAL for apps pinned to older
+    // compilers, where the accessor form is the manual fix.
+    pattern:
+      /(child(ren)?|component).*(frozen|stale|not.*(updat|react)|stuck)|(\{props\.[a-zA-Z_$][\w$]*\}).*(frozen|stale|not.*updat)|(frozen|stale).*(component.*child|\{props\.)/i,
+    diagnose: () => ({
+      cause:
+        'A bare `{props.x}` (or a prop-derived const) as a COMPONENT child was emitted without an accessor wrap on compilers before the #2348 fix — the automatic JSX runtime read the reactive-prop getter ONCE at jsx() time, freezing the child, while the identical expression as a component attr (`label={props.x}`) stayed live via `_rp(() => …)`. The counter-intuitive split: the same `{props.x}` under a DOM element was live too.',
+      fix: 'Upgrade `@pyreon/compiler` (the component-child props-backed stable-reference fix, issue #2348) — `{props.x}` in component-child position now compiles to the live accessor automatically. If you cannot upgrade, write the accessor form explicitly: `<Comp>{() => props.x}</Comp>` (and for prop-derived consts, `<Comp>{() => myDerived}</Comp>`).',
+      fixCode: `// Pinned-compiler workaround — make the child an explicit accessor:
+const B = (props) => <Heading label={props.title}>{() => props.title}</Heading>
+// After upgrading, the bare form is live automatically:
+const B = (props) => <Heading label={props.title}>{props.title}</Heading>`,
+      related:
+        'Component ATTRS and DOM-element children were always live — only the component-CHILD position was frozen. Plain (non-props) stable refs are still emitted bare deliberately: structural children consumers (kinetic-style VNode iteration) rely on `resolveChildren` for function children.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

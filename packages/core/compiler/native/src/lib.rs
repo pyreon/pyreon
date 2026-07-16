@@ -4481,10 +4481,34 @@ fn handle_jsx_expression_child(container: &JSXExpressionContainer, ctx: &mut Ctx
         // wrapping `{children}` as `() => h.children` in component child
         // position breaks libraries that iterate / cloneVNode children
         // directly.
+        // #2348: a stable reference whose root is the component's PROPS param
+        // (`{props.title}`) — or a prop-derived const the inlining pass
+        // rewrites into one — is GETTER-BACKED: reading it once at jsx() time
+        // fires the `_rp` getter eagerly and FREEZES the value, while the
+        // identical expression as a component attr gets `_rp(() => …)` (live).
+        // `accesses_props` covers both halves (props-member reads + prop-
+        // derived identifier refs) — mirrors the JS backend's
+        // `!readsFromProps(expr) && !referencesPropDerived(expr)`. Such reads
+        // fall through to `wrap_expr` (the `() => expr` accessor). Plain
+        // stable refs keep the bare carve-out (the kinetic children class).
         if ctx.parent_is_component_jsx_element
             && is_stable_reference(expr)
             && !references_signal_var(expr, ctx)
         {
+            // #2348: props-backed stable refs (props-member reads or
+            // prop-derived consts — `accesses_props` covers both) are
+            // GETTER-BACKED: bare emission freezes them. They get the
+            // `() => expr` accessor instead of the bare carve-out. Both
+            // branches operate on the type-UNWRAPPED expression (casts are
+            // runtime-erased; keeps both backends' slicers byte-identical
+            // under `as`/`!`). Mirrors the JS backend exactly.
+            if accesses_props(unwrap_type_layers(expr), ctx) {
+                let sp = expr.span();
+                let unwrapped = unwrap_type_layers(expr);
+                let sliced = slice_expr(unwrapped, ctx);
+                ctx.add_replacement(sp.start, sp.end, format!("() => {}", sliced));
+                return;
+            }
             // Skip the carve-out for signal references — `<Comp>{count}</Comp>`
             // (bare signal identifier) is the user's deliberate "make this
             // reactive at the call site" pattern. Auto-call + wrap converts
