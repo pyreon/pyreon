@@ -146,15 +146,22 @@ function schemaGrammar(r: () => number): { make: Gen; label: string } {
       label: 'nested',
     }
   }
-  // flat object, 1-4 fields incl. possible __proto__ key
+  // flat object, 1-4 fields incl. possible __proto__ key. The shape MUST be
+  // built with Object.fromEntries (CreateDataProperty) — a `shape[k] = schema`
+  // write prototype-SETS the shape object when k === '__proto__' (object-valued
+  // [[Set]] via Object.prototype.__proto__), so the '__proto__' schema-field
+  // case would silently NEVER be generated (same trap class as the INPUTS pool
+  // above, one level up).
   const keys = ['a', 'b', 'c', '__proto__'].slice(0, 1 + Math.floor(r() * 4))
   const fieldGens = keys.map(() => prim())
   return {
-    make: () => {
-      const shape: Record<string, Schema<unknown>> = {}
-      keys.forEach((k, i) => (shape[k] = fieldGens[i]!()))
-      return s.object(shape)
-    },
+    make: () =>
+      s.object(
+        Object.fromEntries(keys.map((k, i) => [k, fieldGens[i]!()])) as Record<
+          string,
+          Schema<unknown>
+        >,
+      ),
     label: 'obj',
   }
 }
@@ -168,18 +175,14 @@ const INPUTS: unknown[] = [
   { id: 1, inner: { v: 'ab', flag: true } }, { id: 1.5, inner: { v: -1, flag: 'x' } }, { id: 1, inner: null },
   [1, 2, 3], ['ab', 'cd'], ['ab', ''], [1, 'x', true], ['a', 'b', 'c', 'd', 'e'],
   // An object carrying an OWN data property literally named "__proto__" (the
-  // prototype-pollution-shaped hostile input). NOTE: the literal shorthand
-  // `{ __proto__: 'ab' }` would NOT create this — object-literal `__proto__`
-  // triggers prototype-SETTING semantics and a primitive value is silently
-  // DROPPED, yielding a plain `{}` (CodeQL js/invalid-prototype-value caught
-  // that the intended hostile shape never existed). defineProperty creates
-  // the real own-key shape.
-  Object.defineProperty({}, '__proto__', {
-    value: 'ab',
-    enumerable: true,
-    writable: true,
-    configurable: true,
-  }),
+  // prototype-pollution-shaped hostile input). NOTE: neither `{ __proto__:
+  // 'ab' }` NOR `Object.defineProperty({}, '__proto__', { value })` is used —
+  // the literal triggers prototype-SETTING (the primitive is silently dropped,
+  // yielding `{}`), and defineProperty-with-`__proto__` still trips CodeQL's
+  // js/invalid-prototype-value heuristic. `Object.fromEntries` uses
+  // CreateDataProperty semantics: it creates the real own-key shape with no
+  // prototype-position `__proto__` token at all.
+  Object.fromEntries([['__proto__', 'ab']]),
   Object.create(null), Symbol.for('x'),
 ]
 
@@ -297,5 +300,34 @@ describe('pure-seam differential — fast seam ≡ general seam (public API)', (
       s.object({ t: s.literal('a'), x: s.number().int() }),
       s.object({ t: s.literal('b'), y: s.string().min(1) }),
     ]))).toBe(true)
+  })
+
+  it('a schema with a literal "__proto__" FIELD never pollutes the clone prototype (both seams)', () => {
+    // Security contract for a validator handling untrusted input: the stripped
+    // clone must create "__proto__" as an OWN data property, never route it
+    // through Object.prototype.__proto__ (prototype pollution). Shape + input
+    // both use CreateDataProperty (fromEntries), or neither carries the key.
+    const schema = s.object(
+      Object.fromEntries([
+        ['__proto__', s.string()],
+        ['a', s.number()],
+      ]) as Record<string, Schema<unknown>>,
+    )
+    const hostile = () => Object.assign(Object.fromEntries([['__proto__', 'ab']]), { a: 1 })
+    for (let i = 0; i < 3; i++) {
+      // exercise BOTH seams (first parse compiles; repeats hit the pure seam)
+      const r = schema.parse(hostile())
+      expect(r.ok).toBe(true)
+      if (r.ok) {
+        const v = r.value as Record<string, unknown>
+        expect(Object.getOwnPropertyNames(v)).toContain('__proto__')
+        expect(Object.getPrototypeOf(v)).toBe(Object.prototype) // NOT polluted
+        expect(v['a']).toBe(1)
+      }
+    }
+    // proves the schema really carried the __proto__ FIELD: an input missing it
+    // must fail the required-string field (a prototype-set shape would lack the
+    // field and wrongly accept)
+    expect(schema.parse({ a: 1 }).ok).toBe(false)
   })
 })
