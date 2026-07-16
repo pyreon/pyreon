@@ -4692,6 +4692,9 @@ fn hoist_or_wrap(expr: &Expression, ctx: &mut Ctx) {
 enum SsrMode {
     Recursed,
     MapItem,
+    /// Recursed CHILD semantics (wrap markers) but a plain-string `_ssrItem`
+    /// return — the `_ssrForKeyed` item callback (no per-row RawHtml alloc).
+    ForItem,
 }
 
 struct SsrBuf {
@@ -5322,7 +5325,7 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
     if is_self_closing(body_el) {
         return false;
     }
-    let item_call = match build_ssr_call(body_el, SsrMode::Recursed, ctx) {
+    let item_call = match build_ssr_call(body_el, SsrMode::ForItem, ctx) {
         Some(s) => s,
         None => return false,
     };
@@ -5364,7 +5367,7 @@ fn ssr_serialize_child(buf: &mut SsrBuf, child: &JSXChild, mode: SsrMode, ctx: &
             true
         }
         JSXChild::Element(el) => {
-            if mode == SsrMode::Recursed && ssr_try_for_keyed(buf, el, ctx) {
+            if mode != SsrMode::MapItem && ssr_try_for_keyed(buf, el, ctx) {
                 return true;
             }
             ssr_serialize_element(buf, el, mode, ctx)
@@ -5437,7 +5440,7 @@ fn build_ssr_call(el: &JSXElement, mode: SsrMode, ctx: &mut Ctx) -> Option<Strin
         format!(", {}", buf.holes.join(", "))
     };
     let fn_name = match mode {
-        SsrMode::MapItem => {
+        SsrMode::MapItem | SsrMode::ForItem => {
             ctx.needs_ssr_item_import = true;
             "_ssrItem"
         }

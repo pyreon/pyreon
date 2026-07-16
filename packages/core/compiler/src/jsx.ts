@@ -1458,7 +1458,11 @@ export function transformJSX_JS(
   // whole), so inside it every expression child is a PLAIN VALUE child (no
   // markers) — 'mapitem' mode emits bare holes throughout.
 
-  type SsrMode = 'recursed' | 'mapitem'
+  // 'foritem': recursed CHILD semantics (wrap markers on shouldWrap exprs)
+  // but a PLAIN-STRING return (`_ssrItem`) — used for the `_ssrForKeyed`
+  // item callback, where the per-row `RawHtml` wrap of `_ssr` is a pure
+  // alloc (the fused loop appends the string directly; bytes identical).
+  type SsrMode = 'recursed' | 'mapitem' | 'foritem'
 
   interface SsrBuf {
     statics: string[]
@@ -1857,7 +1861,7 @@ export function transformJSX_JS(
     const body = unwrapTypeLayers(cb.body)
     if (body.type !== 'JSXElement') return false
     if (isSelfClosing(body)) return false
-    const itemCall = buildSsrCall(body, 'recursed')
+    const itemCall = buildSsrCall(body, 'foritem')
     if (itemCall === null) return false
     const params = cb.params ?? []
     const paramText =
@@ -1886,7 +1890,7 @@ export function transformJSX_JS(
       return true
     }
     if (child.type === 'JSXElement') {
-      if (mode === 'recursed' && ssrTryForKeyed(buf, child)) return true
+      if (mode !== 'mapitem' && ssrTryForKeyed(buf, child)) return true
       return ssrSerializeElement(buf, child, mode)
     }
     if (child.type === 'JSXExpressionContainer') return ssrSerializeExprChild(buf, child, mode)
@@ -1930,8 +1934,8 @@ export function transformJSX_JS(
     if (!ssrSerializeElement(buf, el, mode)) return null
     const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
     const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
-    const fn = mode === 'mapitem' ? '_ssrItem' : '_ssr'
-    if (mode === 'mapitem') needsSsrItemImport = true
+    const fn = mode === 'recursed' ? '_ssr' : '_ssrItem'
+    if (fn === '_ssrItem') needsSsrItemImport = true
     return `${fn}([${staticsArr}]${holesArr})`
   }
 

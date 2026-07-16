@@ -165,7 +165,7 @@ describe('ssrTemplate — fused keyed <For> (_ssrForKeyed)', () => {
 
   test('For child emits ONE _ssrForKeyed hole — the parent skeleton compiles', () => {
     const out = ssrFast(FOR_SRC)
-    expect(out).toContain('_ssr(["<ul class=\\"list\\">", "</ul>"], _ssrForKeyed(props.rows, (r) => r.id, (r) => _ssr(')
+    expect(out).toContain('_ssr(["<ul class=\\"list\\">", "</ul>"], _ssrForKeyed(props.rows, (r) => r.id, (r) => _ssrItem(')
     expect(out).toContain('_ssrForKeyed')
     // the import rides the runtime-server preamble
     expect(out).toMatch(/import \{ [^}]*_ssrForKeyed[^}]* \} from "@pyreon\/runtime-server"/)
