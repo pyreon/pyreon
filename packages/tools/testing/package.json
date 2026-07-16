@@ -13,7 +13,12 @@
     "directory": "packages/tools/testing"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./lib/matchers.js",
+    "./lib/vitest.js",
+    "./src/matchers.ts",
+    "./src/vitest.ts"
+  ],
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "exports": {
@@ -58,10 +63,14 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
-    "@testing-library/jest-dom": "^6.0.0"
+    "@testing-library/jest-dom": "^6.0.0",
+    "vitest": ">=2.0.0"
   },
   "peerDependenciesMeta": {
     "@testing-library/jest-dom": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },
