@@ -1,5 +1,5 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { createUniqueId, splitProps } from '@pyreon/core'
+import { createUniqueId, mergeProps, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
 import { signal } from '@pyreon/reactivity'
 import { createTypeahead, typeaheadMatch } from './keyboard'
@@ -71,7 +71,7 @@ export interface TreeState {
 }
 
 export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
-  const [own] = splitProps(props, [
+  const [own, rest] = splitProps(props, [
     'data', 'value', 'defaultValue', 'onChange', 'multiple',
     'defaultExpanded', 'onExpand', 'children',
   ])
@@ -252,14 +252,22 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     isSelected: isSelectedFn,
     onKeyDown,
     visibleNodes: getVisibleNodes,
-    treeProps: () => ({
+    // Forward the component-level props (rocketstyle className/style, data-*,
+    // id…) onto the TREE CONTAINER — the element a Tree wrapper's .theme()
+    // actually describes. This primitive renders no element of its own, so
+    // without this the whole rocketstyle chain computes a class that reaches
+    // NOTHING and the component renders UNSTYLED. mergeProps (descriptor-safe)
+    // is required over object spread so a getter-shaped reactive prop is not
+    // frozen; the primitive's own ARIA is passed last and therefore wins.
+    treeProps: () =>
+      mergeProps(rest as Record<string, unknown>, {
       role: 'tree',
       // ARIA state must be a STRING enum, never a boolean — a boolean `true`
       // that bypasses the runtime aria coercion renders as presence-only
       // `aria-multiselectable=""`, which AT reads as the default (false).
       // Mirrors ComboboxBase's listbox wiring.
       'aria-multiselectable': own.multiple ? 'true' : undefined,
-    }),
+      } as Record<string, unknown>),
     getItemProps: (id: string, depth: number, hasChildren: boolean) => {
       const node = findNode(id, own.data)
       return {

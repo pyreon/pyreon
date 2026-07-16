@@ -1,5 +1,5 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { createUniqueId, splitProps } from '@pyreon/core'
+import { createUniqueId, mergeProps, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
 import { batch, computed, signal } from '@pyreon/reactivity'
 import { createTypeahead, typeaheadMatch } from './keyboard'
@@ -77,7 +77,7 @@ export interface ComboboxState {
 }
 
 export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
-  const [own] = splitProps(props, [
+  const [own, rest] = splitProps(props, [
     'value', 'defaultValue', 'onChange', 'options', 'multiple',
     'placeholder', 'disabled', 'children',
   ])
@@ -229,13 +229,21 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     onKeyDown,
     getLabel,
     isSelected: isSelectedFn,
-    inputProps: () => ({
+    // Forward the component-level props (rocketstyle className/style, data-*,
+    // id…) onto the INPUT — the element Combobox/MultiSelect/Autocomplete's
+    // .theme() actually describes (width/border/radius/focus ring). Without this
+    // the whole rocketstyle chain computed a class that reached no element and
+    // the components rendered UNSTYLED. mergeProps (descriptor-safe) is required
+    // over object spread so a getter-shaped reactive prop is not frozen; the
+    // primitive's own ARIA is passed last and therefore wins.
+    inputProps: () =>
+      mergeProps(rest as Record<string, unknown>, {
       role: 'combobox',
       'aria-expanded': isOpen() ? 'true' : 'false',
       'aria-controls': listboxId,
       'aria-activedescendant': getActiveDescendantId(),
       'aria-autocomplete': 'list' as const,
-    }),
+      } as Record<string, unknown>),
     listboxProps: () => ({
       role: 'listbox',
       id: listboxId,

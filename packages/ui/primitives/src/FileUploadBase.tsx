@@ -1,5 +1,5 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { splitProps } from '@pyreon/core'
+import { mergeProps, splitProps } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 
 export interface FileUploadBaseProps {
@@ -48,19 +48,14 @@ export interface FileUploadState {
    * pattern: `role="button"`, a keyboard-focusable `tabIndex`, `aria-label`,
    * and reactive `aria-disabled` / `aria-busy`, plus click + Enter/Space
    * activation that opens the native file picker.
+   *
+   * Also carries the component-level props forwarded from the consumer
+   * (rocketstyle className/style, data-*, id…), since the drop zone is the
+   * element a FileUpload wrapper's `.theme()` describes. This stays a plain
+   * OBJECT (spread it directly — `{...state.dropZoneProps}`, no call), which is
+   * why the type is widened to a record rather than kept exact.
    */
-  dropZoneProps: {
-    role: 'button'
-    tabIndex: number
-    'aria-label': string
-    'aria-disabled': 'true' | undefined
-    'aria-busy': 'true' | undefined
-    onDragOver: (e: DragEvent) => void
-    onDragLeave: (e: DragEvent) => void
-    onDrop: (e: DragEvent) => void
-    onClick: () => void
-    onKeyDown: (e: KeyboardEvent) => void
-  }
+  dropZoneProps: Record<string, unknown>
   /** Ref for the hidden file input. */
   inputRef: (el: HTMLInputElement | null) => void
   /** Props to spread on the hidden file input element. */
@@ -74,7 +69,7 @@ export interface FileUploadState {
 }
 
 export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
-  const [own] = splitProps(props, [
+  const [own, rest] = splitProps(props, [
     'onChange', 'accept', 'maxFiles', 'maxSize', 'disabled', 'busy', 'label', 'multiple', 'children',
   ])
 
@@ -129,7 +124,15 @@ export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
       files.set(next)
       own.onChange?.(next)
     },
-    dropZoneProps: {
+    // Forward the component-level props (rocketstyle className/style, data-*,
+    // id…) onto the DROP ZONE — the element FileUpload's .theme() actually
+    // describes (the dashed zone: border/padding/bg). This primitive renders no
+    // element of its own, so without this the whole rocketstyle chain computed a
+    // class that reached NO element and the component rendered UNSTYLED.
+    // mergeProps (descriptor-safe) is required over object spread so a
+    // getter-shaped reactive prop is not frozen — it also preserves the own
+    // getters below; the primitive's own props are passed last and therefore win.
+    dropZoneProps: mergeProps(rest as Record<string, unknown>, {
       // The drop zone is an activatable control: click or Enter/Space opens the
       // native picker (the WAI-ARIA button pattern), and it's the keyboard tab
       // stop. ARIA state that can change at runtime is exposed via getters so a
@@ -157,7 +160,7 @@ export const FileUploadBase: ComponentFn<FileUploadBaseProps> = (props) => {
           openPicker()
         }
       },
-    },
+    } as Record<string, unknown>),
     inputRef: (el) => { inputEl = el },
     inputProps: {
       type: 'file' as const,
