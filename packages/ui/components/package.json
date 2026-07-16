@@ -2,7 +2,7 @@
   "name": "@pyreon/ui-components",
   "version": "0.37.0",
   "private": true,
-  "description": "Pyreon UI component library — 58 production-ready rocketstyle components",
+  "description": "Pyreon UI component library — 67 rocketstyle components across 10 categories",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
