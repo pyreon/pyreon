@@ -11,7 +11,7 @@
  *                 `next` tag so consumers can opt in via `@pkg@next`.
  */
 
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { topoSortByWorkspaceDeps } from './publish-order'
 import { stripBunCondition, stripSrcFromFiles } from './strip-bun-condition'
@@ -433,6 +433,25 @@ if (needsBootstrap.length > 0) {
   console.warn(`\n⚠️  Needs manual bootstrap (NOT release-blocking):`)
   for (const name of needsBootstrap) {
     console.warn(`   - ${name}`)
+    // GitHub Actions annotation — shows on the RUN PAGE, not buried in the
+    // 65-package log. 0.46.0 proved a console.warn-only skip is invisible:
+    // @pyreon/rich-text was skipped from every release for 3 weeks unnoticed.
+    console.log(
+      `::warning title=First-publish bootstrap needed::${name} was NOT published — OIDC cannot create a package. From its directory: bun publish --access=public, then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml).`,
+    )
+  }
+  // Run-summary block (the Actions run's Summary tab) — same visibility goal.
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY
+  if (summaryPath) {
+    await appendFile(
+      summaryPath,
+      `\n## ⚠️ First-publish bootstrap needed (${needsBootstrap.length})\n\n` +
+        needsBootstrap.map((n) => `- \`${n}\``).join('\n') +
+        `\n\nOIDC trusted publishing cannot CREATE a package. One-time, per package:\n` +
+        `1. from the package directory: \`bun publish --access=public\` (your npm auth)\n` +
+        `2. npmjs.com → package → Settings → add a Trusted Publisher (GitHub Actions, \`pyreon/pyreon\`, \`release.yml\`)\n\n` +
+        `The post-publish \`check-published-state\` existence sweep fails until this is done.\n`,
+    )
   }
   console.warn(
     '\n   For each: from the package directory run `bun publish --access=public`',

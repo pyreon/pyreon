@@ -13,6 +13,13 @@
  *   1 — DEAD RELEASE: a `chore: version packages` commit landed but npm
  *       latest is ≥1 version behind the repo's package.json version → the
  *       publish step never completed. Loud, actionable failure.
+ *       ALSO 1 — MISSING PACKAGE: a publishable package does not exist on npm
+ *       at all (first-publish bootstrap pending). OIDC trusted publishing
+ *       cannot CREATE a package, so publish.ts warn-and-skips it — correct for
+ *       the release run, but 0.46.0 proved the skip is invisible in a 65-pkg
+ *       log: @pyreon/rich-text was silently skipped from EVERY release for 3
+ *       weeks while the docs advertised it (`npm install` never worked). The
+ *       existence sweep turns that standing state into a red, actionable run.
  *   2 — registry/network error (warn, don't false-alarm)
  *
  * Wire-up:
@@ -24,7 +31,7 @@
  *
  *   bun scripts/check-published-state.ts [--json] [--native]
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const SENTINELS = ['@pyreon/reactivity', '@pyreon/core', '@pyreon/zero'] as const
@@ -78,6 +85,49 @@ export function repoVersion(pkg: string, root: string = repoRoot): string {
     }
   }
   throw new Error(`[check-published-state] cannot locate ${pkg} in the workspace`)
+}
+
+/**
+ * Every publishable (non-private) `@pyreon/*` package in the workspace —
+ * `packages/<category>/<dir>/package.json`, two levels exactly. The native
+ * compiler binary stubs live a level deeper (`packages/core/compiler/npm/<t>/`)
+ * and are deliberately NOT enumerated: they publish via release-native.yml
+ * AFTER the JS release, so an existence sweep during release.yml's post-publish
+ * step would false-fail on them (same reasoning as the sentinel `--native` gate).
+ */
+export function enumeratePublishable(root: string = repoRoot): string[] {
+  const names: string[] = []
+  const packagesDir = join(root, 'packages')
+  for (const category of readdirSync(packagesDir)) {
+    const catDir = join(packagesDir, category)
+    let entries: string[]
+    try {
+      entries = readdirSync(catDir)
+    } catch {
+      continue // not a directory
+    }
+    for (const dir of entries) {
+      try {
+        const p = JSON.parse(
+          readFileSync(join(catDir, dir, 'package.json'), 'utf-8'),
+        ) as { name?: string; private?: boolean }
+        if (p.name?.startsWith('@pyreon/') && p.private !== true) names.push(p.name)
+      } catch {
+        /* no package.json at this level — skip */
+      }
+    }
+  }
+  return names.sort()
+}
+
+/**
+ * Pure classification for the existence sweep: packages whose npm lookup
+ * returned null have NEVER been published — the first-publish-bootstrap class.
+ */
+export function classifyExistence(
+  results: ReadonlyArray<{ pkg: string; npm: string | null }>,
+): { absent: string[] } {
+  return { absent: results.filter((r) => r.npm === null).map((r) => r.pkg) }
 }
 
 async function npmLatest(pkg: string): Promise<string | null> {
@@ -151,6 +201,55 @@ if (import.meta.main) {
     }
     console.warn(
       `[check-published-state] OK — npm latest matches the released repo version (${results[0]?.repo}) for ${results.length - unpublished.length}/${results.length} sentinels${includeNative ? ' (incl. native compiler binary)' : ''}.`,
+    )
+
+    // ── Existence sweep (the first-publish-bootstrap class) ───────────
+    // Every publishable package must EXIST on npm. OIDC cannot create a
+    // package, so publish.ts warn-and-skips first-publishes — correct for
+    // the release run, but silent: 0.46.0 shipped with @pyreon/rich-text
+    // (3 weeks of releases) and @pyreon/testing never on npm while the
+    // docs advertised both. This sweep makes that a red, actionable run
+    // wherever this script is wired (release.yml post-publish + the daily
+    // published-state.yml).
+    const all = enumeratePublishable()
+    // Bounded concurrency + one retry: 65 simultaneous fetches to the npm
+    // registry get ECONNRESET-throttled (observed live) — walk in pools of 8.
+    const sweep: Array<{ pkg: string; npm: string | null }> = []
+    for (let i = 0; i < all.length; i += 8) {
+      const batch = all.slice(i, i + 8)
+      sweep.push(
+        ...(await Promise.all(
+          batch.map(async (pkg) => {
+            try {
+              return { pkg, npm: await npmLatest(pkg) }
+            } catch {
+              await new Promise((r) => setTimeout(r, 500))
+              return { pkg, npm: await npmLatest(pkg) } // retry once; throw → outer catch (exit 2)
+            }
+          }),
+        )),
+      )
+    }
+    const { absent } = classifyExistence(sweep)
+    if (absent.length > 0) {
+      console.error(
+        `[check-published-state] MISSING PACKAGE(S) — publishable in the repo but do not exist on npm (first-publish bootstrap pending):`,
+      )
+      for (const pkg of absent) {
+        console.error(`  - ${pkg}`)
+        console.error(`::warning title=First-publish bootstrap needed::${pkg} is not on npm — OIDC cannot create a package. From its directory: bun publish --access=public (with your npm auth), then add a Trusted Publisher on npmjs.com (GitHub Actions → pyreon/pyreon → release.yml).`)
+      }
+      console.error(
+        `  OIDC trusted publishing cannot CREATE a package. One-time manual fix per package:\n` +
+          `    1. from the package directory: bun publish --access=public   (classic/granular npm token or npm login)\n` +
+          `    2. on npmjs.com → the package → Settings → add a Trusted Publisher\n` +
+          `       (GitHub Actions, repo pyreon/pyreon, workflow release.yml, no environment)\n` +
+          `  Subsequent releases publish it via OIDC like the rest of the suite.`,
+      )
+      process.exit(1)
+    }
+    console.warn(
+      `[check-published-state] existence sweep OK — all ${all.length} publishable packages exist on npm.`,
     )
   } catch (err) {
     console.error(`[check-published-state] registry/lookup error (not failing):`, err)

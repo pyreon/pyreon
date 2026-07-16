@@ -77,3 +77,44 @@ describe('check-published-state — repoVersion resolves the native binary path'
     expect(nativeBin).toBe(core)
   })
 })
+
+describe('check-published-state — existence sweep (first-publish-bootstrap class)', () => {
+  // The 0.46.0 lesson: OIDC cannot CREATE a package, publish.ts warn-and-skips
+  // first-publishes (correct — the #1153 cascade fix), but the skip was
+  // console.warn-only: @pyreon/rich-text was silently absent from npm for 3
+  // WEEKS of releases while the docs advertised it. The sweep turns
+  // "publishable in repo but absent on npm" into a red, actionable run.
+  it('enumeratePublishable: real workspace — non-private @pyreon/* at packages/*/*, no native stubs', async () => {
+    const { enumeratePublishable } = await import(
+      '../../../../../scripts/check-published-state'
+    )
+    const all = enumeratePublishable(REPO_ROOT)
+    expect(all.length).toBeGreaterThanOrEqual(60)
+    expect(all).toContain('@pyreon/core')
+    expect(all).toContain('@pyreon/rich-text') // the 3-week silent absentee
+    expect(all).toContain('@pyreon/testing') // the 0.46.0 absentee
+    expect(all).not.toContain('@pyreon/test-utils') // private
+    expect(all).not.toContain('@pyreon/manifest') // private
+    // native stubs live a level deeper and publish via release-native.yml
+    expect(all.filter((n) => n.startsWith('@pyreon/compiler-'))).toEqual([])
+  })
+
+  it('classifyExistence: null npm = never published → absent', async () => {
+    const { classifyExistence } = await import(
+      '../../../../../scripts/check-published-state'
+    )
+    const { absent } = classifyExistence([
+      { pkg: '@pyreon/core', npm: '0.46.0' },
+      { pkg: '@pyreon/rich-text', npm: null },
+      { pkg: '@pyreon/testing', npm: null },
+    ])
+    expect(absent).toEqual(['@pyreon/rich-text', '@pyreon/testing'])
+  })
+
+  it('classifyExistence: all present → empty (healthy state)', async () => {
+    const { classifyExistence } = await import(
+      '../../../../../scripts/check-published-state'
+    )
+    expect(classifyExistence([{ pkg: '@pyreon/core', npm: '0.46.0' }]).absent).toEqual([])
+  })
+})
