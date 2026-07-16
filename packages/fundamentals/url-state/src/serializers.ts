@@ -24,8 +24,13 @@ export function inferSerializer<T>(
       return {
         serialize: (v: T) => String(v),
         deserialize: (raw: string) => {
-          const n = Number(raw)
-          return (Number.isNaN(n) ? defaultValue : n) as T
+          // `+raw` is the same strict ToNumber as `Number(raw)` without the
+          // global-call site, and the `n === n` self-compare is the free NaN
+          // check (NaN is the only value that !== itself) — together they shave
+          // the two call sites off the hottest parser (measured vs nuqs).
+          // Behavior identical: ''→0, whitespace/hex per ToNumber, NaN→default.
+          const n = +raw
+          return (n === n ? n : defaultValue) as T
         },
       }
     case 'boolean':
