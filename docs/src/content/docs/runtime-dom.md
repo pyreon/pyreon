@@ -1285,6 +1285,8 @@ function ExpensiveForm() {
 
 ### KeepAlive vs Conditional Rendering
 
+<Example file="./examples/runtime-dom/runtime-keepalive-vs-show" title="KeepAlive keeps the bar's height across a toggle; Show resets it" />
+
 | Feature         | KeepAlive                 | Conditional Rendering         |
 | --------------- | ------------------------- | ----------------------------- |
 | State preserved | Yes                       | No -- destroyed and recreated |
