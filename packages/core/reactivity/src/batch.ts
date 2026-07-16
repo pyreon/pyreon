@@ -141,15 +141,67 @@ let _passGen = 1
 const _recomputes = new WeakSet<() => void>()
 const MAX_PASSES = 32
 
+// ─── Fused-cascade back-ref (`notify._c`) ────────────────────────────────────
+//
+// A LAZY computed's notify recompute is dirty-mark-only over five plain fields
+// on its read fn (`_disposed`/`_dirty`/`_d1`/`_d`/`_s`). `_markRecompute`
+// stamps that read fn onto the notify as `_c`, which lets `propagateLazyDirty`
+// walk a single-subscriber chain ITERATIVELY over the fields — per hop it
+// replaces [WeakSet.has + closure call + depth bookkeeping + re-entry] with
+// [one property read + the same field ops] (measured: the 50-deep chain's
+// set+pull dropped ~35%, from ~1.6× behind @preact/signals-core to a tie).
+// An `{ equals }` notify does MORE than dirty-marking (it books a tier-1
+// refresh), so it is deliberately NOT stamped — the walk routes `_c`-less
+// subscribers through `enqueuePendingNotification` exactly as before.
+//
+// The interface is structural (batch.ts must not import computed.ts — layer
+// order) and mirrors `ComputedFn`'s notify-relevant fields.
+interface LazyTarget {
+  _dirty: boolean
+  _disposed: boolean
+  _s: Set<() => void> | null
+  _d1: (() => void) | null
+  _d: Set<() => void> | null
+}
+interface LazyNotify {
+  (): void
+  /** @internal back-ref to the lazy computed read fn (the field carrier). */
+  _c?: LazyTarget
+}
+
 /**
  * Mark a callback as a computed NOTIFY recompute (called from `computedLazy` /
  * `computedWithEquals` at creation time). Notifies are dirty-mark-only +
  * idempotent, so `enqueuePendingNotification` and `propagateLazyDirty` run
  * them INLINE during the write's notify phase — a pure-computed cascade never
  * enters the pending queues.
+ *
+ * `target` (LAZY variant only) is the computed's read fn — stamped as
+ * `notify._c` so the dirty cascade can walk chains without calling the notify
+ * closure (see the fused-cascade comment above). The inlined walk body MUST
+ * stay in lock-step with `computedLazy`'s recompute.
  */
-export function _markRecompute(fn: () => void): void {
+export function _markRecompute(fn: () => void, target?: LazyTarget): void {
   _recomputes.add(fn)
+  if (target !== undefined) (fn as LazyNotify)._c = target
+}
+
+/**
+ * The canonical LAZY-computed notify body: mark `c` dirty (idempotent — a
+ * diamond re-visit early-returns), DEFER its direct (`_bindText`/`_bindDirect`)
+ * updaters to the batch drain (glitch-freedom — see computed.ts), and cascade
+ * into its subscribers. `computedLazy`'s per-instance notify closure delegates
+ * here (the closure exists only for its subscriber-set IDENTITY), and marked
+ * dispatch sites with the `_c` back-ref in hand call this directly — skipping
+ * the closure-call hop. `propagateLazyDirty`'s single-subscriber walk INLINES
+ * this body as its loop (deliberate fusion) — keep the two in lock-step.
+ */
+export function _markLazyAndPropagate(c: LazyTarget): void {
+  if (c._disposed || c._dirty) return
+  c._dirty = true
+  if (c._d1) enqueuePendingNotification(c._d1)
+  else if (c._d) for (const f of c._d) enqueuePendingNotification(f)
+  if (c._s !== null) propagateLazyDirty(c._s)
 }
 
 /**
@@ -403,13 +455,16 @@ export function isBatching(): boolean {
 // → a silent lost update (the tail never re-derived). 0.45.0 propagated
 // iteratively and was correct at 10,000.
 //
-// This keeps the FAST recursive hop for the common shallow case (a `_cascadeDepth`
-// counter tracks nesting) and switches to an EXPLICIT stack ONLY past
-// `MAX_CASCADE_RECURSION` — so a diamond / a depth-50 chain pays zero stack/array
-// overhead (byte-identical to #2296's inline recursion) while a genuinely deep
-// chain is chunked (recurse ~N, defer the tail, unwind, recurse ~N again) with a
-// BOUNDED live stack and no overflow. A pure recursion-only or pure-iterative
-// form was measured: pure-iterative regressed the diamond ~12% (the push/pop +
+// The SINGLE-SUBSCRIBER segment of a cascade (the deep-chain shape) is now a
+// FUSED ITERATIVE WALK over the lazy computed's fields via the `notify._c`
+// back-ref (see `_markRecompute`) — zero closure calls, zero WeakSet lookups,
+// zero JS-stack growth, at any depth. Only FAN-OUT levels (≥2 subscribers)
+// recurse: shallow levels via the FAST recursive hop (a `_cascadeDepth`
+// counter tracks nesting), switching to an EXPLICIT stack past
+// `MAX_CASCADE_RECURSION` — so a genuinely deep fan-out tree is chunked
+// (recurse ~N, defer the tail, unwind, recurse ~N again) with a BOUNDED live
+// stack and no overflow. A pure recursion-only or pure-iterative form was
+// measured: pure-iterative regressed the diamond ~12% (the push/pop +
 // re-push per hop on 4 nodes); the hybrid restores it.
 //
 // A deferred recompute popped from the stack re-enters at `_cascadeDepth === 0`,
@@ -444,6 +499,39 @@ const MAX_CASCADE_RECURSION = 500
  * cannot mutate any `_s` mid-walk.
  */
 export function propagateLazyDirty(subs: Set<() => void>): void {
+  // ── Fused single-subscriber walk ──────────────────────────────────────────
+  // The deep-chain shape (each computed has exactly ONE downstream) resolves
+  // here as a plain LOOP over the lazy computed's fields via the `notify._c`
+  // back-ref (see `_markRecompute`): per hop this replaces [WeakSet.has +
+  // notify-closure call + depth bookkeeping + `propagateLazyDirty` re-entry]
+  // with [one Set-iterator extraction + one property read + the same field
+  // ops the notify body performs]. Measured: chain-50 set+pull 1882→1219ns
+  // (ties @preact/signals-core). The walk is ITERATIVE, so it consumes zero
+  // JS stack regardless of chain length — the depth bound below is only
+  // needed for FAN-OUT levels, which still recurse.
+  //
+  // The inlined body MUST stay in lock-step with `computedLazy`'s recompute:
+  // disposed/already-dirty → stop (the notify's idempotence guard); mark
+  // dirty; DEFER direct subscribers to the drain (glitch-freedom — see
+  // computed.ts); continue into the computed's own subscribers.
+  while (subs.size === 1) {
+    const sub = subs.values().next().value as LazyNotify
+    const c = sub._c
+    if (c === undefined) {
+      // Not a lazy computed: an `{ equals }` notify (the router runs it
+      // inline; it books its tier-1 refresh itself), an effect, or a raw
+      // listener — route exactly as before.
+      enqueuePendingNotification(sub)
+      return
+    }
+    if (c._disposed || c._dirty) return
+    c._dirty = true
+    if (c._d1) enqueuePendingNotification(c._d1)
+    else if (c._d) for (const f of c._d) enqueuePendingNotification(f)
+    if (c._s === null) return
+    subs = c._s
+  }
+  // ── Fan-out (≥2 subscribers at this level) ────────────────────────────────
   // Read the module counter into a local ONCE (V8 keeps it in a register across
   // the call — cheaper than the per-hop module read/write the naive form pays);
   // bump it ONCE per call (a whole subscriber level shares one depth), not per
@@ -462,20 +550,17 @@ export function propagateLazyDirty(subs: Set<() => void>): void {
     }
   } else {
     _cascadeDepth = depth + 1
-    // Single-subscriber fast path — the deep-chain shape (each computed has
-    // exactly one downstream). Avoids the extra `for..of` iterator step.
-    if (subs.size === 1) {
-      const sub = subs.values().next().value as () => void
-      // `recompute` marks dirty (idempotent via its own `_dirty` guard — a
-      // diamond re-visit early-returns) + enqueues its direct subscribers for
-      // the drain.
-      if (_recomputes.has(sub)) sub()
-      else enqueuePendingNotification(sub)
-    } else {
-      for (const sub of subs) {
-        if (_recomputes.has(sub)) sub()
-        else enqueuePendingNotification(sub)
-      }
+    for (const sub of subs) {
+      // Marked notifies dispatch inline: a lazy notify (has `_c`) goes
+      // straight into the canonical mark body — no closure-call hop; an
+      // `{ equals }` notify (marked, no `_c`) runs as a call. The WeakSet
+      // check stays FIRST so an effect notify pays only the miss (a leading
+      // `_c` read would cost every effect a property-miss proto walk).
+      if (_recomputes.has(sub)) {
+        const c = (sub as LazyNotify)._c
+        if (c !== undefined) _markLazyAndPropagate(c)
+        else sub()
+      } else enqueuePendingNotification(sub)
     }
     _cascadeDepth = depth
   }
@@ -505,10 +590,14 @@ export function enqueuePendingNotification(notify: () => void): void {
     // Propagate dirtiness INLINE (idempotent via the computed's own `_dirty`
     // guard). A pure lazy-computed cascade (diamond, deep chain) resolves
     // entirely here, never enqueuing, so `drainQueuesLocked` isn't even
-    // entered; an `{ equals }` notify books its refresh into tier-1 itself
-    // (`enqueueEagerRefresh`). Effects reached downstream still enqueue
-    // normally.
-    notify()
+    // entered — and a LAZY notify (carries the `_c` back-ref) dispatches
+    // straight into the canonical mark body, skipping the closure-call hop.
+    // An `{ equals }` notify (marked, no `_c`) books its refresh into tier-1
+    // itself (`enqueueEagerRefresh`) and still runs as a call. Effects
+    // reached downstream enqueue normally (they never enter this branch).
+    const c = (notify as LazyNotify)._c
+    if (c !== undefined) _markLazyAndPropagate(c)
+    else notify()
     return
   }
   const q = notify as QueuedEffect
