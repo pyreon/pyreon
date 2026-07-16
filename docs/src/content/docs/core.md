@@ -999,6 +999,8 @@ Conditionally render children based on a reactive condition. The `when` prop acc
 
 For reactive cases, pass an accessor (`when={() => signal()}`) so the framework re-evaluates on signal change. The value form (`when={true}`, `when={signal()}`) is accepted for static booleans and to gracefully handle the compiler's signal auto-call (which rewrites bare `when={mySignal}` to `when={mySignal()}`).
 
+<Example file="./examples/core/core-show-toggle" title="Show — toggle swaps the panel for the fallback" />
+
 <PropTable
   title="Show Props"
   props={[
@@ -1128,6 +1130,8 @@ function NotificationBanner(props: { notification: () => Notification }) {
 ### For
 
 Efficient reactive list rendering with keyed reconciliation. Unlike a plain `.map()`, `For` never re-creates VNodes for existing keys -- only new keys invoke the render function. Structural mutations (swap, sort, filter) are O(n) key scan + O(k) DOM moves where k is the number of actually displaced entries.
+
+<Example file="./examples/core/core-for-list" title="For — add/remove tiles, keyed reconciliation touches only that row" />
 
 <PropTable
   title="For Props"
