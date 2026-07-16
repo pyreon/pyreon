@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 import { SwitchBase } from '@pyreon/ui-primitives'
 
 const Switch = el.config({ name: 'Switch', component: SwitchBase })
@@ -14,18 +14,11 @@ const Switch = el.config({ name: 'Switch', component: SwitchBase })
     hover: {
       backgroundColor: t.color.system.base[400],
     },
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-    },
+    focus: focusRing(t),
     active: {
       backgroundColor: t.color.system.primary.base,
     },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .sizes(() => ({
     small: { width: '28px', height: '16px' },

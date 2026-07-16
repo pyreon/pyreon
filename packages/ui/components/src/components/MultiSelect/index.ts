@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRingTone } from '../../factory'
 import { ComboboxBase } from '@pyreon/ui-primitives'
 
 const MultiSelect = el.config({ name: 'MultiSelect', component: ComboboxBase })
@@ -19,15 +19,8 @@ const MultiSelect = el.config({ name: 'MultiSelect', component: ComboboxBase })
     flexWrap: 'wrap',
     alignItems: 'center',
     gap: t.spacing.xxxSmall,
-    focus: {
-      borderColor: t.color.system.primary.base,
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      backgroundColor: t.color.system.base[50],
-    },
+    focus: { ...focusRingTone(t, 'primary'), borderColor: t.color.system.primary.base },
+    disabled: { ...disabledState(), backgroundColor: t.color.system.base[50] },
     placeholder: {
       color: t.color.system.base[400],
     },

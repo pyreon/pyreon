@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { el, focusRing } from '../../factory'
 
 const Stepper = el
   .config({ name: 'Stepper' })
@@ -20,11 +20,7 @@ export const Step = el
     fontSize: t.fontSize.small,
     color: t.color.system.base[500],
     transition: t.transition.fast,
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-      borderRadius: t.borderRadius.small,
-    },
+    focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
   }))
   .states((t) => ({
     active: {

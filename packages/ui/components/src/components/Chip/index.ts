@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 
 const Chip = el
   .config({ name: 'Chip' })
@@ -9,15 +9,8 @@ const Chip = el
     cursor: 'pointer',
     transition: t.transition.fast,
     userSelect: 'none',
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    focus: focusRing(t),
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .states((t) => ({
     primary: {

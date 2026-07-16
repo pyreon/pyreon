@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 import { SliderBase } from '@pyreon/ui-primitives'
 
 const Slider = el.config({ name: 'Slider', component: SliderBase })
@@ -9,15 +9,8 @@ const Slider = el.config({ name: 'Slider', component: SliderBase })
     position: 'relative',
     cursor: 'pointer',
     transition: t.transition.fast,
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    focus: focusRing(t),
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .sizes(() => ({
     small: { height: '4px' },

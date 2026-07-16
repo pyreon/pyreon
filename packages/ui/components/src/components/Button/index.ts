@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 
 const Button = el
   .config({ name: 'Button' })
@@ -15,15 +15,8 @@ const Button = el
     transition: t.transition.base,
     whiteSpace: 'nowrap',
     userSelect: 'none',
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    focus: focusRing(t),
+    disabled: { ...disabledState(), pointerEvents: 'none' },
     active: {
       transform: 'scale(0.98)',
     },
@@ -134,12 +127,8 @@ export const IconButton = el
 
       color: t.color.system.dark.base,
     },
-    focus: { boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`, outline: 'none' },
-    disabled: {
-      opacity: 0.5,
-
-      cursor: 'not-allowed',
-    },
+    focus: focusRing(t),
+    disabled: disabledState(),
   }))
   .sizes((t) => ({
     small: { padding: t.spacing.xSmall },
@@ -163,12 +152,8 @@ export const CloseButton = el
 
       color: t.color.system.dark[700],
     },
-    focus: { boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`, outline: 'none' },
-    disabled: {
-      opacity: 0.5,
-
-      cursor: 'not-allowed',
-    },
+    focus: focusRing(t),
+    disabled: disabledState(),
   }))
   .sizes((t) => ({
     small: { padding: t.spacing.xxxSmall },

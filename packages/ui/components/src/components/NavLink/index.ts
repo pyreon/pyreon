@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 
 const NavLink = el
   .config({ name: 'NavLink' })
@@ -17,15 +17,8 @@ const NavLink = el
     hover: {
       backgroundColor: t.color.system.base[100],
     },
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-    },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    focus: focusRing(t),
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .states((t) => ({
     active: {

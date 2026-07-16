@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { disabledState, el, focusRing } from '../../factory'
 import { TabsBase, TabBase, TabPanelBase } from '@pyreon/ui-primitives'
 
 const Tabs = el.config({ name: 'Tabs', component: TabsBase })
@@ -41,20 +41,12 @@ export const Tab = el.config({ name: 'Tab', component: TabBase })
     hover: {
       color: t.color.system.base[700],
     },
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-      borderRadius: t.borderRadius.small,
-    },
+    focus: { ...focusRing(t), borderRadius: t.borderRadius.small },
     active: {
       borderColorBottom: t.color.system.primary.base,
       color: t.color.system.primary.text,
     },
-    disabled: {
-      opacity: 0.5,
-      cursor: 'not-allowed',
-      pointerEvents: 'none',
-    },
+    disabled: { ...disabledState(), pointerEvents: 'none' },
   }))
   .variants((t) => ({
     line: {},

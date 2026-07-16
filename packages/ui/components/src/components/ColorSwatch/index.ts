@@ -1,4 +1,4 @@
-import { el } from '../../factory'
+import { el, focusRing } from '../../factory'
 
 const ColorSwatch = el
   .config({ name: 'ColorSwatch' })
@@ -15,10 +15,7 @@ const ColorSwatch = el
     hover: {
       borderColor: t.color.system.base[400],
     },
-    focus: {
-      boxShadow: `0 0 0 3px ${t.color.system.primary[200]}`,
-      outline: 'none',
-    },
+    focus: focusRing(t),
   }))
   .sizes(() => ({
     small: { width: '24px', height: '24px' },
