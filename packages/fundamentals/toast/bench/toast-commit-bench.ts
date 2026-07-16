@@ -5,16 +5,23 @@
  * The sibling `toast-bench.ts` measures the RAW store op (no Toaster). This file
  * measures the two paths a real app actually feels:
  *
- *  1. CREATE THROUGHPUT (headless, all three) — how fast each library ingests a
- *     burst of toasts into its queue. This is the ONE op that is apples-to-apples
- *     across all three headless: sonner's `dismiss` and its update-by-id are
- *     Toaster-coupled (they only settle once a MOUNTED `<Toaster>` finishes its
- *     rAF/animation cycle — see sonner's `dismiss = (id)=> requestAnimationFrame(
- *     …)`), so a repeated dismiss / update loop accumulates sonner's store and
- *     degrades to O(N²) — NOT sonner's real per-op cost. Create is the fair
- *     common denominator, measured one burst per FRESH PROCESS so no library's
- *     module-level store carries across samples (sonner has no synchronous
- *     hard-reset).
+ *  1. CREATE COLD-START INGEST (headless, all three) — how fast each library
+ *     ingests a burst of toasts into its queue from a COLD process. This is the
+ *     ONE op that is apples-to-apples across all three headless: sonner's
+ *     `dismiss` and its update-by-id are Toaster-coupled (they only settle once
+ *     a MOUNTED `<Toaster>` finishes its rAF/animation cycle — see sonner's
+ *     `dismiss = (id)=> requestAnimationFrame(…)`), so a repeated dismiss /
+ *     update loop accumulates sonner's store and degrades to O(N²) — NOT
+ *     sonner's real per-op cost. Create is the fair common denominator,
+ *     measured one burst per FRESH PROCESS so no library's module-level store
+ *     carries across samples (sonner has no synchronous hard-reset).
+ *     HONEST LABEL (2026-07): fresh-process + 10-call warmup means the timed
+ *     burst runs JIT-UNTIRED code, so the row compares COLD-START cost (code
+ *     size on the path), not steady-state throughput — measured Pyreon decay
+ *     in this exact shape: ~3.5µs/create cold → ~0.62µs by call ~200 →
+ *     ~0.22µs deep-warm. A warmed cross-lib burst is structurally impossible
+ *     (sonner accumulation skew above), so Pyreon's steady-state number is
+ *     printed as a DISCLOSURE line (`tp:pyreon-warm` worker), never a verdict.
  *
  *  2. COMMIT (mounted Toaster, @pyreon/toast vs react-hot-toast) — the
  *     create→DOM-commit, update-in-place→DOM-commit and dismiss→DOM-commit path
@@ -73,10 +80,23 @@ const measure = (fn: () => void, { warmup = 200, iters = 500, runs = 9 } = {}): 
 const N_BURST = 50 // ≤ Pyreon's MAX_TOASTS=50 → no eviction skew
 
 // ── Create-throughput worker (headless, all three) ──────────────────────────
-async function createThroughput(lib: 'pyreon' | 'rht' | 'sonner'): Promise<number> {
-  if (lib === 'pyreon') {
+// NOTE this row is a COLD-START comparison BY CONSTRUCTION: a fresh process +
+// 10-call warmup means the timed 50-burst runs JIT-UNTIRED code (measured
+// decay for Pyreon on an idle M3 Max: ~3.5µs/create in this exact shape →
+// ~0.62µs by call ~200 → ~0.22µs deep-warm). It cannot be warmed cross-lib
+// fairly — sonner has no synchronous hard-reset, so any longer warmup
+// accumulates its store and skews its own per-create cost O(N). The
+// 'pyreon-warm' variant below reports Pyreon's steady-state number as a
+// DISCLOSURE line (hard-reset per burst makes it measurable) — it is NOT
+// cross-lib comparable and is never used in a verdict.
+async function createThroughput(lib: 'pyreon' | 'pyreon-warm' | 'rht' | 'sonner'): Promise<number> {
+  if (lib === 'pyreon' || lib === 'pyreon-warm') {
     const { toast, _reset } = await import('../src/toast')
-    for (let w = 0; w < 10; w++) toast('w' + w, { duration: 0 })
+    const warmCalls = lib === 'pyreon-warm' ? 200 : 10
+    for (let w = 0; w < warmCalls; w++) {
+      toast('w' + w, { duration: 0 })
+      if ((w + 1) % N_BURST === 0) _reset() // stay under MAX_TOASTS during long warmup
+    }
     _reset()
     const t0 = now()
     for (let i = 0; i < N_BURST; i++) toast('m' + i, { duration: 0 })
@@ -194,7 +214,7 @@ async function commit(scenario: 'create' | 'update' | 'dismiss'): Promise<{
 const WORKER = process.env.PYREON_BENCH_WORKER
 if (WORKER) {
   if (WORKER.startsWith('tp:')) {
-    const ns = await createThroughput(WORKER.slice(3) as 'pyreon' | 'rht' | 'sonner')
+    const ns = await createThroughput(WORKER.slice(3) as 'pyreon' | 'pyreon-warm' | 'rht' | 'sonner')
     process.stdout.write(JSON.stringify({ ns }))
   } else {
     const res = await commit(WORKER as 'create' | 'update' | 'dismiss')
@@ -224,6 +244,7 @@ function spawnPool<T>(key: string): T[] {
 
 const tp = {
   pyreon: median(spawnPool<{ ns: number }>('tp:pyreon').map((r) => r.ns)),
+  pyreonWarm: median(spawnPool<{ ns: number }>('tp:pyreon-warm').map((r) => r.ns)),
   rht: median(spawnPool<{ ns: number }>('tp:rht').map((r) => r.ns)),
   sonner: median(spawnPool<{ ns: number }>('tp:sonner').map((r) => r.ns)),
 }
@@ -247,7 +268,9 @@ console.log(`\nMounted/commit toast benchmark — @pyreon/toast vs react-hot-toa
 console.log(`Node ${process.version}, ${process.platform} ${process.arch}, NODE_ENV=production`)
 console.log(`Median ns/op (lower = faster). Multiplier = vs fastest in row. K=${K} fresh spawns/cell.\n`)
 
-console.log(`CREATE THROUGHPUT — burst of ${N_BURST}, fresh process per sample (all three fair)`)
+console.log(
+  `CREATE COLD-START INGEST — burst of ${N_BURST}, fresh process per sample (all three equally JIT-cold)`,
+)
 {
   const vals = [tp.pyreon, tp.rht, tp.sonner].filter((x) => !Number.isNaN(x))
   const min = Math.min(...vals)
@@ -255,10 +278,22 @@ console.log(`CREATE THROUGHPUT — burst of ${N_BURST}, fresh process per sample
   console.log(['op', 'pyreon', 'react-hot-toast', 'sonner'].map((h) => h.padEnd(18)).join(''))
   console.log('─'.repeat(72))
   console.log(
-    'create(queue)'.padEnd(18) +
+    'create(cold)'.padEnd(18) +
       cell(tp.pyreon).padEnd(18) +
       cell(tp.rht).padEnd(18) +
       cell(tp.sonner).padEnd(18),
+  )
+  console.log(
+    `\n(This row is a COLD-START comparison by construction: the 50-burst runs JIT-untired code — it cannot`,
+  )
+  console.log(
+    ` be warmed cross-lib fairly because sonner has no synchronous hard-reset (a longer warmup accumulates`,
+  )
+  console.log(
+    ` its store → O(N) skew of its own cost). Pyreon steady-state create, disclosure only, NOT cross-lib`,
+  )
+  console.log(
+    ` comparable: ${fmt(tp.pyreonWarm)}/create post-tier (200-call warmup, hard-reset per burst).)`,
   )
 }
 
