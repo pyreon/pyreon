@@ -295,6 +295,64 @@ export function _resumeSubscriber<T>(sig: Signal<T>, listener: () => void): void
 }
 
 /**
+ * @internal O(1) variant of {@link _suspendSubscriber} for the case where the
+ * caller's listener is the SOLE `subscribe()` subscriber on `sig` — the
+ * dominant shape for `@pyreon/store`'s per-field change detectors (a field
+ * signal with no user effects / raw listeners attached). Instead of a
+ * `Set.delete` (a function-key hash op — measured the single largest
+ * component of the store's with-subscriber `patch()` at ~18ns per
+ * delete/add pair per key), the WHOLE `_s` Set is detached by a field swap and
+ * handed back as a token for {@link _resumeSoleSubscriber}. Returns `null`
+ * when `_s` is absent or holds >1 subscriber — the caller MUST then fall
+ * back to `_suspendSubscriber(sig, listener)`.
+ *
+ * **PRECONDITION (caller-guaranteed, not verified):** when `_s.size === 1`,
+ * the sole element must BE the caller's listener. Verifying identity would
+ * need `Set.has` — the exact hash op this fast path exists to avoid. The
+ * store's invariant provides it: the detach path only runs while ≥1 store
+ * subscriber exists, which implies its detector is subscribed to every field
+ * signal — so a size-1 set can only contain that detector (any other
+ * listener would make it size ≥2). Callers without such an invariant must
+ * use `_suspendSubscriber`.
+ *
+ * Identity contract: the SAME Set object is restored on resume (unless a
+ * newcomer subscribed during the window — see {@link _resumeSoleSubscriber}),
+ * so verify-mode dep reuse (`deps[i] === host._s` identity compares) and
+ * `subscribe()` disposers (which read the live `_s`) are unaffected. Bonus:
+ * with `_s === null` during the window, a write to a signal with no other
+ * channels takes `_set`'s no-subscriber early return — the notify block is
+ * skipped entirely instead of dispatching into an empty Set.
+ */
+export function _suspendSoleSubscriber<T>(sig: Signal<T>): Set<() => void> | null {
+  const s = (sig as unknown as SignalFn<T>)._s
+  if (s === null || s.size !== 1) return null
+  ;(sig as unknown as SignalFn<T>)._s = null
+  return s
+}
+
+/**
+ * @internal Pair of {@link _suspendSoleSubscriber}. Restores the detached
+ * Set by field swap. If a NEW listener subscribed during the suspension
+ * window (`_subscribe` lazily created a fresh Set), the caller's `listener`
+ * is folded into that live Set instead — same end state (and same insertion
+ * order: listener re-added after the newcomer) as `_resumeSubscriber` would
+ * produce, and the newcomer's subscription is never clobbered.
+ */
+export function _resumeSoleSubscriber<T>(
+  sig: Signal<T>,
+  saved: Set<() => void>,
+  listener: () => void,
+): void {
+  const s = sig as unknown as SignalFn<T>
+  const cur = s._s
+  if (cur === null) {
+    s._s = saved
+  } else {
+    cur.add(listener)
+  }
+}
+
+/**
  * Register a direct updater — lighter than subscribe().
  * Used by compiler-emitted _bindText/_bindDirect for zero-overhead DOM bindings.
  *

@@ -51,7 +51,9 @@
 
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import {
+  _resumeSoleSubscriber,
   _resumeSubscriber,
+  _suspendSoleSubscriber,
   _suspendSubscriber,
   batch,
   type Computed,
@@ -898,8 +900,19 @@ function defineSetupStore<T extends Record<string, unknown>>(
     let signalUnsubs: (() => void)[] | null = null
     let detectors: (() => void)[] | null = null
     let prevValues: unknown[] | null = null
+    // Detector-wiring generation. Bumped whenever the per-field detectors are
+    // (re)attached or torn down. The with-subscriber patch loop captures it at
+    // entry and only takes the O(1) sole-subscriber suspend fast path while it
+    // is UNCHANGED — an exotic synchronous side-effect mid-patch (a wrapped
+    // signal's `set` — or a hostile patch-object getter — unsubscribing the
+    // last store subscriber, which deactivates the detectors) would otherwise
+    // break the fast path's "the sole `_s` entry IS our detector" precondition
+    // and wholesale-suspend a USER listener for that write. Epoch mismatch ⇒
+    // fall back to the per-listener suspend (current-behavior-identical).
+    let detectorEpoch = 0
     function activateSignalSubs(): void {
       if (signalUnsubs !== null && signalUnsubs.length > 0) return // already active (idempotent)
+      detectorEpoch++
       if (signalUnsubs === null) {
         signalUnsubs = []
         detectors = []
@@ -925,6 +938,7 @@ function defineSetupStore<T extends Record<string, unknown>>(
     }
     function deactivateSignalSubs(): void {
       if (signalUnsubs === null) return
+      detectorEpoch++
       for (const unsub of signalUnsubs) unsub()
       signalUnsubs.length = 0
     }
@@ -1081,6 +1095,91 @@ function defineSetupStore<T extends Record<string, unknown>>(
       return applyPatchFn
     }
 
+    // Per-call state + cached apply closure for the with-subscriber DETACH
+    // path (mirrors `patchArg`/`ensureApply` above — the previous shape
+    // allocated a fresh batch-callback closure per subscribed patch). `patch()`
+    // hands the argument across via `patchArg` and the per-patch event buffer
+    // via `detachEvents`; the closure reads BOTH into locals FIRST so a
+    // re-entrant with-subscriber patch (from a user effect during the batch
+    // drain) can't clobber them mid-apply — the outer invocation keeps its own
+    // references, exactly like `ensureApply`'s `patchArg` discipline.
+    let detachEvents: MutationInfo['events'] | null = null
+    let detachApplyFn: (() => void) | null = null
+    function ensureDetachApply(): () => void {
+      if (detachApplyFn === null) {
+        detachApplyFn = () => {
+          // Re-entrancy: locals first (see the slot comment above).
+          const arg = patchArg as Record<string, unknown>
+          const events = detachEvents as MutationInfo['events']
+          // Hoist every field read into a LOCAL up front. In the hot loop these
+          // are read repeatedly; a closure-captured (context) variable costs a
+          // scope-chain walk per read, a local doesn't — measured ~35% of this
+          // path's cost was closure-scope access before hoisting.
+          const kidx = getKeyIndex()
+          const so = signalObjs
+          const dets = detectors as (() => void)[]
+          const prevs = prevValues as unknown[]
+          // Capture the detector-wiring generation BEFORE any user code
+          // (patch-object getters, wrapped-signal set side-effects) can run —
+          // the sole-subscriber fast path below is only valid while unchanged.
+          const epoch0 = detectorEpoch
+          // ONE pass over the patched keys: per key, suspend that field's
+          // detector, write, then re-attach immediately. Only OUR detector is
+          // silenced for that write; any USER computed/effect reading the field
+          // is still subscribed and (because we're inside `batch`) recomputes
+          // exactly ONCE after all writes. Suspension takes the O(1)
+          // `_suspendSoleSubscriber` Set-swap when our detector is the sole
+          // `subscribe()` listener (the dominant case — measured the function-
+          // key Set delete/add pairs as the single largest component of this
+          // path, ~25% of the whole patch), falling back to the per-listener
+          // `_suspendSubscriber` delete/add when user listeners/effects share
+          // the signal's subscriber set — or when `epoch0` no longer matches
+          // (detectors re-wired by a mid-patch side-effect; see detectorEpoch).
+          //
+          // Exception safety (a suspend/mutate/resume window over shared
+          // subscriber state MUST leave the set consistent on ANY throw path):
+          //  - `arg[key]` is read BEFORE suspending — a throwing getter/Proxy
+          //    then aborts with the detector still ATTACHED (a detach-then-
+          //    throw would silently un-notify every later direct write to that
+          //    field until the next patch re-attached it).
+          //  - `sig.set` runs in `try { … } finally { resume }` — a write that
+          //    throws (a wrapped signal whose write side-effect fails) still
+          //    re-attaches the detector (restoring the swapped Set on the fast
+          //    path) before propagating.
+          //  - `patchInProgress` + the event merge + the emit are handled by
+          //    the CALLER's `finally` around the whole drain (see `patch()`).
+          for (const key of Object.keys(arg)) {
+            const idx = kidx.get(key)
+            if (idx === undefined) {
+              warnUnknownPatchKey(key)
+              continue
+            }
+            // Read the value FIRST — before suspending — so a throwing
+            // getter leaves the detector attached (see the block comment).
+            const newValue = arg[key]
+            const sig = so[idx] as SignalLike
+            const det = dets[idx] as () => void
+            const rsig = sig as unknown as Signal<unknown>
+            const saved = detectorEpoch === epoch0 ? _suspendSoleSubscriber(rsig) : null
+            if (saved === null) _suspendSubscriber(rsig, det)
+            const oldValue = sig.peek()
+            if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
+            try {
+              sig.set(newValue)
+            } finally {
+              if (saved !== null) _resumeSoleSubscriber(rsig, saved, det)
+              else _resumeSubscriber(rsig, det)
+            }
+            if (!Object.is(oldValue, newValue)) {
+              events.push({ key, newValue, oldValue })
+              prevs[idx] = newValue
+            }
+          }
+        }
+      }
+      return detachApplyFn
+    }
+
     // ─── Build StoreApi ─────────────────────────────────────────────────
     const api: StoreApi<T> = {
       store: userStore as T,
@@ -1107,15 +1206,6 @@ function defineSetupStore<T extends Record<string, unknown>>(
         // `patch()` lose to a shallow-merge store on the realistic
         // with-subscriber path (the round-trip alone exceeds a single merge).
         if (hasSubs && typeof partialOrFn !== 'function') {
-          const arg = partialOrFn
-          // Hoist every field read into a LOCAL up front. In the hot loop these
-          // are read repeatedly; a closure-captured (context) variable costs a
-          // scope-chain walk per read, a local doesn't — measured ~35% of this
-          // path's cost was closure-scope access before hoisting.
-          const kidx = getKeyIndex()
-          const so = signalObjs
-          const dets = detectors as (() => void)[]
-          const prevs = prevValues as unknown[]
           const events: MutationInfo['events'] = []
           // Keep the ONE-notification contract even under re-entrancy: if a USER
           // effect/computed fired by our batch writes ANOTHER store field during
@@ -1125,59 +1215,29 @@ function defineSetupStore<T extends Record<string, unknown>>(
           // merge those into this patch's single emit. The common case never
           // touches `patchEvents` (stays the frozen EMPTY buffer, zero alloc).
           patchInProgress = true
-          // ONE batch, ONE pass over the patched keys: per key, suspend that
-          // field's detector (`_suspendSubscriber` — a disposer-free `_s.delete`,
-          // so `signalUnsubs[idx]` still targets the same detector), write, then
-          // re-attach immediately. Only OUR detector is silenced for that write;
-          // any USER computed/effect reading the field is still subscribed and
-          // (because we're inside `batch`) recomputes exactly ONCE after all
-          // writes. This removes the per-signal detector round-trip that made
-          // bulk `patch()` lose to a shallow-merge store — and does it with no
-          // scratch arrays and one closure (the batch), matching the theoretical
-          // minimum for a signal-per-field store.
+          // The suspend/write/resume loop lives in the CACHED `ensureDetachApply`
+          // closure (zero per-patch closure allocation — the argument + event
+          // buffer are handed across via `patchArg`/`detachEvents`, read into
+          // locals at closure entry for re-entrancy safety). This removes the
+          // per-signal detector round-trip that made bulk `patch()` lose to a
+          // shallow-merge store — with no scratch arrays and no per-call
+          // closures, matching the theoretical minimum for a signal-per-field
+          // store. Full suspension-design + exception-safety notes live on
+          // `ensureDetachApply`.
           //
-          // Exception safety (a suspend/mutate/resume window over shared
-          // subscriber state MUST leave the set consistent on ANY throw path):
-          //  - `arg[key]` is read BEFORE `_suspendSubscriber` — a throwing
-          //    getter/Proxy then aborts with the detector still ATTACHED (a
-          //    delete-then-throw would silently un-notify every later direct
-          //    write to that field until the next patch re-added it).
-          //  - `sig.set` runs in `try { … } finally { _resumeSubscriber }` — a
-          //    write that throws (a wrapped signal whose write side-effect
-          //    fails) still re-attaches the detector before propagating.
-          //  - `patchInProgress = false` + the event merge + the emit run in a
-          //    `finally` around the whole drain — a raw `field.subscribe`
-          //    listener that throws straight past the batch queue can't wedge
-          //    the flag (which would buffer + drop every later direct write's
-          //    event) or drop the notification for the fields that WERE written.
+          // Exception safety at THIS level: `patchInProgress = false` + the
+          // slot resets + the event merge + the emit run in a `finally` around
+          // the whole drain — a raw `field.subscribe` listener that throws
+          // straight past the batch queue can't wedge the flag (which would
+          // buffer + drop every later direct write's event) or drop the
+          // notification for the fields that WERE written.
+          patchArg = partialOrFn
+          detachEvents = events
           try {
-            batch(() => {
-              for (const key of Object.keys(arg)) {
-                const idx = kidx.get(key)
-                if (idx === undefined) {
-                  warnUnknownPatchKey(key)
-                  continue
-                }
-                // Read the value FIRST — before suspending — so a throwing
-                // getter leaves the detector attached (see the block comment).
-                const newValue = arg[key]
-                const sig = so[idx] as SignalLike
-                const det = dets[idx] as () => void
-                _suspendSubscriber(sig as unknown as Signal<unknown>, det)
-                const oldValue = sig.peek()
-                if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('store.patchKey')
-                try {
-                  sig.set(newValue)
-                } finally {
-                  _resumeSubscriber(sig as unknown as Signal<unknown>, det)
-                }
-                if (!Object.is(oldValue, newValue)) {
-                  events.push({ key, newValue, oldValue })
-                  prevs[idx] = newValue
-                }
-              }
-            })
+            batch(ensureDetachApply())
           } finally {
+            patchArg = null
+            detachEvents = null
             patchInProgress = false
             // Merge any events a re-entrant effect buffered during the drain
             // (empty in the common case → no concat, no alloc). When `patchEvents`
@@ -1191,10 +1251,11 @@ function defineSetupStore<T extends Record<string, unknown>>(
             }
             // Emit ONE store notification with the events we built directly.
             if (finalEvents.length > 0) {
-              // Build the state snapshot inline off the hoisted `so` local rather
+              // Build the state snapshot inline off hoisted locals rather
               // than calling `getState()` (a closure hop that re-reads the same
               // captured arrays) — the snapshot IS a hot-path allocation.
               const sk = signalKeys
+              const so = signalObjs
               const state: Record<string, unknown> = {}
               for (let j = 0; j < sk.length; j++) {
                 state[sk[j] as string] = (so[j] as SignalLike).peek()

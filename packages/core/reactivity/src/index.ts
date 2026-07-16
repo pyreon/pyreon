@@ -88,7 +88,9 @@ export {
   setCurrentScope,
 } from './scope'
 export {
+  _resumeSoleSubscriber,
   _resumeSubscriber,
+  _suspendSoleSubscriber,
   _suspendSubscriber,
   type ReadonlySignal,
   type Signal,
