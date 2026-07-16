@@ -71,10 +71,13 @@ function emptyQueryRecord<T>(): Record<string, T> {
  * source; a genuine app query param by these names has no legitimate use.
  */
 const DANGEROUS_QUERY_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
-// NOTE: the `DANGEROUS_QUERY_KEYS.has(key)` test is written INLINE at each
-// write site, not wrapped in a helper — CodeQL's sanitizer-guard recognition
-// (js/remote-property-injection) is intra-procedural; a predicate call across
-// a function boundary leaves the alert open even though the guard is real.
+// NOTE on CodeQL `js/remote-property-injection`: that query recognizes only
+// ALLOWLIST/constant-prefix sanitizers by design — a blocklist guard (this
+// one) is never credited, so the two alerts on the write sites below are
+// DISMISSED with rationale rather than "fixed". Arbitrary user-chosen keys
+// are the PURPOSE of a query-param record; the real risks are covered by
+// the two layers above (null-prototype record + dangerous keys dropped),
+// both locked by bisect-verified specs in tests/match.test.ts.
 
 export function parseQuery(qs: string): Record<string, string> {
   if (!qs) return emptyQueryRecord()
