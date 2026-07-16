@@ -480,6 +480,8 @@ export function applyClassProp(el: Element, value: unknown): void {
  *   - boolean on any other attr → presence/absence (HTML boolean attrs
  *     like `hidden`: `hidden={false}` must be ABSENT, not `hidden="false"`
  *     — which keeps the element hidden).
+ *   - function → resolved first (callable-as-accessor, mirroring
+ *     `applyProp` + SSR `renderProp`; live when called inside a `_bind`).
  *   - anything else → `setAttribute(name, String(value))`.
  *
  * The compiler routes class → `_setClass`, style → `_setStyle`, and the
@@ -493,6 +495,21 @@ export function applyClassProp(el: Element, value: unknown): void {
  * `applyClassProp`→`_setClass` extractions.
  */
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
+  if (typeof value === 'function') {
+    // Callable-as-accessor, mirroring `applyProp`'s function branch (which
+    // renderEffect-wraps on the h() path) and SSR's `renderProp` (which
+    // resolves before serializing). A BARE IDENTIFIER holding an accessor —
+    // `aria-selected={active}` where `active = props.active` — reaches the
+    // template path as the raw function (the compiler can't prove it's
+    // callable), and a raw `String(fn)` wrote the closure SOURCE into the
+    // attribute (also an SSR<->client hydration mismatch, since SSR resolves).
+    // Resolving here keeps the paths agreeing; when the compiler emitted the
+    // usual `_bind(() => _setAttr(...))` wrapper (any prop-derived value),
+    // the call runs inside that tracked frame, so signal reads inside the
+    // accessor stay fully live. (No event-handler concern: the compiler
+    // routes on* props to delegation before this helper.)
+    value = (value as () => unknown)()
+  }
   if (value == null) {
     el.removeAttribute(key)
     return
