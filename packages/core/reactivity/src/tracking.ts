@@ -55,8 +55,15 @@ let _depsCollector: Set<() => void>[] | null = null
 // rewrite of that tuned notify path and add one allocation per dependency
 // edge; positional verify gets the same steady-state O(1)-reuse with zero
 // signal-side changes.
-let _verifyOwner: (() => void) | null = null
-let _verifyIndex = 0
+//
+// Verify-mode is encoded in the SIGN of `_verifyIndex` (-1 = collect mode,
+// ≥ 0 = verify mode at that position). The former separate `_verifyOwner`
+// variable was a pure mode FLAG — its value was never read (the owner is
+// always the live `activeEffect`; only `!== null` checks consumed it) — so
+// folding it into the index drops one module-var read from every tracked
+// read's verify hit (the hottest line in a chain/diamond pull) and one
+// save/restore pair from every `runCollect`/`runVerify` frame.
+let _verifyIndex = -1
 
 /**
  * Subscriber host — any reactive source that can have downstream subscribers.
@@ -76,11 +83,15 @@ export interface SubscriberHost {
 export function trackSubscriber(host: SubscriberHost) {
   const ae = activeEffect
   if (ae === null) return
-  if (_verifyOwner !== null) {
+  const idx = _verifyIndex
+  if (idx >= 0) {
     // Verify mode — steady-state re-run: one identity compare, no Set ops.
+    // (Safe to trust the index after the `ae === null` gate above:
+    // `runUntracked` suspends `activeEffect` only, so a stale-looking
+    // verify index can never be reached from untracked code.)
     const deps = _depsCollector as Set<() => void>[]
-    if (_verifyIndex < deps.length && deps[_verifyIndex] === host._s) {
-      _verifyIndex++
+    if (idx < deps.length && deps[idx] === host._s) {
+      _verifyIndex = idx + 1
       return
     }
     divergeVerify(host, ae)
@@ -113,9 +124,9 @@ function divergeVerify(host: SubscriberHost, owner: () => void): void {
   //    Set that ALSO sits at a confirmed position (duplicate reads of the
   //    same source alias the same Set).
   for (let j = 0; j < confirmed; j++) (deps[j] as Set<() => void>).add(owner)
-  // 3. Exit verify mode — the rest of this run collects normally onto the
-  //    preserved confirmed prefix.
-  _verifyOwner = null
+  // 3. Exit verify mode (-1 = collect) — the rest of this run collects
+  //    normally onto the preserved confirmed prefix.
+  _verifyIndex = -1
   // 4. Record the current (diverging) read.
   if (!host._s) host._s = new Set()
   host._s.add(owner)
@@ -134,17 +145,15 @@ function divergeVerify(host: SubscriberHost, owner: () => void): void {
 export function runCollect<T>(owner: () => void, deps: Set<() => void>[], fn: () => T): T {
   const prevEffect = activeEffect
   const prevDeps = _depsCollector
-  const prevOwner = _verifyOwner
   const prevIndex = _verifyIndex
   activeEffect = owner
   _depsCollector = deps
-  _verifyOwner = null
+  _verifyIndex = -1 // collect mode
   try {
     return fn()
   } finally {
     activeEffect = prevEffect
     _depsCollector = prevDeps
-    _verifyOwner = prevOwner
     _verifyIndex = prevIndex
   }
 }
@@ -159,30 +168,29 @@ export function runCollect<T>(owner: () => void, deps: Set<() => void>[], fn: ()
 export function runVerify<T>(owner: () => void, deps: Set<() => void>[], fn: () => T): T {
   const prevEffect = activeEffect
   const prevDeps = _depsCollector
-  const prevOwner = _verifyOwner
   const prevIndex = _verifyIndex
   activeEffect = owner
   _depsCollector = deps
-  _verifyOwner = owner
-  _verifyIndex = 0
+  _verifyIndex = 0 // verify mode, position 0
   try {
     const result = fn()
-    // Shrink: fn completed still in verify mode but read FEWER deps than the
-    // previous run — unsubscribe + truncate the stale tail, then repair the
-    // confirmed prefix (duplicate-alias hazard, same as divergeVerify).
+    // Shrink: fn completed still in verify mode (index ≥ 0 — a divergence
+    // resets it to -1) but read FEWER deps than the previous run —
+    // unsubscribe + truncate the stale tail, then repair the confirmed
+    // prefix (duplicate-alias hazard, same as divergeVerify).
     // Deliberately NOT in the finally: if fn threw, the unverified tail stays
     // subscribed + recorded (memory-safe — dispose still removes everything),
     // and the next run re-verifies from index 0.
-    if (_verifyOwner !== null && _verifyIndex < deps.length) {
-      for (let j = _verifyIndex; j < deps.length; j++) (deps[j] as Set<() => void>).delete(owner)
-      deps.length = _verifyIndex
-      for (let j = 0; j < _verifyIndex; j++) (deps[j] as Set<() => void>).add(owner)
+    const idx = _verifyIndex
+    if (idx >= 0 && idx < deps.length) {
+      for (let j = idx; j < deps.length; j++) (deps[j] as Set<() => void>).delete(owner)
+      deps.length = idx
+      for (let j = 0; j < idx; j++) (deps[j] as Set<() => void>).add(owner)
     }
     return result
   } finally {
     activeEffect = prevEffect
     _depsCollector = prevDeps
-    _verifyOwner = prevOwner
     _verifyIndex = prevIndex
   }
 }

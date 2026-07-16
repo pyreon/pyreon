@@ -1,4 +1,5 @@
 import {
+  _markLazyAndPropagate,
   _markRecompute,
   closeInlineBatch,
   enqueueEagerRefresh,
@@ -264,35 +265,30 @@ function computedLazy<T>(
   read._d = null
 
   recompute = () => {
-    if (read._disposed || read._dirty) return
-    read._dirty = true
-    // DEFER direct-subscriber dispatch to the batch DRAIN — do NOT fire inline.
+    // Delegates to the CANONICAL lazy notify body in batch.ts —
+    // `_markLazyAndPropagate` marks dirty (idempotent), DEFERS direct
+    // (`_bindText`/`_bindDirect`) subscribers to the batch DRAIN
+    // (glitch-freedom: a lazy recompute runs INLINE during the write's notify
+    // phase, so `read._v` is TORN mid-multi-write-batch — the #2284
+    // regression; the deferred updater fires once, at the drain, reading the
+    // settled value), and cascades into subscribers (iteratively for
+    // single-subscriber chains — no stack growth; see propagateLazyDirty).
     //
-    // A lazy recompute runs INLINE during the write's notify phase (see
-    // batch.ts `propagateLazyDirty`), so `read._v` is TORN at this point in a
-    // multi-write `batch(() => { a.set(); b.set() })` — `a` is written but `b`
-    // is not yet. Firing the `_d1`/`_d` DIRECT subscriber (the compiled
-    // `{someComputed()}` `_bindText`/`_bindDirect` shape) inline would read the
-    // half-updated value AND re-fire on the next write (#2284 regression:
-    // `[12, 30]` instead of one settled `[30]`; a torn read that THROWS would
-    // even dispatch a phantom production error through `_errorHandler`).
-    // Enqueuing into the effect tier makes each direct subscriber fire ONCE, in
-    // the drain, after all writes + tier-1 eager recomputes have settled — the
-    // exact glitch-free deferral a SIGNAL's `_d1` already gets under batch (see
-    // `_set`). Idempotent: a re-entered recompute sees `_dirty === true` above
-    // and early-returns, so the enqueue happens once per batch even before the
-    // effect-tier's own `_eq` dedup.
-    if (read._d1) enqueuePendingNotification(read._d1)
-    else if (read._d) for (const f of read._d) enqueuePendingNotification(f)
-    // Dirty-propagation cascade — iterative (explicit stack) so a deep chain
-    // can't overflow. See propagateLazyDirty.
-    if (read._s) propagateLazyDirty(read._s)
+    // This closure exists ONLY for its per-instance subscriber-set IDENTITY
+    // (dep Sets + dispose + the `_recomputes` routing mark) — dispatch sites
+    // that already hold the `_c` back-ref call the helper directly and never
+    // invoke it.
+    _markLazyAndPropagate(read)
   }
   // Recompute marker → the batch router + `propagateLazyDirty` run this
-  // recompute inline (dirty-mark-only, idempotent via the `_dirty` guard
-  // above) instead of routing it through the queues. Pure-computed cascades
-  // resolve during the notify phase.
-  _markRecompute(recompute)
+  // recompute inline (dirty-mark-only, idempotent via the `_dirty` guard in
+  // `_markLazyAndPropagate`) instead of routing it through the queues.
+  // Pure-computed cascades resolve during the notify phase. The second arg
+  // stamps `recompute._c = read` so the cascade's fused single-subscriber
+  // walk can dirty-mark this computed's fields DIRECTLY (no closure call per
+  // hop) — the walk body in `propagateLazyDirty` inlines
+  // `_markLazyAndPropagate`; keep them in lock-step.
+  _markRecompute(recompute, read)
 
   read.dispose = () => {
     read._disposed = true
