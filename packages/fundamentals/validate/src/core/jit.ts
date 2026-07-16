@@ -211,6 +211,33 @@ export function jitEffectivePath(
 type CheckFn = (v: unknown, ctx: ParseCtx) => void
 
 /**
+ * A JIT-compiled validator, optionally branded {@link JitValidator._jitPure}.
+ *
+ * `_jitPure === true` ⟺ the emitted body contains NO `_runInto` fallback —
+ * every reachable instruction is LIBRARY code (inline type guards, built-in
+ * check closures, format predicates, issue makers). Three load-bearing
+ * consequences the public seams (`parse` / `~standard.validate` / `is`)
+ * exploit:
+ *
+ *   1. **No user code can run** (`.refine`/`.transform`/`.catch`-fn/
+ *      `superRefine` all disqualify inlining) → a parse can never re-enter
+ *      `parse()` and nothing can capture the ctx → a per-schema REUSED ctx
+ *      is safe (no pooling discipline needed; the sync window never nests).
+ *   2. **The return value is never a Promise** (only a fallback can produce
+ *      one) → the seam skips the `instanceof Promise` branch.
+ *   3. **`ctx.pending` is never written** (`serverCheck` disqualifies
+ *      inlining) → the seam skips the pending branch.
+ *
+ * Anything that would break one of these (a new emission arm running user
+ * code, an async-capable inline op) MUST clear the brand at its emission
+ * site the way the fallback arm does. Locked by the pure-seam differential
+ * fuzz (`pure-seam-differential.test.ts`).
+ */
+export interface JitValidator extends SyncValidator {
+  _jitPure?: boolean
+}
+
+/**
  * Wrap a check closure so it observes the correct `ctx.path` under path
  * elision: pushes the pending segments (enclosing array index + static
  * suffix) around the call, restoring after. Identity (no wrapper, no cost)
@@ -400,6 +427,13 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
     // dead on the all-sync path). Correctness is unchanged — the machinery is
     // only elided when nothing emits code that reads it.
     let usesAsyncMachinery = false
+
+    // Whether any `_runInto` FALLBACK arm was emitted — the only path through
+    // which user code (refine/transform/catch-fn/serverCheck impls) can run
+    // inside the compiled body. `false` ⇒ the validator is branded
+    // {@link JitValidator._jitPure} and the public seams reuse a per-schema
+    // ctx (see the interface doc).
+    let hasFallback = false
 
     // Bound generated-function size + codegen recursion on a pathologically
     // deep schema: beyond this nesting depth a subtree uses its `_runInto`
@@ -665,7 +699,10 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
       const { pre, post } = flushPath(ps)
       // A fallback is the ONLY subtree that can return a Promise → its
       // `onAsync` arm reads `A`/`B`, so the async machinery is required.
+      // It is ALSO the only arm that can run USER code → the validator
+      // loses the `_jitPure` brand (per-schema ctx reuse would be unsafe).
       usesAsyncMachinery = true
+      hasFallback = true
       lines.push(
         `${pre} let ${fv} = ${run}(${srcVar}, ctx); ${post} if (${fv} && typeof ${fv}.then === "function") { ${onAsync(fv)} } else { ${onValid(fv)} }`,
       )
@@ -828,8 +865,10 @@ export function tryCompileJit(schema: Schema<unknown>): SyncValidator | null {
     // eslint-disable-next-line no-new-func
     const factory = new Function('H', `return function jitValidate(input, ctx) {\n${body}\n}`) as (
       h: unknown[],
-    ) => SyncValidator
-    return factory(helpers)
+    ) => JitValidator
+    const fn = factory(helpers)
+    if (!hasFallback) fn._jitPure = true
+    return fn
   } catch {
     return null
   }

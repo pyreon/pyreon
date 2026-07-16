@@ -19,9 +19,9 @@
 import type { FieldMeta, StandardSchemaIssue, StandardSchemaV1 } from '../types'
 import { META_SLOT } from '../types'
 import { type PyreonIssue, ValidationError } from './issue'
-import { tryCompileJit } from './jit'
+import { type JitValidator, tryCompileJit } from './jit'
 import type { CatchOp, CheckOpts, Op, ParseCtx, PendingCheck } from './ops'
-import { makeCtx } from './ops'
+import { EMPTY_PATH, makeCtx } from './ops'
 import { getServerCheck } from './registry'
 // Type-only imports for the composition shorthand return types (`.array` /
 // `.or` / `.and`). Erased at build time, so they create NO runtime dependency
@@ -159,6 +159,20 @@ export abstract class Schema<T> {
   private _compiled?: SyncValidator | undefined
 
   /**
+   * Per-schema REUSED parse context — present ⟺ `_compiled` is a
+   * {@link JitValidator} branded `_jitPure` (a fully-inline JIT tree: no
+   * `_runInto` fallback ⇒ no user code, no Promise return, no `pending`).
+   * The public seams (`parse` / `~standard.validate` / `is`) then skip the
+   * per-parse `makeCtx()` allocation entirely: the sync validation window
+   * can never nest (nothing user-supplied runs) and nothing can retain the
+   * ctx, so reuse is safe. On a FAILED parse the escaped `issues` array is
+   * handed to the Result and replaced with a fresh one (never reused); the
+   * (possibly materialized) `path` is reset to the shared EMPTY_PATH
+   * sentinel. Cleared alongside `_compiled` by `_invalidateCompile`.
+   */
+  private _pureCtx?: ParseCtx | undefined
+
+  /**
    * Build-attached specialized VERDICT function (`@pyreon/compiler`'s
    * `emitValidator` via `@pyreon/vite-plugin`). When present, {@link is} uses it
    * directly — a monomorphic, fully-inlined boolean check with no op-array
@@ -185,6 +199,25 @@ export abstract class Schema<T> {
    */
   parse(input: unknown): Result<T> {
     const compiled = this._getCompiled()
+    // Pure-JIT fast seam — a fully-inline compiled tree (see {@link _pureCtx})
+    // runs no user code, never returns a Promise and never writes `pending`,
+    // so the seam reuses the per-schema ctx (zero per-parse ctx/issues-array
+    // allocation) and skips the two unreachable branches. Verdicts, issue
+    // objects and value identity are byte-identical to the general seam —
+    // locked by the pure-seam differential fuzz.
+    const pure = this._pureCtx
+    if (pure !== undefined) {
+      const value = compiled(input, pure)
+      if (pure.issues.length === 0) return { ok: true, value: value as T }
+      const issues = pure.issues
+      // The issues array escapes into the Result — hand it out and give the
+      // reused ctx a fresh one. `path` may have been materialized by a
+      // failure wrapper / array flush; reset to the shared sentinel so the
+      // next parse starts allocation-free again. Both are cold-path costs.
+      pure.issues = []
+      pure.path = EMPTY_PATH
+      return { ok: false, issues }
+    }
     const ctx = makeCtx()
     const value = compiled(input, ctx)
     // Runtime async detection: sync transforms/refines work normally;
@@ -269,6 +302,18 @@ export abstract class Schema<T> {
    */
   is(input: unknown): boolean {
     if (this._compiledVerdict) return this._compiledVerdict(input)
+    // Pure-JIT fast seam (see {@link _pureCtx}): the verdict is just "did the
+    // reused ctx accumulate issues?" — no Result object at all. The issues
+    // never escape here, so truncating the array (not replacing it) is safe.
+    const compiled = this._getCompiled()
+    const pure = this._pureCtx
+    if (pure !== undefined) {
+      compiled(input, pure)
+      if (pure.issues.length === 0) return true
+      pure.issues.length = 0
+      pure.path = EMPTY_PATH
+      return false
+    }
     return this.parse(input).ok
   }
 
@@ -305,6 +350,16 @@ export abstract class Schema<T> {
     if (this._std) return this._std
     const validate = (input: unknown) => {
       const compiled = this._getCompiled()
+      // Pure-JIT fast seam — same contract as `parse()`'s (see {@link _pureCtx}).
+      const pure = this._pureCtx
+      if (pure !== undefined) {
+        const value = compiled(input, pure)
+        if (pure.issues.length === 0) return { value: value as T }
+        const issues = pure.issues
+        pure.issues = []
+        pure.path = EMPTY_PATH
+        return { issues }
+      }
       const ctx = makeCtx()
       const value = compiled(input, ctx)
       if (value instanceof Promise) {
@@ -633,6 +688,10 @@ export abstract class Schema<T> {
   /** Invalidate the cached closure (called when ops change). */
   _invalidateCompile(): void {
     this._compiled = undefined
+    // The reused pure ctx is only valid for the compiled tree it was created
+    // with — a post-compile chained op (`.refine()` on an already-parsed
+    // schema) may make the recompiled tree impure.
+    this._pureCtx = undefined
     // A build-attached verdict reflects the op-list AT ATTACH TIME; any later
     // chained method invalidates it, so drop it and fall back to `.parse().ok`.
     this._compiledVerdict = undefined
@@ -643,7 +702,11 @@ export abstract class Schema<T> {
     if (!this._compiled) {
       // Try the JIT fast path first (pure object-of-primitives shapes);
       // fall back to the interpreted compiler for everything else.
-      this._compiled = tryCompileJit(this) ?? compileSchema(this)
+      const jit = tryCompileJit(this)
+      this._compiled = jit ?? compileSchema(this)
+      // A `_jitPure`-branded validator (no fallback ⇒ no user code / Promise /
+      // pending) unlocks the reused-ctx fast seams — see {@link _pureCtx}.
+      this._pureCtx = jit !== null && (jit as JitValidator)._jitPure === true ? makeCtx() : undefined
     }
     return this._compiled
   }

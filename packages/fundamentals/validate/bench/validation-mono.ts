@@ -26,6 +26,7 @@ process.env.NODE_ENV = 'production'
 const HARNESS = `
 process.env.NODE_ENV='production'
 const now=()=>Number(process.hrtime.bigint())
+let ACC=0 // consumed-result sink for the .varied scenarios (defeats DCE)
 function med(fn){
   for(let i=0;i<40000;i++)fn()                 // warm to steady state
   const xs=[]
@@ -46,6 +47,30 @@ interface Scenario {
 
 // Each setup ends by defining `const parse = () => <one parse of a fixed ok input>`.
 const scenarios: Scenario[] = [
+  {
+    // The HARDEST honest scalar shape: the input ROTATES (8 valid values) and
+    // the result is CONSUMED (verdict read + value accumulated), so the engine
+    // can neither constant-fold the parse nor dead-code-sink the per-parse
+    // allocations — this is the loop where a fixed per-parse ctx/Result cost
+    // actually shows (a constant discarded parse lets JSC sink everything and
+    // flatters whoever allocates most). `ACC` is a harness global.
+    name: 'number.scalar.varied',
+    libs: [
+      { key: 'pyreon', setup: `const {s}=await import('../src/v1.ts');const P=s.number().int().min(0).max(150);const IN=[1,7,42,99,120,3,88,54];let i=0;const parse=()=>{const r=P.parse(IN[i++&7]);if(r.ok)ACC+=r.value}` },
+      { key: 'zod', setup: `const {z}=await import('zod');const Z=z.number().int().min(0).max(150);const IN=[1,7,42,99,120,3,88,54];let i=0;const parse=()=>{const r=Z.safeParse(IN[i++&7]);if(r.success)ACC+=r.data}` },
+      { key: 'valibot', setup: `const v=await import('valibot');const V=v.pipe(v.number(),v.integer(),v.minValue(0),v.maxValue(150));const IN=[1,7,42,99,120,3,88,54];let i=0;const parse=()=>{const r=v.safeParse(V,IN[i++&7]);if(r.success)ACC+=r.output}` },
+      { key: 'arktype', setup: `const {type}=await import('arktype');const A=type('0 <= number.integer <= 150');const IN=[1,7,42,99,120,3,88,54];let i=0;const parse=()=>{const o=A(IN[i++&7]);if(typeof o==='number')ACC+=o}` },
+    ],
+  },
+  {
+    name: 'string.scalar.varied',
+    libs: [
+      { key: 'pyreon', setup: `const {s}=await import('../src/v1.ts');const P=s.string().min(1);const IN=['a','hello','world','xy','pyreon','bench','zz','q'];let i=0;const parse=()=>{const r=P.parse(IN[i++&7]);if(r.ok)ACC+=r.value.length}` },
+      { key: 'zod', setup: `const {z}=await import('zod');const Z=z.string().min(1);const IN=['a','hello','world','xy','pyreon','bench','zz','q'];let i=0;const parse=()=>{const r=Z.safeParse(IN[i++&7]);if(r.success)ACC+=r.data.length}` },
+      { key: 'valibot', setup: `const v=await import('valibot');const V=v.pipe(v.string(),v.minLength(1));const IN=['a','hello','world','xy','pyreon','bench','zz','q'];let i=0;const parse=()=>{const r=v.safeParse(V,IN[i++&7]);if(r.success)ACC+=r.output.length}` },
+      { key: 'arktype', setup: `const {type}=await import('arktype');const A=type('string >= 1');const IN=['a','hello','world','xy','pyreon','bench','zz','q'];let i=0;const parse=()=>{const o=A(IN[i++&7]);if(typeof o==='string')ACC+=o.length}` },
+    ],
+  },
   {
     name: 'number.int.range',
     libs: [
