@@ -101,21 +101,38 @@ describe('nextFrame — cancel handle', () => {
     expect(fn).not.toHaveBeenCalled()
   })
 
-  it('cancels the INNER frame when cancelled after the outer frame already fired', () => {
+  it('a callback cancelled AFTER the outer frame fired never runs (the rapid enter→leave flip)', () => {
+    // INVARIANT this spec protects (unchanged since the pre-batching cancel
+    // fix): cancelling between the outer and inner frame must prevent the
+    // stale enter/leave-to commit. The ASSERTION is rewritten to the
+    // observable behavior — under the shared-batch nextFrame, cancel removes
+    // the callback from its batch (no cancelAnimationFrame call at all, so
+    // sibling callbacks sharing the batch keep their scheduling).
     const fn = vi.fn()
     const cancel = nextFrame(fn)
-    // Outer frame queued (id 1).
+    // Outer frame queued.
     expect(rafCallbacks.length).toBe(1)
-    // Run the outer frame → schedules the inner frame (id 2). The callback
-    // has NOT fired yet — it runs on the inner frame.
+    // Run the outer frame → schedules the inner frame. The callback has NOT
+    // fired yet — it runs on the inner frame.
     rafCallbacks[0]?.()
     expect(rafCallbacks.length).toBe(2)
     expect(fn).not.toHaveBeenCalled()
-    // Cancel now — a bare cancelAnimationFrame(outerId) would MISS the inner
-    // frame (id 2), leaving the stale enter/leave-to commit scheduled.
+    // Cancel now — then drive the inner frame: the callback must NOT run.
     cancel()
-    expect(cancelAnimationFrame).toHaveBeenCalledWith(1) // outer
-    expect(cancelAnimationFrame).toHaveBeenCalledWith(2) // inner (the fix)
+    rafCallbacks[1]?.()
+    expect(fn).not.toHaveBeenCalled()
+  })
+
+  it('cancelling one callback never touches its batch siblings', () => {
+    const kept = vi.fn()
+    const dropped = vi.fn()
+    nextFrame(kept)
+    const cancel = nextFrame(dropped)
+    rafCallbacks[0]?.()
+    cancel()
+    rafCallbacks[1]?.()
+    expect(kept).toHaveBeenCalledTimes(1)
+    expect(dropped).not.toHaveBeenCalled()
   })
 
   it('cancel is a no-op when cancelAnimationFrame is undefined (post-teardown safe)', () => {
