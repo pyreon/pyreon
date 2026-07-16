@@ -4022,6 +4022,21 @@ notifications.notify('Done', 'Your export is ready')`,
     mistakes: `- Expecting \`notify\` to appear synchronously on first call — when permission is undecided it requests first and posts only AFTER the async grant (or never, if denied). Call \`requestPermission()\` ahead of time for immediate notifications.
 - These are LOCAL notifications only — not push; there is no server/remote delivery.`,
   },
+
+  'hooks/useBiometrics': {
+    signature: 'useBiometrics() => { authenticate: (reason: string) => Promise<boolean>; isAvailable: () => boolean }',
+    example: `const bio = useBiometrics()
+const status = signal<'idle' | 'unlocked' | 'denied'>('idle')
+
+<button onClick={async () => {
+  const ok = await bio.authenticate('Unlock your vault')
+  status.set(ok ? 'unlocked' : 'denied')
+}}>Unlock</button>`,
+    notes: 'A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on the web. The FIRST @pyreon/hooks service with an ASYNC RESULT: `authenticate(reason)` returns a `Promise<boolean>` you `await`. Under PMTC this lowers to the native biometric APIs, and the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. WEB v1: a real assertion is a WebAuthn ceremony (needs a server-issued challenge + a registered credential), so the web `authenticate` resolves `false` and `isAvailable` feature-detects `window.PublicKeyCredential` — native is the primary target. See also: useNotifications, useShare.',
+    mistakes: `- Calling \`bio.authenticate(...)\` WITHOUT \`await\` inside a plain (non-async) handler — it returns a \`Promise<boolean>\`, not a boolean, so the gate never applies. Mark the handler \`async\` and \`await\` the result (PMTC wraps that async handler in a native \`Task\`/coroutine scope).
+- Expecting the WEB \`authenticate\` to actually authenticate — v1 resolves \`false\` (a real WebAuthn assertion needs a server challenge + a registered credential, out of scope for a client-only hook). For web biometric auth drive the WebAuthn API with your backend; the native paths (Face ID / Touch ID / BiometricPrompt) are the real gate.
+- Treating a \`false\` result as an error — \`authenticate\` never rejects; failure, cancellation, and an unavailable / unenrolled device all resolve \`false\`. Branch on the boolean, do not wrap it in \`try/catch\`.`,
+  },
   // <gen-docs:api-reference:end @pyreon/hooks>
 
   // ═══════════════════════════════════════════════════════════════════════════
