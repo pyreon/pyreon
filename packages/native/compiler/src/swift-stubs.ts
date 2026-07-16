@@ -212,6 +212,15 @@ public final class PyreonNetworkStatus {
   public private(set) var isOnline: Bool
   public init(isOnline: Bool = true) { self.isOnline = isOnline }
 }
+// PyreonAppState — mirror of @pyreon/native-runtime-swift's PyreonAppState.swift
+// surface the emit touches: the no-arg constructor + the phase String read
+// (bare, since the real type is @Observable — the macro drives runtime
+// reactivity, not the type-level compile). useAppState() returns a web
+// ACCESSOR read as state(); the emit lowers that call to state.phase.
+public final class PyreonAppState {
+  public private(set) var phase: String
+  public init(phase: String = "active") { self.phase = phase }
+}
 public struct PyreonLink<Label: View>: View {
   public init(_ to: String, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never

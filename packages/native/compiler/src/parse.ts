@@ -3150,6 +3150,7 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
     'useStorage',
     'usePermissions',
     'useOnline',
+    'useAppState',
     'useColorScheme',
     'useSizeClass',
     'useNetworkStatus',
@@ -3693,6 +3694,11 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   // reactive connectivity container. No arguments.
   if (calleeName === 'useOnline') {
     return { kind: 'network-status', name }
+  }
+  // Phase 5 (M3.7) — `useAppState()` from @pyreon/hooks → the PyreonAppState
+  // reactive lifecycle container. No arguments.
+  if (calleeName === 'useAppState') {
+    return { kind: 'app-state', name }
   }
   // Phase 4 — `usePermissions(['posts.edit', 'posts.*'])` from
   // @pyreon/permissions. The array of literal grant keys seeds the native
@@ -5842,6 +5848,7 @@ function warnIfHookInsideRenderCallback(
     'useSizeClass',
     'usePermissions',
     'useOnline',
+    'useAppState',
     'useGeolocation',
     'useWebSocket',
     'useSecureStorage',

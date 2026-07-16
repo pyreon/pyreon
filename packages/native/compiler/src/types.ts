@@ -209,6 +209,18 @@ export type DeclIR =
    */
   | { kind: 'network-status'; name: string }
   /**
+   * Phase 5 (M3.7) — app lifecycle phase via `useAppState()` from `@pyreon/hooks`.
+   * Emits the PyreonAppState reactive container:
+   *   Swift  → @State private var state = PyreonAppState()
+   *   Kotlin → val state = remember { PyreonAppState() }
+   *
+   * `useAppState()` takes no arguments. The reactive read is `state.phase`
+   * (a `String`: "active"|"inactive"|"background") — a plain @Observable
+   * property on Swift, a Compose `MutableState` (`.value`) on Kotlin. The web
+   * accessor `state()` lowers to `state.phase` / `state.phase.value`.
+   */
+  | { kind: 'app-state'; name: string }
+  /**
    * A component-body `onMount(() => { … })` call — the documented lifecycle
    * escape hatch ("call .start()/.connect() from an onMount"). Lowers to a
    * mount-time harness: SwiftUI `.onAppear { … }` on the stable-identity
