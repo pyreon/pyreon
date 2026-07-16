@@ -49,7 +49,7 @@
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@vitest/browser-playwright": "^4.1.8",
+    "@vitest/browser-playwright": "^4.1.10",
     "@vitus-labs/tools-lint": "^2.6.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

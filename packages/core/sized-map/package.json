@@ -40,7 +40,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.10"
   },
   "publishConfig": {
     "access": "public"

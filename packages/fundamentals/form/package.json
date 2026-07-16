@@ -52,12 +52,12 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/validate": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
-    "@tanstack/form-core": "^1.33.0",
-    "arktype": "^2.2.0",
+    "@tanstack/form-core": "^1.33.2",
+    "arktype": "^2.2.3",
     "formik": "^2.4.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-hook-form": "^7.80.0"
+    "react-hook-form": "^7.81.0"
   },
   "publishConfig": {
     "access": "public"

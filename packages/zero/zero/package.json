@@ -217,7 +217,7 @@
     "@pyreon/server": "workspace:^",
     "@pyreon/sized-map": "workspace:*",
     "@pyreon/vite-plugin": "workspace:^",
-    "vite": "^8.0.16"
+    "vite": "^8.1.5"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",

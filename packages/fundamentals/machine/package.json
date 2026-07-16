@@ -46,7 +46,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.6.3",
-    "xstate": "^5.18.0"
+    "xstate": "^5.32.5"
   },
   "publishConfig": {
     "access": "public"
