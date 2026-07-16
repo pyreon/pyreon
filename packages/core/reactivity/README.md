@@ -190,6 +190,24 @@ stored.set(value)   // runs your custom set: side effect, then base.set
 
 `wrapSignal(base, { set, update? })` is the canonical primitive for "a signal whose writes carry a side effect" (persistence, cross-tab sync, patch emission, validation). It wraps a base `signal()` with a callable whose reads — `()`, `.peek`, `.subscribe`, `.direct` — AND the internal `_v` field delegate to `base`, while `.set` runs your custom handler (do the side effect, then call `base.set(value)` to commit). The `_v` forwarding is load-bearing: the compiler's `_bindText` fast path reads `source._v` directly, so a hand-rolled facade missing it binds `''` forever — the exact bug class this primitive retires. `update` is optional (defaults to `set(fn(peek()))`). `@pyreon/storage` (all 5 backends) and `@pyreon/state-tree` were migrated onto it; the `pyreon/storage-signal-v-forwarding` lint rule exists precisely because this primitive was missing before.
 
+## Type helpers ("derive, don't annotate twice")
+
+Type-only exports — zero runtime bytes:
+
+```ts
+import { signal, type SignalValue, type ComputedValue, type MaybeAccessor, type AccessorReturn } from '@pyreon/reactivity'
+
+const user = signal({ id: 1, name: 'Ada' })
+type User = SignalValue<typeof user> // { id: number; name: string }
+
+// The standard "static value OR reactive accessor" parameter shape.
+// NOT auto-called — resolve it yourself, inside a reactive scope:
+function useTitle(title: MaybeAccessor<string>) {
+  const read = () => (typeof title === 'function' ? title() : title)
+}
+type Resolved = AccessorReturn<MaybeAccessor<string>> // string
+```
+
 ## Debugging
 
 ```ts

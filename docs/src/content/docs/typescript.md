@@ -376,6 +376,62 @@ If you need `tsc` to produce executable modules directly (a CLI compiled without
 
 For app projects this never comes up — the bundler does the emit and `noEmit` keeps `tsc` out of it.
 
+## Inference type helpers ("derive, don't annotate twice")
+
+Pyreon's libraries ship type-only helpers that DERIVE a type from a value you already have — a signal, a store, a form, a loader — instead of making you annotate the same shape twice. They live in the package that owns the runtime concept (not a central types package), are `export type`-only (zero runtime bytes), and compose with the presets above out of the box.
+
+```ts
+// @pyreon/reactivity — unwrap values, name the value-or-accessor pattern
+import { signal, type SignalValue, type MaybeAccessor, type AccessorReturn } from '@pyreon/reactivity'
+const user = signal({ id: 1, name: 'Ada' })
+type User = SignalValue<typeof user> // { id: number; name: string }
+function useTitle(title: MaybeAccessor<string>) {
+  // NOT auto-called — resolve it yourself, inside a reactive scope:
+  const read = () => (typeof title === 'function' ? title() : title)
+}
+
+// @pyreon/store — the unwrapped state shape + the action surface
+import type { StoreState, StoreActions } from '@pyreon/store'
+type CartState = StoreState<ReturnType<typeof useCart>>   // { items: string[] }
+type CartActions = StoreActions<ReturnType<typeof useCart>> // { add(item: string): void }
+
+// @pyreon/form — values / field names / one field, from the form you already built
+import type { FormValues, FieldNames, FieldValue, NestValues } from '@pyreon/form'
+type Values = FormValues<typeof form>
+type Names = FieldNames<typeof form>          // 'email' | 'age'
+type Age = FieldValue<typeof form, 'age'>     // number
+// NestValues types the nestValues() boundary YOU own (the form stays flat):
+type Payload = NestValues<Values>
+
+// @pyreon/router — the loader's resolved data, no second annotation
+import { useLoaderData, type LoaderData } from '@pyreon/router'
+export const loader = async () => ({ posts: await fetchPosts() })
+const data = useLoaderData<LoaderData<typeof loader>>() // { posts: Post[] }
+
+// @pyreon/i18n — typed translation keys (opt-in, additive)
+const en = { nav: { home: 'Home' }, items_one: '{{count}} item', items_other: '{{count}} items' } as const
+const i18n = createI18n<typeof en>({ locale: 'en', messages: { en } })
+i18n.t('nav.home')            // ✓ autocompleted — typos are compile errors
+i18n.t('items', { count: 2 }) // ✓ plural suffixes collapse to the base key
+
+// @pyreon/machine — state/event unions from the instance
+import type { StateOf, EventOf } from '@pyreon/machine'
+type LightState = StateOf<typeof light> // 'green' | 'yellow' | 'red'
+
+// @pyreon/query — the resolved data type of a query result
+import type { QueryData } from '@pyreon/query'
+type Posts = QueryData<typeof postsQuery> // Post[] (no `undefined` — that's the signal artifact)
+```
+
+The gotchas worth knowing:
+
+- **`MaybeAccessor` is not auto-called.** Accepting one means your code resolves it (`typeof v === 'function' ? v() : v`) — and should resolve it inside the effect/JSX accessor, not once at setup, to keep tracking.
+- **`MessageKeys` needs literal keys.** Over a messages object *typed* as `TranslationDictionary` (index signature) it degrades to `string`; `TranslationParams` additionally needs `as const` so the message VALUES stay literal (they carry the `{{param}}` names). Recursion is depth-capped at 6 nesting levels.
+- **`NestValues` is standalone by design.** `useForm`/`values()`/`onSubmit` keep the FLAT dot-path keys (threading a nested shape through the form signature breaks generic wrappers like `@pyreon/feature`); the type exists for the `nestValues()` boundary in your code.
+- **`StoreState` mirrors the runtime snapshot** — computeds and actions are excluded (a computed has no `.set`, an action is a plain function), exactly like `api.state`.
+
+The pre-existing family — `ExtractProps` (multi-overload-aware), `ComponentFn`, `VNodeChild`, `HigherOrderComponent` in `@pyreon/core`; `InferSchema` in `@pyreon/validation`; `RouteParams`/`RouteHref` typed routes in `@pyreon/router`/`@pyreon/zero`; `InferStates`/`InferEvents` in `@pyreon/machine`; `SignalsOf`/`DeepPartial` in `@pyreon/store` — follows the same colocated pattern.
+
 ## Versioning & compatibility
 
 - **Peer dependency:** `typescript >= 5.9.0`. The presets use options stable in TypeScript 5.9+ (`module: "Preserve"`, `moduleResolution: "Bundler"`, `verbatimModuleSyntax`).

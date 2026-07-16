@@ -113,6 +113,7 @@ const User = () => {
 | [`useValidatedSearch`](#usevalidatedsearch) | function | Returns a REACTIVE ACCESSOR `() => T` for the current route's VALIDATED search params. |
 | [`notFound / NotFoundBoundary`](#notfound-notfoundboundary) | function | The Next.js-style 404 pair. |
 | [`lazy`](#lazy) | function | Code-split a route component. |
+| [`LoaderData`](#loaderdata) | type | Derive a route loader's RESOLVED data type from the loader function itself — pair with `useLoaderData&lt;LoaderData&lt;typeof  |
 
 ## API
 
@@ -784,6 +785,35 @@ const routes = [
 - Assuming `lazy()` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; `router.preload()` warms it before SSR renderToString, which is required so a lazy route is not blank on the server).
 
 **See also:** `createRouter` · `RouterView`
+
+---
+
+### LoaderData `type`
+
+```ts
+type LoaderData<L> = L extends (...args: never[]) => infer R ? Awaited<R> : never
+```
+
+Derive a route loader's RESOLVED data type from the loader function itself — pair with `useLoaderData<LoaderData<typeof loader>>()` so the component's data type follows the loader with no second annotation (and no drift when the loader changes). Unwraps async returns via `Awaited`; sync-returning loaders pass through. Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+export const loader = async () => ({ posts: await fetchPosts() })
+
+function PostsPage() {
+  const data = useLoaderData<LoaderData<typeof loader>>()
+  return <ul>{/* data.posts is fully typed */}</ul>
+}
+```
+
+**Common mistakes**
+
+- Annotating `useLoaderData<{ posts: Post[] }>()` by hand next to the loader — the drift this type removes; derive it from `typeof loader`
+- `LoaderData<ReturnType<typeof loader>>` — pass the FUNCTION type (`typeof loader`), not its return type
+- It types, it does not validate — the loader data crosses an SSR JSON boundary; Date/Map/class instances arrive as plain JSON on the client
+
+**See also:** `useLoaderData` · `RouteLoaderFn` · `ExtractParams`
 
 ---
 

@@ -146,6 +146,10 @@ if (!(await form.validate())) form.focusFirstError()
 | [`useFormState`](#useformstate) | hook | Computed summary of form-level state (`isValid`, `isDirty`, `isSubmitting`, `isValidating`, `submitCount`, `errors`). |
 | [`FormProvider`](#formprovider) | component | Provide a form via context so nested components can read it with `useFormContext<TValues>()` without prop-drilling. |
 | [`useFormContext`](#useformcontext) | hook | Read the nearest `FormProvider` form from context. |
+| [`FormValues`](#formvalues) | type | Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (` |
+| [`FieldNames`](#fieldnames) | type | The field-name union of a form. |
+| [`FieldValue`](#fieldvalue) | type | The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. |
+| [`NestValues`](#nestvalues) | type | Type-level companion of the runtime `nestValues()`: convert a FLAT dot-path value shape (`{ 'address.city': string }`) t |
 
 ## API
 
@@ -352,6 +356,106 @@ const field = useField(form, 'email')
 - Omitting the `<TValues>` generic — TypeScript infers `FormState<Record<string, unknown>>` and `useField` field names lose type narrowing
 
 **See also:** `FormProvider` · `useForm`
+
+---
+
+### FormValues `type`
+
+```ts
+type FormValues<F> // FormState<V> | UseFormOptions<V> → V
+```
+
+Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (`UseFormOptions<V>`), so a generic wrapper can derive the value shape from whichever it holds instead of threading a second type parameter. Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+const form = useForm({ initialValues: { email: '', age: 0 }, onSubmit: () => {} })
+type Values = FormValues<typeof form> // { email: string; age: number }
+```
+
+**Common mistakes**
+
+- Passing a plain object type — `FormValues<{ email: string }>` is `never`; the input is the FORM (or its options), not the values themselves
+- Fields added at runtime via `registerField()` are not in the static shape — read those via `getValues()[name]`
+
+**See also:** `FieldNames` · `FieldValue` · `useForm`
+
+---
+
+### FieldNames `type`
+
+```ts
+type FieldNames<F> = keyof FormValues<F> & string
+```
+
+The field-name union of a form. Dot-path leaf fields keep their FLAT keys ('address.city' stays ONE field name — the form's value model is flat by design). Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+type Names = FieldNames<typeof form> // 'email' | 'age'
+function focusField(name: FieldNames<typeof form>) { /* … */ }
+```
+
+**Common mistakes**
+
+- Expecting 'address.city' to split into nested names — dot-path leaves are first-class FLAT field names in @pyreon/form
+
+**See also:** `FormValues` · `FieldValue`
+
+---
+
+### FieldValue `type`
+
+```ts
+type FieldValue<F, K extends FieldNames<F>>
+```
+
+The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. The key is constrained to the real field names, so a typo is a compile error. Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+type Age = FieldValue<typeof form, 'age'> // number
+```
+
+**Common mistakes**
+
+- A mistyped field name fails typecheck by design — that is the feature, not a bug to cast around
+
+**See also:** `FormValues` · `FieldNames`
+
+---
+
+### NestValues `type`
+
+```ts
+type NestValues<T extends Record<string, unknown>> // flat dot-path shape → nested payload shape
+```
+
+Type-level companion of the runtime `nestValues()`: convert a FLAT dot-path value shape (`{ 'address.city': string }`) to its NESTED payload shape (`{ address: { city: string } }`). STANDALONE and opt-in by design — `useForm`/`values()`/`onSubmit` deliberately keep the FLAT keys (threading a nested shape through the form signature breaks generic wrappers like `@pyreon/feature`); use this to type YOUR OWN API boundary. Recursion follows the dot count (realistic keys ≤ 6 segments are fine). Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+const form2 = useForm({
+  initialValues: { name: '', 'address.city': '', 'address.zip': '' },
+  onSubmit: (values) => {
+    const payload = nestValues(values) as NestValues<typeof values>
+    // payload: { name: string; address: { city: string; zip: string } }
+  },
+})
+```
+
+**Common mistakes**
+
+- Expecting `useForm` itself to expose nested values — the value model is FLAT end-to-end; `NestValues` types the `nestValues()` boundary you own
+- Numeric segments (`"tags.0"`) type as an indexed OBJECT while the runtime builds a real ARRAY — cast at the boundary if you rely on array methods
+- Declaring both an object field (`address`) AND a leaf (`"address.city"`) — the type unions at the `address` key and the form dev-warns; pick one shape
+- Applying it to already-nested values — it is flat-in/nested-out; a keyless-dot shape passes through unchanged
+
+**See also:** `FormValues` · `useForm`
 
 ---
 

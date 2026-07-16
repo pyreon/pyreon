@@ -80,7 +80,7 @@ describe('gen-docs — reactivity snapshot', () => {
     // (startReactiveCoverage, takeReactiveCoverage, formatReactiveCoverage)
     // + 1 describeReactiveGraph (graph behavioral description)
     // + 1 "why did this update?" (getUpdateCause / formatUpdateCause).
-    expect(Object.keys(record).length).toBe(37)
+    expect(Object.keys(record).length).toBe(41)
     expect(Object.keys(record)).toContain('reactivity/describeReactiveGraph')
     expect(Object.keys(record)).toContain('reactivity/getUpdateCause')
     expect(Object.keys(record)).toContain('reactivity/isServer')

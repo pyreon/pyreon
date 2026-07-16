@@ -191,6 +191,36 @@ m.dispose()                    // drop all listeners`,
       ],
       seeAlso: ['createMachine'],
     },
+    {
+      name: 'StateOf',
+      kind: 'type',
+      signature: 'type StateOf<M> // Machine<S, E> → S; raw config → InferStates',
+      summary:
+        "The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object (delegates to `InferStates` for configs), so you derive from whichever you hold. Type-only, zero runtime bytes.",
+      example: `const light = createMachine({
+  initial: 'green',
+  states: { green: { on: { NEXT: 'yellow' } }, yellow: { on: { NEXT: 'red' } }, red: {} },
+})
+type LightState = StateOf<typeof light> // 'green' | 'yellow' | 'red'`,
+      mistakes: [
+        'Passing a config NOT declared `as const` (or through `createMachine`, which uses a const generic) — state names widen to `string` and the union is lost',
+        '`StateOf<ReturnType<typeof createMachine>>` gymnastics on a concrete machine — `typeof light` is enough',
+      ],
+      seeAlso: ['EventOf', 'InferStates', 'createMachine'],
+    },
+    {
+      name: 'EventOf',
+      kind: 'type',
+      signature: 'type EventOf<M> // Machine<S, E> → E; raw config → InferEvents',
+      summary:
+        "The EVENT union of a machine — instance or raw config (delegates to `InferEvents`, which unions every state's `on` keys; states without `on` contribute nothing). Useful for typing event-dispatching wrappers: `send(e: EventOf<typeof m>)`. Type-only, zero runtime bytes.",
+      example: `type LightEvent = EventOf<typeof light> // 'NEXT'
+function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
+      mistakes: [
+        'Expecting per-STATE narrowing — the union covers ALL states\' events; `machine.can(event)` is the runtime per-state check',
+      ],
+      seeAlso: ['StateOf', 'InferEvents', 'createMachine'],
+    },
   ],
   gotchas: [
     {

@@ -28,3 +28,8 @@ export type {
   TranslationDictionary,
   TranslationMessages,
 } from './types'
+export type {
+  MessageKeys,
+  TranslationParams,
+  TypedTranslationKey,
+} from './type-helpers'

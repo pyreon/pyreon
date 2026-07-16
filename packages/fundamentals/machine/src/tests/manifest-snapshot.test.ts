@@ -104,7 +104,7 @@ describe('gen-docs — machine snapshot', () => {
     expect(keys).toContain('machine/Machine.onExit / onEnter / onTransition / onDone')
     expect(keys).toContain('machine/Final states (final / isFinal / onDone)')
     expect(keys).toContain('machine/Machine.matches / nextEvents / reset / dispose')
-    expect(keys.length).toBe(5)
+    expect(keys.length).toBe(7)
     expect(record['machine/createMachine']!.notes).toContain('type-safe')
     expect(record['machine/createMachine']!.mistakes?.split('\n').length).toBe(4)
   })

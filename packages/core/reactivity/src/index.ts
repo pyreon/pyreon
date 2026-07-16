@@ -58,6 +58,12 @@ export { describeReactiveGraph, formatGraphDescription } from './reactive-descri
 // smaller AND clarifies that LPIH writes are an opt-in side-channel, not a
 // core reactivity primitive. See `./lpih.ts` and `docs/src/content/docs/lpih.md`.
 export type { ReactiveTraceEntry } from './reactive-trace'
+export type {
+  AccessorReturn,
+  ComputedValue,
+  MaybeAccessor,
+  SignalValue,
+} from './type-helpers'
 export { clearReactiveTrace, getReactiveTrace } from './reactive-trace'
 export {
   _bind,

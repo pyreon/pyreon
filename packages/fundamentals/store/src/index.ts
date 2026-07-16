@@ -54,6 +54,7 @@ import {
   _resumeSubscriber,
   _suspendSubscriber,
   batch,
+  type Computed,
   effectScope,
   registerSingleton,
   signal as createSignal,
@@ -299,6 +300,75 @@ export interface SchemaStoreApi<
     transformer: (current: TRaw[K]) => TRaw[K],
   ): void
 }
+
+// ─── Inference helpers (type-only, zero runtime bytes) ──────────────────────
+
+/**
+ * Fields of a store shape that are plain FUNCTIONS (actions) — signals and
+ * computeds excluded. Internal building block for {@link StoreActions}.
+ */
+type FunctionFieldsOf<T> = {
+  [K in keyof T as T[K] extends (...args: never[]) => unknown
+    ? T[K] extends Signal<unknown>
+      ? never
+      : T[K] extends Computed<unknown>
+        ? never
+        : K
+    : never]: T[K]
+}
+
+/**
+ * Derive the UNWRAPPED per-field value shape of a store — the inverse of
+ * {@link SignalsOf}. Accepts the api object of BOTH store flavors:
+ *
+ * - `SchemaStoreApi<TRaw, TStore>` → `TRaw` (the schema-inferred field values)
+ * - `StoreApi<T>` (composition stores) → the signal fields of `T`, each
+ *   unwrapped to its value type. Computeds and actions are EXCLUDED —
+ *   mirroring the runtime `api.state` snapshot, which only captures
+ *   signal-like fields (a computed has no `set`, an action is a function).
+ *
+ * @example
+ * ```ts
+ * const useCart = defineStore('cart', () => {
+ *   const items = signal<string[]>([])
+ *   const count = computed(() => items().length)
+ *   const add = (item: string) => items.update((xs) => [...xs, item])
+ *   return { items, count, add }
+ * })
+ * type CartState = StoreState<ReturnType<typeof useCart>>
+ * // → { items: string[] }  (count/add excluded — not snapshot state)
+ * ```
+ */
+export type StoreState<Api> =
+  Api extends SchemaStoreApi<infer TRaw, infer _TStore>
+    ? TRaw
+    : Api extends StoreApi<infer T>
+      ? { [K in keyof T as T[K] extends Signal<unknown> ? K : never]: SignalValueOf<T[K]> }
+      : never
+
+/** Unwrap `Signal<V>` → `V` (local helper — see `SignalValue` in `@pyreon/reactivity`). */
+type SignalValueOf<S> = S extends Signal<infer V> ? V : never
+
+/**
+ * Derive the ACTIONS (plain function fields) of a store — signals and
+ * computeds excluded. Accepts the api object of both store flavors:
+ *
+ * - `StoreApi<T>` (composition stores) → function fields of `T`.
+ * - `SchemaStoreApi<TRaw, TStore>` → function fields of `TStore` (the
+ *   setup-returned actions; the auto-generated field signals drop out).
+ *
+ * @example
+ * ```ts
+ * type CartActions = StoreActions<ReturnType<typeof useCart>>
+ * // → { add: (item: string) => void }
+ * ```
+ */
+export type StoreActions<Api> =
+  Api extends SchemaStoreApi<infer _TRaw, infer TStore>
+    ? FunctionFieldsOf<TStore>
+    : Api extends StoreApi<infer T>
+      ? FunctionFieldsOf<T>
+      : never
 
 // ─── Schema dispatch helpers ─────────────────────────────────────────────────
 

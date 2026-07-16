@@ -249,6 +249,22 @@ import { signal, computed, effect, batch } from '@pyreon/store'
 
 Plus `Signal` (type).
 
+## Type helpers ("derive, don't annotate twice")
+
+Type-only exports — derive the state/actions shapes from the store instead of re-annotating:
+
+```ts
+import type { StoreState, StoreActions } from '@pyreon/store'
+
+type CartState = StoreState<ReturnType<typeof useCart>>
+// → { items: string[] } — signal fields unwrapped; computeds/actions excluded
+//   (mirrors the runtime `api.state` snapshot)
+type CartActions = StoreActions<ReturnType<typeof useCart>>
+// → { add: (item: string) => void }
+```
+
+For schema stores, `StoreState` is the schema-inferred raw value shape (`TRaw`) and `StoreActions` picks the setup-returned actions. `SignalsOf<T>` remains the inverse direction (values → signals).
+
 ## Gotchas
 
 - `patch({ unknownKey: 1 })` drops the key — **warns in dev** (`[Pyreon] patch(...): key "..." is not a signal field`), silent in production.

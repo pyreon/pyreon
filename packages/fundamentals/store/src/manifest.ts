@@ -351,6 +351,43 @@ hydrateStores(window.__PYREON_STORE_STATE__ ?? {})`,
       ],
       seeAlso: ['dehydrateStores', 'setStoreRegistryProvider'],
     },
+    {
+      name: 'StoreState',
+      kind: 'type',
+      signature: 'type StoreState<Api> // SchemaStoreApi<TRaw, TStore> → TRaw; StoreApi<T> → unwrapped signal fields of T',
+      summary:
+        "Derive the UNWRAPPED per-field value shape of a store from its api object — the inverse of `SignalsOf`. For a schema store it's the schema-inferred raw values (`TRaw`); for a composition store it's the signal fields of the setup return, each unwrapped to its value type. Computeds and actions are EXCLUDED, mirroring the runtime `api.state` snapshot (a computed has no `.set`, an action is a plain function). Type-only, zero runtime bytes.",
+      example: `const useCart = defineStore('cart', () => {
+  const items = signal<string[]>([])
+  const count = computed(() => items().length)
+  const add = (item: string) => items.update((xs) => [...xs, item])
+  return { items, count, add }
+})
+type CartState = StoreState<ReturnType<typeof useCart>>
+// → { items: string[] }  (count/add excluded — not snapshot state)`,
+      mistakes: [
+        'Passing the setup-return type instead of the API — the input is `ReturnType<typeof useStore>` (the `StoreApi`), not the object your setup function returns',
+        'Expecting computeds in the state shape — they are derived, not snapshot state; the runtime `api.state` excludes them too (no `.set` → not signal-like)',
+        "`StoreState<typeof useCart>` — that's the HOOK type; call-site is `StoreState<ReturnType<typeof useCart>>`",
+        'Re-declaring the state interface by hand next to the store — the drift this type exists to remove; derive it',
+      ],
+      seeAlso: ['StoreActions', 'SignalsOf', 'defineStore'],
+    },
+    {
+      name: 'StoreActions',
+      kind: 'type',
+      signature: 'type StoreActions<Api> // plain function fields of the store shape (signals + computeds excluded)',
+      summary:
+        'Derive the ACTIONS surface of a store from its api object — the plain function fields of the setup return (schema stores: of `TStore`, so auto-generated field signals drop out). Signals and computeds are excluded even though both are callable. Useful for typing an action-dispatching wrapper or a test double without re-annotating. Type-only, zero runtime bytes.',
+      example: `type CartActions = StoreActions<ReturnType<typeof useCart>>
+// → { add: (item: string) => void }
+function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<CartActions[K]>) { /* … */ }`,
+      mistakes: [
+        'Expecting signals/computeds to appear — they are callable but deliberately excluded (they are state/derivation, not actions)',
+        'Using it to type `patch()` payloads — that is `Partial<StoreState<Api>>`, not the actions record',
+      ],
+      seeAlso: ['StoreState', 'defineStore'],
+    },
   ],
   gotchas: [
     {

@@ -107,7 +107,7 @@ describe('gen-docs — i18n snapshot', () => {
 
   it('renders to MCP api-reference entries', () => {
     const record = renderApiReferenceEntries(manifest)
-    expect(Object.keys(record).length).toBe(10)
+    expect(Object.keys(record).length).toBe(13)
     expect(record['i18n/createI18n']!.notes).toContain('reactive')
     expect(record['i18n/createI18n']!.mistakes?.split('\n').length).toBe(6)
     // The two previously-undocumented public exports are now covered.

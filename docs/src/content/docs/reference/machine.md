@@ -101,6 +101,8 @@ const Status = () => (
 | [`Machine.onExit / onEnter / onTransition / onDone`](#machine-onexit-onenter-ontransition-ondone) | function | Lifecycle listeners. |
 | [`Final states (final / isFinal / onDone)`](#final-states-final-isfinal-ondone) | function | Mark a terminal state with `final: true`. |
 | [`Machine.matches / nextEvents / reset / dispose`](#machine-matches-nextevents-reset-dispose) | function | The instance query + control surface (all reactive where noted). |
+| [`StateOf`](#stateof) | type | The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object ( |
+| [`EventOf`](#eventof) | type | The EVENT union of a machine — instance or raw config (delegates to `InferEvents`, which unions every state's `on` keys; |
 
 ## API
 
@@ -257,6 +259,56 @@ m.dispose()                    // drop all listeners
 - Expecting `dispose()` to stop or freeze the machine — it only removes listeners; `send()` still transitions the state afterward (now silently). Drop your references to let it GC.
 
 **See also:** `createMachine`
+
+---
+
+### StateOf `type`
+
+```ts
+type StateOf<M> // Machine<S, E> → S; raw config → InferStates
+```
+
+The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object (delegates to `InferStates` for configs), so you derive from whichever you hold. Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+const light = createMachine({
+  initial: 'green',
+  states: { green: { on: { NEXT: 'yellow' } }, yellow: { on: { NEXT: 'red' } }, red: {} },
+})
+type LightState = StateOf<typeof light> // 'green' | 'yellow' | 'red'
+```
+
+**Common mistakes**
+
+- Passing a config NOT declared `as const` (or through `createMachine`, which uses a const generic) — state names widen to `string` and the union is lost
+- `StateOf<ReturnType<typeof createMachine>>` gymnastics on a concrete machine — `typeof light` is enough
+
+**See also:** `EventOf` · `InferStates` · `createMachine`
+
+---
+
+### EventOf `type`
+
+```ts
+type EventOf<M> // Machine<S, E> → E; raw config → InferEvents
+```
+
+The EVENT union of a machine — instance or raw config (delegates to `InferEvents`, which unions every state's `on` keys; states without `on` contribute nothing). Useful for typing event-dispatching wrappers: `send(e: EventOf<typeof m>)`. Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+type LightEvent = EventOf<typeof light> // 'NEXT'
+function dispatch(e: EventOf<typeof light>) { light.send(e) }
+```
+
+**Common mistakes**
+
+- Expecting per-STATE narrowing — the union covers ALL states' events; `machine.can(event)` is the runtime per-state check
+
+**See also:** `StateOf` · `InferEvents` · `createMachine`
 
 ---
 

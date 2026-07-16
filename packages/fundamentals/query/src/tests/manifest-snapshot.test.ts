@@ -157,7 +157,7 @@ describe('gen-docs — query snapshot', () => {
     expect(keys).toContain('query/QueryDevtools')
     expect(keys).toContain('query/Persistence subpath re-exports')
     expect(keys).toContain('query/TanStack core re-exports')
-    expect(keys.length).toBe(25)
+    expect(keys.length).toBe(27)
 
     // Spot-check flagship entry density
     const useQuery = record['query/useQuery']!

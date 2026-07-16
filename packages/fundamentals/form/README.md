@@ -342,6 +342,22 @@ Only a **declarative** schema (raw Standard Schema / typed adapter) is fed the n
 
 Not yet typed: `values()` / `onSubmit` / `schema` carry the flat dot-path keys, not a nested `NestValues<T>` inference — so a nested declarative schema over a dot-path-leaf form needs an `as never` cast today. That's a tracked follow-up (its type cascade breaks generic wrappers like `@pyreon/feature`).
 
+## Type helpers ("derive, don't annotate twice")
+
+Type-only exports — derive the values/fields shapes from the form you already built:
+
+```ts
+import type { FormValues, FieldNames, FieldValue, NestValues } from '@pyreon/form'
+
+type Values = FormValues<typeof form> // works on the form OR its UseFormOptions
+type Names = FieldNames<typeof form> // 'email' | 'age' (dot-path leaves stay FLAT)
+type Age = FieldValue<typeof form, 'age'> // number — typos are compile errors
+
+// NestValues is the STANDALONE type companion of runtime nestValues():
+// the form's value model stays FLAT by design; type YOUR nested API boundary:
+const payload = nestValues(form.values()) as NestValues<FormValues<typeof form>>
+```
+
 ## Devtools
 
 ```ts

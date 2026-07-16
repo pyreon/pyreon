@@ -193,6 +193,32 @@ import { i18nRegistry } from '@pyreon/i18n/devtools'
 | `I18nProviderProps`     | Props for `I18nProvider`: `{ instance: I18nInstance; children?: VNodeChild }`        |
 | `TransProps`            | Props for `Trans` component                                                          |
 
+## Typed translation keys (opt-in)
+
+`MessageKeys<M>` derives the dot-path key union of a messages object (plural suffixes `_one`/`_other`/… collapse to the base key; recursion depth-capped at 6 levels), and `createI18n<typeof en>()` plugs it into the instance so typos become compile errors — purely additive, untyped usage is unchanged:
+
+```ts
+const en = {
+  greeting: 'Hello {{name}}',
+  nav: { home: 'Home', about: 'About' },
+  items_one: '{{count}} item',
+  items_other: '{{count}} items',
+} as const
+
+const i18n = createI18n<typeof en>({ locale: 'en', messages: { en } })
+i18n.t('nav.home')            // ✓ autocompleted + checked
+i18n.t('items', { count: 2 }) // ✓ plural suffixes collapse to the base key
+i18n.t('auth:errors.invalid') // ✓ namespaced keys stay unchecked (runtime-loaded)
+// i18n.t('nav.hoem')         // ✗ compile error
+
+// Per-message param extraction (needs `as const` — literal values carry the {{param}} names):
+import type { MessageKeys, TranslationParams } from '@pyreon/i18n'
+type Keys = MessageKeys<typeof en> // 'greeting' | 'nav.home' | 'nav.about' | 'items'
+type P = TranslationParams<typeof en, 'greeting'> // { name: InterpolationValue }
+```
+
+Over a messages object typed as `TranslationDictionary` (index signature) the helpers degrade gracefully to `string` / `InterpolationValues`. `useI18n()` returns the untyped view (context erases the key type) — keep a module-level typed instance for typed `t`.
+
 ## Gotchas
 
 - **`t()` reads `locale` reactively** — call it inside effects / computeds / JSX accessors so re-evaluation happens on locale change. Reading once at setup captures the initial value.

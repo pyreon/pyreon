@@ -30,12 +30,14 @@ export { createMachine } from './machine'
 // Types
 export type {
   EnterCallback,
+  EventOf,
   InferEvents,
   InferStates,
   Machine,
   MachineConfig,
   MachineEvent,
   StateConfig,
+  StateOf,
   TransitionCallback,
   TransitionConfig,
 } from './types'

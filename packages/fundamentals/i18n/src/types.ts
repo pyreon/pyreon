@@ -103,8 +103,17 @@ export interface I18nOptions {
   formats?: NamedFormatters
 }
 
-/** The public i18n instance returned by `createI18n()`. */
-export interface I18nInstance {
+/**
+ * The public i18n instance returned by `createI18n()`.
+ *
+ * `TKey` is the accepted translation-key type — `string` by default (fully
+ * back-compatible). The opt-in typed pattern narrows it to the message-key
+ * union derived from your messages object (see `MessageKeys` /
+ * `createI18n<typeof en>(...)`), so a mistyped key is a compile error.
+ * `t` is declared METHOD-style (bivariant) so a typed instance stays
+ * assignable where the untyped `I18nInstance` is expected (`I18nProvider`).
+ */
+export interface I18nInstance<TKey extends string = string> {
   /**
    * Translate a key with optional interpolation.
    * Reads the current locale reactively — re-evaluates in effects/computeds.
@@ -119,7 +128,7 @@ export interface I18nInstance {
    * Default value: { defaultValue: 'Fallback' } returned (interpolated) if missing
    * Nesting: "Hello $t(common:appName)" resolves the referenced key inline
    */
-  t: (key: string, values?: InterpolationValues) => string
+  t(key: TKey, values?: InterpolationValues): string
 
   /**
    * Format a number for the current locale via `Intl.NumberFormat`.

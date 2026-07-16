@@ -15,9 +15,13 @@ export { Form, Submit } from './form-component'
 export { flattenValues, nestValues } from './path'
 export type {
   Accessor,
+  FieldNames,
   FieldRegisterProps,
   FieldState,
+  FieldValue,
   FormState,
+  FormValues,
+  NestValues,
   SchemaValidateFn,
   UseFormOptions,
   ValidateFn,

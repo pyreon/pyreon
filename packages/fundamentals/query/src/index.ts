@@ -73,6 +73,7 @@ export { useQueries } from './use-queries'
 export { usePrefetchInfiniteQuery, usePrefetchQuery } from './use-prefetch'
 export type { UseQueryResult } from './use-query'
 export { useQuery } from './use-query'
+export type { QueryData, QueryError } from './type-helpers'
 export type { QueryErrorResetBoundaryProps } from './use-query-error-reset-boundary'
 export {
   QueryErrorResetBoundary,
