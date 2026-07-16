@@ -1,52 +1,75 @@
 /**
- * Compiler hardening — JSX child of COMPONENT parent is NOT wrapped in an
- * accessor when the expression is a stable reference (Identifier or simple
- * MemberExpression chain).
+ * Compiler contract — JSX child of a COMPONENT parent: which stable
+ * references wrap in an accessor, and which are emitted bare.
  *
- * Reported root cause behind the kinetic Stagger + bokisch.com Intro repro
- * (PR #731 shipped the library-side workaround; this is the upstream fix).
+ * ## History (two eras, one file)
  *
- * Pre-fix the compiler rewrote `<Comp>{children}</Comp>` (where `children`
- * is a local `const` derived from a getter — `const children = childHolder.children`
- * after `splitProps`) as `Comp({ ..., children: () => h.children })`. Receiving
- * components saw `props.children` as a FUNCTION instead of the expected
- * `VNode | VNode[]`. DOM-consuming code routes through `mountChild` which
- * handles function children correctly (via `mountReactive`), so the wrap is
- * invisible there. Libraries that iterate children at the VNode level
- * (kinetic's StaggerRenderer/TransitionItem) or `cloneVNode` them directly
- * were silently broken — the function spread produced `{type: undefined}`
- * and the DOM rendered literal `<undefined>` tags.
+ * ERA 1 (PR #732, the kinetic/bokisch fix): ALL stable references were
+ * emitted bare, because wrapping `{children}` as `() => h.children` broke
+ * libraries that iterate children at the VNode level (kinetic's
+ * StaggerRenderer / TransitionItem `cloneVNode`) — the function spread
+ * produced `{type: undefined}` → literal `<undefined>` DOM tags. PR #731
+ * shipped the library-side `resolveChildren` convention; #732 added the
+ * blanket compiler carve-out as belt-and-braces.
  *
- * Fix shape: for JSX children of COMPONENT parents (uppercase tag), skip
- * the accessor wrap when the expression is a stable reference. The
- * compiler's prop-inlining pass still runs (so `children` is replaced with
- * `h.children` at the JSX use site) but the resulting expression is
- * emitted bare. Dynamic shapes (CallExpression, BinaryExpression, etc.)
- * keep the wrap so `<Comp>{count()}</Comp>` and similar patterns stay
- * reactive end-to-end.
+ * ERA 2 (issue #2348, this contract): the blanket carve-out was itself a
+ * correctness bug for PROPS-BACKED reads. `<Heading>{props.title}</Heading>`
+ * emitted bare fires the compiler-emitted `_rp` GETTER once at jsx() time —
+ * the child is FROZEN — while the IDENTICAL expression as a component attr
+ * gets `_rp(() => props.title)` (live) and under a DOM element gets
+ * `bindPolymorphicText` (live). The carve-out's "reading once captures the
+ * same value" justification only holds for non-reactive sources. So the
+ * contract is now SPLIT:
+ *
+ *   - PROPS-BACKED stable refs (props-member reads `props.x`, splitProps
+ *     holders `own.children`, prop-derived consts — `readsFromProps` /
+ *     `referencesPropDerived`, checked on the type-UNWRAPPED expression)
+ *     → wrapped as `() => expr` (the same shape signal-call children
+ *     already arrive in). Structural children consumers are protected by
+ *     the ecosystem convention instead: `mountChild` handles function
+ *     children, libraries own `resolveChildren` (kinetic since #731), and
+ *     `pyreon/no-iterate-children-without-resolve` enforces it at lint.
+ *   - PLAIN stable refs (module consts, locals, loop items — nothing
+ *     getter-backed) → still emitted bare (the Era-1 protection, kept
+ *     where it is actually loss-free).
+ *   - Dynamic shapes (calls, binary/logical/conditional) → wrap, as always.
+ *
+ * Both branches slice the type-UNWRAPPED expression (`as T` / `!` are
+ * runtime-erased) so the two backends stay byte-identical — locked by the
+ * `cross-backend: component-child stable-reference carve-out` block in
+ * native-equivalence.test.ts and the seeded fuzz grammar.
+ *
+ * Bisect (#2348 fix): revert the `propBacked` branch in
+ * `handleJsxExpression` (jsx.ts) → the PROPS-BACKED contract specs fail
+ * (emit reverts to bare/frozen); the PLAIN-stable-ref spec and the
+ * CONTROLs stay green (proving the carve-out split is surgical).
  *
  * Note: `transformJSX_JS` returns Pyreon-transformed SOURCE — JSX stays as
- * JSX (the final JSX→jsx() lowering is esbuild's job). So the inlined
- * expression shows up between `{...}` in the emitted text.
- *
- * Bisect: revert the `isComponentTag(...) && isStableReference(expr)`
- * carve-out in `handleJsxExpression` (jsx.ts) → the CONTRACT specs fail
- * (emit reverts to `{() => h.children}`); the wrap-still-fires CONTROL
- * specs stay green (proving the carve-out doesn't touch the call/binary
- * paths).
+ * JSX (the final JSX→jsx() lowering is esbuild's job). So the emitted
+ * expression shows up between `{...}` in the output text.
  */
 import { describe, expect, test } from 'vitest'
 import { transformJSX_JS } from '../jsx'
 
 const t = (src: string): string => transformJSX_JS(src, 'test.tsx').code
 
-describe('JSX transform — component child of stable reference', () => {
-  test('CONTRACT — bare Identifier (splitProps-derived const) is emitted without accessor wrap', () => {
-    // The bokisch.com Intro shape, distilled. `splitProps` registers
-    // `childHolder` as a prop-derived binding; `const children = childHolder.children`
-    // makes `children` prop-derived; the JSX child `{children}` would,
-    // pre-fix, emit `{() => childHolder.children}`. Now emits the inlined
-    // value bare.
+describe('JSX transform — component child: stable-reference contract (#2348)', () => {
+  test('CONTRACT (#2348) — direct props-member child is wrapped live', () => {
+    // The issue's minimal proof: attr and child must BOTH be live.
+    const src = `
+      const B = (props) => <Heading label={props.title}>{props.title}</Heading>
+    `
+    const out = t(src)
+    expect(out, 'attr keeps the _rp wrap').toContain('_rp(() => props.title)')
+    // (plain toContain — the attr's own `=>` defeats a `<Heading[^>]*>` regex)
+    expect(out, 'child gets the accessor (was bare/frozen pre-#2348)').toContain(
+      '>{() => props.title}</Heading>',
+    )
+  })
+
+  test('CONTRACT (#2348) — bare Identifier (splitProps-derived const) is wrapped live', () => {
+    // The bokisch.com Intro shape, distilled. Pre-#2348 this emitted the
+    // inlined value BARE — getter fired once at jsx() time, frozen child.
     const src = `
       const Comp = (props) => {
         const [childHolder, restHtml] = splitProps(props, ['children'])
@@ -55,13 +78,12 @@ describe('JSX transform — component child of stable reference', () => {
       }
     `
     const out = t(src)
-    expect(out, 'children must NOT be wrapped in an accessor').not.toContain('() =>')
-    expect(out, 'inlined value must appear bare in JSX child position').toMatch(
-      /<Inner>\s*\{\(?childHolder\.children\)?\}\s*<\/Inner>/,
+    expect(out, 'prop-derived child must be wrapped (inlined + accessor)').toMatch(
+      /<Inner>\s*\{\(\) => \(?childHolder\.children\)?\}\s*<\/Inner>/,
     )
   })
 
-  test('CONTRACT — simple MemberExpression chain is emitted without accessor wrap', () => {
+  test('CONTRACT (#2348) — props-backed MemberExpression chain is wrapped live', () => {
     const src = `
       const Comp = (props) => {
         const [obj] = splitProps(props, ['deep'])
@@ -69,18 +91,76 @@ describe('JSX transform — component child of stable reference', () => {
       }
     `
     const out = t(src)
-    expect(out, 'member chain must NOT be wrapped in an accessor').not.toContain(
-      '() => obj.deep.x',
+    expect(out, 'props-backed member chain must be wrapped').toMatch(
+      /<Inner>\s*\{\(\) => obj\.deep\.x\}\s*<\/Inner>/,
     )
-    expect(out, 'member chain must appear bare').toMatch(
-      /<Inner>\s*\{obj\.deep\.x\}\s*<\/Inner>/,
+  })
+
+  test('CONTRACT (#2348) — TS-cast wrapper (`as VNode[]`) is transparent and wraps live', () => {
+    // The exact kinetic shape: `<StaggerRenderer>{children as VNode[]}</StaggerRenderer>`.
+    // The cast is runtime-erased; both backends slice the UNWRAPPED
+    // expression so the emit is byte-identical (native-equivalence lock).
+    const src = `
+      const Kinetic = (props) => {
+        const [childHolder] = splitProps(props, ['children'])
+        const children = childHolder.children
+        return <Inner>{children as VNode[]}</Inner>
+      }
+    `
+    const out = t(src)
+    expect(out, 'cast must not hide the props-backed classification').toMatch(
+      /<Inner>\s*\{\(\) => \(?childHolder\.children\)?\}\s*<\/Inner>/,
+    )
+  })
+
+  test('CONTRACT (#2348) — non-null `!` postfix is transparent and wraps live', () => {
+    const src = `
+      const Comp = (props) => {
+        const [own] = splitProps(props, ['children'])
+        return <Inner>{own.children!}</Inner>
+      }
+    `
+    const out = t(src)
+    expect(out).toMatch(/<Inner>\s*\{\(\) => own\.children\}\s*<\/Inner>/)
+  })
+
+  test('CONTRACT (#2348) — kinetic Stagger reproducer wraps live (resolveChildren handles it)', () => {
+    // Exact shape from `createKineticComponent.tsx`. Era-1 asserted BARE
+    // here; kinetic's own `resolveChildren` (PR #731) unwraps function
+    // children at every structural consumption site, so the live accessor
+    // is both safe AND fixes the frozen-children class for kinetic
+    // consumers that re-render.
+    const src = `
+      const Kinetic = (props) => {
+        const [childHolder, restHtml] = splitProps(props, ['children'])
+        const children = childHolder.children
+        return <StaggerRenderer htmlProps={restHtml}>{children}</StaggerRenderer>
+      }
+    `
+    const out = t(src)
+    expect(out).toMatch(
+      /<StaggerRenderer[^>]*>\s*\{\(\) => \(?childHolder\.children\)?\}\s*<\/StaggerRenderer>/,
+    )
+  })
+
+  test('CONTRACT (Era-1 kept) — PLAIN stable ref (non-props local) stays bare', () => {
+    // The half of the original carve-out that is genuinely loss-free: a
+    // stable reference with NO getter-backed source. Reading it once ===
+    // reading it N times, and bare emission protects structural children
+    // consumers without costing any reactivity.
+    const src = `
+      const Comp = () => {
+        const obj = { x: 1 }
+        return <Inner>{obj.x}</Inner>
+      }
+    `
+    const out = t(src)
+    expect(out, 'plain stable ref must NOT be wrapped').toMatch(
+      /<Inner>\s*\{obj\.x\}\s*<\/Inner>/,
     )
   })
 
   test('CONTROL — CallExpression child KEEPS the wrap (preserves reactivity)', () => {
-    // `<Comp>{count()}</Comp>` — the user explicitly reads a signal in the
-    // child position. The wrap converts to `() => count()` so the
-    // receiving component can subscribe via mountChild → mountReactive.
     const src = `
       const count = signal(0)
       const Comp = () => <Inner>{count()}</Inner>
@@ -103,9 +183,6 @@ describe('JSX transform — component child of stable reference', () => {
   })
 
   test('CONTROL — DOM-element parent with bare Identifier KEEPS the binding (reactive)', () => {
-    // The carve-out only fires for COMPONENT parents (uppercase tag).
-    // DOM-element children must still go through the reactive binding
-    // path so mountChild/mountReactive can re-evaluate inside an effect.
     const src = `
       const Comp = (props) => {
         const [own] = splitProps(props, ['children'])
@@ -114,72 +191,12 @@ describe('JSX transform — component child of stable reference', () => {
       }
     `
     const out = t(src)
-    // The template path emits this as a reactive binding (_bindText /
-    // _bindDirect / etc.), not a bare text-node. Either way, the
-    // expression must still route through a reactive primitive.
     expect(out, 'DOM-element child must route through a reactive path').not.toContain(
       '<div>{own.children}</div>',
     )
   })
 
-  test('CONTRACT — TS-cast wrapper (`as VNode[]`) is transparent', () => {
-    // The EXACT shape `createKineticComponent.tsx` ships:
-    //   `<StaggerRenderer>{children as VNode[]}</StaggerRenderer>`
-    // The TS `as` cast wraps `children` as a `TSAsExpression`. Without
-    // unwrapping, the carve-out misses the bokisch reproducer entirely.
-    // The cast is preserved in the emit — esbuild's later TS-strip pass
-    // removes it. Reproducer: pre-fix this test fails with
-    // `expected to NOT contain '() =>'` because the wrap still fires.
-    const src = `
-      const Kinetic = (props) => {
-        const [childHolder] = splitProps(props, ['children'])
-        const children = childHolder.children
-        return <Inner>{children as VNode[]}</Inner>
-      }
-    `
-    const out = t(src)
-    expect(out, 'TS-cast wrapper must not block the carve-out').not.toContain('() =>')
-    // Slice unwraps the TS cast — output is just the inlined value.
-    expect(out).toMatch(/<Inner>\s*\{\(?childHolder\.children\)?\}\s*<\/Inner>/)
-  })
-
-  test('CONTRACT — non-null `!` postfix is transparent', () => {
-    const src = `
-      const Comp = (props) => {
-        const [own] = splitProps(props, ['children'])
-        return <Inner>{own.children!}</Inner>
-      }
-    `
-    const out = t(src)
-    expect(out).not.toContain('() =>')
-    expect(out).toMatch(/<Inner>\s*\{own\.children\}\s*<\/Inner>/)
-  })
-
-  test('CONTRACT — kinetic Stagger reproducer compiles to bare children prop', () => {
-    // Exact shape from `packages/ui-system/kinetic/src/kinetic/createKineticComponent.tsx`.
-    // Pre-fix emit (JSX child position): `{() => childHolder.children}`.
-    // Post-fix emit: `{childHolder.children}` (no wrap).
-    const src = `
-      const Kinetic = (props) => {
-        const [childHolder, restHtml] = splitProps(props, ['children'])
-        const children = childHolder.children
-        return <StaggerRenderer htmlProps={restHtml}>{children}</StaggerRenderer>
-      }
-    `
-    const out = t(src)
-    expect(out).not.toContain('() => childHolder.children')
-    expect(out).not.toContain('() => children')
-    expect(out).toMatch(
-      /<StaggerRenderer[^>]*>\s*\{\(?childHolder\.children\)?\}\s*<\/StaggerRenderer>/,
-    )
-  })
-
   test('CONTROL — bare SIGNAL identifier KEEPS the wrap (auto-call + wrap is reactive)', () => {
-    // `<Comp>{count}</Comp>` where count is a tracked signal — the user's
-    // deliberate "make this reactive at the call site" pattern. The
-    // compiler auto-calls (`count` → `count()`) AND wraps (`() => count()`)
-    // so the receiving component re-evaluates in its mountReactive scope.
-    // The stable-reference carve-out explicitly excludes signal references.
     const src = `
       function C() {
         const count = signal(0)
@@ -191,14 +208,12 @@ describe('JSX transform — component child of stable reference', () => {
   })
 
   test('CONTROL — already-arrow-wrapped child is unchanged (idempotent)', () => {
-    // Users who explicitly want reactivity write `<Comp>{() => x()}</Comp>`.
-    // The compiler's shouldWrap returns false for ArrowFunctionExpression,
-    // so the carve-out never fires. The user's accessor passes through.
     const src = `
       const x = signal('a')
       const Comp = () => <Inner>{() => x()}</Inner>
     `
     const out = t(src)
     expect(out, 'user-written accessor must pass through').toContain('() => x()')
+    expect(out).not.toContain('() => () =>')
   })
 })
