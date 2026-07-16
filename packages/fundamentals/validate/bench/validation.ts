@@ -104,6 +104,17 @@ interface Scenario {
   ok: Record<Lib, (input: unknown) => boolean>
   valid: unknown
   invalid?: unknown
+  /**
+   * Optional ROTATED input pools — the worker cycles through the pool so the
+   * parse site sees EVERY variant (for a discriminated union: every tag).
+   * A single constant input lets the engine branch-predict one dispatch arm
+   * and keep every IC monomorphic — unrealistically flattering for ALL libs
+   * and structurally unable to measure the dispatch itself. Every pool entry
+   * goes through the correctness gate. Scenarios without pools keep the
+   * original single-input closure (byte-identical measurement).
+   */
+  validPool?: unknown[]
+  invalidPool?: unknown[]
 }
 
 function scenarios(): Scenario[] {
@@ -116,6 +127,7 @@ function scenarios(): Scenario[] {
     A: (i: unknown) => unknown,
     valid: unknown,
     invalid?: unknown,
+    pools?: { valid: unknown[]; invalid?: unknown[] },
   ) => {
     out.push({
       name,
@@ -133,6 +145,8 @@ function scenarios(): Scenario[] {
       },
       valid,
       invalid,
+      validPool: pools?.valid,
+      invalidPool: pools?.invalid,
     })
   }
 
@@ -274,6 +288,48 @@ function scenarios(): Scenario[] {
     },
   )
 
+  // Scenario 7 — discriminated union (3 members, ROTATED tags). Inputs cycle
+  // through every member on the valid path, and through the three failure
+  // modes (member-field fail / unknown tag / non-object) on the invalid path
+  // — so the discriminant DISPATCH is actually measured (a constant tag lets
+  // branch prediction + monomorphic ICs hide it for every lib). ArkType's
+  // union is auto-discriminated (its compiled switch is the market-leading
+  // baseline this row exists to compare against); valibot uses `v.variant`.
+  const duValid = [
+    { kind: 'circle', radius: 1.5 },
+    { kind: 'rect', w: 3, h: 4 },
+    { kind: 'label', text: 'hi', size: 12 },
+  ]
+  const duInvalid = [
+    { kind: 'circle', radius: 'x' }, // dispatched member's field fails
+    { kind: 'nope', w: 3, h: 4 }, // unknown discriminator tag
+    'not-an-object', // not an object at all
+  ]
+  add(
+    'du.3-member',
+    s.discriminatedUnion('kind', [
+      s.object({ kind: s.literal('circle'), radius: s.number() }),
+      s.object({ kind: s.literal('rect'), w: s.number(), h: s.number() }),
+      s.object({ kind: s.literal('label'), text: s.string(), size: s.number() }),
+    ]),
+    z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('circle'), radius: z.number() }),
+      z.object({ kind: z.literal('rect'), w: z.number(), h: z.number() }),
+      z.object({ kind: z.literal('label'), text: z.string(), size: z.number() }),
+    ]),
+    v.variant('kind', [
+      v.object({ kind: v.literal('circle'), radius: v.number() }),
+      v.object({ kind: v.literal('rect'), w: v.number(), h: v.number() }),
+      v.object({ kind: v.literal('label'), text: v.string(), size: v.number() }),
+    ]),
+    type({ kind: "'circle'", radius: 'number' })
+      .or({ kind: "'rect'", w: 'number', h: 'number' })
+      .or({ kind: "'label'", text: 'string', size: 'number' }),
+    duValid[0],
+    duInvalid[0],
+    { valid: duValid, invalid: duInvalid },
+  )
+
   return out
 }
 
@@ -284,9 +340,22 @@ if (cellArg !== -1) {
   const [scName, path, lib] = key.split('|') as [string, 'valid' | 'invalid', Lib]
   const sc = scenarios().find((x) => x.name === scName)
   if (!sc) throw new Error(`unknown scenario ${scName}`)
-  const input = path === 'valid' ? sc.valid : sc.invalid
+  const pool = path === 'valid' ? (sc.validPool ?? [sc.valid]) : (sc.invalidPool ?? [sc.invalid])
   const run = sc.run[lib]
-  const samples = measureSamples(() => void run(input))
+  let samples: number[]
+  if (pool.length === 1) {
+    // single input — the original closure, byte-identical measurement
+    const input = pool[0]
+    samples = measureSamples(() => void run(input))
+  } else {
+    // rotated pool — cycle so the dispatch site sees every variant
+    let k = 0
+    const n = pool.length
+    samples = measureSamples(() => {
+      void run(pool[k])
+      k = k + 1 === n ? 0 : k + 1
+    })
+  }
   process.stdout.write(JSON.stringify({ samples }))
   process.exit(0)
 }
@@ -299,15 +368,26 @@ declare const Bun: {
   ) => { stdout: Uint8Array; exitCode: number }
 }
 
-// Correctness gate: every lib must agree on every scenario's verdicts.
+// Optional scenario filter: `--only <prefix>` runs only matching scenarios
+// (e.g. `--only du.` for the discriminated-union rows). Correctness still
+// gates EVERY scenario — the filter narrows only the timed cells.
+const onlyArg = process.argv.indexOf('--only')
+const only = onlyArg !== -1 ? process.argv[onlyArg + 1]! : null
+
+// Correctness gate: every lib must agree on every scenario's verdicts —
+// including every entry of a rotated input pool.
 {
   for (const sc of scenarios()) {
     for (const lib of LIBS) {
-      if (!sc.ok[lib](sc.valid)) {
-        throw new Error(`[correctness] ${sc.name}: ${lib} rejects the VALID input`)
+      for (const input of sc.validPool ?? [sc.valid]) {
+        if (!sc.ok[lib](input)) {
+          throw new Error(`[correctness] ${sc.name}: ${lib} rejects a VALID input`)
+        }
       }
-      if (sc.invalid !== undefined && sc.ok[lib](sc.invalid)) {
-        throw new Error(`[correctness] ${sc.name}: ${lib} accepts the INVALID input`)
+      for (const input of sc.invalidPool ?? (sc.invalid !== undefined ? [sc.invalid] : [])) {
+        if (sc.ok[lib](input)) {
+          throw new Error(`[correctness] ${sc.name}: ${lib} accepts an INVALID input`)
+        }
       }
     }
   }
@@ -330,6 +410,7 @@ const PROCS = 3
 
 const rows: Row[] = []
 for (const sc of scenarios()) {
+  if (only && !sc.name.startsWith(only)) continue
   const paths: Array<'valid' | 'invalid'> = sc.invalid !== undefined ? ['valid', 'invalid'] : ['valid']
   for (const path of paths) {
     const cells = {} as Record<Lib, CellResult>

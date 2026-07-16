@@ -5,12 +5,15 @@
  *
  * Here every generated object/array wraps FALLBACK-triggering field types
  * (optional / nullable / nullish / default / catch / union /
- * discriminatedUnion / record / tuple / map / set / coerce / transform /
- * refine / intersection / lazy / enum / strict-nested). The JIT inlines the
+ * record / tuple / map / set / coerce / transform /
+ * refine / intersection / lazy / enum / strict-nested — a plain
+ * discriminatedUnion field now INLINES via the DU-root JIT branch, so it
+ * exercises the inline seam instead). The JIT inlines the
  * outer container and emits `_runInto` calls for those subtrees against the
  * SHARED ctx — the exact seam where a path / issue / value / async-diagnostic
- * divergence would hide. Both backends must produce identical
- * { threw, isPromise, ok, value?, issues } for every (schema, input).
+ * divergence would hide. Discriminated-union ROOTS are generated too
+ * (members mixing inline + fallback shapes). Both backends must produce
+ * identical { threw, isPromise, ok, value?, issues } for every (schema, input).
  *
  * Seeded (mulberry32) → deterministic; a failure prints its seed.
  */
@@ -94,6 +97,25 @@ function randValue(r: () => number): unknown {
   return xs[Math.floor(r() * xs.length)]
 }
 
+// Discriminated-union ROOT — now itself a JIT root (discriminant-switch
+// dispatch): members mix inline-able plain objects with fallback-triggering
+// shapes (strict / fallback fields), so BOTH the inline-member and the
+// per-case `_runInto` seams are exercised.
+function duRoot(r: () => number): Schema<unknown> {
+  const memberCount = 2 + Math.floor(r() * 2)
+  const tags = ['a', 'b', 'c']
+  const members: unknown[] = []
+  for (let m = 0; m < memberCount; m++) {
+    const shape: Record<string, Schema<unknown>> = { t: s.literal(tags[m]!) as Schema<unknown> }
+    if (r() < 0.6) shape.v = r() < 0.5 ? (s.string().min(1) as Schema<unknown>) : fallbackField(r)
+    if (r() < 0.4) shape.n = r() < 0.5 ? (s.number().int() as Schema<unknown>) : fallbackField(r)
+    let member = s.object(shape as never)
+    if (r() < 0.15) member = member.strict() as typeof member // non-strip → member falls back
+    members.push(member)
+  }
+  return s.discriminatedUnion('t', members as never) as unknown as Schema<unknown>
+}
+
 describe('JIT differential — partial-inline seam (fallback fields in JIT-able containers)', () => {
   it('4000 seeded object/array-of-fallback schemas × inputs agree JIT ≡ interpreter', () => {
     const r = rng(0x51ede1)
@@ -101,15 +123,19 @@ describe('JIT differential — partial-inline seam (fallback fields in JIT-able 
     const keyNames = ['a', 'b', 'c', '__proto__']
 
     for (let seed = 1; seed <= 4000; seed++) {
-      const rootIsArray = r() < 0.35
+      const rootRoll = r()
+      const rootIsArray = rootRoll < 0.3
+      const rootIsDu = !rootIsArray && rootRoll < 0.5
       const schema = rootIsArray
         ? (s.array(fallbackField(r) as never) as Schema<unknown>)
-        : (() => {
-            const shape: Record<string, Schema<unknown>> = {}
-            const n = 1 + Math.floor(r() * 3)
-            for (let i = 0; i < n; i++) shape[keyNames[i]!] = fallbackField(r)
-            return s.object(shape as never) as Schema<unknown>
-          })()
+        : rootIsDu
+          ? duRoot(r)
+          : (() => {
+              const shape: Record<string, Schema<unknown>> = {}
+              const n = 1 + Math.floor(r() * 3)
+              for (let i = 0; i < n; i++) shape[keyNames[i]!] = fallbackField(r)
+              return s.object(shape as never) as Schema<unknown>
+            })()
 
       const jit = tryCompileJit(schema)
       if (!jit) continue // not a JIT root → same validator both sides → nothing to compare
@@ -118,7 +144,13 @@ describe('JIT differential — partial-inline seam (fallback fields in JIT-able 
       let input: unknown
       const roll = r()
       if (roll < 0.15) input = randValue(r)
-      else if (rootIsArray) {
+      else if (rootIsDu) {
+        const obj: Record<string, unknown> = {}
+        if (r() < 0.9) obj.t = ['a', 'b', 'c', 'zzz', 42, NaN][Math.floor(r() * 6)]
+        if (r() > 0.4) obj.v = randValue(r)
+        if (r() > 0.5) obj.n = randValue(r)
+        input = obj
+      } else if (rootIsArray) {
         const len = Math.floor(r() * 4)
         const arr: unknown[] = []
         for (let i = 0; i < len; i++) arr.push(randValue(r))

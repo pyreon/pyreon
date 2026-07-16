@@ -199,6 +199,17 @@ export class DiscriminatedUnionSchema<
     }
   }
 
+  /**
+   * Package-internal (JIT codegen — `tryCompileJit`): the tag → member
+   * dispatch map. Read-only by contract. The JIT captures it so its
+   * discriminant dispatch runs through `Map.get` — the EXACT SameValueZero
+   * lookup `_compileType` performs (a raw `switch` on the tag would compare
+   * with `===`, diverging on a NaN tag).
+   */
+  get _duTagMap(): ReadonlyMap<unknown, AnyObject> {
+    return this._map
+  }
+
   override _compileType(input: unknown, ctx: ParseCtx): unknown {
     if (typeof input !== 'object' || input === null || Array.isArray(input)) {
       ctx.issues.push(

@@ -113,11 +113,27 @@ describe('JIT differential — async trees (awaited)', () => {
     const failures: string[] = []
 
     for (let seed = 1; seed <= 2000; seed++) {
-      const rootIsArray = r() < 0.3
+      const rootRoll = r()
+      const rootIsArray = rootRoll < 0.25
+      // DU root: async-capable fields INSIDE inline members, plus (sometimes)
+      // a member-LEVEL async refine — the member then falls back per case and
+      // its Promise routes through the DU switch's onAsync arm.
+      const rootIsDu = !rootIsArray && rootRoll < 0.45
       let schema: Schema<unknown>
       if (rootIsArray) {
         schema = s.array(asyncField(r) as never) as Schema<unknown>
         if (r() < 0.4) (schema as unknown as { min(n: number): unknown }).min(1)
+      } else if (rootIsDu) {
+        const memberA = s.object({ t: s.literal('a') as never, v: asyncField(r) as never })
+        const memberB0 = s.object({
+          t: s.literal('b') as never,
+          n: (r() < 0.5 ? asyncField(r) : syncField(r)) as never,
+        })
+        const memberB =
+          r() < 0.3
+            ? memberB0.refine(async (o: unknown) => (o as { t: string }).t === 'b', { message: 'async-member-refine' })
+            : memberB0
+        schema = s.discriminatedUnion('t', [memberA, memberB] as never) as unknown as Schema<unknown>
       } else {
         const shape: Record<string, Schema<unknown>> = {}
         const n = 1 + Math.floor(r() * 3)
@@ -133,7 +149,13 @@ describe('JIT differential — async trees (awaited)', () => {
 
       let input: unknown
       if (r() < 0.15) input = randValue(r)
-      else if (rootIsArray) {
+      else if (rootIsDu) {
+        const obj: Record<string, unknown> = {}
+        if (r() < 0.9) obj.t = ['a', 'b', 'zzz'][Math.floor(r() * 3)]
+        if (r() > 0.3) obj.v = randValue(r)
+        if (r() > 0.3) obj.n = randValue(r)
+        input = obj
+      } else if (rootIsArray) {
         const len = Math.floor(r() * 4)
         input = Array.from({ length: len }, () => randValue(r))
       } else {
