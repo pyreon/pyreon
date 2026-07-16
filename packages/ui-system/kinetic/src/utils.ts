@@ -40,25 +40,55 @@ export const removeClasses = (el: HTMLElement, classes: string | undefined) => {
  * browser paints the current state before applying changes — required for
  * CSS transitions to trigger.
  *
- * Returns a CANCEL function that stops the pending work. Crucially it
- * cancels the INNER frame too when called AFTER the outer frame has already
- * fired: a bare `cancelAnimationFrame(outerId)` misses the inner frame, so a
- * rapid enter→leave flip inside one frame could still apply the stale
- * enter-to state on the way out. Both scheduling and cancelling are SSR /
- * post-teardown safe — `requestAnimationFrame` may be undefined (SSR: the
- * cancel is a no-op), and `cancelAnimationFrame` may be undefined when the
- * cleanup runs after the env is torn down (the returned cancel guards it).
+ * BATCHED: all callbacks registered in the same synchronous burst share ONE
+ * double-rAF (a 1000-child stagger schedules 2 rAFs, not 2000 — measured as
+ * the dominant per-child overhead vs Motion One's batched WAAPI path at
+ * N=1000). Correctness constraint the batching must preserve: a callback
+ * registered AFTER the current batch's outer frame has fired must NOT join
+ * that batch (it would run only ONE frame after registration — the browser
+ * would not have painted its "from" state and the CSS transition would not
+ * trigger). So the shared batch closes when its outer frame fires; later
+ * registrants open a new batch. Callbacks run in registration order (Set
+ * iteration = insertion order), matching the old per-callback rAF FIFO.
+ *
+ * Returns a CANCEL function that removes the callback from its batch — a
+ * strictly stronger guarantee than the previous per-callback
+ * `cancelAnimationFrame(outer/inner)` pair (removal works in EVERY phase, so
+ * a rapid enter→leave flip inside one frame can never apply the stale
+ * enter-to state; and cancelling one callback never touches siblings'
+ * scheduling). Scheduling is SSR-safe (`requestAnimationFrame` may be
+ * undefined → no-op cancel) and the cancel itself is post-teardown safe by
+ * construction (a Set delete, no browser API).
  */
+let _framePending: Set<() => void> | null = null
+// The rAF that scheduled the pending batch. A batch is only valid for the
+// requestAnimationFrame it was scheduled on — if the global is swapped (test
+// stubs, a polyfill installed mid-flight), the old batch's frames live on the
+// dead function and would swallow new callbacks forever; identity-keying makes
+// the batching self-healing instead of needing test-only reset hooks.
+let _frameRaf: typeof requestAnimationFrame | null = null
+
 export const nextFrame = (callback: () => void): (() => void) => {
   if (typeof requestAnimationFrame === 'undefined') return () => {}
-  let inner = 0
-  const outer = requestAnimationFrame(() => {
-    inner = requestAnimationFrame(callback)
-  })
+  if (!_framePending || _frameRaf !== requestAnimationFrame) {
+    const batch = new Set<() => void>()
+    _framePending = batch
+    _frameRaf = requestAnimationFrame
+    requestAnimationFrame(() => {
+      // Batch closes at the outer frame — late registrants need their own
+      // outer frame so their "from" state paints first. Guarded: a stale
+      // batch's outer (from a swapped-out rAF) must not null a newer batch.
+      if (_framePending === batch) _framePending = null
+      requestAnimationFrame(() => {
+        for (const cb of batch) cb()
+        batch.clear()
+      })
+    })
+  }
+  const batch = _framePending
+  batch.add(callback)
   return () => {
-    if (typeof cancelAnimationFrame !== 'function') return
-    cancelAnimationFrame(outer)
-    if (inner) cancelAnimationFrame(inner)
+    batch.delete(callback)
   }
 }
 
