@@ -50,13 +50,29 @@ function decodeQueryComponent(raw: string): string {
  * user-controlled, so a plain `{}` would let `?__proto__=…` / `?constructor=…`
  * write to inherited slots — prototype/property injection (CodeQL
  * `js/remote-property-injection`). A null-prototype object has no prototype
- * chain, so every user key is a plain OWN data property: injection is
- * structurally impossible, and `?__proto__=x` becomes a retrievable own key
- * rather than a footgun that shadows `Object.prototype`. This is the standard
- * `qs` / `query-string` hardening.
+ * chain, so every user key is a plain OWN data property. This is the standard
+ * `qs` / `query-string` hardening — layer ONE of two (see
+ * `isSafeQueryKey` for layer two, which the null prototype does NOT cover).
  */
 function emptyQueryRecord<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>
+}
+
+/**
+ * Layer TWO of the query hardening: dangerous keys are DROPPED at the parse
+ * boundary, never stored — even as own properties of the null-prototype
+ * record. The null prototype protects the record ITSELF, but an own
+ * `__proto__` key still escapes into CONSUMER objects: `Object.assign(target,
+ * query)` (and any `target[k] = query[k]` copy loop) uses [[Set]] semantics,
+ * so copying an own `__proto__` data property onto an ordinary object mutates
+ * the TARGET's prototype — pollution one hop downstream, outside this
+ * module's control. Dropping the qs-convention key set (`__proto__`,
+ * `constructor`, `prototype`) closes that hop and the CodeQL finding at the
+ * source; a genuine app query param by these names has no legitimate use.
+ */
+const DANGEROUS_QUERY_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+function isSafeQueryKey(key: string): boolean {
+  return !DANGEROUS_QUERY_KEYS.has(key)
 }
 
 export function parseQuery(qs: string): Record<string, string> {
@@ -66,11 +82,11 @@ export function parseQuery(qs: string): Record<string, string> {
     const eqIdx = part.indexOf('=')
     if (eqIdx < 0) {
       const key = decodeQueryComponent(part)
-      if (key) result[key] = ''
+      if (key && isSafeQueryKey(key)) result[key] = ''
     } else {
       const key = decodeQueryComponent(part.slice(0, eqIdx))
       const val = decodeQueryComponent(part.slice(eqIdx + 1))
-      if (key) result[key] = val
+      if (key && isSafeQueryKey(key)) result[key] = val
     }
   }
   return result
@@ -97,7 +113,7 @@ export function parseQueryMulti(qs: string): Record<string, string | string[]> {
       key = decodeQueryComponent(part.slice(0, eqIdx))
       val = decodeQueryComponent(part.slice(eqIdx + 1))
     }
-    if (!key) continue
+    if (!key || !isSafeQueryKey(key)) continue
     const existing = result[key]
     if (existing === undefined) {
       result[key] = val

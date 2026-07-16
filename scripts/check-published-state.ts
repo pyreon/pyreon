@@ -130,7 +130,20 @@ export function classifyExistence(
   return { absent: results.filter((r) => r.npm === null).map((r) => r.pkg) }
 }
 
+/**
+ * The npm package-name grammar (optionally scoped, lowercase, no leading
+ * dot/underscore, one `/` only as the scope separator). Validated BEFORE a
+ * name read from a local `package.json` is embedded in the registry URL —
+ * the URL is then safe by construction (no `..`, `?`, `#`, or extra path
+ * segments can reach `fetch`), which is what CodeQL `js/file-access-to-http`
+ * flags on this file→network flow. Exported for the unit test.
+ */
+export const NPM_NAME_RE = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
+
 async function npmLatest(pkg: string): Promise<string | null> {
+  if (!NPM_NAME_RE.test(pkg)) {
+    throw new Error(`invalid npm package name read from a workspace package.json: ${JSON.stringify(pkg)}`)
+  }
   const res = await fetch(`https://registry.npmjs.org/${pkg}/latest`, {
     headers: { Accept: 'application/json' },
   })
