@@ -415,6 +415,13 @@ interface RouteIndex {
   /** Wildcard/catch-all routes */
   wildcards: FlattenedRoute[]
   /**
+   * First-char fail-fast mask (see buildRouteIndex): `mask[c] === 1` ⇔ some
+   * non-wildcard route's first segment starts with ASCII code `c`. `null`
+   * when the mask can't be used (dynamic-first routes exist, or a route's
+   * first char is non-ASCII).
+   */
+  firstCharMask: Uint8Array | null
+  /**
    * PR-S9: pre-built trie of `notFoundComponent`-bearing records keyed by
    * their full URL path. `findNotFoundFallback` walks the trie by URL
    * segment instead of scanning every route on every 404 (O(URL segments)
@@ -676,6 +683,44 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
     if (bucket) segmentDispatch[key] = buildBucketDispatch(bucket)
   }
 
+  // First-char fail-fast mask: `mask[c] === 1` ⇔ SOME non-wildcard route's
+  // first URL segment starts with ASCII char code `c`. After a staticMap
+  // miss, a path whose first char isn't in the mask can only match a
+  // wildcard — resolveRoute jumps straight there, skipping the plain-shape
+  // scan + dispatch + general matcher (the radix-tree-style first-char
+  // fail find-my-way gets for free; a 12-char miss was paying ~4ns/char
+  // here). Statics are IN the mask: `/about/` (trailing slash) misses the
+  // staticMap but must still reach the general matcher. Disabled entirely
+  // (`null`) when any first char is non-ASCII (≥128 — a unicode segment
+  // must never be mask-rejected) or when any route's first segment is
+  // dynamic (a param matches ANY segment). '%'-first paths are handled at
+  // the check site (encoded first char could decode to anything).
+  let firstCharMask: Uint8Array | null = dynamicFirst.length === 0 ? new Uint8Array(128) : null
+  if (firstCharMask) {
+    for (const key in segmentMap) {
+      const c = key.charCodeAt(0)
+      if (!(c < 128)) {
+        firstCharMask = null
+        break
+      }
+      firstCharMask[c] = 1
+    }
+  }
+  if (firstCharMask) {
+    for (const key in staticMap) {
+      // key is the full path (`/about/team`); first-segment char is key[1].
+      // A bare-root `'/'` static has no char 1 — nothing to mark (a miss
+      // can never be the root path: root always hits the staticMap).
+      if (key.length < 2) continue
+      const c = key.charCodeAt(1)
+      if (!(c < 128)) {
+        firstCharMask = null
+        break
+      }
+      firstCharMask[c] = 1
+    }
+  }
+
   const index: RouteIndex = {
     staticMap,
     segmentMap,
@@ -683,6 +728,7 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
     dynamicFirst,
     wildcards,
     notFoundTrie,
+    firstCharMask,
   }
   _indexCache.set(routes, index)
   return index
@@ -1087,6 +1133,53 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
       matched: staticMatch.matchedChain,
       meta: staticMatch.meta,
       search: staticMatch.validateFn ? applyValidateFn(staticMatch.validateFn, query) : EMPTY_SEARCH,
+    }
+  }
+
+  // First-char fail-fast (see RouteIndex.firstCharMask): after the static
+  // miss, a path whose first-segment char no non-wildcard route starts with
+  // can only match a wildcard — return it directly, skipping the plain-shape
+  // scan, dispatch, and general matcher (the first-char fail a radix tree
+  // gets for free; a 12-char miss paid ~4ns/char here). Excluded chars fall
+  // through to the full pipeline: `%` (an encoded first char decodes to
+  // anything) and `/` (a leading `//` collapses in the general lane's
+  // splitPath, so `//foo` can still match `/foo`). `charCodeAt(1)` is NaN
+  // for the bare root `'/'` and for `''` — both fail `cc < 128` and jump:
+  // correct, since a root route would have hit the staticMap above, and the
+  // general lane resolves both to the same wildcard/not-found tail.
+  const mask = index.firstCharMask
+  if (mask) {
+    const cc = cleanPath.charCodeAt(1)
+    if (cc !== 37 && cc !== 47 && !(cc < 128 && mask[cc] === 1)) {
+      const w = index.wildcards[0]
+      if (w) {
+        return {
+          path: cleanPath,
+          params: EMPTY_PARAMS,
+          query,
+          hash,
+          matched: w.matchedChain,
+          meta: w.meta,
+          search: w.validateFn ? applyValidateFn(w.validateFn, query) : EMPTY_SEARCH,
+        }
+      }
+      // Same not-found tail as the full pipeline (notFoundComponent walk →
+      // bare empty match) — the mask only skips MATCHING work, never
+      // changes what a non-match resolves to.
+      const nfb = findNotFoundFallback(routes, cleanPath, index.notFoundTrie)
+      if (nfb) {
+        return {
+          path: cleanPath,
+          params: {},
+          query,
+          hash,
+          matched: nfb,
+          meta: mergeMeta(nfb),
+          search: {},
+          isNotFound: true,
+        }
+      }
+      return { path: cleanPath, params: {}, query, hash, matched: [], meta: {}, search: {} }
     }
   }
 
