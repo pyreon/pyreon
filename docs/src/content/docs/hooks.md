@@ -188,6 +188,8 @@ count.set(5) // same value
 prev() // 5 (tracks every call, even if value doesn't change)
 ```
 
+<Example file="./examples/hooks/useprevious-lag-swatches" title="usePrevious — the previous swatch lags one step" />
+
 ### Animation Direction Example
 
 ```tsx
@@ -446,6 +448,8 @@ const { focused, props } = useFocus()
   class={focused() ? 'ring-2 ring-blue-500' : 'ring-1 ring-gray-300'}
 />
 ```
+
+<Example file="./examples/hooks/usefocus-ring-tiles" title="useFocus — Tab between the tiles to light them" />
 
 ### Focus Ring with Label
 
