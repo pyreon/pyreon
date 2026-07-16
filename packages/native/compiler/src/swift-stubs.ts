@@ -179,6 +179,8 @@ public struct PyreonHaptics { public init() {}; public func impact(_ style: Stri
 public struct PyreonShare { public init() {}; public func url(_ u: String) {} }
 public struct PyreonLinking { public init() {}; public func openUrl(_ u: String) {} }
 public struct PyreonNotifications { public init() {}; public func notify(_ title: String, _ body: String) {} }
+// M3.5: authenticate is ASYNC — awaited inside a Task { … } (the M4.5 lowering).
+public struct PyreonBiometrics { public init() {}; public func authenticate(_ reason: String) async -> Bool { false } }
 public struct PyreonMachine {
   public init(initial: String, transitions: [String: [String: String]]) {}
   public func callAsFunction() -> String { "" }

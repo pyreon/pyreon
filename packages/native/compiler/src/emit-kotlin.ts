@@ -213,6 +213,15 @@ let _layoutComponentNames: Set<string> = new Set()
  * emits `content()` (the child slot) instead of the scaffold `RouterView()`. */
 let _emittingLayoutComponentKotlin = false
 
+/**
+ * M4.5: set by `emitKotlinAction` when it emits an `async () => { … }` handler
+ * (which wraps its body in `pyreonAsyncScope.launch { … }`). Read back by
+ * `emitKotlinComponent` AFTER the JSX is emitted to hoist a single
+ * `val pyreonAsyncScope = rememberCoroutineScope()` at the composable top.
+ */
+let _hasAsyncHandler = false
+const PYREON_ASYNC_SCOPE = 'pyreonAsyncScope'
+
 /** Pre-pass: collect every layout-parent component name across all router
  * decls' nested route trees (mirror of emit-swift's collectLayoutComponentNames). */
 function collectLayoutComponentNamesKotlin(components: ComponentIR[]): Set<string> {
@@ -1137,6 +1146,8 @@ function emitKotlinComponent(c: ComponentIR): string {
   _payNames = new Set()
   _mapNames = new Set()
   _authNames = new Set()
+  // M4.5: fresh per component — set by emitKotlinAction if an async handler emits.
+  _hasAsyncHandler = false
   // C5.3: reset router-routes map (mirrors Swift emit's same state).
   _routerRoutes = new Map()
   // Phase 2 follow-up — track function-typed props so handler emit
@@ -1300,6 +1311,10 @@ function emitKotlinComponent(c: ComponentIR): string {
   }
   // While emitting a layout's body, its `<RouterView />` emits `content()`.
   _emittingLayoutComponentKotlin = isLayout
+  // M4.5: capture the composable-top insertion point (after decls + the
+  // LaunchedEffect harness, before the JSX). If the JSX below emits an async
+  // handler, one `rememberCoroutineScope()` val is spliced in here.
+  const asyncScopeInsertIndex = lines.length
   // A component that returns `null` / `undefined` renders NOTHING — a @Composable
   // returns Unit, so emit an empty body rather than a stray `null` expression
   // statement (valid-but-pointless in Kotlin; the Swift sibling `nil` was a hard
@@ -1308,6 +1323,16 @@ function emitKotlinComponent(c: ComponentIR): string {
     lines.push(`  ${emitKotlinExpr(c.returnExpr, 2)}`)
   }
   _emittingLayoutComponentKotlin = false
+  // M4.5: an `async () => { await … }` handler emitted
+  // `pyreonAsyncScope.launch { … }`; hoist its coroutine scope to the composable
+  // top (rememberCoroutineScope() must run at composable scope, not in a lambda).
+  if (_hasAsyncHandler) {
+    lines.splice(
+      asyncScopeInsertIndex,
+      0,
+      `  val ${PYREON_ASYNC_SCOPE} = rememberCoroutineScope()`,
+    )
+  }
   lines.push(`}`)
   _activePropsParamName = undefined
   _signalNames = new Set()
@@ -1630,6 +1655,14 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id}Ctx = LocalContext.current`,
       `val ${id} = remember { PyreonNotifications(${id}Ctx) }`,
     ].join('\n  ')
+  }
+  // M3.5: `const bio = useBiometrics()` → a remembered PyreonBiometrics. Its
+  // `authenticate(reason)` is a suspend fun, awaited inside a
+  // `pyreonAsyncScope.launch { … }` (the M4.5 async-handler wrap). The v1 Kotlin
+  // runtime needs no Context (the full FragmentActivity-backed BiometricPrompt
+  // wiring is a follow-up); a bare remembered instance suffices to compile.
+  if (d.kind === 'biometrics') {
+    return `val ${kotlinIdent(d.name)} = remember { PyreonBiometrics() }`
   }
   if (d.kind === 'share') {
     const id = kotlinIdent(d.name)
@@ -2174,6 +2207,11 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
       return String(e.value)
     case 'identifier':
       return kotlinIdent(e.name)
+    case 'await':
+      // M4.5: a Kotlin suspend call carries NO `await` keyword — the enclosing
+      // `scope.launch { … }` coroutine provides the suspension context. Emit
+      // just the inner call.
+      return emitKotlinExpr(e.expr, indent)
     case 'call': {
       // `Object.keys(<object-typed expr>)` → `listOf("a","b")` of the
       // struct field names (statically known). Recurse into the rewritten
@@ -3758,12 +3796,22 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
       // todos.find(…); if (t) { … }` now lowers to `if (t != null)`. Restored
       // after (scoped to this body, re-entrant-safe). Mirror of the Swift side.
       const savedLocals = seedHandlerLocals(handler.stmts, _kotlinExprInferCtx)
+      // M4.5: an `async () => { await … }` handler wraps its body in
+      // `pyreonAsyncScope.launch { … }` (the hoisted rememberCoroutineScope())
+      // so a synchronous `onClick: () -> Unit` slot can run suspend calls.
+      const isAsync = handler.async === true
+      const bodyIndent = isAsync ? indent + 4 : indent + 2
+      const bodyPad = ' '.repeat(bodyIndent)
       const lines = handler.stmts
-        .map((s) => pad + emitKotlinStatement(s, indent + 2, stmtCtx))
+        .map((s) => bodyPad + emitKotlinStatement(s, bodyIndent, stmtCtx))
         .join('\n')
       _kotlinExprInferCtx.locals = savedLocals
       const head =
         handler.params.length === 0 ? '{' : `{ ${handler.params.map(kotlinIdent).join(', ')} ->`
+      if (isAsync) {
+        _hasAsyncHandler = true
+        return `${head}\n${pad}${PYREON_ASYNC_SCOPE}.launch {\n${lines}\n${pad}}\n${' '.repeat(indent)}}`
+      }
       return `${head}\n${lines}\n${' '.repeat(indent)}}`
     }
     // Preserve arrow parameter names in the Kotlin lambda.
@@ -3783,10 +3831,20 @@ function emitKotlinAction(handler: ExprIR, indent: number): string {
     if (handler.body.kind === 'literal' && handler.body.value === '' && handler.params.length === 0) {
       return '{ }'
     }
+    // M4.5: single-expression async handler (`async () => await x.method()`)
+    // still needs the `pyreonAsyncScope.launch { … }` coroutine scope.
     if (handler.params.length === 0) {
+      if (handler.async === true) {
+        _hasAsyncHandler = true
+        return `{ ${PYREON_ASYNC_SCOPE}.launch { ${emitKotlinExpr(handler.body, indent)} } }`
+      }
       return `{ ${emitKotlinExpr(handler.body, indent)} }`
     }
     const paramList = handler.params.map(kotlinIdent).join(', ')
+    if (handler.async === true) {
+      _hasAsyncHandler = true
+      return `{ ${paramList} -> ${PYREON_ASYNC_SCOPE}.launch { ${emitKotlinExpr(handler.body, indent)} } }`
+    }
     return `{ ${paramList} -> ${emitKotlinExpr(handler.body, indent)} }`
   }
   // Resolve to a function-typed identifier (bare OR props-member),

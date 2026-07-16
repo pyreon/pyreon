@@ -1533,6 +1533,9 @@ export function inferType(expr: ExprIR, ctx: InferenceCtx): TypeIR {
     }
     case 'paren':
       return inferType(expr.inner, ctx)
+    case 'await':
+      // M4.5: `await X` has the type of the awaited value X.
+      return inferType(expr.expr, ctx)
     case 'comparison':
     case 'logical':
       // `===` / `!==` / `<` / `>` and `&&` / `||` produce boolean.

@@ -345,6 +345,10 @@ export type DeclIR =
    * RECEIVES remote push).
    */
   | { kind: 'notifications'; name: string }
+  /** M3.5 — `const bio = useBiometrics()` → PyreonBiometrics (iOS LAContext /
+   * Android BiometricPrompt). `authenticate(reason?)` is async, awaited in an
+   * `async` handler (the first consumer of the M4.5 `await` lowering). */
+  | { kind: 'biometrics'; name: string }
   /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode
@@ -767,6 +771,14 @@ export type ExprIR =
    * nullish). Lowers to Swift `f?(args)` / Kotlin `f?.invoke(args)`.
    */
   | { kind: 'call'; callee: ExprIR; args: ExprIR[]; optional?: boolean }
+  /**
+   * `await expr` — an awaited async-result call inside an `async` handler
+   * (M4.5). The emitter unwraps to `await <expr>` (Swift) / `<expr>` (Kotlin
+   * suspend calls carry no `await` keyword). Only meaningful inside an arrow
+   * marked `async: true`, which the action emitters wrap in a `Task { … }`
+   * (Swift) / `scope.launch { … }` (Kotlin) async scope.
+   */
+  | { kind: 'await'; expr: ExprIR }
   | {
       kind: 'member'
       object: ExprIR
@@ -883,7 +895,7 @@ export type ExprIR =
    * emit `stmts` as a multi-statement closure body; without it the
    * earlier parse silently kept only the FIRST statement.
    */
-  | { kind: 'arrow'; params: string[]; body: ExprIR; stmts?: StatementIR[] }
+  | { kind: 'arrow'; params: string[]; body: ExprIR; stmts?: StatementIR[]; async?: boolean }
   /**
    * RX-2 — `@pyreon/rx` namespace call. Produced by parse.ts'
    * `tryRxNamespaceLowering` when it encounters `rx.METHOD(signal, ...)`.

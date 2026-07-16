@@ -137,6 +137,12 @@ export function conditionalKotlinImports(emitted: string): string {
   const imports: string[] = []
   if (emitted.includes('withContext(')) imports.push('import kotlinx.coroutines.withContext')
   if (emitted.includes('Dispatchers.')) imports.push('import kotlinx.coroutines.Dispatchers')
+  // M4.5: an `async () => { await … }` event handler emits
+  // `pyreonAsyncScope.launch { … }` (the coroutine scope hoisted from
+  // `rememberCoroutineScope()`, which IS covered by the star-imported
+  // androidx.compose.runtime.*). `launch` is a kotlinx.coroutines extension on
+  // CoroutineScope, outside any star-import — same class as withContext.
+  if (emitted.includes('.launch {')) imports.push('import kotlinx.coroutines.launch')
   if (emitted.includes('Json.')) imports.push('import kotlinx.serialization.json.Json')
   // Bundled-image emit (asset-pipeline arc): the Image composable +
   // painterResource + ContentScale live outside the unconditional

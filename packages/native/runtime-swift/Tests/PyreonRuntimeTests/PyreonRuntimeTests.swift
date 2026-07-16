@@ -1696,6 +1696,21 @@ final class PyreonRuntimeTests: XCTestCase {
         ])
         XCTAssertEqual(map.markers.map(\.id), ["x", "y"])
     }
+
+    // M3.5 — PyreonBiometrics is reachable + constructs. A "reachable" smoke
+    // (like the other symbol-reachability tests above), NOT a behavioral one:
+    // `authenticate(_:)` calls LAContext.evaluatePolicy, which on a host WITH
+    // enrolled biometrics (a dev Mac's Touch ID) triggers a REAL system prompt
+    // — that would hang / behave non-deterministically in a headless test, and
+    // its result is host-dependent (enrolled → may succeed; none → false). The
+    // async `authenticate` path is instead proven by the emit COMPILE gate
+    // (swiftc against the PyreonBiometrics stub) and, in M3.5, by a fresh-
+    // simulator XCUITest (no enrollment → the `canEvaluatePolicy` guard returns
+    // `false` WITHOUT prompting → deterministic).
+    func testPyreonBiometricsIsReachable() {
+        let bio = PyreonBiometrics()
+        _ = bio
+    }
 }
 
 /// Tiny mutable-reference-type flag so a `@Sendable` `onChange` closure

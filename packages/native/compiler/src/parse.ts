@@ -3753,6 +3753,14 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useNotifications') {
     return { kind: 'notifications', name }
   }
+  // M3.5 / M4.5 — `const bio = useBiometrics()` → a biometric gate (iOS
+  // LAContext, Android BiometricPrompt). Its `authenticate(reason?)` returns a
+  // Promise<boolean>, so consumers `await bio.authenticate(...)` inside an
+  // `async` handler — the FIRST async-result service, exercising the M4.5
+  // `await` lowering (Task {} / scope.launch {}). No arguments at construction.
+  if (calleeName === 'useBiometrics') {
+    return { kind: 'biometrics', name }
+  }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
@@ -5554,9 +5562,9 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
           const stmts: StatementIR[] = ((seqBody.expressions as AnyNode[]) ?? []).map(
             (x) => ({ kind: 'expr', expr: parseExpr(x, ctx) }),
           )
-          return { kind: 'arrow', params, body: { kind: 'literal', value: '' }, stmts }
+          return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' }, stmts }
         }
-        return { kind: 'arrow', params, body: parseExpr(body, ctx) }
+        return { kind: 'arrow', async: node.async === true, params, body: parseExpr(body, ctx) }
       }
       // Block body. The common compact case — a single expression/return
       // statement (`() => { count.set(c() + 1) }`) — keeps the lean
@@ -5564,7 +5572,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       // action emit already handles it; backward-compat).
       const stmts = body.body as AnyNode[]
       if (stmts.length === 0) {
-        return { kind: 'arrow', params, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' } }
       }
       if (
         stmts.length === 1 &&
@@ -5572,8 +5580,8 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       ) {
         const only = stmts[0]!
         const inner = only.type === 'ReturnStatement' ? only.argument : only.expression
-        if (!inner) return { kind: 'arrow', params, body: { kind: 'literal', value: '' } }
-        return { kind: 'arrow', params, body: parseExpr(inner, ctx) }
+        if (!inner) return { kind: 'arrow', async: node.async === true, params, body: { kind: 'literal', value: '' } }
+        return { kind: 'arrow', async: node.async === true, params, body: parseExpr(inner, ctx) }
       }
       // MULTIPLE statements (or a single non-expr/return statement like an
       // `if`) — carry the FULL statement list. The pre-fix `.find()` kept
@@ -5584,6 +5592,7 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       const blockStmts = parseStatementBlock(body, ctx)
       return {
         kind: 'arrow',
+        async: node.async === true,
         params,
         body: { kind: 'literal', value: '' },
         stmts: blockStmts,
@@ -5749,12 +5758,16 @@ function parseExpr(node: AnyNode, ctx: ParseCtx): ExprIR {
       )
     }
     case 'AwaitExpression':
-      return unsupportedExpr(
-        ctx,
-        node,
-        '`await` in a component body',
-        'load async data via `useFetch(url)` or a route `loader` — both emit native URLSession / ktor fetches.',
-      )
+      // M4.5: `await x.method()` inside an `async () => { … }` event handler.
+      // Unwrap to `{ kind: 'await', expr }`; the enclosing async arrow (marked
+      // `async: true` below) is wrapped by the action emitters in a
+      // `Task { … }` (Swift) / `scope.launch { … }` (Kotlin) async scope where
+      // this `await`/suspend call is legal. Valid JS only permits `await`
+      // inside an `async` function, so a parsed `await` is always inside such
+      // an arrow — a top-level component-body await would be a syntax error
+      // upstream. `unwrapAccessorArrow` is applied by the callee-recognition
+      // path, so no extra unwrap is needed here.
+      return { kind: 'await', expr: parseExpr((node as AnyNode).argument, ctx) }
     default:
       return unsupportedExpr(
         ctx,
@@ -5844,6 +5857,7 @@ function warnIfHookInsideRenderCallback(
     'useShare',
     'useLinking',
     'useNotifications',
+    'useBiometrics',
     'useColorScheme',
     'useSizeClass',
     'usePermissions',

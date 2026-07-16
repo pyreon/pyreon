@@ -729,6 +729,24 @@ object Dispatchers {
 }
 suspend fun <T> withContext(context: Any, block: () -> T): T = block()
 
+// M4.5: the coroutine-scope surface an \`async () => { await … }\` event handler
+// emits — a composable-top \`val scope = rememberCoroutineScope()\` then
+// \`scope.launch { <suspend body> }\`. Real: rememberCoroutineScope() is
+// @Composable returning a kotlinx CoroutineScope, and launch is a
+// kotlinx.coroutines extension. Modeled here with launch as a method — the emit
+// \`scope.launch { … }\` type-checks against either shape, and the suspend-lambda
+// parameter is the load-bearing constraint (a suspend call inside it resolves).
+class CoroutineScope {
+  fun launch(block: suspend () -> Unit) {}
+}
+@Composable
+fun rememberCoroutineScope(): CoroutineScope = CoroutineScope()
+
+// M3.5: authenticate is a suspend fun — awaited inside pyreonAsyncScope.launch { }.
+class PyreonBiometrics {
+  suspend fun authenticate(reason: String): Boolean = false
+}
+
 // PyreonForm — mirror of @pyreon/native-runtime-kotlin's PyreonForm.kt
 // v2 surface (form-binding arc): MutableState maps + validators +
 // onSubmit + the web-parity setFieldValue / submit / handleSubmit.
