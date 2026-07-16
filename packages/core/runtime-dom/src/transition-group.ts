@@ -92,7 +92,7 @@ type ItemEntry = {
  * // .list-enter-active, .list-leave-active { transition: all 300ms ease; }
  * // .list-move { transition: transform 300ms ease; }
  */
-export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChild {
+function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChild {
   const tag = props.tag ?? 'div'
 
   // Children mode: no `items` render-prop → TransitionGroup is a plain animated
@@ -384,5 +384,13 @@ export function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VN
 
 // Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
 // TransitionGroup uses signal/effect/onMount/onUnmount + mountChild that
-// need Pyreon's setup frame.
-nativeCompat(TransitionGroup)
+// need Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ form (not a bare
+// `nativeCompat(X)` statement): inside the built lib's shared chunk a bare
+// call is an unremovable side effect that RETAINS the whole component body
+// in every `mount`-only consumer bundle (measured: ~1.5KB gz of dead
+// TransitionGroup machinery in the krausest bench bundle). The PURE
+// annotation lets the bundler drop the call — and the body — exactly when
+// the export is unused; when it IS used, `nativeCompat` returns the fn with
+// the marker applied, identical semantics.
+const _TransitionGroup = /* @__PURE__ */ nativeCompat(TransitionGroup)
+export { _TransitionGroup as TransitionGroup }

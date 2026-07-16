@@ -62,7 +62,7 @@ export interface TransitionProps {
  * // .fade-enter-from, .fade-leave-to  { opacity: 0; }
  * // .fade-enter-active, .fade-leave-active { transition: opacity 300ms ease; }
  */
-export function Transition(props: TransitionProps): VNodeChild {
+function Transition(props: TransitionProps): VNodeChild {
   const n = props.name ?? 'pyreon'
   const cls = {
     ef: props.enterFrom ?? `${n}-enter-from`,
@@ -260,4 +260,11 @@ export function Transition(props: TransitionProps): VNodeChild {
 
 // Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
 // Transition uses signal/effect/onUnmount that need Pyreon's setup frame.
-nativeCompat(Transition)
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside the built
+// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
+// effect that RETAINS the whole component body in every consumer bundle
+// that never imports it. The PURE annotation lets the bundler drop the
+// call — and the body — exactly when the export is unused; when used,
+// `nativeCompat` returns the SAME fn with the marker applied.
+const _Transition = /* @__PURE__ */ nativeCompat(Transition)
+export { _Transition as Transition }
