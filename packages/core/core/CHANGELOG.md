@@ -1,5 +1,14 @@
 # @pyreon/core
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2342](https://github.com/pyreon/pyreon/pull/2342) [`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Widen the reactive-accessor form of 8 ARIA attribute types to permit an `undefined` return — `aria-label` (the reported gap) plus `aria-hidden` / `aria-disabled` / `aria-expanded` / `aria-selected` / `aria-checked` / `aria-required` / `aria-readonly`. The runtime already removes the attribute when a dynamic value resolves to `undefined`, and `aria-x={cond ? 'true' : undefined}` is the documented recommended shape — but these accessors were typed `() => T` (no undefined), inconsistently with the neighbouring `role` / `aria-describedby` / `aria-current` / `aria-invalid`, forcing `?? ''` workarounds for a purely type-level gap. Type-only; no runtime change.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.47.0
+
 ## 0.46.0
 
 ### Minor Changes

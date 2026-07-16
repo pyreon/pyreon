@@ -1,5 +1,45 @@
 # @pyreon/meta
 
+## 0.47.0
+
+### Patch Changes
+
+- Updated dependencies [[`b6e51ae`](https://github.com/pyreon/pyreon/commit/b6e51aebee2a509867f5b9a987717cda814f845b), [`a5163c8`](https://github.com/pyreon/pyreon/commit/a5163c8f2cedd56fe37a4fce0b1f87fe7f4061ec), [`ea704c5`](https://github.com/pyreon/pyreon/commit/ea704c55e23818dc187b703f072ffa1d60e000d8), [`dfe2641`](https://github.com/pyreon/pyreon/commit/dfe2641aed4e595d580799b31b30e2392f3b8130), [`8820d2f`](https://github.com/pyreon/pyreon/commit/8820d2ffe144a60e4df3db9e15e6228ea714ac1e), [`0f6e3b3`](https://github.com/pyreon/pyreon/commit/0f6e3b3dba9758f0fc9eaf1a896a986d87d21d9a), [`17dbb42`](https://github.com/pyreon/pyreon/commit/17dbb42544f53a553bde5e8fcb57a7a99888cc28), [`bf658a0`](https://github.com/pyreon/pyreon/commit/bf658a0eb6495dc9bd7724997bdd6471043a6fe7), [`577f40f`](https://github.com/pyreon/pyreon/commit/577f40fc3282672818c8b31a4f595b1dbb295d19), [`13a4910`](https://github.com/pyreon/pyreon/commit/13a49102851145f10e0b49b04947d1218c7efe59)]:
+  - @pyreon/attrs@0.47.0
+  - @pyreon/code@0.47.0
+  - @pyreon/hooks@0.47.0
+  - @pyreon/kinetic@0.47.0
+  - @pyreon/storage@0.47.0
+  - @pyreon/table@0.47.0
+  - @pyreon/virtual@0.47.0
+  - @pyreon/store@0.47.0
+  - @pyreon/toast@0.47.0
+  - @pyreon/url-state@0.47.0
+  - @pyreon/form@0.47.0
+  - @pyreon/state-tree@0.47.0
+  - @pyreon/reactivity@0.47.0
+  - @pyreon/charts@0.47.0
+  - @pyreon/dnd@0.47.0
+  - @pyreon/document@0.47.0
+  - @pyreon/feature@0.47.0
+  - @pyreon/flow@0.47.0
+  - @pyreon/hotkeys@0.47.0
+  - @pyreon/i18n@0.47.0
+  - @pyreon/machine@0.47.0
+  - @pyreon/permissions@0.47.0
+  - @pyreon/query@0.47.0
+  - @pyreon/rx@0.47.0
+  - @pyreon/validation@0.47.0
+  - @pyreon/connector-document@0.47.0
+  - @pyreon/coolgrid@0.47.0
+  - @pyreon/document-primitives@0.47.0
+  - @pyreon/elements@0.47.0
+  - @pyreon/kinetic-presets@0.47.0
+  - @pyreon/rocketstyle@0.47.0
+  - @pyreon/styler@0.47.0
+  - @pyreon/ui-core@0.47.0
+  - @pyreon/unistyle@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

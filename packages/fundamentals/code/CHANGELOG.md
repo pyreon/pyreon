@@ -1,5 +1,16 @@
 # @pyreon/code
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2335](https://github.com/pyreon/pyreon/pull/2335) [`a5163c8`](https://github.com/pyreon/pyreon/commit/a5163c8f2cedd56fe37a4fce0b1f87fe7f4061ec) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update parser/editor runtime dependencies: oxc-parser + @oxc-project/types 0.138.0 → 0.140.0 (compiler dual-backend equivalence + differential fuzz green), @codemirror/state 6.6.0 → 6.7.1 / @codemirror/view 6.43.0 → 6.43.6 / @codemirror/lang-markdown 6.5.1 (tree-wide coherence overrides bumped in lockstep; real-Chromium editor suite green). No API changes.
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715), [`34d68e1`](https://github.com/pyreon/pyreon/commit/34d68e1e00088c589b8362468144951d648527f2)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/runtime-dom@0.47.0
+  - @pyreon/reactivity@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

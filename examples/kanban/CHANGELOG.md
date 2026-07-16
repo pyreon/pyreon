@@ -1,5 +1,29 @@
 # kanban
 
+## 0.0.32
+
+### Patch Changes
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715), [`ea704c5`](https://github.com/pyreon/pyreon/commit/ea704c55e23818dc187b703f072ffa1d60e000d8), [`8820d2f`](https://github.com/pyreon/pyreon/commit/8820d2ffe144a60e4df3db9e15e6228ea714ac1e), [`34d68e1`](https://github.com/pyreon/pyreon/commit/34d68e1e00088c589b8362468144951d648527f2), [`0f6e3b3`](https://github.com/pyreon/pyreon/commit/0f6e3b3dba9758f0fc9eaf1a896a986d87d21d9a), [`577f40f`](https://github.com/pyreon/pyreon/commit/577f40fc3282672818c8b31a4f595b1dbb295d19), [`13a4910`](https://github.com/pyreon/pyreon/commit/13a49102851145f10e0b49b04947d1218c7efe59)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/storage@1.0.0
+  - @pyreon/toast@1.0.0
+  - @pyreon/url-state@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/state-tree@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/dnd@1.0.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/permissions@1.0.0
+  - @pyreon/rx@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/zero@1.0.0
+
 ## 0.0.31
 
 ### Patch Changes

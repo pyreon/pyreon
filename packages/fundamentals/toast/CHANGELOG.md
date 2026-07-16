@@ -1,5 +1,16 @@
 # @pyreon/toast
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2349](https://github.com/pyreon/pyreon/pull/2349) [`577f40f`](https://github.com/pyreon/pyreon/commit/577f40fc3282672818c8b31a4f595b1dbb295d19) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bench-only: the `bench:commit` create-throughput row is relabeled to what it actually measures — COLD-START ingest (fresh process + 10-call warmup runs JIT-untired code; measured decay ~3.5µs → ~0.22µs deep-warm). A warmed cross-lib burst is structurally impossible (sonner has no synchronous hard-reset → accumulation skew), so Pyreon's steady-state create is printed as a disclosure line via a new `tp:pyreon-warm` worker, never as a verdict. No shipped runtime code changed.
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715), [`34d68e1`](https://github.com/pyreon/pyreon/commit/34d68e1e00088c589b8362468144951d648527f2)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/runtime-dom@0.47.0
+  - @pyreon/reactivity@0.47.0
+
 ## 0.46.0
 
 ### Patch Changes

@@ -1,5 +1,23 @@
 # @pyreon/hooks
 
+## 0.47.0
+
+### Minor Changes
+
+- [#2344](https://github.com/pyreon/pyreon/pull/2344) [`ea704c5`](https://github.com/pyreon/pyreon/commit/ea704c55e23818dc187b703f072ffa1d60e000d8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useBiometrics()` — a biometric authentication gate (Face ID / Touch ID on iOS `LAContext`, BiometricPrompt on Android, feature-detected on the web). The FIRST hook with an ASYNC RESULT: `authenticate(reason)` returns a `Promise<boolean>` you `await`. Under PMTC it lowers to the native biometric APIs and the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. On the web v1 a real assertion is a WebAuthn ceremony (needs a server-issued challenge + a registered credential), so `authenticate` resolves `false` and `isAvailable()` feature-detects `window.PublicKeyCredential` — native is the primary target.
+
+- [#2325](https://github.com/pyreon/pyreon/pull/2325) [`8820d2f`](https://github.com/pyreon/pyreon/commit/8820d2ffe144a60e4df3db9e15e6228ea714ac1e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useAppState()` — a reactive app-lifecycle phase hook (`'active'` | `'inactive'` | `'background'`).
+
+  On the web it tracks `document` visibility + focus; it also compiles to native via the Pyreon Multi-Target Compiler — `const state = useAppState()` lowers to a `PyreonAppState` container (SwiftUI `@Observable` on iOS via `UIApplication` lifecycle notifications, Compose `MutableState` on Android via an app-injected `ProcessLifecycleOwner` source), read as `state()` from one shared source. Use it to pause a live poll while backgrounded or dim UI while inactive.
+
+### Patch Changes
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/reactivity@0.47.0
+  - @pyreon/styler@0.47.0
+  - @pyreon/ui-core@0.47.0
+
 ## 0.46.0
 
 ### Minor Changes

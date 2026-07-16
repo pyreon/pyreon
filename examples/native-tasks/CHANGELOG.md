@@ -1,5 +1,12 @@
 # @pyreon/example-native-tasks
 
+## 0.0.20
+
+### Patch Changes
+
+- Updated dependencies [[`ea704c5`](https://github.com/pyreon/pyreon/commit/ea704c55e23818dc187b703f072ffa1d60e000d8), [`8820d2f`](https://github.com/pyreon/pyreon/commit/8820d2ffe144a60e4df3db9e15e6228ea714ac1e)]:
+  - @pyreon/hooks@1.0.0
+
 ## 0.0.19
 
 ### Patch Changes

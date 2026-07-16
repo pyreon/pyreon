@@ -1,5 +1,11 @@
 # create-zero
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2333](https://github.com/pyreon/pyreon/pull/2333) [`30e0b0e`](https://github.com/pyreon/pyreon/commit/30e0b0e7bad325bd12cacb2331a93f1968657a57) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Update external runtime dependencies to latest (safe batch): @tiptap/\* 3.28.0, ws 8.21.1, shiki 4.3.1, @clack/prompts 1.7.0. No API changes. (vite stays held at 8.0.16 tree-wide — 8.1.x breaks the zero-content compiled-JSX test pipeline; see PR for the bisect.)
+
 ## 0.46.0
 
 ## 0.45.0

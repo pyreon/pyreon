@@ -1,5 +1,16 @@
 # @pyreon/runtime-dom
 
+## 0.47.0
+
+### Patch Changes
+
+- [#2347](https://github.com/pyreon/pyreon/pull/2347) [`34d68e1`](https://github.com/pyreon/pyreon/commit/34d68e1e00088c589b8362468144951d648527f2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix the compiled-template attribute path stringifying a function-valued attribute into the DOM: `aria-selected={active}` — a bare identifier holding an accessor — rendered the literal closure source (`aria-selected="() => …"`), because `_setAttr`/`applyAttrProp` had no function branch while the `h()` path (`applyProp`) treats callables as reactive accessors and SSR resolves them (also an SSR↔client hydration mismatch). `applyAttrProp` now resolves function values first; when the compiler emits the usual `_bind(() => _setAttr(…))` wrapper the call runs inside the tracked frame, so signal reads inside the accessor stay fully live.
+
+- Updated dependencies [[`9799d6b`](https://github.com/pyreon/pyreon/commit/9799d6bfa1c3f99fa38f4375eebd330c2df0a715)]:
+  - @pyreon/core@0.47.0
+  - @pyreon/reactivity@0.47.0
+  - @pyreon/sized-map@0.47.0
+
 ## 0.46.0
 
 ### Minor Changes
