@@ -86,12 +86,24 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // `interface Todo` is now SYNTHESIZED into a `struct Todo: Codable` — parse.ts
     // `tryStructFromInterface`, so `signal<Todo[]>` resolves).
     //
-    // EXCLUDED (6 of 37) — the service-runtime + @Observable surface (a coherent
-    // follow-up, M-gate.1d): router-hooks · showcase-finance · showcase-tasks ·
-    // tier2-store · tier2-state-tree · tier2-form — need faithful stubs for
-    // PyreonRouter / RouterProvider / useNavigate / useParams / PyreonStoreProtocol /
-    // PyreonModelProtocol / PyreonForm / PyreonAuth / PyreonDatabase / PyreonFetch,
-    // plus the `@Observable` macro (can't be stubbed by a struct).
+    // NEWLY INCLUDED (M-gate.1d) — the router-hook + form surface (both emit NO
+    // @Observable, so they are fully Linux-typecheckable): router-hooks needs
+    // PyreonRouter / EnvironmentValues.pyreonRouter / useNavigate / useParams;
+    // tier2-form needs a faithful PyreonForm (validators: [String: (String) ->
+    // String] so the { v in … } closure param infers String — a loose Any would
+    // MASK). Both stubbed in swift-stubs.ts, mirroring router-swift / runtime-swift.
+    //
+    // EXCLUDED (4 of 37) — the @Observable service surface (a coherent follow-up):
+    // showcase-finance · showcase-tasks · tier2-store · tier2-state-tree. Each emits
+    // an @Observable class (PyreonStore_* / PyreonModel_*), and the emit does NOT
+    // `import Observation` — on Apple platforms `import SwiftUI` transitively
+    // re-exports it, but the Linux stub build strips SwiftUI, so @Observable would be
+    // unresolved. Unblocking them needs the harness to guarantee `import Observation`
+    // in the input file (real on the Linux 6.0 toolchain) + PyreonStoreProtocol /
+    // PyreonModelProtocol / PyreonAuth / PyreonDatabase / PyreonFetch / LazyVStack /
+    // Color / .task stubs — a follow-up (M-gate.1e). Verified locally: with those
+    // stubs the two SMALL fixtures type-check on macOS (only the missing protocol
+    // errored), so the residual gap is purely the Observation-import mechanism.
     const TYPECHECK_FIXTURES = [
       '01-stateless.tsx',
       '02-signal.tsx',
@@ -111,11 +123,13 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       'lifecycle-errorboundary.tsx',
       'lifecycle-keepalive.tsx',
       'lifecycle-suspense.tsx',
+      'router-hooks.tsx',
       'rx-full.tsx',
       'rx-lowering.tsx',
       'showcase-analytics.tsx',
       'synth-prop-types.tsx',
       'tier2-feature.tsx',
+      'tier2-form.tsx',
       'tier2-i18n.tsx',
       'tier2-machine.tsx',
       'tier2-permissions.tsx',

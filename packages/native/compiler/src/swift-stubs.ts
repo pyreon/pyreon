@@ -23,15 +23,16 @@
 // convenient superset — a superset stub is itself a masking source"). Any new
 // modifier added here must carry the same constraint the real SwiftUI declares.
 //
-// SCOPE. This stub covers the 2 shipped example apps + 27 of 37 compiler fixtures
+// SCOPE. This stub covers the 2 shipped example apps + 33 of 37 compiler fixtures
 // (canonical primitives, common SwiftUI modifiers, i18n/machine/permissions/link/
-// webview). NOT yet covered (tracked follow-ups): the service-runtime + @Observable
-// surface (PyreonRouter / RouterProvider / useNavigate / useParams /
-// PyreonStoreProtocol / PyreonModelProtocol / PyreonForm / PyreonAuth /
-// PyreonDatabase / PyreonFetch — and the `@Observable` macro, which a struct stub
-// can't fake), and the fixtures the gate SURFACED as real emit bugs (rx-full
-// optional-unwrap, rx-lowering/tier2-machine `body { nil }`, tier2-rx unsynthesized
-// interface) — those are excluded in validate-swift-typecheck.test.ts with rationale.
+// webview, plus the router-hook surface — PyreonRouter / EnvironmentValues.pyreonRouter
+// / useNavigate / useParams — and PyreonForm, added in M-gate.1d). NOT yet covered
+// (tracked follow-up M-gate.1e): the 4 @Observable service fixtures (showcase-finance
+// / showcase-tasks / tier2-store / tier2-state-tree) — each emits an @Observable class
+// with NO `import Observation`, which needs `import Observation` guaranteed in the
+// input file (real on the Linux 6.0 toolchain, but absent because SwiftUI — its usual
+// transitive provider — is stripped) plus PyreonStoreProtocol / PyreonModelProtocol /
+// PyreonAuth / PyreonDatabase / PyreonFetch / LazyVStack / Color / .task stubs.
 //
 // When adding a symbol: keep ARGUMENT types faithful (a wrong-typed arg must still
 // be caught), and mirror any LOAD-BEARING generic constraint exactly (like
@@ -232,6 +233,37 @@ public struct PyreonWebView: View {
   public init(src: String? = nil, html: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil) {}
   public typealias Body = Never
 }
+
+// ---- PyreonForm (@pyreon/form -> runtime-swift's PyreonForm, a final class) ----
+// The emit does @State private var form = PyreonForm(initialValues:validators:)
+// then form.binding("x") / form.errors["x"] / form.submit() / form.isSubmitting,
+// and sets form.onSubmit from .onAppear (a @State initializer can't capture a
+// callback needing self). A reference type, so the onSubmit assignment mutates in
+// place. validators is [String: (String) -> String] so the { v in ... } closure
+// param infers String -- a loose Any would MASK the emit's real closure typing.
+public final class PyreonForm {
+  public init(
+    initialValues: [String: String] = [:],
+    validators: [String: (String) -> String] = [:],
+    onSubmit: (([String: String]) -> Void)? = nil
+  ) {}
+  public private(set) var errors: [String: String] = [:]
+  public private(set) var isSubmitting: Bool = false
+  public var onSubmit: (([String: String]) -> Void)?
+  public func binding(_ name: String) -> Binding<String> { Binding(get: { "" }, set: { _ in }) }
+  public func submit() {}
+}
+
+// ---- PyreonRouter (the router-swift module surface the emit imports) ----
+// router-hooks emit: @Environment(\\.pyreonRouter) var pyreonRouter: PyreonRouter?
+// + useNavigate(router:) -> (String) -> Void + useParams(router:) ->
+// [String: String]. Signatures mirror packages/native/router-swift exactly.
+public final class PyreonRouter { public init() {} }
+extension EnvironmentValues {
+  public var pyreonRouter: PyreonRouter? { get { nil } set {} }
+}
+public func useNavigate(router: PyreonRouter?) -> (String) -> Void { { _ in } }
+public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
 
 // ---- Additional SwiftUI surface (fonts / images / scroll / spacing) ----
 public struct Font {
