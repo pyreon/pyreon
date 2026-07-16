@@ -123,3 +123,31 @@ export type InferEvents<T> = T extends { states: infer S }
     }[keyof S] &
       string
   : never
+
+/**
+ * The STATE union of a machine — accepts BOTH the machine INSTANCE
+ * (`createMachine(...)` return) and a raw config object, so you can derive
+ * from whichever you hold ("derive, don't annotate twice"). For configs this
+ * delegates to {@link InferStates}.
+ *
+ * @example
+ * ```ts
+ * const light = createMachine({
+ *   initial: 'green',
+ *   states: { green: { on: { NEXT: 'yellow' } }, yellow: {}, red: {} },
+ * })
+ * type LightState = StateOf<typeof light> // 'green' | 'yellow' | 'red'
+ * ```
+ */
+export type StateOf<M> = M extends Machine<infer S, infer _E> ? S : InferStates<M>
+
+/**
+ * The EVENT union of a machine — accepts both the machine instance and a raw
+ * config object (delegates to {@link InferEvents} for configs).
+ *
+ * @example
+ * ```ts
+ * type LightEvent = EventOf<typeof light> // 'NEXT'
+ * ```
+ */
+export type EventOf<M> = M extends Machine<infer _S, infer E> ? E : InferEvents<M>

@@ -559,6 +559,34 @@ hydrate(client, snapshot)
 useQuery(() => ({ queryKey: ['user', id()], queryFn: id() ? fetchUser : skipToken }))`,
       seeAlso: ['QueryClientProvider', 'useQueryClient', 'HydrationBoundary'],
     },
+    {
+      name: 'QueryData',
+      kind: 'type',
+      signature: 'type QueryData<R> // UseQueryResult<D> → D; infinite results → InfiniteData<D>',
+      summary:
+        "The RESOLVED data type of a query result — `QueryData<typeof posts>` is `Post[]` for a `useQuery` result, `InfiniteData<Page>` for infinite results. Never includes `undefined` (that's the loading-state artifact on the `data` SIGNAL, not part of the resolved shape). Unwraps the Pyreon ADAPTER's fine-grained result bags (UseQueryResult / UseSuspenseQueryResult / UseInfiniteQueryResult / UseSuspenseInfiniteQueryResult) — for tagged query-KEY inference TanStack's own `InferDataFromTag` covers the upstream story and is deliberately not duplicated. Type-only, zero runtime bytes.",
+      example: `const posts = useQuery(() => ({ queryKey: ['posts'], queryFn: fetchPosts }))
+type Posts = QueryData<typeof posts> // Post[]
+function render(rows: QueryData<typeof posts>) { /* … */ }`,
+      mistakes: [
+        "`SignalValue<typeof posts.data>` gives `Post[] | undefined` — QueryData strips the loading-state `undefined` because you want the RESOLVED shape",
+        'Passing options instead of the result — QueryData unwraps the RESULT object `useQuery` returns, not the options function',
+        'Expecting page-array access on infinite data — the derived type is `InfiniteData<Page>` (`{ pages, pageParams }`), matching TanStack semantics',
+      ],
+      seeAlso: ['QueryError', 'useQuery', 'useInfiniteQuery'],
+    },
+    {
+      name: 'QueryError',
+      kind: 'type',
+      signature: 'type QueryError<R> // UseQueryResult<D, E> → E',
+      summary:
+        "The ERROR type of a query result (the `TError` generic — TanStack's `DefaultError`, i.e. `Error`, unless narrowed at the hook). Type-only, zero runtime bytes.",
+      example: `type PostsError = QueryError<typeof posts> // Error`,
+      mistakes: [
+        'The error SIGNAL reads `E | null` — QueryError is the error type itself; handle the null at the read site',
+      ],
+      seeAlso: ['QueryData', 'useQuery'],
+    },
   ],
   gotchas: [
     // First gotcha also feeds the llms.txt one-liner teaser. Keep it

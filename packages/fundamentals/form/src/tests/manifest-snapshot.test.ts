@@ -152,7 +152,7 @@ describe('gen-docs — form snapshot', () => {
 
   it('renders @pyreon/form to MCP api-reference entries — one per api[] item', () => {
     const record = renderApiReferenceEntries(formManifest)
-    expect(Object.keys(record).length).toBe(7)
+    expect(Object.keys(record).length).toBe(11)
     expect(Object.keys(record)).toContain('form/useForm')
     expect(Object.keys(record)).toContain('form/useField')
     expect(Object.keys(record)).toContain('form/useFieldArray')

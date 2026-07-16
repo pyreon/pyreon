@@ -346,3 +346,82 @@ export interface UseFormOptions<TValues extends Record<string, unknown>> {
    */
   focusOnError?: boolean
 }
+
+// ─── Inference helpers (type-only, zero runtime bytes) ──────────────────────
+
+/**
+ * Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN
+ * (`FormState<TValues>`) and the `useForm` OPTIONS (`UseFormOptions<TValues>`),
+ * so generic wrappers can derive the value shape from whichever they hold.
+ *
+ * @example
+ * ```ts
+ * const form = useForm({
+ *   initialValues: { email: '', age: 0 },
+ *   onSubmit: () => {},
+ * })
+ * type Values = FormValues<typeof form> // { email: string; age: number }
+ * ```
+ */
+export type FormValues<F> =
+  F extends FormState<infer V> ? V : F extends UseFormOptions<infer V> ? V : never
+
+/**
+ * The field-name union of a form (`keyof FormValues<F> & string`). Dot-path
+ * leaf fields keep their FLAT keys (`'address.city'` stays one field name —
+ * the form's value model is flat by design).
+ *
+ * @example
+ * ```ts
+ * type Names = FieldNames<typeof form> // 'email' | 'age'
+ * ```
+ */
+export type FieldNames<F> = keyof FormValues<F> & string
+
+/**
+ * The value type of one field of a form, by field name.
+ *
+ * @example
+ * ```ts
+ * type Age = FieldValue<typeof form, 'age'> // number
+ * ```
+ */
+export type FieldValue<F, K extends FieldNames<F>> = FormValues<F>[K & keyof FormValues<F>]
+
+/**
+ * Type-level companion of the runtime `nestValues()` helper: convert a FLAT
+ * dot-path value shape (`{ 'address.city': string; name: string }`) to its
+ * NESTED payload shape (`{ address: { city: string }; name: string }`).
+ *
+ * STANDALONE and opt-in by design — `useForm` / `values()` / `onSubmit`
+ * deliberately keep the FLAT dot-path keys (honest field-name types; threading
+ * a nested shape through the form signature breaks generic wrappers like
+ * `@pyreon/feature`). Use this to type YOUR OWN boundary:
+ *
+ * @example
+ * ```ts
+ * const form = useForm({
+ *   initialValues: { name: '', 'address.city': '', 'address.zip': '' },
+ *   onSubmit: (values) => api.save(nestValues(values) as NestValues<typeof values>),
+ * })
+ * // NestValues<typeof values>
+ * //   → { name: string; address: { city: string; zip: string } }
+ * ```
+ *
+ * Known limits (documented, deliberate):
+ * - Recursion depth follows the dot count — realistic keys (≤ 6 segments)
+ *   are fine; pathological generated keys may hit TS instantiation limits.
+ * - Numeric segments (`'tags.0'`) type as an indexed OBJECT (`{ tags: { 0: T } }`)
+ *   while the runtime `nestValues` builds a real ARRAY — cast at the boundary
+ *   if you rely on array methods.
+ * - Declaring both an object field (`address`) AND a leaf (`'address.city'`)
+ *   produces a union at the `address` key (the form dev-warns on that shape).
+ */
+export type NestValues<T extends Record<string, unknown>> = {
+  [K in keyof T & string as K extends `${infer Head}.${string}` ? Head : K]: K extends
+    `${infer Head}.${string}`
+    ? NestValues<{
+        [K2 in keyof T & string as K2 extends `${Head}.${infer Rest}` ? Rest : never]: T[K2]
+      }>
+    : T[K]
+}

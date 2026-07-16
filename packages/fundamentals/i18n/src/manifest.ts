@@ -255,6 +255,60 @@ resolvePluralCategory('ar', 0)   // "zero" (Arabic)`,
       ],
       seeAlso: ['Trans', 'interpolate'],
     },
+    {
+      name: 'MessageKeys',
+      kind: 'type',
+      signature: 'type MessageKeys<M> // dot-path key union of a messages object, plural suffixes collapsed',
+      summary:
+        "The dot-path key union of a messages object — every translatable key, nested keys joined with '.', plural suffixes (_one/_other/_zero/_two/_few/_many) COLLAPSED to their base key (you call `t('items', { count })`, not `t('items_one')`). Recursion is depth-capped at 6 nesting levels; over an index-signature `TranslationDictionary` it degrades gracefully to `string`. Foundation of the opt-in typed instance: `createI18n<typeof en>(...)`. Type-only, zero runtime bytes.",
+      example: `const en = {
+  greeting: 'Hello {{name}}',
+  nav: { home: 'Home', about: 'About' },
+  items_one: '{{count}} item',
+  items_other: '{{count}} items',
+} as const
+type Keys = MessageKeys<typeof en> // 'greeting' | 'nav.home' | 'nav.about' | 'items'`,
+      mistakes: [
+        "MessageKeys over a messages object TYPED as `TranslationDictionary` (or any index signature) gives `string` — the literal keys are erased; pass `typeof en` of a literal object (values may widen, keys survive without `as const`; params extraction needs `as const`)",
+        "Raw plural-suffixed keys ('items_one') are deliberately NOT in the union — call the BASE key with `{ count }` and the runtime picks the form",
+        'Namespaced keys ("auth:errors.invalid") are not derivable — namespaces load at runtime; the typed instance accepts any `ns:key` string unchecked',
+        'A legit key that merely ENDS in a plural suffix (`phase_one`) collapses too — rename it if that is unwanted',
+        'Trees deeper than 6 levels contribute no keys past the cap (documented recursion guard) — flatten pathological nesting',
+      ],
+      seeAlso: ['TranslationParams', 'TypedTranslationKey', 'createI18n'],
+    },
+    {
+      name: 'TranslationParams',
+      kind: 'type',
+      signature: 'type TranslationParams<M, K extends string> // {{param}} names of the message at key K',
+      summary:
+        "Derive the interpolation params of ONE message: the `{{param}}` names in the message literal (inline format specs like `{{amount, currency}}` contribute the name before the comma), plus `count: number` when the key resolves through plural suffixes. Requires LITERAL message values (`as const`) — over widened `string` values it degrades to the loose `InterpolationValues` record. Type-only, zero runtime bytes.",
+      example: `const en2 = { greeting: 'Hi {{name}}', items_other: '{{count}} items' } as const
+type P1 = TranslationParams<typeof en2, 'greeting'> // { name: InterpolationValue }
+type P2 = TranslationParams<typeof en2, 'items'>    // { count: number }`,
+      mistakes: [
+        'Without `as const` the message VALUES widen to `string` and params degrade to `InterpolationValues` — the literal is what carries the `{{param}}` names',
+        'It derives from ONE locale\'s messages — a param present only in another locale\'s translation is invisible; keep placeholder parity across locales',
+        'Unknown keys degrade to `InterpolationValues` rather than erroring — pair with `MessageKeys` for key checking',
+      ],
+      seeAlso: ['MessageKeys', 'createI18n'],
+    },
+    {
+      name: 'TypedTranslationKey',
+      kind: 'type',
+      signature: 'type TypedTranslationKey<M> // MessageKeys<M> | `${string}:${string}`, degrading to string',
+      summary:
+        "The key type a TYPED i18n instance accepts: the derived `MessageKeys` union PLUS any `namespace:key` string (namespaced lookups stay unchecked — namespaces load at runtime). This is what `createI18n<typeof en>()` plugs into `I18nInstance<TKey>`; when the messages type carries no literal keys it degrades to plain `string`, so untyped usage is byte-identical. Type-only, zero runtime bytes.",
+      example: `const en3 = { nav: { home: 'Home' } } as const
+const i18n = createI18n<typeof en3>({ locale: 'en', messages: { en: en3 } })
+i18n.t('nav.home')          // ✓ autocompleted + checked
+i18n.t('auth:errors.bad')   // ✓ namespaced — unchecked by design`,
+      mistakes: [
+        'Expecting namespaced keys to be typo-checked — any `ns:key` string is accepted (runtime-loaded namespaces cannot be enumerated at compile time)',
+        'Reading a typed instance back through `useI18n()` — context erases the key type (returns `I18nInstance<string>`); keep a module-level typed instance for typed `t`',
+      ],
+      seeAlso: ['MessageKeys', 'createI18n', 'useI18n'],
+    },
   ],
   gotchas: [
     {

@@ -2,6 +2,7 @@ import { computed, signal } from '@pyreon/reactivity'
 import { createFormatters } from './formatters'
 import { interpolate } from './interpolation'
 import { resolvePluralCategory } from './pluralization'
+import type { TypedTranslationKey } from './type-helpers'
 import type { I18nInstance, I18nOptions, InterpolationValues, TranslationDictionary } from './types'
 
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
@@ -166,6 +167,23 @@ function deepMerge(target: TranslationDictionary, source: TranslationDictionary)
  * await i18n.loadNamespace('auth')
  * i18n.t('auth:errors.invalid') // looks up "errors.invalid" in "auth" namespace
  */
+export function createI18n(options: I18nOptions): I18nInstance
+/**
+ * OPT-IN typed instance: pass your messages object's type explicitly and the
+ * returned instance's `t` accepts only the derived {@link MessageKeys} union
+ * (plus any `namespace:key` string — namespaces load at runtime). Purely
+ * additive — untyped `createI18n(options)` is unchanged.
+ *
+ * @example
+ * const en = { nav: { home: 'Home' }, items_one: '…', items_other: '…' } as const
+ * const i18n = createI18n<typeof en>({ locale: 'en', messages: { en } })
+ * i18n.t('nav.home')            // ✓
+ * i18n.t('items', { count: 2 }) // ✓ (plural suffix collapsed)
+ * // i18n.t('nav.hoem')         // ✗ compile error
+ */
+export function createI18n<TMessages extends TranslationDictionary>(
+  options: I18nOptions,
+): I18nInstance<TypedTranslationKey<TMessages>>
 export function createI18n(options: I18nOptions): I18nInstance {
   const {
     fallbackLocale,

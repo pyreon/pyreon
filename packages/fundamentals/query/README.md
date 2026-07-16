@@ -267,6 +267,20 @@ Everything from `@tanstack/query-core` is re-exported, so `@pyreon/query` is you
 
 **Types**: `QueryKey`, `QueryFilters`, `MutationFilters`, `DehydratedState`, `FetchQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`.
 
+## Type helpers ("derive, don't annotate twice")
+
+Type-only exports — unwrap the adapter's result shapes:
+
+```ts
+import type { QueryData, QueryError } from '@pyreon/query'
+
+const posts = useQuery(() => ({ queryKey: ['posts'], queryFn: fetchPosts }))
+type Posts = QueryData<typeof posts> // Post[] — no `undefined` (that's the data SIGNAL's loading artifact)
+type PostsError = QueryError<typeof posts> // Error (DefaultError unless narrowed)
+```
+
+Covers `useQuery` / `useSuspenseQuery` / `useInfiniteQuery` / `useSuspenseInfiniteQuery` results (infinite results derive `InfiniteData<Page>`). Tagged query-KEY inference is TanStack's own `InferDataFromTag` — deliberately not duplicated.
+
 ## Gotchas
 
 - **`useQuery` / `useInfiniteQuery` / `useQueries` / `useSuspenseQuery` take options as a FUNCTION**, not an object. Reading signals inside is the mechanism for reactive refetches. Caught by the lint rule + MCP detector `pyreon/query-options-as-function` (auto-fixable). `useMutation` is the exception — plain object.

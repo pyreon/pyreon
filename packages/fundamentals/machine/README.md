@@ -130,18 +130,20 @@ fetcher.send('FETCH')
 
 ## Type inference
 
-State and event names are inferred from the config. The exported `InferStates<T>` and `InferEvents<T>` helpers extract those types when you need to pass the machine around:
+State and event names are inferred from the config. Use `StateOf<M>` / `EventOf<M>` to extract those unions when you need to pass the machine around — they accept the machine INSTANCE (`createMachine(...)` return) or a raw config:
 
 ```ts
-import type { InferStates, InferEvents } from '@pyreon/machine'
+import type { StateOf, EventOf } from '@pyreon/machine'
 
-type FetcherState = InferStates<typeof fetcher> // 'idle' | 'loading' | 'done' | 'error'
-type FetcherEvent = InferEvents<typeof fetcher> // 'FETCH' | 'SUCCESS' | 'ERROR' | 'RETRY'
+type FetcherState = StateOf<typeof fetcher> // 'idle' | 'loading' | 'done' | 'error'
+type FetcherEvent = EventOf<typeof fetcher> // 'FETCH' | 'SUCCESS' | 'ERROR' | 'RETRY'
 
 function logState(s: FetcherState) {
   /* … */
 }
 ```
+
+`InferStates<T>` / `InferEvents<T>` are the lower-level CONFIG-only helpers (they read the `states` record, so applying them to a machine instance yields `never` — the exact silent footgun `StateOf`/`EventOf` exist to close).
 
 ## Gotchas
 

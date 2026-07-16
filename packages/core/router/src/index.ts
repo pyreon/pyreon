@@ -113,6 +113,7 @@ export type {
   ExtractParams,
   LazyComponent,
   LoaderContext,
+  LoaderData,
   NavigationGuard,
   NavigationGuardResult,
   NavigationResult,

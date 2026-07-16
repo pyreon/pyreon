@@ -302,6 +302,23 @@ const url = buildPath('/user/:id', { id: '42' })       // '/user/42'
 const url2 = buildPath('/blog/:rest*', { rest: 'a/b' }) // '/blog/a/b' — catch-all
 ```
 
+## Type helpers ("derive, don't annotate twice")
+
+`LoaderData<L>` derives a loader's RESOLVED data type from the loader function itself (type-only, zero runtime bytes):
+
+```ts
+import { useLoaderData, type LoaderData } from '@pyreon/router'
+
+export const loader = async () => ({ posts: await fetchPosts() })
+
+function PostsPage() {
+  const data = useLoaderData<LoaderData<typeof loader>>()
+  // data: { posts: Post[] } — follows the loader; no second annotation, no drift
+}
+```
+
+`ExtractParams<Path>` (params from a path pattern, incl. `:id?` optional and `:slug*` splat) and the `RegisteredRoutes` typed-routes augmentation are the pre-existing members of the same family.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/router](https://pyreon.dev/docs/router) (or `docs/src/content/docs/router.md` in this repo).

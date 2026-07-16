@@ -151,6 +151,8 @@ const feed = useInfiniteQuery(() => ({
 | [`QueryDevtools`](#querydevtools) | component | In-app TanStack Query devtools panel — the SAME panel React / Solid / Vue users see, as a thin shim over `@tanstack/quer |
 | [`Persistence subpath re-exports`](#persistence-subpath-re-exports) | function | The `@pyreon/query/persist` subpath re-exports TanStack's framework-agnostic persist engine (`persistQueryClient` → `[un |
 | [`TanStack core re-exports`](#tanstack-core-re-exports) | function | `@pyreon/query` re-exports the full framework-agnostic TanStack surface (identity-equal to `@tanstack/query-core`) so co |
+| [`QueryData`](#querydata) | type | The RESOLVED data type of a query result — `QueryData<typeof posts>` is `Post[]` for a `useQuery` result, `InfiniteData&lt; |
+| [`QueryError`](#queryerror) | type | The ERROR type of a query result (the `TError` generic — TanStack's `DefaultError`, i.e. |
 
 ## API
 
@@ -820,6 +822,54 @@ useQuery(() => ({ queryKey: ['user', id()], queryFn: id() ? fetchUser : skipToke
 ```
 
 **See also:** `QueryClientProvider` · `useQueryClient` · `HydrationBoundary`
+
+---
+
+### QueryData `type`
+
+```ts
+type QueryData<R> // UseQueryResult<D> → D; infinite results → InfiniteData<D>
+```
+
+The RESOLVED data type of a query result — `QueryData<typeof posts>` is `Post[]` for a `useQuery` result, `InfiniteData<Page>` for infinite results. Never includes `undefined` (that's the loading-state artifact on the `data` SIGNAL, not part of the resolved shape). Unwraps the Pyreon ADAPTER's fine-grained result bags (UseQueryResult / UseSuspenseQueryResult / UseInfiniteQueryResult / UseSuspenseInfiniteQueryResult) — for tagged query-KEY inference TanStack's own `InferDataFromTag` covers the upstream story and is deliberately not duplicated. Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+const posts = useQuery(() => ({ queryKey: ['posts'], queryFn: fetchPosts }))
+type Posts = QueryData<typeof posts> // Post[]
+function render(rows: QueryData<typeof posts>) { /* … */ }
+```
+
+**Common mistakes**
+
+- `SignalValue<typeof posts.data>` gives `Post[] | undefined` — QueryData strips the loading-state `undefined` because you want the RESOLVED shape
+- Passing options instead of the result — QueryData unwraps the RESULT object `useQuery` returns, not the options function
+- Expecting page-array access on infinite data — the derived type is `InfiniteData<Page>` (`{ pages, pageParams }`), matching TanStack semantics
+
+**See also:** `QueryError` · `useQuery` · `useInfiniteQuery`
+
+---
+
+### QueryError `type`
+
+```ts
+type QueryError<R> // UseQueryResult<D, E> → E
+```
+
+The ERROR type of a query result (the `TError` generic — TanStack's `DefaultError`, i.e. `Error`, unless narrowed at the hook). Type-only, zero runtime bytes.
+
+**Example**
+
+```tsx
+type PostsError = QueryError<typeof posts> // Error
+```
+
+**Common mistakes**
+
+- The error SIGNAL reads `E | null` — QueryError is the error type itself; handle the null at the read site
+
+**See also:** `QueryData` · `useQuery`
 
 ---
 

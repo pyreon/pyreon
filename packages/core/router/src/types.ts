@@ -237,6 +237,26 @@ export interface LoaderContext {
 
 export type RouteLoaderFn = (ctx: LoaderContext) => Promise<unknown>
 
+/**
+ * Derive a loader's RESOLVED data type from the loader function itself —
+ * "derive, don't annotate twice". Works for async loaders (unwraps the
+ * Promise via `Awaited`) and sync-returning ones alike.
+ *
+ * Type-only, zero runtime bytes. Pair it with `useLoaderData`:
+ *
+ * @example
+ * ```ts
+ * // routes/posts.tsx
+ * export const loader = async () => ({ posts: await fetchPosts() })
+ *
+ * function PostsPage() {
+ *   const data = useLoaderData<LoaderData<typeof loader>>()
+ *   // data: { posts: Post[] } — follows the loader, no second annotation
+ * }
+ * ```
+ */
+export type LoaderData<L> = L extends (...args: never[]) => infer R ? Awaited<R> : never
+
 // ─── Route record ─────────────────────────────────────────────────────────────
 
 export interface RouteRecord<TPath extends string = string> {

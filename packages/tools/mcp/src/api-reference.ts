@@ -592,6 +592,51 @@ for (const e of report.uncoveredEntries) console.log(e.reason, e.name, e.loc)`,
 console.log(formatReactiveCoverage(report, { showCovered: true, limit: 20 }))`,
     notes: `Render a \`ReactiveCoverageReport\` as a dependency-free, human-readable text block: a headline (\`Reactive Coverage — 42.9% (3 of 7 …)\`), a per-kind line (\`signals 1/3   derived 1/2   effects 1/2\`), and the uncovered list with each node's reason + source location. The machine-readable form is the \`ReactiveCoverageReport\` itself; \`computeReactiveCoverage(nodes)\` is the pure function that builds it from \`getReactiveGraph().nodes\`. See also: takeReactiveCoverage, computeReactiveCoverage.`,
   },
+
+  'reactivity/SignalValue': {
+    signature: 'type SignalValue<S> = S extends () => infer T ? T : never',
+    example: `const user = signal({ id: 1, name: 'Ada' })
+type User = SignalValue<typeof user> // { id: number; name: string }
+
+function save(next: SignalValue<typeof user>) { user.set(next) }`,
+    notes: `Unwrap the VALUE type of a \`Signal<T>\`, \`Computed<T>\`, \`ReadonlySignal<T>\`, or any zero-arg accessor — \`SignalValue<typeof count>\` is \`number\` for \`const count = signal(0)\`. Derive, don't annotate twice: when a function's parameter should be "whatever that signal holds", derive it from the signal instead of repeating the value type. Type-only export — zero runtime bytes. See also: signal, ComputedValue, MaybeAccessor.`,
+    mistakes: `- \`SignalValue<number>\` — resolves to \`never\`; the input must be the SIGNAL type (\`typeof mySignal\`), not the value type itself
+- Passing the signal where the unwrapped value is expected — \`save(user)\` fails typecheck; read it first: \`save(user())\`
+- Using it on a function that REQUIRES arguments — only zero-arg callables unwrap; \`(x: number) => string\` resolves to \`never\` by design`,
+  },
+
+  'reactivity/ComputedValue': {
+    signature: 'type ComputedValue<C> = C extends () => infer T ? T : never',
+    example: `const total = computed(() => price() * qty())
+type Total = ComputedValue<typeof total> // number`,
+    notes: 'Unwrap the value type of a `Computed<T>` — intent-revealing alias of `SignalValue` (every Pyreon reactive read is a zero-arg callable, so one conditional covers both). Type-only, zero runtime bytes. See also: computed, SignalValue.',
+    mistakes: `- \`ComputedValue<ReturnType<typeof computed>>\` gymnastics — pass \`typeof total\` directly
+- Expecting it to unwrap a plain derived VALUE — a non-callable resolves to \`never\``,
+  },
+
+  'reactivity/MaybeAccessor': {
+    signature: 'type MaybeAccessor<T> = T | (() => T)',
+    example: `function useTitle(title: MaybeAccessor<string>) {
+  const read = () => (typeof title === 'function' ? title() : title)
+  effect(() => { document.title = read() }) // accessor form stays reactive
+}
+useTitle('Static')
+useTitle(() => pageTitle())`,
+    notes: 'The standard "static value OR reactive accessor" parameter shape used across Pyreon APIs (`<Show when>`, hook options). NOT auto-called — code accepting a `MaybeAccessor<T>` must resolve it itself (`typeof v === "function" ? v() : v`) and should do that read inside a reactive scope so the accessor form tracks. Pair with `AccessorReturn` to derive the resolved type. Type-only, zero runtime bytes. See also: AccessorReturn, SignalValue, signal.',
+    mistakes: `- MaybeAccessor is NOT auto-called — the ACCEPTING code must resolve it with a \`typeof v === "function"\` check; passing an accessor to code that only reads the value renders the function source
+- Resolving it ONCE at setup (\`const v = typeof title === "function" ? title() : title\`) — captures the accessor's value statically; resolve INSIDE the effect/JSX accessor to keep tracking
+- Using it for a FUNCTION-valued parameter (\`MaybeAccessor<() => void>\`) — the two union arms are runtime-ambiguous; use a dedicated options field instead
+- Discriminating with a framework brand check when plain \`typeof v === "function"\` suffices — a Signal IS a \`() => T\`, the accessor arm covers it`,
+  },
+
+  'reactivity/AccessorReturn': {
+    signature: 'type AccessorReturn<A> = A extends () => infer T ? T : A',
+    example: `type A = AccessorReturn<() => number>           // number
+type B = AccessorReturn<string>                  // string
+type C = AccessorReturn<MaybeAccessor<boolean>>  // boolean`,
+    notes: 'Resolve a `MaybeAccessor` (or any accessor) to its VALUE type — unwraps the `() => T` arm and passes plain values through unchanged (`AccessorReturn<MaybeAccessor<T>>` round-trips to `T`). Type-only, zero runtime bytes. See also: MaybeAccessor, SignalValue.',
+    mistakes: '- Confusing it with `SignalValue` — `AccessorReturn<number>` is `number` (pass-through) while `SignalValue<number>` is `never` (strict: input must be callable)',
+  },
   // <gen-docs:api-reference:end @pyreon/reactivity>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1708,6 +1753,20 @@ const app = (
     mistakes: `- Calling the result like a component (\`lazy(...)()\`) — it is an inert DESCRIPTOR; assign it to a route \`component\` and the router resolves it (into \`_componentCache\`) on navigation.
 - Assuming \`lazy()\` dedupes concurrent imports — it does not; the router owns caching (bounded LRU, default 100; \`router.preload()\` warms it before SSR renderToString, which is required so a lazy route is not blank on the server).`,
   },
+
+  'router/LoaderData': {
+    signature: 'type LoaderData<L> = L extends (...args: never[]) => infer R ? Awaited<R> : never',
+    example: `export const loader = async () => ({ posts: await fetchPosts() })
+
+function PostsPage() {
+  const data = useLoaderData<LoaderData<typeof loader>>()
+  return <ul>{/* data.posts is fully typed */}</ul>
+}`,
+    notes: `Derive a route loader's RESOLVED data type from the loader function itself — pair with \`useLoaderData<LoaderData<typeof loader>>()\` so the component's data type follows the loader with no second annotation (and no drift when the loader changes). Unwraps async returns via \`Awaited\`; sync-returning loaders pass through. Type-only, zero runtime bytes. See also: useLoaderData, RouteLoaderFn, ExtractParams.`,
+    mistakes: `- Annotating \`useLoaderData<{ posts: Post[] }>()\` by hand next to the loader — the drift this type removes; derive it from \`typeof loader\`
+- \`LoaderData<ReturnType<typeof loader>>\` — pass the FUNCTION type (\`typeof loader\`), not its return type
+- It types, it does not validate — the loader data crosses an SSR JSON boundary; Date/Map/class instances arrive as plain JSON on the client`,
+  },
   // <gen-docs:api-reference:end @pyreon/router>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -2387,6 +2446,33 @@ hydrateStores(window.__PYREON_STORE_STATE__ ?? {})`,
     mistakes: `- Calling it AFTER mount — components already read default state; hydrate before \`mount\`/\`hydrateRoot\` so the first render sees server values
 - Expecting it to create stores eagerly — it seeds lazily: a store only hydrates when first used. The snapshot is stashed until then
 - Trusting the snapshot blob as validated input for a schema store — hydration patches the inner per-field store directly, bypassing schema validation (the value was validated server-side when set). Treat the embedded JSON as the same trust boundary as loader data`,
+  },
+
+  'store/StoreState': {
+    signature: 'type StoreState<Api> // SchemaStoreApi<TRaw, TStore> → TRaw; StoreApi<T> → unwrapped signal fields of T',
+    example: `const useCart = defineStore('cart', () => {
+  const items = signal<string[]>([])
+  const count = computed(() => items().length)
+  const add = (item: string) => items.update((xs) => [...xs, item])
+  return { items, count, add }
+})
+type CartState = StoreState<ReturnType<typeof useCart>>
+// → { items: string[] }  (count/add excluded — not snapshot state)`,
+    notes: `Derive the UNWRAPPED per-field value shape of a store from its api object — the inverse of \`SignalsOf\`. For a schema store it's the schema-inferred raw values (\`TRaw\`); for a composition store it's the signal fields of the setup return, each unwrapped to its value type. Computeds and actions are EXCLUDED, mirroring the runtime \`api.state\` snapshot (a computed has no \`.set\`, an action is a plain function). Type-only, zero runtime bytes. See also: StoreActions, SignalsOf, defineStore.`,
+    mistakes: `- Passing the setup-return type instead of the API — the input is \`ReturnType<typeof useStore>\` (the \`StoreApi\`), not the object your setup function returns
+- Expecting computeds in the state shape — they are derived, not snapshot state; the runtime \`api.state\` excludes them too (no \`.set\` → not signal-like)
+- \`StoreState<typeof useCart>\` — that's the HOOK type; call-site is \`StoreState<ReturnType<typeof useCart>>\`
+- Re-declaring the state interface by hand next to the store — the drift this type exists to remove; derive it`,
+  },
+
+  'store/StoreActions': {
+    signature: 'type StoreActions<Api> // plain function fields of the store shape (signals + computeds excluded)',
+    example: `type CartActions = StoreActions<ReturnType<typeof useCart>>
+// → { add: (item: string) => void }
+function callAction<K extends keyof CartActions>(name: K, ...args: Parameters<CartActions[K]>) { /* … */ }`,
+    notes: 'Derive the ACTIONS surface of a store from its api object — the plain function fields of the setup return (schema stores: of `TStore`, so auto-generated field signals drop out). Signals and computeds are excluded even though both are callable. Useful for typing an action-dispatching wrapper or a test double without re-annotating. Type-only, zero runtime bytes. See also: StoreState, defineStore.',
+    mistakes: `- Expecting signals/computeds to appear — they are callable but deliberately excluded (they are state/derivation, not actions)
+- Using it to type \`patch()\` payloads — that is \`Partial<StoreState<Api>>\`, not the actions record`,
   },
   // <gen-docs:api-reference:end @pyreon/store>
 
@@ -3278,6 +3364,46 @@ const field = useField(form, 'email')`,
     mistakes: `- Calling at module scope — hooks require an active component setup context; call inside a component body
 - Omitting the \`<TValues>\` generic — TypeScript infers \`FormState<Record<string, unknown>>\` and \`useField\` field names lose type narrowing`,
   },
+
+  'form/FormValues': {
+    signature: 'type FormValues<F> // FormState<V> | UseFormOptions<V> → V',
+    example: `const form = useForm({ initialValues: { email: '', age: 0 }, onSubmit: () => {} })
+type Values = FormValues<typeof form> // { email: string; age: number }`,
+    notes: 'Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (`UseFormOptions<V>`), so a generic wrapper can derive the value shape from whichever it holds instead of threading a second type parameter. Type-only, zero runtime bytes. See also: FieldNames, FieldValue, useForm.',
+    mistakes: `- Passing a plain object type — \`FormValues<{ email: string }>\` is \`never\`; the input is the FORM (or its options), not the values themselves
+- Fields added at runtime via \`registerField()\` are not in the static shape — read those via \`getValues()[name]\``,
+  },
+
+  'form/FieldNames': {
+    signature: 'type FieldNames<F> = keyof FormValues<F> & string',
+    example: `type Names = FieldNames<typeof form> // 'email' | 'age'
+function focusField(name: FieldNames<typeof form>) { /* … */ }`,
+    notes: `The field-name union of a form. Dot-path leaf fields keep their FLAT keys ('address.city' stays ONE field name — the form's value model is flat by design). Type-only, zero runtime bytes. See also: FormValues, FieldValue.`,
+    mistakes: `- Expecting 'address.city' to split into nested names — dot-path leaves are first-class FLAT field names in @pyreon/form`,
+  },
+
+  'form/FieldValue': {
+    signature: 'type FieldValue<F, K extends FieldNames<F>>',
+    example: `type Age = FieldValue<typeof form, 'age'> // number`,
+    notes: 'The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. The key is constrained to the real field names, so a typo is a compile error. Type-only, zero runtime bytes. See also: FormValues, FieldNames.',
+    mistakes: '- A mistyped field name fails typecheck by design — that is the feature, not a bug to cast around',
+  },
+
+  'form/NestValues': {
+    signature: 'type NestValues<T extends Record<string, unknown>> // flat dot-path shape → nested payload shape',
+    example: `const form2 = useForm({
+  initialValues: { name: '', 'address.city': '', 'address.zip': '' },
+  onSubmit: (values) => {
+    const payload = nestValues(values) as NestValues<typeof values>
+    // payload: { name: string; address: { city: string; zip: string } }
+  },
+})`,
+    notes: `Type-level companion of the runtime \`nestValues()\`: convert a FLAT dot-path value shape (\`{ 'address.city': string }\`) to its NESTED payload shape (\`{ address: { city: string } }\`). STANDALONE and opt-in by design — \`useForm\`/\`values()\`/\`onSubmit\` deliberately keep the FLAT keys (threading a nested shape through the form signature breaks generic wrappers like \`@pyreon/feature\`); use this to type YOUR OWN API boundary. Recursion follows the dot count (realistic keys ≤ 6 segments are fine). Type-only, zero runtime bytes. See also: FormValues, useForm.`,
+    mistakes: `- Expecting \`useForm\` itself to expose nested values — the value model is FLAT end-to-end; \`NestValues\` types the \`nestValues()\` boundary you own
+- Numeric segments (\`"tags.0"\`) type as an indexed OBJECT while the runtime builds a real ARRAY — cast at the boundary if you rely on array methods
+- Declaring both an object field (\`address\`) AND a leaf (\`"address.city"\`) — the type unions at the \`address\` key and the form dev-warns; pick one shape
+- Applying it to already-nested values — it is flat-in/nested-out; a keyless-dot shape passes through unchanged`,
+  },
   // <gen-docs:api-reference:end @pyreon/form>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -3599,6 +3725,24 @@ hydrate(client, snapshot)
 // skipToken: type-safe conditional disabling
 useQuery(() => ({ queryKey: ['user', id()], queryFn: id() ? fetchUser : skipToken }))`,
     notes: '`@pyreon/query` re-exports the full framework-agnostic TanStack surface (identity-equal to `@tanstack/query-core`) so consumers import every primitive from one entry: `QueryClient` / `QueryCache` / `MutationCache` (instance classes); all four observers (`QueryObserver` / `InfiniteQueryObserver` / `MutationObserver` / `QueriesObserver`) for advanced consumers driving query-core directly; `dehydrate` / `hydrate` (SSR serialization); `skipToken` (the v5 sentinel — `queryFn: skipToken` type-safely disables a query); `keepPreviousData`; the cache-key + structural-sharing utilities `hashKey` / `matchQuery` / `matchMutation` / `replaceEqualDeep`; the singleton managers `focusManager` / `onlineManager` / `notifyManager` (toggle focus/online refetch behaviour, batch notifications); `isServer`; `hashKey` / `isCancelledError` / `CancelledError`; and the `defaultShouldDehydrate*` predicates. Types (`QueryKey`, `QueryFilters`, `MutationFilters`, `Mutation`, `MutationState`, `QueryState`, `DehydratedState`, `HydrateOptions`, `InfiniteData`, `DefaultError`, `FetchQueryOptions`, `FetchInfiniteQueryOptions`, `InvalidateQueryFilters`, `InvalidateOptions`, `RefetchQueryFilters`, `RefetchOptions`, `QueryClientConfig`) re-export alongside the runtime values. See also: QueryClientProvider, useQueryClient, HydrationBoundary.',
+  },
+
+  'query/QueryData': {
+    signature: 'type QueryData<R> // UseQueryResult<D> → D; infinite results → InfiniteData<D>',
+    example: `const posts = useQuery(() => ({ queryKey: ['posts'], queryFn: fetchPosts }))
+type Posts = QueryData<typeof posts> // Post[]
+function render(rows: QueryData<typeof posts>) { /* … */ }`,
+    notes: `The RESOLVED data type of a query result — \`QueryData<typeof posts>\` is \`Post[]\` for a \`useQuery\` result, \`InfiniteData<Page>\` for infinite results. Never includes \`undefined\` (that's the loading-state artifact on the \`data\` SIGNAL, not part of the resolved shape). Unwraps the Pyreon ADAPTER's fine-grained result bags (UseQueryResult / UseSuspenseQueryResult / UseInfiniteQueryResult / UseSuspenseInfiniteQueryResult) — for tagged query-KEY inference TanStack's own \`InferDataFromTag\` covers the upstream story and is deliberately not duplicated. Type-only, zero runtime bytes. See also: QueryError, useQuery, useInfiniteQuery.`,
+    mistakes: `- \`SignalValue<typeof posts.data>\` gives \`Post[] | undefined\` — QueryData strips the loading-state \`undefined\` because you want the RESOLVED shape
+- Passing options instead of the result — QueryData unwraps the RESULT object \`useQuery\` returns, not the options function
+- Expecting page-array access on infinite data — the derived type is \`InfiniteData<Page>\` (\`{ pages, pageParams }\`), matching TanStack semantics`,
+  },
+
+  'query/QueryError': {
+    signature: 'type QueryError<R> // UseQueryResult<D, E> → E',
+    example: 'type PostsError = QueryError<typeof posts> // Error',
+    notes: `The ERROR type of a query result (the \`TError\` generic — TanStack's \`DefaultError\`, i.e. \`Error\`, unless narrowed at the hook). Type-only, zero runtime bytes. See also: QueryData, useQuery.`,
+    mistakes: '- The error SIGNAL reads `E | null` — QueryError is the error type itself; handle the null at the read site',
   },
   // <gen-docs:api-reference:end @pyreon/query>
 
@@ -4178,6 +4322,26 @@ m.dispose()                    // drop all listeners`,
 - Expecting \`reset()\` to land on the LITERAL \`initial\` when that state has an \`always\` — reset re-runs the initial cascade, so a transient initial resolves to its cascade target (never the transient state itself).
 - Expecting \`dispose()\` to stop or freeze the machine — it only removes listeners; \`send()\` still transitions the state afterward (now silently). Drop your references to let it GC.`,
   },
+
+  'machine/StateOf': {
+    signature: 'type StateOf<M> // Machine<S, E> → S; raw config → InferStates',
+    example: `const light = createMachine({
+  initial: 'green',
+  states: { green: { on: { NEXT: 'yellow' } }, yellow: { on: { NEXT: 'red' } }, red: {} },
+})
+type LightState = StateOf<typeof light> // 'green' | 'yellow' | 'red'`,
+    notes: 'The STATE union of a machine — accepts BOTH the machine INSTANCE (`createMachine(...)` return) and a raw config object (delegates to `InferStates` for configs), so you derive from whichever you hold. Type-only, zero runtime bytes. See also: EventOf, InferStates, createMachine.',
+    mistakes: `- Passing a config NOT declared \`as const\` (or through \`createMachine\`, which uses a const generic) — state names widen to \`string\` and the union is lost
+- \`StateOf<ReturnType<typeof createMachine>>\` gymnastics on a concrete machine — \`typeof light\` is enough`,
+  },
+
+  'machine/EventOf': {
+    signature: 'type EventOf<M> // Machine<S, E> → E; raw config → InferEvents',
+    example: `type LightEvent = EventOf<typeof light> // 'NEXT'
+function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
+    notes: `The EVENT union of a machine — instance or raw config (delegates to \`InferEvents\`, which unions every state's \`on\` keys; states without \`on\` contribute nothing). Useful for typing event-dispatching wrappers: \`send(e: EventOf<typeof m>)\`. Type-only, zero runtime bytes. See also: StateOf, InferEvents, createMachine.`,
+    mistakes: `- Expecting per-STATE narrowing — the union covers ALL states' events; \`machine.can(event)\` is the runtime per-state check`,
+  },
   // <gen-docs:api-reference:end @pyreon/machine>
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -4413,6 +4577,45 @@ resolvePluralCategory('ar', 0)   // "zero" (Arabic)`,
     mistakes: `- Expecting NESTED tags to parse — the children class is \`[^<]*\`, so \`<b><i>x</i></b>\` does NOT match as a nested structure; keep rich tags flat and non-overlapping.
 - Using hyphenated tags or attributes — tag names are \`\\w+\` only; \`<my-tag>\` / \`<a href="…">\` won't match. Use plain single-word tags (\`<link>\`, \`<bold>\`) and map them in \`<Trans components>\`.
 - Reaching for it when \`<Trans>\` suffices — \`parseRichText\` returns data, not VNodes; \`<Trans>\` does the parse AND the component mapping. Use this only for non-JSX render targets.`,
+  },
+
+  'i18n/MessageKeys': {
+    signature: 'type MessageKeys<M> // dot-path key union of a messages object, plural suffixes collapsed',
+    example: `const en = {
+  greeting: 'Hello {{name}}',
+  nav: { home: 'Home', about: 'About' },
+  items_one: '{{count}} item',
+  items_other: '{{count}} items',
+} as const
+type Keys = MessageKeys<typeof en> // 'greeting' | 'nav.home' | 'nav.about' | 'items'`,
+    notes: `The dot-path key union of a messages object — every translatable key, nested keys joined with '.', plural suffixes (_one/_other/_zero/_two/_few/_many) COLLAPSED to their base key (you call \`t('items', { count })\`, not \`t('items_one')\`). Recursion is depth-capped at 6 nesting levels; over an index-signature \`TranslationDictionary\` it degrades gracefully to \`string\`. Foundation of the opt-in typed instance: \`createI18n<typeof en>(...)\`. Type-only, zero runtime bytes. See also: TranslationParams, TypedTranslationKey, createI18n.`,
+    mistakes: `- MessageKeys over a messages object TYPED as \`TranslationDictionary\` (or any index signature) gives \`string\` — the literal keys are erased; pass \`typeof en\` of a literal object (values may widen, keys survive without \`as const\`; params extraction needs \`as const\`)
+- Raw plural-suffixed keys ('items_one') are deliberately NOT in the union — call the BASE key with \`{ count }\` and the runtime picks the form
+- Namespaced keys ("auth:errors.invalid") are not derivable — namespaces load at runtime; the typed instance accepts any \`ns:key\` string unchecked
+- A legit key that merely ENDS in a plural suffix (\`phase_one\`) collapses too — rename it if that is unwanted
+- Trees deeper than 6 levels contribute no keys past the cap (documented recursion guard) — flatten pathological nesting`,
+  },
+
+  'i18n/TranslationParams': {
+    signature: 'type TranslationParams<M, K extends string> // {{param}} names of the message at key K',
+    example: `const en2 = { greeting: 'Hi {{name}}', items_other: '{{count}} items' } as const
+type P1 = TranslationParams<typeof en2, 'greeting'> // { name: InterpolationValue }
+type P2 = TranslationParams<typeof en2, 'items'>    // { count: number }`,
+    notes: 'Derive the interpolation params of ONE message: the `{{param}}` names in the message literal (inline format specs like `{{amount, currency}}` contribute the name before the comma), plus `count: number` when the key resolves through plural suffixes. Requires LITERAL message values (`as const`) — over widened `string` values it degrades to the loose `InterpolationValues` record. Type-only, zero runtime bytes. See also: MessageKeys, createI18n.',
+    mistakes: `- Without \`as const\` the message VALUES widen to \`string\` and params degrade to \`InterpolationValues\` — the literal is what carries the \`{{param}}\` names
+- It derives from ONE locale's messages — a param present only in another locale's translation is invisible; keep placeholder parity across locales
+- Unknown keys degrade to \`InterpolationValues\` rather than erroring — pair with \`MessageKeys\` for key checking`,
+  },
+
+  'i18n/TypedTranslationKey': {
+    signature: 'type TypedTranslationKey<M> // MessageKeys<M> | `${string}:${string}`, degrading to string',
+    example: `const en3 = { nav: { home: 'Home' } } as const
+const i18n = createI18n<typeof en3>({ locale: 'en', messages: { en: en3 } })
+i18n.t('nav.home')          // ✓ autocompleted + checked
+i18n.t('auth:errors.bad')   // ✓ namespaced — unchecked by design`,
+    notes: 'The key type a TYPED i18n instance accepts: the derived `MessageKeys` union PLUS any `namespace:key` string (namespaced lookups stay unchecked — namespaces load at runtime). This is what `createI18n<typeof en>()` plugs into `I18nInstance<TKey>`; when the messages type carries no literal keys it degrades to plain `string`, so untyped usage is byte-identical. Type-only, zero runtime bytes. See also: MessageKeys, createI18n, useI18n.',
+    mistakes: `- Expecting namespaced keys to be typo-checked — any \`ns:key\` string is accepted (runtime-loaded namespaces cannot be enumerated at compile time)
+- Reading a typed instance back through \`useI18n()\` — context erases the key type (returns \`I18nInstance<string>\`); keep a module-level typed instance for typed \`t\``,
   },
   // <gen-docs:api-reference:end @pyreon/i18n>
 

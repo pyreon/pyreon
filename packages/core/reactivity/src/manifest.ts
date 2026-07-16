@@ -921,6 +921,71 @@ for (const e of report.uncoveredEntries) console.log(e.reason, e.name, e.loc)`,
 console.log(formatReactiveCoverage(report, { showCovered: true, limit: 20 }))`,
       seeAlso: ['takeReactiveCoverage', 'computeReactiveCoverage'],
     },
+    {
+      name: 'SignalValue',
+      kind: 'type',
+      signature: 'type SignalValue<S> = S extends () => infer T ? T : never',
+      summary:
+        "Unwrap the VALUE type of a `Signal<T>`, `Computed<T>`, `ReadonlySignal<T>`, or any zero-arg accessor — `SignalValue<typeof count>` is `number` for `const count = signal(0)`. Derive, don't annotate twice: when a function's parameter should be \"whatever that signal holds\", derive it from the signal instead of repeating the value type. Type-only export — zero runtime bytes.",
+      example: `const user = signal({ id: 1, name: 'Ada' })
+type User = SignalValue<typeof user> // { id: number; name: string }
+
+function save(next: SignalValue<typeof user>) { user.set(next) }`,
+      mistakes: [
+        '`SignalValue<number>` — resolves to `never`; the input must be the SIGNAL type (`typeof mySignal`), not the value type itself',
+        'Passing the signal where the unwrapped value is expected — `save(user)` fails typecheck; read it first: `save(user())`',
+        'Using it on a function that REQUIRES arguments — only zero-arg callables unwrap; `(x: number) => string` resolves to `never` by design',
+      ],
+      seeAlso: ['signal', 'ComputedValue', 'MaybeAccessor'],
+    },
+    {
+      name: 'ComputedValue',
+      kind: 'type',
+      signature: 'type ComputedValue<C> = C extends () => infer T ? T : never',
+      summary:
+        'Unwrap the value type of a `Computed<T>` — intent-revealing alias of `SignalValue` (every Pyreon reactive read is a zero-arg callable, so one conditional covers both). Type-only, zero runtime bytes.',
+      example: `const total = computed(() => price() * qty())
+type Total = ComputedValue<typeof total> // number`,
+      mistakes: [
+        '`ComputedValue<ReturnType<typeof computed>>` gymnastics — pass `typeof total` directly',
+        'Expecting it to unwrap a plain derived VALUE — a non-callable resolves to `never`',
+      ],
+      seeAlso: ['computed', 'SignalValue'],
+    },
+    {
+      name: 'MaybeAccessor',
+      kind: 'type',
+      signature: 'type MaybeAccessor<T> = T | (() => T)',
+      summary:
+        'The standard "static value OR reactive accessor" parameter shape used across Pyreon APIs (`<Show when>`, hook options). NOT auto-called — code accepting a `MaybeAccessor<T>` must resolve it itself (`typeof v === "function" ? v() : v`) and should do that read inside a reactive scope so the accessor form tracks. Pair with `AccessorReturn` to derive the resolved type. Type-only, zero runtime bytes.',
+      example: `function useTitle(title: MaybeAccessor<string>) {
+  const read = () => (typeof title === 'function' ? title() : title)
+  effect(() => { document.title = read() }) // accessor form stays reactive
+}
+useTitle('Static')
+useTitle(() => pageTitle())`,
+      mistakes: [
+        'MaybeAccessor is NOT auto-called — the ACCEPTING code must resolve it with a `typeof v === "function"` check; passing an accessor to code that only reads the value renders the function source',
+        'Resolving it ONCE at setup (`const v = typeof title === "function" ? title() : title`) — captures the accessor\'s value statically; resolve INSIDE the effect/JSX accessor to keep tracking',
+        'Using it for a FUNCTION-valued parameter (`MaybeAccessor<() => void>`) — the two union arms are runtime-ambiguous; use a dedicated options field instead',
+        'Discriminating with a framework brand check when plain `typeof v === "function"` suffices — a Signal IS a `() => T`, the accessor arm covers it',
+      ],
+      seeAlso: ['AccessorReturn', 'SignalValue', 'signal'],
+    },
+    {
+      name: 'AccessorReturn',
+      kind: 'type',
+      signature: 'type AccessorReturn<A> = A extends () => infer T ? T : A',
+      summary:
+        'Resolve a `MaybeAccessor` (or any accessor) to its VALUE type — unwraps the `() => T` arm and passes plain values through unchanged (`AccessorReturn<MaybeAccessor<T>>` round-trips to `T`). Type-only, zero runtime bytes.',
+      example: `type A = AccessorReturn<() => number>           // number
+type B = AccessorReturn<string>                  // string
+type C = AccessorReturn<MaybeAccessor<boolean>>  // boolean`,
+      mistakes: [
+        'Confusing it with `SignalValue` — `AccessorReturn<number>` is `number` (pass-through) while `SignalValue<number>` is `never` (strict: input must be callable)',
+      ],
+      seeAlso: ['MaybeAccessor', 'SignalValue'],
+    },
   ],
   gotchas: [
     {

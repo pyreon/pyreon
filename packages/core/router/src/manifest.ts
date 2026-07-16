@@ -521,6 +521,25 @@ const app = (
       ],
       seeAlso: ['createRouter', 'RouterView'],
     },
+    {
+      name: 'LoaderData',
+      kind: 'type',
+      signature: 'type LoaderData<L> = L extends (...args: never[]) => infer R ? Awaited<R> : never',
+      summary:
+        "Derive a route loader's RESOLVED data type from the loader function itself — pair with `useLoaderData<LoaderData<typeof loader>>()` so the component's data type follows the loader with no second annotation (and no drift when the loader changes). Unwraps async returns via `Awaited`; sync-returning loaders pass through. Type-only, zero runtime bytes.",
+      example: `export const loader = async () => ({ posts: await fetchPosts() })
+
+function PostsPage() {
+  const data = useLoaderData<LoaderData<typeof loader>>()
+  return <ul>{/* data.posts is fully typed */}</ul>
+}`,
+      mistakes: [
+        'Annotating `useLoaderData<{ posts: Post[] }>()` by hand next to the loader — the drift this type removes; derive it from `typeof loader`',
+        '`LoaderData<ReturnType<typeof loader>>` — pass the FUNCTION type (`typeof loader`), not its return type',
+        'It types, it does not validate — the loader data crosses an SSR JSON boundary; Date/Map/class instances arrive as plain JSON on the client',
+      ],
+      seeAlso: ['useLoaderData', 'RouteLoaderFn', 'ExtractParams'],
+    },
   ],
   gotchas: [
     {

@@ -274,6 +274,66 @@ const form = useFormContext<typeof values>()`,
 const field = useField(form, 'email')`,
       seeAlso: ['FormProvider', 'useForm'],
     },
+    {
+      name: 'FormValues',
+      kind: 'type',
+      signature: 'type FormValues<F> // FormState<V> | UseFormOptions<V> → V',
+      summary:
+        "Derive the `TValues` shape from a form — accepts BOTH the `useForm` RETURN (`FormState<V>`) and the `useForm` OPTIONS (`UseFormOptions<V>`), so a generic wrapper can derive the value shape from whichever it holds instead of threading a second type parameter. Type-only, zero runtime bytes.",
+      example: `const form = useForm({ initialValues: { email: '', age: 0 }, onSubmit: () => {} })
+type Values = FormValues<typeof form> // { email: string; age: number }`,
+      mistakes: [
+        'Passing a plain object type — `FormValues<{ email: string }>` is `never`; the input is the FORM (or its options), not the values themselves',
+        'Fields added at runtime via `registerField()` are not in the static shape — read those via `getValues()[name]`',
+      ],
+      seeAlso: ['FieldNames', 'FieldValue', 'useForm'],
+    },
+    {
+      name: 'FieldNames',
+      kind: 'type',
+      signature: 'type FieldNames<F> = keyof FormValues<F> & string',
+      summary:
+        "The field-name union of a form. Dot-path leaf fields keep their FLAT keys ('address.city' stays ONE field name — the form's value model is flat by design). Type-only, zero runtime bytes.",
+      example: `type Names = FieldNames<typeof form> // 'email' | 'age'
+function focusField(name: FieldNames<typeof form>) { /* … */ }`,
+      mistakes: [
+        "Expecting 'address.city' to split into nested names — dot-path leaves are first-class FLAT field names in @pyreon/form",
+      ],
+      seeAlso: ['FormValues', 'FieldValue'],
+    },
+    {
+      name: 'FieldValue',
+      kind: 'type',
+      signature: 'type FieldValue<F, K extends FieldNames<F>>',
+      summary:
+        'The value type of ONE field of a form, by field name — `FieldValue<typeof form, "age">` is `number`. The key is constrained to the real field names, so a typo is a compile error. Type-only, zero runtime bytes.',
+      example: `type Age = FieldValue<typeof form, 'age'> // number`,
+      mistakes: [
+        'A mistyped field name fails typecheck by design — that is the feature, not a bug to cast around',
+      ],
+      seeAlso: ['FormValues', 'FieldNames'],
+    },
+    {
+      name: 'NestValues',
+      kind: 'type',
+      signature: 'type NestValues<T extends Record<string, unknown>> // flat dot-path shape → nested payload shape',
+      summary:
+        "Type-level companion of the runtime `nestValues()`: convert a FLAT dot-path value shape (`{ 'address.city': string }`) to its NESTED payload shape (`{ address: { city: string } }`). STANDALONE and opt-in by design — `useForm`/`values()`/`onSubmit` deliberately keep the FLAT keys (threading a nested shape through the form signature breaks generic wrappers like `@pyreon/feature`); use this to type YOUR OWN API boundary. Recursion follows the dot count (realistic keys ≤ 6 segments are fine). Type-only, zero runtime bytes.",
+      example: `const form2 = useForm({
+  initialValues: { name: '', 'address.city': '', 'address.zip': '' },
+  onSubmit: (values) => {
+    const payload = nestValues(values) as NestValues<typeof values>
+    // payload: { name: string; address: { city: string; zip: string } }
+  },
+})`,
+      mistakes: [
+        'Expecting `useForm` itself to expose nested values — the value model is FLAT end-to-end; `NestValues` types the `nestValues()` boundary you own',
+        'Numeric segments (`"tags.0"`) type as an indexed OBJECT while the runtime builds a real ARRAY — cast at the boundary if you rely on array methods',
+        'Declaring both an object field (`address`) AND a leaf (`"address.city"`) — the type unions at the `address` key and the form dev-warns; pick one shape',
+        'Applying it to already-nested values — it is flat-in/nested-out; a keyless-dot shape passes through unchanged',
+      ],
+      seeAlso: ['FormValues', 'useForm'],
+    },
   ],
   gotchas: [
     // First gotcha feeds the llms.txt teaser. Keep it the most
