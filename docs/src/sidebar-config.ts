@@ -50,6 +50,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Recipes', slug: 'recipes' },
       { text: 'Reactivity Rules', slug: 'reactivity-rules' },
       { text: 'Architecture & prior art', slug: 'architecture-and-prior-art' },
+      { text: 'Benchmarks', slug: 'benchmarks' },
     ],
   },
   {

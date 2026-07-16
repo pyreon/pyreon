@@ -500,7 +500,7 @@ Quick reference (full bug-class detail + reproducers in `.claude/rules/anti-patt
 - `packages/internals/` (3 private): test-utils, manifest, perf-harness; + vitest-config, playwright-config
 - `packages/ui/` (3 private): ui-theme, ui-components, ui-primitives
 
-Plus `docs/` (Pyreon-native docs site on @pyreon/zero + @pyreon/zero-content — 189 doc pages covering all packages, `<Example>` live-mount primitive, dogfoods the framework) and `examples/`.
+Plus `docs/` (Pyreon-native docs site on @pyreon/zero + @pyreon/zero-content — 190 doc pages covering all packages, `<Example>` live-mount primitive, dogfoods the framework) and `examples/`.
 
 Layer order (deps): reactivity → core → {compiler, runtime-dom, runtime-server, router, head} → server → vite-plugin → compat. UI: ui-core → styler → unistyle → elements → attrs → rocketstyle → coolgrid/kinetic.
 
