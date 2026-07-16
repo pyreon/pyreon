@@ -1288,14 +1288,38 @@ function defineSetupStore<T extends Record<string, unknown>>(
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
-/** Destroy a store by id so next call to useStore() re-runs setup. */
+// Dispose a registry entry BEFORE dropping it. `dispose()` stops the store's
+// effectScope (setup/plugin computeds + effects), runs plugin cleanups, and
+// deletes the registry entry itself — without this, a reset merely orphaned
+// the entry while its scope kept firing on external signals forever (leak
+// class B: subscriber retention after "reset"). Duck-checked so a foreign
+// registry value (custom `setRegistryProvider`) degrades to a plain delete.
+function disposeEntry(api: unknown): boolean {
+  if (
+    api !== null &&
+    typeof api === 'object' &&
+    typeof (api as { dispose?: unknown }).dispose === 'function'
+  ) {
+    ;(api as { dispose: () => void }).dispose()
+    return true
+  }
+  return false
+}
+
+/** Destroy a store by id (disposing its effectScope + plugin cleanups) so the next `useStore()` re-runs setup. */
 export function resetStore(id: string): void {
-  getRegistry().delete(id)
+  const registry = getRegistry()
+  if (!disposeEntry(registry.get(id))) registry.delete(id)
   _notifyChange()
 }
 
-/** Destroy all stores — useful for SSR isolation and tests. */
+/** Destroy all stores (disposing each) — useful for SSR isolation and tests. */
 export function resetAllStores(): void {
-  getRegistry().clear()
+  const registry = getRegistry()
+  // Snapshot: dispose() deletes from the registry we're iterating.
+  for (const api of Array.from(registry.values())) {
+    disposeEntry(api)
+  }
+  registry.clear()
   _notifyChange()
 }

@@ -37,6 +37,41 @@
       "import": "./lib/vitest.js",
       "types": "./lib/vitest.d.ts"
     },
+    "./form": {
+      "bun": "./src/form.ts",
+      "import": "./lib/form.js",
+      "types": "./lib/form.d.ts"
+    },
+    "./ui": {
+      "bun": "./src/ui.ts",
+      "import": "./lib/ui.js",
+      "types": "./lib/ui.d.ts"
+    },
+    "./router": {
+      "bun": "./src/router.ts",
+      "import": "./lib/router.js",
+      "types": "./lib/router.d.ts"
+    },
+    "./store": {
+      "bun": "./src/store.ts",
+      "import": "./lib/store.js",
+      "types": "./lib/store.d.ts"
+    },
+    "./i18n": {
+      "bun": "./src/i18n.ts",
+      "import": "./lib/i18n.js",
+      "types": "./lib/i18n.d.ts"
+    },
+    "./toast": {
+      "bun": "./src/toast.ts",
+      "import": "./lib/toast.js",
+      "types": "./lib/toast.d.ts"
+    },
+    "./query": {
+      "bun": "./src/query.ts",
+      "import": "./lib/query.js",
+      "types": "./lib/query.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -61,12 +96,40 @@
   },
   "peerDependencies": {
     "@pyreon/core": "workspace:^",
+    "@pyreon/form": "workspace:^",
+    "@pyreon/i18n": "workspace:^",
+    "@pyreon/query": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
+    "@pyreon/router": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/store": "workspace:^",
+    "@pyreon/toast": "workspace:^",
+    "@pyreon/ui-core": "workspace:^",
     "@testing-library/jest-dom": "^6.0.0",
     "vitest": ">=2.0.0"
   },
   "peerDependenciesMeta": {
+    "@pyreon/form": {
+      "optional": true
+    },
+    "@pyreon/i18n": {
+      "optional": true
+    },
+    "@pyreon/query": {
+      "optional": true
+    },
+    "@pyreon/router": {
+      "optional": true
+    },
+    "@pyreon/store": {
+      "optional": true
+    },
+    "@pyreon/toast": {
+      "optional": true
+    },
+    "@pyreon/ui-core": {
+      "optional": true
+    },
     "@testing-library/jest-dom": {
       "optional": true
     },
@@ -75,8 +138,15 @@
     }
   },
   "devDependencies": {
+    "@pyreon/form": "workspace:*",
+    "@pyreon/i18n": "workspace:*",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/query": "workspace:*",
+    "@pyreon/router": "workspace:*",
+    "@pyreon/store": "workspace:*",
+    "@pyreon/toast": "workspace:*",
     "@pyreon/typescript": "workspace:^",
+    "@pyreon/ui-core": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@testing-library/jest-dom": "^6.9.1",
     "@vitest/browser-playwright": "^4.1.10",
