@@ -1,3 +1,4 @@
+import { mergeProps } from '@pyreon/core'
 import { compose, hoistNonReactStatics, omit, pick } from '@pyreon/ui-core'
 import { attrsHoc } from './hoc'
 import type { AttrsComponent as AttrsComponentType } from './types/AttrsComponent'
@@ -8,10 +9,6 @@ import { chainOptions } from './utils/chaining'
 import { calculateHocsFuncs } from './utils/compose'
 import { createStaticsEnhancers } from './utils/statics'
 
-// Dev-mode gate. `import.meta.env.DEV` is literal-replaced by Vite at build
-// time and tree-shakes to zero bytes in prod. The previous
-// `process.env.NODE_ENV !== 'production'` form was dead code in real Vite
-// browser bundles (Vite does not polyfill `process`).
 /**
  * Clones the current configuration and merges new options, then creates a
  * fresh component. This makes the chaining API immutable — each `.attrs()`
@@ -65,8 +62,13 @@ const attrsComponent: InitAttrsComponent = (options) => {
 
     const filteredProps = needsFiltering ? omit(props, options.filterAttrs) : props
 
+    // Descriptor-safe merge (NOT a spread): compiler-emitted reactive props are
+    // property GETTERS after `makeReactiveProps`, and a `{ ...filteredProps }`
+    // spread fires every getter once — freezing every reactive prop to a static
+    // snapshot in dev/test while production (which skips the debug attribute)
+    // stays live. `mergeProps` copies descriptors, so dev === prod + data-attrs.
     const finalProps = process.env.NODE_ENV !== 'production'
-      ? { ...filteredProps, 'data-attrs': componentName }
+      ? mergeProps(filteredProps as Record<string, unknown>, { 'data-attrs': componentName })
       : filteredProps
 
     return RenderComponent(finalProps)
