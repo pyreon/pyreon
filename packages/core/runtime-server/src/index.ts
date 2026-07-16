@@ -1163,6 +1163,64 @@ export function _ssrItem(statics: readonly string[], ...holes: unknown[]): Maybe
   return _ssrConcat(statics, holes, 0, statics[0] ?? '')
 }
 
+/**
+ * Fused keyed-`<For>` fast path — emitted by the compiler (ssrTemplate mode)
+ * for `<For each by>{(item) => <eligible-el>}</For>` CHILDREN of an `_ssr`
+ * template, so the parent skeleton no longer bails to the h() walk AND each
+ * row skips the per-item `renderNode` dispatch + `RawHtml` unwrap.
+ *
+ * BYTE-IDENTICAL to the h() path's `renderNode(h(For, { each, by }, cb))` →
+ * `renderForItems` route: same `<!--pyreon-for-->` / `<!--/pyreon-for-->`
+ * brackets, same per-item `<!--k:KEY-->` markers (`safeKeyForMarker`), same
+ * item bytes (the compiler builds `item` from the SAME serializer that
+ * guarantees `_ssr(...)` ≡ `renderNode(<el>)`; `holeToString` unwraps the
+ * `RawHtml` exactly as `renderNode` would). `each` may be an accessor (the
+ * compiled `<For each={rows}>` shape) — resolved like the For branch; a
+ * non-array iterable is spread. An async item promotes the whole call with
+ * the SAME resume-at-next-index continuation as `renderForItems`.
+ *
+ * Returns a `RawHtml` (or a Promise of one) — it composes as one
+ * pre-stringified hole of the surrounding `_ssr` template.
+ */
+export function _ssrForKeyed(
+  each: unknown,
+  by: (item: unknown) => unknown,
+  item: (item: unknown) => unknown,
+): RawHtml | Promise<RawHtml> {
+  const items = typeof each === 'function' ? (each as () => unknown)() : each
+  const arr = Array.isArray(items) ? (items as unknown[]) : [...(items as Iterable<unknown>)]
+  const r = _ssrForKeyedFrom(arr, by, item, 0, '<!--pyreon-for-->')
+  return typeof r === 'string' ? new RawHtml(r) : r.then((s) => new RawHtml(s))
+}
+
+function _ssrForKeyedFrom(
+  items: readonly unknown[],
+  by: (item: unknown) => unknown,
+  item: (item: unknown) => unknown,
+  start: number,
+  acc: string,
+): MaybeAsync {
+  for (let i = start; i < items.length; i++) {
+    const x = items[i]
+    acc += `<!--k:${safeKeyForMarker(by(x))}-->`
+    const r = item(x)
+    if (typeof r === 'string') {
+      acc += r
+    } else if (r instanceof RawHtml) {
+      acc += r.value
+    } else {
+      // Async row (an async subtree inside the item template) — promote and
+      // resume after it, mirroring `renderForItems`' continuation shape.
+      const next = i + 1
+      const soFar = acc
+      return (r as Promise<unknown>).then((s) =>
+        _ssrForKeyedFrom(items, by, item, next, soFar + holeToString(s)),
+      )
+    }
+  }
+  return `${acc}<!--/pyreon-for-->`
+}
+
 /** Shared lean concat: `+=` over pre-stringified holes (string / RawHtml /
  * Promise), maybe-async. Returns the plain string; callers brand as needed. */
 function _ssrConcat(
