@@ -167,7 +167,20 @@ const INPUTS: unknown[] = [
   {}, [], { a: 1 }, { a: 'ab', b: 42, c: true }, { t: 'a', x: 1 }, { t: 'b', y: 'q' }, { t: 'nope' },
   { id: 1, inner: { v: 'ab', flag: true } }, { id: 1.5, inner: { v: -1, flag: 'x' } }, { id: 1, inner: null },
   [1, 2, 3], ['ab', 'cd'], ['ab', ''], [1, 'x', true], ['a', 'b', 'c', 'd', 'e'],
-  { __proto__: 'ab' }, Object.create(null), Symbol.for('x'),
+  // An object carrying an OWN data property literally named "__proto__" (the
+  // prototype-pollution-shaped hostile input). NOTE: the literal shorthand
+  // `{ __proto__: 'ab' }` would NOT create this — object-literal `__proto__`
+  // triggers prototype-SETTING semantics and a primitive value is silently
+  // DROPPED, yielding a plain `{}` (CodeQL js/invalid-prototype-value caught
+  // that the intended hostile shape never existed). defineProperty creates
+  // the real own-key shape.
+  Object.defineProperty({}, '__proto__', {
+    value: 'ab',
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  }),
+  Object.create(null), Symbol.for('x'),
 ]
 
 describe('pure-seam differential — fast seam ≡ general seam (public API)', () => {
