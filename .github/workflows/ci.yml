@@ -98,12 +98,13 @@ jobs:
     name: Install
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      affected-filter: ${{ steps.affected.outputs.filter }}
     steps:
+      # Shallow checkout — Install needs only the working tree (bun.lock +
+      # package.json set). The affected-filter computation that used to
+      # require full history here was dead weight: every consumer (cells,
+      # changes) computes its own; the `affected-filter` output had ZERO
+      # readers. Removed 2026-07 (queue-contention optimization pass).
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
@@ -156,17 +157,6 @@ jobs:
             examples/*/node_modules
             docs/node_modules
           key: node-modules-${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-      # Compute affected filter once — shared via output to all downstream jobs
-      - name: Compute affected filter
-        id: affected
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" || true
-            FILTER=$(bun run scripts/affected.ts --base=origin/${{ github.base_ref }})
-            echo "filter=$FILTER" >> $GITHUB_OUTPUT
-          else
-            echo "filter=--filter=*" >> $GITHUB_OUTPUT
-          fi
 
   # ── Bootstrap (P3c): builds lib/ separately from Install ──────────────
   # Restores node_modules from the Install job (per-run cache), runs
@@ -319,23 +309,24 @@ jobs:
   # sensitive `--sequential` path.
   typecheck-cell:
     name: typecheck (${{ matrix.category }})
-    # Skip the whole matrix when nothing is affected (pure-prose docs PR). Gated
-    # on `affected` (NOT `code`) so a doc-INPUT change still typechecks its
-    # consuming package. The `typecheck` aggregator treats a skipped cell as a
-    # pass. Fail-closed: also runs if `changes` itself failed.
+    # DYNAMIC matrix (2026-07): only categories with affected packages spawn a
+    # cell — `changes` computes the list with the SAME script+base each cell
+    # uses, so the spawn decision and the cell's own filter can never disagree.
+    # Pre-change all 9 cells booted a runner on every PR and most self-skipped
+    # via an empty filter (~30–60s of queue+checkout+setup per no-op). The
+    # `typecheck` aggregator treats a skipped/empty matrix as a pass.
+    # Fail-closed twice over: if `changes` failed, the failure() arm runs the
+    # cells AND the `|| full-list` matrix fallback spawns every category.
+    # `examples` is a pseudo-category (affected.ts maps it to the top-level
+    # examples/ dir) — example type regressions were invisible to CI before it.
     needs: [install, changes]
-    if: ${{ (success() && needs.changes.outputs.affected == 'true') || (failure() && needs.changes.result != 'success') }}
+    if: ${{ (success() && needs.changes.outputs.typecheck-has == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        # `examples` is a pseudo-category (affected.ts maps it to the
-        # top-level examples/ dir) — it closes the gap where example type
-        # regressions were invisible to CI (CI typechecked packages/<cat>/*
-        # but never examples/* before). Examples read @pyreon/* via the
-        # bun→src condition, so no lib/bootstrap is needed here either.
-        category: [core, fundamentals, internals, native, tools, ui, ui-system, zero, examples]
+        category: ${{ fromJSON(needs.changes.outputs.typecheck-matrix || '["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]') }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -452,17 +443,32 @@ jobs:
   # protection (same mechanism `e2e-suite` / `scaffold-smoke-cell` rely on),
   # so a docs PR is mergeable with the heavy jobs skipped.
   #
-  # NOTE the per-category test/typecheck/e2e cells are NOT gated here — they
-  # already self-skip via the (now merge-base-correct) affected filter, and
-  # their `result == 'success'` aggregators must see the cells COMPLETE
-  # (exit 0), not be skipped. Only standalone jobs (no aggregator) gate here.
+  # The per-category test/typecheck cells + e2e suites ARE gated here since
+  # 2026-07 — via DYNAMIC matrices (only affected categories/suites spawn a
+  # runner), not the old boot-then-self-skip shape. Their aggregators treat
+  # a skipped/empty matrix as a pass, with fail-closed fallbacks (a failed
+  # `changes` spawns the FULL cell matrices and reds the e2e/scaffold
+  # aggregators).
   changes:
     name: Changes (decide)
-    needs: install
+    # NO `needs:` — deliberately. This job uses ONLY git + bun (the affected
+    # scripts import nothing from node_modules — proven by the pre-2026-07
+    # `changes`/`e2e-decide` jobs, which ran them for months with no
+    # node_modules restore). The old `needs: install` edge was pure DAG
+    # waste: under runner-queue contention (the measured PR-CI bottleneck —
+    # 11,076s of summed queue wait vs 2,050s of summed work on a typical
+    # run) every `needs` level costs a fresh 1–5 min queue round, and
+    # `changes` gates bootstrap + every cell matrix. Starting it at t=0
+    # moves the ENTIRE lib tier up by ~4–6 min.
+    #
+    # This is THE single decide job (2026-07 consolidation): it absorbed
+    # `E2E (decide)`, `Scaffold Smoke (decide)`, and the bootstrap-exit-codes
+    # relevance detection — three always-booted runners whose work is a few
+    # seconds of git/bun each. Fewer jobs = fewer queue slots = less
+    # self-inflicted starvation when parallel sessions push PRs concurrently.
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # Two SEPARATE skip signals, because "docs-only" is too coarse for two job
-    # classes:
+    timeout-minutes: 8
+    # Skip signals, all fail-closed (an error → the full set runs):
     #   • code     = a non-docs source file changed. Gates the READ-NOTHING
     #                heavy jobs (build, verify-modes, coverage, browser/rust,
     #                audit-types, budgets, distribution, manifest-depth,
@@ -470,15 +476,30 @@ jobs:
     #   • affected = ANY workspace is affected, INCLUDING a doc-INPUT change
     #                mapped to its consuming package (anti-patterns.md +
     #                docs/patterns/** → @pyreon/mcp, whose tests PARSE them).
-    #                Gates bootstrap + the test/typecheck cells — those MUST run
-    #                on a doc-input change even though it's docs-only for the
-    #                heavy jobs.
+    #                Gates bootstrap.
+    #   • typecheck-matrix / test-matrix = the per-category cell lists.
+    #                Pre-consolidation EVERY cell booted a runner (9+9 jobs)
+    #                and self-skipped via an empty filter — paying ~30–60s of
+    #                checkout+setup+queue per no-op. Now only categories with
+    #                affected packages spawn a cell (e2e-decide's proven
+    #                dynamic-matrix pattern). Cells still compute their OWN
+    #                narrow filter — the matrix only decides SPAWNING.
+    #   • e2e-matrix / scaffold-has / bootstrap-exit-codes = moved verbatim
+    #                from the deleted decide jobs.
     # They diverge exactly on a doc-INPUT change (code=false, affected=true). A
     # pure-prose docs PR is code=false AND affected=false → everything heavy
     # skips, only the fast gates run.
     outputs:
       code: ${{ steps.detect.outputs.code }}
       affected: ${{ steps.detect.outputs.affected }}
+      typecheck-matrix: ${{ steps.matrices.outputs.typecheck }}
+      typecheck-has: ${{ steps.matrices.outputs.typecheck-has }}
+      test-matrix: ${{ steps.matrices.outputs.test }}
+      test-has: ${{ steps.matrices.outputs.test-has }}
+      e2e-matrix: ${{ steps.e2e.outputs.matrix }}
+      e2e-has: ${{ steps.e2e.outputs.has }}
+      scaffold-has: ${{ steps.scaffold.outputs.has }}
+      bootstrap-exit-codes: ${{ steps.bexit.outputs.run }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -509,6 +530,155 @@ jobs:
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "affected=$AFFECTED" >> "$GITHUB_OUTPUT"
           echo "Code (non-docs) changed: $CODE | Any package affected: $AFFECTED"
+      - name: Compute typecheck/test cell matrices
+        id: matrices
+        run: |
+          # Category lists MUST mirror the cells' own case statements below.
+          # The two `native-*` test entries are PSEUDO-categories splitting
+          # packages/native/ across two runners (see test-cell's timeout
+          # comment); their affected-args mirror the cell exactly so the
+          # decide verdict and the cell's own filter can never disagree
+          # (same script, same base, deterministic).
+          TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
+          TEST_ALL='["core","fundamentals","internals","native-compiler","native-rest","tools","ui","ui-system","zero"]'
+          emit() { # emit <prefix> <json>
+            echo "$1=$2" >> "$GITHUB_OUTPUT"
+            if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
+            echo "$1 matrix: $2"
+          }
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            emit typecheck "$TC_ALL"
+            emit test "$TEST_ALL"
+            exit 0
+          fi
+          BASE="origin/${{ github.base_ref }}"
+          # pick <output-prefix> <full-json> <cat>:<affected-args>...
+          # Fail-closed: any affected.ts error, or a root-file `--filter=*`
+          # verdict, emits the FULL list — never a silently-narrowed one.
+          pick() {
+            local prefix="$1" full="$2"; shift 2
+            local list="" cat args out
+            for spec in "$@"; do
+              cat="${spec%%:*}"; args="${spec#*:}"
+              # shellcheck disable=SC2086
+              if ! out=$(bun run scripts/affected.ts --base="$BASE" $args); then
+                echo "affected.ts failed for $cat — fail-closed to full $prefix matrix"
+                emit "$prefix" "$full"; return 0
+              fi
+              if [ "$out" = "--filter=*" ]; then
+                echo "root-file change — full $prefix matrix"
+                emit "$prefix" "$full"; return 0
+              fi
+              [ -n "$out" ] && list="$list\"$cat\","
+            done
+            emit "$prefix" "[${list%,}]"
+          }
+          pick typecheck "$TC_ALL" \
+            "core:--category=core" "fundamentals:--category=fundamentals" \
+            "internals:--category=internals" "native:--category=native" \
+            "tools:--category=tools" "ui:--category=ui" \
+            "ui-system:--category=ui-system" "zero:--category=zero" \
+            "examples:--category=examples"
+          pick test "$TEST_ALL" \
+            "core:--category=core" "fundamentals:--category=fundamentals" \
+            "internals:--category=internals" \
+            "native-compiler:--category=native/compiler" \
+            "native-rest:--category=native --exclude=native/compiler" \
+            "tools:--category=tools" "ui:--category=ui" \
+            "ui-system:--category=ui-system" "zero:--category=zero"
+      - name: Select affected e2e suites
+        id: e2e
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MATRIX=$(bun run scripts/e2e-affected.ts --base=origin/${{ github.base_ref }})
+          else
+            MATRIX=$(bun run scripts/e2e-affected.ts --all)
+          fi
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          if [ "$MATRIX" = "[]" ]; then
+            echo "has=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Selected e2e matrix: $MATRIX"
+      - name: Detect scaffold-relevant changes
+        id: scaffold
+        run: |
+          # Non-PR triggers always run the full matrix — main / merge_group
+          # is the protected path. Per-suite skipping is a PR-only opt.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+            echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
+            exit 0
+          fi
+          BASE="origin/${{ github.base_ref }}"
+          # Changed files (handles fetch failures cleanly — fall back to
+          # running the matrix if we can't determine the diff).
+          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+            echo "Could not determine changes — running full matrix (safety)"
+            exit 0
+          fi
+          # Scaffold-relevant paths: the templates, the scaffolder, the
+          # CLI, the zero runtime (which templates depend on), and the
+          # test driver + workflow itself. Generous superset — false
+          # positives are fine; false negatives would skip a real bug.
+          TRIGGERS=$(cat <<'EOF'
+          packages/zero/zero/
+          packages/zero/zero-cli/
+          packages/zero/create-zero/
+          packages/zero/meta/
+          packages/core/
+          scripts/scaffold-smoke.ts
+          scripts/affected.ts
+          .github/workflows/ci.yml
+          bun.lock
+          package.json
+          EOF
+          )
+          HAS=false
+          while IFS= read -r prefix; do
+            if echo "$CHANGED" | grep -qE "^$prefix"; then
+              HAS=true
+              echo "Matched trigger: $prefix"
+              break
+            fi
+          done <<< "$TRIGGERS"
+          echo "has=$HAS" >> "$GITHUB_OUTPUT"
+          if [ "$HAS" = "false" ]; then
+            echo "No scaffold-relevant changes — skipping matrix (saves ~265s/cell)"
+          fi
+      - name: Detect whether bootstrap-exit-codes inputs changed
+        id: bexit
+        run: |
+          # push:main / merge_group always run.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Full run forced (event: ${{ github.event_name }})"
+            exit 0
+          fi
+          BASE="origin/${{ github.base_ref }}"
+          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
+            # Couldn't determine diff — safe default = run.
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RELEVANT=false
+          for prefix in \
+            scripts/bootstrap.ts \
+            scripts/install-git-hooks.ts \
+            packages/internals/test-utils/src/tests/bootstrap-exit-codes.test.ts \
+            .github/workflows/ci.yml; do
+            if echo "$CHANGED" | grep -qE "^$prefix"; then
+              RELEVANT=true
+              echo "Matched trigger: $prefix"
+              break
+            fi
+          done
+          echo "run=$RELEVANT" >> "$GITHUB_OUTPUT"
+          if [ "$RELEVANT" = "false" ]; then
+            echo "No bootstrap.ts changes — bootstrap-exit-codes job will skip (saves ~190s)"
+          fi
 
   # ── Test: per-category matrix (P3b) ──────────────────────────────────
   # Same shard shape as `typecheck-cell` above (8 cells, per-category).
@@ -530,28 +700,33 @@ jobs:
   # pool sooner for everything downstream.
   test-cell:
     name: test (${{ matrix.category }})
-    # Cost gate: also depend on the fast deterministic checks (lint +
-    # typecheck). On a source-changed PR — the common case — both finish
-    # well before bootstrap (~210s), so this adds ~zero green-path time;
-    # but when either fails, the ENTIRE expensive test matrix SKIPS,
-    # saving the runner spend on a run that can't merge anyway and
-    # surfacing the failure minutes sooner. Safe-by-invariant: lint
-    # (needs: install) and typecheck (aggregator, if: always()) ALWAYS
-    # report, so a green run never blocks on a skipped required check —
-    # and on a failing run the merge is already blocked by the failed
-    # cheap gate regardless of how the skipped expensive checks resolve.
-    # The same `[bootstrap, lint, typecheck]` gate is applied to every
-    # other lib-needing expensive job below.
-    # Skip the whole matrix when nothing is affected (pure-prose docs PR). Gated
-    # on `affected` (NOT `code`): a doc-INPUT change (anti-patterns.md /
-    # docs/patterns/** → @pyreon/mcp) is docs-only for the heavy jobs yet its
-    # parser test MUST run, so it stays affected=true and this cell runs mcp. The
-    # `test` aggregator treats a skipped cell as a pass. Fail-closed: also runs
-    # if `changes` itself failed. (bootstrap/lint/typecheck cost-gate preserved —
-    # a lint/typecheck failure skips this via the failure() arm requiring
-    # changes.result != 'success', which is false when they, not changes, fail.)
-    needs: [bootstrap, lint, typecheck, changes]
-    if: ${{ (success() && needs.changes.outputs.affected == 'true') || (failure() && needs.changes.result != 'success') }}
+    # Cost gate: also depend on `lint` (fast, deterministic, needs only
+    # install — it finishes before bootstrap on every green run, so it adds
+    # zero latency). When lint fails, the expensive matrix SKIPS via the
+    # failure() arm requiring changes.result != 'success' (false when lint,
+    # not changes, failed). Safe-by-invariant: lint ALWAYS reports, so a
+    # green run never blocks on a skipped required check. The same
+    # `[bootstrap, lint, changes]` gate is applied to every other
+    # lib-needing expensive job below.
+    # Dynamic matrix (see typecheck-cell): only categories with affected
+    # packages spawn — the doc-INPUT mapping is preserved because `changes`
+    # uses the same affected.ts (anti-patterns.md / docs/patterns/** →
+    # @pyreon/mcp → the `tools` cell spawns and runs its parser test). The
+    # `test` aggregator treats a skipped/empty matrix as a pass.
+    # 2026-07 queue-contention pass: the `typecheck` needs-edge is GONE. It
+    # routed every test cell through install → typecheck-cell → typecheck
+    # (aggregator) → test-cell = FOUR queue rounds before a test started
+    # (measured: test cells started at t≈1050–1175s with 180–300s queue
+    # each). Under runner starvation each DAG level costs 1–5 min of queue,
+    # dwarfing the runner-spend the cost gate saved. `lint` stays as the
+    # cheap cost gate — it finishes before bootstrap on every green run, so
+    # it adds zero latency while still skipping the matrix on lint failures
+    # (the common pre-push-catchable class). A typecheck failure no longer
+    # skips tests; the merge is blocked by the required `Typecheck` check
+    # regardless, so the only cost is some wasted runner time on a doomed
+    # run — cheaper than taxing every green run with two extra queue rounds.
+    needs: [bootstrap, lint, changes]
+    if: ${{ (success() && needs.changes.outputs.test-has == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     # `native` used to be ONE cell carrying two unrelated heavy workloads, and
     # it kept getting timeout-CANCELLED — which fails the required `Test`
@@ -602,18 +777,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        category:
-          [
-            core,
-            fundamentals,
-            internals,
-            native-compiler,
-            native-rest,
-            tools,
-            ui,
-            ui-system,
-            zero,
-          ]
+        # Dynamic (see typecheck-cell): only affected categories spawn;
+        # `|| full-list` fallback keeps a `changes` failure fail-closed.
+        category: ${{ fromJSON(needs.changes.outputs.test-matrix || '["core","fundamentals","internals","native-compiler","native-rest","tools","ui","ui-system","zero"]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -733,51 +899,22 @@ jobs:
   # the full contract validation).
   bootstrap-exit-codes:
     name: bootstrap-exit-codes
-    needs: install
+    # 2026-07: the relevance detection moved into `Changes (decide)` — this
+    # job used to boot a runner on EVERY PR (checkout + setup + node 24,
+    # ~21–31s) just to conclude "not relevant, skip" ~99% of the time. Now
+    # the job itself skips (no runner) unless bootstrap.ts / the test / the
+    # workflow changed. Fail-closed: a failed `changes` runs it.
+    needs: [install, changes]
+    if: ${{ (success() && needs.changes.outputs.bootstrap-exit-codes == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
         with:
           node-version: '24'
           restore-bootstrap: 'false' # this test doesn't read lib/
-      - name: Detect whether bootstrap-exit-codes inputs changed
-        id: changes
-        run: |
-          # push:main / merge_group always run.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "Full run forced (event: ${{ github.event_name }})"
-            exit 0
-          fi
-          git fetch origin "${{ github.base_ref }}" || true
-          BASE="origin/${{ github.base_ref }}"
-          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
-            # Couldn't determine diff — safe default = run.
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          RELEVANT=false
-          for prefix in \
-            scripts/bootstrap.ts \
-            scripts/install-git-hooks.ts \
-            packages/internals/test-utils/src/tests/bootstrap-exit-codes.test.ts \
-            .github/workflows/ci.yml; do
-            if echo "$CHANGED" | grep -qE "^$prefix"; then
-              RELEVANT=true
-              echo "Matched trigger: $prefix"
-              break
-            fi
-          done
-          echo "run=$RELEVANT" >> "$GITHUB_OUTPUT"
-          if [ "$RELEVANT" = "false" ]; then
-            echo "No bootstrap.ts changes — skipping bootstrap-exit-codes cell (saves ~190s)"
-          fi
       - name: Run bootstrap-exit-codes
-        if: steps.changes.outputs.run == 'true'
         run: |
           bun run --filter='@pyreon/test-utils' test src/tests/bootstrap-exit-codes.test.ts
 
@@ -786,9 +923,11 @@ jobs:
     # P3c — same risk class as `test-cell`: any browser test that asserts
     # on built artifacts (lib/) needs Bootstrap. Conservatively gate on
     # bootstrap rather than chase per-test audits.
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
+    # Cost gate (see test-cell): lint only — the typecheck edge was dropped
+    # in the 2026-07 queue-contention pass (each extra DAG level = a queue
+    # round under runner starvation).
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, typecheck, changes]
+    needs: [bootstrap, lint, changes]
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -909,51 +1048,24 @@ jobs:
   #    aggregates the matrix so branch-protection's "E2E" requirement
   #    keeps working no matter which / how many matrix jobs ran, and an
   #    empty matrix (docs-only PR) resolves as a green skip.
-  e2e-decide:
-    name: E2E (decide)
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.pick.outputs.matrix }}
-      has: ${{ steps.pick.outputs.has }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version-file: .bun-version
-      - name: Select affected e2e suites
-        id: pick
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git fetch origin "${{ github.base_ref }}" || true
-            MATRIX=$(bun run scripts/e2e-affected.ts --base=origin/${{ github.base_ref }})
-          else
-            MATRIX=$(bun run scripts/e2e-affected.ts --all)
-          fi
-          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
-          if [ "$MATRIX" = "[]" ]; then
-            echo "has=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has=true" >> "$GITHUB_OUTPUT"
-          fi
-          echo "Selected e2e matrix: $MATRIX"
-
   e2e-suite:
     name: e2e (${{ matrix.name }})
     # P3c — e2e suites boot example apps via `vite preview` / `vite build`
     # which resolves @pyreon/* via the node condition → lib/. Needs Bootstrap.
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, e2e-decide, lint, typecheck]
-    if: needs.e2e-decide.outputs.has == 'true'
+    # Suite selection comes from the consolidated `Changes (decide)` job
+    # (the standalone `E2E (decide)` runner was folded into it, 2026-07).
+    # Cost gate (see test-cell): lint only (typecheck edge dropped).
+    # Fail-closed: a failed `changes` leaves e2e-has empty → suites skip →
+    # the `e2e` AGGREGATOR fails (it requires changes.result == success),
+    # so the required E2E check goes red rather than green-via-skip.
+    needs: [bootstrap, lint, changes]
+    if: needs.changes.outputs.e2e-has == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.e2e-decide.outputs.matrix) }}
+        include: ${{ fromJSON(needs.changes.outputs.e2e-matrix || '[]') }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: ./.github/actions/setup-pyreon
@@ -1031,19 +1143,19 @@ jobs:
   # which suites the PR selected (or none, for a docs-only PR).
   e2e:
     name: E2E
-    needs: [e2e-decide, e2e-suite]
+    needs: [changes, e2e-suite]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Aggregate e2e matrix result
         run: |
-          DECIDE='${{ needs.e2e-decide.result }}'
+          DECIDE='${{ needs.changes.result }}'
           SUITE='${{ needs.e2e-suite.result }}'
-          HAS='${{ needs.e2e-decide.outputs.has }}'
-          echo "e2e-decide=$DECIDE  e2e-suite=$SUITE  has=$HAS"
+          HAS='${{ needs.changes.outputs.e2e-has }}'
+          echo "changes=$DECIDE  e2e-suite=$SUITE  has=$HAS"
           if [ "$DECIDE" != "success" ]; then
-            echo "::error::e2e-decide did not succeed ($DECIDE)"
+            echo "::error::the changes (decide) job did not succeed ($DECIDE) — e2e suite selection is unknown"
             exit 1
           fi
           if [ "$HAS" != "true" ]; then
@@ -1063,7 +1175,7 @@ jobs:
     # condition → lib/. Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, typecheck, changes]
+    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -1153,7 +1265,7 @@ jobs:
     # Mistakes": a red-on-arrival gate is a dead gate).
     if: ${{ github.event_name == 'push' || github.event_name == 'merge_group' }}
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, lint, typecheck]
+    needs: [bootstrap, lint] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -1229,7 +1341,7 @@ jobs:
     # Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, typecheck, changes]
+    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1249,7 +1361,7 @@ jobs:
   # built lib/index.js). See scripts/check-import-budgets.ts.
   check-import-budgets:
     name: Check Import Budgets
-    needs: [bootstrap, lint, typecheck, changes]
+    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1274,7 +1386,7 @@ jobs:
     # Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, typecheck, changes]
+    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1295,7 +1407,7 @@ jobs:
   # it Needs Bootstrap. See scripts/check-bin-liveness.ts.
   check-bin-liveness:
     name: Check Bin Liveness
-    needs: [bootstrap, lint, typecheck, changes]
+    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1321,7 +1433,9 @@ jobs:
   # See scripts/check-client-bundle-node-imports.ts.
   check-client-bundle-node-imports:
     name: Check Client Bundle Node Imports
-    needs: [install, changes]
+    # No `install` edge — this walker is pure bun + repo source (it ran
+    # without a node_modules restore for months; the edge was ordering-only).
+    needs: [changes]
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -1345,7 +1459,7 @@ jobs:
   # scripts/check-export-entries.ts. Also runs in `validate-fast` (pre-push).
   check-export-entries:
     name: Check Export Entries
-    needs: install
+    # No needs — pure bun + repo files (never restored node_modules).
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -1392,7 +1506,7 @@ jobs:
   # See scripts/check-doc-claims.ts.
   check-doc-claims:
     name: Check Doc Claims
-    needs: install
+    # No needs — pure bun + repo files (never restored node_modules).
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -1509,7 +1623,10 @@ jobs:
   check-no-major-changesets:
     name: Check No Major Changesets
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    # 3, not 1 — measured p50 is ~11s but that includes checkout + setup-bun,
+    # both of which have observed p95 tails past 30s on cold runners; a 60s
+    # cap gave <1.5× headroom (the ws-relay timeout-sizing rule).
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -1530,7 +1647,7 @@ jobs:
     # P3c — `vite build` of every example × mode cell. Needs Bootstrap.
     # Cost gate (see test-cell): skip when a fast deterministic check fails.
     # Layer-2 gate: skip entirely on a docs-only PR (`changes.code == false`).
-    needs: [bootstrap, lint, typecheck, changes]
+    needs: [bootstrap, lint, changes] # typecheck edge dropped 2026-07 (queue-contention pass — see test-cell)
     if: ${{ (success() && needs.changes.outputs.code == 'true') || (failure() && needs.changes.result != 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -1561,80 +1678,20 @@ jobs:
   # template skip the matrix entirely. All 6 cells share the same
   # scaffold-relevant input surface (the cells differ only in template ×
   # adapter combinations — the SCAFFOLDER + the templates are the same
-  # source) so it's all-or-nothing. The `scaffold-smoke-decide` job below
-  # gates the matrix; the `scaffold-smoke` aggregator runs always (empty
-  # matrix is a green skip, same shape as e2e).
+  # source) so it's all-or-nothing. The consolidated `Changes (decide)` job
+  # gates the matrix (the standalone `Scaffold Smoke (decide)` runner was
+  # folded into it, 2026-07); the `scaffold-smoke` aggregator runs always
+  # (empty matrix is a green skip, same shape as e2e).
   # push:main + merge_group ALWAYS run the full matrix — main is never
   # allowed to merge an undetected scaffold regression.
-  scaffold-smoke-decide:
-    name: Scaffold Smoke (decide)
-    needs: install
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    outputs:
-      has: ${{ steps.pick.outputs.has }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-      - name: Detect scaffold-relevant changes
-        id: pick
-        run: |
-          # Non-PR triggers always run the full matrix — main / merge_group
-          # is the protected path. Per-suite skipping is a PR-only opt.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "has=true" >> "$GITHUB_OUTPUT"
-            echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
-            exit 0
-          fi
-          git fetch origin "${{ github.base_ref }}" || true
-          BASE="origin/${{ github.base_ref }}"
-          # Changed files (handles fetch failures cleanly — fall back to
-          # running the matrix if we can't determine the diff).
-          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
-            echo "has=true" >> "$GITHUB_OUTPUT"
-            echo "Could not determine changes — running full matrix (safety)"
-            exit 0
-          fi
-          # Scaffold-relevant paths: the templates, the scaffolder, the
-          # CLI, the zero runtime (which templates depend on), and the
-          # test driver + workflow itself. Generous superset — false
-          # positives are fine; false negatives would skip a real bug.
-          # Also include scripts/affected.ts (the shared infra) and the
-          # workflow file (this gate definition).
-          TRIGGERS=$(cat <<'EOF'
-          packages/zero/zero/
-          packages/zero/zero-cli/
-          packages/zero/create-zero/
-          packages/zero/meta/
-          packages/core/
-          scripts/scaffold-smoke.ts
-          scripts/affected.ts
-          .github/workflows/ci.yml
-          bun.lock
-          package.json
-          EOF
-          )
-          HAS=false
-          while IFS= read -r prefix; do
-            if echo "$CHANGED" | grep -qE "^$prefix"; then
-              HAS=true
-              echo "Matched trigger: $prefix"
-              break
-            fi
-          done <<< "$TRIGGERS"
-          echo "has=$HAS" >> "$GITHUB_OUTPUT"
-          if [ "$HAS" = "false" ]; then
-            echo "No scaffold-relevant changes — skipping matrix (saves ~265s/cell)"
-          fi
   scaffold-smoke-cell:
     name: Scaffold Smoke (${{ matrix.cell }})
     # P3c — each cell runs `bun install` + `vite build` of the scaffolded app.
     # Needs Bootstrap so the workspace lib/ is resolvable when the app pulls
     # in @pyreon/* via the node condition.
-    # Cost gate (see test-cell): skip when a fast deterministic check fails.
-    needs: [bootstrap, scaffold-smoke-decide, lint, typecheck]
-    if: ${{ needs.scaffold-smoke-decide.outputs.has == 'true' }}
+    # Cost gate (see test-cell): lint only (typecheck edge dropped 2026-07).
+    needs: [bootstrap, lint, changes]
+    if: ${{ needs.changes.outputs.scaffold-has == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -1660,7 +1717,7 @@ jobs:
   # the individual reports + failure surface.
   scaffold-smoke:
     name: Scaffold Smoke
-    needs: scaffold-smoke-cell
+    needs: [changes, scaffold-smoke-cell]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -1668,7 +1725,14 @@ jobs:
       - name: Aggregate scaffold-smoke matrix
         run: |
           RESULT="${{ needs.scaffold-smoke-cell.result }}"
-          # `skipped` happens when scaffold-smoke-decide says no relevant
+          # Fail-closed (2026-07, an improvement over the old decide job): if
+          # `changes` didn't succeed, the scaffold relevance is UNKNOWN and the
+          # cells skipped — that must read as red, not green-via-skip.
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "::error::changes (decide) did not succeed (${{ needs.changes.result }}) — scaffold relevance unknown"
+            exit 1
+          fi
+          # `skipped` happens when the decide step says no relevant
           # changes — that's a green outcome (matches e2e's empty-matrix
           # pattern). `success` is the normal pass. Anything else fails.
           if [ "$RESULT" = "success" ] || [ "$RESULT" = "skipped" ]; then
@@ -1684,7 +1748,9 @@ jobs:
 
   docs-sync:
     name: Docs Sync
-    needs: install
+    # No `install` edge — self-sufficient: its own detection usually skips
+    # everything; when it does run, it restores the CROSS-RUN lockfile-keyed
+    # node_modules cache (restore-keys prefix) with a bun-install fallback.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1778,7 +1844,12 @@ jobs:
   secrets-scan:
     name: Secrets Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 10, not 5 — the pre-pull retry loop below can legitimately spend
+    # 4 pull attempts + 60s of backoff sleeps before its OWN loud failure;
+    # a 5-min cap could kill the job mid-retry with an opaque "cancelled"
+    # instead of the loop's diagnostic (the timeout-must-exceed-composed-
+    # internal-budgets rule from testing.md).
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

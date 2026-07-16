@@ -9,18 +9,17 @@ name: Doc Examples
 # over time as docs mature. See `scripts/check-doc-examples.ts` for
 # the rationale + extraction rules.
 
+# 2026-07 REQUIRED-CHECK FIX — the path scoping moved from the TRIGGER to a
+# JOB-LEVEL skip. `Doc Examples` became a required branch-protection context;
+# a trigger-level `paths:` filter is deadlock-UNSAFE for required checks
+# (anti-patterns.md "A path-scoped workflow promoted to a required check"):
+# a PR outside the filter creates NO check run, so branch protection waits
+# on "Expected — Doc Examples" forever. The workflow now always fires on
+# PRs; a cheap detection step skips the expensive install+typecheck when no
+# relevant path changed, and the job still completes (reporting the check).
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'docs/src/content/docs/**'
-      - 'packages/core/core/src/**'
-      - 'packages/core/reactivity/src/**'
-      - 'packages/core/runtime-dom/src/**'
-      - 'packages/core/runtime-server/src/**'
-      - 'packages/core/router/src/**'
-      - 'scripts/check-doc-examples.ts'
-      - '.github/workflows/doc-examples-check.yml'
   push:
     branches: [main]
 
@@ -38,17 +37,45 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 1
+          # Full history — the relevance detection below diffs against the
+          # PR base (was fetch-depth: 1 when the trigger did the filtering).
+          fetch-depth: 0
+
+      - name: Detect doc-example-relevant changes
+        id: rel
+        run: |
+          # push:main always runs the full check (protects main directly).
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch origin "${{ github.base_ref }}" || true
+          # Fail-closed: an undeterminable diff runs the full check.
+          if ! CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null); then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Same relevance surface the old trigger-level `paths:` filter had.
+          if echo "$CHANGED" | grep -qE '^(docs/src/content/docs/|packages/core/(core|reactivity|runtime-dom|runtime-server|router)/src/|scripts/check-doc-examples\.ts|\.github/workflows/doc-examples-check\.yml)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Relevant changes found — running doc-examples typecheck."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No doc-example-relevant changes — skipping (check still reports)."
+          fi
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.rel.outputs.run == 'true'
         with:
           bun-version-file: .bun-version
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        if: steps.rel.outputs.run == 'true'
         with:
           node-version: 24
 
       - name: Install dependencies
+        if: steps.rel.outputs.run == 'true'
         # PYREON_BOOTSTRAP_SKIP=1 — this gate is LIB-FREE: check-doc-examples
         # synthesizes a tsconfig whose path-aliases point at workspace `src/`
         # directly, so the postinstall bootstrap (which builds all ~70
@@ -62,4 +89,5 @@ jobs:
         run: PYREON_BOOTSTRAP_SKIP=1 bun install --frozen-lockfile
 
       - name: Typecheck opted-in doc examples
+        if: steps.rel.outputs.run == 'true'
         run: bun scripts/check-doc-examples.ts
