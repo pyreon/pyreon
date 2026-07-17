@@ -74,7 +74,6 @@ const KNOWN_HOLLOW: Record<string, string> = {
   Accordion: 'Needs an AccordionBase (button aria-expanded/aria-controls, region, single/multiple, arrow nav).',
   PinInput: 'Needs a PinInputBase (auto-advance, Backspace, paste-distribute, per-cell aria-label).',
   NumberInput: 'Needs a NumberInputBase (spinbutton, arrow/Page step, clamp) — currently renders a TEXT input.',
-  SegmentedControl: 'Should reuse RadioGroupBase (radiogroup semantics) — items are plain buttons today.',
   Spoiler: 'Needs disclosure behavior (aria-expanded + controllable open) — a styled box today.',
   DatePicker: 'Needs a DatePickerBase (compose PopoverBase + CalendarBase) — a styled div today.',
   DateRangePicker: 'Inherits hollow DatePicker; also needs CalendarBase range mode. JSDoc currently overclaims.',
@@ -168,8 +167,8 @@ describe('primitive-first architecture', () => {
     const remaining = Object.keys(KNOWN_HOLLOW).length
     const total = INTERACTIVE.length
     // Locks the count so progress is visible and regressions are impossible.
-    // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree → TreeBase).
-    expect(remaining).toBeLessThanOrEqual(13)
-    expect(total - remaining).toBeGreaterThanOrEqual(16)
+    // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree) → 12 (SegmentedControl).
+    expect(remaining).toBeLessThanOrEqual(12)
+    expect(total - remaining).toBeGreaterThanOrEqual(17)
   })
 })

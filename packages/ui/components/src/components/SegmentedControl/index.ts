@@ -1,9 +1,36 @@
+import { RadioBase, RadioGroupBase } from '@pyreon/ui-primitives'
 import { el } from '../../factory'
 
+/**
+ * SegmentedControl — a single-select control, which IS the WAI-ARIA radiogroup
+ * pattern. It now delegates behavior + a11y to `RadioGroupBase` / `RadioBase`
+ * (the primitive-first rule) and adds only styling.
+ *
+ * Previously the container was a styled `<div>` and each item a plain
+ * `<button>` with NO `role`, NO `aria-checked` and NO keyboard support —
+ * assistive tech had no idea it was a single-select group, and arrow keys did
+ * nothing. Reusing the radiogroup primitives (rather than inventing a
+ * SegmentedControlBase) gets all of that for free:
+ * `role="radiogroup"` / `role="radio"`, `aria-checked`, and arrow-key roving
+ * focus via `navigateByRole`.
+ *
+ * ```tsx
+ * <SegmentedControl value={view()} onChange={view.set}>
+ *   <SegmentedControlItem value="list">List</SegmentedControlItem>
+ *   <SegmentedControlItem value="grid">Grid</SegmentedControlItem>
+ * </SegmentedControl>
+ * ```
+ *
+ * NOTE: no `.attrs()` — with `component: RadioGroupBase`, Element is no longer
+ * the rendered component, so Element layout props (tag/direction) would be
+ * forwarded through `rest` onto the primitive's `<div role="radiogroup">` as
+ * junk DOM attributes. The inline layout is CSS instead. (Same reason
+ * Combobox/Calendar/Tree carry no `.attrs()`.)
+ */
 const SegmentedControl = el
-  .config({ name: 'SegmentedControl' })
-  .attrs({ tag: 'div', direction: 'inline' })
+  .config({ name: 'SegmentedControl', component: RadioGroupBase })
   .theme((t) => ({
+    display: 'inline-flex',
     backgroundColor: t.color.system.base[100],
     borderRadius: t.borderRadius.base,
     padding: t.spacing.xxxSmall,
@@ -16,9 +43,16 @@ const SegmentedControl = el
 
 export default SegmentedControl
 
+/**
+ * One segment. Delegates to `RadioBase`, which renders a real
+ * `<button role="radio">` with `aria-checked`, roving `tabIndex` and
+ * arrow-key navigation scoped to the enclosing `[role="radiogroup"]`.
+ * Requires a `value`; selection state comes from the parent's context, so the
+ * `active` state below is styling only. No `.attrs({ tag })` — RadioBase owns
+ * the element.
+ */
 export const SegmentedControlItem = el
-  .config({ name: 'SegmentedControlItem' })
-  .attrs({ tag: 'button' })
+  .config({ name: 'SegmentedControlItem', component: RadioBase })
   .theme((t) => ({
     cursor: 'pointer',
     fontWeight: t.fontWeight.medium,
