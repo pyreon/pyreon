@@ -18,6 +18,11 @@ export { FileUploadBase, type FileUploadBaseProps, type FileUploadState } from '
 export { ModalBase, type ModalBaseProps } from './ModalBase'
 export { PinInputBase, type PinInputBaseProps, type PinInputState } from './PinInputBase'
 export {
+  NumberInputBase,
+  type NumberInputBaseProps,
+  type NumberInputState,
+} from './NumberInputBase'
+export {
   RadioBase,
   type RadioBaseProps,
   RadioGroupBase,

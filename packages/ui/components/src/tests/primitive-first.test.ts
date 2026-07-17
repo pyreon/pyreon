@@ -71,7 +71,6 @@ const KNOWN_HOLLOW: Record<string, string> = {
   Menu: 'Needs a MenuBase (role=menu/menuitem, roving tabindex, typeahead, Esc + focus return).',
   Popover: 'Needs a PopoverBase built on @pyreon/elements useOverlay (open state, Esc, click-outside, positioning).',
   HoverCard: 'Inherits the hollow Popover via `Popover.config()`. Fixed when Popover gets PopoverBase.',
-  NumberInput: 'Needs a NumberInputBase (spinbutton, arrow/Page step, clamp) — currently renders a TEXT input.',
   Spoiler: 'Needs disclosure behavior (aria-expanded + controllable open) — a styled box today.',
   DatePicker: 'Needs a DatePickerBase (compose PopoverBase + CalendarBase) — a styled div today.',
   DateRangePicker: 'Inherits hollow DatePicker; also needs CalendarBase range mode. JSDoc currently overclaims.',
@@ -179,8 +178,9 @@ describe('primitive-first architecture', () => {
     const remaining = Object.keys(KNOWN_HOLLOW).length
     const total = INTERACTIVE.length
     // Locks the count so progress is visible and regressions are impossible.
-    // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree) → 12 (SegmentedControl) → 11 (Accordion).
-    expect(remaining).toBeLessThanOrEqual(10)
-    expect(total - remaining).toBeGreaterThanOrEqual(19)
+    // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree) → 12
+    // (SegmentedControl) → 11 (Accordion) → 10 (PinInput) → 9 (NumberInput).
+    expect(remaining).toBeLessThanOrEqual(9)
+    expect(total - remaining).toBeGreaterThanOrEqual(20)
   })
 })
