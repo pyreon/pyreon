@@ -1,6 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { Title } from '@pyreon/ui-components'
-import { ColorPickerBase } from '@pyreon/ui-primitives'
+import { ColorPicker, Title } from '@pyreon/ui-components'
 import type { ColorPickerState } from '@pyreon/ui-primitives'
 
 export function ColorPickerDemo() {
@@ -10,9 +9,17 @@ export function ColorPickerDemo() {
     <div>
       <Title size="h2" style="margin-bottom: 24px">Color Picker</Title>
 
-      <ColorPickerBase value={color()} onChange={(hex: string) => color.set(hex)}>
+      <ColorPicker value={color()} onChange={(hex: string) => color.set(hex)}>
         {(state: ColorPickerState) => (
-          <div style="max-width: 280px;">
+          /*
+            `groupProps()` carries BOTH the primitive's ARIA (role="group" +
+            label, so AT announces the sliders as one picker) AND the ColorPicker
+            component's rocketstyle class — the card look (background, radius,
+            padding, shadow) now comes from the theme. `max-width` stays inline
+            (sizing is not themed); the inner gradient/swatch/hex-input styles
+            stay because the theme only lands on this container.
+          */
+          <div {...state.groupProps()} style="max-width: 280px;">
             <div
               style={() => `width: 100%; height: 160px; border-radius: 8px; margin-bottom: 12px; background: linear-gradient(to right, white, hsl(${state.hue()}, 100%, 50%)), linear-gradient(to top, black, transparent); background-blend-mode: multiply; cursor: crosshair;`}
               onClick={(e: MouseEvent) => {
@@ -49,7 +56,7 @@ export function ColorPickerDemo() {
             </p>
           </div>
         )}
-      </ColorPickerBase>
+      </ColorPicker>
     </div>
   )
 }

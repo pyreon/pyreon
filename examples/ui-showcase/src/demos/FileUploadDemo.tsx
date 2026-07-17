@@ -1,5 +1,4 @@
-import { Title } from '@pyreon/ui-components'
-import { FileUploadBase } from '@pyreon/ui-primitives'
+import { FileUpload, Title } from '@pyreon/ui-components'
 import type { FileUploadState } from '@pyreon/ui-primitives'
 
 function formatSize(bytes: number): string {
@@ -13,7 +12,7 @@ export function FileUploadDemo() {
     <div>
       <Title size="h2" style="margin-bottom: 24px">File Upload</Title>
 
-      <FileUploadBase
+      <FileUpload
         multiple
         maxFiles={5}
         maxSize={10 * 1024 * 1024}
@@ -22,10 +21,19 @@ export function FileUploadDemo() {
       >
         {(state: FileUploadState) => (
           <div style="max-width: 400px;">
+            {/*
+              `dropZoneProps` is a plain OBJECT, not a getter — spread it with NO
+              call parens. It carries the primitive's ARIA/handlers AND the
+              FileUpload component's rocketstyle class (the dashed zone: border,
+              radius, padding, bg, hover). radius/padding/text-align/cursor/
+              transition now come from the theme; the border + background COLOURS
+              stay inline because they are state-driven (isDragging) — the theme
+              has only the static ones.
+            */}
             <div
               {...state.dropZoneProps}
               onClick={() => state.openPicker()}
-              style={() => `border: 2px dashed ${state.isDragging() ? '#3b82f6' : '#d1d5db'}; border-radius: 12px; padding: 32px; text-align: center; cursor: pointer; background: ${state.isDragging() ? '#eff6ff' : '#f9fafb'}; transition: all 0.15s;`}
+              style={() => `border: 2px dashed ${state.isDragging() ? '#3b82f6' : '#d1d5db'}; background: ${state.isDragging() ? '#eff6ff' : '#f9fafb'};`}
             >
               <div style="font-size: 32px; margin-bottom: 8px;">📁</div>
               <p style="font-size: 14px; color: #374151; font-weight: 500;">
@@ -66,7 +74,7 @@ export function FileUploadDemo() {
             ) : null}
           </div>
         )}
-      </FileUploadBase>
+      </FileUpload>
     </div>
   )
 }
