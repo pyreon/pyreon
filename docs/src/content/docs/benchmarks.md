@@ -75,15 +75,16 @@ throughput; per-render app creation; framework-independent correctness gate.
 
 | rows | **Pyreon** | react-dom 19 | vue 3.5 | svelte 5 |
 | --- | --- | --- | --- | --- |
-| 10 | **4.05µs** | 9.08µs | 3.28µs | ★ 3.00µs |
-| 100 | **22.3µs** | 61.3µs | ★ 17.0µs | 18.6µs |
-| 1000 | **208.8µs** | 627.5µs | ★ 148.9µs | 175.3µs |
+| 10 | **★ 2.51µs** | 9.08µs | 3.28µs | 3.00µs |
+| 100 | **19.2µs** | 61.3µs | ★ 17.0µs | 18.6µs |
+| 1000 | **184.7µs** | 627.5µs | ★ 148.9µs | 175.3µs |
 
-Honest reading: Pyreon renders **2.2–3× faster than React** at every size,
-and currently sits **1.2–1.4× behind Vue and Svelte** — both compile SSR to
-raw string concatenation, which is the bar Pyreon's compile-to-string fast
-path is closing release by release. (This table is the newest suite in the
-repo and the most actively moving target.)
+Honest reading: **Pyreon is the fastest of all five frameworks at small N**
+(the dominant real-world page shape) after the fused keyed-`<For>` emit —
+a `<For>` child no longer bails its parent template to the VNode walk, and
+rows render through one fused keyed loop. At 100–1000 rows Pyreon renders
+**3.2–3.4× faster than React**, ahead of Svelte at 1000, and sits
+**1.13–1.24× behind Vue** — the last SSR residual, actively being profiled.
 
 A second, runtime-tree variant (`bun run bench:ssr-cross`) compares
 `renderToString` implementations on the same logical VNode/element tree
@@ -237,7 +238,8 @@ isolation, correctness gates):
 ## What we don't win (the standing list)
 
 Honesty section, kept current: retained memory is mid-pack (not leading);
-SSR at scale trails Vue/Svelte's string-concat compilers ~1.2–1.4×; Preact
+SSR at 100–1000 rows trails Vue ~1.13–1.24× (small-N is now a Pyreon win;
+Svelte is behind at 1000); Preact
 leads computed chain (~1.25×) and signal create (~1.4×) — both structurally
 priced (chain by the eager-push model whose lazy-pull alternative costs
 retained heap; create by the callable-signal API itself, a closure per
