@@ -646,9 +646,17 @@ jobs:
     permissions:
       issues: write
     steps:
+      # `retries: 3` for transient GitHub API 5xx — but DELIBERATELY NOT
+      # wrapped in a swallow-all `catch` like the advisory PR-comment steps
+      # in bundle-size-diff / perf / leak-sweep. There, the comment REPORTS
+      # alongside a real gate, so a failed post must not turn the check red.
+      # Here the notification IS the deliverable: if the sticky issue can't
+      # be written, a red nightly would vanish silently — the catalogued
+      # dead-gate class. So this one still fails loudly after retries.
       - name: Create / update / close the sticky failure issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
+          retries: 3
           script: |
             const title = '[native-device] Nightly device build is RED'
             const failed =

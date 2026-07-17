@@ -66,27 +66,59 @@ jobs:
       - name: Restore PR head for diff script
         run: git checkout "${{ github.event.pull_request.head.sha }}"
 
+      # continue-on-error is for the script's exit 1 — "regressions found" is
+      # REPORT CONTENT here (the comment shows the movers); the strict gate
+      # lives in ci.yml's Check Bundle Budgets. Exit 2 (input-shape problem /
+      # crash) writes no summary — the fallback step below makes that failure
+      # VISIBLE in the comment instead of silently skipping (or, worse, the
+      # historical shape: crashing the comment step on the missing file).
       - name: Diff
         id: diff
         continue-on-error: true
         run: bun run scripts/bundle-size-diff.ts /tmp/base.json /tmp/pr.json --output /tmp/summary.md
 
+      - name: Fallback summary (diff failed before writing one)
+        if: steps.diff.outcome == 'failure'
+        run: |
+          if [ ! -f /tmp/summary.md ]; then
+            {
+              echo '<!-- bundle-size-diff -->'
+              echo '### ⚠️ Bundle size diff could not be computed on this run'
+              echo
+              echo "The measure/diff step failed before producing a summary (input-shape problem or crash) — see the [run log](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+            } > /tmp/summary.md
+          fi
+
+      # Best-effort by design: this whole workflow is INFORMATIONAL (header
+      # comment above) — a sticky PR comment must never turn the check red.
+      # `retries: 3` covers transient GitHub API 5xx (a bare 503 on
+      # listComments failed the release PR on 2026-07-16); anything that
+      # still fails after retries is downgraded to a warning annotation.
       - name: Post sticky comment
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
+          retries: 3
           script: |
             const fs = require('node:fs')
+            if (!fs.existsSync('/tmp/summary.md')) {
+              core.warning('bundle-size-diff: no summary.md was produced — nothing to post (see earlier steps)')
+              return
+            }
             const summary = fs.readFileSync('/tmp/summary.md', 'utf8')
             const { owner, repo } = context.repo
             const issue_number = context.issue.number
             const marker = '<!-- bundle-size-diff -->'
-            const comments = await github.paginate(
-              github.rest.issues.listComments,
-              { owner, repo, issue_number, per_page: 100 },
-            )
-            const existing = comments.find((c) => c.body?.startsWith(marker))
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: summary })
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body: summary })
+            try {
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number, per_page: 100 },
+              )
+              const existing = comments.find((c) => c.body?.startsWith(marker))
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: summary })
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body: summary })
+              }
+            } catch (err) {
+              core.warning(`bundle-size-diff: posting the sticky comment failed after retries (${err.status ?? '?'} ${err.message}) — informational workflow, not failing the check`)
             }

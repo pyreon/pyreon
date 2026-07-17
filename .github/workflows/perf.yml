@@ -156,24 +156,39 @@ jobs:
             echo "summary_path=$summary" >> "$GITHUB_OUTPUT"
           fi
 
+      # Best-effort: this workflow is ADVISORY — a PR comment must never turn
+      # the check red. `retries: 3` covers transient GitHub API 5xx (the class
+      # that failed the release PR's bundle-size-diff on 2026-07-16); residual
+      # failures downgrade to a warning annotation.
       - name: Post diff as PR comment
         if: github.event_name == 'pull_request' && steps.diff.outputs.summary_path != ''
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
+          retries: 3
           script: |
             const fs = require('node:fs')
-            const summary = fs.readFileSync('${{ steps.diff.outputs.summary_path }}', 'utf8')
+            let summary = ''
+            try {
+              summary = fs.readFileSync('${{ steps.diff.outputs.summary_path }}', 'utf8')
+            } catch {
+              core.warning('perf: summary file missing — nothing to post')
+              return
+            }
             const { owner, repo } = context.repo
             const issue_number = context.issue.number
             const marker = `<!-- perf-${{ matrix.app }}-${{ matrix.journey }} -->`
             const body = `${marker}\n${summary}`
-            const comments = await github.paginate(
-              github.rest.issues.listComments,
-              { owner, repo, issue_number, per_page: 100 },
-            )
-            const existing = comments.find((c) => c.body?.startsWith(marker))
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body })
+            try {
+              const comments = await github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number, per_page: 100 },
+              )
+              const existing = comments.find((c) => c.body?.startsWith(marker))
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body })
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body })
+              }
+            } catch (err) {
+              core.warning(`perf: posting the PR comment failed after retries (${err.status ?? '?'} ${err.message}) — advisory workflow, not failing the check`)
             }
