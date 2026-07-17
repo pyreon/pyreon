@@ -71,7 +71,6 @@ const KNOWN_HOLLOW: Record<string, string> = {
   Menu: 'Needs a MenuBase (role=menu/menuitem, roving tabindex, typeahead, Esc + focus return).',
   Popover: 'Needs a PopoverBase built on @pyreon/elements useOverlay (open state, Esc, click-outside, positioning).',
   HoverCard: 'Inherits the hollow Popover via `Popover.config()`. Fixed when Popover gets PopoverBase.',
-  Accordion: 'Needs an AccordionBase (button aria-expanded/aria-controls, region, single/multiple, arrow nav).',
   PinInput: 'Needs a PinInputBase (auto-advance, Backspace, paste-distribute, per-cell aria-label).',
   NumberInput: 'Needs a NumberInputBase (spinbutton, arrow/Page step, clamp) — currently renders a TEXT input.',
   Spoiler: 'Needs disclosure behavior (aria-expanded + controllable open) — a styled box today.',
@@ -167,8 +166,8 @@ describe('primitive-first architecture', () => {
     const remaining = Object.keys(KNOWN_HOLLOW).length
     const total = INTERACTIVE.length
     // Locks the count so progress is visible and regressions are impossible.
-    // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree) → 12 (SegmentedControl).
-    expect(remaining).toBeLessThanOrEqual(12)
-    expect(total - remaining).toBeGreaterThanOrEqual(17)
+    // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree) → 12 (SegmentedControl) → 11 (Accordion).
+    expect(remaining).toBeLessThanOrEqual(11)
+    expect(total - remaining).toBeGreaterThanOrEqual(18)
   })
 })
