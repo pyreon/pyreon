@@ -1,9 +1,11 @@
+import { signal } from '@pyreon/reactivity'
 import * as Y from 'yjs'
 import {
   applyAwarenessUpdate,
   encodeAwarenessUpdate,
   removeAwarenessStates,
 } from 'y-protocols/awareness'
+import { type DocTransportSyncState, registerDocTransport } from './doc-sync'
 import { REMOTE_ORIGIN } from './types'
 import { peekDocAwareness } from './yjs-awareness'
 import type { YjsCrdtDoc } from './yjs-adapter'
@@ -47,6 +49,26 @@ export interface WebSocketTransport {
   disconnect(): void
   /** Whether the socket is currently open. */
   readonly connected: boolean
+  /**
+   * Whether the INITIAL sync round-trip has completed — we sent our state vector
+   * and received the relay/peer's response to it (the y-websocket
+   * `provider.on('synced')` convention). A REACTIVE signal read: use it in an
+   * effect/JSX (`effect(() => transport.synced() && …)`) to gate app-level
+   * defaults until it is safe to write them. `false` before the first sync,
+   * resets to `false` across a disconnect, and becomes `true` again after each
+   * reconnect's round-trip.
+   *
+   * `syncedSignal`'s create-if-missing seed already defers on this internally, so
+   * a fresh peer's default cannot clobber a peer's real value — you only need to
+   * read `synced` for YOUR OWN post-load default writes.
+   */
+  readonly synced: () => boolean
+  /**
+   * Resolves once {@link synced} first becomes `true` (or immediately if it
+   * already is). Handy to `await transport.whenSynced()` before writing app-level
+   * defaults.
+   */
+  whenSynced(): Promise<void>
 }
 
 /**
@@ -94,6 +116,43 @@ export function connectViaWebSocket(
   let connected = false
   let attempt = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  // Initial-sync state (the y-websocket `synced` convention). `synced` flips true
+  // on the FIRST inbound MSG_UPDATE after `open` — that is the relay/peer's reply
+  // to the state vector we sent on open, so it means the sync round-trip is done.
+  // In this protocol the relay ALWAYS answers a MSG_STATE_VECTOR with a MSG_UPDATE
+  // (even for an empty room — see `server.ts`), so this marker is sound and never
+  // hangs even when alone in an empty room. `firstSyncPending` is armed on open
+  // and cleared on the first update; it re-arms on each reconnect.
+  const syncedSig = signal(false)
+  let firstSyncPending = false
+  const markSynced = () => {
+    if (!firstSyncPending) return
+    firstSyncPending = false
+    syncedSig.set(true)
+  }
+  // The doc-owned sync state the create-if-missing seed consults (issue #2380).
+  // `onSynced` is a ONE-SHOT: fires on the first `synced === true` (or now, if
+  // already synced), never re-firing on a later reconnect.
+  const syncState: DocTransportSyncState = {
+    get synced() {
+      return syncedSig.peek()
+    },
+    onSynced(cb) {
+      if (syncedSig.peek()) {
+        cb()
+        return () => {}
+      }
+      const unsub = syncedSig.subscribe(() => {
+        if (syncedSig.peek()) {
+          unsub()
+          cb()
+        }
+      })
+      return unsub
+    },
+  }
+  const detachSyncState = registerDocTransport(doc, syncState)
 
   const onUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === REMOTE_ORIGIN) return
@@ -144,6 +203,9 @@ export function connectViaWebSocket(
     ws.onopen = () => {
       attempt = 0
       connected = true
+      // Arm the first-sync marker: the reply to the SV we send below flips
+      // `synced` true once the round-trip completes.
+      firstSyncPending = true
       ws?.send(encodeSyncMessage(MSG_STATE_VECTOR, Y.encodeStateVector(doc.yDoc)))
       // Publish our full local presence so the relay + peers learn us — also
       // re-runs on every reconnect, re-establishing presence after a drop.
@@ -169,7 +231,12 @@ export function connectViaWebSocket(
                when awareness is in use, in which case `aw` is always set on this transport. */
             if (aw) applyAwarenessUpdate(aw, payload, REMOTE_ORIGIN)
           } else {
+            // The first inbound update after open is the relay's reply to our
+            // state vector — the sync round-trip is complete. Apply first, THEN
+            // mark synced, so a create-if-missing seed re-checking on `synced`
+            // sees any peer value the relay just delivered.
             Y.applyUpdate(doc.yDoc, payload, REMOTE_ORIGIN)
+            markSynced()
           }
         } catch (err) {
           if (process.env.NODE_ENV !== 'production') {
@@ -183,6 +250,10 @@ export function connectViaWebSocket(
     }
     ws.onclose = (event: CloseEvent) => {
       connected = false
+      // Reset sync state: a reconnect must complete a fresh round-trip before
+      // `synced` is true again.
+      firstSyncPending = false
+      syncedSig.set(false)
       options.onDisconnect?.()
       // 4401 = the relay's `authorize` rejection. Terminal — don't hammer it.
       if (event.code === 4401) closed = true
@@ -199,8 +270,15 @@ export function connectViaWebSocket(
     get connected() {
       return connected
     },
+    synced: () => syncedSig(),
+    whenSynced() {
+      return new Promise<void>((resolve) => {
+        syncState.onSynced(resolve)
+      })
+    },
     disconnect() {
       closed = true
+      detachSyncState()
       if (reconnectTimer !== null) {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
