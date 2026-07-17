@@ -94,7 +94,25 @@ export interface IRocketStyleComponent<
     ? Omit<O, keyof EA & keyof O> &
         Partial<Pick<O, keyof EA & keyof O>> &
         MergeTypes<
-          [Partial<Omit<EA, keyof O>>, DefaultProps, ExtractDimensionProps<D, DKP, UB>]
+          [
+            Partial<Omit<EA, keyof O>>,
+            // `Omit<…, keyof O>` is load-bearing: DefaultProps hard-codes
+            // `children?: VNodeChild`, and DFP INTERSECTS it with the wrapped
+            // component's own props (O). For a render-fn primitive whose
+            // `children` is `(state: XState) => VNodeChild`, that produced
+            // `((state) => …) & (VNodeChild | undefined)` — unsatisfiable,
+            // because VNodeChildAccessor is ZERO-arg. So
+            // `<Combobox>{(s) => …}</Combobox>` failed to typecheck (TS2322)
+            // and EVERY render-fn component (Combobox/Calendar/ColorPicker/
+            // FileUpload/Tree) was unusable via its public API — which is why
+            // their demos all reached past them for the primitive, and why the
+            // dead-styling bug (#2372) went unnoticed for so long.
+            // Stripping the keys O already defines lets the component's own
+            // types win; components that DON'T declare `children` still get
+            // DefaultProps' `VNodeChild` as before.
+            Omit<DefaultProps, keyof O>,
+            ExtractDimensionProps<D, DKP, UB>,
+          ]
         >
     : never,
 > {

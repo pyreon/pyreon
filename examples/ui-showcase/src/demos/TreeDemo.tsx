@@ -1,6 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { Title, TreeItem } from '@pyreon/ui-components'
-import { TreeBase } from '@pyreon/ui-primitives'
+import { Title, Tree, TreeItem } from '@pyreon/ui-components'
 import type { TreeNode, TreeState } from '@pyreon/ui-primitives'
 
 const treeData: TreeNode[] = [
@@ -47,7 +46,7 @@ export function TreeDemo() {
       <Title size="h2" style="margin-bottom: 24px">Tree</Title>
 
       <div style="max-width: 300px;">
-        <TreeBase
+        <Tree
           data={treeData}
           value={selected()}
           onChange={(v: string | string[]) => selected.set(v as string)}
@@ -87,7 +86,7 @@ export function TreeDemo() {
               }
             </div>
           )}
-        </TreeBase>
+        </Tree>
       </div>
 
       <p style="font-size: 13px; color: #6b7280; margin-top: 12px;">
