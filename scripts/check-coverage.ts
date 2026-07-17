@@ -100,7 +100,7 @@ const BELOW_FLOOR_EXEMPTIONS: Record<string, FloorExemption> = {
     currentStatements: 72,
     currentBranches: 64,
     reason:
-      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). First baseline under the gate (measured 62.99/54.79, functions 63.68, lines 66.85): the 11 browser tests exercise ARIA + keyboard surfaces but not the full state machines (Checkbox/Switch/Combobox/FileUpload/keyboard.ts navigateByRole largely unexercised — which is why interaction bugs shipped). Ratchet target as the UI-excellence effort adds interaction tests; raise in lockstep, never lower. Ratcheted 62/54 -> 72/64 (measured 72.52/64.1, functions 72.34, lines 76.46) as TreeBase/RadioGroupBase/AccordionBase/PinInputBase landed with real interaction specs.',
+      '12 headless behavior primitives (SelectBase/ComboboxBase/CalendarBase/TreeBase/…). First baseline under the gate (measured 62.99/54.79, functions 63.68, lines 66.85): the 11 browser tests exercise ARIA + keyboard surfaces but not the full state machines (Checkbox/Switch/Combobox/FileUpload/keyboard.ts navigateByRole largely unexercised — which is why interaction bugs shipped). Ratchet target as the UI-excellence effort adds interaction tests; raise in lockstep, never lower. Ratcheted 62/54 -> 72/64 (measured 72.52/64.1, functions 72.34, lines 76.46) as TreeBase/RadioGroupBase/AccordionBase/PinInputBase landed with real interaction specs — including the Tree roving-focus specs.',
   },
   // ── Branch < MINIMUM_BRANCH_FLOOR=95 (statements OK at ≥95) ─────────
   // Each entry's `currentBranches` mirrors the package's vitest.config.ts
