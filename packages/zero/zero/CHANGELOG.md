@@ -1,5 +1,26 @@
 # @pyreon/zero
 
+## 0.48.0
+
+### Minor Changes
+
+- [#2370](https://github.com/pyreon/pyreon/pull/2370) [`98b3726`](https://github.com/pyreon/pyreon/commit/98b3726a9f86caf160de6ebc2c175e2bae2cbb77) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Branded end-of-build summary. Every production build now ends with an overview of what it actually produced — after the SSG prerender, SSR bundle, and deploy-adapter staging finish: client assets with raw + gzip sizes (entry chunks marked, sorted by gzip cost, long tails collapsed), per-kind totals, the server bundle, prerendered page count, and wall-clock time — in the Pyreon ember palette, degrading truecolor → 16-color → plain (`NO_COLOR`, non-TTY, `TERM=dumb` respected; `FORCE_COLOR` opts back in). The per-route mode table is colorized in the same palette. Informational only (can never fail a build), prints exactly once per top-level build (inner sub-builds stay silent), and `zero({ buildSummary: false })` opts out.
+
+### Patch Changes
+
+- Updated dependencies [[`9b3fda4`](https://github.com/pyreon/pyreon/commit/9b3fda40b3c1e107475d3f15020f8ac73ba5977d), [`0ba8da3`](https://github.com/pyreon/pyreon/commit/0ba8da3c22bdf722b5f6a6aea11ee7a9e53a2e7d), [`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d), [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67), [`5890567`](https://github.com/pyreon/pyreon/commit/5890567189a4a46e30387ae1f87811b8735cb768), [`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023), [`c3dab73`](https://github.com/pyreon/pyreon/commit/c3dab7368cb22ea2229b5d5a03e7f86b94098cd6), [`c1f398a`](https://github.com/pyreon/pyreon/commit/c1f398aff02411a49c922902be7721a253ba2443), [`068754c`](https://github.com/pyreon/pyreon/commit/068754caba2fbea93a794342f6d6ccdf87d047c1), [`39053fe`](https://github.com/pyreon/pyreon/commit/39053fefcc3a3bf1ead1e98f9c138dbde4248789), [`bf97dfa`](https://github.com/pyreon/pyreon/commit/bf97dfa0f6f0f7f341625a4a4d14bf100e869163), [`a2504ff`](https://github.com/pyreon/pyreon/commit/a2504ff1f60151be605159aa0fd9d5692a879535), [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245)]:
+  - @pyreon/compiler@0.48.0
+  - @pyreon/router@0.48.0
+  - @pyreon/reactivity@0.48.0
+  - @pyreon/runtime-dom@0.48.0
+  - @pyreon/core@0.48.0
+  - @pyreon/head@0.48.0
+  - @pyreon/runtime-server@0.48.0
+  - @pyreon/server@0.48.0
+  - @pyreon/vite-plugin@0.48.0
+  - @pyreon/meta@0.48.0
+  - @pyreon/sized-map@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes

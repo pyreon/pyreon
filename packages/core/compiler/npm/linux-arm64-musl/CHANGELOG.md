@@ -1,5 +1,7 @@
 # @pyreon/compiler-linux-arm64-musl
 
+## 0.48.0
+
 ## 0.47.0
 
 ## 0.46.0

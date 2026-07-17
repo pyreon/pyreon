@@ -1,5 +1,19 @@
 # @pyreon/example-native-tasks-web
 
+## 0.0.21
+
+### Patch Changes
+
+- Updated dependencies [[`0ba8da3`](https://github.com/pyreon/pyreon/commit/0ba8da3c22bdf722b5f6a6aea11ee7a9e53a2e7d), [`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d), [`134e241`](https://github.com/pyreon/pyreon/commit/134e24118665ef44a7e4b7f030e02fbcde4f59fc), [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67), [`5890567`](https://github.com/pyreon/pyreon/commit/5890567189a4a46e30387ae1f87811b8735cb768), [`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023), [`c3dab73`](https://github.com/pyreon/pyreon/commit/c3dab7368cb22ea2229b5d5a03e7f86b94098cd6), [`c1f398a`](https://github.com/pyreon/pyreon/commit/c1f398aff02411a49c922902be7721a253ba2443), [`068754c`](https://github.com/pyreon/pyreon/commit/068754caba2fbea93a794342f6d6ccdf87d047c1), [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245)]:
+  - @pyreon/router@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/hooks@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/primitives@1.0.0
+
 ## 0.0.20
 
 ### Patch Changes

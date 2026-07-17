@@ -1,5 +1,19 @@
 # @pyreon/document-primitives
 
+## 0.48.0
+
+### Patch Changes
+
+- Updated dependencies [[`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023), [`d30f818`](https://github.com/pyreon/pyreon/commit/d30f818d2c4df6e0621cad29eedff3197b9004cc)]:
+  - @pyreon/core@0.48.0
+  - @pyreon/elements@0.48.0
+  - @pyreon/rocketstyle@0.48.0
+  - @pyreon/styler@0.48.0
+  - @pyreon/ui-core@0.48.0
+  - @pyreon/unistyle@0.48.0
+  - @pyreon/document@0.48.0
+  - @pyreon/connector-document@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @pyreon/attrs
 
+## 0.48.0
+
+### Patch Changes
+
+- Updated dependencies [[`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023)]:
+  - @pyreon/core@0.48.0
+  - @pyreon/ui-core@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes
