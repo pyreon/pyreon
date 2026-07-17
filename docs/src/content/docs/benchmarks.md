@@ -55,11 +55,34 @@ outright**, ties Solid on `select`, and Solid edges it on `remove` (7.20 vs
 7.30ms). The only measurable cost vs hand-written vanilla JS is bulk-create
 (~6–7% — per-row signal allocation plus the keyed-`<For>` map).
 
-**The dimension Pyreon does *not* lead:** retained memory. After the full
-suite Pyreon retains ~2.90MB — mid-pack (5th of 7), ahead of Solid (2.97) and
-Vue (3.97), behind Preact/Svelte/React/Vanilla. Retained-heap has real
-cross-run variance (Solid measured 2.27–2.97 across same-day runs), so treat
-mid-table ranks as a band.
+**Retained memory** (post-suite, post-GC): Vanilla 2.12 · Preact 2.22 ·
+**Pyreon 2.26** · Solid 2.29 · Svelte 2.46 · React 2.61 · Vue 3.48 MB —
+3rd of 7, 2nd among frameworks, 0.04MB behind Preact (a tie), ahead of Solid.
+
+This page said the opposite until 2026-07-17 ("~2.90MB, mid-pack, the one
+dimension Pyreon does *not* lead"), and **our own benchmark was the reason**.
+The retained metric read `usedJSHeapSize` after three *synchronous* `gc()`
+calls. Those never yield — and reclamation that completes on a later
+event-loop turn was still counted, so **garbage awaiting collection was
+reported as "retained"**, the opposite of what the metric claims to measure.
+It penalised exactly one framework: the one with deferred reclamation. Pyreon
+read 2.90MB and settles at 2.23MB once given turns (0.67MB, reproducible 3/3
+runs); Preact and Solid settle immediately and were unaffected. Fixed in
+[#2391](https://github.com/pyreon/pyreon/pull/2391) — GC, yield, repeat until
+the counter stops moving. **Vue (3.98→3.48) and Vanilla (2.62→2.12) improved
+too**, which is the evidence the fix is uniform rather than self-serving.
+
+Heap-snapshot attribution also refutes the cause this page used to give
+("tracks code-space/bundle size"): Pyreon's `code` space is **579KB vs
+Preact's 596KB** — Pyreon ships *less* code — and the JS-only object graphs
+are near-identical (1.50 vs 1.46MB). The gap was never bundle size.
+
+Honest residual: Pyreon uniquely defers ~0.67MB of reclamation by one
+event-loop turn. In any real app that memory returns on the next turn — a
+latency, not a leak — but it is a real difference from Preact/Solid, and the
+mechanism is not yet explained. **Beating Vanilla (2.12) is structurally
+impossible for a framework**; the honest target was always Preact/Solid ~2.2–2.3,
+which Pyreon now meets.
 
 Reproduce: `cd examples/benchmark && bun bench:fair --repeat 5`
 
@@ -247,7 +270,7 @@ isolation, correctness gates):
 
 ## What we don't win (the standing list)
 
-Honesty section, kept current: retained memory is mid-pack (not leading);
+Honesty section, kept current: retained memory ties Preact (3rd of 7) after the 2026-07-17 metric fix — it is no longer a standing loss, though Pyreon still defers ~0.67MB by one event-loop turn;
 SSR at 1000 rows is a **tie** with Vue (CI95 overlapping) rather than a win —
 Pyreon leads outright only at 10 and 100 rows; Preact
 leads computed chain (~1.25×) and signal create (~1.4×) — both structurally
