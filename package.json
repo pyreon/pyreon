@@ -91,7 +91,7 @@
     "check-release-readiness": "bun scripts/check-release-readiness.ts",
     "validate-fast": "bun scripts/validate-fast.ts",
     "changeset": "changeset",
-    "version-packages": "changeset version && bun scripts/cap-version-bumps.ts",
+    "version-packages": "changeset version && bun scripts/cap-version-bumps.ts && bun scripts/sync-krausest-pin.ts",
     "release": "bun scripts/build-batched.ts && bun run scripts/publish.ts"
   },
   "devDependencies": {
