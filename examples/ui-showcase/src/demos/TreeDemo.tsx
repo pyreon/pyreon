@@ -1,3 +1,4 @@
+import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { Title, Tree, TreeItem } from '@pyreon/ui-components'
 import type { TreeNode, TreeState } from '@pyreon/ui-primitives'
@@ -55,14 +56,16 @@ export function TreeDemo() {
           {(state: TreeState) => (
             <div {...state.treeProps()} onKeyDown={state.onKeyDown} tabIndex={0}>
               {/*
-                REACTIVE accessor, not a bare .map(): `getItemProps` (and
-                isSelected/isExpanded) return SNAPSHOTS read at call time.
-                Rendering once froze the selected styling, `aria-selected` and
-                the roving `tabIndex` — clicking highlighted nothing and a
-                screen reader was never told what was selected.
+                KEYED <For>, not a reactive accessor and not a bare .map().
+                This demo used to use `{() => …map()}`, which subscribed the
+                whole list to focused()/selected()/expanded() — so every arrow
+                key REMOUNTED the rows and dropped DOM focus to <body>, killing
+                keyboard nav after one press. A bare .map() can't react to
+                expand/collapse at all. <For by={node.id}> updates membership
+                while surviving rows keep their identity, so focus survives.
               */}
-              {() =>
-                state.visibleNodes().map(({ node, depth }) => (
+              <For each={() => state.visibleNodes()} by={(v) => v.node.id}>
+                {({ node, depth }: { node: TreeNode; depth: number }) => (
                   <TreeItem
                     {...state.getItemProps(node.id, depth, !!node.children?.length)}
                     state={state.isSelected(node.id) ? 'selected' : undefined}
@@ -82,8 +85,8 @@ export function TreeDemo() {
                     )}
                     {node.label}
                   </TreeItem>
-                ))
-              }
+                )}
+              </For>
             </div>
           )}
         </Tree>

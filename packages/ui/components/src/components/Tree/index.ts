@@ -16,25 +16,36 @@ import { disabledState, el } from '../../factory'
  * <Tree data={nodes} defaultExpanded={['docs']}>
  *   {(s) => (
  *     <div {...s.treeProps()} onKeyDown={s.onKeyDown}>
- *       {() =>
- *         s.visibleNodes().map(({ node, depth }) => (
+ *       <For each={() => s.visibleNodes()} by={(v) => v.node.id}>
+ *         {({ node, depth }) => (
  *           <TreeItem {...s.getItemProps(node.id, depth, !!node.children?.length)}>
  *             {node.label}
  *           </TreeItem>
- *         ))
- *       }
+ *         )}
+ *       </For>
  *     </div>
  *   )}
  * </Tree>
  * ```
  *
- * IMPORTANT — render the items inside a REACTIVE ACCESSOR (`{() => …}`), not a
- * bare `.map()`. `getItemProps` returns a SNAPSHOT: `aria-selected`,
- * `aria-expanded` and `tabIndex` are evaluated at call time. Rendering the list
- * once freezes that ARIA, so selection/expansion would never be announced to a
- * screen reader and the roving tabindex would never move. The accessor re-reads
- * `getItemProps`, subscribing it to `selected()`/`focused()`/`expanded()`.
- * (Same contract as ComboboxBase's `getOptionProps`.)
+ * IMPORTANT — render the items through a KEYED `<For>`. This doc used to
+ * prescribe a reactive accessor (`{() => s.visibleNodes().map(…)}`) because
+ * `getItemProps` returned eager SNAPSHOTS and that was the only way to keep the
+ * ARIA live. Both halves of that were wrong, and measured in Chromium:
+ *
+ *  - a reactive accessor subscribes to `focused()`/`selected()`/`expanded()`, so
+ *    every arrow key REMOUNTED the items and destroyed DOM focus —
+ *    `document.activeElement` fell back to `<body>` and keyboard navigation
+ *    died after a single press;
+ *  - a bare `.map()` renders once, so it cannot react to expand/collapse at all
+ *    (collapsing a node left its children in the DOM: 4 items before AND after).
+ *
+ * `<For by>` is the shape that does both: membership updates on expand/collapse
+ * while surviving rows KEEP their DOM identity, so focus survives. Per-item
+ * state rides accessor-valued props, which re-render the PROP, not the element.
+ *
+ * The rule: re-render the LIST only when its MEMBERSHIP changes, and use a
+ * KEYED list so survivors are never re-created.
  *
  * Free from the primitive: roving tabindex, ArrowUp/Down/Left/Right, Home/End,
  * Enter/Space select, `*` expand-siblings and type-ahead — plus `role="tree"` /

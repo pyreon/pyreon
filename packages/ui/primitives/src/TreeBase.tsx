@@ -141,6 +141,35 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     return result
   }
 
+  /**
+   * Move BOTH halves of the roving tabindex: the STATE (which item carries
+   * `tabIndex=0`) and real DOM FOCUS.
+   *
+   * `focused.set()` alone only did the first, so the browser's focus never
+   * followed the arrow keys — the ring stayed on whatever the user last
+   * clicked while `focused()` walked the tree invisibly, and a screen reader
+   * announced nothing. WAI-ARIA roving tabindex is explicitly both halves:
+   * exactly one item is tabbable AND focus is on it. (`navigateByRole`, which
+   * Radio/Tabs use, does the `.focus()` for them — this tree hand-rolls its
+   * navigation because it walks VISIBLE nodes across collapsed subtrees, so it
+   * has to do the same thing itself.)
+   *
+   * Scoped to the event's container and matched by id rather than
+   * `getElementById`, so a tree rendered in a detached container still works.
+   */
+  function moveFocusTo(e: KeyboardEvent, id: string) {
+    focused.set(id)
+    const container = e.currentTarget as HTMLElement | null
+    if (!container) return
+    const target = `${baseId}-item-${id}`
+    for (const el of container.querySelectorAll<HTMLElement>('[role="treeitem"]')) {
+      if (el.id === target) {
+        el.focus()
+        return
+      }
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent) {
     const visible = getVisibleNodes()
     const focusedId = focused()
@@ -149,17 +178,17 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       const next = Math.min(idx + 1, visible.length - 1)
-      if (visible[next]) focused.set(visible[next]!.node.id)
+      if (visible[next]) moveFocusTo(e, visible[next]!.node.id)
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       const prev = Math.max(idx - 1, 0)
-      if (visible[prev]) focused.set(visible[prev]!.node.id)
+      if (visible[prev]) moveFocusTo(e, visible[prev]!.node.id)
     } else if (e.key === 'ArrowRight' && focusedId) {
       e.preventDefault()
       const node = visible[idx]?.node
       if (node?.children?.length) {
         if (!isExpanded(focusedId)) expand(focusedId)
-        else if (node.children[0]) focused.set(node.children[0].id)
+        else if (node.children[0]) moveFocusTo(e, node.children[0].id)
       }
     } else if (e.key === 'ArrowLeft' && focusedId) {
       e.preventDefault()
@@ -171,13 +200,13 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
     } else if (e.key === 'Home') {
       // WAI-ARIA tree: focus the first visible node.
       e.preventDefault()
-      if (visible[0]) focused.set(visible[0].node.id)
+      if (visible[0]) moveFocusTo(e, visible[0].node.id)
     } else if (e.key === 'End') {
       // WAI-ARIA tree: focus the LAST visible node (respects collapsed
       // subtrees — getVisibleNodes already excludes them).
       e.preventDefault()
       const last = visible[visible.length - 1]
-      if (last) focused.set(last.node.id)
+      if (last) moveFocusTo(e, last.node.id)
     } else if (e.key === '*' && focusedId) {
       // WAI-ARIA tree: expand ALL sibling nodes at the focused node's level
       // (nodes sharing its parent). Only siblings with children are affected;
@@ -204,7 +233,7 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
         const match = typeaheadMatch(visible.map((v) => v.node.label), search, idx)
         if (match >= 0) {
           e.preventDefault()
-          focused.set(visible[match]!.node.id)
+          moveFocusTo(e, visible[match]!.node.id)
         }
       }
     }
@@ -268,16 +297,32 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
       // Mirrors ComboboxBase's listbox wiring.
       'aria-multiselectable': own.multiple ? 'true' : undefined,
       } as Record<string, unknown>),
+    /**
+     * ACCESSOR-VALUED, not snapshots. These used to read their signals EAGERLY
+     * (`tabIndex: focused() === id ? 0 : -1`), which froze them at spread time —
+     * so the only way to keep them live was to re-render the whole list inside a
+     * reactive accessor (`{() => visibleNodes().map(…)}`), which is what this
+     * package's docs and the showcase demo did.
+     *
+     * That shape REMOUNTS every item on each focus/selection change, which
+     * DESTROYS DOM focus: measured in Chromium, one ArrowDown left
+     * `document.activeElement === document.body`, so the next arrow key had no
+     * target and keyboard navigation died after a single press.
+     *
+     * `applyProp` renderEffect-wraps a FUNCTION value, so an accessor stays live
+     * through a plain `{...getItemProps(…)}` spread while the element itself is
+     * never re-created. Render items STATICALLY.
+     */
     getItemProps: (id: string, depth: number, hasChildren: boolean) => {
       const node = findNode(id, own.data)
       return {
         role: 'treeitem',
         id: `${baseId}-item-${id}`,
         'aria-level': depth + 1,
-        'aria-expanded': hasChildren ? (isExpanded(id) ? 'true' : 'false') : undefined,
-        'aria-selected': isSelectedFn(id) ? 'true' : 'false',
+        'aria-expanded': hasChildren ? () => (isExpanded(id) ? 'true' : 'false') : undefined,
+        'aria-selected': () => (isSelectedFn(id) ? 'true' : 'false'),
         'aria-disabled': node?.disabled ? 'true' : undefined,
-        tabIndex: focused() === id ? 0 : -1,
+        tabIndex: () => (focused() === id ? 0 : -1),
       }
     },
   }
