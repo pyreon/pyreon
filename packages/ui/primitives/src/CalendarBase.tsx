@@ -80,10 +80,12 @@ export interface CalendarState {
   rootProps: () => Record<string, unknown>
   /**
    * ARIA props for the date-grid container — `role="grid"` plus the current
-   * month as `aria-label`. Reactive (the label changes on navigation): call
-   * it. Spread onto the element wrapping the weekday headers + week rows.
+   * month as an ACCESSOR-valued `aria-label`, which stays live through the
+   * one-time spread (it used to be a plain string, which froze the announced
+   * month at mount). Spread onto the element wrapping the weekday headers +
+   * week rows.
    */
-  gridProps: () => { role: 'grid'; 'aria-label': string }
+  gridProps: () => { role: 'grid'; 'aria-label': () => string }
   /** ARIA props for each week row — `role="row"`. Spread onto the row element. */
   rowProps: { role: 'row' }
   /** ARIA props for each weekday column header — `role="columnheader"`. */
@@ -102,11 +104,16 @@ export interface CalendarState {
    * grid; focus then moves to the destination cell. `ref` registers the cell so
    * focus can be moved by date. Pair with `onClick={() => select(day.date)}` —
    * a `<button>` then activates on Enter/Space natively.
+   *
+   * `tabIndex` and `aria-selected` are ACCESSORS, not values: they stay live
+   * through a plain spread, so render the rows with a KEYED `<For>` and let the
+   * props re-render rather than the cells. (A reactive-accessor list also works
+   * but remounts all 42 cells on every keystroke; a bare `.map()` freezes.)
    */
   getDayProps: (day: CalendarDay) => {
     role: 'gridcell'
-    tabIndex: 0 | -1
-    'aria-selected': 'true' | 'false'
+    tabIndex: () => 0 | -1
+    'aria-selected': () => 'true' | 'false'
     'aria-disabled': 'true' | undefined
     'aria-current': 'date' | undefined
     'aria-label': string
@@ -425,7 +432,11 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
   // a copy) is what keeps a getter-shaped reactive prop live: a spread would
   // fire the getters and freeze them.
   const rootProps = () => rest as Record<string, unknown>
-  const gridProps = () => ({ role: 'grid' as const, 'aria-label': monthLabel() })
+  // `aria-label` is an ACCESSOR: `gridProps()` is spread ONCE onto the grid, so
+  // a VALUE froze the month at mount — measured in Chromium, `nextMonth()` moved
+  // the state to "September 2026" while the DOM kept announcing "August 2026"
+  // forever. Calling gridProps() again cannot help: nothing re-spreads it.
+  const gridProps = () => ({ role: 'grid' as const, 'aria-label': () => monthLabel() })
   const rowProps = { role: 'row' as const }
   const columnHeaderProps = { role: 'columnheader' as const }
   function getDayProps(day: CalendarDay) {
@@ -435,8 +446,24 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     // attribute absent) when not applicable.
     return {
       role: 'gridcell' as const,
-      tabIndex: (dateEquals(day.date, rovingDate()) ? 0 : -1) as 0 | -1,
-      'aria-selected': (day.isSelected ? 'true' : 'false') as 'true' | 'false',
+      // ACCESSOR-VALUED, not snapshots. `applyProp` renderEffect-wraps a
+      // FUNCTION value, so these stay live through a plain `{...getDayProps(day)}`
+      // spread while the cell itself is never re-created.
+      //
+      // Eager reads only appeared to work because the only wiring that existed
+      // re-rendered the whole grid inside a reactive accessor, which re-read
+      // them by remounting all 42 cells on EVERY keystroke. Under a keyed
+      // `<For>` — where surviving cells are correctly NOT re-rendered — they
+      // froze: measured in Chromium, ArrowRight moved DOM focus to the 16th
+      // while `tabIndex=0` stayed stuck on the 15th, so tabbing away and back
+      // returned to the wrong day.
+      //
+      // `aria-selected` must read the SELECTION SIGNAL, not `day.isSelected`:
+      // `day` is a snapshot object from the `days()` array, and a surviving
+      // `<For>` row keeps its ORIGINAL object — so `() => day.isSelected` would
+      // be just as frozen as the eager read it replaced.
+      tabIndex: () => (dateEquals(day.date, rovingDate()) ? 0 : -1),
+      'aria-selected': () => (dateEquals(day.date, selected()) ? 'true' : 'false'),
       'aria-disabled': day.isDisabled ? ('true' as const) : undefined,
       'aria-current': day.isToday ? ('date' as const) : undefined,
       'aria-label': fullDateFormatter.format(
