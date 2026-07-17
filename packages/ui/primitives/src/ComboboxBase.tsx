@@ -239,9 +239,25 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
     inputProps: () =>
       mergeProps(rest as Record<string, unknown>, {
       role: 'combobox',
-      'aria-expanded': isOpen() ? 'true' : 'false',
+      // RUNTIME-CHANGING ARIA MUST BE GETTERS. `inputProps()` is called once by
+      // the render-fn child (which runs once), so an eager `isOpen() ? …` read
+      // FROZE `aria-expanded` at "false" — the combobox told every screen
+      // reader it was permanently collapsed, even while open, and
+      // `aria-activedescendant` never tracked the highlighted option. Getters
+      // keep a compiled `{...inputProps()}` spread reactive (`applyProps`
+      // reads descriptors), which is exactly why FileUploadBase's
+      // `dropZoneProps` uses `get tabIndex()` / `get 'aria-disabled'()`.
+      // Same snapshot-freeze class as TreeBase/ComboboxBase's getItemProps/
+      // getOptionProps — those stay snapshots by contract (callers re-render
+      // them inside a reactive accessor); these ride a ONE-TIME spread, so
+      // they must be live here.
+      get 'aria-expanded'() {
+        return isOpen() ? 'true' : 'false'
+      },
       'aria-controls': listboxId,
-      'aria-activedescendant': getActiveDescendantId(),
+      get 'aria-activedescendant'() {
+        return getActiveDescendantId()
+      },
       'aria-autocomplete': 'list' as const,
       } as Record<string, unknown>),
     listboxProps: () => ({

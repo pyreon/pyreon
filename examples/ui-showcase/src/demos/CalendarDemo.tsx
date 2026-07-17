@@ -1,6 +1,5 @@
 import { signal } from '@pyreon/reactivity'
-import { Title } from '@pyreon/ui-components'
-import { CalendarBase } from '@pyreon/ui-primitives'
+import { Calendar, Title } from '@pyreon/ui-components'
 import type { CalendarDate, CalendarState } from '@pyreon/ui-primitives'
 
 export function CalendarDemo() {
@@ -10,12 +9,20 @@ export function CalendarDemo() {
     <div>
       <Title size="h2" style="margin-bottom: 24px">Calendar</Title>
 
-      <CalendarBase
+      <Calendar
         value={selected()}
         onChange={(d: CalendarDate) => selected.set(d)}
       >
         {(state: CalendarState) => (
-          <div style="width: 320px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; background: white;">
+          /*
+            `rootProps()` carries the Calendar component's rocketstyle class onto
+            the CONTAINER — the element the theme actually describes (a card
+            wrapping header + grid). It is deliberately NOT `gridProps()`: the
+            card is not the grid, and styling the grid would leave the header
+            outside the card. Border/radius/padding/background now come from the
+            theme; `width` stays inline (sizing is not themed).
+          */
+          <div {...state.rootProps()} style="width: 320px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <button onClick={state.prevMonth} style="background: none; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 8px; cursor: pointer;">
                 &lt;
@@ -47,7 +54,7 @@ export function CalendarDemo() {
             </div>
           </div>
         )}
-      </CalendarBase>
+      </Calendar>
       <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
         Selected: {() => {
           const d = selected()
