@@ -71,13 +71,13 @@ const cases: DiffCase[] = [
       h(
         'ul',
         { class: 'list' },
-        h(For as never, { each: deps.data, by: (r: { id: number }) => r.id } as never, (r: { id: number; name: string; tag: string }) =>
+        h(For as unknown as (props: unknown) => VNode, { each: deps.data, by: (r: { id: number }) => r.id } as never, ((r: { id: number; name: string; tag: string }) =>
           h(
             'li',
             { class: 'row', 'data-id': r.id },
             h('span', null, r.name),
             h('span', { class: r.id % 2 === 0 ? 'a' : 'b' }, r.tag),
-          ),
+          )) as never,
         ),
       ),
   },
@@ -89,13 +89,13 @@ const cases: DiffCase[] = [
       h(
         'ul',
         { class: 'list' },
-        h(For as never, { each: deps.data, by: (r: { id: number }) => r.id } as never, (r: { id: number; name: string; tag: string }) =>
+        h(For as unknown as (props: unknown) => VNode, { each: deps.data, by: (r: { id: number }) => r.id } as never, ((r: { id: number; name: string; tag: string }) =>
           h(
             'li',
             { class: 'row', 'data-id': r.id },
             h('span', null, r.name),
             h('span', { class: r.id % 2 === 0 ? 'a' : 'b' }, r.tag),
-          ),
+          )) as never,
         ),
       ),
   },
