@@ -16,6 +16,7 @@ export { ColorPickerBase, type ColorPickerBaseProps, type ColorPickerState } fro
 export { ComboboxBase, type ComboboxBaseProps, type ComboboxOption, type ComboboxState } from './ComboboxBase'
 export { FileUploadBase, type FileUploadBaseProps, type FileUploadState } from './FileUploadBase'
 export { ModalBase, type ModalBaseProps } from './ModalBase'
+export { PinInputBase, type PinInputBaseProps, type PinInputState } from './PinInputBase'
 export {
   RadioBase,
   type RadioBaseProps,

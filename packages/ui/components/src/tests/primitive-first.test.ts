@@ -71,7 +71,6 @@ const KNOWN_HOLLOW: Record<string, string> = {
   Menu: 'Needs a MenuBase (role=menu/menuitem, roving tabindex, typeahead, Esc + focus return).',
   Popover: 'Needs a PopoverBase built on @pyreon/elements useOverlay (open state, Esc, click-outside, positioning).',
   HoverCard: 'Inherits the hollow Popover via `Popover.config()`. Fixed when Popover gets PopoverBase.',
-  PinInput: 'Needs a PinInputBase (auto-advance, Backspace, paste-distribute, per-cell aria-label).',
   NumberInput: 'Needs a NumberInputBase (spinbutton, arrow/Page step, clamp) — currently renders a TEXT input.',
   Spoiler: 'Needs disclosure behavior (aria-expanded + controllable open) — a styled box today.',
   DatePicker: 'Needs a DatePickerBase (compose PopoverBase + CalendarBase) — a styled div today.',
@@ -94,8 +93,22 @@ type Classification =
  *                 which inherits Y's `component` (this is how Autocomplete
  *                 legitimately rides on Combobox → ComboboxBase).
  */
+/**
+ * Strip comments before classifying. This is LOAD-BEARING, not hygiene: every
+ * wired component carries a JSDoc note explaining why it has no `.attrs()` —
+ * "with `component: XBase`, Element is no longer the rendered component" — and
+ * that prose MATCHES the `component:\s*\w+Base` probe. Reading the raw text made
+ * the gate answer "delegates" from a COMMENT, so it could not fail for any
+ * component it was meant to protect: un-wiring one left the JSDoc behind and the
+ * gate stayed green (verified). It also broke drift detection in the other
+ * direction — an allowlisted component whose docs merely MENTIONED a Base would
+ * report as "now delegates".
+ */
+const stripComments = (src: string): string =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+
 function classify(name: string): Classification {
-  const src = readFileSync(join(COMPONENTS_DIR, name, 'index.ts'), 'utf-8')
+  const src = stripComments(readFileSync(join(COMPONENTS_DIR, name, 'index.ts'), 'utf-8'))
 
   if (src.includes('@pyreon/ui-primitives') && /component:\s*\w+Base/.test(src)) {
     return { kind: 'delegates' }
@@ -167,7 +180,7 @@ describe('primitive-first architecture', () => {
     const total = INTERACTIVE.length
     // Locks the count so progress is visible and regressions are impossible.
     // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree) → 12 (SegmentedControl) → 11 (Accordion).
-    expect(remaining).toBeLessThanOrEqual(11)
-    expect(total - remaining).toBeGreaterThanOrEqual(18)
+    expect(remaining).toBeLessThanOrEqual(10)
+    expect(total - remaining).toBeGreaterThanOrEqual(19)
   })
 })
