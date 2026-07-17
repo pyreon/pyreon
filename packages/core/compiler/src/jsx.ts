@@ -213,13 +213,12 @@ export interface TransformOptions {
    * `renderNode` the h() path uses, so the produced HTML is BYTE-IDENTICAL to
    * the h() walk it replaces (hydration is unaffected). Eligibility is
    * deliberately conservative — the compiler bails to `h()` on ANY shape it
-   * can't prove renders byte-identically (dynamic attrs, `<select>`, spreads,
-   * component children, void-with-content, …). Default `false`. NOTE: the
-   * native (Rust) backend does not yet implement this — with the flag off both
-   * backends stay byte-identical (the equivalence gates run flag-off), and the
-   * fast path is exercised through the JS backend + dedicated differential
-   * tests. Native parity + a `pyreon({ ssrTemplate: true })` vite-plugin
-   * option are the tracked follow-up.
+   * can't prove renders byte-identically (`<select>`, spreads, component
+   * children, void-with-content, …; dynamic attrs DO compile via `_ssrAttr*`
+   * holes). Default `false` at this API — but the vite-plugin enables it BY
+   * DEFAULT for SSR transforms (#2302, with a runtime-server resolvability
+   * safety net), so vite-plugin apps ship this path. The native (Rust)
+   * backend implements `ssr_template` parity.
    */
   ssrTemplate?: boolean
 
@@ -1116,6 +1115,7 @@ export function transformJSX_JS(
   let needsSsrImport = false
   let needsSsrChildrenImport = false
   let needsSsrItemImport = false
+  let needsSsrForKeyedImport = false
   let needsEscImport = false
   let needsSsrAttrImport = false
   let needsSsrAttrGenImport = false
@@ -1458,7 +1458,11 @@ export function transformJSX_JS(
   // whole), so inside it every expression child is a PLAIN VALUE child (no
   // markers) — 'mapitem' mode emits bare holes throughout.
 
-  type SsrMode = 'recursed' | 'mapitem'
+  // 'foritem': recursed CHILD semantics (wrap markers on shouldWrap exprs)
+  // but a PLAIN-STRING return (`_ssrItem`) — used for the `_ssrForKeyed`
+  // item callback, where the per-row `RawHtml` wrap of `_ssr` is a pure
+  // alloc (the fused loop appends the string directly; bytes identical).
+  type SsrMode = 'recursed' | 'mapitem' | 'foritem'
 
   interface SsrBuf {
     statics: string[]
@@ -1812,6 +1816,66 @@ export function transformJSX_JS(
     return true
   }
 
+  /**
+   * Fused keyed-`<For>` child fast path (recursed mode). A `<For each={E}
+   * by={B}>{(p) => <eligible-el>}</For>` child previously bailed the WHOLE
+   * parent template to the h() walk (component child). It now emits ONE hole:
+   * `_ssrForKeyed(E, B, (p) => <item _ssr>)` — the runtime helper produces the
+   * SAME `<!--pyreon-for-->` / per-item `<!--k:KEY-->` / `<!--/pyreon-for-->`
+   * bytes as `renderForItems`, and the item call is built by the SAME
+   * serializer (`buildSsrCall`, recursed mode so wrapped exprs keep their
+   * `<!--$-->` markers) that guarantees `_ssr(...)` ≡ `renderNode(<el>)`.
+   * Conditions are EXACT — any other prop (`fallback`, spreads), a non-arrow
+   * or block-bodied child, or an ineligible item element bails to h(), whose
+   * semantics stay authoritative. `sliceExpr` on `each`/`by` keeps
+   * prop-inlining + signal auto-call. Manual recursion (ssrTryMap's pattern) —
+   * the walker never descends into an emitted subtree, so no nested
+   * replacement can target this span.
+   */
+  function ssrTryForKeyed(buf: SsrBuf, el: N): boolean {
+    if (jsxTagName(el) !== 'For') return false
+    let eachExpr: N | null = null
+    let byExpr: N | null = null
+    for (const a of jsxAttrs(el)) {
+      if (a.type !== 'JSXAttribute' || a.name?.type !== 'JSXIdentifier') return false
+      const nm = a.name.name as string
+      if (!a.value || a.value.type !== 'JSXExpressionContainer') return false
+      const v = a.value.expression
+      if (!v || v.type === 'JSXEmptyExpression') return false
+      if (nm === 'each') eachExpr = unwrapTypeLayers(v)
+      else if (nm === 'by') byExpr = unwrapTypeLayers(v)
+      else return false
+    }
+    if (!eachExpr || !byExpr) return false
+    const kids = jsxChildren(el).filter(
+      (c: N) => !(c.type === 'JSXText' && !cleanJsxText(c.value ?? c.raw ?? '')),
+    )
+    if (kids.length !== 1) return false
+    const holder = kids[0]!
+    if (holder.type !== 'JSXExpressionContainer') return false
+    const rawCb = holder.expression
+    if (!rawCb || rawCb.type === 'JSXEmptyExpression') return false
+    const cb = unwrapTypeLayers(rawCb)
+    if (cb.type !== 'ArrowFunctionExpression') return false
+    if (cb.body?.type === 'BlockStatement') return false
+    const body = unwrapTypeLayers(cb.body)
+    if (body.type !== 'JSXElement') return false
+    if (isSelfClosing(body)) return false
+    const itemCall = buildSsrCall(body, 'foritem')
+    if (itemCall === null) return false
+    const params = cb.params ?? []
+    const paramText =
+      params.length === 0
+        ? ''
+        : code.slice(params[0]!.start as number, params[params.length - 1]!.end as number)
+    ssrEmitHole(
+      buf,
+      `_ssrForKeyed(${sliceExpr(eachExpr)}, ${sliceExpr(byExpr)}, (${paramText}) => ${itemCall})`,
+    )
+    needsSsrForKeyedImport = true
+    return true
+  }
+
   /** Serialize one child (text / element / expression). Returns false to bail. */
   function ssrSerializeChild(buf: SsrBuf, child: N, mode: SsrMode): boolean {
     if (child.type === 'JSXText') {
@@ -1825,7 +1889,10 @@ export function transformJSX_JS(
       if (cleaned) ssrEmitStatic(buf, escapeHtmlSsr(cleaned))
       return true
     }
-    if (child.type === 'JSXElement') return ssrSerializeElement(buf, child, mode)
+    if (child.type === 'JSXElement') {
+      if (mode !== 'mapitem' && ssrTryForKeyed(buf, child)) return true
+      return ssrSerializeElement(buf, child, mode)
+    }
     if (child.type === 'JSXExpressionContainer') return ssrSerializeExprChild(buf, child, mode)
     // JSXFragment / JSXSpreadChild → bail.
     return false
@@ -1867,8 +1934,8 @@ export function transformJSX_JS(
     if (!ssrSerializeElement(buf, el, mode)) return null
     const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
     const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
-    const fn = mode === 'mapitem' ? '_ssrItem' : '_ssr'
-    if (mode === 'mapitem') needsSsrItemImport = true
+    const fn = mode === 'recursed' ? '_ssr' : '_ssrItem'
+    if (fn === '_ssrItem') needsSsrItemImport = true
     return `${fn}([${staticsArr}]${holesArr})`
   }
 
@@ -2988,6 +3055,7 @@ export function transformJSX_JS(
     const ssrImports = ['_ssr']
     if (needsSsrChildrenImport) ssrImports.push('_ssrChildren')
     if (needsSsrItemImport) ssrImports.push('_ssrItem')
+    if (needsSsrForKeyedImport) ssrImports.push('_ssrForKeyed')
     if (needsEscImport) ssrImports.push('_esc')
     if (needsSsrAttrImport) ssrImports.push('_ssrAttr')
     if (needsSsrAttrGenImport) ssrImports.push('_ssrAttrGen')
