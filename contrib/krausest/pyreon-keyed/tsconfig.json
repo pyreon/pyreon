@@ -1,0 +1,24 @@
+{
+  // SELF-CONTAINED by design: this directory is copied into the krausest
+  // js-framework-benchmark fork and must build with only published npm
+  // packages. Without its own tsconfig, Vite walks UP and picks up whatever
+  // config sits above it — inside the Pyreon monorepo that is the root
+  // tsconfig, which extends an internal tooling package that is not installed
+  // here (`Tsconfig not found @vitus-labs/tools-typescript/lib`), so the
+  // submission could not be build-verified in place. Nothing here may
+  // reference a workspace package.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "preserve",
+    "jsxImportSource": "@pyreon/core",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src", "vite.config.ts"]
+}
