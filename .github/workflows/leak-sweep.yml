@@ -154,10 +154,15 @@ jobs:
             perf-results/leak-sweep-${{ steps.sha.outputs.sha }}-*.md
           retention-days: 30
 
+      # Best-effort: the sweep VERDICT is enforced by the "Fail job if sweep
+      # flagged a regression" step below — the comment is reporting only, so a
+      # transient GitHub API 5xx must not turn this check red (the class that
+      # failed the release PR's bundle-size-diff on 2026-07-16).
       - name: Post sweep summary as PR comment
         if: github.event_name == 'pull_request'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
+          retries: 3
           script: |
             const fs = require('node:fs')
             const mdPath = '${{ steps.sweep.outputs.md_path }}'
@@ -177,13 +182,17 @@ jobs:
             const fullBody = `${marker}\n${header}\n\n<details><summary>Sweep output</summary>\n\n\`\`\`\n${body.slice(0, 60000)}\n\`\`\`\n\n</details>\n\n_Advisory — does not block merge. Re-run via the \`leak-sweep\` label._`
             const { owner, repo } = context.repo
             const issue_number = context.issue.number
-            // Look for an existing leak-sweep comment to update in place.
-            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
-            const existing = comments.find((c) => c.body?.startsWith(marker))
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: fullBody })
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body: fullBody })
+            try {
+              // Look for an existing leak-sweep comment to update in place.
+              const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 })
+              const existing = comments.find((c) => c.body?.startsWith(marker))
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: fullBody })
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body: fullBody })
+              }
+            } catch (err) {
+              core.warning(`leak-sweep: posting the PR comment failed after retries (${err.status ?? '?'} ${err.message}) — the sweep verdict is enforced by the fail step below, not by this comment`)
             }
 
       - name: Fail job if sweep flagged a regression

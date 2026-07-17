@@ -74,6 +74,7 @@
     "verify-modes": "bun scripts/verify-modes.ts",
     "scaffold-smoke": "bun scripts/scaffold-smoke.ts",
     "scaffold-cpa-fixtures": "bun scripts/scaffold-cpa-fixtures.ts",
+    "check-advisory-comment-steps": "bun scripts/check-advisory-comment-steps.ts",
     "check-bundle-budgets": "bun scripts/check-bundle-budgets.ts",
     "check-import-budgets": "bun scripts/check-import-budgets.ts",
     "check-bin-liveness": "bun scripts/check-bin-liveness.ts",
