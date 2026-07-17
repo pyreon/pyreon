@@ -82,6 +82,76 @@ const cases: DiffCase[] = [
       ),
   },
   {
+    // The fused row body concats statics + temps inline and only reaches
+    // `_ssrItem` when a `typeof _hN === "string"` guard FAILS. An async child
+    // makes `_esc` return a Promise, so this is the case that exercises that
+    // fallback — and with it the async promotion path — end to end. Without a
+    // case like this the fallback branch is emitted but never executed, and a
+    // byte divergence there would ship unseen.
+    name: 'fused keyed <For> — ASYNC child in a row falls back to _ssrItem (guard fails)',
+    src: `const Node = <ul class="list"><For each={data} by={(r) => r.id}>{(r) => <li class="row" data-id={r.id}><span>{r.name}</span><span>{Async(r)}</span></li>}</For></ul>`,
+    deps: {
+      data: rows(),
+      // An async component: renderNode promotes it, so `_esc` returns a Promise
+      // — which is what makes the row's `typeof _hN === "string"` guard fail.
+      // (`h`'s overloads don't model an async ComponentFn; the repo's standard
+      // cast idiom for that is used elsewhere in this file for `For`.)
+      Async: (r: { name: string }) =>
+        h(
+          (async () => h('em', null, `async:${r.name}`)) as unknown as (p: unknown) => VNode,
+          null,
+        ),
+    },
+    oracle: (deps) => {
+      const Async = deps.Async as (r: { name: string }) => VNode
+      return h(
+        'ul',
+        { class: 'list' },
+        h(
+          For as unknown as (props: unknown) => VNode,
+          { each: deps.data, by: (r: { id: number }) => r.id } as never,
+          ((r: { id: number; name: string; tag: string }) =>
+            h(
+              'li',
+              { class: 'row', 'data-id': r.id },
+              h('span', null, r.name),
+              // Accessor, not a bare value: `Async(r)` is a non-pure call, so
+              // the real compile wraps it — which is what makes renderNode emit
+              // the <!--$-->…<!--/$--> markers the fast path bakes into statics.
+              h('span', null, () => Async(r)),
+            )) as never,
+        ),
+      )
+    },
+  },
+  {
+    // A nested `.map` inside a row emits `_ssrChildren`, whose result is a
+    // RawHtml — NOT a string — so the guard rejects it and the row takes the
+    // fallback. Pins that a RawHtml hole is concatenated by `.value` (not
+    // stringified to "[object Object]") through the fused path's fallback.
+    name: 'fused keyed <For> — nested .map (RawHtml hole) falls back to _ssrItem',
+    src: `const Node = <ul class="list"><For each={data} by={(r) => r.id}>{(r) => <li data-id={r.id}><span>{r.name}</span><b>{r.name.split(' ').map((w) => <i>{w}</i>)}</b></li>}</For></ul>`,
+    deps: { data: rows() },
+    oracle: (deps) =>
+      h(
+        'ul',
+        { class: 'list' },
+        h(
+          For as unknown as (props: unknown) => VNode,
+          { each: deps.data, by: (r: { id: number }) => r.id } as never,
+          ((r: { id: number; name: string }) =>
+            h(
+              'li',
+              { 'data-id': r.id },
+              h('span', null, r.name),
+              // Accessor for the same reason as above (see the canonical `.map`
+              // oracle shape further down this file).
+              h('b', null, () => r.name.split(' ').map((w: string) => h('i', null, w))),
+            )) as never,
+        ),
+      ),
+  },
+  {
     name: 'fused keyed <For> — empty list',
     src: `const Node = <ul class="list"><For each={data} by={(r) => r.id}>{(r) => <li class="row" data-id={r.id}><span>{r.name}</span><span class={r.id % 2 === 0 ? 'a' : 'b'}>{r.tag}</span></li>}</For></ul>`,
     deps: { data: [] },

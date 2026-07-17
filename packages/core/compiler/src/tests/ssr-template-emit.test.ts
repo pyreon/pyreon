@@ -48,10 +48,16 @@ describe('ssrTemplate — emission shapes', () => {
     expect(out).toContain('_ssr(["<p>a <!--$-->", "<!--/$--> b</p>"], _esc(props.x))')
   })
 
-  test('.map fast path: markers + _ssrChildren, items via _ssrItem (plain string)', () => {
+  test('.map fast path: markers + _ssrChildren, items are plain strings', () => {
+    // INVARIANT: a `.map` child gets the <!--$-->…<!--/$--> markers baked into
+    // the parent statics + ONE `_ssrChildren` hole, and each item produces a
+    // PLAIN STRING (no per-item RawHtml wrap for `_ssrChildren` to unwrap).
+    // The item BODY is the fused concat (see the fused-body specs below); it
+    // still returns a plain string, and still falls back to `_ssrItem`.
     const out = ssrFast(`const L = (rows) => <ul>{rows.map(r => <li class="row">{r.name}</li>)}</ul>`)
+    expect(out).toContain('_ssr(["<ul><!--$-->", "<!--/$--></ul>"], _ssrChildren(rows.map((r) => {')
     expect(out).toContain(
-      '_ssr(["<ul><!--$-->", "<!--/$--></ul>"], _ssrChildren(rows.map((r) => _ssrItem(["<li class=\\"row\\">", "</li>"], _esc(r.name)))))',
+      '{ const _h0 = _esc(r.name); return typeof _h0 === "string" ? "<li class=\\"row\\">" + _h0 + "</li>" : _ssrItem(["<li class=\\"row\\">", "</li>"], _h0) }',
     )
     expect(out).toContain('import { _ssr, _ssrChildren, _ssrItem, _esc } from "@pyreon/runtime-server"')
   })
@@ -164,11 +170,79 @@ describe('ssrTemplate — fused keyed <For> (_ssrForKeyed)', () => {
   )`
 
   test('For child emits ONE _ssrForKeyed hole — the parent skeleton compiles', () => {
+    // The INVARIANT this locks: a <For> child no longer bails its parent to the
+    // h() walk — the parent skeleton templatizes and the whole list is ONE hole.
+    // (The item BODY shape is asserted separately below; it changed when the row
+    // moved from an `_ssrItem` call to a fused concat.)
     const out = ssrFast(FOR_SRC)
-    expect(out).toContain('_ssr(["<ul class=\\"list\\">", "</ul>"], _ssrForKeyed(props.rows, (r) => r.id, (r) => _ssrItem(')
+    expect(out).toContain('_ssr(["<ul class=\\"list\\">", "</ul>"], _ssrForKeyed(props.rows, (r) => r.id, (r) => {')
     expect(out).toContain('_ssrForKeyed')
     // the import rides the runtime-server preamble
     expect(out).toMatch(/import \{ [^}]*_ssrForKeyed[^}]* \} from "@pyreon\/runtime-server"/)
+  })
+
+  describe('fused item body (concat instead of a per-item _ssrItem call)', () => {
+    test('binds every hole to a temp, then concats statics + temps inline', () => {
+      const out = ssrFast(FOR_SRC)
+      // Temps preserve the call's left-to-right hole evaluation order.
+      expect(out).toContain(
+        '{ const _h0 = _ssrAttrGen("data-id", r.id), _h1 = _esc(r.id), _h2 = _ssrAttr("span", "class", r.id % 2 === 0 ? \'a\' : \'b\'), _h3 = _esc(\'$\' + r.price);',
+      )
+      // Statics are ordinary quoted literals (NOT a template literal) so the
+      // emit reuses the existing static quoting — no second escaping path.
+      expect(out).toContain(
+        '"<li class=\\"row\\"" + _h0 + "><span class=\\"id\\">" + _h1 + "</span><span" + _h2 + ">" + _h3 + "</span></li>"',
+      )
+      expect(out).not.toContain('`<li')
+    })
+
+    test('guards ONLY the holes that are not provably string', () => {
+      const out = ssrFast(FOR_SRC)
+      // _h1 / _h3 are `_esc` (MaybeAsync) → guarded.
+      expect(out).toContain('typeof _h1 === "string" && typeof _h3 === "string" ?')
+      // _h0 / _h2 are `_ssrAttrGen` / `_ssrAttr`, both declared `: string` → no
+      // guard. A spurious guard here would be a correctness no-op but pure cost
+      // on every row, so it is worth pinning.
+      expect(out).not.toContain('typeof _h0 === "string"')
+      expect(out).not.toContain('typeof _h2 === "string"')
+    })
+
+    test('falls back to the UNCHANGED _ssrItem call with the same temps', () => {
+      // This is what preserves byte-identity + the async promotion path when a
+      // guard fails (an async _esc, or a RawHtml from a nested fast path).
+      const out = ssrFast(FOR_SRC)
+      expect(out).toContain(
+        ': _ssrItem(["<li class=\\"row\\"", "><span class=\\"id\\">", "</span><span", ">", "</span></li>"], _h0, _h1, _h2, _h3)',
+      )
+    })
+
+    test('an all-attr row needs no guard and no fallback branch at all', () => {
+      const out = ssrFast(`const A = (props) => (
+        <ul>
+          <For each={props.rows} by={(r) => r.id}>
+            {(r) => (<li data-id={r.id} data-x={r.x}></li>)}
+          </For>
+        </ul>
+      )`)
+      expect(out).toContain('_h0 = _ssrAttrGen("data-id", r.id), _h1 = _ssrAttrGen("data-x", r.x)')
+      expect(out).not.toContain('typeof _h')
+      // No guard → no branch → the fallback call is not emitted for this row.
+      expect(out).not.toContain(': _ssrItem(')
+    })
+
+    test('declines to fuse when a user param would be shadowed by the temps', () => {
+      // `_h0` as a user param is vanishingly rare, but the temps are injected
+      // into the user's arrow scope — decline rather than silently shadow it.
+      const out = ssrFast(`const A = (props) => (
+        <ul>
+          <For each={props.rows} by={(_h0) => _h0.id}>
+            {(_h0) => (<li data-id={_h0.id}></li>)}
+          </For>
+        </ul>
+      )`)
+      expect(out).toContain('(_h0) => _ssrItem(')
+      expect(out).not.toContain('const _h0 = _ssrAttrGen')
+    })
   })
 
   test('JS ↔ native byte-equality for the fusion shape (fuzz grammar has no <For>)', async () => {
