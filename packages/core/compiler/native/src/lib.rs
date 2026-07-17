@@ -4700,6 +4700,14 @@ enum SsrMode {
 struct SsrBuf {
     statics: Vec<String>,
     holes: Vec<String>,
+    /// Per-hole: is the emitted helper's return type PROVABLY `string`?
+    ///
+    /// `_ssrAttr` / `_ssrAttrGen` / `_ssrAttrUrl` are declared `: string`, so a
+    /// fused concat can interpolate them with no runtime check. `_esc` is
+    /// `MaybeAsync` and `_ssrChildren` / `_ssrForKeyed` return `RawHtml`, so
+    /// those need a `typeof === 'string'` guard — see `build_ssr_for_item_body`.
+    /// Mirrors the JS backend's `SsrBuf.holeStr` exactly.
+    hole_str: Vec<bool>,
 }
 
 impl SsrBuf {
@@ -4707,6 +4715,7 @@ impl SsrBuf {
         SsrBuf {
             statics: vec![String::new()],
             holes: Vec::new(),
+            hole_str: Vec::new(),
         }
     }
     fn emit_static(&mut self, s: &str) {
@@ -4715,7 +4724,13 @@ impl SsrBuf {
         last.push_str(s);
     }
     fn emit_hole(&mut self, expr_text: String) {
+        self.emit_hole_kind(expr_text, false);
+    }
+    /// `provably_string` mirrors the JS `ssrEmitHole(buf, text, provablyString)`
+    /// third argument.
+    fn emit_hole_kind(&mut self, expr_text: String, provably_string: bool) {
         self.holes.push(expr_text);
+        self.hole_str.push(provably_string);
         self.statics.push(String::new());
     }
 }
@@ -4949,28 +4964,36 @@ fn emit_esc_hole(buf: &mut SsrBuf, expr_text: String, ctx: &mut Ctx) {
 /// Emit a dynamic attribute — generic → `_ssrAttrGen`, URL → `_ssrAttrUrl`,
 /// everything else → `_ssrAttr`. Mirrors JS `emitSsrAttr`.
 fn emit_ssr_attr(buf: &mut SsrBuf, tag: &str, name: &str, value_text: String, ctx: &mut Ctx) {
+    // All three attr helpers are declared `: string`, so a fused concat may
+    // interpolate them unguarded — `true` mirrors the JS backend's
+    // `ssrEmitHole(buf, text, /* provablyString */ true)`.
     if ssr_attr_is_generic(name) {
-        buf.emit_hole(format!(
-            "_ssrAttrGen({}, {})",
-            escape_js_string(name),
-            value_text
-        ));
+        buf.emit_hole_kind(
+            format!("_ssrAttrGen({}, {})", escape_js_string(name), value_text),
+            true,
+        );
         ctx.needs_ssr_attr_gen_import = true;
     } else if ssr_is_url_attr(name) {
-        buf.emit_hole(format!(
-            "_ssrAttrUrl({}, {}, {})",
-            escape_js_string(tag),
-            escape_js_string(name),
-            value_text
-        ));
+        buf.emit_hole_kind(
+            format!(
+                "_ssrAttrUrl({}, {}, {})",
+                escape_js_string(tag),
+                escape_js_string(name),
+                value_text
+            ),
+            true,
+        );
         ctx.needs_ssr_attr_url_import = true;
     } else {
-        buf.emit_hole(format!(
-            "_ssrAttr({}, {}, {})",
-            escape_js_string(tag),
-            escape_js_string(name),
-            value_text
-        ));
+        buf.emit_hole_kind(
+            format!(
+                "_ssrAttr({}, {}, {})",
+                escape_js_string(tag),
+                escape_js_string(name),
+                value_text
+            ),
+            true,
+        );
         ctx.needs_ssr_attr_import = true;
     }
 }
@@ -5173,7 +5196,7 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, ctx: &mut Ctx) -> bool {
     if is_self_closing(body_el) {
         return false;
     }
-    let item_call = match build_ssr_call(body_el, SsrMode::MapItem, ctx) {
+    let item_buf = match build_ssr_buf(body_el, SsrMode::MapItem, ctx) {
         Some(s) => s,
         None => return false,
     };
@@ -5194,10 +5217,14 @@ fn ssr_try_map(buf: &mut SsrBuf, expr: &Expression, ctx: &mut Ctx) -> bool {
         (Some(s), Some(e)) => ctx.source[s as usize..e as usize].to_string(),
         _ => String::new(),
     };
+    // The compiler re-emits this whole `.map` call, so it owns the item arrow's
+    // body — fuse it exactly like a `<For>` row. Mirrors the JS backend.
+    let item_body = build_ssr_for_item_body(&item_buf, &param_text, ctx)
+        .unwrap_or_else(|| ssr_call_text(&item_buf, SsrMode::MapItem, ctx));
     buf.emit_static("<!--$-->");
     buf.emit_hole(format!(
         "_ssrChildren({}.map(({}) => {}))",
-        recv, param_text, item_call
+        recv, param_text, item_body
     ));
     buf.emit_static("<!--/$-->");
     ctx.needs_ssr_children_import = true;
@@ -5325,7 +5352,7 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
     if is_self_closing(body_el) {
         return false;
     }
-    let item_call = match build_ssr_call(body_el, SsrMode::ForItem, ctx) {
+    let item_buf = match build_ssr_buf(body_el, SsrMode::ForItem, ctx) {
         Some(s) => s,
         None => return false,
     };
@@ -5345,9 +5372,13 @@ fn ssr_try_for_keyed(buf: &mut SsrBuf, el: &JSXElement, ctx: &mut Ctx) -> bool {
         (Some(s), Some(e)) => ctx.source[s as usize..e as usize].to_string(),
         _ => String::new(),
     };
+    // Prefer the fused concat body (see `build_ssr_for_item_body`); fall back to
+    // the plain `_ssrItem` call when it declines. Mirrors the JS backend.
+    let item_body = build_ssr_for_item_body(&item_buf, &param_text, ctx)
+        .unwrap_or_else(|| ssr_call_text(&item_buf, SsrMode::ForItem, ctx));
     buf.emit_hole(format!(
         "_ssrForKeyed({}, {}, ({}) => {})",
-        each_text, by_text, param_text, item_call
+        each_text, by_text, param_text, item_body
     ));
     ctx.needs_ssr_for_keyed_import = true;
     true
@@ -5424,10 +5455,19 @@ fn ssr_serialize_element(buf: &mut SsrBuf, el: &JSXElement, mode: SsrMode, ctx: 
 /// Build the `_ssr([...statics], ...holes)` call text, or None to bail. A `.map`
 /// ITEM (mapitem mode) uses `_ssrItem`. Mirrors JS `buildSsrCall`.
 fn build_ssr_call(el: &JSXElement, mode: SsrMode, ctx: &mut Ctx) -> Option<String> {
+    let buf = build_ssr_buf(el, mode, ctx)?;
+    Some(ssr_call_text(&buf, mode, ctx))
+}
+
+fn build_ssr_buf(el: &JSXElement, mode: SsrMode, ctx: &mut Ctx) -> Option<SsrBuf> {
     let mut buf = SsrBuf::new();
     if !ssr_serialize_element(&mut buf, el, mode, ctx) {
         return None;
     }
+    Some(buf)
+}
+
+fn ssr_call_text(buf: &SsrBuf, mode: SsrMode, ctx: &mut Ctx) -> String {
     let statics_arr = buf
         .statics
         .iter()
@@ -5446,7 +5486,107 @@ fn build_ssr_call(el: &JSXElement, mode: SsrMode, ctx: &mut Ctx) -> Option<Strin
         }
         SsrMode::Recursed => "_ssr",
     };
-    Some(format!("{}([{}]{})", fn_name, statics_arr, holes_arr))
+    format!("{}([{}]{})", fn_name, statics_arr, holes_arr)
+}
+
+/// Fused `<For>`-item body — byte-identical mirror of the JS backend's
+/// `buildSsrForItemBody`. Binds each hole to a temp, then CONCATs statics and
+/// temps inline instead of calling `_ssrItem` (vue's emitted shape: one fused
+/// string build per row, no per-row call, no statics array, no per-hole
+/// dispatch). Measured ~20% off the whole 1000-row SSR render.
+///
+/// Only holes whose helper is not provably `string` (`buf.hole_str`) are
+/// guarded. When a guard fails at runtime — an async `_esc`, or a `RawHtml`
+/// from a nested `_ssrChildren`/`_ssrForKeyed` — the row falls back to the
+/// UNCHANGED `_ssrItem` call with the same temps, so byte-identity holds by
+/// construction.
+///
+/// Returns None to decline (caller keeps the plain call): no holes, or a
+/// `_h`-prefixed user param the temps could shadow.
+fn build_ssr_for_item_body(buf: &SsrBuf, param_text: &str, ctx: &mut Ctx) -> Option<String> {
+    if buf.holes.is_empty() {
+        return None;
+    }
+    if param_has_h_temp(param_text) {
+        return None;
+    }
+    let temps = buf
+        .holes
+        .iter()
+        .enumerate()
+        .map(|(i, h)| format!("_h{} = {}", i, h))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut parts: Vec<String> = Vec::new();
+    for (i, st) in buf.statics.iter().enumerate() {
+        if !st.is_empty() {
+            parts.push(escape_js_string(st));
+        }
+        if i < buf.holes.len() {
+            parts.push(format!("_h{}", i));
+        }
+    }
+    let concat = if parts.is_empty() {
+        "\"\"".to_string()
+    } else {
+        parts.join(" + ")
+    };
+    let guards = buf
+        .hole_str
+        .iter()
+        .enumerate()
+        .filter(|(_, is_str)| !**is_str)
+        .map(|(i, _)| format!("typeof _h{} === \"string\"", i))
+        .collect::<Vec<_>>();
+    let body = if guards.is_empty() {
+        concat
+    } else {
+        let fallback_holes = (0..buf.holes.len())
+            .map(|i| format!("_h{}", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let statics_arr = buf
+            .statics
+            .iter()
+            .map(|s| escape_js_string(s))
+            .collect::<Vec<_>>()
+            .join(", ");
+        ctx.needs_ssr_item_import = true;
+        format!(
+            "{} ? {} : _ssrItem([{}], {})",
+            guards.join(" && "),
+            concat,
+            statics_arr,
+            fallback_holes
+        )
+    };
+    Some(format!("{{ const {}; return {} }}", temps, body))
+}
+
+/// Mirrors the JS `/\b_h\d/.test(paramText)` guard: does the user's arrow
+/// param list contain a `_h<digit>` identifier the injected temps would shadow?
+fn param_has_h_temp(param_text: &str) -> bool {
+    let b = param_text.as_bytes();
+    let mut i = 0usize;
+    while i + 2 < b.len() + 1 {
+        if let Some(pos) = param_text[i..].find("_h") {
+            let at = i + pos;
+            // \b before `_h`: previous char must not be an identifier char.
+            let boundary = at == 0 || !is_ident_char(b[at - 1]);
+            let after = b.get(at + 2).copied();
+            if boundary && after.map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                return true;
+            }
+            i = at + 2;
+        } else {
+            return false;
+        }
+    }
+    false
+}
+
+fn is_ident_char(c: u8) -> bool {
+    c.is_ascii_alphanumeric() || c == b'_' || c == b'$'
 }
 
 /// Emit a `_ssr(...)` replacement for an eligible element, or bail. Mirrors JS

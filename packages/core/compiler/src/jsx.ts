@@ -1467,13 +1467,25 @@ export function transformJSX_JS(
   interface SsrBuf {
     statics: string[]
     holes: string[]
+    /**
+     * Per-hole: is the emitted helper's return type PROVABLY `string`?
+     *
+     * `_ssrAttr` / `_ssrAttrGen` / `_ssrAttrUrl` are declared `: string`, so a
+     * fused concat can interpolate them with no runtime check. `_esc` is
+     * `MaybeAsync` (a VNode child delegates to `renderNode`, which can go
+     * async) and `_ssrChildren` / `_ssrForKeyed` return `RawHtml`, so those
+     * need a `typeof === 'string'` guard before they may be concatenated —
+     * see `buildSsrForItemBody`.
+     */
+    holeStr: boolean[]
   }
 
   function ssrEmitStatic(buf: SsrBuf, s: string): void {
     buf.statics[buf.statics.length - 1] += s
   }
-  function ssrEmitHole(buf: SsrBuf, exprText: string): void {
+  function ssrEmitHole(buf: SsrBuf, exprText: string, provablyString = false): void {
     buf.holes.push(exprText)
+    buf.holeStr.push(provablyString)
     buf.statics.push('')
   }
 
@@ -1613,14 +1625,14 @@ export function transformJSX_JS(
    * / aria / camelCase names take `_ssrAttr(tag, name, value)` (renderProp). */
   function emitSsrAttr(buf: SsrBuf, tag: string, name: string, valueText: string): void {
     if (ssrAttrIsGeneric(name)) {
-      ssrEmitHole(buf, `_ssrAttrGen(${JSON.stringify(name)}, ${valueText})`)
+      ssrEmitHole(buf, `_ssrAttrGen(${JSON.stringify(name)}, ${valueText})`, true)
       needsSsrAttrGenImport = true
     } else if (SSR_URL_ATTRS.has(name)) {
       // Lowercase URL attr — lean url-guard helper (byte-identical to renderProp).
-      ssrEmitHole(buf, `_ssrAttrUrl(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`)
+      ssrEmitHole(buf, `_ssrAttrUrl(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`, true)
       needsSsrAttrUrlImport = true
     } else {
-      ssrEmitHole(buf, `_ssrAttr(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`)
+      ssrEmitHole(buf, `_ssrAttr(${JSON.stringify(tag)}, ${JSON.stringify(name)}, ${valueText})`, true)
       needsSsrAttrImport = true
     }
   }
@@ -1767,16 +1779,22 @@ export function transformJSX_JS(
     const body = unwrapTypeLayers(cb.body)
     if (body.type !== 'JSXElement') return false
     if (isSelfClosing(body)) return false
-    const itemCall = buildSsrCall(body, 'mapitem')
-    if (itemCall === null) return false
+    const itemBuf = buildSsrBuf(body, 'mapitem')
+    if (itemBuf === null) return false
     const recv = sliceExpr(callee.object)
     const params = cb.params ?? []
     const paramText =
       params.length === 0
         ? ''
         : code.slice(params[0]!.start as number, params[params.length - 1]!.end as number)
+    // The compiler re-emits this whole `.map` call, so it owns the item arrow's
+    // body — fuse it exactly like a `<For>` row (see `buildSsrForItemBody`).
+    // `.map` lists are the other per-item hot path (a plain `{items.map(…)}`
+    // list is at least as common in SSR as `<For>`).
+    const fusedItem = buildSsrForItemBody(itemBuf, paramText)
+    const itemBody = fusedItem ?? ssrCallText(itemBuf, 'mapitem')
     ssrEmitStatic(buf, '<!--$-->')
-    ssrEmitHole(buf, `_ssrChildren(${recv}.map((${paramText}) => ${itemCall}))`)
+    ssrEmitHole(buf, `_ssrChildren(${recv}.map((${paramText}) => ${itemBody}))`)
     ssrEmitStatic(buf, '<!--/$-->')
     needsSsrChildrenImport = true
     return true
@@ -1861,16 +1879,20 @@ export function transformJSX_JS(
     const body = unwrapTypeLayers(cb.body)
     if (body.type !== 'JSXElement') return false
     if (isSelfClosing(body)) return false
-    const itemCall = buildSsrCall(body, 'foritem')
-    if (itemCall === null) return false
+    const itemBuf = buildSsrBuf(body, 'foritem')
+    if (itemBuf === null) return false
     const params = cb.params ?? []
     const paramText =
       params.length === 0
         ? ''
         : code.slice(params[0]!.start as number, params[params.length - 1]!.end as number)
+    // Prefer the fused concat body (see `buildSsrForItemBody`); fall back to
+    // the plain `_ssrItem` call when it declines.
+    const fused = buildSsrForItemBody(itemBuf, paramText)
+    const itemBody = fused ?? ssrCallText(itemBuf, 'foritem')
     ssrEmitHole(
       buf,
-      `_ssrForKeyed(${sliceExpr(eachExpr)}, ${sliceExpr(byExpr)}, (${paramText}) => ${itemCall})`,
+      `_ssrForKeyed(${sliceExpr(eachExpr)}, ${sliceExpr(byExpr)}, (${paramText}) => ${itemBody})`,
     )
     needsSsrForKeyedImport = true
     return true
@@ -1930,13 +1952,73 @@ export function transformJSX_JS(
    * `.map` ITEM (mapitem mode) uses `_ssrItem` — a plain-string variant that
    * `_ssrChildren` concatenates without a per-item `RawHtml` wrap. */
   function buildSsrCall(el: N, mode: SsrMode): string | null {
-    const buf: SsrBuf = { statics: [''], holes: [] }
+    const buf = buildSsrBuf(el, mode)
+    if (buf === null) return null
+    return ssrCallText(buf, mode)
+  }
+
+  function buildSsrBuf(el: N, mode: SsrMode): SsrBuf | null {
+    const buf: SsrBuf = { statics: [''], holes: [], holeStr: [] }
     if (!ssrSerializeElement(buf, el, mode)) return null
+    return buf
+  }
+
+  function ssrCallText(buf: SsrBuf, mode: SsrMode): string {
     const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
     const holesArr = buf.holes.length > 0 ? `, ${buf.holes.join(', ')}` : ''
     const fn = mode === 'recursed' ? '_ssr' : '_ssrItem'
     if (fn === '_ssrItem') needsSsrItemImport = true
     return `${fn}([${staticsArr}]${holesArr})`
+  }
+
+  /**
+   * Fused per-ITEM body (`<For>` rows AND `.map` items): bind each hole to a
+   * temp, then CONCAT the statics and temps inline instead of calling
+   * `_ssrItem` — vue's emitted shape (one fused string build per item, no
+   * per-item call, no per-item statics array, no per-hole dispatch). Measured
+   * on the 1000-row cross-framework SSR bench: **+29% off the whole render**
+   * (198.2 → 140.4 µs, 6/6 paired passes), which is what takes Pyreon from
+   * ~1.24x behind vue at 1000 rows to ahead of it. The outer `_ssr` keeps the
+   * plain call — it runs once per template, not once per item.
+   *
+   * Only holes whose helper is not provably `string` (`buf.holeStr`) are
+   * guarded; `_ssrAttr*` are declared `: string`. When ANY guard fails at
+   * runtime — an async `_esc` (a VNode child that mounts async), or a `RawHtml`
+   * from a nested `_ssrChildren`/`_ssrForKeyed` — the row falls back to the
+   * UNCHANGED `_ssrItem` call with the same temps, so byte-identity holds by
+   * construction and the async/promotion path is untouched.
+   *
+   * Uses `+` concat of ordinary string literals rather than a template literal:
+   * measured a tie (+1.4%, within noise), and it reuses the existing
+   * `JSON.stringify` static quoting instead of introducing a second escaping
+   * path (backtick / `${` / backslash) that could drift from it.
+   *
+   * Returns null to decline (caller keeps the plain call): no holes to fuse, or
+   * a `_h`-prefixed user param that the temps could shadow.
+   */
+  function buildSsrForItemBody(buf: SsrBuf, paramText: string): string | null {
+    if (buf.holes.length === 0) return null
+    // The temps are injected into the USER's arrow scope; a `_h`-named param
+    // would be shadowed. Vanishingly rare — decline rather than rename.
+    if (/\b_h\d/.test(paramText)) return null
+    const temps = buf.holes.map((h, i) => `_h${i} = ${h}`).join(', ')
+    const parts: string[] = []
+    for (let i = 0; i < buf.statics.length; i++) {
+      if (buf.statics[i] !== '') parts.push(JSON.stringify(buf.statics[i]))
+      if (i < buf.holes.length) parts.push(`_h${i}`)
+    }
+    const concat = parts.length > 0 ? parts.join(' + ') : '""'
+    const guards = buf.holes
+      .map((_, i) => (buf.holeStr[i] ? null : `typeof _h${i} === "string"`))
+      .filter((g): g is string => g !== null)
+    const fallbackHoles = buf.holes.map((_, i) => `_h${i}`).join(', ')
+    const staticsArr = buf.statics.map((s) => JSON.stringify(s)).join(', ')
+    needsSsrItemImport = true
+    const fallback = `_ssrItem([${staticsArr}], ${fallbackHoles})`
+    // Every hole provably string → no guard, no fallback branch needed.
+    const body =
+      guards.length === 0 ? concat : `${guards.join(' && ')} ? ${concat} : ${fallback}`
+    return `{ const ${temps}; return ${body} }`
   }
 
   function trySsrTemplateEmit(node: N): boolean {
