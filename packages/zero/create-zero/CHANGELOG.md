@@ -1,5 +1,7 @@
 # create-zero
 
+## 0.48.0
+
 ## 0.47.0
 
 ### Patch Changes

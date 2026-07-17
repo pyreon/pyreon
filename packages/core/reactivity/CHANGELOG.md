@@ -1,5 +1,37 @@
 # @pyreon/reactivity
 
+## 0.48.0
+
+### Minor Changes
+
+- [#2353](https://github.com/pyreon/pyreon/pull/2353) [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Inference type helpers across the libraries — "derive, don't annotate twice". All type-only (`export type`, zero runtime bytes):
+
+  - `@pyreon/reactivity`: `SignalValue<S>` / `ComputedValue<C>` (unwrap a signal/computed/accessor to its value type), `MaybeAccessor<T>` (the framework-wide value-or-accessor parameter shape — NOT auto-called, resolve inside a reactive scope), `AccessorReturn<A>` (resolve a MaybeAccessor back to its value type).
+  - `@pyreon/store`: `StoreState<Api>` (unwrapped per-field value shape — schema stores give the schema-inferred `TRaw`; composition stores give the signal fields unwrapped, computeds/actions excluded, mirroring the runtime `api.state` snapshot), `StoreActions<Api>` (the plain-function action surface).
+  - `@pyreon/form`: `FormValues<F>` (TValues from the `useForm` return OR its options), `FieldNames<F>`, `FieldValue<F, K>`, and the standalone opt-in `NestValues<T>` (flat dot-path shape → nested payload shape — the type companion of runtime `nestValues()`; deliberately NOT threaded through `useForm`'s signature, whose value model stays flat).
+  - `@pyreon/router`: `LoaderData<L>` — a loader's resolved data type from the loader function itself, for `useLoaderData<LoaderData<typeof loader>>()`.
+  - `@pyreon/i18n`: opt-in typed translation keys — `MessageKeys<M>` (dot-path key union, plural suffixes collapsed, recursion depth-capped at 6 levels), `TranslationParams<M, K>` (`{{param}}` extraction incl. inline format specs + `count: number` for plural keys; needs `as const`), `TypedTranslationKey<M>`, and a purely additive generic overload `createI18n<typeof en>(options)` returning `I18nInstance<TypedTranslationKey<M>>` whose `t` rejects typos (namespaced `ns:key` strings stay unchecked). `I18nInstance` gained a `TKey extends string = string` parameter (default `string` — untyped usage byte-identical); `t` is now declared method-style so typed instances stay assignable to `I18nInstance` (Provider contract).
+  - `@pyreon/machine`: `StateOf<M>` / `EventOf<M>` — state/event unions from the machine INSTANCE or a raw config (the pre-existing `InferStates`/`InferEvents` are config-only and silently yield `never` on an instance — README example fixed accordingly).
+  - `@pyreon/query`: `QueryData<R>` / `QueryError<R>` — unwrap the adapter's fine-grained result bags (`useQuery`/suspense/infinite; infinite results derive `InfiniteData<Page>`); tagged query-KEY inference remains TanStack's own `InferDataFromTag` (not duplicated).
+
+### Patch Changes
+
+- [#2360](https://github.com/pyreon/pyreon/pull/2360) [`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(reactivity): fused iterative dirty-cascade walk + leaner tracking frame — computed diamond now a near-tie with @preact/signals-core (~1.07–1.10×, was ~1.3×), deep chain ~1.25× (was ~1.45×), heap-neutral
+
+  - `propagateLazyDirty` walks single-subscriber lazy-computed chains ITERATIVELY over the computed's fields via a `notify._c` back-ref stamped by `_markRecompute(fn, target)` — per hop this removes the notify-closure call, the `_recomputes` WeakSet lookup, and the depth bookkeeping, and consumes zero JS stack at any chain depth (only fan-out levels recurse, still depth-bounded via `MAX_CASCADE_RECURSION` + the explicit deferral stack).
+  - The lazy notify body now lives ONCE in `batch.ts` (`_markLazyAndPropagate`); `computedLazy`'s per-instance recompute closure delegates to it (the closure remains only for its subscriber-set identity), and marked dispatch sites (`enqueuePendingNotification`'s recompute-hit branch, the fan-out arm) call it directly when the `_c` back-ref is present. `{ equals }` notifies are deliberately NOT stamped — they do more than dirty-marking (tier-1 refresh booking) and keep the call path.
+  - `tracking.ts`: the former `_verifyOwner` module variable was a pure mode flag (its value was never read) — verify-mode is now encoded in the SIGN of `_verifyIndex` (-1 = collect), dropping one module-var read from every tracked read's verify hit and one save/restore pair from every `runCollect`/`runVerify` frame.
+
+  Effect-path dispatch is untouched (effects never enter the recompute-hit branch; the fan-out arm checks the WeakSet before reading `_c`, so effect notifies pay only the same WeakSet miss as before). Won metrics re-verified: effect propagation ~1.4× ahead of Preact, batch-50 ~1.2× ahead, wide fan-out slight win — all held. Retained heap byte-identical (signal 152 B / +computed 913 B / +effect 929 B via `measure-memory`).
+
+- [#2362](https://github.com/pyreon/pyreon/pull/2362) [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(store,reactivity): with-subscriber `patch()` ~2× faster — flips the documented 1.7× loss to Zustand into a win
+
+  `@pyreon/reactivity` gains the internal `_suspendSoleSubscriber`/`_resumeSoleSubscriber` pair: when a caller's listener is the SOLE `subscribe()` subscriber on a signal (the dominant shape for `@pyreon/store`'s per-field change detectors), suspension is an O(1) `_s` field swap that detaches/restores the whole Set by identity instead of a function-key `Set.delete`/`add` pair (measured as the single largest component of the store's with-subscriber patch, ~25%). The hot signal write path is untouched; the same Set object is restored so verify-mode dep reuse identity compares and `subscribe()` disposers are unaffected, and a listener subscribing during the window is never clobbered.
+
+  `@pyreon/store`'s with-subscriber object-form `patch()` uses it via a `detectorEpoch` guard (falls back to the per-listener suspend whenever the detector wiring changed mid-patch or user listeners/effects share the field's subscriber set — behavior-identical to before), and its suspend/write/resume loop now lives in a CACHED batch closure (mirroring `ensureApply` — zero per-patch closure allocation, re-entrancy-safe via slot-read-into-locals). All [#2307](https://github.com/pyreon/pyreon/issues/2307) exception-safety guarantees are preserved exactly (getter reads hoisted before suspension, resume in `finally`, flag reset + emit in `finally`); the per-key `{key,oldValue,newValue}` event model and single-notification contract are unchanged.
+
+  Measured (`bun run bench:stores`, per-(op×impl) process isolation): patch-2-fields-with-subscriber ~146ns → ~73ns — now FASTER than Zustand's shallow-merge notify (~84ns) instead of 1.7× slower. All other ops unchanged (dispatch/write→1sub/no-sub-patch wins hold; setup unchanged).
+
 ## 0.47.0
 
 ## 0.46.0

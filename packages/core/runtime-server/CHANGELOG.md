@@ -1,5 +1,37 @@
 # @pyreon/runtime-server
 
+## 0.48.0
+
+### Patch Changes
+
+- [#2375](https://github.com/pyreon/pyreon/pull/2375) [`39053fe`](https://github.com/pyreon/pyreon/commit/39053fefcc3a3bf1ead1e98f9c138dbde4248789) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSR compile-to-string fast path: fused keyed-`<For>` emit. A `<For each by>{(item) => <el…>}</For>` child no longer bails its parent `_ssr` template to the h() walk — the parent skeleton compiles and the For lowers to one `_ssrForKeyed(each, by, item)` hole (new `@pyreon/runtime-server` export): a single tight loop producing the exact `<!--pyreon-for-->`/`<!--k:KEY-->` bytes of `renderForItems` while skipping the per-row `renderNode` dispatch + `RawHtml` unwrap. Byte-identical to the h() path by construction (locked by the runtime-dom differential + hydration cases, the compiler emit suite, and an explicit JS↔native byte-equality spec — the fuzz grammar generates no `<For>`); both compiler backends emit it. Bail conditions are exact (`fallback`, spreads, block-bodied or non-arrow children, ineligible item elements keep the h() path). Eligible SSR pages with keyed lists render substantially faster. The item callback compiles in a dedicated 'foritem' mode — recursed child semantics (wrap markers preserved) with a plain-string `_ssrItem` return, dropping the per-row `RawHtml` allocation (~5-7% additional on 100-1000-row pages; bytes identical, locked by the same differential).
+
+- [#2382](https://github.com/pyreon/pyreon/pull/2382) [`a2504ff`](https://github.com/pyreon/pyreon/commit/a2504ff1f60151be605159aa0fd9d5692a879535) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf(ssr): `_ssr` / `_ssrItem` take positional hole params — ~7% off a 1000-row SSR render
+
+  The compiled SSR fast path builds each row through `_ssrItem(statics, h0, h1, …)`.
+  Both entries declared their holes as a rest array, allocating one throwaway array
+  per call — 1000 per 1000-row render — and then walking them through a generic
+  per-hole dispatch loop.
+
+  A CPU profile at 1000 rows attributed ~21.6% of self time to that walk, against a
+  Vue profile that is ~44% irreducible `escapeHtml` with no equivalent loop at all.
+  Both entries now take positional hole params (`a..f` + a trailing `...rest`) with a
+  fused all-string fast path, measured at **~7% off the whole render** (median
+  203.6 → 188.8 µs; 8/8 paired passes, lead order alternated).
+
+  Byte-identical by construction: any non-string hole (a nested `RawHtml`, an async
+  `Promise`) or an arity past the fused arms falls through to the unchanged generic
+  walk, and the fast path keys on the hole count actually passed — not on
+  `statics.length` — so it reproduces the previous behaviour exactly, including the
+  arity-mismatch shapes the compiler never emits.
+
+  Call sites are unchanged (the compiler already emits holes positionally), so there
+  is no compiler change, no emit change, and no Rust-backend mirror.
+
+- Updated dependencies [[`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d), [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67), [`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023), [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245)]:
+  - @pyreon/reactivity@0.48.0
+  - @pyreon/core@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes

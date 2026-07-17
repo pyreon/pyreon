@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/compiler",
-  "version": "0.47.0",
+  "version": "0.48.0",
   "description": "Template and JSX compiler for Pyreon",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/compiler#readme",

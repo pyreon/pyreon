@@ -1,5 +1,50 @@
 # @pyreon/hooks
 
+## 0.48.0
+
+### Minor Changes
+
+- [#2381](https://github.com/pyreon/pyreon/pull/2381) [`134e241`](https://github.com/pyreon/pyreon/commit/134e24118665ef44a7e4b7f030e02fbcde4f59fc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useImagePicker()` — pick an image from the device's photo library.
+
+  `pick()` returns a `Promise<string | null>` you `await`: a URI string for the
+  picked image, or `null` when the user cancels (it never rejects). This is the
+  second async-result hook after `useBiometrics`.
+
+  ```tsx
+  const picker = useImagePicker()
+  const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
+
+  <button onClick={async () => {
+    const uri = await picker.pick()
+    status.set(uri === null ? 'cancelled' : 'picked')
+  }}>Pick a photo</button>
+  ```
+
+  Compare the result to `null` explicitly rather than testing it for truthiness —
+  that is also the shape the multi-target compiler lowers to a native optional
+  test.
+
+  Web uses a hidden `<input type="file" accept="image/*">` and resolves an object
+  URL; the input is always detached once the pick settles. Under PMTC it lowers to
+  `PHPickerViewController` (iOS) and the Android Photo Picker (`PickVisualMedia`).
+
+  No photo-library permission is required on either native platform: both system
+  pickers run out of process and hand back only the asset the user chose, so there
+  is no `Info.plist` usage description and no Android runtime permission to
+  request.
+
+  The returned URI is an opaque, ephemeral, platform-shaped handle (`file://` temp
+  copy on iOS, `content://` on Android, `blob:` on the web) — hand it to an image
+  view or an upload rather than persisting it.
+
+### Patch Changes
+
+- Updated dependencies [[`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d), [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67), [`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023), [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245)]:
+  - @pyreon/reactivity@0.48.0
+  - @pyreon/core@0.48.0
+  - @pyreon/styler@0.48.0
+  - @pyreon/ui-core@0.48.0
+
 ## 0.47.0
 
 ### Minor Changes

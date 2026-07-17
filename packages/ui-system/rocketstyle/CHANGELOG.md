@@ -1,5 +1,24 @@
 # @pyreon/rocketstyle
 
+## 0.48.0
+
+### Patch Changes
+
+- [#2369](https://github.com/pyreon/pyreon/pull/2369) [`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Whole-class bundle-size fix: every module-level `nativeCompat(X)` STATEMENT (28 sites across 16 packages) converted to the `/* @__PURE__ */` assignment form. Inside a built lib's shared chunk the bare statement is an unremovable side effect that retains the component's body in every consumer bundle that never imports it — measured ~1.2KB gz of dead transition machinery in a mount-only app from runtime-dom's three sites alone; the sweep applies the same fix to ErrorBoundary, HeadProvider, Router components, RouteAnnouncer, Form components, providers across i18n/permissions/query (6 sites)/toast's Toaster, and the ui-system providers. Marker semantics are unchanged (`nativeCompat` returns the same fn; live-probed and locked by the existing native-marker suites). Two new locks: a lib-level tree-shake spec (mount-only bundle must not contain transition machinery, with a positive control) and a repo-wide census guard that fails on any new bare statement.
+
+- [#2377](https://github.com/pyreon/pyreon/pull/2377) [`d30f818`](https://github.com/pyreon/pyreon/commit/d30f818d2c4df6e0621cad29eedff3197b9004cc) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix `.config({ component })` so it propagates the wrapped component's own prop types.
+
+  The chain's final props INTERSECT the wrapped component's props (`O`) with `DefaultProps`, which hard-codes `children?: VNodeChild`. Since `VNodeChildAccessor` is zero-arg (`() => …`), any component whose `children` is a render function — `(state: XState) => VNodeChild` — produced the unsatisfiable `((state) => …) & (VNodeChild | undefined)`, so `<Wrapped>{(s) => …}</Wrapped>` failed to typecheck (TS2322).
+
+  `DefaultProps` now only contributes keys the wrapped component does NOT declare (`Omit<DefaultProps, keyof O>`), letting the component's own types win. Components that declare no `children` still get `DefaultProps`' `VNodeChild` exactly as before, so this is additive.
+
+- Updated dependencies [[`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d), [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67), [`9b5cb93`](https://github.com/pyreon/pyreon/commit/9b5cb9312fc46ddeaede34df600e63ef4ce16023), [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245)]:
+  - @pyreon/reactivity@0.48.0
+  - @pyreon/core@0.48.0
+  - @pyreon/styler@0.48.0
+  - @pyreon/ui-core@0.48.0
+  - @pyreon/sized-map@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes

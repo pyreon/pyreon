@@ -1,5 +1,16 @@
 # @pyreon/sync
 
+## 0.48.0
+
+### Minor Changes
+
+- [#2385](https://github.com/pyreon/pyreon/pull/2385) [`19418d3`](https://github.com/pyreon/pyreon/commit/19418d300bd6e30f421d86fcc314554932809b50) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Defer `syncedSignal`'s create-if-missing seed until first sync when a transport is attached — a fresh peer's default no longer clobbers a peer's real value on Yjs's random-clientId `Y.Map` tie-break (issue [#2380](https://github.com/pyreon/pyreon/issues/2380)). The seed still shows `initial` optimistically but only WRITES the CRDT once sync confirms the key is still absent (empty room); it seeds immediately when alone / no-transport / already-synced, and is canceled on dispose. `WebSocketTransport` gains a reactive `synced` signal + `whenSynced()` (the y-websocket convention). Residual: two fresh peers seeding an empty room with different defaults for the same key still tie-break — gate app-level defaults behind `await transport.whenSynced()`.
+
+### Patch Changes
+
+- Updated dependencies [[`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d), [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67), [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245)]:
+  - @pyreon/reactivity@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes

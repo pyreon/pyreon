@@ -1,5 +1,15 @@
 # @pyreon/validate
 
+## 0.48.0
+
+### Patch Changes
+
+- [#2359](https://github.com/pyreon/pyreon/pull/2359) [`2ce27e3`](https://github.com/pyreon/pyreon/commit/2ce27e3534a004c7538c6f14219d52136e9d8039) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Pure-JIT fast seam: a fully-inline JIT tree (no `_runInto` fallback ⇒ provably no user code, no Promise return, no `pending`) now reuses a per-schema parse context at the public seams (`parse` / `~standard.validate` / `is`) instead of allocating a fresh ctx + issues array per parse, and skips the two branches that are unreachable for such trees. Semantics are byte-identical to the general seam (verdicts, issue objects/paths, value identity, immutable stripped-clone contract) — locked by a new 10,000-case pure-seam differential fuzz that runs interleaved `parse`/`is`/`~standard` input SEQUENCES through the same schema instance (the ctx-reuse hazard surface) against the unchanged general seam. Monomorphic hot-loop wins (rotating valid inputs, consumed results — the shape where allocations can't be engine-elided): scalar number ~35% faster (flips the last documented ArkType edge on the single-schema scalar loop), scalar string ~28% faster (from ~1.4× behind ArkType to a statistical tie at the Result-API floor), flat object `object.user` ~18% faster (flips the monomorphic flat-object row), nested/array shapes ~10–35% faster. Error path, impure schemas (refine/transform/coerce/optional/serverCheck/catch) and `parseAsync` are unchanged.
+
+- Updated dependencies [[`a333656`](https://github.com/pyreon/pyreon/commit/a333656ac79c7a43163b0a07f593aa71a59e124d), [`3f1120a`](https://github.com/pyreon/pyreon/commit/3f1120aaa5ee69b85f5de56681a655ba30bf0f67), [`1fa3347`](https://github.com/pyreon/pyreon/commit/1fa33473514e64ebc07e3e75ad818fe1a9f89245)]:
+  - @pyreon/reactivity@0.48.0
+  - @pyreon/validation@0.48.0
+
 ## 0.47.0
 
 ### Patch Changes
