@@ -68,7 +68,6 @@ const INTERACTIVE = [
 
 /** Interactive components that do NOT yet delegate. Only ever shrinks. */
 const KNOWN_HOLLOW: Record<string, string> = {
-  Tree: 'TreeBase exists, is fully keyboard-tested, and is ORPHANED — wire it up (one .config away).',
   Menu: 'Needs a MenuBase (role=menu/menuitem, roving tabindex, typeahead, Esc + focus return).',
   Popover: 'Needs a PopoverBase built on @pyreon/elements useOverlay (open state, Esc, click-outside, positioning).',
   HoverCard: 'Inherits the hollow Popover via `Popover.config()`. Fixed when Popover gets PopoverBase.',
@@ -169,7 +168,8 @@ describe('primitive-first architecture', () => {
     const remaining = Object.keys(KNOWN_HOLLOW).length
     const total = INTERACTIVE.length
     // Locks the count so progress is visible and regressions are impossible.
-    expect(remaining).toBeLessThanOrEqual(14)
-    expect(total - remaining).toBeGreaterThanOrEqual(15)
+    // Ratchets DOWN as each PR wires a component: 14 → 13 (Tree → TreeBase).
+    expect(remaining).toBeLessThanOrEqual(13)
+    expect(total - remaining).toBeGreaterThanOrEqual(16)
   })
 })
