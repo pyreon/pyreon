@@ -110,13 +110,85 @@ const SAFE_TAGS = new Set([
   'wbr',
 ])
 
+// Safe SVG tags allowed by the fallback sanitizer. Icons + inline illustrations
+// ship as `<svg>` fragments through `innerHTML`; without these, the allowlist
+// replaces every SVG element with a text node and an entire icon set renders
+// blank (no error, no warning). This is the curated safe SVG profile — shape,
+// gradient, pattern, clip/mask, text, and filter-primitive elements — mirroring
+// DOMPurify's default SVG profile. DELIBERATELY EXCLUDED as XSS-capable:
+//   - `script`  — obvious.
+//   - `foreignObject` — embeds arbitrary HTML, reopening every HTML XSS vector.
+//   - `style` — CSS injection surface (icons don't need it).
+//   - SMIL `animate`/`animateTransform`/`animateMotion`/`animateColor`/`set` —
+//     the `attributeName="href" values="javascript:…"` animation-XSS vector.
+// All entries are LOWERCASE: `sanitizeNode` compares `tagName.toLowerCase()`,
+// and the HTML parser re-cases SVG foreign content (`lineargradient` →
+// `linearGradient`) so the DOM tagName round-trips correctly on re-serialize.
+const SAFE_SVG_TAGS = new Set([
+  'svg',
+  'g',
+  'path',
+  'rect',
+  'circle',
+  'ellipse',
+  'line',
+  'polyline',
+  'polygon',
+  'text',
+  'tspan',
+  'textpath',
+  'tref',
+  'defs',
+  'clippath',
+  'mask',
+  'lineargradient',
+  'radialgradient',
+  'stop',
+  'pattern',
+  'image',
+  'use',
+  'symbol',
+  'marker',
+  'title',
+  'desc',
+  'metadata',
+  'switch',
+  'view',
+  'filter',
+  'feblend',
+  'fecolormatrix',
+  'fecomponenttransfer',
+  'fecomposite',
+  'feconvolvematrix',
+  'fediffuselighting',
+  'fedisplacementmap',
+  'fedistantlight',
+  'fedropshadow',
+  'feflood',
+  'fefunca',
+  'fefuncb',
+  'fefuncg',
+  'fefuncr',
+  'fegaussianblur',
+  'feimage',
+  'femerge',
+  'femergenode',
+  'femorphology',
+  'feoffset',
+  'fepointlight',
+  'fespecularlighting',
+  'fespotlight',
+  'fetile',
+  'feturbulence',
+])
+
 // Attributes that can carry executable code
 const UNSAFE_ATTR_RE = /^on/i
 
 /**
  * Fallback tag-stripping sanitizer for environments without the Sanitizer API.
- * Removes all tags not in SAFE_TAGS, strips event handler attributes,
- * and blocks javascript:/data: URLs in href/src/action attributes.
+ * Removes all tags not in SAFE_TAGS / SAFE_SVG_TAGS, strips event handler
+ * attributes, and blocks javascript:/data: URLs in href/src/action attributes.
  */
 function fallbackSanitize(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -131,7 +203,11 @@ function stripUnsafeAttrs(el: Element): void {
     if (UNSAFE_ATTR_RE.test(attr.name)) {
       el.removeAttribute(attr.name)
     } else if (
-      URL_ATTRS.has(attr.name) &&
+      // `href`/`src`/… (HTML) plus SVG's `xlink:href` — whose qualified name
+      // is NOT in URL_ATTRS but whose localName IS `href`, so an SVG
+      // `<a xlink:href="javascript:…">` / `<use xlink:href>` would otherwise
+      // slip the guard.
+      (URL_ATTRS.has(attr.name) || attr.localName === 'href') &&
       isUnsafeUrl(attr.value) &&
       !isSafeImageDataUri(el.tagName, attr.name, attr.value)
     ) {
@@ -140,13 +216,26 @@ function stripUnsafeAttrs(el: Element): void {
   }
 }
 
+// Dev-only: warn ONCE per dropped tag name so a silent strip ("my icon
+// renders blank") becomes visible without flooding the console on repeated
+// content. Bounded by the finite tag vocabulary; tree-shaken in production.
+const _warnedDroppedTags = new Set<string>()
+
 function sanitizeNode(node: Node): void {
   const children = Array.from(node.childNodes)
   for (const child of children) {
     if (child.nodeType !== 1) continue
     const el = child as Element
     const tag = el.tagName.toLowerCase()
-    if (!SAFE_TAGS.has(tag)) {
+    if (!SAFE_TAGS.has(tag) && !SAFE_SVG_TAGS.has(tag)) {
+      if (process.env.NODE_ENV !== 'production' && !_warnedDroppedTags.has(tag)) {
+        _warnedDroppedTags.add(tag)
+        console.warn(
+          `[Pyreon] innerHTML sanitizer dropped <${tag}> (not in the safe HTML/SVG allowlist) — ` +
+            `its content was replaced with text. If this is trusted markup, pass a custom ` +
+            `sanitizer via setSanitizer(), or use dangerouslySetInnerHTML to bypass sanitization.`,
+        )
+      }
       const text = document.createTextNode(el.textContent as string)
       node.replaceChild(text, el)
       continue

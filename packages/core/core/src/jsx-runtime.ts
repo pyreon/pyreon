@@ -632,6 +632,27 @@ interface CanvasAttributes extends PyreonHTMLAttributes<HTMLCanvasElement> {
   height?: number | string | undefined
 }
 
+/**
+ * Attributes for SVG intrinsic elements (`<svg>`, `<path>`, `<g>`, …).
+ *
+ * This is a broad-but-not-exhaustive set — SVG's attribute surface is large.
+ * To add attributes downstream (a rare SVG attribute, a vendor extension),
+ * augment this interface via module augmentation:
+ *
+ * ```ts
+ * // svg-augment.d.ts (anywhere in your project's `include`)
+ * declare module '@pyreon/core' {
+ *   interface SvgAttributes {
+ *     'my-custom-attr'?: string | undefined
+ *   }
+ * }
+ * ```
+ *
+ * The augmentation merges into the interface every SVG element uses, so
+ * `<path my-custom-attr="…">` typechecks project-wide. Do NOT reach for
+ * `declare global { namespace JSX { interface SvgAttributes … } }` — that
+ * declares a *separate* `JSX.SvgAttributes` and does not merge here.
+ */
 export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   viewBox?: string | undefined
   xmlns?: string | undefined
@@ -708,6 +729,62 @@ export interface SvgAttributes extends PyreonHTMLAttributes<SVGElement> {
   pathLength?: number | undefined
   // Use/href
   href?: string | undefined
+  'xlink:href'?: string | undefined
+  'xmlns:xlink'?: string | undefined
+  'xml:space'?: string | undefined
+  // References (paint servers, clip, mask, filter)
+  mask?: string | undefined
+  'mask-type'?: string | undefined
+  filter?: string | undefined
+  color?: string | undefined
+  'stop-color'?: string | undefined
+  'stop-opacity'?: string | number | undefined
+  offset?: string | number | undefined
+  // Fill / stroke presentation
+  'fill-opacity'?: string | number | (() => string | number) | undefined
+  'stroke-opacity'?: string | number | (() => string | number) | undefined
+  'stroke-dasharray'?: string | number | undefined
+  'stroke-dashoffset'?: string | number | undefined
+  'stroke-miterlimit'?: string | number | undefined
+  'paint-order'?: string | undefined
+  'vector-effect'?: string | undefined
+  'mix-blend-mode'?: string | undefined
+  // Filter-primitive attributes (feGaussianBlur, feColorMatrix, feFlood, …)
+  in?: string | undefined
+  in2?: string | undefined
+  result?: string | undefined
+  mode?: string | undefined
+  type?: string | undefined
+  values?: string | number | undefined
+  stdDeviation?: string | number | undefined
+  operator?: string | undefined
+  radius?: string | number | undefined
+  scale?: string | number | undefined
+  'flood-color'?: string | undefined
+  'flood-opacity'?: string | number | undefined
+  baseFrequency?: string | number | undefined
+  numOctaves?: string | number | undefined
+  seed?: string | number | undefined
+  edgeMode?: string | undefined
+  kernelMatrix?: string | undefined
+  order?: string | number | undefined
+  k1?: string | number | undefined
+  k2?: string | number | undefined
+  k3?: string | number | undefined
+  k4?: string | number | undefined
+  xChannelSelector?: string | undefined
+  yChannelSelector?: string | undefined
+  surfaceScale?: string | number | undefined
+  specularConstant?: string | number | undefined
+  specularExponent?: string | number | undefined
+  diffuseConstant?: string | number | undefined
+  azimuth?: string | number | undefined
+  elevation?: string | number | undefined
+  tableValues?: string | undefined
+  slope?: string | number | undefined
+  intercept?: string | number | undefined
+  amplitude?: string | number | undefined
+  exponent?: string | number | undefined
 }
 
 declare global {
@@ -862,6 +939,40 @@ declare global {
         'stop-color'?: string
         'stop-opacity'?: string | number
       }
+      image: SvgAttributes & { href?: string; 'xlink:href'?: string }
+      textPath: SvgAttributes
+      tref: SvgAttributes
+      desc: SvgAttributes
+      metadata: SvgAttributes
+      switch: SvgAttributes
+      view: SvgAttributes
+      // SVG filters
+      filter: SvgAttributes
+      feBlend: SvgAttributes
+      feColorMatrix: SvgAttributes
+      feComponentTransfer: SvgAttributes
+      feComposite: SvgAttributes
+      feConvolveMatrix: SvgAttributes
+      feDiffuseLighting: SvgAttributes
+      feDisplacementMap: SvgAttributes
+      feDistantLight: SvgAttributes
+      feDropShadow: SvgAttributes
+      feFlood: SvgAttributes
+      feFuncA: SvgAttributes
+      feFuncB: SvgAttributes
+      feFuncG: SvgAttributes
+      feFuncR: SvgAttributes
+      feGaussianBlur: SvgAttributes
+      feImage: SvgAttributes & { href?: string; 'xlink:href'?: string }
+      feMerge: SvgAttributes
+      feMergeNode: SvgAttributes
+      feMorphology: SvgAttributes
+      feOffset: SvgAttributes
+      fePointLight: SvgAttributes
+      feSpecularLighting: SvgAttributes
+      feSpotLight: SvgAttributes
+      feTile: SvgAttributes
+      feTurbulence: SvgAttributes
       // Interactive / embedding
       details: DetailsAttributes
       summary: PyreonHTMLAttributes

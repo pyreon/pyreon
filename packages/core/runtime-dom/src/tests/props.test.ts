@@ -373,6 +373,79 @@ describe('applyProp — innerHTML', () => {
   })
 })
 
+// ─── innerHTML sanitizer — SVG allowlist ─────────────────────────────────────
+//
+// Regression (downstream report, 2026-07): the fallback sanitizer's allowlist
+// held only HTML tags, so `innerHTML='<svg>…</svg>'` had every SVG element
+// replaced with a text node — an entire icon set rendered blank with no error.
+// The SAFE_SVG_TAGS profile fixes it WITHOUT reopening XSS: script /
+// foreignObject / SMIL animation elements stay excluded, and on*/javascript:
+// (incl. `xlink:href`) are still stripped.
+describe('applyProp — innerHTML SVG sanitizer', () => {
+  const s = (html: string): string => {
+    const el = document.createElement('span')
+    applyProp(el, 'innerHTML', html)
+    return el.innerHTML
+  }
+
+  test('a plain icon SVG survives (was stripped to blank)', () => {
+    const out = s('<svg viewBox="0 0 24 24"><path d="M1 1 L2 2"/><g><circle cx="5" cy="5" r="2"/></g></svg>')
+    expect(out).toContain('<svg')
+    expect(out).toContain('<path')
+    expect(out).toContain('<circle')
+    expect(out).toContain('viewBox="0 0 24 24"')
+  })
+
+  test('gradients, clip, mask, image, and filter primitives survive', () => {
+    const out = s(
+      '<svg><defs><linearGradient id="g"><stop offset="0"/></linearGradient>' +
+        '<clipPath id="c"><rect width="4" height="4"/></clipPath><mask id="m"/>' +
+        '<filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>' +
+        '<image href="x.png" width="4" height="4"/></svg>',
+    )
+    for (const frag of ['<linearGradient', '<stop', '<clipPath', '<mask', '<filter', '<feGaussianBlur', '<image']) {
+      expect(out, `${frag} must survive`).toContain(frag)
+    }
+  })
+
+  test('SECURITY: <script> inside SVG is stripped', () => {
+    expect(s('<svg><script>alert(1)</script><path d="M1"/></svg>')).not.toContain('alert')
+  })
+
+  test('SECURITY: <foreignObject> (HTML-injection surface) is stripped', () => {
+    expect(s('<svg><foreignObject><b>x</b></foreignObject><path d="M1"/></svg>').toLowerCase()).not.toContain(
+      'foreignobject',
+    )
+  })
+
+  test('SECURITY: on* handlers on SVG elements are stripped', () => {
+    expect(s('<svg onload="alert(1)"><path d="M1" onclick="alert(2)"/></svg>')).not.toContain('alert')
+  })
+
+  test('SECURITY: javascript: in href AND xlink:href is stripped', () => {
+    expect(s('<svg><a href="javascript:alert(1)"><path d="M1"/></a></svg>')).not.toContain('javascript:')
+    expect(s('<svg><a xlink:href="javascript:alert(1)"><path d="M1"/></a></svg>')).not.toContain('javascript:')
+  })
+
+  test('SECURITY: SMIL animation elements (attributeName=href XSS vector) are stripped', () => {
+    const out = s('<svg><animate attributeName="href" values="javascript:alert(1)"/><set/><path d="M1"/></svg>').toLowerCase()
+    expect(out).not.toContain('animate')
+    expect(out).not.toContain('<set')
+    // the path (a real icon element) still survives
+    expect(out).toContain('<path')
+  })
+
+  test('dev-warns (once per tag) when it drops an element — no more silent blank', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // A rare tag no other test drops, so the module-level warn-once set is clean.
+    s('<marquee>scroll</marquee><marquee>again</marquee>')
+    expect(warnSpy).toHaveBeenCalledTimes(1)
+    expect(warnSpy.mock.calls[0]![0]).toContain('<marquee>')
+    expect(warnSpy.mock.calls[0]![0]).toContain('setSanitizer')
+    warnSpy.mockRestore()
+  })
+})
+
 // Comprehensive sweep: every string-typed sink must handle reactive
 // (function) values. The original bug was specific to innerHTML, but the
 // structural fix should cover ALL sinks the same way. These tests assert
