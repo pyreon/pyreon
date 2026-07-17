@@ -2393,10 +2393,10 @@ link.disconnect()
 
 import { connectViaWebSocket, createYjsDoc } from "@pyreon/sync/yjs"
 const doc = createYjsDoc()
-const t = connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc", {
-  onConnect: () => console.log("synced"),
-})
-t.disconnect() // close + stop reconnecting
+const t = connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")
+// t.synced() // reactive: false until the first sync round-trip completes
+await t.whenSynced()      // gate your OWN default writes on this
+t.disconnect()            // close + stop reconnecting
 
 const doc = createYjsDoc()
 const persist = persistViaIndexedDB(doc, "my-app-doc")

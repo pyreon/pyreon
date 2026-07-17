@@ -189,10 +189,11 @@ describe('#2380 — doc↔transport sync seam', () => {
     expect(docHasUnsyncedTransport(doc)).toBe(false)
     // whenDocSynced fires synchronously when there is nothing to wait for.
     let fired = false
-    whenDocSynced(doc, () => {
+    const cancel = whenDocSynced(doc, () => {
       fired = true
     })
     expect(fired).toBe(true)
+    expect(() => cancel()).not.toThrow() // the no-op cancel is safe to call
   })
 
   it('reports an unsynced transport, and fires whenDocSynced once it syncs', () => {
@@ -243,6 +244,7 @@ describe('#2380 — doc↔transport sync seam', () => {
       fired = true
     })
     cancel()
+    cancel() // idempotent — a second cancel is a no-op
     s.set(true)
     expect(fired).toBe(false) // canceled before sync → never fires
   })
@@ -276,5 +278,12 @@ describe('#2380 — doc↔transport sync seam', () => {
     expect(fired).toBe(false) // one still unsynced
     s2.set(true)
     expect(fired).toBe(true) // both synced → fire
+    // A stray re-notify from an already-synced transport after we're done is a
+    // no-op (the `if (done) return` guard) — never re-fires cb.
+    let fires = 0
+    whenDocSynced(doc, () => fires++) // already synced → fires once, synchronously
+    expect(fires).toBe(1)
+    s1.trigger()
+    expect(fires).toBe(1)
   })
 })

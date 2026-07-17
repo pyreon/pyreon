@@ -20,25 +20,25 @@ import { syncedSignal } from '../synced-signal'
 // type for the transport's `WebSocketImpl` option and for the raw garbage senders.
 const WSImpl = WsClient as unknown as new (url: string) => WebSocket
 
-// SINGLE SOURCE OF TRUTH for how long ONE `waitFor` may spend before it fails.
-// This constant feeds BOTH the `waitFor` default below AND the wall-clock
-// backstop derivation (`TEST_TIMEOUT_MS`), so the two can NEVER drift apart.
-// That drift was the residual bug behind the recurring flake: the backstop
-// formula still used a stale 15s per wait while the `waitFor` default had been
-// bumped to 20s — so `RECONNECTS with backoff` (3 real 20s waits = 60s composed)
-// got a backstop of exactly 60s, EQUAL to its sum, and vitest killed it at the
-// boundary with an opaque "test timed out" instead of the descriptive one.
+// NOTE (#2380): `two clients converge over the relay` was escalated FOUR times
+// (8→15→20→30s) as a CI-load timeout flake. It was never slowness — it was a real
+// LOST UPDATE. `syncedSignal`'s create-if-missing seed used to write `initial`
+// into the CRDT BEFORE the transport synced; two fresh peers both seeded, and a
+// seed still causally concurrent with a peer's real `.set()` clobbered it on a
+// RANDOM-clientId `Y.Map` tie-break (~coin-flip; worse under contention, where the
+// concurrent window is wider). No budget can wait out a value that already
+// converged to the wrong one. The fix DEFERS the seed until first sync, so a fresh
+// peer's default never races a real value — see `seed-deferral.test.ts` for the
+// deterministic CRDT-level proof. The specs below now gate the real write on the
+// transport's new `synced` barrier (not just `connected`), the correct point at
+// which app-level writes are safe.
 //
-// Escalation history on loaded CI runners — localhost WS frames arrive LATE
-// while timers stay on time, so the tick-counted deadline below does NOT
-// self-extend (no loop starvation); it behaves as a plain wall-clock ceiling for
-// frame arrival: 8s flaked twice (2026-06-11), 15s flaked, 20s flaked (#2190,
-// "two clients converge" — which surfaced the DESCRIPTIVE `waitFor: timed out`,
-// proving the backstop already exceeded that spec's sum but 20s of budget was
-// simply too small under contention). 30s is the next step up with real headroom,
-// and — crucially — it is now tuned in ONE place that the backstop tracks
-// automatically, so the "bump the budget, forget the backstop" cycle can't repeat.
-const WAIT_BUDGET_MS = process.env.CI ? 30_000 : 8000
+// The budget is now a SANE localhost-round-trip ceiling (no lost-update to wait
+// out). It still feeds BOTH the `waitFor` default AND the derived wall-clock
+// backstop from ONE constant, and the tick-counted deadline below is KEPT
+// (independent rationale: it self-extends under event-loop starvation from the
+// `Coverage (Full)` v8 instrumentation).
+const WAIT_BUDGET_MS = process.env.CI ? 10_000 : 5000
 
 // TICK-COUNTED deadline, deliberately NOT wall-clock. CI runs this file under
 // parallel-load contention (+ v8 instrumentation in `Coverage (Full)`), and the
@@ -73,9 +73,9 @@ const waitFor = (cond: () => boolean, timeoutMs = WAIT_BUDGET_MS): Promise<void>
 // `RECONNECTS with backoff` is the worst case: three sequential waits
 // (connect → drop → recover) with a relay teardown + fresh listen between them.
 // Every other spec composes ≤2 waits, so this ONE describe-level backstop covers
-// the whole file — no per-test override needed. Per-test magic numbers were
-// themselves a drift source (the old 50s overrides now sit BELOW 2×30s=60s and
-// would violate the invariant); deriving from `WAIT_BUDGET_MS` retires them.
+// the whole file — no per-test override needed. Deriving the backstop from the
+// single-source `WAIT_BUDGET_MS` retires the per-test magic numbers that were
+// themselves a drift source.
 const MAX_SEQUENTIAL_WAITS = 3
 const SETUP_TEARDOWN_HEADROOM_MS = 15_000
 const TEST_TIMEOUT_MS = MAX_SEQUENTIAL_WAITS * WAIT_BUDGET_MS + SETUP_TEARDOWN_HEADROOM_MS
@@ -105,12 +105,57 @@ describe('WebSocket relay — cross-device sync', { timeout: TEST_TIMEOUT_MS }, 
     const sa = syncedSignal({ doc: a, key: 'title', initial: '' })
     const sb = syncedSignal({ doc: b, key: 'title', initial: '' })
 
-    await waitFor(() => ta.connected && tb.connected)
-    sa.set('hello over WS') // a writes after both are connected — propagates to b
+    // Gate on the new `synced` barrier, not just `connected`: `synced` means the
+    // sync round-trip completed, so the deferred create-if-missing seeds have
+    // settled and a real write is safe (#2380). Before the fix, both peers seeded
+    // '' before syncing and A's write raced them on a clientId tie-break.
+    await waitFor(() => ta.synced() && tb.synced())
+    sa.set('hello over WS') // a writes after both are synced — propagates to b
     await waitFor(() => sb() === 'hello over WS')
     expect(sb()).toBe('hello over WS')
-    // Two sequential waits (connect + propagate); inherits the derived
-    // describe-level backstop, which exceeds the 2×WAIT_BUDGET_MS composed sum.
+    // Two sequential waits (sync + propagate); inherits the derived describe-level
+    // backstop, which exceeds the 2×WAIT_BUDGET_MS composed sum.
+  })
+
+  it('exposes a `synced` signal + `whenSynced()` that resolve after the round-trip (#2380)', async () => {
+    server = await createSyncServer({ port: 0 })
+    const url = `ws://127.0.0.1:${server.port}/synced`
+    const a = createYjsDoc()
+    const ta = connectViaWebSocket(a, url, { reconnect: false, WebSocketImpl: WSImpl })
+    disposers.push(() => ta.disconnect())
+
+    expect(ta.synced()).toBe(false) // not synced before the round-trip
+    await ta.whenSynced() // resolves once the relay answers our state vector
+    expect(ta.synced()).toBe(true)
+    await ta.whenSynced() // already synced → resolves immediately
+    expect(ta.synced()).toBe(true)
+    // Even alone in an EMPTY room the relay always answers a state vector with an
+    // update, so `synced` never hangs.
+  })
+
+  it('a fresh peer default does NOT clobber an existing value (the real-world #2380 bug)', async () => {
+    server = await createSyncServer({ port: 0 })
+    const url = `ws://127.0.0.1:${server.port}/no-clobber`
+    // Peer A types a real value first.
+    const a = createYjsDoc()
+    const ta = connectViaWebSocket(a, url, { reconnect: false, WebSocketImpl: WSImpl })
+    disposers.push(() => ta.disconnect())
+    const sa = syncedSignal({ doc: a, key: 'title', initial: '' })
+    await ta.whenSynced()
+    sa.set('typed by A')
+    await new Promise((r) => setTimeout(r, 100)) // let the relay record it
+
+    // Peer B opens the SAME room with a fresh default — its create-if-missing seed
+    // must NOT clobber A's value on the clientId tie-break.
+    const b = createYjsDoc()
+    const tb = connectViaWebSocket(b, url, { reconnect: false, WebSocketImpl: WSImpl })
+    disposers.push(() => tb.disconnect())
+    const sb = syncedSignal({ doc: b, key: 'title', initial: '' })
+
+    await waitFor(() => sb() === 'typed by A')
+    expect(sb()).toBe('typed by A')
+    await waitFor(() => sa() === 'typed by A') // A still holds its value
+    expect(sa()).toBe('typed by A')
   })
 
   it('REJECTS an unauthorized connection (authorize → false)', async () => {

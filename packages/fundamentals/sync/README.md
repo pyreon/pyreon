@@ -148,9 +148,29 @@ import { connectViaWebSocket, createYjsDoc } from '@pyreon/sync/yjs'
 
 const doc = createYjsDoc()
 // token goes in the query string — browser WebSockets can't set headers.
-connectViaWebSocket(doc, 'wss://sync.example.com/my-room?token=abc')
+const transport = connectViaWebSocket(doc, 'wss://sync.example.com/my-room?token=abc')
 // reconnects with exponential backoff by default; a 4401 (authz) close is terminal.
+
+// Attach the transport BEFORE creating synced signals — `syncedSignal`'s
+// create-if-missing seed then DEFERS until the first sync round-trip, so a fresh
+// peer's default never clobbers a peer's real value on Yjs's clientId tie-break.
+const title = syncedSignal({ doc, key: 'title', initial: 'Untitled' })
+
+// `synced` is a reactive signal (the y-websocket convention): false until the
+// initial sync round-trip completes, resets on disconnect, re-true on reconnect.
+transport.synced() // → false, then true
+await transport.whenSynced() // gate your OWN default writes on this
 ```
+
+> **No lost-update seed (#2380).** `syncedSignal` used to write `initial` into the
+> CRDT the instant the key was locally absent — _before_ syncing. Two fresh peers
+> both seeded, and a seed still concurrent with a peer's real `.set()` could
+> clobber it on Yjs's **random-clientId** tie-break. The seed now defers until
+> first sync when a transport is attached (immediate when alone). `initial` still
+> shows optimistically; the CRDT write lands only if the key is still absent after
+> sync. **Residual:** two _fresh_ peers seeding an _empty_ room with _different_
+> defaults for the same key still tie-break — gate app-level defaults behind
+> `await transport.whenSynced()`.
 
 ```ts
 // relay (Node / Bun — server-only subpath, never enters a client bundle)
