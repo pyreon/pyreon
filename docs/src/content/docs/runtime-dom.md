@@ -758,10 +758,13 @@ The built-in fallback sanitizer:
 
 - Parses HTML via `DOMParser` into a temporary document.
 - Walks the node tree recursively.
-- **Allows** only safe HTML tags (block + inline elements, no scripts/embeds/forms).
+- **Allows** safe HTML tags (block + inline elements, no scripts/embeds/forms) **and a curated safe-SVG profile** — shape, gradient, pattern, clip/mask, text, and filter-primitive elements — so inline icons (`innerHTML="<svg>…</svg>"`) render instead of being stripped to blank.
 - **Strips** event handler attributes (`onclick`, `onerror`, etc.).
-- **Blocks** `javascript:` and `data:` URLs in `href`, `src`, `action`, and similar attributes.
-- Replaces unsafe elements with their text content.
+- **Blocks** `javascript:` and `data:` URLs in `href`, `src`, `action`, and similar attributes — including SVG's `xlink:href`.
+- **Excludes** the XSS-capable SVG elements: `<script>`, `<foreignObject>` (embeds arbitrary HTML), `<style>`, and SMIL animation elements (`<animate>` / `<set>` — the `attributeName="href"` animation-XSS vector).
+- Replaces any other unsafe element with its text content.
+
+For richer SVG (or a stricter policy), set a custom sanitizer via `setSanitizer` (e.g. DOMPurify).
 
 Safe tags include: `a`, `abbr`, `address`, `article`, `aside`, `b`, `blockquote`, `br`, `code`, `dd`, `del`, `details`, `div`, `dl`, `dt`, `em`, `figcaption`, `figure`, `footer`, `h1`-`h6`, `header`, `hr`, `i`, `ins`, `kbd`, `li`, `main`, `mark`, `nav`, `ol`, `p`, `pre`, `q`, `s`, `section`, `small`, `span`, `strong`, `sub`, `summary`, `sup`, `table`, `tbody`, `td`, `tfoot`, `th`, `thead`, `time`, `tr`, `u`, `ul`, `var`, `wbr`, and more.
 
