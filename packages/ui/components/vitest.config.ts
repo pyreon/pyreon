@@ -17,7 +17,7 @@ export default defineNodeConfig({
   // BELOW_FLOOR_EXEMPTIONS. This is a RATCHET: every Phase-1+ test that mounts
   // a component lifts functions/lines fast — raise these + the exemption in
   // lockstep as coverage climbs, never lower them.
-  coverageThresholds: { statements: 49, branches: 72, functions: 16, lines: 50 },
+  coverageThresholds: { statements: 62, branches: 75, functions: 37, lines: 61 },
   overrides: {
     // oxc transformer JSX config — these UI packages use Pyreon's JSX
     // import source rather than React's default.
