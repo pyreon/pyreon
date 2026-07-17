@@ -1,3 +1,15 @@
+export {
+  AccordionBase,
+  type AccordionBaseProps,
+  AccordionContentBase,
+  type AccordionContentBaseProps,
+  AccordionItemBase,
+  type AccordionItemBaseProps,
+  AccordionTriggerBase,
+  type AccordionTriggerBaseProps,
+  useAccordion,
+  useAccordionItem,
+} from './AccordionBase'
 export { CalendarBase, type CalendarBaseProps, type CalendarDate, type CalendarDay, type CalendarState } from './CalendarBase'
 export { CheckboxBase, type CheckboxBaseProps } from './CheckboxBase'
 export { ColorPickerBase, type ColorPickerBaseProps, type ColorPickerState } from './ColorPickerBase'
