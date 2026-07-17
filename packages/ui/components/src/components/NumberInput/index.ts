@@ -1,21 +1,43 @@
+import { NumberInputBase } from '@pyreon/ui-primitives'
 import { disabledState, el, focusRingTone } from '../../factory'
 
+/**
+ * NumberInput — a WAI-ARIA spinbutton that delegates ALL behavior + a11y to
+ * `NumberInputBase` and adds only styling (the primitive-first rule).
+ *
+ * It was previously a lie: `.attrs({ tag: 'input' })` omitted `type: 'number'`,
+ * so `min`/`max`/`step` — which it went to the trouble of DECLARING — reached a
+ * TEXT input, where the browser silently ignores them. No stepping, no
+ * clamping, no keyboard, no ARIA. Typing "abc" was accepted.
+ *
+ * The primitive renders a text input with `role="spinbutton"` +
+ * `inputmode="decimal"` rather than `<input type="number">` — native number
+ * inputs have unstylable spinners (this library styles everything through
+ * rocketstyle), mutate silently on wheel-scroll, format inconsistently across
+ * browsers, and give no control over `aria-valuetext`. That's the same call
+ * Mantine/Ark/Radix make.
+ *
+ * Free from the primitive: ArrowUp/Down (±step, snapped to the step grid),
+ * PageUp/Down (±largeStep), Home/End (min/max, when finite), clamping,
+ * step/precision with float-drift protection (0.2 + 0.1 → exactly 0.3), and
+ * `aria-valuenow`/`valuemin`/`valuemax`.
+ *
+ * ```tsx
+ * <NumberInput min={0} max={10} step={0.5} value={qty()} onChange={qty.set} />
+ * ```
+ *
+ * For +/- spinner buttons, drive them from the primitive's render-fn state —
+ * `state.increment` / `state.decrement`, disabled on `!state.canIncrement()` /
+ * `!state.canDecrement()`.
+ *
+ * NOTE: no `.attrs()` — with `component: NumberInputBase`, Element is no longer
+ * the rendered component, so Element layout props (tag/block) would forward
+ * through `rest` onto the input as junk DOM attributes. Layout is CSS here.
+ */
 const NumberInput = el
-  .config({ name: 'NumberInput' })
-  .attrs<{
-    placeholder?: string
-    type?: string
-    value?: string | number
-    min?: number
-    max?: number
-    step?: number
-    onInput?: (e: Event) => void
-    onChange?: (e: Event) => void
-    disabled?: boolean
-    readOnly?: boolean
-    name?: string
-  }>({ tag: 'input', block: true })
+  .config({ name: 'NumberInput', component: NumberInputBase })
   .theme((t) => ({
+    display: 'block',
     width: '100%',
     backgroundColor: t.color.system.light.base,
     color: t.color.system.dark[800],
