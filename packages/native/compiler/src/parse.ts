@@ -3761,6 +3761,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useBiometrics') {
     return { kind: 'biometrics', name }
   }
+  // M3.4 — `const picker = useImagePicker()` → the platform photo picker (iOS
+  // PHPickerViewController, Android PickVisualMedia). Its `pick()` returns a
+  // Promise<string | null>, so consumers `await picker.pick()` inside an
+  // `async` handler — the second async-result service after useBiometrics.
+  // Needs NO photo-library permission (both system pickers run out of process).
+  // No arguments at construction.
+  if (calleeName === 'useImagePicker') {
+    return { kind: 'image-picker', name }
+  }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
@@ -5858,6 +5867,7 @@ function warnIfHookInsideRenderCallback(
     'useLinking',
     'useNotifications',
     'useBiometrics',
+    'useImagePicker',
     'useColorScheme',
     'useSizeClass',
     'usePermissions',

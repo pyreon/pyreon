@@ -1987,6 +1987,14 @@ function emitSwiftDecl(
   if (d.kind === 'biometrics') {
     return `@State private var ${swiftIdent(d.name)} = PyreonBiometrics()`
   }
+  // M3.4: `const picker = useImagePicker()` → an @State PyreonImagePicker.
+  // `pick()` is async (consumers `await picker.pick()` inside an `async`
+  // handler — the M4.5 Task {} wrap). PHPickerViewController presents itself
+  // from the key window, so — unlike Android — the iOS side needs no
+  // launcher/Context plumbing at the call site.
+  if (d.kind === 'image-picker') {
+    return `@State private var ${swiftIdent(d.name)} = PyreonImagePicker()`
+  }
   // Gap 4 PR-3: `const i18n = createI18n({...})` → @State PyreonI18n.
   // Method `i18n.t(key)` flows through unchanged (PyreonI18n.t(_:)
   // is defined on the runtime container). Read access to `i18n.locale`

@@ -162,6 +162,20 @@ export function conditionalKotlinImports(emitted: string): string {
   // unresolved reference (same stub-masked class as the fetch imports +
   // the phantom pyreonIcon). The icons showcase's `color="primary"`
   // header was the first real-build Color() in any example.
+  // M3.4 image picker: the emit wires a composable-scope ActivityResult
+  // launcher (`picker.launcher = rememberLauncherForActivityResult(
+  // ActivityResultContracts.PickVisualMedia()) { … }`). BOTH symbols live in
+  // androidx.activity (`.compose` / `.result.contract`) — outside every
+  // star-imported package, and the kotlinc validate loop's stubs would resolve
+  // them regardless, so ONLY a real gradle build surfaces a missing import.
+  // Added proactively per the M2.5 lesson (check the trap while probing rather
+  // than waiting for the device gate to go red).
+  if (emitted.includes('rememberLauncherForActivityResult(')) {
+    imports.push('import androidx.activity.compose.rememberLauncherForActivityResult')
+  }
+  if (emitted.includes('ActivityResultContracts.')) {
+    imports.push('import androidx.activity.result.contract.ActivityResultContracts')
+  }
   if (emitted.includes('Color(')) {
     imports.push('import androidx.compose.ui.graphics.Color')
   }

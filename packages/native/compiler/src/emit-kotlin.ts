@@ -1664,6 +1664,30 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
   if (d.kind === 'biometrics') {
     return `val ${kotlinIdent(d.name)} = remember { PyreonBiometrics() }`
   }
+  // M3.4: `const picker = useImagePicker()` → a remembered PyreonImagePicker
+  // PLUS a composable-scope ActivityResult launcher wired into it.
+  //
+  // Why the launcher can't live inside the runtime container (the iOS/Android
+  // asymmetry): Android delivers a picked asset through the ActivityResult
+  // callback, and registering for it requires an ActivityResultCaller at
+  // COMPOSITION time — `rememberLauncherForActivityResult` is a @Composable, so
+  // it MUST be called here at composable scope, not from inside `remember {}`
+  // (registering post-RESUMED throws). The container therefore exposes a
+  // settable `launcher` and bridges callback→suspend internally, so `pick()`
+  // keeps the same `suspend fun (): String?` shape as Swift's `async`.
+  //
+  // The assignment re-runs on recomposition, which is harmless:
+  // rememberLauncherForActivityResult returns the SAME instance across
+  // recompositions, so this re-assigns an identical reference.
+  if (d.kind === 'image-picker') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id} = remember { PyreonImagePicker() }`,
+      `${id}.launcher = rememberLauncherForActivityResult(`,
+      `    ActivityResultContracts.PickVisualMedia()`,
+      `  ) { uri -> ${id}.onResult(uri?.toString()) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'share') {
     const id = kotlinIdent(d.name)
     return [

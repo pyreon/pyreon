@@ -181,6 +181,35 @@ class CounterInstrumentedTest {
     //       "Lock: denied".
     // `waitUntil` bridges the coroutine dispatch — a dropped async scope (or a
     // flip that never re-rendered) would leave "Lock: idle".
+    // M3.4 — the image picker's composable-scope launcher registers and the app
+    // renders, on a REAL emulator.
+    //
+    // WHAT THIS PROVES (and it is the load-bearing half of the Android emit):
+    // `useImagePicker()` emits `picker.launcher = rememberLauncherForActivityResult(
+    // ActivityResultContracts.PickVisualMedia()) { … }` at COMPOSITION scope.
+    // ActivityResult registration is exactly where this shape fails — registering
+    // once the host is RESUMED throws, and a mis-wired call crashes the activity
+    // at composition. So "the counter composes and Photo: idle is displayed"
+    // means the launcher registered cleanly against a real ComponentActivity.
+    //
+    // WHAT IT DELIBERATELY DOES NOT DO: tap Pick Photo. Unlike iOS's PHPicker
+    // (an in-process sheet XCUITest can drive and dismiss — see
+    // `test_imagePickerPresentsAndCancelFlowsBackOnDevice`, which asserts the
+    // full present→cancel→"Photo: cancelled" round trip), Android's
+    // PickVisualMedia launches a SEPARATE system activity that the Compose test
+    // framework cannot reach or dismiss — it would leave the app backgrounded
+    // (the Android form of the modal-wedge that cascades launch failures) and,
+    // on an AOSP emulator image without the photo-picker module, could
+    // ActivityNotFound outright. Driving it needs UiAutomator, which is not
+    // worth destabilising a REQUIRED device gate for. So the honest split is:
+    // iOS = full behavioural round trip; Android = registration + render.
+    @Test
+    fun imagePickerLauncherRegistersOnDevice() {
+        composeRule.onNodeWithText("Photo: idle").assertIsDisplayed()
+        // The trigger exists and is reachable — the button the launcher backs.
+        composeRule.onNodeWithText("Pick Photo").assertIsDisplayed()
+    }
+
     @Test
     fun biometricAsyncGateRunsOnDevice() {
         composeRule.onNodeWithText("Lock: idle").assertIsDisplayed()

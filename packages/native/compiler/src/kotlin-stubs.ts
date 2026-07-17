@@ -747,6 +747,55 @@ class PyreonBiometrics {
   suspend fun authenticate(reason: String): Boolean = false
 }
 
+// M3.4: the photo-picker container + the androidx.activity ActivityResult
+// surface the emit wires into it. STUB FIDELITY (a superset stub MASKS the bug
+// it exists to catch): \`pick()\` returns String? (nil = cancelled) so an emit
+// that drops the optionality fails here; \`ActivityResultLauncher<I>\` is
+// generic in its input so \`rememberLauncherForActivityResult\`'s contract type
+// must line up; \`ImageOnly\` is nested DIRECTLY in PickVisualMedia (not its
+// companion), matching real androidx.
+class PyreonImagePicker {
+  var launcher: ActivityResultLauncher<PickVisualMediaRequest>? = null
+  fun onResult(uri: String?) {}
+  suspend fun pick(): String? = null
+}
+
+class ActivityResultLauncher<I> {
+  fun launch(input: I) {}
+}
+
+class PickVisualMediaRequest
+
+class ActivityResultContracts {
+  class PickVisualMedia {
+    sealed interface VisualMediaType
+    object ImageOnly : VisualMediaType
+    object VideoOnly : VisualMediaType
+    object ImageAndVideo : VisualMediaType
+  }
+}
+
+// android.net.Uri — what PickVisualMedia actually hands the callback. Modeled
+// (rather than shortcutting the callback param to String?) so the emit's
+// \`uri?.toString()\` is checked against the REAL result type: a String? stub
+// would happily accept an emit that assumed the callback already yields a
+// String, which is exactly the divergence stub fidelity exists to prevent.
+class Uri {
+  override fun toString(): String = "content://stub"
+}
+
+// Real: @Composable fun <I, O> rememberLauncherForActivityResult(
+//   contract: ActivityResultContract<I, O>, onResult: (O) -> Unit
+// ): ManagedActivityResultLauncher<I, O>. Modeled with the contract as the
+// PickVisualMedia class + its real Uri? result — the only instantiation the
+// emit produces.
+@Composable
+@Suppress("UNUSED_PARAMETER")
+fun rememberLauncherForActivityResult(
+  contract: ActivityResultContracts.PickVisualMedia,
+  onResult: (Uri?) -> Unit,
+): ActivityResultLauncher<PickVisualMediaRequest> = ActivityResultLauncher()
+
 // PyreonForm — mirror of @pyreon/native-runtime-kotlin's PyreonForm.kt
 // v2 surface (form-binding arc): MutableState maps + validators +
 // onSubmit + the web-parity setFieldValue / submit / handleSubmit.

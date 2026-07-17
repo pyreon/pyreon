@@ -322,6 +322,35 @@ describe('@pyreon/native-cli build', () => {
     }
   })
 
+  it('Kotlin conditional imports: the image-picker launcher pulls its androidx.activity imports (M3.4)', () => {
+    // M3.4: `useImagePicker()` emits a composable-scope launcher —
+    // `picker.launcher = rememberLauncherForActivityResult(
+    //  ActivityResultContracts.PickVisualMedia()) { … }`. BOTH symbols live in
+    // androidx.activity (`.compose` / `.result.contract`), outside every
+    // star-imported package. Same masked class as isSystemInDarkTheme below:
+    // the kotlinc validate stubs resolve them regardless, so only a REAL
+    // `gradle assembleDebug` would surface a missing import — added proactively
+    // per the M2.5 lesson rather than waiting for a red device gate. Bisect
+    // site: the two branches in conditionalKotlinImports.
+    const withPicker = conditionalKotlinImports(
+      'picker.launcher = rememberLauncherForActivityResult(\n' +
+        '    ActivityResultContracts.PickVisualMedia()\n' +
+        '  ) { uri -> picker.onResult(uri?.toString()) }',
+    )
+    expect(withPicker).toContain(
+      'import androidx.activity.compose.rememberLauncherForActivityResult',
+    )
+    expect(withPicker).toContain(
+      'import androidx.activity.result.contract.ActivityResultContracts',
+    )
+
+    // An emit with no picker must NOT carry them (the imports are conditional,
+    // not unconditional bloat on every Android app).
+    const withoutPicker = conditionalKotlinImports('val count = remember { mutableStateOf(0) }')
+    expect(withoutPicker).not.toContain('androidx.activity.compose')
+    expect(withoutPicker).not.toContain('androidx.activity.result')
+  })
+
   it('Kotlin conditional imports: isSystemInDarkTheme pulls its foundation import (M2.5, device-found)', () => {
     // Device-found (M2.5 dark mode): `useColorScheme()` emits
     // `if (isSystemInDarkTheme()) "dark" else "light"`, but isSystemInDarkTheme

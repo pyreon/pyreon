@@ -559,6 +559,74 @@ final class PyreonCounterUITests: XCTestCase {
     // A dropped async scope (an un-wrapped `await` in a sync closure) would not
     // compile; a lowering that ran the flip OUTSIDE/BEFORE the await would leave
     // "idle". Because the gate never prompts here, no modal can wedge the sim.
+    /// M3.4 — the system photo picker presents, and its async result flows back
+    /// across the sheet dismissal into a re-render.
+    ///
+    /// Drives the CANCEL path deliberately: picking a real asset would depend
+    /// on the Simulator's seeded photo library (which varies by Xcode version
+    /// and runtime image), whereas Cancel is available on every one — the same
+    /// determinism argument as the biometric gate's unenrolled→denied path.
+    /// Cancelling still proves the whole chain: PHPickerViewController
+    /// presented, the delegate resumed the continuation with nil, the awaited
+    /// Task resumed, and the post-await signal flip re-rendered.
+    func test_imagePickerPresentsAndCancelFlowsBackOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // (1) Initial state — the async handler has not run yet.
+        XCTAssertTrue(
+            app.staticTexts["Photo: idle"].waitForExistence(timeout: 30),
+            "Expected the initial \"Photo: idle\" — the photoStatus signal was "
+                + "not seeded (or the Photo text was dropped from the emit)"
+        )
+
+        // (2) Tap Pick Photo → the async Task runs and PHPicker presents.
+        let pick = app.buttons["Pick Photo"]
+        XCTAssertTrue(pick.exists, "Pick Photo button missing")
+        pick.tap()
+
+        // The presented PHPickerViewController is a system sheet, so its
+        // identifiers vary by iOS version — check several robust indicators.
+        let cancelButton = app.buttons["Cancel"]
+        let photosNavBar = app.navigationBars["Photos"]
+        let presented =
+            cancelButton.waitForExistence(timeout: 10)
+            || photosNavBar.waitForExistence(timeout: 5)
+        XCTAssertTrue(
+            presented,
+            "Tapping Pick Photo did not present the system photo picker — "
+                + "PyreonImagePicker failed to present a PHPickerViewController "
+                + "from the key window (or the async Task never ran)"
+        )
+
+        // (3) DISMISS the picker. Mandatory, not hygiene: an open system sheet
+        // blocks app termination, which wedges the Simulator and cascades
+        // launch-timeouts into every later test in the run — the exact CI flake
+        // this suite was fixed for. It is also the assertion itself: cancelling
+        // is what makes pick() resolve nil.
+        if cancelButton.exists {
+            cancelButton.tap()
+        } else {
+            // Fall back to swiping the sheet down if no Cancel is exposed.
+            app.swipeDown()
+        }
+
+        XCTAssertTrue(
+            app.staticTexts["Photo: cancelled"].waitForExistence(timeout: 10),
+            "\"Photo: cancelled\" never appeared after dismissing the picker — "
+                + "the PHPicker delegate did not resume the continuation with "
+                + "nil, so the awaited pick() hung and the post-await "
+                + "photoStatus re-render never fired. (A hung continuation is "
+                + "the exact failure the delegate's strong-retain guards.)"
+        )
+        // The old state must be gone — proves a real re-render, not an additive draw.
+        XCTAssertFalse(
+            app.staticTexts["Photo: idle"].exists,
+            "\"Photo: idle\" still present after the pick was cancelled — the "
+                + "post-await signal flip did not re-render inside the Task scope"
+        )
+    }
+
     func test_biometricAsyncGateRunsOnDevice() throws {
         let app = XCUIApplication()
         app.launch()

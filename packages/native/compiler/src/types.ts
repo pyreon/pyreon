@@ -349,6 +349,12 @@ export type DeclIR =
    * Android BiometricPrompt). `authenticate(reason?)` is async, awaited in an
    * `async` handler (the first consumer of the M4.5 `await` lowering). */
   | { kind: 'biometrics'; name: string }
+  /** M3.4 — `const picker = useImagePicker()` → PyreonImagePicker (iOS
+   * PHPickerViewController / Android PickVisualMedia). `pick()` is async and
+   * resolves a URI string or null (cancelled), awaited in an `async` handler
+   * (the M4.5 `await` lowering). Needs no photo-library permission — both
+   * system pickers run out of process. */
+  | { kind: 'image-picker'; name: string }
   /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode

@@ -8,7 +8,16 @@
 // SwiftUI's @State is a var, not a method).
 
 import { signal } from '@pyreon/reactivity'
-import { useHaptics, useShare, useLinking, useNotifications, useBiometrics, useSizeClass, useColorScheme } from '@pyreon/hooks'
+import {
+  useHaptics,
+  useShare,
+  useLinking,
+  useNotifications,
+  useBiometrics,
+  useImagePicker,
+  useSizeClass,
+  useColorScheme,
+} from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
 
@@ -32,6 +41,15 @@ export function Counter() {
   // the gate resolves `false` deterministically with NO system prompt, so the
   // observable outcome is "Lock: denied" — a clean, hang-free device assertion.
   const lockStatus = signal<string>('idle')
+  // M3.4 image-picker proof — the outcome of a photo pick, flipped from INSIDE
+  // an async handler (the second async-result service after biometrics). Starts
+  // "idle"; the Pick Photo button awaits `picker.pick()` and sets this to
+  // "picked"/"cancelled". The device gate drives the CANCEL path: the system
+  // photo sheet presents, the test dismisses it, and `pick()` resolves null →
+  // "Photo: cancelled". That single assertion proves three things at once — the
+  // picker PRESENTED, the async result flowed back across the sheet dismissal,
+  // and the post-await re-render fired.
+  const photoStatus = signal<string>('idle')
   // M3.1 platform-API proof — a haptic fires on each increment tap.
   // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
   // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
@@ -68,6 +86,16 @@ export function Counter() {
   // FragmentActivity is a tracked follow-up). Web: feature-detects
   // `PublicKeyCredential`, resolves false (WebAuthn ceremony needs a server).
   const bio = useBiometrics()
+  // M3.4 platform-API proof — the system photo picker. `pick()` returns a
+  // Promise<string | null> (a URI, or null when cancelled), so the Pick Photo
+  // handler is `async` and rides the same M4.5 `await` lowering as the
+  // biometric gate. Native: iOS `PyreonImagePicker().pick()`
+  // (PHPickerViewController presented from the key window); Android
+  // `PyreonImagePicker()` + a composable-scope `rememberLauncherForActivityResult`
+  // wired to `PickVisualMedia`. Web: a hidden `<input type="file">`. NO
+  // photo-library permission on either platform — both system pickers run out
+  // of process and hand back only the picked asset.
+  const picker = useImagePicker()
   // M2.2 adaptive proof — the current horizontal size class, read reactively.
   // Native: iOS `@Environment(\.horizontalSizeClass)` → "compact"/"regular",
   // Android `LocalConfiguration.current.screenWidthDp >= 600`. Web:
@@ -125,6 +153,7 @@ export function Counter() {
       <Text>Greeting: {i18n.t('hello')}</Text>
       <Text>Power: {power()}</Text>
       <Text>Lock: {lockStatus()}</Text>
+      <Text>Photo: {photoStatus()}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
           DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
           rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
@@ -169,6 +198,20 @@ export function Counter() {
         }}
       >
         Unlock
+      </Button>
+      {/* M3.4 image-picker device proof — a second ASYNC handler, awaiting the
+          system photo picker. Compare `uri === null` explicitly rather than
+          testing truthiness: JS truthiness is not a native Bool, and the
+          explicit null comparison is what PMTC lowers to `uri == nil` (Swift) /
+          `uri == null` (Kotlin). The device gate taps this, dismisses the
+          presented sheet, and asserts "Photo: cancelled". */}
+      <Button
+        onClick={async () => {
+          const uri = await picker.pick()
+          photoStatus.set(uri === null ? 'cancelled' : 'picked')
+        }}
+      >
+        Pick Photo
       </Button>
       <Button onClick={() => power.send('TOGGLE')}>Toggle Power</Button>
       <Button onClick={() => boxVisible.set(!boxVisible())}>Toggle Box</Button>
