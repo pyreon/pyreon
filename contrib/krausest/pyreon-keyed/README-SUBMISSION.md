@@ -6,8 +6,17 @@ Submitting it upstream is the one step that resolves the documented
 author-judge limit on Pyreon's own benchmark claims (see CLAUDE.md
 "Benchmark Results — honest limits").
 
-It uses ONLY published npm packages (`@pyreon/*@^0.38.0`) — no workspace
+It uses ONLY published npm packages (`@pyreon/*@^0.48.0`) — no workspace
 references — so it builds standalone inside the upstream repo.
+
+**Keep this pin current before submitting.** `^0.x.y` locks the MINOR (npm
+caret semantics for 0.x), so a stale pin does not drift forward on its own —
+it silently submits an OLD Pyreon and gets it published as our independent
+number. This was staged at `^0.38.0` and sat unrefreshed through ten releases
+(0.38 → 0.48), which would have had krausest measure a Pyreon predating, among
+others, the `remove` fast path (#2288) and the anchor-registry retained fix
+(#2003) — i.e. worse than shipped code, permanently, under our own name.
+Re-pin + re-verify (below) as part of submitting.
 
 ## Steps (manual — an external PR must be a human decision)
 
@@ -16,7 +25,10 @@ references — so it builds standalone inside the upstream repo.
    `frameworks/keyed/pyreon/` in the fork.
 3. From the fork root, follow their contribution docs (README + wiki):
    `npm ci` at the root, then in `frameworks/keyed/pyreon/`:
-   `npm ci && npm run build-prod`.
+   `npm install && npm run build-prod`.
+   (`npm install`, NOT `npm ci` — no `package-lock.json` is committed here, and
+   `npm ci` requires one. Generate the lock in the fork; that is also where it
+   belongs, since the lock should pin against the upstream repo's tree.)
 4. Smoke it: serve the repo root (`npm start`) and open
    `http://localhost:8080/frameworks/keyed/pyreon/` — every button must
    work, selection must highlight via the `danger` row class, remove via
