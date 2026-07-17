@@ -75,16 +75,26 @@ throughput; per-render app creation; framework-independent correctness gate.
 
 | rows | **Pyreon** | react-dom 19 | vue 3.5 | svelte 5 |
 | --- | --- | --- | --- | --- |
-| 10 | **★ 2.51µs** | 9.08µs | 3.28µs | 3.00µs |
-| 100 | **19.2µs** | 61.3µs | ★ 17.0µs | 18.6µs |
-| 1000 | **184.7µs** | 627.5µs | ★ 148.9µs | 175.3µs |
+| 10 | **★ 1.99µs** | 10.09µs | 3.16µs | 2.76µs |
+| 100 | **★ 15.56µs** | 60.67µs | 16.63µs | 18.56µs |
+| 1000 | **★ 137.9µs** | 628.8µs | 🤝 140.6µs | 175.2µs |
 
-Honest reading: **Pyreon is the fastest of all five frameworks at small N**
-(the dominant real-world page shape) after the fused keyed-`<For>` emit —
-a `<For>` child no longer bails its parent template to the VNode walk, and
-rows render through one fused keyed loop. At 100–1000 rows Pyreon renders
-**3.2–3.4× faster than React**, ahead of Svelte at 1000, and sits
-**1.13–1.24× behind Vue** — the last SSR residual, actively being profiled.
+(median µs/render, 3 processes pooled per cell, CI95, randomized cell order,
+8 rotated datasets, correctness-gated. `🤝` = CI95 overlaps the fastest, i.e.
+a tie the numbers cannot separate.)
+
+Honest reading: **Pyreon is the fastest of the five at 10 and 100 rows** —
+outright, with CI95 clear of Vue — and **ties Vue at 1000 rows** (137.9 vs
+140.6µs, CI95 overlapping: a tie, not a win). It leads React 4.6–5.1× and
+Svelte 1.25–1.4× at every size. What got it here: each `<For>` row and
+`.map` item now compiles to one fused string concat (Vue's shape) instead of
+a per-item call + per-hole dispatch walk — worth ~29% at 1000 rows and
+turning a prior ~1.24× Vue deficit into a tie.
+
+The remaining 1000-row profile is now dominated by the same irreducible
+`escapeHtml` work Vue spends its time on, plus one honest architectural cost
+Vue does not pay: Pyreon emits a per-row `<!--k:KEY-->` hydration-key marker
+(~8% of self time at 1000 rows). That is a feature, not slack.
 
 A second, runtime-tree variant (`bun run bench:ssr-cross`) compares
 `renderToString` implementations on the same logical VNode/element tree
@@ -238,8 +248,8 @@ isolation, correctness gates):
 ## What we don't win (the standing list)
 
 Honesty section, kept current: retained memory is mid-pack (not leading);
-SSR at 100–1000 rows trails Vue ~1.13–1.24× (small-N is now a Pyreon win;
-Svelte is behind at 1000); Preact
+SSR at 1000 rows is a **tie** with Vue (CI95 overlapping) rather than a win —
+Pyreon leads outright only at 10 and 100 rows; Preact
 leads computed chain (~1.25×) and signal create (~1.4×) — both structurally
 priced (chain by the eager-push model whose lazy-pull alternative costs
 retained heap; create by the callable-signal API itself, a closure per
