@@ -17,6 +17,7 @@ export { ComboboxBase, type ComboboxBaseProps, type ComboboxOption, type Combobo
 export { FileUploadBase, type FileUploadBaseProps, type FileUploadState } from './FileUploadBase'
 export { ModalBase, type ModalBaseProps } from './ModalBase'
 export { PinInputBase, type PinInputBaseProps, type PinInputState } from './PinInputBase'
+export { SpoilerBase, type SpoilerBaseProps, type SpoilerState } from './SpoilerBase'
 export {
   NumberInputBase,
   type NumberInputBaseProps,

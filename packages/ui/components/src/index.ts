@@ -70,7 +70,7 @@ export {
   AccordionTrigger,
   AccordionContent,
 } from './components/Accordion'
-export { default as Spoiler } from './components/Spoiler'
+export { default as Spoiler, SpoilerToggle } from './components/Spoiler'
 
 // Date & Time
 export { default as Calendar } from './components/Calendar'
