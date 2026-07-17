@@ -292,8 +292,14 @@ function aggregateRepeated(runs: SuiteResult[][]): SuiteResult[] {
 interface FrameworkRun {
   suite: SuiteResult
   /**
-   * `performance.memory.usedJSHeapSize` read AFTER the suite completed
-   * and its own teardown cleaned the benchmark DOM, post 3 forced GCs.
+   * `performance.memory.usedJSHeapSize` read AFTER the suite completed and
+   * its own teardown cleaned the benchmark DOM, once the heap has SETTLED —
+   * GC + event-loop yield, repeated until the counter stops moving. The
+   * previous recipe (3 SYNCHRONOUS gc() calls, then read) never yielded, so
+   * reclamation that finishes on a later turn was still counted: it reported
+   * Pyreon at 2.90MB against a settled 2.23MB, inventing a ~32% gap vs Preact
+   * (which settles immediately, so its number is unchanged). Garbage awaiting
+   * collection is not "retained" — see the recipe below.
    * `null` when Chromium doesn't expose the counter. This captures the
    * framework runtime + any retention after full suite cleanup — it is
    * NOT the krausest "memory after create-1k rows" metric.
@@ -352,15 +358,40 @@ async function runOneFramework(
     // via the SAME `globalThis.gc` mechanism `runner.ts` uses (exposed
     // by --js-flags=--expose-gc), then read Chromium's heap counter —
     // precise (non-bucketed) thanks to --enable-precise-memory-info.
-    const retainedHeapBytes = await page.evaluate(() => {
+    const retainedHeapBytes = await page.evaluate(async () => {
       const gc = (globalThis as { gc?: () => void }).gc
-      if (gc) {
-        gc()
-        gc()
-        gc()
-      }
       const perf = performance as Performance & { memory?: { usedJSHeapSize?: number } }
-      return perf.memory?.usedJSHeapSize ?? null
+      const used = () => perf.memory?.usedJSHeapSize ?? null
+      if (!gc) return used()
+      // Three SYNCHRONOUS gc() calls do NOT settle the heap: some reclamation
+      // (weak callbacks, finalization, detached-node release) only completes on
+      // a LATER event-loop turn, so a synchronous read catches the page
+      // mid-collection and reports GARBAGE as "retained" — the opposite of what
+      // this metric claims to measure.
+      //
+      // Measured (2026-07-17, 3 runs): under the old 3x-synchronous recipe
+      // Pyreon read 2.90MB and settled at 2.23MB once given turns — 0.67MB of
+      // it was collectable garbage. Preact (2.19) and Solid (2.29→2.26) settle
+      // immediately, so the old recipe silently penalised ONLY the framework
+      // with deferred reclamation and manufactured a ~32% "gap" that does not
+      // exist. This is our own bench scoring our own framework wrong; the fix
+      // is uniform and helps whoever needs it.
+      //
+      // Recipe: GC, YIELD a macrotask, repeat until the counter stops moving
+      // (or a hard cap). Frameworks that settle immediately exit on the first
+      // comparison — their numbers are unchanged.
+      const STABLE_DELTA = 16 * 1024 // 16KB — below this, it's allocator noise
+      const MAX_ROUNDS = 12
+      let prev = Number.POSITIVE_INFINITY
+      for (let i = 0; i < MAX_ROUNDS; i++) {
+        gc()
+        await new Promise((r) => setTimeout(r, 50))
+        const cur = used()
+        if (cur === null) return null
+        if (prev - cur >= 0 && prev - cur < STABLE_DELTA) return cur
+        prev = cur
+      }
+      return used()
     })
 
     return { suite, retainedHeapBytes }
