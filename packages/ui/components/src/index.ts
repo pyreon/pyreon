@@ -89,7 +89,7 @@ export { default as ColorPicker } from './components/ColorPicker'
 export { default as ColorSwatch } from './components/ColorSwatch'
 export { default as InputGroup } from './components/InputGroup'
 export { default as NumberInput } from './components/NumberInput'
-export { default as PinInput } from './components/PinInput'
+export { default as PinInput, PinInputCell } from './components/PinInput'
 export { default as SegmentedControl, SegmentedControlItem } from './components/SegmentedControl'
 
 // Data
