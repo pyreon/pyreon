@@ -42,6 +42,20 @@ export type UseControllableState = <T>(
  * })
  */
 export const useControllableState: UseControllableState = ({ value, defaultValue, onChange }) => {
+  if (process.env.NODE_ENV !== 'production' && typeof value !== 'function') {
+    // The single most common misuse, and it is otherwise invisible: passing the
+    // VALUE (`value: own.checked`) reads the prop once at setup, so the
+    // component silently stops tracking its owner and never updates again.
+    // Without this guard the only symptom is a bare `value is not a function`
+    // TypeError from inside this file — untraceable to the call site, and too
+    // generic for the diagnose catalog to match on safely.
+    throw new TypeError(
+      '[Pyreon] useControllableState: `value` must be a GETTER, not a value — ' +
+        'pass `value: () => props.x`, not `value: props.x`. A value is read once at ' +
+        'setup, so the controlled prop would be frozen and the component would stop ' +
+        'tracking its owner.',
+    )
+  }
   const internal = signal(defaultValue)
   const isControlled = value() !== undefined
 

@@ -53,6 +53,16 @@ describe('useControllableState (canonical home: @pyreon/core)', () => {
     expect(value()).toBe(2)
   })
 
+  it('THROWS an actionable error when `value` is a value, not a getter', () => {
+    expect(() =>
+      // The single most common misuse. Without the guard this is either a bare
+      // `value is not a function` from inside core, or — for a hand-rolled
+      // equivalent — total silence: the prop is captured once and the component
+      // never tracks its owner again.
+      useControllableState({ value: false as unknown as () => boolean, defaultValue: true }),
+    ).toThrow(/must be a GETTER/)
+  })
+
   it('reads naturally alongside splitProps — the reason it belongs here', () => {
     const props = { checked: undefined as boolean | undefined, onChange: undefined, id: 'x' }
     const [own, rest] = splitProps(props, ['checked', 'onChange'])

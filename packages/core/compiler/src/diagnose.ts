@@ -29,6 +29,28 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // useControllableState given a VALUE where its contract requires a GETTER.
+    // The primitive throws this itself (dev-only) because the alternative is a
+    // bare `value is not a function` from inside core — or, worse, silence: any
+    // hand-rolled controlled/uncontrolled pattern that reads the prop eagerly
+    // captures it ONCE at setup, so the component stops tracking its owner and
+    // simply never updates again, with no error at all.
+    pattern: /useControllableState: `?value`? must be a GETTER/i,
+    diagnose: () => ({
+      cause:
+        '`useControllableState({ value: props.x })` passes the VALUE of the controlled prop. Components run ONCE in Pyreon, so an eager read captures whatever `props.x` was at setup and the component never sees the owner change it again — the controlled prop is frozen for the lifetime of the component. `value` is typed as a getter (`() => T | undefined`) precisely so the read happens lazily inside a reactive scope on every access.',
+      fix: 'Wrap the prop read in an accessor: `value: () => props.x` (or `() => own.x` after `splitProps`). This is the same rule as every other reactive read in Pyreon — the accessor is what makes it live.',
+      fixCode: `const [own, rest] = splitProps(props, ['checked', 'onChange'])
+const [checked, setChecked] = useControllableState({
+  value: () => own.checked,   // GETTER — not \`own.checked\`
+  defaultValue: false,
+  onChange: own.onChange,
+})`,
+      related:
+        '`useControllableState` lives in `@pyreon/core` (next to `splitProps`/`mergeProps`) and is re-exported from `@pyreon/hooks`; both import paths are the same function. Destructuring props (`const { checked } = props`) breaks reactivity for the same reason.',
+    }),
+  },
+  {
     // Hand-evaluated ssrTemplate output missing one of the runtime helpers.
     // The compile-to-string SSR fast path (default-on under vite-plugin)
     // emits calls to `_ssr` / `_ssrItem` / `_ssrChildren` / `_ssrForKeyed` /
