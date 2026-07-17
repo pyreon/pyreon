@@ -4167,6 +4167,24 @@ notifications.notify('Done', 'Your export is ready')`,
 - These are LOCAL notifications only — not push; there is no server/remote delivery.`,
   },
 
+  'hooks/useImagePicker': {
+    signature: 'useImagePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
+    example: `const picker = useImagePicker()
+const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
+
+<button onClick={async () => {
+  const uri = await picker.pick()
+  status.set(uri === null ? 'cancelled' : 'picked')
+}}>Pick a photo</button>`,
+    notes: `Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (\`PickVisualMedia\`), a hidden file input (web). The SECOND async-result hook (after \`useBiometrics\`): \`pick()\` returns a \`Promise<string | null>\` you \`await\`, resolving a URI string or \`null\` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift \`Task { … }\` / Kotlin \`pyreonAsyncScope.launch { … }\`. Requires NO photo-library permission on either native platform — both system pickers run out of process and hand back only the chosen asset, so there is no Info.plist usage description and no Android runtime permission to request. See also: useBiometrics, useShare.`,
+    mistakes: `- Testing the result for TRUTHINESS (\`uri ? … : …\`) instead of comparing to null (\`uri === null\`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to \`uri == nil\` (Swift) / \`uri == null\` (Kotlin), and it is also correct on the web (an empty-string URI is not a cancellation).
+- Calling \`picker.pick()\` WITHOUT \`await\` inside a plain (non-async) handler — it returns a \`Promise<string | null>\`, not a URI. Mark the handler \`async\` and \`await\` it (PMTC wraps that async handler in a native \`Task\`/coroutine scope; a sync action slot cannot await).
+- Treating the returned URI as a stable, persistable path. It is an opaque, platform-shaped, EPHEMERAL handle — a \`file://\` temp copy on iOS, a \`content://\` URI on Android, a \`blob:\` object URL on the web. Hand it to an image view or an upload; do not store it and expect it to resolve later.
+- Requesting a photo-library permission before calling \`pick()\`. Neither platform needs one — asking for it is a policy liability (App Store / Play review scrutiny) for zero benefit, and is exactly what the out-of-process pickers exist to avoid.
+- Expecting a cancellation to reject. It resolves \`null\`, so a \`try/catch\` around \`pick()\` will never see the cancel path — branch on the result instead.
+- Forgetting to revoke the web object URL when picking repeatedly in a long-lived view. The web fallback returns \`URL.createObjectURL(file)\`; call \`URL.revokeObjectURL(uri)\` once the image is no longer displayed if you pick many times, or the blobs accumulate for the page lifetime.`,
+  },
+
   'hooks/useBiometrics': {
     signature: 'useBiometrics() => { authenticate: (reason: string) => Promise<boolean>; isAvailable: () => boolean }',
     example: `const bio = useBiometrics()

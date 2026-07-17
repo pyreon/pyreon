@@ -183,6 +183,11 @@ public struct PyreonLinking { public init() {}; public func openUrl(_ u: String)
 public struct PyreonNotifications { public init() {}; public func notify(_ title: String, _ body: String) {} }
 // M3.5: authenticate is ASYNC — awaited inside a Task { … } (the M4.5 lowering).
 public struct PyreonBiometrics { public init() {}; public func authenticate(_ reason: String) async -> Bool { false } }
+// M3.4 photo picker. Mirrors PyreonImagePicker.swift's surface EXACTLY: pick()
+// is async and returns an OPTIONAL String (nil = cancelled), so an emit that
+// forgot the optionality (e.g. comparing the result to a bare String) fails
+// here rather than on the device gate.
+public struct PyreonImagePicker { public init() {}; public func pick() async -> String? { nil } }
 // Marker protocols the @Observable store/model emit conforms to — mirror
 // runtime-swift's PyreonStore.swift / PyreonModel.swift EXACTLY (empty,
 // AnyObject-bound so a final class can conform). The @Observable macro (from the

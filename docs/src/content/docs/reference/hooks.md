@@ -1,17 +1,17 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "47 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
+description: "48 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 47 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 48 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 47 signal-based hooks across 7 categories
+- 48 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion, useThemeValue, useSpacing, useRootSize
@@ -154,6 +154,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useShare`](#useshare) | hook | Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). |
 | [`useLinking`](#uselinking) | hook | Imperative external-link opener. |
 | [`useNotifications`](#usenotifications) | hook | Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). |
+| [`useImagePicker`](#useimagepicker) | hook | Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (`PickVisualMedia |
 | [`useBiometrics`](#usebiometrics) | hook | A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on t |
 
 ## API
@@ -1224,6 +1225,39 @@ notifications.notify('Done', 'Your export is ready')
 - These are LOCAL notifications only — not push; there is no server/remote delivery.
 
 **See also:** `useHaptics`
+
+---
+
+### useImagePicker `hook`
+
+```ts
+useImagePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }
+```
+
+Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (`PickVisualMedia`), a hidden file input (web). The SECOND async-result hook (after `useBiometrics`): `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO photo-library permission on either native platform — both system pickers run out of process and hand back only the chosen asset, so there is no Info.plist usage description and no Android runtime permission to request.
+
+**Example**
+
+```tsx
+const picker = useImagePicker()
+const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
+
+<button onClick={async () => {
+  const uri = await picker.pick()
+  status.set(uri === null ? 'cancelled' : 'picked')
+}}>Pick a photo</button>
+```
+
+**Common mistakes**
+
+- Testing the result for TRUTHINESS (`uri ? … : …`) instead of comparing to null (`uri === null`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to `uri == nil` (Swift) / `uri == null` (Kotlin), and it is also correct on the web (an empty-string URI is not a cancellation).
+- Calling `picker.pick()` WITHOUT `await` inside a plain (non-async) handler — it returns a `Promise<string | null>`, not a URI. Mark the handler `async` and `await` it (PMTC wraps that async handler in a native `Task`/coroutine scope; a sync action slot cannot await).
+- Treating the returned URI as a stable, persistable path. It is an opaque, platform-shaped, EPHEMERAL handle — a `file://` temp copy on iOS, a `content://` URI on Android, a `blob:` object URL on the web. Hand it to an image view or an upload; do not store it and expect it to resolve later.
+- Requesting a photo-library permission before calling `pick()`. Neither platform needs one — asking for it is a policy liability (App Store / Play review scrutiny) for zero benefit, and is exactly what the out-of-process pickers exist to avoid.
+- Expecting a cancellation to reject. It resolves `null`, so a `try/catch` around `pick()` will never see the cancel path — branch on the result instead.
+- Forgetting to revoke the web object URL when picking repeatedly in a long-lived view. The web fallback returns `URL.createObjectURL(file)`; call `URL.revokeObjectURL(uri)` once the image is no longer displayed if you pick many times, or the blobs accumulate for the page lifetime.
+
+**See also:** `useBiometrics` · `useShare`
 
 ---
 

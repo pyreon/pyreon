@@ -411,6 +411,53 @@ abstract class WebSocketListener {
 }
 `
 
+// PyreonImagePicker-specific stubs — the androidx.activity ActivityResult
+// surface the Android Photo Picker is driven through.
+//
+// STUB FIDELITY (the load-bearing rule — a stub that is a SUPERSET of the real
+// library MASKS the exact bug it exists to catch): these mirror the REAL
+// androidx.activity signatures. `ActivityResultLauncher<I>` is an abstract
+// class (not an interface) whose `launch(input: I)` is the single-arg overload;
+// `PickVisualMediaRequest` is BOTH a class and a same-named builder FUNCTION
+// taking a `VisualMediaType`; `ImageOnly` is an object implementing that
+// interface, nested under `ActivityResultContracts.PickVisualMedia`. Getting
+// any of those shapes wrong here would let a mis-typed launch() call through.
+const ANDROIDX_ACTIVITY_RESULT_STUBS = `package androidx.activity.result
+
+import androidx.activity.result.contract.ActivityResultContracts
+
+abstract class ActivityResultLauncher<I> {
+  @Suppress("UNUSED_PARAMETER")
+  fun launch(input: I) {}
+}
+
+class PickVisualMediaRequest
+
+@Suppress("UNUSED_PARAMETER", "FunctionName")
+fun PickVisualMediaRequest(
+  mediaType: ActivityResultContracts.PickVisualMedia.VisualMediaType =
+    ActivityResultContracts.PickVisualMedia.ImageAndVideo,
+): PickVisualMediaRequest = PickVisualMediaRequest()
+`
+
+// Mirrors the REAL androidx.activity nesting: VisualMediaType is a SEALED
+// interface and ImageOnly/VideoOnly/ImageAndVideo are objects nested DIRECTLY
+// in PickVisualMedia (NOT in its companion — a companion-nested object would
+// resolve as PickVisualMedia.Companion.ImageOnly and silently diverge from the
+// real call site). kotlinc rejected the first draft of this stub for exactly
+// that, which is the stub-fidelity rule earning its keep.
+const ANDROIDX_ACTIVITY_CONTRACT_STUBS = `package androidx.activity.result.contract
+
+class ActivityResultContracts {
+  class PickVisualMedia {
+    sealed interface VisualMediaType
+    object ImageOnly : VisualMediaType
+    object VideoOnly : VisualMediaType
+    object ImageAndVideo : VisualMediaType
+  }
+}
+`
+
 const KOTLINX_COROUTINES_STUBS = `package kotlinx.coroutines
 
 import kotlin.coroutines.CoroutineContext
@@ -455,6 +502,53 @@ fun CoroutineScope.launch(block: suspend CoroutineScope.() -> Unit): Job {
 
 @Suppress("UNUSED_PARAMETER")
 suspend fun delay(timeMillis: Long) { /* no-op stub */ }
+
+// CompletableDeferred — PyreonImagePicker's callback-to-suspend bridge. Real
+// shape: \`Deferred<T> : Job\` with \`suspend fun await(): T\`;
+// \`CompletableDeferred<T> : Deferred<T>\` adds \`complete(value: T): Boolean\`
+// (false when already completed); the same-named FUNCTION is the factory.
+//
+// Unlike the no-op \`launch\`/\`delay\` stubs above, this one is FUNCTIONAL:
+// the picker's whole contract is "launch, suspend, resume when the
+// ActivityResult callback fires", and a no-op await could not exercise it. It
+// is built on kotlin-stdlib coroutine primitives only (suspendCoroutine), so it
+// stays dependency-free like the rest of this harness.
+interface Deferred<T> : Job {
+  suspend fun await(): T
+}
+
+interface CompletableDeferred<T> : Deferred<T> {
+  fun complete(value: T): Boolean
+}
+
+private val NOT_COMPLETED = Any()
+
+private class CompletableDeferredImpl<T> : CompletableDeferred<T> {
+  private var settled: Any? = NOT_COMPLETED
+  private var waiter: kotlin.coroutines.Continuation<T>? = null
+
+  override fun cancel() {}
+
+  override fun complete(value: T): Boolean {
+    if (settled !== NOT_COMPLETED) return false
+    settled = value
+    val pending = waiter
+    waiter = null
+    pending?.resumeWith(Result.success(value))
+    return true
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  override suspend fun await(): T =
+    kotlin.coroutines.suspendCoroutine { cont ->
+      if (settled !== NOT_COMPLETED) cont.resumeWith(Result.success(settled as T))
+      else waiter = cont
+    }
+}
+
+@Suppress("UNUSED_PARAMETER", "FunctionName")
+fun <T> CompletableDeferred(parent: Job? = null): CompletableDeferred<T> =
+  CompletableDeferredImpl()
 `
 
 const tempDir = mkdtempSync(join(tmpdir(), 'pyreon-kotlin-runtime-verify-'))
@@ -483,6 +577,13 @@ try {
   const shareIntentPath = join(tempDir, 'AndroidContentShare.kt')
   if (SERVICE === 'PyreonShare') {
     writeFileSync(shareIntentPath, ANDROID_SHARE_STUBS, 'utf8')
+  }
+  const pickerResultPath = join(tempDir, 'AndroidxActivityResult.kt')
+  const pickerContractPath = join(tempDir, 'AndroidxActivityContract.kt')
+  if (SERVICE === 'PyreonImagePicker') {
+    writeFileSync(pickerResultPath, ANDROIDX_ACTIVITY_RESULT_STUBS, 'utf8')
+    writeFileSync(pickerContractPath, ANDROIDX_ACTIVITY_CONTRACT_STUBS, 'utf8')
+    writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
   }
   const linkingContentPath = join(tempDir, 'AndroidContentLinking.kt')
   const linkingNetPath = join(tempDir, 'AndroidNet.kt')
@@ -533,6 +634,12 @@ try {
   // PyreonHaptics-only stub source (the Compose hapticfeedback package).
   const hapticStubs = SERVICE === 'PyreonHaptics' ? [hapticFeedbackPath] : []
   const shareStubs = SERVICE === 'PyreonShare' ? [shareIntentPath] : []
+  // PyreonImagePicker: the androidx.activity ActivityResult surface + the
+  // coroutines stub (CompletableDeferred is its callback→suspend bridge).
+  const pickerStubs =
+    SERVICE === 'PyreonImagePicker'
+      ? [pickerResultPath, pickerContractPath, kotlinxCoroutinesPath]
+      : []
   const linkingStubs = SERVICE === 'PyreonLinking' ? [linkingContentPath, linkingNetPath] : []
   const notifStubs = SERVICE === 'PyreonNotifications' ? [notifAppPath, notifContentPath, notifOsPath, notifRPath, notifCorePath] : []
   // The OkHttp transport is an EXTENSION over the core container — its
@@ -551,6 +658,7 @@ try {
         ...clipboardStubs,
         ...hapticStubs,
         ...shareStubs,
+        ...pickerStubs,
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
@@ -565,6 +673,7 @@ try {
         ...clipboardStubs,
         ...hapticStubs,
         ...shareStubs,
+        ...pickerStubs,
         ...linkingStubs,
         ...notifStubs,
         ...okhttpExtras,
