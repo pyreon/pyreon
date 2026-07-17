@@ -1147,9 +1147,187 @@ function holeToString(h: unknown): string {
  * `RawHtml` (nested `_ssr`/`_ssrChildren` → `.value`), or a `Promise` (an async
  * text hole / nested async fast path → promotes the call, maybe-async).
  */
-export function _ssr(statics: readonly string[], ...holes: unknown[]): RawHtml | Promise<RawHtml> {
+export function _ssr(
+  statics: readonly string[],
+  a?: unknown,
+  b?: unknown,
+  c?: unknown,
+  d?: unknown,
+  e?: unknown,
+  f?: unknown,
+  ...rest: unknown[]
+): RawHtml | Promise<RawHtml> {
+  if (rest.length === 0) {
+    // oxlint-disable-next-line prefer-rest-params
+    const fast = _ssrFixed(statics, arguments.length - 1, a, b, c, d, e, f)
+    if (fast !== undefined) return new RawHtml(fast)
+  }
+  // oxlint-disable-next-line prefer-rest-params
+  const holes = _collectHoles(arguments.length - 1, a, b, c, d, e, f, rest)
   const r = _ssrConcat(statics, holes, 0, statics[0] ?? '')
   return typeof r === 'string' ? new RawHtml(r) : r.then((s) => new RawHtml(s))
+}
+
+/**
+ * All-string fast path shared by `_ssr` / `_ssrItem` — the reason both take
+ * POSITIONAL hole params instead of a rest array.
+ *
+ * WHY. A CPU profile of the fused keyed-`<For>` render at 1000 rows attributed
+ * ~21.6% of self time to the generic `_ssrConcat` walk, against a vue profile
+ * that is ~44% irreducible `escapeHtml` with no equivalent loop at all (vue's
+ * compiler emits one fused template literal per row). Removing the per-call
+ * rest-args array + the per-hole dispatch measured **~7% off the whole
+ * 1000-row render** (median 203.6 → 188.8 µs; 8/8 paired passes with the lead
+ * order alternated, both orders agreeing at +7.2% / +6.4%).
+ *
+ * MEASUREMENT NOTE, because this one is counter-intuitive and cost two wrong
+ * turns: an ISOLATED micro of this function reports the change as ~2% noise,
+ * i.e. it UNDERSTATES the real win. In a flat single-file micro JSC inlines
+ * the callee and escape-analyzes the rest array away for free; at the real
+ * call site — a cross-module function invoked from a closure inside
+ * `_ssrForKeyedFrom`'s loop — it actually materializes. Trust the whole-render
+ * A/B here, not a micro. (Two further micro traps, for whoever tries next: a
+ * `.length`-only sink lets JSC keep the result a lazy rope and elides the very
+ * work being timed; and calling the baseline as `fn(statics, ...holes)`
+ * charges it a spread the compiled emit never pays.)
+ *
+ * KEYED ON THE HOLE COUNT ACTUALLY PASSED (`arguments.length - 1`), never on
+ * `statics.length`. The two agree in every compiler-emitted call, but they are
+ * NOT the same contract, and the generic walk keys on the former: verified
+ * against the pre-change runtime, `_ssrItem(['a','b'], 'X', 'Y')` → `"aXbY"`
+ * (the surplus hole is appended with an empty static), while a
+ * `statics.length`-keyed fast path silently DROPS `'Y'`. Same reason every
+ * static is read as `statics[i] ?? ''` — that is what the generic walk does
+ * when `statics` is shorter than the holes imply. Unreachable from compiled
+ * output, but silent row corruption is not a thing to leave resting on "the
+ * emit can't produce it".
+ *
+ * Returns `undefined` — never a legitimate result, which is always a string
+ * (possibly `''`) — to mean "not eligible, take the generic walk": any
+ * non-string hole (a `RawHtml` from a nested `_ssr`, a `Promise` from an async
+ * subtree) or an arity past the fused arms falls through unchanged. So this is
+ * byte-identical by construction and the h()-walk equivalence contract is
+ * untouched.
+ *
+ * CALL SITES ARE UNCHANGED: the compiler already emits `_ssrItem(S, h0, h1, …)`
+ * positionally, so rest-vs-positional is purely a declaration-side choice — no
+ * compiler change, no emit change, no Rust-backend mirror, no fuzz-grammar
+ * change.
+ */
+function _ssrFixed(
+  statics: readonly string[],
+  n: number,
+  a: unknown,
+  b: unknown,
+  c: unknown,
+  d: unknown,
+  e: unknown,
+  f: unknown,
+): string | undefined {
+  switch (n) {
+    case 0:
+      return statics[0] ?? ''
+    case 1:
+      if (typeof a === 'string') return (statics[0] ?? '') + a + (statics[1] ?? '')
+      return undefined
+    case 2:
+      if (typeof a === 'string' && typeof b === 'string')
+        return (statics[0] ?? '') + a + (statics[1] ?? '') + b + (statics[2] ?? '')
+      return undefined
+    case 3:
+      if (typeof a === 'string' && typeof b === 'string' && typeof c === 'string')
+        return (
+          (statics[0] ?? '') + a + (statics[1] ?? '') + b + (statics[2] ?? '') + c + (statics[3] ?? '')
+        )
+      return undefined
+    case 4:
+      if (
+        typeof a === 'string' &&
+        typeof b === 'string' &&
+        typeof c === 'string' &&
+        typeof d === 'string'
+      )
+        return (
+          (statics[0] ?? '') +
+          a +
+          (statics[1] ?? '') +
+          b +
+          (statics[2] ?? '') +
+          c +
+          (statics[3] ?? '') +
+          d +
+          (statics[4] ?? '')
+        )
+      return undefined
+    case 5:
+      if (
+        typeof a === 'string' &&
+        typeof b === 'string' &&
+        typeof c === 'string' &&
+        typeof d === 'string' &&
+        typeof e === 'string'
+      )
+        return (
+          (statics[0] ?? '') +
+          a +
+          (statics[1] ?? '') +
+          b +
+          (statics[2] ?? '') +
+          c +
+          (statics[3] ?? '') +
+          d +
+          (statics[4] ?? '') +
+          e +
+          (statics[5] ?? '')
+        )
+      return undefined
+    case 6:
+      if (
+        typeof a === 'string' &&
+        typeof b === 'string' &&
+        typeof c === 'string' &&
+        typeof d === 'string' &&
+        typeof e === 'string' &&
+        typeof f === 'string'
+      )
+        return (
+          (statics[0] ?? '') +
+          a +
+          (statics[1] ?? '') +
+          b +
+          (statics[2] ?? '') +
+          c +
+          (statics[3] ?? '') +
+          d +
+          (statics[4] ?? '') +
+          e +
+          (statics[5] ?? '') +
+          f +
+          (statics[6] ?? '')
+        )
+      return undefined
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Cold path only: re-materialize the positional holes as the array
+ * `_ssrConcat` walks. Sized by `n` (holes actually passed) so a trailing
+ * `undefined` hole is preserved rather than truncated away.
+ */
+function _collectHoles(
+  n: number,
+  a: unknown,
+  b: unknown,
+  c: unknown,
+  d: unknown,
+  e: unknown,
+  f: unknown,
+  rest: readonly unknown[],
+): unknown[] {
+  if (rest.length > 0) return [a, b, c, d, e, f, ...rest]
+  return [a, b, c, d, e, f].slice(0, Math.max(0, n))
 }
 
 /**
@@ -1158,8 +1336,29 @@ export function _ssr(statics: readonly string[], ...holes: unknown[]): RawHtml |
  * (so it needs no trust-boundary brand) and its holes are all pre-stringified
  * (`_esc`/`_ssrAttr*`), so `_ssrChildren` concatenates the strings directly —
  * skipping the per-item `RawHtml` alloc + unwrap. Byte-identical to `_ssr`.
+ *
+ * This is the per-ROW hot path (one call per `<For>` item / `.map` item), so
+ * it takes POSITIONAL hole params rather than a rest array — see `_ssrFixed`
+ * for the profile + the A/B that named the per-call rest-args allocation as
+ * the dominant removable cost (~177 → ~134 ns/row).
  */
-export function _ssrItem(statics: readonly string[], ...holes: unknown[]): MaybeAsync {
+export function _ssrItem(
+  statics: readonly string[],
+  a?: unknown,
+  b?: unknown,
+  c?: unknown,
+  d?: unknown,
+  e?: unknown,
+  f?: unknown,
+  ...rest: unknown[]
+): MaybeAsync {
+  if (rest.length === 0) {
+    // oxlint-disable-next-line prefer-rest-params
+    const fast = _ssrFixed(statics, arguments.length - 1, a, b, c, d, e, f)
+    if (fast !== undefined) return fast
+  }
+  // oxlint-disable-next-line prefer-rest-params
+  const holes = _collectHoles(arguments.length - 1, a, b, c, d, e, f, rest)
   return _ssrConcat(statics, holes, 0, statics[0] ?? '')
 }
 
