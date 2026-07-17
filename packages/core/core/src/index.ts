@@ -17,6 +17,7 @@ export { defineCrossModuleState } from '@pyreon/reactivity'
 // Runtime environment detection (re-exported for discoverability — app code
 // typically imports from @pyreon/core). Defined in @pyreon/reactivity.
 export { isClient, isServer } from '@pyreon/reactivity'
+export { useControllableState, type UseControllableState } from './controllable-state'
 export { mapCompatDomProps, shallowEqualProps } from './compat-shared'
 export type { Context, ReactiveContext } from './context'
 export {

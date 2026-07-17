@@ -1,46 +1,19 @@
-import { signal } from '@pyreon/reactivity'
-
-type UseControllableStateOptions<T> = {
-  /** Reactive getter for controlled value. Pass `() => own.prop`. */
-  value: () => T | undefined
-  defaultValue: T
-  onChange?: ((value: T) => void) | undefined
-}
-
-export type UseControllableState = <T>(
-  options: UseControllableStateOptions<T>,
-) => [() => T, (next: T | ((prev: T) => T)) => void]
-
 /**
- * Unified controlled/uncontrolled state pattern.
+ * Re-exported from `@pyreon/core`, which is its canonical home: it is a PROPS
+ * primitive (it reads a props accessor and owns no lifecycle), it imports
+ * nothing but `signal`, and it is used in the same breath as core's
+ * `splitProps`/`mergeProps`.
  *
- * `value` MUST be a getter — this ensures the controlled value is read
- * lazily inside reactive scopes, preserving Pyreon's signal reactivity.
+ * Keeping the implementation here forced any consumer of the
+ * controlled/uncontrolled pattern to depend on `@pyreon/hooks` — which itself
+ * depends on `@pyreon/styler` + `@pyreon/ui-core`, dragging the UI-system
+ * styling layer and 40+ unrelated hooks along for ~20 lines. `@pyreon/elements`
+ * needs the pattern and sits BELOW those packages, so that edge would have
+ * inverted the layering.
  *
- * @example
- * const [checked, setChecked] = useControllableState({
- *   value: () => own.checked,
- *   defaultValue: false,
- *   onChange: own.onChange,
- * })
+ * This re-export keeps `@pyreon/hooks`' public API unchanged — the same
+ * cross-layer idiom `@pyreon/core` already uses for reactivity's
+ * `isClient`/`isServer`.
  */
-export const useControllableState: UseControllableState = ({ value, defaultValue, onChange }) => {
-  const internal = signal(defaultValue)
-  const isControlled = value() !== undefined
-
-  const getter = (): any => {
-    const v = value()
-    return v !== undefined ? v : internal()
-  }
-
-  const setValue = (next: any) => {
-    const current = getter()
-    const nextValue = typeof next === 'function' ? next(current) : next
-    if (!isControlled) internal.set(nextValue)
-    onChange?.(nextValue)
-  }
-
-  return [getter, setValue]
-}
-
-export default useControllableState
+export { useControllableState, type UseControllableState } from '@pyreon/core'
+export { useControllableState as default } from '@pyreon/core'
