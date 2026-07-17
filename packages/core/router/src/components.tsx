@@ -876,4 +876,13 @@ const DefaultChromeLayout: ComponentFn = () =>
 // returns the SAME fn with the marker applied.
 const _DefaultChromeLayout = /* @__PURE__ */ nativeCompat(DefaultChromeLayout)
 export { _DefaultChromeLayout as DefaultChromeLayout }
-_setDefaultChromeLayout(DefaultChromeLayout)
+// Register the PURE-call RESULT, not the bare `DefaultChromeLayout`. Under the
+// `/* @__PURE__ */` sweep, a bundle that never imports the `DefaultChromeLayout`
+// export can drop the `nativeCompat(...)` call — so registering the bare fn
+// would retain the body (the setter is a live side effect) but WITHOUT the
+// marker ever applied, silently registering an UNMARKED layout. Registering
+// `_DefaultChromeLayout` keeps the PURE call live (the body is retained either
+// way via this setter), so the marker is applied. Same object at runtime
+// (nativeCompat mutates + returns its arg), so this is a pure correctness fix
+// at zero bundle cost.
+_setDefaultChromeLayout(_DefaultChromeLayout)
