@@ -1,6 +1,7 @@
+import { For } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { Calendar, Title } from '@pyreon/ui-components'
-import type { CalendarDate, CalendarState } from '@pyreon/ui-primitives'
+import type { CalendarDate, CalendarDay, CalendarState } from '@pyreon/ui-primitives'
 
 export function CalendarDemo() {
   const selected = signal<CalendarDate | null>(null)
@@ -32,25 +33,49 @@ export function CalendarDemo() {
                 &gt;
               </button>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; margin-bottom: 8px;">
-              {state.weekdays().map((wd) => (
-                <div style="font-size: 12px; color: #9ca3af; padding: 4px;">{wd}</div>
-              ))}
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center;">
-              {() => state.days().flat().map((day) => (
-                <button
-                  onClick={() => state.select(day.date)}
-                  style={() => `
-                    padding: 8px 4px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
-                    background: ${state.isSelected(day.date) ? '#3b82f6' : state.isToday(day.date) ? '#eff6ff' : 'transparent'};
-                    color: ${state.isSelected(day.date) ? 'white' : !day.isCurrentMonth ? '#d1d5db' : '#374151'};
-                    font-weight: ${state.isToday(day.date) || state.isSelected(day.date) ? '600' : '400'};
-                  `}
-                >
-                  {day.date.day}
-                </button>
-              ))}
+            {/*
+              A REAL WAI-ARIA date grid. This demo used to render the days as
+              bare <button>s with NO getDayProps — so the grid had no
+              role=grid/row/columnheader/gridcell, no roving tabindex, no
+              aria-selected, and NO KEYBOARD NAVIGATION AT ALL, even though
+              CalendarBase implements the entire date-grid model. A screen
+              reader heard a pile of unlabelled numbers.
+
+              Rows use a keyed <For> so arrow keys re-render the day PROPS
+              (which are accessors) instead of re-creating 42 cells on every
+              keystroke. `getDayProps` carries role/aria-label/aria-selected/
+              tabIndex/onKeyDown/ref — the ref is what lets the primitive move
+              real DOM focus by date.
+            */}
+            <div {...state.gridProps()} style="display: flex; flex-direction: column; gap: 2px;">
+              <div {...state.rowProps} style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; margin-bottom: 4px;">
+                {state.weekdays().map((wd) => (
+                  <div {...state.columnHeaderProps} style="font-size: 12px; color: #9ca3af; padding: 4px;">{wd}</div>
+                ))}
+              </div>
+              <For
+                each={() => state.days()}
+                by={(week: CalendarDay[]) => `${week[0]!.date.year}-${week[0]!.date.month}-${week[0]!.date.day}`}
+              >
+                {(week: CalendarDay[]) => (
+                  <div {...state.rowProps} style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center;">
+                    {week.map((day) => (
+                      <button
+                        {...state.getDayProps(day)}
+                        onClick={() => state.select(day.date)}
+                        style={() => `
+                          padding: 8px 4px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+                          background: ${state.isSelected(day.date) ? '#3b82f6' : state.isToday(day.date) ? '#eff6ff' : 'transparent'};
+                          color: ${state.isSelected(day.date) ? 'white' : !day.isCurrentMonth ? '#d1d5db' : '#374151'};
+                          font-weight: ${state.isToday(day.date) || state.isSelected(day.date) ? '600' : '400'};
+                        `}
+                      >
+                        {day.date.day}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </For>
             </div>
           </div>
         )}

@@ -9,7 +9,7 @@ export default defineNodeConfig({
   // FileUpload/keyboard.ts largely unexercised). Below the ui floor
   // (80/75/80/80) → carried in check-coverage.ts BELOW_FLOOR_EXEMPTIONS.
   // Ratchet up as interaction tests land; never lower.
-  coverageThresholds: { statements: 72, branches: 64, functions: 72, lines: 76 },
+  coverageThresholds: { statements: 78, branches: 71, functions: 79, lines: 82 },
   overrides: {
     // oxc transformer JSX config — these UI packages use Pyreon's JSX
     // import source rather than React's default.
