@@ -1,4 +1,5 @@
 import { type Signal, onCleanup, signal, wrapSignal } from '@pyreon/reactivity'
+import { docHasUnsyncedTransport, whenDocSynced } from './crdt/doc-sync'
 import { type CrdtDoc, LOCAL_ORIGIN } from './crdt/types'
 
 /** Default map name when none is given — one logical store per map. */
@@ -26,6 +27,17 @@ export interface SyncedSignalOptions<T> {
    * (create-if-missing). If the key already exists — hydrated from persistence
    * or received from a peer — the existing CRDT value is the source of truth and
    * `initial` is ignored. This is the local-first convention.
+   *
+   * **The seed write is DEFERRED until first sync when a transport is attached**
+   * (issue #2380): a fresh peer no longer writes its default before the sync
+   * round-trip completes, so a peer's real value can never be clobbered by a
+   * default on a random-clientId tie-break. `initial` still shows immediately as
+   * the OPTIMISTIC local value; it is only WRITTEN to the CRDT once sync confirms
+   * the key is still absent (empty room). Attach the transport (and any
+   * persistence) BEFORE creating the synced signal for this guarantee. Residual:
+   * two FRESH peers seeding an EMPTY room with DIFFERENT `initial` values for the
+   * same key is an inherent conflict that still tie-breaks — gate app defaults
+   * behind `transport.synced` if that matters.
    */
   initial: T
 }
@@ -64,14 +76,11 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
   const { doc, key, initial } = options
   const map = doc.getMap(options.map ?? DEFAULT_MAP)
 
-  // Create-if-missing. The CRDT is authoritative: only seed when the key is
-  // absent, so a value already present (persisted / from a peer) is never
-  // clobbered by a fresh peer's default.
-  if (!map.has(key)) {
-    doc.transact(() => map.set(key, initial), LOCAL_ORIGIN)
-  }
-
-  const base = signal<T>(map.get(key) as T)
+  // OPTIMISTIC local value: show `initial` immediately when the key is locally
+  // absent, WITHOUT writing it to the CRDT yet — the CRDT write is the SEED,
+  // deferred below. If the key is already present (persisted / already-synced
+  // peer value), THAT value is authoritative and `initial` is ignored.
+  const base = signal<T>(map.has(key) ? (map.get(key) as T) : initial)
 
   // The ONE update path. Applies every change to `base` regardless of origin;
   // the signal's Object.is guard makes the local echo a no-op for scalars.
@@ -79,6 +88,31 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
     if (!changedKeys.has(key)) return
     base.set(map.get(key) as T)
   })
+
+  let disposed = false
+  let cancelSeed: (() => void) | undefined
+
+  // Create-if-missing SEED — the CRDT write. Only when the key is STILL absent
+  // (a value already present — persisted / from a peer — is never clobbered).
+  const seedIfAbsent = () => {
+    if (disposed || map.has(key)) return
+    doc.transact(() => map.set(key, initial), LOCAL_ORIGIN)
+  }
+  if (docHasUnsyncedTransport(doc)) {
+    // A transport is attached but has NOT finished its first sync — DEFER the
+    // seed (issue #2380). When sync completes, re-check `map.has(key)`: a peer
+    // value that arrived during sync has already been applied by the observer
+    // (populating `base`), so `seedIfAbsent` correctly SKIPS. Only a genuinely
+    // empty room seeds `initial`. The deferral is CANCELED on dispose so no write
+    // ever lands after teardown.
+    cancelSeed = whenDocSynced(doc, () => {
+      cancelSeed = undefined
+      seedIfAbsent()
+    })
+  } else {
+    // No transport (provably local / alone) OR already synced → seed now.
+    seedIfAbsent()
+  }
 
   // Writes route to the CRDT only — never to `base` directly (the observer owns
   // that). `update` inherits this via wrapSignal's default (`set(fn(peek()))`).
@@ -88,10 +122,10 @@ export function syncedSignal<T>(options: SyncedSignalOptions<T>): SyncedSignal<T
     },
   }) as SyncedSignal<T>
 
-  let disposed = false
   facade.dispose = () => {
     if (disposed) return
     disposed = true
+    cancelSeed?.()
     off()
   }
   // Auto-dispose when created inside a reactive scope. A no-op outside one

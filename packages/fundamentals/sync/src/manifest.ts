@@ -24,6 +24,7 @@ export default defineManifest({
     'Ephemeral presence + live cursors (syncedAwareness) over the Yjs awareness protocol — a separate, never-persisted channel; the relay is awareness-stateful so a new client sees existing peers instantly + a crashed client is purged on disconnect',
     'Node/Bun relay server (createSyncServer) with a per-room/per-doc authorize gate + attach-to-existing-HTTP-server mode',
     'Loop-free by construction: the observer applies every change; the transport never re-broadcasts a REMOTE-origin update (the same shared tag guards awareness across BOTH transports)',
+    "Clobber-free seed: syncedSignal's create-if-missing seed DEFERS until first sync when a transport is attached (WebSocketTransport.synced / whenSynced) — a fresh peer's default never races a peer's real value on a random-clientId tie-break (#2380)",
   ],
   api: [
     {
@@ -40,6 +41,7 @@ title.dispose()      // detach observer (auto on onCleanup inside a scope)`,
       mistakes: [
         'Calling `title(newValue)` to write — that reads and ignores the arg like any signal. Use `title.set(newValue)`',
         'Expecting `initial` to win when the key already exists — it is create-if-missing only; a persisted / peer value is authoritative and `initial` is ignored (the local-first convention)',
+        'Creating the synced signal BEFORE attaching the transport — the create-if-missing seed defers until first sync ONLY when a transport is already registered on the doc; created first, it seeds immediately (as if alone) and a fresh default can clobber a peer value on a clientId tie-break (#2380). Attach the transport (+ persistence) first',
         'Storing an object/array and expecting per-field surgical updates — v1 is scalar (string/number/boolean); whole-value replace works but re-fires per replace. Use `syncedText`/`syncedList` for collaborative collections',
         'Forgetting `.dispose()` for a module-scope synced signal that outlives any reactive scope (inside a scope it auto-disposes via onCleanup)',
       ],
@@ -259,19 +261,21 @@ link.disconnect()`,
       signature:
         '(doc: YjsCrdtDoc, url: string, options?: WebSocketTransportOptions) => WebSocketTransport',
       summary:
-        "Sync a YjsCrdtDoc to a relay over WebSocket — the CROSS-DEVICE transport. Sends our state vector on open (relay replies with the diff), then live updates; a REMOTE-origin update is never re-sent (no loop). Reconnects with exponential backoff by default. Uses the global WebSocket (browsers / Node 22+ / Bun / Deno); pass `WebSocketImpl` on older Node. Auth: put a token in the `url` query string — browser WebSockets can't set headers — which the relay's `authorize` hook reads.",
+        "Sync a YjsCrdtDoc to a relay over WebSocket — the CROSS-DEVICE transport. Sends our state vector on open (relay replies with the diff), then live updates; a REMOTE-origin update is never re-sent (no loop). Reconnects with exponential backoff by default. Uses the global WebSocket (browsers / Node 22+ / Bun / Deno); pass `WebSocketImpl` on older Node. Auth: put a token in the `url` query string — browser WebSockets can't set headers — which the relay's `authorize` hook reads. Exposes a REACTIVE `synced` signal + `whenSynced()` promise (the y-websocket convention) — `synced` becomes true once the initial sync round-trip completes; `syncedSignal` defers its create-if-missing seed on this internally so a fresh peer's default can't clobber a peer's real value (issue #2380). Attach the transport BEFORE creating synced signals.",
       example: `import { connectViaWebSocket, createYjsDoc } from "@pyreon/sync/yjs"
 const doc = createYjsDoc()
-const t = connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc", {
-  onConnect: () => console.log("synced"),
-})
-t.disconnect() // close + stop reconnecting`,
+const t = connectViaWebSocket(doc, "wss://sync.example.com/my-room?token=abc")
+// t.synced() // reactive: false until the first sync round-trip completes
+await t.whenSynced()      // gate your OWN default writes on this
+t.disconnect()            // close + stop reconnecting`,
       mistakes: [
         "Trying to set an Authorization header — browser WebSockets can't; pass the token in the URL query string and read it in the relay's `authorize`",
         "Using it on old Node without a global WebSocket and not passing `WebSocketImpl` — it throws; pass the `ws` package's WebSocket",
         "Treating a 4401 close as retryable — that is the relay's authz rejection and is terminal; reconnect won't help",
+        "Writing an app-level DEFAULT for a key before `synced` — it can race a peer's real value on a random-clientId tie-break and clobber it. Gate default writes on `await transport.whenSynced()` / `transport.synced()`. (`syncedSignal`'s OWN seed already defers internally; this is for your explicit writes.)",
+        "Creating synced signals BEFORE attaching the transport — the seed-deferral guarantee needs the transport registered on the doc first, else the seed fires immediately (as if alone)",
       ],
-      seeAlso: ['createSyncServer', 'connectViaBroadcastChannel'],
+      seeAlso: ['createSyncServer', 'connectViaBroadcastChannel', 'syncedSignal'],
     },
     {
       name: 'persistViaIndexedDB',
