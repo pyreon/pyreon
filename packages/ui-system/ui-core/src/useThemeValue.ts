@@ -1,10 +1,14 @@
 import { useTheme } from '@pyreon/styler'
-import { get } from '@pyreon/ui-core'
+import { get } from './utils'
 
 export type UseThemeValue = <T = unknown>(path: string) => T | undefined
 
 /**
  * Deep-reads a value from the current theme by dot-separated path.
+ *
+ * Lives in `@pyreon/ui-core` (the base of the ui-system layer) so the
+ * ui-system owns its theme-reader hooks without reaching into the
+ * `@pyreon/hooks` fundamentals package.
  *
  * @example
  * ```ts

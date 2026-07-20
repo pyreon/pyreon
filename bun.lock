@@ -1498,10 +1498,6 @@
     "packages/fundamentals/hooks": {
       "name": "@pyreon/hooks",
       "version": "0.46.0",
-      "dependencies": {
-        "@pyreon/styler": "workspace:^",
-        "@pyreon/ui-core": "workspace:^",
-      },
       "devDependencies": {
         "@pyreon/manifest": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",

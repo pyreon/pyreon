@@ -24,7 +24,13 @@ import type { Render } from './render'
 import render from './render'
 import { resolveSlot } from './resolveSlot'
 import type { BreakpointKeys, Breakpoints } from './types'
+import type { UseRootSize } from './useRootSize'
+import { useRootSize } from './useRootSize'
+import type { UseSpacing } from './useSpacing'
+import { useSpacing } from './useSpacing'
 import useStableValue from './useStableValue'
+import type { UseThemeValue } from './useThemeValue'
+import { useThemeValue } from './useThemeValue'
 import { get, merge, omit, pick, set, throttle } from './utils'
 
 export type { CSSEngineConnector, CssVariablesConfig, ResolvedCssVariablesConfig } from './config'
@@ -45,6 +51,9 @@ export type {
   Render,
   ThemeMode,
   ThemeModeInput,
+  UseRootSize,
+  UseSpacing,
+  UseThemeValue,
 }
 
 export {
@@ -69,5 +78,8 @@ export {
   set,
   throttle,
   useMode,
+  useRootSize,
+  useSpacing,
   useStableValue,
+  useThemeValue,
 }
