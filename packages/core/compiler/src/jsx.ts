@@ -1105,6 +1105,7 @@ export function transformJSX_JS(
   let needsSetChildImportGlobal = false
   let needsSetChildAtImportGlobal = false
   let needsApplyPropsImportGlobal = false
+  let needsBindSpreadImportGlobal = false
   let needsMountSlotImportGlobal = false
   let needsCxImportGlobal = false
   let needsSetStyleImportGlobal = false
@@ -3116,6 +3117,7 @@ export function transformJSX_JS(
     if (needsBindDirectImportGlobal) runtimeDomImports.push('_bindDirect')
     if (needsBindTextImportGlobal) runtimeDomImports.push('_bindText')
     if (needsApplyPropsImportGlobal) runtimeDomImports.push('_applyProps')
+    if (needsBindSpreadImportGlobal) runtimeDomImports.push('_bindSpread')
     if (needsMountSlotImportGlobal) runtimeDomImports.push('_mountSlot')
     if (needsBindPolyImportGlobal) runtimeDomImports.push('bindPolymorphicText')
     if (needsSetChildImportGlobal) runtimeDomImports.push('_setChild')
@@ -3289,6 +3291,7 @@ export function transformJSX_JS(
     let needsBindTextImport = false
     let needsBindDirectImport = false
     let needsApplyPropsImport = false
+    let needsBindSpreadImport = false
     let needsMountSlotImport = false
     let needsCxImport = false
     let needsSetStyle = false
@@ -3880,11 +3883,23 @@ export function transformJSX_JS(
     function processOneAttr(attr: N, varName: string, tag: string): string {
       if (attr.type === 'JSXSpreadAttribute') {
         const expr = sliceExpr(attr.argument)
-        needsApplyPropsImport = true
+        // `_applyProps` / `_bindSpread` RETURN a cleanup that disposes the
+        // spread's reactive bindings + nulls a spread `ref` — the compiled
+        // path must thread it into the mount lifecycle or those leak on
+        // unmount (the h()/hydrate paths already do; see anti-patterns "ref
+        // inside a spread on a bare DOM element" + "spread reactive-prop
+        // cleanups"). Capture the disposer directly in both cases.
+        const d = nextDisp()
         if (isDynamic(attr.argument)) {
-          reactiveBindExprs.push(`_applyProps(${varName}, ${expr})`)
+          // Dynamic spread source (`{...make()}`) can change shape → re-apply
+          // via `_bindSpread`, which disposes each pass's cleanup before the
+          // next AND on unmount.
+          needsBindSpreadImport = true
+          bindLines.push(`const ${d} = _bindSpread(${varName}, () => (${expr}))`)
         } else {
-          bindLines.push(`_applyProps(${varName}, ${expr})`)
+          // Static spread (`{...props}`) applies once — capture its disposer.
+          needsApplyPropsImport = true
+          bindLines.push(`const ${d} = _applyProps(${varName}, ${expr})`)
         }
         return ''
       }
@@ -4335,6 +4350,7 @@ export function transformJSX_JS(
     if (needsBindTextImport) needsBindTextImportGlobal = true
     if (needsBindDirectImport) needsBindDirectImportGlobal = true
     if (needsApplyPropsImport) needsApplyPropsImportGlobal = true
+    if (needsBindSpreadImport) needsBindSpreadImportGlobal = true
     if (needsMountSlotImport) needsMountSlotImportGlobal = true
     if (needsCxImport) needsCxImportGlobal = true
     if (needsSetStyle) needsSetStyleImportGlobal = true

@@ -327,15 +327,25 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
  * `<div ref={fn}>` codegen and `mountElement` do. `mountElement` / `hydrate`
  * call the internal `applyProps` (NOT this), so they never double-fire.
  *
- * The returned cleanup nulls the ref, so it's correct once the compiler
- * captures the template-spread cleanup (today it emits `return null`, i.e.
- * discards it — a separate, broader gap tracked for the reactive-prop
- * cleanups too). The mount-time fire is what repairs the functional bug.
+ * The returned cleanup disposes the spread's reactive bindings + nulls the
+ * ref. The compiler now CAPTURES it (`const __dN = _applyProps(...)`) for a
+ * static spread, and `_bindSpread` (below) manages it for a dynamic spread —
+ * so `<div {...props}>` is fully torn down on unmount.
  */
-export function applyPropsWithRef(el: Element, props: Props): Cleanup | null {
+export function applyPropsWithRef(el: Element, props: Props): Cleanup {
+  // A nullish spread source is legal JSX (`{...(cond ? obj : null)}`,
+  // `{...(x ?? undefined)}`) — `applyProps(el, null)` is itself a no-op
+  // (`for…in null`), but the `.ref` read below would throw. Bail early.
+  if (props == null) return NOOP_CLEANUP
   const cleanup = applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject }).ref
-  if (!ref) return cleanup
+  // ALWAYS return a function (never null): the compiler CAPTURES this as a
+  // template disposer (`const __dN = _applyProps(...)`) and the multi-binding
+  // teardown calls `__dN()` unconditionally — same contract as
+  // `_bind`/`_bindText`/`_bindDirect`, which never return null. A static-only
+  // spread with no `ref` has a null `applyProps` result → hand back the shared
+  // no-op rather than null (which would throw `__dN is not a function`).
+  if (!ref) return cleanup ?? NOOP_CLEANUP
   if (typeof ref === 'function') ref(el)
   else ref.current = el
   return () => {
@@ -345,8 +355,35 @@ export function applyPropsWithRef(el: Element, props: Props): Cleanup | null {
   }
 }
 
+const NOOP_CLEANUP: Cleanup = () => {}
 type RefCallback = (el: Element | null) => void
 type RefObject = { current: Element | null }
+
+/**
+ * Template-path entry for a DYNAMIC spread — `<div {...make()}>` on a bare DOM
+ * element lowers to `_bindSpread(el, () => make())`.
+ *
+ * A dynamic spread source can return a different props object when its own
+ * dependencies change, so applying must RE-RUN. A `renderEffect` re-runs
+ * `applyPropsWithRef` on those changes; the previous run's cleanup is disposed
+ * BEFORE each re-apply (no accumulation), and the returned disposer stops the
+ * effect + disposes the last cleanup. `_bind`/`renderEffect` don't open an
+ * `onCleanup` window, so the cleanup is threaded EXPLICITLY here rather than
+ * via `onCleanup` — hence a dedicated helper instead of inlining the call in
+ * the compiled `_bind`. Result: a dynamic spread's reactive props AND its ref
+ * are fully torn down on unmount, matching the static-spread path.
+ */
+export function bindSpread(el: Element, getProps: () => Props): Cleanup {
+  let inner: Cleanup | null = null
+  const stop = renderEffect(() => {
+    inner?.()
+    inner = applyPropsWithRef(el, getProps())
+  })
+  return () => {
+    stop()
+    inner?.()
+  }
+}
 
 /**
  * Deferred `<select value>` application (PZ-09) — applies the `value` prop
