@@ -175,8 +175,12 @@ i18n.addMessages('en', { errors: { timeout: 'Request timed out' } }, 'api')
 ## Devtools
 
 ```ts
-import { i18nRegistry } from '@pyreon/i18n/devtools'
-// WeakRef registry of live i18n instances — tree-shakeable.
+import { getActiveI18nInstances, getI18nSnapshot, onI18nChange } from '@pyreon/i18n/devtools'
+
+// Live i18n instances self-register (dev-only, tree-shakeable). Inspect them:
+const stop = onI18nChange(() => {
+  for (const name of getActiveI18nInstances()) console.log(name, getI18nSnapshot(name))
+})
 ```
 
 ## Types

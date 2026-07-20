@@ -95,6 +95,8 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/router`](packages/core/router/) | Hash/history router, nested routes, guards, loaders, prefetching, `useIsActive` |
 | [`@pyreon/head`](packages/core/head/) | `useHead()` — reactive document head management with SSR |
 | [`@pyreon/server`](packages/core/server/) | `createHandler` (SSR), `prerender` (SSG), `island()` architecture |
+| [`@pyreon/primitives`](packages/core/primitives/) | 15 canonical multi-platform primitives — `Stack`, `Inline`, `Text`, `Button`, `Field`… one source → DOM + SwiftUI + Compose |
+| [`@pyreon/sized-map`](packages/core/sized-map/) | Bounded `Map<K, V>` — FIFO (default) or LRU-on-read eviction |
 
 ### Fundamentals
 
@@ -104,6 +106,7 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/state-tree`](packages/fundamentals/state-tree/) | Structured reactive state — models, snapshots, patches, middleware |
 | [`@pyreon/form`](packages/fundamentals/form/) | Signal-based forms — fields, validation, submission, arrays, context, dynamic + file fields, focus-on-error, raw Standard Schema |
 | [`@pyreon/validation`](packages/fundamentals/validation/) | Universal validation gate — owns the validation contract + Standard Schema bridge (`standardSchemaToValidator`, `InferSchema`); adapters for Zod / Valibot / ArkType; zero pyreon deps |
+| [`@pyreon/validate`](packages/fundamentals/validate/) | DX layer over Standard Schema — `withField` metadata, reactive parse, i18n-aware error formatting, plus its own `s` validator runtime |
 | [`@pyreon/query`](packages/fundamentals/query/) | TanStack Query adapter with Suspense, SSE, WebSocket subscriptions |
 | [`@pyreon/table`](packages/fundamentals/table/) | TanStack Table adapter with reactive state sync |
 | [`@pyreon/virtual`](packages/fundamentals/virtual/) | TanStack Virtual adapter — element and window virtualizers |
@@ -118,10 +121,13 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/flow`](packages/fundamentals/flow/) | Flow diagrams — signal-native nodes, edges, pan/zoom, auto-layout |
 | [`@pyreon/code`](packages/fundamentals/code/) | Code editor — CodeMirror 6 with signals, minimap, diff editor |
 | [`@pyreon/document`](packages/fundamentals/document/) | Universal document rendering — 18 primitives, 20 output formats |
-| [`@pyreon/rx`](packages/fundamentals/rx/) | Signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce, 37 functions |
+| [`@pyreon/rx`](packages/fundamentals/rx/) | Signal-aware transforms — filter, map, sortBy, groupBy, pipe, debounce, 39 functions |
 | [`@pyreon/toast`](packages/fundamentals/toast/) | Toast notifications — imperative API, auto-dismiss, a11y |
 | [`@pyreon/url-state`](packages/fundamentals/url-state/) | URL-synced state — auto type coercion, schema mode, SSR-safe |
 | [`@pyreon/dnd`](packages/fundamentals/dnd/) | Drag and drop — sortable, droppable, file drop, keyboard support |
+| [`@pyreon/sync`](packages/fundamentals/sync/) | Local-first CRDT sync — a synced signal IS a signal; Yjs, IndexedDB, cross-tab + WebSocket, presence / live cursors |
+| [`@pyreon/rich-text`](packages/fundamentals/rich-text/) | Reactive WYSIWYG — signal-backed TipTap / ProseMirror, lazy-loaded, a11y-labeled |
+| [`@pyreon/a11y`](packages/fundamentals/a11y/) | A11y primitives — `announce()` live regions, `<VisuallyHidden>`, `createA11yId`, zero setup |
 
 ### UI System
 
@@ -136,6 +142,8 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/coolgrid`](packages/ui-system/coolgrid/) | 12-column responsive grid |
 | [`@pyreon/kinetic`](packages/ui-system/kinetic/) | CSS-transition animations |
 | [`@pyreon/kinetic-presets`](packages/ui-system/kinetic-presets/) | 120+ animation presets |
+| [`@pyreon/connector-document`](packages/ui-system/connector-document/) | Bridge between ui-system styled components and `@pyreon/document` |
+| [`@pyreon/document-primitives`](packages/ui-system/document-primitives/) | Rocketstyle document components — render in the browser, export to 18 formats |
 
 ### Tools
 
@@ -149,6 +157,21 @@ The `count()` call inside JSX is a reactive getter. Pyreon wraps it in an effect
 | [`@pyreon/preact-compat`](packages/tools/preact-compat/) | Drop-in Preact compatibility layer |
 | [`@pyreon/vue-compat`](packages/tools/vue-compat/) | Drop-in Vue compatibility layer |
 | [`@pyreon/solid-compat`](packages/tools/solid-compat/) | Drop-in Solid compatibility layer |
+| [`@pyreon/svelte-compat`](packages/tools/svelte-compat/) | Drop-in Svelte compatibility layer |
+| [`@pyreon/testing`](packages/tools/testing/) | Test kit at Testing-Library parity — `render`/`screen`/`fireEvent`, jest-dom matchers, plus reactive fire-count / leak matchers |
+| [`@pyreon/cli`](packages/tools/cli/) | `pyreon` CLI — `doctor`, `check`, `add`, `new`, `mcp`, `lint`, `info`, `upgrade` |
+| [`@pyreon/mcp`](packages/tools/mcp/) | MCP server — API reference, patterns, `validate`, `diagnose` for AI assistants |
+
+### Zero (meta-framework)
+
+| Package | Description |
+|---|---|
+| [`@pyreon/zero`](packages/zero/zero/) | Zero-config full-stack framework — SSR / SSG / ISR / SPA, fs-router, islands, per-route render modes, deploy adapters (Vercel / Cloudflare / Netlify / Node / Bun) |
+| [`@pyreon/zero-content`](packages/zero/zero-content/) | Content layer — compile-time `.md` / `.mdx` → Pyreon JSX, typed collections (zod), convention-scanned MDX components |
+| [`@pyreon/zero-cli`](packages/zero/cli/) | `zero` CLI — dev, build, preview |
+| [`@pyreon/create-zero`](packages/zero/create-zero/) | Scaffold a new Pyreon app (`create-pyreon-app`) |
+| [`@pyreon/create-multiplatform`](packages/zero/create-multiplatform/) | Scaffold a web + iOS (SwiftUI) + Android (Compose) app from one source |
+| [`@pyreon/meta`](packages/zero/meta/) | Barrel package re-exporting the full Pyreon fundamentals ecosystem |
 
 ## How It Works
 

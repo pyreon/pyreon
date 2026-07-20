@@ -361,8 +361,12 @@ const payload = nestValues(form.values()) as NestValues<FormValues<typeof form>>
 ## Devtools
 
 ```ts
-import { formRegistry } from '@pyreon/form/devtools'
-// WeakRef registry of live form instances — tree-shakeable.
+import { getActiveForms, getFormSnapshot, onFormChange } from '@pyreon/form/devtools'
+
+// Live form instances self-register (dev-only, tree-shakeable). Inspect them:
+const stop = onFormChange(() => {
+  for (const name of getActiveForms()) console.log(name, getFormSnapshot(name))
+})
 ```
 
 ## Gotchas
