@@ -52,10 +52,63 @@ jobs:
       - name: Measure (PR head)
         run: bun scripts/check-bundle-budgets.ts --json >/tmp/pr.json || true
 
-      - name: Checkout base
+      - name: Resolve comparison base
+        id: base
+        # `github.*` values are passed via env, NOT interpolated into the script
+        # body: a branch name / ref is attacker-controllable (a fork PR can name
+        # its branch with shell metacharacters), so inlining `${{ github.head_ref }}`
+        # into `run:` is a script-injection vector. Env values are never re-parsed.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          git fetch origin "${{ github.event.pull_request.base.ref }}"
-          git checkout "origin/${{ github.event.pull_request.base.ref }}"
+          set -euo pipefail
+          git fetch origin "$BASE_REF" --quiet
+          # Representative version of the fixed-version changeset group (every
+          # published package shares one version; reactivity is always published).
+          # Capture `git show` into a var FIRST: piping it directly into
+          # `sed`/`head` can SIGPIPE the still-writing `git show`, which
+          # `set -o pipefail` would turn into a step failure.
+          ver() {
+            local json
+            json=$(git show "$1:packages/core/reactivity/package.json")
+            printf '%s\n' "$json" | sed -E -n 's/.*"version": *"([^"]+)".*/\1/p' | head -1
+          }
+          if [ "$HEAD_REF" = "changeset-release/main" ]; then
+            # The release PR's code is byte-identical to `main` — changesets only
+            # bumps versions — so diffing against `main` shows nothing but
+            # version-string noise (the inlined `registerSingleton(name, version)`).
+            # Compare against the LAST RELEASE instead, so the comment shows the
+            # cumulative bundle impact of every PR shipping in this release.
+            BASE_SHA=$(git log origin/main --grep '^chore: version packages' --format='%H' -1 || true)
+            if [ -z "$BASE_SHA" ]; then
+              # First release ever — no prior version-packages commit to anchor to.
+              BASE_SHA=$(git rev-parse origin/main)
+              LABEL="base branch \`main\` (no prior release found)"
+              NOTE=''
+            else
+              BASE_VER=$(ver "$BASE_SHA")
+              HEAD_VER=$(ver "$HEAD_SHA")
+              SHORT=$(git rev-parse --short "$BASE_SHA")
+              COUNT=$(git log "${BASE_SHA}..${HEAD_SHA}" --oneline | grep -cE '\(#[0-9]+\)' || true)
+              LABEL="last release \`${BASE_VER}\` (\`${SHORT}\`)"
+              NOTE="Whole-release delta — ${COUNT} PR(s) since \`${BASE_VER}\` → \`${HEAD_VER}\`."
+            fi
+          else
+            BASE_SHA=$(git rev-parse "origin/${BASE_REF}")
+            LABEL="base branch \`${BASE_REF}\`"
+            NOTE=''
+          fi
+          {
+            echo "sha=$BASE_SHA"
+            echo "label=$LABEL"
+            echo "note=$NOTE"
+          } >>"$GITHUB_OUTPUT"
+          echo "Resolved base: $BASE_SHA — $LABEL"
+
+      - name: Checkout base
+        run: git checkout "${{ steps.base.outputs.sha }}"
 
       - name: Install (base)
         run: bun install --frozen-lockfile
@@ -75,7 +128,18 @@ jobs:
       - name: Diff
         id: diff
         continue-on-error: true
-        run: bun run scripts/bundle-size-diff.ts /tmp/base.json /tmp/pr.json --output /tmp/summary.md
+        # Pass the base label + note via env, NOT inline `${{ }}` interpolation:
+        # both contain backtick-delimited inline code, and interpolating a value
+        # with backticks into a bash double-quoted string triggers command
+        # substitution. Expanding an env var's VALUE with "$VAR" never re-parses it.
+        env:
+          BASE_LABEL: ${{ steps.base.outputs.label }}
+          BASE_NOTE: ${{ steps.base.outputs.note }}
+        run: >
+          bun run scripts/bundle-size-diff.ts /tmp/base.json /tmp/pr.json
+          --output /tmp/summary.md
+          --base-label "$BASE_LABEL"
+          --note "$BASE_NOTE"
 
       - name: Fallback summary (diff failed before writing one)
         if: steps.diff.outcome == 'failure'

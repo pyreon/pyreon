@@ -26,22 +26,6 @@ interface BudgetReport {
   failures?: unknown[]
 }
 
-const args = process.argv.slice(2)
-const outputIdx = args.indexOf('--output')
-const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined
-const positionals = args.filter((a, i) => {
-  if (a === '--output') return false
-  if (i > 0 && args[i - 1] === '--output') return false
-  return !a.startsWith('--')
-})
-
-if (positionals.length < 2) {
-  console.error('usage: bun run scripts/bundle-size-diff.ts <base.json> <pr.json> [--output <md>]')
-  process.exit(2)
-}
-
-const [basePath, prPath] = positionals as [string, string]
-
 function loadReport(path: string): BudgetReport {
   try {
     return JSON.parse(readFileSync(path, 'utf-8')) as BudgetReport
@@ -51,11 +35,22 @@ function loadReport(path: string): BudgetReport {
   }
 }
 
-const base = loadReport(basePath)
-const pr = loadReport(prPath)
-
-const baseMap = new Map(base.measured.map((m) => [m.name, m]))
-const prMap = new Map(pr.measured.map((m) => [m.name, m]))
+/** Generic `--flag value` parser. Kept out of module scope so importing the
+ * file (for tests) never touches `process.argv` or exits. */
+function parseArgs(argv: string[]): { positionals: string[]; flags: Record<string, string> } {
+  const flags: Record<string, string> = {}
+  const positionals: string[] = []
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
+    if (a.startsWith('--')) {
+      flags[a.slice(2)] = argv[i + 1] ?? ''
+      i++
+    } else {
+      positionals.push(a)
+    }
+  }
+  return { positionals, flags }
+}
 
 interface DiffRow {
   name: string
@@ -65,27 +60,12 @@ interface DiffRow {
   pct: number
 }
 
-const rows: DiffRow[] = []
-const allNames = new Set([...baseMap.keys(), ...prMap.keys()])
-for (const name of [...allNames].sort()) {
-  const b = baseMap.get(name)
-  const p = prMap.get(name)
-  const baseGzip = b?.gzip ?? null
-  const prGzip = p?.gzip ?? null
-  if (baseGzip === null && prGzip === null) continue
-  const delta = (prGzip ?? 0) - (baseGzip ?? 0)
-  const pct = baseGzip ? (delta / baseGzip) * 100 : 0
-  rows.push({ name, baseGzip, prGzip, delta, pct })
+export interface RenderOptions {
+  /** Human label for the comparison base, shown in the footer. */
+  baseLabel?: string | undefined
+  /** Optional context line rendered under the heading (e.g. release PR count). */
+  note?: string | undefined
 }
-
-// Only show rows with non-zero delta — keep the comment short. Sort by
-// abs delta descending so the biggest movers surface first.
-const movers = rows.filter((r) => r.delta !== 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-
-// Regression threshold: 5% AND > 100 bytes (absolute floor keeps tiny
-// packages from tripping the gate on noise). Match the perf:diff
-// approach: never flag rounding-noise as a real regression.
-const REGRESSIONS = movers.filter((r) => r.pct > 5 && r.delta > 100)
 
 function fmt(bytes: number | null): string {
   if (bytes === null) return '—'
@@ -93,46 +73,95 @@ function fmt(bytes: number | null): string {
   return `${(bytes / 1024).toFixed(2)} KB`
 }
 
-function fmtDelta(d: number, pct: number): string {
-  if (d === 0) return '—'
-  const sign = d > 0 ? '+' : ''
-  const pctStr = Number.isFinite(pct) ? ` (${sign}${pct.toFixed(1)}%)` : ''
-  const arrow = d > 0 ? '🔴' : '🟢'
-  return `${arrow} ${sign}${fmt(d)}${pctStr}`
+function fmtDelta(r: DiffRow): string {
+  if (r.delta === 0) return '—'
+  // A package with no base (or no PR) side has no meaningful percentage — the
+  // old code printed a bogus "(+0.0%)" for every newly-added package. Name it.
+  if (r.baseGzip === null) return `🆕 new (${fmt(r.prGzip)})`
+  if (r.prGzip === null) return `🗑️ removed (was ${fmt(r.baseGzip)})`
+  const sign = r.delta > 0 ? '+' : ''
+  const pctStr = Number.isFinite(r.pct) ? ` (${sign}${r.pct.toFixed(1)}%)` : ''
+  const arrow = r.delta > 0 ? '🔴' : '🟢'
+  return `${arrow} ${sign}${fmt(r.delta)}${pctStr}`
 }
 
-const lines: string[] = []
-lines.push('<!-- bundle-size-diff -->')
-lines.push('## 📦 Bundle size diff')
-lines.push('')
+/**
+ * Pure diff renderer: two budget reports → the markdown comment body + the
+ * regression count. Exported so it can be unit-tested without spawning the CLI.
+ */
+export function renderDiff(
+  baseReport: BudgetReport,
+  prReport: BudgetReport,
+  opts: RenderOptions = {},
+): { summary: string; regressions: number } {
+  const baseMap = new Map(baseReport.measured.map((m) => [m.name, m]))
+  const prMap = new Map(prReport.measured.map((m) => [m.name, m]))
 
-if (movers.length === 0) {
-  lines.push('_No packages changed size._')
-} else {
-  if (REGRESSIONS.length > 0) {
-    lines.push(`**${REGRESSIONS.length} package(s) regressed past threshold (>5% AND >100 bytes).** 🔴`)
-    lines.push('')
+  const rows: DiffRow[] = []
+  const allNames = new Set([...baseMap.keys(), ...prMap.keys()])
+  for (const name of [...allNames].sort()) {
+    const baseGzip = baseMap.get(name)?.gzip ?? null
+    const prGzip = prMap.get(name)?.gzip ?? null
+    if (baseGzip === null && prGzip === null) continue
+    const delta = (prGzip ?? 0) - (baseGzip ?? 0)
+    const pct = baseGzip ? (delta / baseGzip) * 100 : 0
+    rows.push({ name, baseGzip, prGzip, delta, pct })
+  }
+
+  // Only show rows with a non-zero delta — keep the comment short. Sort by
+  // abs delta descending so the biggest movers surface first.
+  const movers = rows.filter((r) => r.delta !== 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+
+  // Regression threshold: 5% AND > 100 bytes (absolute floor keeps tiny
+  // packages from tripping the gate on noise). Match the perf:diff approach:
+  // never flag rounding-noise as a real regression. A new package (baseGzip
+  // null → pct 0) is not a regression of anything, so it's excluded here.
+  const regressions = movers.filter((r) => r.pct > 5 && r.delta > 100)
+
+  const baseLabel = opts.baseLabel || 'the base'
+  const lines: string[] = ['<!-- bundle-size-diff -->', '## 📦 Bundle size diff', '']
+
+  if (opts.note) {
+    lines.push(`_${opts.note}_`, '')
+  }
+
+  if (movers.length === 0) {
+    lines.push('_No packages changed size._')
   } else {
-    lines.push('_All deltas within noise threshold._ ✅')
-    lines.push('')
+    if (regressions.length > 0) {
+      lines.push(`**${regressions.length} package(s) regressed past threshold (>5% AND >100 bytes).** 🔴`, '')
+    } else {
+      lines.push('_All deltas within noise threshold._ ✅', '')
+    }
+    lines.push('| Package | Base (gzip) | PR (gzip) | Δ |', '| --- | ---: | ---: | ---: |')
+    for (const r of movers) {
+      lines.push(`| \`${r.name}\` | ${fmt(r.baseGzip)} | ${fmt(r.prGzip)} | ${fmtDelta(r)} |`)
+    }
   }
-  lines.push('| Package | Base (gzip) | PR (gzip) | Δ |')
-  lines.push('| --- | ---: | ---: | ---: |')
-  for (const r of movers) {
-    lines.push(`| \`${r.name}\` | ${fmt(r.baseGzip)} | ${fmt(r.prGzip)} | ${fmtDelta(r.delta, r.pct)} |`)
-  }
+
+  lines.push('', `<sub>${rows.length} packages measured · diff against ${baseLabel}.</sub>`)
+  return { summary: lines.join('\n'), regressions: regressions.length }
 }
 
-lines.push('')
-lines.push(`<sub>${rows.length} packages measured · diff against base \`${basePath}\`.</sub>`)
-
-const summary = lines.join('\n')
-
-if (outputPath) {
-  writeFileSync(outputPath, `${summary}\n`)
-  console.log(`[bundle-size-diff] wrote ${outputPath}`)
-} else {
-  console.log(summary)
+if (import.meta.main) {
+  const { positionals, flags } = parseArgs(process.argv.slice(2))
+  if (positionals.length < 2) {
+    console.error(
+      'usage: bun run scripts/bundle-size-diff.ts <base.json> <pr.json> [--output <md>] [--base-label <text>] [--note <text>]',
+    )
+    process.exit(2)
+  }
+  const [basePath, prPath] = positionals as [string, string]
+  const { summary, regressions } = renderDiff(loadReport(basePath), loadReport(prPath), {
+    // Fall back to the file path so a bare local invocation still says something.
+    baseLabel: flags['base-label'] || `base \`${basePath}\``,
+    note: flags.note,
+  })
+  if (flags.output) {
+    writeFileSync(flags.output, `${summary}\n`)
+    console.log(`[bundle-size-diff] wrote ${flags.output}`)
+  } else {
+    console.log(summary)
+  }
+  process.exit(regressions > 0 ? 1 : 0)
 }
-
-process.exit(REGRESSIONS.length > 0 ? 1 : 0)
