@@ -889,6 +889,24 @@ cx(["a", ["b", { c: true }]])            // nested arrays
     mistakes: '- Calling `cx("a", "b")` with multiple arguments — `cx` takes ONE `ClassValue`. Wrap in an array: `cx(["a", "b"])`',
   },
 
+  'core/useControllableState': {
+    signature: 'useControllableState<T>(options: { value: () => T | undefined; defaultValue: T; onChange?: (value: T) => void }): [() => T, (next: T | ((prev: T) => T)) => void]',
+    example: `const Switch = (props: { checked?: boolean; onChange?: (v: boolean) => void }) => {
+  const [own, rest] = splitProps(props, ["checked", "onChange"])
+  const [checked, setChecked] = useControllableState({
+    value: () => own.checked,
+    defaultValue: false,
+    onChange: own.onChange,
+  })
+  return <button {...rest} aria-checked={() => (checked() ? "true" : "false")} onClick={() => setChecked(!checked())} />
+}`,
+    notes: 'The controlled/uncontrolled state pattern, as one primitive. Returns a `[getter, setter]` pair that reads an external `value` prop when one is supplied and falls back to internal signal state when it is not, calling `onChange` on every write either way. `value` MUST be a getter (`() => own.checked`) so the controlled prop is read lazily inside reactive scopes — an eager read captures it once and the component stops tracking the owner. Every component with a `checked`/`value`/`open`-style prop needs this; it lives beside `splitProps` because it is a props primitive, not a hook (it owns no lifecycle). Re-exported from `@pyreon/hooks` for back-compat. See also: splitProps, mergeProps.',
+    mistakes: `- Passing a VALUE instead of a getter — \`value: own.checked\` reads once at setup and freezes; it must be \`value: () => own.checked\`
+- Hand-rolling \`const isControlled = props.value !== undefined\` + a parallel signal — that is exactly this primitive, and the hand-rolled version usually forgets to call \`onChange\` in the uncontrolled branch
+- Writing to the setter and expecting a CONTROLLED component to update itself — it will not; the owner decides. The setter only reports via \`onChange\`
+- Assuming \`defaultValue\` still applies once \`value\` is supplied — controlled wins for the whole lifetime of the component`,
+  },
+
   'core/splitProps': {
     signature: 'splitProps<T, K extends keyof T>(props: T, keys: K[]): [Pick<T, K>, Omit<T, K>]',
     example: `const Button = (props: { class?: string; onClick: () => void; children: VNodeChild }) => {

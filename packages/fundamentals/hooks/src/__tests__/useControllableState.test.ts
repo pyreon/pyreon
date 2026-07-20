@@ -1,6 +1,24 @@
+import { useControllableState as coreUseControllableState } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it, vi } from 'vitest'
 import { useControllableState } from '../useControllableState'
+import { useControllableState as barrelUseControllableState } from '../index'
+
+/**
+ * The implementation moved to @pyreon/core (its canonical home — it is a props
+ * primitive that imports nothing but `signal`, and hooks depends on
+ * @pyreon/styler + @pyreon/ui-core, which no consumer should inherit just to get
+ * it). @pyreon/hooks re-exports it, so this suite now covers the RE-EXPORT path
+ * and must keep passing unchanged.
+ */
+describe('useControllableState — re-export identity', () => {
+  it('is the SAME function as @pyreon/core exports, not a divergent copy', () => {
+    // If someone ever re-implements it here, these stop being identical and the
+    // two copies can drift apart silently.
+    expect(useControllableState).toBe(coreUseControllableState)
+    expect(barrelUseControllableState).toBe(coreUseControllableState)
+  })
+})
 
 describe('useControllableState', () => {
   it('uses defaultValue when uncontrolled', () => {
