@@ -1,5 +1,45 @@
 # @pyreon/meta
 
+## 0.49.0
+
+### Patch Changes
+
+- Updated dependencies [[`41049d8`](https://github.com/pyreon/pyreon/commit/41049d897a1804d92ac0f599a48493e9a7a0fa85)]:
+  - @pyreon/hooks@0.49.0
+  - @pyreon/charts@0.49.0
+  - @pyreon/code@0.49.0
+  - @pyreon/dnd@0.49.0
+  - @pyreon/document@0.49.0
+  - @pyreon/feature@0.49.0
+  - @pyreon/flow@0.49.0
+  - @pyreon/form@0.49.0
+  - @pyreon/hotkeys@0.49.0
+  - @pyreon/i18n@0.49.0
+  - @pyreon/permissions@0.49.0
+  - @pyreon/query@0.49.0
+  - @pyreon/table@0.49.0
+  - @pyreon/toast@0.49.0
+  - @pyreon/validation@0.49.0
+  - @pyreon/virtual@0.49.0
+  - @pyreon/attrs@0.49.0
+  - @pyreon/connector-document@0.49.0
+  - @pyreon/coolgrid@0.49.0
+  - @pyreon/document-primitives@0.49.0
+  - @pyreon/elements@0.49.0
+  - @pyreon/kinetic@0.49.0
+  - @pyreon/rocketstyle@0.49.0
+  - @pyreon/styler@0.49.0
+  - @pyreon/ui-core@0.49.0
+  - @pyreon/unistyle@0.49.0
+  - @pyreon/reactivity@0.49.0
+  - @pyreon/machine@0.49.0
+  - @pyreon/rx@0.49.0
+  - @pyreon/state-tree@0.49.0
+  - @pyreon/storage@0.49.0
+  - @pyreon/store@0.49.0
+  - @pyreon/url-state@0.49.0
+  - @pyreon/kinetic-presets@0.49.0
+
 ## 0.48.0
 
 ### Patch Changes
