@@ -52,7 +52,7 @@
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
-    "@tanstack/react-virtual": "3.14.6",
+    "@tanstack/react-virtual": "3.14.7",
     "@vitest/browser-playwright": "^4.1.10",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"

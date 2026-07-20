@@ -44,7 +44,7 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "dependencies": {
-    "elkjs": "^0.11.1"
+    "elkjs": "^0.12.0"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
