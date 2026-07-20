@@ -111,6 +111,32 @@ describe('#ref-in-dom-spread — spread ref on a bare element is wired (compiled
     container.remove()
   })
 
+  it('STATIC-only spread (no ref, no reactive) captured alongside another binding does NOT crash on unmount', () => {
+    // Regression (found by ui-showcase ModalDemo in CI): `_applyProps` returns
+    // null for a spread with no `ref` and no reactive props. The compiler
+    // captures it as `const __d0 = _applyProps(...)` and, when there's a
+    // SECOND binding, tears down via `() => { __d0(); __d1() }` — which threw
+    // `__d0 is not a function` when the disposer was null. `applyPropsWithRef`
+    // must always return a Cleanup (the shared no-op here), like every other
+    // captured template disposer.
+    const label = signal('hi')
+    // spread has ONLY plain string props (no ref, no getters) + a reactive
+    // text child → two captured disposers, the spread's being the no-op.
+    const App = compileApp(`const App = () => <div {...plain}>{label()}</div>`, {
+      plain: { id: 'mo', 'data-k': 'v' },
+      label,
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const cleanup = mountChild(h(App as never, null), container)!
+    const el = container.querySelector('#mo')!
+    expect(el.getAttribute('data-k')).toBe('v')
+    expect(el.textContent).toBe('hi')
+    // The load-bearing assertion: teardown must not throw.
+    expect(() => cleanup()).not.toThrow()
+    container.remove()
+  })
+
   it('CALL spread — _bindSpread disposes the per-run bindings + ref on unmount', () => {
     const label = signal('x')
     let refEl: Element | null = 'unset' as never

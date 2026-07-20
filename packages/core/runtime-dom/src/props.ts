@@ -332,10 +332,16 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
  * static spread, and `_bindSpread` (below) manages it for a dynamic spread —
  * so `<div {...props}>` is fully torn down on unmount.
  */
-export function applyPropsWithRef(el: Element, props: Props): Cleanup | null {
+export function applyPropsWithRef(el: Element, props: Props): Cleanup {
   const cleanup = applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject }).ref
-  if (!ref) return cleanup
+  // ALWAYS return a function (never null): the compiler CAPTURES this as a
+  // template disposer (`const __dN = _applyProps(...)`) and the multi-binding
+  // teardown calls `__dN()` unconditionally — same contract as
+  // `_bind`/`_bindText`/`_bindDirect`, which never return null. A static-only
+  // spread with no `ref` has a null `applyProps` result → hand back the shared
+  // no-op rather than null (which would throw `__dN is not a function`).
+  if (!ref) return cleanup ?? NOOP_CLEANUP
   if (typeof ref === 'function') ref(el)
   else ref.current = el
   return () => {
@@ -345,6 +351,7 @@ export function applyPropsWithRef(el: Element, props: Props): Cleanup | null {
   }
 }
 
+const NOOP_CLEANUP: Cleanup = () => {}
 type RefCallback = (el: Element | null) => void
 type RefObject = { current: Element | null }
 
