@@ -309,6 +309,46 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
 }
 
 /**
+ * Template-path spread entry — the compiled `<div {...props}>` on a BARE DOM
+ * element lowers to `_applyProps(el, props)`, which is THIS function.
+ *
+ * `applyProps` deliberately SKIPS `ref` (it's not a DOM attribute), and the
+ * h()/hydrate paths (`mountElement` / `hydrateElement`) wire `ref` themselves
+ * AFTER calling `applyProps`. But the compiled template path has no such
+ * companion step — so a `ref` living inside a spread object (`getDayProps()`
+ * returning `{ ref, ... }`, `useElementSize`'s measured ref, etc.) was
+ * SILENTLY DROPPED on the compiled path while working on the h() path every
+ * unit test uses. Symptoms: focus registries never populate (roving-focus
+ * dead), measured refs read 0. See anti-patterns "ref inside a spread on a
+ * bare DOM element".
+ *
+ * This wrapper closes that h()/compiled divergence: `applyProps` for every
+ * real attribute + wire the spread's `ref` exactly as the direct
+ * `<div ref={fn}>` codegen and `mountElement` do. `mountElement` / `hydrate`
+ * call the internal `applyProps` (NOT this), so they never double-fire.
+ *
+ * The returned cleanup nulls the ref, so it's correct once the compiler
+ * captures the template-spread cleanup (today it emits `return null`, i.e.
+ * discards it — a separate, broader gap tracked for the reactive-prop
+ * cleanups too). The mount-time fire is what repairs the functional bug.
+ */
+export function applyPropsWithRef(el: Element, props: Props): Cleanup | null {
+  const cleanup = applyProps(el, props)
+  const ref = (props as { ref?: RefCallback | RefObject }).ref
+  if (!ref) return cleanup
+  if (typeof ref === 'function') ref(el)
+  else ref.current = el
+  return () => {
+    cleanup?.()
+    if (typeof ref === 'function') ref(null)
+    else ref.current = null
+  }
+}
+
+type RefCallback = (el: Element | null) => void
+type RefObject = { current: Element | null }
+
+/**
  * Deferred `<select value>` application (PZ-09) — applies the `value` prop
  * with the SAME descriptor-aware reactive dispatch `applyProps` uses, as a
  * separate POST-CHILDREN pass. `select.value` is a DOM property whose
