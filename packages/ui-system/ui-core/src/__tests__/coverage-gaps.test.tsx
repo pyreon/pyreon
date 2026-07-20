@@ -127,6 +127,10 @@ describe('PyreonUI — OS prefers-dark system mode', () => {
     )
 
     try {
+      // `vi.resetModules()` above wiped the theme-engine registration (a
+      // module-level slot) — re-import unistyle to re-register it before
+      // mounting PyreonUI, exactly as a real app always has it loaded.
+      await import('@pyreon/unistyle')
       const mod = await import('../PyreonUI')
       const spy = vi.spyOn(await import('@pyreon/core'), 'provide')
       spy.mockClear()

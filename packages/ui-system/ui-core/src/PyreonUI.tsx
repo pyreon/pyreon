@@ -9,10 +9,12 @@ import {
 } from '@pyreon/core'
 import { computed, effect, isClient, signal } from '@pyreon/reactivity'
 import { setStyleExtraction, sheet, ThemeContext } from '@pyreon/styler'
-import type { PyreonTheme } from '@pyreon/unistyle'
-import { cpseRewrite, enrichTheme, themeToCssVars } from '@pyreon/unistyle'
 import { resolveCssVariables, resolveStyleExtraction } from './config'
 import { context as coreContext } from './context'
+// The theme engine (enrichTheme/themeToCssVars/cpseRewrite) lives in
+// `@pyreon/unistyle`; ui-core reads it through the registration seam so ui-core
+// carries NO dependency on unistyle (see `./theme-engine`).
+import { getThemeEngine, type PyreonTheme } from './theme-engine'
 
 // Structural flag distinguishing the ROOT PyreonUI from a NESTED one (a
 // plain context, not reactive — nesting is fixed at mount). In cssVariables
@@ -219,16 +221,25 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
   // the ui-system assume it does not flip mid-session.
   const cssVars = resolveCssVariables()
 
+  // Read unistyle's theme engine LAZILY at each use site (not eagerly here at
+  // setup): the engine is registered when unistyle's module loads, and the
+  // ROOT `<PyreonUI>` runs its setup BEFORE the child components that pull
+  // unistyle in have mounted. Every real use below is deferred to runtime — a
+  // theme read (inside the `computed`) or the opt-in style-extraction wiring —
+  // by which point the whole tree (and unistyle) is loaded. See `./theme-engine`.
+
   // Wire CPSE into styler's default pipeline when opted in
   // (`init({ styleExtraction: true })`). styler can't import unistyle (dep
   // direction), so the root provider injects `cpseRewrite` here. Boot-time
   // contract; flag-off (default) leaves the classic path byte-identical.
-  if (resolveStyleExtraction()) setStyleExtraction(true, cpseRewrite)
+  if (resolveStyleExtraction()) setStyleExtraction(true, getThemeEngine().cpseRewrite)
 
   const enrichedTheme = computed(() => {
     const t = props.theme
     if (t === undefined || t === null) return parentThemeAccessor()
-    const enriched = enrichTheme(t)
+    // Runtime read — deferred past setup so the engine is registered by now.
+    const engine = getThemeEngine()
+    const enriched = engine.enrichTheme(t)
     if (!cssVars.enabled) return enriched
     // CSS-variables mode: every eligible theme leaf becomes a 'var(--px-…)'
     // string and the :root block is injected ONCE per theme identity
@@ -237,11 +248,11 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
     // Downstream consumers (styler templates, rocketstyle callbacks, the
     // unistyle value pipeline) read the var references verbatim, so a mode
     // flip never re-resolves any of them.
-    const { vars, css: varsCss } = themeToCssVars(enriched, { prefix: cssVars.prefix })
+    const { vars, css: varsCss } = engine.themeToCssVars(enriched, { prefix: cssVars.prefix })
     if (varsCss) sheet.injectRules([varsCss], varsCss)
     // Same tree shape; leaves are var() reference strings — every theme
     // value position accepts strings, so the widened leaf type is safe.
-    return vars as unknown as ReturnType<typeof enrichTheme>
+    return vars as unknown as PyreonTheme
   })
 
   // Provide to all three context layers:
