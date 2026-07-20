@@ -31,7 +31,10 @@ export {
   applyClassProp as _setClass,
   applyProp,
   applyProps,
-  applyProps as _applyProps,
+  // The compiled `<div {...props}>` template path lowers to `_applyProps`; it
+  // must wire a spread `ref` (the h()/hydrate paths do it separately). See
+  // `applyPropsWithRef`.
+  applyPropsWithRef as _applyProps,
   applyStyleProp as _setStyle,
   sanitizeHtml,
   setSanitizer,
