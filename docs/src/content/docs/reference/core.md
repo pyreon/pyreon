@@ -105,6 +105,7 @@ const LazyApp = () => (
 | [`lazy`](#lazy) | function | Wrap a dynamic import for code splitting. |
 | [`Dynamic`](#dynamic) | component | Renders a component by reference or string tag name. |
 | [`cx`](#cx) | function | Combine a class value into a single string. |
+| [`useControllableState`](#usecontrollablestate) | function | The controlled/uncontrolled state pattern, as one primitive. |
 | [`splitProps`](#splitprops) | function | Split a props object into two parts: the picked keys and the rest. |
 | [`mergeProps`](#mergeprops) | function | Merge multiple props objects with last-source-wins semantics. |
 | [`removeUndefinedProps`](#removeundefinedprops) | function | Copy a props object, dropping keys whose DATA value is exactly `undefined` while preserving every getter-shaped (reactiv |
@@ -611,6 +612,39 @@ cx(["a", ["b", { c: true }]])            // nested arrays
 **Common mistakes**
 
 - Calling `cx("a", "b")` with multiple arguments — `cx` takes ONE `ClassValue`. Wrap in an array: `cx(["a", "b"])`
+
+**See also:** `splitProps` · `mergeProps`
+
+---
+
+### useControllableState `function`
+
+```ts
+useControllableState<T>(options: { value: () => T | undefined; defaultValue: T; onChange?: (value: T) => void }): [() => T, (next: T | ((prev: T) => T)) => void]
+```
+
+The controlled/uncontrolled state pattern, as one primitive. Returns a `[getter, setter]` pair that reads an external `value` prop when one is supplied and falls back to internal signal state when it is not, calling `onChange` on every write either way. `value` MUST be a getter (`() => own.checked`) so the controlled prop is read lazily inside reactive scopes — an eager read captures it once and the component stops tracking the owner. Every component with a `checked`/`value`/`open`-style prop needs this; it lives beside `splitProps` because it is a props primitive, not a hook (it owns no lifecycle). Re-exported from `@pyreon/hooks` for back-compat.
+
+**Example**
+
+```tsx
+const Switch = (props: { checked?: boolean; onChange?: (v: boolean) => void }) => {
+  const [own, rest] = splitProps(props, ["checked", "onChange"])
+  const [checked, setChecked] = useControllableState({
+    value: () => own.checked,
+    defaultValue: false,
+    onChange: own.onChange,
+  })
+  return <button {...rest} aria-checked={() => (checked() ? "true" : "false")} onClick={() => setChecked(!checked())} />
+}
+```
+
+**Common mistakes**
+
+- Passing a VALUE instead of a getter — `value: own.checked` reads once at setup and freezes; it must be `value: () => own.checked`
+- Hand-rolling `const isControlled = props.value !== undefined` + a parallel signal — that is exactly this primitive, and the hand-rolled version usually forgets to call `onChange` in the uncontrolled branch
+- Writing to the setter and expecting a CONTROLLED component to update itself — it will not; the owner decides. The setter only reports via `onChange`
+- Assuming `defaultValue` still applies once `value` is supplied — controlled wins for the whole lifetime of the component
 
 **See also:** `splitProps` · `mergeProps`
 
