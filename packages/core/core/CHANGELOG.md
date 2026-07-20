@@ -1,5 +1,40 @@
 # @pyreon/core
 
+## 0.49.0
+
+### Minor Changes
+
+- [#2401](https://github.com/pyreon/pyreon/pull/2401) [`41049d8`](https://github.com/pyreon/pyreon/commit/41049d897a1804d92ac0f599a48493e9a7a0fa85) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Move `useControllableState` to `@pyreon/core`, where it belongs.
+
+  It is a PROPS primitive, not a hook: it reads a props accessor, owns no
+  lifecycle, and is used in the same breath as core's `splitProps` — every
+  consumer already wrote both imports side by side. It imports nothing but
+  `signal`.
+
+  Its previous home in `@pyreon/hooks` meant any package wanting the
+  controlled/uncontrolled pattern had to depend on hooks — and hooks depends on
+  `@pyreon/styler` + `@pyreon/ui-core`. That dragged the entire UI-system styling
+  layer plus 40+ unrelated hooks (`useFetch`/`useHaptics`/`useShare`/…) into the
+  consumer for ~20 lines. `@pyreon/elements` needs the pattern and sits BELOW
+  those packages, so the edge would also have inverted the layering.
+
+  `@pyreon/hooks` re-exports it, so its public API is unchanged — the same
+  cross-layer idiom `@pyreon/core` already uses for reactivity's
+  `isClient`/`isServer`. No consumer needs to change an import.
+
+### Patch Changes
+
+- [#2394](https://github.com/pyreon/pyreon/pull/2394) [`d935083`](https://github.com/pyreon/pyreon/commit/d935083033edd2c0e74c8fa71e46d9dfcdb661e7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom,core): allow safe SVG through the innerHTML sanitizer, and add `mask`/`<image>` + downstream augmentation to SVG types
+
+  Two SVG gaps a downstream report surfaced:
+
+  **`innerHTML` silently stripped all SVG** (`@pyreon/runtime-dom`). The fallback sanitizer's allowlist held only HTML tags, so `<span innerHTML="<svg>…</svg>">` had every SVG element replaced with a text node — an entire icon set could render blank with no error or warning, and the only escape (`setSanitizer`) is global. A curated safe-SVG profile (shape / gradient / clip / mask / text / filter-primitive elements, mirroring DOMPurify's default SVG profile) now passes through, while `<script>`, `<foreignObject>`, `<style>`, and SMIL animation elements stay excluded and `on*` / `javascript:` (now including `xlink:href`, whose localName the URL guard previously missed) are still stripped.
+
+  **SVG types missing `mask`, `<image>`, and augmentability** (`@pyreon/core`). `SvgAttributes` had `maskUnits`/`maskContentUnits` (attributes OF a `<mask>`) but not `mask` (the reference TO one), plus no `filter`, opacity/dash, or filter-primitive attributes; `JSX.IntrinsicElements` lacked `<image>` and every SVG filter element (they fell through to the HTML catch-all and lost SVG typing). All added. SVG attributes are augmentable downstream via `declare module '@pyreon/core' { interface SvgAttributes { … } }` (now documented in the `SvgAttributes` JSDoc) — use that form, not `declare global { namespace JSX }`, which declares a separate interface that does not merge.
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.49.0
+
 ## 0.48.0
 
 ### Patch Changes

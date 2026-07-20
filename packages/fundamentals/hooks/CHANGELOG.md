@@ -1,5 +1,33 @@
 # @pyreon/hooks
 
+## 0.49.0
+
+### Patch Changes
+
+- [#2401](https://github.com/pyreon/pyreon/pull/2401) [`41049d8`](https://github.com/pyreon/pyreon/commit/41049d897a1804d92ac0f599a48493e9a7a0fa85) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Move `useControllableState` to `@pyreon/core`, where it belongs.
+
+  It is a PROPS primitive, not a hook: it reads a props accessor, owns no
+  lifecycle, and is used in the same breath as core's `splitProps` — every
+  consumer already wrote both imports side by side. It imports nothing but
+  `signal`.
+
+  Its previous home in `@pyreon/hooks` meant any package wanting the
+  controlled/uncontrolled pattern had to depend on hooks — and hooks depends on
+  `@pyreon/styler` + `@pyreon/ui-core`. That dragged the entire UI-system styling
+  layer plus 40+ unrelated hooks (`useFetch`/`useHaptics`/`useShare`/…) into the
+  consumer for ~20 lines. `@pyreon/elements` needs the pattern and sits BELOW
+  those packages, so the edge would also have inverted the layering.
+
+  `@pyreon/hooks` re-exports it, so its public API is unchanged — the same
+  cross-layer idiom `@pyreon/core` already uses for reactivity's
+  `isClient`/`isServer`. No consumer needs to change an import.
+
+- Updated dependencies [[`41049d8`](https://github.com/pyreon/pyreon/commit/41049d897a1804d92ac0f599a48493e9a7a0fa85), [`d935083`](https://github.com/pyreon/pyreon/commit/d935083033edd2c0e74c8fa71e46d9dfcdb661e7)]:
+  - @pyreon/core@0.49.0
+  - @pyreon/styler@0.49.0
+  - @pyreon/ui-core@0.49.0
+  - @pyreon/reactivity@0.49.0
+
 ## 0.48.0
 
 ### Minor Changes

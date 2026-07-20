@@ -1,5 +1,39 @@
 # @pyreon/runtime-dom
 
+## 0.49.0
+
+### Patch Changes
+
+- [#2402](https://github.com/pyreon/pyreon/pull/2402) [`f5f94ef`](https://github.com/pyreon/pyreon/commit/f5f94ef21e58b2e0430cee67a509630936d7ee73) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom): wire a `ref` that lives inside a spread on a bare DOM element (compiled path)
+
+  `<div {...props}>` on a bare DOM element lowers to `_tpl(html, __root => { _applyProps(__root, props) })`. `applyProps` deliberately skips `ref` (it's not a DOM attribute), and the `h()`/hydrate paths wire `ref` themselves in `mountElement`/`hydrateElement` — but the compiled template path had no companion step, so a `ref` inside a spread object was silently dropped. It worked on the `h()` path every unit test uses, masking it.
+
+  Real impact: `@pyreon/ui-primitives` CalendarBase's `getDayProps()` returns `{ ref }` feeding its focus registry — roving arrow-key focus was dead in the compiled ui-showcase — and SpoilerBase spreads `useElementSize`'s ref, so measured height stayed 0 and the "show more" toggle never appeared. Any app doing `<div {...propsWithRef}>` was affected.
+
+  Fix: the exported `_applyProps` (the compiled template path's entry) is now a wrapper — `applyProps` plus wiring the spread's `ref`, exactly as the direct `<div ref={fn}>` codegen and `mountElement` do. `mountElement`/`hydrate` call the internal `applyProps` (not the `_` export), so they never double-fire. Pure runtime fix, no compiler or native-binary change. Bisect-verified against the real compiler transform; real-Chromium focus lock added. (Follow-up: the compiled template bindFn discards the spread cleanup, so ref-null-on-unmount + spread reactive-prop cleanups need a separate compiler change to capture it — a bounded registry-leak, not a focus break.)
+
+- [#2403](https://github.com/pyreon/pyreon/pull/2403) [`db6319e`](https://github.com/pyreon/pyreon/commit/db6319edb0fc993b6319ece9b8f258b9da5e7a4d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - feat(compiler,runtime-dom): DOM-element spread cleans up on unmount — spread is now fully first-class
+
+  Building on the spread-`ref` fire fix, the compiler now CAPTURES the cleanup that `_applyProps` returns instead of discarding it — so `<div {...props}>` on a bare DOM element disposes its reactive-prop bindings AND nulls a spread `ref` on unmount. Together with the ref-fire fix, spreading props onto a DOM element now Just Works: reactive props update, refs fire and null, everything is torn down on unmount.
+
+  - Identifier spread `{...props}` → `const __dN = _applyProps(el, props)` (applied once, disposer captured).
+  - Call spread `{...make()}` → `const __dN = _bindSpread(el, () => make())` — a new `_bindSpread` runtime helper (a `renderEffect` that re-applies on dependency change, disposing each pass's cleanup before the next and at unmount). `_bind`/`renderEffect` don't open an `onCleanup` window, so the cleanup is threaded explicitly in the helper.
+
+  Both compiler backends (JS + native Rust) emit byte-identical code (native-equivalence + fuzz pass). `mountElement`/`hydrate` are untouched (internal `applyProps`), so no double-fire. Bisect-verified through the real transform; full lifecycle regression (reactive update+dispose, ref fire+null) added.
+
+- [#2394](https://github.com/pyreon/pyreon/pull/2394) [`d935083`](https://github.com/pyreon/pyreon/commit/d935083033edd2c0e74c8fa71e46d9dfcdb661e7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(runtime-dom,core): allow safe SVG through the innerHTML sanitizer, and add `mask`/`<image>` + downstream augmentation to SVG types
+
+  Two SVG gaps a downstream report surfaced:
+
+  **`innerHTML` silently stripped all SVG** (`@pyreon/runtime-dom`). The fallback sanitizer's allowlist held only HTML tags, so `<span innerHTML="<svg>…</svg>">` had every SVG element replaced with a text node — an entire icon set could render blank with no error or warning, and the only escape (`setSanitizer`) is global. A curated safe-SVG profile (shape / gradient / clip / mask / text / filter-primitive elements, mirroring DOMPurify's default SVG profile) now passes through, while `<script>`, `<foreignObject>`, `<style>`, and SMIL animation elements stay excluded and `on*` / `javascript:` (now including `xlink:href`, whose localName the URL guard previously missed) are still stripped.
+
+  **SVG types missing `mask`, `<image>`, and augmentability** (`@pyreon/core`). `SvgAttributes` had `maskUnits`/`maskContentUnits` (attributes OF a `<mask>`) but not `mask` (the reference TO one), plus no `filter`, opacity/dash, or filter-primitive attributes; `JSX.IntrinsicElements` lacked `<image>` and every SVG filter element (they fell through to the HTML catch-all and lost SVG typing). All added. SVG attributes are augmentable downstream via `declare module '@pyreon/core' { interface SvgAttributes { … } }` (now documented in the `SvgAttributes` JSDoc) — use that form, not `declare global { namespace JSX }`, which declares a separate interface that does not merge.
+
+- Updated dependencies [[`41049d8`](https://github.com/pyreon/pyreon/commit/41049d897a1804d92ac0f599a48493e9a7a0fa85), [`d935083`](https://github.com/pyreon/pyreon/commit/d935083033edd2c0e74c8fa71e46d9dfcdb661e7)]:
+  - @pyreon/core@0.49.0
+  - @pyreon/reactivity@0.49.0
+  - @pyreon/sized-map@0.49.0
+
 ## 0.48.0
 
 ### Patch Changes

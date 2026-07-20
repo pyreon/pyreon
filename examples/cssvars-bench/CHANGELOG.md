@@ -1,5 +1,22 @@
 # @pyreon/example-cssvars-bench
 
+## 0.0.22
+
+### Patch Changes
+
+- Updated dependencies [[`41049d8`](https://github.com/pyreon/pyreon/commit/41049d897a1804d92ac0f599a48493e9a7a0fa85), [`f5f94ef`](https://github.com/pyreon/pyreon/commit/f5f94ef21e58b2e0430cee67a509630936d7ee73), [`db6319e`](https://github.com/pyreon/pyreon/commit/db6319edb0fc993b6319ece9b8f258b9da5e7a4d), [`d935083`](https://github.com/pyreon/pyreon/commit/d935083033edd2c0e74c8fa71e46d9dfcdb661e7)]:
+  - @pyreon/core@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/perf-harness@0.13.2
+  - @pyreon/elements@1.0.0
+  - @pyreon/rocketstyle@1.0.0
+  - @pyreon/styler@1.0.0
+  - @pyreon/ui-core@1.0.0
+  - @pyreon/unistyle@1.0.0
+  - @pyreon/ui-components@1.0.0
+  - @pyreon/ui-theme@0.13.36
+  - @pyreon/reactivity@1.0.0
+
 ## 0.0.21
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/compiler-darwin-x64",
-  "version": "0.48.0",
+  "version": "0.49.0",
   "description": "macOS x64 (Intel) prebuilt native binary for @pyreon/compiler",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/compiler#readme",

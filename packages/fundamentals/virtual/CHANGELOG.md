@@ -1,5 +1,13 @@
 # @pyreon/virtual
 
+## 0.49.0
+
+### Patch Changes
+
+- Updated dependencies [[`41049d8`](https://github.com/pyreon/pyreon/commit/41049d897a1804d92ac0f599a48493e9a7a0fa85), [`d935083`](https://github.com/pyreon/pyreon/commit/d935083033edd2c0e74c8fa71e46d9dfcdb661e7)]:
+  - @pyreon/core@0.49.0
+  - @pyreon/reactivity@0.49.0
+
 ## 0.48.0
 
 ### Patch Changes
