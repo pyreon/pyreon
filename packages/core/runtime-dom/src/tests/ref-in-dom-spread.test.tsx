@@ -137,6 +137,37 @@ describe('#ref-in-dom-spread — spread ref on a bare element is wired (compiled
     container.remove()
   })
 
+  it('nullish spread source ({...null} / {...cond ? obj : null}) does NOT crash', () => {
+    // `{...(cond ? obj : null)}` and `{...(x ?? undefined)}` are legal JSX.
+    // `applyProps(el, null)` is a no-op, but reading `.ref` off null threw
+    // `Cannot read properties of null (reading 'ref')` — crashing the whole
+    // component. Both the static (`{...maybe}`) and dynamic (`{...make()}`)
+    // paths route through `applyPropsWithRef`, so the null guard covers both.
+    const staticApp = compileApp(`const App = () => <div {...maybe} class="ns">x</div>`, {
+      maybe: null,
+    })
+    const dynApp = compileApp(`const App = () => <div {...pick()} class="nd">y</div>`, {
+      pick: () => undefined,
+    })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    let c1: (() => void) | undefined
+    let c2: (() => void) | undefined
+    expect(() => {
+      c1 = mountChild(h(staticApp as never, null), container) ?? undefined
+      c2 = mountChild(h(dynApp as never, null), container) ?? undefined
+    }, 'nullish spread must not throw on mount').not.toThrow()
+    // The elements still render (just without the absent spread props).
+    expect(container.querySelector('.ns')?.textContent).toBe('x')
+    expect(container.querySelector('.nd')?.textContent).toBe('y')
+    // …and teardown must not throw either.
+    expect(() => {
+      c1?.()
+      c2?.()
+    }, 'nullish spread must not throw on unmount').not.toThrow()
+    container.remove()
+  })
+
   it('CALL spread — _bindSpread disposes the per-run bindings + ref on unmount', () => {
     const label = signal('x')
     let refEl: Element | null = 'unset' as never

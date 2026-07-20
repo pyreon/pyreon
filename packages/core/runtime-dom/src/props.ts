@@ -333,6 +333,10 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
  * so `<div {...props}>` is fully torn down on unmount.
  */
 export function applyPropsWithRef(el: Element, props: Props): Cleanup {
+  // A nullish spread source is legal JSX (`{...(cond ? obj : null)}`,
+  // `{...(x ?? undefined)}`) — `applyProps(el, null)` is itself a no-op
+  // (`for…in null`), but the `.ref` read below would throw. Bail early.
+  if (props == null) return NOOP_CLEANUP
   const cleanup = applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject }).ref
   // ALWAYS return a function (never null): the compiler CAPTURES this as a
