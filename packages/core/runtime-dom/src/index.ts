@@ -33,8 +33,9 @@ export {
   applyProps,
   // The compiled `<div {...props}>` template path lowers to `_applyProps`; it
   // must wire a spread `ref` (the h()/hydrate paths do it separately). See
-  // `applyPropsWithRef`.
+  // `applyPropsWithRef`. Dynamic spreads (`{...make()}`) use `_bindSpread`.
   applyPropsWithRef as _applyProps,
+  bindSpread as _bindSpread,
   applyStyleProp as _setStyle,
   sanitizeHtml,
   setSanitizer,

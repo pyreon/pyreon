@@ -2642,11 +2642,28 @@ describe('JSX transform — template combined _bind for complex expressions', ()
     expect(result).toContain('_setClass(')
   })
 
-  test('dynamic spread in template uses _applyProps in reactive _bind', () => {
+  test('dynamic spread in template uses _bindSpread + captures its disposer', () => {
+    // A dynamic spread source can change shape, so it re-applies reactively —
+    // and its cleanup (reactive bindings + a spread `ref`) must be threaded
+    // into the mount lifecycle. `_bindSpread` encapsulates both; the compiler
+    // captures its disposer so the spread is torn down on unmount (was
+    // `_applyProps(...)` inside a `_bind` with the cleanup DISCARDED).
     const result = t('<div {...getProps()}><span /></div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('_applyProps')
-    expect(result).toContain('_bind')
+    expect(result).toContain('_bindSpread(')
+    // Wrapped as a thunk so `_bindSpread` re-invokes it per reactive pass.
+    expect(result).toContain('() => (getProps())')
+    // Captured as a disposer + returned from the bind fn (not discarded).
+    expect(result).toMatch(/const __d\d = _bindSpread/)
+  })
+
+  test('static (identifier) spread in template captures its _applyProps disposer', () => {
+    const result = t('<div {...props}><span /></div>')
+    expect(result).toContain('_tpl(')
+    // Applied ONCE at mount; disposer captured (was a bare `_applyProps(...)`
+    // statement with `return null` — the cleanup discarded).
+    expect(result).toMatch(/const __d\d = _applyProps\(__root, props\)/)
+    expect(result).not.toContain('return null')
   })
 })
 

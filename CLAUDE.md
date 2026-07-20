@@ -435,7 +435,7 @@ Components run ONCE. What's reactive depends on WHERE you read a signal:
 - **Context reads**: `createReactiveContext` returns `() => T` (read in a reactive scope); plain `createContext` returns `T`.
 - **Destructuring props** = captured once (static) — use `props.x` for reactivity.
 - **`const` from props in JSX** = reactive (compiler inlines `props.x` at use sites). **`let`/`var` from props** = static.
-- **JSX spread on a component** `<Wrapper {...rest}>` = reactive (compiler `_wrapSpread`). DOM-element spread `<div {...rest}>` = reactive (template `_applyProps`). Manual `Object.assign`/`{...source}` in plain JS is NOT covered — use `mergeProps`/`splitProps`.
+- **JSX spread on a component** `<Wrapper {...rest}>` = reactive (compiler `_wrapSpread`). **DOM-element spread `<div {...rest}>` is fully first-class** — reactive props update, a spread `ref` fires AND nulls on unmount, and the whole spread (reactive bindings + ref) is disposed on unmount. Identifier spread (`{...props}`) → `const __dN = _applyProps(el, props)` (applied once, disposer captured); dynamic/call spread (`{...make()}`) → `const __dN = _bindSpread(el, () => make())` (re-applies reactively, disposing each pass). Manual `Object.assign`/`{...source}` in plain JS is NOT covered — use `mergeProps`/`splitProps`.
 
 ## Memory Leak Classes
 

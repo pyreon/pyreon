@@ -471,6 +471,7 @@ struct Ctx<'a> {
     needs_set_child_import: bool,
     needs_set_child_at_import: bool,
     needs_apply_props_import: bool,
+    needs_bind_spread_import: bool,
     needs_mount_slot_import: bool,
 
     // Compile-to-string SSR fast path helpers (`@pyreon/runtime-server`).
@@ -645,6 +646,7 @@ impl<'a> Ctx<'a> {
             needs_set_child_import: false,
             needs_set_child_at_import: false,
             needs_apply_props_import: false,
+            needs_bind_spread_import: false,
             needs_mount_slot_import: false,
             props_names: FxHashSet::default(),
             prop_derived_vars: FxHashMap::default(),
@@ -760,6 +762,9 @@ impl<'a> Ctx<'a> {
             }
             if self.needs_apply_props_import {
                 imports.push("_applyProps");
+            }
+            if self.needs_bind_spread_import {
+                imports.push("_bindSpread");
             }
             if self.needs_mount_slot_import {
                 imports.push("_mountSlot");
@@ -5753,6 +5758,7 @@ struct TemplateBuilder {
     needs_bind_text: bool,
     needs_bind_direct: bool,
     needs_apply_props: bool,
+    needs_bind_spread: bool,
     needs_mount_slot: bool,
     needs_bind: bool,
     needs_bind_poly: bool,
@@ -5777,6 +5783,7 @@ impl TemplateBuilder {
             needs_bind_text: false,
             needs_bind_direct: false,
             needs_apply_props: false,
+            needs_bind_spread: false,
             needs_mount_slot: false,
             needs_bind: false,
             needs_bind_poly: false,
@@ -5859,6 +5866,9 @@ fn build_template_call(el: &JSXElement, ctx: &mut Ctx) -> Option<String> {
     }
     if tb.needs_apply_props {
         ctx.needs_apply_props_import = true;
+    }
+    if tb.needs_bind_spread {
+        ctx.needs_bind_spread_import = true;
     }
     if tb.needs_mount_slot {
         ctx.needs_mount_slot_import = true;
@@ -6137,13 +6147,24 @@ fn process_one_attr(
     match attr {
         JSXAttributeItem::SpreadAttribute(spread) => {
             let expr_text = slice_expr(&spread.argument, ctx);
-            tb.needs_apply_props = true;
+            // `_applyProps` / `_bindSpread` RETURN a cleanup (dispose the
+            // spread's reactive bindings + null a spread `ref`) — thread it
+            // into the mount lifecycle or it leaks on unmount. Mirror of the JS
+            // backend (jsx.ts). See anti-patterns "ref inside a spread on a
+            // bare DOM element" + "spread reactive-prop cleanups".
+            let d = tb.next_disp();
             if is_dynamic(&spread.argument, ctx) {
-                tb.reactive_bind_exprs
-                    .push(format!("_applyProps({}, {})", var_name, expr_text));
-            } else {
+                // Dynamic spread source can change shape → re-apply via
+                // `_bindSpread`, which disposes each pass's cleanup before the
+                // next AND on unmount.
+                tb.needs_bind_spread = true;
                 tb.bind_lines
-                    .push(format!("_applyProps({}, {})", var_name, expr_text));
+                    .push(format!("const {} = _bindSpread({}, () => ({}))", d, var_name, expr_text));
+            } else {
+                // Static spread runs once at mount — capture its disposer.
+                tb.needs_apply_props = true;
+                tb.bind_lines
+                    .push(format!("const {} = _applyProps({}, {})", d, var_name, expr_text));
             }
             String::new()
         }
