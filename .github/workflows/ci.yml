@@ -987,7 +987,7 @@ jobs:
           # (its own src/), and the rust binary is built in this job
           # below. Other packages' lib/ is not needed.
           restore-bootstrap: 'false'
-      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master — pinned (OpenSSF Pinned-Dependencies)
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master — pinned (OpenSSF Pinned-Dependencies)
         with:
           toolchain: stable
       - name: Cache cargo registry
