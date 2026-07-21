@@ -56,7 +56,18 @@ export const CheckboxBase: ComponentFn<CheckboxBaseProps> = (props) => {
       data-checked={checked() || undefined}
       data-disabled={own.disabled || undefined}
       tabIndex={own.disabled ? -1 : 0}
-      onClick={toggle}
+      onClick={(e: MouseEvent) => {
+        // A <label> forwards its click to the wrapped control as a DEFAULT
+        // ACTION: without preventDefault the forwarded <input> click fires the
+        // input's onChange (toggle) AND bubbles back to this onClick (toggle),
+        // so a single user click would toggle THREE times. preventDefault
+        // cancels the forward; the input stays in sync via its reactive
+        // `checked={checked()}` binding, and its onChange still covers a
+        // native form reset. (Verified in real Chromium — a synthetic OR real
+        // label click otherwise fires onChange 3×.)
+        e.preventDefault()
+        toggle()
+      }}
       onKeyDown={(e: KeyboardEvent) => {
         if (e.key === ' ' || e.key === 'Enter') {
           e.preventDefault()

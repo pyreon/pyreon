@@ -167,7 +167,16 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
       data-disabled={isDisabled() || undefined}
       data-value={own.value}
       tabIndex={tabIndexFor}
-      onClick={select}
+      onClick={(e: MouseEvent) => {
+        // See CheckboxBase: a <label> forwards its click to the wrapped
+        // <input> as a default action, so without preventDefault the forwarded
+        // input click fires the input's onChange (select) AND bubbles back to
+        // this onClick (select) — onChange firing 2-3× per click. The value is
+        // idempotent (always own.value) so the net STATE is correct, but the
+        // duplicate onChange calls are a real defect for any subscriber.
+        e.preventDefault()
+        select()
+      }}
       onKeyDown={handleKeyDown}
     >
       <input
