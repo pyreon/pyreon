@@ -5,6 +5,10 @@ import { signal } from '@pyreon/reactivity'
 import { sheet } from '@pyreon/styler'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { init, PyreonUI } from '@pyreon/ui-core'
+// Register unistyle's real theme engine (themeToCssVars) — ui-core no longer
+// pulls unistyle transitively (the cycle break), so CSS-variables mode needs it
+// explicitly loaded.
+import '@pyreon/unistyle'
 import { afterEach, describe, expect, it } from 'vitest'
 import rocketstyle from '../init'
 

@@ -1,14 +1,11 @@
-import { config, isEmpty } from '@pyreon/ui-core'
+import { config, isEmpty, type PyreonTheme } from '@pyreon/ui-core'
 import { createMediaQueries, sortBreakpoints } from './responsive'
 
-export type PyreonTheme = {
-  rootSize?: number
-  breakpoints?: Record<string, number>
-  __PYREON__?: {
-    sortedBreakpoints: string[] | undefined
-    media: Record<string, (...args: any[]) => any> | undefined
-  }
-} & Record<string, unknown>
+// `PyreonTheme` is now owned by `@pyreon/ui-core` (the ui-system base) so
+// ui-core and unistyle agree on it without a dependency cycle. Re-exported
+// here for back-compat — `import { PyreonTheme } from '@pyreon/unistyle'` still
+// works.
+export type { PyreonTheme }
 
 /**
  * Enrich a theme with pre-computed responsive utilities.

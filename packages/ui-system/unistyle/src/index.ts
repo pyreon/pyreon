@@ -14,6 +14,15 @@ import type { CpseStyledProps, ResponsiveStyleTheme, ResponsiveValue } from './c
 import { cpseStyled } from './cpse-styled'
 import type { PyreonTheme } from './enrichTheme'
 import { enrichTheme } from './enrichTheme'
+import { setThemeEngine } from '@pyreon/ui-core'
+
+// ── Register the theme engine with @pyreon/ui-core ──────────────────────────
+// `<PyreonUI>` (in the base @pyreon/ui-core) reads enrichTheme/themeToCssVars/
+// cpseRewrite through a registration seam, so ui-core carries NO dependency on
+// unistyle — breaking the ui-core ↔ unistyle cycle (unistyle → ui-core only).
+// Runs at unistyle module load; by the time any `<PyreonUI>` mounts, unistyle
+// is in the module graph and the engine is registered.
+setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite })
 import type {
   Breakpoints,
   CreateMediaQueries,

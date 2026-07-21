@@ -41,13 +41,13 @@
     "@pyreon/reactivity": "workspace:^"
   },
   "dependencies": {
-    "@pyreon/styler": "workspace:^",
-    "@pyreon/unistyle": "workspace:^"
+    "@pyreon/styler": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/typescript": "workspace:^",
+    "@pyreon/unistyle": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-rolldown": "^2.5.0"
   },
