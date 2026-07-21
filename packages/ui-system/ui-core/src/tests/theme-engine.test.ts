@@ -6,12 +6,18 @@ import { describe, expect, it, vi } from 'vitest'
  * reads it via `getThemeEngine`, and ui-core carries no unistyle dependency.
  */
 describe('theme-engine registration seam', () => {
-  it('getThemeEngine throws a guiding error when no engine is registered', async () => {
+  it('getThemeEngine returns a graceful FALLBACK (not a throw) when no engine is registered', async () => {
     // Fresh module instance (the global one is registered by the test setup's
-    // `import "@pyreon/unistyle"`) — this one starts unregistered.
+    // `import "@pyreon/unistyle"`) — this one starts unregistered. Rather than
+    // crash `<PyreonUI>`, it degrades to an identity engine (a rocketstyle-only
+    // app that never loads unistyle must render, not throw).
     vi.resetModules()
     const te = await import('../theme-engine')
-    expect(() => te.getThemeEngine()).toThrowError(/@pyreon\/unistyle/)
+    const engine = te.getThemeEngine()
+    // Identity enrich + empty vars + identity cpse.
+    const theme = { rootSize: 20 }
+    expect(engine.enrichTheme(theme)).toBe(theme)
+    expect(engine.themeToCssVars(theme)).toEqual({ vars: {}, css: '' })
   })
 
   it('setThemeEngine registers an engine that getThemeEngine returns', async () => {

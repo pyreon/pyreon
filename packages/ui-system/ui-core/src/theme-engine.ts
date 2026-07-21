@@ -46,6 +46,18 @@ export interface ThemeEngine {
 }
 
 let _engine: ThemeEngine | null = null
+let _warnedFallback = false
+
+// Minimal, no-op engine used when `@pyreon/unistyle` is NOT in the module graph.
+// It keeps `<PyreonUI>` FUNCTIONAL (theme passes through un-enriched, no CSS
+// variables, no CPSE) instead of throwing — a real app that renders PyreonUI
+// through only `@pyreon/rocketstyle` (which doesn't pull unistyle) must not
+// crash. When unistyle loads it registers the real engine, which wins.
+const FALLBACK_ENGINE: ThemeEngine = {
+  enrichTheme: (theme) => theme,
+  themeToCssVars: () => ({ vars: {}, css: '' }),
+  cpseRewrite: ((fragment: string) => fragment) as ThemeEngine['cpseRewrite'],
+}
 
 /**
  * @internal Registers the theme engine. Called by `@pyreon/unistyle` at module
@@ -56,16 +68,26 @@ export function setThemeEngine(engine: ThemeEngine): void {
 }
 
 /**
- * @internal Reads the registered theme engine for `<PyreonUI>`. Throws with
- * guidance if `@pyreon/unistyle` isn't in the module graph (it always is in a
- * real app — every styled `@pyreon` UI package pulls it in).
+ * @internal Reads the theme engine for `<PyreonUI>`. Returns the engine
+ * `@pyreon/unistyle` registered at module load; if unistyle isn't in the graph,
+ * returns a minimal FALLBACK (identity enrich, no CSS vars, no CPSE) + warns
+ * ONCE in dev — so PyreonUI degrades gracefully rather than crashing. Import
+ * `@pyreon/unistyle` for full theming (default breakpoints/spacing, CSS
+ * variables, CPSE); every styled `@pyreon` UI package except bare rocketstyle
+ * pulls it in transitively.
  */
 export function getThemeEngine(): ThemeEngine {
   if (_engine === null) {
-    throw new Error(
-      '[Pyreon] <PyreonUI> needs the theme engine from @pyreon/unistyle, but it was not registered. ' +
-        'Import "@pyreon/unistyle" somewhere in your app (any @pyreon UI component package pulls it in transitively).',
-    )
+    if (process.env.NODE_ENV !== 'production' && !_warnedFallback) {
+      _warnedFallback = true
+      console.warn(
+        '[Pyreon] <PyreonUI> is using a minimal fallback theme engine because ' +
+          '@pyreon/unistyle is not loaded — theme enrichment (default ' +
+          'breakpoints/spacing), CSS variables, and CPSE are disabled. Import ' +
+          '"@pyreon/unistyle" for full theming.',
+      )
+    }
+    return FALLBACK_ENGINE
   }
   return _engine
 }
