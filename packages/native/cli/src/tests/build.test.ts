@@ -351,6 +351,25 @@ describe('@pyreon/native-cli build', () => {
     expect(withoutPicker).not.toContain('androidx.activity.result')
   })
 
+  it('Kotlin conditional imports: the file-picker OpenDocument launcher pulls the SAME androidx.activity imports (M3.8)', () => {
+    // M3.8: `useFilePicker()` emits the SAME launcher shape as the image picker
+    // but over the SAF `OpenDocument` contract. The M3.4 arms are content-keyed
+    // on `rememberLauncherForActivityResult(` + `ActivityResultContracts.`, so
+    // they fire for OpenDocument too — this spec locks that coverage explicitly
+    // so a future refactor of the arms can't silently drop the file picker.
+    const withFilePicker = conditionalKotlinImports(
+      'files.launcher = rememberLauncherForActivityResult(\n' +
+        '    ActivityResultContracts.OpenDocument()\n' +
+        '  ) { uri -> files.onResult(uri?.toString()) }',
+    )
+    expect(withFilePicker).toContain(
+      'import androidx.activity.compose.rememberLauncherForActivityResult',
+    )
+    expect(withFilePicker).toContain(
+      'import androidx.activity.result.contract.ActivityResultContracts',
+    )
+  })
+
   it('Kotlin conditional imports: isSystemInDarkTheme pulls its foundation import (M2.5, device-found)', () => {
     // Device-found (M2.5 dark mode): `useColorScheme()` emits
     // `if (isSystemInDarkTheme()) "dark" else "light"`, but isSystemInDarkTheme

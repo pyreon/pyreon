@@ -1688,6 +1688,24 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `  ) { uri -> ${id}.onResult(uri?.toString()) }`,
     ].join('\n  ')
   }
+  // M3.8: `const files = useFilePicker()` → a remembered PyreonFilePicker PLUS a
+  // composable-scope ActivityResult launcher over the SAF `OpenDocument`
+  // contract (input `Array<String>` of MIME types → `Uri?`). Same
+  // composition-time-registration rule as the image picker
+  // (rememberLauncherForActivityResult is a @Composable), so the launcher is
+  // wired HERE, not from inside `remember {}`; the container bridges
+  // callback→suspend so `pick()` keeps the Swift `async` shape. The `pick()`
+  // runtime chooses the MIME filter (`arrayOf("*/*")`), so the emit is
+  // contract-registration only.
+  if (d.kind === 'file-picker') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id} = remember { PyreonFilePicker() }`,
+      `${id}.launcher = rememberLauncherForActivityResult(`,
+      `    ActivityResultContracts.OpenDocument()`,
+      `  ) { uri -> ${id}.onResult(uri?.toString()) }`,
+    ].join('\n  ')
+  }
   if (d.kind === 'share') {
     const id = kotlinIdent(d.name)
     return [

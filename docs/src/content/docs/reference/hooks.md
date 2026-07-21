@@ -1,17 +1,17 @@
 ---
 title: "Signal-Based Hooks — API Reference"
-description: "45 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
+description: "46 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocus"
 ---
 
 # @pyreon/hooks — API Reference
 
 > **Generated** from `hooks`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [hooks](/docs/hooks).
 
-Signal-based hooks for Pyreon — 45 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
+Signal-based hooks for Pyreon — 46 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.
 
 ## Features
 
-- 45 signal-based hooks across 7 categories
+- 46 signal-based hooks across 7 categories
 - State: useToggle, useCounter, usePrevious, useLatest, useControllableState
 - DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll
 - Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion
@@ -151,6 +151,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 | [`useShare`](#useshare) | hook | Imperative Web Share API wrapper (lowers to native `PyreonShare` under PMTC). |
 | [`useLinking`](#uselinking) | hook | Imperative external-link opener. |
 | [`useNotifications`](#usenotifications) | hook | Imperative LOCAL notifications (Web Notifications API; lowers to native `PyreonNotifications` under PMTC). |
+| [`useFilePicker`](#usefilepicker) | hook | Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` |
 | [`useImagePicker`](#useimagepicker) | hook | Pick an image from the device's photo library — PHPickerViewController (iOS), the Android Photo Picker (`PickVisualMedia |
 | [`useBiometrics`](#usebiometrics) | hook | A biometric authentication gate — Face ID / Touch ID (iOS `LAContext`), BiometricPrompt (Android), feature-detected on t |
 
@@ -1154,6 +1155,39 @@ notifications.notify('Done', 'Your export is ready')
 - These are LOCAL notifications only — not push; there is no server/remote delivery.
 
 **See also:** `useHaptics`
+
+---
+
+### useFilePicker `hook`
+
+```ts
+useFilePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }
+```
+
+Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up).
+
+**Example**
+
+```tsx
+const files = useFilePicker()
+const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
+
+<button onClick={async () => {
+  const uri = await files.pick()
+  status.set(uri === null ? 'cancelled' : 'picked')
+}}>Pick a file</button>
+```
+
+**Common mistakes**
+
+- Testing the result for TRUTHINESS (`uri ? … : …`) instead of comparing to null (`uri === null`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to `uri == nil` (Swift) / `uri == null` (Kotlin), and it is also correct on the web.
+- Calling `files.pick()` WITHOUT `await` inside a plain (non-async) handler — it returns a `Promise<string | null>`, not a URI. Mark the handler `async` and `await` it (PMTC wraps that async handler in a native `Task`/coroutine scope; a sync action slot cannot await).
+- Reaching for `useFilePicker` when you specifically want a PHOTO. Use `useImagePicker` — it opens the photo picker (`PHPickerViewController` / `PickVisualMedia`), which is a better UX for images than the general document browser.
+- Treating the returned URI as a stable, persistable path. It is an opaque, platform-shaped, EPHEMERAL handle — a `file://` temp copy on iOS, a `content://` URI on Android, a `blob:` object URL on the web. Read it or upload it promptly; do not store it and expect it to resolve later.
+- Requesting a storage permission before calling `pick()`. Neither platform needs one — asking is a policy liability (App Store / Play review scrutiny) for zero benefit, and is exactly what the out-of-process pickers exist to avoid.
+- Expecting `pick()` to also SAVE/write a file. It only opens (reads) a document; writing/exporting is a separate native flow (iOS export picker, Android `CreateDocument` + a write step) and a tracked follow-up.
+
+**See also:** `useImagePicker` · `useShare`
 
 ---
 

@@ -210,6 +210,28 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Pick Photo").assertIsDisplayed()
     }
 
+    // M3.8 — the file picker's composable-scope OpenDocument launcher registers
+    // and the app renders, on a REAL emulator. Same rationale as the image
+    // picker: `useFilePicker()` emits `files.launcher =
+    // rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { … }`
+    // at COMPOSITION scope, and a mis-wired ActivityResult registration crashes
+    // the activity at composition — so "the counter composes and File: idle is
+    // displayed" means the OpenDocument launcher registered cleanly against a
+    // real ComponentActivity, and the two conditional androidx.activity imports
+    // resolved.
+    //
+    // Like the image picker's Android test, this asserts REGISTRATION + RENDER,
+    // not the pick round trip: OpenDocument launches a separate system activity
+    // the Compose test framework cannot drive or dismiss. The full present →
+    // cancel → re-render round trip is iOS-proven
+    // (`test_filePickerPresentsAndCancelFlowsBackOnDevice`).
+    @Test
+    fun filePickerLauncherRegistersOnDevice() {
+        composeRule.onNodeWithText("File: idle").assertIsDisplayed()
+        // The trigger exists and is reachable — the button the launcher backs.
+        composeRule.onNodeWithText("Pick File").assertIsDisplayed()
+    }
+
     @Test
     fun biometricAsyncGateRunsOnDevice() {
         composeRule.onNodeWithText("Lock: idle").assertIsDisplayed()

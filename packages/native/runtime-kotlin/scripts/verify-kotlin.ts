@@ -585,6 +585,17 @@ try {
     writeFileSync(pickerContractPath, ANDROIDX_ACTIVITY_CONTRACT_STUBS, 'utf8')
     writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
   }
+  // PyreonFilePicker (M3.8) references ActivityResultLauncher<Array<String>> (the
+  // generic launcher stub) + CompletableDeferred. Its runtime source doesn't
+  // reference ActivityResultContracts (the OpenDocument contract lives in the
+  // EMIT, not the runtime), but the result stub's PickVisualMediaRequest factory
+  // default references ActivityResultContracts internally, so the contract stub
+  // is included to keep the result stub self-consistent.
+  if (SERVICE === 'PyreonFilePicker') {
+    writeFileSync(pickerResultPath, ANDROIDX_ACTIVITY_RESULT_STUBS, 'utf8')
+    writeFileSync(pickerContractPath, ANDROIDX_ACTIVITY_CONTRACT_STUBS, 'utf8')
+    writeFileSync(kotlinxCoroutinesPath, KOTLINX_COROUTINES_STUBS, 'utf8')
+  }
   const linkingContentPath = join(tempDir, 'AndroidContentLinking.kt')
   const linkingNetPath = join(tempDir, 'AndroidNet.kt')
   if (SERVICE === 'PyreonLinking') {
@@ -639,7 +650,9 @@ try {
   const pickerStubs =
     SERVICE === 'PyreonImagePicker'
       ? [pickerResultPath, pickerContractPath, kotlinxCoroutinesPath]
-      : []
+      : SERVICE === 'PyreonFilePicker'
+        ? [pickerResultPath, pickerContractPath, kotlinxCoroutinesPath]
+        : []
   const linkingStubs = SERVICE === 'PyreonLinking' ? [linkingContentPath, linkingNetPath] : []
   const notifStubs = SERVICE === 'PyreonNotifications' ? [notifAppPath, notifContentPath, notifOsPath, notifRPath, notifCorePath] : []
   // The OkHttp transport is an EXTENSION over the core container — its

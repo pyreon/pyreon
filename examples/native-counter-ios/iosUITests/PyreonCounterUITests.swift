@@ -569,6 +569,75 @@ final class PyreonCounterUITests: XCTestCase {
     /// Cancelling still proves the whole chain: PHPickerViewController
     /// presented, the delegate resumed the continuation with nil, the awaited
     /// Task resumed, and the post-await signal flip re-rendered.
+    /// M3.8 — the system DOCUMENT picker presents, and its async result flows
+    /// back across the sheet dismissal into a re-render. The document sibling of
+    /// `test_imagePickerPresentsAndCancelFlowsBackOnDevice`.
+    ///
+    /// Drives the CANCEL path deliberately (same determinism argument as the
+    /// photo picker): picking a real document depends on the Simulator's file
+    /// providers, whereas Cancel is available on every one. Cancelling still
+    /// proves the whole chain: UIDocumentPickerViewController presented, the
+    /// delegate resumed the continuation with nil, the awaited Task resumed, and
+    /// the post-await signal flip re-rendered.
+    func test_filePickerPresentsAndCancelFlowsBackOnDevice() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        // (1) Initial state — the async handler has not run yet.
+        XCTAssertTrue(
+            app.staticTexts["File: idle"].waitForExistence(timeout: 30),
+            "Expected the initial \"File: idle\" — the fileStatus signal was "
+                + "not seeded (or the File text was dropped from the emit)"
+        )
+
+        // (2) Tap Pick File → the async Task runs and the document picker presents.
+        let pick = app.buttons["Pick File"]
+        XCTAssertTrue(pick.exists, "Pick File button missing")
+        pick.tap()
+
+        // The presented UIDocumentPickerViewController is a system sheet whose
+        // identifiers vary by iOS version — check several robust indicators.
+        let cancelButton = app.buttons["Cancel"]
+        let browseTab = app.buttons["Browse"]
+        let recentsNavBar = app.navigationBars["Recents"]
+        let presented =
+            cancelButton.waitForExistence(timeout: 10)
+            || browseTab.waitForExistence(timeout: 5)
+            || recentsNavBar.waitForExistence(timeout: 5)
+        XCTAssertTrue(
+            presented,
+            "Tapping Pick File did not present the system document picker — "
+                + "PyreonFilePicker failed to present a "
+                + "UIDocumentPickerViewController from the key window (or the "
+                + "async Task never ran)"
+        )
+
+        // (3) DISMISS the picker. Mandatory, not hygiene: an open system sheet
+        // blocks app termination, which wedges the Simulator and cascades
+        // launch-timeouts into every later test in the run. It is also the
+        // assertion itself: cancelling is what makes pick() resolve nil.
+        if cancelButton.exists {
+            cancelButton.tap()
+        } else {
+            app.swipeDown()
+        }
+
+        XCTAssertTrue(
+            app.staticTexts["File: cancelled"].waitForExistence(timeout: 10),
+            "\"File: cancelled\" never appeared after dismissing the picker — "
+                + "the UIDocumentPicker delegate did not resume the continuation "
+                + "with nil, so the awaited pick() hung and the post-await "
+                + "fileStatus re-render never fired. (A hung continuation is the "
+                + "exact failure the delegate's strong-retain guards.)"
+        )
+        // The old state must be gone — proves a real re-render, not an additive draw.
+        XCTAssertFalse(
+            app.staticTexts["File: idle"].exists,
+            "\"File: idle\" still present after the pick was cancelled — the "
+                + "post-await signal flip did not re-render inside the Task scope"
+        )
+    }
+
     func test_imagePickerPresentsAndCancelFlowsBackOnDevice() throws {
         let app = XCUIApplication()
         app.launch()

@@ -747,15 +747,28 @@ class PyreonBiometrics {
   suspend fun authenticate(reason: String): Boolean = false
 }
 
-// M3.4: the photo-picker container + the androidx.activity ActivityResult
-// surface the emit wires into it. STUB FIDELITY (a superset stub MASKS the bug
+// M3.4 / M3.8: the picker containers + the androidx.activity ActivityResult
+// surface the emit wires into them. STUB FIDELITY (a superset stub MASKS the bug
 // it exists to catch): \`pick()\` returns String? (nil = cancelled) so an emit
 // that drops the optionality fails here; \`ActivityResultLauncher<I>\` is
-// generic in its input so \`rememberLauncherForActivityResult\`'s contract type
-// must line up; \`ImageOnly\` is nested DIRECTLY in PickVisualMedia (not its
-// companion), matching real androidx.
+// generic in its input; \`ImageOnly\` is nested DIRECTLY in PickVisualMedia (not
+// its companion), matching real androidx.
+//
+// M3.8 made this GENERIC (it was monomorphic when PickVisualMedia was the sole
+// caller): the real \`rememberLauncherForActivityResult\` is \`<I, O>\` over an
+// \`ActivityResultContract<I, O>\`, and now TWO contracts flow through it —
+// PickVisualMedia (input PickVisualMediaRequest) and OpenDocument (input
+// Array<String>). Modelling the true generic signature is MORE faithful than a
+// second monomorphic overload, and lets the file-picker emit's
+// \`OpenDocument()\` typecheck without loosening the image-picker's check.
 class PyreonImagePicker {
   var launcher: ActivityResultLauncher<PickVisualMediaRequest>? = null
+  fun onResult(uri: String?) {}
+  suspend fun pick(): String? = null
+}
+
+class PyreonFilePicker {
+  var launcher: ActivityResultLauncher<Array<String>>? = null
   fun onResult(uri: String?) {}
   suspend fun pick(): String? = null
 }
@@ -766,16 +779,24 @@ class ActivityResultLauncher<I> {
 
 class PickVisualMediaRequest
 
+// The real base contract both pickers' launchers are typed over. Empty (no
+// abstract members) so the stub subclasses need no overrides.
+abstract class ActivityResultContract<I, O>
+
 class ActivityResultContracts {
-  class PickVisualMedia {
+  // PickVisualMedia : ActivityResultContract<PickVisualMediaRequest, Uri?>
+  class PickVisualMedia : ActivityResultContract<PickVisualMediaRequest, Uri?>() {
     sealed interface VisualMediaType
     object ImageOnly : VisualMediaType
     object VideoOnly : VisualMediaType
     object ImageAndVideo : VisualMediaType
   }
+  // OpenDocument : ActivityResultContract<Array<String>, Uri?> — the SAF
+  // document picker. Input is the Array<String> of acceptable MIME types.
+  class OpenDocument : ActivityResultContract<Array<String>, Uri?>()
 }
 
-// android.net.Uri — what PickVisualMedia actually hands the callback. Modeled
+// android.net.Uri — what the pickers actually hand the callback. Modeled
 // (rather than shortcutting the callback param to String?) so the emit's
 // \`uri?.toString()\` is checked against the REAL result type: a String? stub
 // would happily accept an emit that assumed the callback already yields a
@@ -786,15 +807,15 @@ class Uri {
 
 // Real: @Composable fun <I, O> rememberLauncherForActivityResult(
 //   contract: ActivityResultContract<I, O>, onResult: (O) -> Unit
-// ): ManagedActivityResultLauncher<I, O>. Modeled with the contract as the
-// PickVisualMedia class + its real Uri? result — the only instantiation the
-// emit produces.
+// ): ManagedActivityResultLauncher<I, O>. The true generic signature, so BOTH
+// PickVisualMedia (I = PickVisualMediaRequest) and OpenDocument (I =
+// Array<String>) resolve, each returning a launcher over its own input type.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun rememberLauncherForActivityResult(
-  contract: ActivityResultContracts.PickVisualMedia,
-  onResult: (Uri?) -> Unit,
-): ActivityResultLauncher<PickVisualMediaRequest> = ActivityResultLauncher()
+fun <I, O> rememberLauncherForActivityResult(
+  contract: ActivityResultContract<I, O>,
+  onResult: (O) -> Unit,
+): ActivityResultLauncher<I> = ActivityResultLauncher()
 
 // PyreonForm — mirror of @pyreon/native-runtime-kotlin's PyreonForm.kt
 // v2 surface (form-binding arc): MutableState maps + validators +

@@ -15,6 +15,7 @@ import {
   useNotifications,
   useBiometrics,
   useImagePicker,
+  useFilePicker,
   useSizeClass,
   useColorScheme,
 } from '@pyreon/hooks'
@@ -50,6 +51,12 @@ export function Counter() {
   // picker PRESENTED, the async result flowed back across the sheet dismissal,
   // and the post-await re-render fired.
   const photoStatus = signal<string>('idle')
+  // M3.8 file-picker proof — the outcome of a DOCUMENT pick (any file, not just
+  // photos), flipped from INSIDE an async handler (the third async-result
+  // service). Same present→cancel→re-render device assertion as the photo
+  // picker, but through the system document browser
+  // (UIDocumentPickerViewController / SAF OpenDocument).
+  const fileStatus = signal<string>('idle')
   // M3.1 platform-API proof — a haptic fires on each increment tap.
   // Native: iOS `PyreonHaptics().impact("light")` (UIImpactFeedbackGenerator),
   // Android `PyreonHaptics(LocalHapticFeedback.current).impact("light")`.
@@ -96,6 +103,14 @@ export function Counter() {
   // photo-library permission on either platform — both system pickers run out
   // of process and hand back only the picked asset.
   const picker = useImagePicker()
+  // M3.8 platform-API proof — the system DOCUMENT picker (any file). `pick()`
+  // returns a Promise<string | null>, riding the same M4.5 `await` lowering.
+  // Native: iOS `PyreonFilePicker().pick()` (UIDocumentPickerViewController from
+  // the key window); Android `PyreonFilePicker()` + a composable-scope
+  // `rememberLauncherForActivityResult` wired to the SAF `OpenDocument`. Web: a
+  // hidden `<input type="file">`. NO storage permission on either platform —
+  // both system pickers run out of process and hand back only the picked file.
+  const files = useFilePicker()
   // M2.2 adaptive proof — the current horizontal size class, read reactively.
   // Native: iOS `@Environment(\.horizontalSizeClass)` → "compact"/"regular",
   // Android `LocalConfiguration.current.screenWidthDp >= 600`. Web:
@@ -154,6 +169,7 @@ export function Counter() {
       <Text>Power: {power()}</Text>
       <Text>Lock: {lockStatus()}</Text>
       <Text>Photo: {photoStatus()}</Text>
+      <Text>File: {fileStatus()}</Text>
       {/* M2.2b adaptive-layout proof — a size-class-driven ternary between
           DIFFERENT container types (Inline vs Stack). SwiftUI's ViewBuilder
           rejects `cond ? HStack {…} : VStack {…}` (mismatching types), so the
@@ -212,6 +228,19 @@ export function Counter() {
         }}
       >
         Pick Photo
+      </Button>
+      {/* M3.8 file-picker device proof — a third ASYNC handler, awaiting the
+          system DOCUMENT picker (any file, not just photos). Same explicit
+          `uri === null` shape and the same present→cancel→re-render device
+          assertion as the photo picker, through UIDocumentPickerViewController
+          (iOS) / SAF OpenDocument (Android). */}
+      <Button
+        onClick={async () => {
+          const uri = await files.pick()
+          fileStatus.set(uri === null ? 'cancelled' : 'picked')
+        }}
+      >
+        Pick File
       </Button>
       <Button onClick={() => power.send('TOGGLE')}>Toggle Power</Button>
       <Button onClick={() => boxVisible.set(!boxVisible())}>Toggle Box</Button>

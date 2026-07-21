@@ -355,6 +355,12 @@ export type DeclIR =
    * (the M4.5 `await` lowering). Needs no photo-library permission — both
    * system pickers run out of process. */
   | { kind: 'image-picker'; name: string }
+  /** M3.8 — `const files = useFilePicker()` → PyreonFilePicker (iOS
+   * UIDocumentPickerViewController / Android SAF `OpenDocument`). `pick()` is
+   * async and resolves a URI string or null (cancelled), awaited in an `async`
+   * handler (the M4.5 `await` lowering). The document sibling of image-picker;
+   * needs no storage permission — both system pickers run out of process. */
+  | { kind: 'file-picker'; name: string }
   /**
    * Phase 4 — color-scheme read via `const scheme = useColorScheme()`
    * from `@pyreon/hooks`. Maps to platform-native "is dark mode
