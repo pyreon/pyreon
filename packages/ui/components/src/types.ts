@@ -44,6 +44,7 @@ import type Checkbox from './components/Checkbox'
 import type { CheckboxIndicator } from './components/Checkbox'
 import type Radio from './components/Radio'
 import type Rating from './components/Rating'
+import type RangeSlider from './components/RangeSlider'
 import type { RadioGroup, RadioIndicator, RadioDot } from './components/Radio'
 import type Switch from './components/Switch'
 import type { SwitchThumb } from './components/Switch'
@@ -150,6 +151,7 @@ export type CheckboxProps = ExtractProps<typeof Checkbox>
 export type CheckboxIndicatorProps = ExtractProps<typeof CheckboxIndicator>
 export type RadioProps = ExtractProps<typeof Radio>
 export type RatingProps = ExtractProps<typeof Rating>
+export type RangeSliderProps = ExtractProps<typeof RangeSlider>
 export type RadioGroupProps = ExtractProps<typeof RadioGroup>
 export type RadioIndicatorProps = ExtractProps<typeof RadioIndicator>
 export type RadioDotProps = ExtractProps<typeof RadioDot>

@@ -31,6 +31,12 @@ export {
   useRadioGroup,
 } from './RadioGroupBase'
 export {
+  RangeSliderBase,
+  type RangeSliderBaseProps,
+  type RangeSliderLabels,
+  type RangeSliderState,
+} from './RangeSliderBase'
+export {
   RatingBase,
   type RatingBaseProps,
   type RatingLabels,
