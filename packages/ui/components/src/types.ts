@@ -33,10 +33,13 @@ import type Button from './components/Button'
 import type { CloseButton, IconButton } from './components/Button'
 import type ButtonGroup from './components/ButtonGroup'
 import type ActionIcon from './components/ActionIcon'
+import type Fieldset from './components/Fieldset'
+import type { FieldsetLegend } from './components/Fieldset'
 import type FormField from './components/FormField'
 import type { FieldDescription, FieldError, FieldLabel } from './components/FormField'
 import type Input from './components/Input'
 import type { Textarea } from './components/Input'
+import type PasswordInput from './components/PasswordInput'
 import type Checkbox from './components/Checkbox'
 import type { CheckboxIndicator } from './components/Checkbox'
 import type Radio from './components/Radio'
@@ -130,6 +133,9 @@ export type ButtonGroupProps = ExtractProps<typeof ButtonGroup>
 export type ActionIconProps = ExtractProps<typeof ActionIcon>
 
 // Forms
+export type FieldsetProps = ExtractProps<typeof Fieldset>
+export type FieldsetLegendProps = ExtractProps<typeof FieldsetLegend>
+export type PasswordInputProps = ExtractProps<typeof PasswordInput>
 export type FormFieldProps = ExtractProps<typeof FormField>
 export type FieldDescriptionProps = ExtractProps<typeof FieldDescription>
 export type FieldErrorProps = ExtractProps<typeof FieldError>

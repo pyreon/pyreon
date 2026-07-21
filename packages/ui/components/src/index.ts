@@ -17,8 +17,10 @@ export { default as ButtonGroup } from './components/ButtonGroup'
 export { default as ActionIcon } from './components/ActionIcon'
 
 // Forms
+export { default as Fieldset, FieldsetLegend } from './components/Fieldset'
 export { default as FormField, FieldDescription, FieldError, FieldLabel } from './components/FormField'
 export { default as Input, Textarea } from './components/Input'
+export { default as PasswordInput } from './components/PasswordInput'
 export { default as Checkbox, CheckboxIndicator } from './components/Checkbox'
 export { default as Radio, RadioGroup, RadioIndicator, RadioDot } from './components/Radio'
 export { default as Switch, SwitchThumb } from './components/Switch'
