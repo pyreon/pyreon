@@ -97,3 +97,7 @@ export { default as Tree, TreeItem } from './components/Tree'
 
 // Accessibility
 export { default as VisuallyHidden } from './components/VisuallyHidden'
+
+// Prop types — one `<Name>Props` alias per exported component, derived from
+// the component's own call signature (ExtractProps) so they can never drift.
+export type * from './types'
