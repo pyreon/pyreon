@@ -61,6 +61,9 @@ const InvertedSection = () => (
 | --- | --- | --- |
 | [`PyreonUI`](#pyreonui) | component | Unified provider replacing the previous theme / mode / config split (3 nested providers became 1). |
 | [`useMode`](#usemode) | hook | Returns the currently resolved mode as a reactive signal — `'light'` or `'dark'`. |
+| [`useThemeValue`](#usethemevalue) | hook | Deep-reads a dot-path from the styler theme (e.g. |
+| [`useRootSize`](#userootsize) | hook | Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. |
+| [`useSpacing`](#usespacing) | hook | Returns a `spacing(multiplier)` function producing a px string. |
 | [`cssVariablesPrePaintScript`](#cssvariablesprepaintscript) | function | Build the blocking pre-paint script that sets the CSS-variables mode attribute on `document.documentElement` BEFORE firs |
 
 ## API
@@ -126,6 +129,74 @@ const mode = useMode()
 - Using `useMode()` outside any `PyreonUI` ancestor — falls back to a default but loses the reactive system / inversed handling
 
 **See also:** `PyreonUI`
+
+---
+
+### useThemeValue `hook`
+
+```ts
+useThemeValue<T = unknown>(path: string) => T | undefined
+```
+
+Deep-reads a dot-path from the styler theme (e.g. `"colors.primary"`), returning the value or `undefined`. A convenience over `useTheme()` + manual traversal. Lives in `@pyreon/ui-core` so the ui-system owns its theme-reader hooks without depending on the `@pyreon/hooks` fundamentals package.
+
+**Example**
+
+```tsx
+const primary = useThemeValue<string>('colors.primary')
+```
+
+**Common mistakes**
+
+- Returns a PLAIN value captured once — NOT an accessor and NOT reactive; it will not update on a theme swap. For a value that tracks the theme, read `useThemeAccessor()` from `@pyreon/styler` inside a reactive scope.
+
+**See also:** `useRootSize` · `useSpacing`
+
+---
+
+### useRootSize `hook`
+
+```ts
+useRootSize() => { rootSize: number; pxToRem: (px: number) => string; remToPx: (rem: number) => number }
+```
+
+Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. Requires a theme context (falls back to 16 otherwise). Lives in `@pyreon/ui-core` — a ui-system theme-reader hook.
+
+**Example**
+
+```tsx
+const { pxToRem } = useRootSize()
+<div style={{ padding: pxToRem(24) }}>…</div>
+```
+
+**Common mistakes**
+
+- `rootSize` is a plain number captured ONCE at call time — NOT reactive. The converters close over that snapshot, so a later whole-theme swap will not update an already-returned result (re-mount the consumer to pick up a new root size).
+
+**See also:** `useSpacing` · `useThemeValue`
+
+---
+
+### useSpacing `hook`
+
+```ts
+useSpacing(base?: number) => (multiplier: number) => string
+```
+
+Returns a `spacing(multiplier)` function producing a px string. The unit is `base ?? rootSize/2` (default 8px), read from the theme via `useRootSize`. Lives in `@pyreon/ui-core` — a ui-system theme-reader hook.
+
+**Example**
+
+```tsx
+const spacing = useSpacing()
+<div style={{ gap: spacing(2) }}>…</div>  // "16px"
+```
+
+**Common mistakes**
+
+- The unit is computed once from a non-reactive `rootSize` snapshot — the returned `spacing` function is static; a theme change will not affect an already-obtained function.
+
+**See also:** `useRootSize` · `useThemeValue`
 
 ---
 
