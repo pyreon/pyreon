@@ -139,12 +139,23 @@ const _hotCache: {
 // fresh components with up-to-date class names. Static class names emitted
 // before `clearAll` are stale by the time the user observes them — the rule
 // they pointed at has been deleted from the DOM.
-onSheetClear(() => {
-  staticComponentCache = new WeakMap()
-  _hotCache.strings = null
-  _hotCache.tag = null
-  _hotCache.component = null
-})
+// Registered lazily on the first `styled()` call (one-shot) rather than at
+// module top level: a top-level `onSheetClear(...)` call is an unremovable
+// side effect that retains styled's whole component machinery in every
+// consumer bundle, styling used or not. Timing-safe: before the first
+// `styled()` call both caches are empty, so a `clearAll()` in that window has
+// nothing to invalidate.
+let _clearHookRegistered = false
+const registerClearHook = (): void => {
+  if (_clearHookRegistered) return
+  _clearHookRegistered = true
+  onSheetClear(() => {
+    staticComponentCache = new WeakMap()
+    _hotCache.strings = null
+    _hotCache.tag = null
+    _hotCache.component = null
+  })
+}
 
 const createStyledComponent = (
   tag: Tag,
@@ -152,6 +163,7 @@ const createStyledComponent = (
   values: Interpolation[],
   options?: StyledOptions,
 ): ComponentFn => {
+  registerClearHook()
   // Ultra-fast hot cache: 3 reference comparisons → return immediately
   if (values.length === 0 && !options) {
     if (strings === _hotCache.strings && tag === _hotCache.tag)
@@ -685,7 +697,7 @@ export type StyledFunction = ((tag: Tag, options?: StyledOptions) => TagTemplate
 // Proxy is needed to support styled.div`...` syntax; the cast bridges
 // styledFactory's call signature to StyledFunction which adds HTML tag properties.
 // Proxy target uses `as any` because TS can't resolve Proxy<StyledFunction> with mapped types
-export const styled: StyledFunction = new Proxy(styledFactory as any, {
+export const styled: StyledFunction = /* @__PURE__ */ new Proxy(styledFactory as any, {
   get(_target: unknown, prop: string) {
     if (prop === 'prototype' || prop === '$$typeof') return undefined
     // styled.div`...`, styled.span`...`, etc.

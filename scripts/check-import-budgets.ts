@@ -145,6 +145,23 @@ export const SCENARIOS: Scenario[] = [
     imports: ['Element'],
   },
   {
+    // Locks the styler lazy-singleton win: the top-level `new StyleSheet()`
+    // + flush registration + onSheetClear call pinned the whole sheet engine
+    // into EVERY consumer bundle — `useTheme`-only imports paid 6.09KB gz.
+    // After moving registration into the constructor (PURE singleton) and
+    // the clear-hook to first styled() call: useTheme 1.12KB, css 1.49KB.
+    id: '@pyreon/styler::useTheme',
+    pkg: '@pyreon/styler',
+    dir: 'ui-system/styler',
+    imports: ['useTheme'],
+  },
+  {
+    id: '@pyreon/styler::css',
+    pkg: '@pyreon/styler',
+    dir: 'ui-system/styler',
+    imports: ['css'],
+  },
+  {
     id: '@pyreon/core::jsx',
     pkg: '@pyreon/core',
     dir: 'core/core',
