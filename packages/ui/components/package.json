@@ -38,16 +38,14 @@
   "dependencies": {
     "@pyreon/coolgrid": "workspace:^",
     "@pyreon/elements": "workspace:^",
-    "@pyreon/hooks": "workspace:^",
     "@pyreon/rocketstyle": "workspace:^",
-    "@pyreon/styler": "workspace:^",
-    "@pyreon/ui-core": "workspace:^",
     "@pyreon/ui-primitives": "workspace:^",
     "@pyreon/ui-theme": "workspace:^",
     "@pyreon/unistyle": "workspace:^"
   },
   "devDependencies": {
     "@pyreon/perf-harness": "workspace:*",
+    "@pyreon/ui-core": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
     "@pyreon/typescript": "workspace:^",

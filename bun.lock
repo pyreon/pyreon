@@ -2146,7 +2146,7 @@
       "name": "@pyreon/typescript",
       "version": "0.46.0",
       "dependencies": {
-        "@pyreon/core": ">=0.13.0",
+        "@pyreon/core": "workspace:^",
       },
       "peerDependencies": {
         "typescript": ">=5.9.0 <7.0.0",
@@ -2225,11 +2225,11 @@
       "name": "@pyreon/coolgrid",
       "version": "0.46.0",
       "dependencies": {
-        "@pyreon/styler": "workspace:^",
         "@pyreon/ui-core": "workspace:^",
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/styler": "workspace:^",
         "@pyreon/manifest": "workspace:*",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
@@ -2250,8 +2250,6 @@
         "@pyreon/document": "workspace:^",
         "@pyreon/elements": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
-        "@pyreon/styler": "workspace:^",
-        "@pyreon/ui-core": "workspace:^",
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
@@ -2407,15 +2405,13 @@
       "dependencies": {
         "@pyreon/coolgrid": "workspace:^",
         "@pyreon/elements": "workspace:^",
-        "@pyreon/hooks": "workspace:^",
         "@pyreon/rocketstyle": "workspace:^",
-        "@pyreon/styler": "workspace:^",
-        "@pyreon/ui-core": "workspace:^",
         "@pyreon/ui-primitives": "workspace:^",
         "@pyreon/ui-theme": "workspace:^",
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
+        "@pyreon/ui-core": "workspace:^",
         "@pyreon/perf-harness": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
@@ -2432,7 +2428,6 @@
       "name": "@pyreon/ui-primitives",
       "version": "0.36.0",
       "dependencies": {
-        "@pyreon/elements": "workspace:^",
         "@pyreon/hooks": "workspace:^",
       },
       "devDependencies": {
@@ -2470,7 +2465,6 @@
       "dependencies": {
         "@pyreon/cli": "workspace:^",
         "@pyreon/create-zero": "workspace:^",
-        "@pyreon/server": "workspace:^",
         "@pyreon/zero": "workspace:^",
         "cac": "^7.0.0",
         "vite": "^8.0.16",
@@ -2560,7 +2554,6 @@
         "@capsizecss/unpack": "^4.0.1",
         "@pyreon/compiler": "workspace:^",
         "@pyreon/head": "workspace:^",
-        "@pyreon/meta": "workspace:^",
         "@pyreon/router": "workspace:^",
         "@pyreon/runtime-server": "workspace:^",
         "@pyreon/server": "workspace:^",

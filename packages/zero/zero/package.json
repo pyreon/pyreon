@@ -211,7 +211,6 @@
     "@capsizecss/unpack": "^4.0.1",
     "@pyreon/compiler": "workspace:^",
     "@pyreon/head": "workspace:^",
-    "@pyreon/meta": "workspace:^",
     "@pyreon/router": "workspace:^",
     "@pyreon/runtime-server": "workspace:^",
     "@pyreon/server": "workspace:^",
