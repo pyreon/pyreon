@@ -60,8 +60,16 @@ const Component: PyreonComponent<Props> = (props) => {
 
 const name = `${PKG_NAME}/Portal` as const
 
-Component.displayName = name
-Component.pkgName = PKG_NAME
-Component.PYREON__COMPONENT = name
-
-export default Component
+// PURE-form branding (sibling of the PURE-form nativeCompat sweep, #2368).
+// A top-level `Component.x = y` assignment is an unremovable side effect the
+// moment ANY binding of this module is used — it pinned EVERY component in
+// this package into every consumer bundle (importing just <Portal> paid the
+// whole 7.5KB gz of @pyreon/elements; measured: stripping these assignments
+// took Portal-only to 2.36KB). `Object.assign` returns the SAME function
+// (identity, call sites, stack traces unchanged); the PURE marker makes the
+// branding droppable exactly when this component is unused.
+export default /* @__PURE__ */ Object.assign(Component, {
+  displayName: name,
+  pkgName: PKG_NAME,
+  PYREON__COMPONENT: name,
+})

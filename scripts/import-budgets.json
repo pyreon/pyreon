@@ -3,5 +3,9 @@
   "@pyreon/runtime-dom::mount": 8542,
   "@pyreon/runtime-dom::mount+hydrate": 10481,
   "@pyreon/router::basic": 3866,
+  "@pyreon/elements::portal": 2584,
+  "@pyreon/elements::element": 4318,
+  "@pyreon/styler::useTheme": 1183,
+  "@pyreon/styler::css": 1588,
   "@pyreon/core::jsx": 1001
 }

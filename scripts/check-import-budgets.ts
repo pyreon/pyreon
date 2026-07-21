@@ -126,6 +126,42 @@ export const SCENARIOS: Scenario[] = [
     imports: ['RouterProvider', 'RouterView', 'RouterLink'],
   },
   {
+    // Locks the PURE-form branding win (elements PR, 2026-07): bare top-level
+    // `Component.x = y` brand assignments pinned EVERY component into every
+    // consumer bundle — importing just <Portal> paid the whole 7.5KB gz of
+    // @pyreon/elements; the fix took it to ~2.4KB and <Element> to ~4.0KB.
+    // One reverted file taxes the SIBLING imports (the components pin each
+    // other), so the aggregate outcome is what must be locked — a per-file
+    // guard can't see it.
+    id: '@pyreon/elements::portal',
+    pkg: '@pyreon/elements',
+    dir: 'ui-system/elements',
+    imports: ['Portal'],
+  },
+  {
+    id: '@pyreon/elements::element',
+    pkg: '@pyreon/elements',
+    dir: 'ui-system/elements',
+    imports: ['Element'],
+  },
+  {
+    // Locks the styler lazy-singleton win: the top-level `new StyleSheet()`
+    // + flush registration + onSheetClear call pinned the whole sheet engine
+    // into EVERY consumer bundle — `useTheme`-only imports paid 6.09KB gz.
+    // After moving registration into the constructor (PURE singleton) and
+    // the clear-hook to first styled() call: useTheme 1.12KB, css 1.49KB.
+    id: '@pyreon/styler::useTheme',
+    pkg: '@pyreon/styler',
+    dir: 'ui-system/styler',
+    imports: ['useTheme'],
+  },
+  {
+    id: '@pyreon/styler::css',
+    pkg: '@pyreon/styler',
+    dir: 'ui-system/styler',
+    imports: ['css'],
+  },
+  {
     id: '@pyreon/core::jsx',
     pkg: '@pyreon/core',
     dir: 'core/core',

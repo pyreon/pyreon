@@ -45,35 +45,46 @@ export type Styles = ({
 // incoming theme object. Reduces iterations from ~257 to ~10-20 for a typical
 // component that uses 5-10 properties.
 
-const keyToIndices = new Map<string, number[]>()
-
-for (let i = 0; i < propertyMap.length; i++) {
-  const d = propertyMap[i] as Record<string, any>
-  const addKey = (k: string) => {
-    let arr = keyToIndices.get(k)
-    if (!arr) {
-      arr = []
-      keyToIndices.set(k, arr)
+// Built via a PURE-annotatable function: a bare top-level `for` loop mutating
+// a module Map is an unremovable side-effect STATEMENT — it retained the whole
+// 170-entry propertyMap (plus this index) in every consumer bundle, styling
+// used or not (importing just the `value` unit helper paid ~5KB gz). The build
+// is a pure index over static data, so dropping it when `styles()` is unused
+// is exactly correct; for real consumers the build timing (module eval) is
+// unchanged.
+const buildKeyToIndices = (): Map<string, number[]> => {
+  const keyToIndices = new Map<string, number[]>()
+  for (let i = 0; i < propertyMap.length; i++) {
+    const d = propertyMap[i] as Record<string, any>
+    const addKey = (k: string) => {
+      let arr = keyToIndices.get(k)
+      if (!arr) {
+        arr = []
+        keyToIndices.set(k, arr)
+      }
+      arr.push(i)
     }
-    arr.push(i)
-  }
 
-  if (d.key) addKey(d.key)
-  if (d.keys) {
-    if (Array.isArray(d.keys)) {
-      for (const k of d.keys) addKey(k)
-    } else {
-      for (const inner of Object.values(d.keys as Record<string, string>)) {
-        addKey(inner)
+    if (d.key) addKey(d.key)
+    if (d.keys) {
+      if (Array.isArray(d.keys)) {
+        for (const k of d.keys) addKey(k)
+      } else {
+        for (const inner of Object.values(d.keys as Record<string, string>)) {
+          addKey(inner)
+        }
       }
     }
+    // kind: 'special' descriptors carry only `id` (no key/keys). Index by id so
+    // the fast path resolves them when paired with non-special keys; otherwise
+    // fragments.length > 0 from non-special hits skips the fallback full-scan
+    // and the special is silently dropped.
+    if (d.id) addKey(d.id)
   }
-  // kind: 'special' descriptors carry only `id` (no key/keys). Index by id so
-  // the fast path resolves them when paired with non-special keys; otherwise
-  // fragments.length > 0 from non-special hits skips the fallback full-scan
-  // and the special is silently dropped.
-  if (d.id) addKey(d.id)
+  return keyToIndices
 }
+
+const keyToIndices = /* @__PURE__ */ buildKeyToIndices()
 
 /**
  * Convert a normalized theme object (Record<key, value>) into a CSS template

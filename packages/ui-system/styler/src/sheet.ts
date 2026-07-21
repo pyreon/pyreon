@@ -230,6 +230,12 @@ const ATTR = 'data-pyreon-styler'
 const DEFAULT_MAX_CACHE_SIZE = 10000
 
 export interface StyleSheetOptions {
+  /**
+   * Register `globalThis.__PYREON_STYLER_FLUSH__` (streaming-SSR delta flush)
+   * for THIS instance. Only the package's `sheet` singleton sets it —
+   * `createSheet()` per-request instances must not clobber the global.
+   */
+  registerSSRFlush?: boolean
   /** Maximum number of cached rules before eviction (default: 10000). */
   maxCacheSize?: number
   /** CSS @layer name to wrap scoped rules in. */
@@ -281,6 +287,20 @@ export class StyleSheet {
     this.nonce = options.nonce
     this.isSSR = typeof document === 'undefined'
     if (!this.isSSR) this.mount()
+    // Streaming-SSR flush hook, singleton-only (`registerSSRFlush` is set by
+    // the `sheet` export below; `createSheet()` instances must NOT clobber the
+    // global). Registration lives in the constructor — not at module top
+    // level — so it exists exactly when the singleton is retained: the
+    // top-level form referenced `sheet` unconditionally, which pinned the
+    // whole sheet engine into every consumer bundle (a `typeof document`
+    // guard is NOT statically foldable, so browser bundles paid it too; even
+    // `useTheme`-only imports cost ~6.1KB gz). A styling-free app has nothing
+    // to flush, so dropping the registration with the sheet is correct.
+    if (options.registerSSRFlush && this.isSSR) {
+      ;(
+        globalThis as { __PYREON_STYLER_FLUSH__?: () => string }
+      ).__PYREON_STYLER_FLUSH__ = () => this.flushSSRPending()
+    }
   }
 
   private mount() {
@@ -1034,7 +1054,11 @@ export class StyleSheet {
  * The layer ordering `@layer elements, rocketstyle` is injected
  * in mount() so rocketstyle always overrides elements.
  */
-export const sheet = new StyleSheet()
+// PURE: droppable exactly when NO styling API is used (then no <style> tag
+// belongs in the document and no SSR flush is needed). Any real consumer of
+// css/styled/keyframes references `sheet` and retains it — construction and
+// mount timing are unchanged for them.
+export const sheet = /* @__PURE__ */ new StyleSheet({ registerSSRFlush: true })
 
 /**
  * Factory for creating isolated StyleSheet instances.
@@ -1081,8 +1105,6 @@ export const onSheetClear = (callback: () => void): (() => void) => {
 //
 // Client-side: `IS_SERVER === false` → registration skipped. The hook
 // is server-only.
-if (typeof document === 'undefined') {
-  ;(
-    globalThis as { __PYREON_STYLER_FLUSH__?: () => string }
-  ).__PYREON_STYLER_FLUSH__ = () => sheet.flushSSRPending()
-}
+// (Flush registration moved into the StyleSheet constructor — see the
+// `registerSSRFlush` option — so it is dropped together with the singleton
+// when no styling API is used.)

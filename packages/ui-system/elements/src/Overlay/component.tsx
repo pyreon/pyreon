@@ -236,10 +236,6 @@ const Component: PyreonComponent<Props> = (props) => {
 
 const name = `${PKG_NAME}/Overlay` as const
 
-Component.displayName = name
-Component.pkgName = PKG_NAME
-Component.PYREON__COMPONENT = name
-
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // Overlay's onMount + Portal + useOverlay hook setup run inside Pyreon's
 // setup frame.
@@ -250,4 +246,15 @@ Component.PYREON__COMPONENT = name
 // never imports it (see runtime-dom's native-compat-treeshake lock). The
 // PURE call is droppable exactly when the export is unused; when used it
 // returns the SAME fn with the marker applied.
-export default /* @__PURE__ */ nativeCompat(Component)
+// The branding rides the SAME PURE expression (a separate top-level
+// `Component.x = y` assignment is an unremovable side effect that pinned every
+// component in this package into every consumer bundle — importing just
+// <Portal> paid the whole 7.5KB gz of @pyreon/elements). Object.assign returns
+// the SAME fn, so nativeCompat marks and returns that identical object.
+export default /* @__PURE__ */ nativeCompat(
+  /* @__PURE__ */ Object.assign(Component, {
+    displayName: name,
+    pkgName: PKG_NAME,
+    PYREON__COMPONENT: name,
+  }),
+)
