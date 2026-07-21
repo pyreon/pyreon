@@ -322,7 +322,16 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
         'aria-expanded': hasChildren ? () => (isExpanded(id) ? 'true' : 'false') : undefined,
         'aria-selected': () => (isSelectedFn(id) ? 'true' : 'false'),
         'aria-disabled': node?.disabled ? 'true' : undefined,
-        tabIndex: () => (focused() === id ? 0 : -1),
+        // APG roving tabindex: the focused node is THE tab stop; before any
+        // focus (focused === null) the FIRST visible node takes it — without
+        // the fallback an untouched tree renders ZERO tab stops and is
+        // unreachable by keyboard.
+        tabIndex: () =>
+          focused() === id
+            ? 0
+            : focused() === null && getVisibleNodes()[0]?.node.id === id
+              ? 0
+              : -1,
       }
     },
   }

@@ -1,5 +1,5 @@
 import { disabledState, el, focusRing } from '../../factory'
-import { TabsBase, TabBase, TabPanelBase } from '@pyreon/ui-primitives'
+import { TabsBase, TabBase, TabListBase, TabPanelBase } from '@pyreon/ui-primitives'
 
 const Tabs = el.config({ name: 'Tabs', component: TabsBase })
   .theme((t) => ({
@@ -22,6 +22,17 @@ const Tabs = el.config({ name: 'Tabs', component: TabsBase })
   }))
 
 export default Tabs
+
+/**
+ * The WAI-ARIA `role="tablist"` strip. Wrap your `<Tab>` triggers in it —
+ * panels stay outside (APG: a tablist contains only tabs). Required for
+ * correct semantics AND for arrow-key navigation scoping (Tab's keyboard nav
+ * walks `[role="tab"]` within the nearest `[role="tablist"]`). Inherits
+ * `aria-orientation` from `<Tabs orientation="vertical">`.
+ */
+export const TabList = el.config({ name: 'TabList', component: TabListBase }).theme(() => ({
+  display: 'flex',
+}))
 
 export const Tab = el.config({ name: 'Tab', component: TabBase })
   .theme((t) => ({
