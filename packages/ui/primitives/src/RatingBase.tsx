@@ -132,6 +132,10 @@ export const RatingBase: ComponentFn<RatingBaseProps> = (props) => {
       'aria-label': label('item')(starValue, max),
       // Accessor-live ARIA + roving tabindex (checked star, else star 1).
       'aria-checked': () => (value() === starValue ? 'true' : 'false'),
+      // Visual fill state (hover preview wins over the committed value) — an
+      // accessor'd data attribute so a styled layer can express the fill as
+      // static CSS (`&[data-filled='true']`) with zero per-star re-renders.
+      'data-filled': () => ((hovered() ?? value()) >= starValue ? 'true' : undefined),
       tabIndex: () => (value() === starValue || (value() === 0 && starValue === 1) ? 0 : -1),
       'aria-disabled': own.readOnly ? 'true' : undefined,
       onClick: () => set(value() === starValue ? 0 : starValue),
