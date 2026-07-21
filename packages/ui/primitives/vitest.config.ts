@@ -11,10 +11,12 @@ export default defineNodeConfig({
   // as the CheckboxBase/SwitchBase/RadioBase toggle state-machine interaction
   // tests landed (toggle-primitives-interaction.browser.test.tsx) alongside the
   // CheckboxBase + RadioBase label→input double-toggle fix.
-  // Ratcheted 81/75/81/84 -> 84/79/84/87 (measured 85.39/80.14/85.30/88.12) as
-  // the ComboboxBase state-machine tests landed (combobox-state-machine.browser
-  // .test.tsx — select/filter/keyboard/props, ComboboxBase 54.83 -> 95.96).
-  coverageThresholds: { statements: 84, branches: 79, functions: 84, lines: 87 },
+  // Ratcheted 81/75/81/84 -> 86/81/85/88 (measured 87.42/82.12/86.08/89.66) as
+  // the ComboboxBase + TreeBase state-machine tests landed ({combobox,tree}-
+  // state-machine.browser.test.tsx — select/filter/expand/keyboard/props,
+  // exercised through the headless state objects; ComboboxBase 54.83 -> 95.96,
+  // TreeBase 78.32 -> 98.60).
+  coverageThresholds: { statements: 86, branches: 81, functions: 85, lines: 88 },
   overrides: {
     // oxc transformer JSX config — these UI packages use Pyreon's JSX
     // import source rather than React's default.
