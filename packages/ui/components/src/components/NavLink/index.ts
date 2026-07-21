@@ -2,12 +2,29 @@ import { disabledState, el, focusRing } from '../../factory'
 
 const NavLink = el
   .config({ name: 'NavLink' })
-  .attrs({ tag: 'a', direction: 'inline', alignY: 'center', gap: 6 })
+  // The a11y state defaults ride the .attrs() CALLBACK form (the Alert
+  // severity pattern): `state="active"` announces aria-current="page" (was
+  // visual-only — AT never heard which nav item is current), and
+  // `state="disabled"` carries aria-disabled + drops the anchor out of the
+  // tab order (pointerEvents:'none' alone left a keyboard-focusable,
+  // Enter-activatable "disabled" link). STRING aria values; direct props win.
+  .attrs<{ state?: 'active' | 'disabled' }>((props) => ({
+    tag: 'a',
+    direction: 'inline',
+    alignY: 'center',
+    gap: 6,
+    'aria-current': props.state === 'active' ? ('page' as const) : undefined,
+    'aria-disabled': props.state === 'disabled' ? ('true' as const) : undefined,
+    tabIndex: props.state === 'disabled' ? -1 : undefined,
+  }))
   .theme((t) => ({
+    // Touch-target floor (code-style: interactive nav items need ≥8px-vertical
+    // equivalent) — compact paddings + the MultiSelect minHeight pattern.
+    minHeight: 32,
     paddingTop: t.spacing.xxSmall,
     paddingBottom: t.spacing.xxSmall,
-    paddingLeft: t.spacing.xSmall,
-    paddingRight: t.spacing.xSmall,
+    paddingLeft: t.spacing.small,
+    paddingRight: t.spacing.small,
     borderRadius: t.borderRadius.base,
     fontSize: t.fontSize.small,
     color: t.color.system.base[700],
