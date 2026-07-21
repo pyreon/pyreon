@@ -8,9 +8,6 @@ import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { describe, expect, it } from 'vitest'
 import { RangeSliderBase, type RangeSliderState } from './index'
 
-declare const __vitest_browser__: boolean | undefined
-const isBrowser = typeof __vitest_browser__ !== 'undefined' && __vitest_browser__
-
 const key = (el: Element, k: string) =>
   el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }))
 
@@ -85,10 +82,7 @@ describe('RangeSliderBase — WAI-ARIA multi-thumb slider (real Chromium)', () =
     unmount()
   })
 
-  // Layout-dependent (getBoundingClientRect) — real-Chromium-only; happy-dom
-  // (which re-runs this file under the node config) has no layout, the rect is
-  // 0-width and the guard bails.
-  it.skipIf(!isBrowser)('track click moves the NEAREST thumb', async () => {
+  it('track click moves the NEAREST thumb', async () => {
     const { container, api, unmount } = mountRange(
       { defaultValue: [20, 80] as [number, number] },
       'rs-4',
