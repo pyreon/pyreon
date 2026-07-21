@@ -130,8 +130,13 @@ function classify(name: string): Classification {
     return { kind: 'delegates' }
   }
 
-  // `import Parent from '../Parent'` + `Parent.config(`
-  const imported = [...src.matchAll(/import\s+(\w+)\s+from\s+'\.\.\/(\w+)'/g)]
+  // `import Parent from '../Parent'` + `Parent.config(` — default OR named
+  // import (Autocomplete rides the NAMED `ComboboxStyled` chain since the
+  // Combobox default export became a ComponentFn).
+  const imported = [
+    ...src.matchAll(/import\s+(\w+)\s+from\s+'\.\.\/(\w+)'/g),
+    ...src.matchAll(/import\s+\{\s*(\w+)\s*\}\s+from\s+'\.\.\/(\w+)'/g),
+  ]
   for (const [, local, dir] of imported) {
     if (local && dir && new RegExp(`\\b${local}\\.config\\(`).test(src)) {
       return { kind: 'extends', parent: dir }

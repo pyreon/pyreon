@@ -64,7 +64,9 @@ describe('Rocketstyle components have IS_ROCKETSTYLE', () => {
     'Tabs', 'Tab', 'TabPanel', 'Breadcrumb', 'BreadcrumbItem', 'Pagination', 'NavLink', 'Stepper', 'Step',
     'Accordion', 'AccordionItem', 'AccordionTrigger', 'AccordionContent', 'Spoiler',
     'Calendar', 'DatePicker', 'DateRangePicker', 'TimePicker', 'DateTimePicker', 'MonthPicker',
-    'Combobox', 'Autocomplete', 'MultiSelect', 'FileUpload', 'ColorPicker', 'ColorSwatch',
+    // Combobox's default export is a batteries-included ComponentFn
+    // (Element-first conversion) — its rocketstyle chains are internal atoms.
+    'Autocomplete', 'MultiSelect', 'FileUpload', 'ColorPicker', 'ColorSwatch',
     'InputGroup', 'NumberInput', 'PinInput', 'SegmentedControl',
     // Tree's default export is a batteries-included ComponentFn (Element-first
     // conversion) — its rocketstyle chains are internal atoms.
