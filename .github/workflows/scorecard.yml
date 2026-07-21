@@ -5,9 +5,27 @@ name: Scorecard
 # badge) and uploads SARIF so regressions in security posture are visible.
 # This is the authoritative, continuously-recomputed score — the manual
 # inspection that motivated this PR was only a proxy for it.
+#
+# Branch-Protection check (the BranchProtectionID / alert #285 posture):
+# `main` is protected by BOTH classic branch protection AND a public Repo
+# Ruleset ("main branch protection"). The ruleset is load-bearing for the
+# SCORE, not just enforcement: Scorecard runs with the default GITHUB_TOKEN,
+# which CANNOT read classic Branch Protection — but Repo Rulesets are public,
+# so Scorecard credits them without a PAT. The ruleset blocks force-push +
+# branch deletion, requires a PR + all CI status checks, enforces linear
+# history, and applies to admins (no bypass actors).
+#
+# The one Scorecard sub-check we deliberately do NOT satisfy is "require
+# approving reviews / codeowners review": this is a single-maintainer org repo,
+# GitHub forbids self-approval, and enforce-admins leaves no bypass — so
+# requiring >=1 approver would block every merge. The ruleset therefore sets
+# `required_approving_review_count: 0` (preserves self-merge) while keeping all
+# the protections above. Alert #285 was dismissed (won't-fix) on that basis;
+# re-open + require approvers if a second maintainer is ever added.
 
 on:
   branch_protection_rule:
+  workflow_dispatch: # allow an on-demand re-score after a protection change
   schedule:
     - cron: '41 5 * * 1' # weekly, Mondays 05:41 UTC
   push:
