@@ -66,7 +66,8 @@ describe('Rocketstyle components have IS_ROCKETSTYLE', () => {
     'Calendar', 'DatePicker', 'DateRangePicker', 'TimePicker', 'DateTimePicker', 'MonthPicker',
     'Combobox', 'Autocomplete', 'MultiSelect', 'FileUpload', 'ColorPicker', 'ColorSwatch',
     'InputGroup', 'NumberInput', 'PinInput', 'SegmentedControl',
-    'Tree',
+    // Tree's default export is a batteries-included ComponentFn (Element-first
+    // conversion) — its rocketstyle chains are internal atoms.
     'VisuallyHidden',
   ] as const
 

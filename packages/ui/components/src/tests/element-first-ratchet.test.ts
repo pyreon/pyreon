@@ -46,6 +46,9 @@ const DISPLAY_ALLOWLIST = new Set([
   'SegmentedControl',
   'Switch',
   'Tabs',
+  // Tree's BUILT-IN markup is display-free (Element content-axis props); the
+  // one remaining site is the render-prop ESCAPE-HATCH chain, where the
+  // consumer renders the container themselves so Element props can't reach it.
   'Tree',
 ])
 

@@ -56,12 +56,15 @@ const INTERACTIVE = [
   'PinInput',
   'Popover',
   'Radio',
+  'RangeSlider',
+  'Rating',
   'SegmentedControl',
   'Select',
   'Slider',
   'Spoiler',
   'Switch',
   'Tabs',
+  'TagsInput',
   'TimePicker',
   'Tree',
 ] as const
@@ -105,10 +108,25 @@ type Classification =
 const stripComments = (src: string): string =>
   src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
 
-function classify(name: string): Classification {
-  const src = stripComments(readFileSync(join(COMPONENTS_DIR, name, 'index.ts'), 'utf-8'))
+/** Components live as index.ts OR index.tsx (Element-first conversions). */
+function readComponentSource(name: string): string {
+  for (const f of ['index.ts', 'index.tsx']) {
+    try {
+      return readFileSync(join(COMPONENTS_DIR, name, f), 'utf-8')
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error(`No index.ts(x) for component ${name}`)
+}
 
-  if (src.includes('@pyreon/ui-primitives') && /component:\s*\w+Base/.test(src)) {
+function classify(name: string): Classification {
+  const src = stripComments(readComponentSource(name))
+
+  // Two delegation shapes: the rocketstyle wrapper (`.config({ component:
+  // XBase })`) and the batteries-included COMPOSITION (`h(XBase, …)` — the
+  // Element-first conversions: Rating/TagsInput/RangeSlider/Tree).
+  if (src.includes('@pyreon/ui-primitives') && (/component:\s*\w+Base/.test(src) || /\bh\(\s*\w+Base\b/.test(src))) {
     return { kind: 'delegates' }
   }
 
