@@ -1,5 +1,6 @@
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { createContext, provide, splitProps, useContext } from '@pyreon/core'
+import { createContext, onUnmount, provide, splitProps, useContext } from '@pyreon/core'
+import { signal } from '@pyreon/reactivity'
 import { useControllableState } from '@pyreon/hooks'
 import { navigateByRole } from './keyboard'
 
@@ -10,6 +11,19 @@ interface RadioGroupCtx {
   onChange: (value: string) => void
   name: string | undefined
   disabled: boolean | undefined
+  /**
+   * Roving-tabindex registration (mount order = DOM order). APG requires
+   * EXACTLY ONE tab stop in a radiogroup: the CHECKED radio, or — when
+   * nothing is checked — the FIRST enabled radio. The previous shape
+   * (`checked() || !group.value()` → 0) put EVERY enabled radio in the tab
+   * order for an unchecked group, so Tab walked the whole group instead of
+   * entering once and arrow-navigating.
+   */
+  registerRadio: (value: string, isDisabled: () => boolean) => () => void
+  /** First registered ENABLED radio's value (fallback tab stop), or null. */
+  firstEnabledRadio: () => string | null
+  /** True when the current `value` matches a registered radio. */
+  hasCheckedRadio: () => boolean
 }
 
 const RadioGroupContext = createContext<RadioGroupCtx>({
@@ -17,6 +31,9 @@ const RadioGroupContext = createContext<RadioGroupCtx>({
   onChange: () => {},
   name: undefined,
   disabled: undefined,
+  registerRadio: () => () => {},
+  firstEnabledRadio: () => null,
+  hasCheckedRadio: () => false,
 })
 
 export const useRadioGroup = () => useContext(RadioGroupContext)
@@ -53,7 +70,29 @@ export const RadioGroupBase: ComponentFn<RadioGroupBaseProps> = (props) => {
     onChange: own.onChange,
   })
 
-  provide(RadioGroupContext, { value, onChange: setValue, name: own.name, disabled: own.disabled })
+  // Mount-ordered radio registry backing the roving-tabindex fallback (see
+  // RadioGroupCtx docs). Copy-on-write array in a signal so the fallback
+  // reads are reactive to radios mounting/unmounting.
+  const radios = signal<{ value: string; isDisabled: () => boolean }[]>([])
+
+  provide(RadioGroupContext, {
+    value,
+    onChange: setValue,
+    name: own.name,
+    disabled: own.disabled,
+    registerRadio: (radioValue, isDisabled) => {
+      const entry = { value: radioValue, isDisabled }
+      radios.set([...radios.peek(), entry])
+      return () => {
+        radios.set(radios.peek().filter((r) => r !== entry))
+      }
+    },
+    firstEnabledRadio: () => radios().find((r) => !r.isDisabled())?.value ?? null,
+    hasCheckedRadio: () => {
+      const v = value()
+      return v !== '' && radios().some((r) => r.value === v)
+    },
+  })
 
   return (
     <div
@@ -84,9 +123,22 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
   const checked = () => group.value() === own.value
   const isDisabled = () => own.disabled || group.disabled
 
+  // Roving-tabindex registration: mount order = DOM order (see RadioGroupCtx docs).
+  const unregister = group.registerRadio(own.value, () => Boolean(own.disabled || group.disabled))
+  onUnmount(unregister)
+
   const select = () => {
     if (isDisabled()) return
     group.onChange(own.value)
+  }
+
+  // APG roving tabindex: the checked radio is THE tab stop; when nothing is
+  // checked, only the FIRST enabled radio takes it. ACCESSOR-valued so it
+  // stays live through spreads and under the plain-JSX test transform.
+  const tabIndexFor = () => {
+    if (isDisabled()) return -1
+    if (checked()) return 0
+    return !group.hasCheckedRadio() && group.firstEnabledRadio() === own.value ? 0 : -1
   }
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -114,7 +166,7 @@ export const RadioBase: ComponentFn<RadioBaseProps> = (props) => {
       data-checked={checked() || undefined}
       data-disabled={isDisabled() || undefined}
       data-value={own.value}
-      tabIndex={isDisabled() ? -1 : (checked() || !group.value()) ? 0 : -1}
+      tabIndex={tabIndexFor}
       onClick={select}
       onKeyDown={handleKeyDown}
     >

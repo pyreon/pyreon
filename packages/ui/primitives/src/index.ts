@@ -36,6 +36,8 @@ export { SwitchBase, type SwitchBaseProps } from './SwitchBase'
 export {
   TabBase,
   type TabBaseProps,
+  TabListBase,
+  type TabListBaseProps,
   TabPanelBase,
   type TabPanelBaseProps,
   TabsBase,

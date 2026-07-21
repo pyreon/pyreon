@@ -57,7 +57,7 @@ export { default as HoverCard } from './components/HoverCard'
 export { default as Menu, MenuItem } from './components/Menu'
 
 // Navigation
-export { default as Tabs, Tab, TabPanel } from './components/Tabs'
+export { default as Tabs, Tab, TabList, TabPanel } from './components/Tabs'
 export { default as Breadcrumb, BreadcrumbItem } from './components/Breadcrumb'
 export { default as Pagination } from './components/Pagination'
 export { default as NavLink } from './components/NavLink'
