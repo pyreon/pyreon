@@ -41,7 +41,9 @@ export { default as Highlight } from './components/Highlight'
 export { default as Alert } from './components/Alert'
 export { default as Notification } from './components/Notification'
 export { default as Progress } from './components/Progress'
+export { default as RingProgress } from './components/RingProgress'
 export { default as Loader } from './components/Loader'
+export { default as ScrollArea } from './components/ScrollArea'
 export { default as Skeleton } from './components/Skeleton'
 
 // Indicators
