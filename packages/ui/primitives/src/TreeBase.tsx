@@ -171,6 +171,20 @@ export const TreeBase: ComponentFn<TreeBaseProps> = (props) => {
   }
 
   function onKeyDown(e: KeyboardEvent) {
+    // Editable-target bail (code-style rule: any container-level keydown that
+    // owns shortcuts must not hijack typing) — the JSDoc explicitly sanctions
+    // wiring this handler on the TREE CONTAINER, so an input/textarea rendered
+    // inside a node (inline rename, filter box) would otherwise lose its
+    // arrows/Home/End/Space and every printable char to tree navigation.
+    const t = e.target as HTMLElement | null
+    if (
+      t &&
+      (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' ||
+        t.isContentEditable)
+    ) {
+      return
+    }
+
     const visible = getVisibleNodes()
     const focusedId = focused()
     const idx = focusedId ? visible.findIndex((v) => v.node.id === focusedId) : -1
