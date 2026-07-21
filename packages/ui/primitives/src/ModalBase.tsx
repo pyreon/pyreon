@@ -68,6 +68,8 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
   // Element focused when the modal opened — restored on close so keyboard /
   // screen-reader users return to the trigger instead of the top of the page.
   let prevFocusEl: HTMLElement | null = null
+  // Dev-only nameless-dialog warning: once per INSTANCE, not per open.
+  let warnedNoName = false
 
   const dialogRef = (el: HTMLElement | null) => {
     dialogEl = el
@@ -95,6 +97,20 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
     () => own.open,
     (isOpen) => {
       if (isOpen) {
+        // A dialog without an accessible name is announced as just "dialog" —
+        // WAI-ARIA (APG dialog-modal pattern) requires aria-label or
+        // aria-labelledby. Both live in `rest` (neither is split into `own`),
+        // and the `in` operator checks KEY PRESENCE without firing the
+        // descriptor-copied getters of reactive props.
+        if (process.env.NODE_ENV !== 'production' && !warnedNoName) {
+          const r = rest as object
+          if (!('aria-label' in r) && !('aria-labelledby' in r)) {
+            warnedNoName = true
+            console.warn(
+              '[Pyreon] <ModalBase> rendered without an accessible name — pass aria-label or aria-labelledby (WAI-ARIA dialog requires one).',
+            )
+          }
+        }
         scrollLock.lock()
         // Capture the opener + move focus INTO the dialog so the trap has
         // somewhere to hold it (deferred a frame so the dialog has mounted —
