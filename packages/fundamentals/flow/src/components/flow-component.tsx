@@ -687,6 +687,11 @@ function NodeLayer(props: {
           }
           const measure = (): void => {
             const wrapper = el as HTMLElement
+            // Late RO tick after unmount: skip — a stale measure here would
+            // RE-ADD the measurement `_clearNodeMeasurement` just removed
+            // (and write into the graph mid-teardown; same class as the
+            // container updateSize guard above).
+            if (!wrapper.isConnected) return
             const w = wrapper.offsetWidth
             const h = wrapper.offsetHeight
             if (!(w > 0 && h > 0)) return
@@ -1380,6 +1385,11 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     if (!el) return
 
     const updateSize = () => {
+      // A ResizeObserver batch queued before `disconnect()` can still deliver
+      // one late tick after unmount (CI-observed: the tick's containerSize.set
+      // re-entered the reactive graph MID-TEARDOWN and crashed an overlay's
+      // render effect). A detached container has no meaningful size — skip.
+      if (!el.isConnected) return
       const rect = el.getBoundingClientRect()
       instance.containerSize.set({
         width: rect.width,
