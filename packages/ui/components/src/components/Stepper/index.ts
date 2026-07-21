@@ -2,7 +2,14 @@ import { el, focusRing } from '../../factory'
 
 const Stepper = el
   .config({ name: 'Stepper' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', gap: 2 })
+  // An ORDERED LIST — steps are inherently sequenced, so AT announces
+  // "list, N items" + position (WCAG 1.3.1 structure).
+  .attrs({ tag: 'ol', direction: 'inline', alignY: 'center', gap: 2 })
+  .theme(() => ({
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+  }))
   .variants(() => ({
     horizontal: {},
     vertical: {
@@ -14,7 +21,17 @@ export default Stepper
 
 export const Step = el
   .config({ name: 'Step' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', gap: 2 })
+  // `<li>` inside the Stepper `<ol>`; the ACTIVE step announces
+  // `aria-current="step"` (the .attrs() callback form — Breadcrumb/NavLink
+  // precedent). `completed` keeps its state styling; pair it with a ✓ glyph
+  // in content for a non-color signal.
+  .attrs<{ state?: 'active' | 'completed' }>((props) => ({
+    tag: 'li',
+    direction: 'inline',
+    alignY: 'center',
+    gap: 2,
+    'aria-current': props.state === 'active' ? ('step' as const) : undefined,
+  }))
   .theme((t) => ({
     fontSize: t.fontSize.small,
     color: t.color.system.base[500],

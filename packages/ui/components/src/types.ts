@@ -48,12 +48,14 @@ import type Slider from './components/Slider'
 import type Badge from './components/Badge'
 import type Chip from './components/Chip'
 import type Card from './components/Card'
+import type { CardFooter, CardHeader, CardSection } from './components/Card'
 import type Avatar from './components/Avatar'
 import type { AvatarGroup } from './components/Avatar'
 import type Image from './components/Image'
 import type Kbd from './components/Kbd'
 import type Table from './components/Table'
 import type Timeline from './components/Timeline'
+import type { TimelineItem } from './components/Timeline'
 import type Code from './components/Code'
 import type Highlight from './components/Highlight'
 import type Alert from './components/Alert'
@@ -75,6 +77,7 @@ import type { Tab, TabPanel } from './components/Tabs'
 import type Breadcrumb from './components/Breadcrumb'
 import type { BreadcrumbItem } from './components/Breadcrumb'
 import type Pagination from './components/Pagination'
+import type { PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrev } from './components/Pagination'
 import type NavLink from './components/NavLink'
 import type Stepper from './components/Stepper'
 import type { Step } from './components/Stepper'
@@ -148,12 +151,16 @@ export type SliderProps = ExtractProps<typeof Slider>
 export type BadgeProps = ExtractProps<typeof Badge>
 export type ChipProps = ExtractProps<typeof Chip>
 export type CardProps = ExtractProps<typeof Card>
+export type CardFooterProps = ExtractProps<typeof CardFooter>
+export type CardHeaderProps = ExtractProps<typeof CardHeader>
+export type CardSectionProps = ExtractProps<typeof CardSection>
 export type AvatarProps = ExtractProps<typeof Avatar>
 export type AvatarGroupProps = ExtractProps<typeof AvatarGroup>
 export type ImageProps = ExtractProps<typeof Image>
 export type KbdProps = ExtractProps<typeof Kbd>
 export type TableProps = ExtractProps<typeof Table>
 export type TimelineProps = ExtractProps<typeof Timeline>
+export type TimelineItemProps = ExtractProps<typeof TimelineItem>
 export type CodeProps = ExtractProps<typeof Code>
 export type HighlightProps = ExtractProps<typeof Highlight>
 
@@ -184,6 +191,10 @@ export type TabPanelProps = ExtractProps<typeof TabPanel>
 export type BreadcrumbProps = ExtractProps<typeof Breadcrumb>
 export type BreadcrumbItemProps = ExtractProps<typeof BreadcrumbItem>
 export type PaginationProps = ExtractProps<typeof Pagination>
+export type PaginationEllipsisProps = ExtractProps<typeof PaginationEllipsis>
+export type PaginationItemProps = ExtractProps<typeof PaginationItem>
+export type PaginationNextProps = ExtractProps<typeof PaginationNext>
+export type PaginationPrevProps = ExtractProps<typeof PaginationPrev>
 export type NavLinkProps = ExtractProps<typeof NavLink>
 export type StepperProps = ExtractProps<typeof Stepper>
 export type StepProps = ExtractProps<typeof Step>

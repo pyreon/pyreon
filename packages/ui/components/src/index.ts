@@ -28,12 +28,12 @@ export { default as Slider } from './components/Slider'
 // Data Display
 export { default as Badge } from './components/Badge'
 export { default as Chip } from './components/Chip'
-export { default as Card } from './components/Card'
+export { default as Card, CardFooter, CardHeader, CardSection } from './components/Card'
 export { default as Avatar, AvatarGroup } from './components/Avatar'
 export { default as Image } from './components/Image'
 export { default as Kbd } from './components/Kbd'
 export { default as Table } from './components/Table'
-export { default as Timeline } from './components/Timeline'
+export { default as Timeline, TimelineItem } from './components/Timeline'
 export { default as Code } from './components/Code'
 export { default as Highlight } from './components/Highlight'
 
@@ -59,7 +59,7 @@ export { default as Menu, MenuItem } from './components/Menu'
 // Navigation
 export { default as Tabs, Tab, TabList, TabPanel } from './components/Tabs'
 export { default as Breadcrumb, BreadcrumbItem } from './components/Breadcrumb'
-export { default as Pagination } from './components/Pagination'
+export { default as Pagination, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrev } from './components/Pagination'
 export { default as NavLink } from './components/NavLink'
 export { default as Stepper, Step } from './components/Stepper'
 
