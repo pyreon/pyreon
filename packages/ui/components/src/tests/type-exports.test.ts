@@ -130,8 +130,6 @@ const buttonBadSize: ButtonProps = { size: 'huge' }
 const alertOk: AlertProps = { state: 'error' }
 const cardOk: CardProps = {}
 const inputOk: InputProps = { state: 'error' }
-// Tab requires its TabBase value — #2429's OmitSafe fix un-collapsed the type
-// (this probe predates it; the stricter requirement is the FIX working).
 const tabOk: TabProps = { value: 'tab-1' }
 const modalOk: ModalProps = {}
 
