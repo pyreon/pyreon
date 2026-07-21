@@ -110,7 +110,10 @@ const Component: PyreonComponent<Props> = (props) => {
     overlayProps.closeOn === 'clickOutsideContent'
 
   const ariaHasPopup = () => {
-    switch (readType()) {
+    // Mirror useOverlay's documented default (`props.type ?? 'dropdown'`) so
+    // an Overlay with no explicit `type` advertises the dropdown semantics it
+    // actually gets.
+    switch (readType() ?? 'dropdown') {
       case 'modal':
         return 'dialog' as const
       case 'tooltip':
@@ -119,8 +122,17 @@ const Component: PyreonComponent<Props> = (props) => {
         // (which is for menu/listbox/tree/grid/dialog popups). Omit it per the
         // WAI-ARIA Tooltip pattern; emitting both would be contradictory.
         return undefined
-      default:
+      case 'popover':
+        // A popover is a NON-MODAL DIALOG popup (APG disclosure/popover
+        // convention, same mapping Radix uses) — claiming 'menu' here told AT
+        // to expect menuitem semantics that never exist.
+        return 'dialog' as const
+      case 'dropdown':
         return 'menu' as const
+      default:
+        // 'custom' — the hook can't know the popup's semantics; claiming any
+        // value would be a guess. The consumer sets aria-haspopup themselves.
+        return undefined
     }
   }
 
