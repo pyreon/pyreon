@@ -35,7 +35,6 @@
   "dependencies": {
     "@pyreon/cli": "workspace:^",
     "@pyreon/create-zero": "workspace:^",
-    "@pyreon/server": "workspace:^",
     "@pyreon/zero": "workspace:^",
     "cac": "^7.0.0",
     "vite": "^8.0.16"

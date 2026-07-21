@@ -37,7 +37,7 @@
     "typescript": ">=5.9.0 <7.0.0"
   },
   "dependencies": {
-    "@pyreon/core": ">=0.13.0"
+    "@pyreon/core": "workspace:^"
   },
   "publishConfig": {
     "access": "public"
