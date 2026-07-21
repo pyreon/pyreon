@@ -108,6 +108,44 @@ describe('ssgPlugin', () => {
   // ssg.format — which on-disk file(s) a route writes. The pure target
   // selector is the load-bearing decision; `writeRouteOutputs` just writes
   // every returned target byte-identically.
+  describe('needsSpaFallbackShell', () => {
+    // A DYNAMIC 'spa' route can't be enumerated to a concrete dist/ file, so it
+    // needs a catch-all `dist/404.html` SPA shell to serve on a direct URL —
+    // the fix that makes hn-clone's client-`useQuery` `item/[id]` work on a
+    // static host without manual config.
+    it('TRUE for a dynamic spa route (param in pattern)', () => {
+      expect(_internal.needsSpaFallbackShell([{ pattern: '/item/:id', mode: 'spa', declared: true }])).toBe(true)
+    })
+
+    it('TRUE for a catch-all spa route', () => {
+      expect(_internal.needsSpaFallbackShell([{ pattern: '/docs/:slug*', mode: 'spa', declared: true }])).toBe(true)
+    })
+
+    it('FALSE for a STATIC spa route (gets its own per-path shell)', () => {
+      expect(_internal.needsSpaFallbackShell([{ pattern: '/dashboard', mode: 'spa', declared: true }])).toBe(false)
+    })
+
+    it('FALSE for a dynamic route that is NOT spa (ssg/ssr enumerate or server-render)', () => {
+      expect(_internal.needsSpaFallbackShell([{ pattern: '/posts/:id', mode: 'ssg', declared: true }])).toBe(false)
+      expect(_internal.needsSpaFallbackShell([{ pattern: '/posts/:id', mode: 'ssr', declared: true }])).toBe(false)
+    })
+
+    it('FALSE for empty / undefined entries', () => {
+      expect(_internal.needsSpaFallbackShell([])).toBe(false)
+      expect(_internal.needsSpaFallbackShell(undefined)).toBe(false)
+    })
+
+    it('TRUE when at least one of several routes is a dynamic spa route', () => {
+      expect(
+        _internal.needsSpaFallbackShell([
+          { pattern: '/', mode: 'ssg', declared: false },
+          { pattern: '/dashboard', mode: 'spa', declared: true },
+          { pattern: '/item/:id', mode: 'spa', declared: true },
+        ]),
+      ).toBe(true)
+    })
+  })
+
   describe('selectSsgTargets (ssg.format)', () => {
     const D = '/dist'
 
