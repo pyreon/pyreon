@@ -34,6 +34,12 @@ export { SelectBase, type SelectBaseProps } from './SelectBase'
 export { SliderBase, type SliderBaseProps } from './SliderBase'
 export { SwitchBase, type SwitchBaseProps } from './SwitchBase'
 export {
+  TagsInputBase,
+  type TagsInputBaseProps,
+  type TagsInputLabels,
+  type TagsInputState,
+} from './TagsInputBase'
+export {
   TabBase,
   type TabBaseProps,
   TabListBase,

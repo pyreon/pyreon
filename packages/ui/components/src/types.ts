@@ -54,6 +54,7 @@ import type { AvatarGroup } from './components/Avatar'
 import type Image from './components/Image'
 import type Kbd from './components/Kbd'
 import type Table from './components/Table'
+import type TagsInput from './components/TagsInput'
 import type Timeline from './components/Timeline'
 import type { TimelineItem } from './components/Timeline'
 import type Code from './components/Code'
@@ -161,6 +162,7 @@ export type AvatarGroupProps = ExtractProps<typeof AvatarGroup>
 export type ImageProps = ExtractProps<typeof Image>
 export type KbdProps = ExtractProps<typeof Kbd>
 export type TableProps = ExtractProps<typeof Table>
+export type TagsInputProps = ExtractProps<typeof TagsInput>
 export type TimelineProps = ExtractProps<typeof Timeline>
 export type TimelineItemProps = ExtractProps<typeof TimelineItem>
 export type CodeProps = ExtractProps<typeof Code>
