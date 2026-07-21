@@ -130,7 +130,9 @@ const buttonBadSize: ButtonProps = { size: 'huge' }
 const alertOk: AlertProps = { state: 'error' }
 const cardOk: CardProps = {}
 const inputOk: InputProps = { state: 'error' }
-const tabOk: TabProps = { id: 'tab-1' }
+// Tab requires its TabBase value — #2429's OmitSafe fix un-collapsed the type
+// (this probe predates it; the stricter requirement is the FIX working).
+const tabOk: TabProps = { value: 'tab-1' }
 const modalOk: ModalProps = {}
 
 // @ts-expect-error — invalid Alert state literal
@@ -303,7 +305,7 @@ describe('type exports', () => {
     expect(alertOk.state).toBe('error')
     expect(alertBad.state).toBe('catastrophic')
     expect(inputOk.state).toBe('error')
-    expect(tabOk.id).toBe('tab-1')
+    expect(tabOk.value).toBe('tab-1')
     expect(cardOk).toEqual({})
     expect(modalOk).toEqual({})
   })
