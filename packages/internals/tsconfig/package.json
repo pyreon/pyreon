@@ -1,0 +1,27 @@
+{
+  "name": "@pyreon/tsconfig",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Internal shared tsconfig presets \u2014 the single source of truth for the monorepo's TypeScript options. Consumed via relative `extends` (uniform depth from every package), so no per-package devDependency is needed.",
+  "license": "MIT",
+  "files": [
+    "base.json",
+    "lib.json",
+    "lib-jsx.json",
+    "internal.json",
+    "example.json",
+    "example-bun.json"
+  ],
+  "exports": {
+    "./base.json": "./base.json",
+    "./lib.json": "./lib.json",
+    "./lib-jsx.json": "./lib-jsx.json",
+    "./example.json": "./example.json",
+    "./example-bun.json": "./example-bun.json",
+    "./internal.json": "./internal.json"
+  },
+  "scripts": {
+    "lint": "oxlint .",
+    "typecheck": "echo 'JSON presets \u2014 validated by scripts/check-tsconfig-presets.ts + the full typecheck matrix'"
+  }
+}

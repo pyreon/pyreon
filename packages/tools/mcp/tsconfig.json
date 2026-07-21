@@ -1,11 +1,9 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../internals/tsconfig/lib.json",
   "compilerOptions": {
-    "outDir": "./lib",
-    "rootDir": "./src",
-    "lib": ["ESNext"],
-    "types": ["vitest/globals", "node"],
+    "lib": [
+      "ESNext"
+    ],
     "skipLibCheck": true
-  },
-  "include": ["src"]
+  }
 }

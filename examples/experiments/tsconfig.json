@@ -1,9 +1,5 @@
 {
-  "extends": "../../tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    "types": ["node"]
-  },
+  "extends": "../../packages/internals/tsconfig/example.json",
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules", "**/results/**"]
 }

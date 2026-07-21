@@ -1,14 +1,3 @@
 {
-  "extends": "../../../tsconfig.json",
-  "compilerOptions": {
-    "noEmit": true,
-    // Source files use explicit `.ts` extensions in relative imports
-    // because the package is consumed from per-package `vitest.config.ts`
-    // files, which Vite's config bundler resolves through Node ESM (which
-    // requires explicit extensions). The Bundler moduleResolution + this
-    // flag let the same files typecheck.
-    "allowImportingTsExtensions": true,
-    "types": ["node", "vitest/globals"]
-  },
-  "include": ["src"]
+  "extends": "../../internals/tsconfig/internal.json"
 }

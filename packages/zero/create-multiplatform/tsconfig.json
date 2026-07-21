@@ -1,9 +1,8 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "../../internals/tsconfig/lib.json",
   "compilerOptions": {
-    "outDir": "./lib",
-    "rootDir": "./src",
-    "types": ["node"]
-  },
-  "include": ["src"]
+    "types": [
+      "node"
+    ]
+  }
 }

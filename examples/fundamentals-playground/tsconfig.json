@@ -1,15 +1,22 @@
 {
+  "extends": "../../packages/internals/tsconfig/example.json",
   "compilerOptions": {
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "preserve",
-    "jsxImportSource": "@pyreon/core",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "customConditions": ["bun"],
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "customConditions": [
+      "bun"
+    ],
     "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true
+    "strict": true
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

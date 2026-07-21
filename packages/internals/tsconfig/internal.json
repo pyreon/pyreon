@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./base.json",
+  "compilerOptions": {
+    // Private tool packages (internals, native cli): typecheck-only, and
+    // deliberately NO rootDir — their tests import root `scripts/*.ts`
+    // (the repo-gate sources they contract-test), which live outside src/.
+    "noEmit": true,
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["${configDir}/src"]
+}

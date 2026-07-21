@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./base.json",
+  "compilerOptions": {
+    // `${configDir}` (TS ≥5.5) resolves against the EXTENDING package's
+    // directory, so these path options are correct for every consumer —
+    // the historical reason each package repeated them inline.
+    "outDir": "${configDir}/lib",
+    "rootDir": "${configDir}/src",
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["${configDir}/src"]
+}

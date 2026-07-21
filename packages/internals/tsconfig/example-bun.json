@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./example.json",
+  "compilerOptions": {
+    // The standalone-style examples (collab-board, ssr-showcase, docs-pyreon,
+    // islands-showcase, sync-yjs-demo) typecheck against bun's ambient types
+    // and historically targeted ESNext with skipLibCheck — kept verbatim for
+    // exact pre-consolidation parity.
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "skipLibCheck": true,
+    "exactOptionalPropertyTypes": false
+  }
+}

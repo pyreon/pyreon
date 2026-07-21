@@ -1,11 +1,13 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../packages/internals/tsconfig/example.json",
   "compilerOptions": {
-    "noEmit": true,
     "paths": {
-      "react": ["../../packages/tools/react-compat/src/index.ts"],
-      "react-dom/client": ["../../packages/tools/react-compat/src/dom.ts"]
+      "react": [
+        "../../packages/tools/react-compat/src/index.ts"
+      ],
+      "react-dom/client": [
+        "../../packages/tools/react-compat/src/dom.ts"
+      ]
     }
-  },
-  "include": ["src", "vite.config.ts"]
+  }
 }

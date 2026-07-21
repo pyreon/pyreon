@@ -1,12 +1,11 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../packages/internals/tsconfig/example.json",
   "compilerOptions": {
-    "noEmit": true,
-    "exactOptionalPropertyTypes": false,
     "types": [
       "bun",
       "vite/client"
-    ]
+    ],
+    "exactOptionalPropertyTypes": false
   },
   "include": [
     "src",

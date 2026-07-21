@@ -10,6 +10,30 @@
 - **Bootstrap fails loudly on partial state.** After the build subprocess returns, the bootstrap re-runs the dirty-detection check against each originally-dirty package. If any are still missing or stale, the script exits nonzero — even on the postinstall path. Pre-fix the postinstall path swallowed silently (rationale: aborting `bun install` over a transient lib build is worse than continuing). Gap #3 closed that hole: silent partial state is worse than a failed install, because devs running `bun run dev` use the bun condition → `src/` and never touch `lib/` — they don't notice missing `lib/` until production-build time, far from the cause. Escape hatch: `PYREON_BOOTSTRAP_SOFT=1` swallows the postcondition failure (install completes; consumers see confusing build errors until you re-run bootstrap manually).
 - **Bootstrap content + retry (gap #6 + #3 follow-up).** Two defensive layers on top of the postcondition check: (1) `lib/index.js` content sanity — flags <50-byte output as `[stale]` to catch crashed-mid-write / 0-byte / structurally-broken builds that the existence + mtime checks miss. Applied in BOTH dirty-detection (catches broken lib from a prior crashed run) AND postcondition (catches a current-run build that emitted empty output). (2) Single sequential retry pass — if any packages are still dirty after the first build, retry ONLY those packages, one at a time, via per-package `bun run --filter='@pyreon/X' build`. Capped at one retry; never recurses. Counter line on success: `[bootstrap] Retry recovered N package(s) (first-pass-failed: M, retry-fixed: N, still-dirty: K)`. Defends against transient flake (topological-order race, file-handle limits, native-binary link race after `bun install`) without hiding genuinely-broken packages.
 
+## TypeScript config presets (@pyreon/tsconfig)
+
+- The repo's TypeScript options have ONE home: `packages/internals/tsconfig/`
+  (`@pyreon/tsconfig`, private). `base.json` is the canon (bun `customConditions`,
+  `exactOptionalPropertyTypes`, `jsx: preserve` + `jsxImportSource: @pyreon/core`,
+  ES2024 libs, `allowImportingTsExtensions`); the root `tsconfig.json` extends it.
+- Every `packages/<cat>/<pkg>/tsconfig.json` extends `../../internals/tsconfig/lib.json`
+  (no JSX) or `lib-jsx.json` (JSX in src/tests); private tool packages whose tests
+  import root `scripts/*.ts` use `internal.json` (no `rootDir` — TS6059 otherwise);
+  examples extend `../../packages/internals/tsconfig/example.json` (or
+  `example-bun.json` for the standalone bun-typed ones). Path options use
+  `${configDir}` (TS ≥5.5) so they resolve against the EXTENDING package —
+  the historical reason every package repeated `outDir`/`rootDir` inline.
+- Consumption is by RELATIVE `extends` (uniform depth per tree level), NOT a
+  per-package devDependency — zero lockfile coupling, and moving a package one
+  category over keeps the same path shape.
+- Per-package deviations stay in the package file as explicit overrides on top of
+  the preset (extra `types`, `paths`, `exclude`, declaration-emit blocks). Never
+  copy a repo-wide option into N files — change `base.json`.
+- Enforced by `scripts/check-tsconfig-presets.ts` (validate-fast + pre-push):
+  every package/example tsconfig must extend a preset; template trees
+  (`create-zero`/`create-multiplatform` `templates/`) are user-shipped and never
+  scanned; deliberate opt-outs go in `EXEMPT` with a rationale.
+
 ## CI Requirements
 
 - Every package and example must have `"lint": "oxlint ."` and `"typecheck": "tsc --noEmit"` scripts

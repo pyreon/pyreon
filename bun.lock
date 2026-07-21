@@ -1894,6 +1894,10 @@
         "vitest": "^4.1.10",
       },
     },
+    "packages/internals/tsconfig": {
+      "name": "@pyreon/tsconfig",
+      "version": "0.0.1",
+    },
     "packages/internals/vitest-config": {
       "name": "@pyreon/vitest-config",
       "version": "0.13.3",
@@ -2230,8 +2234,8 @@
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
-        "@pyreon/styler": "workspace:^",
         "@pyreon/manifest": "workspace:*",
+        "@pyreon/styler": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
@@ -2412,11 +2416,11 @@
         "@pyreon/unistyle": "workspace:^",
       },
       "devDependencies": {
-        "@pyreon/ui-core": "workspace:^",
         "@pyreon/perf-harness": "workspace:*",
         "@pyreon/runtime-dom": "workspace:^",
         "@pyreon/test-utils": "workspace:^",
         "@pyreon/typescript": "workspace:^",
+        "@pyreon/ui-core": "workspace:^",
         "@pyreon/vitest-config": "workspace:*",
         "@vitest/browser-playwright": "^4.1.10",
       },
@@ -3502,6 +3506,8 @@
     "@pyreon/testing": ["@pyreon/testing@workspace:packages/tools/testing"],
 
     "@pyreon/toast": ["@pyreon/toast@workspace:packages/fundamentals/toast"],
+
+    "@pyreon/tsconfig": ["@pyreon/tsconfig@workspace:packages/internals/tsconfig"],
 
     "@pyreon/typescript": ["@pyreon/typescript@workspace:packages/tools/typescript"],
 

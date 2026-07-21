@@ -1,8 +1,8 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../packages/internals/tsconfig/example.json",
   "compilerOptions": {
-    "noEmit": true,
-    "types": ["bun"]
-  },
-  "include": ["src", "vite.config.ts"]
+    "types": [
+      "bun"
+    ]
+  }
 }

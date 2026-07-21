@@ -1,10 +1,14 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "../../packages/internals/tsconfig/example.json",
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "@pyreon/core",
-    "noEmit": true,
-    "types": ["vite/client", "node"]
+    "types": [
+      "vite/client",
+      "node"
+    ]
   },
-  "include": ["src", "bench.ts", "vite.config.ts"]
+  "include": [
+    "src",
+    "bench.ts",
+    "vite.config.ts"
+  ]
 }
