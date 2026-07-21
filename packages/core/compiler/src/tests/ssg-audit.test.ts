@@ -200,6 +200,43 @@ export default () => null`,
     }
   })
 
+  // A per-route `renderMode` opts the route OUT of SSG prerendering, so it
+  // legitimately needs no getStaticPaths — this is the fix the message itself
+  // recommends. Before the exemption the audit false-positived on the exact
+  // hybrid route it told the user to write (hn-clone's client-`useQuery`
+  // `item/[id]` / `user/[id]`).
+  for (const mode of ['spa', 'ssr', 'isr'] as const) {
+    it(`does NOT fire for [id].tsx WITH \`export const renderMode = '${mode}'\``, () => {
+      const fixture = makeFixture()
+      try {
+        fixture.write(
+          'examples/myapp/src/routes/posts/[id].tsx',
+          `export const renderMode = '${mode}'
+export default () => null`,
+        )
+        const result = auditSsg(fixture.root)
+        expect(findingCodes(result)).not.toContain('dynamic-route-missing-get-static-paths')
+      } finally {
+        fixture.cleanup()
+      }
+    })
+  }
+
+  it("STILL fires for [id].tsx with an explicit `renderMode = 'ssg'` (that mode DOES prerender)", () => {
+    const fixture = makeFixture()
+    try {
+      fixture.write(
+        'examples/myapp/src/routes/posts/[id].tsx',
+        `export const renderMode = 'ssg'
+export default () => null`,
+      )
+      const result = auditSsg(fixture.root)
+      expect(findingCodes(result)).toContain('dynamic-route-missing-get-static-paths')
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
   it('does NOT fire for static routes (no [param] in filename)', () => {
     const fixture = makeFixture()
     try {

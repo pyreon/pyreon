@@ -16,6 +16,14 @@ import { fetchItem } from '../../lib/api'
 
 const VIRTUALIZE_THRESHOLD = 50
 
+// This route fetches live Hacker News data by an arbitrary `id` (client-side
+// `useQuery`), so it can't be enumerated at build time — under the app's
+// `mode: 'ssg'` a dynamic route with no `getStaticPaths` is silently skipped
+// (no prerendered HTML → a direct load / refresh / shared link would 404).
+// `renderMode: 'spa'` ships a CSR shell that works for any `id`. ('ssr'/'isr'
+// are build-errors inside an SSG app.)
+export const renderMode = 'spa'
+
 export default function Item() {
   const route = useRoute()
   const { t } = useI18n()

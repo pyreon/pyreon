@@ -37,7 +37,7 @@ import { resolveConfig } from './config'
 import { isApiRoute } from './api-routes'
 import { collectFileRouteModes, detectRouteExports, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'
-import { assertModesSupported, formatRouteModeTable, matchRouteRules, type RouteRules } from './route-modes'
+import { assertModesSupported, formatRouteModeTable, matchRouteRules, type RouteModeEntry, type RouteRules } from './route-modes'
 import {
   extractStylerStyleTag,
   hashCss,
@@ -1975,6 +1975,44 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
         }
       }
 
+      // SPA-fallback shell for DYNAMIC 'spa' routes.
+      //
+      // A dynamic 'spa'-declared route (`item/[id]` with client-side data)
+      // can't be enumerated to a concrete path, so — unlike a STATIC 'spa'
+      // route, which got its own per-path shell above — it produces NO `dist/`
+      // file. Without a catch-all, a direct load of `/item/123` 404s on a
+      // static host. Emit `dist/404.html` = the blank CSR shell: every major
+      // static host (GitHub Pages, S3, Netlify, Cloudflare, Firebase) serves
+      // 404.html for an unmatched path, so the shell boots, the client router
+      // matches `/item/123`, and the route renders. (Platform adapters ALSO
+      // emit `_redirects` `/* → 200` for a 200 status; this covers the generic
+      // static hosts that don't get one.)
+      //
+      // Skipped when a `_404.tsx` already wrote `dist/404.html` (that page is
+      // itself a hydrating app shell serving the same fallback purpose, plus a
+      // styled 404 for genuinely-missing paths — never clobber it), and gated
+      // by the same `emit404` opt-out.
+      if (
+        appMode === 'ssg'
+        && config.ssg?.emit404 !== false
+        && !existsSync(join(distDir, '404.html'))
+        && needsSpaFallbackShell(handlerMod.__routeModeEntries as RouteModeEntry[] | undefined)
+      ) {
+        try {
+          const shellHtml = injectIntoTemplate(template, {
+            appHtml: '',
+            head: '',
+            loaderScript: '',
+          })
+          await writeFileAtomic(join(distDir, '404.html'), shellHtml)
+          if (process.env.NODE_ENV !== 'production') {
+            _countSink.__pyreon_count__?.('ssg.spaFallback404')
+          }
+        } catch (error) {
+          errors.push({ path: '404.html', error })
+        }
+      }
+
       // PR B — emit redirect manifests when loaders threw `redirect()`.
       // Both Netlify (`_redirects`) and Vercel (`_redirects.json`)
       // formats ship together so the user doesn't have to pick at SSG
@@ -2138,8 +2176,25 @@ export function ssgPlugin(userConfig: ZeroConfig = {}): Plugin {
 //
 // Internal helpers exposed for unit tests. Not part of the public API.
 
+/**
+ * Does this SSG app have a DYNAMIC `'spa'`-declared route — one whose URL
+ * pattern carries a param (`/item/:id`) and so can't be enumerated to a
+ * concrete `dist/<path>/index.html`? Such a route needs a catch-all SPA shell
+ * (`dist/404.html`) to serve on a direct URL. A STATIC `'spa'` route
+ * (`/dashboard`) already gets its own per-path shell and is NOT counted here.
+ *
+ * Pure — exposed via `_internal.needsSpaFallbackShell` for unit tests.
+ */
+export function needsSpaFallbackShell(
+  entries: readonly RouteModeEntry[] | undefined,
+): boolean {
+  if (!Array.isArray(entries)) return false
+  return entries.some((e) => e.mode === 'spa' && e.pattern.includes(':'))
+}
+
 export const _internal = {
   resolvePaths,
+  needsSpaFallbackShell,
   autoDetectStaticPaths,
   writeRouteOutputs,
   injectCanonical,
