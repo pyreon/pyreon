@@ -578,10 +578,18 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
       }
 
       // The TRIGGER is rendered eagerly (present at mount), so its listeners
-      // attach once.
+      // attach once. KEYBOARD PARITY (APG tooltip/hover-card + WCAG 1.4.13):
+      // focusin/focusout mirror mouseenter/mouseleave 1:1 — without them a
+      // hover overlay NEVER opens for keyboard/AT users (the 2026-07-21 audit's
+      // "keyboard-unopenable Tooltip/HoverCard" finding). Tab into the content
+      // cancels the pending hide exactly like moving the pointer into it (focus
+      // events dispatch synchronously during Tab, before the hide timer's
+      // macrotask fires, so the cancel always wins the race).
       if (triggerEl) {
         triggerEl.addEventListener('mouseenter', onTriggerEnter)
         triggerEl.addEventListener('mouseleave', onTriggerLeave)
+        triggerEl.addEventListener('focusin', onTriggerEnter)
+        triggerEl.addEventListener('focusout', onTriggerLeave)
       }
 
       // The CONTENT mounts LATER — it renders only while open (on hover-open),
@@ -603,10 +611,16 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
         if (attachedContentEl) {
           attachedContentEl.removeEventListener('mouseenter', onContentEnter)
           attachedContentEl.removeEventListener('mouseleave', onContentLeave)
+          attachedContentEl.removeEventListener('focusin', onContentEnter)
+          attachedContentEl.removeEventListener('focusout', onContentLeave)
         }
         if (el) {
           el.addEventListener('mouseenter', onContentEnter)
           el.addEventListener('mouseleave', onContentLeave)
+          // Keyboard parity: focus inside the content keeps it open; focus
+          // leaving schedules the same delayed hide as the pointer leaving.
+          el.addEventListener('focusin', onContentEnter)
+          el.addEventListener('focusout', onContentLeave)
         }
         attachedContentEl = el
       }
@@ -620,10 +634,14 @@ const useOverlay = (props: Partial<UseOverlayProps> = {}) => {
         if (triggerEl) {
           triggerEl.removeEventListener('mouseenter', onTriggerEnter)
           triggerEl.removeEventListener('mouseleave', onTriggerLeave)
+          triggerEl.removeEventListener('focusin', onTriggerEnter)
+          triggerEl.removeEventListener('focusout', onTriggerLeave)
         }
         if (attachedContentEl) {
           attachedContentEl.removeEventListener('mouseenter', onContentEnter)
           attachedContentEl.removeEventListener('mouseleave', onContentLeave)
+          attachedContentEl.removeEventListener('focusin', onContentEnter)
+          attachedContentEl.removeEventListener('focusout', onContentLeave)
           attachedContentEl = null
         }
       })

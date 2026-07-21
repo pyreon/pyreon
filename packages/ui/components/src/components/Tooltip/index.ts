@@ -18,7 +18,10 @@ const Tooltip = el
     zIndex: 50,
     fontWeight: t.fontWeight.medium,
     lineHeight: t.lineHeight.base,
-    pointerEvents: 'none',
+    // NO pointerEvents:'none' — WCAG 1.4.13 (content on hover) requires the
+    // pointer to be able to travel INTO the tooltip without it dismissing;
+    // useOverlay's content-enter cancel handles the keep-open, but only if
+    // the bubble can receive pointer events at all.
     maxWidth: '200px',
   }))
 
