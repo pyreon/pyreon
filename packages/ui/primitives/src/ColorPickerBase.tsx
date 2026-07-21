@@ -3,6 +3,29 @@ import { mergeProps, splitProps } from '@pyreon/core'
 import { useControllableState } from '@pyreon/hooks'
 import { batch, computed, signal } from '@pyreon/reactivity'
 
+/**
+ * Localizable assistive-tech strings. Every default is English — pass any
+ * subset to translate (the rest keep their defaults). The `*Value` entries
+ * produce `aria-valuetext` and receive the CURRENT values, so translations
+ * control number formatting/placement too.
+ */
+export interface ColorPickerLabels {
+  /** `aria-label` for the `role="group"` container. Default `'Color picker'`. */
+  group?: string
+  /** Hue slider `aria-label`. Default `'Hue'`. */
+  hue?: string
+  /** Hue slider `aria-valuetext`. Default ``(deg) => `${deg} degrees` ``. */
+  hueValue?: (deg: number) => string
+  /** Saturation/brightness slider `aria-label`. Default `'Saturation and brightness'`. */
+  saturation?: string
+  /** Its `aria-valuetext`. Default ``(s, b) => `Saturation ${s}%, brightness ${b}%` ``. */
+  saturationValue?: (s: number, b: number) => string
+  /** Alpha slider `aria-label`. Default `'Opacity'`. */
+  opacity?: string
+  /** Its `aria-valuetext`. Default ``(pct) => `${pct}%` ``. */
+  opacityValue?: (pct: number) => string
+}
+
 export interface ColorPickerBaseProps {
   /** Current color as hex string. */
   value?: string
@@ -12,6 +35,8 @@ export interface ColorPickerBaseProps {
   onChange?: (hex: string) => void
   /** Enable alpha channel. */
   alpha?: boolean
+  /** Localized AT strings (see {@link ColorPickerLabels}). */
+  labels?: ColorPickerLabels
   /** Render function. */
   children?: (state: ColorPickerState) => VNodeChild
   [key: string]: unknown
@@ -49,15 +74,17 @@ export interface ColorPickerState {
   /**
    * ARIA slider props for the HUE control (0–360°). Spread onto the hue
    * track/thumb element; wire arrow keys to `setHSB(next, saturation(),
-   * brightness())`. ARIA value attrs are numbers (rendered as their string).
+   * brightness())`. `aria-valuenow`/`aria-valuetext` are ACCESSORS (live
+   * through a one-time spread — the runtime renderEffect-wraps function
+   * values); min/max are static numbers.
    */
   hueSliderProps: () => {
     role: 'slider'
     'aria-label': string
     'aria-valuemin': number
     'aria-valuemax': number
-    'aria-valuenow': number
-    'aria-valuetext': string
+    'aria-valuenow': () => number
+    'aria-valuetext': () => string
     tabIndex: 0
     onKeyDown: (e: KeyboardEvent) => void
   }
@@ -71,8 +98,8 @@ export interface ColorPickerState {
     'aria-label': string
     'aria-valuemin': number
     'aria-valuemax': number
-    'aria-valuenow': number
-    'aria-valuetext': string
+    'aria-valuenow': () => number
+    'aria-valuetext': () => string
     tabIndex: 0
     onKeyDown: (e: KeyboardEvent) => void
   }
@@ -85,8 +112,8 @@ export interface ColorPickerState {
     'aria-label': string
     'aria-valuemin': number
     'aria-valuemax': number
-    'aria-valuenow': number
-    'aria-valuetext': string
+    'aria-valuenow': () => number
+    'aria-valuetext': () => string
     tabIndex: 0
     onKeyDown: (e: KeyboardEvent) => void
   }
@@ -157,10 +184,27 @@ function hsbToRgb(h: number, s: number, b: number): { r: number; g: number; b: n
 
 // ─── ColorPickerBase ─────────────────────────────────────────────────────────
 
+// English defaults for the AT strings — overridable per-key via the `labels`
+// prop (the 2026-07-21 audit's "six structurally un-overridable strings" fix).
+const DEFAULT_LABELS: Required<ColorPickerLabels> = {
+  group: 'Color picker',
+  hue: 'Hue',
+  hueValue: (deg) => `${deg} degrees`,
+  saturation: 'Saturation and brightness',
+  saturationValue: (s, b) => `Saturation ${s}%, brightness ${b}%`,
+  opacity: 'Opacity',
+  opacityValue: (pct) => `${pct}%`,
+}
+
 export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
   const [own, rest] = splitProps(props, [
-    'value', 'defaultValue', 'onChange', 'alpha', 'children',
+    'value', 'defaultValue', 'onChange', 'alpha', 'labels', 'children',
   ])
+
+  // Per-call lazy label resolution (never captured — a getter-shaped `labels`
+  // prop stays live, and per-key fallback lets consumers translate any subset).
+  const label = <K extends keyof ColorPickerLabels>(key: K): NonNullable<ColorPickerLabels[K]> =>
+    (own.labels?.[key] ?? DEFAULT_LABELS[key]) as NonNullable<ColorPickerLabels[K]>
 
   const initial = own.defaultValue ?? own.value ?? '#3b82f6'
   const initialRgb = hexToRgb(initial)
@@ -323,51 +367,54 @@ export const ColorPickerBase: ComponentFn<ColorPickerBaseProps> = (props) => {
     // UNSTYLED. mergeProps (descriptor-safe) is required over object spread so a
     // getter-shaped reactive prop is not frozen; the primitive's own ARIA is
     // passed last and therefore wins.
-    groupProps: () =>
-      mergeProps(rest as Record<string, unknown>, {
+    groupProps: () => {
+      // The consumer's EXPLICIT accessible name wins over our default (a
+      // translated per-instance label must not be clobbered); `in` checks
+      // presence WITHOUT firing getter-shaped reactive props. `role` stays
+      // primitive-owned (passed last, wins).
+      const hasOwnName =
+        'aria-label' in (rest as object) || 'aria-labelledby' in (rest as object)
+      return mergeProps(rest as Record<string, unknown>, {
         role: 'group',
-        'aria-label': 'Color picker',
-      } as Record<string, unknown>),
-    hueSliderProps: () => {
-      const h = Math.round(_hue())
-      return {
-        role: 'slider' as const,
-        'aria-label': 'Hue',
-        'aria-valuemin': 0,
-        'aria-valuemax': 360,
-        'aria-valuenow': h,
-        'aria-valuetext': `${h} degrees`,
-        tabIndex: 0 as const,
-        onKeyDown: handleHueKey,
-      }
+        ...(hasOwnName ? {} : { 'aria-label': label('group') }),
+      } as Record<string, unknown>)
     },
-    saturationSliderProps: () => {
-      const s = Math.round(_saturation())
-      const b = Math.round(_brightness())
-      return {
-        role: 'slider' as const,
-        'aria-label': 'Saturation and brightness',
-        'aria-valuemin': 0,
-        'aria-valuemax': 100,
-        'aria-valuenow': s,
-        'aria-valuetext': `Saturation ${s}%, brightness ${b}%`,
-        tabIndex: 0 as const,
-        onKeyDown: handleSaturationKey,
-      }
-    },
-    alphaSliderProps: () => {
-      const a = Math.round(_alpha() * 100)
-      return {
-        role: 'slider' as const,
-        'aria-label': 'Opacity',
-        'aria-valuemin': 0,
-        'aria-valuemax': 100,
-        'aria-valuenow': a,
-        'aria-valuetext': `${a}%`,
-        tabIndex: 0 as const,
-        onKeyDown: handleAlphaKey,
-      }
-    },
+    // Slider aria VALUES are ACCESSOR-valued (functions), not snapshots: these
+    // getter-objects ride a ONE-TIME spread in consumers, so a resolved value
+    // would freeze at mount and the announced position would never move (the
+    // ComboboxBase aria-expanded class; "accessors beat getters"). `applyProp`
+    // renderEffect-wraps a function value, so they stay live through any spread.
+    hueSliderProps: () => ({
+      role: 'slider' as const,
+      'aria-label': label('hue'),
+      'aria-valuemin': 0,
+      'aria-valuemax': 360,
+      'aria-valuenow': () => Math.round(_hue()),
+      'aria-valuetext': () => label('hueValue')(Math.round(_hue())),
+      tabIndex: 0 as const,
+      onKeyDown: handleHueKey,
+    }),
+    saturationSliderProps: () => ({
+      role: 'slider' as const,
+      'aria-label': label('saturation'),
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-valuenow': () => Math.round(_saturation()),
+      'aria-valuetext': () =>
+        label('saturationValue')(Math.round(_saturation()), Math.round(_brightness())),
+      tabIndex: 0 as const,
+      onKeyDown: handleSaturationKey,
+    }),
+    alphaSliderProps: () => ({
+      role: 'slider' as const,
+      'aria-label': label('opacity'),
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-valuenow': () => Math.round(_alpha() * 100),
+      'aria-valuetext': () => label('opacityValue')(Math.round(_alpha() * 100)),
+      tabIndex: 0 as const,
+      onKeyDown: handleAlphaKey,
+    }),
   }
 
   if (typeof own.children === 'function') {
