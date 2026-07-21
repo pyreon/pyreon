@@ -28,7 +28,7 @@ const mountCombo = (props: Record<string, unknown> = {}): ComboboxState => {
       ...props,
       children: (s: ComboboxState) => {
         captured = s
-        return h('div')
+        return h('div', null)
       },
     }),
   )

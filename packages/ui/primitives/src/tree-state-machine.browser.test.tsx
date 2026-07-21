@@ -40,7 +40,7 @@ const mountTree = (props: Record<string, unknown> = {}): TreeState => {
       ...props,
       children: (s: TreeState) => {
         captured = s
-        return h('div')
+        return h('div', null)
       },
     }),
   )
