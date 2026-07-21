@@ -17,9 +17,13 @@ Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via p
 - useFlow(config) component-scoped wrapper that auto-disposes on unmount
 - Custom node/edge renderers with reactive accessor props
 - Pan/zoom via pointer events + CSS transforms (no D3)
-- Auto-layout via lazy-loaded elkjs
+- Auto-layout via lazy-loaded elkjs — fed each node's EFFECTIVE (measured) box, not a 150×40 phantom
+- Measured node dimensions: per-node ResizeObserver records real rendered boxes + &lt;Handle&gt; dot centers; explicit width/height → measured → default precedence drives edges, layout, fitView, snap lines, minimap, culling
+- Handle-anchored edges: edge.sourceHandle/targetHandle attach at the MEASURED &lt;Handle&gt; dot center (unknown ids dev-warn + fall back to the first handle); handle-less nodes get floating natural-angle endpoints
+- Edge modes: bezier / smoothstep / step / straight / waypoints + per-edge pathOptions (curvature, borderRadius, offset) + config.defaultEdgeOptions flow-wide defaults
 - toJSON / fromJSON round-trip serialization
 - Configurable edge markers (arrow / arrowclosed, per-edge markerStart/markerEnd, deduped &lt;defs&gt;)
+- Complete --pyreon-flow-* CSS-var theming (25 variables, light-mode fallbacks — one CSS block re-skins nodes/edges/handles/controls/minimap)
 - Render virtualization via onlyRenderVisibleElements (cull off-screen nodes/edges, re-filter on pan/zoom)
 - Opt-out object-snapping (snapToObjects: false) — skips the O(N)/frame helper-line scan, ~3-4x faster drags on large graphs
 
@@ -161,6 +165,8 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Confusing `markerEnd: null` with omitting it — `null` is the explicit "no end arrow" opt-out that overrides `config.defaultMarkerEnd`; OMITTING it falls back to the flow default (a closed arrowhead). Set `config.defaultMarkerEnd: null` to make every edge arrowless by default
 - Expecting `onlyRenderVisibleElements` to cull an edge whose line crosses the viewport while BOTH its endpoint nodes are off-screen — only nodes (and the edges touching at least one visible node) are kept; a long edge spanning two off-screen nodes is culled (rare; matches React Flow)
 - Leaving object-snapping on for very large graphs — `snapToObjects` (default `true`) runs an O(N) align-to-other-nodes scan on EVERY drag frame; on big graphs it dominates per-frame cost. Set `snapToObjects: false` to skip it (≈3-4× faster drags) when you don't need helper-line alignment
+- Setting explicit `width`/`height` on every node "so layout works" — unnecessary: the renderer MEASURES each node's real box (and `<Handle>` dot centers) and feeds the effective size (explicit → measured → 150×40 default) to edges, `layout()`, `fitView`, snap lines, and the minimap. Explicit sizes are only needed for pre-render/headless layout (SSR, standalone `computeLayout`) — and they OVERRIDE the measurement, so a stale hardcoded size beats the real one
+- Putting `pathOptions` fields on the wrong edge type — `curvature` applies to `bezier` only, `borderRadius`+`offset` to `smoothstep`, `offset` to `step`; `straight` and waypoint routes ignore all of them. Flow-wide defaults go in `config.defaultEdgeOptions` (per-edge values, including an explicit `markerEnd: null`, always win)
 
 **See also:** `useFlow` · `FlowInstance` · `Flow`
 
@@ -308,7 +314,7 @@ Overview minimap of the full graph. `nodeColor` is a flat color string OR a per-
 (props: { type: "source" | "target"; position: Position; id?: string; style?: string; class?: string }) => VNodeChild
 ```
 
-Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle`. `style` / `class` restyle the handle dot.
+Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle` — the edge then anchors at the dot's MEASURED rendered center (the NodeLayer records every dot via its per-node ResizeObserver), so restyling/repositioning a dot via `style` / `class` moves the edge attachment with it. An edge with no handle id uses the node's first handle of the right type; an unknown id anchors at the first handle and dev-warns once naming the known ids.
 
 **Example**
 
@@ -510,3 +516,7 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })
 > **Peer dep rationale:** `@pyreon/runtime-dom` is required in consumer apps because flow JSX components emit `_tpl()` / `_bind()` calls — declare it as a direct dependency, not a transitive one.
 
 > **JSX generics:** Pyreon JSX components cannot be parameterised at the call site (`<Flow<MyData> />` is not valid JSX). `FlowProps.instance` is typed as `FlowInstance<any>` so typed consumers can pass their `FlowInstance<MyData>` without casting.
+
+> **Effective dimensions:** Every geometry consumer (edges, layout(), fitView, snap lines, minimap, culling) resolves node size as explicit width/height → MEASURED rendered box → 150×40 default. Nodes need no explicit sizes in the browser; explicit sizes override the measurement, and headless `computeLayout` (no DOM) sees explicit-or-default only.
+
+> **Theming:** All renderer colors go through `--pyreon-flow-*` CSS custom properties (25 vars) with light-mode fallbacks — set them on the container to re-skin; SVG colors are applied via `style` (never presentation attributes, where `var()` is invalid).

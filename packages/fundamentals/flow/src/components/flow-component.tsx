@@ -4,12 +4,14 @@ import {
   collectEdgeMarkers,
   DEFAULT_MARKER_END,
   getEdgePath,
+  getEffectiveDimensions,
   getFloatingEndpoints,
   getHandlePosition,
   getSmartHandlePositions,
   getWaypointPath,
   markerId,
   resolveEdgeMarkers,
+  resolveHandleAnchor,
 } from '../edges'
 import { FlowContext } from './flow-context'
 import type {
@@ -19,7 +21,10 @@ import type {
   FlowEdge,
   FlowInstance,
   FlowNode,
+  HandleType,
+  MeasuredHandle,
   NodeComponentProps,
+  NodeMeasurement,
   Viewport,
 } from '../types'
 import { MarkerType, Position } from '../types'
@@ -101,9 +106,11 @@ function nodeInViewport<T>(
   v: Viewport,
   cw: number,
   ch: number,
+  measured: Map<string, NodeMeasurement>,
 ): boolean {
-  const w = (n.width ?? 150) * v.zoom
-  const h = (n.height ?? 40) * v.zoom
+  const dims = getEffectiveDimensions(n, measured.get(n.id))
+  const w = dims.width * v.zoom
+  const h = dims.height * v.zoom
   const sx = n.position.x * v.zoom + v.x
   const sy = n.position.y * v.zoom + v.y
   return (
@@ -121,7 +128,8 @@ function visibleNodeList<T>(instance: FlowInstance<T>): FlowNode<T>[] {
   const { width, height } = instance.containerSize()
   // Pre-measurement (0×0) → render all, else everything would be hidden.
   if (!width || !height) return all
-  return all.filter((n) => nodeInViewport(n, v, width, height))
+  const measured = instance.measurements()
+  return all.filter((n) => nodeInViewport(n, v, width, height, measured))
 }
 
 function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
@@ -131,12 +139,13 @@ function visibleEdgeList<T>(instance: FlowInstance<T>): FlowEdge[] {
   const { width, height } = instance.containerSize()
   if (!width || !height) return all
   const nm = instance.nodeMap()
+  const measured = instance.measurements()
   return all.filter((e) => {
     const s = nm.get(e.source)
     const t = nm.get(e.target)
     return (
-      (!!s && nodeInViewport(s, v, width, height))
-      || (!!t && nodeInViewport(t, v, width, height))
+      (!!s && nodeInViewport(s, v, width, height, measured))
+      || (!!t && nodeInViewport(t, v, width, height, measured))
     )
   })
 }
@@ -257,31 +266,88 @@ interface EdgeGeometry {
  * so position updates flow through. Pulled out as a top-level
  * helper so the EdgeLayer body stays readable.
  */
+// Dev-only: an `edge.sourceHandle`/`targetHandle` naming an id that matches
+// NONE of the node's handles silently anchors at the first-handle fallback —
+// warn ONCE per edge+side so the typo is visible. Only judged when the node
+// HAS handle info (measured or config); pre-measurement nodes are skipped so
+// the first un-measured frame can't false-positive.
+const _warnedHandleIds = new Set<string>()
+
+function warnUnknownHandleOnce(
+  edge: FlowEdge,
+  sourceNode: FlowNode,
+  targetNode: FlowNode,
+  sm: NodeMeasurement | undefined,
+  tm: NodeMeasurement | undefined,
+): void {
+  // Early-return dev guard (in addition to the call-site gate) so the warn is
+  // provably tree-shaken — the `dev-guard-warnings` lint rule checks per-function.
+  if (process.env.NODE_ENV === 'production') return
+  const check = (
+    side: 'source' | 'target',
+    handleId: string | undefined,
+    node: FlowNode,
+    m: NodeMeasurement | undefined,
+  ): void => {
+    if (!handleId) return
+    const config = side === 'source' ? node.sourceHandles : node.targetHandles
+    const measuredIds = m?.handles?.filter((h) => h.type === side).map((h) => h.id) ?? []
+    const configIds = config?.map((h) => h.id ?? h.type) ?? []
+    const known = [...measuredIds, ...configIds]
+    if (known.length === 0) return
+    if (known.includes(handleId)) return
+    const key = `${edge.id ?? `${edge.source}->${edge.target}`}:${side}`
+    if (_warnedHandleIds.has(key)) return
+    _warnedHandleIds.add(key)
+    // oxlint-disable-next-line no-console
+    console.warn(
+      `[Pyreon] flow: edge "${edge.id ?? `${edge.source}->${edge.target}`}" references ${side}Handle "${handleId}" ` +
+        `but node "${node.id}" has no handle with that id (known: ${known.join(', ')}). ` +
+        `The edge anchors at the node's first ${side} handle instead — fix the id to target the intended handle.`,
+    )
+  }
+  check('source', edge.sourceHandle, sourceNode, sm)
+  check('target', edge.targetHandle, targetNode, tm)
+}
+
 function computeEdgeGeometry(
   edge: FlowEdge,
   sourceNode: FlowNode,
   targetNode: FlowNode,
-  measured: Map<string, { width: number; height: number }>,
+  measured: Map<string, NodeMeasurement>,
 ): EdgeGeometry {
-  // Precedence: explicit `node.width`/`height` (a deliberate consumer override)
-  // → measured DOM size (content-sized nodes with no explicit dims) → 150×40
-  // default (pre-measurement first frame / SSR). Anchors edges to the real node.
+  // Effective node boxes — explicit `node.width`/`height` (a deliberate
+  // consumer override) → measured DOM size → 150×40 default (pre-measurement
+  // first frame / SSR). Anchors edges to the real node.
   const sm = measured.get(sourceNode.id)
   const tm = measured.get(targetNode.id)
-  const sourceW = sourceNode.width ?? sm?.width ?? 150
-  const sourceH = sourceNode.height ?? sm?.height ?? 40
-  const targetW = targetNode.width ?? tm?.width ?? 150
-  const targetH = targetNode.height ?? tm?.height ?? 40
+  const sDims = getEffectiveDimensions(sourceNode, sm)
+  const tDims = getEffectiveDimensions(targetNode, tm)
+  const sourceW = sDims.width
+  const sourceH = sDims.height
+  const targetW = tDims.width
+  const targetH = tDims.height
 
-  // Auto-routed edges (no explicit handles, no waypoints) use FLOATING
-  // endpoints: connect where the center-to-center line crosses each node's
-  // perimeter so the edge approaches at the natural angle instead of docking at
-  // a fixed side's midpoint (which forces a horizontal/vertical kink). Nodes
-  // that declare handles — or waypoint routes — keep their fixed docking points.
-  const sourceHasHandle = (sourceNode.sourceHandles?.length ?? 0) > 0
-  const targetHasHandle = (targetNode.targetHandles?.length ?? 0) > 0
+  // Handle-anchored endpoints: `edge.sourceHandle`/`targetHandle` (or a node's
+  // first handle) resolve to the MEASURED `<Handle>` dot center when the DOM
+  // pass has recorded one — the arrow touches the actual dot, wherever the
+  // consumer's CSS placed it — else the declared side's midpoint from the
+  // node's config handles. Nodes with NO handles fall through to null.
+  const sourceAnchor = resolveHandleAnchor(sourceNode, edge.sourceHandle, 'source', sDims, sm)
+  const targetAnchor = resolveHandleAnchor(targetNode, edge.targetHandle, 'target', tDims, tm)
+
+  if (process.env.NODE_ENV !== 'production') {
+    warnUnknownHandleOnce(edge, sourceNode, targetNode, sm, tm)
+  }
+
+  // Auto-routed edges (neither endpoint resolves to a handle, no waypoints)
+  // use FLOATING endpoints: connect where the center-to-center line crosses
+  // each node's perimeter so the edge approaches at the natural angle instead
+  // of docking at a fixed side's midpoint (which forces a horizontal/vertical
+  // kink). Handle-anchored endpoints — and waypoint routes — keep their fixed
+  // docking points.
   const useFloating =
-    !sourceHasHandle && !targetHasHandle && !(edge.waypoints && edge.waypoints.length > 0)
+    !sourceAnchor && !targetAnchor && !(edge.waypoints && edge.waypoints.length > 0)
 
   let sourcePos: { x: number; y: number }
   let targetPos: { x: number; y: number }
@@ -295,28 +361,34 @@ function computeEdgeGeometry(
     sourcePosition = fe.source.position
     targetPosition = fe.target.position
   } else {
+    // At least one side is handle-anchored; the other (if handle-less) docks
+    // at the smart side facing the other node.
     const smart = getSmartHandlePositions(sourceNode, targetNode, {
       sourceW,
       sourceH,
       targetW,
       targetH,
     })
-    sourcePosition = smart.sourcePosition
-    targetPosition = smart.targetPosition
-    sourcePos = getHandlePosition(
-      sourcePosition,
-      sourceNode.position.x,
-      sourceNode.position.y,
-      sourceW,
-      sourceH,
-    )
-    targetPos = getHandlePosition(
-      targetPosition,
-      targetNode.position.x,
-      targetNode.position.y,
-      targetW,
-      targetH,
-    )
+    sourcePosition = sourceAnchor?.position ?? smart.sourcePosition
+    targetPosition = targetAnchor?.position ?? smart.targetPosition
+    sourcePos =
+      sourceAnchor ??
+      getHandlePosition(
+        sourcePosition,
+        sourceNode.position.x,
+        sourceNode.position.y,
+        sourceW,
+        sourceH,
+      )
+    targetPos =
+      targetAnchor ??
+      getHandlePosition(
+        targetPosition,
+        targetNode.position.x,
+        targetNode.position.y,
+        targetW,
+        targetH,
+      )
   }
 
   const { path, labelX, labelY } = edge.waypoints?.length
@@ -335,6 +407,7 @@ function computeEdgeGeometry(
         targetPos.x,
         targetPos.y,
         targetPosition,
+        edge.pathOptions,
       )
 
   return {
@@ -518,10 +591,9 @@ function EdgeLayer(props: {
                 Position.Left,
               ).path
             }
-            fill="none"
-            stroke="#3b82f6"
-            stroke-width="2"
-            stroke-dasharray="5,5"
+            // stroke via `style`, not the presentation attr — `var()` is INVALID
+            // in an SVG presentation attribute (value dropped → stroke:none).
+            style="fill: none; stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 2; stroke-dasharray: 5,5;"
           />
         )
       }}
@@ -606,9 +678,38 @@ function NodeLayer(props: {
             return
           }
           const measure = (): void => {
-            const w = (el as HTMLElement).offsetWidth
-            const h = (el as HTMLElement).offsetHeight
-            if (w > 0 && h > 0) instance._setNodeMeasurement(id, w, h)
+            const wrapper = el as HTMLElement
+            const w = wrapper.offsetWidth
+            const h = wrapper.offsetHeight
+            if (!(w > 0 && h > 0)) return
+            // Also record every <Handle> dot's CENTER relative to the node's
+            // top-left, in unscaled flow units, so edge geometry anchors the
+            // arrow exactly at the dot — wherever the consumer's CSS placed it.
+            // getBoundingClientRect is scaled by the viewport transform, so
+            // divide the deltas by the current zoom (offsetLeft can't be used:
+            // it's relative to the nearest positioned ancestor, which a custom
+            // node's own `position: relative` root silently changes).
+            const zoom = instance.viewport.peek().zoom || 1
+            let handles: MeasuredHandle[] | undefined
+            const dots = wrapper.querySelectorAll('.pyreon-flow-handle')
+            if (dots.length > 0) {
+              const nodeRect = wrapper.getBoundingClientRect()
+              handles = []
+              for (const dot of dots) {
+                const r = dot.getBoundingClientRect()
+                if (r.width === 0 && r.height === 0) continue
+                handles.push({
+                  id: dot.getAttribute('data-handleid') ?? 'source',
+                  type: (dot.getAttribute('data-handletype') as HandleType) ?? 'source',
+                  position:
+                    (dot.getAttribute('data-handleposition') as Position) ?? Position.Right,
+                  x: (r.left - nodeRect.left + r.width / 2) / zoom,
+                  y: (r.top - nodeRect.top + r.height / 2) / zoom,
+                })
+              }
+              if (handles.length === 0) handles = undefined
+            }
+            instance._setNodeMeasurement(id, w, h, handles)
           }
           measure()
           if (typeof ResizeObserver === 'function') {
@@ -860,9 +961,14 @@ export function Flow(props: FlowComponentProps): VNodeChild {
     const node = instance.getNode(nodeId)
     if (!node) return
 
-    const w = node.width ?? 150
-    const h = node.height ?? 40
-    const handlePos = getHandlePosition(position, node.position.x, node.position.y, w, h)
+    // Start the live connection line at the MEASURED dot center when the
+    // measurement pass has one for this handle — pixel-exact with where the
+    // user actually grabbed — else the declared side's midpoint.
+    const m = instance.measurements.peek().get(nodeId)
+    const dims = getEffectiveDimensions(node, m)
+    const anchor = resolveHandleAnchor(node, handleId, 'source', dims, m)
+    const handlePos =
+      anchor ?? getHandlePosition(position, node.position.x, node.position.y, dims.width, dims.height)
 
     connectionState.set({
       active: true,
@@ -1058,9 +1164,11 @@ export function Flow(props: FlowComponentProps): VNodeChild {
       const maxY = Math.max(sel.startY, sel.currentY)
 
       instance.clearSelection()
+      const measured = instance.measurements.peek()
       for (const node of instance.nodes.peek()) {
-        const w = node.width ?? 150
-        const h = node.height ?? 40
+        // Effective box — a rubber-band selection must hit-test the node's
+        // REAL rendered rect, not the 150×40 phantom.
+        const { width: w, height: h } = getEffectiveDimensions(node, measured.get(node.id))
         const nx = node.position.x
         const ny = node.position.y
         // Node is within box if any part overlaps
@@ -1336,9 +1444,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
                       y1="-10000"
                       x2={String(lines.x)}
                       y2="10000"
-                      stroke="#3b82f6"
-                      stroke-width="0.5"
-                      stroke-dasharray="4,4"
+                      style="stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 0.5; stroke-dasharray: 4,4;"
                     />
                   )}
                   {lines.y !== null && (
@@ -1347,9 +1453,7 @@ export function Flow(props: FlowComponentProps): VNodeChild {
                       y1={String(lines.y)}
                       x2="10000"
                       y2={String(lines.y)}
-                      stroke="#3b82f6"
-                      stroke-width="0.5"
-                      stroke-dasharray="4,4"
+                      style="stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 0.5; stroke-dasharray: 4,4;"
                     />
                   )}
                 </svg>

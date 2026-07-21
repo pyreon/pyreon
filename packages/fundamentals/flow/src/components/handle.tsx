@@ -28,7 +28,10 @@ const positionOffset: Record<string, string> = {
 export function Handle(props: HandleProps): VNodeChild {
   const posStyle = positionOffset[props.position] ?? positionOffset.bottom
   const style = props.style ?? ''
-  const baseStyle = `position: absolute; ${posStyle} width: 8px; height: 8px; background: #555; border: 2px solid white; border-radius: 50%; cursor: crosshair; z-index: 1; ${style}`
+  // Themeable via --pyreon-flow-handle-bg / --pyreon-flow-handle-border with
+  // the historical values as fallbacks (see the docs "Theming" table); a
+  // consumer `style` prop appended last still overrides everything.
+  const baseStyle = `position: absolute; ${posStyle} width: 8px; height: 8px; background: var(--pyreon-flow-handle-bg, #555); border: 2px solid var(--pyreon-flow-handle-border, white); border-radius: 50%; cursor: crosshair; z-index: 1; ${style}`
 
   return (
     <div

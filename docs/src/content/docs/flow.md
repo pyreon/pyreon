@@ -117,6 +117,7 @@ When no generic is supplied it defaults to `Record<string, unknown>`.
 | `nodes`                     | `FlowNode<TData>[]`                        | `[]`    | Initial nodes                                                        |
 | `edges`                     | `FlowEdge[]`                               | `[]`    | Initial edges                                                        |
 | `defaultEdgeType`           | `EdgeType`                                 | `'bezier'` | Edge type applied when an edge omits `type`                       |
+| `defaultEdgeOptions`        | `DefaultEdgeOptions`                       | —       | Defaults merged into every edge that doesn't set the field itself (see [Default Edge Options](#default-edge-options)) |
 | `minZoom`                   | `number`                                   | `0.1`   | Minimum zoom level                                                   |
 | `maxZoom`                   | `number`                                   | `4`     | Maximum zoom level                                                   |
 | `snapToGrid`                | `boolean`                                  | `false` | Snap node positions to a grid                                        |
@@ -291,6 +292,53 @@ Four built-in edge path algorithms (set per edge via `type`, or graph-wide via `
 
 `EdgeType` is `'bezier' | 'smoothstep' | 'straight' | 'step' | (string & {})` — the open string union lets you register custom edge renderers under any name via `<Flow edgeTypes={{ ... }}>`.
 
+### Per-Edge Path Options
+
+Each built-in path builder is tunable per edge via `pathOptions` (only the fields relevant to the edge's `type` apply):
+
+```tsx
+// A flatter bezier (default curvature is 0.25; 0 = straight line)
+flow.addEdge({ source: '1', target: '2', pathOptions: { curvature: 0.1 } })
+
+// A smoothstep with bigger rounded corners and a longer straight run-out
+flow.addEdge({
+  source: '2',
+  target: '3',
+  type: 'smoothstep',
+  pathOptions: { borderRadius: 12, offset: 40 },
+})
+
+// A step edge that runs 60px straight out of each endpoint before turning
+flow.addEdge({ source: '3', target: '4', type: 'step', pathOptions: { offset: 60 } })
+```
+
+| Field          | Applies to           | Default | Description                                                        |
+| -------------- | -------------------- | ------- | ------------------------------------------------------------------ |
+| `curvature`    | `bezier`             | `0.25`  | Control-point strength as a fraction of endpoint distance          |
+| `borderRadius` | `smoothstep`         | `5`     | Corner rounding radius in px (`step` locks this to `0`)            |
+| `offset`       | `smoothstep`, `step` | `20`    | Straight run-out from each endpoint before the first turn, in px   |
+
+`straight` and waypoint-routed edges ignore `pathOptions`.
+
+### Default Edge Options
+
+`defaultEdgeOptions` merges defaults into every edge that doesn't set the field itself — the initial `edges` array, every `addEdge()`, and every connection drawn by the user:
+
+```tsx
+const flow = createFlow({
+  nodes,
+  edges,
+  defaultEdgeOptions: {
+    type: 'smoothstep',
+    animated: true,
+    pathOptions: { borderRadius: 8 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' },
+  },
+})
+```
+
+A per-edge explicit value always wins — including an explicit `markerEnd: null` (arrowless opt-out). `type` resolves as `edge.type` → `defaultEdgeOptions.type` → `defaultEdgeType` → `'bezier'`.
+
 ### Edge Waypoints
 
 Add bend points to edges:
@@ -335,6 +383,33 @@ const flow = createFlow({
 
 :::warning
 `markerEnd: null` is **not** the same as omitting `markerEnd`. `null` is the explicit "no end arrow" opt-out that overrides `defaultMarkerEnd`; **omitting** `markerEnd` falls back to the flow default (a closed arrowhead unless you set `defaultMarkerEnd: null`). `markerStart` is omitted by default (no start arrow). Resolved marker defaults: `color: '#999'`, `width: 10`, `height: 7`, `strokeWidth: 1`.
+:::
+
+## Edge Anchoring & Node Measurement
+
+Where exactly an edge attaches to a node is resolved per endpoint, in priority order:
+
+1. **A measured `<Handle>` dot.** The renderer measures every node's real DOM box *and* every `<Handle>` dot's center (client-only, via a per-node `ResizeObserver`). `edge.sourceHandle` / `edge.targetHandle` anchor the edge **exactly at the named dot** — wherever your CSS placed it. An edge with no handle id uses the node's *first* handle of the right type (source/target).
+2. **A config handle.** A handle declared in `node.sourceHandles` / `node.targetHandles` that hasn't been measured yet (first frame, SSR) anchors at its declared side's midpoint.
+3. **Floating endpoints.** A node with **no** handles connects where the center-to-center line crosses its perimeter — the edge approaches at the natural angle instead of docking at a fixed side midpoint (React Flow's floating-edge model). This is the default for plain nodes.
+
+```tsx
+// Anchors at the 'out-fallback' dot's real rendered position:
+flow.addEdge({ source: '1', sourceHandle: 'out-fallback', target: '2' })
+```
+
+An edge that names a handle id that exists on neither the measured dots nor the config handles anchors at the node's first handle instead and **dev-warns once** naming the known ids — a typo never silently produces a dead edge.
+
+### Measured node dimensions
+
+Nodes don't need explicit `width` / `height` — the renderer measures the real rendered box and every geometry consumer uses the same **effective dimensions** rule:
+
+> explicit `node.width` / `node.height` → measured DOM size → `150×40` default
+
+That rule drives edge anchoring, **auto-layout** (ELK receives real boxes), `fitView`, drag snap lines, rubber-band selection hit-tests, the minimap, `<NodeResizer>`'s starting size, and viewport culling. Read a node's effective box imperatively via `flow.getNodeDimensions(id)`, or reactively via the `flow.measurements()` map (`Map<string, NodeMeasurement>` — size plus measured handle dots).
+
+:::note
+Explicit `width` / `height` always win — set them when you need layout to run **before** first render (SSR, headless `computeLayout`), or when `<NodeResizer>` writes them. Under SSR / happy-dom nothing is measured, so geometry falls back to explicit-or-default.
 :::
 
 ## Selection
@@ -427,6 +502,8 @@ await flow.layout('rectpacking')
 ```
 
 `flow.layout(algorithm?, options?)` defaults to `'layered'`. It returns a `Promise<void>` and (unless `animate: false`) interpolates node positions over `animationDuration` with an ease-out cubic.
+
+`flow.layout()` feeds ELK each node's **effective dimensions** (explicit → measured DOM size → default, see [Measured node dimensions](#measured-node-dimensions)) — content-sized custom nodes are laid out at their real rendered size, so spacing is correct instead of assuming 150×40 boxes. The standalone `computeLayout(nodes, edges, algorithm?, options?)` export has no DOM access and uses explicit-or-default sizes; set `width`/`height` on the nodes you pass it for precise headless layout.
 
 ### Layout Options
 
@@ -691,8 +768,10 @@ function CustomNode(props: NodeComponentProps<MyData>) {
 flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })
 ```
 
+Edges anchor at the dot's **real rendered position** — the renderer measures every `<Handle>`'s center (see [Edge Anchoring & Node Measurement](#edge-anchoring--node-measurement)), so restyling or repositioning a dot via `style` / `class` moves the edge attachment with it. An edge without a `sourceHandle` / `targetHandle` id uses the node's first handle of that type.
+
 :::warning
-Multiple `source` or `target` handles on one node need distinct `id` values, or edges can't disambiguate which handle they connect to. Handles must live inside a node renderer — nesting a `<Handle>` in a `<Background>`, `<Panel>`, or other non-node component breaks the connection machinery.
+Multiple `source` or `target` handles on one node need distinct `id` values, or edges can't disambiguate which handle they connect to (an unknown id anchors at the first handle and dev-warns naming the known ids). Handles must live inside a node renderer — nesting a `<Handle>` in a `<Background>`, `<Panel>`, or other non-node component breaks the connection machinery.
 :::
 
 ### `<Panel>`
@@ -747,6 +826,71 @@ Props: `position` is `'top'` / `'bottom'` / `'left'` / `'right'` (a string, **no
 `<NodeToolbar position="top">` takes a plain string (`'top' | 'bottom' | 'left' | 'right'`), not the `Position` enum — and it's driven by `selected`, not a `nodeId`. Pass `selected={props.selected}` (the accessor) so the toolbar tracks live selection.
 :::
 
+## Theming
+
+Every color the flow renderer emits goes through a `--pyreon-flow-*` CSS custom property with the historical light-mode value as fallback — **zero setup for light apps, one CSS block to re-skin everything** (dark mode, brand colors). Set them on the flow container or any ancestor:
+
+```css
+.dark .pyreon-flow {
+  --pyreon-flow-node-bg: #1e293b;
+  --pyreon-flow-node-color: #e2e8f0;
+  --pyreon-flow-node-border: #334155;
+  --pyreon-flow-edge: #64748b;
+  --pyreon-flow-bg-pattern: #334155;
+  --pyreon-flow-accent: #818cf8;
+}
+```
+
+The full vocabulary:
+
+| Variable | Fallback | Themes |
+| --- | --- | --- |
+| `--pyreon-flow-accent` | `#3b82f6` | Selected edge stroke, connection line, snap helper lines, selection-box border, resizer border, handle hover, minimap viewport outline |
+| `--pyreon-flow-accent-bg` | `rgba(59, 130, 246, 0.08)` | Rubber-band selection-box fill |
+| `--pyreon-flow-bg-pattern` | `#ddd` | `<Background>` dots / lines / cross pattern |
+| `--pyreon-flow-node-bg` | `#fff` | Default node background |
+| `--pyreon-flow-node-color` | `#1a192b` | Default node text |
+| `--pyreon-flow-node-border` | `#ddd` | Default node border |
+| `--pyreon-flow-node-selected` | `#3b82f6` | Default node border when selected |
+| `--pyreon-flow-selection-glow` | `rgba(59, 130, 246, 0.3)` | Selected node drop-shadow ring (`flowStyles`) |
+| `--pyreon-flow-edge` | `#999` | Edge stroke + default arrowhead color |
+| `--pyreon-flow-edge-label` | `#666` | Edge label text |
+| `--pyreon-flow-handle-bg` | `#555` | `<Handle>` dot fill |
+| `--pyreon-flow-handle-border` | `white` | `<Handle>` dot border ring |
+| `--pyreon-flow-handle-valid` | `#22c55e` | Target-handle hover (valid drop) color (`flowStyles`) |
+| `--pyreon-flow-control-color` | `#555` | `<Controls>` button glyphs |
+| `--pyreon-flow-control-muted` | `#999` | `<Controls>` zoom-percent readout |
+| `--pyreon-flow-controls-hover` | `#f3f4f6` | `<Controls>` button hover background (`flowStyles`) |
+| `--pyreon-flow-controls-active` | `#e5e7eb` | `<Controls>` button pressed background (`flowStyles`) |
+| `--pyreon-flow-panel-bg` | `#fff` | `<Panel>` / `<Controls>` surface background |
+| `--pyreon-flow-panel-border` | `#ddd` | `<Panel>` / `<Controls>` surface border |
+| `--pyreon-flow-panel-shadow` | `rgba(0,0,0,0.08)` | `<Panel>` / `<Controls>` drop shadow |
+| `--pyreon-flow-toolbar-bg` | `white` | `<NodeToolbar>` background |
+| `--pyreon-flow-toolbar-border` | `#ddd` | `<NodeToolbar>` border |
+| `--pyreon-flow-resizer-bg` | `white` | `<NodeResizer>` handle fill (border uses `--pyreon-flow-accent`) |
+| `--pyreon-flow-minimap-node` | `#e2e8f0` | `<MiniMap>` node rectangles (per-node `nodeColor` prop wins) |
+| `--pyreon-flow-minimap-mask` | `rgba(0, 0, 0, 0.08)` | `<MiniMap>` outside-viewport mask (`maskColor` prop wins) |
+
+Rows marked `flowStyles` live in the optional injected stylesheet (below); everything else is inline on the elements, so the variables work with **no stylesheet injection at all**. Per-element props (`node.style`, `edge.style`, `nodeColor`, `maskColor`, `color` on `<Background>`) always override the theme variables.
+
+:::note
+SVG strokes/fills are set via the `style` attribute, never SVG presentation attributes — `var()` is invalid in a presentation attribute (the value would be dropped and the shape would render invisible). Follow the same rule in custom edge renderers.
+:::
+
+### `flowStyles` — hover & animation states
+
+Inline styles can't express `:hover` / `@keyframes`, so those polish states ship as an exported CSS string. Inject it once at app root:
+
+```tsx
+import { flowStyles } from '@pyreon/flow'
+
+const style = document.createElement('style')
+style.textContent = flowStyles
+document.head.appendChild(style)
+```
+
+It provides: the `animated` edge dash animation, node drag/selected shadows, handle + resizer hover scaling and colors, `<Controls>` button hover/active backgrounds, minimap hover opacity, and the toolbar enter animation. Everything renders fine without it — the graph just loses those hover/animation flourishes.
+
 ## Edge Path Utilities
 
 Pure functions for generating SVG edge paths. Each takes a params object and returns an `EdgePathResult` **object** — `{ path, labelX, labelY }`.
@@ -775,9 +919,13 @@ These helpers return an **object** `{ path, labelX, labelY }`, not a tuple. Dest
 | `getStepPath`              | `{ sourceX, sourceY, sourcePosition?, targetX, targetY, targetPosition? }` → `EdgePathResult` (smoothstep, `borderRadius: 0`) |
 | `getStraightPath`          | `{ sourceX, sourceY, targetX, targetY }` → `EdgePathResult`                                  |
 | `getWaypointPath`          | `{ sourceX, sourceY, targetX, targetY, waypoints }` → `EdgePathResult`                       |
-| `getEdgePath`              | `(type, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition)` → `EdgePathResult` (dispatches by type) |
+| `getEdgePath`              | `(type, sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, pathOptions?)` → `EdgePathResult` (dispatches by type, threads [`pathOptions`](#per-edge-path-options)) |
 | `getHandlePosition`        | `(position, nodeX, nodeY, nodeWidth, nodeHeight, handleId?)` → `XYPosition`                  |
-| `getSmartHandlePositions`  | `(sourceNode, targetNode)` → `{ sourcePosition, targetPosition }` (auto-picks nearest edges) |
+| `getSmartHandlePositions`  | `(sourceNode, targetNode, dims?)` → `{ sourcePosition, targetPosition }` (auto-picks nearest edges) |
+| `getFloatingEndpoints`     | `(sourceNode, targetNode, dims)` → `{ source, target }` perimeter points + sides (the natural-angle [floating endpoints](#edge-anchoring--node-measurement)) |
+| `getNodeIntersection`      | `(box, toward)` → `XYPosition` where the ray from `box` center toward a point exits the box perimeter |
+| `resolveHandleAnchor`      | `(node, handleId, type, dims, measurement?)` → `{ x, y, position } \| null` ([handle-anchor priority chain](#edge-anchoring--node-measurement)) |
+| `getEffectiveDimensions`   | `(node, measurement?)` → `Dimensions` (explicit → measured → `DEFAULT_NODE_WIDTH`×`DEFAULT_NODE_HEIGHT`) |
 
 ### Marker Helpers
 
@@ -833,6 +981,7 @@ flow.dispose() // cancel in-flight animations + clear all listeners
 | `selectedEdges` | `Computed<string[]>`                  | Selected edge **ids**                      |
 | `nodeMap`       | `Computed<Map<string, FlowNode>>`     | O(1) node lookup (rebuilt per `nodes()` change) |
 | `edgeMap`       | `Computed<Map<string, FlowEdge>>`     | O(1) edge lookup (rebuilt per `edges()` change) |
+| `measurements`  | `Signal<Map<string, NodeMeasurement>>` | Measured node boxes + `<Handle>` dot centers (see [Edge Anchoring](#edge-anchoring--node-measurement)) |
 | `config`        | `FlowConfig<TData>`                   | The config the flow was created with       |
 
 ### `FlowInstance` — methods
@@ -854,6 +1003,7 @@ flow.dispose() // cancel in-flight animations + clear all listeners
 | `zoomTo(z)` / `zoomIn()` / `zoomOut()`            | `void`                               | Zoom (clamped to min/max)                    |
 | `panTo(pos)` / `focusNode(id, zoom?)` / `animateViewport(target, ms?)` | `void`         | Move the viewport                            |
 | `isNodeVisible(id)`                               | `boolean`                            | Is the node within the viewport              |
+| `getNodeDimensions(id)`                           | `Dimensions`                         | Effective node box: explicit → measured → 150×40 (`{0,0}` for unknown id) |
 | `layout(algorithm?, options?)`                    | `Promise<void>`                      | Auto-layout via elkjs                        |
 | `batch(fn)`                                       | `void`                               | Coalesce mutations into one notification     |
 | `getConnectedEdges(id)`                           | `FlowEdge[]`                         | Edges touching a node                        |

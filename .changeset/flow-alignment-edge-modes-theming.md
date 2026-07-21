@@ -1,0 +1,11 @@
+---
+'@pyreon/flow': minor
+---
+
+Flow alignment, edge modes & theming completeness:
+
+- **Effective node dimensions everywhere** — the measured-DOM-size precedence rule (explicit `width`/`height` → measured → 150×40 default) that edge geometry already used now also drives `layout()` (ELK receives real rendered boxes — correct spacing for content-sized nodes), `fitView`, drag snap lines, rubber-band selection hit-tests, the minimap, `<NodeResizer>`'s starting size, and viewport culling. New public `flow.getNodeDimensions(id)` + exported `getEffectiveDimensions` / `DEFAULT_NODE_WIDTH` / `DEFAULT_NODE_HEIGHT`.
+- **Handle-anchored edges** — the measurement pass now records every `<Handle>` dot's rendered center (`NodeMeasurement.handles`), and `edge.sourceHandle` / `targetHandle` anchor the edge exactly at the named dot (previously stored but geometrically ignored). Priority chain: measured dot → config handle side-midpoint → first handle → floating natural-angle endpoints. Unknown handle ids anchor at the first handle and dev-warn once naming the known ids. The live connection-draw line starts at the measured dot too. New exported `resolveHandleAnchor`; `MeasuredHandle` / `NodeMeasurement` types.
+- **Per-edge path tuning** — `edge.pathOptions` (`curvature` for bezier, `borderRadius` + `offset` for smoothstep, `offset` for step) threaded through `getEdgePath`; new `EdgePathOptions` type.
+- **Flow-wide edge defaults** — `config.defaultEdgeOptions` merges defaults (`type`, `animated`, markers, `pathOptions`, …) into every edge that doesn't set the field itself (initial edges, `addEdge`, drawn connections); per-edge values — including an explicit `markerEnd: null` — always win. New `DefaultEdgeOptions` type.
+- **Theming completeness** — every remaining hardcoded renderer color now goes through a `--pyreon-flow-*` CSS variable with the historical value as fallback (handle dot, resizer, node toolbar, minimap viewport outline, connection line, snap helper lines, hover/active states in `flowStyles`); the full 25-variable vocabulary is documented in the new docs "Theming" table. SVG colors moved off presentation attributes onto `style` where needed (`var()` is invalid in presentation attributes).

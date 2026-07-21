@@ -62,16 +62,17 @@ The `TData` generic flows through to `FlowNode<TData>` and `NodeComponentProps<T
 
 | Surface | Methods |
 |---|---|
-| Reactive state | `nodes` / `edges` / `viewport` / `selection` (signals) |
-| Node CRUD | `addNode` / `removeNode` / `updateNode` / `updateNodePosition` / `setNodes` |
-| Edge CRUD | `addEdge` / `removeEdge` / `setEdges` |
-| Edge waypoints | `addEdgeWaypoint` / `removeEdgeWaypoint` |
-| Selection | `selectNode(id, additive?)` / `selectEdge(id, additive?)` / `clearSelection` / `deleteSelected` |
-| Clipboard | `copySelected` / `paste(offset?)` |
-| Viewport | `zoomIn` / `zoomOut` / `zoomTo` / `panTo` / `fitView(ids?, padding?)` |
-| Auto-layout | `layout(algorithm?, options?)` — Promise, elkjs lazy-loaded |
-| Graph queries | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection` |
-| Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` |
+| Reactive state | `nodes` / `edges` / `viewport` / `measurements` (signals), `selectedNodes` / `selectedEdges` / `nodeMap` / `edgeMap` (computeds) |
+| Node CRUD | `addNode` / `removeNode` / `updateNode` / `updateNodePosition` |
+| Edge CRUD | `addEdge` / `removeEdge` / `reconnectEdge` |
+| Edge waypoints | `addEdgeWaypoint` / `updateEdgeWaypoint` / `removeEdgeWaypoint` |
+| Selection | `selectNode(id, additive?)` / `selectEdge(id, additive?)` / `clearSelection` / `selectAll` / `deleteSelected` |
+| Clipboard / history | `copySelected` / `paste(offset?)` / `pushHistory` / `undo` / `redo` |
+| Viewport | `zoomIn` / `zoomOut` / `zoomTo` / `panTo` / `focusNode` / `animateViewport` / `fitView(ids?, padding?)` |
+| Geometry | `getNodeDimensions(id)` — effective box: explicit → measured → 150×40 default |
+| Auto-layout | `layout(algorithm?, options?)` — Promise, elkjs lazy-loaded, fed measured node sizes |
+| Graph queries | `getConnectedEdges` / `getIncomers` / `getOutgoers` / `isValidConnection` / `findNodes` / `searchNodes` |
+| Listeners | `onConnect` / `onNodesChange` / `onNodeClick` / `onEdgeClick` / `onNodeDragStart` / `onNodeDragEnd` / `onNodeDoubleClick` |
 | Serialization | `toJSON()` / `fromJSON(data)` |
 | Lifecycle | `dispose()` |
 
@@ -155,7 +156,21 @@ For custom edge renderers — pure functions returning SVG `d`-string + label co
 - `getStepPath(...)`
 - `getWaypointPath(...)` — with mid-edge waypoints
 
-Plus `getEdgePath`, `getHandlePosition`, `getSmartHandlePositions` for handle math.
+Plus `getEdgePath` (type dispatcher, threads per-edge `pathOptions`), `getHandlePosition`, `getSmartHandlePositions`, `getFloatingEndpoints` / `getNodeIntersection` (natural-angle perimeter anchoring), `resolveHandleAnchor` (handle-anchor priority chain), and `getEffectiveDimensions` (explicit → measured → default node box).
+
+## Edge anchoring & measured dimensions
+
+Where an edge attaches is resolved per endpoint: a **measured `<Handle>` dot** named by `edge.sourceHandle` / `targetHandle` (the renderer records every dot's real rendered center) → a **config handle**'s side midpoint → **floating endpoints** for handle-less nodes (the edge meets the node where the center-to-center line crosses its perimeter — natural-angle arrows). Unknown handle ids anchor at the first handle and dev-warn once.
+
+Nodes need no explicit `width`/`height` — the renderer measures the real rendered box, and the effective size (explicit → measured → `150×40` default) drives edges, `layout()`, `fitView`, drag snap lines, rubber-band selection, the minimap, and viewport culling. Read it via `flow.getNodeDimensions(id)` or reactively via `flow.measurements()`.
+
+## Edge modes
+
+`type: 'bezier' | 'smoothstep' | 'step' | 'straight'` per edge (or any custom name registered via `edgeTypes`), plus `waypoints` for explicit bend-point routes. Tune the built-ins per edge with `pathOptions` (`curvature` for bezier, `borderRadius`/`offset` for smoothstep, `offset` for step), and set flow-wide defaults — `type`, `animated`, markers, `pathOptions`, … — via `config.defaultEdgeOptions` (per-edge values always win).
+
+## Theming
+
+Every renderer color goes through a `--pyreon-flow-*` CSS custom property (25 variables — nodes, edges, handles, controls, minimap, toolbar, resizer) with the light-mode value as fallback. Set them on the flow container to re-skin everything; see the [Theming docs](https://pyreon.dev/docs/flow#theming) for the full table.
 
 ## Position enum
 

@@ -60,7 +60,7 @@ export function NodeToolbar(props: NodeToolbarProps): VNodeChild {
           ? `margin-right: ${offset}px;`
           : `margin-left: ${offset}px;`
 
-  const baseStyle = `position: absolute; ${posStyle} ${marginProp} z-index: 10; display: flex; gap: 4px; background: white; border: 1px solid #ddd; border-radius: 6px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); ${props.style ?? ''}`
+  const baseStyle = `position: absolute; ${posStyle} ${marginProp} z-index: 10; display: flex; gap: 4px; background: var(--pyreon-flow-toolbar-bg, white); border: 1px solid var(--pyreon-flow-toolbar-border, #ddd); border-radius: 6px; padding: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); ${props.style ?? ''}`
 
   // Reactive accessor — components run ONCE, so a top-level `return null`
   // could never react to selection changes. Reading `props.selected` (a

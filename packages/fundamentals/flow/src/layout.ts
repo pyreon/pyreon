@@ -1,3 +1,4 @@
+import { DEFAULT_NODE_HEIGHT, DEFAULT_NODE_WIDTH } from './edges'
 import type { FlowEdge, FlowNode, LayoutAlgorithm, LayoutOptions } from './types'
 
 // ─── ELK algorithm mapping ───────────────────────────────────────────────────
@@ -172,10 +173,14 @@ function toElkGraph<TData>(
   return {
     id: 'root',
     layoutOptions,
+    // `flow.layout()` pre-resolves each node's EFFECTIVE box (explicit →
+    // measured DOM size → default) onto `node.width`/`height` before calling
+    // this, so ELK lays out real rendered sizes. Direct `computeLayout` callers
+    // get explicit-or-default (no DOM access here).
     children: nodes.map((node) => ({
       id: node.id,
-      width: node.width ?? 150,
-      height: node.height ?? 40,
+      width: node.width ?? DEFAULT_NODE_WIDTH,
+      height: node.height ?? DEFAULT_NODE_HEIGHT,
     })),
     edges: edges.map((edge, i) => ({
       id: edge.id ?? `e-${i}`,

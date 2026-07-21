@@ -100,8 +100,12 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
 
       startX = e.clientX
       startY = e.clientY
-      startWidth = node.width ?? 150
-      startHeight = node.height ?? 40
+      // Effective (explicit → MEASURED → default) baseline — a content-sized
+      // node's first resize starts from its real rendered box instead of
+      // snapping to the 150×40 phantom.
+      const startDims = props.instance.getNodeDimensions(props.nodeId)
+      startWidth = startDims.width
+      startHeight = startDims.height
       startNodeX = node.position.x
       startNodeY = node.position.y
       zoomAtStart = props.instance.viewport.peek().zoom
@@ -159,7 +163,7 @@ export function NodeResizer(props: NodeResizerProps): VNodeChild {
   }
 
   const size = `${handleSize}px`
-  const baseStyle = `position: absolute; width: ${size}; height: ${size}; background: white; border: 1.5px solid #3b82f6; border-radius: 2px; z-index: 2;`
+  const baseStyle = `position: absolute; width: ${size}; height: ${size}; background: var(--pyreon-flow-resizer-bg, white); border: 1.5px solid var(--pyreon-flow-accent, #3b82f6); border-radius: 2px; z-index: 2;`
 
   return (
     <>
