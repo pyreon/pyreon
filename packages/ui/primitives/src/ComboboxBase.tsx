@@ -151,6 +151,16 @@ export const ComboboxBase: ComponentFn<ComboboxBaseProps> = (props) => {
       highlightedIndex.set(Math.min(highlightedIndex() + 1, opts.length - 1))
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
+      // APG combobox: ArrowUp on a CLOSED listbox opens it with the LAST
+      // option active (the upward mirror of ArrowDown-opens-with-first).
+      // Pre-fix this arm only moved the highlight, so ArrowUp did nothing
+      // while closed.
+      if (!isOpen()) {
+        if (opts.length === 0) return
+        isOpen.set(true)
+        highlightedIndex.set(opts.length - 1)
+        return
+      }
       highlightedIndex.set(Math.max(highlightedIndex() - 1, 0))
     } else if (e.key === 'Home') {
       // WAI-ARIA listbox: move active option to the first. Opens the listbox
