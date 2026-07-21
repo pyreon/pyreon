@@ -42,10 +42,15 @@ export const MenuItem = el
   .sizes((t) => ({
     small: {
       fontSize: t.fontSize.xSmall,
+      // Compact paddings BUT a touch-target floor: the code-style minimum for
+      // menu items is spacing.small vertical / medium horizontal — met here
+      // via minHeight (the MultiSelect pattern: tiny padding + a 32px floor)
+      // plus horizontal padding at the documented medium minimum.
       paddingTop: t.spacing.xxSmall,
       paddingBottom: t.spacing.xxSmall,
-      paddingLeft: t.spacing.small,
-      paddingRight: t.spacing.small,
+      paddingLeft: t.spacing.medium,
+      paddingRight: t.spacing.medium,
+      minHeight: 32,
     },
     medium: {
       fontSize: t.fontSize.base,

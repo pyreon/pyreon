@@ -3,7 +3,6 @@ import { el, txt } from '../../factory'
 const FormField = el
   .config({ name: 'FormField' })
   .attrs({ tag: 'div', direction: 'rows', block: true, gap: 1 })
-  .theme(() => ({}))
 
 export default FormField
 

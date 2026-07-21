@@ -3,7 +3,6 @@ import { el, focusRing } from '../../factory'
 const Stepper = el
   .config({ name: 'Stepper' })
   .attrs({ tag: 'div', direction: 'inline', alignY: 'center', gap: 2 })
-  .theme(() => ({}))
   .variants(() => ({
     horizontal: {},
     vertical: {
