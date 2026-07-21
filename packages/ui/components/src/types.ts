@@ -61,7 +61,9 @@ import type Highlight from './components/Highlight'
 import type Alert from './components/Alert'
 import type Notification from './components/Notification'
 import type Progress from './components/Progress'
+import type RingProgress from './components/RingProgress'
 import type Loader from './components/Loader'
+import type ScrollArea from './components/ScrollArea'
 import type Skeleton from './components/Skeleton'
 import type Indicator from './components/Indicator'
 import type Modal from './components/Modal'
@@ -168,7 +170,9 @@ export type HighlightProps = ExtractProps<typeof Highlight>
 export type AlertProps = ExtractProps<typeof Alert>
 export type NotificationProps = ExtractProps<typeof Notification>
 export type ProgressProps = ExtractProps<typeof Progress>
+export type RingProgressProps = ExtractProps<typeof RingProgress>
 export type LoaderProps = ExtractProps<typeof Loader>
+export type ScrollAreaProps = ExtractProps<typeof ScrollArea>
 export type SkeletonProps = ExtractProps<typeof Skeleton>
 
 // Indicators
