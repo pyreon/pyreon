@@ -24,9 +24,19 @@ export interface CalendarBaseProps {
   max?: CalendarDate
   /** Dates that are disabled (cannot be selected). */
   disabledDates?: (date: CalendarDate) => boolean
-  /** Locale for day/month names. Default: 'en-US'. */
+  /**
+   * Locale for day/month names. Default: 'en-US'. Read LAZILY — a
+   * getter-shaped reactive prop (i18n language switch) re-derives the month
+   * label, weekday headers, and cell aria-labels without a remount.
+   */
   locale?: string
-  /** First day of week. 0=Sunday, 1=Monday. Default: 1. */
+  /**
+   * First day of week. 0=Sunday, 1=Monday. When omitted, derived from the
+   * locale's week info (`Intl.Locale#weekInfo` / `getWeekInfo()`) where the
+   * runtime supports it — e.g. 'de-DE' → Monday, 'en-US' → Sunday — falling
+   * back to the historical default of 1 (Monday) when it doesn't. An explicit
+   * prop always wins.
+   */
   firstDayOfWeek?: 0 | 1
   /** Render function — receives calendar state for custom rendering. */
   children?: (state: CalendarState) => VNodeChild
@@ -105,7 +115,8 @@ export interface CalendarState {
    * focus can be moved by date. Pair with `onClick={() => select(day.date)}` —
    * a `<button>` then activates on Enter/Space natively.
    *
-   * `tabIndex` and `aria-selected` are ACCESSORS, not values: they stay live
+   * `tabIndex`, `aria-selected`, and `aria-label` are ACCESSORS, not values:
+   * they stay live
    * through a plain spread, so render the rows with a KEYED `<For>` and let the
    * props re-render rather than the cells. (A reactive-accessor list also works
    * but remounts all 42 cells on every keystroke; a bare `.map()` freezes.)
@@ -116,7 +127,7 @@ export interface CalendarState {
     'aria-selected': () => 'true' | 'false'
     'aria-disabled': 'true' | undefined
     'aria-current': 'date' | undefined
-    'aria-label': string
+    'aria-label': () => string
     onKeyDown: (e: KeyboardEvent) => void
     ref: (el: HTMLElement | null) => void
   }
@@ -165,6 +176,38 @@ function dateKey(d: CalendarDate): string {
   return `${d.year}-${d.month}-${d.day}`
 }
 
+/**
+ * Derive the locale's first day of week from `Intl.Locale` week info.
+ * Chromium/Safari expose it as the `weekInfo` accessor property; Firefox ships
+ * the spec's method form `getWeekInfo()`. CLDR numbers days 1=Monday … 7=Sunday
+ * while JS `Date#getDay()` uses 0=Sunday … 6=Saturday, so `fd % 7` maps 7→0
+ * (Sunday) and leaves 1-6 alone. Falls back to 1 (Monday — the historical
+ * CalendarBase default) when the API or the data is unavailable.
+ */
+function localeFirstDayOfWeek(locale: string): number {
+  try {
+    const loc = new Intl.Locale(locale) as Intl.Locale & {
+      weekInfo?: { firstDay?: number }
+      getWeekInfo?: () => { firstDay?: number }
+    }
+    const info = loc.weekInfo ?? loc.getWeekInfo?.()
+    const fd = info?.firstDay
+    if (typeof fd === 'number' && fd >= 1 && fd <= 7) return fd % 7
+  } catch {
+    // Malformed locale tag (Intl.Locale throws) — use the historical default.
+  }
+  return 1
+}
+
+/** Per-locale formatter bundle — memoized per locale string (see localeInfo). */
+interface LocaleInfo {
+  tag: string
+  weekday: Intl.DateTimeFormat
+  month: Intl.DateTimeFormat
+  fullDate: Intl.DateTimeFormat
+  firstDay: number
+}
+
 /** Add `delta` days, letting JS Date normalize across month / year boundaries. */
 function addDays(date: CalendarDate, delta: number): CalendarDate {
   const d = new Date(date.year, date.month, date.day + delta)
@@ -193,8 +236,40 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     'disabledDates', 'locale', 'firstDayOfWeek', 'children',
   ])
 
-  const locale = own.locale ?? 'en-US'
-  const firstDay = own.firstDayOfWeek ?? 1
+  // ─── Locale (lazy + memoized) ──────────────────────────────────────
+  //
+  // The three Intl.DateTimeFormat formatters used to be built ONCE at mount
+  // from an eager `own.locale` read — a getter-shaped reactive `locale` prop
+  // (i18n language switch) was frozen and required a full remount to take
+  // effect. `localeInfo()` reads the prop PER CALL (so a computed / renderEffect
+  // that calls it tracks the underlying signal) and memoizes the formatter
+  // bundle per locale string — a last-locale cache, so steady-state renders
+  // (42 cell labels per grid) never rebuild formatters.
+  const localeTag = (): string => own.locale ?? 'en-US'
+  let _localeInfo: LocaleInfo | null = null
+  function localeInfo(): LocaleInfo {
+    const tag = localeTag()
+    if (_localeInfo?.tag !== tag) {
+      _localeInfo = {
+        tag,
+        weekday: new Intl.DateTimeFormat(tag, { weekday: 'short' }),
+        month: new Intl.DateTimeFormat(tag, { month: 'long', year: 'numeric' }),
+        fullDate: new Intl.DateTimeFormat(tag, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }),
+        firstDay: localeFirstDayOfWeek(tag),
+      }
+    }
+    return _localeInfo
+  }
+
+  // Explicit prop wins; else the locale's week info; else the historical
+  // default of 1 (Monday), inside localeFirstDayOfWeek. Read per call so both
+  // a reactive `firstDayOfWeek` prop AND a reactive `locale` stay live.
+  const firstDay = (): number => own.firstDayOfWeek ?? localeInfo().firstDay
 
   // ─── State ─────────────────────────────────────────────────────────
 
@@ -212,28 +287,21 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
 
   // ─── Locale formatting ─────────────────────────────────────────────
 
-  const weekdayFormatter = new Intl.DateTimeFormat(locale, { weekday: 'short' })
-  const monthFormatter = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' })
-  const fullDateFormatter = new Intl.DateTimeFormat(locale, {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-
   const weekdays = computed(() => {
+    const fmt = localeInfo().weekday
+    const fd = firstDay()
     const labels: string[] = []
     // Start from a known Sunday (Jan 4, 1970 was a Sunday)
     for (let i = 0; i < 7; i++) {
-      const dayIndex = (firstDay + i) % 7
+      const dayIndex = (fd + i) % 7
       const date = new Date(1970, 0, 4 + dayIndex)
-      labels.push(weekdayFormatter.format(date))
+      labels.push(fmt.format(date))
     }
     return labels
   })
 
   const monthLabel = computed(() => {
-    return monthFormatter.format(new Date(_viewYear(), _viewMonth(), 1))
+    return localeInfo().month.format(new Date(_viewYear(), _viewMonth(), 1))
   })
 
   // ─── Day grid ──────────────────────────────────────────────────────
@@ -245,7 +313,7 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
     const firstDayOfMonth = getDayOfWeek(year, month, 1)
 
     // How many days from previous month to show
-    const startOffset = (firstDayOfMonth - firstDay + 7) % 7
+    const startOffset = (firstDayOfMonth - firstDay() + 7) % 7
     const pMonth = month === 0 ? 11 : month - 1
     const pYear = month === 0 ? year - 1 : year
     const daysInPrevMonth = getDaysInMonth(pYear, pMonth)
@@ -400,10 +468,10 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
         next = addDays(cur, 7)
         break
       case 'Home':
-        next = addDays(cur, -((getDayOfWeek(cur.year, cur.month, cur.day) - firstDay + 7) % 7))
+        next = addDays(cur, -((getDayOfWeek(cur.year, cur.month, cur.day) - firstDay() + 7) % 7))
         break
       case 'End':
-        next = addDays(cur, 6 - ((getDayOfWeek(cur.year, cur.month, cur.day) - firstDay + 7) % 7))
+        next = addDays(cur, 6 - ((getDayOfWeek(cur.year, cur.month, cur.day) - firstDay() + 7) % 7))
         break
       case 'PageUp':
         next = addMonths(cur, e.shiftKey ? -12 : -1)
@@ -466,9 +534,11 @@ export const CalendarBase: ComponentFn<CalendarBaseProps> = (props) => {
       'aria-selected': () => (dateEquals(day.date, selected()) ? 'true' : 'false'),
       'aria-disabled': day.isDisabled ? ('true' as const) : undefined,
       'aria-current': day.isToday ? ('date' as const) : undefined,
-      'aria-label': fullDateFormatter.format(
-        new Date(day.date.year, day.date.month, day.date.day),
-      ),
+      // ACCESSOR like tabIndex/aria-selected — reads localeInfo() per run, so a
+      // reactive `locale` flip re-announces every cell in the new language
+      // (memoized per locale string; steady-state renders reuse the formatter).
+      'aria-label': () =>
+        localeInfo().fullDate.format(new Date(day.date.year, day.date.month, day.date.day)),
       onKeyDown: (e: KeyboardEvent) => handleDayKeyDown(e, day),
       ref: (el: HTMLElement | null) => {
         const k = dateKey(day.date)
