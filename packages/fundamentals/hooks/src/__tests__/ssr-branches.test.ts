@@ -7,7 +7,6 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { useClipboard } from '../useClipboard'
-import { useThemeValue } from '../useThemeValue'
 
 // NOTE: the SSR fallbacks of `useOnline` / `useEventListener` are gated on the
 // module-level `isClient` (from @pyreon/reactivity, evaluated once at import).
@@ -16,13 +15,6 @@ import { useThemeValue } from '../useThemeValue'
 // `ssr-branches.node.test.ts` (a true node env, document absent at load). The
 // hooks below still gate per-call on `navigator` / theme context, so they're
 // correctly tested here by runtime global mutation.
-
-describe('useThemeValue — no theme context', () => {
-  it('returns undefined when called outside a theme provider', () => {
-    const got = useThemeValue('colors.primary.button')
-    expect(got).toBeUndefined()
-  })
-})
 
 describe('useClipboard — SSR + clipboard-failure branches', () => {
   const originalNavigator = globalThis.navigator

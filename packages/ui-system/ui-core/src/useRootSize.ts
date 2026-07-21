@@ -13,6 +13,10 @@ export type UseRootSize = () => RootSizeResult
  * `pxToRem` and `remToPx` conversion utilities.
  *
  * Defaults to `16` when no rootSize is set in the theme.
+ *
+ * Lives in `@pyreon/ui-core` (the base of the ui-system layer) so the
+ * ui-system owns its theme-reader hooks without reaching into the
+ * `@pyreon/hooks` fundamentals package.
  */
 export const useRootSize: UseRootSize = () => {
   const theme = useTheme<{ rootSize?: number | undefined }>()

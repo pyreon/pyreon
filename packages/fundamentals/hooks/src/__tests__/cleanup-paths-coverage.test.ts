@@ -109,13 +109,6 @@ describe('hook cleanup paths — coverage', () => {
 })
 
 describe('hook SSR guards — typeof window guards', () => {
-  it('useThemeValue returns undefined when theme is unavailable (line 17)', async () => {
-    const { useThemeValue } = await import('../useThemeValue')
-    // No <ThemeProvider> mounted; useTheme returns null/undefined
-    const value = useThemeValue('colors.primary')
-    expect(value).toBeUndefined()
-  })
-
   it('useDebouncedValue cleanup clears the timer (line 20)', async () => {
     const { useDebouncedValue } = await import('../useDebouncedValue')
     const source = signal('hello')

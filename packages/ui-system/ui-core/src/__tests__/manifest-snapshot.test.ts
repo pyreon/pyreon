@@ -23,6 +23,9 @@ describe('gen-docs — ui-core snapshot', () => {
       'ui-core/PyreonUI',
       'ui-core/cssVariablesPrePaintScript',
       'ui-core/useMode',
+      'ui-core/useRootSize',
+      'ui-core/useSpacing',
+      'ui-core/useThemeValue',
     ])
   })
 })

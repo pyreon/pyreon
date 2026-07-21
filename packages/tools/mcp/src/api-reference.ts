@@ -3811,7 +3811,7 @@ useEventListener('click', onDocClick, {}, () => document)`,
     signature: '(ref: () => HTMLElement | null) => Signal<{ width: number; height: number }>',
     example: `const size = useElementSize(() => boxRef())
 effect(() => console.log('Box is', size().width, 'x', size().height))`,
-    notes: 'Reactive element size via `ResizeObserver`. Returns `Signal<{ width, height }>` that updates whenever the observed element resizes. SSR-safe (returns `{ width: 0, height: 0 }` until mount). See also: useWindowResize, useRootSize.',
+    notes: 'Reactive element size via `ResizeObserver`. Returns `Signal<{ width, height }>` that updates whenever the observed element resizes. SSR-safe (returns `{ width: 0, height: 0 }` until mount). See also: useWindowResize.',
   },
 
   'hooks/useFocusTrap': {
@@ -3843,7 +3843,7 @@ useFocusTrap(() => dialogRef())            // focus is trapped while the dialog 
     signature: '(breakpoints?: Record<string, number>) => () => string',
     example: `const bp = useBreakpoint()
 {() => bp() === 'lg' || bp() === 'xl' ? <DesktopNav /> : <MobileNav />}`,
-    notes: 'Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. `"xs"` / `"sm"` / `"md"` / `"lg"` / `"xl"`), driven by the **theme** breakpoints, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Compare the read against a name; use `useMediaQuery` for one-off arbitrary queries. See also: useMediaQuery, useThemeValue.',
+    notes: 'Returns a reactive accessor for the currently active breakpoint NAME (`() => string` — e.g. `"xs"` / `"sm"` / `"md"` / `"lg"` / `"xl"`), driven by the **theme** breakpoints, not raw media queries — reads `theme.breakpoints` so swapping themes (or unit systems) Just Works. Compare the read against a name; use `useMediaQuery` for one-off arbitrary queries. See also: useMediaQuery.',
     mistakes: '- Using `useBreakpoint` for a one-off media query like `(prefers-contrast: more)` — `useBreakpoint` reads theme breakpoints only; use `useMediaQuery` for arbitrary media queries',
   },
 
@@ -4096,7 +4096,7 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
   'hooks/useThrottledCallback': {
     signature: 'useThrottledCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void }',
     example: 'const onScroll = useThrottledCallback(() => updateParallax(), 16)',
-    notes: `Returns a throttled wrapper (rate-limited to once per \`delay\`ms, via \`@pyreon/ui-core\`'s \`throttle\`) with a \`.cancel()\` method. Auto-cancelled on unmount. Use over debounce when you want steady updates during a continuous stream (scroll, drag). See also: useDebouncedCallback.`,
+    notes: 'Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a `.cancel()` method. Auto-cancelled on unmount. Use over debounce when you want steady updates during a continuous stream (scroll, drag). See also: useDebouncedCallback.',
     mistakes: `- Same "latest callback" caveat as \`useDebouncedCallback\` — the callback is captured once; read reactive values inside it.
 - Reaching for throttle when you want the value to settle AFTER the burst — that is debounce (\`useDebouncedCallback\`); throttle fires DURING the burst at a fixed rate.`,
   },
@@ -4124,29 +4124,6 @@ onMount(() => { lock(); return unlock })`,
     notes: 'Lock/unlock body scroll (sets `document.body.style.overflow = "hidden"`). Uses a MODULE-LEVEL reference count so concurrent locks (nested modals) compose — the saved overflow restores only when the last lock releases. SSR-safe (both no-op on the server); an unmount while still locked auto-unlocks. See also: useDialog, useClickOutside.',
     mistakes: `- Expecting one instance to NEST — a per-instance \`isLocked\` guard makes repeat \`lock()\`/\`unlock()\` calls no-ops, so one instance holds at most ONE refcount unit (an extra \`unlock()\` can never release another component's lock); use a separate \`useScrollLock()\` per independently-lifecycled lock.
 - Setting \`body { overflow }\` yourself while a lock is active — the hook restores the value captured at the 0→1 transition, clobbering your change on release.`,
-  },
-
-  'hooks/useRootSize': {
-    signature: 'useRootSize() => { rootSize: number; pxToRem: (px: number) => string; remToPx: (rem: number) => number }',
-    example: `const { pxToRem } = useRootSize()
-<div style={{ padding: pxToRem(24) }}>…</div>`,
-    notes: 'Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. Requires a theme context (falls back to 16 otherwise). See also: useSpacing, useThemeValue.',
-    mistakes: '- `rootSize` is a plain number captured ONCE at call time — NOT reactive. The converters close over that snapshot, so a later whole-theme swap will not update an already-returned result (re-mount the consumer to pick up a new root size).',
-  },
-
-  'hooks/useSpacing': {
-    signature: 'useSpacing(base?: number) => (multiplier: number) => string',
-    example: `const spacing = useSpacing()
-<div style={{ gap: spacing(2) }}>…</div>  // "16px"`,
-    notes: 'Returns a `spacing(multiplier)` function producing a px string. The unit is `base ?? rootSize/2` (default 8px), read from the theme via `useRootSize`. See also: useRootSize, useThemeValue.',
-    mistakes: '- The unit is computed once from a non-reactive `rootSize` snapshot — the returned `spacing` function is static; a theme change will not affect an already-obtained function.',
-  },
-
-  'hooks/useThemeValue': {
-    signature: 'useThemeValue<T = unknown>(path: string) => T | undefined',
-    example: `const primary = useThemeValue<string>('colors.primary')`,
-    notes: 'Deep-reads a dot-path from the styler theme (e.g. `"colors.primary"`), returning the value or `undefined`. A convenience over `useTheme()` + manual traversal. See also: useRootSize, useSpacing.',
-    mistakes: '- Returns a PLAIN value captured once — NOT an accessor and NOT reactive; it will not update on a theme swap. For a value that tracks the theme, read `useThemeAccessor()` from `@pyreon/styler` inside a reactive scope.',
   },
 
   'hooks/useHaptics': {
@@ -5844,6 +5821,29 @@ const mode = useMode()
     notes: `Returns the currently resolved mode as a reactive signal — \`'light'\` or \`'dark'\`. When the nearest \`PyreonUI\` ancestor uses \`mode='system'\`, the signal reflects the OS preference and updates when the user changes their system setting. When \`inversed\` is true on any ancestor, the mode is flipped before resolution. Component-scoped subscription — readers re-run only when the resolved mode actually changes. See also: PyreonUI.`,
     mistakes: `- Reading \`useMode()\` without calling it — the value is a \`Signal\`; use \`mode()\` to read
 - Using \`useMode()\` outside any \`PyreonUI\` ancestor — falls back to a default but loses the reactive system / inversed handling`,
+  },
+
+  'ui-core/useThemeValue': {
+    signature: 'useThemeValue<T = unknown>(path: string) => T | undefined',
+    example: `const primary = useThemeValue<string>('colors.primary')`,
+    notes: 'Deep-reads a dot-path from the styler theme (e.g. `"colors.primary"`), returning the value or `undefined`. A convenience over `useTheme()` + manual traversal. Lives in `@pyreon/ui-core` so the ui-system owns its theme-reader hooks without depending on the `@pyreon/hooks` fundamentals package. See also: useRootSize, useSpacing.',
+    mistakes: '- Returns a PLAIN value captured once — NOT an accessor and NOT reactive; it will not update on a theme swap. For a value that tracks the theme, read `useThemeAccessor()` from `@pyreon/styler` inside a reactive scope.',
+  },
+
+  'ui-core/useRootSize': {
+    signature: 'useRootSize() => { rootSize: number; pxToRem: (px: number) => string; remToPx: (rem: number) => number }',
+    example: `const { pxToRem } = useRootSize()
+<div style={{ padding: pxToRem(24) }}>…</div>`,
+    notes: 'Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. Requires a theme context (falls back to 16 otherwise). Lives in `@pyreon/ui-core` — a ui-system theme-reader hook. See also: useSpacing, useThemeValue.',
+    mistakes: '- `rootSize` is a plain number captured ONCE at call time — NOT reactive. The converters close over that snapshot, so a later whole-theme swap will not update an already-returned result (re-mount the consumer to pick up a new root size).',
+  },
+
+  'ui-core/useSpacing': {
+    signature: 'useSpacing(base?: number) => (multiplier: number) => string',
+    example: `const spacing = useSpacing()
+<div style={{ gap: spacing(2) }}>…</div>  // "16px"`,
+    notes: 'Returns a `spacing(multiplier)` function producing a px string. The unit is `base ?? rootSize/2` (default 8px), read from the theme via `useRootSize`. Lives in `@pyreon/ui-core` — a ui-system theme-reader hook. See also: useRootSize, useThemeValue.',
+    mistakes: '- The unit is computed once from a non-reactive `rootSize` snapshot — the returned `spacing` function is static; a theme change will not affect an already-obtained function.',
   },
 
   'ui-core/cssVariablesPrePaintScript': {

@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '48 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion/useThemeValue/useSpacing/useRootSize), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '45 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 48 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 45 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   longExample: `import {
   // State
@@ -25,7 +25,7 @@ export default defineManifest({
   useEventListener, useClickOutside, useFocus, useHover, useFocusTrap,
   useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll,
   // Responsive
-  useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion, useThemeValue, useSpacing, useRootSize,
+  useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion,
   // Timing
   useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo,
   // Interaction
@@ -95,10 +95,10 @@ const { position } = useWindowScroll()     // Signal<{ x, y }> scroll offset + s
 const visibility = useDocumentVisibility()  // Signal<'visible' | 'hidden'> — pause work when hidden
 const idle = useIdle(30_000)               // Signal<boolean> — true after 30s of no activity`,
   features: [
-    '48 signal-based hooks across 7 categories',
+    '45 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
     'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
-    'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion, useThemeValue, useSpacing, useRootSize',
+    'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion',
     'Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo',
     'Interaction: useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle',
     'Data: useFetch — thin reactive JSON fetch ({ data, error, isPending, refetch }); the web half of the multiplatform useFetch contract',
@@ -169,7 +169,7 @@ useEventListener('click', onDocClick, {}, () => document)`,
         'Reactive element size via `ResizeObserver`. Returns `Signal<{ width, height }>` that updates whenever the observed element resizes. SSR-safe (returns `{ width: 0, height: 0 }` until mount).',
       example: `const size = useElementSize(() => boxRef())
 effect(() => console.log('Box is', size().width, 'x', size().height))`,
-      seeAlso: ['useWindowResize', 'useRootSize'],
+      seeAlso: ['useWindowResize'],
     },
     {
       name: 'useFocusTrap',
@@ -219,7 +219,7 @@ useFocusTrap(() => dialogRef())            // focus is trapped while the dialog 
       mistakes: [
         'Using `useBreakpoint` for a one-off media query like `(prefers-contrast: more)` — `useBreakpoint` reads theme breakpoints only; use `useMediaQuery` for arbitrary media queries',
       ],
-      seeAlso: ['useMediaQuery', 'useThemeValue'],
+      seeAlso: ['useMediaQuery'],
     },
     {
       name: 'useDebouncedValue',
@@ -585,7 +585,7 @@ useInterval(() => tick(), () => paused() ? null : 1000)`,
       name: 'useThrottledCallback',
       kind: 'hook',
       signature: 'useThrottledCallback<T extends (...args: any[]) => any>(callback: T, delay: number) => T & { cancel: () => void }',
-      summary: 'Returns a throttled wrapper (rate-limited to once per `delay`ms, via `@pyreon/ui-core`\'s `throttle`) with a `.cancel()` method. Auto-cancelled on unmount. Use over debounce when you want steady updates during a continuous stream (scroll, drag).',
+      summary: 'Returns a throttled wrapper (rate-limited to once per `delay`ms; leading + trailing edge, latest-args) with a `.cancel()` method. Auto-cancelled on unmount. Use over debounce when you want steady updates during a continuous stream (scroll, drag).',
       example: `const onScroll = useThrottledCallback(() => updateParallax(), 16)`,
       mistakes: [
         'Same "latest callback" caveat as `useDebouncedCallback` — the callback is captured once; read reactive values inside it.',
@@ -629,41 +629,6 @@ onMount(() => { lock(); return unlock })`,
         'Setting `body { overflow }` yourself while a lock is active — the hook restores the value captured at the 0→1 transition, clobbering your change on release.',
       ],
       seeAlso: ['useDialog', 'useClickOutside'],
-    },
-    {
-      name: 'useRootSize',
-      kind: 'hook',
-      signature: 'useRootSize() => { rootSize: number; pxToRem: (px: number) => string; remToPx: (rem: number) => number }',
-      summary: 'Reads the styler theme root font size (default `16`) and returns it plus `pxToRem` / `remToPx` converters. Requires a theme context (falls back to 16 otherwise).',
-      example: `const { pxToRem } = useRootSize()
-<div style={{ padding: pxToRem(24) }}>…</div>`,
-      mistakes: [
-        '`rootSize` is a plain number captured ONCE at call time — NOT reactive. The converters close over that snapshot, so a later whole-theme swap will not update an already-returned result (re-mount the consumer to pick up a new root size).',
-      ],
-      seeAlso: ['useSpacing', 'useThemeValue'],
-    },
-    {
-      name: 'useSpacing',
-      kind: 'hook',
-      signature: 'useSpacing(base?: number) => (multiplier: number) => string',
-      summary: 'Returns a `spacing(multiplier)` function producing a px string. The unit is `base ?? rootSize/2` (default 8px), read from the theme via `useRootSize`.',
-      example: `const spacing = useSpacing()
-<div style={{ gap: spacing(2) }}>…</div>  // "16px"`,
-      mistakes: [
-        'The unit is computed once from a non-reactive `rootSize` snapshot — the returned `spacing` function is static; a theme change will not affect an already-obtained function.',
-      ],
-      seeAlso: ['useRootSize', 'useThemeValue'],
-    },
-    {
-      name: 'useThemeValue',
-      kind: 'hook',
-      signature: 'useThemeValue<T = unknown>(path: string) => T | undefined',
-      summary: 'Deep-reads a dot-path from the styler theme (e.g. `"colors.primary"`), returning the value or `undefined`. A convenience over `useTheme()` + manual traversal.',
-      example: `const primary = useThemeValue<string>('colors.primary')`,
-      mistakes: [
-        'Returns a PLAIN value captured once — NOT an accessor and NOT reactive; it will not update on a theme swap. For a value that tracks the theme, read `useThemeAccessor()` from `@pyreon/styler` inside a reactive scope.',
-      ],
-      seeAlso: ['useRootSize', 'useSpacing'],
     },
     {
       name: 'useHaptics',

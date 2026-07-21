@@ -6,6 +6,10 @@ export type UseSpacing = (base?: number | undefined) => (multiplier: number) => 
  * Returns a `spacing(n)` function that computes spacing values
  * based on `rootSize` from the theme.
  *
+ * Lives in `@pyreon/ui-core` (the base of the ui-system layer) so the
+ * ui-system owns its theme-reader hooks without reaching into the
+ * `@pyreon/hooks` fundamentals package.
+ *
  * @param base - Base spacing unit in px (defaults to `rootSize / 2`, i.e. 8px)
  *
  * @example

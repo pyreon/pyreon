@@ -64,7 +64,7 @@ Key reactivity optimizations: `_tpl()` (cloneNode), `_bind()` static-dep trackin
 
 | Package | Description |
 | --- | --- |
-| `@pyreon/ui-core` | Config engine, init(), utilities, HTML tags |
+| `@pyreon/ui-core` | Config engine, init(), utilities, HTML tags, theme-reader hooks (useThemeValue, useRootSize, useSpacing) |
 | `@pyreon/styler` | CSS-in-JS: styled(), css, keyframes, theming |
 | `@pyreon/unistyle` | Responsive breakpoints, CSS property mappings, unit utilities |
 | `@pyreon/elements` | 5 foundational primitives (Element, Text, List, Overlay, Portal) |
@@ -182,7 +182,7 @@ Honest capability matrix: `docs/src/content/docs/multiplatform.md`.
 | `@pyreon/feature` | Schema-driven CRUD primitives (queries/forms/tables/stores). Schema does TWO jobs: VALIDATION works for Zod OR any Standard Schema (Valibot/ArkType — callable schema included — /modern Zod/`s`, via `standardSchemaToValidator`); FIELD INTROSPECTION (auto form fields/table columns/create-defaults via `extractFields`) is **Zod-only** — a non-Zod schema needs explicit `initialValues` (+ build tables via `@pyreon/table` directly), dev-warned once. Query hooks + `useStore` are schema-agnostic; each mutation invalidates the list query |
 | `@pyreon/charts` | Reactive ECharts bridge, lazy-loaded (`<Chart>`/`useChart`); `onEvents` general event map (any ECharts event, leak-safe bind), reactive `showLoading` overlay, `replaceMerge`; theme is init-only (not reactive — remount to swap). Wrapper-overhead micro-bench vs echarts-for-react (2026-07 re-measure): ~11–12× faster reactive update (fine-grained signal→setOption vs React re-render+deep-compare), dispose ~tied-to-1.2× faster (wide IQR overlap — don't quote a firm ratio), ~1.7–1.9× SLOWER mount (lazy-loader cost — the price of zero-bundle). `bun run --filter=@pyreon/charts bench` |
 | `@pyreon/storage` | Reactive client-side storage — local/session/cookie/IndexedDB/memory |
-| `@pyreon/hooks` | 48 signal-based hooks |
+| `@pyreon/hooks` | 45 signal-based hooks |
 | `@pyreon/hotkeys` | Keyboard shortcuts — reference-counted scopes, `mod` cross-platform alias, sequential combos (`g t`), shifted-symbol shortcuts (`?` fires on Shift+/), conflict detection (`getHotkeyConflicts`), SSR-safe (registration/scope no-op on server, no cross-request bleed) |
 | `@pyreon/permissions` | Reactive permissions — RBAC/ABAC/flags/tiers |
 | `@pyreon/machine` | Reactive state machines — constrained signals + typed transitions; `StateOf`/`EventOf` (state/event unions from INSTANCE or config — `InferStates`/`InferEvents` are config-only and yield `never` on an instance) |
