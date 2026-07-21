@@ -15,7 +15,7 @@ import type {
 import type { ComposeParam } from './hoc'
 import type { Styles, StylesCb } from './styles'
 import type { Theme, ThemeCb, ThemeModeKeys } from './theme'
-import type { ElementType, ExtractProps, MergeTypes, TObj } from './utils'
+import type { ElementType, ExtractProps, MergeTypes, OmitSafe, TObj } from './utils'
 
 export type InnerComponentProps = {
   'data-rocketstyle'?: string | undefined
@@ -90,8 +90,19 @@ export interface IRocketStyleComponent<
   // net-new EA-only keys (no OA conflict) and marks them optional too —
   // every `.attrs()` value is semantically a default, never required of the
   // consumer. Mirrors vitus-labs/ui-system PR #225.
+  //
+  // **`OmitSafe`, not `Omit`, is load-bearing**: every `@pyreon/ui-primitives`
+  // props interface carries a `[key: string]: unknown` index signature, which
+  // makes `keyof O` collapse to `string | number` — standard `Omit` (a
+  // non-homomorphic Pick over that union) then ERASED every named key, so
+  // `value`/`onChange`/`checked` all degraded to `unknown` on every
+  // primitive-backed component (`<Select value={123}>` compiled; every
+  // `onChange` callback was implicit-any). The homomorphic `OmitSafe`
+  // preserves named keys AND the index signature (pass-through intact).
+  // See `utils.ts:OmitSafe` + the regression lock in
+  // `@pyreon/ui-components` `src/tests/behavior-prop-types.types.test.ts`.
   DFP = OA extends infer O
-    ? Omit<O, keyof EA & keyof O> &
+    ? OmitSafe<O, keyof EA & keyof O> &
         Partial<Pick<O, keyof EA & keyof O>> &
         MergeTypes<
           [

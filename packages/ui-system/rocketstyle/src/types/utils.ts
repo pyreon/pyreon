@@ -27,6 +27,32 @@ export type NullableKeys<T> = { [K in keyof T]: IsFalseOrNullable<T[K]> }
 
 export type ReturnCbParam<P extends TFn | TObj> = P extends TFn ? ReturnType<P> : P
 
+// ─── OmitSafe ─────────────────────────────────────────────────
+/**
+ * Homomorphic (key-remapped) Omit that survives string index signatures.
+ *
+ * **Why standard `Omit` is wrong here.** `Omit<T, K>` expands to
+ * `Pick<T, Exclude<keyof T, K>>`. When `T` carries a string index signature
+ * (`[key: string]: unknown` — every `@pyreon/ui-primitives` props interface
+ * does, for rest-prop pass-through), `keyof T` subsumes ALL literal keys
+ * into `string`, so it is just `string | number`. `Pick` over that computed
+ * union is NON-homomorphic — it produces `{ [x: string]: unknown }` with
+ * every named key ERASED. That collapse was rocketstyle's DFP bug: on every
+ * primitive-backed component, `value`/`onChange`/`checked`/… degraded to
+ * `unknown`, so `<Select value={123}>` compiled and every `onChange`
+ * callback was an implicit-any error.
+ *
+ * **Why this shape works.** `{ [P in keyof T as …]: T[P] }` is a
+ * HOMOMORPHIC mapped type — TS iterates T's actual declared properties
+ * (named keys AND index signatures individually, preserving `?`/`readonly`
+ * modifiers), so named keys keep their declared types and the index
+ * signature survives for pass-through. For a `T` without an index
+ * signature the result is byte-identical to `Omit<T, K>`.
+ */
+export type OmitSafe<T, K> = {
+  [P in keyof T as P extends K ? never : P]: T[P]
+}
+
 // ─── MergeTypes ───────────────────────────────────────────────
 type Id<T> = T extends infer U ? { [K in keyof U]: U[K] } : never
 
