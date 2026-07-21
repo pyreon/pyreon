@@ -253,10 +253,15 @@ applyPatch(counter, history) // replays to count: 2
 ## Devtools
 
 ```ts
-import { stateTreeRegistry } from '@pyreon/state-tree/devtools'
+import { getActiveModels, getModelSnapshot, onModelChange } from '@pyreon/state-tree/devtools'
+
+// Live model instances self-register (dev-only, tree-shakeable). Inspect them:
+const stop = onModelChange(() => {
+  for (const name of getActiveModels()) console.log(name, getModelSnapshot(name))
+})
 ```
 
-WeakRef-based registry of live model instances — tree-shakeable. Used by the Pyreon devtools panel.
+Tree-shakeable live-instance introspection — used by the Pyreon devtools panel.
 
 ## Documentation
 

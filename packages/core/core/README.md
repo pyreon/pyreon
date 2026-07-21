@@ -179,6 +179,23 @@ function Button(props: ButtonProps) {
 
 `splitProps` and `mergeProps` copy property **descriptors** (not values), so getter-shaped reactive props survive. Plain `result[key] = source[key]` fires the getter at copy time and collapses reactivity — use these helpers instead.
 
+**`useControllableState`** is the controlled/uncontrolled pattern as one primitive — it lives here (not in `@pyreon/hooks`) because it's a props primitive with no lifecycle, used in the same breath as `splitProps`. `@pyreon/hooks` re-exports it for back-compat.
+
+```tsx
+import { splitProps, useControllableState } from '@pyreon/core'
+
+function Switch(props: { checked?: boolean; onChange?: (v: boolean) => void }) {
+  const [own, rest] = splitProps(props, ['checked', 'onChange'])
+  // `value` MUST be a getter, or the controlled prop is read once and frozen.
+  const [checked, setChecked] = useControllableState({
+    value: () => own.checked,
+    defaultValue: false,
+    onChange: own.onChange,
+  })
+  return <button {...rest} aria-checked={() => (checked() ? 'true' : 'false')} onClick={() => setChecked(!checked())} />
+}
+```
+
 ## ErrorBoundary
 
 ```tsx
