@@ -2,7 +2,10 @@ import { disabledState, el } from '../../factory'
 
 const Menu = el
   .config({ name: 'Menu' })
-  .attrs({ tag: 'div', direction: 'rows', block: true })
+  .attrs({ tag: 'div', direction: 'rows',
+    contentDirection: 'rows',
+    contentAlignX: 'left',
+    contentAlignY: 'center', block: true })
   .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     boxShadow: t.shadows.medium,
@@ -19,7 +22,10 @@ export default Menu
 
 export const MenuItem = el
   .config({ name: 'MenuItem' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', block: true })
   .theme((t) => ({
     cursor: 'pointer',
     borderRadius: t.borderRadius.small,

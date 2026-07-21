@@ -34,7 +34,10 @@ export default Breadcrumb
  */
 export const BreadcrumbItem = el
   .config({ name: 'BreadcrumbItem' })
-  .attrs({ tag: 'span', direction: 'inline', alignY: 'center' })
+  .attrs({ tag: 'span', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center' })
   .theme((t) => ({
     color: t.color.system.base[500],
     transition: t.transition.fast,

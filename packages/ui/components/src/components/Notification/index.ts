@@ -23,6 +23,9 @@ const Notification = el
     role: 'status',
     'aria-live': 'polite',
     direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'top',
     alignY: 'top',
     block: true,
   })

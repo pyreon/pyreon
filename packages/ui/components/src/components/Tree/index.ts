@@ -70,7 +70,10 @@ export default Tree
 
 export const TreeItem = el
   .config({ name: 'TreeItem' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', block: true })
   .theme((t) => ({
     cursor: 'pointer',
     borderRadius: t.borderRadius.small,

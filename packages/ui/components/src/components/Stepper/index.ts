@@ -4,7 +4,10 @@ const Stepper = el
   .config({ name: 'Stepper' })
   // An ORDERED LIST — steps are inherently sequenced, so AT announces
   // "list, N items" + position (WCAG 1.3.1 structure).
-  .attrs({ tag: 'ol', direction: 'inline', alignY: 'center', gap: 2 })
+  .attrs({ tag: 'ol', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', gap: 2 })
   .theme(() => ({
     listStyle: 'none',
     margin: 0,
@@ -28,6 +31,9 @@ export const Step = el
   .attrs<{ state?: 'active' | 'completed' }>((props) => ({
     tag: 'li',
     direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center',
     alignY: 'center',
     gap: 2,
     'aria-current': props.state === 'active' ? ('step' as const) : undefined,

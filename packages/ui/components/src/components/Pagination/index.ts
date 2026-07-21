@@ -5,7 +5,10 @@ const Pagination = el
   // `<nav>` is a landmark; a page can have several, so each needs a distinguishing
   // accessible name (WAI-ARIA APG Pagination pattern → `aria-label="pagination"`).
   // A DEFAULT — override with your own `aria-label` when you have multiple paginators.
-  .attrs({ tag: 'nav', 'aria-label': 'Pagination', direction: 'inline', alignY: 'center', gap: 4 })
+  .attrs({ tag: 'nav', 'aria-label': 'Pagination', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', gap: 4 })
   .theme((t) => ({
     fontSize: t.fontSize.small,
   }))

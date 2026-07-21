@@ -2,7 +2,10 @@ import { el, txt } from '../../factory'
 
 const FormField = el
   .config({ name: 'FormField' })
-  .attrs({ tag: 'div', direction: 'rows', block: true, gap: 1 })
+  .attrs({ tag: 'div', direction: 'rows',
+    contentDirection: 'rows',
+    contentAlignX: 'left',
+    contentAlignY: 'center', block: true, gap: 1 })
 
 export default FormField
 

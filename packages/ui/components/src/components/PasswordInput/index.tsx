@@ -11,7 +11,10 @@ import { IconButton } from '../Button'
  */
 const PasswordInputRoot = el
   .config({ name: 'PasswordInput' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', block: true })
   .theme(() => ({
     position: 'relative',
   }))

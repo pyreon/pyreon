@@ -2,7 +2,7 @@ import { el } from '../../factory'
 
 const Timeline = el
   .config({ name: 'Timeline' })
-  .attrs({ tag: 'div', direction: 'rows' })
+  .attrs({ tag: 'div', direction: 'rows', contentDirection: 'rows', contentAlignX: 'left', contentAlignY: 'center' })
   .theme((t) => ({
     paddingLeft: t.spacing.medium,
     borderWidthLeft: '2px',
@@ -20,7 +20,10 @@ export default Timeline
  */
 export const TimelineItem = el
   .config({ name: 'TimelineItem' })
-  .attrs({ tag: 'div', direction: 'rows', gap: 1 })
+  .attrs({ tag: 'div', direction: 'rows',
+    contentDirection: 'rows',
+    contentAlignX: 'left',
+    contentAlignY: 'center', gap: 1 })
   .theme((t) => ({
     position: 'relative',
     paddingBottom: t.spacing.medium,

@@ -2,7 +2,10 @@ import { el } from '../../factory'
 
 const Card = el
   .config({ name: 'Card' })
-  .attrs({ tag: 'div', direction: 'rows', block: true })
+  .attrs({ tag: 'div', direction: 'rows',
+    contentDirection: 'rows',
+    contentAlignX: 'left',
+    contentAlignY: 'center', block: true })
   .theme((t) => ({
     backgroundColor: t.color.system.light.base,
     borderRadius: t.borderRadius.medium,
@@ -38,7 +41,10 @@ export const CardSection = el
 /** Padded header row with a bottom divider. */
 export const CardHeader = el
   .config({ name: 'CardHeader' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', block: true })
   .theme((t) => ({
     paddingBottom: t.spacing.small,
     marginBottom: t.spacing.small,
@@ -51,7 +57,10 @@ export const CardHeader = el
 /** Padded footer row with a top divider. */
 export const CardFooter = el
   .config({ name: 'CardFooter' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', block: true })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', block: true })
   .theme((t) => ({
     paddingTop: t.spacing.small,
     marginTop: t.spacing.small,

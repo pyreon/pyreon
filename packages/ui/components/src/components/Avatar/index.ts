@@ -2,7 +2,10 @@ import { el } from '../../factory'
 
 const Avatar = el
   .config({ name: 'Avatar' })
-  .attrs({ tag: 'div', direction: 'inline', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'center',
+    contentAlignY: 'center', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
     backgroundColor: t.color.system.base[200],
     color: t.color.system.base[600],
@@ -26,7 +29,10 @@ export default Avatar
 
 export const AvatarGroup = el
   .config({ name: 'AvatarGroup' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center' })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center' })
   .theme((t) => ({
     flexDirection: 'row-reverse',
     gap: `-${t.spacing.xxSmall}`,
