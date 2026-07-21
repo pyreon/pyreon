@@ -1,6 +1,6 @@
 # @pyreon/hooks
 
-45 signal-based reactive utilities across seven categories for Pyreon apps.
+46 signal-based reactive utilities across seven categories for Pyreon apps.
 
 A reactive-primitives library for the patterns Pyreon components reach for every day: controllable state, DOM observers, responsive layout, timing, interaction, and ref composition. Every hook is SSR-safe (browser-API access is guarded), auto-cleans on unmount (registers `onUnmount` for listeners / observers / timers), and signal-native (returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values) so consumers compose directly with `effect` / `computed` without re-bridging. Used as the foundation by every `@pyreon/ui-primitives` component.
 
@@ -51,7 +51,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 ## The full surface
 
-48 hooks across 7 categories.
+46 hooks across 7 categories.
 
 ### State
 
@@ -115,6 +115,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useNotifications()` | `{ notify, requestPermission }` — post a LOCAL notification; web Notification API, iOS `UNUserNotificationCenter` / Android `NotificationManager` + channel via PMTC. Distinct from remote push |
 | `useBiometrics()` | `{ authenticate, isAvailable }` — biometric gate; `authenticate(reason)` returns `Promise<boolean>` (the first async-result hook). iOS Face ID / Touch ID (`LAContext`), Android BiometricPrompt via PMTC; web feature-detects `PublicKeyCredential` and resolves `false` (a real WebAuthn assertion needs a server challenge) |
 | `useImagePicker()` | `{ pick, isAvailable }` — pick an image from the photo library; `pick()` returns `Promise<string \| null>` (a URI, or `null` when cancelled). iOS `PHPickerViewController`, Android Photo Picker (`PickVisualMedia`) via PMTC; web uses a hidden file input. Needs NO photo-library permission on either platform (both system pickers run out of process) |
+| `useFilePicker()` | `{ pick, isAvailable }` — pick a document/file (any type) from the device; `pick()` returns `Promise<string \| null>` (a URI, or `null` when cancelled). iOS `UIDocumentPickerViewController`, Android SAF `OpenDocument` via PMTC; web uses a hidden file input. The document sibling of `useImagePicker`. Needs NO storage permission (both system pickers run out of process) |
 | `useDialog(opts?)` | Native `<dialog>` wrapper — `open` signal + `show`/`showModal`/`close`/`toggle`/`ref` |
 | `useKeyboard(key, handler)` | Single-key listener |
 | `useOnline()` | `Signal<boolean>` from `navigator.onLine` |

@@ -4162,6 +4162,24 @@ notifications.notify('Done', 'Your export is ready')`,
 - These are LOCAL notifications only — not push; there is no server/remote delivery.`,
   },
 
+  'hooks/useFilePicker': {
+    signature: 'useFilePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
+    example: `const files = useFilePicker()
+const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
+
+<button onClick={async () => {
+  const uri = await files.pick()
+  status.set(uri === null ? 'cancelled' : 'picked')
+}}>Pick a file</button>`,
+    notes: 'Pick a document/file from the device — UIDocumentPickerViewController (iOS), the Storage Access Framework `OpenDocument` (Android), a hidden file input (web). The document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not just photos), and the THIRD async-result hook: `pick()` returns a `Promise<string | null>` you `await`, resolving a URI string or `null` when the user cancels; it never rejects. Under PMTC the async-await lowering wraps the awaiting handler in a Swift `Task { … }` / Kotlin `pyreonAsyncScope.launch { … }`. Requires NO storage permission on either native platform — both system pickers run out of process and hand back only the chosen document, so there is no iOS entitlement and no Android runtime permission. Saving/exporting a file is a separate native flow and is intentionally out of scope (tracked follow-up). See also: useImagePicker, useShare.',
+    mistakes: `- Testing the result for TRUTHINESS (\`uri ? … : …\`) instead of comparing to null (\`uri === null\`). JS truthiness is not a native Bool — the explicit null comparison is what PMTC lowers to \`uri == nil\` (Swift) / \`uri == null\` (Kotlin), and it is also correct on the web.
+- Calling \`files.pick()\` WITHOUT \`await\` inside a plain (non-async) handler — it returns a \`Promise<string | null>\`, not a URI. Mark the handler \`async\` and \`await\` it (PMTC wraps that async handler in a native \`Task\`/coroutine scope; a sync action slot cannot await).
+- Reaching for \`useFilePicker\` when you specifically want a PHOTO. Use \`useImagePicker\` — it opens the photo picker (\`PHPickerViewController\` / \`PickVisualMedia\`), which is a better UX for images than the general document browser.
+- Treating the returned URI as a stable, persistable path. It is an opaque, platform-shaped, EPHEMERAL handle — a \`file://\` temp copy on iOS, a \`content://\` URI on Android, a \`blob:\` object URL on the web. Read it or upload it promptly; do not store it and expect it to resolve later.
+- Requesting a storage permission before calling \`pick()\`. Neither platform needs one — asking is a policy liability (App Store / Play review scrutiny) for zero benefit, and is exactly what the out-of-process pickers exist to avoid.
+- Expecting \`pick()\` to also SAVE/write a file. It only opens (reads) a document; writing/exporting is a separate native flow (iOS export picker, Android \`CreateDocument\` + a write step) and a tracked follow-up.`,
+  },
+
   'hooks/useImagePicker': {
     signature: 'useImagePicker() => { pick: () => Promise<string | null>; isAvailable: () => boolean }',
     example: `const picker = useImagePicker()

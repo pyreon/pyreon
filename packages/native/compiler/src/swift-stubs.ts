@@ -188,6 +188,9 @@ public struct PyreonBiometrics { public init() {}; public func authenticate(_ re
 // forgot the optionality (e.g. comparing the result to a bare String) fails
 // here rather than on the device gate.
 public struct PyreonImagePicker { public init() {}; public func pick() async -> String? { nil } }
+// M3.8 document picker. Same async optional-String surface as the image picker
+// (nil = cancelled) — an emit that drops the optionality fails here.
+public struct PyreonFilePicker { public init() {}; public func pick() async -> String? { nil } }
 // Marker protocols the @Observable store/model emit conforms to — mirror
 // runtime-swift's PyreonStore.swift / PyreonModel.swift EXACTLY (empty,
 // AnyObject-bound so a final class can conform). The @Observable macro (from the

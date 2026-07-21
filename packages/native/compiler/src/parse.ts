@@ -3770,6 +3770,15 @@ function tryDeclFromVarDeclarator(node: AnyNode, ctx: ParseCtx): DeclIR | null {
   if (calleeName === 'useImagePicker') {
     return { kind: 'image-picker', name }
   }
+  // M3.8 — `const files = useFilePicker()` → the platform document picker (iOS
+  // UIDocumentPickerViewController, Android Storage Access Framework
+  // `OpenDocument`). Its `pick()` returns a Promise<string | null>, so
+  // consumers `await files.pick()` inside an `async` handler — the document
+  // sibling of useImagePicker (any file, not just photos). Needs NO storage
+  // permission (both system pickers run out of process). No construction args.
+  if (calleeName === 'useFilePicker') {
+    return { kind: 'file-picker', name }
+  }
   // Phase 4 — `const scheme = useColorScheme()` from `@pyreon/hooks`
   // → platform-native dark-mode read. No arguments. NO runtime port
   // needed — both SwiftUI (@Environment(\.colorScheme)) and Compose
@@ -5868,6 +5877,7 @@ function warnIfHookInsideRenderCallback(
     'useNotifications',
     'useBiometrics',
     'useImagePicker',
+    'useFilePicker',
     'useColorScheme',
     'useSizeClass',
     'usePermissions',
