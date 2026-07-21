@@ -39,7 +39,7 @@ export const flowStyles = `
 }
 
 .pyreon-flow-node.selected {
-  filter: drop-shadow(0 0 0 2px rgba(59, 130, 246, 0.3));
+  filter: drop-shadow(0 0 0 2px var(--pyreon-flow-selection-glow, rgba(59, 130, 246, 0.3)));
 }
 
 /* ── Handles ──────────────────────────────────────────────────────────────── */
@@ -50,12 +50,12 @@ export const flowStyles = `
 
 .pyreon-flow-handle:hover {
   transform: scale(1.4);
-  background: #3b82f6 !important;
+  background: var(--pyreon-flow-accent, #3b82f6) !important;
 }
 
 .pyreon-flow-handle-target:hover {
-  background: #22c55e !important;
-  border-color: #22c55e !important;
+  background: var(--pyreon-flow-handle-valid, #22c55e) !important;
+  border-color: var(--pyreon-flow-handle-valid, #22c55e) !important;
 }
 
 /* ── Resizer ──────────────────────────────────────────────────────────────── */
@@ -65,7 +65,7 @@ export const flowStyles = `
 }
 
 .pyreon-flow-resizer:hover {
-  background: #3b82f6 !important;
+  background: var(--pyreon-flow-accent, #3b82f6) !important;
   transform: scale(1.2);
 }
 
@@ -106,10 +106,10 @@ export const flowStyles = `
 /* ── Controls ─────────────────────────────────────────────────────────────── */
 
 .pyreon-flow-controls button:hover {
-  background: #f3f4f6 !important;
+  background: var(--pyreon-flow-controls-hover, #f3f4f6) !important;
 }
 
 .pyreon-flow-controls button:active {
-  background: #e5e7eb !important;
+  background: var(--pyreon-flow-controls-active, #e5e7eb) !important;
 }
 `

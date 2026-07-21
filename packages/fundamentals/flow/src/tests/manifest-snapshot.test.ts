@@ -108,6 +108,10 @@ describe('gen-docs — flow snapshot', () => {
       > **Peer dep rationale**: \`@pyreon/runtime-dom\` is required in consumer apps because flow JSX components emit \`_tpl()\` / \`_bind()\` calls — declare it as a direct dependency, not a transitive one.
       >
       > **JSX generics**: Pyreon JSX components cannot be parameterised at the call site (\`<Flow<MyData> />\` is not valid JSX). \`FlowProps.instance\` is typed as \`FlowInstance<any>\` so typed consumers can pass their \`FlowInstance<MyData>\` without casting.
+      >
+      > **Effective dimensions**: Every geometry consumer (edges, layout(), fitView, snap lines, minimap, culling) resolves node size as explicit width/height → MEASURED rendered box → 150×40 default. Nodes need no explicit sizes in the browser; explicit sizes override the measurement, and headless \`computeLayout\` (no DOM) sees explicit-or-default only.
+      >
+      > **Theming**: All renderer colors go through \`--pyreon-flow-*\` CSS custom properties (25 vars) with light-mode fallbacks — set them on the container to re-skin; SVG colors are applied via \`style\` (never presentation attributes, where \`var()\` is invalid).
       "
     `)
   })
@@ -137,7 +141,7 @@ describe('gen-docs — flow snapshot', () => {
     ])
     // Spot-check the highest-density entry — createFlow is the
     // flagship API and carries the largest mistakes list.
-    expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(11)
+    expect(record['flow/createFlow']!.mistakes?.split('\n').length).toBe(13)
     expect(record['flow/createFlow']!.notes).toContain('elkjs')
     expect(record['flow/createFlow']!.notes).toContain('no D3')
   })

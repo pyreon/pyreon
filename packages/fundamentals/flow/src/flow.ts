@@ -1,14 +1,18 @@
 import { batch, computed, signal } from '@pyreon/reactivity'
+import { getEffectiveDimensions } from './edges'
 import { computeLayout } from './layout'
 import type {
   Connection,
+  Dimensions,
   FlowConfig,
   FlowEdge,
   FlowInstance,
   FlowNode,
   LayoutAlgorithm,
   LayoutOptions,
+  MeasuredHandle,
   NodeChange,
+  NodeMeasurement,
   XYPosition,
 } from './types'
 
@@ -54,6 +58,7 @@ export function createFlow<TData = Record<string, unknown>>(
     nodes: initialNodes = [],
     edges: initialEdges = [],
     defaultEdgeType = 'bezier',
+    defaultEdgeOptions,
     minZoom = 0.1,
     maxZoom = 4,
     snapToGrid = false,
@@ -61,12 +66,18 @@ export function createFlow<TData = Record<string, unknown>>(
     connectionRules,
   } = config
 
-  // Ensure all edges have ids
-  const edgesWithIds = initialEdges.map((e) => ({
+  // Normalize an edge: merge flow-wide defaults (edge's own fields win —
+  // including an explicit `markerEnd: null`, which survives the spread because
+  // the KEY is present on the edge), ensure an id, resolve the type chain.
+  const normalizeEdge = (e: FlowEdge): FlowEdge => ({
+    ...defaultEdgeOptions,
     ...e,
     id: edgeId(e),
-    type: e.type ?? defaultEdgeType,
-  }))
+    type: e.type ?? defaultEdgeOptions?.type ?? defaultEdgeType,
+  })
+
+  // Ensure all edges have ids + defaults applied
+  const edgesWithIds = initialEdges.map(normalizeEdge)
 
   // ── Core signals ─────────────────────────────────────────────────────────
 
@@ -84,7 +95,20 @@ export function createFlow<TData = Record<string, unknown>>(
   // measured size wins over the fallback but NOT over an explicit `node.width` /
   // `node.height`; happy-dom / SSR have no layout so the map stays empty there
   // and the explicit-or-default path is used (unit tests are unaffected).
-  const measurements = signal(new Map<string, { width: number; height: number }>())
+  const measurements = signal(new Map<string, NodeMeasurement>())
+
+  // The ONE effective-dimensions rule (explicit → measured → 150×40 default),
+  // shared by every imperative geometry consumer below (fitView, snap lines,
+  // proximity, collisions, selection hit-tests, layout). Non-reactive (peeks) —
+  // these are all event-driven imperative paths.
+  const nodeDims = (node: FlowNode<TData>): Dimensions =>
+    getEffectiveDimensions(node, measurements.peek().get(node.id))
+
+  const getNodeDimensions = (id: string): Dimensions => {
+    const node = getNode(id)
+    if (!node) return { width: 0, height: 0 }
+    return nodeDims(node)
+  }
 
   // Track selected state separately for O(1) lookups
   const selectedNodeIds = signal(new Set<string>())
@@ -205,11 +229,7 @@ export function createFlow<TData = Record<string, unknown>>(
   }
 
   function addEdge(edge: FlowEdge): void {
-    const newEdge = {
-      ...edge,
-      id: edgeId(edge),
-      type: edge.type ?? defaultEdgeType,
-    }
+    const newEdge = normalizeEdge(edge)
 
     // Don't add duplicate edges
     const existing = edges.peek()
@@ -338,8 +358,7 @@ export function createFlow<TData = Record<string, unknown>>(
     let maxY = Number.NEGATIVE_INFINITY
 
     for (const node of targetNodes) {
-      const w = node.width ?? 150
-      const h = node.height ?? 40
+      const { width: w, height: h } = nodeDims(node)
       minX = Math.min(minX, node.position.x)
       minY = Math.min(minY, node.position.y)
       maxX = Math.max(maxX, node.position.x + w)
@@ -399,8 +418,7 @@ export function createFlow<TData = Record<string, unknown>>(
     if (!node) return false
     // Simplified check — actual implementation would use container dimensions
     const v = viewport.peek()
-    const w = node.width ?? 150
-    const h = node.height ?? 40
+    const { width: w, height: h } = nodeDims(node)
     const screenX = node.position.x * v.zoom + v.x
     const screenY = node.position.y * v.zoom + v.y
     const screenW = w * v.zoom
@@ -418,7 +436,13 @@ export function createFlow<TData = Record<string, unknown>>(
     const currentNodes = nodes.peek()
     const currentEdges = edges.peek()
 
-    const positions = await computeLayout(currentNodes, currentEdges, algorithm, options)
+    // Feed ELK the EFFECTIVE node boxes (explicit → measured → default) — a
+    // content-sized custom node is laid out at its real rendered size, so the
+    // computed layout has correct spacing instead of assuming 150×40 phantoms
+    // (which overlap large nodes and over-space small ones).
+    const measuredNodes = currentNodes.map((n) => ({ ...n, ...nodeDims(n) }))
+
+    const positions = await computeLayout(measuredNodes, currentEdges, algorithm, options)
 
     const animate = options.animate !== false
     const duration = options.animationDuration ?? 300
@@ -681,8 +705,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const dragNode = getNode(dragNodeId)
     if (!dragNode) return { x: null, y: null, snappedPosition: position }
 
-    const w = dragNode.width ?? 150
-    const h = dragNode.height ?? 40
+    const { width: w, height: h } = nodeDims(dragNode)
     const dragCenterX = position.x + w / 2
     const dragCenterY = position.y + h / 2
 
@@ -693,8 +716,7 @@ export function createFlow<TData = Record<string, unknown>>(
 
     for (const node of nodes.peek()) {
       if (node.id === dragNodeId) continue
-      const nw = node.width ?? 150
-      const nh = node.height ?? 40
+      const { width: nw, height: nh } = nodeDims(node)
       const nodeCenterX = node.position.x + nw / 2
       const nodeCenterY = node.position.y + nh / 2
 
@@ -838,8 +860,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const node = getNode(nodeId)
     if (!node) return null
 
-    const w = node.width ?? 150
-    const h = node.height ?? 40
+    const { width: w, height: h } = nodeDims(node)
     const centerX = node.position.x + w / 2
     const centerY = node.position.y + h / 2
 
@@ -857,8 +878,7 @@ export function createFlow<TData = Record<string, unknown>>(
         )
       if (alreadyConnected) continue
 
-      const ow = other.width ?? 150
-      const oh = other.height ?? 40
+      const { width: ow, height: oh } = nodeDims(other)
       const ocx = other.position.x + ow / 2
       const ocy = other.position.y + oh / 2
       const dist = Math.hypot(centerX - ocx, centerY - ocy)
@@ -884,8 +904,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const node = getNode(nodeId)
     if (!node) return []
 
-    const w = node.width ?? 150
-    const h = node.height ?? 40
+    const { width: w, height: h } = nodeDims(node)
     const ax1 = node.position.x
     const ay1 = node.position.y
     const ax2 = ax1 + w
@@ -893,8 +912,7 @@ export function createFlow<TData = Record<string, unknown>>(
 
     return nodes.peek().filter((other) => {
       if (other.id === nodeId) return false
-      const ow = other.width ?? 150
-      const oh = other.height ?? 40
+      const { width: ow, height: oh } = nodeDims(other)
       const bx1 = other.position.x
       const by1 = other.position.y
       const bx2 = bx1 + ow
@@ -911,12 +929,10 @@ export function createFlow<TData = Record<string, unknown>>(
     const node = getNode(nodeId)
     if (!node) return
 
-    const w = node.width ?? 150
-    const h = node.height ?? 40
+    const { width: w, height: h } = nodeDims(node)
 
     for (const other of overlapping) {
-      const ow = other.width ?? 150
-      const oh = other.height ?? 40
+      const { width: ow, height: oh } = nodeDims(other)
 
       // Calculate overlap amounts
       const overlapX = Math.min(
@@ -991,8 +1007,7 @@ export function createFlow<TData = Record<string, unknown>>(
     const node = getNode(nodeId)
     if (!node) return
 
-    const w = node.width ?? 150
-    const h = node.height ?? 40
+    const { width: w, height: h } = nodeDims(node)
     const centerX = node.position.x + w / 2
     const centerY = node.position.y + h / 2
     const z = focusZoom ?? viewport.peek().zoom
@@ -1110,16 +1125,51 @@ export function createFlow<TData = Record<string, unknown>>(
     fitView()
   }
 
-  // Record a node's measured size. No-ops when the size is unchanged so a
-  // stable node never re-notifies `measurements` (the loop guard: measure →
-  // signal write → edge geometry re-derives, but the node wrappers don't read
-  // `measurements`, so they never re-measure). Immutable Map swap → signal fires.
-  const _setNodeMeasurement = (id: string, width: number, height: number): void => {
+  // Record a node's measured geometry (size + <Handle> dot placements). No-ops
+  // when nothing changed so a stable node never re-notifies `measurements` (the
+  // loop guard: measure → signal write → edge geometry re-derives, but the node
+  // wrappers don't read `measurements`, so they never re-measure). Immutable
+  // Map swap → signal fires.
+  const sameHandles = (
+    a: MeasuredHandle[] | undefined,
+    b: MeasuredHandle[] | undefined,
+  ): boolean => {
+    if (a === b) return true
+    if (!a || !b || a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i]!
+      const y = b[i]!
+      if (
+        x.id !== y.id ||
+        x.type !== y.type ||
+        x.position !== y.position ||
+        x.x !== y.x ||
+        x.y !== y.y
+      ) {
+        return false
+      }
+    }
+    return true
+  }
+
+  const _setNodeMeasurement = (
+    id: string,
+    width: number,
+    height: number,
+    handles?: MeasuredHandle[],
+  ): void => {
     const cur = measurements.peek()
     const existing = cur.get(id)
-    if (existing && existing.width === width && existing.height === height) return
+    if (
+      existing &&
+      existing.width === width &&
+      existing.height === height &&
+      sameHandles(existing.handles, handles)
+    ) {
+      return
+    }
     const next = new Map(cur)
-    next.set(id, { width, height })
+    next.set(id, { width, height, ...(handles ? { handles } : {}) })
     measurements.set(next)
   }
 
@@ -1140,6 +1190,7 @@ export function createFlow<TData = Record<string, unknown>>(
     zoom,
     containerSize,
     measurements,
+    getNodeDimensions,
     _setNodeMeasurement,
     _clearNodeMeasurement,
     selectedNodes,

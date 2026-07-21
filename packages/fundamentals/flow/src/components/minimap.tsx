@@ -1,5 +1,6 @@
 import { useContext, type VNodeChild } from '@pyreon/core'
-import type { FlowInstance, MiniMapProps } from '../types'
+import { getEffectiveDimensions } from '../edges'
+import type { FlowInstance, FlowNode, MiniMapProps } from '../types'
 import { FlowContext } from './flow-context'
 
 /**
@@ -40,6 +41,12 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
     const nodes = instance.nodes()
     if (nodes.length === 0) return <div class="pyreon-flow-minimap" style={containerStyle} />
 
+    // Effective node boxes (explicit → measured → default) — reads
+    // `measurements()` reactively so the minimap redraws when a content-sized
+    // node's real dimensions land.
+    const measured = instance.measurements()
+    const dims = (node: FlowNode<any>) => getEffectiveDimensions(node, measured.get(node.id))
+
     // Calculate graph bounds
     let minX = Number.POSITIVE_INFINITY
     let minY = Number.POSITIVE_INFINITY
@@ -47,8 +54,7 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
     let maxY = Number.NEGATIVE_INFINITY
 
     for (const node of nodes) {
-      const w = node.width ?? 150
-      const h = node.height ?? 40
+      const { width: w, height: h } = dims(node)
       minX = Math.min(minX, node.position.x)
       minY = Math.min(minY, node.position.y)
       maxX = Math.max(maxX, node.position.x + w)
@@ -96,8 +102,9 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
               the compiler uses for the trailing reactive viewport <rect>. */}
           <g>
             {nodes.map((node) => {
-              const w = (node.width ?? 150) * scale
-              const h = (node.height ?? 40) * scale
+              const d = dims(node)
+              const w = d.width * scale
+              const h = d.height * scale
               const x = (node.position.x - minX + padding) * scale
               const y = (node.position.y - minY + padding) * scale
               const color = typeof nodeColor === 'function' ? nodeColor(node) : nodeColor
@@ -122,9 +129,9 @@ export function MiniMap(props: MiniMapProps & { instance?: FlowInstance }): VNod
             y={String(Math.max(0, vpTop))}
             width={String(Math.min(vpWidth, width))}
             height={String(Math.min(vpHeight, height))}
-            fill="none"
-            stroke="#3b82f6"
-            stroke-width="1.5"
+            // stroke via `style`, not the presentation attr — `var()` is
+            // INVALID in an SVG presentation attribute (dropped → stroke:none).
+            style="fill: none; stroke: var(--pyreon-flow-accent, #3b82f6); stroke-width: 1.5;"
             rx="2"
           />
         </svg>

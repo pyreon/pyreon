@@ -40,6 +40,38 @@ export interface HandleConfig {
   position: Position
 }
 
+/**
+ * A `<Handle>` dot's measured placement inside its node, recorded by the
+ * NodeLayer's measurement pass (client-only). `x`/`y` are the dot's CENTER
+ * relative to the node's top-left corner, in unscaled flow units — edge
+ * geometry anchors the edge exactly at the dot, wherever the consumer's CSS
+ * placed it.
+ */
+export interface MeasuredHandle {
+  /** The handle's `id` prop (falls back to its `type` when omitted) */
+  id: string
+  type: HandleType
+  /** The declared side — drives the path's departure/approach tangent */
+  position: Position
+  /** Center X relative to the node's top-left, unscaled flow units */
+  x: number
+  /** Center Y relative to the node's top-left, unscaled flow units */
+  y: number
+}
+
+/**
+ * A node's measured DOM geometry — rendered size plus every `<Handle>` dot's
+ * placement. Written by the NodeLayer's per-node `ResizeObserver`; read by edge
+ * geometry, auto-layout, fitView, snap lines, the minimap, and viewport
+ * culling so they all operate on the REAL rendered box.
+ */
+export interface NodeMeasurement {
+  width: number
+  height: number
+  /** Measured `<Handle>` dots inside this node — absent when the node renders none */
+  handles?: MeasuredHandle[]
+}
+
 // ─── Node ────────────────────────────────────────────────────────────────────
 
 export interface FlowNode<TData = Record<string, unknown>> {
@@ -130,7 +162,48 @@ export interface FlowEdge {
   data?: Record<string, unknown>
   /** Waypoints — intermediate points the edge passes through */
   waypoints?: XYPosition[]
+  /**
+   * Per-edge tuning for the built-in path builders. Only the fields relevant
+   * to this edge's `type` apply: `curvature` → `bezier`; `borderRadius` +
+   * `offset` → `smoothstep`; `offset` → `step`. `straight` and waypoint routes
+   * ignore all of them.
+   */
+  pathOptions?: EdgePathOptions
 }
+
+/**
+ * Tuning knobs for the built-in edge path builders — set per edge via
+ * {@link FlowEdge.pathOptions} or flow-wide via
+ * `config.defaultEdgeOptions.pathOptions`.
+ */
+export interface EdgePathOptions {
+  /**
+   * Bezier control-point strength as a fraction of the endpoint distance —
+   * default `0.25`. `0` collapses to a straight line; larger values bow the
+   * curve further out. `bezier` edges only.
+   */
+  curvature?: number
+  /**
+   * Corner rounding radius in px for `smoothstep` edges — default `5`.
+   * (`step` edges are `smoothstep` with `borderRadius` locked to `0`.)
+   */
+  borderRadius?: number
+  /**
+   * How far (px) a `smoothstep`/`step` edge travels straight out of its
+   * endpoint before turning — default `20`.
+   */
+  offset?: number
+}
+
+/**
+ * The edge fields {@link FlowConfig.defaultEdgeOptions} can default — every
+ * per-edge field except the identity/topology ones (`id`, `source`, `target`,
+ * `sourceHandle`, `targetHandle`, `waypoints`).
+ */
+export type DefaultEdgeOptions = Omit<
+  Partial<FlowEdge>,
+  'id' | 'source' | 'target' | 'sourceHandle' | 'targetHandle' | 'waypoints'
+>
 
 // ─── Connection ──────────────────────────────────────────────────────────────
 
@@ -166,6 +239,20 @@ export interface FlowConfig<TData = Record<string, unknown>> {
   edges?: FlowEdge[]
   /** Default edge type */
   defaultEdgeType?: EdgeType
+  /**
+   * Defaults merged into every edge that doesn't set the field itself —
+   * applied to the initial `edges` array AND every later `addEdge()` /
+   * connection-drawn edge. An edge's own explicit value (including an explicit
+   * `markerEnd: null`) always wins. `type` resolution order:
+   * `edge.type` → `defaultEdgeOptions.type` → `defaultEdgeType` → `'bezier'`.
+   *
+   * ```ts
+   * createFlow({
+   *   defaultEdgeOptions: { type: 'smoothstep', animated: true, pathOptions: { borderRadius: 8 } },
+   * })
+   * ```
+   */
+  defaultEdgeOptions?: DefaultEdgeOptions
   /** Min zoom level — default: 0.1 */
   minZoom?: number
   /** Max zoom level — default: 4 */
@@ -240,16 +327,29 @@ export interface FlowInstance<TData = Record<string, unknown>> {
   /** Container dimensions — updated by the Flow component via ResizeObserver */
   containerSize: Signal<{ width: number; height: number }>
   /**
-   * Per-node measured DOM dimensions, written by the NodeLayer's per-node
-   * `ResizeObserver` (client-only). Edge geometry reads this so an edge connects
-   * to the node's REAL rendered size instead of the 150×40 fallback — content-
-   * sized nodes (no explicit `width`/`height`) get correctly-anchored edges. An
-   * explicit `node.width`/`node.height` still wins; the map is empty under
-   * SSR / happy-dom (no layout), so those paths fall back to explicit-or-default.
+   * Per-node measured DOM geometry (size + `<Handle>` dot placements), written
+   * by the NodeLayer's per-node `ResizeObserver` (client-only). Edge geometry,
+   * auto-layout, fitView, snap lines, the minimap, and viewport culling all
+   * read this so they operate on the node's REAL rendered box instead of the
+   * 150×40 fallback. An explicit `node.width`/`node.height` still wins; the
+   * map is empty under SSR / happy-dom (no layout), so those paths fall back
+   * to explicit-or-default.
    */
-  measurements: Signal<Map<string, { width: number; height: number }>>
-  /** @internal — the NodeLayer records a node's measured size here. */
-  _setNodeMeasurement: (id: string, width: number, height: number) => void
+  measurements: Signal<Map<string, NodeMeasurement>>
+  /**
+   * A node's effective dimensions — the box every geometry consumer uses.
+   * Precedence: explicit `node.width`/`node.height` (a deliberate consumer
+   * override) → measured DOM size → the 150×40 default. Non-reactive read
+   * (peeks); read `measurements()` directly for a tracking read.
+   */
+  getNodeDimensions: (id: string) => Dimensions
+  /** @internal — the NodeLayer records a node's measured geometry here. */
+  _setNodeMeasurement: (
+    id: string,
+    width: number,
+    height: number,
+    handles?: MeasuredHandle[],
+  ) => void
   /** @internal — the NodeLayer clears a node's measurement on unmount. */
   _clearNodeMeasurement: (id: string) => void
 
@@ -608,6 +708,13 @@ export interface HandleProps {
   type: HandleType
   position: Position
   id?: string
+  /**
+   * Placement along the handle's side as a percentage `0–100` — default `50`
+   * (centered). Give same-side sibling handles distinct offsets so the dots
+   * don't overlap; edges anchor at each dot's measured rendered center, so the
+   * attachment point moves with the offset.
+   */
+  offset?: number
   style?: string
   class?: string
 }

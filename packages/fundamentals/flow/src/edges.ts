@@ -1,4 +1,17 @@
-import type { EdgeMarker, EdgePathResult, EdgeMarkerSpec, FlowEdge, FlowNode, XYPosition } from './types'
+import type {
+  Dimensions,
+  EdgeMarker,
+  EdgeMarkerSpec,
+  EdgePathOptions,
+  EdgePathResult,
+  FlowEdge,
+  FlowNode,
+  HandleConfig,
+  HandleType,
+  MeasuredHandle,
+  NodeMeasurement,
+  XYPosition,
+} from './types'
 import { MarkerType, Position } from './types'
 
 // ─── Edge markers ──────────────────────────────────────────────────────────
@@ -64,6 +77,82 @@ export function collectEdgeMarkers(
     if (end) out.set(markerId(end), end)
   }
   return out
+}
+
+// ─── Effective node dimensions ─────────────────────────────────────────────
+
+/** Default node box used before a node is measured (or under SSR). */
+export const DEFAULT_NODE_WIDTH = 150
+/** Default node box used before a node is measured (or under SSR). */
+export const DEFAULT_NODE_HEIGHT = 40
+
+/**
+ * A node's effective dimensions — the ONE precedence rule every geometry
+ * consumer (edge anchoring, auto-layout, fitView, snap lines, minimap,
+ * viewport culling) shares: explicit `node.width`/`node.height` (a deliberate
+ * consumer override, e.g. from `<NodeResizer>`) → measured DOM size →
+ * the 150×40 default (pre-measurement first frame / SSR).
+ */
+export function getEffectiveDimensions(
+  node: FlowNode<any>,
+  measurement?: NodeMeasurement | undefined,
+): Dimensions {
+  return {
+    width: node.width ?? measurement?.width ?? DEFAULT_NODE_WIDTH,
+    height: node.height ?? measurement?.height ?? DEFAULT_NODE_HEIGHT,
+  }
+}
+
+// ─── Handle-anchor resolution ──────────────────────────────────────────────
+
+/**
+ * Resolve the exact point an edge attaches to on `node`, honoring handles.
+ *
+ * Priority:
+ *  1. `handleId` + a MEASURED `<Handle>` dot with that id → the dot's real
+ *     rendered center (pixel-exact, wherever the consumer's CSS placed it).
+ *  2. `handleId` + a CONFIG handle (`node.sourceHandles`/`targetHandles`) with
+ *     that id → that side's midpoint.
+ *  3. No `handleId` → the FIRST measured dot of the right type, else the first
+ *     config handle's side midpoint (matches React Flow's "first handle" rule).
+ *  4. No handles at all → `null` — the caller falls back to floating/smart
+ *     endpoints.
+ *
+ * Returns flow-space coordinates plus the handle's declared side (drives the
+ * path's departure/approach tangent).
+ */
+export function resolveHandleAnchor(
+  node: FlowNode<any>,
+  handleId: string | undefined,
+  type: HandleType,
+  dims: Dimensions,
+  measurement?: NodeMeasurement | undefined,
+): { x: number; y: number; position: Position } | null {
+  const measuredOfType = measurement?.handles?.filter((h) => h.type === type)
+  const config = type === 'source' ? node.sourceHandles : node.targetHandles
+
+  const anchorFromMeasured = (h: MeasuredHandle) => ({
+    x: node.position.x + h.x,
+    y: node.position.y + h.y,
+    position: h.position,
+  })
+  const anchorFromConfig = (h: HandleConfig) => ({
+    ...getHandlePosition(h.position, node.position.x, node.position.y, dims.width, dims.height),
+    position: h.position,
+  })
+
+  if (handleId) {
+    const measured = measuredOfType?.find((h) => h.id === handleId)
+    if (measured) return anchorFromMeasured(measured)
+    const configured = config?.find((h) => h.id === handleId)
+    if (configured) return anchorFromConfig(configured)
+    // Unknown id — fall through to the first-handle rule below so the edge
+    // still renders somewhere sensible (the caller dev-warns).
+  }
+
+  if (measuredOfType?.length) return anchorFromMeasured(measuredOfType[0]!)
+  if (config?.length) return anchorFromConfig(config[0]!)
+  return null
 }
 
 /**
@@ -397,6 +486,8 @@ export function getStepPath(params: {
   targetX: number
   targetY: number
   targetPosition?: Position
+  /** Straight run-out from each endpoint before the first turn — default 20 */
+  offset?: number
 }): EdgePathResult {
   return getSmoothStepPath({ ...params, borderRadius: 0 })
 }
@@ -446,6 +537,7 @@ export function getEdgePath(
   targetX: number,
   targetY: number,
   targetPosition: Position,
+  options?: EdgePathOptions,
 ): EdgePathResult {
   switch (type) {
     case 'smoothstep':
@@ -456,6 +548,8 @@ export function getEdgePath(
         targetX,
         targetY,
         targetPosition,
+        ...(options?.borderRadius !== undefined ? { borderRadius: options.borderRadius } : {}),
+        ...(options?.offset !== undefined ? { offset: options.offset } : {}),
       })
     case 'straight':
       return getStraightPath({ sourceX, sourceY, targetX, targetY })
@@ -467,6 +561,7 @@ export function getEdgePath(
         targetX,
         targetY,
         targetPosition,
+        ...(options?.offset !== undefined ? { offset: options.offset } : {}),
       })
     default:
       return getBezierPath({
@@ -476,6 +571,7 @@ export function getEdgePath(
         targetX,
         targetY,
         targetPosition,
+        ...(options?.curvature !== undefined ? { curvature: options.curvature } : {}),
       })
   }
 }
