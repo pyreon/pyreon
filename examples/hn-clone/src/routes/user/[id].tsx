@@ -3,6 +3,12 @@ import { useHead } from '@pyreon/head'
 import { useRoute } from '@pyreon/router'
 import { fetchUser } from '../../lib/api'
 
+// Client-side `useQuery` by an arbitrary user `id` — not enumerable at build
+// time, so under `mode: 'ssg'` this dynamic route is silently skipped without a
+// `getStaticPaths` (direct load / refresh would 404). `renderMode: 'spa'` ships
+// a CSR shell that works for any `id`. ('ssr'/'isr' are build-errors in SSG.)
+export const renderMode = 'spa'
+
 export default function UserPage() {
   const route = useRoute()
   const id = () => route().params.id ?? ''

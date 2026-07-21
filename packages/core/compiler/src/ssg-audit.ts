@@ -348,8 +348,13 @@ function detectDynamicRouteMissingGetStaticPaths(
     if (!source) continue
     let hasGetStaticPaths = false
     let hasDefaultExport = false
+    // A per-route `export const renderMode = 'spa' | 'ssr' | 'isr'` opts the
+    // route OUT of SSG auto-prerender, so it legitimately needs no
+    // `getStaticPaths` — the audit's own remedy. (Inside `mode: 'ssg'` only
+    // `'spa'` is valid; an invalid `'ssr'`/`'isr'` is a separate build error,
+    // not this audit's concern — either way the route isn't SSG-prerendered.)
+    let renderModeOverride: string | null = null
     function visit(node: ts.Node): void {
-      if (hasGetStaticPaths && hasDefaultExport) return
       if (ts.isVariableStatement(node)) {
         const hasExport = node.modifiers?.some(
           (m) => m.kind === ts.SyntaxKind.ExportKeyword,
@@ -358,6 +363,14 @@ function detectDynamicRouteMissingGetStaticPaths(
           for (const decl of node.declarationList.declarations) {
             if (ts.isIdentifier(decl.name) && decl.name.text === 'getStaticPaths') {
               hasGetStaticPaths = true
+            }
+            if (
+              ts.isIdentifier(decl.name) &&
+              decl.name.text === 'renderMode' &&
+              decl.initializer &&
+              ts.isStringLiteralLike(decl.initializer)
+            ) {
+              renderModeOverride = decl.initializer.text
             }
           }
         }
@@ -389,6 +402,11 @@ function detectDynamicRouteMissingGetStaticPaths(
     // (`GET` / `POST` / etc.) without a default are API routes wherever
     // they sit in the tree.
     if (!hasDefaultExport) continue
+    // A route that explicitly declares a non-SSG `renderMode` has opted out of
+    // SSG prerendering, so it needs no `getStaticPaths` — this is exactly the
+    // fix the message below recommends. Without this the audit false-positives
+    // on the correctly-configured hybrid route it just told the user to write.
+    if (renderModeOverride !== null && renderModeOverride !== 'ssg') continue
     if (!hasGetStaticPaths) {
       findings.push({
         code: 'dynamic-route-missing-get-static-paths',
@@ -396,7 +414,9 @@ function detectDynamicRouteMissingGetStaticPaths(
           `Dynamic route "${base}" has no \`getStaticPaths\` export — under \`mode: 'ssg'\` ` +
           `the auto-detect step SILENTLY SKIPS this route, so the dist won't contain prerendered HTML. ` +
           `Either add \`export const getStaticPaths = () => [{ params: { ... } }, ...]\` enumerating ` +
-          `the concrete values, OR declare the route as runtime-only by switching to mode: 'ssr' / 'isr'.`,
+          `the concrete values, OR opt the route out of prerendering with ` +
+          `\`export const renderMode = 'spa'\` (a client-rendered shell for any param; ` +
+          `'ssr'/'isr' need the app to be \`mode: 'ssr'/'isr'\`).`,
         location: {
           path: file,
           relPath: relative(rootForRel, file),
