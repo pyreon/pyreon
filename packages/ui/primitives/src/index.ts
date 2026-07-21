@@ -36,6 +36,11 @@ export {
   type RatingLabels,
   type RatingState,
 } from './RatingBase'
+  RangeSliderBase,
+  type RangeSliderBaseProps,
+  type RangeSliderLabels,
+  type RangeSliderState,
+} from './RangeSliderBase'
 export { SelectBase, type SelectBaseProps } from './SelectBase'
 export { SliderBase, type SliderBaseProps } from './SliderBase'
 export { SwitchBase, type SwitchBaseProps } from './SwitchBase'
