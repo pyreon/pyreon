@@ -115,6 +115,7 @@ export const SIDEBAR: SidebarGroup[] = [
       { text: 'Global State Management', slug: 'guides/state-management' },
       { text: 'Styling & Theming', slug: 'guides/styling-theming' },
       { text: 'Animations & Transitions', slug: 'guides/animations' },
+      { text: 'Localizing the UI System', slug: 'guides/ui-localization' },
       { text: 'SSR, SSG & ISR', slug: 'guides/ssr-ssg-isr' },
       { text: 'Islands & Partial Hydration', slug: 'guides/islands' },
       { text: 'Performance', slug: 'guides/performance' },
