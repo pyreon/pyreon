@@ -1,32 +1,51 @@
 import type { VNodeChild } from '@pyreon/core'
 import type { HandleProps } from '../types'
 
-const positionOffset: Record<string, string> = {
-  top: 'top: -4px; left: 50%; transform: translateX(-50%);',
-  right: 'right: -4px; top: 50%; transform: translateY(-50%);',
-  bottom: 'bottom: -4px; left: 50%; transform: translateX(-50%);',
-  left: 'left: -4px; top: 50%; transform: translateY(-50%);',
+/**
+ * Positioning style for a handle dot: pinned to its side, placed along that
+ * side at `offset`% (default 50 = centered). The translate centers the DOT on
+ * the placement point, so `offset` reads as "percent along the side".
+ */
+function positionStyle(position: string, offset: number): string {
+  const pct = `${Math.min(100, Math.max(0, offset))}%`
+  switch (position) {
+    case 'top':
+      return `top: -4px; left: ${pct}; transform: translateX(-50%);`
+    case 'right':
+      return `right: -4px; top: ${pct}; transform: translateY(-50%);`
+    case 'left':
+      return `left: -4px; top: ${pct}; transform: translateY(-50%);`
+    default:
+      return `bottom: -4px; left: ${pct}; transform: translateX(-50%);`
+  }
 }
 
 /**
  * Connection handle — attachment point on a node where edges connect.
  * Place inside custom node components.
  *
+ * Multiple handles on the SAME side: give each a distinct `id` AND a distinct
+ * `offset` (percent along the side, default 50 = centered) so the dots don't
+ * overlap — the measurement pass anchors edges at each dot's real rendered
+ * center, so `offset` moves the edge attachment with the dot. (A handle can't
+ * auto-distribute — it renders independently and can't see its siblings.)
+ *
  * @example
  * ```tsx
- * function CustomNode({ data }: NodeComponentProps) {
+ * function CustomNode(props: NodeComponentProps) {
  *   return (
  *     <div class="custom-node">
  *       <Handle type="target" position={Position.Left} />
- *       <span>{data.label}</span>
- *       <Handle type="source" position={Position.Right} />
+ *       <span>{() => props.data().label}</span>
+ *       <Handle type="source" position={Position.Right} id="out-a" offset={30} />
+ *       <Handle type="source" position={Position.Right} id="out-b" offset={70} />
  *     </div>
  *   )
  * }
  * ```
  */
 export function Handle(props: HandleProps): VNodeChild {
-  const posStyle = positionOffset[props.position] ?? positionOffset.bottom
+  const posStyle = positionStyle(props.position, props.offset ?? 50)
   const style = props.style ?? ''
   // Themeable via --pyreon-flow-handle-bg / --pyreon-flow-handle-border with
   // the historical values as fallbacks (see the docs "Theming" table); a

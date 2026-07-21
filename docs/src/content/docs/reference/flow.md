@@ -311,7 +311,7 @@ Overview minimap of the full graph. `nodeColor` is a flat color string OR a per-
 ### Handle `component`
 
 ```ts
-(props: { type: "source" | "target"; position: Position; id?: string; style?: string; class?: string }) => VNodeChild
+(props: { type: "source" | "target"; position: Position; id?: string; offset?: number; style?: string; class?: string }) => VNodeChild
 ```
 
 Connection handle on a custom node — exposes a connectable point that edges attach to. `type` picks direction (`"source"` emits edges, `"target"` receives), `position` is a `Position` enum (`Top` / `Right` / `Bottom` / `Left`). Provide a distinct `id` when a node has multiple source or target handles so edges can reference the specific one via `edge.sourceHandle` / `edge.targetHandle` — the edge then anchors at the dot's MEASURED rendered center (the NodeLayer records every dot via its per-node ResizeObserver), so restyling/repositioning a dot via `style` / `class` moves the edge attachment with it. An edge with no handle id uses the node's first handle of the right type; an unknown id anchors at the first handle and dev-warns once naming the known ids.
@@ -324,19 +324,22 @@ function CustomNode(props: NodeComponentProps<MyData>) {
     <div>
       <Handle type="target" position={Position.Left} />
       {props.data().label}
-      <Handle type="source" position={Position.Right} id="out-primary" />
-      <Handle type="source" position={Position.Bottom} id="out-fallback" />
+      {/* Same side, distinct offsets (percent along the side) so the dots don't stack */}
+      <Handle type="source" position={Position.Right} id="out-primary" offset={30} />
+      <Handle type="source" position={Position.Right} id="out-fallback" offset={70} />
     </div>
   )
 }
 
-// Edge referencing a specific source handle by id
+// Edge referencing a specific source handle by id — anchors at that dot's
+// MEASURED rendered center, so the offset moves the attachment point too
 flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })
 ```
 
 **Common mistakes**
 
 - Multiple `source` / `target` handles on one node without distinct `id` values — edges cannot disambiguate which handle they connect to
+- Two handles on the SAME side without distinct `offset` values — both render at that side's center and visually stack; give same-side siblings distinct offsets (percent along the side, default 50) and the measured-dot anchoring moves each edge attachment with its dot
 - Nesting a `<Handle>` inside a non-node component (a `<Background>` child, a `<Panel>`, etc.) — the connection machinery expects handles to live inside a node renderer
 
 **See also:** `Flow` · `Position`

@@ -255,6 +255,10 @@ interface EdgeGeometry {
   sourceY: number
   targetX: number
   targetY: number
+  /** Side the edge departs from — the source tangent for path builders */
+  sourcePosition: Position
+  /** Side the edge approaches — the target tangent for path builders */
+  targetPosition: Position
   path: string
   labelX: number
   labelY: number
@@ -415,6 +419,8 @@ function computeEdgeGeometry(
     sourceY: sourcePos.y,
     targetX: targetPos.x,
     targetY: targetPos.y,
+    sourcePosition,
+    targetPosition,
     path,
     labelX,
     labelY,
@@ -516,6 +522,8 @@ function EdgeLayer(props: {
                   sourceY={() => geometry()?.sourceY ?? 0}
                   targetX={() => geometry()?.targetX ?? 0}
                   targetY={() => geometry()?.targetY ?? 0}
+                  sourcePosition={() => geometry()?.sourcePosition ?? Position.Right}
+                  targetPosition={() => geometry()?.targetPosition ?? Position.Left}
                   selected={isSelected}
                 />
               </g>
@@ -808,13 +816,36 @@ function NodeLayer(props: {
  * `<Flow edgeTypes={...}>`.
  *
  * The `edge` field is a stable reference (the edge id is the keyed
- * identity). Everything else is a reactive accessor: source/target
- * coordinates re-evaluate when either endpoint node moves, and
- * `selected` re-evaluates when the edge selection changes. Read
- * inside reactive scopes (JSX expression thunks, `effect()`,
- * `computed()`) so the edge patches in place — each custom edge
- * component mounts EXACTLY ONCE per id across the lifetime of the
- * graph.
+ * identity) — read per-edge config like `edge.pathOptions` / `edge.data`
+ * from it. Everything else is a reactive accessor: source/target
+ * coordinates and tangent sides re-evaluate when either endpoint node
+ * moves (or its measurement lands), and `selected` re-evaluates when the
+ * edge selection changes. Read inside reactive scopes (JSX expression
+ * thunks, `effect()`, `computed()`) so the edge patches in place — each
+ * custom edge component mounts EXACTLY ONCE per id across the lifetime
+ * of the graph.
+ *
+ * Feed the tangent sides to the path builders so a custom edge departs /
+ * approaches at the same natural angle the built-ins use:
+ *
+ * ```tsx
+ * function MyEdge(props: EdgeComponentProps) {
+ *   return (
+ *     <path
+ *       d={() =>
+ *         getBezierPath({
+ *           sourceX: props.sourceX(), sourceY: props.sourceY(),
+ *           sourcePosition: props.sourcePosition(),
+ *           targetX: props.targetX(), targetY: props.targetY(),
+ *           targetPosition: props.targetPosition(),
+ *           ...props.edge.pathOptions,
+ *         }).path
+ *       }
+ *       style="fill: none; stroke: var(--pyreon-flow-edge, #999);"
+ *     />
+ *   )
+ * }
+ * ```
  */
 export type EdgeComponentProps = {
   edge: FlowEdge
@@ -826,6 +857,10 @@ export type EdgeComponentProps = {
   targetX: () => number
   /** Reactive accessor — re-evaluates when target node position changes */
   targetY: () => number
+  /** Reactive accessor — the side the edge departs from (source tangent) */
+  sourcePosition: () => Position
+  /** Reactive accessor — the side the edge approaches (target tangent) */
+  targetPosition: () => Position
   /** Reactive accessor — re-evaluates when edge selection changes */
   selected: () => boolean
 }

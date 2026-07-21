@@ -708,6 +708,13 @@ export interface HandleProps {
   type: HandleType
   position: Position
   id?: string
+  /**
+   * Placement along the handle's side as a percentage `0–100` — default `50`
+   * (centered). Give same-side sibling handles distinct offsets so the dots
+   * don't overlap; edges anchor at each dot's measured rendered center, so the
+   * attachment point moves with the offset.
+   */
+  offset?: number
   style?: string
   class?: string
 }

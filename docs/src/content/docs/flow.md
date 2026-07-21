@@ -292,6 +292,38 @@ Four built-in edge path algorithms (set per edge via `type`, or graph-wide via `
 
 `EdgeType` is `'bezier' | 'smoothstep' | 'straight' | 'step' | (string & {})` — the open string union lets you register custom edge renderers under any name via `<Flow edgeTypes={{ ... }}>`.
 
+### Custom Edge Renderers
+
+Register a renderer under any name and set that name as an edge's `type`. The renderer receives `EdgeComponentProps`: the stable `edge` object (read per-edge config like `edge.pathOptions` / `edge.data` from it) plus **reactive accessors** — endpoint coordinates, the tangent **sides** (`sourcePosition()` / `targetPosition()` — which side the edge departs from / approaches, resolved from handles or the floating-endpoint math), and `selected()`. Each edge component mounts exactly once; read the accessors inside JSX thunks so the path patches in place during drags.
+
+```tsx
+import { getBezierPath, type EdgeComponentProps } from '@pyreon/flow'
+
+function GlowEdge(props: EdgeComponentProps) {
+  return (
+    <path
+      d={() =>
+        getBezierPath({
+          sourceX: props.sourceX(), sourceY: props.sourceY(),
+          sourcePosition: props.sourcePosition(),
+          targetX: props.targetX(), targetY: props.targetY(),
+          targetPosition: props.targetPosition(),
+          ...props.edge.pathOptions,
+        }).path
+      }
+      style={() =>
+        `fill: none; stroke-width: 3; stroke: ${props.selected() ? 'var(--pyreon-flow-accent, #3b82f6)' : 'var(--pyreon-flow-edge, #999)'};`
+      }
+    />
+  )
+}
+
+<Flow instance={flow} edgeTypes={{ glow: GlowEdge }} />
+flow.addEdge({ source: '1', target: '2', type: 'glow' })
+```
+
+Feeding `sourcePosition()` / `targetPosition()` into the path builders makes a custom edge depart/approach at the same natural angle the built-ins use. Set colors via `style` (never SVG presentation attributes — `var()` is invalid there).
+
 ### Per-Edge Path Options
 
 Each built-in path builder is tunable per edge via `pathOptions` (only the fields relevant to the edge's `type` apply):
@@ -748,7 +780,7 @@ On **older `@pyreon/compiler` versions** (before the template ref-hoist release)
 
 ### `<Handle>`
 
-Connection point on a custom node — place inside a node renderer. `type` is `'source'` or `'target'`, `position` is a `Position` enum value. Give multiple source/target handles distinct `id`s so edges can reference a specific one via `sourceHandle` / `targetHandle`.
+Connection point on a custom node — place inside a node renderer. `type` is `'source'` or `'target'`, `position` is a `Position` enum value. Give multiple source/target handles distinct `id`s so edges can reference a specific one via `sourceHandle` / `targetHandle`, and give **same-side** siblings distinct `offset`s (percent along the side, default `50` = centered) so the dots don't overlap.
 
 ```tsx
 import { Handle, Position } from '@pyreon/flow'
@@ -758,14 +790,15 @@ function CustomNode(props: NodeComponentProps<MyData>) {
     <div class="custom-node">
       <Handle type="target" position={Position.Left} />
       <span>{() => props.data().label}</span>
-      <Handle type="source" position={Position.Right} id="out-primary" />
+      <Handle type="source" position={Position.Right} id="out-a" offset={30} />
+      <Handle type="source" position={Position.Right} id="out-b" offset={70} />
       <Handle type="source" position={Position.Bottom} id="out-fallback" />
     </div>
   )
 }
 
 // Reference a specific handle by id
-flow.addEdge({ source: '1', sourceHandle: 'out-primary', target: '2' })
+flow.addEdge({ source: '1', sourceHandle: 'out-a', target: '2' })
 ```
 
 Edges anchor at the dot's **real rendered position** — the renderer measures every `<Handle>`'s center (see [Edge Anchoring & Node Measurement](#edge-anchoring--node-measurement)), so restyling or repositioning a dot via `style` / `class` moves the edge attachment with it. An edge without a `sourceHandle` / `targetHandle` id uses the node's first handle of that type.

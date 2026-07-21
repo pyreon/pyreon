@@ -1,7 +1,7 @@
 import { h } from '@pyreon/core'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Flow } from '../components/flow-component'
+import { Flow, type EdgeComponentProps } from '../components/flow-component'
 import { Handle } from '../components/handle'
 import { createFlow } from '../flow'
 import type { FlowInstance, NodeComponentProps } from '../types'
@@ -118,6 +118,94 @@ describe('handle-anchored edges in real browser', () => {
 
     // And the path must depart DOWNWARD (bottom tangent), not sideways.
     expect(startY).toBeGreaterThan(120)
+
+    unmount()
+  })
+
+  it('same-side handles with distinct `offset` render apart AND anchor their edges apart', async () => {
+    // Two source dots on the SAME (right) side at 25% / 75% — the offset prop
+    // is the first-class fix for same-side stacking (no hand-written CSS).
+    function TwoRightHandles(props: NodeComponentProps) {
+      return (
+        <div style="position: relative; width: 220px; height: 100px; background: #eee;">
+          {() => ((props.data() as { label?: string })?.label ?? props.id)}
+          <Handle type="source" position={Position.Right} id="out-a" offset={25} />
+          <Handle type="source" position={Position.Right} id="out-b" offset={75} />
+        </div>
+      )
+    }
+    const flow = createFlow({
+      nodes: [
+        { id: 'a', type: 'two', position: { x: 0, y: 0 }, data: { label: 'A' } },
+        { id: 'b', position: { x: 500, y: 0 }, data: { label: 'B' } },
+        { id: 'c', position: { x: 500, y: 300 }, data: { label: 'C' } },
+      ],
+      edges: [
+        { id: 'ea', source: 'a', target: 'b', sourceHandle: 'out-a' },
+        { id: 'eb', source: 'a', target: 'c', sourceHandle: 'out-b' },
+      ],
+    })
+    const { container, unmount } = mountInBrowser(
+      h(Flow, { instance: flow, nodeTypes: { two: TwoRightHandles } }),
+    )
+    await waitForHandles(flow, 'a')
+    await flush()
+
+    const handles = flow.measurements().get('a')!.handles!
+    const a = handles.find((hd) => hd.id === 'out-a')!
+    const b = handles.find((hd) => hd.id === 'out-b')!
+    // 25% / 75% of the 100px-tall node — distinct, not stacked at center.
+    expect(Math.abs(a.y - 25)).toBeLessThanOrEqual(4)
+    expect(Math.abs(b.y - 75)).toBeLessThanOrEqual(4)
+
+    // Each edge starts at ITS dot's y.
+    const paths = [...container.querySelectorAll('.pyreon-flow-edges path')] as SVGPathElement[]
+    const starts = paths
+      .map((p) => /^M(-?[\d.]+),(-?[\d.]+)/.exec(p.getAttribute('d') ?? ''))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => Number(m[2]))
+      .sort((x, y) => x - y)
+    expect(starts).toHaveLength(2)
+    expect(Math.abs(starts[0]! - 25)).toBeLessThanOrEqual(6)
+    expect(Math.abs(starts[1]! - 75)).toBeLessThanOrEqual(6)
+
+    unmount()
+  })
+
+  it('custom edge renderers receive sourcePosition/targetPosition tangent accessors', async () => {
+    let seen: { sp?: string; tp?: string } = {}
+    const ProbeEdge = (props: EdgeComponentProps) => {
+      return (
+        <path
+          d={() => {
+            seen = { sp: props.sourcePosition(), tp: props.targetPosition() }
+            return `M${props.sourceX()},${props.sourceY()} L${props.targetX()},${props.targetY()}`
+          }}
+          style="fill: none; stroke: red;"
+        />
+      )
+    }
+    const flow = createFlow({
+      nodes: [
+        { id: 'a', type: 'multi', position: { x: 40, y: 40 }, data: { label: 'A' } },
+        { id: 'b', position: { x: 500, y: 40 }, data: { label: 'B' } },
+      ],
+      edges: [{ id: 'e1', source: 'a', target: 'b', type: 'probe', sourceHandle: 'out-right' }],
+    })
+    const { unmount } = mountInBrowser(
+      h(Flow, {
+        instance: flow,
+        nodeTypes: { multi: MultiHandleNode },
+        edgeTypes: { probe: ProbeEdge },
+      }),
+    )
+    await waitForHandles(flow, 'a')
+    await flush()
+
+    // Horizontal layout, anchored at the right-side dot → departs Right,
+    // approaches (floating target) from the Left.
+    expect(seen.sp).toBe(Position.Right)
+    expect(seen.tp).toBe(Position.Left)
 
     unmount()
   })
