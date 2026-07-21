@@ -126,6 +126,25 @@ export const SCENARIOS: Scenario[] = [
     imports: ['RouterProvider', 'RouterView', 'RouterLink'],
   },
   {
+    // Locks the PURE-form branding win (elements PR, 2026-07): bare top-level
+    // `Component.x = y` brand assignments pinned EVERY component into every
+    // consumer bundle — importing just <Portal> paid the whole 7.5KB gz of
+    // @pyreon/elements; the fix took it to ~2.4KB and <Element> to ~4.0KB.
+    // One reverted file taxes the SIBLING imports (the components pin each
+    // other), so the aggregate outcome is what must be locked — a per-file
+    // guard can't see it.
+    id: '@pyreon/elements::portal',
+    pkg: '@pyreon/elements',
+    dir: 'ui-system/elements',
+    imports: ['Portal'],
+  },
+  {
+    id: '@pyreon/elements::element',
+    pkg: '@pyreon/elements',
+    dir: 'ui-system/elements',
+    imports: ['Element'],
+  },
+  {
     id: '@pyreon/core::jsx',
     pkg: '@pyreon/core',
     dir: 'core/core',

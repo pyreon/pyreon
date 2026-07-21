@@ -70,9 +70,6 @@ const Component: ElementType<['containerWidth']> = (props) => {
 
 const name = `${PKG_NAME}/Container`
 
-Component.displayName = name
-Component.pkgName = PKG_NAME
-Component.PYREON__COMPONENT = name
 
 // Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
 // Container's provide(ContainerContext, ...) reaches descendant Row/Col.
@@ -83,4 +80,15 @@ Component.PYREON__COMPONENT = name
 // never imports it (see runtime-dom's native-compat-treeshake lock). The
 // PURE call is droppable exactly when the export is unused; when used it
 // returns the SAME fn with the marker applied.
-export default /* @__PURE__ */ nativeCompat(Component)
+// Branding rides the PURE export expression — a bare top-level
+// `Component.x = y` assignment is an unremovable side effect that pins every
+// component in the package into every consumer bundle (measured on
+// @pyreon/elements: importing just <Portal> paid the whole 7.5KB gz; PR ref
+// in elements/src/Portal/component.tsx).
+export default /* @__PURE__ */ nativeCompat(
+  /* @__PURE__ */ Object.assign(Component, {
+    displayName: name,
+    pkgName: PKG_NAME,
+    PYREON__COMPONENT: name,
+  }),
+)

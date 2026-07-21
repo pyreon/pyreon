@@ -100,9 +100,6 @@ const Component = (allProps: IteratorLooseProps & ListExtras) => {
 
 const name = `${PKG_NAME}/List` as const
 
-;(Component as { displayName?: string }).displayName = name
-;(Component as { pkgName?: string }).pkgName = PKG_NAME
-;(Component as { PYREON__COMPONENT?: string }).PYREON__COMPONENT = name
 
 // ---------------------------------------------------------------------------
 // Public callable type — same overload pattern as Iterator so JSX-site
@@ -122,4 +119,11 @@ export interface ListComponent {
   PYREON__COMPONENT?: string
 }
 
-export default Component as unknown as ListComponent
+// PURE-form branding — a bare top-level `(Component as …).x = y` assignment is
+// an unremovable side effect that pinned every component in this package into
+// every consumer bundle (see Portal/component.tsx for the measurement).
+export default /* @__PURE__ */ Object.assign(Component, {
+  displayName: name,
+  pkgName: PKG_NAME,
+  PYREON__COMPONENT: name,
+}) as unknown as ListComponent
