@@ -1,7 +1,7 @@
 import { nativeCompat, provide, splitProps } from '@pyreon/core'
 import { PKG_NAME } from '../constants'
 import ContainerContext from '../context/ContainerContext'
-import type { ElementType } from '../types'
+import type { ElementFn } from '../types'
 import useGridContext from '../useContext'
 import { omitCtxKeys } from '../utils'
 import Styled from './styled'
@@ -16,7 +16,7 @@ import Styled from './styled'
 /* v8 ignore next — production branch not exercised in tests */
 const DEV_PROPS: Record<string, string> = process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'container' } : {}
 
-const Component: ElementType<['containerWidth']> = (props) => {
+const Component: ElementFn<['containerWidth']> = (props) => {
   const [own, rest] = splitProps(props, ['children', 'component', 'css', 'width'])
   const {
     containerWidth,

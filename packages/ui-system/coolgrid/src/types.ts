@@ -63,9 +63,19 @@ export type StyledTypes = Partial<{
   width: Value
 }>
 
-export type ElementType<O extends string[]> = ComponentFn<
+/**
+ * The callable part of `ElementType` — what a component FUNCTION is declared
+ * as. The brands are attached at the export site via the PURE-form
+ * `Object.assign` (see Col/Row/Container tails): TS's expando-function rule
+ * previously let a bare arrow satisfy the branded intersection because of the
+ * later `Component.x = y` assignments, and those assignments are exactly the
+ * tree-shake pins the PURE form removes.
+ */
+export type ElementFn<O extends string[]> = ComponentFn<
   Omit<ComponentProps, O[number]> & Record<string, unknown> & { children?: VNodeChild }
-> & {
+>
+
+export type ElementType<O extends string[]> = ElementFn<O> & {
   displayName: string
   pkgName: string
   PYREON__COMPONENT: string

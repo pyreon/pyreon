@@ -1,7 +1,7 @@
 import { splitProps, useContext } from '@pyreon/core'
 import { PKG_NAME } from '../constants'
 import { RowContext } from '../context'
-import type { ElementType } from '../types'
+import type { ElementFn } from '../types'
 import useGridContext from '../useContext'
 import { omitCtxKeys } from '../utils'
 import Styled from './styled'
@@ -15,7 +15,7 @@ import Styled from './styled'
 /* v8 ignore next — production branch not exercised in tests */
 const DEV_PROPS: Record<string, string> = process.env.NODE_ENV !== 'production' ? { 'data-coolgrid': 'col' } : {}
 
-const Component: ElementType<
+const Component: ElementFn<
   [
     'containerWidth',
     'width',
