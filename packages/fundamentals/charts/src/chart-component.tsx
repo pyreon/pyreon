@@ -53,12 +53,30 @@ export function Chart<TOption extends EChartsOption = EChartsOption>(
   props: ChartProps<TOption>,
 ): VNodeChild {
   const chart = useChart(props.options, {
-    ...(props.theme != null ? { theme: props.theme } : {}),
+    // Theme is normalized to the ACCESSOR form so it is reactive both ways:
+    // a user-supplied accessor (`theme={() => mode()}`) passes through, and
+    // a signal-read VALUE (`theme={mode()}` — a compiler `_rp` getter-backed
+    // reactive prop) becomes live because `() => props.theme` re-reads the
+    // getter per swap check. A theme VALUE is string | object, never a
+    // function, so the typeof discrimination is unambiguous.
+    ...(props.theme != null
+      ? {
+          theme: () => {
+            const t = props.theme
+            return typeof t === 'function' ? t() : t
+          },
+        }
+      : {}),
     ...(props.renderer != null ? { renderer: props.renderer } : {}),
     ...(props.locale != null ? { locale: props.locale } : {}),
+    ...(props.group != null ? { group: props.group } : {}),
+    ...(props.initOptions != null ? { initOptions: props.initOptions } : {}),
+    ...(props.autoresize != null ? { autoresize: props.autoresize } : {}),
     ...(props.notMerge != null ? { notMerge: props.notMerge } : {}),
     ...(props.replaceMerge != null ? { replaceMerge: props.replaceMerge } : {}),
     ...(props.lazyUpdate != null ? { lazyUpdate: props.lazyUpdate } : {}),
+    ...(props.silent != null ? { silent: props.silent } : {}),
+    ...(props.transition != null ? { transition: props.transition } : {}),
     ...(props.onInit != null ? { onInit: props.onInit } : {}),
   })
 

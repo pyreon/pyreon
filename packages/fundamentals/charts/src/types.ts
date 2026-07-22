@@ -61,16 +61,52 @@ export type ChartEventHandler = (params: ChartEventParams, instance: ECharts) =>
 
 // ─── Chart config ────────────────────────────────────────────────────────────
 
+/** An ECharts theme — 'dark', a registered theme name, or a theme object. */
+export type ChartTheme = string | Record<string, unknown>
+
 /**
  * Configuration for useChart.
  */
 export interface UseChartConfig {
-  /** ECharts theme — 'dark', a registered theme name, or a theme object */
-  theme?: string | Record<string, unknown>
+  /**
+   * ECharts theme — 'dark', a registered theme name, or a theme object.
+   *
+   * Accepts a VALUE (applied once at init) or an ACCESSOR
+   * `() => theme` — signal reads inside the accessor are tracked, and when
+   * they change the chart is disposed and re-initialized with the new theme,
+   * preserving the current option (re-applied from `optionsFn`) and `group`.
+   * ECharts has no in-place theme swap — dispose + re-init IS the mechanism
+   * (same as vue-echarts). The `instance` signal publishes the new instance,
+   * so event bindings / loading overlay / consumers rebind automatically.
+   */
+  theme?: ChartTheme | (() => ChartTheme | null | undefined)
   /** Renderer — 'canvas' (default, best performance) or 'svg' */
   renderer?: 'canvas' | 'svg'
   /** ECharts locale — 'EN' (default), 'ZH', etc. */
   locale?: string
+  /**
+   * ECharts group id for `connect()` — charts sharing a group id sync
+   * tooltips/dataZoom/actions once `connect(groupId)` is called. Set on the
+   * instance right after init (and re-applied across a theme re-init).
+   */
+  group?: string
+  /**
+   * Extra `echarts.init` options spread into the init call — the escape
+   * hatch for init flags this config doesn't model (`useDirtyRect`,
+   * `useCoarsePointer`, `pointerSize`, `ssr`, …). Spread LAST, so on a key
+   * collision with the named config (`renderer`, `locale`, `width`, …) the
+   * `initOptions` value wins.
+   */
+  initOptions?: Record<string, unknown>
+  /**
+   * Auto-resize behavior. `true` (default) observes the container with a
+   * ResizeObserver and calls `chart.resize()` on size changes. `false`
+   * disables the observer entirely (call `resize()` yourself). Pass
+   * `{ throttle: ms }` to rate-limit resize calls (leading + trailing) —
+   * useful when the container resizes continuously (drag handles,
+   * animated layouts).
+   */
+  autoresize?: boolean | { throttle?: number }
   /** Whether to replace all options instead of merging — default: false */
   notMerge?: boolean
   /**
@@ -82,13 +118,27 @@ export interface UseChartConfig {
   replaceMerge?: string | string[]
   /** Whether to batch updates — default: true */
   lazyUpdate?: boolean
+  /**
+   * Whether reactive `setOption` updates are silent (no event dispatch /
+   * animation triggers) — ECharts `setOption` `silent`. Default: false.
+   */
+  silent?: boolean
+  /**
+   * Transition config for reactive updates — ECharts `setOption`
+   * `transition` (e.g. `{ duration: 300 }` shapes per the ECharts docs).
+   */
+  transition?: SetOptionOpts['transition']
   /** Device pixel ratio — default: window.devicePixelRatio */
   devicePixelRatio?: number
   /** Width override — default: container width */
   width?: number
   /** Height override — default: container height */
   height?: number
-  /** Called when chart instance is created */
+  /**
+   * Called when an ECharts instance is created — at first init AND after a
+   * reactive-theme re-init (theme swap disposes + re-creates the instance).
+   * Use it for per-instance imperative setup; it may run more than once.
+   */
   onInit?: (instance: ECharts) => void
 }
 
@@ -115,12 +165,30 @@ export interface UseChartResult {
 export interface ChartProps<TOption extends EChartsOption = EChartsOption> extends Props {
   /** Reactive ECharts option config — fully typed */
   options: () => TOption
-  /** ECharts theme */
-  theme?: string | Record<string, unknown>
+  /**
+   * ECharts theme — a value OR an accessor `() => theme`. The accessor form
+   * is REACTIVE: signal reads inside it are tracked and a change disposes +
+   * re-initializes the chart with the new theme (option and group
+   * preserved). A signal-read VALUE (`theme={mode()}`) is also live — the
+   * component re-reads the reactive prop per swap check.
+   */
+  theme?: string | Record<string, unknown> | (() => string | Record<string, unknown> | null | undefined)
   /** Renderer — 'canvas' (default) or 'svg' */
   renderer?: 'canvas' | 'svg'
   /** ECharts locale — 'EN' (default), 'ZH', etc. */
   locale?: string
+  /** ECharts group id for `connect()` cross-chart syncing */
+  group?: string
+  /**
+   * Extra `echarts.init` options (`useDirtyRect`, `useCoarsePointer`,
+   * `pointerSize`, …) — spread last into the init call (wins on collision).
+   */
+  initOptions?: Record<string, unknown>
+  /**
+   * Auto-resize — `true` (default) ResizeObserver-driven, `false` off,
+   * `{ throttle: ms }` rate-limited.
+   */
+  autoresize?: boolean | { throttle?: number }
   /** Replace options instead of merging — default false */
   notMerge?: boolean
   /**
@@ -131,7 +199,14 @@ export interface ChartProps<TOption extends EChartsOption = EChartsOption> exten
   replaceMerge?: string | string[]
   /** Batch updates — default true */
   lazyUpdate?: boolean
-  /** Called once when the ECharts instance is created */
+  /** Silent reactive updates (no events/animation triggers) — default false */
+  silent?: boolean
+  /** Transition config for reactive updates — ECharts `setOption` `transition` */
+  transition?: SetOptionOpts['transition']
+  /**
+   * Called when an ECharts instance is created — at first init AND after a
+   * reactive-theme re-init. May run more than once.
+   */
   onInit?: (instance: ECharts) => void
   /**
    * Show the ECharts built-in loading overlay. Reactive — pass a signal read

@@ -240,15 +240,19 @@ ECharts cannot hot-swap a theme — it must dispose and recreate the instance. S
 remount the chart by keying it on the theme signal:
 
 ```tsx
-{() => {
-  const t = themeMode() // 'light' | 'dark'
-  return <Chart theme={t} options={() => option()} style="height: 300px" />
-}}
+<Chart
+  theme={() => (themeMode() === 'dark' ? 'dark' : null)}
+  options={() => option()}
+  style="height: 300px"
+/>
 ```
 
-Reading `themeMode()` inside the accessor remounts `<Chart>` when it flips, so
-the new instance is created with the new theme. (A built-in reactive theme swap
-is a tracked follow-up.)
+Passing `theme` as an ACCESSOR makes the swap reactive: a flip disposes and
+re-creates the instance with the current option, group, and event handlers
+preserved (ECharts has no in-place theme swap — dispose + re-init is the
+mechanism, exactly what vue-echarts does). A plain string/object theme stays
+static. The old remount-by-keying workaround still works but is no longer
+needed.
 
 ## `useChart`
 
