@@ -3548,6 +3548,14 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // dispatcher). Unlocks the whole ui-system (rocketstyle over Element).
   if (tag === 'Element') return emitKotlinJsx(elementToStack(e), indent)
 
+  // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
+  // compile-time-resolved; dark mode is a system read). Render children directly
+  // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
+  if (tag === 'PyreonUI' || tag === 'PyreonUIProvider') {
+    const p = ' '.repeat(indent + 2)
+    return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+  }
+
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
   // synthetic `style` attr, then re-enter the dispatch; the inline-style
   // connector (emitKotlinLayoutModifier → styleToNativeModifiers) lowers it

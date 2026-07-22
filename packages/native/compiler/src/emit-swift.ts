@@ -4209,6 +4209,16 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // ui-system (the 67 ui-components = rocketstyle over Element) lower.
   if (tag === 'Element') return emitSwiftJsx(elementToStack(e), indent)
 
+  // @pyreon/ui-core `<PyreonUI>` (+ its provider alias) is a TRANSPARENT wrapper
+  // on native: the theme is compile-time-resolved (theme-native parses the
+  // `defineTheme`), and dark mode is a system read (`useColorScheme` →
+  // @Environment(\.colorScheme)) — so the provider carries no runtime context.
+  // Render its children directly (mirror the jsx-fragment `Group {…}`).
+  if (tag === 'PyreonUI' || tag === 'PyreonUIProvider') {
+    const p = ' '.repeat(indent + 2)
+    return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+  }
+
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
   // as a synthetic `style` attr, then re-enter the dispatch. The whole
   // inline-style connector (emitSwiftLayoutModifiers → styleToNativeModifiers)
