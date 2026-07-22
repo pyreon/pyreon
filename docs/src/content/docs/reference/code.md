@@ -19,7 +19,7 @@ Reactive code editor for Pyreon built on CodeMirror 6 — the core editor is ~13
 - bindEditorToSignal — two-way binding with built-in loop prevention
 - 19 language grammars via loadLanguage (lazy-loaded)
 - Canvas-based minimapExtension for code overview
-- Built on CodeMirror 6 (~250KB vs Monaco ~2.5MB)
+- Built on CodeMirror 6 — measured core ~138KB gz vs Monaco ~940KB gz ESM core (~7x smaller gzipped)
 
 ## Complete example
 
@@ -88,9 +88,10 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 | [`createEditor`](#createeditor) | function | Create a reactive editor instance. |
 | [`bindEditorToSignal`](#bindeditortosignal) | function | Two-way binding between an editor instance and an external Signal&lt;T&gt; (or SignalLike&lt;T&gt;). |
 | [`CodeEditor`](#codeeditor) | component | Mount component for a `createEditor` instance. |
-| [`DiffEditor`](#diffeditor) | component | Side-by-side diff editor. |
+| [`DiffEditor`](#diffeditor) | component | Diff editor over @codemirror/merge. |
 | [`createTabbedEditor`](#createtabbededitor) | function | Create a reactive multi-file (tabbed) editor instance. |
 | [`TabbedEditor`](#tabbededitor) | component | Mount component for a `createTabbedEditor` instance. |
+| [`openSearchPanel`](#opensearchpanel) | function | Open the find/replace panel on a mounted editor programmatically. |
 | [`loadLanguage`](#loadlanguage) | function | Lazy-load a language grammar and return its CodeMirror `Extension`. |
 | [`minimapExtension`](#minimapextension) | function | CodeMirror extension that renders a canvas-based code overview minimap. |
 | [`useEditorSignal`](#useeditorsignal) | function | Component hook that two-way-binds an editor to a signal WITH automatic cleanup. |
@@ -105,7 +106,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 (config: EditorConfig) => EditorInstance
 ```
 
-Create a reactive editor instance. `editor.value` is a writable Signal&lt;string&gt; — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, onChange, onError (mount failures route here instead of an unhandled rejection), and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`.
+Create a reactive editor instance. `editor.value` is a writable Signal&lt;string&gt; — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, readOnly (blocks user-input transactions, cursor stays), editable (live `EditorView.editable` — `false` removes contenteditable entirely, a pure display surface; both are live signals on the instance), search (`false` omits the Mod-F keymap + selection-match highlighting; `openSearchPanel(editor)` is the programmatic escape hatch), onChange, onError (mount failures route here instead of an unhandled rejection), and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`.
 
 **Example**
 
@@ -181,13 +182,17 @@ const binding = bindEditorToSignal({
 (props: CodeEditorProps) => VNodeChild
 ```
 
-Mount component for a `createEditor` instance. Accepts `instance`, `style`, `class`, and passes through to a container div. Auto-mounts the CodeMirror view on render and cleans up on unmount.
+Mount component for a `createEditor` instance. Accepts `instance`, `style`, `class`, and passes through to a container div. Auto-mounts the CodeMirror view on render. Lifecycle is USER-OWNED — `<CodeEditor>` does NOT auto-dispose on unmount (the instance may be remounted, e.g. by `<TabbedEditor>` or a route revisit); call `editor.dispose()` yourself when the instance is done for good.
 
 **Example**
 
 ```tsx
 <CodeEditor instance={editor} style="height: 400px" class="my-editor" />
 ```
+
+**Common mistakes**
+
+- Expecting &lt;CodeEditor&gt; to dispose the instance on unmount — it does NOT (the instance is user-owned and may be remounted, e.g. by &lt;TabbedEditor&gt; or a route revisit). Call editor.dispose() from your own cleanup (onUnmount) when the instance is done for good, or the CodeMirror view leaks.
 
 **See also:** `createEditor` · `DiffEditor` · `TabbedEditor`
 
@@ -199,12 +204,14 @@ Mount component for a `createEditor` instance. Accepts `instance`, `style`, `cla
 (props: DiffEditorProps) => VNodeChild
 ```
 
-Side-by-side diff editor. Accepts `original` and `modified` strings plus optional `language` and `theme`. Renders two CodeMirror instances with unified diff highlighting via @codemirror/merge.
+Diff editor over @codemirror/merge. Accepts `original` and `modified` (strings OR Signal&lt;string&gt; — signal props update the diff reactively) plus optional `language`, `theme`, `readOnly` (default true), and `inline`. Default renders a side-by-side MergeView (two panes); `inline: true` renders a UNIFIED view — one editor showing the modified doc with the original as deleted-chunk widgets (per-chunk accept/reject controls appear when `readOnly` is false).
 
 **Example**
 
 ```tsx
 <DiffEditor original="old code" modified="new code" language="typescript" />
+// unified (inline) view — one pane, original shown as deleted chunks:
+<DiffEditor original={originalSig} modified={modifiedSig} inline />
 ```
 
 **See also:** `CodeEditor` · `TabbedEditor`
@@ -265,6 +272,29 @@ const tabbed = createTabbedEditor({ tabs: [{ name: 'a.ts', value: 'export {}' }]
 - Passing `tabs={[…]}` — there is no `tabs` prop; pass a `createTabbedEditor` instance via `instance`.
 
 **See also:** `createTabbedEditor` · `CodeEditor` · `DiffEditor`
+
+---
+
+### openSearchPanel `function`
+
+```ts
+(instance: EditorInstance) => boolean
+```
+
+Open the find/replace panel on a mounted editor programmatically. Works even when the editor was created with `search: false` (which only omits the Mod-F keymap + selection-match highlighting) — the deliberate escape hatch for apps that own their find-UI trigger. Returns `true` when the panel opened; pre-mount there is no view to host the panel, so the call is dropped with a dev warning and returns `false`.
+
+**Example**
+
+```tsx
+const editor = createEditor({ value: code, search: false })
+<button onClick={() => openSearchPanel(editor)}>Find…</button>
+```
+
+**Common mistakes**
+
+- Calling it before &lt;CodeEditor&gt; has mounted — the view is created by mount() after an async grammar load, so a pre-mount call is dropped (dev warning, returns false). Trigger it from a user event or effect(() =&gt; &#123; if (editor.view()) … &#125;).
+
+**See also:** `createEditor`
 
 ---
 
@@ -392,5 +422,9 @@ const extensions = [darkTheme /* , ...other CM extensions */]
 > **Two-way binding:** For external signal &lt;-&gt; editor synchronization, use `bindEditorToSignal` — it handles loop prevention, format-on-input races, and parse error recovery. Hand-rolling the flag pattern is the #1 source of bugs.
 
 > **Bundle size:** Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is ~138 KB gz (~416 KB min) — at parity with @uiw/react-codemirror (~129 KB gz), both wrap the same CM6. Monaco's ESM core is ~940 KB gz (~3.6 MB min, workers/CSS excluded) — @pyreon/code is ~7x smaller gzipped. Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.
+
+> **Third-party themes:** EditorTheme is `'light' | 'dark' | Extension` and resolveTheme passes a custom Extension through unchanged — so any `@uiw/codemirror-theme-*` package (dracula, github, tokyo-night, … an instant ~35-theme gallery) is a plain CM6 Extension that drops into `theme:` directly: `createEditor({ theme: dracula })`. Verified against a real @uiw theme package in the browser suite.
+
+> **Lifecycle is user-owned:** `<CodeEditor>` does NOT auto-dispose the instance on unmount — the instance is user-owned and may be remounted (TabbedEditor, route revisits). Call `editor.dispose()` yourself when the instance is done for good.
 
 > **ruby / shell grammars:** `ruby` and `shell` highlighting come from `@codemirror/legacy-modes` (an optionalDependency). It installs by default; if your package manager skips optional deps, those two fall back to plain-text (empty extension) rather than throwing.

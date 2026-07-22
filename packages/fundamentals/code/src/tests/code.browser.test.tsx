@@ -1,11 +1,22 @@
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
+import { dracula } from '@uiw/codemirror-theme-dracula'
 import { afterEach, describe, expect, it } from 'vitest'
 import { bindEditorToSignal } from '../bind-signal'
 import { CodeEditor } from '../components/code-editor'
 import { DiffEditor } from '../components/diff-editor'
-import { createEditor } from '../editor'
+import { createEditor, openSearchPanel } from '../editor'
+
+// Poll until `pred` is truthy — DiffEditor / createEditor lazy-load language
+// grammars asynchronously, so a bare flush() can race the dynamic import.
+async function until(pred: () => boolean, ms = 3000): Promise<void> {
+  const start = Date.now()
+  while (!pred()) {
+    if (Date.now() - start > ms) throw new Error('until(): timed out')
+    await new Promise((r) => setTimeout(r, 20))
+  }
+}
 
 // Real-Chromium smoke for @pyreon/code.
 //
@@ -483,5 +494,223 @@ describe('code editor in real browser', () => {
 
     // If the in-flight build leaked, the detached node would now hold a view.
     expect(el?.querySelector('.cm-editor')).toBeNull()
+  })
+})
+
+// ── DiffEditorProps.inline — unified merge view ─────────────────────────────
+//
+// `inline` was typed-but-unimplemented: the prop existed on DiffEditorProps
+// but the component never read it, so `inline: true` silently rendered the
+// side-by-side MergeView. It now builds @codemirror/merge's unifiedMergeView:
+// ONE editor (the modified doc) with the original shown as .cm-deletedChunk
+// widgets — the real DOM discriminator vs side-by-side's .cm-mergeView with
+// TWO .cm-editor panes.
+
+describe('DiffEditor inline (unified) mode', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('inline: true renders a UNIFIED view — one .cm-editor with a .cm-deletedChunk, no .cm-mergeView', async () => {
+    const { container, unmount } = mountInBrowser(
+      h(DiffEditor, {
+        original: 'const a = 1\nshared line',
+        modified: 'const a = 2\nshared line',
+        inline: true,
+        style: 'height: 200px',
+      }),
+    )
+    await until(() => container.querySelector('.cm-editor') !== null)
+
+    // Unified = exactly ONE editor (side-by-side renders two).
+    expect(container.querySelectorAll('.cm-editor').length).toBe(1)
+    // No side-by-side MergeView wrapper.
+    expect(container.querySelector('.cm-mergeView')).toBeNull()
+    // The original's changed line renders as a deleted-chunk widget.
+    const deleted = container.querySelector('.cm-deletedChunk')
+    expect(deleted).not.toBeNull()
+    expect(deleted?.textContent).toContain('const a = 1')
+    // The editor doc is the MODIFIED side.
+    expect(container.querySelector('.cm-content')?.textContent).toContain('const a = 2')
+    unmount()
+  })
+
+  it('default (side-by-side) renders TWO editors inside .cm-mergeView', async () => {
+    const { container, unmount } = mountInBrowser(
+      h(DiffEditor, {
+        original: 'const a = 1',
+        modified: 'const a = 2',
+        style: 'height: 200px',
+      }),
+    )
+    await until(() => container.querySelectorAll('.cm-editor').length === 2)
+    expect(container.querySelector('.cm-mergeView')).not.toBeNull()
+    unmount()
+  })
+
+  it('inline diff reacts to modified + original Signal updates', async () => {
+    const original = signal('left 1')
+    const modified = signal('right 1')
+    const { container, unmount } = mountInBrowser(
+      h(DiffEditor, { original, modified, inline: true, style: 'height: 200px' }),
+    )
+    await until(() => container.querySelector('.cm-editor') !== null)
+
+    modified.set('right 2')
+    await flush()
+    expect(container.querySelector('.cm-content')?.textContent).toContain('right 2')
+
+    original.set('left 2')
+    await flush()
+    // The compared-against doc updated → the deleted-chunk widget re-renders.
+    await until(
+      () => container.querySelector('.cm-deletedChunk')?.textContent?.includes('left 2') === true,
+    )
+    unmount()
+  })
+})
+
+// ── search config flag + openSearchPanel(editor) ────────────────────────────
+//
+// `search` was destructured to `_enableSearch` and never read — searchKeymap
+// shipped unconditionally, so `search: false` was a silent no-op. It now
+// gates the search keymap (+ selection-match highlighting); the programmatic
+// `openSearchPanel(editor)` helper is the deliberate escape hatch that works
+// regardless of the flag.
+
+describe('search flag + openSearchPanel', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  // Mod-f differs by platform (Ctrl on Linux/Windows, Cmd on macOS) — fire
+  // both variants so the spec is platform-independent. In the search-enabled
+  // control, one of them opens the panel; with search:false, neither may.
+  function pressModF(container: Element): void {
+    const content = container.querySelector('.cm-content') as HTMLElement
+    content.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
+    content.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true }))
+  }
+
+  it('default (search: true) — Mod-f opens the search panel (control spec)', async () => {
+    const editor = createEditor({ value: 'findable text' })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await until(() => container.querySelector('.cm-editor') !== null)
+
+    pressModF(container)
+    await flush()
+    expect(container.querySelector('.cm-search')).not.toBeNull()
+    unmount()
+  })
+
+  it('search: false — Mod-f does NOT open a search panel', async () => {
+    const editor = createEditor({ value: 'findable text', search: false })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await until(() => container.querySelector('.cm-editor') !== null)
+
+    pressModF(container)
+    await flush()
+    expect(container.querySelector('.cm-search')).toBeNull()
+    unmount()
+  })
+
+  it('search: false — openSearchPanel(editor) still opens the panel programmatically', async () => {
+    const editor = createEditor({ value: 'findable text', search: false })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await until(() => container.querySelector('.cm-editor') !== null)
+
+    expect(openSearchPanel(editor)).toBe(true)
+    await flush()
+    expect(container.querySelector('.cm-search')).not.toBeNull()
+    unmount()
+  })
+
+  it('openSearchPanel before the view exists WARNS + returns false (no crash)', () => {
+    const editor = createEditor({ value: 'x' }) // never mounted
+    const warns: string[] = []
+    const orig = console.warn
+    console.warn = (...args: unknown[]) => {
+      warns.push(String(args[0]))
+    }
+    try {
+      expect(openSearchPanel(editor)).toBe(false)
+    } finally {
+      console.warn = orig
+    }
+    expect(warns.some((w) => w.includes('openSearchPanel'))).toBe(true)
+  })
+})
+
+// ── editable config (EditorView.editable) vs readOnly ───────────────────────
+//
+// The main editor only wired EditorState.readOnly; `editable` — the
+// contenteditable on/off axis DiffEditor already sets — was missing entirely.
+// It is now a config flag + live signal via a Compartment (like readOnly).
+// The DOM discriminator: EditorView.editable controls the content DOM's
+// `contenteditable` attribute.
+
+describe('editable config', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('default — the content DOM is contenteditable', async () => {
+    const editor = createEditor({ value: 'x' })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await until(() => container.querySelector('.cm-content') !== null)
+    expect(container.querySelector('.cm-content')?.getAttribute('contenteditable')).toBe('true')
+    unmount()
+  })
+
+  it('editable: false removes contenteditable; editor.editable.set(true) restores it live', async () => {
+    const editor = createEditor({ value: 'display only', editable: false })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await until(() => container.querySelector('.cm-content') !== null)
+
+    const content = container.querySelector('.cm-content')
+    expect(content?.getAttribute('contenteditable')).toBe('false')
+
+    // Live reconfiguration through the signal (Compartment-backed).
+    editor.editable.set(true)
+    await flush()
+    expect(content?.getAttribute('contenteditable')).toBe('true')
+    unmount()
+  })
+})
+
+// ── Theme interop — third-party @uiw/codemirror-theme-* extensions ──────────
+//
+// EditorTheme = 'light' | 'dark' | Extension, and resolveTheme passes a
+// custom Extension through unchanged — so any @uiw/codemirror-theme-*
+// package drops into `theme:` directly. This locks the documented claim
+// against a REAL third-party theme package (dracula), not a hand-built stub.
+
+describe('third-party theme interop', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('an @uiw/codemirror-theme-* Extension passed as theme: styles the editor', async () => {
+    const editor = createEditor({ value: 'const x = 1', theme: dracula })
+    const { container, unmount } = mountInBrowser(
+      h(CodeEditor, { instance: editor, style: 'height: 200px' }),
+    )
+    await until(() => container.querySelector('.cm-editor') !== null)
+
+    const cm = container.querySelector('.cm-editor') as HTMLElement
+    // Dracula's background is #282a36 — proves the third-party theme's CSS
+    // actually applied (not just "didn't crash").
+    expect(getComputedStyle(cm).backgroundColor).toBe('rgb(40, 42, 54)')
+    unmount()
   })
 })

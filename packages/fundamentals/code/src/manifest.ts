@@ -69,7 +69,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
     'bindEditorToSignal — two-way binding with built-in loop prevention',
     '19 language grammars via loadLanguage (lazy-loaded)',
     'Canvas-based minimapExtension for code overview',
-    'Built on CodeMirror 6 (~250KB vs Monaco ~2.5MB)',
+    'Built on CodeMirror 6 — measured core ~138KB gz vs Monaco ~940KB gz ESM core (~7x smaller gzipped)',
   ],
   api: [
     {
@@ -78,7 +78,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
       signature:
         '(config: EditorConfig) => EditorInstance',
       summary:
-        'Create a reactive editor instance. `editor.value` is a writable Signal<string> — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, onChange, onError (mount failures route here instead of an unhandled rejection), and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`.',
+        'Create a reactive editor instance. `editor.value` is a writable Signal<string> — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, readOnly (blocks user-input transactions, cursor stays), editable (live `EditorView.editable` — `false` removes contenteditable entirely, a pure display surface; both are live signals on the instance), search (`false` omits the Mod-F keymap + selection-match highlighting; `openSearchPanel(editor)` is the programmatic escape hatch), onChange, onError (mount failures route here instead of an unhandled rejection), and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`.',
       example: `const editor = createEditor({
   value: '// hello',
   language: 'typescript',
@@ -135,8 +135,11 @@ const binding = bindEditorToSignal({
       kind: 'component',
       signature: '(props: CodeEditorProps) => VNodeChild',
       summary:
-        'Mount component for a `createEditor` instance. Accepts `instance`, `style`, `class`, and passes through to a container div. Auto-mounts the CodeMirror view on render and cleans up on unmount.',
+        'Mount component for a `createEditor` instance. Accepts `instance`, `style`, `class`, and passes through to a container div. Auto-mounts the CodeMirror view on render. Lifecycle is USER-OWNED — `<CodeEditor>` does NOT auto-dispose on unmount (the instance may be remounted, e.g. by `<TabbedEditor>` or a route revisit); call `editor.dispose()` yourself when the instance is done for good.',
       example: `<CodeEditor instance={editor} style="height: 400px" class="my-editor" />`,
+      mistakes: [
+        'Expecting <CodeEditor> to dispose the instance on unmount — it does NOT (the instance is user-owned and may be remounted, e.g. by <TabbedEditor> or a route revisit). Call editor.dispose() from your own cleanup (onUnmount) when the instance is done for good, or the CodeMirror view leaks.',
+      ],
       seeAlso: ['createEditor', 'DiffEditor', 'TabbedEditor'],
     },
     {
@@ -144,8 +147,10 @@ const binding = bindEditorToSignal({
       kind: 'component',
       signature: '(props: DiffEditorProps) => VNodeChild',
       summary:
-        'Side-by-side diff editor. Accepts `original` and `modified` strings plus optional `language` and `theme`. Renders two CodeMirror instances with unified diff highlighting via @codemirror/merge.',
-      example: `<DiffEditor original="old code" modified="new code" language="typescript" />`,
+        'Diff editor over @codemirror/merge. Accepts `original` and `modified` (strings OR Signal<string> — signal props update the diff reactively) plus optional `language`, `theme`, `readOnly` (default true), and `inline`. Default renders a side-by-side MergeView (two panes); `inline: true` renders a UNIFIED view — one editor showing the modified doc with the original as deleted-chunk widgets (per-chunk accept/reject controls appear when `readOnly` is false).',
+      example: `<DiffEditor original="old code" modified="new code" language="typescript" />
+// unified (inline) view — one pane, original shown as deleted chunks:
+<DiffEditor original={originalSig} modified={modifiedSig} inline />`,
       seeAlso: ['CodeEditor', 'TabbedEditor'],
     },
     {
@@ -184,6 +189,19 @@ tabbed.activeTab()   // Computed<Tab | null>
         'Passing `tabs={[…]}` — there is no `tabs` prop; pass a `createTabbedEditor` instance via `instance`.',
       ],
       seeAlso: ['createTabbedEditor', 'CodeEditor', 'DiffEditor'],
+    },
+    {
+      name: 'openSearchPanel',
+      kind: 'function',
+      signature: '(instance: EditorInstance) => boolean',
+      summary:
+        'Open the find/replace panel on a mounted editor programmatically. Works even when the editor was created with `search: false` (which only omits the Mod-F keymap + selection-match highlighting) — the deliberate escape hatch for apps that own their find-UI trigger. Returns `true` when the panel opened; pre-mount there is no view to host the panel, so the call is dropped with a dev warning and returns `false`.',
+      example: `const editor = createEditor({ value: code, search: false })
+<button onClick={() => openSearchPanel(editor)}>Find…</button>`,
+      mistakes: [
+        'Calling it before <CodeEditor> has mounted — the view is created by mount() after an async grammar load, so a pre-mount call is dropped (dev warning, returns false). Trigger it from a user event or effect(() => { if (editor.view()) … }).',
+      ],
+      seeAlso: ['createEditor'],
     },
     {
       name: 'loadLanguage',
@@ -267,6 +285,14 @@ const extensions = [darkTheme /* , ...other CM extensions */]`,
     {
       label: 'Bundle size',
       note: 'Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is ~138 KB gz (~416 KB min) — at parity with @uiw/react-codemirror (~129 KB gz), both wrap the same CM6. Monaco\'s ESM core is ~940 KB gz (~3.6 MB min, workers/CSS excluded) — @pyreon/code is ~7x smaller gzipped. Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.',
+    },
+    {
+      label: 'Third-party themes',
+      note: 'EditorTheme is `\'light\' | \'dark\' | Extension` and resolveTheme passes a custom Extension through unchanged — so any `@uiw/codemirror-theme-*` package (dracula, github, tokyo-night, … an instant ~35-theme gallery) is a plain CM6 Extension that drops into `theme:` directly: `createEditor({ theme: dracula })`. Verified against a real @uiw theme package in the browser suite.',
+    },
+    {
+      label: 'Lifecycle is user-owned',
+      note: '`<CodeEditor>` does NOT auto-dispose the instance on unmount — the instance is user-owned and may be remounted (TabbedEditor, route revisits). Call `editor.dispose()` yourself when the instance is done for good.',
     },
     {
       label: 'ruby / shell grammars',
