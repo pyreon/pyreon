@@ -144,6 +144,14 @@ export interface GateResult {
      * Why the gate was skipped (only meaningful when `skipped: true`).
      */
     skipReason?: string | undefined
+    /**
+     * `true` when the gate was skipped because its file scan matched
+     * NOTHING (`scanned: 0`) — distinct from a user `--skip` or a
+     * missing prerequisite. The renderer surfaces these prominently:
+     * a gate that inspected nothing must not read as clean, and an
+     * unexpected empty scan usually means a workspace-layout problem.
+     */
+    emptyScan?: boolean | undefined
   }
 }
 
@@ -196,8 +204,40 @@ export interface DoctorReport {
     warnings: number
     infos: number
   }
+  /**
+   * `true` when at least one non-advisory category was actually
+   * measured (a gate ran AND scanned something). When `false`, the
+   * numeric `score` is meaningless — every gate skipped or matched no
+   * files — and consumers must NOT read the report as a clean bill of
+   * health: the renderer shows "not measured" instead of the score,
+   * and `--ci` fails (an enforcement run that measured nothing is a
+   * misconfiguration, not a pass). This closes the deepest layer of
+   * the upstream false-green report.
+   */
+  measured: boolean
   /** Top-level wall-clock — sum of gates' elapsedMs (parallel sum, not max) */
   elapsedMs: number
   /** ISO timestamp of when the report was produced (for diffing across runs) */
   timestamp: string
+  /**
+   * The workspace scope the file-scanning gates audited — resolved
+   * once by the orchestrator from the repo's own `workspaces` globs
+   * (or `--roots`). Surfaced so both the human header and `--json`
+   * consumers can see WHAT was scanned, not just the verdict: a wrong
+   * scope must be visible at a glance (upstream false-green report).
+   */
+  workspace?:
+    | {
+        /** Absolute root the discovery anchored on. */
+        repoRoot: string
+        /** Where the root globs came from. */
+        source: 'flag' | 'workspaces' | 'pnpm-workspace' | 'single-package'
+        /** The root globs as written in config / flag. */
+        globs: string[]
+        /** Exclusion globs applied (`pyreon.doctor.excludeRoots`). */
+        excluded: string[]
+        /** Number of resolved package roots. */
+        packageCount: number
+      }
+    | undefined
 }

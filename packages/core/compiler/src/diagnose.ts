@@ -868,6 +868,29 @@ const B = (props) => <Heading label={props.title}>{props.title}</Heading>`,
         'Component ATTRS and DOM-element children were always live — only the component-CHILD position was frozen. Plain (non-props) stable refs are still emitted bare deliberately: structural children consumers (kinetic-style VNode iteration) rely on `resolveChildren` for function children.',
     }),
   },
+  {
+    // `pyreon doctor` (0.50+) resolves its scan scope from the workspace's
+    // OWN `workspaces` globs and refuses to read an empty scan as a clean
+    // pass. Users hitting this message have a layout the resolver could
+    // not see (no `workspaces` field, roots outside the declared globs)
+    // or ran a Pyreon-monorepo-only gate in a consumer repo.
+    pattern:
+      /matched no (source|test) files under \d+ package root|doctor --ci measured nothing|No monorepo root found/i,
+    diagnose: () => ({
+      cause:
+        "A `pyreon doctor` file-scanning gate resolved the workspace's package roots (from `package.json` `workspaces` / `pnpm-workspace.yaml`, or the nearest package dir) and found NO files to audit. The doctor deliberately reports this as a skipped gate + warning instead of a clean pass — pre-0.50 the same situation silently scored 100/100 Grade A while inspecting nothing (a false green).",
+      fix: 'Check that the repo root `package.json` declares every source root in `workspaces` (e.g. `["apps/*", "packages/*", "modules/*"]`). For a non-workspace layout, pass the roots explicitly: `pyreon doctor --roots src,apps/*`. To exclude demo/docs workspaces from health grading, add `pyreon.doctor.excludeRoots` globs to the root package.json.',
+      fixCode: `// package.json (repo root)
+{
+  "workspaces": ["apps/*", "packages/*", "modules/*"],
+  "pyreon": { "doctor": { "excludeRoots": ["examples/*"] } }
+}
+// or, for a bare layout with no workspaces:
+//   pyreon doctor --roots src`,
+      related:
+        'The per-gate scan counts are printed in the report header (`Scanned: react-patterns 1050 · …`) and in `--json` under `gates[].meta.scanned` + `workspace` — verify the scope there. `--ci` exits non-zero when NOTHING was measured, by design.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

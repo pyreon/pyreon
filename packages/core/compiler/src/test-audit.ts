@@ -332,17 +332,53 @@ function classifyRisk(entry: Omit<TestAuditEntry, 'risk'>): AuditRisk {
 // Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function auditTestEnvironment(startDir: string): TestAuditResult {
+export interface TestAuditOptions {
+  /**
+   * Explicit package roots to scan for `*.test.{ts,tsx}` files
+   * (absolute paths). When given, they REPLACE the default
+   * `<root>/packages` walk — this is how `pyreon doctor` audits a
+   * foreign workspace's own declared roots (`apps/*`, `modules/*`, …)
+   * instead of assuming the Pyreon framework repo's layout, where the
+   * hardcoded `packages/` walk scanned ~0 of a multi-root workspace's
+   * tests while still reporting clean (upstream false-green report).
+   */
+  roots?: string[] | undefined
+  /**
+   * Root used for `relPath` computation when `roots` is given.
+   * Defaults to `startDir`.
+   */
+  rootDir?: string | undefined
+}
+
+export function auditTestEnvironment(
+  startDir: string,
+  options: TestAuditOptions = {},
+): TestAuditResult {
   // Caller-supplied `startDir` (no default) — `runtime-dom` transitively
   // pulls this file via the `@pyreon/compiler` JSX runtime entry, and its
   // tsconfig narrows `process` to `{ env: ... }` only. Calling
   // `process.cwd()` here breaks that typecheck. MCP / CLI both have full
   // node types; let them resolve cwd at the call site.
-  const root = findMonorepoRoot(startDir)
-  if (!root) return { root: null, entries: [], totalScanned: 0 }
-
+  let root: string
   const files: string[] = []
-  walkTestFiles(join(root, 'packages'), files)
+  if (options.roots && options.roots.length > 0) {
+    root = resolve(options.rootDir ?? startDir)
+    const seen = new Set<string>()
+    for (const r of options.roots) {
+      const collected: string[] = []
+      walkTestFiles(r, collected)
+      for (const f of collected) {
+        if (seen.has(f)) continue
+        seen.add(f)
+        files.push(f)
+      }
+    }
+  } else {
+    const found = findMonorepoRoot(startDir)
+    if (!found) return { root: null, entries: [], totalScanned: 0 }
+    root = found
+    walkTestFiles(join(root, 'packages'), files)
+  }
 
   const entries: TestAuditEntry[] = []
   for (const path of files) {

@@ -57,6 +57,44 @@ describe('auditTestEnvironment — synthetic fixtures', () => {
     }
   })
 
+  it('options.roots replaces the packages/ walk (multi-root workspaces — upstream doctor report)', () => {
+    // The default path walks <root>/packages ONLY, which misses every
+    // other root of a multi-root workspace (`apps/*`, `modules/*`, …)
+    // — the doctor passes the workspace's own package dirs here.
+    const ws = mkdtempSync(join(tmpdir(), 'pyreon-audit-roots-'))
+    try {
+      const write = (relPath: string, body: string) => {
+        const full = join(ws, relPath)
+        mkdirSync(dirname(full), { recursive: true })
+        writeFileSync(full, body)
+      }
+      write(
+        'apps/app/src/a.test.ts',
+        `const vnode = { type: 'div', props: {}, children: [] }\nit('x', () => expect(vnode).toBeDefined())\n`,
+      )
+      write('modules/chart/src/b.test.ts', `it('y', () => expect(1).toBe(1))\n`)
+      // NOT in the passed roots — must not be scanned.
+      write('vendor/skip/src/c.test.ts', `it('z', () => expect(1).toBe(1))\n`)
+
+      const r = auditTestEnvironment(ws, {
+        roots: [join(ws, 'apps/app'), join(ws, 'modules/chart')],
+        rootDir: ws,
+      })
+      expect(r.root).toBe(ws)
+      expect(r.totalScanned).toBe(2)
+      const rels = r.entries.map((e) => e.relPath).sort()
+      expect(rels).toEqual(['apps/app/src/a.test.ts', 'modules/chart/src/b.test.ts'])
+      // relPath is computed against rootDir, and duplicate roots dedupe.
+      const dup = auditTestEnvironment(ws, {
+        roots: [join(ws, 'apps/app'), join(ws, 'apps/app')],
+        rootDir: ws,
+      })
+      expect(dup.totalScanned).toBe(1)
+    } finally {
+      rmSync(ws, { recursive: true, force: true })
+    }
+  })
+
   it('classifies a pure-mock test file as HIGH', () => {
     f.writeTest(
       'foo/src/tests/component.test.ts',

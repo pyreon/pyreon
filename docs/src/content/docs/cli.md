@@ -183,6 +183,12 @@ Each gate emits **findings** in a unified shape: a `category` (`correctness` / `
 A gate that throws is caught and recorded as a single `<gate>/gate-failed` **error** finding rather than rejecting the whole run. You always get a complete report — a broken gate surfaces as one finding instead of swallowing the other eleven.
 :::
 
+### Scan scope — workspace roots
+
+The file-scanning gates (`react-patterns`, `pyreon-patterns`, `lint`, `audit-tests`) resolve their scan scope from the workspace's **own configuration** — the root `package.json` `workspaces` globs or `pnpm-workspace.yaml` — discovered by walking up from the cwd. Multi-root layouts (`apps/* + packages/* + modules/*`) are fully covered, and results are identical from any directory in the repo; a repo with no workspaces is treated as a single package. Per package, `src/**` is scanned when present, always minus tests / fixtures / `.d.ts` (detector fixtures deliberately contain anti-patterns — scoring them would produce a false grade).
+
+The report header shows what was scanned (`Scope: 4 package root(s) from workspaces (…)` plus per-gate file counts), and a gate that matches **no** files is skipped with a warning instead of reading as a clean pass — its category is "not measured" and never contributes a free 100. If nothing at all was measured, the score renders as `—` and `--ci` exits non-zero. Escape hatches: `--roots <glob,...>` overrides discovery for non-standard layouts, and `pyreon.doctor.excludeRoots` globs in the root package.json exclude demo/docs workspaces from grading.
+
 ### Gates
 
 There are **14 gates** total: 12 fast (run by default) and 2 slow (opt in with `--full`).

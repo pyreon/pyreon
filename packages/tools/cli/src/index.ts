@@ -59,6 +59,9 @@ function printUsage(): void {
     --gha                            Shortcut for --format=gha (GitHub Actions annotations).
     --ci                             Exit non-zero on error findings only.
     --audit-min-risk high|medium|low Minimum risk for test-env audit (default: medium).
+    --roots <globs>                  Scan roots for file gates (comma-separated globs,
+                                     relative to cwd). Default: the workspace's own
+                                     package.json workspaces / pnpm-workspace.yaml globs.
 
   doctor gates:
     Fast: ${FAST_GATES.join(', ')}
@@ -216,6 +219,10 @@ async function main(): Promise<void> {
       full: args.includes('--full'),
       only: parseGateList(getFlagValue('--only')),
       skip: parseGateList(getFlagValue('--skip')),
+      roots: getFlagValue('--roots')
+        ?.split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
       auditTests: args.includes('--audit-tests'),
       auditMinRisk: parseMinRisk(getFlagValue('--audit-min-risk')),
       checkIslands: args.includes('--check-islands'),

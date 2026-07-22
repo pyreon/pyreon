@@ -20,6 +20,35 @@ function defaults(cwd: string): DoctorOptions {
   return { fix: false, json: false, ci: false, cwd }
 }
 
+/**
+ * Declare a Pyreon-shaped workspace in the fixture: root package.json
+ * with two-level `packages` workspace globs + the examples exclusion the
+ * real repo carries in `pyreon.doctor.excludeRoots`. Post-workspace-roots-fix
+ * the doctor's scan scope comes from THIS config (not a hardcoded
+ * `packages/<cat>/<pkg>/src` shape), so fixtures must declare it like a
+ * real repo does.
+ */
+function writeWorkspaceRoot(cwd: string): void {
+  writeFile(
+    cwd,
+    'package.json',
+    JSON.stringify({
+      name: 'fixture-repo',
+      private: true,
+      workspaces: ['packages/*/*'],
+      pyreon: { doctor: { excludeRoots: ['examples/*'] } },
+    }),
+  )
+}
+
+function writePkg(cwd: string, relDir: string): void {
+  writeFile(
+    cwd,
+    `${relDir}/package.json`,
+    JSON.stringify({ name: relDir.split('/').pop(), private: true }),
+  )
+}
+
 describe('doctor() end-to-end', () => {
   // Use `--only react-patterns` for the empty-dir tests — most other
   // gates walk up the dir tree looking for `packages/` (audit-tests)
@@ -61,8 +90,15 @@ describe('doctor() end-to-end', () => {
     expect(Array.isArray(parsed.gates)).toBe(true)
   })
 
-  it('--ci returns 0 when no error findings', async () => {
+  it('--ci returns 0 when no error findings (something WAS measured)', async () => {
     const cwd = makeTmpDir()
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/core/app')
+    writeFile(
+      cwd,
+      'packages/core/app/src/clean.ts',
+      `export const add = (a: number, b: number) => a + b\n`,
+    )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const exitCode = await doctor({
       ...defaults(cwd),
@@ -74,11 +110,36 @@ describe('doctor() end-to-end', () => {
     expect(exitCode).toBe(0)
   })
 
+  it('--ci returns non-zero when NOTHING was measured (empty-scan false green)', async () => {
+    // The upstream-reported bug: a repo layout the gates could not see
+    // scored 100/100 Grade A and --ci exited 0 — enforcement that
+    // measured nothing must FAIL, not pass (bisect-load-bearing).
+    const cwd = makeTmpDir()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitCode = await doctor({
+      ...defaults(cwd),
+      ci: true,
+      only: ['react-patterns'],
+    })
+    const errOut = err.mock.calls.map((c) => c[0]).join('\n')
+    log.mockRestore()
+    err.mockRestore()
+    fs.rmSync(cwd, { recursive: true, force: true })
+    expect(exitCode).toBeGreaterThan(0)
+    expect(errOut).toContain('measured nothing')
+  })
+
   it('flags React patterns when detected', async () => {
     const cwd = makeTmpDir()
-    // Must live under packages/<cat>/<pkg>/src/ — the doctor's
-    // OBJECTIVE scope (first-party published source only). A fixture
-    // at the repo-root `src/` is intentionally NOT audited.
+    // The scan scope comes from the fixture's OWN workspaces config —
+    // `packages/*/*` members only; examples/ is not a workspace member
+    // AND is excluded via `pyreon.doctor.excludeRoots` (both layers
+    // mirror the real repo). A fixture outside the declared roots is
+    // intentionally NOT audited.
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/core/app')
+    writePkg(cwd, 'packages/tools/react-compat')
     writeFile(
       cwd,
       'packages/core/app/src/App.tsx',
@@ -120,6 +181,13 @@ describe('doctor() end-to-end', () => {
 
   it('legacy --audit-tests maps to --only audit-tests', async () => {
     const cwd = makeTmpDir()
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/core/app')
+    writeFile(
+      cwd,
+      'packages/core/app/src/tests/x.test.ts',
+      `it('x', () => { expect(1).toBe(1) })\n`,
+    )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await doctor({
       ...defaults(cwd),
@@ -139,6 +207,13 @@ describe('doctor() end-to-end', () => {
 
   it('respects --format=gha for GitHub Actions output', async () => {
     const cwd = makeTmpDir()
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/core/app')
+    writeFile(
+      cwd,
+      'packages/core/app/src/clean.ts',
+      `export const ok = true\n`,
+    )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     await doctor({
       ...defaults(cwd),
@@ -150,5 +225,21 @@ describe('doctor() end-to-end', () => {
     fs.rmSync(cwd, { recursive: true, force: true })
 
     expect(out).toContain('::notice::pyreon doctor score:')
+  })
+
+  it('gha output warns (not notices a score) when nothing was measured', async () => {
+    const cwd = makeTmpDir()
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await doctor({
+      ...defaults(cwd),
+      format: 'gha',
+      only: ['react-patterns'],
+    })
+    const out = log.mock.calls.map((c) => c[0]).join('\n')
+    log.mockRestore()
+    fs.rmSync(cwd, { recursive: true, force: true })
+
+    expect(out).toContain('::warning::pyreon doctor measured nothing')
+    expect(out).not.toContain('::notice::pyreon doctor score:')
   })
 })
