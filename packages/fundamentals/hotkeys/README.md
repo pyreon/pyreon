@@ -70,13 +70,55 @@ interface HotkeyOptions {
   scope?: string                          // default: 'global'
   preventDefault?: boolean                // default: true
   stopPropagation?: boolean               // default: false
-  enableOnInputs?: boolean                // default: false
+  enableOnInputs?: boolean | InputKind[]  // default: false; ['input'] = selective
   description?: string                    // for help dialogs
   enabled?: boolean | (() => boolean)     // reactive — re-evaluated each fire
+  event?: 'keydown' | 'keyup'             // default: 'keydown'; keyup = act on release
+  ignoreRepeat?: boolean                  // default: false; true skips held-key auto-repeat
+  once?: boolean                          // default: false; fire once, auto-unregister
+  target?: EventTarget                    // default: window; element-scoped shortcuts
 }
 ```
 
 The `enabled` accessor lets the hotkey gate on any reactive condition (`enabled: () => !isLoading()`) without re-registering on every change.
+
+Shortcut strings accept a **comma-separated list** — `'ctrl+s, mod+p'` binds both to
+the handler and one unregister removes all (literal comma key: the `comma` alias).
+Sequences are keydown-only (`event: 'keyup'` on `'g t'` throws).
+
+## Pressed keys & trigger
+
+```ts
+import { getPressedKeys, isKeyPressed, trigger } from '@pyreon/hotkeys'
+
+const pressed = getPressedKeys()   // Signal<Set<string>> — lazy listeners, blur-cleared
+isKeyPressed('shift')              // non-reactive point read (aliases resolve)
+trigger('mod+s')                   // fire the bound handlers programmatically (→ count)
+trigger('ctrl+z', { scope: 'editor' }) // target a specific (even inactive) scope
+```
+
+## Performance
+
+Dispatch is **key-bucketed** (`Map<event.key, entries>`): a keystroke touches only the
+entries bound to that exact key, so the miss path — every non-shortcut keypress — is a
+single Map lookup **regardless of how many hotkeys are registered**.
+
+Head-to-head (`bun run bench:keys` — process-isolated, correctness-gated, median ns/op,
+Apple M3 Max; ns are machine-dependent, the RATIO is the signal):
+
+| op | pyreon | tinykeys | hotkeys-js | mousetrap |
+|---|---|---|---|---|
+| dispatch (hit, 12 bindings) | **109** | 965 | 1186 | 254 |
+| dispatch (miss) | **49** | 693 | 626 | 79 |
+| dispatch (miss, 48 bindings) | **43** | 1970 | 605 | 75 |
+| register + teardown ×12 | 4251 | 3889 | 12755 | 10311 |
+
+Pyreon is fastest on every dispatch row — and FLAT as the registry grows (48 bindings:
+~43ns vs tinykeys degrading ~3× to ~2µs). Register+teardown is a statistical tie with
+tinykeys (they trade places run-to-run; both ~3× ahead of hotkeys-js/mousetrap) — and
+tinykeys' register is a one-shot handler-map build with no incremental unbind. Fair
+framing: pyreon + hotkeys-js do MORE per event (scope + input-focus filtering) than
+tinykeys/mousetrap's bare matchers; full disclosure in the bench header.
 
 ## Shortcut syntax
 

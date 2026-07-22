@@ -42,17 +42,20 @@ export {
   enableScope,
   getActiveScopes,
   getHotkeyConflicts,
+  getPressedKeys,
   getRegisteredHotkeys,
+  isKeyPressed,
   registerHotkey,
+  trigger,
 } from './registry'
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
-export { formatCombo, matchesCombo, parseShortcut } from './parse'
+export { formatCombo, matchesCombo, parseShortcut, splitShortcutList } from './parse'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type { HotkeyEntry, HotkeyOptions, KeyCombo } from './types'
+export type { HotkeyEntry, HotkeyOptions, InputKind, KeyCombo } from './types'
 
 // ─── Testing ─────────────────────────────────────────────────────────────────
 
