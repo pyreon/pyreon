@@ -42,7 +42,6 @@ const DISPLAY_ALLOWLIST = new Set([
   'NumberInput',
   'PinInput',
   'Radio',
-  'RangeSlider',
   'SegmentedControl',
   'Switch',
   'Tabs',
