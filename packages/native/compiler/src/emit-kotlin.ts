@@ -44,6 +44,7 @@ import {
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
+import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
 import { coolgridToStack, colToStack, colHasExplicitSize } from './coolgrid-native'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
@@ -112,6 +113,7 @@ let _componentNames: Set<string> = new Set()
 let _styledComponents: Map<string, StyledComponentIR> = new Map()
 // `rocketstyle()({component})…` components — resolved per use-site (see emitKotlinJsx).
 let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
+let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
  * Mirror of emit-swift's `_componentPropsMap`. */
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
@@ -295,10 +297,12 @@ export function emitKotlin(
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
   styledComponents: StyledComponentIR[] = [],
   rocketstyleComponents: RocketstyleComponentIR[] = [],
+  attrsComponents: AttrsComponentIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
   _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
+  _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a `dbl(21)` call resolves as a
   // free-function call in ANY component.
@@ -436,6 +440,7 @@ export function emitKotlin(
   _componentNames = new Set()
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
+  _attrsComponents = new Map()
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
@@ -3547,12 +3552,12 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
   // @pyreon/elements `<Element>` → the canonical `<Stack>` (mirror of the Swift
   // dispatcher). Unlocks the whole ui-system (rocketstyle over Element).
-  if (tag === 'Element' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) return emitKotlinJsx(elementToStack(e), indent)
+  if (tag === 'Element' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) return emitKotlinJsx(elementToStack(e), indent)
 
   // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
   // compile-time-resolved; dark mode is a system read). Render children directly
   // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
-  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) {
+  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) {
     const p = ' '.repeat(indent + 2)
     return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
   }
@@ -3560,8 +3565,8 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →
   // an EQUAL-fill child (Modifier.weight(1f), valid in the Row scope; a
   // fractional `size` warns). Swift-dispatcher parity.
-  if ((tag === 'Container' || tag === 'Row') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) return emitKotlinJsx(coolgridToStack(e), indent)
-  if (tag === 'Col' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) {
+  if ((tag === 'Container' || tag === 'Row') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) return emitKotlinJsx(coolgridToStack(e), indent)
+  if (tag === 'Col' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) {
     if (colHasExplicitSize(e)) {
       _emitWarnings.push(
         `<Col size=…>: a fractional column span lowers as an EQUAL column on native ` +
@@ -3614,6 +3619,19 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       { ...e, tag: rkt.tag, attrs: [{ kind: 'attr', name: 'style', value: merged }, ...rest] },
       indent,
     )
+  }
+
+  // attrs({component: Prim}).attrs({…}) — rewrite to `<Prim …use-site …defaults>`
+  // (use-site wins), then re-enter dispatch. Swift-dispatcher parity.
+  const attrsComp = _attrsComponents.get(tag)
+  if (attrsComp !== undefined) {
+    const useSite = new Set(
+      e.attrs.filter((a) => a.kind === 'attr').map((a) => (a as Extract<AttrIR, { kind: 'attr' }>).name),
+    )
+    const defaults = attrsComp.defaultAttrs
+      .filter((d) => !useSite.has(d.name))
+      .map((d) => ({ kind: 'attr' as const, name: d.name, value: d.value }))
+    return emitKotlinJsx({ ...e, tag: attrsComp.tag, attrs: [...e.attrs, ...defaults] }, indent)
   }
 
   // Mirror of the Swift dispatcher's spread guard. A spread (`<Stack

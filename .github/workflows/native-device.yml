@@ -315,8 +315,15 @@ jobs:
           # the Android script hit in round 3.
           python3 -u -m http.server 8787 --bind 127.0.0.1 --directory "$GITHUB_WORKSPACE/examples/native-tasks/fixtures" > /tmp/fixture-server.log 2>&1 &
           disown
-          sleep 1
-          curl -fsS http://127.0.0.1:8787/quotes.json > /dev/null && echo "fixture server OK"
+          # Readiness poll, NOT a fixed `sleep 1`: python's http.server can take
+          # >1s to bind under CI load, so a fixed sleep raced the bind and curl
+          # exited 7 ("couldn't connect") — a flake that reddened attrs PR #2477's
+          # Android build on a fully-successful gradle assemble. Poll up to 30s,
+          # fail loudly with the server log if it truly never starts. ONE line
+          # deliberately: the Android emulator-runner runs `script:` lines
+          # individually under /usr/bin/sh, where a multi-line for/do/done loop
+          # errors "expecting done" — so keep BOTH fixture polls single-line.
+          i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
 
       - name: Emit + xcodegen + UITest — native-tasks-ios
         working-directory: examples/native-tasks-ios
@@ -600,7 +607,12 @@ jobs:
           #     deep inside the Espresso run.
           script: |
             python3 -u -m http.server 8787 --bind 127.0.0.1 --directory "$GITHUB_WORKSPACE/examples/native-tasks/fixtures" > /tmp/fixture-server.log 2>&1 &
-            sleep 1 && curl -fsS http://127.0.0.1:8787/quotes.json > /dev/null && echo "fixture server OK"
+            # Readiness poll, NOT a fixed `sleep 1`: the python server can take
+            # >1s to bind under CI load; a fixed sleep raced the bind → curl exit
+            # 7 (the flake that reddened #2477). ONE line: the emulator-runner
+            # runs each script line under /usr/bin/sh, so a multi-line loop
+            # breaks ("expecting done"). Poll up to 30s, fail loudly on timeout.
+            i=0; while ! curl -fsS http://127.0.0.1:8787/quotes.json >/dev/null 2>&1; do i=$((i+1)); [ "$i" -ge 30 ] && { echo "fixture server FAILED to start within 30s"; cat /tmp/fixture-server.log 2>/dev/null || true; exit 1; }; sleep 1; done; echo "fixture server OK (ready after ${i}s)"
             adb reverse tcp:8787 tcp:8787
             gradle connectedCheck --no-daemon --stacktrace
 

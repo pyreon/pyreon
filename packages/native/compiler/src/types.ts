@@ -1358,8 +1358,22 @@ export interface ParseResult {
    * `rocketstyle-native` frontend). Sibling of `styledComponents`.
    */
   rocketstyleComponents: RocketstyleComponentIR[]
+  /**
+   * `attrs({component: Prim}).attrs({…})…` default-prop HOC components (the
+   * `attrs-native` frontend). Sibling of `styledComponents` — the emit rewrites
+   * each `<X>` use-site to `<Prim …defaults …use-site>`.
+   */
+  attrsComponents: AttrsComponentIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
+}
+
+/** An `attrs({component: Prim}).attrs({…})` default-prop HOC lowered at its
+ *  use-sites. Produced by the `attrs-native` frontend module. */
+export interface AttrsComponentIR {
+  name: string
+  tag: string
+  defaultAttrs: { name: string; value: ExprIR }[]
 }
 
 /** A `styled(Prim)`-wrapped canonical primitive lowered at its use-sites. */

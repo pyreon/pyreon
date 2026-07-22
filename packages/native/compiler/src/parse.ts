@@ -23,6 +23,7 @@ import type {
   StatementIR,
   StoreDefnIR,
   StructIR,
+  AttrsComponentIR,
   StyledComponentIR,
   TypeIR,
   ZodFieldConstraints,
@@ -31,6 +32,7 @@ import type {
 } from './types'
 import { isCanonicalPrimitive } from './canonical-primitives'
 import { parseRocketstyleDefn } from './rocketstyle-native'
+import { parseAttrsDefn } from './attrs-native'
 import {
   DEFAULT_THEME,
   mergeTheme,
@@ -168,6 +170,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const zodSchemas: ZodSchemaDefnIR[] = []
   const styledComponents: StyledComponentIR[] = []
   const rocketstyleComponents: RocketstyleComponentIR[] = []
+  const attrsComponents: AttrsComponentIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     // Store aliases are component-scoped — reset before each top-level
@@ -280,6 +283,11 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       rocketstyleComponents.push(rc)
       continue
     }
+    const ac = tryAttrsDefnFromTopLevel(node, ctx)
+    if (ac) {
+      attrsComponents.push(ac)
+      continue
+    }
     // A `defineTheme({ … })` declaration is a COMPILE-TIME resolution source
     // consumed by the `collectTheme` pre-pass — it has no native runtime
     // (there is no `defineTheme` in SwiftUI/Compose). Skip it so it doesn't
@@ -344,6 +352,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     zodSchemas,
     styledComponents,
     rocketstyleComponents,
+    attrsComponents,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
@@ -405,6 +414,25 @@ function tryRocketstyleDefnFromTopLevel(
   const decl = decls[0]
   if (decl?.id?.type !== 'Identifier') return null
   return parseRocketstyleDefn(decl.id.name as string, decl.init, ctx.warnings, ctx.theme)
+}
+
+/**
+ * `const X = attrs({ name, component: Prim }).attrs({ … })…` → an
+ * AttrsComponentIR. A thin var-declarator unwrap; the chain parsing lives in the
+ * `attrs-native` frontend module.
+ */
+function tryAttrsDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): AttrsComponentIR | null {
+  let varDecl: AnyNode | null = null
+  if (node.type === 'VariableDeclaration') varDecl = node
+  else if (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'VariableDeclaration') {
+    varDecl = node.declaration
+  }
+  if (!varDecl || varDecl.kind !== 'const') return null
+  const decls = (varDecl.declarations as AnyNode[]) ?? []
+  if (decls.length !== 1) return null
+  const decl = decls[0]
+  if (decl?.id?.type !== 'Identifier') return null
+  return parseAttrsDefn(decl.id.name as string, decl.init, ctx.warnings, ctx.theme)
 }
 
 /**
