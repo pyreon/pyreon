@@ -201,6 +201,10 @@ import { dracula } from '@uiw/codemirror-theme-dracula'
 createEditor({ value: code, theme: dracula })
 ```
 
+## Performance — runtime wrapper overhead vs @uiw/react-codemirror
+
+Both wrap the SAME CodeMirror 6 engine, so the runtime bench (`bun run --filter=@pyreon/code bench:runtime`, real Chromium) measures only the WRAPPER's update path, on @uiw's documented controlled-value pattern. The portable signal is the deterministic COUNT: for 110 keystrokes + 1 external write the owning component re-renders **once** in Pyreon (the body runs once; updates ride the signal) vs **~110 React commits** for the controlled @uiw pattern (keystroke → onChange → setState → re-render → value-sync effect). Measured externally observable deltas: external `value` write → DOM ~0.4ms vs ~84ms (quiet editor; ~530ms if written within @uiw's 200ms anti-clobber typing latch — their deliberate design, disclosed not counted), dispose ~2× faster, mount ~1.3× slower (async grammar/mount settle — the lazy-loading price). Under real typing cadence the per-keystroke wall-clock is indistinguishable (CM6 dominates both). Honest limits: author-judge; @uiw's UNCONTROLLED mode skips the round-trip and is exempt — the claim is scoped to controlled/bound-state usage (what `bindEditorToSignal` competes with). Current numbers: `bench/RESULTS-runtime.md`.
+
 ## Gotchas
 
 - **`@pyreon/runtime-dom` is a required peer** — `<CodeEditor>` JSX emits `_tpl()` calls.
