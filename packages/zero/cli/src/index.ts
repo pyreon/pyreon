@@ -46,6 +46,7 @@ cli
   .option('--fix', 'Auto-fix fixable issues')
   .option('--json', 'Output as JSON')
   .option('--ci', 'CI mode — exit with code 1 on errors')
+  .option('--full', 'Run slow gates (audit-types, bundle-budgets)')
   .action(doctor)
 
 cli
@@ -57,4 +58,19 @@ cli.command('create <name>', 'Scaffold a new Pyreon Zero project').action(create
 
 cli.help()
 cli.version(packageJson.version)
-cli.parse()
+
+try {
+  cli.parse()
+} catch (err) {
+  // cac throws a `CACError` SYNCHRONOUSLY during parse for an unknown option or
+  // a missing required argument (e.g. `zero doctor --typo`). Surface a friendly
+  // message + usage hint instead of leaking a raw stack trace. Async errors
+  // inside a command's own action are handled by that action — this only
+  // catches parse-time argv errors.
+  if (err instanceof Error && err.name === 'CACError') {
+    console.error(`error: ${err.message}`)
+    console.error('Run `zero --help` or `zero <command> --help` for usage.')
+    process.exit(1)
+  }
+  throw err
+}
