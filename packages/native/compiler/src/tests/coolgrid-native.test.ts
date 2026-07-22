@@ -68,11 +68,11 @@ export function App() { return (<Container><Row><Col size={8}><Text>Main</Text><
 })
 
 describe('coolgrid-native — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable())('the grid typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the grid typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(swift(GRID).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isKotlincAvailable())('the grid compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the grid compiles (real kotlinc)', () => {
     const res = validateKotlin(kotlin(GRID).code)
     expect(res.ok, res.error).toBe(true)
   })

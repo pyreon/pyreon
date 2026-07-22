@@ -65,11 +65,11 @@ const theme = defineTheme({ color: { surface: '#ffffff' }, spacing: { md: 16 } }
 const Card = rocketstyle()({ name: 'Card', component: Element }).theme(() => ({ padding: t.spacing.md, backgroundColor: t.color.surface }))
 export function App() { return (<Element direction='rows' alignX='center' gap='md'><Card><Text>Hi</Text></Card></Element>) }`
 
-  it.skipIf(!isSwiftUIAvailable())('the Element-based layout + card typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the Element-based layout + card typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(swift(SRC).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isKotlincAvailable())('the Element-based layout + card compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the Element-based layout + card compiles (real kotlinc)', () => {
     const res = validateKotlin(kotlin(SRC).code)
     expect(res.ok, res.error).toBe(true)
   })
