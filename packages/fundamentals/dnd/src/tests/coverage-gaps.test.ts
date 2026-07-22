@@ -48,10 +48,11 @@ describe('server branch — isServer truly true via resetModules + document dele
     expect(result.isDragging()).toBe(false)
   })
 
-  it('useDroppable returns the inert server-branch isOver', async () => {
+  it('useDroppable returns the inert server-branch isOver + overEdge', async () => {
     const { useDroppable } = await import('../use-droppable')
     const result = useDroppable({ element: () => null, onDrop: () => {} })
     expect(result.isOver()).toBe(false)
+    expect(result.overEdge()).toBeNull()
   })
 
   it('useFileDrop returns the inert server-branch isOver + isDraggingFiles', async () => {
@@ -79,15 +80,21 @@ describe('server branch — isServer truly true via resetModules + document dele
     expect(result.activeId()).toBeNull()
     expect(result.overId()).toBeNull()
     expect(result.overEdge()).toBeNull()
+    // The selector-backed predicates are inert `false` on the server.
+    expect(result.isActive('1')).toBe(false)
+    expect(result.isOverKey('1')).toBe(false)
     // The `noop` ref + the `itemRef` factory returning `noop`. Invoke them so
     // the noop body runs (with both an element and `null`, the two ref shapes).
     expect(typeof result.containerRef).toBe('function')
     expect(typeof result.itemRef).toBe('function')
     const itemNoop = result.itemRef('1')
     expect(typeof itemNoop).toBe('function')
+    const handleNoop = result.itemHandleRef('1')
+    expect(typeof handleNoop).toBe('function')
     // These calls must be inert no-ops (the server noop ignores its argument).
     expect(result.containerRef(null)).toBeUndefined()
     expect(itemNoop(null)).toBeUndefined()
+    expect(handleNoop(null)).toBeUndefined()
   })
 })
 

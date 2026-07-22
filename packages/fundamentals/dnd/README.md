@@ -71,7 +71,7 @@ Full sortable list with edge detection, auto-scroll, and keyboard reordering. `b
 ```tsx
 const cols = signal<Column[]>([])
 
-const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
+const { containerRef, itemRef, isActive, isOverKey, overEdge } = useSortable({
   items: () => cols(),
   by: (c) => c.id,
   onReorder: (next) => cols.set(next),
@@ -83,9 +83,9 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
     {(col) => (
       <li
         ref={itemRef(col.id)}
-        class={activeId() === col.id ? 'dragging' : ''}
+        class={isActive(col.id) ? 'dragging' : ''}
         style={() =>
-          overId() === col.id && overEdge() === 'top'
+          isOverKey(col.id) && overEdge() === 'top'
             ? 'border-top: 2px solid blue'
             : ''
         }
@@ -172,6 +172,16 @@ useDraggable({
   data: () => ({ id: item.id(), position: position() }),
 })
 ```
+
+## Accessibility (built in)
+
+`useSortable` announces drags through `@pyreon/a11y`'s live region — "Picked up Alice", "Moved Alice to position 2 of 3", "Dropped …" — and auto-creates a visually-hidden instructions node ("Press Alt plus arrow keys to reorder") linked to every item via `aria-describedby`. Pass `label: (item) => string` so announcements use human names instead of raw keys. Alt+Arrow keyboard reordering ships by default.
+
+## Custom drag previews, edges, handles
+
+- `useDraggable({ preview: { render(container) { /* draw */ }, offset: 'center' } })` — replace the browser's default drag snapshot (pdnd's `setCustomNativeDragPreview`; offsets: `'pointer-outside' | 'center' | 'preserve-offset'`).
+- `useDroppable({ edges: ['top', 'bottom'], sticky: true })` — closest-edge detection on plain drop zones via the returned `overEdge()` accessor; `sticky` keeps the target held across gaps.
+- `useSortable().itemHandleRef(key)` — scope drag initiation to a grip element inside the row; rows without a handle stay fully draggable.
 
 ## Gotchas
 

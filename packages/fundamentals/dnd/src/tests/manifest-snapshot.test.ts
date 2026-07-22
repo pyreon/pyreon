@@ -48,7 +48,7 @@ describe('gen-docs — dnd snapshot', () => {
 
       // Sortable list — keyed like <For by>, hook computes the reorder, YOU commit it:
       const cols = signal<Column[]>([])
-      const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
+      const { containerRef, itemRef, isActive, isOverKey, overEdge } = useSortable({
         items: () => cols(),
         by: (c) => c.id,
         onReorder: (next) => cols.set(next),
@@ -60,8 +60,8 @@ describe('gen-docs — dnd snapshot', () => {
           {(col) => (
             <li
               ref={itemRef(col.id)}
-              class={activeId() === col.id ? 'dragging' : ''}
-              style={() => (overId() === col.id && overEdge() === 'top' ? 'border-top: 2px solid blue' : '')}
+              class={isActive(col.id) ? 'dragging' : ''}
+              style={() => (isOverKey(col.id) && overEdge() === 'top' ? 'border-top: 2px solid blue' : '')}
             >
               {col.name}
             </li>
@@ -85,6 +85,6 @@ describe('gen-docs — dnd snapshot', () => {
     const record = renderApiReferenceEntries(manifest)
     expect(Object.keys(record).length).toBe(5)
     expect(record['dnd/useSortable']!.notes).toContain('reorderable')
-    expect(record['dnd/useSortable']!.mistakes?.split('\n').length).toBe(6)
+    expect(record['dnd/useSortable']!.mistakes?.split('\n').length).toBe(8)
   })
 })

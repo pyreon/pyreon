@@ -758,7 +758,7 @@ describe('useDroppable — callbacks via mock', () => {
     })
 
     await flushMicrotasks()
-    expect(lastDropTargetOpts.getData()).toEqual({ zone: 'target' })
+    expect(lastDropTargetOpts.getData({ input: { clientX: 0, clientY: 0 }, element: el })).toEqual({ zone: 'target' })
     el.remove()
   })
 
@@ -775,9 +775,9 @@ describe('useDroppable — callbacks via mock', () => {
     })
 
     await flushMicrotasks()
-    expect(lastDropTargetOpts.getData()).toEqual({ zone: 'a' })
+    expect(lastDropTargetOpts.getData({ input: { clientX: 0, clientY: 0 }, element: el })).toEqual({ zone: 'a' })
     zone.set('b')
-    expect(lastDropTargetOpts.getData()).toEqual({ zone: 'b' })
+    expect(lastDropTargetOpts.getData({ input: { clientX: 0, clientY: 0 }, element: el })).toEqual({ zone: 'b' })
     el.remove()
   })
 
@@ -792,7 +792,7 @@ describe('useDroppable — callbacks via mock', () => {
     })
 
     await flushMicrotasks()
-    expect(lastDropTargetOpts.getData()).toEqual({})
+    expect(lastDropTargetOpts.getData({ input: { clientX: 0, clientY: 0 }, element: el })).toEqual({})
     el.remove()
   })
 
