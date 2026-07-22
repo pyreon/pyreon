@@ -4410,7 +4410,12 @@ function emitKotlinLayoutModifier(
     (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
   )
   if (styleAttr !== undefined) {
-    const { modifiers, warnings } = styleToNativeModifiers(styleAttr.value, 'kotlin', e.tag)
+    const { modifiers, warnings } = styleToNativeModifiers(
+      styleAttr.value,
+      'kotlin',
+      e.tag,
+      (cond) => kotlinCondition(cond, (x) => emitKotlinExpr(x, 0)),
+    )
     parts.push(...modifiers)
     for (const w of warnings) _emitWarnings.push(w)
   }
