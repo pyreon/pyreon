@@ -1,6 +1,6 @@
 import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, hasLinkRun, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Slack Block Kit renderer — outputs JSON that can be posted via Slack's API.
@@ -63,7 +63,16 @@ function nodeToBlocks(node: DocNode): SlackBlock[] {
       break
 
     case 'text': {
-      let text = mrkdwnEscape(getTextContent(node.children))
+      const runs = getInlineRuns(node.children)
+      let text = hasLinkRun(runs)
+        ? runs
+            .map((r) =>
+              r.href !== undefined
+                ? `<${sanitizeHref(r.href)}|${mrkdwnEscape(r.text)}>`
+                : mrkdwnEscape(r.text),
+            )
+            .join('')
+        : mrkdwnEscape(getTextContent(node.children))
       if (p.bold) text = `*${text}*`
       if (p.italic) text = `_${text}_`
       if (p.strikethrough) text = `~${text}~`
