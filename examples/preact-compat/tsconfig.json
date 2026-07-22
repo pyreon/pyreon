@@ -1,12 +1,16 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@pyreon/tsconfig/example.json",
   "compilerOptions": {
-    "noEmit": true,
     "paths": {
-      "preact": ["../../packages/tools/preact-compat/src/index.ts"],
-      "preact/hooks": ["../../packages/tools/preact-compat/src/hooks.ts"],
-      "@preact/signals": ["../../packages/tools/preact-compat/src/signals.ts"]
+      "preact": [
+        "../../packages/tools/preact-compat/src/index.ts"
+      ],
+      "preact/hooks": [
+        "../../packages/tools/preact-compat/src/hooks.ts"
+      ],
+      "@preact/signals": [
+        "../../packages/tools/preact-compat/src/signals.ts"
+      ]
     }
-  },
-  "include": ["src", "vite.config.ts"]
+  }
 }

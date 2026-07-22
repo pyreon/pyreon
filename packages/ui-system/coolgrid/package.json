@@ -53,6 +53,7 @@
     "@pyreon/manifest": "workspace:*",
     "@pyreon/styler": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.10",

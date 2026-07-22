@@ -2,7 +2,7 @@
   "name": "@pyreon/ui-primitives",
   "version": "0.39.0",
   "private": true,
-  "description": "Headless base components for the Pyreon UI library — state management, ARIA, keyboard nav",
+  "description": "Headless base components for the Pyreon UI library \u2014 state management, ARIA, keyboard nav",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "build": "echo 'private package — consumed via bun condition'",
+    "build": "echo 'private package \u2014 consumed via bun condition'",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@pyreon/test-utils": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.10"

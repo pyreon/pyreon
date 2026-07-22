@@ -1,9 +1,14 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "@pyreon/tsconfig/internal.json",
   "compilerOptions": {
-    "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "types": ["chrome", "vitest/globals", "node"]
+    "types": [
+      "chrome",
+      "vitest/globals",
+      "node"
+    ]
   },
-  "include": ["src", "scripts"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src",
+    "scripts"
+  ]
 }

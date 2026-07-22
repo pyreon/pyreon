@@ -36,6 +36,7 @@
   "devDependencies": {
     "@pyreon/compiler": "workspace:*",
     "@pyreon/testing": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@testing-library/jest-dom": "^6.9.1",

@@ -1,11 +1,9 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@pyreon/tsconfig/example.json",
   "compilerOptions": {
-    "noEmit": true,
     "paths": {
       "solid-js": ["../../packages/tools/solid-compat/src/index.ts"],
       "solid-js/*": ["../../packages/tools/solid-compat/src/*"]
     }
-  },
-  "include": ["src", "vite.config.ts"]
+  }
 }

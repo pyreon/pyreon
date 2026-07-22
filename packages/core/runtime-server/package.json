@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/runtime-server",
   "version": "0.49.0",
-  "description": "SSR/SSG renderer for Pyreon — streaming HTML + static generation",
+  "description": "SSR/SSG renderer for Pyreon \u2014 streaming HTML + static generation",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/runtime-server#readme",
   "bugs": {
@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
   "publishConfig": {

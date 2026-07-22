@@ -502,7 +502,7 @@ Quick reference (full bug-class detail + reproducers in `.claude/rules/anti-patt
 - `packages/tools/` (11 published): cli, lint, mcp, vite-plugin, typescript, storybook, react-compat, preact-compat, vue-compat, solid-compat, svelte-compat; + `devtools` (private)
 - `packages/ui-system/` (11): ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 - `packages/zero/` (6): zero, zero-cli, create-zero, create-multiplatform, meta, zero-content
-- `packages/internals/` (3 private): test-utils, manifest, perf-harness; + vitest-config, playwright-config
+- `packages/internals/` (private): test-utils, manifest, perf-harness, ansi; + vitest-config, playwright-config, tsconfig (`@pyreon/tsconfig` — shared tsconfig presets, the single source of the repo's TS options; every package/example declares the `workspace:*` devDep and extends `@pyreon/tsconfig/{lib,lib-jsx,internal,example,example-bun}.json` by bare specifier, `${configDir}`-based; `base.json` DOGFOODS the published `@pyreon/typescript` + layers the repo delta (zero effective-option change, showConfig-verified); root `tsconfig.json` extends `@pyreon/tsconfig/base.json`; enforced by `check-tsconfig-presets` in validate-fast)
 - `packages/ui/` (3 private): ui-theme, ui-components, ui-primitives
 
 Plus `docs/` (Pyreon-native docs site on @pyreon/zero + @pyreon/zero-content — 191 doc pages covering all packages, `<Example>` live-mount primitive, dogfoods the framework) and `examples/`.

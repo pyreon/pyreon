@@ -50,6 +50,7 @@
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/validate": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@tanstack/form-core": "^1.33.2",

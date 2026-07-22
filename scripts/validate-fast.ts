@@ -60,6 +60,7 @@ const GATES: Gate[] = [
   { name: 'check-bundle-budgets', cmd: 'bun scripts/check-bundle-budgets.ts' },
   { name: 'check-distribution', cmd: 'bun scripts/check-distribution.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },
+  { name: 'check-tsconfig-presets', cmd: 'bun scripts/check-tsconfig-presets.ts' },
   { name: 'check-release-readiness', cmd: 'bun scripts/check-release-readiness.ts' },
   { name: 'check-manifest-depth', cmd: 'bun scripts/check-manifest-depth.ts' },
   { name: 'check-manifest-examples', cmd: 'bun scripts/check-manifest-examples.ts' },

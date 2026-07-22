@@ -1,9 +1,12 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "@pyreon/tsconfig/lib.json",
   "compilerOptions": {
-    "outDir": "./lib",
-    "rootDir": "./src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src", "../zero/src/sharp.d.ts"]
+  "include": [
+    "src",
+    "../zero/src/sharp.d.ts"
+  ]
 }

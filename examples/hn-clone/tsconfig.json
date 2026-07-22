@@ -1,12 +1,11 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@pyreon/tsconfig/example.json",
   "compilerOptions": {
-    "noEmit": true,
-    "exactOptionalPropertyTypes": false,
     "types": [
       "bun",
       "vite/client"
-    ]
+    ],
+    "exactOptionalPropertyTypes": false
   },
   "include": [
     "src",

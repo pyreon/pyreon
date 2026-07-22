@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/mcp",
   "version": "0.49.0",
-  "description": "MCP server for Pyreon — AI-powered framework assistance",
+  "description": "MCP server for Pyreon \u2014 AI-powered framework assistance",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/mcp#readme",
   "bugs": {
@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
   "publishConfig": {

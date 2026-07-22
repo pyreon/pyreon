@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // DOGFOODING: the repo's canon layers on the PUBLISHED @pyreon/typescript
+  // presets (the ones users install), so every repo typecheck exercises the
+  // shipped product. Everything below is the REPO-SPECIFIC delta — options
+  // the published preset deliberately doesn't impose on consumers.
+  "extends": "@pyreon/typescript",
+  "compilerOptions": {
+    // Repo-internal resolution + hygiene (not for consumers):
+    "customConditions": ["bun"],
+    "isolatedModules": true,
+    // The repo authors JSX for the REAL Pyreon compiler; `preserve` is the
+    // base semantic (packages with JSX tests opt into react-jsx via
+    // lib-jsx.json). The published preset defaults consumers to react-jsx.
+    "jsx": "preserve",
+    // Permits `.ts` extensions in relative imports. Required for
+    // `@pyreon/vitest-config`'s source files, which use explicit `.ts`
+    // extensions so its `vitest.config.ts` callers can resolve them via
+    // Vite's config loader (Node ESM strict mode requires extensions for
+    // relative imports). All other packages can keep using extensionless
+    // imports — this flag only PERMITS the `.ts` form, it never requires
+    // it. Pairs with `moduleResolution: Bundler`.
+    "allowImportingTsExtensions": true,
+    // Parity block — options the pre-consolidation chain (@vitus-labs/
+    // tools-typescript/lib) provided that the published preset doesn't;
+    // kept verbatim so the migration changes ZERO effective options
+    // (verified by tsc --showConfig diffs across every preset shape):
+    "types": ["node"],
+    "esModuleInterop": true,
+    "allowJs": true,
+    "declaration": true,
+    "declarationMap": true,
+    "inlineSources": true,
+    "noEmit": true
+  },
+  "exclude": ["${configDir}/node_modules", "${configDir}/**/lib/**", "${configDir}/**/dist/**"]
+}

@@ -1,8 +1,10 @@
 {
-  "extends": "../../../tsconfig.json",
+  "extends": "@pyreon/tsconfig/internal.json",
   "compilerOptions": {
-    "noEmit": true,
-    "types": ["node", "vitest/globals", "vite/client"]
-  },
-  "include": ["src"]
+    "types": [
+      "node",
+      "vitest/globals",
+      "vite/client"
+    ]
+  }
 }

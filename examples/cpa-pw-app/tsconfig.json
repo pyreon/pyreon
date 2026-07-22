@@ -1,7 +1,6 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@pyreon/tsconfig/example.json",
   "compilerOptions": {
-    "noEmit": true,
     "types": [
       "bun",
       "vite/client"

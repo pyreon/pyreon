@@ -1,17 +1,3 @@
 {
-  "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "preserve",
-    "jsxImportSource": "@pyreon/core",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "customConditions": ["bun"],
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "types": ["bun"]
-  },
-  "include": ["src", "vite.config.ts"],
-  "exclude": ["node_modules", "dist"]
+  "extends": "@pyreon/tsconfig/example-bun.json"
 }

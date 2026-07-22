@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/machine",
   "version": "0.49.0",
-  "description": "Reactive state machines for Pyreon — constrained signals with type-safe transitions",
+  "description": "Reactive state machines for Pyreon \u2014 constrained signals with type-safe transitions",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/machine#readme",
   "bugs": {
@@ -44,6 +44,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.6.3",
     "xstate": "^5.32.5"

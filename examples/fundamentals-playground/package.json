@@ -49,6 +49,7 @@
   },
   "devDependencies": {
     "@pyreon/testing": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-vitest": "^2.5.0",

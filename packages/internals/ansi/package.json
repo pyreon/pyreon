@@ -2,7 +2,7 @@
   "name": "@pyreon/ansi",
   "version": "0.13.2",
   "private": true,
-  "description": "Internal ANSI palette + helpers — single canonical brand-palette wrapper for every Pyreon CLI surface",
+  "description": "Internal ANSI palette + helpers \u2014 single canonical brand-palette wrapper for every Pyreon CLI surface",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
@@ -20,6 +20,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "vitest": "^4.1.10"
   }

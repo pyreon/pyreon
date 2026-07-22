@@ -46,6 +46,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/runtime-server": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
     "@pyreon/unistyle": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",

@@ -1,8 +1,3 @@
 {
-  "extends": "../../../tsconfig.json",
-  "compilerOptions": {
-    "rootDir": "./src",
-    "types": ["vitest/globals", "node"]
-  },
-  "include": ["src"]
+  "extends": "@pyreon/tsconfig/lib.json"
 }

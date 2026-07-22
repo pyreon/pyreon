@@ -26,16 +26,17 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
+    "@pyreon/compiler": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.28.1",
     "playwright": "^1.60.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16",
-    "@pyreon/compiler": "workspace:*",
-    "@pyreon/runtime-server": "workspace:*",
-    "esbuild": "^0.28.1"
+    "vite": "^8.0.16"
   }
 }

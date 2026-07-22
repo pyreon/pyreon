@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./lib.json",
+  "compilerOptions": {
+    // Packages whose TESTS/source contain JSX typecheck under the
+    // automatic runtime (`jsxImportSource` is inherited from base.json —
+    // `@pyreon/core`). Emit still goes through the real Pyreon compiler
+    // in builds; this only affects `tsc --noEmit` + editor semantics.
+    "jsx": "react-jsx"
+  }
+}

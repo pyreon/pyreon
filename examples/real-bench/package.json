@@ -19,6 +19,7 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",

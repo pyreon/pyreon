@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/hotkeys",
   "version": "0.49.0",
-  "description": "Reactive keyboard shortcut management for Pyreon — scope-aware, conflict detection",
+  "description": "Reactive keyboard shortcut management for Pyreon \u2014 scope-aware, conflict detection",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/hotkeys#readme",
   "bugs": {
@@ -45,6 +45,7 @@
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
     "@pyreon/manifest": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitus-labs/tools-lint": "^2.6.3",
     "hotkeys-js": "^4.0.4",
