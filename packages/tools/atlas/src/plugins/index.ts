@@ -40,6 +40,10 @@ export { a11yPlugin } from './a11y'
 // docs
 export { usageDocsPlugin } from './usage-docs'
 
+// AI assets
+export type { AgentAsset, AiAssetsOptions } from './ai-assets'
+export { aiAssetsPlugin } from './ai-assets'
+
 // curated bundle
 export type { RecommendedOptions } from './recommended'
 export { recommendedPlugins } from './recommended'

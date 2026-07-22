@@ -1,12 +1,13 @@
 import { inferControls } from '../core'
-import { createAtlas } from '../index'
-import { a11yPlugin, defineAtlasPlugin, recommendedPlugins, variantMatrixPlugin } from '../plugins'
+import { createAtlas, defineAtlas } from '../index'
+import { a11yPlugin, defineAtlasPlugin, variantMatrixPlugin } from '../plugins'
 
 describe('createAtlas', () => {
   it('runs the full pipeline: discover -> decorate -> verify -> graph', async () => {
     const graphHookSizes: number[] = []
     const atlas = createAtlas({
       cwd: '/tmp',
+      preset: 'none',
       plugins: [
         defineAtlasPlugin({
           name: 'demo-discovery',
@@ -51,6 +52,13 @@ describe('createAtlas', () => {
     expect(graph.size()).toBe(0)
   })
 
+  it('defineAtlas returns the config unchanged and drives createAtlas (preset none)', async () => {
+    const config = defineAtlas({ preset: 'none', plugins: [] })
+    expect(config.preset).toBe('none')
+    const graph = await createAtlas(config).build()
+    expect(graph.size()).toBe(0)
+  })
+
   it('derives a verified catalog via the recommended plugin bundle', async () => {
     const discovery = defineAtlasPlugin({
       name: 'demo-discovery',
@@ -70,7 +78,8 @@ describe('createAtlas', () => {
       ],
     })
 
-    const graph = await createAtlas({ plugins: [discovery, ...recommendedPlugins()] }).build()
+    // the simple config: just pass discovery — the recommended preset is default
+    const graph = await createAtlas({ plugins: [discovery] }).build()
     const button = graph.get('Button')!
 
     // auto-categorized by name

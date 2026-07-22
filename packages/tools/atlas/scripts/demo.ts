@@ -11,7 +11,7 @@
  */
 import { createAtlas } from '@pyreon/atlas'
 import { inferControls } from '@pyreon/atlas/core'
-import { defineAtlasPlugin, recommendedPlugins } from '@pyreon/atlas/plugins'
+import { defineAtlasPlugin } from '@pyreon/atlas/plugins'
 
 const discovery = defineAtlasPlugin({
   name: 'demo-discovery',
@@ -59,21 +59,23 @@ const discovery = defineAtlasPlugin({
   ],
 })
 
-const graph = await createAtlas({ plugins: [discovery, ...recommendedPlugins()] }).build()
+// Simple config: just pass discovery — the recommended preset is the default.
+const graph = await createAtlas({ plugins: [discovery] }).build()
 
 const scenarios = graph.scenarios()
 const flagged = scenarios.filter((s) => s.verify && !s.verify.ok)
 
 console.log(graph.toLlmsText())
-console.log('─'.repeat(64))
+console.log('═'.repeat(64))
 console.log(
   `Atlas derived ${graph.size()} components and ${scenarios.length} verified ` +
-    `scenarios (${flagged.length} flagged) — from ZERO authored stories.`,
+    `scenarios (${flagged.length} flagged) — from ZERO authored stories.\n`,
 )
-if (flagged.length > 0) {
-  console.log('\nFlagged by the verify pipeline:')
-  for (const s of flagged) {
-    const why = s.verify?.a11y.findings?.join('; ') ?? 'see verdict'
-    console.log(`  • ${s.component} / "${s.name}": ${why}`)
-  }
-}
+
+// The AI asset: a compact, prescriptive guide so an agent uses each component
+// correctly on the first try, with minimal tokens.
+console.log(graph.toAgentGuide())
+console.log('═'.repeat(64))
+
+// The search primitive the UI + agents use.
+console.log('search("badge") ->', JSON.stringify(graph.search('badge')))

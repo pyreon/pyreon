@@ -27,5 +27,5 @@ export { slugify, scenarioId, makeScenario } from './scenario'
 
 export { buildVariantMatrix, variantLabel, autoVariantScenarios } from './variants'
 
-export type { CatalogGraph } from './graph'
+export type { CatalogGraph, SearchHit } from './graph'
 export { createCatalogGraph } from './graph'

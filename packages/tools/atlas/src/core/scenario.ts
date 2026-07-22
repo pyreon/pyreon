@@ -11,7 +11,10 @@ export function slugify(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-') // collapses any run of non-alphanumerics to one hyphen
-    .replace(/^-+|-+$/g, '')
+    // The collapse above guarantees no consecutive hyphens, so a single `-` at
+    // each anchor is enough — avoids the `-+` quantifier that CodeQL flags as a
+    // polynomial-ReDoS on uncontrolled input (js/polynomial-redos).
+    .replace(/^-|-$/g, '')
 }
 
 /** `<component>--<name>` — stable and unique within a component's scenario set. */

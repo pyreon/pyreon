@@ -36,7 +36,7 @@ entry composes them.
 
 ```ts
 import { createAtlas } from '@pyreon/atlas'
-import { defineAtlasPlugin, variantMatrixPlugin, a11yPlugin } from '@pyreon/atlas/plugins'
+import { defineAtlasPlugin } from '@pyreon/atlas/plugins'
 import { inferControls } from '@pyreon/atlas/core'
 
 const atlas = createAtlas({
@@ -60,14 +60,21 @@ const atlas = createAtlas({
         ]
       },
     }),
-    variantMatrixPlugin(), // derives one scenario per variant-matrix cell
-    a11yPlugin(),          // attaches a static a11y verdict to each scenario
   ],
 })
 
+// That's the whole config. The recommended plugin bundle (variant matrix,
+// states, edge cases, fill-defaults, a11y, tags, docs) is applied automatically —
+// nothing else to write. Opt out with `preset: 'none'`.
 const graph = await atlas.build()
-console.log(graph.toLlmsText()) // the agent-facing catalog
+
+console.log(graph.toAgentGuide())    // the compact, prescriptive AI-usage asset
+console.log(graph.search('button'))  // ranked catalog search
 ```
+
+Configuration is deliberately tiny — a discovery plugin is the only required
+field; everything else has a sensible default. `defineAtlas(config)` gives the
+same shape typed for a config file.
 
 ## Built-in plugins
 
@@ -81,11 +88,34 @@ metadata-driven (no rendering required):
   (fill required props so scenarios render).
 - **Verification** — `a11yPlugin` (static missing-accessible-name check).
 - **Docs** — `usageDocsPlugin` (per-component usage summary).
+- **AI assets** — `aiAssetsPlugin` (generates agent-usage assets — see below).
 - **Bundle** — `recommendedPlugins()` — the curated "great defaults", correctly
   ordered.
 
 DOM-backed plugins (axe a11y, visual-regression, reactivity-coverage) join the
 suite with the runtime/verify layer.
+
+## AI assets — so agents make no mistakes
+
+Atlas generates the assets an AI agent needs to use the whole library correctly
+on the first try, token-efficiently (so agents are fast and cheap):
+
+- `graph.toAgentGuide()` — a **prescriptive, compact** guide: exact allowed prop
+  values, a known-correct example, and what to avoid, per component.
+- `graph.toLlmsText()` — the browsable `llms.txt`-style catalog.
+- `graph.toJSON()` — the full typed machine surface (for MCP / structured tools).
+- `graph.search(query)` — ranked search across names, tags, props, and scenarios.
+
+`aiAssetsPlugin({ onAsset })` generates all three assets in the graph stage and
+hands them to your sink (write a file, feed an MCP server) — persistence stays
+out of the pure core. Example `toAgentGuide()` output:
+
+```text
+## Button [form]
+required: label(text), state(primary|secondary|danger), size(small|medium|large), disabled(bool)
+correct: {"state":"primary","size":"small","label":"Text","disabled":false}
+avoid: "Empty" — missing accessible name: "label" is empty
+```
 
 ## Try it
 

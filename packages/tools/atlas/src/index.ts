@@ -13,16 +13,30 @@
 import type { CatalogGraph, ComponentIntelligence, Scenario } from './core'
 import type { AtlasPlugin } from './plugins'
 import { createCatalogGraph } from './core'
-import { createPluginRegistry } from './plugins'
+import { createPluginRegistry, recommendedPlugins } from './plugins'
 
 export * from './core'
 export * from './plugins'
 
 export interface AtlasConfig {
-  /** the plugins that drive discovery, enrichment, verification, and graph passes */
+  /** your discovery + custom plugins (the recommended bundle is applied after them) */
   plugins?: readonly AtlasPlugin[]
+  /**
+   * Which built-in bundle to apply after your plugins:
+   * - `'recommended'` (default) — tags, variant matrix, states, edge cases,
+   *   default scenario, fill-defaults, a11y, usage docs.
+   * - `'none'` — apply only the plugins you passed.
+   */
+  preset?: 'recommended' | 'none'
+  /** base args merged into generated variant scenarios */
+  baseArgs?: Record<string, unknown>
   /** the directory Atlas is pointed at (defaults to the process cwd) */
   cwd?: string
+}
+
+/** Identity helper for a typed Atlas config (config-file ergonomics). */
+export function defineAtlas(config: AtlasConfig): AtlasConfig {
+  return config
 }
 
 export interface Atlas {
@@ -32,7 +46,11 @@ export interface Atlas {
 
 export function createAtlas(config: AtlasConfig = {}): Atlas {
   const cwd = config.cwd ?? '.'
-  const registry = createPluginRegistry(config.plugins ?? [])
+  const bundle =
+    config.preset === 'none'
+      ? []
+      : recommendedPlugins(config.baseArgs ? { baseArgs: config.baseArgs } : {})
+  const registry = createPluginRegistry([...(config.plugins ?? []), ...bundle])
 
   return {
     async build() {
