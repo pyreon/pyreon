@@ -1,48 +1,79 @@
 // ============================================================================
 // Inline `style={{ … }}` → native modifier lowering (the CSS-in-JS connector
-// core).
+// core), STATIC and DYNAMIC.
 //
 // A canonical `@pyreon/primitives` element (`<Stack>`, `<Button>`, …) may carry
 // an inline `style={{ padding: 16, backgroundColor: '#2563eb', borderRadius: 8 }}`.
 // On the web the DOM renderer applies it verbatim; before this module the
 // PMTC emit read NO `style` prop, so it was SILENTLY DROPPED on both native
-// targets (no reader, no warning — the exact silent-drop class the a11y +
-// data-testid lowerings closed for their props).
+// targets (the same silent-drop class the a11y + data-testid lowerings closed).
 //
 // This module is the shared lowering: a flat CSS-in-JS style object → a list
 // of SwiftUI `.modifier()` / Jetpack-Compose `Modifier.x()` chain entries, so
 // iOS + Android stay in lockstep from ONE source. It is called from the single
 // cross-cutting modifier builder per target (`emitSwiftLayoutModifiers` /
-// `emitKotlinLayoutModifier`), so it reaches all 15 primitives through one
-// insertion point — mirroring how `AccessibilityProps` lowers.
+// `emitKotlinLayoutModifier`), reaching all 15 primitives through one insertion
+// point — mirroring how `AccessibilityProps` lowers.
 //
-// SCOPE (v1): STATIC object literals with LITERAL values only. This is the
-// same "styling resolves at COMPILE time" contract the canonical styling props
-// (`padding`/`background`/`radius`) already hold (`classifyDynamicStylingAttr`).
-// A dynamic `style` value (`style={obj}`) or a dynamic FIELD value
-// (`style={{ padding: n() }}`) is warned + dropped — the reactive-emit story is
-// a tracked Phase-3 follow-up, not a silent gap.
+// TWO shapes lower:
+//   • STATIC — `style={{ … }}` (object literal, literal values). The same
+//     "styling resolves at COMPILE time" contract the token props hold.
+//   • DYNAMIC — `style={cond ? {A} : {B}}` (a ternary of two object literals).
+//     Each shared property lowers to a REACTIVE conditional-value modifier
+//     (`.background(active ? A : B)` / `.background(if (active) A else B)`).
+//     `cond` reads a signal → SwiftUI `@State` / Compose `mutableStateOf`, so
+//     the style flips on state change with NO extra machinery — the exact
+//     reactive mechanism the canonical-prop ternary emit already ships. This is
+//     the make-or-break "dynamic resolution → reactive emit" of the native-UI
+//     plan, proven on the simplest case (a primitive's own inline style) before
+//     it is layered onto rocketstyle's dimension props.
 //
-// The property→modifier vocabulary is deliberately the intersection that lowers
-// CLEANLY on both targets (padding box, background, border-radius, opacity,
-// width, height) plus one Swift-only entry (`color` → `.foregroundColor`, which
-// Compose expresses on the Text/LocalContentColor layer, not a Modifier). A
-// web-only declaration set (cursor/user-select/transition/…) is stripped with
-// no warning — it is a correct no-op on touch. Everything else is dropped with
-// a single consolidated, NAMED warning so nothing vanishes silently.
+// Out of the DYNAMIC slice (v1, warned not dropped-silently): properties present
+// in only ONE branch (asymmetric), and a padding box that is not a single
+// all-sides value in both branches. Non-ternary dynamic (`style={obj}`,
+// `cond && {A}`, nested ternary) warns + drops.
 // ============================================================================
 
 import type { ExprIR } from './types'
 
 type Target = 'swift' | 'kotlin'
 
+/** Emits a native boolean expression from a condition IR (target-specific;
+ *  supplied by the caller, which owns the emit functions). */
+export type CondEmitter = (cond: ExprIR) => string
+
 export interface StyleLowerResult {
   /** Native modifier-chain entries, each beginning with `.` (Swift) or a
-   *  Modifier extension call (Kotlin, WITHOUT the leading `Modifier`). Emitted
-   *  in a per-target canonical order (see `ORDER`). */
+   *  Modifier extension call (Kotlin, WITHOUT the leading `Modifier`), emitted
+   *  in a per-target canonical order. */
   modifiers: string[]
   /** User-visible warnings for dropped / dynamic / unparseable declarations. */
   warnings: string[]
+}
+
+// A simple (non-padding) slot's native form: `wrap(value)` is the full modifier;
+// keeping value separate lets the DYNAMIC path combine two branches' values into
+// one conditional expression through the SAME wrap.
+interface SlotValue {
+  wrap: (v: string) => string
+  value: string
+}
+
+interface PadBox {
+  top?: number
+  right?: number
+  bottom?: number
+  left?: number
+}
+
+interface LoweredObject {
+  slots: Record<string, SlotValue>
+  box: PadBox
+  dropped: string[]
+  dynamic: string[]
+  unparseable: string[]
+  /** kotlin-only: `color` present (no Compose Modifier — warned). */
+  kotlinColor: boolean
 }
 
 // Web-only declarations that are a correct NO-OP on a native touch target —
@@ -79,13 +110,21 @@ const STRIP = new Set<string>([
   'listStyleType',
 ])
 
+// Canonical modifier-chain order per target. SwiftUI wants
+// `.padding().background().cornerRadius()` (background wraps the padded content,
+// then rounds); Compose wants `.clip().background().padding()` (clip first so
+// the fill is rounded, padding last so it insets content).
+const ORDER: Record<Target, string[]> = {
+  swift: ['padding', 'width', 'height', 'background', 'radius', 'opacity', 'color'],
+  kotlin: ['width', 'height', 'radius', 'background', 'padding', 'opacity'],
+}
+
 // ── value parsers ───────────────────────────────────────────────────────────
 
 /**
  * A CSS dimension → a unitless numeric value (interpreted as points/`dp`).
- * Accepts a JS number (unitless px, the idiomatic inline-style form) or a
- * `"16px"` / `"16"` string. Any other unit (`%`, `em`, `rem`, `vh`, …) has no
- * fixed native size and returns null (the caller drops + warns).
+ * Accepts a JS number (unitless px) or a `"16px"` / `"16"` string. Any other
+ * unit (`%`, `em`, `rem`, `vh`, …) has no fixed native size and returns null.
  */
 export function parseDimension(v: string | number): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
@@ -98,12 +137,7 @@ export function parseDimension(v: string | number): number | null {
 /**
  * A CSS color (`#rgb` / `#rrggbb` / `#rrggbbaa` / `rgb()` / `rgba()`) → a
  * per-target Color literal. Returns null for any other form (named colors,
- * `hsl()`, gradients, tokens) so the caller drops + warns rather than emitting
- * a wrong color. Named-color + theme-token support is a tracked follow-up.
- *
- * - Swift  → `Color(.sRGB, red: r, green: g, blue: b, opacity: a)` (0…1)
- * - Kotlin → `Color(0xAARRGGBB)` (alpha-aware; reuses the existing `Color(`
- *   import arm)
+ * `hsl()`, gradients, tokens) so the caller drops + warns.
  */
 export function parseCssColor(v: string, target: Target): string | null {
   const rgba = cssToRgba(v)
@@ -118,7 +152,6 @@ export function parseCssColor(v: string, target: Target): string | null {
   return `Color(0x${hex.toString(16).padStart(8, '0').toUpperCase()})`
 }
 
-/** Parse a CSS color string to `[r, g, b, a]` (r/g/b 0…255, a 0…1) or null. */
 function cssToRgba(css: string): [number, number, number, number] | null {
   const s = css.trim().toLowerCase()
   const fn = s.match(
@@ -147,20 +180,13 @@ function cssToRgba(css: string): [number, number, number, number] | null {
 const clampByte = (n: number): number => Math.max(0, Math.min(255, Math.round(n)))
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n))
 
-/**
- * A `padding` / `margin`-style 1-to-4-value shorthand → resolved sides.
- * `16` → all 16; `"8px 16px"` → {t:8,b:8, l:16,r:16}; 3 → t / lr / b;
- * 4 → t r b l (CSS order). Returns null if any token fails to parse.
- */
-function expandBoxShorthand(
-  v: string | number,
-): { top: number; right: number; bottom: number; left: number } | null {
+/** A 1-to-4-value box shorthand → resolved sides, or null if any token fails. */
+function expandBoxShorthand(v: string | number): Required<PadBox> | null {
   if (typeof v === 'number') {
     const n = parseDimension(v)
     return n === null ? null : { top: n, right: n, bottom: n, left: n }
   }
-  const toks = v.trim().split(/\s+/)
-  const nums = toks.map(parseDimension)
+  const nums = v.trim().split(/\s+/).map(parseDimension)
   if (nums.some((n) => n === null)) return null
   const [a, b, c, d] = nums as number[]
   switch (nums.length) {
@@ -177,251 +203,158 @@ function expandBoxShorthand(
   }
 }
 
-// ── the lowering ────────────────────────────────────────────────────────────
+// ── lower one style object to per-slot values ───────────────────────────────
 
-// Canonical modifier-chain order per target. SwiftUI wants
-// `.padding().background().cornerRadius()` (background wraps the padded content,
-// then rounds); Compose wants `.clip().background().padding()` (clip first so
-// the fill is rounded, padding last so it insets content). Same filled-rounded
-// visual, opposite chain order — encoded here so the emit is idiomatic for the
-// inline-style-only case (where this segment IS the whole chain).
-const ORDER: Record<Target, string[]> = {
-  swift: ['padding', 'width', 'height', 'background', 'radius', 'opacity', 'color'],
-  kotlin: ['width', 'height', 'radius', 'background', 'padding', 'opacity'],
-}
-
-/**
- * Lower a static inline-`style` object to native modifiers. `styleValue` is the
- * IR of the `style` attribute's value (`style={{ … }}` → an object literal).
- */
-export function styleToNativeModifiers(
-  styleValue: ExprIR,
-  target: Target,
-  tag: string,
-): StyleLowerResult {
-  const warnings: string[] = []
-  if (styleValue.kind !== 'object') {
-    return {
-      modifiers: [],
-      warnings: [
-        `<${tag} style={…}>: only a static inline-style object literal is lowered to native — a dynamic style value has no native lowering yet and was dropped. Write the style as an object literal with literal values (reactive style is a tracked follow-up).`,
-      ],
-    }
-  }
-  if (styleValue.spreads !== undefined && styleValue.spreads.length > 0) {
-    warnings.push(
-      `<${tag} style={…}>: a {...spread} inside an inline style is not lowered to native (dropped); only its explicit literal properties are.`,
-    )
-  }
-
-  // Per-slot native fragments, keyed so we can emit in canonical ORDER.
-  const slots: Record<string, string> = {}
-  const paddingBox: { top?: number; right?: number; bottom?: number; left?: number } = {}
+function lowerObject(fields: { name: string; value: ExprIR }[], target: Target): LoweredObject {
+  const slots: Record<string, SlotValue> = {}
+  const box: PadBox = {}
   const dropped: string[] = []
   const dynamic: string[] = []
   const unparseable: string[] = []
+  let kotlinColor = false
 
-  const readLiteral = (f: { name: string; value: ExprIR }): string | number | undefined => {
+  const lit = (f: { name: string; value: ExprIR }): string | number | undefined => {
     if (f.value.kind !== 'literal') {
       dynamic.push(f.name)
       return undefined
     }
-    const val = f.value.value
-    return typeof val === 'string' || typeof val === 'number' ? val : undefined
+    const v = f.value.value
+    return typeof v === 'string' || typeof v === 'number' ? v : undefined
+  }
+  const dim = (f: { name: string; value: ExprIR }): number | undefined => {
+    const raw = lit(f)
+    if (raw === undefined) return undefined
+    const n = parseDimension(raw)
+    if (n === null) {
+      unparseable.push(f.name)
+      return undefined
+    }
+    return n
   }
 
-  for (const field of styleValue.fields) {
+  for (const field of fields) {
     const name = field.name
     if (STRIP.has(name)) continue
-
     switch (name) {
       case 'padding': {
-        const raw = readLiteral(field)
+        const raw = lit(field)
         if (raw === undefined) break
-        const box = expandBoxShorthand(raw)
-        if (box === null) {
-          unparseable.push(name)
-          break
-        }
-        Object.assign(paddingBox, box)
+        const b = expandBoxShorthand(raw)
+        if (b === null) unparseable.push(name)
+        else Object.assign(box, b)
         break
       }
       case 'paddingTop':
       case 'paddingRight':
       case 'paddingBottom':
       case 'paddingLeft': {
-        const raw = readLiteral(field)
-        if (raw === undefined) break
-        const n = parseDimension(raw)
-        if (n === null) {
-          unparseable.push(name)
-          break
-        }
-        const side = name.slice('padding'.length).toLowerCase() as
-          | 'top'
-          | 'right'
-          | 'bottom'
-          | 'left'
-        paddingBox[side] = n
+        const n = dim(field)
+        if (n !== undefined) box[name.slice(7).toLowerCase() as keyof PadBox] = n
         break
       }
       case 'paddingX':
       case 'paddingHorizontal': {
-        const raw = readLiteral(field)
-        if (raw === undefined) break
-        const n = parseDimension(raw)
-        if (n === null) {
-          unparseable.push(name)
-          break
+        const n = dim(field)
+        if (n !== undefined) {
+          box.left = n
+          box.right = n
         }
-        paddingBox.left = n
-        paddingBox.right = n
         break
       }
       case 'paddingY':
       case 'paddingVertical': {
-        const raw = readLiteral(field)
-        if (raw === undefined) break
-        const n = parseDimension(raw)
-        if (n === null) {
-          unparseable.push(name)
-          break
+        const n = dim(field)
+        if (n !== undefined) {
+          box.top = n
+          box.bottom = n
         }
-        paddingBox.top = n
-        paddingBox.bottom = n
         break
       }
       case 'background':
       case 'backgroundColor': {
-        const raw = readLiteral(field)
+        const raw = lit(field)
         if (raw === undefined) break
-        const color = parseCssColor(String(raw), target)
-        if (color === null) {
-          unparseable.push(name)
-          break
-        }
-        slots.background = target === 'swift' ? `.background(${color})` : `.background(${color})`
+        const c = parseCssColor(String(raw), target)
+        if (c === null) unparseable.push(name)
+        else slots.background = { wrap: (v) => `.background(${v})`, value: c }
         break
       }
       case 'borderRadius': {
-        const raw = readLiteral(field)
-        if (raw === undefined) break
-        const n = parseDimension(raw)
-        if (n === null) {
-          unparseable.push(name)
-          break
+        const n = dim(field)
+        if (n !== undefined) {
+          slots.radius =
+            target === 'swift'
+              ? { wrap: (v) => `.cornerRadius(${v})`, value: String(n) }
+              : { wrap: (v) => `.clip(RoundedCornerShape(${v}.dp))`, value: String(n) }
         }
-        slots.radius =
-          target === 'swift' ? `.cornerRadius(${n})` : `.clip(RoundedCornerShape(${n}.dp))`
         break
       }
       case 'opacity': {
-        const raw = readLiteral(field)
+        const raw = lit(field)
         if (raw === undefined) break
         const n = typeof raw === 'number' ? raw : parseFloat(raw)
-        if (!Number.isFinite(n)) {
-          unparseable.push(name)
-          break
-        }
-        slots.opacity = target === 'swift' ? `.opacity(${n})` : `.alpha(${n}f)`
+        if (!Number.isFinite(n)) unparseable.push(name)
+        else
+          slots.opacity =
+            target === 'swift'
+              ? { wrap: (v) => `.opacity(${v})`, value: String(n) }
+              : // `f` is a Kotlin FLOAT-LITERAL suffix — it must sit on each
+                // numeric value, NOT after the wrap: in the dynamic path the
+                // value becomes `(if (c) 1 else 0.7)` and `(…)f` is a syntax
+                // error (unlike `.dp`, an extension on the expression result).
+                { wrap: (v) => `.alpha(${v})`, value: `${n}f` }
         break
       }
       case 'width': {
-        const raw = readLiteral(field)
-        if (raw === undefined) break
-        const n = parseDimension(raw)
-        if (n === null) {
-          unparseable.push(name)
-          break
-        }
-        slots.width = target === 'swift' ? `.frame(width: ${n})` : `.width(${n}.dp)`
+        const n = dim(field)
+        if (n !== undefined)
+          slots.width =
+            target === 'swift'
+              ? { wrap: (v) => `.frame(width: ${v})`, value: String(n) }
+              : { wrap: (v) => `.width(${v}.dp)`, value: String(n) }
         break
       }
       case 'height': {
-        const raw = readLiteral(field)
-        if (raw === undefined) break
-        const n = parseDimension(raw)
-        if (n === null) {
-          unparseable.push(name)
-          break
-        }
-        slots.height = target === 'swift' ? `.frame(height: ${n})` : `.height(${n}.dp)`
+        const n = dim(field)
+        if (n !== undefined)
+          slots.height =
+            target === 'swift'
+              ? { wrap: (v) => `.frame(height: ${v})`, value: String(n) }
+              : { wrap: (v) => `.height(${v}.dp)`, value: String(n) }
         break
       }
       case 'color': {
-        // CSS `color` sets the foreground/text color of the subtree. SwiftUI
-        // has a View-level `.foregroundColor`; Compose expresses text color on
-        // the Text composable / LocalContentColor, not a Modifier — so it is a
-        // Swift-only lowering here (Kotlin warns rather than emit a wrong or
-        // structurally-dishonest modifier).
-        const raw = readLiteral(field)
+        const raw = lit(field)
         if (raw === undefined) break
         if (target === 'kotlin') {
-          warnings.push(
-            `<${tag} style={{ color }}>: CSS \`color\` on a container has no Compose Modifier — set the color on the <Text> primitive (or via LocalContentColor) for Android. Lowered on iOS only.`,
-          )
+          kotlinColor = true
           break
         }
-        const color = parseCssColor(String(raw), target)
-        if (color === null) {
-          unparseable.push(name)
-          break
-        }
-        slots.color = `.foregroundColor(${color})`
+        const c = parseCssColor(String(raw), target)
+        if (c === null) unparseable.push(name)
+        else slots.color = { wrap: (v) => `.foregroundColor(${v})`, value: c }
         break
       }
       default:
         dropped.push(name)
     }
   }
-
-  // Emit the resolved padding box in the minimal native form.
-  const paddingMod = emitPadding(paddingBox, target)
-  if (paddingMod !== undefined) slots.padding = paddingMod
-
-  const modifiers = ORDER[target].map((slot) => slots[slot]).filter((m): m is string => !!m)
-
-  if (dynamic.length > 0) {
-    warnings.push(
-      `<${tag} style={…}>: inline-style value(s) [${dynamic.join(', ')}] are not literal — a dynamic style value resolves at RUNTIME and has no compile-time native lowering (dropped). Use a literal, or a per-target adapter (Layer 4). Reactive style is a tracked follow-up.`,
-    )
-  }
-  if (unparseable.length > 0) {
-    warnings.push(
-      `<${tag} style={…}>: inline-style value(s) [${unparseable.join(
-        ', ',
-      )}] could not be parsed to a native value (dropped) — colors must be #hex / rgb() / rgba(); dimensions must be a number or "Npx".`,
-    )
-  }
-  if (dropped.length > 0) {
-    warnings.push(
-      `<${tag} style={…}>: CSS propert${dropped.length === 1 ? 'y' : 'ies'} [${dropped.join(
-        ', ',
-      )}] ha${dropped.length === 1 ? 's' : 've'} no native lowering yet and w${
-        dropped.length === 1 ? 'as' : 'ere'
-      } dropped. Use a canonical prop where one exists (padding/background/radius/gap/align), or a per-target adapter (Layer 4).`,
-    )
-  }
-
-  return { modifiers, warnings }
+  return { slots, box, dropped, dynamic, unparseable, kotlinColor }
 }
 
-/** Emit the resolved padding box in the minimal native form for the target. */
-function emitPadding(
-  box: { top?: number; right?: number; bottom?: number; left?: number },
-  target: Target,
-): string | undefined {
+// ── emit ────────────────────────────────────────────────────────────────────
+
+/** The resolved padding box → the minimal native modifier form (static). */
+function emitPadding(box: PadBox, target: Target): string | undefined {
   const { top, right, bottom, left } = box
   if (top === undefined && right === undefined && bottom === undefined && left === undefined) {
     return undefined
   }
-  // All four sides equal → the single-value form.
   if (top !== undefined && top === right && top === bottom && top === left) {
     return target === 'swift' ? `.padding(${top})` : `.padding(${top}.dp)`
   }
   const hOnly = left !== undefined && left === right && top === undefined && bottom === undefined
   const vOnly = top !== undefined && top === bottom && left === undefined && right === undefined
-  // Horizontal-only / vertical-only → the axis form.
   if (hOnly && !vOnly) {
     return target === 'swift'
       ? `.padding(.horizontal, ${left})`
@@ -430,28 +363,181 @@ function emitPadding(
   if (vOnly && !hOnly) {
     return target === 'swift' ? `.padding(.vertical, ${top})` : `.padding(vertical = ${top}.dp)`
   }
-  // Symmetric H+V (all four set, top===bottom, left===right) → the two-axis form.
   if (top !== undefined && top === bottom && left !== undefined && left === right) {
-    if (target === 'swift') {
-      return `.padding(.vertical, ${top}).padding(.horizontal, ${left})`
-    }
-    return `.padding(horizontal = ${left}.dp, vertical = ${top}.dp)`
+    return target === 'swift'
+      ? `.padding(.vertical, ${top}).padding(.horizontal, ${left})`
+      : `.padding(horizontal = ${left}.dp, vertical = ${top}.dp)`
   }
-  // Per-side — emit only the sides that were set.
   if (target === 'swift') {
-    const parts: string[] = []
-    if (top !== undefined) parts.push(`.padding(.top, ${top})`)
-    if (left !== undefined) parts.push(`.padding(.leading, ${left})`)
-    if (bottom !== undefined) parts.push(`.padding(.bottom, ${bottom})`)
-    if (right !== undefined) parts.push(`.padding(.trailing, ${right})`)
-    return parts.join('')
+    const p: string[] = []
+    if (top !== undefined) p.push(`.padding(.top, ${top})`)
+    if (left !== undefined) p.push(`.padding(.leading, ${left})`)
+    if (bottom !== undefined) p.push(`.padding(.bottom, ${bottom})`)
+    if (right !== undefined) p.push(`.padding(.trailing, ${right})`)
+    return p.join('')
   }
-  // Compose `Modifier.padding(start=, top=, end=, bottom=)` — omit unset sides
-  // (they default to 0.dp, matching CSS's per-side default).
   const args: string[] = []
   if (left !== undefined) args.push(`start = ${left}.dp`)
   if (top !== undefined) args.push(`top = ${top}.dp`)
   if (right !== undefined) args.push(`end = ${right}.dp`)
   if (bottom !== undefined) args.push(`bottom = ${bottom}.dp`)
   return `.padding(${args.join(', ')})`
+}
+
+/** A box that is a single, all-four-sides-equal value → that value, else null. */
+function boxAllSides(box: PadBox): number | null {
+  const { top, right, bottom, left } = box
+  return top !== undefined && top === right && top === bottom && top === left ? top : null
+}
+
+function condExpr(target: Target, cond: string, a: string, b: string): string {
+  return target === 'swift' ? `((${cond}) ? ${a} : ${b})` : `(if (${cond}) ${a} else ${b})`
+}
+
+function collectWarnings(lo: LoweredObject, tag: string): string[] {
+  const w: string[] = []
+  if (lo.kotlinColor) {
+    w.push(
+      `<${tag} style={{ color }}>: CSS \`color\` on a container has no Compose Modifier — set the color on the <Text> primitive (or via LocalContentColor) for Android. Lowered on iOS only.`,
+    )
+  }
+  if (lo.dynamic.length > 0) {
+    w.push(
+      `<${tag} style={…}>: inline-style value(s) [${lo.dynamic.join(', ')}] are not literal — a dynamic style value resolves at RUNTIME and has no compile-time native lowering (dropped). Use a literal, a two-literal ternary (style={cond ? {…} : {…}}), or a per-target adapter (Layer 4).`,
+    )
+  }
+  if (lo.unparseable.length > 0) {
+    w.push(
+      `<${tag} style={…}>: inline-style value(s) [${lo.unparseable.join(
+        ', ',
+      )}] could not be parsed to a native value (dropped) — colors must be #hex / rgb() / rgba(); dimensions must be a number or "Npx".`,
+    )
+  }
+  if (lo.dropped.length > 0) {
+    const n = lo.dropped.length
+    w.push(
+      `<${tag} style={…}>: CSS propert${n === 1 ? 'y' : 'ies'} [${lo.dropped.join(', ')}] ha${
+        n === 1 ? 's' : 've'
+      } no native lowering yet and w${n === 1 ? 'as' : 'ere'} dropped. Use a canonical prop where one exists (padding/background/radius/gap/align), or a per-target adapter (Layer 4).`,
+    )
+  }
+  return w
+}
+
+/**
+ * Lower an inline `style` value to native modifiers. `styleValue` is the IR of
+ * the `style` attribute's value: an object literal (STATIC) or a ternary of two
+ * object literals (DYNAMIC — needs `emitCond`).
+ */
+export function styleToNativeModifiers(
+  styleValue: ExprIR,
+  target: Target,
+  tag: string,
+  emitCond?: CondEmitter,
+): StyleLowerResult {
+  // STATIC — `style={{ … }}`
+  if (styleValue.kind === 'object') {
+    const lo = lowerObject(styleValue.fields, target)
+    const warnings = collectWarnings(lo, tag)
+    if (styleValue.spreads !== undefined && styleValue.spreads.length > 0) {
+      warnings.unshift(
+        `<${tag} style={…}>: a {...spread} inside an inline style is not lowered to native (dropped); only its explicit literal properties are.`,
+      )
+    }
+    return { modifiers: emitStatic(lo, target), warnings }
+  }
+
+  // DYNAMIC — `style={cond ? {A} : {B}}`
+  if (
+    styleValue.kind === 'ternary' &&
+    styleValue.then.kind === 'object' &&
+    styleValue.otherwise.kind === 'object'
+  ) {
+    if (emitCond === undefined) {
+      return {
+        modifiers: [],
+        warnings: [
+          `<${tag} style={cond ? … : …}>: dynamic inline style is not lowerable in this position (dropped).`,
+        ],
+      }
+    }
+    return emitDynamic(styleValue.then, styleValue.otherwise, styleValue.cond, target, tag, emitCond)
+  }
+
+  return {
+    modifiers: [],
+    warnings: [
+      `<${tag} style={…}>: only a static inline-style object literal, or a two-branch ternary of object literals (style={cond ? {…} : {…}}), is lowered to native — this style value was dropped. Reactive style beyond a two-literal ternary is a tracked follow-up.`,
+    ],
+  }
+}
+
+function emitStatic(lo: LoweredObject, target: Target): string[] {
+  const pad = emitPadding(lo.box, target)
+  return ORDER[target]
+    .map((slot) => {
+      if (slot === 'padding') return pad
+      const s = lo.slots[slot]
+      return s ? s.wrap(s.value) : undefined
+    })
+    .filter((m): m is string => m !== undefined)
+}
+
+function emitDynamic(
+  thenObj: Extract<ExprIR, { kind: 'object' }>,
+  elseObj: Extract<ExprIR, { kind: 'object' }>,
+  cond: ExprIR,
+  target: Target,
+  tag: string,
+  emitCond: CondEmitter,
+): StyleLowerResult {
+  const a = lowerObject(thenObj.fields, target)
+  const b = lowerObject(elseObj.fields, target)
+  const c = emitCond(cond)
+  const warnings = [...collectWarnings(a, tag), ...collectWarnings(b, tag)]
+  const asymmetric: string[] = []
+  const modifiers: string[] = []
+
+  for (const slot of ORDER[target]) {
+    if (slot === 'padding') {
+      const av = boxAllSides(a.box)
+      const bv = boxAllSides(b.box)
+      const aHas = Object.keys(a.box).length > 0
+      const bHas = Object.keys(b.box).length > 0
+      if (!aHas && !bHas) continue
+      if (av !== null && bv !== null) {
+        const v = condExpr(target, c, String(av), String(bv))
+        modifiers.push(target === 'swift' ? `.padding(${v})` : `.padding(${v}.dp)`)
+      } else {
+        // A per-side/axis padding differing across branches can't fold into one
+        // conditional value — emit the `then` branch statically and warn.
+        const stat = emitPadding(a.box, target)
+        if (stat !== undefined) modifiers.push(stat)
+        asymmetric.push('padding')
+      }
+      continue
+    }
+    const sa = a.slots[slot]
+    const sb = b.slots[slot]
+    if (sa && sb) {
+      modifiers.push(sa.wrap(condExpr(target, c, sa.value, sb.value)))
+    } else if (sa || sb) {
+      // Present in one branch only — emit it statically (from whichever branch
+      // has it) and warn; a conditional "apply-or-not" modifier is a v1 gap.
+      const only = (sa ?? sb)!
+      modifiers.push(only.wrap(only.value))
+      asymmetric.push(slot)
+    }
+  }
+
+  if (asymmetric.length > 0) {
+    warnings.push(
+      `<${tag} style={cond ? … : …}>: propert${asymmetric.length === 1 ? 'y' : 'ies'} [${[
+        ...new Set(asymmetric),
+      ].join(
+        ', ',
+      )}] differ in shape or exist in only one branch — a per-branch conditional was not foldable, so the first branch's value was emitted statically. Give both branches the same property with two literal values for a reactive flip.`,
+    )
+  }
+  return { modifiers, warnings }
 }

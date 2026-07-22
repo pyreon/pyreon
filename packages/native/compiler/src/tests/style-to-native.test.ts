@@ -190,3 +190,75 @@ describe('inline style — kotlinc gate (Compose stubs)', () => {
     expect(res.ok, res.error ?? '').toBe(true)
   })
 })
+
+// ── DYNAMIC — style={cond ? {A} : {B}} → reactive conditional modifiers ──────
+const dynSwift = (jsx: string) =>
+  transform(
+    `import { Stack, Text } from '@pyreon/primitives'\nfunction App() {\n  const active = signal(false)\n  return (${jsx})\n}`,
+    { target: 'swift' },
+  )
+const dynKotlin = (jsx: string) =>
+  transform(
+    `import { Stack, Text } from '@pyreon/primitives'\nfunction App() {\n  const active = signal(false)\n  return (${jsx})\n}`,
+    { target: 'kotlin' },
+  )
+
+describe('dynamic inline style → reactive conditional modifiers (emit)', () => {
+  const FLIP = `<Stack style={active() ? { backgroundColor: '#2563eb', padding: 8, borderRadius: 8, opacity: 1 } : { backgroundColor: '#6b7280', padding: 16, borderRadius: 4, opacity: 0.7 }}><Text>x</Text></Stack>`
+
+  it('emits SwiftUI conditional VALUES (reactive on the @State read)', () => {
+    const { code } = dynSwift(FLIP)
+    expect(code).toContain('.padding(((active) ? 8 : 16))')
+    expect(code).toContain('.cornerRadius(((active) ? 8 : 4))')
+    expect(code).toMatch(/\.background\(\(\(active\) \? Color\(\.sRGB, red: 0\.145.*: Color\(\.sRGB, red: 0\.420/)
+    expect(code).toContain('.opacity(((active) ? 1 : 0.7))')
+  })
+
+  it('emits Compose conditional VALUES with if-expressions', () => {
+    const { code } = dynKotlin(FLIP)
+    expect(code).toContain('.clip(RoundedCornerShape((if (active) 8 else 4).dp))')
+    expect(code).toContain('.background((if (active) Color(0xFF2563EB) else Color(0xFF6B7280)))')
+    expect(code).toContain('.padding((if (active) 8 else 16).dp)')
+  })
+
+  it('carries the Kotlin float `f` suffix on each opacity BRANCH, not after the parens', () => {
+    // Regression: `.alpha((if (active) 1 else 0.7)f)` is a syntax error (`f` is a
+    // literal suffix, not an extension on the expression). Must be `1f`/`0.7f`.
+    const { code } = dynKotlin(FLIP)
+    expect(code).toContain('.alpha((if (active) 1f else 0.7f))')
+    expect(code).not.toMatch(/\)f\)/)
+  })
+
+  it('an ASYMMETRIC property (in one branch only) emits statically + warns, never silently', () => {
+    const src = `<Stack style={active() ? { backgroundColor: '#2563eb', width: 200 } : { backgroundColor: '#6b7280' }}><Text>x</Text></Stack>`
+    const { code, warnings } = dynSwift(src)
+    // shared background flips; width (then-only) emitted statically
+    expect(code).toContain('.background(((active) ? Color(.sRGB, red: 0.145')
+    expect(code).toContain('.frame(width: 200)')
+    expect(warnings.join('\n')).toMatch(/\[width\].*differ in shape or exist in only one branch/)
+  })
+
+  it('a non-ternary dynamic style still warns + drops (style={obj})', () => {
+    const { warnings } = dynSwift(`<Stack style={someObj}><Text>x</Text></Stack>`)
+    expect(warnings.join('\n')).toMatch(/only a static inline-style object literal, or a two-branch ternary/)
+  })
+})
+
+describe('dynamic inline style — toolchain gates', () => {
+  const FLIP = `<Press onPress={() => active.set(!active())}><Stack style={active() ? { backgroundColor: '#2563eb', padding: 8, borderRadius: 8, opacity: 1 } : { backgroundColor: '#6b7280', padding: 16, borderRadius: 4, opacity: 0.7 }}><Text>Toggle</Text></Stack></Press>`
+  const withPress = (target: 'swift' | 'kotlin') =>
+    transform(
+      `import { Stack, Text, Press } from '@pyreon/primitives'\nfunction App() {\n  const active = signal(false)\n  return (${FLIP})\n}`,
+      { target },
+    ).code
+
+  it.skipIf(!isSwiftUIAvailable())('the reactive conditional modifiers typecheck (real SwiftUI SDK)', () => {
+    const res = validateSwiftTypecheck(withPress('swift'))
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+
+  it.skipIf(!isKotlincAvailable())('the reactive conditional modifiers compile (Compose stubs)', () => {
+    const res = validateKotlin(withPress('kotlin'))
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+})

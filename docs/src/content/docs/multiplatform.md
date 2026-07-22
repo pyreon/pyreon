@@ -266,7 +266,12 @@ Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried 
 
 **Web-only declarations are stripped with no warning** — `cursor`, `userSelect`, `pointerEvents`, `transition`, `outline`, `appearance`, … are a correct no-op on a touch target. **Any other property is dropped with a NAMED warning** (`margin`, `boxShadow`, `border`, `flex`, `transform`, positioning, `font*`, … — nothing vanishes silently), pointing at the canonical prop or a Layer-4 adapter.
 
-**Static-only in v1.** The style object and every value must be a literal — the same "styling resolves at COMPILE time" contract the token props hold. A dynamic style value (`style={obj}`) or a dynamic field (`style={{ padding: n() }}`) warns + drops; **reactive style emit is a tracked follow-up** (the Phase-3 dynamic-resolution arc). Both targets are toolchain-validated (`swiftc -typecheck` against the real SwiftUI SDK + `kotlinc` against the Compose stubs).
+**Reactive `style={cond ? {A} : {B}}` lowers too.** A ternary of two object literals lowers each *shared* property to a **reactive conditional-value modifier** — `.background(active ? A : B)` on iOS, `.background(if (active) A else B)` on Android. Because `cond` reads a signal (→ SwiftUI `@State` / Compose `mutableStateOf`), the style **flips on state change with no extra machinery** — the exact reactive mechanism the canonical-prop ternary emit already ships and the counter example device-proves (tap → re-render). This is the plan's make-or-break "dynamic resolution → reactive emit", proven on a primitive's own inline style before it rides on rocketstyle's dimension props.
+
+- A property present in only ONE branch (asymmetric), or a padding box that isn't a single all-sides value in both branches, can't fold into one conditional value — it's emitted from the first branch statically **with a named warning** (never a silent drop). Give both branches the same property with two literal values for a reactive flip.
+- Still out of scope (warned, not silently dropped): a non-ternary dynamic style (`style={obj}`, `cond && {A}`, nested ternary) and any *non-literal field value* (`style={{ padding: n() }}`). Reactive resolution beyond a two-literal ternary is the tracked follow-up.
+
+Both the static and dynamic emits are toolchain-validated (`swiftc -typecheck` against the real SwiftUI SDK + `kotlinc` against the Compose stubs) — the dual-toolchain gate is what caught a Kotlin float-suffix bug (`.alpha((if (c) 1 else 0.7)f)` → invalid; fixed to `1f`/`0.7f` per branch).
 
 ## Per-platform import resolution
 
