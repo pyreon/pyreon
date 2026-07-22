@@ -50,7 +50,8 @@
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint ."
+    "lint": "oxlint .",
+    "bench:validation": "NODE_ENV=production bun bench/validation-bench.ts"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",

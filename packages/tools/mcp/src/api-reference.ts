@@ -3126,9 +3126,9 @@ import { standardSchemaToValidator } from '@pyreon/validation'
 
 const schema = z.object({ email: z.string().email(), age: z.number().min(18) })
 const validate = standardSchemaToValidator(schema)
-const errors = await validate({ email: 'x', age: 5 })
+const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record (no await needed)
 // => { email: 'Invalid email', age: 'Too small: ...' }`,
-    notes: 'Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) into a whole-object `SchemaValidateFn` — `(values) => per-key error record`. This is the bridge that lets a consumer accept a raw schema with no `zodSchema()` wrapper and no cast: `useForm({ schema: z.object(...) })`. Issue paths flatten to dot-strings (`address.city`); first message per path wins; async schemas resolve naturally (the returned validator is always async — await it). See also: isStandardSchema, zodSchema, InferSchema.',
+    notes: 'Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) into a whole-object `SchemaValidateFn` — `(values) => per-key error record`. This is the bridge that lets a consumer accept a raw schema with no `zodSchema()` wrapper and no cast: `useForm({ schema: z.object(...) })`. Issue paths flatten to dot-strings (`address.city`); first message per path wins. SYNC FAST-PATH: a synchronously-validating schema (zod/valibot/arktype sync trees, `s`) returns the error record DIRECTLY — no Promise allocation, no microtask hop per call (the keystroke path in `@pyreon/form` `validateOn`); a genuinely async schema still returns a Promise the caller awaits. Wrapper tax bench-proven ≈0ns over the raw library call (`bun run bench:validation`). See also: isStandardSchema, zodSchema, InferSchema.',
     mistakes: `- Passing a Pyreon adapter (the result of zodSchema()) instead of the RAW schema — the adapter is already a validator; pass z.object(...) directly, or use adapter.validator
 - Expecting a synchronous return — the produced validator is always async (returns a Promise); always await it
 - Assuming a non-object schema works — the output is a per-key record keyed on the top-level fields, so the schema must describe an object shape`,
