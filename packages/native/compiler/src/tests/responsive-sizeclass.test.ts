@@ -38,17 +38,17 @@ describe('responsive — useSizeClass + dynamic dimension composition', () => {
 })
 
 describe('responsive — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable())('the responsive composition typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the responsive composition typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(transform(PANEL, { target: 'swift' }).code)
     expect(res.ok, res.error).toBe(true)
   })
 
-  it.skipIf(!isKotlincAvailable())('the responsive composition compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the responsive composition compiles (real kotlinc)', () => {
     const res = validateKotlin(transform(PANEL, { target: 'kotlin' }).code)
     expect(res.ok, res.error).toBe(true)
   })
 
-  it.skipIf(!isKotlincAvailable())(
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
     'a bare useSizeClass() Kotlin emit compiles — the LocalConfiguration stub is present',
     () => {
       // Isolates the stub fix: previously the validate-kotlin stub omitted

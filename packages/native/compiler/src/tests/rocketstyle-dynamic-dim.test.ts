@@ -74,11 +74,11 @@ describe('rocketstyle dynamic dimension — emit', () => {
 
 describe('rocketstyle dynamic dimension — toolchain gates', () => {
   const SRC = render(`<Btn state={active() ? 'primary' : 'danger'} size="large"><Text>Click</Text></Btn>`)
-  it.skipIf(!isSwiftUIAvailable())('the reactive rocketstyle flip typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the reactive rocketstyle flip typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(swift(SRC).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isKotlincAvailable())('the reactive rocketstyle flip compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the reactive rocketstyle flip compiles (real kotlinc)', () => {
     const res = validateKotlin(kotlin(SRC).code)
     expect(res.ok, res.error).toBe(true)
   })

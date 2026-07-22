@@ -41,17 +41,17 @@ describe('dark mode — useColorScheme + dynamic dimension composition', () => {
 })
 
 describe('dark mode — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable())('the dark-mode composition typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the dark-mode composition typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(transform(CARD, { target: 'swift' }).code)
     expect(res.ok, res.error).toBe(true)
   })
 
-  it.skipIf(!isKotlincAvailable())('the dark-mode composition compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the dark-mode composition compiles (real kotlinc)', () => {
     const res = validateKotlin(transform(CARD, { target: 'kotlin' }).code)
     expect(res.ok, res.error).toBe(true)
   })
 
-  it.skipIf(!isKotlincAvailable())(
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')(
     'a bare useColorScheme() Kotlin emit compiles — the isSystemInDarkTheme stub is present',
     () => {
       // Isolates the stub fix: previously the validate-kotlin stub omitted

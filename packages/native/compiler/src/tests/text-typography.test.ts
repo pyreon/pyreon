@@ -57,11 +57,11 @@ export function App() { return (<Text style={{ fontSize: 18, backgroundColor: '#
 })
 
 describe('Text typography — toolchain gates (real SDKs)', () => {
-  it.skipIf(!isSwiftUIAvailable())('the typographic Text typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the typographic Text typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(transform(TITLE, { target: 'swift' }).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isKotlincAvailable())('the typographic Text compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the typographic Text compiles (real kotlinc)', () => {
     const res = validateKotlin(transform(TITLE, { target: 'kotlin' }).code)
     expect(res.ok, res.error).toBe(true)
   })

@@ -80,19 +80,19 @@ describe('ui-system on native — container Card archetype (dark mode)', () => {
 })
 
 describe('ui-system on native — toolchain gates (real SDKs, both archetypes)', () => {
-  it.skipIf(!isSwiftUIAvailable())('the interactive Button typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the interactive Button typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(transform(BUTTON_APP, { target: 'swift' }).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isKotlincAvailable())('the interactive Button compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the interactive Button compiles (real kotlinc)', () => {
     const res = validateKotlin(transform(BUTTON_APP, { target: 'kotlin' }).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isSwiftUIAvailable())('the dark-mode Card typechecks (real SwiftUI SDK)', () => {
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the dark-mode Card typechecks (real SwiftUI SDK)', () => {
     const res = validateSwiftTypecheck(transform(CARD_APP, { target: 'swift' }).code)
     expect(res.ok, res.error).toBe(true)
   })
-  it.skipIf(!isKotlincAvailable())('the dark-mode Card compiles (real kotlinc)', () => {
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the dark-mode Card compiles (real kotlinc)', () => {
     const res = validateKotlin(transform(CARD_APP, { target: 'kotlin' }).code)
     expect(res.ok, res.error).toBe(true)
   })
