@@ -44,7 +44,7 @@ import {
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
-import { styleToNativeModifiers } from './style-to-native'
+import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -3564,10 +3564,20 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const rkt = _rocketstyleComponents.get(tag)
   if (rkt !== undefined) {
     const dimNames = Object.keys(rkt.dims)
-    const merged = resolveRocketstyleUseSite(rkt, (d) => {
-      const v = readStaticAttrKotlin(e, d)
-      return typeof v === 'string' ? v : undefined
-    })
+    const merged = resolveRocketstyleUseSite(
+      rkt,
+      (d) => {
+        const v = readStaticAttrKotlin(e, d)
+        return typeof v === 'string' ? v : undefined
+      },
+      (d) => {
+        const a = e.attrs.find(
+          (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === d,
+        )
+        return a?.value
+      },
+      (msg) => _emitWarnings.push(msg),
+    )
     const rest = e.attrs.filter(
       (a) => !(a.kind === 'attr' && dimNames.includes(a.name)),
     )
@@ -3736,7 +3746,21 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   // onNodeWithTag("login-error") and the tag was silently dropped;
   // iOS passed because the Swift Text emit carries the identifier).
   // Same fix shape as Field (a43599f01).
-  const mod = emitKotlinLayoutModifier(e)
+  // Typography (fontSize/fontWeight/color/textAlign/fontStyle) in a Text's
+  // style object → Text() CONSTRUCTOR ARGS (Compose has no text modifier); the
+  // REST of the style (background/padding/border) still flows through the
+  // layout modifier.
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  let typoArgs = ''
+  let eForMod = e
+  if (styleAttr !== undefined) {
+    const { typo, rest } = extractTextTypography(styleAttr.value)
+    typoArgs = kotlinTextTypographyArgs(typo)
+    eForMod = { ...e, attrs: e.attrs.map((a) => (a === styleAttr ? { ...a, value: rest } : a)) }
+  }
+  const mod = emitKotlinLayoutModifier(eForMod)
   const modArg = mod === '' ? '' : `, modifier = ${mod}`
   // Custom font → fontFamily = pyreonFont("<resource-name>") — a
   // runtime res/font lookup (PyreonAssets.kt), so no PostScript map is
@@ -3746,9 +3770,9 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
     typeof font === 'string'
       ? `, fontFamily = pyreonFont(${JSON.stringify(sanitizeKotlinFontName(font))})`
       : ''
-  if (e.children.length === 0) return `Text(text = ""${fontArg}${modArg})`
+  if (e.children.length === 0) return `Text(text = ""${typoArgs}${fontArg}${modArg})`
   if (e.children.length === 1 && e.children[0]!.kind === 'text') {
-    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${fontArg}${modArg})`
+    return `Text(text = ${JSON.stringify(e.children[0]!.value)}${typoArgs}${fontArg}${modArg})`
   }
   const parts: string[] = []
   for (const c of e.children) {
@@ -3773,7 +3797,7 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
       parts.push(kotlinInterpSegment(childExpr, indent))
     }
   }
-  return `Text(text = "${parts.join('')}"${fontArg}${modArg})`
+  return `Text(text = "${parts.join('')}"${typoArgs}${fontArg}${modArg})`
 }
 
 /**

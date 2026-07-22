@@ -352,6 +352,21 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('LocalConfiguration.current')) {
     imports.push('import androidx.compose.ui.platform.LocalConfiguration')
   }
+  // Text typography (rocketstyle/styled/inline-style on a Text → fontSize/
+  // fontWeight/fontStyle/textAlign args). Each type lives in its own sub-package
+  // (NOT star-imported ui.*), keyed on the emitted symbol.
+  if (emitted.includes('.sp')) {
+    imports.push('import androidx.compose.ui.unit.sp')
+  }
+  if (emitted.includes('FontWeight.')) {
+    imports.push('import androidx.compose.ui.text.font.FontWeight')
+  }
+  if (emitted.includes('FontStyle.')) {
+    imports.push('import androidx.compose.ui.text.font.FontStyle')
+  }
+  if (emitted.includes('TextAlign.')) {
+    imports.push('import androidx.compose.ui.text.style.TextAlign')
+  }
   // Modal emit (<Modal>): Dialog is androidx.compose.ui.window — not in
   // the star-imported ui.* (single-package).
   if (emitted.includes('Dialog(')) {

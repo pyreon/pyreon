@@ -99,11 +99,30 @@ fun <T> remember(calculation: () -> T): T = calculation()
 @Suppress("UNUSED_PARAMETER")
 fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 
+// isSystemInDarkTheme — Compose's dark-mode read (androidx.compose.foundation),
+// emitted by useColorScheme(). The real device build imports it via the CLI's
+// conditionalKotlinImports; this stub mirrors that surface so the validate-kotlin
+// gate resolves it (previously missing → any useColorScheme emit failed kotlinc).
+@Composable
+fun isSystemInDarkTheme(): Boolean = false
+// LocalConfiguration — Compose's screen configuration (androidx.compose.ui.platform),
+// emitted by useSizeClass() as LocalConfiguration.current.screenWidthDp. The real
+// device build imports it via the CLI's conditionalKotlinImports; this stub mirrors
+// the surface so the validate-kotlin gate resolves it (previously missing → any
+// useSizeClass emit failed kotlinc).
+class Configuration {
+  val screenWidthDp: Int = 0
+}
+object LocalConfiguration {
+  val current: Configuration
+    @Composable get() = Configuration()
+}
+
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontFamily: FontFamily? = null, modifier: Modifier = Modifier) {}
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, modifier: Modifier = Modifier) {}
 
 @Composable
 fun Button(
@@ -318,6 +337,38 @@ value class Dp(val value: Float)
 val Int.dp: Dp get() = Dp(this.toFloat())
 val Float.dp: Dp get() = Dp(this)
 val Double.dp: Dp get() = Dp(this.toFloat())
+
+// TextUnit + .sp — the font-size unit, emitted by Text typography
+// (fontSize = 24.sp). Mirrors androidx.compose.ui.unit.TextUnit.
+@JvmInline
+value class TextUnit(val value: Float)
+val Int.sp: TextUnit get() = TextUnit(this.toFloat())
+val Double.sp: TextUnit get() = TextUnit(this.toFloat())
+
+// FontWeight / FontStyle / TextAlign — Text typography args
+// (androidx.compose.ui.text.font / androidx.compose.ui.text.style).
+// Stubbed as the members the typography emit produces.
+class FontWeight {
+  companion object {
+    val Normal = FontWeight()
+    val Medium = FontWeight()
+    val SemiBold = FontWeight()
+    val Bold = FontWeight()
+  }
+}
+class FontStyle {
+  companion object {
+    val Normal = FontStyle()
+    val Italic = FontStyle()
+  }
+}
+class TextAlign {
+  companion object {
+    val Start = TextAlign()
+    val Center = TextAlign()
+    val End = TextAlign()
+  }
+}
 
 // Role — androidx.compose.ui.semantics.Role. Real Compose models it as a
 // JvmInline value class with companion vals; the stub uses a class + companion

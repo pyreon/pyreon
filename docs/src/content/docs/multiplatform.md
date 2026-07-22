@@ -309,7 +309,50 @@ const Btn = rocketstyle()({ name: 'Btn', component: Stack })
 
 — **resolves at compile time**: at each use-site the frontend reads the `state`/`size`/`variant` attrs, merges `base ∪ matched-dims` into ONE style object (the rocketstyle cascade — dims override base), and reuses the `styled` rewrite (→ `<Stack style={merged}>` → connector). So `<Btn state="primary" size="large">` → `VStack{}.padding(16).background(…blue).cornerRadius(8)` (size=large's `padding` overrode the base). This is what makes **user-authored** multiplatform components real: build your own on ui-system over the primitive bases and it lowers — primitives are the compiler's internal native target, not your authoring constraint.
 
-**Scope (v1):** a canonical-primitive base (`component: Stack`), static string dimensions (`state="primary"` — the `useBooleans: false` default). Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). Dynamic `state={sig}` → a native switch over the pre-resolved sets is the tracked follow-up. Both emits are toolchain-validated.
+#### Reactive dimension flips
+
+A dimension prop can be **dynamic** — driven by a signal at runtime:
+
+```tsx
+function App() {
+  const active = signal(false)
+  return <Btn state={active() ? 'primary' : 'danger'} size="large">…</Btn>
+}
+```
+
+`<Btn state={active() ? 'primary' : 'danger'}>` **resolves both branches** (`base ∪ static-dims ∪ each state's set`) into a **ternary style value** handed to the connector's reactive path — so each property that differs across the branches lowers to a **conditional-value modifier**: SwiftUI `.background((active) ? Color(…blue) : Color(…red))`, Compose `.background(if (active) Color(0xFF2563EB) else Color(0xFFDC2626))`. Any **static** dimension (`size="large"`) + the theme merge into **both** branches. This is what makes a native rocketstyle component **reactive** rather than static-only — the runtime state flip re-styles in place, no remount.
+
+**Scope:** a canonical-primitive base (`component: Stack`); static string dimensions (the `useBooleans: false` default) merge into one object; **one** dynamic dimension (a ternary of two DECLARED dimension values) lowers to the reactive flip. Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). Remaining follow-up: **≥2 simultaneous** dynamic dimensions (a switch over the dimension-set product) → warns + falls back to the first branch; a ternary whose branches aren't both declared dimension values → warns + drops. Both emits are toolchain-validated.
+
+#### Dark mode
+
+Dark mode needs **no new mechanism** — it composes from `useColorScheme()` (which lowers to SwiftUI `@Environment(\.colorScheme)` / Compose `isSystemInDarkTheme()` as a reactive `"dark"`/`"light"` string) + the reactive dimension flip above:
+
+```tsx
+const Card = rocketstyle()({ name: 'Card', component: Stack })
+  .states({ onLight: { backgroundColor: '#ffffff' }, onDark: { backgroundColor: '#111827' } })
+function App() {
+  const scheme = useColorScheme()
+  return <Card state={scheme === 'dark' ? 'onDark' : 'onLight'}>…</Card>
+}
+```
+
+→ SwiftUI `.background((scheme == "dark") ? Color(…#111827) : Color(…#ffffff))` with `@Environment(\.colorScheme)` injected; Compose `.background(if (scheme == "dark") Color(0xFF111827) else Color(0xFFFFFFFF))`. The system color-scheme flip re-styles in place.
+
+#### Responsive (size class)
+
+CSS pixel breakpoints (`[xs, sm, md, lg]`) don't map to native, but native has a **2-bucket width class** — SwiftUI `@Environment(\.horizontalSizeClass)` (compact/regular), Compose `LocalConfiguration.current.screenWidthDp`. `useSizeClass()` lowers both to a reactive `"compact"`/`"regular"` string, so — same composition as dark mode — a dimension flip gives a real **mobile-vs-expanded** responsive layout that re-flows on rotation / split-screen:
+
+```tsx
+const Panel = rocketstyle()({ name: 'Panel', component: Stack })
+  .states({ mobile: { padding: '12px' }, expanded: { padding: '32px' } })
+function App() {
+  const size = useSizeClass()
+  return <Panel state={size === 'regular' ? 'expanded' : 'mobile'}>…</Panel>
+}
+```
+
+→ SwiftUI `.padding((size == "regular") ? 32 : 12)`; Compose `.padding(if (size == "regular") 32 else 12)`. It's two buckets, not per-pixel breakpoints — matching how native size classes actually work.
 
 ### Theme-token resolution
 
@@ -333,6 +376,31 @@ const Card = styled(Stack)`
 `defineTheme({ … })` is a **compile-time declaration** — the compiler parses its literal tokens and drops the declaration from the native output (there is no native `defineTheme`; the runtime helper is identity on web). The parsed theme is merged **over the bundled defaults per entry**, so overriding only `color.primary` keeps every other default token, and a **zero-config app** (no `defineTheme`) resolves standard tokens against the defaults (which mirror `@pyreon/ui-theme` + the primitive defaults). Both the styler `(p) => p.theme.color.primary` (props) and rocketstyle `(t) => t.color.primary` (theme-directly) shapes resolve; group aliases (`colors`/`space`/`borderRadius`), flat and nested paths are accepted.
 
 **Scope (v1):** the `color` / `spacing` / `radius` groups with **literal** leaf values (a native theme must be static — a runtime-computed token can't be baked). An unknown token (`t.color.doesNotExist`) or a non-token interpolation warns + drops.
+
+### Building ui-system components — coverage
+
+You build your **own** components on the ui-system styling frontends (`styled` + `rocketstyle` + theme tokens) over the canonical primitives — primitives are the compiler's internal native target, not your authoring constraint. The two archetypes both lower to SwiftUI **and** Compose (real `swiftc`/`kotlinc`-validated end-to-end):
+
+- **Interactive** — `rocketstyle()({ component: Button })` with theme tokens + a reactive `state={sig() ? 'a' : 'b'}` flip + `disabled` + `onPress` + `size`.
+- **Container** — `rocketstyle()({ component: Stack })` with theme tokens + dark mode (`state={scheme === 'dark' ? 'onDark' : 'onLight'}`).
+
+| Styling feature | iOS + Android | Notes |
+| --- | --- | --- |
+| `styled(Prim)` component | ✅ | static CSS + theme tokens |
+| `rocketstyle` static dimensions | ✅ | `state`/`size`/`variant` cascade → one style |
+| `rocketstyle` reactive dimension flip | ✅ | `state={sig ? 'a' : 'b'}` → conditional-value modifier |
+| Theme tokens (`defineTheme` + `t.color.…`) | ✅ | resolved to the app's real values at compile time |
+| Dark mode | ✅ | `useColorScheme()` + a dimension flip (composition) |
+| `disabled` / `onPress` | ✅ | needs an interactive base (`Button`/`Press`), not a layout `Stack` |
+| Text typography | ✅ | `fontSize`/`fontWeight`/`color`/`textAlign`/`fontStyle` in a style object on a Text → SwiftUI `.font(.system(size:weight:))`/`.foregroundColor`/`.multilineTextAlignment` modifiers; Compose `Text(fontSize=…, fontWeight=…, …)` constructor args. `<Heading level={1..6}>` still gives the semantic scale |
+| Layout (`direction`/`gap`/`align`) | ✅ | via the canonical primitive |
+| Responsive (2-bucket) | ✅ | `useSizeClass()` + a dimension flip → compact/regular (mobile vs expanded), re-flows on rotation/split-screen |
+| Responsive breakpoint arrays (`[xs,sm,md,lg]`) | ❌ | full CSS pixel breakpoints have no native map — use the 2-bucket size class above |
+| `hover` / `focus` pseudo-states | ❌ | pointer-only — desktop-web semantics |
+| CSS animations / `keyframes` | ❌ | web-only ("no animations v1") |
+| `@pyreon/elements` Overlay / Portal | ❌ | web-only-rich (Layer 3b) — native uses sheets/dialogs, a separate model |
+
+The ❌ rows are **architectural boundaries**, not tracked bugs — they're bound to the DOM / CSSOM / a pointer model that doesn't exist natively. The ✅ rows are what makes user-authored ui-system components run on iOS + Android + web from one source.
 
 ## Per-platform import resolution
 
