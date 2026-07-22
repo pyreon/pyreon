@@ -155,6 +155,9 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
       cancelResizeThrottle = throttled.cancel
     }
 
+    // Only reachable from the client init path, but SSR-guard explicitly —
+    // ResizeObserver does not exist server-side.
+    if (typeof ResizeObserver === 'undefined') return
     observer = new ResizeObserver(callback)
     observer.observe(el)
   }
@@ -236,6 +239,7 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
     const themeFn = config.theme
     effect(() => {
       const theme = themeFn() ?? null // TRACKED — the swap subscription
+      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
       const chart = instance.peek()
       // Pre-init (or mid-async-load): nothing to swap — createInstance
       // reads the LIVE accessor value at init time, so this change is
@@ -243,6 +247,7 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
       if (!chart) return
       if (Object.is(theme, appliedTheme)) return
 
+      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
       const el = container.peek()
       const core = getCoreSync()
       if (!el || !core) return
@@ -251,6 +256,7 @@ export function useChart<TOption extends EChartsOption = EChartsOption>(
       chart.dispose()
       try {
         untrack(() => createInstance(core, el))
+        // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
         const next = instance.peek()
         if (next && group) next.group = group
       } catch (err) {

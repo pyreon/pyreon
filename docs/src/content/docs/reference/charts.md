@@ -89,7 +89,7 @@ const typedChart = useChart<MyOption>(() => ({
 <TOption extends EChartsOption = EChartsOption>(optionsFn: () => TOption, config?: UseChartConfig) => UseChartResult
 ```
 
-Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal&lt;ECharts | null&gt;), `loading` (Signal&lt;boolean&gt;), `error` (Signal&lt;Error | null&gt;), and `resize()`. Auto-resizes via ResizeObserver and disposes on unmount.
+Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal&lt;ECharts | null&gt;), `loading` (Signal&lt;boolean&gt;), `error` (Signal&lt;Error | null&gt;), and `resize()`. Auto-resizes via ResizeObserver (`autoresize: false | { throttle }` to opt out/throttle) and disposes on unmount. `theme` accepts an accessor for reactive swaps; `initOptions` passes through to `core.init`; warm mounts (modules cached) are synchronous. `getCore()`/`connect()` are exported for `registerMap`/`registerTheme`/linked charts.
 
 **Example**
 
@@ -146,7 +146,7 @@ Declarative chart component that wraps `useChart` internally. Accepts `options` 
 - Missing style height on the Chart component — same as useChart, ECharts requires explicit container dimensions
 - Passing a static options object — wrap in `() => ({...})` so signal reads inside are tracked reactively
 - Using onClick/onMouseover/onMouseout for a non-mouse event — those are only shorthands; reach for the general `onEvents` map (e.g. `onEvents={{ legendselectchanged: fn }}`) for any other ECharts event
-- Expecting `theme` to swap at runtime — it is applied once at init (ECharts cannot hot-swap a theme); remount the chart (key it on the theme signal) to change themes
+- Passing `theme` as a plain VALUE and expecting runtime swaps — a value is applied once at init; pass an ACCESSOR (`theme: () => (dark() ? 'dark' : null)`) and a flip disposes + re-inits with the option, group, and events preserved
 - Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass `notMerge` or `replaceMerge="series"`
 
 **See also:** `useChart`
@@ -165,4 +165,4 @@ Declarative chart component that wraps `useChart` internally. Accepts `options` 
 
 > **Events:** `onEvents` is the general handler map — any ECharts event by name (`legendselectchanged`, `datazoom`, `brushselected`, `finished`, …); each handler gets `(params, instance)`. `onClick`/`onMouseover`/`onMouseout` are shorthands merged in (they WIN on a key collision). Binding is leak-safe: a changed handler swaps the listener (no pile-up) and all are removed on unmount.
 
-> **Theme is not reactive:** ECharts cannot hot-swap a theme, so `theme` is applied ONCE at init. To switch themes at runtime (dark mode), remount the chart by keying it on the theme signal, or drive per-series colors with signals instead.
+> **Theme is not reactive:** Reactive theme: pass `theme` as an ACCESSOR (`() => (dark() ? 'dark' : null)`) — a flip disposes + re-inits with the current option/group/events preserved (ECharts has no in-place swap; dispose+re-init is the mechanism, as in vue-echarts). A plain value stays static. For map charts, `await getCore()` then `core.registerMap(...)` BEFORE rendering a `map` series.
