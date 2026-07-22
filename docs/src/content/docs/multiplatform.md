@@ -362,6 +362,29 @@ const Card = styled(Stack)`
 
 **Scope (v1):** the `color` / `spacing` / `radius` groups with **literal** leaf values (a native theme must be static — a runtime-computed token can't be baked). An unknown token (`t.color.doesNotExist`) or a non-token interpolation warns + drops.
 
+### Building ui-system components — coverage
+
+You build your **own** components on the ui-system styling frontends (`styled` + `rocketstyle` + theme tokens) over the canonical primitives — primitives are the compiler's internal native target, not your authoring constraint. The two archetypes both lower to SwiftUI **and** Compose (real `swiftc`/`kotlinc`-validated end-to-end):
+
+- **Interactive** — `rocketstyle()({ component: Button })` with theme tokens + a reactive `state={sig() ? 'a' : 'b'}` flip + `disabled` + `onPress` + `size`.
+- **Container** — `rocketstyle()({ component: Stack })` with theme tokens + dark mode (`state={scheme === 'dark' ? 'onDark' : 'onLight'}`).
+
+| Styling feature | iOS + Android | Notes |
+| --- | --- | --- |
+| `styled(Prim)` component | ✅ | static CSS + theme tokens |
+| `rocketstyle` static dimensions | ✅ | `state`/`size`/`variant` cascade → one style |
+| `rocketstyle` reactive dimension flip | ✅ | `state={sig ? 'a' : 'b'}` → conditional-value modifier |
+| Theme tokens (`defineTheme` + `t.color.…`) | ✅ | resolved to the app's real values at compile time |
+| Dark mode | ✅ | `useColorScheme()` + a dimension flip (composition) |
+| `disabled` / `onPress` | ✅ | needs an interactive base (`Button`/`Press`), not a layout `Stack` |
+| Layout (`direction`/`gap`/`align`) | ✅ | via the canonical primitive |
+| Responsive breakpoint arrays (`[xs,sm,md,lg]`) | ❌ | CSS pixel breakpoints have no clean native size-class map (primitives are "no responsive v1") |
+| `hover` / `focus` pseudo-states | ❌ | pointer-only — desktop-web semantics |
+| CSS animations / `keyframes` | ❌ | web-only ("no animations v1") |
+| `@pyreon/elements` Overlay / Portal | ❌ | web-only-rich (Layer 3b) — native uses sheets/dialogs, a separate model |
+
+The ❌ rows are **architectural boundaries**, not tracked bugs — they're bound to the DOM / CSSOM / a pointer model that doesn't exist natively. The ✅ rows are what makes user-authored ui-system components run on iOS + Android + web from one source.
+
 ## Per-platform import resolution
 
 The DX-critical question: how does `import { Stack } from '@pyreon/primitives'` resolve on each target?
