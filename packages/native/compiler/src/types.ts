@@ -1364,6 +1364,15 @@ export interface ParseResult {
    * each `<X>` use-site to `<Prim …defaults …use-site>`.
    */
   attrsComponents: AttrsComponentIR[]
+  /**
+   * Local-name → `@pyreon` package for the alias-tag names (Element, PyreonUI,
+   * PyreonUIProvider, Container, Row, Col). The emit's alias hooks intercept a
+   * tag ONLY when it is imported from its expected package — so a user
+   * component that happens to share a name (`Row` from `./my-components`) is
+   * NOT mis-lowered as a coolgrid Row. An untracked name (absent from the map)
+   * keeps prior behaviour, so this is a purely additive precision guard.
+   */
+  aliasImports: Map<string, string>
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }

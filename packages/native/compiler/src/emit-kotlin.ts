@@ -114,6 +114,29 @@ let _styledComponents: Map<string, StyledComponentIR> = new Map()
 // `rocketstyle()({component})…` components — resolved per use-site (see emitKotlinJsx).
 let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
 let _attrsComponents: Map<string, AttrsComponentIR> = new Map()
+// Alias-tag local name → its import package. The Element/PyreonUI/Container/
+// Row/Col hooks intercept a tag ONLY when it resolves from its expected
+// @pyreon package, so a same-named user component isn't mis-lowered.
+let _aliasImports: Map<string, string> = new Map()
+
+/**
+ * True when `tag` is eligible for an alias hook (Element/PyreonUI/Container/
+ * Row/Col → native): it must NOT be shadowed by a same-named user / styled /
+ * rocketstyle / attrs component, AND — when its import source is tracked — it
+ * must resolve from `expectedPkg`. An untracked name keeps prior behaviour, so
+ * this only SUPPRESSES a tag imported from another package.
+ */
+function canAliasIntercept(tag: string, expectedPkg: string): boolean {
+  if (
+    _componentNames.has(tag) ||
+    _styledComponents.has(tag) ||
+    _rocketstyleComponents.has(tag) ||
+    _attrsComponents.has(tag)
+  )
+    return false
+  const src = _aliasImports.get(tag)
+  return src === undefined || src === expectedPkg
+}
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
  * Mirror of emit-swift's `_componentPropsMap`. */
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
@@ -298,11 +321,13 @@ export function emitKotlin(
   styledComponents: StyledComponentIR[] = [],
   rocketstyleComponents: RocketstyleComponentIR[] = [],
   attrsComponents: AttrsComponentIR[] = [],
+  aliasImports: Map<string, string> = new Map(),
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
   _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
   _attrsComponents = new Map(attrsComponents.map((a) => [a.name, a]))
+  _aliasImports = aliasImports
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a `dbl(21)` call resolves as a
   // free-function call in ANY component.
@@ -441,6 +466,7 @@ export function emitKotlin(
   _styledComponents = new Map()
   _rocketstyleComponents = new Map()
   _attrsComponents = new Map()
+  _aliasImports = new Map()
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
@@ -3552,12 +3578,12 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
 
   // @pyreon/elements `<Element>` → the canonical `<Stack>` (mirror of the Swift
   // dispatcher). Unlocks the whole ui-system (rocketstyle over Element).
-  if (tag === 'Element' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) return emitKotlinJsx(elementToStack(e), indent)
+  if (tag === 'Element' && canAliasIntercept(tag, '@pyreon/elements')) return emitKotlinJsx(elementToStack(e), indent)
 
   // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
   // compile-time-resolved; dark mode is a system read). Render children directly
   // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
-  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) {
+  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && canAliasIntercept(tag, '@pyreon/ui-core')) {
     const p = ' '.repeat(indent + 2)
     return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
   }
@@ -3565,8 +3591,8 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →
   // an EQUAL-fill child (Modifier.weight(1f), valid in the Row scope; a
   // fractional `size` warns). Swift-dispatcher parity.
-  if ((tag === 'Container' || tag === 'Row') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) return emitKotlinJsx(coolgridToStack(e), indent)
-  if (tag === 'Col' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag) && !_attrsComponents.has(tag)) {
+  if ((tag === 'Container' || tag === 'Row') && canAliasIntercept(tag, '@pyreon/coolgrid')) return emitKotlinJsx(coolgridToStack(e), indent)
+  if (tag === 'Col' && canAliasIntercept(tag, '@pyreon/coolgrid')) {
     if (colHasExplicitSize(e)) {
       _emitWarnings.push(
         `<Col size=…>: a fractional column span lowers as an EQUAL column on native ` +
