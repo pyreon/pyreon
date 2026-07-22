@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-playground",
-  "version": "0.0.2",
+  "version": "0.50.0",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-todomvc-android",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — PMTC TodoMVC reference for Android / Jetpack Compose. Compiles the SAME .tsx source as native-todomvc-ios into Kotlin/Compose. Open in Android Studio after a `gradle build`.",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-router-demo-android",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Router demo for Android / Jetpack Compose. Compiles the SAME RouterApp.tsx source as native-router-demo-ios into Kotlin/Compose. Closes Gap 5 (Android Espresso parity beyond TodoMVC + Counter).",
   "license": "MIT",

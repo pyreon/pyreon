@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-fundamentals-playground",
-  "version": "0.0.8",
+  "version": "0.50.0",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-todomvc-ios",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — PMTC TodoMVC reference. Post-Phase-2 gap-closure: emit typechecks-clean to Swift (5 named gaps + 7 hardening PRs landed). Open in Xcode via ./scripts/xcode-setup.sh.",
   "license": "MIT",

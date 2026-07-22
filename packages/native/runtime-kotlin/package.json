@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-runtime-kotlin",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL \u2014 Kotlin runtime that compiler-emitted Compose code links against on Android. Parallel to @pyreon/native-runtime-swift. Phase 0+ scaffold; first real module is PyreonStorage (Compose + DataStore-backed persistent state).",
   "license": "MIT",

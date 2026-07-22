@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ansi",
-  "version": "0.13.2",
+  "version": "0.50.0",
   "private": true,
   "description": "Internal ANSI palette + helpers — single canonical brand-palette wrapper for every Pyreon CLI surface",
   "license": "MIT",

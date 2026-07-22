@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-cpa-pw-app-solid",
-  "version": "0.0.36",
+  "version": "0.50.0",
   "private": true,
   "type": "module",
   "scripts": {

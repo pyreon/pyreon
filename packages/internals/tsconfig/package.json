@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/tsconfig",
-  "version": "0.0.2",
+  "version": "0.50.0",
   "private": true,
   "description": "Internal shared tsconfig presets — the single source of truth for the monorepo's TypeScript options. Consumed via relative `extends` (uniform depth from every package), so no per-package devDependency is needed.",
   "license": "MIT",
