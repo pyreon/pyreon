@@ -598,6 +598,11 @@ function entrySignature(e: HotkeyEntry): string {
   return [e.combo, ...e.sequence].map(comboSignature).join(' ')
 }
 
+// NUL separator so a scope/event name can never collide with a composed group
+// key. Built via fromCharCode — a literal escape in source trips the repo's
+// source-hygiene gate (no raw control bytes in tracked files).
+const CONFLICT_SEP = String.fromCharCode(0)
+
 /**
  * Detect hotkeys that would fire on the SAME keystroke within the SAME scope —
  * i.e. registered shortcuts whose parsed combo sequence is identical. Because
@@ -629,7 +634,7 @@ export function getHotkeyConflicts(): ReadonlyArray<{
 }> {
   const groups = new Map<string, HotkeyEntry[]>()
   for (const e of allEntries) {
-    const key = `${e.options.scope} ${e.options.event} ${entrySignature(e)}`
+    const key = e.options.scope + CONFLICT_SEP + e.options.event + CONFLICT_SEP + entrySignature(e)
     const g = groups.get(key)
     if (g) g.push(e)
     else groups.set(key, [e])
