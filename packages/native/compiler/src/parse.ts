@@ -707,12 +707,15 @@ const WEB_ONLY_PACKAGES = new Set([
   '@pyreon/document',
   '@pyreon/document-primitives',
   '@pyreon/connector-document',
-  '@pyreon/elements',
+  // @pyreon/elements (Element→Stack), @pyreon/styler (styled(Prim)), and
+  // @pyreon/rocketstyle now have NATIVE FRONTENDS — a user imports them to
+  // AUTHOR multiplatform components in their source, which lower. The
+  // per-construct warns (styled('div') / rocketstyle over a non-primitive /
+  // Element's rich web-only slots) still catch the parts that don't lower.
+  // @pyreon/ui-components stays here: PMTC compiles SOURCE, not npm packages,
+  // so an IMPORTED pre-built component can't lower — you re-author the pattern.
   '@pyreon/ui-components',
   '@pyreon/ui-primitives',
-  '@pyreon/coolgrid',
-  '@pyreon/styler',
-  '@pyreon/rocketstyle',
   '@pyreon/unistyle',
   '@pyreon/kinetic',
   '@pyreon/kinetic-presets',

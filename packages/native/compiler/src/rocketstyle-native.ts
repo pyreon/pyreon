@@ -29,6 +29,7 @@
 // ============================================================================
 
 import { isCanonicalPrimitive } from './canonical-primitives'
+import { isElementsPrimitive } from './elements-native'
 import { DEFAULT_THEME, resolveThemeToken, type ThemeTable } from './theme-native'
 import type { ExprIR, RocketstyleComponentIR } from './types'
 
@@ -95,7 +96,7 @@ export function parseRocketstyleDefn(
   // Head must be the CURRIED `rocketstyle(cfg)({ name, component: Prim })`.
   const prim = readCurriedPrimitive(cur)
   if (prim === null) return null // not a rocketstyle-over-anything chain
-  if (!isCanonicalPrimitive(prim)) {
+  if (!isCanonicalPrimitive(prim) && !isElementsPrimitive(prim)) {
     warnings.push(
       `rocketstyle(...)({ component: ${prim} }) on '${name}': only a CANONICAL @pyreon/primitives ` +
         `base (Stack/Text/Button/…) lowers to native — '${prim}' has no native primitive, so <${name}> ` +

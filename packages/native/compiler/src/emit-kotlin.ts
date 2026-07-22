@@ -44,6 +44,8 @@ import {
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
+import { elementToStack } from './elements-native'
+import { coolgridToStack, colToStack, colHasExplicitSize } from './coolgrid-native'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -3542,6 +3544,33 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
 
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+
+  // @pyreon/elements `<Element>` → the canonical `<Stack>` (mirror of the Swift
+  // dispatcher). Unlocks the whole ui-system (rocketstyle over Element).
+  if (tag === 'Element' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) return emitKotlinJsx(elementToStack(e), indent)
+
+  // @pyreon/ui-core `<PyreonUI>` — a TRANSPARENT wrapper on native (theme is
+  // compile-time-resolved; dark mode is a system read). Render children directly
+  // (mirror the jsx-fragment `Column {…}`). Swift-dispatcher parity.
+  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) {
+    const p = ' '.repeat(indent + 2)
+    return `Column {\n${e.children.map((c) => p + emitKotlinChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+  }
+
+  // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →
+  // an EQUAL-fill child (Modifier.weight(1f), valid in the Row scope; a
+  // fractional `size` warns). Swift-dispatcher parity.
+  if ((tag === 'Container' || tag === 'Row') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) return emitKotlinJsx(coolgridToStack(e), indent)
+  if (tag === 'Col' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) {
+    if (colHasExplicitSize(e)) {
+      _emitWarnings.push(
+        `<Col size=…>: a fractional column span lowers as an EQUAL column on native ` +
+          `(SwiftUI has no flex weight — true fractional needs GeometryReader, a follow-up).`,
+      )
+    }
+    const p = ' '.repeat(indent)
+    return `Box(modifier = Modifier.weight(1f)) {\n${' '.repeat(indent + 2)}${emitKotlinJsx(colToStack(e), indent + 2)}\n${p}}`
+  }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
   // synthetic `style` attr, then re-enter the dispatch; the inline-style

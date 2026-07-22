@@ -379,14 +379,17 @@ const Card = styled(Stack)`
 
 ### Building ui-system components — coverage
 
-You build your **own** components on the ui-system styling frontends (`styled` + `rocketstyle` + theme tokens) over the canonical primitives — primitives are the compiler's internal native target, not your authoring constraint. The two archetypes both lower to SwiftUI **and** Compose (real `swiftc`/`kotlinc`-validated end-to-end):
+You build your **own** components on the ui-system styling frontends (`styled` + `rocketstyle` + theme tokens) — over the canonical primitives **or over `@pyreon/elements`' `Element`** (the base the 67 `@pyreon/ui-components` use). `<Element>` maps to the canonical `<Stack>` (`direction`/`alignX`/`alignY`/`gap` translated), so a `rocketstyle()({ component: Element })` component — the ui-components authoring pattern — lowers to SwiftUI **and** Compose. (PMTC compiles your *source*; an imported pre-built `@pyreon/ui-components` component doesn't lower — re-author the pattern.) All examples are real `swiftc`/`kotlinc`-validated end-to-end:
 
 - **Interactive** — `rocketstyle()({ component: Button })` with theme tokens + a reactive `state={sig() ? 'a' : 'b'}` flip + `disabled` + `onPress` + `size`.
-- **Container** — `rocketstyle()({ component: Stack })` with theme tokens + dark mode (`state={scheme === 'dark' ? 'onDark' : 'onLight'}`).
+- **Container** — `rocketstyle()({ component: Stack })` (or `Element`) with theme tokens + dark mode (`state={scheme === 'dark' ? 'onDark' : 'onLight'}`).
 
 | Styling feature | iOS + Android | Notes |
 | --- | --- | --- |
 | `styled(Prim)` component | ✅ | static CSS + theme tokens |
+| `@pyreon/elements` `Element` base | ✅ | `<Element>` → `<Stack>` (direction/alignX/alignY/gap); unlocks rocketstyle-over-Element = the ui-components pattern |
+| `@pyreon/ui-core` `<PyreonUI>` provider | ✅ | transparent on native (theme is compile-time-resolved, dark mode is a system read) — renders children, so a whole app root lowers |
+| `@pyreon/coolgrid` `Container`/`Row`/`Col` | ✅ | Container→vertical Stack, Row→horizontal Stack, Col→equal-fill child (raw-px `gap` → scale); fractional `size` spans lower as equal columns + warn (true fractional = a GeometryReader follow-up) |
 | `rocketstyle` static dimensions | ✅ | `state`/`size`/`variant` cascade → one style |
 | `rocketstyle` reactive dimension flip | ✅ | `state={sig ? 'a' : 'b'}` → conditional-value modifier |
 | Theme tokens (`defineTheme` + `t.color.…`) | ✅ | resolved to the app's real values at compile time |
