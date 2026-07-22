@@ -33,6 +33,9 @@ const Alert = el
       role: assertive ? 'alert' : 'status',
       'aria-live': assertive ? 'assertive' : 'polite',
       direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center',
       alignY: 'top',
       block: true,
     }

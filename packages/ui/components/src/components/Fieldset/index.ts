@@ -8,7 +8,10 @@ import { el, txt } from '../../factory'
  */
 const Fieldset = el
   .config({ name: 'Fieldset' })
-  .attrs({ tag: 'fieldset', direction: 'rows', block: true, gap: 3 })
+  .attrs({ tag: 'fieldset', direction: 'rows',
+    contentDirection: 'rows',
+    contentAlignX: 'left',
+    contentAlignY: 'center', block: true, gap: 3 })
   .theme((t) => ({
     borderWidth: t.borderWidth.base,
     borderStyle: t.borderStyle.base,

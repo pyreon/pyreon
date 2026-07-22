@@ -2,7 +2,10 @@ import { disabledState, el, focusRing, focusRingTone } from '../../factory'
 
 const ActionIcon = el
   .config({ name: 'ActionIcon' })
-  .attrs({ tag: 'button', type: 'button', direction: 'inline', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'button', type: 'button', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'center',
+    contentAlignY: 'center', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
     cursor: 'pointer',
     borderWidth: t.borderWidth.base,

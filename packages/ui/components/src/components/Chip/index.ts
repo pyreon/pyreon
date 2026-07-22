@@ -2,7 +2,10 @@ import { disabledState, el, focusRing } from '../../factory'
 
 const Chip = el
   .config({ name: 'Chip' })
-  .attrs({ tag: 'div', direction: 'inline', alignY: 'center', gap: 1 })
+  .attrs({ tag: 'div', direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center', alignY: 'center', gap: 1 })
   .theme((t) => ({
     fontWeight: t.fontWeight.medium,
     whiteSpace: 'nowrap',

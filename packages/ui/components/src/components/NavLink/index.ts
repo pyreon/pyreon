@@ -11,6 +11,9 @@ const NavLink = el
   .attrs<{ state?: 'active' | 'disabled' }>((props) => ({
     tag: 'a',
     direction: 'inline',
+    contentDirection: 'inline',
+    contentAlignX: 'left',
+    contentAlignY: 'center',
     alignY: 'center',
     gap: 6,
     'aria-current': props.state === 'active' ? ('page' as const) : undefined,

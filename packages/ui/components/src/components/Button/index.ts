@@ -2,7 +2,7 @@ import { disabledState, el, focusRing } from '../../factory'
 
 const Button = el
   .config({ name: 'Button' })
-  .attrs({ tag: 'button', type: 'button', direction: 'inline', alignX: 'center', alignY: 'center', gap: 8 })
+  .attrs({ tag: 'button', type: 'button', direction: 'inline', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', alignX: 'center', alignY: 'center', gap: 8 })
   .theme((t) => ({
     fontSize: t.fontSize.base,
     fontWeight: t.fontWeight.medium,
@@ -113,7 +113,7 @@ export default Button
 
 export const IconButton = el
   .config({ name: 'IconButton' })
-  .attrs({ tag: 'button', type: 'button', direction: 'inline', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'button', type: 'button', direction: 'inline', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
     backgroundColor: t.color.system.transparent,
     color: t.color.system.base[600],
@@ -138,7 +138,7 @@ export const IconButton = el
 
 export const CloseButton = el
   .config({ name: 'CloseButton' })
-  .attrs({ tag: 'button', type: 'button', 'aria-label': 'Close', direction: 'inline', alignX: 'center', alignY: 'center' })
+  .attrs({ tag: 'button', type: 'button', 'aria-label': 'Close', direction: 'inline', contentDirection: 'inline', contentAlignX: 'center', contentAlignY: 'center', alignX: 'center', alignY: 'center' })
   .theme((t) => ({
     backgroundColor: t.color.system.transparent,
     color: t.color.system.base[400],
