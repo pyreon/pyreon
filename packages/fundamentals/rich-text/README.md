@@ -100,6 +100,40 @@ bind the editor to the same `Y.Doc` XML fragment via TipTap's collaboration
 extension, and reuse `@pyreon/sync` transports + `syncedAwareness` for live
 cursors. See `docs/` for the full pattern.
 
+## Multiplatform — `@pyreon/rich-text/webview`
+
+`@pyreon/rich-text` is web-only (it wraps TipTap/ProseMirror, which can't compile to SwiftUI/Compose). To ship the editor on iOS/Android too, host the real engine inside a native `<WebView>` — the sanctioned Pyreon multiplatform mechanism, with a bidirectional data bridge.
+
+TipTap is modular ESM with app-chosen extensions (no single UMD like ECharts), so — exactly like `buildChartHostHtml({ echartsScript })` — the app bundles its own `@tiptap/*` and exposes it as a `window.TT` factory the host drives:
+
+```ts
+// window.TT = { createEditor(el, { content, editable, onUpdate }) => { setContent, setEditable, destroy } }
+// — a ~10-line factory wrapping `new Editor({ element: el, extensions, content, editable,
+//   onUpdate: ({ editor }) => onUpdate(editor.getJSON()) })`.
+import { buildRichTextHostHtml } from '@pyreon/rich-text/webview'
+
+// Inline your bundled TipTap for an offline, App-Store-safe page; or `tiptapSrc` an asset.
+const RICHTEXT_HOST = buildRichTextHostHtml({ tiptapScript: BUNDLED_TT })
+```
+
+Use it with the `<WebView>` primitive (compiles to WKWebView / Android WebView / an `<iframe srcdoc>` on web — same bridge everywhere):
+
+```tsx
+import { WebView } from '@pyreon/primitives'
+
+<WebView
+  html={RICHTEXT_HOST}
+  data={{ content: doc(), editable: !locked() }}
+  onMessage={(m) => doc.set(JSON.parse(m).content)}   // reverse: user edits post back
+/>
+```
+
+- **Forward** — `data={{ content, editable? }}` → `window.__pyreonData` + a `pyreondata` event → the document/editability update in place (no reload). `content` is TipTap JSON or HTML.
+- **Reverse** — a user edit → `window.pyreonPostMessage(JSON {content})` → your `onMessage` (loop-guarded against the echo of content you pushed).
+- **`<RichTextWebView state onChange>`** is the web-side ergonomic wrapper (builds the host + emits `<WebView>` for you); on native, use `<WebView html={RICHTEXT_HOST} …>` directly (the component body can't be PMTC-lowered — the host string + `<WebView>` can).
+
+Proven end-to-end against REAL TipTap in `src/webview.browser.test.tsx`. See `examples/native-viz` for a one-source app hosting this editor across web/iOS/Android.
+
 ## License
 
 MIT. TipTap (`@tiptap/core`, `@tiptap/starter-kit`, `@tiptap/pm`) and
