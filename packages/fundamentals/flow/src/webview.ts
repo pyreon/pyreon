@@ -200,8 +200,16 @@ export function buildFlowHostHtml(options: BuildFlowHostHtmlOptions = {}): strin
     vp.k = Math.max(0.2, Math.min(4, vp.k * (e.deltaY < 0 ? 1.1 : 0.9))); applyVp();
   }, { passive: false });
 
-  window.addEventListener('pyreondata', render);
-  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function () { fitted = false; render(); }).observe(root);
+  // PERF: the renderer rebuilds the whole node/edge SVG, so coalesce a burst of
+  // pushes (or a resize storm) into ONE rebuild per frame.
+  var rafId = 0;
+  function schedule() {
+    if (rafId) return;
+    if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(function () { rafId = 0; render(); });
+    else render();
+  }
+  window.addEventListener('pyreondata', schedule);
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function () { fitted = false; schedule(); }).observe(root);
   applyVp(); render();
   } catch (e) { window.__pyreonFlowError = String(e && e.stack || e); }
 })();`

@@ -118,12 +118,38 @@ export function buildChartHostHtml(options: BuildChartHostHtmlOptions = {}): str
   var el = document.getElementById('pyreon-chart');
   var chart = echarts.init(el, ${themeArg}, { renderer: '${renderer}' });
 
-  function apply() {
+  var lastSig = null, rafId = 0;
+  function seriesSig(opt) {
+    var s = opt.series;
+    if (Object.prototype.toString.call(s) === '[object Array]') {
+      var out = s.length + '|';
+      for (var i = 0; i < s.length; i++) out += (s[i] && s[i].type) + ',';
+      return out;
+    }
+    if (s && typeof s === 'object') return '1|' + s.type;
+    return '0|';
+  }
+  function doApply() {
+    rafId = 0;
     var opt = window.__pyreonData;
     // The bridge may deliver the option as an already-parsed object (web:
     // contentWindow.__pyreonData = value) or, defensively, as a JSON string.
     if (typeof opt === 'string') { try { opt = JSON.parse(opt); } catch (e) { return; } }
-    if (opt && typeof opt === 'object') { chart.setOption(opt, true); }
+    if (!opt || typeof opt !== 'object') return;
+    var sig = seriesSig(opt);
+    // PERF: same series structure → MERGE (ECharts diffs + animates the data
+    // change — far cheaper than a teardown+rebuild); structure CHANGED (series
+    // added/removed/retyped) → full replace (notMerge) for correctness.
+    chart.setOption(opt, sig !== lastSig);
+    lastSig = sig;
+  }
+  // PERF: coalesce a burst of pushes (a signal updating several times before a
+  // frame) into ONE setOption per frame — aligns work to the display and never
+  // renders a value the user won't see.
+  function apply() {
+    if (rafId) return;
+    if (typeof requestAnimationFrame === 'function') rafId = requestAnimationFrame(doApply);
+    else doApply();
   }
 
   chart.on('click', function (p) {

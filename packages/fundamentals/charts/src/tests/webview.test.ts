@@ -17,7 +17,11 @@ describe('buildChartHostHtml', () => {
     expect(html).toContain('echarts.init')
     // Forward bridge: applies window.__pyreonData as the option on `pyreondata`.
     expect(html).toContain("window.addEventListener('pyreondata', apply)")
-    expect(html).toContain('setOption(opt, true)') // full replace on data swap
+    // Smart-merge: MERGE on unchanged series structure, replace on change.
+    expect(html).toContain('chart.setOption(opt, sig !== lastSig)')
+    expect(html).toContain('function seriesSig(')
+    // Coalesced to one render/frame.
+    expect(html).toContain('requestAnimationFrame(doApply)')
     // Reverse bridge: click → pyreonPostMessage(JSON).
     expect(html).toContain("chart.on('click'")
     expect(html).toContain('window.pyreonPostMessage(JSON.stringify(payload))')

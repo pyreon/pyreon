@@ -12,7 +12,8 @@ describe('buildFlowHostHtml', () => {
     expect(html.startsWith('<!doctype html>')).toBe(true)
     expect(html).toContain('id="pyreon-flow"')
     expect(html).toContain('createElementNS') // real SVG renderer, no external engine
-    expect(html).toContain("window.addEventListener('pyreondata', render)") // forward
+    expect(html).toContain("window.addEventListener('pyreondata', schedule)") // forward (coalesced)
+    expect(html).toContain('function schedule(')
     expect(html).toContain('window.pyreonPostMessage(JSON.stringify({ id: n.id, data: n.data }))') // reverse
     expect(html).toContain('function bezier(') // flow's edge geometry inlined
     // No network dependency — fully self-contained.

@@ -1,6 +1,6 @@
 # @pyreon/example-native-viz
 
-**PRIVATE / EXPERIMENTAL.** Exhaustive multiplatform-viz proof: ONE `src/VizApp.tsx` compiles to **web + iOS + Android**, hosting **bar + line + pie ECharts** (`@pyreon/charts/webview`) and a **flow pipeline diagram** (`@pyreon/flow/webview`) inside native `<WebView>`s with the bidirectional data bridge.
+**PRIVATE / EXPERIMENTAL.** Exhaustive multiplatform-viz proof: ONE `src/VizApp.tsx` compiles to **web + iOS + Android**, hosting **21 distinct ECharts chart types** (bar / horizontal / stacked · line / area / smooth · pie / doughnut / rose · scatter · effect-scatter · radar · gauge · funnel · heatmap · candlestick · sankey · graph · tree · treemap · sunburst) (`@pyreon/charts/webview`) and a **flow pipeline diagram** (`@pyreon/flow/webview`), all inside native `<WebView>`s with the bidirectional data bridge.
 
 - **Forward** — one `revenue` signal drives all three charts; on change they re-render in place (no reload).
 - **Reverse** — tapping a chart bar / flow node posts back through `pyreonPostMessage` → the native `selected` label.
@@ -15,4 +15,4 @@ bun run build          # → generated/{swift,kotlin}/VizApp.{swift,kt}
 bun run gen-hosts      # regenerate the embedded host literals
 ```
 
-PMTC emit (4 `PyreonWebView` calls, 0 warnings, both targets) is covered by `@pyreon/native-compiler` tests; the host bridges are proven end-to-end in `@pyreon/charts` + `@pyreon/flow`'s `webview.browser.test` suites.
+PMTC emit (22 `PyreonWebView` calls (21 charts + flow), 0 warnings, both targets) is covered by `@pyreon/native-compiler` tests; the host bridges are proven end-to-end in `@pyreon/charts` + `@pyreon/flow`'s `webview.browser.test` suites.

@@ -36,37 +36,82 @@ const CHART_HOST = "<!doctype html><html><head><meta charset=\"utf-8\"><meta nam
 const FLOW_HOST = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,maximum-scale=1\"><style>html,body{margin:0;padding:0;height:100%;width:100%;background:transparent}#pyreon-flow{height:100%;width:100%}</style></head><body><div id=\"pyreon-flow\"></div><script>\n(function () {\n  try {\n  var NS = 'http://www.w3.org/2000/svg';\n  var NODE_W = 150, NODE_H = 44;\n  var root = document.getElementById('pyreon-flow');\n  var svg = document.createElementNS(NS, 'svg');\n  svg.setAttribute('width', '100%'); svg.setAttribute('height', '100%');\n  svg.style.touchAction = 'none';\n  var defs = document.createElementNS(NS, 'defs');\n  defs.innerHTML = '<marker id=\"pf-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto-start-reverse\"><path d=\"M0,0 L10,5 L0,10 z\" fill=\"#98a2b3\"/><\\/marker>';\n  svg.appendChild(defs);\n  var g = document.createElementNS(NS, 'g');\n  svg.appendChild(g); root.appendChild(svg);\n\n  var vp = { x: 0, y: 0, k: 1 }, fitted = false;\n  function applyVp() { g.setAttribute('transform', 'translate(' + vp.x + ',' + vp.y + ') scale(' + vp.k + ')'); }\n\n  // getBezierPath: dist * 0.25 control offset, source Bottom / target Top.\n  function bezier(sx, sy, tx, ty) {\n    var dx = Math.abs(tx - sx), dy = Math.abs(ty - sy);\n    var off = Math.sqrt(dx * dx + dy * dy) * 0.25;\n    return 'M' + sx + ',' + sy + ' C' + sx + ',' + (sy + off) + ' ' + tx + ',' + (ty - off) + ' ' + tx + ',' + ty;\n  }\n\n  function labelOf(n) {\n    var d = n.data;\n    if (d == null) return n.id;\n    if (typeof d === 'object') return d.label != null ? d.label : n.id;\n    return d;\n  }\n\n  function fit(nodes) {\n    if (fitted || !nodes.length) return;\n    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;\n    nodes.forEach(function (n) {\n      var w = n.width || NODE_W, h = n.height || NODE_H;\n      minX = Math.min(minX, n.position.x); minY = Math.min(minY, n.position.y);\n      maxX = Math.max(maxX, n.position.x + w); maxY = Math.max(maxY, n.position.y + h);\n    });\n    var vw = root.clientWidth || 1, vh = root.clientHeight || 1;\n    var gw = Math.max(1, maxX - minX), gh = Math.max(1, maxY - minY);\n    var pad = 24;\n    vp.k = Math.max(0.2, Math.min(1.5, Math.min((vw - pad * 2) / gw, (vh - pad * 2) / gh)));\n    vp.x = pad - minX * vp.k + Math.max(0, (vw - pad * 2 - gw * vp.k) / 2);\n    vp.y = pad - minY * vp.k + Math.max(0, (vh - pad * 2 - gh * vp.k) / 2);\n    fitted = true; applyVp();\n  }\n\n  function render() {\n    var d = window.__pyreonData;\n    if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }\n    d = d || {}; var nodes = d.nodes || [], edges = d.edges || [];\n    while (g.firstChild) g.removeChild(g.firstChild);\n    var byId = {}; nodes.forEach(function (n) { byId[n.id] = n; });\n    edges.forEach(function (e) {\n      var s = byId[e.source], t = byId[e.target]; if (!s || !t) return;\n      var sw = s.width || NODE_W, sh = s.height || NODE_H, tw = t.width || NODE_W, th = t.height || NODE_H;\n      var p = document.createElementNS(NS, 'path');\n      p.setAttribute('d', bezier(s.position.x + sw / 2, s.position.y + sh, t.position.x + tw / 2, t.position.y));\n      p.setAttribute('fill', 'none'); p.setAttribute('stroke', '#98a2b3'); p.setAttribute('stroke-width', '1.5');\n      p.setAttribute('marker-end', 'url(#pf-arrow)'); g.appendChild(p);\n    });\n    nodes.forEach(function (n) {\n      var w = n.width || NODE_W, h = n.height || NODE_H;\n      var grp = document.createElementNS(NS, 'g');\n      grp.setAttribute('transform', 'translate(' + n.position.x + ',' + n.position.y + ')');\n      grp.style.cursor = 'pointer'; grp.setAttribute('data-node-id', n.id);\n      var r = document.createElementNS(NS, 'rect');\n      r.setAttribute('width', w); r.setAttribute('height', h); r.setAttribute('rx', '8');\n      r.setAttribute('fill', '#ffffff'); r.setAttribute('stroke', '#c9ced6'); r.setAttribute('stroke-width', '1');\n      grp.appendChild(r);\n      var tx = document.createElementNS(NS, 'text');\n      tx.setAttribute('x', w / 2); tx.setAttribute('y', h / 2);\n      tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('dominant-baseline', 'central');\n      tx.setAttribute('font-family', 'system-ui, sans-serif'); tx.setAttribute('font-size', '13'); tx.setAttribute('fill', '#1f2933');\n      tx.textContent = String(labelOf(n)); grp.appendChild(tx);\n      grp.addEventListener('click', function () {\n        if (typeof window.pyreonPostMessage === 'function') {\n          try { window.pyreonPostMessage(JSON.stringify({ id: n.id, data: n.data })); } catch (e) {}\n        }\n      });\n      g.appendChild(grp);\n    });\n    fit(nodes);\n  }\n\n  // Pan (pointer) — bails on a node so taps aren't swallowed.\n  var panning = false, moved = false, last = null;\n  svg.addEventListener('pointerdown', function (e) {\n    if (e.target.closest && e.target.closest('[data-node-id]')) return;\n    panning = true; moved = false; last = { x: e.clientX, y: e.clientY };\n  });\n  window.addEventListener('pointermove', function (e) {\n    if (!panning) return; moved = true;\n    vp.x += e.clientX - last.x; vp.y += e.clientY - last.y; last = { x: e.clientX, y: e.clientY }; applyVp();\n  });\n  window.addEventListener('pointerup', function () { panning = false; });\n  // Zoom (wheel / trackpad-pinch).\n  svg.addEventListener('wheel', function (e) {\n    e.preventDefault();\n    vp.k = Math.max(0.2, Math.min(4, vp.k * (e.deltaY < 0 ? 1.1 : 0.9))); applyVp();\n  }, { passive: false });\n\n  window.addEventListener('pyreondata', render);\n  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(function () { fitted = false; render(); }).observe(root);\n  applyVp(); render();\n  } catch (e) { window.__pyreonFlowError = String(e && e.stack || e); }\n})();</script></body></html>"
 
 export function VizApp() {
-  const selected = signal('Tap a chart bar or a flow node')
+  const selected = signal('Tap any chart element or flow node')
+  // One signal drives every data-driven chart — bump it and they all follow
+  // (the forward bridge). 21 chart types + a flow diagram, all in
+  // native WebViews from THIS one source.
   const revenue = signal([120, 200, 150, 80, 70])
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
   return (
     <Stack gap={16}>
-      <Heading>Multiplatform viz — one source, three targets</Heading>
+      <Heading>Multiplatform viz — 21 charts + a flow, one source, three targets</Heading>
       <Text>{selected()}</Text>
 
-      <Text>Revenue — bar</Text>
-      <WebView
-        html={CHART_HOST}
-        data={{ xAxis: { type: 'category', data: days }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: revenue() }] }}
-        onMessage={(m) => selected.set('Bar: ' + m)}
-      />
+      <Text>Bar</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'bar', data: revenue() }] }} onMessage={(m) => selected.set('Bar: ' + m)} />
 
-      <Text>Revenue — line</Text>
-      <WebView
-        html={CHART_HOST}
-        data={{ xAxis: { type: 'category', data: days }, yAxis: { type: 'value' }, series: [{ type: 'line', smooth: true, data: revenue() }] }}
-        onMessage={(m) => selected.set('Line: ' + m)}
-      />
+      <Text>Bar (horizontal)</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: {}, yAxis: { type: 'category', data: days }, series: [{ type: 'bar', data: revenue() }] }} onMessage={(m) => selected.set('Bar (horizontal): ' + m)} />
 
-      <Text>Revenue — pie</Text>
-      <WebView
-        html={CHART_HOST}
-        data={{ series: [{ type: 'pie', radius: '70%', data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }}
-        onMessage={(m) => selected.set('Pie: ' + m)}
-      />
+      <Text>Bar (stacked)</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'bar', stack: 't', data: revenue() }, { type: 'bar', stack: 't', data: [20, 30, 40, 10, 25] }] }} onMessage={(m) => selected.set('Bar (stacked): ' + m)} />
 
-      <Text>Pipeline — flow</Text>
+      <Text>Line</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'line', data: revenue() }] }} onMessage={(m) => selected.set('Line: ' + m)} />
+
+      <Text>Area</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'line', areaStyle: {}, data: revenue() }] }} onMessage={(m) => selected.set('Area: ' + m)} />
+
+      <Text>Line (smooth)</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'line', smooth: true, data: revenue() }] }} onMessage={(m) => selected.set('Line (smooth): ' + m)} />
+
+      <Text>Pie</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'pie', radius: '65%', data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Pie: ' + m)} />
+
+      <Text>Doughnut</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'pie', radius: ['40%', '70%'], data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Doughnut: ' + m)} />
+
+      <Text>Rose</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'pie', roseType: 'area', radius: [10, 90], data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Rose: ' + m)} />
+
+      <Text>Scatter</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: {}, yAxis: {}, series: [{ type: 'scatter', data: [[1, 2], [3, 4], [5, 3], [7, 6], [9, 8]] }] }} onMessage={(m) => selected.set('Scatter: ' + m)} />
+
+      <Text>Effect scatter</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: {}, yAxis: {}, series: [{ type: 'effectScatter', data: [[2, 3], [5, 4], [8, 7]] }] }} onMessage={(m) => selected.set('Effect scatter: ' + m)} />
+
+      <Text>Radar</Text>
+      <WebView html={CHART_HOST} data={{ radar: { indicator: [{ name: 'Speed', max: 100 }, { name: 'Cost', max: 100 }, { name: 'Power', max: 100 }, { name: 'Range', max: 100 }] }, series: [{ type: 'radar', data: [{ value: [80, 60, 90, 40] }] }] }} onMessage={(m) => selected.set('Radar: ' + m)} />
+
+      <Text>Gauge</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'gauge', max: 300, data: [{ value: revenue()[1] }] }] }} onMessage={(m) => selected.set('Gauge: ' + m)} />
+
+      <Text>Funnel</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'funnel', data: [{ name: 'Mon', value: revenue()[0] }, { name: 'Tue', value: revenue()[1] }, { name: 'Wed', value: revenue()[2] }, { name: 'Thu', value: revenue()[3] }, { name: 'Fri', value: revenue()[4] }] }] }} onMessage={(m) => selected.set('Funnel: ' + m)} />
+
+      <Text>Heatmap</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: { type: 'category', data: ['x', 'y', 'z'] }, visualMap: { min: 0, max: 10, calculable: true }, series: [{ type: 'heatmap', data: [[0, 0, 5], [1, 1, 8], [2, 2, 3], [3, 0, 9]] }] }} onMessage={(m) => selected.set('Heatmap: ' + m)} />
+
+      <Text>Candlestick</Text>
+      <WebView html={CHART_HOST} data={{ xAxis: { type: 'category', data: days }, yAxis: {}, series: [{ type: 'candlestick', data: [[20, 34, 10, 38], [40, 35, 30, 50], [31, 38, 33, 44], [38, 15, 5, 42], [30, 20, 18, 40]] }] }} onMessage={(m) => selected.set('Candlestick: ' + m)} />
+
+      <Text>Sankey</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'sankey', data: [{ name: 'Ingest' }, { name: 'Transform' }, { name: 'Store' }], links: [{ source: 'Ingest', target: 'Transform', value: 5 }, { source: 'Transform', target: 'Store', value: 3 }] }] }} onMessage={(m) => selected.set('Sankey: ' + m)} />
+
+      <Text>Graph</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'graph', layout: 'force', data: [{ name: 'n1' }, { name: 'n2' }, { name: 'n3' }], links: [{ source: 'n1', target: 'n2' }, { source: 'n2', target: 'n3' }] }] }} onMessage={(m) => selected.set('Graph: ' + m)} />
+
+      <Text>Tree</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'tree', data: [{ name: 'root', children: [{ name: 'a' }, { name: 'b', children: [{ name: 'c' }] }] }] }] }} onMessage={(m) => selected.set('Tree: ' + m)} />
+
+      <Text>Treemap</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'treemap', data: [{ name: 'a', value: 10, children: [{ name: 'a1', value: 4 }, { name: 'a2', value: 6 }] }, { name: 'b', value: 8 }] }] }} onMessage={(m) => selected.set('Treemap: ' + m)} />
+
+      <Text>Sunburst</Text>
+      <WebView html={CHART_HOST} data={{ series: [{ type: 'sunburst', data: [{ name: 'a', children: [{ name: 'a1', value: 3 }, { name: 'a2', value: 5 }] }, { name: 'b', value: 4 }] }] }} onMessage={(m) => selected.set('Sunburst: ' + m)} />
+
+      <Text>Pipeline — flow diagram</Text>
       <WebView
         html={FLOW_HOST}
         data={{ nodes: [{ id: 'ingest', position: { x: 0, y: 0 }, data: { label: 'Ingest' } }, { id: 'transform', position: { x: 220, y: 0 }, data: { label: 'Transform' } }, { id: 'store', position: { x: 110, y: 130 }, data: { label: 'Store' } }, { id: 'serve', position: { x: 330, y: 130 }, data: { label: 'Serve' } }], edges: [{ source: 'ingest', target: 'transform' }, { source: 'transform', target: 'store' }, { source: 'transform', target: 'serve' }] }}

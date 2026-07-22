@@ -51,7 +51,9 @@ async function waitForChart(iframe: HTMLIFrameElement, timeoutMs = 8000): Promis
     const doc = iframe.contentDocument
     const el = doc?.getElementById('pyreon-chart') as HTMLElement | null
     if (win?.__pyreonChartError) throw new Error('host bridge error: ' + win.__pyreonChartError)
-    if (win?.echarts && el && win.echarts.getInstanceByDom(el) && win.__pyreonData !== undefined) {
+    // End state = the option APPLIED (a canvas exists) — apply() is now
+    // rAF-coalesced, so instance+data alone races the first setOption.
+    if (win?.echarts && el && win.echarts.getInstanceByDom(el) && win.__pyreonData !== undefined && el.querySelector('canvas')) {
       return win
     }
     if (performance.now() - start > timeoutMs) {
@@ -134,6 +136,92 @@ describe('ChartWebView bridge (real ECharts in a real iframe)', () => {
 
     expect(received).toHaveLength(1)
     expect(received[0]).toEqual({ name: 'B', value: 6, dataIndex: 1, seriesIndex: 0 })
+    unmount()
+  })
+})
+
+describe('ChartWebView performance + robustness (real ECharts)', () => {
+  async function mountChart(initial: unknown) {
+    const opt = signal(initial)
+    const wvProps: Record<string, unknown> = { html: HOST }
+    Object.defineProperty(wvProps, 'data', { enumerable: true, configurable: true, get: () => opt() })
+    const { container, unmount } = mountInBrowser(h(WebView as never, wvProps))
+    container.style.width = '400px'
+    container.style.height = '300px'
+    await flush()
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const win = (await waitForChart(iframe)) as Window & {
+      echarts: { getInstanceByDom(el: Element): any }
+    }
+    const el = iframe.contentDocument!.getElementById('pyreon-chart')!
+    const inst = win.echarts.getInstanceByDom(el)
+    return { opt, win, el, inst, unmount }
+  }
+  const twoFrames = async () => {
+    await flush()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+  }
+
+  it('rapid updates COALESCE to ~one setOption/frame, MERGE (not replace), single instance, land the final value', async () => {
+    const { opt, win, el, inst, unmount } = await mountChart(barOption([1, 2, 3]))
+    // Spy on the host's setOption to record (notMerge) per call.
+    const notMergeArgs: unknown[] = []
+    const orig = inst.setOption.bind(inst)
+    inst.setOption = (o: unknown, nm: unknown) => {
+      notMergeArgs.push(nm)
+      return orig(o, nm)
+    }
+
+    // 8 synchronous data-only updates (same series structure).
+    for (let i = 0; i < 8; i++) opt.set(barOption([i, i + 1, i + 2]))
+    await twoFrames()
+
+    // Coalesced — far fewer renders than pushes.
+    expect(notMergeArgs.length, 'coalesced to <8 renders').toBeLessThan(8)
+    expect(notMergeArgs.length).toBeGreaterThan(0)
+    // All merges (unchanged series structure) — the fast path.
+    expect(notMergeArgs.every((nm) => nm === false), 'data-only updates MERGE').toBe(true)
+    // Final value landed.
+    expect(inst.getOption().series[0].data).toEqual([7, 8, 9])
+    // Never re-created the instance (no teardown/leak).
+    expect(win.echarts.getInstanceByDom(el)).toBe(inst)
+
+    // A STRUCTURAL change (bar → pie) → full replace for correctness.
+    notMergeArgs.length = 0
+    opt.set({ series: [{ type: 'pie', radius: '60%', data: [{ name: 'A', value: 1 }, { name: 'B', value: 2 }] }] })
+    await twoFrames()
+    expect(notMergeArgs.some((nm) => nm === true), 'structural change REPLACES').toBe(true)
+    expect(inst.getOption().series[0].type).toBe('pie')
+
+    unmount()
+  })
+
+  it('handles a large 1,000-point series without error', async () => {
+    const big = Array.from({ length: 1000 }, (_, i) => Math.sin(i / 20) * 100)
+    const { win, el, inst, unmount } = await mountChart({
+      xAxis: { type: 'category', data: big.map((_, i) => String(i)) },
+      yAxis: {},
+      series: [{ type: 'line', showSymbol: false, data: big }],
+    })
+    expect((win as any).__pyreonChartError, 'no host error on large data').toBeFalsy()
+    expect(el.querySelector('canvas')).not.toBeNull()
+    expect(inst.getOption().series[0].data.length).toBe(1000)
+    expect(inst.getZr().storage.getDisplayList().length, 'drew the large series').toBeGreaterThan(0)
+    unmount()
+  })
+
+  it('malformed / empty data is ignored gracefully (no crash, no host error)', async () => {
+    const { opt, win, el, unmount } = await mountChart(barOption([1, 2, 3]))
+    for (const bad of [null, undefined, 'not-an-option', 42, [1, 2, 3]]) {
+      opt.set(bad as never)
+      await twoFrames()
+      expect((win as any).__pyreonChartError, `no error on ${JSON.stringify(bad)}`).toBeFalsy()
+    }
+    // Recovers with a valid option afterwards.
+    opt.set(barOption([9, 8, 7]))
+    await twoFrames()
+    expect(el.querySelector('canvas')).not.toBeNull()
     unmount()
   })
 })

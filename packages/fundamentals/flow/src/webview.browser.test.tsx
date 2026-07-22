@@ -97,3 +97,76 @@ describe('FlowWebView bridge (real SVG diagram in a real iframe)', () => {
     unmount()
   })
 })
+
+describe('FlowWebView performance + robustness', () => {
+  const twoFrames = async () => {
+    await flush()
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+    await new Promise((r) => requestAnimationFrame(() => r(null)))
+  }
+
+  it('rapid graph updates coalesce to ~one rebuild/frame; a large 100-node graph renders', async () => {
+    // Large graph: 100 nodes in a grid + a chain of edges.
+    const big = {
+      nodes: Array.from({ length: 100 }, (_, i) => ({
+        id: 'n' + i,
+        position: { x: (i % 10) * 170, y: Math.floor(i / 10) * 90 },
+        data: { label: 'N' + i },
+      })),
+      edges: Array.from({ length: 99 }, (_, i) => ({ source: 'n' + i, target: 'n' + (i + 1) })),
+    }
+    const g = signal(big)
+    const wvProps: Record<string, unknown> = { html: HOST }
+    Object.defineProperty(wvProps, 'data', { enumerable: true, configurable: true, get: () => g() })
+    const { container, unmount } = mountInBrowser(h(WebView as never, wvProps))
+    container.style.width = '600px'
+    container.style.height = '400px'
+    await flush()
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const doc = await waitForFlow(iframe)
+
+    // All 100 nodes + 99 bezier edges rendered.
+    expect(doc.querySelectorAll('[data-node-id]').length).toBe(100)
+    expect(Array.from(doc.querySelectorAll('path')).filter((p) => (p.getAttribute('d') ?? '').includes('C')).length).toBe(99)
+    expect((iframe.contentWindow as any).__pyreonFlowError, 'no error on large graph').toBeFalsy()
+
+    // Spy the rebuild count: push 6 synchronous updates → coalesced to few renders.
+    const win = iframe.contentWindow as any
+    let rebuilds = 0
+    // Count node-group creations via a MutationObserver on the <g> layer.
+    const layer = doc.querySelector('g') as SVGGElement
+    const mo = new (win.MutationObserver || MutationObserver)((muts: MutationRecord[]) => {
+      if (muts.some((m) => m.removedNodes.length > 0)) rebuilds++
+    })
+    mo.observe(layer, { childList: true })
+    for (let i = 0; i < 6; i++) g.set({ nodes: big.nodes.slice(0, 3 + i), edges: [] })
+    await twoFrames()
+    mo.disconnect()
+
+    expect(rebuilds, 'coalesced to <6 rebuilds').toBeLessThan(6)
+    expect(doc.querySelectorAll('[data-node-id]').length, 'final state landed').toBe(8) // 3 + 5
+    unmount()
+  })
+
+  it('malformed / empty graph is ignored gracefully (no crash)', async () => {
+    const g = signal({ nodes: [{ id: 'a', position: { x: 0, y: 0 }, data: { label: 'A' } }], edges: [] })
+    const wvProps: Record<string, unknown> = { html: HOST }
+    Object.defineProperty(wvProps, 'data', { enumerable: true, configurable: true, get: () => g() })
+    const { container, unmount } = mountInBrowser(h(WebView as never, wvProps))
+    container.style.width = '400px'
+    container.style.height = '300px'
+    await flush()
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    await waitForFlow(iframe)
+    const win = iframe.contentWindow as any
+    for (const bad of [null, undefined, {}, { nodes: null }, 'x', 42]) {
+      g.set(bad as never)
+      await twoFrames()
+      expect(win.__pyreonFlowError, `no error on ${JSON.stringify(bad)}`).toBeFalsy()
+    }
+    g.set({ nodes: [{ id: 'z', position: { x: 0, y: 0 }, data: { label: 'Z' } }], edges: [] })
+    await twoFrames()
+    expect(iframe.contentDocument!.querySelectorAll('[data-node-id]').length).toBe(1)
+    unmount()
+  })
+})
