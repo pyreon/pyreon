@@ -389,6 +389,7 @@ You build your **own** components on the ui-system styling frontends (`styled` +
 | `styled(Prim)` component | ✅ | static CSS + theme tokens |
 | `@pyreon/elements` `Element` base | ✅ | `<Element>` → `<Stack>` (direction/alignX/alignY/gap); unlocks rocketstyle-over-Element = the ui-components pattern |
 | `@pyreon/ui-core` `<PyreonUI>` provider | ✅ | transparent on native (theme is compile-time-resolved, dark mode is a system read) — renders children, so a whole app root lowers |
+| `@pyreon/coolgrid` `Container`/`Row`/`Col` | ✅ | Container→vertical Stack, Row→horizontal Stack, Col→equal-fill child (raw-px `gap` → scale); fractional `size` spans lower as equal columns + warn (true fractional = a GeometryReader follow-up) |
 | `rocketstyle` static dimensions | ✅ | `state`/`size`/`variant` cascade → one style |
 | `rocketstyle` reactive dimension flip | ✅ | `state={sig ? 'a' : 'b'}` → conditional-value modifier |
 | Theme tokens (`defineTheme` + `t.color.…`) | ✅ | resolved to the app's real values at compile time |

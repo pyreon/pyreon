@@ -716,7 +716,6 @@ const WEB_ONLY_PACKAGES = new Set([
   // so an IMPORTED pre-built component can't lower — you re-author the pattern.
   '@pyreon/ui-components',
   '@pyreon/ui-primitives',
-  '@pyreon/coolgrid',
   '@pyreon/unistyle',
   '@pyreon/kinetic',
   '@pyreon/kinetic-presets',

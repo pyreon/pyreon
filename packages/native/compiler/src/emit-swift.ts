@@ -49,6 +49,7 @@ import {
 import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { elementToStack } from './elements-native'
+import { coolgridToStack, colToStack, colHasExplicitSize } from './coolgrid-native'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -4207,16 +4208,29 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   // @pyreon/elements `<Element>` → the canonical `<Stack>` (direction/alignX/
   // alignY translated), then re-enter dispatch. This is what makes the whole
   // ui-system (the 67 ui-components = rocketstyle over Element) lower.
-  if (tag === 'Element') return emitSwiftJsx(elementToStack(e), indent)
+  if (tag === 'Element' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) return emitSwiftJsx(elementToStack(e), indent)
 
   // @pyreon/ui-core `<PyreonUI>` (+ its provider alias) is a TRANSPARENT wrapper
   // on native: the theme is compile-time-resolved (theme-native parses the
   // `defineTheme`), and dark mode is a system read (`useColorScheme` →
   // @Environment(\.colorScheme)) — so the provider carries no runtime context.
   // Render its children directly (mirror the jsx-fragment `Group {…}`).
-  if (tag === 'PyreonUI' || tag === 'PyreonUIProvider') {
+  if ((tag === 'PyreonUI' || tag === 'PyreonUIProvider') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) {
     const p = ' '.repeat(indent + 2)
     return `Group {\n${e.children.map((c) => p + emitSwiftChild(c, indent + 2)).join('\n')}\n${' '.repeat(indent)}}`
+  }
+
+  // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →
+  // an EQUAL-fill child (`.frame(maxWidth: .infinity)`; a fractional `size` warns).
+  if ((tag === 'Container' || tag === 'Row') && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) return emitSwiftJsx(coolgridToStack(e), indent)
+  if (tag === 'Col' && !_componentNames.has(tag) && !_styledComponents.has(tag) && !_rocketstyleComponents.has(tag)) {
+    if (colHasExplicitSize(e)) {
+      _emitWarnings.push(
+        `<Col size=…>: a fractional column span lowers as an EQUAL column on native ` +
+          `(SwiftUI has no flex weight — true fractional needs GeometryReader, a follow-up).`,
+      )
+    }
+    return `${emitSwiftJsx(colToStack(e), indent)}.frame(maxWidth: .infinity)`
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
