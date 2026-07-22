@@ -6,7 +6,8 @@ import { isServer, watch } from '@pyreon/reactivity'
  *
  * - `false` / omitted — leave focus where it is (the pre-0.x default; the
  *   caller or a native `<dialog>` owns initial focus).
- * - `true` — focus the first tabbable descendant of the container.
+ * - `true` — focus the `[data-autofocus]` descendant when present, else the
+ *   first tabbable descendant of the container.
  * - a CSS selector string — focus the first matching descendant.
  * - an element or `() => element` — focus that node.
  */
@@ -174,7 +175,16 @@ function resolveInitialFocus(
   target: InitialFocusTarget | undefined,
 ): HTMLElement | null {
   if (target === undefined || target === false) return null
-  if (target === true) return getFocusable(container)[0] ?? null
+  if (target === true) {
+    // `[data-autofocus]` is the author's declarative "focus me on open" marker
+    // (the safe Cancel button in a destructive-action dialog, the search field
+    // in a command palette). It wins over document-order-first when present.
+    return (
+      container.querySelector<HTMLElement>('[data-autofocus]') ??
+      getFocusable(container)[0] ??
+      null
+    )
+  }
   if (typeof target === 'string') {
     return container.querySelector<HTMLElement>(target)
   }
@@ -182,9 +192,156 @@ function resolveInitialFocus(
   return target
 }
 
+// ---------------------------------------------------------------------------
+// Trap scope stack — ONE shared pair of document listeners, only the TOP
+// active trap handles events.
+//
+// Pre-stack, every trap registered its own document keydown listener; two
+// stacked modals (both armed) then both reacted to the same Tab event and a
+// background trap could keep cycling focus BEHIND the top-most dialog. The
+// stack makes "who owns focus" explicit: traps push a frame on activation
+// (activation order = stacking order — arm traps with `active` tied to their
+// open state) and only the topmost frame whose `getEl()` is non-null acts.
+//
+// Cleanup contract (Memory-Leak-Class A): frames are removed by IDENTITY
+// (`lastIndexOf` + `splice`), never a position-based `pop()` — traps can
+// deactivate in any order (a `<For>`-keyed removal, an outer route unmounting
+// before an inner overlay). The shared listeners are refcounted by stack
+// length (Class D): installed on 0→1, removed on →0.
+// ---------------------------------------------------------------------------
+
+interface TrapFrame {
+  getEl: () => HTMLElement | null
+  /**
+   * Live re-check at event time. The reactive `watch` already pushes /
+   * removes the frame on tracked `active` flips; this covers a NON-reactive
+   * getter (a plain `let` the watch can't observe) flipping false while the
+   * frame is still pushed — the pre-stack listener had the same guard.
+   */
+  isActive: () => boolean
+}
+
+const trapStack: TrapFrame[] = []
+
 /**
- * Trap Tab / Shift+Tab focus within a container element, with optional
- * reactive arming + initial-focus placement.
+ * The topmost frame that is live: `isActive()` true AND `getEl()` non-null.
+ * Null-element frames are skipped (a trap whose element is conditionally
+ * unmounted is inert), so a lifetime-armed trap over a closed dialog never
+ * blocks a live trap beneath it.
+ */
+function topTrap(): { frame: TrapFrame; el: HTMLElement } | null {
+  for (let i = trapStack.length - 1; i >= 0; i--) {
+    const frame = trapStack[i] as TrapFrame
+    if (!frame.isActive()) continue
+    const el = frame.getEl()
+    if (el) return { frame, el }
+  }
+  return null
+}
+
+function onSharedKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'Tab') return
+  const top = topTrap()
+  if (!top) return
+  const { el } = top
+  // Focus outside the owning container: don't wrap against a container the
+  // user isn't in — the focusin containment below is responsible for bringing
+  // focus back.
+  if (!el.contains(document.activeElement)) return
+
+  const focusable = getFocusable(el)
+  if (focusable.length === 0) return
+
+  const first = focusable[0] as HTMLElement
+  const last = focusable[focusable.length - 1] as HTMLElement
+
+  if (e.shiftKey) {
+    if (document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    }
+  } else {
+    if (document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+}
+
+// Dedupe queued recaptures — a burst of focus events schedules ONE re-check.
+let recapturePending = false
+
+/**
+ * Focusin containment: Tab-only trapping misses programmatic `.focus()` and
+ * mouse clicks on focusable elements outside the container. Whenever focus
+ * lands OUTSIDE the top trap's container, recapture it to `[data-autofocus]`,
+ * else the first tabbable, else the container itself (focusable when it
+ * carries `tabindex="-1"`, the standard dialog shape).
+ *
+ * The recapture is deferred one microtask and re-checked against the LIVE
+ * stack + DOM: a close flow that restores focus to the trigger and unmounts
+ * the dialog in the same synchronous flush must NOT have the dying trap yank
+ * focus back (effects flush synchronously, so by microtask time the stack /
+ * `getEl()` reflect the post-close state). Loop-safe by construction: the
+ * recapture target is INSIDE the container, so the focusin it fires
+ * early-returns on the containment check.
+ */
+function onSharedFocusIn(e: FocusEvent): void {
+  const top = topTrap()
+  if (!top) return
+  const target = e.target
+  if (target instanceof Node && top.el.contains(target)) return
+  if (recapturePending) return
+  recapturePending = true
+  queueMicrotask(() => {
+    recapturePending = false
+    const now = topTrap()
+    if (!now) return
+    const el = now.el
+    /* v8 ignore next 3 — disconnected-container race (trap unmounting in the
+       same flush); exercised implicitly by the modal close flow, not
+       deterministically reachable in the unit suite. */
+    if (!el.isConnected) return
+    const active = document.activeElement
+    if (active && el.contains(active)) return
+    const dest =
+      el.querySelector<HTMLElement>('[data-autofocus]') ??
+      getFocusable(el)[0] ??
+      el
+    dest.focus?.()
+  })
+}
+
+function pushFrame(frame: TrapFrame): void {
+  trapStack.push(frame)
+  if (trapStack.length === 1) {
+    document.addEventListener('keydown', onSharedKeydown)
+    document.addEventListener('focusin', onSharedFocusIn)
+  }
+}
+
+function removeFrame(frame: TrapFrame): void {
+  const i = trapStack.lastIndexOf(frame)
+  /* v8 ignore next — double-removal guard (detach is idempotent upstream). */
+  if (i === -1) return
+  trapStack.splice(i, 1)
+  if (trapStack.length === 0) {
+    document.removeEventListener('keydown', onSharedKeydown)
+    document.removeEventListener('focusin', onSharedFocusIn)
+  }
+}
+
+/**
+ * Trap focus within a container element — Tab / Shift+Tab edge wrapping PLUS
+ * focusin containment (a programmatic `.focus()` or mouse click that lands
+ * focus outside the container is recaptured back in), with optional reactive
+ * arming + initial-focus placement.
+ *
+ * Concurrent traps form a STACK: activation order is stacking order, only the
+ * topmost trap whose container exists handles events, and deactivating /
+ * unmounting the top trap reactivates the one beneath (two stacked modals no
+ * longer fight over the same Tab event). Arm each trap with `active` tied to
+ * its open state so the stack tracks OPEN order, not mount order.
  *
  * The second argument accepts either a plain `active` getter/boolean (the
  * shorthand documented on this hook) or a full options object:
@@ -236,50 +393,22 @@ export function useFocusTrap(
         ? rawActive
         : () => rawActive
 
-  // Listener + DOM access live inside `onMount` so their browser-only
-  // references are co-located with their browser-only registration.
+  // Frame push/removal + DOM access live inside `onMount` so their
+  // browser-only references are co-located with their browser-only
+  // registration.
   onMount(() => {
-    let attached = false
-
-    const listener = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return
-      if (!isActive()) return
-      const el = getEl()
-      if (!el) return
-      // Only act while focus is actually inside THIS container. A global
-      // document listener that trapped regardless of focus location would
-      // fight a NESTED trap (the inner trap's edges aren't ours) and could
-      // hijack Tab while focus sits elsewhere entirely.
-      if (!el.contains(document.activeElement)) return
-
-      const focusable = getFocusable(el)
-      if (focusable.length === 0) return
-
-      const first = focusable[0] as HTMLElement
-      const last = focusable[focusable.length - 1] as HTMLElement
-
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault()
-          last.focus()
-        }
-      } else {
-        if (document.activeElement === last) {
-          e.preventDefault()
-          first.focus()
-        }
-      }
-    }
+    const frame: TrapFrame = { getEl, isActive }
+    let pushed = false
 
     const attach = () => {
-      if (attached) return
-      document.addEventListener('keydown', listener)
-      attached = true
+      if (pushed) return
+      pushFrame(frame)
+      pushed = true
     }
     const detach = () => {
-      if (!attached) return
-      document.removeEventListener('keydown', listener)
-      attached = false
+      if (!pushed) return
+      removeFrame(frame)
+      pushed = false
     }
 
     const applyInitialFocus = () => {

@@ -271,7 +271,10 @@ describe('api-reference', () => {
 
     it('useFocusTrap documents the active + initialFocus options contract', () => {
       const entry = API_REFERENCE['hooks/useFocusTrap']
-      expect(entry?.mistakes?.split('\n').length).toBe(3)
+      expect(entry?.mistakes?.split('\n').length).toBe(4)
+      // The scope-stack + focusin-containment upgrade is documented.
+      expect(entry?.notes).toContain('focusin containment')
+      expect(entry?.notes).toContain('STACK')
       // Ref-gated single-arg form is preserved; the optional 2nd arg adds
       // active + initialFocus.
       expect(entry?.signature).toContain('getEl: () => HTMLElement | null')
