@@ -240,11 +240,11 @@ Both `@pyreon/charts` and [`echarts-for-react`](https://github.com/hustcc/echart
 
 | Phase | `@pyreon/charts` | `echarts-for-react` | verdict |
 | --- | --- | --- | --- |
-| **Reactive update** (per data change) | ~0.2µs | ~1.9µs | **~11× faster** |
-| Dispose | ~14µs | ~27µs | ~1.9× faster |
-| Mount → ready | ~100µs | ~62µs | **~1.65× slower** |
+| **Reactive update** (per data change) | ~0.2µs | ~1.9µs | **~9.4× faster** |
+| Dispose | ~16µs | ~37µs | **~2.3× faster** |
+| Mount → ready | ~97µs | ~84µs | 🤝 **CI95-overlap tie** |
 
-The update win is the fine-grained-reactivity story: a signal change re-runs one effect that calls `setOption` — no component re-render, no VDOM diff, no prop deep-compare. The mount **loss** is the honest price of lazy loading (the async ECharts module loader + effect setup). Reproduce: `bun run --filter=@pyreon/charts bench`. *Author-run micro-bench (Bun/JSC + happy-dom, stubbed engine) — magnitudes/ratios are the signal, not the last digit; it measures wrapper JS, not chart render speed (identical ECharts for both).*
+Protocol: per-impl **process isolation** (fresh `bun` child per impl ×3, pooled samples — impls never share a heap/JIT/order bias, the store-bench lesson) + bootstrap CI95 with 🤝 tie detection. The update win is the fine-grained-reactivity story: a signal change re-runs one effect that calls `setOption` — no component re-render, no VDOM diff, no prop deep-compare. Mount is now a statistical **tie** — the earlier "~1.65× slower" was single-process order bias plus the pre-fast-path async loader (warm mounts have been synchronous since the cached-modules fast path landed). Reproduce: `bun run --filter=@pyreon/charts bench`. *Author-run micro-bench (Bun/JSC + happy-dom, stubbed engine) — magnitudes/ratios are the signal, not the last digit; it measures wrapper JS, not chart render speed (identical ECharts for both). A vue-echarts driver (the feature-leading competitor) is a tracked follow-up — beating the React wrapper is a scoped claim.*
 
 ## Documentation
 

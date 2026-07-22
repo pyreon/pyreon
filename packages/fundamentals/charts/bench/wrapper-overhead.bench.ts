@@ -235,9 +235,9 @@ const UPDATES = 200
 const WARMUP_UPDATES = 40
 
 interface Result {
-  mount: Stat
-  update: Stat // per single update
-  dispose: Stat
+  mount: number[]
+  update: number[] // per single update
+  dispose: number[]
 }
 
 async function benchDriver(make: () => Driver): Promise<Result> {
@@ -282,33 +282,86 @@ async function benchDriver(make: () => Driver): Promise<Result> {
   }
 
   return {
-    mount: stats(mountSamples),
-    update: stats(updateSamples),
-    dispose: stats(disposeSamples),
+    mount: mountSamples,
+    update: updateSamples,
+    dispose: disposeSamples,
   }
 }
 
-// ─── Run ──────────────────────────────────────────────────────────────────────
+// ─── Run — per-impl PROCESS ISOLATION (the store/dnd-bench protocol) ─────────
+// Child mode: `bun wrapper-overhead.bench.ts <pyreon|react>` runs ONE impl in
+// a fresh process and prints raw samples as JSON. Orchestrator (no args)
+// spawns K fresh children per impl and pools — impls never share a heap/JIT,
+// closing the single-process order-bias caveat the store-bench audit proved
+// can inflate ratios.
 
 function fmt(n: number): string {
   if (n >= 1) return `${n.toFixed(2)}ms`
   return `${(n * 1000).toFixed(1)}µs`
 }
 
-console.log('# @pyreon/charts vs echarts-for-react — wrapper overhead\n')
-console.log(`NODE_ENV=${process.env.NODE_ENV}  samples=${SAMPLES}  updates/sample=${UPDATES}`)
-console.log('Shared fake ECharts engine (identical setOption); real react-dom + real echarts-for-react.\n')
-
-// Order matters little (per-sample fresh mounts), but run each fully.
-const pyreon = await benchDriver(makePyreonDriver)
-const react = await benchDriver(makeReactDriver)
-
-function ratio(a: number, b: number): string {
-  const r = b / a
-  return r >= 1 ? `${r.toFixed(2)}× faster` : `${(1 / r).toFixed(2)}× slower`
+function median(xs: number[]): number {
+  const s2 = [...xs].sort((a, b) => a - b)
+  return s2[s2.length >> 1] as number
 }
 
-const rows: [string, Stat, Stat][] = [
+function bootstrapCI(samples: number[], resamples = 2_000): [number, number] {
+  const meds: number[] = []
+  const n = samples.length
+  for (let r = 0; r < resamples; r++) {
+    const re: number[] = []
+    for (let i = 0; i < n; i++) re.push(samples[(Math.random() * n) | 0] as number)
+    meds.push(median(re))
+  }
+  meds.sort((a, b) => a - b)
+  return [meds[(resamples * 0.025) | 0] as number, meds[(resamples * 0.975) | 0] as number]
+}
+const overlaps = (a: [number, number], b: [number, number]) => a[0] <= b[1] && b[0] <= a[1]
+
+const IMPL_ARG = process.argv[2]
+if (IMPL_ARG === 'pyreon' || IMPL_ARG === 'react') {
+  const result = await benchDriver(IMPL_ARG === 'pyreon' ? makePyreonDriver : makeReactDriver)
+  process.stdout.write(JSON.stringify(result))
+  process.exit(0)
+}
+
+const PROCS = 3
+function runImpl(impl: 'pyreon' | 'react'): Result {
+  const pooled: Result = { mount: [], update: [], dispose: [] }
+  for (let i = 0; i < PROCS; i++) {
+    const proc = (globalThis as unknown as { Bun: { spawnSync: (cmd: string[], opts: object) => { stdout: Uint8Array; exitCode: number } } }).Bun.spawnSync(
+      ['bun', new URL(import.meta.url).pathname, impl],
+      { env: { ...process.env, NODE_ENV: 'production' }, stdout: 'pipe', stderr: 'inherit' },
+    )
+    if (proc.exitCode !== 0) throw new Error(`[bench] child ${impl}#${i} failed`)
+    const out = JSON.parse(new TextDecoder().decode(proc.stdout)) as Result
+    pooled.mount.push(...out.mount)
+    pooled.update.push(...out.update)
+    pooled.dispose.push(...out.dispose)
+  }
+  return pooled
+}
+
+console.log('# @pyreon/charts vs echarts-for-react — wrapper overhead\n')
+console.log(
+  `NODE_ENV=${process.env.NODE_ENV}  samples=${SAMPLES}×${PROCS} fresh processes/impl  updates/sample=${UPDATES}`,
+)
+console.log(
+  'Shared fake ECharts engine (identical setOption); real react-dom + real echarts-for-react. Per-impl PROCESS ISOLATION (no shared heap/JIT/order bias); pooled median + bootstrap CI95; 🤝 = CI overlap (tie).\n',
+)
+
+const pyreon = runImpl('pyreon')
+const react = runImpl('react')
+
+function verdict(p: number[], r: number[]): string {
+  const ciP = bootstrapCI(p)
+  const ciR = bootstrapCI(r)
+  if (overlaps(ciP, ciR)) return '🤝 tie (CI95 overlap)'
+  const rt = median(r) / median(p)
+  return rt >= 1 ? `**${rt.toFixed(2)}× faster**` : `**${(1 / rt).toFixed(2)}× slower**`
+}
+
+const rows: [string, number[], number[]][] = [
   ['Mount → ready', pyreon.mount, react.mount],
   ['Reactive update (per update)', pyreon.update, react.update],
   ['Dispose', pyreon.dispose, react.dispose],
@@ -316,11 +369,13 @@ const rows: [string, Stat, Stat][] = [
 
 console.log('| Phase | @pyreon/charts (median [p25–p75]) | echarts-for-react (median [p25–p75]) | Pyreon vs efr |')
 console.log('| --- | --- | --- | --- |')
-for (const [name, p, r] of rows) {
+for (const [name, ps, rs] of rows) {
+  const st = stats(ps)
+  const rt = stats(rs)
   console.log(
-    `| ${name} | ${fmt(p.median)} [${fmt(p.p25)}–${fmt(p.p75)}] | ${fmt(r.median)} [${fmt(r.p25)}–${fmt(r.p75)}] | **${ratio(p.median, r.median)}** |`,
+    `| ${name} | ${fmt(st.median)} [${fmt(st.p25)}–${fmt(st.p75)}] | ${fmt(rt.median)} [${fmt(rt.p25)}–${fmt(rt.p75)}] | ${verdict(ps, rs)} |`,
   )
 }
 console.log(
-  '\nAuthor-judge: framework author wrote + runs this bench. Engine is stubbed to isolate wrapper JS — this is NOT a claim about chart render speed (identical ECharts for both). Magnitudes are the signal.',
+  '\nAuthor-judge: framework author wrote + runs this bench. Engine is stubbed to isolate wrapper JS — this is NOT a claim about chart render speed (identical ECharts for both). Magnitudes are the signal. A vue-echarts driver (the feature-leading competitor) is a tracked follow-up — beating only the React wrapper is a scoped, not universal, claim.',
 )
