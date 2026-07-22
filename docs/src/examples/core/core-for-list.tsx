@@ -40,8 +40,8 @@ export default function CoreForList() {
     h(
       'div',
       { class: 'row', style: { gap: '8px' } },
-      h('button', { onClick: add, 'aria-label': 'add', style: { width: '38px', height: '28px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#4ade80' } }),
-      h('button', { onClick: remove, 'aria-label': 'remove', style: { width: '38px', height: '28px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#cbd5e1' } }),
+      h('button', { onClick: add, style: { padding: '6px 14px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#4ade80', color: '#052e16', fontSize: '13px', fontWeight: 600 } }, 'Add'),
+      h('button', { onClick: remove, style: { padding: '6px 14px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#cbd5e1', color: '#1e293b', fontSize: '13px', fontWeight: 600 } }, 'Remove'),
     ),
   )
 }

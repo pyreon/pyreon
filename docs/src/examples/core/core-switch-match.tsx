@@ -25,8 +25,7 @@ export default function CoreSwitchMatch() {
     ),
     h('button', {
       onClick: cycle,
-      'aria-label': 'cycle panel',
-      style: { width: '46px', height: '28px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#a78bfa' },
-    }),
+      style: { padding: '6px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#a78bfa', color: '#fff', fontSize: '13px', fontWeight: 600 },
+    }, 'Cycle'),
   )
 }

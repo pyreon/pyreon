@@ -22,8 +22,7 @@ export default function CoreShowToggle() {
     ),
     h('button', {
       onClick: () => on.set(!on.peek()),
-      'aria-label': 'toggle',
-      style: { width: '46px', height: '28px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#60a5fa' },
-    }),
+      style: { padding: '6px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#60a5fa', color: '#fff', fontSize: '13px', fontWeight: 600 },
+    }, 'Toggle'),
   )
 }
