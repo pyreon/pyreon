@@ -74,14 +74,24 @@ function App() { return (<Stack><Card/></Stack>) }`
     )
   })
 
-  it('warns that template interpolations (theme tokens) are not yet lowered', () => {
+  it('RESOLVES a theme-token interpolation (`${(p) => p.theme.color.primary}`) to its value', () => {
     const src = `import { Stack, Text } from '@pyreon/primitives'
 const T = styled(Stack)\`padding: 16px; background: \${(p) => p.theme.color.primary};\`
 function App() { return (<T><Text>x</Text></T>) }`
     const { code, warnings } = swift(src)
-    // The static padding still lowers; the interpolated background is dropped + warned.
+    // The static padding lowers; the theme-token background resolves (default primary #2563eb).
     expect(code).toContain('.padding(16)')
-    expect(warnings.join('\n')).toMatch(/interpolations.*not yet\s+lowered/)
+    expect(code).toContain('.background(Color(.sRGB, red: 0.145, green: 0.388, blue: 0.922')
+    expect(warnings.join('\n')).not.toMatch(/not yet\s+lowered/)
+  })
+
+  it('warns + drops a non-token interpolation (a runtime expression)', () => {
+    const src = `import { Stack, Text } from '@pyreon/primitives'
+const T = styled(Stack)\`padding: 16px; color: \${(p) => p.someRuntimeValue};\`
+function App() { return (<T><Text>x</Text></T>) }`
+    const { code, warnings } = swift(src)
+    expect(code).toContain('.padding(16)')
+    expect(warnings.join('\n')).toMatch(/isn't a resolvable theme token/)
   })
 })
 
