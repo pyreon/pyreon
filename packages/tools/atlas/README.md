@@ -69,6 +69,50 @@ const graph = await atlas.build()
 console.log(graph.toLlmsText()) // the agent-facing catalog
 ```
 
+## Built-in plugins
+
+Every capability is a plugin on one contract. The built-in suite is all pure and
+metadata-driven (no rendering required):
+
+- **Scenario generation** — `variantMatrixPlugin` (one scenario per dimension
+  cross-product), `statesPlugin` (per interactive boolean state), `edgeCasesPlugin`
+  (empty + long-content), `themePlugin` (per theme mode), `defaultScenarioPlugin`.
+- **Enrichment** — `tagsPlugin` (auto-categorize by name), `fillDefaultsPlugin`
+  (fill required props so scenarios render).
+- **Verification** — `a11yPlugin` (static missing-accessible-name check).
+- **Docs** — `usageDocsPlugin` (per-component usage summary).
+- **Bundle** — `recommendedPlugins()` — the curated "great defaults", correctly
+  ordered.
+
+DOM-backed plugins (axe a11y, visual-regression, reactivity-coverage) join the
+suite with the runtime/verify layer.
+
+## Try it
+
+```sh
+bun run --filter='@pyreon/atlas' demo
+```
+
+The demo describes three components (Button, TextInput, Badge) and derives a
+**verified catalog with ZERO authored stories** — including the verify pipeline
+correctly **flagging** the deliberately-empty edge cases:
+
+```text
+## Button
+Button — 12 scenario(s), 11 passing. Props: label, state, size, disabled.
+tags: form
+scenarios (12):
+  - state=primary · size=small [auto-variant] [pass]
+  - …
+  - Empty [auto-variant] [FAIL]
+  - Long content [auto-variant] [pass]
+…
+Atlas derived 3 components and 22 verified scenarios (3 flagged) — from ZERO authored stories.
+
+Flagged by the verify pipeline:
+  • Button / "Empty": missing accessible name: "label" is empty
+```
+
 ## Writing a plugin
 
 Every Atlas capability is a plugin on one contract, contributing to one or more

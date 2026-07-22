@@ -1,6 +1,6 @@
 import { inferControls } from '../core'
 import { createAtlas } from '../index'
-import { a11yPlugin, defineAtlasPlugin, variantMatrixPlugin } from '../plugins'
+import { a11yPlugin, defineAtlasPlugin, recommendedPlugins, variantMatrixPlugin } from '../plugins'
 
 describe('createAtlas', () => {
   it('runs the full pipeline: discover -> decorate -> verify -> graph', async () => {
@@ -49,5 +49,45 @@ describe('createAtlas', () => {
   it('defaults cwd and plugins when omitted', async () => {
     const graph = await createAtlas().build()
     expect(graph.size()).toBe(0)
+  })
+
+  it('derives a verified catalog via the recommended plugin bundle', async () => {
+    const discovery = defineAtlasPlugin({
+      name: 'demo-discovery',
+      discover: () => [
+        {
+          name: 'Button',
+          controls: inferControls([
+            { name: 'label', type: 'string' },
+            { name: 'state', type: { union: ['primary', 'secondary', 'danger'] } },
+            { name: 'disabled', type: 'boolean' },
+          ]),
+          axes: [{ name: 'state', values: ['primary', 'secondary', 'danger'] }],
+          reactivity: [],
+          scenarios: [],
+          tags: [],
+        },
+      ],
+    })
+
+    const graph = await createAtlas({ plugins: [discovery, ...recommendedPlugins()] }).build()
+    const button = graph.get('Button')!
+
+    // auto-categorized by name
+    expect(button.tags).toContain('form')
+    // variant matrix (3) + disabled state (1) + edge cases (2) = 6+ derived scenarios
+    expect(button.scenarios.length).toBeGreaterThanOrEqual(6)
+    // nothing enters the catalog unverified
+    expect(button.scenarios.every((s) => s.verify !== undefined)).toBe(true)
+    // fill-defaults made the primary variant renderable -> a11y passes
+    const primary = button.scenarios.find((s) => s.variant?.state === 'primary')!
+    expect(primary.verify?.a11y.status).toBe('pass')
+    // the deliberately-empty edge case is correctly FLAGGED
+    const empty = button.scenarios.find((s) => s.name === 'Empty')!
+    expect(empty.verify?.a11y.status).toBe('fail')
+    expect(empty.verify?.ok).toBe(false)
+    // usage docs wrote a summary; the agent catalog renders
+    expect(button.summary).toContain('Button —')
+    expect(graph.toLlmsText()).toContain('## Button')
   })
 })
