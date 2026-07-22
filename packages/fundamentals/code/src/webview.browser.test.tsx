@@ -53,7 +53,14 @@ async function mountCode(state: unknown, onMessage?: (m: string) => void) {
   return { iframe, unmount }
 }
 
-/** Wait until the editor booted (CM view created) + first data applied. */
+/**
+ * Wait until the editor booted (CM view created) AND the initial forward data
+ * has been applied (doc non-empty). All three tests push a non-empty initial
+ * `value`, so waiting for `doc.length > 0` guarantees the bridge's `apply()`
+ * ran with the pushed data before we assert — the WebView's initial data push
+ * lands a tick AFTER the synchronous boot, and asserting on boot alone races
+ * that push (passes locally where the push wins, fails under CI timing).
+ */
 async function waitForEditor(iframe: HTMLIFrameElement): Promise<EditorView> {
   const start = performance.now()
   for (;;) {
@@ -61,8 +68,8 @@ async function waitForEditor(iframe: HTMLIFrameElement): Promise<EditorView> {
     const doc = iframe.contentDocument
     if (win?.__pyreonCodeError) throw new Error('host error: ' + win.__pyreonCodeError)
     const view = doc?.querySelector('.cm-editor') ? (EditorView.findFromDOM(doc.querySelector('.cm-editor') as HTMLElement) as EditorView | null) : null
-    if (view) return view
-    if (performance.now() - start > 8000) throw new Error('editor did not boot: err=' + win?.__pyreonCodeError)
+    if (view && view.state.doc.length > 0) return view
+    if (performance.now() - start > 8000) throw new Error('editor did not boot / data not applied: err=' + win?.__pyreonCodeError)
     await new Promise((r) => requestAnimationFrame(() => r(null)))
   }
 }

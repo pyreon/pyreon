@@ -76,14 +76,19 @@ async function mountRT(state: unknown, onMessage?: (m: string) => void) {
   return { iframe, unmount }
 }
 
+// Wait until the editor booted AND the initial forward content applied (non-empty
+// text). All three tests push non-empty initial content, so waiting for it
+// guarantees the bridge's `apply()` ran before we assert — the WebView's initial
+// data push lands a tick AFTER the synchronous boot, and asserting on boot alone
+// races that push (the same class the code host's waitForEditor guards).
 async function waitForEditor(iframe: HTMLIFrameElement): Promise<HTMLElement> {
   const start = performance.now()
   for (;;) {
     const win = iframe.contentWindow as (Window & { __pyreonRichTextError?: string }) | null
     const pm = iframe.contentDocument?.querySelector('.ProseMirror') as HTMLElement | null
     if (win?.__pyreonRichTextError) throw new Error('host error: ' + win.__pyreonRichTextError)
-    if (pm) return pm
-    if (performance.now() - start > 8000) throw new Error('editor did not boot: err=' + win?.__pyreonRichTextError)
+    if (pm && (pm.textContent ?? '').length > 0) return pm
+    if (performance.now() - start > 8000) throw new Error('editor did not boot / content not applied: err=' + win?.__pyreonRichTextError)
     await new Promise((r) => requestAnimationFrame(() => r(null)))
   }
 }
