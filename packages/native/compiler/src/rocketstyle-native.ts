@@ -18,11 +18,14 @@
 // composition (rocketstyle → styler). A user's own package could ship a sibling
 // frontend the same way.
 //
-// SCOPE (v1): a CANONICAL-PRIMITIVE base (`component: Stack`), STATIC string
-// dimensions (`state="primary"`, the `useBooleans:false` default), and
-// LITERAL-valued declarations. Theme-token values (`t.color.primary`) and
-// dynamic `state={sig}` warn + drop — the theme-native frontend + a dimension
-// switch are the tracked follow-ups.
+// SCOPE: a CANONICAL-PRIMITIVE base (`component: Stack`); STATIC string
+// dimensions (`state="primary"`, the `useBooleans:false` default) merge into one
+// object; ONE DYNAMIC dimension (`state={cond ? 'primary' : 'danger'}`) lowers to
+// a TERNARY of two resolved objects → the connector's reactive conditional-value
+// path (a native runtime state flip — see resolveRocketstyleUseSite). Literal +
+// theme-token declaration values (`t.color.primary`, via the theme-native
+// frontend) both resolve. Remaining follow-up: ≥2 simultaneous dynamic dims (a
+// switch over the dimension-set PRODUCT) — warns + falls back to the first branch.
 // ============================================================================
 
 import { isCanonicalPrimitive } from './canonical-primitives'
@@ -239,29 +242,98 @@ function emptyObject(): Extract<ExprIR, { kind: 'object' }> {
   return { kind: 'object', fields: [], spreads: [] }
 }
 
+/** A style-object Map → the object ExprIR the connector consumes. */
+function toStyleObject(m: Map<string, ExprIR>): Extract<ExprIR, { kind: 'object' }> {
+  return {
+    kind: 'object',
+    fields: [...m.entries()].map(([name, value]) => ({ name, value })),
+    spreads: [],
+  }
+}
+
+/** A string-literal ExprIR's value, else null. */
+function literalStringValue(e: ExprIR | undefined): string | null {
+  return e?.kind === 'literal' && typeof e.value === 'string' ? e.value : null
+}
+
 /**
- * Resolve a rocketstyle component at a `<Btn state="primary" size="md">`
- * use-site: merge base ∪ each matched dimension's style set into ONE style
- * object (later dims override earlier; dims override base — the rocketstyle
- * cascade). `readDim(dimName)` returns the static string value of that
- * dimension's attr (or undefined). Returns the merged style object to inject.
+ * Resolve a rocketstyle component at a use-site into the style value to inject
+ * as `<Prim style={…}>`. Two shapes:
+ *
+ * - STATIC dims (`<Btn state="primary" size="md">`) → merge base ∪ each matched
+ *   dimension's set into ONE object (later dims override earlier; dims override
+ *   base — the rocketstyle cascade).
+ * - ONE DYNAMIC dim (`<Btn state={cond ? 'primary' : 'danger'}>`) → a TERNARY of
+ *   two resolved objects (base ∪ static-dims ∪ each branch's set), handed to the
+ *   connector's dynamic path (`emitDynamic`) so each shared property lowers to a
+ *   REACTIVE conditional-value modifier — the native equivalent of a runtime
+ *   `state` flip. This reuses the exact `style={cond ? {A} : {B}}` machinery.
+ *
+ * `readStaticDim(dim)` → the resolved static string value (or undefined).
+ * `readDimAttr(dim)` → the raw attr ExprIR (for ternary detection).
+ * `warn` surfaces an unlowerable shape (≥2 dynamic dims → a switch over the
+ * dimension-set product is a follow-up; a ternary whose branches aren't both
+ * declared dimension values).
  */
 export function resolveRocketstyleUseSite(
   rkt: RocketstyleComponentIR,
-  readDim: (dimName: string) => string | undefined,
-): Extract<ExprIR, { kind: 'object' }> {
-  const merged = new Map<string, ExprIR>()
-  for (const f of rkt.base.fields) merged.set(f.name, f.value)
-  for (const dimName of Object.keys(rkt.dims)) {
-    const value = readDim(dimName)
-    if (value === undefined) continue
-    const styleObj = rkt.dims[dimName]?.[value]
-    if (!styleObj) continue
-    for (const f of styleObj.fields) merged.set(f.name, f.value)
+  readStaticDim: (dimName: string) => string | undefined,
+  readDimAttr?: (dimName: string) => ExprIR | undefined,
+  warn?: (msg: string) => void,
+): Extract<ExprIR, { kind: 'object' | 'ternary' }> {
+  const dynamics: { dim: string; cond: ExprIR; a: string; b: string }[] = []
+  const staticVals: { dim: string; value: string }[] = []
+  for (const dim of Object.keys(rkt.dims)) {
+    const attr = readDimAttr?.(dim)
+    if (attr?.kind === 'ternary') {
+      const a = literalStringValue(attr.then)
+      const b = literalStringValue(attr.otherwise)
+      const sets = rkt.dims[dim]!
+      if (a !== null && b !== null && sets[a] && sets[b]) {
+        dynamics.push({ dim, cond: attr.cond, a, b })
+      } else {
+        warn?.(
+          `<${rkt.name} ${dim}={cond ? … : …}>: a dynamic dimension must be a ternary of TWO DECLARED ${dim} ` +
+            `values (e.g. ${dim}={cond ? 'primary' : 'danger'}) — these branches aren't both declared ${dim}s, ` +
+            `so the dimension was dropped.`,
+        )
+      }
+      continue
+    }
+    const s = readStaticDim(dim)
+    if (s !== undefined) staticVals.push({ dim, value: s })
   }
-  return {
-    kind: 'object',
-    fields: [...merged.entries()].map(([name, value]) => ({ name, value })),
-    spreads: [],
+
+  // base ∪ static-matched dims — the shared foundation of both branches.
+  const baseFields = new Map<string, ExprIR>()
+  for (const f of rkt.base.fields) baseFields.set(f.name, f.value)
+  for (const { dim, value } of staticVals) {
+    const set = rkt.dims[dim]?.[value]
+    if (set) for (const f of set.fields) baseFields.set(f.name, f.value)
   }
+
+  if (dynamics.length === 0) return toStyleObject(baseFields)
+
+  if (dynamics.length > 1) {
+    warn?.(
+      `<${rkt.name}>: more than one dynamic dimension prop (${dynamics.map((d) => d.dim).join(', ')}) — a ` +
+        `native switch over the PRODUCT of dimension sets is a tracked follow-up; each dynamic dim was ` +
+        `resolved to its FIRST branch (static). Use at most one dynamic dimension for a reactive flip.`,
+    )
+    for (const d of dynamics) {
+      const set = rkt.dims[d.dim]?.[d.a]
+      if (set) for (const f of set.fields) baseFields.set(f.name, f.value)
+    }
+    return toStyleObject(baseFields)
+  }
+
+  // Exactly one dynamic dim → a ternary of the two resolved style objects.
+  const { dim, cond, a, b } = dynamics[0]!
+  const branch = (value: string): Extract<ExprIR, { kind: 'object' }> => {
+    const m = new Map(baseFields)
+    const set = rkt.dims[dim]?.[value]
+    if (set) for (const f of set.fields) m.set(f.name, f.value)
+    return toStyleObject(m)
+  }
+  return { kind: 'ternary', cond, then: branch(a), otherwise: branch(b) }
 }

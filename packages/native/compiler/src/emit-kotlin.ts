@@ -3564,10 +3564,20 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   const rkt = _rocketstyleComponents.get(tag)
   if (rkt !== undefined) {
     const dimNames = Object.keys(rkt.dims)
-    const merged = resolveRocketstyleUseSite(rkt, (d) => {
-      const v = readStaticAttrKotlin(e, d)
-      return typeof v === 'string' ? v : undefined
-    })
+    const merged = resolveRocketstyleUseSite(
+      rkt,
+      (d) => {
+        const v = readStaticAttrKotlin(e, d)
+        return typeof v === 'string' ? v : undefined
+      },
+      (d) => {
+        const a = e.attrs.find(
+          (x): x is Extract<AttrIR, { kind: 'attr' }> => x.kind === 'attr' && x.name === d,
+        )
+        return a?.value
+      },
+      (msg) => _emitWarnings.push(msg),
+    )
     const rest = e.attrs.filter(
       (a) => !(a.kind === 'attr' && dimNames.includes(a.name)),
     )

@@ -309,7 +309,20 @@ const Btn = rocketstyle()({ name: 'Btn', component: Stack })
 
 — **resolves at compile time**: at each use-site the frontend reads the `state`/`size`/`variant` attrs, merges `base ∪ matched-dims` into ONE style object (the rocketstyle cascade — dims override base), and reuses the `styled` rewrite (→ `<Stack style={merged}>` → connector). So `<Btn state="primary" size="large">` → `VStack{}.padding(16).background(…blue).cornerRadius(8)` (size=large's `padding` overrode the base). This is what makes **user-authored** multiplatform components real: build your own on ui-system over the primitive bases and it lowers — primitives are the compiler's internal native target, not your authoring constraint.
 
-**Scope (v1):** a canonical-primitive base (`component: Stack`), static string dimensions (`state="primary"` — the `useBooleans: false` default). Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). Dynamic `state={sig}` → a native switch over the pre-resolved sets is the tracked follow-up. Both emits are toolchain-validated.
+#### Reactive dimension flips
+
+A dimension prop can be **dynamic** — driven by a signal at runtime:
+
+```tsx
+function App() {
+  const active = signal(false)
+  return <Btn state={active() ? 'primary' : 'danger'} size="large">…</Btn>
+}
+```
+
+`<Btn state={active() ? 'primary' : 'danger'}>` **resolves both branches** (`base ∪ static-dims ∪ each state's set`) into a **ternary style value** handed to the connector's reactive path — so each property that differs across the branches lowers to a **conditional-value modifier**: SwiftUI `.background((active) ? Color(…blue) : Color(…red))`, Compose `.background(if (active) Color(0xFF2563EB) else Color(0xFFDC2626))`. Any **static** dimension (`size="large"`) + the theme merge into **both** branches. This is what makes a native rocketstyle component **reactive** rather than static-only — the runtime state flip re-styles in place, no remount.
+
+**Scope:** a canonical-primitive base (`component: Stack`); static string dimensions (the `useBooleans: false` default) merge into one object; **one** dynamic dimension (a ternary of two DECLARED dimension values) lowers to the reactive flip. Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). Remaining follow-up: **≥2 simultaneous** dynamic dimensions (a switch over the dimension-set product) → warns + falls back to the first branch; a ternary whose branches aren't both declared dimension values → warns + drops. Both emits are toolchain-validated.
 
 ### Theme-token resolution
 
