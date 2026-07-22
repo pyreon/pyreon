@@ -23,6 +23,9 @@ import {
   takeWhile,
   uniqBy,
   unique,
+  difference,
+  intersection,
+  union,
 } from './collections'
 import { combine, distinct, merge, scan, zip } from './operators'
 import { pipe } from './pipe'
@@ -76,6 +79,9 @@ export const rx = {
   compact,
   reverse,
   partition,
+  intersection,
+  difference,
+  union,
   takeWhile,
   dropWhile,
   unique,
@@ -113,6 +119,9 @@ export const rx = {
 export {
   average,
   chunk,
+  difference,
+  intersection,
+  union,
   combine,
   compact,
   count,
