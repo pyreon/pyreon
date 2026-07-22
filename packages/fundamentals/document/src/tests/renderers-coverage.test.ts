@@ -448,10 +448,10 @@ describe('WhatsApp renderer', () => {
     expect(result).toBe('')  // just whitespace, trimmed
   })
 
-  it('skips images', async () => {
+  it('degrades images to placeholder text (no inline images in WhatsApp)', async () => {
     const doc = Document({ children: Image({ src: 'https://example.com/img.png' }) })
     const result = (await render(doc, 'whatsapp')) as string
-    expect(result).toBe('')
+    expect(result).toBe('_[Image: Image]_')
   })
 
   it('renders link', async () => {

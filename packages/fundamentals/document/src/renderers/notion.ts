@@ -1,6 +1,6 @@
 import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Notion renderer — outputs Notion Block JSON for the Notion API.
@@ -111,6 +111,17 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
             type: 'external',
             external: { url: src },
             ...(p.caption ? { caption: textToRichText(p.caption as string) } : {}),
+          },
+        })
+      } else {
+        // The Notion API only accepts external (http) image URLs — emit
+        // the alt/caption as placeholder text instead of silently
+        // dropping a data:-URI image (e.g. a chart snapshot).
+        blocks.push({
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: textToRichText(imagePlaceholderText(p), { italic: true }),
           },
         })
       }
@@ -225,6 +236,20 @@ function nodeToBlocks(node: DocNode): NotionBlock[] {
       })
       break
     }
+
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item':
+      blocks.push({
+        object: 'block',
+        type: 'paragraph',
+        paragraph: { rich_text: textToRichText(getTextContent(node.children)) },
+      })
+      break
+
+    default:
+      warnUnknownNodeType('notion', node.type)
+      break
   }
 
   return blocks

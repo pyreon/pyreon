@@ -148,7 +148,7 @@ await doc.toDocx()     // Word document
 **Common mistakes**
 
 - Forgetting to await terminal methods — toPdf(), toDocx(), etc. are async
-- Calling builder methods after a terminal method — the builder is consumed; create a new one
+- Assuming the builder is consumed after a terminal method — it is NOT: the section list persists, so .toPdf() then .toDocx() on the same builder renders the same document twice (chaining more sections after a render also works)
 
 **See also:** `render` · `Document`
 

@@ -1,6 +1,6 @@
 import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Atlassian Document Format (ADF) renderer — for Jira and Confluence.
@@ -94,6 +94,14 @@ function nodeToAdf(node: DocNode): AdfNode[] {
               },
             },
           ],
+        })
+      } else {
+        // ADF external media requires an http URL — emit the alt/caption
+        // as placeholder text instead of silently dropping a data:-URI
+        // image (e.g. a chart snapshot).
+        result.push({
+          type: 'paragraph',
+          content: [textNode(imagePlaceholderText(p), [{ type: 'em' }])],
         })
       }
       break
@@ -193,6 +201,19 @@ function nodeToAdf(node: DocNode): AdfNode[] {
       })
       break
     }
+
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item':
+      result.push({
+        type: 'paragraph',
+        content: [textNode(getTextContent(node.children))],
+      })
+      break
+
+    default:
+      warnUnknownNodeType('confluence', node.type)
+      break
   }
 
   return result

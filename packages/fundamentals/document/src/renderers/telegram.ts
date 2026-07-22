@@ -1,6 +1,6 @@
 import { escapeXml as esc, sanitizeHref } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Telegram renderer — outputs HTML using Telegram's supported subset.
@@ -44,9 +44,10 @@ function renderNode(node: DocNode): string {
     }
 
     case 'image':
-      // Telegram doesn't support inline images in HTML
-      // Images need to be sent separately via sendPhoto
-      return ''
+      // Telegram doesn't support inline images in HTML (images are sent
+      // separately via sendPhoto) — emit the alt/caption as placeholder
+      // text instead of silently dropping.
+      return `<i>${esc(imagePlaceholderText(p))}</i>\n\n`
 
     case 'table': {
       const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
@@ -99,7 +100,13 @@ function renderNode(node: DocNode): string {
       return `<blockquote>${text}</blockquote>\n\n`
     }
 
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item':
+      return `${esc(getTextContent(node.children))}\n\n`
+
     default:
+      warnUnknownNodeType('telegram', node.type)
       return ''
   }
 }

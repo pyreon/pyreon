@@ -1937,13 +1937,21 @@ describe('Slack renderer', () => {
     expect(parsed.blocks[0].image_url).toBe('https://x.com/img.png')
   })
 
-  it('skips non-URL images', async () => {
+  it('emits placeholder text for non-URL images (cannot be posted to Slack)', async () => {
+    // Invariant kept from the pre-fix spec: no broken image block is
+    // emitted for a data: URI. Corrected truth: the image degrades to
+    // placeholder TEXT instead of vanishing silently (the "report with
+    // chart -> toSlack() produced a chart-less message" bug).
     const doc = Document({
-      children: Image({ src: 'data:image/png;base64,abc' }),
+      children: Image({ src: 'data:image/png;base64,abc', alt: 'Chart' }),
     })
     const json = (await render(doc, 'slack')) as string
     const parsed = JSON.parse(json)
-    expect(parsed.blocks).toHaveLength(0)
+    expect(parsed.blocks).toHaveLength(1)
+    expect(parsed.blocks[0].type).toBe('section')
+    expect(parsed.blocks[0].text.text).toContain('[Image: Chart]')
+    // Still no image block — the invariant the old spec protected.
+    expect(parsed.blocks.some((b: { type: string }) => b.type === 'image')).toBe(false)
   })
 
   it('renders page-break as divider', async () => {
@@ -2497,10 +2505,14 @@ describe('Telegram renderer', () => {
     expect(html).toContain('<a href="/pay">Pay</a>')
   })
 
-  it('skips images (sent separately in Telegram)', async () => {
-    const doc = Document({ children: Image({ src: 'https://x.com/img.png' }) })
+  it('degrades images to placeholder text (photos are sent separately in Telegram)', async () => {
+    // Invariant kept: no inline <img> markup (Telegram HTML has none).
+    // Corrected truth: the alt surfaces as placeholder text instead of
+    // the image silently vanishing.
+    const doc = Document({ children: Image({ src: 'https://x.com/img.png', alt: 'Logo' }) })
     const html = (await render(doc, 'telegram')) as string
-    expect(html).toBe('')
+    expect(html).toBe('<i>[Image: Logo]</i>')
+    expect(html).not.toContain('<img')
   })
 
   it('escapes HTML entities', async () => {
@@ -2774,10 +2786,10 @@ describe('WhatsApp renderer', () => {
     expect(text).toContain('• one')
   })
 
-  it('skips images', async () => {
-    const doc = Document({ children: Image({ src: 'https://x.com/img.png' }) })
+  it('degrades images to placeholder text (WhatsApp has no inline images)', async () => {
+    const doc = Document({ children: Image({ src: 'https://x.com/img.png', alt: 'Logo' }) })
     const text = (await render(doc, 'whatsapp')) as string
-    expect(text).toBe('')
+    expect(text).toBe('_[Image: Logo]_')
   })
 
   it('builder toWhatsApp works', async () => {

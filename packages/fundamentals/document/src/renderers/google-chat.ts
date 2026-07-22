@@ -1,6 +1,6 @@
-import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
+import { escapeXml as esc, sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Google Chat renderer — outputs Card V2 JSON for Google Chat API.
@@ -33,7 +33,7 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       break
 
     case 'heading': {
-      const text = getTextContent(node.children)
+      const text = esc(getTextContent(node.children))
       widgets.push({
         decoratedText: {
           topLabel: '',
@@ -45,7 +45,10 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
     }
 
     case 'text': {
-      let text = getTextContent(node.children)
+      // Google Chat card text is parsed as a simple-HTML subset — a literal
+      // `<` in user text would open a tag and corrupt the card. Escape all
+      // user text (same as the telegram renderer's esc()).
+      let text = esc(getTextContent(node.children))
       if (p.bold) text = `<b>${text}</b>`
       if (p.italic) text = `<i>${text}</i>`
       if (p.strikethrough) text = `<s>${text}</s>`
@@ -57,9 +60,9 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
 
     case 'link': {
       const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const text = esc(getTextContent(node.children))
       widgets.push({
-        textParagraph: { text: `<a href="${href}">${text}</a>` },
+        textParagraph: { text: `<a href="${esc(href)}">${text}</a>` },
       })
       break
     }
@@ -73,6 +76,12 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
             altText: (p.alt as string) ?? 'Image',
           },
         })
+      } else {
+        // data: URIs / relative paths can't be embedded in a Chat card —
+        // emit the alt/caption as placeholder text instead of dropping.
+        widgets.push({
+          textParagraph: { text: `<i>${esc(imagePlaceholderText(p))}</i>` },
+        })
       }
       break
     }
@@ -82,8 +91,8 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
       const rows = (p.rows ?? []) as (string | number)[][]
 
       // Google Chat Cards don't have native tables — use grid or formatted text
-      const header = columns.map((c) => `<b>${c.header}</b>`).join(' | ')
-      const body = rows.map((row) => row.map((c) => String(c ?? '')).join(' | ')).join('\n')
+      const header = columns.map((c) => `<b>${esc(c.header)}</b>`).join(' | ')
+      const body = rows.map((row) => row.map((c) => esc(String(c ?? ''))).join(' | ')).join('\n')
 
       widgets.push({
         textParagraph: { text: `${header}\n${body}` },
@@ -107,7 +116,7 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
     }
 
     case 'code': {
-      const text = getTextContent(node.children)
+      const text = esc(getTextContent(node.children))
       widgets.push({
         textParagraph: {
           text: `<font color="#333333"><code>${text}</code></font>`,
@@ -148,12 +157,24 @@ function nodeToWidgets(node: DocNode): CardWidget[] {
     }
 
     case 'quote': {
-      const text = getTextContent(node.children)
+      const text = esc(getTextContent(node.children))
       widgets.push({
         textParagraph: { text: `<i>"${text}"</i>` },
       })
       break
     }
+
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item':
+      widgets.push({
+        textParagraph: { text: esc(getTextContent(node.children)) },
+      })
+      break
+
+    default:
+      warnUnknownNodeType('google-chat', node.type)
+      break
   }
 
   return widgets

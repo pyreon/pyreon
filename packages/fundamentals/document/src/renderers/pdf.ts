@@ -1,5 +1,5 @@
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, warnUnknownNodeType } from '../nodes'
 
 /**
  * PDF renderer — lazy-loads pdfmake on first use.
@@ -278,6 +278,7 @@ function nodeToContent(node: DocNode): PdfContent | PdfContent[] | null {
       }
 
     default:
+      warnUnknownNodeType('pdf', node.type)
       return null
   }
 }
@@ -307,7 +308,7 @@ function renderHeaderFooter(node: DocNode | undefined): PdfContent | undefined {
 }
 
 export const pdfRenderer: DocumentRenderer = {
-  async render(node: DocNode, _options?: RenderOptions): Promise<Uint8Array> {
+  async render(node: DocNode, options?: RenderOptions): Promise<Uint8Array> {
     // Lazy-load pdfmake — handle ESM/CJS interop
     let pdfMakeModule: any
     let pdfFontsModule: any
@@ -387,7 +388,37 @@ export const pdfRenderer: DocumentRenderer = {
     if (footerFn) docDefinition.footer = footerFn
 
     try {
-      const pdf = pdfMake.createPdf(docDefinition)
+      // Custom fonts (RenderOptions.fonts): pdfmake's createPdf accepts a
+      // fonts map as its 3rd argument — `{ Family: { normal, bold,
+      // italics, bolditalics } }` where each face is a VFS filename or a
+      // URL. Passing a fonts map REPLACES pdfmake's built-in map, so merge
+      // the default Roboto faces under the user's entries — documents that
+      // don't opt into a custom font keep rendering with the default.
+      // The bundled vfs ships ONLY the four Roboto faces — but the `code`
+      // node style names font 'Courier', so a document containing a
+      // <Code> block CRASHED pdfmake with "Font 'Courier' … is not
+      // defined" (pre-existing since inception; surfaced by the
+      // completeness-lock fixture). Alias Courier to the Roboto files so
+      // code renders instead of throwing; a real monospace face can be
+      // supplied via `RenderOptions.fonts` (user entries win over both
+      // defaults below).
+      const robotoFaces = {
+        normal: 'Roboto-Regular.ttf',
+        bold: 'Roboto-Medium.ttf',
+        italics: 'Roboto-Italic.ttf',
+        bolditalics: 'Roboto-MediumItalic.ttf',
+      }
+      const fonts = {
+        Roboto: robotoFaces,
+        Courier: robotoFaces,
+        ...options?.fonts,
+      }
+      // This pdfmake build ignores createPdf's fonts argument — the font
+      // map must live on the instance (`pdfMake.fonts`), the classic
+      // browser-API shape. Assign per render (cheap, idempotent; user
+      // entries win via the merge above).
+      pdfMake.fonts = fonts
+      const pdf: { getBuffer(): Promise<Uint8Array> } = pdfMake.createPdf(docDefinition)
       const buffer = await pdf.getBuffer()
       return new Uint8Array(buffer)
     } catch (err) {
