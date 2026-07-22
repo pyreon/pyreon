@@ -1,5 +1,38 @@
 # zero-cli
 
+## 0.50.0
+
+### Patch Changes
+
+- [#2417](https://github.com/pyreon/pyreon/pull/2417) [`83d1c0d`](https://github.com/pyreon/pyreon/commit/83d1c0d2a6b93285a441438c148a7d214a91c9d8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - chore: dependency-hygiene fixes from the workspace dependency audit
+
+  Declared-vs-actual dependency audit across all 88 workspace packages. No
+  runtime behavior changes — every fix removes or reclassifies a dependency the
+  package's shipped code never imports:
+
+  - `@pyreon/zero`: removed unused `@pyreon/meta` dependency (legacy from the
+    initial monorepo migration; zero mentions in the package).
+  - `@pyreon/zero-cli`: removed unused `@pyreon/server` dependency (the CLI
+    delegates to `@pyreon/cli` via dynamic import and to `@pyreon/create-zero`
+    via template-path resolution — both kept; `server` was never referenced).
+  - `@pyreon/document-primitives`: removed unused `@pyreon/styler` +
+    `@pyreon/ui-core` dependencies (its rocketstyle dependency declares its own).
+  - `@pyreon/coolgrid`: moved `@pyreon/styler` to devDependencies (only its
+    browser test imports it; prod src uses core/ui-core/unistyle).
+  - `@pyreon/typescript`: `@pyreon/core` dependency now uses the workspace
+    protocol (`workspace:^`) instead of the pinned `>=0.13.0` range — consistent
+    with every other inter-package dependency; the fixed-group release keeps the
+    published range aligned with the sibling core release.
+
+  (Private packages fixed in the same pass, no changeset needed: `ui-components`
+  dropped unused `hooks`/`styler` + moved test-only `ui-core` to devDeps;
+  `ui-primitives` dropped unused `elements`.)
+
+- Updated dependencies [[`83d1c0d`](https://github.com/pyreon/pyreon/commit/83d1c0d2a6b93285a441438c148a7d214a91c9d8), [`6029da4`](https://github.com/pyreon/pyreon/commit/6029da41bae4a4f52140cba939d778e079c89fee), [`659c30f`](https://github.com/pyreon/pyreon/commit/659c30f8f41514b47b4c83ce185de43f717fd2d7)]:
+  - @pyreon/zero@0.50.0
+  - @pyreon/cli@0.50.0
+  - @pyreon/create-zero@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

@@ -2,7 +2,7 @@
   "name": "@pyreon/playwright-config",
   "version": "0.0.0",
   "private": true,
-  "description": "Internal Playwright config helpers \u2014 single canonical definePlaywrightConfig / viteDevServer for every root-level playwright.*.config.ts",
+  "description": "Internal Playwright config helpers — single canonical definePlaywrightConfig / viteDevServer for every root-level playwright.*.config.ts",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

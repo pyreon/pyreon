@@ -1,5 +1,37 @@
 # @pyreon/unistyle
 
+## 0.50.0
+
+### Patch Changes
+
+- [#2405](https://github.com/pyreon/pyreon/pull/2405) [`4d8b0ac`](https://github.com/pyreon/pyreon/commit/4d8b0ac11243c69bc96c0101f78ef4da27399f20) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(ui-core,unistyle): break the ui-core ↔ unistyle dependency cycle
+
+  `@pyreon/ui-core` and `@pyreon/unistyle` depended on each other (a runtime `dependencies` cycle): ui-core's `<PyreonUI>` imported unistyle's theme engine (`enrichTheme`/`themeToCssVars`/`cpseRewrite` + the `PyreonTheme` type), while unistyle imports ui-core's primitives (`config`/`context`/`isEmpty`/…). This inverted the intended layer order (ui-core is the base of the ui-system layer) and made the two packages impossible to build/version/consume independently.
+
+  Fixed with the repo's established anti-cycle pattern — a registration seam (like `@pyreon/router`'s `_setDefaultChromeLayout`, `@pyreon/styler`'s `setStyleExtraction`, `@pyreon/core`'s `setSnapshotCapture`):
+
+  - `@pyreon/ui-core` now OWNS the canonical `PyreonTheme` type and exposes a `setThemeEngine`/`getThemeEngine` seam (`ThemeEngine` interface). It carries **no dependency on `@pyreon/unistyle`**.
+  - `@pyreon/unistyle` registers its engine into ui-core at module load (`setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite })`) and re-exports `PyreonTheme` for back-compat.
+  - `<PyreonUI>` reads the engine via `getThemeEngine()` — which throws a clear, actionable error if `@pyreon/unistyle` isn't in the module graph (it always is in a real app; every styled `@pyreon` UI package pulls it in transitively).
+
+  The dependency graph is now **acyclic**: `unistyle → ui-core` only. No public API change — `PyreonUI` is still exported from `@pyreon/ui-core`, `PyreonTheme` from both. `@pyreon/unistyle` is added as a `@pyreon/ui-core` **devDependency** (for tests only — its test setup imports unistyle to register the engine, mirroring a real app).
+
+- [#2418](https://github.com/pyreon/pyreon/pull/2418) [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: importing a unit helper no longer retains the whole property map
+
+  The `keyToIndices` fast-path index was built by a bare top-level `for` loop — an
+  unremovable side-effect statement that retained the 170-entry `propertyMap` (and the
+  index) in every consumer bundle, styling used or not: importing just `value` paid
+  ~5KB gz. The build is now a `/* @__PURE__ */`-annotated function call — a pure index
+  over static data, droppable exactly when `styles()` is unused; build timing for real
+  consumers is unchanged (module eval). Measured: `value`-only 5.0 → 1.98KB gz (−60%),
+  full entry unchanged.
+
+- Updated dependencies [[`4d8b0ac`](https://github.com/pyreon/pyreon/commit/4d8b0ac11243c69bc96c0101f78ef4da27399f20), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714)]:
+  - @pyreon/ui-core@0.50.0
+  - @pyreon/core@0.50.0
+  - @pyreon/styler@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

@@ -1,5 +1,27 @@
 # @pyreon/dnd
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2459](https://github.com/pyreon/pyreon/pull/2459) [`02fb84a`](https://github.com/pyreon/pyreon/commit/02fb84acdf67443bcad6d9f5958059d398be5442) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Audit-gap release — accessibility, performance, and pdnd capability passthroughs:
+
+  - **Screen-reader announcements** (via `@pyreon/a11y`, new dependency): `useSortable` announces drag start / drop / keyboard reorder ("Picked up Alice", "Moved Alice to position 2 of 3"); new `label: (item) => string` option names items. A visually-hidden Alt+Arrow instructions node is auto-created and linked to items via `aria-describedby` (a consumer-supplied `aria-describedby` wins).
+  - **`createSelector`-backed `isActive(key)` / `isOverKey(key)`** on `UseSortableResult` — O(2) notifies per drag change instead of the O(N) every-row subscription the `activeId() === key` idiom caused; docs updated to the selector idiom. `onDragEnter`/`onDragLeave` signal writes are now batched (every other path already was).
+  - **Custom drag preview**: `useDraggable({ preview: { render(container), offset } })` → pdnd `setCustomNativeDragPreview` with `'pointer-outside' | 'center' | 'preserve-offset'` presets.
+  - **Droppable edges + stickiness**: `useDroppable({ edges, sticky })` + returned `overEdge()` accessor (closest-edge hitbox on plain drop zones).
+  - **Per-item drag handles**: `useSortable().itemHandleRef(key)` scopes drag initiation to a grip element.
+  - New real-Chromium specs: announcements, O(2) selector proof, preview/edge/handle behavior, and the previously mock-only cross-list (`groupId`) path.
+
+### Patch Changes
+
+- [#2469](https://github.com/pyreon/pyreon/pull/2469) [`8739b10`](https://github.com/pyreon/pyreon/commit/8739b10fe1574bfc60f228fd6cdf9dba1bc8e910) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bench: new `row-enter fanout (N=1000 row bindings)` cell in the wrapper-tax bench — measures the sortable row-binding idiom at scale: ~26µs/row-enter with the naive `overId() === key` equality idiom (O(N) notifies) vs ~1.5µs with the `isOverKey(key)` selector idiom (~18× faster, O(2) notifies) — the wall-clock proof of the selector API's claim (the count itself is browser-spec-locked). No runtime changes.
+
+- Updated dependencies [[`24df62e`](https://github.com/pyreon/pyreon/commit/24df62ee3e27d1cc624f627c1277fbed4866e91e), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7)]:
+  - @pyreon/a11y@0.50.0
+  - @pyreon/core@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

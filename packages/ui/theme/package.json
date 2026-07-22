@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/ui-theme",
-  "version": "0.13.36",
+  "version": "0.13.37",
   "private": true,
   "description": "Default theme for the Pyreon UI component library",
   "bugs": {
@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "build": "echo 'private package \u2014 consumed via bun condition'",
+    "build": "echo 'private package — consumed via bun condition'",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",

@@ -1,5 +1,26 @@
 # @pyreon/document
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2462](https://github.com/pyreon/pyreon/pull/2462) [`4f9a2ed`](https://github.com/pyreon/pyreon/commit/4f9a2eda21b1955e5fe79f7129271e4ab2d6d0e7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Audit-gap release — silent-drop class closed structurally, injection fixes, and the typed-but-unimplemented surface resolved:
+
+  - **pptx `page-break` implemented** (was silently dropped in the one remaining paginated format): a `<PageBreak/>` starts a NEW slide. `discord` documents its `spacer` skip explicitly; orphan `list-item`s render as text in structural formats; the 9 renderers with no `default:` now dev-warn on unknown node types (a future NodeType can never silently drop).
+  - **Un-embeddable images emit their alt/caption as fallback text** in slack/discord/telegram/whatsapp/notion/confluence/teams/google-chat/pptx (was: silent vanish — a `createDocument().chart(...)` report posted to Slack lost its chart with zero signal).
+  - **NEW: the 18-primitive × 20-format completeness lock test** — one fixture with every primitive rendered through every format; every cell must be represented or explicitly allowlisted with a documented reason. This is the structural gate that makes the silent-drop class unshippable.
+  - **google-chat user text is now escaped** (a literal `<` corrupted the card — injection class); whatsapp/slack/teams escape their markup metachars in user text; **markdown nested lists indent correctly** (were malformed GFM).
+  - **PDF: documents containing a `<Code>` block no longer CRASH** (`Font 'Courier' is not defined` — since inception; Courier now aliases the bundled Roboto faces, and a real monospace font can be supplied via the new `RenderOptions.fonts`, which is now actually implemented). `RenderOptions.styles` + `DocNode.styles` (the connector-document rocketstyle pipeline) are wired into the HTML renderer as inline styles; pdf/docx document them as browser-preview-only.
+  - **docx works in browsers** (`Buffer.from` → portable base64 decode) and honors `direction: 'rtl'` (`<w:bidi/>`); email honors RTL too.
+
+- [#2470](https://github.com/pyreon/pyreon/pull/2470) [`16b5407`](https://github.com/pyreon/pyreon/commit/16b5407771e8961fe4ca535fd373e8a397258273) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Inline links survive export (the audit's rich-text-runs gap, focused slice): an inline `<Link href>` inside a `<Text>` paragraph previously LOST its href in every `getTextContent`-flattening format. New `getInlineRuns`/`hasLinkRun` (exported) split text children into plain + link runs; wired into pdf (pdfmake `text:[…]` runs → real URI annotations), docx (`ExternalHyperlink`), slack (`<url|label>` mrkdwn), telegram (`<a href>`), whatsapp (`label (url)` — no link markup exists). Zero-link paragraphs keep the byte-identical old output (fast path). Inline bold/italic spans remain block-level — the full run model stays a tracked follow-up.
+
+### Patch Changes
+
+- Updated dependencies [[`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7)]:
+  - @pyreon/core@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

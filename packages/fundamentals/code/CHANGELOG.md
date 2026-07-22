@@ -1,5 +1,25 @@
 # @pyreon/code
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2453](https://github.com/pyreon/pyreon/pull/2453) [`f32ab89`](https://github.com/pyreon/pyreon/commit/f32ab893072f747ad83d0a29426c994f2afe56bb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Fix the audited `@pyreon/code` gaps — two typed-but-unimplemented config surfaces implemented, one missing config axis added, and the stale doc claims corrected:
+
+  - **`<DiffEditor inline>` is now implemented** (was typed-but-unimplemented — the prop existed on `DiffEditorProps` but the component never read it). `inline: true` renders a UNIFIED diff via `@codemirror/merge`'s `unifiedMergeView`: one editor showing the modified document with the original as deleted-chunk widgets; per-chunk accept/reject controls appear when `readOnly` is `false`. Signal-valued `original`/`modified` props stay reactive (the original updates through the merge package's `originalDocChangeEffect`), and the existing dispose-during-async-load leak guard covers the unified path too.
+  - **`search: false` now actually disables search** (the flag was destructured and never read — `searchKeymap` shipped unconditionally). `false` omits the Mod-F find/replace keymap and selection-match highlighting. New programmatic escape hatch: `openSearchPanel(editor)` opens the panel on the live view regardless of the flag (pre-mount it dev-warns + returns `false`).
+  - **New `editable` config + live `editor.editable` signal** — sets `EditorView.editable` via a Compartment (like `readOnly`). `editable: false` removes `contenteditable` entirely (pure display surface, no cursor/focus), distinct from `readOnly: true` which keeps the cursor but blocks user-input transactions. `DiffEditor` already had both axes; the main editor now matches.
+  - **Docs corrected**: `<CodeEditor>` does NOT auto-dispose the instance on unmount (lifecycle is user-owned — call `editor.dispose()`; auto-dispose would break remount/TabbedEditor); the stale "~250KB vs Monaco ~2.5MB" bundle claim is replaced with the measured ~138 KB gz core vs Monaco's ~940 KB gz ESM core (~7× smaller gzipped); documented that any `@uiw/codemirror-theme-*` package is a plain CM6 `Extension` that drops into `theme:` directly (verified against a real theme package in the browser suite).
+
+### Patch Changes
+
+- [#2468](https://github.com/pyreon/pyreon/pull/2468) [`149dc85`](https://github.com/pyreon/pyreon/commit/149dc859b3a914d14d1b08ba1344296d1024952c) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Runtime wrapper bench vs @uiw/react-codemirror (`bench:runtime`, real Chromium): controlled-value keystroke round-trip (deterministic count: 1 owner render vs ~110 React commits for 110 keystrokes), external write → DOM (~0.4ms vs ~84ms quiet / ~530ms inside @uiw's typing latch), mount, dispose — honest-limits disclosed (same engine, wrapper-only claim, uncontrolled mode exempt). No runtime changes.
+
+- Updated dependencies [[`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7)]:
+  - @pyreon/core@0.50.0
+  - @pyreon/runtime-dom@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

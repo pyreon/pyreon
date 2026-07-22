@@ -1,5 +1,23 @@
 # @pyreon/i18n
 
+## 0.50.0
+
+### Patch Changes
+
+- [#2414](https://github.com/pyreon/pyreon/pull/2414) [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Docs: correct stale README examples.
+
+  - `@pyreon/form`, `@pyreon/state-tree`, `@pyreon/i18n` READMEs documented a
+    `formRegistry` / `stateTreeRegistry` / `i18nRegistry` import from their
+    `/devtools` subpath, but those subpaths export individual functions
+    (`getActiveForms`/`getFormSnapshot`/`onFormChange`, etc.), not a registry
+    object — the examples didn't compile. Rewritten against the real API.
+  - `@pyreon/core` README now documents `useControllableState`, which moved to
+    `@pyreon/core` (it's a props primitive, re-exported from `@pyreon/hooks`).
+
+- Updated dependencies [[`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7)]:
+  - @pyreon/core@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

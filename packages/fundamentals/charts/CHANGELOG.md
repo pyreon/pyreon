@@ -1,5 +1,26 @@
 # @pyreon/charts
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2460](https://github.com/pyreon/pyreon/pull/2460) [`5dd6c80`](https://github.com/pyreon/pyreon/commit/5dd6c809127fe653009c867a8ccd2ca4ae5c6005) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Audit-gap release — reactive theme, escape hatches, and mount fast path:
+
+  - **Reactive theme**: `theme` now accepts an accessor (`theme: () => (dark() ? 'dark' : null)`) — a flip disposes + re-inits the instance with the current option, group, and event handlers preserved (ECharts has no in-place theme swap; dispose+re-init is the mechanism, as in vue-echarts). Plain values stay static; a same-value re-run never swaps.
+  - **`getCore()` + `connect()` exported** — unblocks `registerMap` (map charts were advertised but unusable without it), `registerTheme`, `getInstanceByDom`, and linked charts via the new `group` config + `connect(groupId)`.
+  - **`initOptions` passthrough** to `core.init` (`useDirtyRect`, `useCoarsePointer`, `pointerSize`, …) and full `SetOptionOpts` on reactive updates (adds `silent`, `transition`).
+  - **`autoresize: boolean | { throttle }`** — opt out of the ResizeObserver or throttle resize storms (default unchanged: on, unthrottled).
+  - **Cached-modules synchronous mount fast path**: once the needed ECharts modules are cached (2nd..Nth chart), the instance is created in the same task — no wrapper-imposed microtask delay (no blank-frame flicker). First mounts keep the lazy-load path.
+  - New tests: theme-swap semantics (5 specs), GC-observable dispose-leak lock (WeakRef + --expose-gc), autoresize config, sync-mount fast path.
+
+### Patch Changes
+
+- [#2471](https://github.com/pyreon/pyreon/pull/2471) [`825fc0e`](https://github.com/pyreon/pyreon/commit/825fc0ea7876d96635a1b714d4f63f0c5e6e017d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Bench protocol upgrade: per-impl PROCESS ISOLATION (fresh child per impl ×3, pooled samples) + bootstrap CI95 with 🤝 tie detection — the store-bench lesson applied. Re-measured verdicts: reactive update ~9.4× faster, dispose ~2.3× faster, and mount is now a CI95-overlap TIE (the prior "~1.65–1.9× slower mount" was single-process order bias + the pre-fast-path loader). vue-echarts driver stays a tracked follow-up. No runtime changes.
+
+- Updated dependencies [[`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7)]:
+  - @pyreon/core@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

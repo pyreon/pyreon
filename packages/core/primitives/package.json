@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/primitives",
-  "version": "0.49.0",
-  "description": "Canonical multi-platform UI primitives \u2014 semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.",
+  "version": "0.50.0",
+  "description": "Canonical multi-platform UI primitives — semantic vocabulary that compiles to DOM (web), SwiftUI (iOS), and Compose (Android). The Pyreon Multi-Target story.",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/primitives#readme",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"

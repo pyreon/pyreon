@@ -2,7 +2,7 @@
   "name": "@pyreon/vitest-config",
   "version": "0.13.3",
   "private": true,
-  "description": "Internal vitest config helpers \u2014 single canonical defineNodeConfig / defineBrowserConfig for every Pyreon package",
+  "description": "Internal vitest config helpers — single canonical defineNodeConfig / defineBrowserConfig for every Pyreon package",
   "license": "MIT",
   "type": "module",
   "sideEffects": false,

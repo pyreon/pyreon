@@ -1,5 +1,29 @@
 # kanban
 
+## 0.0.35
+
+### Patch Changes
+
+- Updated dependencies [[`24df62e`](https://github.com/pyreon/pyreon/commit/24df62ee3e27d1cc624f627c1277fbed4866e91e), [`83d1c0d`](https://github.com/pyreon/pyreon/commit/83d1c0d2a6b93285a441438c148a7d214a91c9d8), [`02fb84a`](https://github.com/pyreon/pyreon/commit/02fb84acdf67443bcad6d9f5958059d398be5442), [`8739b10`](https://github.com/pyreon/pyreon/commit/8739b10fe1574bfc60f228fd6cdf9dba1bc8e910), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6), [`5bf6bfc`](https://github.com/pyreon/pyreon/commit/5bf6bfcc2ce0cc2749bc8fd5f8927d122aee6264), [`9ee0acf`](https://github.com/pyreon/pyreon/commit/9ee0acf4023a247071223fcc43913fc5d76bad11), [`659c30f`](https://github.com/pyreon/pyreon/commit/659c30f8f41514b47b4c83ce185de43f717fd2d7), [`b428e47`](https://github.com/pyreon/pyreon/commit/b428e47766cc3c8be381b85458782884a4e3d241)]:
+  - @pyreon/hooks@1.0.0
+  - @pyreon/zero@1.0.0
+  - @pyreon/dnd@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/state-tree@1.0.0
+  - @pyreon/i18n@1.0.0
+  - @pyreon/rx@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/permissions@1.0.0
+  - @pyreon/storage@1.0.0
+  - @pyreon/toast@1.0.0
+  - @pyreon/url-state@1.0.0
+
 ## 0.0.34
 
 ### Patch Changes

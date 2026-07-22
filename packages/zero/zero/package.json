@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/zero",
-  "version": "0.49.0",
-  "description": "Pyreon Zero \u2014 zero-config full-stack framework powered by Pyreon and Vite",
+  "version": "0.50.0",
+  "description": "Pyreon Zero — zero-config full-stack framework powered by Pyreon and Vite",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/zero#readme",
   "bugs": {
