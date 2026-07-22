@@ -84,16 +84,47 @@ export const workspaceGlobsFromPnpmYaml = (yaml: string): string[] | null => {
       continue
     }
     if (inPackages) {
-      const m = /^\s+-\s+(['"]?)(.+?)\1\s*$/.exec(line)
-      if (m?.[2]) {
-        globs.push(m[2])
-        continue
+      // Linear string ops, not a lazy-dot + end-anchored regex — the
+      // same `js/polynomial-redos` class as normalizePathish below,
+      // and yaml lines are library input.
+      const trimmed = line.trim()
+      if (/^\s/.test(line) && trimmed.startsWith('- ')) {
+        let value = trimmed.slice(2).trim()
+        if (
+          value.length >= 2 &&
+          ((value.startsWith("'") && value.endsWith("'")) ||
+            (value.startsWith('"') && value.endsWith('"')))
+        ) {
+          value = value.slice(1, -1)
+        }
+        if (value) {
+          globs.push(value)
+          continue
+        }
       }
       // A non-list, non-blank line at column 0 ends the packages block.
-      if (line.trim() !== '' && !/^\s/.test(line)) inPackages = false
+      if (trimmed !== '' && !/^\s/.test(line)) inPackages = false
     }
   }
   return globs.length > 0 ? globs : null
+}
+
+/**
+ * Normalize a glob/dir string: backslashes → slashes, trailing slashes
+ * stripped. The strip is a linear char-walk, NOT a `/\/+$/` regex —
+ * CodeQL `js/polynomial-redos`: an end-anchored `x+$` is quadratic on
+ * adversarial many-slash input, and globs here come from library input
+ * (a repo's package.json / a user flag).
+ */
+const normalizePathish = (s: string): string => {
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!
+    out += ch === '\\' ? '/' : ch
+  }
+  let end = out.length
+  while (end > 0 && out.charCodeAt(end - 1) === 47 /* '/' */) end--
+  return out.slice(0, end)
 }
 
 /**
@@ -104,8 +135,8 @@ export const workspaceGlobsFromPnpmYaml = (yaml: string): string[] | null => {
  * matcher.
  */
 export const globMatchesDir = (glob: string, relDir: string): boolean => {
-  const g = glob.replace(/\\/g, '/').replace(/\/+$/, '').split('/')
-  const d = relDir.replace(/\\/g, '/').replace(/\/+$/, '').split('/')
+  const g = normalizePathish(glob).split('/')
+  const d = normalizePathish(relDir).split('/')
   const match = (gi: number, di: number): boolean => {
     if (gi === g.length) return di === d.length
     const seg = g[gi]!
@@ -177,7 +208,7 @@ const expandGlobSegments = (
 
 /** Expand one workspace glob (relative to `base`) to existing dirs. */
 export const expandWorkspaceGlob = (base: string, glob: string): string[] => {
-  const normalized = glob.replace(/\\/g, '/').replace(/\/+$/, '')
+  const normalized = normalizePathish(glob)
   const out: string[] = []
   expandGlobSegments(base, normalized.split('/').filter(Boolean), 0, out, 0)
   return out
