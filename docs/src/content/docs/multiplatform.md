@@ -249,6 +249,25 @@ Handlers may be **multi-statement** — `onPress={() => { a.set(1); b.set(2) }}`
 
 **Escape hatch.** `<NativeIOS style={...}>` / `<Web className="...">` for per-platform overrides when the canonical style system doesn't reach.
 
+### Inline `style={{ … }}` on a canonical primitive
+
+A raw inline style — `<Stack style={{ padding: 16, backgroundColor: '#2563eb', borderRadius: 8 }}>` — now **lowers to native modifiers** on both targets (it was silently dropped before — no reader, no warning). This is the CSS-in-JS *connector core*: one flat CSS-in-JS object → SwiftUI `.modifier()` / Compose `Modifier.x()` from a single source, applied at the same cross-cutting seam as the token props above, so it reaches every primitive.
+
+| Inline CSS (camelCase) | iOS | Android |
+|------|-----|---------|
+| `padding` (number, `'8px 16px'` shorthand), `paddingTop/Right/Bottom/Left`, `paddingX`/`paddingY` (`paddingHorizontal`/`paddingVertical`) | `.padding(…)` | `Modifier.padding(…)` |
+| `backgroundColor` / `background` | `.background(Color(…))` | `.background(Color(0x…))` |
+| `borderRadius` | `.cornerRadius(n)` | `.clip(RoundedCornerShape(n.dp))` |
+| `opacity` | `.opacity(n)` | `.alpha(nf)` |
+| `width`, `height` | `.frame(width:/height:)` | `.width(n.dp)` / `.height(n.dp)` |
+| `color` | `.foregroundColor(Color(…))` | *warns* — set on `<Text>` / `LocalContentColor`, not a Modifier |
+
+Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried through); dimensions accept a unitless number or `"Npx"`. The chain order is idiomatic per target (SwiftUI `.padding().background().cornerRadius()`; Compose `.clip().background().padding()` — clip-first so the fill is rounded).
+
+**Web-only declarations are stripped with no warning** — `cursor`, `userSelect`, `pointerEvents`, `transition`, `outline`, `appearance`, … are a correct no-op on a touch target. **Any other property is dropped with a NAMED warning** (`margin`, `boxShadow`, `border`, `flex`, `transform`, positioning, `font*`, … — nothing vanishes silently), pointing at the canonical prop or a Layer-4 adapter.
+
+**Static-only in v1.** The style object and every value must be a literal — the same "styling resolves at COMPILE time" contract the token props hold. A dynamic style value (`style={obj}`) or a dynamic field (`style={{ padding: n() }}`) warns + drops; **reactive style emit is a tracked follow-up** (the Phase-3 dynamic-resolution arc). Both targets are toolchain-validated (`swiftc -typecheck` against the real SwiftUI SDK + `kotlinc` against the Compose stubs).
+
 ## Per-platform import resolution
 
 The DX-critical question: how does `import { Stack } from '@pyreon/primitives'` resolve on each target?

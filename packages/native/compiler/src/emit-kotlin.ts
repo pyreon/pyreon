@@ -43,6 +43,7 @@ import {
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
+import { styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -4398,6 +4399,20 @@ function emitKotlinLayoutModifier(
     // androidx.compose.foundation.shape. Same convention as Color +
     // @Serializable.
     parts.push(`.clip(RoundedCornerShape(${radius}.dp))`)
+  }
+  // Inline `style={{ … }}` → Compose Modifier calls (the CSS-in-JS connector).
+  // Read the raw object literal off the attr (an object value isn't reachable
+  // via `readStaticAttrKotlin`, which returns only string/number/boolean).
+  // Static-only; a dynamic style value / field warns + drops (Phase-3 reactive
+  // emit). The `Modifier` prefix is added below; each entry begins with `.`.
+  // See style-to-native.ts.
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  if (styleAttr !== undefined) {
+    const { modifiers, warnings } = styleToNativeModifiers(styleAttr.value, 'kotlin', e.tag)
+    parts.push(...modifiers)
+    for (const w of warnings) _emitWarnings.push(w)
   }
   // E3.1 — `data-testid` becomes Compose's `Modifier.testTag()` (from
   // androidx.compose.ui.platform). Same string the web e2e selects

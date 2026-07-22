@@ -309,7 +309,14 @@ jobs:
     # advisory→required pattern). It runs on native-affected PRs only (shared
     # `decide` gate); a non-native PR skips → reports success (deadlock-free).
     runs-on: macos-15
-    timeout-minutes: 30
+    # This suite cold-starts `swiftc -typecheck` against the real SwiftUI SDK
+    # per fixture — it ran ~26 min on main, only ~4 min under the previous 30-min
+    # cap, and grows with every native PR (a single added real-SDK case + normal
+    # macOS-runner variance tipped it to a 30m timeout). Advisory, so a timeout
+    # doesn't block merge, but a chronically-cancelled gate is a dead gate — give
+    # it real headroom. Follow-up: shard the swiftc corpus across parallel macOS
+    # runners (or memoize the SDK cold-start) rather than raising the cap again.
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
