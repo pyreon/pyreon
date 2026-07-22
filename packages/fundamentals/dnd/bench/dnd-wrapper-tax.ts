@@ -54,7 +54,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 
 GlobalRegistrator.register()
 
-const { batch, effect, onCleanup, signal } = await import('@pyreon/reactivity')
+const { batch, createSelector, effect, onCleanup, signal } = await import('@pyreon/reactivity')
 const { draggable, dropTargetForElements, monitorForElements } = await import(
   '@atlaskit/pragmatic-drag-and-drop/element/adapter'
 )
@@ -130,6 +130,52 @@ interface OpSpec {
 }
 
 const OPS: Record<string, OpSpec> = {
+  'row-enter fanout (N=1000 row bindings)': {
+    note:
+      'The sortable ROW-BINDING idiom at scale — 1000 rows each bind drag state; one "row-enter" flips overId. ' +
+      'raw = the naive equality idiom (`overId() === key` — what a hand-roller writes: EVERY row subscribes, O(N) notifies/change); ' +
+      'wrapper = the isOverKey selector idiom (`createSelector`-backed, O(2) notifies — the #2459 API). ' +
+      'Same reactivity engine both sides; measures ns per row-enter across M=200 enters. ' +
+      'The O(2)-vs-O(N) COUNT itself is browser-spec-locked in dnd-gaps.browser.test.tsx.',
+    make: () => {
+      const N = 1000
+      const M = 200
+      return {
+        raw: async () => {
+          const overId = signal<string | null>(null)
+          const disposers: (() => void)[] = []
+          for (let i = 0; i < N; i++) {
+            const key = `row-${i}`
+            const e = effect(() => {
+              sink += overId() === key ? 1 : 0
+            })
+            disposers.push(() => e.dispose())
+          }
+          for (let m = 0; m < M; m++) {
+            batch(() => overId.set(`row-${m % N}`))
+          }
+          for (const d of disposers) d()
+        },
+        wrapper: async () => {
+          const overId = signal<string | null>(null)
+          const isOverKey = createSelector<string | null>(overId)
+          const disposers: (() => void)[] = []
+          for (let i = 0; i < N; i++) {
+            const key = `row-${i}`
+            const e = effect(() => {
+              sink += isOverKey(key) ? 1 : 0
+            })
+            disposers.push(() => e.dispose())
+          }
+          for (let m = 0; m < M; m++) {
+            batch(() => overId.set(`row-${m % N}`))
+          }
+          for (const d of disposers) d()
+          isOverKey.dispose()
+        },
+      }
+    },
+  },
   'draggable mount+unmount': {
     note: 'raw = signal + deferred draggable() + onCleanup (hand-rolled reactive wiring); wrapper = useDraggable',
     make: () => ({
@@ -480,9 +526,17 @@ if (childOp) {
   const impl = spec.make()
   // The per-event op is sync + cheap — give it more iterations per sample.
   const isPerEvent = childOp.startsWith('per-event')
+  // The fanout op does its OWN internal N×M loop and reports ns per
+  // row-enter — normalize by its M (200 enters/sample), not the default
+  // batch k (there is no per-k batching to divide by).
+  const isFanout = childOp.startsWith('row-enter')
   const samples = await measureSamplesAsync(
     impl[childImpl],
-    isPerEvent ? { warmup: 20, k: 20_000, runs: 41 } : {},
+    isPerEvent
+      ? { warmup: 20, k: 20_000, runs: 41 }
+      : isFanout
+        ? { warmup: 4, k: 200, runs: 25 }
+        : {},
   )
   process.stdout.write(JSON.stringify({ samples }))
   process.exit(0)
