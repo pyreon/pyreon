@@ -47,6 +47,7 @@ import {
   widenFloatSignals,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
+import { styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -5309,6 +5310,19 @@ function emitSwiftLayoutModifiers(
   const radius = swiftStylingValue(e, 'radius', (v) => resolveRadius(String(v)))
   if (radius !== undefined) {
     parts.push(`.cornerRadius(${radius})`)
+  }
+  // Inline `style={{ … }}` → SwiftUI modifiers (the CSS-in-JS connector). Read
+  // the raw object literal off the attr — `readStaticAttr` only returns
+  // string/number/boolean literals, so an object value isn't reachable through
+  // it. Static-only; a dynamic style value / field warns + drops (Phase-3
+  // reactive emit). See style-to-native.ts.
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  if (styleAttr !== undefined) {
+    const { modifiers, warnings } = styleToNativeModifiers(styleAttr.value, 'swift', e.tag)
+    parts.push(...modifiers)
+    for (const w of warnings) _emitWarnings.push(w)
   }
   // E3.1 — `data-testid` becomes SwiftUI's `.accessibilityIdentifier()`
   // so the same string the web e2e selects on (`getByTestId`) is also

@@ -182,6 +182,30 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('RoundedCornerShape(')) {
     imports.push('import androidx.compose.foundation.shape.RoundedCornerShape')
   }
+  // `.background(...)` — the canonical `background=` prop AND the inline-`style`
+  // connector's backgroundColor both emit it. `Modifier.background` lives in the
+  // ROOT androidx.compose.foundation package, NOT the star-imported
+  // .layout/.lazy/.text sub-packages — the same stub-masked latent-missing class
+  // as `.clickable`/`verticalScroll` (the validate-kotlin loop concatenates
+  // stubs, so it resolved the symbol regardless of import and could not catch
+  // the missing one). No prior Android example exercised a `background` on a real
+  // `gradle assembleDebug`; added here alongside the inline-style connector.
+  if (emitted.includes('.background(')) {
+    imports.push('import androidx.compose.foundation.background')
+  }
+  // `.clip(RoundedCornerShape(...))` — canonical `radius=` AND inline
+  // `borderRadius`. The `clip` Modifier extension is androidx.compose.ui.draw,
+  // NOT the single-package star `androidx.compose.ui.*`. RoundedCornerShape
+  // already had its own arm (above); `.clip` itself was latent-missing.
+  if (emitted.includes('.clip(')) {
+    imports.push('import androidx.compose.ui.draw.clip')
+  }
+  // `.alpha(...)` — inline-`style` opacity (and KeepAlive visibility-preservation).
+  // The `alpha` Modifier extension is androidx.compose.ui.draw, likewise not the
+  // star ui.*.
+  if (emitted.includes('.alpha(')) {
+    imports.push('import androidx.compose.ui.draw.alpha')
+  }
   // <Field kind="password"> / dynamic kind: PasswordVisualTransformation +
   // VisualTransformation.None both live in androidx.compose.ui.text.input — the
   // unconditional set only imports `ImeAction` from that package (Kotlin star
