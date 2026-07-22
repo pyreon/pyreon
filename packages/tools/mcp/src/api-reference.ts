@@ -5260,10 +5260,17 @@ useHotkey('escape', () => close(), { scope: 'modal' })`,
 
   'hotkeys/registerHotkey': {
     signature: '(shortcut: string, handler: (e: KeyboardEvent) => void, options?: HotkeyOptions) => () => void',
-    example: `const unregister = registerHotkey('ctrl+q', () => quit(), { scope: 'global' })
+    example: `const unregister = registerHotkey('ctrl+s, mod+p', (e) => save())  // both combos, one handler
+registerHotkey('escape', close, { event: 'keyup' })                 // act on release
+registerHotkey('mod+d', toggle, { ignoreRepeat: true })             // no machine-gun on hold
+registerHotkey('enter', submit, { target: panelEl, once: true })    // element-scoped, single-shot
 // Later:
 unregister()`,
-    notes: 'Imperative hotkey registration for non-component contexts (stores, global setup). Returns an unregister function. Unlike useHotkey, this does NOT auto-cleanup on unmount — caller is responsible for calling the returned unregister function. See also: useHotkey.',
+    notes: `Imperative hotkey registration for non-component contexts (stores, global setup). Returns an unregister function — unlike useHotkey, this does NOT auto-cleanup on unmount. Accepts a comma-separated LIST (\`'ctrl+s, mod+p'\`) binding several shortcuts to one handler (the returned function unregisters all). Options beyond scope/description: \`event: 'keyup'\` (act on release; sequences are keydown-only and throw), \`once\` (fire then auto-unregister), \`ignoreRepeat\` (skip \`event.repeat\` while held), \`enableOnInputs\` as boolean OR a selective array (\`['input']\`), and \`target\` (listen on a specific element — fires only while the event reaches it; the registry keeps ONE shared listener per (target, event-type) and detaches it with the last hotkey). See also: useHotkey, trigger, getPressedKeys.`,
+    mistakes: `- Binding a literal comma via \`'ctrl+,'\` inside a LIST — the splitter handles the trailing \`+,\` shape, but the unambiguous spelling is the \`comma\` alias: \`'mod+comma'\`
+- Using \`event: 'keyup'\` on a sequential shortcut (\`'g t'\`) — sequences are keydown-only; registration throws with a clear error
+- Expecting \`target\`-scoped hotkeys to fire globally — they fire only when the keyboard event REACHES the target element (focus inside it); use the default window target for app-wide shortcuts
+- Holding a combo with \`ignoreRepeat: false\` (the default) fires the handler on every auto-repeat — turn \`ignoreRepeat: true\` on for one-shot actions like save/toggle`,
   },
 
   'hotkeys/getHotkeyConflicts': {
@@ -5299,6 +5306,24 @@ getRegisteredHotkeys()
 // → [{ shortcut: 'mod+k', scope: 'global', description: 'Command palette' }]`,
     notes: 'Return a SNAPSHOT array of every registered hotkey — `{ shortcut, scope, description? }` per entry (`description` omitted when the registration set none). Built for a help dialog / keyboard-shortcut cheat-sheet. Pairs with `getHotkeyConflicts` for a settings-panel audit. See also: getHotkeyConflicts, registerHotkey.',
     mistakes: '- Expecting it to be reactive — it is a SNAPSHOT mapped at call time. Call it again after registrations change (or inside a reactive scope that re-reads it) to reflect new hotkeys.',
+  },
+
+  'hotkeys/trigger': {
+    signature: '(shortcut: string, options?: { scope?: string }) => number',
+    example: `registerHotkey('mod+s', save)
+trigger('mod+s')                      // → 1, save() ran
+trigger('ctrl+z', { scope: 'editor' }) // fire an inactive scope's binding explicitly`,
+    notes: 'Programmatically fire the handlers bound to `shortcut` (window-target bindings), as if the user pressed it — command palettes ("run the bound action"), macro systems, tests. Respects the scope gate (active scopes by default; pass `{ scope }` to target a specific — even inactive — scope) and the `enabled` gate; skips the input-focus gate (there is no real focused element). Sequences are triggered by their full spelling (`trigger("g t")`). Returns the number of handlers fired (0 = nothing bound). See also: registerHotkey, getRegisteredHotkeys.',
+  },
+
+  'hotkeys/getPressedKeys / isKeyPressed': {
+    signature: 'getPressedKeys(): Signal<Set<string>>; isKeyPressed(key: string): boolean',
+    example: `const pressed = getPressedKeys()
+effect(() => spacebarHeld.set(pressed().has(' ')))
+if (isKeyPressed('shift')) extendSelection()`,
+    notes: `Live held-key introspection. \`getPressedKeys()\` returns a reactive signal of the currently-held keys (lower-cased \`event.key\` values) — tracking listeners attach LAZILY on first call, so the package adds zero overhead until you use it; the set clears on window blur (a key released outside the page never delivers its keyup). \`isKeyPressed('ctrl')\` is the non-reactive point read (aliases resolve: \`ctrl\`→\`control\`, \`space\`→\`' '\`). SSR-safe (always empty on the server). See also: trigger, useHotkey.`,
+    mistakes: `- Reading getPressedKeys() OUTSIDE a reactive scope and expecting updates — it is a signal; call it inside effect/computed/JSX thunks, or use isKeyPressed for a one-shot check
+- Expecting keys held across a tab switch to stay pressed — window blur deliberately clears the set (their keyup events are never delivered to the page)`,
   },
 
   'hotkeys/parseShortcut / matchesCombo / formatCombo': {

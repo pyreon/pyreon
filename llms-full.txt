@@ -2133,7 +2133,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 
 ## @pyreon/hotkeys — Keyboard Shortcuts
 
-Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, sequential combos (`g t`, Gmail/vim-style), reference-counted scope activation for context-aware shortcuts, shifted-symbol shortcuts (`?` fires on Shift+/), and conflict detection. Component-scoped hooks auto-unregister on unmount; a single shared `keydown` listener backs every shortcut. SSR-safe. Imperative API available for non-component contexts.
+Reactive keyboard shortcut management for Pyreon. Register global or scoped shortcuts with automatic lifecycle management. Supports `mod` alias (Command on Mac, Ctrl elsewhere), multi-key combos, comma-separated lists (`ctrl+s, mod+p`), sequential combos (`g t`, Gmail/vim-style), keyup bindings, `once` / `ignoreRepeat`, reference-counted scope activation, element-scoped targets, selective input filtering, shifted-symbol shortcuts (`?` fires on Shift+/), pressed-key introspection, programmatic `trigger`, and conflict detection. Dispatch is KEY-BUCKETED — a keystroke touches only the entries bound to that exact key, so the miss path (every non-shortcut keypress) is one Map lookup regardless of how many hotkeys are registered. Component-scoped hooks auto-unregister on unmount; ONE shared listener per (target, event-type) backs every shortcut. SSR-safe.
 
 ```typescript
 import { useHotkey, useHotkeyScope, registerHotkey, getRegisteredHotkeys, getHotkeyConflicts, enableScope, disableScope } from '@pyreon/hotkeys'

@@ -292,15 +292,89 @@ field. The suppressed surfaces are:
 - `<select>` elements
 - any element with `contentEditable`
 
-Opt out per-shortcut with `enableOnInputs: true`. `escape` is the classic candidate — you
+Opt out per-shortcut with `enableOnInputs: true`, or **selectively** with an array of
+surface kinds — `['input']` fires in text inputs but stays suppressed in
+textareas/selects/contenteditables. `escape` is the classic candidate for `true` — you
 usually want it to dismiss a dialog even while a field inside it has focus.
 
 ```tsx
 // Fires even when an input is focused
 useHotkey('escape', () => closeModal(), { enableOnInputs: true })
 
+// Fires in <input> fields only (autocomplete accept), not in textareas
+useHotkey('tab', acceptSuggestion, { enableOnInputs: ['input'] })
+
 // Stays suppressed while typing (the default)
 useHotkey('e', () => startEditing())
+```
+
+## Comma lists, keyup, once, repeat
+
+**Comma-separated lists** bind several shortcuts to one handler — one call, one
+unregister for all of them. A literal comma key is spelled `comma` (the raw `'ctrl+,'`
+also parses).
+
+```tsx
+useHotkey('ctrl+s, mod+p', save)      // either combo saves
+useHotkey('g d, g h', goHome)         // two sequences, one handler
+useHotkey('mod+comma', openSettings)  // the literal comma key
+```
+
+**`event: 'keyup'`** fires on release — push-to-talk-style interactions. Sequences
+(`'g t'`) are keydown-only and reject `'keyup'` at registration.
+
+```tsx
+useHotkey('space', startTalk)
+useHotkey('space', stopTalk, { event: 'keyup' })
+```
+
+**`once: true`** fires at most once, then auto-unregisters — onboarding nudges,
+"press any key to continue" moments.
+
+**`ignoreRepeat: true`** skips the auto-repeat events a held key produces
+(`event.repeat`) — turn it on for one-shot actions so holding `mod+s` doesn't
+machine-gun the save handler. Off by default (games and scrubbing UIs want repeats).
+
+## Element-scoped shortcuts — `target`
+
+By default shortcuts listen on `window`. Pass `target` to bind to a specific element —
+the shortcut fires only while the keyboard event **reaches that element** (focus is
+inside it). The registry keeps ONE shared listener per (target, event-type) and detaches
+it when the target's last hotkey unregisters.
+
+```tsx
+function SearchPanel() {
+  let panel: HTMLElement | null = null
+  onMount(() => {
+    const un = registerHotkey('enter', submit, { target: panel! })
+    return un
+  })
+  return <div ref={(el) => (panel = el as HTMLElement)}>…</div>
+}
+```
+
+## Pressed keys & programmatic trigger
+
+**`getPressedKeys()`** returns a reactive `Signal<Set<string>>` of the currently-held
+keys (lower-cased `event.key` values). Tracking listeners attach **lazily on first
+call** — zero overhead until you use it — and the set clears on window blur (a key
+released outside the page never delivers its keyup). **`isKeyPressed('shift')`** is the
+non-reactive point read (aliases resolve).
+
+```tsx
+const pressed = getPressedKeys()
+effect(() => cursor.set(pressed().has('shift') ? 'copy' : 'move'))
+```
+
+**`trigger(shortcut)`** programmatically fires the handlers bound to a shortcut — the
+"run the bound action" primitive for command palettes, macros, and tests. It respects
+the scope and `enabled` gates (pass `{ scope }` to target a specific, even inactive,
+scope) and returns the number of handlers fired.
+
+```tsx
+trigger('mod+s')                       // as if the user pressed it
+trigger('g t')                         // sequences by their full spelling
+trigger('ctrl+z', { scope: 'editor' }) // explicit scope
 ```
 
 ## Scopes — `useHotkeyScope()`

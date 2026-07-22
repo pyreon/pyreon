@@ -129,6 +129,16 @@ const HIT_EVENTS = LETTERS.map((L) =>
 )
 const MISS_EVENT = fakeEvent({ key: 'z', code: 'KeyZ', keyCode: 90, ctrl: true })
 
+// 48-binding scaling set: the same 12 letters under 4 modifier prefixes. Probes
+// how dispatch cost scales with registry size — the linear-scan model pays the
+// full 48-entry walk on every miss; key-bucketed dispatch pays one Map lookup.
+const MOD_PREFIXES = [
+  { str: 'ctrl', ev: { ctrl: true } },
+  { str: 'alt', ev: { alt: true } },
+  { str: 'ctrl+alt', ev: { ctrl: true, alt: true } },
+  { str: 'ctrl+shift', ev: { ctrl: true, shift: true } },
+] as const
+
 // ─── per-library driver (modules loaded ONCE, ops are sync) ──────────────────
 type Handler = (e: FakeKeyEvent) => void
 interface Dispatch {
@@ -139,6 +149,8 @@ interface Dispatch {
 interface LibDriver {
   /** Sync: mount 12 bindings, return the installed keydown handler(s) + hit counter. */
   mountDispatch(): Dispatch
+  /** Sync: mount 48 bindings (12 letters × 4 modifier sets) for the scaling op. */
+  mountDispatch48(): Dispatch
   /** Sync: mount all 12 + tear them all down (one full app-mount cycle). */
   cycle(): void
 }
@@ -168,6 +180,15 @@ async function loadPyreon(): Promise<LibDriver> {
       )
       return { handlers: cap.handlers, hits, teardown: () => _resetHotkeys() }
     },
+    mountDispatch48() {
+      _resetHotkeys()
+      const hits = { n: 0 }
+      const cap = captureKeydown(window, () => {
+        for (const m of MOD_PREFIXES)
+          for (const L of LETTERS) registerHotkey(`${m.str}+${L}`, () => hits.n++)
+      })
+      return { handlers: cap.handlers, hits, teardown: () => _resetHotkeys() }
+    },
     cycle() {
       const uns = LETTERS.map((L) => registerHotkey(`ctrl+${L}`, () => {}))
       for (const u of uns) u()
@@ -186,6 +207,20 @@ async function loadTinykeys(): Promise<LibDriver> {
     mountDispatch() {
       const hits = { n: 0 }
       const cap = captureKeydown(window, () => tinykeys(window, build(() => hits.n++)))
+      return { handlers: cap.handlers, hits, teardown: () => cap.value() }
+    },
+    mountDispatch48() {
+      const hits = { n: 0 }
+      const map: Record<string, () => void> = {}
+      const TK_MODS: Record<string, string> = {
+        ctrl: 'Control',
+        alt: 'Alt',
+        'ctrl+alt': 'Control+Alt',
+        'ctrl+shift': 'Control+Shift',
+      }
+      for (const m of MOD_PREFIXES)
+        for (const L of LETTERS) map[`${TK_MODS[m.str]}+${L}`] = () => hits.n++
+      const cap = captureKeydown(window, () => tinykeys(window, map))
       return { handlers: cap.handlers, hits, teardown: () => cap.value() }
     },
     cycle() {
@@ -208,6 +243,21 @@ async function loadHotkeysJs(): Promise<LibDriver> {
         hits,
         teardown: () => {
           for (const L of LETTERS) hotkeys.unbind(`ctrl+${L}`)
+        },
+      }
+    },
+    mountDispatch48() {
+      const hits = { n: 0 }
+      const cap = captureKeydown(document, () => {
+        for (const m of MOD_PREFIXES)
+          for (const L of LETTERS) hotkeys(`${m.str}+${L}`, () => hits.n++)
+      })
+      return {
+        handlers: cap.handlers,
+        hits,
+        teardown: () => {
+          for (const m of MOD_PREFIXES)
+            for (const L of LETTERS) hotkeys.unbind(`${m.str}+${L}`)
         },
       }
     },
@@ -237,6 +287,13 @@ async function loadMousetrap(): Promise<LibDriver> {
       Mousetrap.reset()
       const hits = { n: 0 }
       for (const L of LETTERS) Mousetrap.bind(`ctrl+${L}`, () => hits.n++)
+      return { handlers, hits, teardown: () => Mousetrap.reset() }
+    },
+    mountDispatch48() {
+      Mousetrap.reset()
+      const hits = { n: 0 }
+      for (const m of MOD_PREFIXES)
+        for (const L of LETTERS) Mousetrap.bind(`${m.str}+${L}`, () => hits.n++)
       return { handlers, hits, teardown: () => Mousetrap.reset() }
     },
     cycle() {
@@ -278,7 +335,7 @@ function buildOp(op: string, driver: LibDriver): (i: number) => void {
   if (op === 'register + teardown') {
     return () => driver.cycle()
   }
-  const d = driver.mountDispatch()
+  const d = op === 'dispatch (miss, 48)' ? driver.mountDispatch48() : driver.mountDispatch()
   const evs = op === 'dispatch (hit)' ? HIT_EVENTS : [MISS_EVENT]
   const n = evs.length
   return (i) => {
@@ -291,6 +348,7 @@ function buildOp(op: string, driver: LibDriver): (i: number) => void {
 const OPS: Record<string, string> = {
   'dispatch (hit)': 'find + fire the matching handler among 12 bindings',
   'dispatch (miss)': 'no match — every non-shortcut keypress pays this',
+  'dispatch (miss, 48)': 'no match with 48 bindings — registry-size scaling',
   'register + teardown': 'mount all 12 shortcuts + unmount (idiomatic per lib)',
 }
 const OP_ORDER = Object.keys(OPS)

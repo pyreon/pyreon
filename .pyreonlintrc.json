@@ -57,6 +57,7 @@
         "exemptPaths": [
           "packages/core/runtime-dom/",
           "packages/fundamentals/hooks/",
+        "packages/fundamentals/hotkeys/",
           "packages/fundamentals/storage/",
           "packages/core/router/",
           "packages/tools/devtools/",
@@ -71,6 +72,7 @@
         "exemptPaths": [
           "packages/core/runtime-dom/",
           "packages/fundamentals/hooks/",
+        "packages/fundamentals/hotkeys/",
           "packages/core/router/"
         ]
       }
@@ -80,6 +82,7 @@
       {
         "exemptPaths": [
           "packages/fundamentals/hooks/",
+        "packages/fundamentals/hotkeys/",
           "packages/fundamentals/rx/",
           "__tests__/",
           ".test."

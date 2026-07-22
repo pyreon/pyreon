@@ -14,6 +14,44 @@ const KEY_ALIASES: Record<string, string> = {
   left: 'arrowleft',
   right: 'arrowright',
   plus: '+',
+  comma: ',',
+}
+
+/**
+ * Split a comma-separated shortcut LIST (`'ctrl+s, mod+p'`) into individual
+ * shortcut strings. A literal comma KEY survives: a segment ending with `+`
+ * re-absorbs the comma that split it (`'ctrl+,'` stays one shortcut), and a
+ * bare `','` binds the comma key itself. For anything comma-adjacent, the
+ * unambiguous `comma` alias is the recommended spelling (`'mod+comma'`).
+ *
+ * @example
+ * ```ts
+ * splitShortcutList('ctrl+s, mod+p') // → ['ctrl+s', 'mod+p']
+ * splitShortcutList('ctrl+,')        // → ['ctrl+,']
+ * splitShortcutList(',')             // → [','] (the comma key)
+ * splitShortcutList('mod+comma')     // → ['mod+comma'] (alias for ',')
+ * ```
+ */
+export function splitShortcutList(list: string): string[] {
+  // Fast path — no comma at all (the overwhelmingly common case).
+  if (!list.includes(',')) return [list]
+  const trimmed = list.trim()
+  if (trimmed === ',') return [','] // bare comma key
+  const out: string[] = []
+  const raw = trimmed.split(',')
+  for (let i = 0; i < raw.length; i++) {
+    let seg = (raw[i] ?? '').trim()
+    // `'ctrl+,'` splits into ['ctrl+', ''] — a segment ending in '+' means
+    // the comma WAS the key: re-attach it and consume the empty segment.
+    if (seg.endsWith('+') && i + 1 < raw.length && (raw[i + 1] ?? '').trim() === '') {
+      seg += ','
+      i++
+    }
+    if (seg !== '') out.push(seg)
+  }
+  // Pathological all-separator input — hand the original to registerHotkey so
+  // its "empty shortcut" error names what the caller actually passed.
+  return out.length > 0 ? out : [trimmed]
 }
 
 /**
