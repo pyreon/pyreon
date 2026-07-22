@@ -22,11 +22,13 @@ import type {
   StatementIR,
   StoreDefnIR,
   StructIR,
+  StyledComponentIR,
   TypeIR,
   ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
+import { isCanonicalPrimitive } from './canonical-primitives'
 import { lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
@@ -140,6 +142,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const fieldMetas: FieldMetaDefnIR[] = []
   const features: FeatureDefnIR[] = []
   const zodSchemas: ZodSchemaDefnIR[] = []
+  const styledComponents: StyledComponentIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     // Store aliases are component-scoped — reset before each top-level
@@ -237,6 +240,14 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       zodSchemas.push(as)
       continue
     }
+    // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
+    // a CANONICAL primitive. Collected BEFORE the arrow-helper + module-decl
+    // catch-alls so the styled const isn't mis-parsed as a broken module binding.
+    const sc = tryStyledDefnFromTopLevel(node, ctx)
+    if (sc) {
+      styledComponents.push(sc)
+      continue
+    }
     // Shape-A follow-up: a top-level ARROW-CONST helper
     // (`const dbl = (x: number) => x * 2`). Without this it fell through to
     // tryModuleDeclsFromTopLevel and emitted a mis-scoped `private let dbl =
@@ -293,9 +304,111 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     fieldMetas,
     features,
     zodSchemas,
+    styledComponents,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
+}
+
+/**
+ * `const X = styled(Prim)\`css\`` where `Prim` is a CANONICAL @pyreon/primitives
+ * component → a StyledComponentIR the emit rewrites at each `<X>` use-site to
+ * `<Prim style={captured}>`. `styled` accepts a component ref OR a string tag
+ * (`Tag = string | ComponentFn`); only a ref (or literal name) resolving to a
+ * canonical primitive lowers — `styled('div')` / `styled(NonPrimitive)` warn.
+ * Static CSS only (interpolations — theme tokens — warn + drop, a tracked
+ * follow-up: they need compile-time theme resolution).
+ */
+function tryStyledDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StyledComponentIR | null {
+  let varDecl: AnyNode | null = null
+  if (node.type === 'VariableDeclaration') varDecl = node
+  else if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  }
+  if (!varDecl || varDecl.kind !== 'const') return null
+  const decls = (varDecl.declarations as AnyNode[]) ?? []
+  if (decls.length !== 1) return null
+  const decl = decls[0]
+  if (decl?.id?.type !== 'Identifier') return null
+  const name = decl.id.name as string
+  const init = unwrapTypeLayers(decl.init)
+  if (init?.type !== 'TaggedTemplateExpression') return null
+  // The tag must be `styled(<Prim>)`.
+  const tagCall = unwrapTypeLayers(init.tag)
+  if (tagCall?.type !== 'CallExpression') return null
+  const callee = tagCall.callee
+  if (callee?.type !== 'Identifier' || callee.name !== 'styled') return null
+  const firstArg = unwrapTypeLayers((tagCall.arguments as AnyNode[])?.[0])
+  if (!firstArg) return null
+  let prim: string | null = null
+  let printedArg = ''
+  if (firstArg.type === 'Identifier') {
+    prim = firstArg.name as string
+    printedArg = prim
+  } else if (firstArg.type === 'Literal' && typeof firstArg.value === 'string') {
+    prim = firstArg.value as string
+    printedArg = `'${prim}'`
+  }
+  if (!prim) return null
+  if (!isCanonicalPrimitive(prim)) {
+    ctx.warnings.push(
+      `styled(${printedArg}) on '${name}': only styled() wrapping a CANONICAL @pyreon/primitives ` +
+        `component (Stack/Text/Button/Press/Field/…) lowers to native — '${prim}' has no native ` +
+        `primitive, so <${name}> was left unresolved. Wrap a canonical primitive, or use a Layer-4 adapter.`,
+    )
+    return null
+  }
+  const quasi = init.quasi
+  if (quasi?.type !== 'TemplateLiteral') return null
+  return { name, tag: prim, styleObject: cssTemplateToStyleObject(quasi, name, ctx) }
+}
+
+/** kebab-case CSS property → the camelCase key the inline-style connector reads. */
+function kebabToCamel(s: string): string {
+  return s.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase())
+}
+
+/**
+ * A STATIC `styled()` CSS template → a style-object `ExprIR` (camelCase keys,
+ * literal values) the inline-style connector consumes verbatim. Interpolations
+ * (`${…}`) warn + drop the straddling declaration (theme-token resolution is a
+ * follow-up). A declaration that straddles an interpolation carries the internal
+ * marker → skipped.
+ */
+function cssTemplateToStyleObject(
+  quasi: AnyNode,
+  declName: string,
+  ctx: ParseCtx,
+): Extract<ExprIR, { kind: 'object' }> {
+  const quasis = (quasi.quasis as AnyNode[]) ?? []
+  const expressions = (quasi.expressions as AnyNode[]) ?? []
+  if (expressions.length > 0) {
+    ctx.warnings.push(
+      `styled(...) '${declName}': template interpolations (\${…} — e.g. theme tokens) are not yet ` +
+        `lowered to native; only static CSS declarations lower (the interpolated ones were dropped).`,
+    )
+  }
+  const MARK = '__PYREON_INTERP__'
+  const cssText = quasis.map((q: AnyNode) => q?.value?.cooked ?? '').join(MARK)
+  const fields: { name: string; value: ExprIR }[] = []
+  for (const rawDecl of cssText.split(';')) {
+    const declStr = rawDecl.trim()
+    if (!declStr || declStr.includes(MARK)) continue
+    const colon = declStr.indexOf(':')
+    if (colon === -1) continue
+    const propRaw = declStr.slice(0, colon).trim()
+    const valueRaw = declStr.slice(colon + 1).trim()
+    if (!propRaw || !valueRaw || !/^[-a-zA-Z][-a-zA-Z0-9]*$/.test(propRaw)) continue
+    const num = /^[+-]?\d+(?:\.\d+)?$/.test(valueRaw) ? Number(valueRaw) : null
+    fields.push({
+      name: kebabToCamel(propRaw),
+      value: { kind: 'literal', value: num !== null ? num : valueRaw },
+    })
+  }
+  return { kind: 'object', fields, spreads: [] }
 }
 
 /**

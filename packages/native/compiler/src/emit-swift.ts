@@ -60,6 +60,7 @@ import type {
   AttrIR,
   ChildIR,
   ComponentIR,
+  StyledComponentIR,
   DeclIR,
   EnumIR,
   ExprIR,
@@ -103,6 +104,9 @@ let _enumNames: Set<string> = new Set()
  * (the `onToggle`/`onRemove` event handlers were silently dropped).
  */
 let _componentNames: Set<string> = new Set()
+// `styled(Prim)`-wrapped components — a `<X>` use-site is rewritten to `<Prim>`
+// + the captured style injected as a synthetic `style` attr (see emitSwiftJsx).
+let _styledComponents: Map<string, StyledComponentIR> = new Map()
 /** Component name → its declared props, for expanding `<Comp {...src} />`
  * spread attrs into per-prop constructor args. Built in the emitSwift pre-pass. */
 let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map()
@@ -460,8 +464,10 @@ export function emitSwift(
   zodSchemas: ZodSchemaDefnIR[] = [],
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
+  styledComponents: StyledComponentIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a call `dbl(21)` resolves as a
   // free-function call in ANY component (not a signal read / unknown ref).
@@ -587,6 +593,7 @@ export function emitSwift(
   _synthExprStructKeys = new Map()
   _activeInferCtx = emptyInferenceCtx()
   _componentNames = new Set()
+  _styledComponents = new Map()
   _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
@@ -4187,6 +4194,24 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
 
 function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+
+  // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
+  // as a synthetic `style` attr, then re-enter the dispatch. The whole
+  // inline-style connector (emitSwiftLayoutModifiers → styleToNativeModifiers)
+  // lowers it unchanged. The captured style is placed first so the component's
+  // own style applies; other use-site attrs (props / children / onPress) are
+  // preserved. (A use-site inline `style` on a styled component is a v1 gap.)
+  const styled = _styledComponents.get(tag)
+  if (styled !== undefined) {
+    return emitSwiftJsx(
+      {
+        ...e,
+        tag: styled.tag,
+        attrs: [{ kind: 'attr', name: 'style', value: styled.styleObject }, ...e.attrs],
+      },
+      indent,
+    )
+  }
 
   // Spread attrs (`<Stack {...cfg()}>`) lower to native ONLY on a USER
   // component, where they expand against the component's declared props

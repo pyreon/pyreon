@@ -1345,8 +1345,26 @@ export interface ParseResult {
    * store singleton, these emit free at file scope).
    */
   helperFns: Extract<DeclIR, { kind: 'function' }>[]
+  /**
+   * `const X = styled(Prim)\`css\`` declarations wrapping a CANONICAL primitive.
+   * At emit each `<X>` use-site is rewritten to `<Prim>` with the captured CSS
+   * injected as a synthetic `style` attr, so the whole inline-style connector
+   * lowers it unchanged. `styled('div')` / `styled(NonPrimitive)` are NOT
+   * collected here (warned — no native primitive).
+   */
+  styledComponents: StyledComponentIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
+}
+
+/** A `styled(Prim)`-wrapped canonical primitive lowered at its use-sites. */
+export interface StyledComponentIR {
+  /** The `const X = …` binding name (the JSX tag used at call sites). */
+  name: string
+  /** The wrapped canonical primitive tag (`Stack`, `Text`, …). */
+  tag: string
+  /** The static CSS body as a style object (camelCase keys, literal values). */
+  styleObject: Extract<ExprIR, { kind: 'object' }>
 }
 
 export interface TransformResult {

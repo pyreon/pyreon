@@ -273,6 +273,23 @@ Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried 
 
 Both the static and dynamic emits are toolchain-validated (`swiftc -typecheck` against the real SwiftUI SDK + `kotlinc` against the Compose stubs) — the dual-toolchain gate is what caught a Kotlin float-suffix bug (`.alpha((if (c) 1 else 0.7)f)` → invalid; fixed to `1f`/`0.7f` per branch).
 
+### `styled(Prim)` components lower too
+
+The connector reaches *component-level* styling, not just inline `style`. A `styled()` wrapping a **canonical primitive** —
+
+```tsx
+const Card = styled(Stack)`
+  background: #2563eb;
+  padding: 16px;
+  border-radius: 8px;
+`
+// <Card><Text>Hi</Text></Card>
+```
+
+— lowers each `<Card>` use-site to `<Stack>` with the captured CSS injected as a `style`, so **the whole inline-style connector lowers it unchanged**: `VStack{…}.padding(16).background(…).cornerRadius(8)` on iOS, `Column(Modifier.clip(…).background(…).padding(…))` on Android. kebab-case CSS is normalized to the connector's keys (`border-radius` → `borderRadius`); use-site children/props (`gap`, `onPress`, …) are preserved.
+
+`styled(Prim)` is a **real styler pattern** (`styled`'s tag is `string | ComponentFn`) — it's this component-lowering foundation that rocketstyle's dimension resolution builds on. **Scope (v1):** only `styled(<canonical primitive>)` lowers — `styled('div')` / `styled(NonPrimitive)` warn (no native primitive); **static CSS only** — template interpolations (`${p => p.theme.…}` theme tokens) warn + drop (compile-time theme resolution is the tracked follow-up); a use-site inline `style` on a styled component is a v1 gap. Both emits are toolchain-validated.
+
 ## Per-platform import resolution
 
 The DX-critical question: how does `import { Stack } from '@pyreon/primitives'` resolve on each target?
