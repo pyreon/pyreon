@@ -43,6 +43,7 @@ import {
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
+import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -56,6 +57,8 @@ import type {
   AttrIR,
   ChildIR,
   ComponentIR,
+  RocketstyleComponentIR,
+  StyledComponentIR,
   DeclIR,
   EnumIR,
   ExprIR,
@@ -102,6 +105,11 @@ let _kotlinExprInferCtx: ReturnType<typeof buildInferenceCtx> = buildInferenceCt
 let _websocketUrlsKotlin: Map<string, string> = new Map()
 /** Mirror of emit-swift's `_componentNames`. See that file for rationale. */
 let _componentNames: Set<string> = new Set()
+// `styled(Prim)`-wrapped components — a `<X>` use-site is rewritten to `<Prim>`
+// + the captured style injected as a synthetic `style` attr (see emitKotlinJsx).
+let _styledComponents: Map<string, StyledComponentIR> = new Map()
+// `rocketstyle()({component})…` components — resolved per use-site (see emitKotlinJsx).
+let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
 /** Component name → declared props, for `<Comp {...src} />` spread expansion.
  * Mirror of emit-swift's `_componentPropsMap`. */
 let _componentPropsMapKotlin: Map<string, { name: string; type: TypeIR }[]> = new Map()
@@ -283,8 +291,12 @@ export function emitKotlin(
   // the map is accepted for signature symmetry but unused here.
   _fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
+  styledComponents: StyledComponentIR[] = [],
+  rocketstyleComponents: RocketstyleComponentIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
+  _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
+  _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a `dbl(21)` call resolves as a
   // free-function call in ANY component.
@@ -420,6 +432,8 @@ export function emitKotlin(
   _synthExprStructs = []
   _synthExprStructKeys = new Map()
   _componentNames = new Set()
+  _styledComponents = new Map()
+  _rocketstyleComponents = new Map()
   _componentParamsInfoKotlin = new Map()
   _layoutComponentNames = new Set()
   _storeHooksKotlin = new Map()
@@ -3528,6 +3542,40 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
 
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+
+  // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
+  // synthetic `style` attr, then re-enter the dispatch; the inline-style
+  // connector (emitKotlinLayoutModifier → styleToNativeModifiers) lowers it
+  // unchanged. Mirror of the Swift dispatcher's styled hook.
+  const styled = _styledComponents.get(tag)
+  if (styled !== undefined) {
+    return emitKotlinJsx(
+      {
+        ...e,
+        tag: styled.tag,
+        attrs: [{ kind: 'attr', name: 'style', value: styled.styleObject }, ...e.attrs],
+      },
+      indent,
+    )
+  }
+
+  // rocketstyle(…) — resolve state/size/variant → merge base ∪ dims → strip the
+  // consumed dim attrs → rewrite to `<Prim style={merged}>`. Mirror of Swift.
+  const rkt = _rocketstyleComponents.get(tag)
+  if (rkt !== undefined) {
+    const dimNames = Object.keys(rkt.dims)
+    const merged = resolveRocketstyleUseSite(rkt, (d) => {
+      const v = readStaticAttrKotlin(e, d)
+      return typeof v === 'string' ? v : undefined
+    })
+    const rest = e.attrs.filter(
+      (a) => !(a.kind === 'attr' && dimNames.includes(a.name)),
+    )
+    return emitKotlinJsx(
+      { ...e, tag: rkt.tag, attrs: [{ kind: 'attr', name: 'style', value: merged }, ...rest] },
+      indent,
+    )
+  }
 
   // Mirror of the Swift dispatcher's spread guard. A spread (`<Stack
   // {...cfg()}>`) lowers to native ONLY on a USER component (expanded

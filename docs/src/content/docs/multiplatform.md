@@ -276,6 +276,64 @@ Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried 
 
 Both the static and dynamic emits are toolchain-validated (`swiftc -typecheck` against the real SwiftUI SDK + `kotlinc` against the Compose stubs) — the dual-toolchain gate is what caught a Kotlin float-suffix bug (`.alpha((if (c) 1 else 0.7)f)` → invalid; fixed to `1f`/`0.7f` per branch).
 
+### `styled(Prim)` components lower too
+
+The connector reaches *component-level* styling, not just inline `style`. A `styled()` wrapping a **canonical primitive** —
+
+```tsx
+const Card = styled(Stack)`
+  background: #2563eb;
+  padding: 16px;
+  border-radius: 8px;
+`
+// <Card><Text>Hi</Text></Card>
+```
+
+— lowers each `<Card>` use-site to `<Stack>` with the captured CSS injected as a `style`, so **the whole inline-style connector lowers it unchanged**: `VStack{…}.padding(16).background(…).cornerRadius(8)` on iOS, `Column(Modifier.clip(…).background(…).padding(…))` on Android. kebab-case CSS is normalized to the connector's keys (`border-radius` → `borderRadius`); use-site children/props (`gap`, `onPress`, …) are preserved.
+
+`styled(Prim)` is a **real styler pattern** (`styled`'s tag is `string | ComponentFn`) — it's this component-lowering foundation that rocketstyle's dimension resolution builds on. **Scope (v1):** only `styled(<canonical primitive>)` lowers — `styled('div')` / `styled(NonPrimitive)` warn (no native primitive); a template interpolation that is a **theme token** (`${(p) => p.theme.color.primary}`) is [resolved](#theme-token-resolution) to its value, while any other (a runtime expression) warns + drops; a use-site inline `style` on a styled component is a v1 gap. Both emits are toolchain-validated.
+
+### `rocketstyle` multi-dimensional resolution
+
+The architecture is **per-package native frontends over a shared backend**: each ui-system package owns a module that lowers *its* constructs to a style-object IR, which the connector (the shared backend) lowers to native — mirroring how the runtimes compose. The `rocketstyle-native` frontend is the first non-styler one.
+
+A rocketstyle component over a canonical-primitive base —
+
+```tsx
+const Btn = rocketstyle()({ name: 'Btn', component: Stack })
+  .theme(() => ({ padding: '8px 16px', borderRadius: '8px' }))
+  .states({ primary: { backgroundColor: '#2563eb' }, danger: { backgroundColor: '#dc2626' } })
+  .sizes({ medium: { padding: '12px' }, large: { padding: '16px' } })
+// <Btn state="primary" size="large">
+```
+
+— **resolves at compile time**: at each use-site the frontend reads the `state`/`size`/`variant` attrs, merges `base ∪ matched-dims` into ONE style object (the rocketstyle cascade — dims override base), and reuses the `styled` rewrite (→ `<Stack style={merged}>` → connector). So `<Btn state="primary" size="large">` → `VStack{}.padding(16).background(…blue).cornerRadius(8)` (size=large's `padding` overrode the base). This is what makes **user-authored** multiplatform components real: build your own on ui-system over the primitive bases and it lowers — primitives are the compiler's internal native target, not your authoring constraint.
+
+**Scope (v1):** a canonical-primitive base (`component: Stack`), static string dimensions (`state="primary"` — the `useBooleans: false` default). Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). Dynamic `state={sig}` → a native switch over the pre-resolved sets is the tracked follow-up. Both emits are toolchain-validated.
+
+### Theme-token resolution
+
+The mainline styler/rocketstyle value is a **theme token**, not a literal — `background: ${(t) => t.color.primary}`, `.states({ primary: { backgroundColor: t.color.primary } })`. The `theme-native` frontend resolves such a token **at compile time** to a concrete value the connector lowers (`#hex` colors → `Color(.sRGB, …)` / `Color(0xFF…)`; spacing / radius → numbers).
+
+Resolution is against your app's **own theme**, declared with `defineTheme`:
+
+```tsx
+const theme = defineTheme({
+  color:   { primary: '#ff3b30', danger: '#dc2626' },
+  spacing: { md: 20, lg: 24 },
+  radius:  { sm: 6 },
+})
+
+const Card = styled(Stack)`
+  background: ${(t) => t.color.primary};   /* → your #ff3b30, not a guess */
+  padding: ${(t) => t.spacing.md};          /* → 20 */
+`
+```
+
+`defineTheme({ … })` is a **compile-time declaration** — the compiler parses its literal tokens and drops the declaration from the native output (there is no native `defineTheme`; the runtime helper is identity on web). The parsed theme is merged **over the bundled defaults per entry**, so overriding only `color.primary` keeps every other default token, and a **zero-config app** (no `defineTheme`) resolves standard tokens against the defaults (which mirror `@pyreon/ui-theme` + the primitive defaults). Both the styler `(p) => p.theme.color.primary` (props) and rocketstyle `(t) => t.color.primary` (theme-directly) shapes resolve; group aliases (`colors`/`space`/`borderRadius`), flat and nested paths are accepted.
+
+**Scope (v1):** the `color` / `spacing` / `radius` groups with **literal** leaf values (a native theme must be static — a runtime-computed token can't be baked). An unknown token (`t.color.doesNotExist`) or a non-token interpolation warns + drops.
+
 ## Per-platform import resolution
 
 The DX-critical question: how does `import { Stack } from '@pyreon/primitives'` resolve on each target?

@@ -18,15 +18,26 @@ import type {
   ModelDefnIR,
   ModuleDeclIR,
   ParseResult,
+  RocketstyleComponentIR,
   RouteIR,
   StatementIR,
   StoreDefnIR,
   StructIR,
+  StyledComponentIR,
   TypeIR,
   ZodFieldConstraints,
   ZodFieldType,
   ZodSchemaDefnIR,
 } from './types'
+import { isCanonicalPrimitive } from './canonical-primitives'
+import { parseRocketstyleDefn } from './rocketstyle-native'
+import {
+  DEFAULT_THEME,
+  mergeTheme,
+  parseThemeDefinition,
+  resolveThemeToken,
+  type ThemeTable,
+} from './theme-native'
 import { lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
@@ -97,6 +108,14 @@ interface ParseCtx {
    * the NAMED warning — the IR has no generic-parameter representation).
    */
   helperFns: Extract<DeclIR, { kind: 'function' }>[]
+  /**
+   * The resolved theme vocabulary the styler + rocketstyle native frontends
+   * resolve tokens against — the app's `defineTheme({ … })` (parsed in a
+   * pre-pass) merged OVER the bundled defaults, so `t.color.primary` lowers to
+   * the APP's real color, not a hardcoded guess. Defaults when no theme is
+   * declared. See theme-native.ts.
+   */
+  theme: ThemeTable
 }
 
 export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult {
@@ -109,6 +128,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
+    theme: DEFAULT_THEME,
   }
   const ast = parseSync(filename, source, { sourceType: 'module', lang: 'tsx' })
   // Pre-pass: collect every `const <name> = defineStore(...)` hook name
@@ -131,6 +151,12 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
+  // Pre-pass: parse the app's `defineTheme({ … })` so the styler + rocketstyle
+  // native frontends resolve `t.color.primary` to the APP's real token value
+  // (not a hardcoded default), regardless of whether the theme is declared
+  // above or below the components that use it. Merged over the defaults, so a
+  // partial theme still resolves standard tokens + a zero-config app works.
+  collectTheme(ast.program.body as AnyNode[], ctx)
   const components: ComponentIR[] = []
   const enums: EnumIR[] = []
   const structs: StructIR[] = []
@@ -140,6 +166,8 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const fieldMetas: FieldMetaDefnIR[] = []
   const features: FeatureDefnIR[] = []
   const zodSchemas: ZodSchemaDefnIR[] = []
+  const styledComponents: StyledComponentIR[] = []
+  const rocketstyleComponents: RocketstyleComponentIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     // Store aliases are component-scoped — reset before each top-level
@@ -237,6 +265,27 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       zodSchemas.push(as)
       continue
     }
+    // styled(Prim)`css` component lowering — `const X = styled(Stack)`…`` wrapping
+    // a CANONICAL primitive. Collected BEFORE the arrow-helper + module-decl
+    // catch-alls so the styled const isn't mis-parsed as a broken module binding.
+    const sc = tryStyledDefnFromTopLevel(node, ctx)
+    if (sc) {
+      styledComponents.push(sc)
+      continue
+    }
+    // rocketstyle()({component: Prim}).theme().states()… → the rocketstyle-native
+    // frontend resolves it at use-sites. Collected before the catch-alls.
+    const rc = tryRocketstyleDefnFromTopLevel(node, ctx)
+    if (rc) {
+      rocketstyleComponents.push(rc)
+      continue
+    }
+    // A `defineTheme({ … })` declaration is a COMPILE-TIME resolution source
+    // consumed by the `collectTheme` pre-pass — it has no native runtime
+    // (there is no `defineTheme` in SwiftUI/Compose). Skip it so it doesn't
+    // fall through to the module-decl catch-all + emit an unresolved
+    // `let theme = defineTheme(…)` binding that fails the native build.
+    if (isThemeDefinitionNode(node)) continue
     // Shape-A follow-up: a top-level ARROW-CONST helper
     // (`const dbl = (x: number) => x * 2`). Without this it fell through to
     // tryModuleDeclsFromTopLevel and emitted a mis-scoped `private let dbl =
@@ -293,9 +342,219 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     fieldMetas,
     features,
     zodSchemas,
+    styledComponents,
+    rocketstyleComponents,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
+}
+
+/**
+ * Pre-pass: parse every top-level `const … = defineTheme({ … })` (a
+ * `VariableDeclaration` whose init is the marker call, or a bare theme object)
+ * and merge its literal tokens over the defaults into `ctx.theme`. Later
+ * definitions override earlier per-entry, so a theme can be split across
+ * declarations. Side-effect-free (no warnings) — a non-theme const is skipped.
+ */
+/** True if `node` is a top-level `const … = defineTheme({ … })` declaration
+ *  (bare or export-wrapped) — a compile-time theme source, never emitted. */
+function isThemeDefinitionNode(node: AnyNode): boolean {
+  const decl = node?.type === 'ExportNamedDeclaration' ? node.declaration : node
+  if (!decl || decl.type !== 'VariableDeclaration') return false
+  return ((decl.declarations as AnyNode[]) ?? []).some((d) => parseThemeDefinition(d?.init) !== null)
+}
+
+function collectTheme(body: AnyNode[], ctx: ParseCtx): void {
+  const acc: ThemeTable = { color: {}, spacing: {}, radius: {} }
+  let found = false
+  for (const node of body) {
+    const decl = node?.type === 'ExportNamedDeclaration' ? node.declaration : node
+    if (!decl || decl.type !== 'VariableDeclaration') continue
+    for (const d of (decl.declarations as AnyNode[]) ?? []) {
+      const parsed = parseThemeDefinition(d?.init)
+      if (!parsed) continue
+      found = true
+      Object.assign(acc.color, parsed.color)
+      Object.assign(acc.spacing, parsed.spacing)
+      Object.assign(acc.radius, parsed.radius)
+    }
+  }
+  if (found) ctx.theme = mergeTheme(acc)
+}
+
+/**
+ * `const X = rocketstyle()({name, component: Prim}).theme().states()…` → a
+ * RocketstyleComponentIR. A thin var-declarator unwrap; the chain parsing +
+ * dimension resolution lives in the `rocketstyle-native` frontend module.
+ */
+function tryRocketstyleDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): RocketstyleComponentIR | null {
+  let varDecl: AnyNode | null = null
+  if (node.type === 'VariableDeclaration') varDecl = node
+  else if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  }
+  if (!varDecl || varDecl.kind !== 'const') return null
+  const decls = (varDecl.declarations as AnyNode[]) ?? []
+  if (decls.length !== 1) return null
+  const decl = decls[0]
+  if (decl?.id?.type !== 'Identifier') return null
+  return parseRocketstyleDefn(decl.id.name as string, decl.init, ctx.warnings, ctx.theme)
+}
+
+/**
+ * `const X = styled(Prim)\`css\`` where `Prim` is a CANONICAL @pyreon/primitives
+ * component → a StyledComponentIR the emit rewrites at each `<X>` use-site to
+ * `<Prim style={captured}>`. `styled` accepts a component ref OR a string tag
+ * (`Tag = string | ComponentFn`); only a ref (or literal name) resolving to a
+ * canonical primitive lowers — `styled('div')` / `styled(NonPrimitive)` warn.
+ * Static CSS only (interpolations — theme tokens — warn + drop, a tracked
+ * follow-up: they need compile-time theme resolution).
+ */
+function tryStyledDefnFromTopLevel(node: AnyNode, ctx: ParseCtx): StyledComponentIR | null {
+  let varDecl: AnyNode | null = null
+  if (node.type === 'VariableDeclaration') varDecl = node
+  else if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  }
+  if (!varDecl || varDecl.kind !== 'const') return null
+  const decls = (varDecl.declarations as AnyNode[]) ?? []
+  if (decls.length !== 1) return null
+  const decl = decls[0]
+  if (decl?.id?.type !== 'Identifier') return null
+  const name = decl.id.name as string
+  const init = unwrapTypeLayers(decl.init)
+  if (init?.type !== 'TaggedTemplateExpression') return null
+  // The tag must be `styled(<Prim>)`.
+  const tagCall = unwrapTypeLayers(init.tag)
+  if (tagCall?.type !== 'CallExpression') return null
+  const callee = tagCall.callee
+  if (callee?.type !== 'Identifier' || callee.name !== 'styled') return null
+  const firstArg = unwrapTypeLayers((tagCall.arguments as AnyNode[])?.[0])
+  if (!firstArg) return null
+  let prim: string | null = null
+  let printedArg = ''
+  if (firstArg.type === 'Identifier') {
+    prim = firstArg.name as string
+    printedArg = prim
+  } else if (firstArg.type === 'Literal' && typeof firstArg.value === 'string') {
+    prim = firstArg.value as string
+    printedArg = `'${prim}'`
+  }
+  if (!prim) return null
+  if (!isCanonicalPrimitive(prim)) {
+    ctx.warnings.push(
+      `styled(${printedArg}) on '${name}': only styled() wrapping a CANONICAL @pyreon/primitives ` +
+        `component (Stack/Text/Button/Press/Field/…) lowers to native — '${prim}' has no native ` +
+        `primitive, so <${name}> was left unresolved. Wrap a canonical primitive, or use a Layer-4 adapter.`,
+    )
+    return null
+  }
+  const quasi = init.quasi
+  if (quasi?.type !== 'TemplateLiteral') return null
+  return { name, tag: prim, styleObject: cssTemplateToStyleObject(quasi, name, ctx) }
+}
+
+/** kebab-case CSS property → the camelCase key the inline-style connector reads. */
+function kebabToCamel(s: string): string {
+  return s.replace(/-([a-z])/g, (_m, c: string) => c.toUpperCase())
+}
+
+/**
+ * A `styled()` CSS template to a style-object `ExprIR` (camelCase keys, literal
+ * values). Static declarations lower verbatim; a declaration whose value is a
+ * single THEME-TOKEN interpolation (`background: ${(t) => t.color.primary}`) is
+ * RESOLVED via the theme-native frontend to its value. Any other interpolation
+ * (a complex/runtime expression) is dropped + warned.
+ */
+function cssTemplateToStyleObject(
+  quasi: AnyNode,
+  declName: string,
+  ctx: ParseCtx,
+): Extract<ExprIR, { kind: 'object' }> {
+  const quasis = (quasi.quasis as AnyNode[]) ?? []
+  const expressions = (quasi.expressions as AnyNode[]) ?? []
+
+  // Interleave quasis + interpolations into declarations, splitting on a text
+  // `;` (an interpolation stays attached to the declaration it sits in).
+  type Part = { t: 'text'; v: string } | { t: 'expr'; node: AnyNode }
+  const decls: Part[][] = [[]]
+  const pushText = (s: string) => {
+    let buf = ''
+    for (const ch of s) {
+      if (ch === ';') {
+        if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
+        decls.push([])
+        buf = ''
+      } else buf += ch
+    }
+    if (buf) decls[decls.length - 1]!.push({ t: 'text', v: buf })
+  }
+  for (let i = 0; i < quasis.length; i++) {
+    pushText(quasis[i]?.value?.cooked ?? '')
+    if (i < expressions.length) decls[decls.length - 1]!.push({ t: 'expr', node: expressions[i] })
+  }
+
+  const fields: { name: string; value: ExprIR }[] = []
+  const droppedInterp: string[] = []
+  for (const decl of decls) {
+    let colonPart = -1
+    let colonAt = -1
+    for (let i = 0; i < decl.length; i++) {
+      const p = decl[i]!
+      if (p.t === 'text') {
+        const idx = p.v.indexOf(':')
+        if (idx !== -1) {
+          colonPart = i
+          colonAt = idx
+          break
+        }
+      }
+    }
+    if (colonPart === -1) continue
+    const propRaw = (
+      decl.slice(0, colonPart).map((p) => (p.t === 'text' ? p.v : '')).join('') +
+      (decl[colonPart] as { t: 'text'; v: string }).v.slice(0, colonAt)
+    ).trim()
+    if (!propRaw || !/^[-a-zA-Z][-a-zA-Z0-9]*$/.test(propRaw)) continue
+    const name = kebabToCamel(propRaw)
+
+    const valueParts: Part[] = []
+    const tail = (decl[colonPart] as { t: 'text'; v: string }).v.slice(colonAt + 1)
+    if (tail.length > 0) valueParts.push({ t: 'text', v: tail })
+    for (let i = colonPart + 1; i < decl.length; i++) valueParts.push(decl[i]!)
+
+    const exprs = valueParts.filter((p): p is { t: 'expr'; node: AnyNode } => p.t === 'expr')
+    const textBlank = valueParts.every((p) => p.t !== 'text' || p.v.trim() === '')
+
+    if (exprs.length === 0) {
+      const valueRaw = valueParts.map((p) => (p.t === 'text' ? p.v : '')).join('').trim()
+      if (!valueRaw) continue
+      const num = /^[+-]?\d+(?:\.\d+)?$/.test(valueRaw) ? Number(valueRaw) : null
+      fields.push({ name, value: { kind: 'literal', value: num !== null ? num : valueRaw } })
+    } else if (exprs.length === 1 && textBlank) {
+      const tok = resolveThemeToken(exprs[0]!.node, ctx.theme)
+      if (tok !== null) fields.push({ name, value: { kind: 'literal', value: tok } })
+      else droppedInterp.push(propRaw)
+    } else {
+      droppedInterp.push(propRaw)
+    }
+  }
+  if (droppedInterp.length > 0) {
+    ctx.warnings.push(
+      `styled(...) '${declName}': value(s) [${droppedInterp.join(', ')}] use an interpolation that isn't a ` +
+        `resolvable theme token — only static values + \`t.<group>.<entry>\` tokens lower to native (dropped).`,
+    )
+  }
+  return { kind: 'object', fields, spreads: [] }
 }
 
 /**
@@ -2394,6 +2653,7 @@ function collectObjectTypeAliases(body: AnyNode[], ctx: ParseCtx): void {
     hookFieldAliases: new Map(),
     hookDestructureCounter: 0,
     helperFns: [],
+    theme: DEFAULT_THEME,
   }
   for (const node of body) {
     let alias: AnyNode | null = null
