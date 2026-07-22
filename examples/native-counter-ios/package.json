@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-counter-ios",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — first iOS example for the PMTC pipeline. Phase 0 roadmap PR 3 scaffold; counter implementation lands in PR 4.",
   "license": "MIT",

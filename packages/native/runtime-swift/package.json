@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-runtime-swift",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Swift Package Manager package that compiler-emitted Swift code links against on iOS. Phase 0 scaffold; see .claude/plans/native-platforms-phase0-roadmap.md PR 1.",
   "license": "MIT",

@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-analytics",
-  "version": "0.0.1",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — the canonical multiplatform analytical-app proof. A single source compiles to web + iOS + Android: a heavy data table from canonical primitives, reduce-based column totals, and a chart hosted in a native WebView via the escape-hatch primitives (web-only-rich viz inside a native shell).",
   "license": "MIT",

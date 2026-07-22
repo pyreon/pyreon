@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-collab-board",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "type": "module",
   "scripts": {

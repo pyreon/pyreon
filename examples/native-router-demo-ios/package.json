@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-router-demo-ios",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — PMTC router demo. Canonical source for the multiplatform routing story (R1.3). Web sibling at native-router-demo-web/ imports from this iOS path directly.",
   "license": "MIT",

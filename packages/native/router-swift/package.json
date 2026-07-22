@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/native-router-swift",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — SwiftPM package implementing @pyreon/router's API surface (RouterProvider / RouterView / Link / useNavigate / useParams) on top of SwiftUI's NavigationStack. Phase C1 of the PMTC multiplatform router story.",
   "license": "MIT",

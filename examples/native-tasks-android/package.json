@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/example-native-tasks-android",
-  "version": "0.0.0",
+  "version": "0.50.0",
   "private": true,
   "description": "PRIVATE / EXPERIMENTAL — Tasks showcase Android host (Gradle + Jetpack Compose). Compiles the SAME TasksApp.tsx source from native-tasks/ via PMTC. Closes Gap 5 (Android host shell for the tasks showcase).",
   "license": "MIT",
