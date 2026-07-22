@@ -26,6 +26,7 @@
 // ============================================================================
 
 import { isCanonicalPrimitive } from './canonical-primitives'
+import { DEFAULT_THEME, resolveThemeToken, type ThemeTable } from './theme-native'
 import type { ExprIR, RocketstyleComponentIR } from './types'
 
 export type { RocketstyleComponentIR }
@@ -66,6 +67,7 @@ export function parseRocketstyleDefn(
   name: string,
   init: AnyNode | undefined,
   warnings: string[],
+  theme: ThemeTable = DEFAULT_THEME,
 ): RocketstyleComponentIR | null {
   const chainTop = unwrap(init)
   if (!chainTop || chainTop.type !== 'CallExpression') return null
@@ -99,10 +101,10 @@ export function parseRocketstyleDefn(
     return null
   }
 
-  const base = themeArg ? styleFromDimBody(themeArg, name, 'theme', warnings) : emptyObject()
+  const base = themeArg ? styleFromDimBody(themeArg, name, 'theme', warnings, theme) : emptyObject()
   const dims: RocketstyleComponentIR['dims'] = {}
   for (const { dim, arg } of dimCalls) {
-    dims[dim] = dimensionMap(arg, name, dim, warnings)
+    dims[dim] = dimensionMap(arg, name, dim, warnings, theme)
   }
   return { name, tag: prim, base, dims }
 }
@@ -145,6 +147,7 @@ function dimensionMap(
   compName: string,
   dim: string,
   warnings: string[],
+  theme: ThemeTable,
 ): Record<string, Extract<ExprIR, { kind: 'object' }>> {
   const obj = unwrapDimBody(arg)
   const out: Record<string, Extract<ExprIR, { kind: 'object' }>> = {}
@@ -153,7 +156,7 @@ function dimensionMap(
     if ((p.type !== 'Property' && p.type !== 'ObjectProperty') || p.computed) continue
     const valueName = p.key?.name ?? p.key?.value
     if (typeof valueName !== 'string') continue
-    out[valueName] = objectExprToStyleObject(unwrap(p.value), compName, `${dim}.${valueName}`, warnings)
+    out[valueName] = objectExprToStyleObject(unwrap(p.value), compName, `${dim}.${valueName}`, warnings, theme)
   }
   return out
 }
@@ -164,9 +167,10 @@ function styleFromDimBody(
   compName: string,
   where: string,
   warnings: string[],
+  theme: ThemeTable,
 ): Extract<ExprIR, { kind: 'object' }> {
   const obj = unwrapDimBody(arg)
-  return objectExprToStyleObject(obj, compName, where, warnings)
+  return objectExprToStyleObject(obj, compName, where, warnings, theme)
 }
 
 /** Unwrap a `(t) => ({ … })` arrow (or block `return {…}`) to the object literal;
@@ -198,6 +202,7 @@ function objectExprToStyleObject(
   compName: string,
   where: string,
   warnings: string[],
+  theme: ThemeTable,
 ): Extract<ExprIR, { kind: 'object' }> {
   const fields: { name: string; value: ExprIR }[] = []
   const dropped: string[] = []
@@ -212,7 +217,11 @@ function objectExprToStyleObject(
       } else if (v?.type === 'UnaryExpression' && v.operator === '-' && v.argument?.type === 'Literal') {
         fields.push({ name: key, value: { kind: 'literal', value: -Number(v.argument.value) } })
       } else {
-        dropped.push(key)
+        // A theme-token reference (`t.color.primary`) → resolve to its value via
+        // the theme-native frontend; anything else (a runtime expression) drops.
+        const tok = resolveThemeToken(v, theme)
+        if (tok !== null) fields.push({ name: key, value: { kind: 'literal', value: tok } })
+        else dropped.push(key)
       }
     }
   }

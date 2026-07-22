@@ -74,11 +74,18 @@ function App() { return (<Stack><Card/></Stack>) }`
     )
   })
 
-  it('warns that a theme-token dimension value is not yet lowered', () => {
-    const src = `import { Stack, Text } from '@pyreon/primitives'
+  it('RESOLVES a theme-token dimension value; warns on an unknown token', () => {
+    const known = `import { Stack, Text } from '@pyreon/primitives'
 const B = rocketstyle()({ name: 'B', component: Stack }).states({ primary: { backgroundColor: t.color.primary } })
 function App() { return (<B state="primary"><Text>x</Text></B>) }`
-    expect(swift(src).warnings.join('\n')).toMatch(/theme\s+token \/ expression.*not yet lowered/)
+    const kr = swift(known)
+    expect(kr.code).toContain('.background(Color(.sRGB, red: 0.145, green: 0.388, blue: 0.922')
+    expect(kr.warnings.join('\n')).not.toMatch(/not yet lowered/)
+
+    const unknown = `import { Stack, Text } from '@pyreon/primitives'
+const B = rocketstyle()({ name: 'B', component: Stack }).states({ primary: { backgroundColor: t.color.doesNotExist } })
+function App() { return (<B state="primary"><Text>x</Text></B>) }`
+    expect(swift(unknown).warnings.join('\n')).toMatch(/theme\s+token \/ expression.*not yet lowered/)
   })
 })
 
