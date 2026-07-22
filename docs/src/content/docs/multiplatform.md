@@ -258,6 +258,7 @@ A raw inline style — `<Stack style={{ padding: 16, backgroundColor: '#2563eb',
 | `padding` (number, `'8px 16px'` shorthand), `paddingTop/Right/Bottom/Left`, `paddingX`/`paddingY` (`paddingHorizontal`/`paddingVertical`) | `.padding(…)` | `Modifier.padding(…)` |
 | `backgroundColor` / `background` | `.background(Color(…))` | `.background(Color(0x…))` |
 | `borderRadius` | `.cornerRadius(n)` | `.clip(RoundedCornerShape(n.dp))` |
+| `borderWidth`+`borderColor`, or `border` shorthand (`'1px solid #ccc'`) | `.overlay(RoundedRectangle(cornerRadius: r).stroke(…))` | `.border(BorderStroke(…), RoundedCornerShape(r.dp))` |
 | `opacity` | `.opacity(n)` | `.alpha(nf)` |
 | `width`, `height` | `.frame(width:/height:)` | `.width(n.dp)` / `.height(n.dp)` |
 | `color` | `.foregroundColor(Color(…))` | *warns* — set on `<Text>` / `LocalContentColor`, not a Modifier |

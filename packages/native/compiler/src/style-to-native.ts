@@ -66,9 +66,23 @@ interface PadBox {
   left?: number
 }
 
+/** A resolved border (uniform). `color`/`width` come from `borderWidth` +
+ *  `borderColor` or the `border` shorthand; the shape's corner radius is the
+ *  element's `borderRadius` (0 when absent). */
+interface BorderSpec {
+  width?: number
+  /** native Color literal */
+  color?: string
+  /** a non-solid border-style was requested (approximated as solid + warned). */
+  nonSolid?: boolean
+}
+
 interface LoweredObject {
   slots: Record<string, SlotValue>
   box: PadBox
+  border: BorderSpec
+  /** the `borderRadius` value (for the border shape), 0 when absent. */
+  radiusValue: number
   dropped: string[]
   dynamic: string[]
   unparseable: string[]
@@ -115,8 +129,8 @@ const STRIP = new Set<string>([
 // then rounds); Compose wants `.clip().background().padding()` (clip first so
 // the fill is rounded, padding last so it insets content).
 const ORDER: Record<Target, string[]> = {
-  swift: ['padding', 'width', 'height', 'background', 'radius', 'opacity', 'color'],
-  kotlin: ['width', 'height', 'radius', 'background', 'padding', 'opacity'],
+  swift: ['padding', 'width', 'height', 'background', 'radius', 'border', 'opacity', 'color'],
+  kotlin: ['width', 'height', 'radius', 'background', 'border', 'padding', 'opacity'],
 }
 
 // ── value parsers ───────────────────────────────────────────────────────────
@@ -208,6 +222,8 @@ function expandBoxShorthand(v: string | number): Required<PadBox> | null {
 function lowerObject(fields: { name: string; value: ExprIR }[], target: Target): LoweredObject {
   const slots: Record<string, SlotValue> = {}
   const box: PadBox = {}
+  const border: BorderSpec = {}
+  let radiusValue = 0
   const dropped: string[] = []
   const dynamic: string[] = []
   const unparseable: string[] = []
@@ -282,11 +298,45 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
       case 'borderRadius': {
         const n = dim(field)
         if (n !== undefined) {
+          radiusValue = n
           slots.radius =
             target === 'swift'
               ? { wrap: (v) => `.cornerRadius(${v})`, value: String(n) }
               : { wrap: (v) => `.clip(RoundedCornerShape(${v}.dp))`, value: String(n) }
         }
+        break
+      }
+      case 'borderWidth': {
+        const n = dim(field)
+        if (n !== undefined) border.width = n
+        break
+      }
+      case 'borderColor': {
+        const raw = lit(field)
+        if (raw === undefined) break
+        const c = parseCssColor(String(raw), target)
+        if (c === null) unparseable.push(name)
+        else border.color = c
+        break
+      }
+      case 'borderStyle': {
+        const raw = lit(field)
+        if (raw !== undefined && raw !== 'solid' && raw !== 'none') border.nonSolid = true
+        break
+      }
+      case 'border': {
+        // `border: '1px solid #2563eb'` shorthand — width / style / color in any
+        // order. A signal-valued shorthand is dynamic → warned by lit().
+        const raw = lit(field)
+        if (raw === undefined) break
+        const parsed = parseBorderShorthand(String(raw), target)
+        if (parsed === null) {
+          unparseable.push(name)
+          break
+        }
+        if (parsed.width !== undefined) border.width = parsed.width
+        if (parsed.color !== undefined) border.color = parsed.color
+        if (parsed.nonSolid) border.nonSolid = true
         break
       }
       case 'opacity': {
@@ -339,7 +389,57 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
         dropped.push(name)
     }
   }
-  return { slots, box, dropped, dynamic, unparseable, kotlinColor }
+  return { slots, box, border, radiusValue, dropped, dynamic, unparseable, kotlinColor }
+}
+
+/** Parse a `border` shorthand (`"1px solid #2563eb"`, tokens in any order). */
+function parseBorderShorthand(
+  v: string,
+  target: Target,
+): { width?: number; color?: string; nonSolid?: boolean } | null {
+  const tokens = v.trim().split(/\s+/)
+  const out: { width?: number; color?: string; nonSolid?: boolean } = {}
+  let matched = false
+  for (const tok of tokens) {
+    if (tok === 'solid' || tok === 'none') {
+      matched = true
+      continue
+    }
+    if (['dashed', 'dotted', 'double', 'groove', 'ridge', 'inset', 'outset'].includes(tok)) {
+      out.nonSolid = true
+      matched = true
+      continue
+    }
+    const dim = parseDimension(tok)
+    if (dim !== null) {
+      out.width = dim
+      matched = true
+      continue
+    }
+    const color = parseCssColor(tok, target)
+    if (color !== null) {
+      out.color = color
+      matched = true
+    }
+  }
+  return matched ? out : null
+}
+
+/**
+ * The border → one modifier, coordinated with the corner radius.
+ * - Swift  → `.overlay(RoundedRectangle(cornerRadius: R).stroke(color, lineWidth: W))`
+ * - Kotlin → `.border(BorderStroke(W.dp, color), RoundedCornerShape(R.dp))`
+ * Returns undefined when width or color is missing (an incomplete border can't
+ * render — the caller warns).
+ */
+function emitBorder(border: BorderSpec, radius: number, target: Target): string | undefined {
+  if (border.width === undefined || border.color === undefined) return undefined
+  const w = border.width
+  const c = border.color
+  if (target === 'swift') {
+    return `.overlay(RoundedRectangle(cornerRadius: ${radius}).stroke(${c}, lineWidth: ${w}))`
+  }
+  return `.border(BorderStroke(${w}.dp, ${c}), RoundedCornerShape(${radius}.dp))`
 }
 
 // ── emit ────────────────────────────────────────────────────────────────────
@@ -396,6 +496,20 @@ function condExpr(target: Target, cond: string, a: string, b: string): string {
 
 function collectWarnings(lo: LoweredObject, tag: string): string[] {
   const w: string[] = []
+  const hasW = lo.border.width !== undefined
+  const hasC = lo.border.color !== undefined
+  if (hasW !== hasC) {
+    w.push(
+      `<${tag} style={…}>: a border needs BOTH borderWidth and borderColor (only ${
+        hasW ? 'borderWidth' : 'borderColor'
+      } was given) — no border was emitted.`,
+    )
+  }
+  if (lo.border.nonSolid && hasW && hasC) {
+    w.push(
+      `<${tag} style={{ borderStyle }}>: only a solid border lowers to native — the non-solid style was approximated as solid.`,
+    )
+  }
   if (lo.kotlinColor) {
     w.push(
       `<${tag} style={{ color }}>: CSS \`color\` on a container has no Compose Modifier — set the color on the <Text> primitive (or via LocalContentColor) for Android. Lowered on iOS only.`,
@@ -477,6 +591,7 @@ function emitStatic(lo: LoweredObject, target: Target): string[] {
   return ORDER[target]
     .map((slot) => {
       if (slot === 'padding') return pad
+      if (slot === 'border') return emitBorder(lo.border, lo.radiusValue, target)
       const s = lo.slots[slot]
       return s ? s.wrap(s.value) : undefined
     })
@@ -499,6 +614,18 @@ function emitDynamic(
   const modifiers: string[] = []
 
   for (const slot of ORDER[target]) {
+    if (slot === 'border') {
+      const aHas = a.border.width !== undefined && a.border.color !== undefined
+      const bHas = b.border.width !== undefined && b.border.color !== undefined
+      if (!aHas && !bHas) continue
+      // A border is a COMPOSITE modifier (width+color+shape) — folding a
+      // per-branch conditional into it is a v1 gap. Emit the `then` branch's
+      // border statically + warn (mirrors asymmetric padding).
+      const stat = emitBorder(a.border, a.radiusValue, target)
+      if (stat !== undefined) modifiers.push(stat)
+      asymmetric.push('border')
+      continue
+    }
     if (slot === 'padding') {
       const av = boxAllSides(a.box)
       const bv = boxAllSides(b.box)

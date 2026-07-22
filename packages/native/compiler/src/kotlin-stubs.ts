@@ -366,6 +366,10 @@ object Modifier {
   fun background(color: Color): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun clip(shape: Shape): Modifier = this
+  // border — inline-style borderWidth/borderColor lowering. Real:
+  // androidx.compose.foundation.border(BorderStroke, Shape).
+  @Suppress("UNUSED_PARAMETER")
+  fun border(border: BorderStroke, shape: Shape): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun clickable(onClick: () -> Unit): Modifier = this
   // E3.1 — testTag for data-testid passthrough. Real Compose ships
@@ -556,6 +560,11 @@ class Color(val value: Long) {
 interface Shape
 @Suppress("UNUSED_PARAMETER")
 class RoundedCornerShape(corner: Dp) : Shape
+
+// BorderStroke — width + color for Modifier.border. Real:
+// androidx.compose.foundation.BorderStroke.
+@Suppress("UNUSED_PARAMETER")
+class BorderStroke(width: Dp, color: Color)
 
 // VisualTransformation — the base type for a text visual mask. Mirrors the
 // real Compose surface EXACTLY (an interface with a None companion) so the

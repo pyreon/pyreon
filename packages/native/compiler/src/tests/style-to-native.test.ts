@@ -262,3 +262,65 @@ describe('dynamic inline style — toolchain gates', () => {
     expect(res.ok, res.error ?? '').toBe(true)
   })
 })
+
+// ── border — borderWidth/borderColor/border shorthand → one stroke modifier ──
+describe('inline style — border (emit)', () => {
+  it('emits a SwiftUI overlay stroke coordinated with the corner radius', () => {
+    const { code } = swift(
+      `<Stack style={{ borderWidth: 1, borderColor: '#2563eb', borderRadius: 8 }}><Text>x</Text></Stack>`,
+    )
+    expect(code).toContain('.cornerRadius(8)')
+    expect(code).toContain(
+      '.overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(.sRGB, red: 0.145, green: 0.388, blue: 0.922, opacity: 1.000), lineWidth: 1))',
+    )
+  })
+
+  it('emits a Compose .border(BorderStroke, shape) coordinated with the corner radius', () => {
+    const { code } = kotlin(
+      `<Stack style={{ borderWidth: 1, borderColor: '#2563eb', borderRadius: 8 }}><Text>x</Text></Stack>`,
+    )
+    expect(code).toContain('.border(BorderStroke(1.dp, Color(0xFF2563EB)), RoundedCornerShape(8.dp))')
+  })
+
+  it('parses the `border` shorthand (width / style / color, any order)', () => {
+    expect(swift(`<Stack style={{ border: '2px solid #dc2626' }}><Text>x</Text></Stack>`).code).toContain(
+      '.overlay(RoundedRectangle(cornerRadius: 0).stroke(Color(.sRGB, red: 0.863, green: 0.149, blue: 0.149, opacity: 1.000), lineWidth: 2))',
+    )
+    expect(kotlin(`<Stack style={{ border: '2px solid #dc2626' }}><Text>x</Text></Stack>`).code).toContain(
+      '.border(BorderStroke(2.dp, Color(0xFFDC2626)), RoundedCornerShape(0.dp))',
+    )
+  })
+
+  it('an incomplete border (width XOR color) emits nothing + warns, never silently', () => {
+    const { code, warnings } = swift(`<Stack style={{ borderWidth: 1 }}><Text>x</Text></Stack>`)
+    expect(code).not.toContain('.overlay(')
+    expect(warnings.join('\n')).toMatch(/border needs BOTH borderWidth and borderColor/)
+  })
+
+  it('a non-solid borderStyle emits the border + warns (approximated as solid)', () => {
+    const { code, warnings } = kotlin(
+      `<Stack style={{ borderWidth: 1, borderColor: '#000000', borderStyle: 'dashed' }}><Text>x</Text></Stack>`,
+    )
+    expect(code).toContain('.border(BorderStroke(1.dp, Color(0xFF000000))')
+    expect(warnings.join('\n')).toMatch(/only a solid border lowers/)
+  })
+
+  it('a dynamic border (ternary) emits the then-branch statically + warns', () => {
+    const src = `<Stack style={active() ? { borderWidth: 2, borderColor: '#2563eb' } : { borderWidth: 1, borderColor: '#6b7280' }}><Text>x</Text></Stack>`
+    const { code, warnings } = dynSwift(src)
+    expect(code).toContain('.overlay(RoundedRectangle(cornerRadius: 0).stroke(Color(.sRGB, red: 0.145')
+    expect(warnings.join('\n')).toMatch(/\[border\].*differ in shape or exist in only one branch/)
+  })
+})
+
+describe('inline style — border toolchain gates', () => {
+  const BORDER = `<Stack style={{ borderWidth: 2, borderColor: 'rgba(37,99,235,1)', borderRadius: 8, backgroundColor: '#ffffff', padding: 12 }}><Text>Bordered</Text></Stack>`
+  it.skipIf(!isSwiftUIAvailable())('the border overlay stroke typechecks (real SwiftUI SDK)', () => {
+    const res = validateSwiftTypecheck(swift(BORDER).code)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('the border modifier compiles (Compose stubs + new BorderStroke/.border)', () => {
+    const res = validateKotlin(kotlin(BORDER).code)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+})
