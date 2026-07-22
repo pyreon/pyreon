@@ -7,6 +7,15 @@
     "examples/*",
     "docs"
   ],
+  "pyreon": {
+    "doctor": {
+      "excludeRoots": [
+        "examples/*",
+        "docs",
+        "packages/core/compiler/npm/*"
+      ]
+    }
+  },
   "scripts": {
     "postinstall": "bun scripts/bootstrap.ts",
     "build": "bun run --filter='*' build",

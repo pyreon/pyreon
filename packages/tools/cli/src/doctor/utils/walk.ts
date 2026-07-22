@@ -1,18 +1,31 @@
 /**
  * Shared source-file walker for the per-file scanning gates
- * (react-patterns, pyreon-patterns).
+ * (react-patterns, pyreon-patterns, lint).
  *
  * The walker skips the standard non-source dirs (`node_modules`,
  * `dist`, `lib`, `.git`, etc.) and matches `.ts` / `.tsx` / `.js` /
- * `.jsx`. Gates consume the objective first-party scope
- * (`collectFirstPartySourceFiles` + the pure `isFirstPartySourceFile`
- * / `isCompatPackageFile` predicates) so health is measured only over
- * `packages/<cat>/<pkg>/src/**` — not examples, e2e, docs, scripts,
- * or detector test-fixtures.
+ * `.jsx`. Gates consume {@link collectAuditableSourceFiles} over the
+ * workspace roots resolved by
+ * `utils/workspace-roots.ts:resolveWorkspaceRoots` — the scan scope is
+ * the workspace's OWN declared package roots, never a hardcoded repo
+ * shape. (Historically this module required the Pyreon framework
+ * repo's two-level `packages/<cat>/<pkg>/src/**` layout, which scanned
+ * ZERO files in any foreign workspace while the doctor still reported
+ * a green score — the upstream-reported false-green bug.)
+ *
+ * Per-file objectivity filters are kept: test files / fixtures /
+ * `.d.ts` are never audited (detector test-fixtures deliberately
+ * contain anti-patterns), and per-package `src/` is preferred over the
+ * package root when it exists (built output, scripts and configs are
+ * not health surface). The Pyreon repo's examples/docs exclusion lives
+ * in `pyreon.doctor.excludeRoots` in the root package.json — explicit
+ * config, not a hardcoded shape.
  */
 
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+
+import type { WorkspaceRoots } from './workspace-roots'
 
 const SOURCE_EXTENSIONS = new Set(['.tsx', '.jsx', '.ts', '.js'])
 const IGNORE_DIRS = new Set([
@@ -53,39 +66,17 @@ const walk = (dir: string, results: string[]): void => {
   }
 }
 
-
-// ─── Objective first-party scope ─────────────────────────────────────────────
-//
-// A project-health auditor must measure the source the project actually
-// SHIPS and MAINTAINS — not example apps (intentionally framework-idiomatic),
-// e2e/docs/scripts, or detector test-fixtures (which deliberately contain
-// anti-patterns so the detectors can be tested). Scoring those as "codebase
-// health" produces a false grade (PR: doctor reported F=55 where ~705/987
-// errors were examples + test-fixtures and the rest were by-design / never
-// CI-enforced advisory findings).
-//
-// First-party source = `packages/<category>/<pkg>/src/**` minus test files.
-// This is the same surface every per-package `tsconfig`/build ships. The
-// predicate below is pure + unit-tested (the "no subprocess-tested policy"
-// rule): a false-negative here silently shrinks the audited set, so it is
-// covered, not just smoke-checked.
-
 /**
- * True when `relPath` (a path relative to the repo root, or absolute) is
- * a first-party published-package source file the doctor should audit.
- *
- * Included: any file under a `packages/.../src/` segment with a source
- * extension. Excluded: everything outside `packages/`, anything not under
- * a `src/` segment, and test files (`*.test.*`, `*.spec.*`,
- * `**\/tests/**`, `**\/__tests__/**`, `*.d.ts`).
+ * True when `filePath` is a source file the doctor should audit —
+ * source extension, not a type declaration, not a test/spec file, not
+ * under a tests/fixtures dir. Layout-agnostic: root scoping is the
+ * resolver's job; this predicate only applies the per-file objectivity
+ * filters (detector fixtures intentionally hold anti-patterns, so
+ * scoring them would produce a false grade).
  */
-export const isFirstPartySourceFile = (filePath: string): boolean => {
+export const isAuditableSourceFile = (filePath: string): boolean => {
   const p = filePath.replace(/\\/g, '/')
-  // Must live inside a published package's src/ tree.
-  if (!/(^|\/)packages\/[^/]+\/[^/]+\/src\//.test(p)) return false
   if (!SOURCE_EXTENSIONS.has(path.extname(p))) return false
-  // Drop type-declaration + test/fixture files — not shipped runtime
-  // source, and detector-fixture files intentionally hold anti-patterns.
   if (p.endsWith('.d.ts')) return false
   if (/(^|\/)(tests?|__tests__|__fixtures__|fixtures)\//.test(p)) return false
   if (/\.(test|spec|browser\.test|browser\.spec)\.[tj]sx?$/.test(p)) return false
@@ -97,19 +88,46 @@ export const isFirstPartySourceFile = (filePath: string): boolean => {
  *  flagging `useState`/`className`/etc. there is a definitional false
  *  positive (the package exists precisely to expose those names). */
 export const isCompatPackageFile = (filePath: string): boolean =>
-  /(^|\/)packages\/[^/]+\/[a-z]+-compat\/src\//.test(
-    filePath.replace(/\\/g, '/'),
-  )
+  /(^|\/)[a-z][a-z0-9-]*-compat\//.test(filePath.replace(/\\/g, '/'))
 
 /**
- * Collect ONLY first-party published-package source files under `cwd`
- * — the objective health surface. Skips `examples/`, `e2e/`, `docs/`,
- * `scripts/`, root-level files, and (via {@link isFirstPartySourceFile})
- * test files / fixtures / `.d.ts`.
+ * The scan root for one package dir: `<dir>/src` when it exists (the
+ * shipped source surface — build output / scripts / configs at the
+ * package root are not health surface), else the package dir itself
+ * (flat layouts keep source at the root).
  */
-export const collectFirstPartySourceFiles = (cwd: string): string[] => {
-  const pkgRoot = path.join(cwd, 'packages')
+export const packageScanRoot = (pkgDir: string): string => {
+  const src = path.join(pkgDir, 'src')
+  try {
+    if (fs.statSync(src).isDirectory()) return src
+  } catch {
+    // no src/ — scan the package dir itself
+  }
+  return pkgDir
+}
+
+/**
+ * Collect the auditable source files across every resolved workspace
+ * package root — the objective health surface the file-scanning gates
+ * share. Per package: `src/**` when present, else the package tree;
+ * always minus tests / fixtures / `.d.ts` / ignored dirs.
+ *
+ * The per-file predicate runs against the path RELATIVE to the scan
+ * root — on an absolute path, a parent dir named `test/` outside the
+ * repo (e.g. `/home/x/test/repo/...`) would false-exclude every file.
+ */
+export const collectAuditableSourceFiles = (ws: WorkspaceRoots): string[] => {
   const all: string[] = []
-  walk(pkgRoot, all)
-  return all.filter(isFirstPartySourceFile)
+  const seen = new Set<string>()
+  for (const pkgDir of ws.packageDirs) {
+    const root = packageScanRoot(pkgDir)
+    const files: string[] = []
+    walk(root, files)
+    for (const f of files) {
+      if (seen.has(f)) continue
+      seen.add(f)
+      if (isAuditableSourceFile(path.relative(root, f))) all.push(f)
+    }
+  }
+  return all
 }

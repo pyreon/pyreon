@@ -111,9 +111,56 @@ const renderBanner = (report: DoctorReport): string => {
     '',
     `  ${bold('pyreon doctor')} ${dim('· project health audit')}`,
     '',
-    `  Score:  ${score}/100   Grade: ${grade}`,
-    '',
+    // A run in which NOTHING was measured must not show the degenerate
+    // 100/A — that number is exactly the false green this fix closes.
+    report.measured
+      ? `  Score:  ${score}/100   Grade: ${grade}`
+      : `  Score:  ${yellow(bold('—'))}   ${yellow('nothing was measured (every gate skipped or matched no files)')}`,
   ]
+  // WHAT was scanned, not just the verdict — a wrong scan scope must be
+  // visible at a glance (upstream false-green report: gates silently
+  // scanned 0 files in multi-root workspaces while scoring 100).
+  if (report.workspace) {
+    const ws = report.workspace
+    const from =
+      ws.source === 'flag'
+        ? '--roots'
+        : ws.source === 'pnpm-workspace'
+          ? 'pnpm-workspace.yaml'
+          : ws.source === 'workspaces'
+            ? 'workspaces'
+            : 'single package'
+    const excluded =
+      ws.excluded.length > 0 ? ` · excluded: ${ws.excluded.join(', ')}` : ''
+    lines.push(
+      `  ${dim('Scope:')}  ${ws.packageCount} package root(s) ${dim(`from ${from} (${ws.globs.join(', ')})${excluded}`)}`,
+    )
+  }
+  const scanned = report.gates
+    .filter((g) => !g.meta.skipped && g.meta.scanned !== undefined)
+    .map((g) => `${g.gate} ${g.meta.scanned}`)
+  if (scanned.length > 0) {
+    lines.push(`  ${dim(`Scanned: ${scanned.join(' · ')}`)}`)
+  }
+  lines.push('')
+  return lines.join('\n')
+}
+
+/**
+ * Empty-scan skips get their OWN prominent block (not just the dim
+ * footer): a gate that matched no files measured nothing, and hiding
+ * that is exactly the false-green failure mode this fix closes.
+ */
+const renderEmptyScans = (report: DoctorReport): string => {
+  const empty = report.gates.filter((g) => g.meta.emptyScan)
+  if (empty.length === 0) return ''
+  const lines = [
+    `  ${yellow('!')} ${bold(`${empty.length} gate(s) matched no files — their categories were NOT measured:`)}`,
+  ]
+  for (const g of empty) {
+    lines.push(`     ${yellow(g.gate)} ${dim(`— ${g.meta.skipReason ?? 'matched no files'}`)}`)
+  }
+  lines.push('')
   return lines.join('\n')
 }
 
@@ -155,6 +202,10 @@ const renderFinding = (f: Finding): string => {
 
 const renderFindings = (report: DoctorReport, topN: number): string => {
   if (report.findings.length === 0) {
+    // Zero findings only means "healthy" when something was scanned.
+    if (!report.measured) {
+      return `  ${yellow('!')} No gate measured anything — zero findings is NOT evidence of health.\n`
+    }
     return `  ${green('✓')} No findings. Your project is healthy.\n`
   }
 
@@ -180,7 +231,8 @@ const renderFindings = (report: DoctorReport, topN: number): string => {
 }
 
 const renderSkipped = (report: DoctorReport): string => {
-  const skipped = report.gates.filter((g) => g.meta.skipped)
+  // Empty-scan skips already rendered in their own prominent block.
+  const skipped = report.gates.filter((g) => g.meta.skipped && !g.meta.emptyScan)
   if (skipped.length === 0) return ''
   const names = skipped
     .map((g) => `${g.gate}${g.meta.skipReason ? ` (${g.meta.skipReason})` : ''}`)
@@ -221,6 +273,7 @@ export const renderText = (
     '',
     ...report.categories.map(renderCategory),
     '',
+    renderEmptyScans(report),
     renderFindings(report, topN),
     renderSkipped(report),
     renderFooter(report),

@@ -41,6 +41,9 @@ export const buildReport = (gates: GateResult[]): DoctorReport => {
   }
 
   const { score, grade, categories } = computeScore(findings, gates)
+  // Nothing measured = every non-advisory category excluded. The
+  // degenerate 100/A from computeScore must never render as health.
+  const measured = categories.some((c) => c.included)
 
   // Sum of per-gate elapsedMs — note this is NOT wall-clock if gates
   // run in parallel. The orchestrator can override with a measured
@@ -51,6 +54,7 @@ export const buildReport = (gates: GateResult[]): DoctorReport => {
   return {
     score,
     grade,
+    measured,
     categories,
     gates,
     findings,

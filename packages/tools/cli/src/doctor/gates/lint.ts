@@ -19,13 +19,18 @@ import * as path from 'node:path'
 
 import { lint, allRules } from '@pyreon/lint'
 
-import { collectFirstPartySourceFiles } from '../utils/walk'
 import type {
   Finding,
   FindingCategory,
   GateResult,
   Severity,
 } from '../types'
+import { emptyScanResult } from '../utils/empty-scan'
+import { collectAuditableSourceFiles } from '../utils/walk'
+import {
+  resolveWorkspaceRoots,
+  type WorkspaceRoots,
+} from '../utils/workspace-roots'
 
 /**
  * Map a `@pyreon/lint` severity string to the doctor's `Severity` type.
@@ -81,6 +86,11 @@ export interface LintGateOptions {
   cwd: string
   /** Apply lint auto-fixes during the run. */
   fix?: boolean | undefined
+  /**
+   * Pre-resolved workspace roots (the orchestrator resolves once and
+   * shares). Absent → resolved from `cwd`.
+   */
+  workspace?: WorkspaceRoots | undefined
 }
 
 export const runLintGate = async (
@@ -89,14 +99,21 @@ export const runLintGate = async (
   const start = Date.now()
   const findings: Finding[] = []
 
-  // Objective scope: lint ONLY first-party published-package source
-  // (the surface the project ships + maintains), not example apps,
-  // e2e/docs/scripts, or detector test-fixtures. `@pyreon/lint` still
-  // layers the project's `.pyreonlintrc.json` config + `exemptPaths`
-  // on top — `lint()` accepts an explicit file list (gatherFiles' isFile
+  // Objective scope: lint the workspace's OWN declared package roots
+  // (per-package `src/**` when present), not example apps, e2e/docs/
+  // scripts, or detector test-fixtures. `@pyreon/lint` still layers
+  // the project's `.pyreonlintrc.json` config + `exemptPaths` on top —
+  // `lint()` accepts an explicit file list (gatherFiles' isFile
   // branch), so the curated config is unchanged; only the surface is.
+  const ws = opts.workspace ?? resolveWorkspaceRoots(opts.cwd)
+  const files = collectAuditableSourceFiles(ws)
+  // Feeding lint an empty path list would silently lint NOTHING and
+  // report a clean pass — skip loudly instead (workspace-roots fix).
+  if (files.length === 0) {
+    return emptyScanResult('lint', 'correctness', ws, start)
+  }
   const result = await lint({
-    paths: collectFirstPartySourceFiles(opts.cwd),
+    paths: files,
     fix: opts.fix ?? false,
   })
 
@@ -113,7 +130,7 @@ export const runLintGate = async (
         message: diag.message,
         location: {
           path: fileResult.filePath,
-          relPath: path.relative(opts.cwd, fileResult.filePath),
+          relPath: path.relative(ws.repoRoot, fileResult.filePath),
           line: diag.loc.line,
           column: diag.loc.column,
         },

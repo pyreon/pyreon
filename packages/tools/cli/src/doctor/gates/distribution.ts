@@ -178,6 +178,28 @@ export const runDistributionGate = async (
   const findings: Finding[] = []
   const packages = findPackages(opts.cwd)
 
+  // This gate audits published-package distribution invariants over the
+  // Pyreon framework repo's `packages/<category>/<pkg>` layout. In a
+  // repo without that shape (any consumer project) `findPackages`
+  // returns [] — which must read as SKIPPED, not as a clean pass: a
+  // gate that inspected zero packages measured nothing (upstream
+  // false-green report).
+  if (packages.length === 0) {
+    return {
+      gate: 'distribution',
+      category: 'architecture',
+      findings: [],
+      meta: {
+        scanned: 0,
+        elapsedMs: Date.now() - start,
+        skipped: true,
+        emptyScan: true,
+        skipReason:
+          'no published packages found under packages/<category>/<pkg> — this gate audits the Pyreon framework repo layout',
+      },
+    }
+  }
+
   for (const p of packages) {
     // Rule 1: sideEffects must be defined.
     if (p.pj.sideEffects === undefined) {

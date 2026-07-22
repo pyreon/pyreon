@@ -74,6 +74,7 @@ export type {
   AuditFormatOptions,
   AuditRisk,
   TestAuditEntry,
+  TestAuditOptions,
   TestAuditResult,
 } from './test-audit'
 export { auditTestEnvironment, formatTestAudit } from './test-audit'

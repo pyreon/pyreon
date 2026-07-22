@@ -23,7 +23,16 @@ pyreon doctor --only lint,doc-claims   # restrict to listed gates
 pyreon doctor --skip pyreon-patterns   # exclude listed gates
 pyreon doctor --audit-min-risk high    # tighten test-environment audit
 pyreon doctor --format text|json|gha   # explicit format (alternative to --json / --gha)
+pyreon doctor --roots src,apps/*       # explicit scan roots (non-standard layouts)
 ```
+
+### Scan scope — workspace roots
+
+The file-scanning gates (`react-patterns`, `pyreon-patterns`, `lint`, `audit-tests`) resolve their scan scope from the workspace's OWN configuration — the root `package.json` `workspaces` globs (array or `{ packages }` shape) or `pnpm-workspace.yaml` — discovered by walking up from the cwd, so results are identical from any directory in the repo. Multi-root layouts (`apps/* + packages/* + modules/*`) are fully covered; a repo with no workspaces is treated as a single package (nearest `package.json` dir). Per package, `src/**` is scanned when present (else the package tree), always minus tests / fixtures / `.d.ts`.
+
+- The report header prints the resolved scope (`Scope: 4 package root(s) from workspaces (…)`) and per-gate scanned counts — what was scanned is visible at a glance, not just the verdict.
+- **A gate that matches no files is SKIPPED with a warning, never a clean pass** — its category is "not measured" and does not contribute a free 100 to the score. When NOTHING was measured, the score renders as `—` and `--ci` exits non-zero (an enforcement run that inspected zero files is a misconfiguration, not a pass).
+- `--roots <glob,...>` overrides discovery for non-standard layouts; `pyreon.doctor.excludeRoots` globs in the root package.json exclude demo/docs workspaces from health grading (the Pyreon repo itself excludes `examples/*` + `docs` this way).
 
 ### Gates (10 total — 8 fast + 2 slow)
 

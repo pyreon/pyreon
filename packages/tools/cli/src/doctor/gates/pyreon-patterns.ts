@@ -19,10 +19,20 @@ import {
 import { loadConfig } from '@pyreon/lint'
 
 import type { Finding, GateResult } from '../types'
-import { collectFirstPartySourceFiles } from '../utils/walk'
+import { emptyScanResult } from '../utils/empty-scan'
+import { collectAuditableSourceFiles } from '../utils/walk'
+import {
+  resolveWorkspaceRoots,
+  type WorkspaceRoots,
+} from '../utils/workspace-roots'
 
 export interface PyreonPatternsGateOptions {
   cwd: string
+  /**
+   * Pre-resolved workspace roots (the orchestrator resolves once and
+   * shares). Absent → resolved from `cwd`.
+   */
+  workspace?: WorkspaceRoots | undefined
 }
 
 /**
@@ -84,7 +94,12 @@ export const runPyreonPatternsGate = async (
 ): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
-  const files = collectFirstPartySourceFiles(opts.cwd)
+  const ws = opts.workspace ?? resolveWorkspaceRoots(opts.cwd)
+  const files = collectAuditableSourceFiles(ws)
+  // A pattern gate that matched no files must not read as a clean pass.
+  if (files.length === 0) {
+    return emptyScanResult('pyreon-patterns', 'correctness', ws, start)
+  }
   const exemptPathsByCode = buildExemptPaths(opts.cwd)
 
   for (const file of files) {
@@ -96,7 +111,7 @@ export const runPyreonPatternsGate = async (
     }
     if (!hasPyreonPatterns(code)) continue
 
-    const relPath = path.relative(opts.cwd, file)
+    const relPath = path.relative(ws.repoRoot, file)
     const diagnostics = detectPyreonPatterns(code, relPath)
 
     for (const diag of diagnostics) {

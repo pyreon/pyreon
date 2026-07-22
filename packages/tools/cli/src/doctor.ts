@@ -50,6 +50,12 @@ export interface DoctorOptions {
   only?: GateName[] | undefined
   /** Skip these gates. */
   skip?: GateName[] | undefined
+  /**
+   * Explicit scan-root globs for the file-scanning gates (the
+   * `--roots` flag), resolved relative to `cwd`. Overrides workspace
+   * discovery — the escape hatch for non-standard layouts.
+   */
+  roots?: string[] | undefined
 
   // ── Legacy flags (mapped to --only shortcuts for back-compat) ────
   /**
@@ -96,6 +102,7 @@ export const doctor = async (options: DoctorOptions): Promise<number> => {
     skip: options.skip,
     fix: options.fix,
     auditMinRisk: options.auditMinRisk,
+    roots: options.roots,
   }
 
   const report = await runDoctor(orchestratorOpts)
@@ -118,6 +125,17 @@ export const doctor = async (options: DoctorOptions): Promise<number> => {
   // documented contract). So plain `pyreon doctor` always exits 0; use
   // `pyreon doctor --ci` as the gate.
   if (options.ci) {
+    // An enforcement run that measured NOTHING is a misconfiguration,
+    // not a pass — every gate skipped or matched zero files, so a green
+    // exit would be the exact false-green the workspace-roots fix
+    // closes. Fail with guidance instead of silently passing.
+    if (!report.measured) {
+      console.error(
+        '[Pyreon] doctor --ci measured nothing: every gate was skipped or matched no files. ' +
+          'Check the workspace layout (package.json `workspaces` / pnpm-workspace.yaml) or pass --roots <glob,...>.',
+      )
+      return 1
+    }
     return report.findings.filter(
       (f) => f.severity === 'error' && !isAdvisoryCategory(f.category),
     ).length

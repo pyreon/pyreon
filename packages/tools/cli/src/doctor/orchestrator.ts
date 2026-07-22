@@ -45,6 +45,10 @@ import {
 } from './gates'
 import { buildReport } from './report'
 import type { DoctorReport, GateResult } from './types'
+import {
+  resolveWorkspaceRoots,
+  type WorkspaceRoots,
+} from './utils/workspace-roots'
 
 export type GateName =
   | 'react-patterns'
@@ -93,6 +97,12 @@ export interface OrchestratorOptions {
   fix?: boolean | undefined
   /** Min risk for the test-environment audit. Defaults to `'medium'`. */
   auditMinRisk?: 'high' | 'medium' | 'low' | undefined
+  /**
+   * Explicit scan-root globs (the `--roots` flag), resolved relative
+   * to `cwd`. Overrides workspace discovery for the file-scanning
+   * gates — the escape hatch for non-standard layouts.
+   */
+  roots?: string[] | undefined
 }
 
 const skippedGate = (
@@ -151,6 +161,11 @@ export const runDoctor = async (
   const selected = new Set(resolveGates(opts))
   const all: GateName[] = [...FAST_GATES, ...SLOW_GATES]
 
+  // Resolve the workspace scan scope ONCE and share it with every
+  // file-scanning gate — one source of truth for "what did the doctor
+  // look at", surfaced on the report for the renderer + --json.
+  const workspace = resolveWorkspaceRoots(opts.cwd, { roots: opts.roots })
+
   const promises = all.map(async (gate): Promise<GateResult> => {
     if (!selected.has(gate)) {
       // Distinguish "user explicitly skipped" from "needs --full".
@@ -160,7 +175,7 @@ export const runDoctor = async (
       return skippedGate(gate, ALL_GATE_CATEGORIES[gate], reason)
     }
     try {
-      return await runGate(gate, opts)
+      return await runGate(gate, opts, workspace)
     } catch (err) {
       // A gate that throws must NOT take down the whole run — `Promise.all`
       // would reject and we'd lose every other gate's findings + the score.
@@ -188,20 +203,31 @@ export const runDoctor = async (
   const gates = await Promise.all(promises)
   const report = buildReport(gates)
   // Overwrite the sum-of-elapsedMs proxy with the real wall-clock.
-  return { ...report, elapsedMs: Date.now() - start }
+  return {
+    ...report,
+    elapsedMs: Date.now() - start,
+    workspace: {
+      repoRoot: workspace.repoRoot,
+      source: workspace.source,
+      globs: workspace.globs,
+      excluded: workspace.excluded,
+      packageCount: workspace.packageDirs.length,
+    },
+  }
 }
 
 const runGate = async (
   gate: GateName,
   opts: OrchestratorOptions,
+  workspace: WorkspaceRoots,
 ): Promise<GateResult> => {
   switch (gate) {
     case 'react-patterns':
-      return runReactPatternsGate({ cwd: opts.cwd, fix: opts.fix })
+      return runReactPatternsGate({ cwd: opts.cwd, fix: opts.fix, workspace })
     case 'pyreon-patterns':
-      return runPyreonPatternsGate({ cwd: opts.cwd })
+      return runPyreonPatternsGate({ cwd: opts.cwd, workspace })
     case 'lint':
-      return runLintGate({ cwd: opts.cwd, fix: opts.fix })
+      return runLintGate({ cwd: opts.cwd, fix: opts.fix, workspace })
     case 'distribution':
       return runDistributionGate({ cwd: opts.cwd, skipPackProbe: true })
     case 'doc-claims':
@@ -210,6 +236,7 @@ const runGate = async (
       return runAuditTestsGate({
         cwd: opts.cwd,
         minRisk: opts.auditMinRisk ?? 'medium',
+        workspace,
       })
     case 'islands-audit':
       return runIslandsAuditGate({ cwd: opts.cwd })

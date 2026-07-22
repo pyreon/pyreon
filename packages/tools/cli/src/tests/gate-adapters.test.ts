@@ -33,6 +33,34 @@ function writeFile(dir: string, relPath: string, content: string): void {
   fs.writeFileSync(full, content, 'utf-8')
 }
 
+/**
+ * Declare a Pyreon-shaped workspace in the fixture (root package.json
+ * with two-level `packages` workspace globs + the examples exclusion). Post-
+ * workspace-roots-fix the scan scope comes from THIS config, so specs
+ * that assert the objectivity contract (examples/fixtures ignored)
+ * must declare it like a real repo does.
+ */
+function writeWorkspaceRoot(cwd: string): void {
+  writeFile(
+    cwd,
+    'package.json',
+    JSON.stringify({
+      name: 'fixture-repo',
+      private: true,
+      workspaces: ['packages/*/*'],
+      pyreon: { doctor: { excludeRoots: ['examples/*'] } },
+    }),
+  )
+}
+
+function writePkg(cwd: string, relDir: string): void {
+  writeFile(
+    cwd,
+    `${relDir}/package.json`,
+    JSON.stringify({ name: relDir.split('/').pop(), private: true }),
+  )
+}
+
 const assertShape = (result: GateResult, gate: string): void => {
   expect(result.gate).toBe(gate)
   expect(typeof result.category).toBe('string')
@@ -75,7 +103,12 @@ describe('runReactPatternsGate', () => {
 
   it('OBJECTIVE scope: ignores examples/, *-compat src, and test fixtures', async () => {
     const cwd = makeTmpDir()
-    // All three would fire react-patterns if scanned — none must.
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/tools/react-compat')
+    writePkg(cwd, 'packages/core/app')
+    // All three would fire react-patterns if scanned — none must:
+    // examples/ is not a workspace member (and excluded via config),
+    // *-compat is filtered, __tests__ is a fixture dir.
     writeFile(
       cwd,
       'examples/demo/src/Demo.tsx',
@@ -164,6 +197,8 @@ describe('runPyreonPatternsGate', () => {
 
   it('OBJECTIVE scope: ignores examples/ + test fixtures (pyreon-patterns runs on compat — real Pyreon code)', async () => {
     const cwd = makeTmpDir()
+    writeWorkspaceRoot(cwd)
+    writePkg(cwd, 'packages/core/app')
     writeFile(
       cwd,
       'examples/demo/src/Demo.tsx',
@@ -363,6 +398,7 @@ describe('runLintGate', () => {
 
   it('OBJECTIVE scope: lint ignores examples/ even when it would flag them', async () => {
     const cwd = makeTmpDir()
+    writeWorkspaceRoot(cwd)
     writeFile(
       cwd,
       'examples/demo/src/Demo.tsx',

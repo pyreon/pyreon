@@ -23,15 +23,22 @@ import {
 } from '@pyreon/compiler'
 
 import type { Finding, GateResult } from '../types'
+import { emptyScanResult } from '../utils/empty-scan'
+import { collectAuditableSourceFiles, isCompatPackageFile } from '../utils/walk'
 import {
-  collectFirstPartySourceFiles,
-  isCompatPackageFile,
-} from '../utils/walk'
+  resolveWorkspaceRoots,
+  type WorkspaceRoots,
+} from '../utils/workspace-roots'
 
 export interface ReactPatternsGateOptions {
   cwd: string
   /** Apply `migrateReactCode` to each file with React patterns (writes to disk). */
   fix?: boolean | undefined
+  /**
+   * Pre-resolved workspace roots (the orchestrator resolves once and
+   * shares). Absent → resolved from `cwd`.
+   */
+  workspace?: WorkspaceRoots | undefined
 }
 
 export const runReactPatternsGate = async (
@@ -39,12 +46,19 @@ export const runReactPatternsGate = async (
 ): Promise<GateResult> => {
   const start = Date.now()
   const findings: Finding[] = []
-  // First-party source only, and NOT the `*-compat` packages: a React/
-  // Vue/etc. compatibility shim exposing `useState` / `className` is its
-  // literal purpose — flagging it is a definitional false positive.
-  const files = collectFirstPartySourceFiles(opts.cwd).filter(
-    (f) => !isCompatPackageFile(f),
+  // Workspace-declared package roots only, and NOT the `*-compat`
+  // packages: a React/Vue/etc. compatibility shim exposing `useState` /
+  // `className` is its literal purpose — flagging it is a definitional
+  // false positive. The compat predicate runs on the repo-root-relative
+  // path so a `-compat` parent dir OUTSIDE the repo can't false-match.
+  const ws = opts.workspace ?? resolveWorkspaceRoots(opts.cwd)
+  const files = collectAuditableSourceFiles(ws).filter(
+    (f) => !isCompatPackageFile(path.relative(ws.repoRoot, f)),
   )
+  // A pattern gate that matched no files must not read as a clean pass.
+  if (files.length === 0) {
+    return emptyScanResult('react-patterns', 'correctness', ws, start)
+  }
 
   for (const file of files) {
     let code: string
@@ -55,7 +69,7 @@ export const runReactPatternsGate = async (
     }
     if (!hasReactPatterns(code)) continue
 
-    const relPath = path.relative(opts.cwd, file)
+    const relPath = path.relative(ws.repoRoot, file)
 
     if (opts.fix) {
       const migrated = migrateReactCode(code, relPath)
