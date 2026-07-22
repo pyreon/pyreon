@@ -1,6 +1,6 @@
 import { sanitizeHref } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * WhatsApp renderer — outputs formatted text using WhatsApp's markup.
@@ -42,8 +42,12 @@ function renderNode(node: DocNode): string {
     }
 
     case 'image':
-      // WhatsApp doesn't support inline images in text
-      return ''
+      // WhatsApp doesn't support inline images in text — emit the
+      // alt/caption as placeholder text instead of silently dropping
+      // (images are sent separately as media messages). NOTE: WhatsApp
+      // markup has NO escape syntax, so a literal `*`/`_`/`~` in user
+      // text toggles formatting — a documented platform limitation.
+      return `_${imagePlaceholderText(p)}_\n\n`
 
     case 'table': {
       const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
@@ -91,7 +95,13 @@ function renderNode(node: DocNode): string {
       return `> ${text}\n\n`
     }
 
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item':
+      return `${getTextContent(node.children)}\n\n`
+
     default:
+      warnUnknownNodeType('whatsapp', node.type)
       return ''
   }
 }

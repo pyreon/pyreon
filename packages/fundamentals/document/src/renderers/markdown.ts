@@ -42,6 +42,39 @@ function yamlString(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
+/**
+ * Render a list with correct GFM nesting. A nested `<List>` inside a
+ * `<ListItem>` must be indented to the CONTENT COLUMN of its parent item
+ * (CommonMark/GFM: `- ` → 2 spaces, `1. ` → 3 spaces) — the previous
+ * inline rendering emitted nested items as top-level `- ` lines mid-list,
+ * producing malformed GFM (the nested list broke the parent list apart).
+ * Each item's nested lists are split out from its inline content and
+ * rendered on their own indented lines; the indent ACCUMULATES per level
+ * from the parent marker's width, so deep nesting stays content-aligned.
+ */
+function renderList(node: DocNode, indent: string): string {
+  const ordered = node.props.ordered as boolean | undefined
+  return node.children
+    .filter((c): c is DocNode => typeof c !== 'string')
+    .map((item, i) => {
+      const prefix = ordered ? `${i + 1}.` : '-'
+      const nestedLists = item.children.filter(
+        (c): c is DocNode => typeof c !== 'string' && c.type === 'list',
+      )
+      const inlineChildren = item.children.filter(
+        (c) => typeof c === 'string' || c.type !== 'list',
+      )
+      let line = `${indent}${prefix} ${renderInline(inlineChildren)}`
+      // Content column of THIS item = indent + marker + one space
+      const childIndent = indent + ' '.repeat(prefix.length + 1)
+      for (const sub of nestedLists) {
+        line += `\n${renderList(sub, childIndent)}`
+      }
+      return line
+    })
+    .join('\n')
+}
+
 function renderNode(node: DocNode): string {
   const p = node.props
 
@@ -133,16 +166,8 @@ function renderNode(node: DocNode): string {
       return md
     }
 
-    case 'list': {
-      const ordered = p.ordered as boolean | undefined
-      return `${node.children
-        .filter((c): c is DocNode => typeof c !== 'string')
-        .map((item, i) => {
-          const prefix = ordered ? `${i + 1}.` : '-'
-          return `${prefix} ${renderInline(item.children)}`
-        })
-        .join('\n')}\n\n`
-    }
+    case 'list':
+      return `${renderList(node, '')}\n\n`
 
     case 'list-item':
       return renderInline(node.children)

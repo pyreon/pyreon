@@ -1,11 +1,19 @@
 import { escapeXml as escapeHtml, sanitizeColor, sanitizeHref, sanitizeImageSrc, sanitizeStyle } from '../sanitize'
-import type { DocChild, DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
+import type {
+  DocChild,
+  DocNode,
+  DocumentRenderer,
+  RenderOptions,
+  ResolvedStyles,
+  TableColumn,
+} from '../types'
 
 function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
 
-function styleStr(styles: Record<string, string | number | undefined>): string {
+/** Raw `prop:value` declarations (no attribute wrapper) — see styleStr. */
+function styleDecls(styles: Record<string, string | number | undefined>): string {
   const parts: string[] = []
   for (const [k, v] of Object.entries(styles)) {
     if (v != null && v !== '') {
@@ -21,7 +29,52 @@ function styleStr(styles: Record<string, string | number | undefined>): string {
       if (safeV !== '') parts.push(`${prop}:${safeV}`)
     }
   }
-  return parts.length > 0 ? ` style="${parts.join(';')}"` : ''
+  return parts.join(';')
+}
+
+function styleStr(styles: Record<string, string | number | undefined>): string {
+  const decls = styleDecls(styles)
+  return decls.length > 0 ? ` style="${decls}"` : ''
+}
+
+/**
+ * Map a node's resolved styles (`node.styles` from @pyreon/connector-document's
+ * rocketstyle resolution, overridden by `options.styles[node.type]` — the
+ * per-node-type override map) to CSS declarations for the emitted element.
+ * Only the CSS-mappable ResolvedStyles subset is emitted; unitless values
+ * (fontWeight, lineHeight, opacity) are stringified so the number→px rule
+ * in styleDecls doesn't corrupt them. Colors run through sanitizeColor,
+ * strings through the styleDecls sanitizer.
+ */
+function resolvedCssRecord(
+  node: DocNode,
+  opts?: RenderOptions,
+): Record<string, string | number | undefined> {
+  const override = opts?.styles?.[node.type]
+  if (node.styles == null && override == null) return {}
+  const src: ResolvedStyles = { ...node.styles, ...override }
+  const rec: Record<string, string | number | undefined> = {}
+  if (src.color != null) rec.color = sanitizeColor(src.color)
+  if (src.backgroundColor != null) rec.backgroundColor = sanitizeColor(src.backgroundColor)
+  if (src.fontSize != null) rec.fontSize = src.fontSize
+  if (src.fontFamily != null) rec.fontFamily = src.fontFamily
+  if (src.fontWeight != null) rec.fontWeight = String(src.fontWeight)
+  if (src.fontStyle != null) rec.fontStyle = src.fontStyle
+  if (src.textDecoration != null) rec.textDecoration = src.textDecoration
+  if (src.textAlign != null) rec.textAlign = src.textAlign
+  if (src.lineHeight != null) rec.lineHeight = String(src.lineHeight)
+  if (src.letterSpacing != null) rec.letterSpacing = src.letterSpacing
+  if (src.padding != null) rec.padding = padStr(src.padding)
+  if (src.margin != null) rec.margin = padStr(src.margin)
+  if (src.borderRadius != null) rec.borderRadius = src.borderRadius
+  if (src.borderWidth != null) rec.borderWidth = src.borderWidth
+  if (src.borderColor != null) rec.borderColor = sanitizeColor(src.borderColor)
+  if (src.borderStyle != null) rec.borderStyle = src.borderStyle
+  if (src.width != null) rec.width = src.width
+  if (src.height != null) rec.height = src.height
+  if (src.maxWidth != null) rec.maxWidth = src.maxWidth
+  if (src.opacity != null) rec.opacity = String(src.opacity)
+  return rec
 }
 
 function padStr(
@@ -33,17 +86,21 @@ function padStr(
   return `${pad[0]}px ${pad[1]}px ${pad[2]}px ${pad[3]}px`
 }
 
-function renderChild(child: DocChild): string {
+function renderChild(child: DocChild, opts?: RenderOptions): string {
   if (typeof child === 'string') return escapeHtml(child)
-  return renderNode(child)
+  return renderNode(child, opts)
 }
 
-function renderChildren(children: DocChild[]): string {
-  return children.map(renderChild).join('')
+function renderChildren(children: DocChild[], opts?: RenderOptions): string {
+  return children.map((c) => renderChild(c, opts)).join('')
 }
 
-function renderNode(node: DocNode): string {
+function renderNode(node: DocNode, opts?: RenderOptions): string {
   const p = node.props
+  // Resolved styles (connector pipeline + options.styles overrides) —
+  // merged LAST into each emitted element's style so they win over
+  // prop-derived styling.
+  const rs = resolvedCssRecord(node, opts)
 
   switch (node.type) {
     case 'document': {
@@ -67,12 +124,12 @@ function renderNode(node: DocNode): string {
       const description = p.subject
         ? `<meta name="description" content="${escapeHtml(p.subject as string)}">`
         : ''
-      return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8">${title}${author}${description}<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${renderChildren(node.children)}</body></html>`
+      return `<!DOCTYPE html><html lang="${lang}"><head><meta charset="utf-8">${title}${author}${description}<meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${renderChildren(node.children, opts)}</body></html>`
     }
 
     case 'page': {
       const margin = padStr(p.margin as PageMargin)
-      return `<div${styleStr({ maxWidth: '800px', margin: margin ?? '0 auto', padding: margin ?? '40px' })}>${renderChildren(node.children)}</div>`
+      return `<div${styleStr({ maxWidth: '800px', margin: margin ?? '0 auto', padding: margin ?? '40px', ...rs })}>${renderChildren(node.children, opts)}</div>`
     }
 
     case 'section': {
@@ -84,19 +141,20 @@ function renderNode(node: DocNode): string {
         padding: padStr(p.padding as PageMargin),
         background: sanitizeColor(p.background as string | undefined),
         borderRadius: p.borderRadius as number | undefined,
-      })}>${renderChildren(node.children)}</div>`
+        ...rs,
+      })}>${renderChildren(node.children, opts)}</div>`
     }
 
     case 'row':
-      return `<div${styleStr({ display: 'flex', gap: p.gap as number | undefined, alignItems: p.align as string | undefined })}>${renderChildren(node.children)}</div>`
+      return `<div${styleStr({ display: 'flex', gap: p.gap as number | undefined, alignItems: p.align as string | undefined, ...rs })}>${renderChildren(node.children, opts)}</div>`
 
     case 'column':
-      return `<div${styleStr({ flex: p.width ? undefined : '1', width: p.width as string | undefined, textAlign: p.align as string | undefined })}>${renderChildren(node.children)}</div>`
+      return `<div${styleStr({ flex: p.width ? undefined : '1', width: p.width as string | undefined, textAlign: p.align as string | undefined, ...rs })}>${renderChildren(node.children, opts)}</div>`
 
     case 'heading': {
       const level = (p.level as number) ?? 1
       const tag = `h${Math.min(Math.max(level, 1), 6)}`
-      return `<${tag}${styleStr({ color: sanitizeColor(p.color as string | undefined), textAlign: p.align as string | undefined })}>${renderChildren(node.children)}</${tag}>`
+      return `<${tag}${styleStr({ color: sanitizeColor(p.color as string | undefined), textAlign: p.align as string | undefined, ...rs })}>${renderChildren(node.children, opts)}</${tag}>`
     }
 
     case 'text': {
@@ -107,12 +165,13 @@ function renderNode(node: DocNode): string {
         fontStyle: p.italic ? 'italic' : undefined,
         textDecoration: p.underline ? 'underline' : p.strikethrough ? 'line-through' : undefined,
         textAlign: p.align as string | undefined,
-        lineHeight: p.lineHeight as number | undefined,
-      })}>${renderChildren(node.children)}</p>`
+        lineHeight: p.lineHeight != null ? String(p.lineHeight as number) : undefined,
+        ...rs,
+      })}>${renderChildren(node.children, opts)}</p>`
     }
 
     case 'link':
-      return `<a href="${escapeHtml(sanitizeHref(p.href as string))}"${styleStr({ color: sanitizeColor(p.color as string | undefined) })}>${renderChildren(node.children)}</a>`
+      return `<a href="${escapeHtml(sanitizeHref(p.href as string))}"${styleStr({ color: sanitizeColor(p.color as string | undefined), ...rs })}>${renderChildren(node.children, opts)}</a>`
 
     case 'image': {
       const alignStyle =
@@ -178,19 +237,22 @@ function renderNode(node: DocNode): string {
 
     case 'list': {
       const tag = p.ordered ? 'ol' : 'ul'
-      return `<${tag}>${renderChildren(node.children)}</${tag}>`
+      return `<${tag}${styleStr(rs)}>${renderChildren(node.children, opts)}</${tag}>`
     }
 
     case 'list-item':
-      return `<li>${renderChildren(node.children)}</li>`
+      return `<li${styleStr(rs)}>${renderChildren(node.children, opts)}</li>`
 
-    case 'code':
-      return `<pre style="background:#f5f5f5;padding:12px;border-radius:4px;overflow-x:auto"><code>${escapeHtml(renderChildren(node.children))}</code></pre>`
+    case 'code': {
+      const extra = styleDecls(rs)
+      return `<pre style="background:#f5f5f5;padding:12px;border-radius:4px;overflow-x:auto${extra ? `;${extra}` : ''}"><code>${escapeHtml(renderChildren(node.children, opts))}</code></pre>`
+    }
 
     case 'divider': {
       const color = sanitizeColor((p.color as string) ?? '#ddd')
       const thickness = (p.thickness as number) ?? 1
-      return `<hr style="border:none;border-top:${thickness}px solid ${color};margin:16px 0" />`
+      const extra = styleDecls(rs)
+      return `<hr style="border:none;border-top:${thickness}px solid ${color};margin:16px 0${extra ? `;${extra}` : ''}" />`
     }
 
     case 'page-break':
@@ -205,16 +267,18 @@ function renderNode(node: DocNode): string {
       const radius = (p.borderRadius as number) ?? 4
       const pad = padStr((p.padding ?? [12, 24]) as [number, number])
       const align = (p.align as string) ?? 'left'
-      return `<div style="text-align:${align}"><a href="${escapeHtml(sanitizeHref(p.href as string))}" style="display:inline-block;background:${bg};color:${color};padding:${pad};border-radius:${radius}px;text-decoration:none;font-weight:bold">${renderChildren(node.children)}</a></div>`
+      const extra = styleDecls(rs)
+      return `<div style="text-align:${align}"><a href="${escapeHtml(sanitizeHref(p.href as string))}" style="display:inline-block;background:${bg};color:${color};padding:${pad};border-radius:${radius}px;text-decoration:none;font-weight:bold${extra ? `;${extra}` : ''}">${renderChildren(node.children, opts)}</a></div>`
     }
 
     case 'quote': {
       const borderColor = sanitizeColor((p.borderColor as string) ?? '#ddd')
-      return `<blockquote style="margin:0;padding:12px 20px;border-left:4px solid ${borderColor};color:#555">${renderChildren(node.children)}</blockquote>`
+      const extra = styleDecls(rs)
+      return `<blockquote style="margin:0;padding:12px 20px;border-left:4px solid ${borderColor};color:#555${extra ? `;${extra}` : ''}">${renderChildren(node.children, opts)}</blockquote>`
     }
 
     default:
-      return renderChildren(node.children)
+      return renderChildren(node.children, opts)
   }
 }
 
@@ -222,7 +286,7 @@ type PageMargin = number | [number, number] | [number, number, number, number]
 
 export const htmlRenderer: DocumentRenderer = {
   async render(node: DocNode, options?: RenderOptions): Promise<string> {
-    let html = renderNode(node)
+    let html = renderNode(node, options)
     if (options?.direction === 'rtl') {
       html = html.replace('<body>', '<body dir="rtl" style="direction:rtl">')
     }

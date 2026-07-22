@@ -1,6 +1,6 @@
 import { escapeXml, sanitizeColor, sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, warnUnknownNodeType } from '../nodes'
 
 /**
  * SVG renderer — generates a standalone SVG document from the node tree.
@@ -207,6 +207,20 @@ function renderNode(node: DocNode, ctx: RenderContext): string {
       ctx.y += 28
       break
     }
+
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item': {
+      const text = escapeXml(getTextContent(node.children))
+      ctx.y += 18
+      svg += `<text x="${ctx.padding}" y="${ctx.y}" font-size="13" fill="#333" font-family="system-ui, sans-serif">${text}</text>`
+      ctx.y += 10
+      break
+    }
+
+    default:
+      warnUnknownNodeType('svg', node.type)
+      break
   }
 
   return svg

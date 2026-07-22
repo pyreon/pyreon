@@ -1,6 +1,6 @@
 import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Discord renderer — outputs embed JSON for Discord webhooks/bots.
@@ -38,7 +38,7 @@ function extractMeta(node: DocNode): { title?: string; imageUrl?: string } {
 
 function nodeToMarkdown(
   node: DocNode,
-  meta: { title?: string },
+  meta: { title?: string; imageUrl?: string },
 ): { content: string; fields: DiscordField[] } {
   const p = node.props
   let content = ''
@@ -86,9 +86,18 @@ function nodeToMarkdown(
       break
     }
 
-    case 'image':
-      // Image handled via extractMeta — embedded as embed.image
+    case 'image': {
+      const src = sanitizeImageSrc(p.src as string)
+      // The first http image is embedded as embed.image via extractMeta.
+      // Every OTHER image (a data: URI — e.g. a chart snapshot from
+      // createDocument().chart() — or a second http image) cannot be
+      // embedded; emit its alt/caption as placeholder text instead of
+      // silently dropping it.
+      if (src !== meta.imageUrl) {
+        content += `_${imagePlaceholderText(p)}_\n\n`
+      }
       break
+    }
 
     case 'table': {
       const columns = ((p.columns ?? []) as (string | TableColumn)[]).map(resolveColumn)
@@ -152,6 +161,21 @@ function nodeToMarkdown(
       content += `> ${text}\n\n`
       break
     }
+
+    case 'spacer':
+      // No equivalent in a Discord embed — deliberate skip
+      // (matches slack/google-chat's explicit documented skip).
+      break
+
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item':
+      content += `${getTextContent(node.children)}\n\n`
+      break
+
+    default:
+      warnUnknownNodeType('discord', node.type)
+      break
   }
 
   return { content, fields }

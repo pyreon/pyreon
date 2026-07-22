@@ -1,6 +1,6 @@
 import { sanitizeHref, sanitizeImageSrc, sanitizeXmlColor } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * PPTX renderer — lazy-loads pptxgenjs on first use.
@@ -25,8 +25,14 @@ function resolveColumn(col: string | TableColumn): TableColumn {
   return typeof col === 'string' ? { header: col } : col
 }
 
-/** Vertical position tracker for placing elements on a slide. */
+/**
+ * Vertical position tracker for placing elements on a slide.
+ * Carries the presentation itself so a `page-break` encountered at ANY
+ * depth (top-level or nested inside a section/row/column) can start a
+ * new slide mid-walk — the y-cursor resets to the top margin.
+ */
 interface SlideContext {
+  pptx: PptxGen
   slide: PptxSlide
   y: number
 }
@@ -118,8 +124,21 @@ function processNode(node: DocNode, ctx: SlideContext): void {
           h,
         })
         ctx.y += h + 0.2
+      } else {
+        // HTTP URLs and local paths cannot be fetched at render time —
+        // emit the alt/caption as placeholder text instead of silently
+        // dropping the image (matches the pdf/docx `[Image: …]` fallback).
+        ctx.slide.addText(imagePlaceholderText(p), {
+          x: CONTENT_MARGIN,
+          y: ctx.y,
+          w: CONTENT_WIDTH,
+          h: 0.4,
+          fontSize: 12,
+          italic: true,
+          color: '999999',
+        })
+        ctx.y += 0.5
       }
-      // HTTP URLs and local paths are not supported — skip silently
       break
     }
 
@@ -269,6 +288,29 @@ function processNode(node: DocNode, ctx: SlideContext): void {
       break
     }
 
+    case 'page-break': {
+      // PPTX is a paginated (per-slide) format — a PageBreak starts a NEW
+      // slide, exactly like the DOCX renderer's hard page break. Works at
+      // any nesting depth because the walk mutates the shared context.
+      ctx.slide = ctx.pptx.addSlide()
+      ctx.y = CONTENT_MARGIN
+      break
+    }
+
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item': {
+      ctx.slide.addText(getTextContent(node.children), {
+        x: CONTENT_MARGIN,
+        y: ctx.y,
+        w: CONTENT_WIDTH,
+        h: 0.4,
+        fontSize: 13,
+      })
+      ctx.y += 0.5
+      break
+    }
+
     // Container types — recurse into children
     case 'section':
     case 'row':
@@ -281,13 +323,14 @@ function processNode(node: DocNode, ctx: SlideContext): void {
       break
 
     default:
+      warnUnknownNodeType('pptx', node.type)
       break
   }
 }
 
 function processSlide(pageNode: DocNode, pptx: PptxGen): void {
   const slide = pptx.addSlide()
-  const ctx: SlideContext = { slide, y: CONTENT_MARGIN }
+  const ctx: SlideContext = { pptx, slide, y: CONTENT_MARGIN }
 
   for (const child of pageNode.children) {
     if (typeof child !== 'string') {

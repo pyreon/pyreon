@@ -1,6 +1,6 @@
 import { sanitizeHref, sanitizeImageSrc } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Microsoft Teams renderer — outputs Adaptive Cards JSON.
@@ -14,6 +14,17 @@ function resolveColumn(col: string | TableColumn): TableColumn {
 interface AdaptiveElement {
   type: string
   [key: string]: unknown
+}
+
+/**
+ * Adaptive Card TextBlocks parse a markdown subset — a literal `*` / `_` /
+ * `~` in user text toggles bold/italic/strikethrough and corrupts the
+ * rendered card. Markdown supports backslash escapes, so escape the
+ * toggles (backslash itself first, so an author-supplied `\*` survives).
+ * Code blocks are NOT escaped — fenced content renders verbatim.
+ */
+function mdEscape(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/([*_~])/g, '\\$1')
 }
 
 function nodeToElements(node: DocNode): AdaptiveElement[] {
@@ -45,7 +56,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
       }
       elements.push({
         type: 'TextBlock',
-        text: getTextContent(node.children),
+        text: mdEscape(getTextContent(node.children)),
         size: sizeMap[level] ?? 'large',
         weight: 'bolder',
         wrap: true,
@@ -54,7 +65,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
     }
 
     case 'text': {
-      let text = getTextContent(node.children)
+      let text = mdEscape(getTextContent(node.children))
       if (p.bold) text = `**${text}**`
       if (p.italic) text = `_${text}_`
       if (p.strikethrough) text = `~~${text}~~`
@@ -70,7 +81,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
 
     case 'link': {
       const href = sanitizeHref(p.href as string)
-      const text = getTextContent(node.children)
+      const text = mdEscape(getTextContent(node.children))
       elements.push({
         type: 'TextBlock',
         text: `[${text}](${href})`,
@@ -88,6 +99,16 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
           altText: (p.alt as string) ?? 'Image',
           size: 'large',
         })
+      } else {
+        // data: URIs / relative paths can't be embedded in an Adaptive
+        // Card — emit the alt/caption as placeholder text instead of
+        // silently dropping (e.g. a chart snapshot data URI).
+        elements.push({
+          type: 'TextBlock',
+          text: `_${mdEscape(imagePlaceholderText(p))}_`,
+          isSubtle: true,
+          wrap: true,
+        })
       }
       break
     }
@@ -103,13 +124,13 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
         items: [
           {
             type: 'TextBlock',
-            text: `**${col.header}**`,
+            text: `**${mdEscape(col.header)}**`,
             weight: 'bolder',
             wrap: true,
           },
           ...rows.map((row, i) => ({
             type: 'TextBlock',
-            text: String(row[columns.indexOf(col)] ?? ''),
+            text: mdEscape(String(row[columns.indexOf(col)] ?? '')),
             wrap: true,
             separator: i === 0,
           })),
@@ -184,7 +205,7 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
     }
 
     case 'quote': {
-      const text = getTextContent(node.children)
+      const text = mdEscape(getTextContent(node.children))
       elements.push({
         type: 'Container',
         style: 'emphasis',
@@ -199,6 +220,20 @@ function nodeToElements(node: DocNode): AdaptiveElement[] {
       })
       break
     }
+
+    // An orphan list-item (outside a <List>) degrades to its text content
+    // instead of silently dropping.
+    case 'list-item':
+      elements.push({
+        type: 'TextBlock',
+        text: mdEscape(getTextContent(node.children)),
+        wrap: true,
+      })
+      break
+
+    default:
+      warnUnknownNodeType('teams', node.type)
+      break
   }
 
   return elements

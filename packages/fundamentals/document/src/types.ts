@@ -25,7 +25,12 @@ export interface DocNode {
   type: NodeType
   props: Record<string, unknown>
   children: DocChild[]
-  /** Resolved styles from ui-system connector (optional). */
+  /**
+   * Resolved styles from the ui-system connector (optional) — emitted as
+   * inline CSS by the `html` renderer (overridable per node type via
+   * `RenderOptions.styles`). pdf/docx do not consume these yet
+   * (browser-preview-only).
+   */
   styles?: ResolvedStyles
 }
 
@@ -221,13 +226,29 @@ export type OutputFormat =
   | 'jsonl'
 
 export interface RenderOptions {
-  /** Custom styles to apply (overrides component styles). */
+  /**
+   * Per-node-type style overrides, keyed by `NodeType` (e.g.
+   * `{ heading: { color: '#1F2937', fontSize: 24 } }`). Merged over each
+   * node's resolved `DocNode.styles` (connector pipeline) and emitted as
+   * inline CSS. Honored by the `html` renderer; pdf/docx styling comes
+   * from the primitives' own props (browser-preview-only for now).
+   */
   styles?: Record<string, ResolvedStyles>
   /** Base URL for relative image sources. */
   baseUrl?: string
-  /** Text direction — 'ltr' (default) or 'rtl'. */
+  /**
+   * Text direction — 'ltr' (default) or 'rtl'. Honored by `html` + `svg`
+   * (document-level), `email` (body `dir` attribute — the reliable
+   * mechanism across email clients), and `docx` (per-paragraph
+   * `bidirectional` → `<w:bidi/>`).
+   */
   direction?: 'ltr' | 'rtl'
-  /** Custom font configuration for PDF. */
+  /**
+   * Custom font configuration for PDF — pdfmake's fonts map:
+   * `{ Family: { normal, bold, italics, bolditalics } }` where each face
+   * is a pdfmake-VFS filename or a URL. Merged over the default Roboto
+   * entry, so registering a custom family keeps the default fonts working.
+   */
   fonts?: Record<string, { normal?: string; bold?: string; italics?: string; bolditalics?: string }>
 }
 

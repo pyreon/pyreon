@@ -7,7 +7,7 @@ import type {
   RenderOptions,
   TableColumn,
 } from '../types'
-import { getTextContent } from '../nodes'
+import { getTextContent, warnUnknownNodeType } from '../nodes'
 
 /**
  * DOCX renderer — lazy-loads the 'docx' npm package on first use.
@@ -22,6 +22,23 @@ function parseDataUrl(src: string): { data: string; mime: string } | null {
   const match = src.match(/^data:(image\/[^;]+);base64,(.+)$/)
   if (!match) return null
   return { mime: match[1]!, data: match[2]! }
+}
+
+/**
+ * Portable base64 → Uint8Array decode. `Buffer` is Node-only — a bare
+ * `Buffer.from(...)` throws `Buffer is not defined` in every browser
+ * bundle (the DOCX renderer is documented to run client-side for
+ * `download()`). Prefer the web-standard `atob` (browsers, Node ≥ 16,
+ * Bun, workerd) and fall back to `Buffer` for exotic Node builds.
+ */
+function base64ToUint8Array(b64: string): Uint8Array {
+  if (typeof atob === 'function') {
+    const bin = atob(b64)
+    const out = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+    return out
+  }
+  return new Uint8Array(Buffer.from(b64, 'base64'))
 }
 
 /** Convert page size name to DOCX page dimensions in twips (1 inch = 1440 twips). */
@@ -87,6 +104,13 @@ interface DocxCtx {
   alignmentMap: (align?: string) => unknown
   processListItems: (n: DocNode, listRef: string, level: number, ordered: boolean) => void
   nextListId: () => string
+  /** RTL rendering (options.direction === 'rtl') — adds bidirectional to every text paragraph. */
+  rtl: boolean
+}
+
+/** Paragraph-level RTL flag — `bidirectional` emits `<w:bidi/>` in OOXML. */
+function rtlProps(ctx: DocxCtx): { bidirectional: true } | Record<never, never> {
+  return ctx.rtl ? { bidirectional: true } : {}
 }
 
 function renderHeading(ctx: DocxCtx, n: DocNode): void {
@@ -112,6 +136,7 @@ function renderHeading(ctx: DocxCtx, n: DocNode): void {
         }),
       ],
       alignment: alignmentMap(p.align as string) as any,
+      ...rtlProps(ctx),
     }),
   )
 }
@@ -134,6 +159,7 @@ function renderTextNode(ctx: DocxCtx, n: DocNode): void {
       ],
       alignment: alignmentMap(p.align as string) as any,
       spacing: { after: 120 },
+      ...rtlProps(ctx),
     }),
   )
 }
@@ -172,7 +198,7 @@ function renderImage(ctx: DocxCtx, n: DocNode): void {
       new docx.Paragraph({
         children: [
           new docx.ImageRun({
-            data: Buffer.from(parsed.data, 'base64'),
+            data: base64ToUint8Array(parsed.data),
             transformation: { width: imgWidth, height: imgHeight },
             type: parsed.mime === 'image/png' ? 'png' : 'jpg',
           }),
@@ -353,13 +379,14 @@ function renderButtonOrQuote(ctx: DocxCtx, n: DocNode): void {
           },
         },
         spacing: { after: 120 },
+        ...rtlProps(ctx),
       }),
     )
   }
 }
 
 export const docxRenderer: DocumentRenderer = {
-  async render(node: DocNode, _options?: RenderOptions): Promise<Uint8Array> {
+  async render(node: DocNode, options?: RenderOptions): Promise<Uint8Array> {
     let docx: typeof import('docx')
     try {
       docx = await import('docx')
@@ -370,6 +397,7 @@ export const docxRenderer: DocumentRenderer = {
     }
     const children: unknown[] = []
     let listCounter = 0
+    const rtl = options?.direction === 'rtl'
 
     function alignmentMap(align?: string): unknown {
       if (!align) return undefined
@@ -395,6 +423,7 @@ export const docxRenderer: DocumentRenderer = {
           new docx.Paragraph({
             children: [new docx.TextRun({ text: getTextContent(textChildren) })],
             ...(ordered ? { numbering: { reference: listRef, level } } : { bullet: { level } }),
+            ...(rtl ? { bidirectional: true } : {}),
           }),
         )
         if (nestedList) {
@@ -410,6 +439,7 @@ export const docxRenderer: DocumentRenderer = {
       alignmentMap,
       processListItems,
       nextListId: () => `list-${listCounter++}`,
+      rtl,
     }
 
     function processNode(n: DocNode): void {
@@ -454,6 +484,7 @@ export const docxRenderer: DocumentRenderer = {
               ],
               shading: { fill: 'F5F5F5', type: docx.ShadingType.SOLID },
               spacing: { after: 120 },
+              ...rtlProps(ctx),
             }),
           )
           break
@@ -488,6 +519,20 @@ export const docxRenderer: DocumentRenderer = {
           // page break, not be silently dropped. `docx.PageBreak` emits
           // `<w:br w:type="page"/>` inside its paragraph.
           children.push(new docx.Paragraph({ children: [new docx.PageBreak()] }))
+          break
+        // An orphan list-item (outside a <List>) degrades to its text
+        // content instead of silently dropping.
+        case 'list-item':
+          children.push(
+            new docx.Paragraph({
+              children: [new docx.TextRun({ text: getTextContent(n.children) })],
+              spacing: { after: 120 },
+              ...rtlProps(ctx),
+            }),
+          )
+          break
+        default:
+          warnUnknownNodeType('docx', n.type)
           break
       }
     }

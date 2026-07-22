@@ -47,15 +47,60 @@ function normalizeChildren(children: unknown): DocChild[] {
 
 /**
  * Recursively flatten a node tree to its concatenated text content.
- * Format-agnostic — was copy-pasted byte-identically into 13 of the 18
- * renderers (svg/pdf/pptx/xlsx/docx + every chat target); consolidated
- * here as the single source of truth. The text/markdown/html renderers
- * deliberately do NOT use this (they walk the tree structurally).
+ * Format-agnostic — was copy-pasted byte-identically into most of the 19
+ * renderer modules (20 formats — svg/pdf/pptx/xlsx/docx + every chat
+ * target); consolidated here as the single source of truth. The
+ * text/markdown/html/email renderers deliberately do NOT use this (they
+ * walk the tree structurally).
  */
 export function getTextContent(children: DocChild[]): string {
   return children
     .map((c) => (typeof c === 'string' ? c : getTextContent((c as DocNode).children)))
     .join('')
+}
+
+/**
+ * Fallback text for an image a target format cannot embed (chat platforms
+ * reject `data:` URIs; Telegram/WhatsApp carry no inline images at all;
+ * PPTX cannot fetch http URLs at render time). Shared so every renderer
+ * degrades identically instead of silently dropping the image — the
+ * pdf/docx renderers established the `[Image: …]` placeholder convention.
+ * NOTE: never embed the raw `src` here — a `data:` URI is megabytes long.
+ */
+export function imagePlaceholderText(props: Record<string, unknown>): string {
+  const alt = (props.alt as string | undefined) || 'Image'
+  const caption = props.caption ? ` — ${props.caption as string}` : ''
+  return `[Image: ${alt}${caption}]`
+}
+
+// Dedupe unknown-node-type warnings per (format, type) pair per process —
+// bounded by the number of DISTINCT unknown types a process encounters
+// (tiny in practice; a renderer loop over one bad type warns once, not N
+// times). Same per-process-Set dedupe shape as zero's warn-missing-env.
+const _warnedUnknownTypes = new Set<string>()
+
+/**
+ * Dev-warn for a node type a renderer's switch does not recognize.
+ * Called from every renderer's `default:` arm that would otherwise DROP
+ * the node silently — so a future NodeType added to the union without a
+ * per-renderer case surfaces loudly in dev instead of vanishing from the
+ * output (the "union member with no registered runtime handler" class).
+ * Warns once per (format, type) pair; no-op in production.
+ */
+export function warnUnknownNodeType(format: string, type: string): void {
+  if (process.env.NODE_ENV !== 'production') {
+    const key = `${format}:${type}`
+    if (_warnedUnknownTypes.has(key)) return
+    _warnedUnknownTypes.add(key)
+    console.warn(
+      `[@pyreon/document] The '${format}' renderer has no handler for node type '${type}' — the node was skipped. If this is a new NodeType, add a case for it (or an explicit documented skip) in src/renderers/${format === 'md' ? 'markdown' : format}.ts.`,
+    )
+  }
+}
+
+/** @internal For testing — reset the unknown-node-type warning dedupe. */
+export function _resetUnknownTypeWarnings(): void {
+  _warnedUnknownTypes.clear()
 }
 
 /** Type guard — checks if a value is a DocNode. */

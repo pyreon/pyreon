@@ -205,7 +205,16 @@ function renderNode(node: DocNode): string {
 }
 
 export const emailRenderer: DocumentRenderer = {
-  async render(node: DocNode, _options?: RenderOptions): Promise<string> {
-    return renderNode(node)
+  async render(node: DocNode, options?: RenderOptions): Promise<string> {
+    let html = renderNode(node)
+    if (options?.direction === 'rtl') {
+      // RTL matters most in email (Arabic/Hebrew transactional mail): the
+      // `dir` ATTRIBUTE is the reliable mechanism across email clients
+      // (Outlook's Word engine ignores the CSS `direction` property in
+      // places) — belt-and-braces with the inline style, mirroring the
+      // html renderer's body-level injection.
+      html = html.replace('<body style="', '<body dir="rtl" style="direction:rtl;')
+    }
+    return html
   },
 }
