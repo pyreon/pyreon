@@ -421,6 +421,12 @@ object Modifier {
   @Suppress("UNUSED_PARAMETER")
   fun width(width: Dp): Modifier = this
   @Suppress("UNUSED_PARAMETER")
+  fun widthIn(min: Dp = 0.dp, max: Dp = 0.dp): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun heightIn(min: Dp = 0.dp, max: Dp = 0.dp): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
+  fun aspectRatio(ratio: Float): Modifier = this
+  @Suppress("UNUSED_PARAMETER")
   fun height(height: Dp): Modifier = this
 }
 
