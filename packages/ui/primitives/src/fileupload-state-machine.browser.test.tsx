@@ -11,6 +11,10 @@ import { describe, expect, it } from 'vitest'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { FileUploadBase, type FileUploadState } from './index'
 
+// dropZoneProps is typed Record<string, unknown> (it is spread, not called, in
+// real usage) — cast its handlers to a callable when invoking them directly.
+type Fn = (...args: unknown[]) => void
+
 const mount = (props: Record<string, unknown> = {}): FileUploadState => {
   let captured: FileUploadState | undefined
   mountInBrowser(
@@ -32,6 +36,10 @@ const file = (name: string, type = '', size = 10): File =>
 /** Fire the hidden <input>'s onChange with a set of selected files. */
 const pickFiles = (s: FileUploadState, files: File[]) =>
   s.inputProps.onChange({ target: { files, value: '' } } as unknown as Event)
+
+/** Cast + invoke a dropZoneProps handler. */
+const dz = (s: FileUploadState, name: string, e: unknown) =>
+  (s.dropZoneProps[name] as Fn | undefined)?.(e)
 
 describe('FileUploadBase — filtering', () => {
   it('accept: extension (.png), wildcard (image/*), and exact (text/plain) patterns', () => {
@@ -92,24 +100,24 @@ describe('FileUploadBase — files list ops', () => {
 describe('FileUploadBase — drop zone', () => {
   it('onDrop reads dataTransfer.files through the filter', () => {
     const s = mount({ maxFiles: 1 })
-    s.dropZoneProps.onDragOver?.({ preventDefault() {} } as unknown as DragEvent)
+    dz(s, 'onDragOver', { preventDefault() {} })
     expect(s.isDragging()).toBe(true)
-    s.dropZoneProps.onDrop?.({
+    dz(s, 'onDrop', {
       preventDefault() {},
       dataTransfer: { files: [file('x'), file('y')] },
-    } as unknown as DragEvent)
+    })
     expect(s.isDragging()).toBe(false)
     expect(s.files().map((f) => f.name)).toEqual(['x']) // maxFiles: 1
   })
 
   it('onDragLeave clears the dragging flag; a disabled zone never drags', () => {
     const s = mount()
-    s.dropZoneProps.onDragOver?.({ preventDefault() {} } as unknown as DragEvent)
-    s.dropZoneProps.onDragLeave?.({} as unknown as DragEvent)
+    dz(s, 'onDragOver', { preventDefault() {} })
+    dz(s, 'onDragLeave', {})
     expect(s.isDragging()).toBe(false)
 
     const dis = mount({ disabled: true })
-    dis.dropZoneProps.onDragOver?.({ preventDefault() {} } as unknown as DragEvent)
+    dz(dis, 'onDragOver', { preventDefault() {} })
     expect(dis.isDragging()).toBe(false)
   })
 
@@ -132,22 +140,10 @@ describe('FileUploadBase — drop zone', () => {
 
   it('Enter/Space on the zone open the picker (no-op openPicker when input absent); disabled bails', () => {
     const s = mount()
-    expect(() =>
-      s.dropZoneProps.onKeyDown?.({
-        key: 'Enter',
-        preventDefault() {},
-      } as unknown as KeyboardEvent),
-    ).not.toThrow()
-    expect(() =>
-      s.dropZoneProps.onKeyDown?.({ key: ' ', preventDefault() {} } as unknown as KeyboardEvent),
-    ).not.toThrow()
+    expect(() => dz(s, 'onKeyDown', { key: 'Enter', preventDefault() {} })).not.toThrow()
+    expect(() => dz(s, 'onKeyDown', { key: ' ', preventDefault() {} })).not.toThrow()
     const dis = mount({ disabled: true })
-    expect(() =>
-      dis.dropZoneProps.onKeyDown?.({
-        key: 'Enter',
-        preventDefault() {},
-      } as unknown as KeyboardEvent),
-    ).not.toThrow()
+    expect(() => dz(dis, 'onKeyDown', { key: 'Enter', preventDefault() {} })).not.toThrow()
   })
 })
 
