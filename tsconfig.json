@@ -2,5 +2,5 @@
   // The canonical repo TypeScript options live in the internal presets
   // package — see packages/internals/tsconfig/README.md. Change options
   // THERE (base.json), never by copying an option into N package files.
-  "extends": "./packages/internals/tsconfig/base.json"
+  "extends": "@pyreon/tsconfig/base.json"
 }

@@ -103,6 +103,7 @@
     "@playwright/test": "^1.61.1",
     "@preact/signals-core": "^1.14.4",
     "@pyreon/playwright-config": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@swc/core": "^1.15.43",
     "@tanstack/react-router": "^1.170.18",
     "@tiptap/react": "^3.28.0",

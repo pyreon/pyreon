@@ -20,6 +20,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "vitest": "^4.1.10"
   }

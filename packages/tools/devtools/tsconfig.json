@@ -1,5 +1,5 @@
 {
-  "extends": "../../internals/tsconfig/internal.json",
+  "extends": "@pyreon/tsconfig/internal.json",
   "compilerOptions": {
     "types": [
       "chrome",

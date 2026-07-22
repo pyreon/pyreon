@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/cli",
   "version": "0.49.0",
-  "description": "CLI tools for Pyreon — doctor, generate, context",
+  "description": "CLI tools for Pyreon \u2014 doctor, generate, context",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/cli#readme",
   "bugs": {
@@ -50,6 +50,7 @@
   },
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
   },
   "publishConfig": {

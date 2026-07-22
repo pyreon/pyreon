@@ -34,6 +34,7 @@
   "devDependencies": {
     "@pyreon/lint": "workspace:^",
     "@pyreon/mcp": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:^",
     "@pyreon/zero-cli": "workspace:^",
     "typescript": "^6.0.3",

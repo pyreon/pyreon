@@ -23,5 +23,8 @@
   "scripts": {
     "lint": "oxlint .",
     "typecheck": "echo 'JSON presets \u2014 validated by scripts/check-tsconfig-presets.ts + the full typecheck matrix'"
+  },
+  "dependencies": {
+    "@pyreon/typescript": "workspace:*"
   }
 }

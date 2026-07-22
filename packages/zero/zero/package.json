@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/zero",
   "version": "0.49.0",
-  "description": "Pyreon Zero — zero-config full-stack framework powered by Pyreon and Vite",
+  "description": "Pyreon Zero \u2014 zero-config full-stack framework powered by Pyreon and Vite",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/zero/zero#readme",
   "bugs": {
@@ -221,6 +221,7 @@
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",
     "@pyreon/test-utils": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "sharp": "^0.35.3"
   },

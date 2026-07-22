@@ -13,19 +13,26 @@
 ## TypeScript config presets (@pyreon/tsconfig)
 
 - The repo's TypeScript options have ONE home: `packages/internals/tsconfig/`
-  (`@pyreon/tsconfig`, private). `base.json` is the canon (bun `customConditions`,
-  `exactOptionalPropertyTypes`, `jsx: preserve` + `jsxImportSource: @pyreon/core`,
-  ES2024 libs, `allowImportingTsExtensions`); the root `tsconfig.json` extends it.
-- Every `packages/<cat>/<pkg>/tsconfig.json` extends `../../internals/tsconfig/lib.json`
+  (`@pyreon/tsconfig`, private). `base.json` DOGFOODS the published
+  `@pyreon/typescript` (extends it — every repo typecheck exercises the shipped
+  consumer presets) and layers the repo delta: bun `customConditions`,
+  `isolatedModules`, `jsx: preserve`, `allowImportingTsExtensions`, plus a
+  verbatim parity block (esModuleInterop/allowJs/declaration/declarationMap/
+  inlineSources/noEmit/types:[node]) for what the old `@vitus-labs` chain
+  provided — the switch changed ZERO effective options (tsc --showConfig
+  diffed per preset shape). The root `tsconfig.json` extends it.
+- Every `packages/<cat>/<pkg>/tsconfig.json` extends `@pyreon/tsconfig/lib.json`
   (no JSX) or `lib-jsx.json` (JSX in src/tests); private tool packages whose tests
   import root `scripts/*.ts` use `internal.json` (no `rootDir` — TS6059 otherwise);
-  examples extend `../../packages/internals/tsconfig/example.json` (or
-  `example-bun.json` for the standalone bun-typed ones). Path options use
-  `${configDir}` (TS ≥5.5) so they resolve against the EXTENDING package —
-  the historical reason every package repeated `outDir`/`rootDir` inline.
-- Consumption is by RELATIVE `extends` (uniform depth per tree level), NOT a
-  per-package devDependency — zero lockfile coupling, and moving a package one
-  category over keeps the same path shape.
+  examples extend `example.json` (or `example-bun.json` for the standalone
+  bun-typed ones). Path options use `${configDir}` (TS ≥5.5) so they resolve
+  against the EXTENDING package — the historical reason every package repeated
+  `outDir`/`rootDir` inline.
+- Consumption is by BARE specifier + a `"@pyreon/tsconfig": "workspace:*"`
+  devDependency in every consumer (bun links the member; TS resolves `extends`
+  through the exports map) — depth-independent and an honest dependency graph,
+  the same model as `@pyreon/vitest-config`. NOTE: bun links workspace members
+  ONLY where depended on — a bare `extends` without the devDep does NOT resolve.
 - Per-package deviations stay in the package file as explicit overrides on top of
   the preset (extra `types`, `paths`, `exclude`, declaration-emit blocks). Never
   copy a repo-wide option into N files — change `base.json`.

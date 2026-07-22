@@ -28,6 +28,7 @@
     "@pyreon/zero": "workspace:*"
   },
   "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/zero-cli": "workspace:*",

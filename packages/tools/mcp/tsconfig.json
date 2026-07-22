@@ -1,5 +1,5 @@
 {
-  "extends": "../../internals/tsconfig/lib.json",
+  "extends": "@pyreon/tsconfig/lib.json",
   "compilerOptions": {
     "lib": [
       "ESNext"

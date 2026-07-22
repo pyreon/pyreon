@@ -35,6 +35,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^7.2.0",
     "@types/node": "^26.1.1",

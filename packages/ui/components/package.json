@@ -2,7 +2,7 @@
   "name": "@pyreon/ui-components",
   "version": "0.39.0",
   "private": true,
-  "description": "Pyreon UI component library — 67 rocketstyle components across 10 categories",
+  "description": "Pyreon UI component library \u2014 67 rocketstyle components across 10 categories",
   "bugs": {
     "url": "https://github.com/pyreon/pyreon/issues"
   },
@@ -28,7 +28,7 @@
     }
   },
   "scripts": {
-    "build": "echo 'private package — consumed via bun condition'",
+    "build": "echo 'private package \u2014 consumed via bun condition'",
     "dev": "vl_rolldown_build-watch",
     "test": "vitest run",
     "test:browser": "vitest run --config ./vitest.browser.config.ts",
@@ -45,10 +45,11 @@
   },
   "devDependencies": {
     "@pyreon/perf-harness": "workspace:*",
-    "@pyreon/ui-core": "workspace:^",
     "@pyreon/runtime-dom": "workspace:^",
     "@pyreon/test-utils": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
     "@pyreon/typescript": "workspace:^",
+    "@pyreon/ui-core": "workspace:^",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^4.1.10"
   },

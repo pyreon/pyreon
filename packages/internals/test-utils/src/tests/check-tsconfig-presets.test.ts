@@ -20,7 +20,7 @@ const mk = (rel: string, content: object | string) => {
 
 const scaffold = () => {
   dir = mkdtempSync(path.join(tmpdir(), 'tsconfig-gate-'))
-  mk('tsconfig.json', { extends: './packages/internals/tsconfig/base.json' })
+  mk('tsconfig.json', { extends: '@pyreon/tsconfig/base.json' })
 }
 
 afterEach(() => {
@@ -31,15 +31,15 @@ describe('check-tsconfig-presets', () => {
   it('passes when every config extends a preset (packages, examples, jsonc comments)', () => {
     scaffold()
     mk('packages/fundamentals/foo/tsconfig.json', {
-      extends: '../../internals/tsconfig/lib-jsx.json',
+      extends: '@pyreon/tsconfig/lib-jsx.json',
     })
     mk('packages/internals/bar/tsconfig.json', {
-      extends: '../../internals/tsconfig/internal.json',
+      extends: '@pyreon/tsconfig/internal.json',
       compilerOptions: { types: ['node'] },
     })
     mk(
       'examples/demo/tsconfig.json',
-      '{\n  // rationale comment survives parsing\n  "extends": "../../packages/internals/tsconfig/example.json"\n}',
+      '{\n  // rationale comment survives parsing\n  "extends": "@pyreon/tsconfig/example.json"\n}',
     )
     expect(checkTsconfigPresets(dir)).toEqual([])
   })

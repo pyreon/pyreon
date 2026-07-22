@@ -1,4 +1,4 @@
 {
-  "extends": "../../packages/internals/tsconfig/example-bun.json",
+  "extends": "@pyreon/tsconfig/example-bun.json",
   "include": ["src"]
 }

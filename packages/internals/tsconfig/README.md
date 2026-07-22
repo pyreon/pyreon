@@ -9,23 +9,27 @@ drifted variants.
 
 | Preset | Extends | Use for |
 | --- | --- | --- |
-| `base.json` | `@vitus-labs/tools-typescript/lib` | The repo root `tsconfig.json` (canonical options: bun `customConditions`, `exactOptionalPropertyTypes`, `jsx: preserve` + `jsxImportSource: @pyreon/core`, ES2024 libs) |
+| `base.json` | **the published `@pyreon/typescript`** (dogfooding — every repo typecheck exercises the shipped consumer presets) | The repo root `tsconfig.json` (repo delta: bun `customConditions`, `isolatedModules`, `jsx: preserve`, `allowImportingTsExtensions`, plus a verbatim parity block for options the old `@vitus-labs` chain provided) |
 | `lib.json` | `base.json` | A framework package with **no JSX** in src/tests (`outDir`/`rootDir`/`include` via `${configDir}`, `types: [vitest/globals, node]`) |
 | `lib-jsx.json` | `lib.json` | A framework package **with JSX** (`jsx: react-jsx` for `tsc --noEmit` + editor; builds still emit via the real Pyreon compiler) |
 | `example.json` | `base.json` | An `examples/*` app (`noEmit`, relaxed `exactOptionalPropertyTypes`, includes `vite.config.ts`) |
 
 ## How to consume
 
-Relative `extends` — the depth is uniform for every package category, so no
-per-package devDependency or lockfile entry is needed:
+Declare the devDependency and extend by bare specifier (depth-independent,
+honest dependency graph — same consumption model as `@pyreon/vitest-config`):
 
 ```jsonc
-// packages/<category>/<pkg>/tsconfig.json
-{ "extends": "../../internals/tsconfig/lib-jsx.json" }
+// package.json
+{ "devDependencies": { "@pyreon/tsconfig": "workspace:*" } }
 
-// examples/<name>/tsconfig.json
-{ "extends": "../../packages/internals/tsconfig/example.json" }
+// tsconfig.json (packages AND examples — same spelling everywhere)
+{ "extends": "@pyreon/tsconfig/lib-jsx.json" }
 ```
+
+bun links the workspace member into `node_modules`, and TypeScript resolves
+`extends` through the package's `exports` map. Relative
+`../../internals/...` forms are rejected by the gate — one spelling only.
 
 Per-package deviations stay where they belong — as explicit overrides in that
 package's `tsconfig.json` on top of the preset (extra `types`, `references`,

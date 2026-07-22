@@ -43,7 +43,11 @@ export const EXEMPT: Record<string, string> = {
   // (none today — add "path/to/tsconfig.json": "why" with a PR-reviewed rationale)
 }
 
-const PRESET_RE = /^(\.\.\/)+((packages\/)?internals\/tsconfig)\/(base|lib|lib-jsx|internal|example|example-bun)\.json$/
+// Bare workspace specifier ONLY — packages declare `@pyreon/tsconfig` as a
+// devDependency (bun links it), so `extends` is depth-independent and the
+// dependency graph is honest. Relative `../../internals/...` forms are
+// rejected: two spellings for one thing is how drift starts.
+const PRESET_RE = /^@pyreon\/tsconfig\/(base|lib|lib-jsx|internal|example|example-bun)\.json$/
 
 export interface Finding {
   file: string
@@ -86,10 +90,10 @@ export function checkTsconfigPresets(root: string): Finding[] {
     const rootCfg = JSON.parse(
       stripJsonComments(readFileSync(path.join(root, 'tsconfig.json'), 'utf8')),
     ) as { extends?: string }
-    if (rootCfg.extends !== './packages/internals/tsconfig/base.json') {
+    if (rootCfg.extends !== '@pyreon/tsconfig/base.json') {
       findings.push({
         file: 'tsconfig.json',
-        problem: 'root must extend ./packages/internals/tsconfig/base.json',
+        problem: 'root must extend @pyreon/tsconfig/base.json',
       })
     }
   } catch {
