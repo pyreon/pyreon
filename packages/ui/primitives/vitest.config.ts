@@ -16,7 +16,7 @@ export default defineNodeConfig({
   // state-machine.browser.test.tsx — select/filter/expand/keyboard/props,
   // exercised through the headless state objects; ComboboxBase 54.83 -> 95.96,
   // TreeBase 78.32 -> 98.60).
-  coverageThresholds: { statements: 86, branches: 81, functions: 85, lines: 88 },
+  coverageThresholds: { statements: 95, branches: 89, functions: 94, lines: 96 },
   overrides: {
     // oxc transformer JSX config — these UI packages use Pyreon's JSX
     // import source rather than React's default.
