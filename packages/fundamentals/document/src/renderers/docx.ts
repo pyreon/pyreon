@@ -7,7 +7,7 @@ import type {
   RenderOptions,
   TableColumn,
 } from '../types'
-import { getTextContent, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, hasLinkRun, warnUnknownNodeType } from '../nodes'
 
 /**
  * DOCX renderer — lazy-loads the 'docx' npm package on first use.
@@ -144,19 +144,44 @@ function renderHeading(ctx: DocxCtx, n: DocNode): void {
 function renderTextNode(ctx: DocxCtx, n: DocNode): void {
   const { docx, children, alignmentMap } = ctx
   const p = n.props
-  children.push(
-    new docx.Paragraph({
-      children: [
+  const runStyle = {
+    ...(p.bold != null ? { bold: p.bold as boolean } : {}),
+    ...(p.italic != null ? { italics: p.italic as boolean } : {}),
+    ...(p.underline ? { underline: {} } : {}),
+    ...(p.strikethrough != null ? { strike: p.strikethrough as boolean } : {}),
+    ...(p.size != null ? { size: (p.size as number) * 2 } : {}),
+  }
+  const runs = getInlineRuns(n.children)
+  // Zero-link fast path stays byte-identical to the old single-TextRun shape.
+  const paraChildren = hasLinkRun(runs)
+    ? runs.map((r) =>
+        r.href !== undefined
+          ? new docx.ExternalHyperlink({
+              children: [
+                new docx.TextRun({
+                  text: r.text,
+                  ...runStyle,
+                  style: 'Hyperlink',
+                }),
+              ],
+              link: r.href,
+            })
+          : new docx.TextRun({
+              text: r.text,
+              ...runStyle,
+              color: sanitizeXmlColor(p.color as string, '333333'),
+            }),
+      )
+    : [
         new docx.TextRun({
           text: getTextContent(n.children),
-          ...(p.bold != null ? { bold: p.bold as boolean } : {}),
-          ...(p.italic != null ? { italics: p.italic as boolean } : {}),
-          ...(p.underline ? { underline: {} } : {}),
-          ...(p.strikethrough != null ? { strike: p.strikethrough as boolean } : {}),
-          ...(p.size != null ? { size: (p.size as number) * 2 } : {}),
+          ...runStyle,
           color: sanitizeXmlColor(p.color as string, '333333'),
         }),
-      ],
+      ]
+  children.push(
+    new docx.Paragraph({
+      children: paraChildren,
       alignment: alignmentMap(p.align as string) as any,
       spacing: { after: 120 },
       ...rtlProps(ctx),

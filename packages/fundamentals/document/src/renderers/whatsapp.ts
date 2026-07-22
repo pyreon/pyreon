@@ -1,6 +1,6 @@
 import { sanitizeHref } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, hasLinkRun, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * WhatsApp renderer — outputs formatted text using WhatsApp's markup.
@@ -28,7 +28,14 @@ function renderNode(node: DocNode): string {
     }
 
     case 'text': {
-      let text = getTextContent(node.children)
+      const runs = getInlineRuns(node.children)
+      // WhatsApp has no link markup — an inline link degrades to
+      // "label (url)" instead of silently losing the href.
+      let text = hasLinkRun(runs)
+        ? runs
+            .map((r) => (r.href !== undefined ? `${r.text} (${sanitizeHref(r.href)})` : r.text))
+            .join('')
+        : getTextContent(node.children)
       if (p.bold) text = `*${text}*`
       if (p.italic) text = `_${text}_`
       if (p.strikethrough) text = `~${text}~`

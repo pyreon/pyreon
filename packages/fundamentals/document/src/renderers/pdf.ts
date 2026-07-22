@@ -1,5 +1,5 @@
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, hasLinkRun, warnUnknownNodeType } from '../nodes'
 
 /**
  * PDF renderer — lazy-loads pdfmake on first use.
@@ -124,9 +124,18 @@ function nodeToContent(node: DocNode): PdfContent | PdfContent[] | null {
       }
     }
 
-    case 'text':
+    case 'text': {
+      const runs = getInlineRuns(node.children)
+      // Zero-link fast path stays byte-identical to the old flatten.
+      const text = hasLinkRun(runs)
+        ? runs.map((r) =>
+            r.href !== undefined
+              ? { text: r.text, link: r.href, color: '#4f46e5', decoration: 'underline' as const }
+              : r.text,
+          )
+        : getTextContent(node.children)
       return {
-        text: getTextContent(node.children),
+        text,
         fontSize: (p.size as number) ?? 12,
         color: (p.color as string) ?? '#333333',
         bold: p.bold ?? false,
@@ -136,6 +145,7 @@ function nodeToContent(node: DocNode): PdfContent | PdfContent[] | null {
         lineHeight: (p.lineHeight as number) ?? 1.4,
         margin: [0, 0, 0, 8],
       }
+    }
 
     case 'link':
       return {

@@ -1,6 +1,6 @@
 import { escapeXml as esc, sanitizeHref } from '../sanitize'
 import type { DocNode, DocumentRenderer, RenderOptions, TableColumn } from '../types'
-import { getTextContent, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
+import { getInlineRuns, getTextContent, hasLinkRun, imagePlaceholderText, warnUnknownNodeType } from '../nodes'
 
 /**
  * Telegram renderer — outputs HTML using Telegram's supported subset.
@@ -29,7 +29,16 @@ function renderNode(node: DocNode): string {
     }
 
     case 'text': {
-      let text = esc(getTextContent(node.children))
+      const runs = getInlineRuns(node.children)
+      let text = hasLinkRun(runs)
+        ? runs
+            .map((r) =>
+              r.href !== undefined
+                ? `<a href="${esc(sanitizeHref(r.href))}">${esc(r.text)}</a>`
+                : esc(r.text),
+            )
+            .join('')
+        : esc(getTextContent(node.children))
       if (p.bold) text = `<b>${text}</b>`
       if (p.italic) text = `<i>${text}</i>`
       if (p.underline) text = `<u>${text}</u>`

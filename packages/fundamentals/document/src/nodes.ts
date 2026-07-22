@@ -60,6 +60,46 @@ export function getTextContent(children: DocChild[]): string {
 }
 
 /**
+ * INLINE RUNS — the focused slice of the rich-text-run model: split a text
+ * node's children into runs so an inline `<Link>` keeps its href in
+ * formats that flatten via `getTextContent` (pre-fix: a link inside a
+ * `<Text>` paragraph silently lost its href in PDF, DOCX, and the chat
+ * formats). A run is plain text or a link; any OTHER nested node still
+ * flattens to its text (bold/italic spans remain block-level — the full
+ * run model is the tracked follow-up).
+ */
+export interface InlineRun {
+  text: string
+  href?: string
+}
+
+export function getInlineRuns(children: DocChild[]): InlineRun[] {
+  const runs: InlineRun[] = []
+  const pushText = (t: string) => {
+    if (!t) return
+    const last = runs[runs.length - 1]
+    if (last && last.href === undefined) last.text += t
+    else runs.push({ text: t })
+  }
+  for (const c of children) {
+    if (typeof c === 'string') {
+      pushText(c)
+    } else if (c.type === 'link' && typeof c.props.href === 'string') {
+      runs.push({ text: getTextContent(c.children), href: c.props.href })
+    } else {
+      pushText(getTextContent(c.children))
+    }
+  }
+  return runs
+}
+
+/** True when at least one run is a link — renderers use this to keep the
+ *  zero-link fast path byte-identical to the old flatten. */
+export function hasLinkRun(runs: InlineRun[]): boolean {
+  return runs.some((r) => r.href !== undefined)
+}
+
+/**
  * Fallback text for an image a target format cannot embed (chat platforms
  * reject `data:` URIs; Telegram/WhatsApp carry no inline images at all;
  * PPTX cannot fetch http URLs at render time). Shared so every renderer

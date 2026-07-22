@@ -147,6 +147,10 @@ These load only when their format is invoked. The 14 MB published `lib/` is the 
 
 Full docs: [pyreon.dev/docs/document](https://pyreon.dev/docs/document) (or `docs/src/content/docs/document.md` in this repo).
 
+## Inline links
+
+An inline `<Link>` inside a `<Text>` paragraph keeps its link-ness across formats: PDF (URI annotation), DOCX (`ExternalHyperlink`), Slack (`<url|label>`), Telegram (`<a href>`), WhatsApp/plain text (`label (url)` — no link markup exists there), and the structural formats (html/email/md) natively. Inline **bold/italic spans** remain block-level (`<Text bold>`) — the full rich-text run model is a tracked follow-up.
+
 ## License
 
 MIT
