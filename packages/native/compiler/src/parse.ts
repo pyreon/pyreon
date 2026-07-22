@@ -18,6 +18,7 @@ import type {
   ModelDefnIR,
   ModuleDeclIR,
   ParseResult,
+  RocketstyleComponentIR,
   RouteIR,
   StatementIR,
   StoreDefnIR,
@@ -29,6 +30,7 @@ import type {
   ZodSchemaDefnIR,
 } from './types'
 import { isCanonicalPrimitive } from './canonical-primitives'
+import { parseRocketstyleDefn } from './rocketstyle-native'
 import { lowerRouteParams } from './expr-utils'
 
 // oxc-parser's typed AST is rich; for Phase 0 we walk it loosely via
@@ -143,6 +145,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   const features: FeatureDefnIR[] = []
   const zodSchemas: ZodSchemaDefnIR[] = []
   const styledComponents: StyledComponentIR[] = []
+  const rocketstyleComponents: RocketstyleComponentIR[] = []
 
   for (const node of ast.program.body as AnyNode[]) {
     // Store aliases are component-scoped — reset before each top-level
@@ -248,6 +251,13 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
       styledComponents.push(sc)
       continue
     }
+    // rocketstyle()({component: Prim}).theme().states()… → the rocketstyle-native
+    // frontend resolves it at use-sites. Collected before the catch-alls.
+    const rc = tryRocketstyleDefnFromTopLevel(node, ctx)
+    if (rc) {
+      rocketstyleComponents.push(rc)
+      continue
+    }
     // Shape-A follow-up: a top-level ARROW-CONST helper
     // (`const dbl = (x: number) => x * 2`). Without this it fell through to
     // tryModuleDeclsFromTopLevel and emitted a mis-scoped `private let dbl =
@@ -305,9 +315,35 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     features,
     zodSchemas,
     styledComponents,
+    rocketstyleComponents,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
+}
+
+/**
+ * `const X = rocketstyle()({name, component: Prim}).theme().states()…` → a
+ * RocketstyleComponentIR. A thin var-declarator unwrap; the chain parsing +
+ * dimension resolution lives in the `rocketstyle-native` frontend module.
+ */
+function tryRocketstyleDefnFromTopLevel(
+  node: AnyNode,
+  ctx: ParseCtx,
+): RocketstyleComponentIR | null {
+  let varDecl: AnyNode | null = null
+  if (node.type === 'VariableDeclaration') varDecl = node
+  else if (
+    node.type === 'ExportNamedDeclaration' &&
+    node.declaration?.type === 'VariableDeclaration'
+  ) {
+    varDecl = node.declaration
+  }
+  if (!varDecl || varDecl.kind !== 'const') return null
+  const decls = (varDecl.declarations as AnyNode[]) ?? []
+  if (decls.length !== 1) return null
+  const decl = decls[0]
+  if (decl?.id?.type !== 'Identifier') return null
+  return parseRocketstyleDefn(decl.id.name as string, decl.init, ctx.warnings)
 }
 
 /**

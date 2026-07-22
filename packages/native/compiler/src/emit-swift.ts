@@ -47,6 +47,7 @@ import {
   widenFloatSignals,
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
+import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import { styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -60,6 +61,7 @@ import type {
   AttrIR,
   ChildIR,
   ComponentIR,
+  RocketstyleComponentIR,
   StyledComponentIR,
   DeclIR,
   EnumIR,
@@ -107,6 +109,9 @@ let _componentNames: Set<string> = new Set()
 // `styled(Prim)`-wrapped components — a `<X>` use-site is rewritten to `<Prim>`
 // + the captured style injected as a synthetic `style` attr (see emitSwiftJsx).
 let _styledComponents: Map<string, StyledComponentIR> = new Map()
+// `rocketstyle()({component})…` components — resolved per use-site (state/size/
+// variant merged) and rewritten to `<Prim style={merged}>` (see emitSwiftJsx).
+let _rocketstyleComponents: Map<string, RocketstyleComponentIR> = new Map()
 /** Component name → its declared props, for expanding `<Comp {...src} />`
  * spread attrs into per-prop constructor args. Built in the emitSwift pre-pass. */
 let _componentPropsMap: Map<string, { name: string; type: TypeIR }[]> = new Map()
@@ -465,9 +470,11 @@ export function emitSwift(
   fonts: Record<string, string> = {},
   helperFns: Extract<DeclIR, { kind: 'function' }>[] = [],
   styledComponents: StyledComponentIR[] = [],
+  rocketstyleComponents: RocketstyleComponentIR[] = [],
 ): { code: string; warnings: string[] } {
   _emitWarnings = []
   _styledComponents = new Map(styledComponents.map((s) => [s.name, s]))
+  _rocketstyleComponents = new Map(rocketstyleComponents.map((r) => [r.name, r]))
   // File-scope pure-logic helper names — seeded into every component's
   // per-component `_functionNames` reset so a call `dbl(21)` resolves as a
   // free-function call in ANY component (not a signal read / unknown ref).
@@ -594,6 +601,7 @@ export function emitSwift(
   _activeInferCtx = emptyInferenceCtx()
   _componentNames = new Set()
   _styledComponents = new Map()
+  _rocketstyleComponents = new Map()
   _componentParamsInfo = new Map()
   _layoutComponentNames = new Set()
   _storeHooks = new Map()
@@ -4209,6 +4217,25 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
         tag: styled.tag,
         attrs: [{ kind: 'attr', name: 'style', value: styled.styleObject }, ...e.attrs],
       },
+      indent,
+    )
+  }
+
+  // rocketstyle(…) — resolve the use-site's state/size/variant dims → merge
+  // base ∪ matched-dims into one style object, strip the (consumed) dimension
+  // attrs, and rewrite to `<Prim style={merged}>` (reusing the styled path).
+  const rkt = _rocketstyleComponents.get(tag)
+  if (rkt !== undefined) {
+    const dimNames = Object.keys(rkt.dims)
+    const merged = resolveRocketstyleUseSite(rkt, (d) => {
+      const v = readStaticAttr(e, d)
+      return typeof v === 'string' ? v : undefined
+    })
+    const rest = e.attrs.filter(
+      (a) => !(a.kind === 'attr' && dimNames.includes(a.name)),
+    )
+    return emitSwiftJsx(
+      { ...e, tag: rkt.tag, attrs: [{ kind: 'attr', name: 'style', value: merged }, ...rest] },
       indent,
     )
   }
