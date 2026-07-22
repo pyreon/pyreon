@@ -48,7 +48,7 @@ import {
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
-import { styleToNativeModifiers } from './style-to-native'
+import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
   flattenRouteTree,
@@ -4578,6 +4578,21 @@ function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
       )
     }
     result += `.font(.custom(${JSON.stringify(ps ?? font)}, size: 17))`
+  }
+  // Typography (fontSize/fontWeight/color/textAlign/fontStyle) in a Text's
+  // style object → `.font(.system(size:weight:))` etc. modifiers; the REST of
+  // the style (background/padding/border) still flows through the connector.
+  const styleAttr = e.attrs.find(
+    (a): a is Extract<AttrIR, { kind: 'attr' }> => a.kind === 'attr' && a.name === 'style',
+  )
+  if (styleAttr !== undefined) {
+    const { typo, rest } = extractTextTypography(styleAttr.value)
+    result += swiftTextTypographyModifiers(typo)
+    const eForLayout = {
+      ...e,
+      attrs: e.attrs.map((a) => (a === styleAttr ? { ...a, value: rest } : a)),
+    }
+    return `${result}${emitSwiftLayoutModifiers(eForLayout)}`
   }
   return `${result}${emitSwiftLayoutModifiers(e)}`
 }

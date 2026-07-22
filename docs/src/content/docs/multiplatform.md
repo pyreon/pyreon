@@ -392,6 +392,7 @@ You build your **own** components on the ui-system styling frontends (`styled` +
 | Theme tokens (`defineTheme` + `t.color.…`) | ✅ | resolved to the app's real values at compile time |
 | Dark mode | ✅ | `useColorScheme()` + a dimension flip (composition) |
 | `disabled` / `onPress` | ✅ | needs an interactive base (`Button`/`Press`), not a layout `Stack` |
+| Text typography | ✅ | `fontSize`/`fontWeight`/`color`/`textAlign`/`fontStyle` in a style object on a Text → SwiftUI `.font(.system(size:weight:))`/`.foregroundColor`/`.multilineTextAlignment` modifiers; Compose `Text(fontSize=…, fontWeight=…, …)` constructor args. `<Heading level={1..6}>` still gives the semantic scale |
 | Layout (`direction`/`gap`/`align`) | ✅ | via the canonical primitive |
 | Responsive (2-bucket) | ✅ | `useSizeClass()` + a dimension flip → compact/regular (mobile vs expanded), re-flows on rotation/split-screen |
 | Responsive breakpoint arrays (`[xs,sm,md,lg]`) | ❌ | full CSS pixel breakpoints have no native map — use the 2-bucket size class above |

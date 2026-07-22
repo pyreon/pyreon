@@ -122,7 +122,7 @@ object LocalConfiguration {
 // the bare Text(text = "...") call sites (from Text emit) valid.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontFamily: FontFamily? = null, modifier: Modifier = Modifier) {}
+fun Text(text: String, style: TextStyle = TextStyle(), color: Color? = null, fontSize: TextUnit = TextUnit(0f), fontWeight: FontWeight? = null, fontStyle: FontStyle? = null, textAlign: TextAlign? = null, fontFamily: FontFamily? = null, modifier: Modifier = Modifier) {}
 
 @Composable
 fun Button(
@@ -337,6 +337,38 @@ value class Dp(val value: Float)
 val Int.dp: Dp get() = Dp(this.toFloat())
 val Float.dp: Dp get() = Dp(this)
 val Double.dp: Dp get() = Dp(this.toFloat())
+
+// TextUnit + .sp — the font-size unit, emitted by Text typography
+// (fontSize = 24.sp). Mirrors androidx.compose.ui.unit.TextUnit.
+@JvmInline
+value class TextUnit(val value: Float)
+val Int.sp: TextUnit get() = TextUnit(this.toFloat())
+val Double.sp: TextUnit get() = TextUnit(this.toFloat())
+
+// FontWeight / FontStyle / TextAlign — Text typography args
+// (androidx.compose.ui.text.font / androidx.compose.ui.text.style).
+// Stubbed as the members the typography emit produces.
+class FontWeight {
+  companion object {
+    val Normal = FontWeight()
+    val Medium = FontWeight()
+    val SemiBold = FontWeight()
+    val Bold = FontWeight()
+  }
+}
+class FontStyle {
+  companion object {
+    val Normal = FontStyle()
+    val Italic = FontStyle()
+  }
+}
+class TextAlign {
+  companion object {
+    val Start = TextAlign()
+    val Center = TextAlign()
+    val End = TextAlign()
+  }
+}
 
 // Role — androidx.compose.ui.semantics.Role. Real Compose models it as a
 // JvmInline value class with companion vals; the stub uses a class + companion

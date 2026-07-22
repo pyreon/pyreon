@@ -183,6 +183,106 @@ export function parseCssColor(v: string, target: Target): string | null {
   return `Color(0x${hex.toString(16).padStart(8, '0').toUpperCase()})`
 }
 
+// ── Text typography ───────────────────────────────────────────────────────────
+//
+// Typography (`fontSize`/`fontWeight`/`color`/`textAlign`/`fontStyle`) on a Text
+// can't flow through the layout-modifier connector uniformly: SwiftUI wants a
+// `.font(.system(size:weight:))` MODIFIER, but Compose wants `fontSize`/
+// `fontWeight`/… as `Text(...)` CONSTRUCTOR ARGS (there is no Compose text
+// modifier). So the Text emit extracts typography from its style object, emits
+// it per-target, and passes the REST to the connector (background/padding/border).
+
+/** Typography leaves lifted out of a Text's style object (literal values only). */
+export interface TextTypography {
+  fontSize?: number
+  fontWeight?: string | number
+  color?: string
+  textAlign?: string
+  fontStyle?: string
+}
+
+const TYPOGRAPHY_KEYS = new Set(['fontSize', 'fontWeight', 'color', 'textAlign', 'fontStyle'])
+
+/** Split a Text's style object into typography leaves + the remaining style
+ *  (background/padding/border/etc.) the connector still lowers. Non-object /
+ *  non-literal typography values are left in `rest` (unchanged connector path). */
+export function extractTextTypography(styleValue: ExprIR): { typo: TextTypography; rest: ExprIR } {
+  if (styleValue.kind !== 'object') return { typo: {}, rest: styleValue }
+  const typo: TextTypography = {}
+  const restFields: { name: string; value: ExprIR }[] = []
+  for (const f of styleValue.fields) {
+    const v = f.value.kind === 'literal' ? f.value.value : undefined
+    if (TYPOGRAPHY_KEYS.has(f.name) && v !== undefined) {
+      if (f.name === 'fontSize' && typeof v === 'number') typo.fontSize = v
+      else if (f.name === 'fontWeight' && (typeof v === 'string' || typeof v === 'number')) typo.fontWeight = v
+      else if (f.name === 'color' && typeof v === 'string') typo.color = v
+      else if (f.name === 'textAlign' && typeof v === 'string') typo.textAlign = v
+      else if (f.name === 'fontStyle' && typeof v === 'string') typo.fontStyle = v
+      else restFields.push(f)
+    } else {
+      restFields.push(f)
+    }
+  }
+  return { typo, rest: { kind: 'object', fields: restFields, spreads: styleValue.spreads ?? [] } }
+}
+
+const SWIFT_WEIGHT: Record<string, string> = {
+  normal: '.regular', regular: '.regular', medium: '.medium', semibold: '.semibold',
+  bold: '.bold', '400': '.regular', '500': '.medium', '600': '.semibold', '700': '.bold',
+}
+const SWIFT_ALIGN: Record<string, string> = {
+  left: '.leading', start: '.leading', center: '.center', right: '.trailing', end: '.trailing',
+}
+
+/** SwiftUI typography → trailing `.font(.system(...)).foregroundColor(...)…` modifiers. */
+export function swiftTextTypographyModifiers(typo: TextTypography): string {
+  let out = ''
+  if (typo.fontSize !== undefined || typo.fontWeight !== undefined) {
+    const parts: string[] = []
+    if (typo.fontSize !== undefined) parts.push(`size: ${typo.fontSize}`)
+    const w = typo.fontWeight !== undefined ? SWIFT_WEIGHT[String(typo.fontWeight)] : undefined
+    if (w) parts.push(`weight: ${w}`)
+    if (parts.length > 0) out += `.font(.system(${parts.join(', ')}))`
+  }
+  if (typo.color !== undefined) {
+    const c = parseCssColor(typo.color, 'swift')
+    if (c) out += `.foregroundColor(${c})`
+  }
+  if (typo.textAlign !== undefined && SWIFT_ALIGN[typo.textAlign]) {
+    out += `.multilineTextAlignment(${SWIFT_ALIGN[typo.textAlign]})`
+  }
+  if (typo.fontStyle === 'italic') out += '.italic()'
+  return out
+}
+
+const KOTLIN_WEIGHT: Record<string, string> = {
+  normal: 'FontWeight.Normal', regular: 'FontWeight.Normal', medium: 'FontWeight.Medium',
+  semibold: 'FontWeight.SemiBold', bold: 'FontWeight.Bold', '400': 'FontWeight.Normal',
+  '500': 'FontWeight.Medium', '600': 'FontWeight.SemiBold', '700': 'FontWeight.Bold',
+}
+const KOTLIN_ALIGN: Record<string, string> = {
+  left: 'TextAlign.Start', start: 'TextAlign.Start', center: 'TextAlign.Center',
+  right: 'TextAlign.End', end: 'TextAlign.End',
+}
+
+/** Compose typography → leading `, fontSize = …, fontWeight = …` Text() args. */
+export function kotlinTextTypographyArgs(typo: TextTypography): string {
+  const args: string[] = []
+  if (typo.fontSize !== undefined) args.push(`fontSize = ${typo.fontSize}.sp`)
+  if (typo.fontWeight !== undefined && KOTLIN_WEIGHT[String(typo.fontWeight)]) {
+    args.push(`fontWeight = ${KOTLIN_WEIGHT[String(typo.fontWeight)]}`)
+  }
+  if (typo.color !== undefined) {
+    const c = parseCssColor(typo.color, 'kotlin')
+    if (c) args.push(`color = ${c}`)
+  }
+  if (typo.textAlign !== undefined && KOTLIN_ALIGN[typo.textAlign]) {
+    args.push(`textAlign = ${KOTLIN_ALIGN[typo.textAlign]}`)
+  }
+  if (typo.fontStyle === 'italic') args.push('fontStyle = FontStyle.Italic')
+  return args.length > 0 ? ', ' + args.join(', ') : ''
+}
+
 function cssToRgba(css: string): [number, number, number, number] | null {
   const s = css.trim().toLowerCase()
   const fn = s.match(
