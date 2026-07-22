@@ -324,6 +324,21 @@ function App() {
 
 **Scope:** a canonical-primitive base (`component: Stack`); static string dimensions (the `useBooleans: false` default) merge into one object; **one** dynamic dimension (a ternary of two DECLARED dimension values) lowers to the reactive flip. Declaration values may be literals OR [theme tokens](#theme-token-resolution) (`backgroundColor: t.color.primary`). Remaining follow-up: **≥2 simultaneous** dynamic dimensions (a switch over the dimension-set product) → warns + falls back to the first branch; a ternary whose branches aren't both declared dimension values → warns + drops. Both emits are toolchain-validated.
 
+#### Dark mode
+
+Dark mode needs **no new mechanism** — it composes from `useColorScheme()` (which lowers to SwiftUI `@Environment(\.colorScheme)` / Compose `isSystemInDarkTheme()` as a reactive `"dark"`/`"light"` string) + the reactive dimension flip above:
+
+```tsx
+const Card = rocketstyle()({ name: 'Card', component: Stack })
+  .states({ onLight: { backgroundColor: '#ffffff' }, onDark: { backgroundColor: '#111827' } })
+function App() {
+  const scheme = useColorScheme()
+  return <Card state={scheme === 'dark' ? 'onDark' : 'onLight'}>…</Card>
+}
+```
+
+→ SwiftUI `.background((scheme == "dark") ? Color(…#111827) : Color(…#ffffff))` with `@Environment(\.colorScheme)` injected; Compose `.background(if (scheme == "dark") Color(0xFF111827) else Color(0xFFFFFFFF))`. The system color-scheme flip re-styles in place.
+
 ### Theme-token resolution
 
 The mainline styler/rocketstyle value is a **theme token**, not a literal — `background: ${(t) => t.color.primary}`, `.states({ primary: { backgroundColor: t.color.primary } })`. The `theme-native` frontend resolves such a token **at compile time** to a concrete value the connector lowers (`#hex` colors → `Color(.sRGB, …)` / `Color(0xFF…)`; spacing / radius → numbers).

@@ -99,6 +99,14 @@ fun <T> remember(calculation: () -> T): T = calculation()
 @Suppress("UNUSED_PARAMETER")
 fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 
+// isSystemInDarkTheme — Compose's dark-mode read (androidx.compose.foundation),
+// emitted by useColorScheme(). The real device build imports it via the CLI's
+// conditionalKotlinImports; this stub mirrors that surface so the validate-kotlin
+// gate resolves it (previously missing → any useColorScheme emit failed kotlinc).
+@Composable
+fun isSystemInDarkTheme(): Boolean = false
+
+
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.
 @Composable
