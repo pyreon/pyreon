@@ -105,7 +105,18 @@ fun LaunchedEffect(key1: Any?, block: suspend () -> Unit) {}
 // gate resolves it (previously missing → any useColorScheme emit failed kotlinc).
 @Composable
 fun isSystemInDarkTheme(): Boolean = false
-
+// LocalConfiguration — Compose's screen configuration (androidx.compose.ui.platform),
+// emitted by useSizeClass() as LocalConfiguration.current.screenWidthDp. The real
+// device build imports it via the CLI's conditionalKotlinImports; this stub mirrors
+// the surface so the validate-kotlin gate resolves it (previously missing → any
+// useSizeClass emit failed kotlinc).
+class Configuration {
+  val screenWidthDp: Int = 0
+}
+object LocalConfiguration {
+  val current: Configuration
+    @Composable get() = Configuration()
+}
 
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.

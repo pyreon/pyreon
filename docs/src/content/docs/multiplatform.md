@@ -339,6 +339,21 @@ function App() {
 
 → SwiftUI `.background((scheme == "dark") ? Color(…#111827) : Color(…#ffffff))` with `@Environment(\.colorScheme)` injected; Compose `.background(if (scheme == "dark") Color(0xFF111827) else Color(0xFFFFFFFF))`. The system color-scheme flip re-styles in place.
 
+#### Responsive (size class)
+
+CSS pixel breakpoints (`[xs, sm, md, lg]`) don't map to native, but native has a **2-bucket width class** — SwiftUI `@Environment(\.horizontalSizeClass)` (compact/regular), Compose `LocalConfiguration.current.screenWidthDp`. `useSizeClass()` lowers both to a reactive `"compact"`/`"regular"` string, so — same composition as dark mode — a dimension flip gives a real **mobile-vs-expanded** responsive layout that re-flows on rotation / split-screen:
+
+```tsx
+const Panel = rocketstyle()({ name: 'Panel', component: Stack })
+  .states({ mobile: { padding: '12px' }, expanded: { padding: '32px' } })
+function App() {
+  const size = useSizeClass()
+  return <Panel state={size === 'regular' ? 'expanded' : 'mobile'}>…</Panel>
+}
+```
+
+→ SwiftUI `.padding((size == "regular") ? 32 : 12)`; Compose `.padding(if (size == "regular") 32 else 12)`. It's two buckets, not per-pixel breakpoints — matching how native size classes actually work.
+
 ### Theme-token resolution
 
 The mainline styler/rocketstyle value is a **theme token**, not a literal — `background: ${(t) => t.color.primary}`, `.states({ primary: { backgroundColor: t.color.primary } })`. The `theme-native` frontend resolves such a token **at compile time** to a concrete value the connector lowers (`#hex` colors → `Color(.sRGB, …)` / `Color(0xFF…)`; spacing / radius → numbers).
@@ -378,7 +393,8 @@ You build your **own** components on the ui-system styling frontends (`styled` +
 | Dark mode | ✅ | `useColorScheme()` + a dimension flip (composition) |
 | `disabled` / `onPress` | ✅ | needs an interactive base (`Button`/`Press`), not a layout `Stack` |
 | Layout (`direction`/`gap`/`align`) | ✅ | via the canonical primitive |
-| Responsive breakpoint arrays (`[xs,sm,md,lg]`) | ❌ | CSS pixel breakpoints have no clean native size-class map (primitives are "no responsive v1") |
+| Responsive (2-bucket) | ✅ | `useSizeClass()` + a dimension flip → compact/regular (mobile vs expanded), re-flows on rotation/split-screen |
+| Responsive breakpoint arrays (`[xs,sm,md,lg]`) | ❌ | full CSS pixel breakpoints have no native map — use the 2-bucket size class above |
 | `hover` / `focus` pseudo-states | ❌ | pointer-only — desktop-web semantics |
 | CSS animations / `keyframes` | ❌ | web-only ("no animations v1") |
 | `@pyreon/elements` Overlay / Portal | ❌ | web-only-rich (Layer 3b) — native uses sheets/dialogs, a separate model |
