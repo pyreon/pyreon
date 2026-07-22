@@ -1,5 +1,53 @@
 # @pyreon/coolgrid
 
+## 0.50.0
+
+### Patch Changes
+
+- [#2417](https://github.com/pyreon/pyreon/pull/2417) [`83d1c0d`](https://github.com/pyreon/pyreon/commit/83d1c0d2a6b93285a441438c148a7d214a91c9d8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - chore: dependency-hygiene fixes from the workspace dependency audit
+
+  Declared-vs-actual dependency audit across all 88 workspace packages. No
+  runtime behavior changes — every fix removes or reclassifies a dependency the
+  package's shipped code never imports:
+
+  - `@pyreon/zero`: removed unused `@pyreon/meta` dependency (legacy from the
+    initial monorepo migration; zero mentions in the package).
+  - `@pyreon/zero-cli`: removed unused `@pyreon/server` dependency (the CLI
+    delegates to `@pyreon/cli` via dynamic import and to `@pyreon/create-zero`
+    via template-path resolution — both kept; `server` was never referenced).
+  - `@pyreon/document-primitives`: removed unused `@pyreon/styler` +
+    `@pyreon/ui-core` dependencies (its rocketstyle dependency declares its own).
+  - `@pyreon/coolgrid`: moved `@pyreon/styler` to devDependencies (only its
+    browser test imports it; prod src uses core/ui-core/unistyle).
+  - `@pyreon/typescript`: `@pyreon/core` dependency now uses the workspace
+    protocol (`workspace:^`) instead of the pinned `>=0.13.0` range — consistent
+    with every other inter-package dependency; the fixed-group release keeps the
+    published range aligned with the sibling core release.
+
+  (Private packages fixed in the same pass, no changeset needed: `ui-components`
+  dropped unused `hooks`/`styler` + moved test-only `ui-core` to devDeps;
+  `ui-primitives` dropped unused `elements`.)
+
+- [#2418](https://github.com/pyreon/pyreon/pull/2418) [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: PURE-form component branding — importing one primitive no longer pays the whole package
+
+  Bare top-level `Component.displayName/pkgName/PYREON__COMPONENT = …` assignments are
+  side effects a bundler must run once any binding of the module is used, so every
+  component pinned every other: importing just `<Portal>` retained all of
+  `@pyreon/elements` (7.5KB gz). Brands now ride the export expression
+  (`/* @__PURE__ */ Object.assign(Component, {…})` — same object identity, call sites
+  and stack traces unchanged), making each component droppable when unused.
+
+  Measured (minified+gzipped, `@pyreon/*` externalized): Portal 7.50 → 2.39KB (−68%),
+  Text → 2.41KB, Element → 4.02KB (−46%), List → 4.10KB, Overlay → 5.44KB. Locked by
+  new `@pyreon/elements::portal` / `::element` entries in the import-budget gate plus a
+  repo-wide census guard (`no-bare-component-brand.test.ts`).
+
+- Updated dependencies [[`4d8b0ac`](https://github.com/pyreon/pyreon/commit/4d8b0ac11243c69bc96c0101f78ef4da27399f20), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714)]:
+  - @pyreon/ui-core@0.50.0
+  - @pyreon/unistyle@0.50.0
+  - @pyreon/core@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

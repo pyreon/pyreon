@@ -1,5 +1,81 @@
 # @pyreon/hooks
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2458](https://github.com/pyreon/pyreon/pull/2458) [`24df62e`](https://github.com/pyreon/pyreon/commit/24df62ee3e27d1cc624f627c1277fbed4866e91e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Focus-management hardening (audited a11y gaps):
+
+  - **`useFocusTrap` upgraded to focus-scope quality.** Concurrent traps now form a scope STACK — one shared pair of document listeners, only the most recently activated trap whose container exists handles events, and deactivating/unmounting it reactivates the trap beneath (stacked modals no longer fight over the same Tab event). NEW focusin containment: a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in (Tab-only trapping missed those escapes); the recapture is microtask-deferred and re-checked so a close flow that restores focus + unmounts in the same flush is never fought. `initialFocus: true` now prefers a `[data-autofocus]` descendant over the first tabbable. Existing call shapes (`useFocusTrap(getEl)`, positional `active`, options object) are unchanged.
+  - **New `useInertOthers(getEl, options?)` hook** — applies the native `inert` attribute to every sibling subtree outside the given element (walking up to `document.body`), making `aria-modal="true"` actually true for sighted keyboard users AND assistive tech. Exact-restore on cleanup (elements that were already `inert` stay inert), per-element refcount so stacked overlays never un-inert what an outer overlay still needs, live regions (`[aria-live]`) skipped so announcements keep working, reactive application via a signal-backed getter.
+  - `@pyreon/ui-primitives` `ModalBase` (private) now wires `useInertOthers` behind its open lifecycle and arms its focus trap in OPEN order.
+  - `@pyreon/a11y` README: documents the shipped `<LiveRegion>` + `<SkipLink>` (previously absent) and the `<RouteAnnouncer>` ↔ `RouterView announceRouteChanges` double-announcement overlap.
+
+- [#2413](https://github.com/pyreon/pyreon/pull/2413) [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6) Thanks [@vitbokisch](https://github.com/vitbokisch)! - refactor(hooks,ui-core): make @pyreon/hooks independent of the ui-system layer
+
+  `@pyreon/hooks` is a **fundamentals** package but depended on the **ui-system**
+  layer (`@pyreon/styler` + `@pyreon/ui-core`), which inverted the layer order and
+  dragged the whole styling layer into every hooks consumer. It is now fully
+  independent — its only `@pyreon/*` deps are the `core` + `reactivity` peers.
+
+  **Breaking** — three theme-reader hooks moved from `@pyreon/hooks` to
+  `@pyreon/ui-core` (their natural home: they read the styler theme, and the
+  ui-system now owns its theme hooks):
+
+  - `useThemeValue` — import from `@pyreon/ui-core` instead of `@pyreon/hooks`
+  - `useRootSize` — import from `@pyreon/ui-core`
+  - `useSpacing` — import from `@pyreon/ui-core`
+
+  `useThrottledCallback` stays in `@pyreon/hooks` (its `throttle` util is now
+  inlined — identical leading+trailing behavior, no ui-core import). All other
+  hooks are unchanged.
+
+  This severs the last `fundamentals → ui-system` runtime dependency edge, a step
+  toward making the ui-system and fundamentals layers mutually independent.
+
+- [#2419](https://github.com/pyreon/pyreon/pull/2419) [`5bf6bfc`](https://github.com/pyreon/pyreon/commit/5bf6bfcc2ce0cc2749bc8fd5f8927d122aee6264) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Add `useFilePicker()` — pick a document/file from the device.
+
+  `pick()` returns a `Promise<string | null>` you `await`: a URI string for the
+  picked file, or `null` when the user cancels (it never rejects). This is the
+  document sibling of `useImagePicker` (any file — a PDF, a `.csv`, a `.zip` — not
+  just photos) and the third async-result hook.
+
+  ```tsx
+  const files = useFilePicker()
+  const status = signal<'idle' | 'picked' | 'cancelled'>('idle')
+
+  <button onClick={async () => {
+    const uri = await files.pick()
+    status.set(uri === null ? 'cancelled' : 'picked')
+  }}>Pick a file</button>
+  ```
+
+  Compare the result to `null` explicitly rather than testing it for truthiness —
+  that is also the shape the multi-target compiler lowers to a native optional
+  test.
+
+  Web uses a hidden `<input type="file">` (no `accept` filter, so any file type)
+  and resolves an object URL; the input is always detached once the pick settles.
+  Under PMTC it lowers to `UIDocumentPickerViewController` (iOS) and the Storage
+  Access Framework `OpenDocument` (Android).
+
+  No storage permission is required on either native platform: both system pickers
+  run out of process and hand back only the document the user chose, so there is no
+  iOS entitlement and no Android runtime permission to request.
+
+  The returned URI is an opaque, ephemeral, platform-shaped handle (`file://` temp
+  copy on iOS, `content://` on Android, `blob:` on the web) — read it or upload it
+  promptly rather than persisting it.
+
+  Saving/exporting a file is a separate native flow on every platform and is
+  intentionally out of scope here (a tracked follow-up).
+
+### Patch Changes
+
+- Updated dependencies [[`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7)]:
+  - @pyreon/core@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

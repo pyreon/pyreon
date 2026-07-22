@@ -1,5 +1,15 @@
 # @pyreon/ui-primitives
 
+## 0.40.0
+
+### Patch Changes
+
+- Updated dependencies [[`24df62e`](https://github.com/pyreon/pyreon/commit/24df62ee3e27d1cc624f627c1277fbed4866e91e), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6), [`5bf6bfc`](https://github.com/pyreon/pyreon/commit/5bf6bfcc2ce0cc2749bc8fd5f8927d122aee6264)]:
+  - @pyreon/hooks@0.50.0
+  - @pyreon/core@0.50.0
+  - @pyreon/runtime-dom@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.39.0
 
 ### Patch Changes

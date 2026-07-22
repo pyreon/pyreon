@@ -1,5 +1,45 @@
 # @pyreon/elements
 
+## 0.50.0
+
+### Patch Changes
+
+- [#2418](https://github.com/pyreon/pyreon/pull/2418) [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714) Thanks [@vitbokisch](https://github.com/vitbokisch)! - perf: PURE-form component branding — importing one primitive no longer pays the whole package
+
+  Bare top-level `Component.displayName/pkgName/PYREON__COMPONENT = …` assignments are
+  side effects a bundler must run once any binding of the module is used, so every
+  component pinned every other: importing just `<Portal>` retained all of
+  `@pyreon/elements` (7.5KB gz). Brands now ride the export expression
+  (`/* @__PURE__ */ Object.assign(Component, {…})` — same object identity, call sites
+  and stack traces unchanged), making each component droppable when unused.
+
+  Measured (minified+gzipped, `@pyreon/*` externalized): Portal 7.50 → 2.39KB (−68%),
+  Text → 2.41KB, Element → 4.02KB (−46%), List → 4.10KB, Overlay → 5.44KB. Locked by
+  new `@pyreon/elements::portal` / `::element` entries in the import-budget gate plus a
+  repo-wide census guard (`no-bare-component-brand.test.ts`).
+
+- [#2423](https://github.com/pyreon/pyreon/pull/2423) [`4de44b8`](https://github.com/pyreon/pyreon/commit/4de44b861e8fa787ab53c17a30754e163fc67c43) Thanks [@vitbokisch](https://github.com/vitbokisch)! - fix(elements): hover overlays are now keyboard-operable + accurate aria-haspopup
+
+  - `useOverlay` hover mode (`openOn`/`closeOn: 'hover'`) previously bound only
+    `mouseenter`/`mouseleave` — a hover Tooltip/HoverCard could NEVER be opened
+    by keyboard or assistive tech. `focusin`/`focusout` now mirror the mouse
+    handlers 1:1 on both the trigger and the content (APG tooltip/hover-card +
+    WCAG 1.4.13): focusing the trigger opens, Tab-ing into the content keeps it
+    open, moving focus past the widget closes it after `hoverDelay`.
+  - `aria-haspopup` on the trigger is now type-accurate: `popover` advertises
+    `'dialog'` (was the blanket `'menu'`, telling AT to expect menuitem semantics
+    that never exist), `custom` omits it (the hook can't know the popup's
+    semantics), `dropdown`/`modal`/`tooltip` unchanged (`'menu'`/`'dialog'`/
+    omitted). An Overlay with no explicit `type` keeps `'menu'` (the documented
+    `'dropdown'` default).
+
+- Updated dependencies [[`4d8b0ac`](https://github.com/pyreon/pyreon/commit/4d8b0ac11243c69bc96c0101f78ef4da27399f20), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714)]:
+  - @pyreon/ui-core@0.50.0
+  - @pyreon/unistyle@0.50.0
+  - @pyreon/core@0.50.0
+  - @pyreon/reactivity@0.50.0
+  - @pyreon/sized-map@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

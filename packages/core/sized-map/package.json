@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/sized-map",
-  "version": "0.49.0",
-  "description": "Bounded `Map<K, V>` primitive \u2014 FIFO (default) or LRU-on-read mode. Used internally across Pyreon packages for sized cache eviction; safe to use directly.",
+  "version": "0.50.0",
+  "description": "Bounded `Map<K, V>` primitive — FIFO (default) or LRU-on-read mode. Used internally across Pyreon packages for sized cache eviction; safe to use directly.",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/core/sized-map#readme",
   "bugs": {

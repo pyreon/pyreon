@@ -1,5 +1,41 @@
 # @pyreon/document-primitives
 
+## 0.50.0
+
+### Patch Changes
+
+- [#2417](https://github.com/pyreon/pyreon/pull/2417) [`83d1c0d`](https://github.com/pyreon/pyreon/commit/83d1c0d2a6b93285a441438c148a7d214a91c9d8) Thanks [@vitbokisch](https://github.com/vitbokisch)! - chore: dependency-hygiene fixes from the workspace dependency audit
+
+  Declared-vs-actual dependency audit across all 88 workspace packages. No
+  runtime behavior changes — every fix removes or reclassifies a dependency the
+  package's shipped code never imports:
+
+  - `@pyreon/zero`: removed unused `@pyreon/meta` dependency (legacy from the
+    initial monorepo migration; zero mentions in the package).
+  - `@pyreon/zero-cli`: removed unused `@pyreon/server` dependency (the CLI
+    delegates to `@pyreon/cli` via dynamic import and to `@pyreon/create-zero`
+    via template-path resolution — both kept; `server` was never referenced).
+  - `@pyreon/document-primitives`: removed unused `@pyreon/styler` +
+    `@pyreon/ui-core` dependencies (its rocketstyle dependency declares its own).
+  - `@pyreon/coolgrid`: moved `@pyreon/styler` to devDependencies (only its
+    browser test imports it; prod src uses core/ui-core/unistyle).
+  - `@pyreon/typescript`: `@pyreon/core` dependency now uses the workspace
+    protocol (`workspace:^`) instead of the pinned `>=0.13.0` range — consistent
+    with every other inter-package dependency; the fixed-group release keeps the
+    published range aligned with the sibling core release.
+
+  (Private packages fixed in the same pass, no changeset needed: `ui-components`
+  dropped unused `hooks`/`styler` + moved test-only `ui-core` to devDeps;
+  `ui-primitives` dropped unused `elements`.)
+
+- Updated dependencies [[`4d8b0ac`](https://github.com/pyreon/pyreon/commit/4d8b0ac11243c69bc96c0101f78ef4da27399f20), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`4f9a2ed`](https://github.com/pyreon/pyreon/commit/4f9a2eda21b1955e5fe79f7129271e4ab2d6d0e7), [`16b5407`](https://github.com/pyreon/pyreon/commit/16b5407771e8961fe4ca535fd373e8a397258273), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714), [`4de44b8`](https://github.com/pyreon/pyreon/commit/4de44b861e8fa787ab53c17a30754e163fc67c43), [`6bd48c6`](https://github.com/pyreon/pyreon/commit/6bd48c6913eb17f88bed2aa89e903fc77fb0990a), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714)]:
+  - @pyreon/unistyle@0.50.0
+  - @pyreon/core@0.50.0
+  - @pyreon/document@0.50.0
+  - @pyreon/elements@0.50.0
+  - @pyreon/rocketstyle@0.50.0
+  - @pyreon/connector-document@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

@@ -1,5 +1,7 @@
 # @pyreon/compiler-win32-x64-msvc
 
+## 0.50.0
+
 ## 0.49.0
 
 ## 0.48.0

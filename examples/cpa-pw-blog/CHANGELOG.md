@@ -1,5 +1,20 @@
 # cpa-pw-blog
 
+## 0.0.36
+
+### Patch Changes
+
+- Updated dependencies [[`83d1c0d`](https://github.com/pyreon/pyreon/commit/83d1c0d2a6b93285a441438c148a7d214a91c9d8), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`659c30f`](https://github.com/pyreon/pyreon/commit/659c30f8f41514b47b4c83ce185de43f717fd2d7)]:
+  - @pyreon/zero@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/meta@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+
 ## 0.0.35
 
 ### Patch Changes

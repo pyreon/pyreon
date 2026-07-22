@@ -1,5 +1,24 @@
 # @pyreon/rocketstyle
 
+## 0.50.0
+
+### Patch Changes
+
+- [#2429](https://github.com/pyreon/pyreon/pull/2429) [`6bd48c6`](https://github.com/pyreon/pyreon/commit/6bd48c6913eb17f88bed2aa89e903fc77fb0990a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Preserve wrapped-component prop types through the rocketstyle wrapper when the component's props interface carries a string index signature.
+
+  Every `@pyreon/ui-primitives` props interface ends with `[key: string]: unknown` (rest-prop pass-through). Under `keyof`, TS subsumes literal keys into `string`, so `keyof O` is just `string | number` — and DFP's `Omit<O, keyof EA & keyof O>` (a non-homomorphic `Pick` over that computed union) erased EVERY named key, collapsing the whole prop surface to `{ [x: string]: unknown }`. On every primitive-backed ui-component (Select / Checkbox / NumberInput / Tabs / Tree / …) `value` degraded to `unknown` (`<Select value={123}>` compiled when it should reject) and `onChange` callbacks lost contextual typing (implicit-any errors forcing manual annotations).
+
+  Fixed with a homomorphic key-remapped `OmitSafe<T, K>` (`{ [P in keyof T as P extends K ? never : P]: T[P] }`) in DFP — homomorphic mapped types iterate the declared properties individually, so named keys keep their types AND the index signature survives for pass-through. Byte-identical to `Omit` for types without an index signature; render-fn children typing (the [#2377](https://github.com/pyreon/pyreon/issues/2377) fix) is preserved — and render-fn `children` callbacks now get contextual typing too.
+
+  Regression-locked by `@pyreon/ui-components` `src/tests/behavior-prop-types.types.test.ts` (bisect-verified: reverting to plain `Omit` produces 16 typecheck errors — unused `@ts-expect-error` + implicit-any on every probe).
+
+- Updated dependencies [[`4d8b0ac`](https://github.com/pyreon/pyreon/commit/4d8b0ac11243c69bc96c0101f78ef4da27399f20), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714)]:
+  - @pyreon/ui-core@0.50.0
+  - @pyreon/core@0.50.0
+  - @pyreon/styler@0.50.0
+  - @pyreon/reactivity@0.50.0
+  - @pyreon/sized-map@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

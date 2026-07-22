@@ -1,5 +1,45 @@
 # @pyreon/meta
 
+## 0.50.0
+
+### Patch Changes
+
+- Updated dependencies [[`24df62e`](https://github.com/pyreon/pyreon/commit/24df62ee3e27d1cc624f627c1277fbed4866e91e), [`4d8b0ac`](https://github.com/pyreon/pyreon/commit/4d8b0ac11243c69bc96c0101f78ef4da27399f20), [`5dd6c80`](https://github.com/pyreon/pyreon/commit/5dd6c809127fe653009c867a8ccd2ca4ae5c6005), [`825fc0e`](https://github.com/pyreon/pyreon/commit/825fc0ea7876d96635a1b714d4f63f0c5e6e017d), [`f32ab89`](https://github.com/pyreon/pyreon/commit/f32ab893072f747ad83d0a29426c994f2afe56bb), [`149dc85`](https://github.com/pyreon/pyreon/commit/149dc859b3a914d14d1b08ba1344296d1024952c), [`83d1c0d`](https://github.com/pyreon/pyreon/commit/83d1c0d2a6b93285a441438c148a7d214a91c9d8), [`02fb84a`](https://github.com/pyreon/pyreon/commit/02fb84acdf67443bcad6d9f5958059d398be5442), [`8739b10`](https://github.com/pyreon/pyreon/commit/8739b10fe1574bfc60f228fd6cdf9dba1bc8e910), [`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7), [`4f9a2ed`](https://github.com/pyreon/pyreon/commit/4f9a2eda21b1955e5fe79f7129271e4ab2d6d0e7), [`16b5407`](https://github.com/pyreon/pyreon/commit/16b5407771e8961fe4ca535fd373e8a397258273), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714), [`4260c26`](https://github.com/pyreon/pyreon/commit/4260c2641d2d9daadafdc58e0b3e09b802901f22), [`c41e4f3`](https://github.com/pyreon/pyreon/commit/c41e4f3cc4084a2b7abbf2af92e9df1ef05791b6), [`5bf6bfc`](https://github.com/pyreon/pyreon/commit/5bf6bfcc2ce0cc2749bc8fd5f8927d122aee6264), [`cbeef8a`](https://github.com/pyreon/pyreon/commit/cbeef8aaf81293e79ccea8d305b24d56836fe7c3), [`4de44b8`](https://github.com/pyreon/pyreon/commit/4de44b861e8fa787ab53c17a30754e163fc67c43), [`6bd48c6`](https://github.com/pyreon/pyreon/commit/6bd48c6913eb17f88bed2aa89e903fc77fb0990a), [`9ee0acf`](https://github.com/pyreon/pyreon/commit/9ee0acf4023a247071223fcc43913fc5d76bad11), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714), [`34c943f`](https://github.com/pyreon/pyreon/commit/34c943f68dba3bae423d6ca38fd6cb22527dd714), [`b428e47`](https://github.com/pyreon/pyreon/commit/b428e47766cc3c8be381b85458782884a4e3d241)]:
+  - @pyreon/hooks@0.50.0
+  - @pyreon/ui-core@0.50.0
+  - @pyreon/unistyle@0.50.0
+  - @pyreon/charts@0.50.0
+  - @pyreon/code@0.50.0
+  - @pyreon/document-primitives@0.50.0
+  - @pyreon/coolgrid@0.50.0
+  - @pyreon/dnd@0.50.0
+  - @pyreon/form@0.50.0
+  - @pyreon/state-tree@0.50.0
+  - @pyreon/i18n@0.50.0
+  - @pyreon/document@0.50.0
+  - @pyreon/elements@0.50.0
+  - @pyreon/flow@0.50.0
+  - @pyreon/hotkeys@0.50.0
+  - @pyreon/rocketstyle@0.50.0
+  - @pyreon/rx@0.50.0
+  - @pyreon/styler@0.50.0
+  - @pyreon/validation@0.50.0
+  - @pyreon/attrs@0.50.0
+  - @pyreon/connector-document@0.50.0
+  - @pyreon/reactivity@0.50.0
+  - @pyreon/feature@0.50.0
+  - @pyreon/machine@0.50.0
+  - @pyreon/permissions@0.50.0
+  - @pyreon/query@0.50.0
+  - @pyreon/storage@0.50.0
+  - @pyreon/store@0.50.0
+  - @pyreon/table@0.50.0
+  - @pyreon/toast@0.50.0
+  - @pyreon/url-state@0.50.0
+  - @pyreon/virtual@0.50.0
+  - @pyreon/kinetic@0.50.0
+  - @pyreon/kinetic-presets@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

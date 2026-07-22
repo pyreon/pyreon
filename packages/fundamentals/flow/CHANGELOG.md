@@ -1,5 +1,27 @@
 # @pyreon/flow
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2420](https://github.com/pyreon/pyreon/pull/2420) [`4260c26`](https://github.com/pyreon/pyreon/commit/4260c2641d2d9daadafdc58e0b3e09b802901f22) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Flow alignment, edge modes & theming completeness:
+
+  - **Effective node dimensions everywhere** — the measured-DOM-size precedence rule (explicit `width`/`height` → measured → 150×40 default) that edge geometry already used now also drives `layout()` (ELK receives real rendered boxes — correct spacing for content-sized nodes), `fitView`, drag snap lines, rubber-band selection hit-tests, the minimap, `<NodeResizer>`'s starting size, and viewport culling. New public `flow.getNodeDimensions(id)` + exported `getEffectiveDimensions` / `DEFAULT_NODE_WIDTH` / `DEFAULT_NODE_HEIGHT`.
+  - **Handle-anchored edges** — the measurement pass now records every `<Handle>` dot's rendered center (`NodeMeasurement.handles`), and `edge.sourceHandle` / `targetHandle` anchor the edge exactly at the named dot (previously stored but geometrically ignored). Priority chain: measured dot → config handle side-midpoint → first handle → floating natural-angle endpoints. Unknown handle ids anchor at the first handle and dev-warn once naming the known ids. The live connection-draw line starts at the measured dot too. New exported `resolveHandleAnchor`; `MeasuredHandle` / `NodeMeasurement` types.
+  - **Per-edge path tuning** — `edge.pathOptions` (`curvature` for bezier, `borderRadius` + `offset` for smoothstep, `offset` for step) threaded through `getEdgePath`; new `EdgePathOptions` type.
+  - **Flow-wide edge defaults** — `config.defaultEdgeOptions` merges defaults (`type`, `animated`, markers, `pathOptions`, …) into every edge that doesn't set the field itself (initial edges, `addEdge`, drawn connections); per-edge values — including an explicit `markerEnd: null` — always win. New `DefaultEdgeOptions` type.
+  - **Theming completeness** — every remaining hardcoded renderer color now goes through a `--pyreon-flow-*` CSS variable with the historical value as fallback (handle dot, resizer, node toolbar, minimap viewport outline, connection line, snap helper lines, hover/active states in `flowStyles`); the full 25-variable vocabulary is documented in the new docs "Theming" table. SVG colors moved off presentation attributes onto `style` where needed (`var()` is invalid in presentation attributes).
+  - **`<Handle offset>`** — placement along the handle's side as a percentage (default `50` = centered), the first-class fix for same-side handle dots visually stacking; measured-dot anchoring moves each edge attachment with its dot.
+  - **Custom edge renderers get tangent sides** — `EdgeComponentProps` now includes reactive `sourcePosition()` / `targetPosition()` accessors (the side the edge departs from / approaches, resolved from handles or the floating-endpoint math), so custom renderers can feed the built-in path builders the same natural angles the built-ins use. Per-edge config remains readable via `props.edge` (e.g. `edge.pathOptions`).
+  - **Test-infra**: the package's vitest-browser suite now compiles through the real `@pyreon/vite-plugin` compiler (verified via a `_tpl(`-presence probe + negative control) — the browser tests exercise the shipped template path instead of the default esbuild JSX transform.
+
+### Patch Changes
+
+- Updated dependencies [[`f3f5d3b`](https://github.com/pyreon/pyreon/commit/f3f5d3b70d2bd19b23b802ea21ad8ba9d5e416a7)]:
+  - @pyreon/core@0.50.0
+  - @pyreon/runtime-dom@0.50.0
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes

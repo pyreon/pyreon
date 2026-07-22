@@ -1,5 +1,42 @@
 # @pyreon/compiler
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2457](https://github.com/pyreon/pyreon/pull/2457) [`6029da4`](https://github.com/pyreon/pyreon/commit/6029da41bae4a4f52140cba939d778e079c89fee) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon doctor` now audits ANY workspace layout instead of silently scanning zero files (upstream-reported false green: in a multi-root workspace — `apps/* + packages/* + modules/*` — the pattern gates scanned 0 files from every cwd, `audit-tests` was pinned to `<root>/packages`, and the doctor still reported 100/100 Grade A).
+
+  - **Workspace-root discovery**: the file-scanning gates (`react-patterns`, `pyreon-patterns`, `lint`, `audit-tests`) resolve their scope from the workspace's OWN `package.json` `workspaces` globs (array or `{ packages }` shape) or `pnpm-workspace.yaml`, discovered by walking up from the cwd — results are identical from any directory. No workspaces → single-package (nearest `package.json` dir). Per package, `src/**` is scanned when present; tests / fixtures / `.d.ts` stay excluded.
+  - **Empty scan ≠ clean pass**: a gate that matches no files is skipped with a warning (`meta.emptyScan`), its category is "not measured", and a run where NOTHING was measured renders `Score: —` instead of the degenerate 100/A, emits a `::warning` in `--gha`, and exits non-zero under `--ci` (new `DoctorReport.measured` flag).
+  - **Coverage visibility**: the report header prints the resolved scope (`Scope: N package root(s) from workspaces (…)`) + per-gate scanned counts; `--json` carries a new `workspace` field.
+  - **Escape hatches**: new `--roots <glob,...>` flag overrides discovery for non-standard layouts; `pyreon.doctor.excludeRoots` globs in the root package.json exclude demo/docs workspaces from grading.
+  - `@pyreon/compiler`: `auditTestEnvironment(startDir, { roots?, rootDir? })` accepts explicit package roots (new `TestAuditOptions` export) — the default `<root>/packages` walk is unchanged for existing callers.
+
+  Behavior note (pre-1.0 clean break): in foreign repos the doctor now actually measures your code — scores will change from the previous meaningless 100. On the Pyreon repo itself the audited file set is byte-identical (locked by parity tests).
+
+### Patch Changes
+
+- [#2421](https://github.com/pyreon/pyreon/pull/2421) [`659c30f`](https://github.com/pyreon/pyreon/commit/659c30f8f41514b47b4c83ce185de43f717fd2d7) Thanks [@vitbokisch](https://github.com/vitbokisch)! - SSG hybrid `renderMode: 'spa'` routes now work on direct URL out of the box, and
+  `pyreon doctor --check-ssg` no longer false-positives on them.
+
+  **@pyreon/zero** — a DYNAMIC `'spa'`-declared route in a `mode: 'ssg'` app
+  (`item/[id]` fetching client-side data by an arbitrary id) can't be enumerated
+  to a concrete `dist/` file, so a direct load of `/item/123` used to 404 on a
+  static host. The SSG build now emits `dist/404.html` = the blank CSR shell when
+  such a route exists (and no `_404.tsx` already wrote one). Every major static
+  host — GitHub Pages, S3, Netlify, Cloudflare Pages, Firebase — serves 404.html
+  for an unmatched path, so the shell boots, the client router matches the URL,
+  and the route renders. (Platform adapters already emit `_redirects /* → 200`
+  for a 200 status; this covers the generic hosts that don't get one.)
+
+  **@pyreon/compiler** — the `dynamic-route-missing-get-static-paths` audit now
+  respects a per-route `renderMode` opt-out: a route declaring
+  `renderMode = 'spa' | 'ssr' | 'isr'` is exempt from the `getStaticPaths`
+  requirement (it has explicitly opted out of SSG prerendering — exactly the fix
+  the warning recommends). Previously the audit ignored `renderMode` and
+  false-positived on the correctly-configured hybrid route it just told you to
+  write.
+
 ## 0.49.0
 
 ### Patch Changes

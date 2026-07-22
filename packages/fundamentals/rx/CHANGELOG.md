@@ -1,5 +1,19 @@
 # @pyreon/rx
 
+## 0.50.0
+
+### Minor Changes
+
+- [#2454](https://github.com/pyreon/pyreon/pull/2454) [`9ee0acf`](https://github.com/pyreon/pyreon/commit/9ee0acf4023a247071223fcc43913fc5d76bad11) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Completeness additions (39 → 42 transforms):
+
+  - **`intersection` / `difference` / `union`** — set operations by identity or by `key` selector, **signal-aware on BOTH inputs** (either input may be a signal; the result recomputes when either changes). `O(n + m)` via a `Set`; `union` is order-preserving (source first, first occurrence wins).
+  - **`sortBy` direction** — optional third parameter `'asc' | 'desc'` (default `'asc'`, fully back-compatible); descending no longer requires composing `reverse`.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/reactivity@0.50.0
+
 ## 0.49.0
 
 ### Patch Changes
