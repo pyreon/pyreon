@@ -9,6 +9,7 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type {
   DragData,
+  DragPreviewOptions,
   DropEdge,
   DropLocation,
   UseDraggableOptions,

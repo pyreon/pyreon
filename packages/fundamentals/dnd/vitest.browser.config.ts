@@ -11,4 +11,14 @@ import { defineBrowserConfig } from '@pyreon/vitest-config'
 // drive the same pdnd Playwright pattern that the app-showcase /dnd
 // e2e uses, but at the package level so the regression-lock for
 // `useFileDrop`'s drop pathway lives next to the hook itself.
-export default defineBrowserConfig(playwright())
+// The JSX override routes `.browser.test.tsx` JSX through the `@pyreon/core`
+// automatic runtime (`h()`), same as ui-primitives' browser config — needed by
+// the cross-list spec, which mounts a real `<For>`-rendered board.
+export default defineBrowserConfig(playwright(), {
+  oxc: {
+    jsx: {
+      runtime: 'automatic',
+      importSource: '@pyreon/core',
+    },
+  },
+})

@@ -1,6 +1,11 @@
 import { dropTargetForElements } from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
-import { isServer, onCleanup, signal } from '@pyreon/reactivity'
-import type { DragData, UseDroppableOptions, UseDroppableResult } from './types'
+import {
+  attachClosestEdge,
+  type Edge,
+  extractClosestEdge,
+} from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
+import { batch, isServer, onCleanup, signal } from '@pyreon/reactivity'
+import type { DragData, DropEdge, UseDroppableOptions, UseDroppableResult } from './types'
 
 /**
  * Make an element a drop target with signal-driven state.
@@ -9,10 +14,11 @@ import type { DragData, UseDroppableOptions, UseDroppableResult } from './types'
  * ```tsx
  * let zoneEl: HTMLElement | null = null
  *
- * const { isOver } = useDroppable({
+ * const { isOver, overEdge } = useDroppable({
  *   element: () => zoneEl,
  *   onDrop: (data) => handleDrop(data),
  *   canDrop: (data) => data.type === "card",
+ *   edges: ["top", "bottom"], // opt-in closest-edge detection
  * })
  *
  * <div ref={(el) => zoneEl = el} class={isOver() ? "bg-blue-50" : ""}>
@@ -23,9 +29,10 @@ import type { DragData, UseDroppableOptions, UseDroppableResult } from './types'
 export function useDroppable<T extends DragData = DragData>(
   options: UseDroppableOptions<T>,
 ): UseDroppableResult {
-  if (isServer) return { isOver: () => false }
+  if (isServer) return { isOver: () => false, overEdge: () => null }
 
   const isOver = signal(false)
+  const overEdge = signal<DropEdge | null>(null)
   let cleanup: (() => void) | undefined
   let disposed = false
 
@@ -44,26 +51,62 @@ export function useDroppable<T extends DragData = DragData>(
     const el = options.element()
     if (!el) return
 
+    const edges = options.edges
+
+    const resolveData = (): DragData => {
+      if (!options.data) return {}
+      return typeof options.data === 'function' ? (options.data as () => T)() : options.data
+    }
+
     cleanup = dropTargetForElements({
       element: el,
-      getData: () => {
-        if (!options.data) return {}
-        return typeof options.data === 'function' ? (options.data as () => T)() : options.data
+      getData: ({ input, element }) => {
+        const data = resolveData()
+        // Opt-in closest-edge detection — wraps the target data with
+        // pdnd hitbox metadata so extractClosestEdge can read the live
+        // edge on enter/drag.
+        if (edges && edges.length > 0) {
+          return attachClosestEdge(data, { input, element, allowedEdges: edges as Edge[] })
+        }
+        return data
       },
+      // pdnd stickiness — keep "held" drop-target status while the
+      // pointer crosses gaps between targets. Pass-through of getIsSticky.
+      ...(options.sticky ? { getIsSticky: () => true } : {}),
       canDrop: ({ source }) => {
         if (!options.canDrop) return true
         return options.canDrop(source.data as DragData)
       },
-      onDragEnter: ({ source }) => {
-        isOver.set(true)
+      onDragEnter: ({ source, self }) => {
+        // batch — isOver + overEdge settle in ONE notify pass for
+        // subscribers reading both (matches useSortable's batching).
+        batch(() => {
+          isOver.set(true)
+          if (edges) overEdge.set(extractClosestEdge(self.data) as DropEdge | null)
+        })
         options.onDragEnter?.(source.data as DragData)
       },
+      // Live edge tracking while the pointer moves over the target —
+      // only meaningful (and only wired) when edges are configured.
+      ...(edges && edges.length > 0
+        ? {
+            onDrag: ({ self }: { self: { data: Record<string | symbol, unknown> } }) => {
+              overEdge.set(extractClosestEdge(self.data) as DropEdge | null)
+            },
+          }
+        : {}),
       onDragLeave: () => {
-        isOver.set(false)
+        batch(() => {
+          isOver.set(false)
+          overEdge.set(null)
+        })
         options.onDragLeave?.()
       },
       onDrop: ({ source }) => {
-        isOver.set(false)
+        batch(() => {
+          isOver.set(false)
+          overEdge.set(null)
+        })
         options.onDrop?.(source.data as DragData)
       },
     })
@@ -76,5 +119,5 @@ export function useDroppable<T extends DragData = DragData>(
     if (cleanup) cleanup()
   })
 
-  return { isOver }
+  return { isOver, overEdge }
 }
