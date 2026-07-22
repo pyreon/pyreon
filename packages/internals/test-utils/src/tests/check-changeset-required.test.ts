@@ -8,6 +8,7 @@ import {
   findOwningPackage,
   isChangesetFile,
   isConsumerAffectingFile,
+  isRepoTsconfigPath,
   isTestRunnerConfigPath,
   readChangesetIgnore,
   type GateInputs,
@@ -354,10 +355,39 @@ describe('isConsumerAffectingFile', () => {
       expect(isTestRunnerConfigPath('packages/x/vitest.config.ts')).toBe(true)
       expect(isTestRunnerConfigPath('vitest.node.config.mts')).toBe(true)
       expect(isTestRunnerConfigPath('vitest.config.js')).toBe(true)
-      // tsconfig is NOT excluded — @pyreon/typescript ships its presets.
+      // tsconfig has its OWN predicate (isRepoTsconfigPath) — not this one.
       expect(isTestRunnerConfigPath('packages/x/tsconfig.json')).toBe(false)
       expect(isTestRunnerConfigPath('packages/x/src/vitest-helpers.ts')).toBe(false)
       expect(isTestRunnerConfigPath('packages/x/vite.config.ts')).toBe(false)
+    })
+
+    it('isRepoTsconfigPath: repo tsconfigs are tooling, template tsconfigs are product', () => {
+      // A package's own build tsconfig never reaches the npm tarball (`files`
+      // allowlists exclude it) — the @pyreon/tsconfig preset consolidation
+      // must not demand a changeset for 60 packages.
+      expect(isRepoTsconfigPath('packages/fundamentals/flow/tsconfig.json')).toBe(true)
+      expect(isRepoTsconfigPath('tsconfig.json')).toBe(true)
+      // @pyreon/typescript's SHIPPED presets have different basenames — its
+      // own root tsconfig.json is repo tooling like everyone else's.
+      expect(isRepoTsconfigPath('packages/tools/typescript/base.json')).toBe(false)
+      expect(isRepoTsconfigPath('packages/tools/typescript/tsconfig.json')).toBe(true)
+      // Scaffolded template trees SHIP their tsconfigs — consumer-affecting.
+      expect(
+        isRepoTsconfigPath('packages/zero/create-zero/templates/app/tsconfig.json'),
+      ).toBe(false)
+      // Sibling shapes stay unexcluded (narrow predicate).
+      expect(isRepoTsconfigPath('packages/x/tsconfig.types-tests.json')).toBe(false)
+    })
+
+    it('isConsumerAffectingFile: a published package root tsconfig.json is NOT consumer-affecting', () => {
+      expect(
+        isConsumerAffectingFile(
+          'packages/core/router/tsconfig.json',
+          PACKAGES,
+          IGNORED,
+          REPO,
+        ),
+      ).toBe(false)
     })
   })
 

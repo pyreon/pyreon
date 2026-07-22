@@ -239,6 +239,7 @@ export function isConsumerAffectingFile(
   if (isTestPath(file)) return false
   if (isManifestPath(file)) return false
   if (isTestRunnerConfigPath(file)) return false
+  if (isRepoTsconfigPath(file)) return false
   return true
 }
 
@@ -248,9 +249,6 @@ export function isConsumerAffectingFile(
  * tooling — no package ships a vitest config as its product, so they are never
  * in a package's published `files` and a change to one never reaches npm
  * consumers (same non-shipping rationale as test files + the gen-docs manifest).
- * Deliberately NARROW to vitest configs: `tsconfig*.json` is NOT excluded
- * because `@pyreon/typescript` ships its tsconfig presets AS its published
- * product, so a change there IS consumer-affecting.
  *
  * @internal exported for unit testing
  */
@@ -258,6 +256,27 @@ export function isTestRunnerConfigPath(file: string): boolean {
   const norm = file.split('\\').join('/')
   const base = norm.slice(norm.lastIndexOf('/') + 1)
   return /^vitest(\.[\w-]+)?\.config\.(c|m)?[jt]s$/.test(base)
+}
+
+/**
+ * A package's own build tsconfig — the literal `tsconfig.json` basename at
+ * any depth EXCEPT inside a shipped `templates/` tree. Never in any package's
+ * published `files` allowlist, so a change (e.g. the @pyreon/tsconfig preset
+ * consolidation) can't reach npm consumers. Two sharp edges this predicate is
+ * shaped around: `@pyreon/typescript` DOES ship tsconfig PRESETS, but their
+ * basenames are `base.json`/`app.json`/`lib.json` — its own root
+ * `tsconfig.json` is repo tooling like everyone else's; and
+ * `create-zero`/`create-multiplatform` ship `templates/**` trees whose
+ * tsconfigs ARE the product → the `/templates/` carve-out keeps those
+ * consumer-affecting.
+ *
+ * @internal exported for unit testing
+ */
+export function isRepoTsconfigPath(file: string): boolean {
+  const norm = file.split('\\').join('/')
+  if (norm.includes('/templates/')) return false
+  const base = norm.slice(norm.lastIndexOf('/') + 1)
+  return base === 'tsconfig.json'
 }
 
 /**
