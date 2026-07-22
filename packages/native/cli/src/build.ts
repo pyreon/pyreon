@@ -206,6 +206,16 @@ export function conditionalKotlinImports(emitted: string): string {
   if (emitted.includes('.alpha(')) {
     imports.push('import androidx.compose.ui.draw.alpha')
   }
+  // `.border(BorderStroke(...))` — inline-`style` borderWidth/borderColor. Both
+  // the `border` Modifier extension AND `BorderStroke` live in the ROOT
+  // androidx.compose.foundation package (NOT the star-imported sub-packages),
+  // same class as `.background`.
+  if (emitted.includes('.border(')) {
+    imports.push('import androidx.compose.foundation.border')
+  }
+  if (emitted.includes('BorderStroke(')) {
+    imports.push('import androidx.compose.foundation.BorderStroke')
+  }
   // <Field kind="password"> / dynamic kind: PasswordVisualTransformation +
   // VisualTransformation.None both live in androidx.compose.ui.text.input — the
   // unconditional set only imports `ImeAction` from that package (Kotlin star
