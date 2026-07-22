@@ -55,7 +55,7 @@ function DropZone() {
 
 // Sortable list — keyed like <For by>, hook computes the reorder, YOU commit it:
 const cols = signal<Column[]>([])
-const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
+const { containerRef, itemRef, isActive, isOverKey, overEdge } = useSortable({
   items: () => cols(),
   by: (c) => c.id,
   onReorder: (next) => cols.set(next),
@@ -67,8 +67,8 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
     {(col) => (
       <li
         ref={itemRef(col.id)}
-        class={activeId() === col.id ? 'dragging' : ''}
-        style={() => (overId() === col.id && overEdge() === 'top' ? 'border-top: 2px solid blue' : '')}
+        class={isActive(col.id) ? 'dragging' : ''}
+        style={() => (isOverKey(col.id) && overEdge() === 'top' ? 'border-top: 2px solid blue' : '')}
       >
         {col.name}
       </li>
@@ -166,7 +166,7 @@ const { isOver } = useDroppable({
 <T>(options: UseSortableOptions<T>) => UseSortableResult
 ```
 
-Full reorderable list — pointer dragging, auto-scroll near container edges, closest-edge detection, Alt+Arrow keyboard reordering, and ARIA wiring (`role="listitem"`, `aria-roledescription`, `tabindex`) — driven from a reactive `items()` getter. `by` extracts the stable key and MUST match your `<For by>` key. On drop the hook computes the reordered array and calls `onReorder(next)` — it never mutates your list; you commit it. `groupId` opts two sortables into one cross-list drop universe (Trello-style boards): the destination's `onCrossListReceive(item, index)` inserts, the source's `onCrossListDrop(item)` removes. Returns `containerRef` (scroll container), `itemRef(key)` (per-row ref factory), and the `activeId` / `overId` / `overEdge` signal accessors.
+Full reorderable list — pointer dragging, auto-scroll near container edges, closest-edge detection, Alt+Arrow keyboard reordering, and ARIA wiring (`role="listitem"`, `aria-roledescription`, `tabindex`) — driven from a reactive `items()` getter. `by` extracts the stable key and MUST match your `<For by>` key. On drop the hook computes the reordered array and calls `onReorder(next)` — it never mutates your list; you commit it. `groupId` opts two sortables into one cross-list drop universe (Trello-style boards): the destination's `onCrossListReceive(item, index)` inserts, the source's `onCrossListDrop(item)` removes. Returns `containerRef` (scroll container), `itemRef(key)` (per-row ref factory), `itemHandleRef(key)` (optional grip-handle registrar scoping drag initiation), the `activeId` / `overId` / `overEdge` signal accessors, and `createSelector`-backed `isActive(key)` / `isOverKey(key)` predicates (O(2) notifies per change — prefer them over `activeId() === key`, which subscribes EVERY row). Drags are announced to screen readers via `@pyreon/a11y` (`label: (item) => string` names the item; a visually-hidden Alt+Arrow instructions node is auto-created and linked via `aria-describedby`).
 
 **Example**
 
@@ -178,6 +178,7 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
   by: (item) => item.id,              // MUST match the <For by> key
   onReorder: (next) => items.set(next), // hook hands you a NEW array; you commit
   axis: 'vertical',                   // 'horizontal' flips edges + arrow keys
+  label: (item) => item.name,         // names items in screen-reader announcements
 })
 
 ;<ul ref={containerRef}>
@@ -185,8 +186,8 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
     {(item) => (
       <li
         ref={itemRef(item.id)}
-        class={activeId() === item.id ? 'dragging' : ''}
-        style={() => (overId() === item.id ? `border-${overEdge()}: 2px solid blue` : '')}
+        class={isActive(item.id) ? 'dragging' : ''}
+        style={() => (isOverKey(item.id) ? `border-${overEdge()}: 2px solid blue` : '')}
       >
         {item.name}
       </li>
@@ -202,6 +203,8 @@ const { containerRef, itemRef, activeId, overId, overEdge } = useSortable({
 - Expecting the hook to mutate your list — `onReorder(next)` hands you a NEW array; commit it yourself (`items.set(next)`) or nothing visibly reorders
 - Expecting cross-list drops without `groupId` — `onCrossListDrop` / `onCrossListReceive` only fire when `groupId` is set; without it each sortable is a private universe that rejects drags from other sortables
 - Forgetting `containerRef` on the scroll container — auto-scroll, the reorder-finalizing drop target, and the Alt+Arrow keyboard handler all register there
+- Binding rows with `activeId() === item.id` instead of `isActive(item.id)` — the equality read subscribes EVERY row to `activeId` (O(N) binding re-runs per drag change); the `createSelector`-backed predicates notify only the two affected rows
+- Omitting `label` when keys are opaque ids — screen-reader announcements fall back to the raw key ("Picked up 41f3…"); pass `label: (item) => item.name`
 - Calling `itemRef` with a different key than `by` returns — the drop-time reorder lookup finds items by that key (`findIndex` against `by(item)`), so a mismatch makes reorders silently no-op and mistracks per-key disposal
 
 **See also:** `useDraggable` · `useDragMonitor`
