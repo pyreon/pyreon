@@ -261,6 +261,8 @@ A raw inline style — `<Stack style={{ padding: 16, backgroundColor: '#2563eb',
 | `borderWidth`+`borderColor`, or `border` shorthand (`'1px solid #ccc'`) | `.overlay(RoundedRectangle(cornerRadius: r).stroke(…))` | `.border(BorderStroke(…), RoundedCornerShape(r.dp))` |
 | `opacity` | `.opacity(n)` | `.alpha(nf)` |
 | `width`, `height` | `.frame(width:/height:)` | `.width(n.dp)` / `.height(n.dp)` |
+| `minWidth`/`maxWidth`/`minHeight`/`maxHeight` | one combined `.frame(minWidth:…, maxHeight:…)` | `.widthIn(min=,max=)` / `.heightIn(…)` |
+| `aspectRatio` (number or `'16 / 9'`) | `.aspectRatio(r, contentMode: .fit)` | `.aspectRatio(rf)` |
 | `color` | `.foregroundColor(Color(…))` | *warns* — set on `<Text>` / `LocalContentColor`, not a Modifier |
 
 Colors accept `#hex` / `#rgb` / `#rrggbbaa` / `rgb()` / `rgba()` (alpha carried through); dimensions accept a unitless number or `"Npx"`. The chain order is idiomatic per target (SwiftUI `.padding().background().cornerRadius()`; Compose `.clip().background().padding()` — clip-first so the fill is rounded).

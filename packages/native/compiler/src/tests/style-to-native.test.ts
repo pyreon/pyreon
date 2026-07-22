@@ -324,3 +324,53 @@ describe('inline style — border toolchain gates', () => {
     expect(res.ok, res.error ?? '').toBe(true)
   })
 })
+
+// ── sizing — min/max frame constraints, aspectRatio, margin-warn ─────────────
+describe('inline style — sizing constraints (emit)', () => {
+  it('combines min/max width into ONE frame (Swift) / widthIn (Compose)', () => {
+    expect(swift(`<Stack style={{ minWidth: 100, maxWidth: 300 }}><Text>x</Text></Stack>`).code).toContain(
+      '.frame(minWidth: 100, maxWidth: 300)',
+    )
+    expect(kotlin(`<Stack style={{ minWidth: 100, maxWidth: 300 }}><Text>x</Text></Stack>`).code).toContain(
+      '.widthIn(min = 100.dp, max = 300.dp)',
+    )
+  })
+
+  it('emits per-axis widthIn/heightIn on Compose, one .frame on Swift', () => {
+    const src = `<Stack style={{ minWidth: 80, minHeight: 44, maxHeight: 200 }}><Text>x</Text></Stack>`
+    expect(swift(src).code).toContain('.frame(minWidth: 80, minHeight: 44, maxHeight: 200)')
+    const k = kotlin(src).code
+    expect(k).toContain('.widthIn(min = 80.dp)')
+    expect(k).toContain('.heightIn(min = 44.dp, max = 200.dp)')
+  })
+
+  it('lowers aspectRatio (number and `W / H` ratio)', () => {
+    expect(swift(`<Stack style={{ aspectRatio: 1.5 }}><Text>x</Text></Stack>`).code).toContain(
+      '.aspectRatio(1.5, contentMode: .fit)',
+    )
+    expect(kotlin(`<Stack style={{ aspectRatio: 1.5 }}><Text>x</Text></Stack>`).code).toContain(
+      '.aspectRatio(1.5f)',
+    )
+    expect(kotlin(`<Stack style={{ aspectRatio: '16 / 9' }}><Text>x</Text></Stack>`).code).toContain(
+      '.aspectRatio(1.7778f)',
+    )
+  })
+
+  it('warns + drops margin (no native equivalent), never silently', () => {
+    const { code, warnings } = swift(`<Stack style={{ margin: 8, marginTop: 4 }}><Text>x</Text></Stack>`)
+    expect(code).not.toMatch(/\.frame\(|\.padding\(/)
+    expect(warnings.join('\n')).toMatch(/margin.*no native equivalent/)
+  })
+})
+
+describe('inline style — sizing toolchain gates', () => {
+  const SIZED = `<Stack style={{ minWidth: 100, maxWidth: 300, minHeight: 44, aspectRatio: 1.5, backgroundColor: '#ffffff' }}><Text>Sized</Text></Stack>`
+  it.skipIf(!isSwiftUIAvailable())('the frame constraints + aspectRatio typecheck (real SwiftUI SDK)', () => {
+    const res = validateSwiftTypecheck(swift(SIZED).code)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable())('the widthIn/heightIn/aspectRatio compile (Compose stubs)', () => {
+    const res = validateKotlin(kotlin(SIZED).code)
+    expect(res.ok, res.error ?? '').toBe(true)
+  })
+})

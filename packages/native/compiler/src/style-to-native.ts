@@ -77,10 +77,19 @@ interface BorderSpec {
   nonSolid?: boolean
 }
 
+/** min/max width/height → one combined frame (Swift) / widthIn+heightIn (Compose). */
+interface FrameConstraints {
+  minW?: number
+  maxW?: number
+  minH?: number
+  maxH?: number
+}
+
 interface LoweredObject {
   slots: Record<string, SlotValue>
   box: PadBox
   border: BorderSpec
+  frame: FrameConstraints
   /** the `borderRadius` value (for the border shape), 0 when absent. */
   radiusValue: number
   dropped: string[]
@@ -88,6 +97,8 @@ interface LoweredObject {
   unparseable: string[]
   /** kotlin-only: `color` present (no Compose Modifier — warned). */
   kotlinColor: boolean
+  /** `margin*` present — no native equivalent, warned. */
+  marginWarn: boolean
 }
 
 // Web-only declarations that are a correct NO-OP on a native touch target —
@@ -129,8 +140,14 @@ const STRIP = new Set<string>([
 // then rounds); Compose wants `.clip().background().padding()` (clip first so
 // the fill is rounded, padding last so it insets content).
 const ORDER: Record<Target, string[]> = {
-  swift: ['padding', 'width', 'height', 'background', 'radius', 'border', 'opacity', 'color'],
-  kotlin: ['width', 'height', 'radius', 'background', 'border', 'padding', 'opacity'],
+  swift: [
+    'padding', 'width', 'height', 'frameConstraints', 'aspectRatio',
+    'background', 'radius', 'border', 'opacity', 'color',
+  ],
+  kotlin: [
+    'width', 'height', 'frameConstraints', 'aspectRatio',
+    'radius', 'background', 'border', 'padding', 'opacity',
+  ],
 }
 
 // ── value parsers ───────────────────────────────────────────────────────────
@@ -223,11 +240,13 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
   const slots: Record<string, SlotValue> = {}
   const box: PadBox = {}
   const border: BorderSpec = {}
+  const frame: FrameConstraints = {}
   let radiusValue = 0
   const dropped: string[] = []
   const dynamic: string[] = []
   const unparseable: string[] = []
   let kotlinColor = false
+  let marginWarn = false
 
   const lit = (f: { name: string; value: ExprIR }): string | number | undefined => {
     if (f.value.kind !== 'literal') {
@@ -373,6 +392,45 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
               : { wrap: (v) => `.height(${v}.dp)`, value: String(n) }
         break
       }
+      case 'minWidth':
+      case 'maxWidth':
+      case 'minHeight':
+      case 'maxHeight': {
+        const n = dim(field)
+        if (n !== undefined) {
+          const key = { minWidth: 'minW', maxWidth: 'maxW', minHeight: 'minH', maxHeight: 'maxH' }[
+            name
+          ] as keyof FrameConstraints
+          frame[key] = n
+        }
+        break
+      }
+      case 'aspectRatio': {
+        const raw = lit(field)
+        if (raw === undefined) break
+        const r = parseAspectRatio(raw)
+        if (r === null) {
+          unparseable.push(name)
+          break
+        }
+        slots.aspectRatio =
+          target === 'swift'
+            ? { wrap: (v) => `.aspectRatio(${v}, contentMode: .fit)`, value: r }
+            : { wrap: (v) => `.aspectRatio(${v}f)`, value: r }
+        break
+      }
+      case 'margin':
+      case 'marginTop':
+      case 'marginRight':
+      case 'marginBottom':
+      case 'marginLeft':
+      case 'marginHorizontal':
+      case 'marginVertical': {
+        // Margin has no native equivalent — SwiftUI/Compose have no outer margin
+        // box (spacing lives on the PARENT via padding / a Spacer). Warn, drop.
+        marginWarn = true
+        break
+      }
       case 'color': {
         const raw = lit(field)
         if (raw === undefined) break
@@ -389,7 +447,54 @@ function lowerObject(fields: { name: string; value: ExprIR }[], target: Target):
         dropped.push(name)
     }
   }
-  return { slots, box, border, radiusValue, dropped, dynamic, unparseable, kotlinColor }
+  return {
+    slots, box, border, frame, radiusValue, dropped, dynamic, unparseable, kotlinColor, marginWarn,
+  }
+}
+
+/** A CSS `aspect-ratio` — a number (`1.5`) or a `"W / H"` ratio (`"16 / 9"`) → a
+ *  Float-literal string, or null. */
+function parseAspectRatio(v: string | number): string | null {
+  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? String(v) : null
+  const s = v.trim()
+  const slash = s.match(/^([\d.]+)\s*\/\s*([\d.]+)$/)
+  if (slash) {
+    const w = parseFloat(slash[1]!)
+    const h = parseFloat(slash[2]!)
+    return h > 0 ? (w / h).toFixed(4).replace(/\.?0+$/, '') : null
+  }
+  const n = parseFloat(s)
+  return Number.isFinite(n) && n > 0 ? String(n) : null
+}
+
+/** min/max width/height → one combined `.frame(…)` (Swift) / `.widthIn`+`.heightIn` (Compose). */
+function emitFrameConstraints(f: FrameConstraints, target: Target): string | undefined {
+  const { minW, maxW, minH, maxH } = f
+  if (minW === undefined && maxW === undefined && minH === undefined && maxH === undefined) {
+    return undefined
+  }
+  if (target === 'swift') {
+    const args: string[] = []
+    if (minW !== undefined) args.push(`minWidth: ${minW}`)
+    if (maxW !== undefined) args.push(`maxWidth: ${maxW}`)
+    if (minH !== undefined) args.push(`minHeight: ${minH}`)
+    if (maxH !== undefined) args.push(`maxHeight: ${maxH}`)
+    return `.frame(${args.join(', ')})`
+  }
+  const parts: string[] = []
+  if (minW !== undefined || maxW !== undefined) {
+    const a: string[] = []
+    if (minW !== undefined) a.push(`min = ${minW}.dp`)
+    if (maxW !== undefined) a.push(`max = ${maxW}.dp`)
+    parts.push(`.widthIn(${a.join(', ')})`)
+  }
+  if (minH !== undefined || maxH !== undefined) {
+    const a: string[] = []
+    if (minH !== undefined) a.push(`min = ${minH}.dp`)
+    if (maxH !== undefined) a.push(`max = ${maxH}.dp`)
+    parts.push(`.heightIn(${a.join(', ')})`)
+  }
+  return parts.join('')
 }
 
 /** Parse a `border` shorthand (`"1px solid #2563eb"`, tokens in any order). */
@@ -510,6 +615,11 @@ function collectWarnings(lo: LoweredObject, tag: string): string[] {
       `<${tag} style={{ borderStyle }}>: only a solid border lowers to native — the non-solid style was approximated as solid.`,
     )
   }
+  if (lo.marginWarn) {
+    w.push(
+      `<${tag} style={{ margin }}>: CSS \`margin\` has no native equivalent (SwiftUI/Compose have no outer-margin box) — it was dropped. Put spacing on the PARENT via its \`padding\`/\`gap\`, or add a <Spacer/>.`,
+    )
+  }
   if (lo.kotlinColor) {
     w.push(
       `<${tag} style={{ color }}>: CSS \`color\` on a container has no Compose Modifier — set the color on the <Text> primitive (or via LocalContentColor) for Android. Lowered on iOS only.`,
@@ -592,6 +702,7 @@ function emitStatic(lo: LoweredObject, target: Target): string[] {
     .map((slot) => {
       if (slot === 'padding') return pad
       if (slot === 'border') return emitBorder(lo.border, lo.radiusValue, target)
+      if (slot === 'frameConstraints') return emitFrameConstraints(lo.frame, target)
       const s = lo.slots[slot]
       return s ? s.wrap(s.value) : undefined
     })
@@ -624,6 +735,17 @@ function emitDynamic(
       const stat = emitBorder(a.border, a.radiusValue, target)
       if (stat !== undefined) modifiers.push(stat)
       asymmetric.push('border')
+      continue
+    }
+    if (slot === 'frameConstraints') {
+      const aHas = Object.keys(a.frame).length > 0
+      const bHas = Object.keys(b.frame).length > 0
+      if (!aHas && !bHas) continue
+      // min/max constraints combine into one composite frame — a per-branch
+      // conditional isn't foldable in v1. Emit the then-branch + warn.
+      const stat = emitFrameConstraints(a.frame, target)
+      if (stat !== undefined) modifiers.push(stat)
+      asymmetric.push('minWidth/minHeight')
       continue
     }
     if (slot === 'padding') {
