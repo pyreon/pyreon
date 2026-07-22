@@ -26,9 +26,8 @@ export default function RuntimeKeepAliveVsShow() {
       ),
       h('button', {
         onClick: () => level.set(Math.min(6, level.peek() + 1)),
-        'aria-label': 'grow',
-        style: { width: '34px', height: '26px', border: 'none', borderRadius: '7px', cursor: 'pointer', background: props.accent },
-      }),
+        style: { padding: '5px 12px', border: 'none', borderRadius: '7px', cursor: 'pointer', background: props.accent, color: '#fff', fontSize: '12px', fontWeight: 600 },
+      }, 'Grow'),
     )
   }
 
@@ -43,8 +42,7 @@ export default function RuntimeKeepAliveVsShow() {
     ),
     h('button', {
       onClick: () => shown.set(!shown.peek()),
-      'aria-label': 'toggle both',
-      style: { width: '52px', height: '28px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#a78bfa' },
-    }),
+      style: { padding: '6px 14px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#a78bfa', color: '#fff', fontSize: '13px', fontWeight: 600 },
+    }, 'Toggle'),
   )
 }

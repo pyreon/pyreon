@@ -39,8 +39,7 @@ export default function HooksUsePreviousLagSwatches() {
     ),
     h('button', {
       onClick: () => idx.set((idx.peek() + 1) % palette.length),
-      'aria-label': 'advance color',
-      style: { width: '54px', height: '30px', border: 'none', borderRadius: '9px', cursor: 'pointer', background: '#cbd5e1' },
-    }),
+      style: { padding: '6px 16px', border: 'none', borderRadius: '9px', cursor: 'pointer', background: '#cbd5e1', color: '#1e293b', fontSize: '13px', fontWeight: 600 },
+    }, 'Next'),
   )
 }

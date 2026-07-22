@@ -43,15 +43,16 @@ export default function RxPipeFilterBars() {
     ),
     h('button', {
       onClick: bump,
-      'aria-label': 'bump values',
       style: {
-        width: '46px',
-        height: '28px',
+        padding: '6px 16px',
         border: 'none',
         borderRadius: '8px',
         cursor: 'pointer',
         background: '#60a5fa',
+        color: '#fff',
+        fontSize: '13px',
+        fontWeight: 600,
       },
-    }),
+    }, 'Bump'),
   )
 }

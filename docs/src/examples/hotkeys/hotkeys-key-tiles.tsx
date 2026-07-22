@@ -29,8 +29,14 @@ export default function HotkeysKeyTiles() {
         cursor: 'pointer',
         background: on[i]!() ? colors[i]! : '#e2e8f0',
         transition: 'background 0.2s',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#1e293b',
+        fontSize: '16px',
+        fontWeight: 700,
       }),
-    })
+    }, String(i + 1))
 
   return h(
     'div',

@@ -23,8 +23,14 @@ export default function HooksUseFocusRingTiles() {
         background: focused() ? accent : '#cbd5e1',
         transform: focused() ? 'scale(1.06)' : 'scale(1)',
         transition: 'background 0.18s ease, transform 0.18s ease',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#1e293b',
+        fontSize: '20px',
+        fontWeight: 700,
       }),
-    })
+    }, String(n))
   }
 
   return h(
