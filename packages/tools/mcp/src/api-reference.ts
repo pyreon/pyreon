@@ -5095,7 +5095,7 @@ editor.goToLine(42)
 editor.insert('code')
 
 <CodeEditor instance={editor} style="height: 400px" />`,
-    notes: 'Create a reactive editor instance. `editor.value` is a writable Signal<string> — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, onChange, onError (mount failures route here instead of an unhandled rejection), and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`. See also: CodeEditor, bindEditorToSignal, loadLanguage.',
+    notes: 'Create a reactive editor instance. `editor.value` is a writable Signal<string> — `editor.value()` reads reactively, `editor.value.set(next)` writes back into CodeMirror. `editor.cursor` and `editor.lineCount` are computed signals. Config accepts value, language, theme, minimap, lineNumbers, foldGutter, readOnly (blocks user-input transactions, cursor stays), editable (live `EditorView.editable` — `false` removes contenteditable entirely, a pure display surface; both are live signals on the instance), search (`false` omits the Mod-F keymap + selection-match highlighting; `openSearchPanel(editor)` is the programmatic escape hatch), onChange, onError (mount failures route here instead of an unhandled rejection), and more. The instance is framework-independent — mount it via `<CodeEditor instance={editor} />`. See also: CodeEditor, bindEditorToSignal, loadLanguage.',
     mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <CodeEditor> JSX emits _tpl() which needs runtime-dom
 - Hand-rolling the applyingFromExternal/applyingFromEditor flag pattern — use bindEditorToSignal instead
 - Calling cursor-relative methods (insert / replaceSelection) before mount — the view is created by mount() after an async grammar load, so a pre-mount call has no cursor and is dropped (with a dev warning). Use editor.value.set(...) to set content independently of the view (it seeds the doc whenever the view is created)
@@ -5126,13 +5126,16 @@ const binding = bindEditorToSignal({
   'code/CodeEditor': {
     signature: '(props: CodeEditorProps) => VNodeChild',
     example: '<CodeEditor instance={editor} style="height: 400px" class="my-editor" />',
-    notes: 'Mount component for a `createEditor` instance. Accepts `instance`, `style`, `class`, and passes through to a container div. Auto-mounts the CodeMirror view on render and cleans up on unmount. See also: createEditor, DiffEditor, TabbedEditor.',
+    notes: 'Mount component for a `createEditor` instance. Accepts `instance`, `style`, `class`, and passes through to a container div. Auto-mounts the CodeMirror view on render. Lifecycle is USER-OWNED — `<CodeEditor>` does NOT auto-dispose on unmount (the instance may be remounted, e.g. by `<TabbedEditor>` or a route revisit); call `editor.dispose()` yourself when the instance is done for good. See also: createEditor, DiffEditor, TabbedEditor.',
+    mistakes: '- Expecting <CodeEditor> to dispose the instance on unmount — it does NOT (the instance is user-owned and may be remounted, e.g. by <TabbedEditor> or a route revisit). Call editor.dispose() from your own cleanup (onUnmount) when the instance is done for good, or the CodeMirror view leaks.',
   },
 
   'code/DiffEditor': {
     signature: '(props: DiffEditorProps) => VNodeChild',
-    example: '<DiffEditor original="old code" modified="new code" language="typescript" />',
-    notes: 'Side-by-side diff editor. Accepts `original` and `modified` strings plus optional `language` and `theme`. Renders two CodeMirror instances with unified diff highlighting via @codemirror/merge. See also: CodeEditor, TabbedEditor.',
+    example: `<DiffEditor original="old code" modified="new code" language="typescript" />
+// unified (inline) view — one pane, original shown as deleted chunks:
+<DiffEditor original={originalSig} modified={modifiedSig} inline />`,
+    notes: 'Diff editor over @codemirror/merge. Accepts `original` and `modified` (strings OR Signal<string> — signal props update the diff reactively) plus optional `language`, `theme`, `readOnly` (default true), and `inline`. Default renders a side-by-side MergeView (two panes); `inline: true` renders a UNIFIED view — one editor showing the modified doc with the original as deleted-chunk widgets (per-chunk accept/reject controls appear when `readOnly` is false). See also: CodeEditor, TabbedEditor.',
   },
 
   'code/createTabbedEditor': {
@@ -5160,6 +5163,14 @@ tabbed.activeTab()   // Computed<Tab | null>
 <TabbedEditor instance={tabbed} style="height: 500px" />`,
     notes: 'Mount component for a `createTabbedEditor` instance. Props are `instance` (REQUIRED — a TabbedEditorInstance), plus optional `style` and `class`. Renders a headless tab bar (plain div + button tabs) above the editor; switching tabs swaps the underlying document reactively. See also: createTabbedEditor, CodeEditor, DiffEditor.',
     mistakes: '- Passing `tabs={[…]}` — there is no `tabs` prop; pass a `createTabbedEditor` instance via `instance`.',
+  },
+
+  'code/openSearchPanel': {
+    signature: '(instance: EditorInstance) => boolean',
+    example: `const editor = createEditor({ value: code, search: false })
+<button onClick={() => openSearchPanel(editor)}>Find…</button>`,
+    notes: 'Open the find/replace panel on a mounted editor programmatically. Works even when the editor was created with `search: false` (which only omits the Mod-F keymap + selection-match highlighting) — the deliberate escape hatch for apps that own their find-UI trigger. Returns `true` when the panel opened; pre-mount there is no view to host the panel, so the call is dropped with a dev warning and returns `false`. See also: createEditor.',
+    mistakes: '- Calling it before <CodeEditor> has mounted — the view is created by mount() after an async grammar load, so a pre-mount call is dropped (dev warning, returns false). Trigger it from a user event or effect(() => { if (editor.view()) … }).',
   },
 
   'code/loadLanguage': {

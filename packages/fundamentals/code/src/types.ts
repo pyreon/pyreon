@@ -39,13 +39,26 @@ export interface EditorConfig {
   lineNumbers?: boolean
   /** Read-only mode — default: false */
   readOnly?: boolean
+  /**
+   * Whether the editor content is user-interactive — default: true. Sets
+   * `EditorView.editable` (live-reconfigurable via `editor.editable.set()`).
+   * Distinct from `readOnly`: `editable: false` removes `contenteditable`
+   * entirely (no cursor, no focus — a pure display surface), while
+   * `readOnly: true` keeps the cursor/selection but blocks user-input
+   * transactions (`EditorState.readOnly`).
+   */
+  editable?: boolean
   /** Enable code folding — default: true */
   foldGutter?: boolean
   /** Enable bracket matching — default: true */
   bracketMatching?: boolean
   /** Enable autocomplete — default: true */
   autocomplete?: boolean
-  /** Enable search (Cmd+F) — default: true */
+  /**
+   * Enable search (Cmd/Ctrl+F) — default: true. `false` omits the search
+   * keymap and selection-match highlighting; the programmatic
+   * `openSearchPanel(editor)` helper still works (deliberate escape hatch).
+   */
   search?: boolean
   /** Enable lint/diagnostics — default: false */
   lint?: boolean
@@ -96,6 +109,12 @@ export interface EditorInstance {
   theme: Signal<EditorTheme>
   /** Read-only state — reactive signal */
   readOnly: Signal<boolean>
+  /**
+   * Whether the editor content is user-interactive — reactive signal backing
+   * `EditorView.editable`. See `EditorConfig.editable` for the
+   * editable-vs-readOnly distinction.
+   */
+  editable: Signal<boolean>
   /** Cursor position — reactive */
   cursor: Computed<{ line: number; col: number }>
   /** Current selection — reactive */
@@ -195,7 +214,13 @@ export interface DiffEditorProps {
   language?: EditorLanguage
   /** Theme */
   theme?: EditorTheme
-  /** Show inline diff instead of side-by-side — default: false */
+  /**
+   * Show a unified (inline) diff instead of side-by-side — default: false.
+   * Renders ONE editor (the modified document) with the original shown as
+   * deleted-chunk widgets via @codemirror/merge's `unifiedMergeView`. When
+   * `readOnly` is false the unified view shows per-chunk accept/reject
+   * controls.
+   */
   inline?: boolean
   /** Read-only — default: true */
   readOnly?: boolean

@@ -29,7 +29,7 @@ export { CodeEditor } from './components/code-editor'
 export { DiffEditor } from './components/diff-editor'
 export { TabbedEditor } from './components/tabbed-editor'
 // Core
-export { createEditor } from './editor'
+export { createEditor, openSearchPanel } from './editor'
 export { createTabbedEditor } from './tabbed-editor'
 // Signal binding
 export type {

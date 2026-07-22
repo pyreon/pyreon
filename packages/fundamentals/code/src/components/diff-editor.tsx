@@ -1,6 +1,6 @@
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { MergeView } from '@codemirror/merge'
-import { EditorState, type Extension } from '@codemirror/state'
+import { getOriginalDoc, MergeView, originalDocChangeEffect, unifiedMergeView } from '@codemirror/merge'
+import { ChangeSet, EditorState, type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import type { VNodeChild } from '@pyreon/core'
 import { onUnmount } from '@pyreon/core'
@@ -34,9 +34,20 @@ const isSignal = (value: string | Signal<string>): value is Signal<string> =>
  * ```
  */
 export function DiffEditor(props: DiffEditorProps): VNodeChild {
-  const { original, modified, language = 'plain', theme = 'light', readOnly = true, onError } = props
+  const {
+    original,
+    modified,
+    language = 'plain',
+    theme = 'light',
+    inline = false,
+    readOnly = true,
+    onError,
+  } = props
 
   let mergeView: MergeView | null = null
+  // Unified (inline) mode builds a single EditorView carrying the
+  // unifiedMergeView extension instead of a side-by-side MergeView.
+  let unifiedView: EditorView | null = null
   // `containerRef` lazy-loads the language grammar (async), so the component
   // can unmount WHILE that import is in flight. `onUnmount` sets this; the ref
   // bails after the await so it never builds a MergeView that `onUnmount` has
@@ -66,6 +77,56 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
 
       // Clear previous content
       ;(el as HTMLElement).innerHTML = ''
+
+      if (inline) {
+        // ── Unified (inline) diff — ONE editor showing the modified doc with
+        // the original rendered as deleted-chunk widgets above each change.
+        unifiedView = new EditorView({
+          parent: el as HTMLElement,
+          state: EditorState.create({
+            doc: modifiedText,
+            extensions: [
+              ...extensions,
+              unifiedMergeView({
+                original: originalText,
+                // Accept/reject chunk buttons only make sense when the
+                // modified side is user-editable.
+                mergeControls: !readOnly,
+                collapseUnchanged: { margin: 3, minSize: 4 },
+              }),
+            ],
+          }),
+        })
+
+        // Track signal changes reactively — modified drives the editor doc,
+        // original drives the compared-against document via the merge
+        // package's dedicated state effect.
+        if (isSignal(modified)) {
+          const stop = watch(modified, (text) => {
+            if (!unifiedView) return
+            unifiedView.dispatch({
+              changes: { from: 0, to: unifiedView.state.doc.length, insert: text },
+            })
+          })
+          cleanups.push(stop)
+        }
+
+        if (isSignal(original)) {
+          const stop = watch(original, (text) => {
+            if (!unifiedView) return
+            const orig = getOriginalDoc(unifiedView.state)
+            unifiedView.dispatch({
+              effects: originalDocChangeEffect(
+                unifiedView.state,
+                ChangeSet.of({ from: 0, to: orig.length, insert: text }, orig.length),
+              ),
+            })
+          })
+          cleanups.push(stop)
+        }
+
+        return
+      }
 
       mergeView = new MergeView({
         a: { doc: originalText, extensions },
@@ -114,6 +175,8 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
     for (const cleanup of cleanups) cleanup()
     mergeView?.destroy()
     mergeView = null
+    unifiedView?.destroy()
+    unifiedView = null
   })
 
   const baseStyle = `width: 100%; height: 100%; overflow: hidden; ${props.style ?? ''}`

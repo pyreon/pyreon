@@ -24,7 +24,11 @@ import {
   syntaxHighlighting,
 } from '@codemirror/language'
 import { lintGutter, setDiagnostics as cmSetDiagnostics, lintKeymap } from '@codemirror/lint'
-import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
+import {
+  openSearchPanel as cmOpenSearchPanel,
+  highlightSelectionMatches,
+  searchKeymap,
+} from '@codemirror/search'
 import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import {
   GutterMarker as CMGutterMarker,
@@ -81,10 +85,11 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     theme: initialTheme = 'light',
     lineNumbers: showLineNumbers = true,
     readOnly: initialReadOnly = false,
+    editable: initialEditable = true,
     foldGutter: showFoldGutter = true,
     bracketMatching: enableBracketMatching = true,
     autocomplete: enableAutocomplete = true,
-    search: _enableSearch = true,
+    search: enableSearch = true,
     lint: enableLint = false,
     highlightIndentGuides: enableIndentGuides = true,
     vim: enableVim = false,
@@ -105,6 +110,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   const language = signal<EditorLanguage>(initialLanguage)
   const theme = signal<EditorTheme>(initialTheme)
   const readOnly = signal(initialReadOnly)
+  const editable = signal(initialEditable)
   const focused = signal(false)
   const view = signal<EditorView | null>(null)
 
@@ -116,6 +122,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   const languageCompartment = new Compartment()
   const themeCompartment = new Compartment()
   const readOnlyCompartment = new Compartment()
+  const editableCompartment = new Compartment()
   const extraKeymapCompartment = new Compartment()
   const keyModeCompartment = new Compartment()
 
@@ -241,7 +248,6 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       crosshairCursor(),
       highlightActiveLine(),
       highlightActiveLineGutter(),
-      highlightSelectionMatches(),
       indentOnInput(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       indentUnit.of(' '.repeat(configTabSize)),
@@ -256,7 +262,9 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       keymap.of([
         ...closeBracketsKeymap,
         ...defaultKeymap,
-        ...searchKeymap,
+        // search: false omits the Mod-F/find-replace keymap. The programmatic
+        // `openSearchPanel(editor)` helper still works — deliberate escape hatch.
+        ...(enableSearch ? searchKeymap : []),
         ...historyKeymap,
         ...foldKeymap,
         ...completionKeymap,
@@ -268,6 +276,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       languageCompartment.of(langExt),
       themeCompartment.of(resolveTheme(initialTheme)),
       readOnlyCompartment.of(EditorState.readOnly.of(initialReadOnly)),
+      editableCompartment.of(EditorView.editable.of(initialEditable)),
       extraKeymapCompartment.of([]),
       keyModeCompartment.of([]),
 
@@ -292,6 +301,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     ]
 
     // Optional features
+    if (enableSearch) exts.push(highlightSelectionMatches())
     if (showLineNumbers) exts.push(lineNumbers())
     if (showFoldGutter) exts.push(foldGutter())
     if (enableBracketMatching) exts.push(bracketMatching(), closeBrackets())
@@ -429,6 +439,18 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       if (!v) return
       v.dispatch({
         effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(ro)),
+      })
+    })
+
+    // Sync editable changes (EditorView.editable — contenteditable on/off,
+    // distinct from readOnly's transaction-blocking; see EditorConfig.editable)
+    effect(() => {
+      const ed = editable()
+      // pyreon-lint-disable-next-line pyreon/no-peek-in-tracked
+      const v = view.peek()
+      if (!v) return
+      v.dispatch({
+        effects: editableCompartment.reconfigure(EditorView.editable.of(ed)),
       })
     })
   }
@@ -708,6 +730,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     language,
     theme,
     readOnly,
+    editable,
     cursor,
     selection,
     lineCount,
@@ -742,4 +765,40 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
   }
 
   return instance
+}
+
+/**
+ * Open the search panel on a live editor programmatically.
+ *
+ * Wraps @codemirror/search's `openSearchPanel` command on the instance's
+ * mounted view. Works even when the editor was created with `search: false`
+ * (which only omits the Mod-F keymap + selection-match highlighting) — the
+ * deliberate escape hatch for apps that own their find UI trigger.
+ *
+ * Pre-mount (the view is created by `mount()` after an async grammar load)
+ * there is no panel host, so the call is dropped with a dev warning and
+ * returns `false`.
+ *
+ * @param instance - An editor created with `createEditor`
+ * @returns `true` when the panel was opened, `false` when no view exists
+ *
+ * @example
+ * ```tsx
+ * const editor = createEditor({ value: code, search: false })
+ * <button onClick={() => openSearchPanel(editor)}>Find…</button>
+ * ```
+ */
+export function openSearchPanel(instance: EditorInstance): boolean {
+  const v = instance.view.peek()
+  if (!v) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[Pyreon] openSearchPanel(editor) was called before the editor view exists — the call was dropped. ' +
+          'The view is created by mount() (after an async grammar load), so open the panel after ' +
+          '<CodeEditor> has mounted (e.g. from a click handler, or effect(() => { if (editor.view()) … })).',
+      )
+    }
+    return false
+  }
+  return cmOpenSearchPanel(v)
 }

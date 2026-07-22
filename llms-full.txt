@@ -2125,6 +2125,10 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
 >
 > **Bundle size**: Built on CodeMirror 6. Measured (esbuild+gzip, code-split): the core editor is ~138 KB gz (~416 KB min) — at parity with @uiw/react-codemirror (~129 KB gz), both wrap the same CM6. Monaco's ESM core is ~940 KB gz (~3.6 MB min, workers/CSS excluded) — @pyreon/code is ~7x smaller gzipped. Each extra language grammar streams as a ~40 KB gz lazy chunk that reuses the loaded core. Reproduce with `bun run --filter=@pyreon/code bench`.
 >
+> **Third-party themes**: EditorTheme is `'light' | 'dark' | Extension` and resolveTheme passes a custom Extension through unchanged — so any `@uiw/codemirror-theme-*` package (dracula, github, tokyo-night, … an instant ~35-theme gallery) is a plain CM6 Extension that drops into `theme:` directly: `createEditor({ theme: dracula })`. Verified against a real @uiw theme package in the browser suite.
+>
+> **Lifecycle is user-owned**: `<CodeEditor>` does NOT auto-dispose the instance on unmount — the instance is user-owned and may be remounted (TabbedEditor, route revisits). Call `editor.dispose()` yourself when the instance is done for good.
+>
 > **ruby / shell grammars**: `ruby` and `shell` highlighting come from `@codemirror/legacy-modes` (an optionalDependency). It installs by default; if your package manager skips optional deps, those two fall back to plain-text (empty extension) rather than throwing.
 
 ## @pyreon/hotkeys — Keyboard Shortcuts

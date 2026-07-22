@@ -2,7 +2,7 @@
 
 Reactive code editor — CodeMirror 6 wrapped in Pyreon signals.
 
-A drop-in code editor for in-app editors (markdown previews, query builders, schema fields, REPLs, configuration files). Built on CodeMirror 6 — about ~250KB total compared to ~2.5MB for Monaco. Every editor field (`value`, `cursor`, `selection`, `lineCount`, `focused`) is a Pyreon signal so the editor composes natively with `effect` / `computed` / `<Show>` without manual change-event plumbing. Ships a single-pane editor, a side-by-side diff editor, a tabbed multi-file editor, lazy-loaded language grammars for 20 languages, a canvas-based minimap, and a two-way signal binding helper with format-on-input loop protection.
+A drop-in code editor for in-app editors (markdown previews, query builders, schema fields, REPLs, configuration files). Built on CodeMirror 6 — the measured core is ~138 KB gz vs ~940 KB gz for Monaco's ESM core (~7× smaller gzipped; reproduce with `bun run --filter=@pyreon/code bench`). Every editor field (`value`, `cursor`, `selection`, `lineCount`, `focused`) is a Pyreon signal so the editor composes natively with `effect` / `computed` / `<Show>` without manual change-event plumbing. Ships a single-pane editor, a side-by-side diff editor, a tabbed multi-file editor, lazy-loaded language grammars for 20 languages, a canvas-based minimap, and a two-way signal binding helper with format-on-input loop protection.
 
 ## Install
 
@@ -41,11 +41,12 @@ const App = () => <CodeEditor instance={editor} style="height: 400px" />
 | `language` | `'plain'` | Lazy-loaded grammar |
 | `theme` | `'light'` | `'light'` / `'dark'` / a CodeMirror Extension |
 | `lineNumbers` | `true` | |
-| `readOnly` | `false` | |
+| `readOnly` | `false` | Blocks user-input transactions; cursor stays |
+| `editable` | `true` | `false` removes `contenteditable` entirely (pure display surface); live via `editor.editable.set()` |
 | `foldGutter` | `true` | |
 | `bracketMatching` | `true` | |
 | `autocomplete` | `true` | |
-| `search` | `true` | Cmd/Ctrl+F |
+| `search` | `true` | Cmd/Ctrl+F. `false` omits the search keymap + selection-match highlighting; `openSearchPanel(editor)` still works |
 | `lint` | `false` | Pass diagnostics via `setDiagnostics` |
 | `vim` / `emacs` | `false` | Keybindings |
 | `tabSize` | `2` | |
@@ -56,6 +57,8 @@ const App = () => <CodeEditor instance={editor} style="height: 400px" />
 
 Add custom keybindings imperatively on the instance: `editor.addKeybinding('Ctrl-s', () => save())`.
 
+Open the find/replace panel programmatically with `openSearchPanel(editor)` — the deliberate escape hatch that works even with `search: false` (pre-mount it dev-warns + returns `false`).
+
 `EditorInstance` shape:
 
 | Member | Type |
@@ -64,6 +67,7 @@ Add custom keybindings imperatively on the instance: `editor.addKeybinding('Ctrl
 | `language` | `Signal<EditorLanguage>` |
 | `theme` | `Signal<EditorTheme>` |
 | `readOnly` | `Signal<boolean>` |
+| `editable` | `Signal<boolean>` — live `EditorView.editable` toggle |
 | `cursor` | `Computed<{ line, col }>` |
 | `selection` | `Computed<{ from, to, text }>` |
 | `lineCount` | `Computed<number>` |
@@ -72,7 +76,7 @@ Add custom keybindings imperatively on the instance: `editor.addKeybinding('Ctrl
 | `focus()` / `insert(text)` / `replaceSelection(text)` | imperative |
 | `select(from, to)` / `selectAll()` / `goToLine(line)` | imperative |
 | `undo()` / `redo()` / `foldAll()` / `unfoldAll()` | imperative |
-| `dispose()` | manual cleanup (auto on unmount when used via `<CodeEditor>`) |
+| `dispose()` | manual cleanup — lifecycle is user-owned; `<CodeEditor>` does NOT auto-dispose (see Gotchas) |
 
 ## Languages — 20 identifiers, lazy-loaded
 
@@ -97,7 +101,7 @@ Setting `editor.language.set('python')` triggers the load + grammar swap; mid-lo
 
 Single-pane editor mounting the `EditorInstance` view.
 
-### `<DiffEditor>` — side-by-side diff
+### `<DiffEditor>` — side-by-side or unified diff
 
 ```tsx
 ;<DiffEditor
@@ -106,6 +110,12 @@ Single-pane editor mounting the `EditorInstance` view.
   language="typescript"
   style="height: 300px"
 />
+```
+
+`original` / `modified` also accept `Signal<string>` — the diff updates reactively. Pass `inline` for a **unified** view: one editor showing the modified document with the original rendered as deleted-chunk widgets (via `@codemirror/merge`'s `unifiedMergeView`); when `readOnly={false}` each chunk gets accept/reject controls.
+
+```tsx
+;<DiffEditor original={before} modified={after} inline style="height: 300px" />
 ```
 
 ### `<TabbedEditor>` — multi-file editor
@@ -183,6 +193,14 @@ resolveTheme('light') // lightTheme Extension
 createEditor({ theme: customCodeMirrorTheme }) // or pass a raw Extension
 ```
 
+**Third-party themes drop in directly.** `EditorTheme` accepts any CodeMirror `Extension`, and `resolveTheme` passes it through unchanged — so every `@uiw/codemirror-theme-*` package (dracula, github, tokyo-night, material, … an instant ~35-theme gallery) works as-is:
+
+```ts
+import { dracula } from '@uiw/codemirror-theme-dracula'
+
+createEditor({ value: code, theme: dracula })
+```
+
 ## Gotchas
 
 - **`@pyreon/runtime-dom` is a required peer** — `<CodeEditor>` JSX emits `_tpl()` calls.
@@ -190,7 +208,7 @@ createEditor({ theme: customCodeMirrorTheme }) // or pass a raw Extension
 - **`editor.view()` is `null` until the editor is mounted** — wait for `<CodeEditor>` to render before reaching for raw CodeMirror APIs, or use `effect(() => { if (editor.view()) { … } })`.
 - **`bindEditorToSignal` requires `parse` for non-string T** — otherwise parse failures crash silently. Always supply `onParseError` if `parse` can throw.
 - **Languages are lazy-loaded** — first switch to a new language triggers a chunk fetch. Pre-load via `await loadLanguage('typescript')` if you need synchronous availability. A mount failure (a throwing extension or a failed grammar import) routes to the config `onError` instead of an unhandled rejection, and disposing while the grammar is still loading is leak-safe.
-- **`dispose()` on a `createEditor` instance is manual when NOT used via `<CodeEditor>`** — call it from `onUnmount` to release the CodeMirror view.
+- **Lifecycle is user-owned — `<CodeEditor>` does NOT auto-dispose the instance on unmount.** The instance is created by you and may be remounted (e.g. by `<TabbedEditor>` or a route revisit), so the component never tears it down. Call `editor.dispose()` from your own cleanup (`onUnmount`) when the instance is done for good, or the CodeMirror view leaks.
 - **Reading `.peek()` of `editor.value` inside an effect** bypasses tracking deliberately — used by `bindEditorToSignal`'s loop guard. Annotate with the `pyreon/no-peek-in-tracked` suppression where you genuinely need a non-tracking read.
 
 ## Documentation
