@@ -56,19 +56,25 @@ export function map<T, U>(
   return reactive(source, (arr: T[]) => arr.map(fn))
 }
 
-/** Sort items by key or comparator. */
+/** Sort items by key or selector, ascending by default (`'desc'` to invert). */
 export function sortBy<T>(
   source: ReadableSignal<T[]>,
   key: KeyOf<T>,
+  direction?: 'asc' | 'desc',
 ): ReturnType<typeof computed<T[]>>
-export function sortBy<T>(source: T[], key: KeyOf<T>): T[]
-export function sortBy<T>(source: ReadableSignal<T[]> | T[], key: KeyOf<T>): any {
+export function sortBy<T>(source: T[], key: KeyOf<T>, direction?: 'asc' | 'desc'): T[]
+export function sortBy<T>(
+  source: ReadableSignal<T[]> | T[],
+  key: KeyOf<T>,
+  direction: 'asc' | 'desc' = 'asc',
+): any {
   const getKey = resolveKey(key)
+  const flip = direction === 'desc' ? -1 : 1
   return reactive(source, (arr: T[]) =>
     [...arr].sort((a, b) => {
       const ka = getKey(a)
       const kb = getKey(b)
-      return ka < kb ? -1 : ka > kb ? 1 : 0
+      return ka < kb ? -flip : ka > kb ? flip : 0
     }),
   )
 }
@@ -410,6 +416,115 @@ export function sample<T>(source: ReadableSignal<T[]> | T[], n: number): any {
       copy[j] = tmp as T
     }
     return copy.slice(0, count)
+  })
+}
+
+/**
+ * Items of `source` also present in `other` (by identity, or by `key`
+ * selector when given). Signal-aware on BOTH inputs — either may be a
+ * signal; the result recomputes when either changes. O(n + m) via a Set.
+ */
+export function intersection<T>(
+  source: ReadableSignal<T[]>,
+  other: ReadableSignal<T[]> | T[],
+  key?: KeyOf<T>,
+): ReturnType<typeof computed<T[]>>
+export function intersection<T>(
+  source: T[],
+  other: ReadableSignal<T[]>,
+  key?: KeyOf<T>,
+): ReturnType<typeof computed<T[]>>
+export function intersection<T>(source: T[], other: T[], key?: KeyOf<T>): T[]
+export function intersection<T>(
+  source: ReadableSignal<T[]> | T[],
+  other: ReadableSignal<T[]> | T[],
+  key?: KeyOf<T>,
+): any {
+  const getKey = key ? resolveKey(key) : (item: T) => item as unknown
+  return reactiveSetOp(source, other, (arr, otherArr) => {
+    const keep = new Set(otherArr.map(getKey))
+    return arr.filter((item) => keep.has(getKey(item)))
+  })
+}
+
+/**
+ * Items of `source` NOT present in `other` (by identity, or by `key`).
+ * Signal-aware on both inputs. O(n + m).
+ */
+export function difference<T>(
+  source: ReadableSignal<T[]>,
+  other: ReadableSignal<T[]> | T[],
+  key?: KeyOf<T>,
+): ReturnType<typeof computed<T[]>>
+export function difference<T>(
+  source: T[],
+  other: ReadableSignal<T[]>,
+  key?: KeyOf<T>,
+): ReturnType<typeof computed<T[]>>
+export function difference<T>(source: T[], other: T[], key?: KeyOf<T>): T[]
+export function difference<T>(
+  source: ReadableSignal<T[]> | T[],
+  other: ReadableSignal<T[]> | T[],
+  key?: KeyOf<T>,
+): any {
+  const getKey = key ? resolveKey(key) : (item: T) => item as unknown
+  return reactiveSetOp(source, other, (arr, otherArr) => {
+    const drop = new Set(otherArr.map(getKey))
+    return arr.filter((item) => !drop.has(getKey(item)))
+  })
+}
+
+/**
+ * `source` plus the items of `other` not already present (by identity, or by
+ * `key`) — order-preserving, source first. Signal-aware on both inputs.
+ */
+export function union<T>(
+  source: ReadableSignal<T[]>,
+  other: ReadableSignal<T[]> | T[],
+  key?: KeyOf<T>,
+): ReturnType<typeof computed<T[]>>
+export function union<T>(
+  source: T[],
+  other: ReadableSignal<T[]>,
+  key?: KeyOf<T>,
+): ReturnType<typeof computed<T[]>>
+export function union<T>(source: T[], other: T[], key?: KeyOf<T>): T[]
+export function union<T>(
+  source: ReadableSignal<T[]> | T[],
+  other: ReadableSignal<T[]> | T[],
+  key?: KeyOf<T>,
+): any {
+  const getKey = key ? resolveKey(key) : (item: T) => item as unknown
+  return reactiveSetOp(source, other, (arr, otherArr) => {
+    const seen = new Set(arr.map(getKey))
+    const out = [...arr]
+    for (const item of otherArr) {
+      const k = getKey(item)
+      if (!seen.has(k)) {
+        seen.add(k)
+        out.push(item)
+      }
+    }
+    return out
+  })
+}
+
+/**
+ * Two-input variant of the `reactive` helper: static when BOTH inputs are
+ * plain arrays, a computed tracking whichever inputs are signals otherwise.
+ */
+function reactiveSetOp<T>(
+  source: ReadableSignal<T[]> | T[],
+  other: ReadableSignal<T[]> | T[],
+  op: (a: T[], b: T[]) => T[],
+): any {
+  const sSig = isSignal(source)
+  const oSig = isSignal(other)
+  if (!sSig && !oSig) return op(source as T[], other as T[])
+  return computed(() => {
+    const a = sSig ? (source as ReadableSignal<T[]>)() : (source as T[])
+    const b = oSig ? (other as ReadableSignal<T[]>)() : (other as T[])
+    return op(a, b)
   })
 }
 

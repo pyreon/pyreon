@@ -1,18 +1,18 @@
 ---
 title: "Reactive Transforms — API Reference"
-description: "Signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, pipe, debounce, throttle, 39 functions"
+description: "Signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, pipe, debounce, throttle, 42 functions"
 ---
 
 # @pyreon/rx — API Reference
 
 > **Generated** from `rx`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [rx](/docs/rx).
 
-Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 39 functions across collections (filter, map, flatMap, sortBy, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` collapses a chain into ONE computed (vs N computeds for N separate calls). Also exported as a namespaced `rx` object for dot-notation usage.
+Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 42 functions across collections (filter, map, flatMap, sortBy — with an asc/desc direction param —, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, intersection, difference, union — the set ops are signal-aware on BOTH inputs), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` collapses a chain into ONE computed (vs N computeds for N separate calls). Also exported as a namespaced `rx` object for dot-notation usage.
 
 ## Features
 
 - Every function overloaded: Signal&lt;T[]&gt; → Computed, T[] → plain
-- 39 functions across 6 categories: collections (23), aggregation (8), operators (5), timing (2), search (1), pipe (1)
+- 42 functions across 6 categories: collections (26 — incl. intersection/difference/union set ops, signal-aware on both inputs), aggregation (8), operators (5), timing (2), search (1), pipe (1)
 - pipe(source, ...fns) collapses a chain into ONE computed — one recompute per source change vs N for N separate calls
 - Namespaced rx object for dot-notation usage (rx.filter, rx.map, etc.)
 - Individual named exports for tree-shaking
@@ -86,7 +86,7 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 
 | Symbol | Kind | Summary |
 | --- | --- | --- |
-| [`rx`](#rx) | constant | Namespaced object exposing all 39 reactive transform functions plus `pipe`. |
+| [`rx`](#rx) | constant | Namespaced object exposing all 42 reactive transform functions plus `pipe`. |
 | [`pipe`](#pipe) | function | Thread a value through plain transform functions left-to-right, collapsing the whole chain into ONE computed. |
 | [`filter`](#filter) | function | Filter items by predicate. |
 | [`map`](#map) | function | Transform each item. |
@@ -106,7 +106,7 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]
 Readonly<{ filter, map, flatMap, sortBy, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, count, sum, min, max, average, reduce, every, some, distinct, scan, combine, zip, merge, debounce, throttle, search, pipe }>
 ```
 
-Namespaced object exposing all 39 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result.
+Namespaced object exposing all 42 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result.
 
 **Example**
 

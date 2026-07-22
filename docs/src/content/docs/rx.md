@@ -190,15 +190,16 @@ The mapper must return an **array** (`n => [n * 2]`, not `n => n * 2`), and it f
 
 ### `sortBy`
 
-Sort by a key name **or a key-selector function** — `KeyOf<T> = keyof T | ((item: T) => string | number)`. It is **non-mutating** (copies via `[...arr]`), **ascending only**, and uses a plain `a < b ? -1 : a > b ? 1 : 0` comparison.
+Sort by a key name **or a key-selector function** — `KeyOf<T> = keyof T | ((item: T) => string | number)` — with an optional direction (`'asc'` default, `'desc'` to invert). It is **non-mutating** (copies via `[...arr]`) and uses a plain `a < b ? -1 : a > b ? 1 : 0` comparison.
 
 ```tsx
-const byName = rx.sortBy(users, 'name') // by key name
+const byName = rx.sortBy(users, 'name') // by key name, ascending
+const newest = rx.sortBy(users, 'createdAt', 'desc') // descending
 const byAge = rx.sortBy(users, (u) => u.age) // by key-selector
 ```
 
 :::warning[`sortBy` takes a key / key-selector — NOT a comparator]
-The argument is a key name or a `(item) => value` selector, **not** an `(a, b) => number` comparator like `Array.sort`. There is no direction option (always ascending — compose [`reverse`](#reverse) for descending), no `Intl` collation (codepoint order for non-ASCII), and numeric *strings* sort lexically (`"10" < "2"`) — use a numeric selector (`(u) => Number(u.id)`) for those. Unlike native `Array.sort`, it never mutates the source.
+The argument is a key name or a `(item) => value` selector, **not** an `(a, b) => number` comparator like `Array.sort`. There is no `Intl` collation (codepoint order for non-ASCII), and numeric *strings* sort lexically (`"10" < "2"`) — use a numeric selector (`(u) => Number(u.id)`) for those. Unlike native `Array.sort`, it never mutates the source.
 :::
 
 ### `groupBy`
@@ -330,6 +331,19 @@ Take from the start **while** the predicate holds (stops at the first failing it
 ```tsx
 rx.takeWhile([1, 2, 3, 1, 2], (n) => n < 3) // [1, 2]  — stops at the first 3
 rx.dropWhile([1, 2, 3, 1, 2], (n) => n < 3) // [3, 1, 2] — drops leading 1,2
+```
+
+### `intersection` / `difference` / `union`
+
+Set operations by identity or by `key` selector — **signal-aware on BOTH inputs** (either may be a signal; the result recomputes when either changes). `O(n + m)` via a `Set`. `union` is order-preserving (source first, first occurrence wins).
+
+```tsx
+const selectedIds = signal([2, 4])
+const rows = signal<Row[]>([...])
+
+const selectedRows = rx.intersection(rows, selectedList, 'id') // rows also in selectedList
+const unselected = rx.difference(rows, selectedList, 'id')     // rows NOT in selectedList
+const merged = rx.union(localRows, serverRows, 'id')           // dedup by id, local wins
 ```
 
 ### `sample`
@@ -590,7 +604,7 @@ Reactive returns are typed as the `Computed` produced by `@pyreon/reactivity`'s 
 
 ### `rx` namespace
 
-`rx` is a `Readonly` object exposing all 39 functions plus `pipe` for dot-notation use (`rx.filter(...)`). Every member is also a tree-shakeable named export.
+`rx` is a `Readonly` object exposing all 42 functions plus `pipe` for dot-notation use (`rx.filter(...)`). Every member is also a tree-shakeable named export.
 
 ### Collections (23)
 

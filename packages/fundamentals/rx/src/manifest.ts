@@ -4,9 +4,9 @@ export default defineManifest({
   name: '@pyreon/rx',
   title: 'Reactive Transforms',
   tagline:
-    'Signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, pipe, debounce, throttle, 39 functions',
+    'Signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, pipe, debounce, throttle, 42 functions',
   description:
-    'Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 39 functions across collections (filter, map, flatMap, sortBy, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` collapses a chain into ONE computed (vs N computeds for N separate calls). Also exported as a namespaced `rx` object for dot-notation usage.',
+    'Signal-aware reactive data transforms for Pyreon. Every collection/aggregation function is overloaded: pass a `Signal<T[]>` and get a `Computed<T[]>` that auto-tracks and re-derives when the source changes; pass a plain `T[]` and get a static result. Signal detection is purely `typeof source === "function"` — any function is treated as a reactive source and called inside a computed; a resolved value (already-called signal) takes the static path and never updates. 42 functions across collections (filter, map, flatMap, sortBy — with an asc/desc direction param —, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, intersection, difference, union — the set ops are signal-aware on BOTH inputs), aggregation (count, sum, min, max, average, reduce, every, some), operators (distinct, scan, combine, zip, merge), timing (debounce, throttle), and search. `pipe(source, ...ops)` collapses a chain into ONE computed (vs N computeds for N separate calls). Also exported as a namespaced `rx` object for dot-notation usage.',
   category: 'universal',
   longExample: `import { signal, effect } from '@pyreon/reactivity'
 import { rx, pipe, filter, sortBy, map, flatMap, groupBy, countBy, take, sum, debounce, search } from '@pyreon/rx'
@@ -66,7 +66,7 @@ effect(() => matches())
 const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
   features: [
     'Every function overloaded: Signal<T[]> → Computed, T[] → plain',
-    '39 functions across 6 categories: collections (23), aggregation (8), operators (5), timing (2), search (1), pipe (1)',
+    '42 functions across 6 categories: collections (26 — incl. intersection/difference/union set ops, signal-aware on both inputs), aggregation (8), operators (5), timing (2), search (1), pipe (1)',
     'pipe(source, ...fns) collapses a chain into ONE computed — one recompute per source change vs N for N separate calls',
     'Namespaced rx object for dot-notation usage (rx.filter, rx.map, etc.)',
     'Individual named exports for tree-shaking',
@@ -79,7 +79,7 @@ const staticResult = filter([1, 2, 3, 4, 5], n => n > 3)  // [4, 5]`,
       kind: 'constant',
       signature: 'Readonly<{ filter, map, flatMap, sortBy, groupBy, countBy, keyBy, uniqBy, take, skip, last, chunk, flatten, find, mapValues, first, compact, reverse, partition, takeWhile, dropWhile, unique, sample, count, sum, min, max, average, reduce, every, some, distinct, scan, combine, zip, merge, debounce, throttle, search, pipe }>',
       summary:
-        'Namespaced object exposing all 39 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result.',
+        'Namespaced object exposing all 42 reactive transform functions plus `pipe`. Use `rx.filter(...)` for dot-notation style, or destructure individual functions for tree-shaking. Every function is overloaded: `Signal<T[]>` input produces `Computed<T[]>` that auto-tracks, plain `T[]` input produces a static result.',
       example: `const users = signal<{ name: string; age: number; department: string; active: boolean }[]>([])
 const active = rx.filter(users, u => u.active)       // Computed<User[]>
 const sorted = rx.sortBy(active, 'name')             // Computed<User[]>

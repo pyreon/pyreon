@@ -1,6 +1,6 @@
 # @pyreon/rx
 
-39 signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, pipe, debounce.
+42 signal-aware reactive transforms — filter, map, flatMap, sortBy, groupBy, countBy, intersection, difference, union, pipe, debounce.
 
 A small lodash-shaped library where every function is overloaded twice: pass a `Signal<T[]>` (or other `ReadableSignal<T[]>`) and get a `Computed<R>` back that auto-tracks; pass a plain `T[]` and get `R` synchronously. Use it for list pipelines (filter → sort → paginate), aggregations (sum / average / count over a reactive collection), grouped views (groupBy returning `Record<K, T[]>`), reactive search, and signal-rate limiting (debounce / throttle). Composes with `pipe(source, op1, op2, ...)` into a single computed.
 
