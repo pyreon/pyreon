@@ -1,6 +1,6 @@
 # @pyreon/hooks
 
-46 signal-based reactive utilities across seven categories for Pyreon apps.
+47 signal-based reactive utilities across seven categories for Pyreon apps.
 
 A reactive-primitives library for the patterns Pyreon components reach for every day: controllable state, DOM observers, responsive layout, timing, interaction, and ref composition. Every hook is SSR-safe (browser-API access is guarded), auto-cleans on unmount (registers `onUnmount` for listeners / observers / timers), and signal-native (returns `Signal<T>` / `Computed<T>` / accessor objects — never plain values) so consumers compose directly with `effect` / `computed` without re-bridging. Used as the foundation by every `@pyreon/ui-primitives` component.
 
@@ -51,7 +51,7 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 
 ## The full surface
 
-46 hooks across 7 categories.
+47 hooks across 7 categories.
 
 ### State
 
@@ -71,8 +71,9 @@ function Modal(props: { open?: boolean; defaultOpen?: boolean; onOpenChange?: (v
 | `useClickOutside(ref, handler)` | Click-outside dismissal |
 | `useFocus()` | `{ focused, props: { onFocus, onBlur } }` |
 | `useHover()` | `{ hovered, props: { onMouseEnter, onMouseLeave } }` |
-| `useFocusTrap(ref, options?)` | Tab/Shift-Tab trap inside `ref()`. Inert while `ref()` is null. Optional `{ active, initialFocus }` (or a positional `active` getter): arm reactively + move focus in on open. Spec-grade focusable query (contenteditable / media / hidden-filtering / tabindex order). Pair with `useFocusReturn` for return-on-close. |
+| `useFocusTrap(ref, options?)` | Focus trap inside `ref()`: Tab/Shift-Tab edge wrap + focusin containment (a programmatic `.focus()` / mouse escape is recaptured). Inert while `ref()` is null. Concurrent traps form a scope STACK — only the most recently activated trap handles events; arm with `{ active: () => isOpen() }` so stacking follows open order. `initialFocus: true` focuses `[data-autofocus]`, else the first tabbable. Spec-grade focusable query (contenteditable / media / hidden-filtering / tabindex order). Pair with `useFocusReturn` for return-on-close. |
 | `useFocusReturn(isOpen, opts?)` | Restore focus to the trigger when `isOpen()` flips false |
+| `useInertOthers(ref, options?)` | Native `inert` on everything OUTSIDE `ref()` (each ancestor level's sibling subtrees up to `<body>`). Makes `aria-modal` TRUE, not just declared. Refcounted for stacked overlays, exact-restore on release (already-inert elements stay inert), skips live regions. Follows a signal-backed `ref()` through mount/unmount. |
 | `useElementSize(ref)` | `Signal<{ width, height }>` via `ResizeObserver` |
 | `useWindowResize(debounceMs?)` | `() => { width, height }` debounced viewport size |
 | `useWindowScroll()` | `{ position: () => { x, y }; scrollTo }` — reactive scroll offset |

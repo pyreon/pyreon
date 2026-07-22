@@ -14,9 +14,9 @@ export default defineManifest({
   name: '@pyreon/hooks',
   title: 'Signal-Based Hooks',
   tagline:
-    '46 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
+    '47 signal-based hooks: state (useToggle/useCounter/usePrevious/useLatest/useControllableState), DOM (useEventListener/useClickOutside/useFocus/useHover/useFocusTrap/useFocusReturn/useInertOthers/useElementSize/useWindowResize/useWindowScroll/useScrollLock/useIntersection/useInfiniteScroll), responsive (useBreakpoint/useMediaQuery/useColorScheme/useSizeClass/useReducedMotion), timing (useDebouncedValue/useDebouncedCallback/useThrottledCallback/useInterval/useTimeout/useTimeAgo), interaction (useClipboard/useHaptics/useShare/useLinking/useNotifications/useBiometrics/useImagePicker/useFilePicker/useDialog/useKeyboard/useOnline/useAppState/useDocumentVisibility/useIdle), data (useFetch), composition (useMergedRef/useUpdateEffect/useIsomorphicLayoutEffect)',
   description:
-    'Signal-based hooks for Pyreon — 46 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
+    'Signal-based hooks for Pyreon — 47 reactive primitives covering state, DOM, responsive, timing, interaction, data, and composition. Every hook is SSR-safe (browser API access guarded), self-cleaning (registers `onUnmount` for listeners/observers/timers), and signal-native: hooks return `Signal<T>` / `Computed<T>` accessors, never plain values, so consumers compose with `effect`/`computed` without re-bridging. `useControllableState` is the canonical controlled/uncontrolled pattern used by every `@pyreon/ui-primitives` component — never reimplement the `isControlled + signal + getter` shape by hand.',
   category: 'universal',
   longExample: `import {
   // State
@@ -97,7 +97,7 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
   features: [
     '46 signal-based hooks across 7 categories',
     'State: useToggle, useCounter, usePrevious, useLatest, useControllableState',
-    'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
+    'DOM: useEventListener, useClickOutside, useFocus, useHover, useFocusTrap, useFocusReturn, useInertOthers, useElementSize, useWindowResize, useWindowScroll, useScrollLock, useIntersection, useInfiniteScroll',
     'Responsive: useBreakpoint, useMediaQuery, useColorScheme, useSizeClass, useReducedMotion',
     'Timing: useDebouncedValue, useDebouncedCallback, useThrottledCallback, useInterval, useTimeout, useTimeAgo',
     'Interaction: useClipboard, useHaptics, useShare, useLinking, useNotifications, useBiometrics, useDialog, useKeyboard, useOnline, useDocumentVisibility, useIdle',
@@ -177,7 +177,7 @@ effect(() => console.log('Box is', size().width, 'x', size().height))`,
       signature:
         '(getEl: () => HTMLElement | null, options?: { active?: boolean | (() => boolean); initialFocus?: boolean | string | HTMLElement | (() => HTMLElement | null) } | boolean | (() => boolean)) => void',
       summary:
-        'Trap Tab/Shift+Tab focus inside the element returned by `getEl()`. Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every Tab, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())` — while inactive the keydown listener is removed) and moves focus INTO the container on activation (`initialFocus: true` for the first tabbable, or a selector / element / getter; default is no focus move, backward-compatible). The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. The trap only acts while focus is actually inside its container, so nested traps do not fight. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`.',
+        'Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in; Tab-only trapping misses those escapes). Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every event, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. Concurrent traps form a scope STACK: only the most recently ACTIVATED trap whose container exists handles events, and deactivating/unmounting it reactivates the one beneath (stacked modals no longer fight over the same Tab) — arm each trap with `active` tied to its open state so the stack tracks OPEN order, not mount order. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and moves focus INTO the container on activation (`initialFocus: true` focuses the `[data-autofocus]` descendant when present, else the first tabbable; or a selector / element / getter; default is no focus move, backward-compatible). The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`; making the background actually inert is `useInertOthers`.',
       example: `// Reactive arming + move focus to the first field on open.
 const modalRef = signal<HTMLElement | null>(null)
 useFocusTrap(() => modalRef(), { active: () => isOpen(), initialFocus: true })
@@ -186,11 +186,33 @@ useFocusReturn(() => isOpen())   // returns focus to the opener on close
 // Or the single-arg form: inert while getEl() is null, no focus move.
 useFocusTrap(() => modalRef())`,
       mistakes: [
-        'Keeping the element permanently mounted (e.g. `display: none`) and expecting the trap to disable when hidden — either unmount it (so `getEl()` returns null) or pass `active: () => isOpen()` to disarm the listener without unmounting; visibility alone does not gate it',
-        'Expecting the trap to MOVE focus into the container on open — by default it only cycles Tab at the edges. Pass `initialFocus: true` (or a selector / element / getter) to place focus on activation, and pair with `useFocusReturn` to restore it on close',
-        'Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only cycles Tab within the container',
+        'Keeping the element permanently mounted (e.g. `display: none`) and expecting the trap to disable when hidden — either unmount it (so `getEl()` returns null) or pass `active: () => isOpen()` to disarm without unmounting; visibility alone does not gate it',
+        'Expecting the trap to MOVE focus into the container on open — by default it only contains focus. Pass `initialFocus: true` (or a selector / element / getter) to place focus on activation, and pair with `useFocusReturn` to restore it on close',
+        'Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only contains focus within the container',
+        'Arming two stacked traps with the default lifetime-`active` — the stack then follows MOUNT order, not open order, so the wrong trap can own focus; tie each trap to its open state (`active: () => isOpen()`)',
       ],
-      seeAlso: ['useFocusReturn', 'useScrollLock', 'useDialog', 'useClickOutside'],
+      seeAlso: ['useFocusReturn', 'useInertOthers', 'useScrollLock', 'useDialog', 'useClickOutside'],
+    },
+    {
+      name: 'useInertOthers',
+      kind: 'hook',
+      signature:
+        '(getEl: () => HTMLElement | null, options?: { active?: boolean | (() => boolean) } | boolean | (() => boolean)) => void',
+      summary:
+        "Apply the native `inert` attribute to everything OUTSIDE the element returned by `getEl()` — each ancestor level's sibling subtrees, from the element up to `document.body`. `aria-modal=\"true\"` only TELLS assistive tech the background is inert; this makes it TRUE: the background becomes unfocusable, unclickable, and hidden from the accessibility tree for screen readers AND sighted keyboard users. Cleanup restores EXACTLY the prior state (an element that was already `inert` stays inert), and stacked overlays share a per-element refcount so an inner overlay's cleanup never un-inerts what the outer still needs. Application follows `getEl()` reactively — pass a signal-backed getter and it applies on mount, releases on unmount (ref → null), re-applies on identity change; `active` additionally arms/disarms without unmounting. `script`/`style`/`template`/`link`/`meta` and live regions (`[aria-live]`, `[data-live-announcer]`) are skipped so screen-reader announcements keep working while the overlay is open. Siblings mounted AFTER application (a toast portaled to body) are not retroactively inert-ed. SSR-safe, self-cleaning.",
+      example: `const dialogRef = signal<HTMLElement | null>(null)
+
+// The dialog renders only while open, so the ref IS the lifecycle:
+useInertOthers(() => dialogRef())
+useFocusTrap(() => dialogRef(), { active: () => isOpen() })
+useFocusReturn(() => isOpen())`,
+      mistakes: [
+        'Passing a plain `let` ref captured once instead of a signal-backed getter for a conditionally-rendered element — the hook watches the getter reactively; a non-reactive getter is only sampled at mount / `active` flips, so the application never follows the element. Store the ref in a signal (`ref={el => dialogRef.set(el)}`)',
+        'Restoring focus to the trigger SYNCHRONOUSLY in the same flush that closes the overlay — the trigger may still be inert at that point and `.focus()` silently no-ops; defer the restore a microtask (or use useFocusReturn, and let the element unmount first)',
+        'Expecting it to also trap Tab — `inert` makes the background unfocusable but the trap semantics (edge wrapping, recapture) are useFocusTrap; use both for a modal',
+        "Manually removing `inert` from a background element while an overlay is open — the hook's refcount still holds it and the cleanup bookkeeping will disagree; drive visibility through the hook's lifecycle instead",
+      ],
+      seeAlso: ['useFocusTrap', 'useFocusReturn', 'useScrollLock', 'useDialog'],
     },
     {
       name: 'useFocusReturn',

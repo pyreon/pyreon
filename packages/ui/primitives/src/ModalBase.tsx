@@ -1,6 +1,6 @@
 import { Portal, splitProps, type ComponentFn, type VNodeChild } from '@pyreon/core'
-import { useEventListener, useFocusTrap, useScrollLock } from '@pyreon/hooks'
-import { isServer, watch } from '@pyreon/reactivity'
+import { useEventListener, useFocusTrap, useInertOthers, useScrollLock } from '@pyreon/hooks'
+import { isServer, signal, watch } from '@pyreon/reactivity'
 
 // Tabbable descendants for the open-modal focus-in (mirrors the selector in
 // @pyreon/hooks useFocusTrap, which owns the Tab-cycling itself).
@@ -60,11 +60,11 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
 
   const scrollLock = useScrollLock()
 
-  // Internal handle on the dialog element so we can trap + move focus. The
-  // dialog renders only while open, so this is null when closed — which makes
-  // the focus trap below inert without any extra gating. Forwarded to the
-  // consumer's `ref` so they still get it.
-  let dialogEl: HTMLElement | null = null
+  // Internal handle on the dialog element so we can trap + move focus. A
+  // SIGNAL (not a plain let) so useInertOthers reactively follows the dialog's
+  // mount/unmount — the dialog renders only while open, so this is null when
+  // closed. Forwarded to the consumer's `ref` so they still get it.
+  const dialogEl = signal<HTMLElement | null>(null)
   // Element focused when the modal opened — restored on close so keyboard /
   // screen-reader users return to the trigger instead of the top of the page.
   let prevFocusEl: HTMLElement | null = null
@@ -72,17 +72,27 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
   let warnedNoName = false
 
   const dialogRef = (el: HTMLElement | null) => {
-    dialogEl = el
+    dialogEl.set(el)
     own.ref?.(el)
   }
 
-  // Trap Tab / Shift+Tab within the dialog while it's open. `aria-modal="true"`
-  // only TELLS assistive tech the rest of the page is inert — it does not stop
-  // a sighted keyboard user tabbing out to the background. useFocusTrap reads
-  // the getter live, so it's a no-op while closed (dialogEl is null). The
-  // canonical multiplatform `<Modal>` (@pyreon/primitives) gets this from a
-  // native `<dialog>`; this headless base hand-wires the equivalent.
-  useFocusTrap(() => dialogEl)
+  // Trap Tab / Shift+Tab + contain focusin within the dialog while it's open.
+  // `active` is tied to `open` (not the hook's default lifetime-armed mode) so
+  // STACKED modals push onto useFocusTrap's scope stack in OPEN order — the
+  // most recently opened modal owns focus, and closing it reactivates the one
+  // beneath. The canonical multiplatform `<Modal>` (@pyreon/primitives) gets
+  // this from a native `<dialog>`; this headless base hand-wires the
+  // equivalent.
+  useFocusTrap(() => dialogEl(), { active: () => own.open === true })
+
+  // Make the background ACTUALLY inert. `aria-modal="true"` (below) only
+  // TELLS assistive tech the rest of the page is inert — it does not stop a
+  // sighted keyboard/pointer user reaching the background, and some AT
+  // ignores it. useInertOthers applies the native `inert` attribute to every
+  // sibling subtree outside the dialog (refcounted for stacked modals,
+  // exact-restore on close). The signal-backed getter IS the lifecycle:
+  // applied when the dialog mounts, released when it unmounts.
+  useInertOthers(() => dialogEl())
 
   useEventListener('keydown', (e) => {
     if (own.open && closeOnEscape && e.key === 'Escape') own.onClose?.()
@@ -118,18 +128,31 @@ export const ModalBase: ComponentFn<ModalBaseProps> = (props) => {
         if (!isServer) {
           prevFocusEl = document.activeElement as HTMLElement | null
           requestAnimationFrame(() => {
-            if (!own.open || !dialogEl) return
+            const el = dialogEl()
+            if (!own.open || !el) return
             const requested = own.initialFocus?.() ?? null
-            const first = dialogEl.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
-            ;(requested ?? first ?? dialogEl).focus?.()
+            const first = el.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)
+            ;(requested ?? first ?? el).focus?.()
           })
         }
       } else {
         scrollLock.unlock()
-        // Restore focus to the opener on close.
+        // Restore focus to the opener on close — deferred a microtask.
+        // Within THIS synchronous flush the dialog may not have unmounted
+        // yet, so useInertOthers can still hold `inert` over the opener's
+        // subtree — and focusing an inert element is a silent no-op. Effects
+        // flush synchronously, so by microtask time the dialog has unmounted
+        // and the background is un-inerted (same reasoning as useFocusTrap's
+        // deferred focusin recapture).
         const prev = prevFocusEl
         prevFocusEl = null
-        if (prev && typeof prev.focus === 'function') prev.focus()
+        if (prev && typeof prev.focus === 'function') {
+          queueMicrotask(() => {
+            // Re-opened before the restore fired — the open path owns focus.
+            if (own.open) return
+            prev.focus()
+          })
+        }
       }
     },
     { immediate: true },

@@ -24,7 +24,7 @@ const strayNodes: HTMLElement[] = []
 function armTrap(
   getEl: () => HTMLElement | null,
   options?: UseFocusTrapOptions | boolean | (() => boolean),
-): void {
+): () => void {
   const { unmount } = mountInBrowser(
     h(
       () => {
@@ -35,6 +35,7 @@ function armTrap(
     ),
   )
   disposers.push(unmount)
+  return unmount
 }
 
 /** Build a detached-then-appended trap container from an HTML fragment. */
@@ -226,5 +227,117 @@ describe('useFocusTrap (real Chromium) — robust focusable query', () => {
     b2.focus()
     pressTab()
     expect(document.activeElement).toBe(c.querySelector('#b1'))
+  })
+})
+
+describe('useFocusTrap (real Chromium) — trap scope stack', () => {
+  // Bisect (pre-stack behavior): with per-trap document listeners, focus
+  // programmatically moved into a LOWER trap's container stayed there and the
+  // lower trap kept cycling focus behind the top-most one — the "two stacked
+  // modals fight" shape. With the stack + focusin containment, the TOP trap
+  // recaptures.
+  it('the TOP trap recaptures focus that escapes into a lower trap', async () => {
+    const a = makeContainer('<button id="a1">A1</button><button id="a2">A2</button>')
+    const b = makeContainer('<button id="b1">B1</button><button id="b2">B2</button>')
+    armTrap(() => a)
+    armTrap(() => b) // activated second → top of stack
+    await flush()
+
+    // Programmatic escape into the LOWER trap's container.
+    a.querySelector<HTMLButtonElement>('#a1')!.focus()
+    await flush()
+    expect(document.activeElement).toBe(b.querySelector('#b1'))
+  })
+
+  it('only the top trap wraps Tab; disposing it reactivates the one beneath', async () => {
+    const a = makeContainer('<button id="a1">A1</button><button id="a2">A2</button>')
+    const b = makeContainer('<button id="b1">B1</button><button id="b2">B2</button>')
+    armTrap(() => a)
+    const disposeB = armTrap(() => b)
+    await flush()
+
+    const b2 = b.querySelector<HTMLButtonElement>('#b2')!
+    b2.focus()
+    pressTab()
+    expect(document.activeElement).toBe(b.querySelector('#b1'))
+
+    // Pop the top trap → the outer one owns focus again.
+    disposeB()
+    await flush()
+    const a2 = a.querySelector<HTMLButtonElement>('#a2')!
+    a2.focus()
+    await flush() // let any queued recapture settle (none should fire)
+    expect(document.activeElement).toBe(a2)
+    pressTab()
+    expect(document.activeElement).toBe(a.querySelector('#a1'))
+  })
+
+  it('deactivating the top trap reactively hands focus ownership down', async () => {
+    const a = makeContainer('<button id="a1">A1</button><button id="a2">A2</button>')
+    const b = makeContainer('<button id="b1">B1</button>')
+    const bOpen = signal(true)
+    armTrap(() => a)
+    armTrap(() => b, () => bOpen())
+    await flush()
+
+    // B (top) holds focus ownership.
+    a.querySelector<HTMLButtonElement>('#a1')!.focus()
+    await flush()
+    expect(document.activeElement).toBe(b.querySelector('#b1'))
+
+    bOpen.set(false)
+    await flush()
+    const a2 = a.querySelector<HTMLButtonElement>('#a2')!
+    a2.focus()
+    await flush()
+    expect(document.activeElement).toBe(a2)
+    pressTab()
+    expect(document.activeElement).toBe(a.querySelector('#a1'))
+  })
+})
+
+describe('useFocusTrap (real Chromium) — focusin containment', () => {
+  // Bisect (pre-containment behavior): the trap was Tab-only — a programmatic
+  // `.focus()` (or mouse click on an outside focusable) escaped it silently
+  // and focus stayed outside. The focusin listener recaptures.
+  it('recaptures a programmatic focus() escape to the outside', async () => {
+    const outside = focusOutside()
+    const c = makeContainer('<button id="c1">1</button><button id="c2">2</button>')
+    armTrap(() => c, { initialFocus: true })
+    await flush()
+    expect(document.activeElement).toBe(c.querySelector('#c1'))
+
+    outside.focus()
+    await flush()
+    expect(document.activeElement).toBe(c.querySelector('#c1'))
+  })
+
+  it('recaptures to [data-autofocus] when present', async () => {
+    const outside = focusOutside()
+    const c = makeContainer(
+      '<button id="c1">1</button><button id="c2" data-autofocus>2</button>',
+    )
+    armTrap(() => c)
+    await flush()
+
+    // Focus starts INSIDE the trap (an escape needs a real focus CHANGE — a
+    // `.focus()` on the already-focused element fires no focusin).
+    c.querySelector<HTMLButtonElement>('#c1')!.focus()
+    await flush()
+
+    outside.focus()
+    await flush()
+    expect(document.activeElement).toBe(c.querySelector('#c2'))
+  })
+
+  it('initialFocus:true prefers a [data-autofocus] descendant', async () => {
+    focusOutside()
+    const c = makeContainer(
+      '<button id="c1">1</button><button id="c2" data-autofocus>2</button>',
+    )
+    armTrap(() => c, { initialFocus: true })
+    await flush()
+
+    expect(document.activeElement).toBe(c.querySelector('#c2'))
   })
 })
