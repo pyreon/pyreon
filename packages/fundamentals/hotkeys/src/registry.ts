@@ -256,6 +256,11 @@ function registerOne(
   handler: (event: KeyboardEvent) => void,
   options: HotkeyOptions | undefined,
 ): () => void {
+  // Defensive SSR guard — registerHotkey's own isServer bail precedes every
+  // call, but the guard here makes the `window` default below provably
+  // SSR-safe at its use site (and keeps the no-window-in-ssr rule honest).
+  /* v8 ignore next */
+  if (isServer) return () => {}
   // Sequential combo support: space-separated combos like `'g t'` are ordered
   // sequences — press `g`, then `t` within `SEQUENCE_TIMEOUT_MS`. Each
   // sub-combo goes through `parseShortcut` (so `'ctrl+k p'` works).
