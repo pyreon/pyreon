@@ -240,6 +240,9 @@ function topTrap(): { frame: TrapFrame; el: HTMLElement } | null {
 }
 
 function onSharedKeydown(e: KeyboardEvent): void {
+  // SSR guard (documents the contract for the lint rule — the shared
+  // listeners are only ever registered client-side).
+  if (typeof document === 'undefined') return
   if (e.key !== 'Tab') return
   const top = topTrap()
   if (!top) return
@@ -287,6 +290,7 @@ let recapturePending = false
  * early-returns on the containment check.
  */
 function onSharedFocusIn(e: FocusEvent): void {
+  if (typeof document === 'undefined') return
   const top = topTrap()
   if (!top) return
   const target = e.target
@@ -313,6 +317,7 @@ function onSharedFocusIn(e: FocusEvent): void {
 }
 
 function pushFrame(frame: TrapFrame): void {
+  if (typeof document === 'undefined') return
   trapStack.push(frame)
   if (trapStack.length === 1) {
     document.addEventListener('keydown', onSharedKeydown)
@@ -321,6 +326,7 @@ function pushFrame(frame: TrapFrame): void {
 }
 
 function removeFrame(frame: TrapFrame): void {
+  if (typeof document === 'undefined') return
   const i = trapStack.lastIndexOf(frame)
   /* v8 ignore next — double-removal guard (detach is idempotent upstream). */
   if (i === -1) return
