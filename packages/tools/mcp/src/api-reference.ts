@@ -5044,7 +5044,7 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
 <div ref={chart.ref} style="height: 400px" />
 // chart.loading() — true until ECharts modules loaded + chart initialized
 // chart.instance() — raw ECharts instance for imperative API`,
-    notes: 'Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal<ECharts | null>), `loading` (Signal<boolean>), `error` (Signal<Error | null>), and `resize()`. Auto-resizes via ResizeObserver and disposes on unmount. See also: Chart.',
+    notes: 'Create a reactive ECharts instance. Options are passed as a function — signal reads inside are tracked and the chart updates automatically when any tracked signal changes. Lazy-loads the required ECharts modules on first render (zero bytes until mount). Returns `ref` (bind to a container div), `instance` (Signal<ECharts | null>), `loading` (Signal<boolean>), `error` (Signal<Error | null>), and `resize()`. Auto-resizes via ResizeObserver (`autoresize: false | { throttle }` to opt out/throttle) and disposes on unmount. `theme` accepts an accessor for reactive swaps; `initOptions` passes through to `core.init`; warm mounts (modules cached) are synchronous. `getCore()`/`connect()` are exported for `registerMap`/`registerTheme`/linked charts. See also: Chart.',
     mistakes: `- Forgetting to set a height on the container div — ECharts requires explicit dimensions, it does not auto-size to content
 - Passing options as a plain object instead of a function — signal reads are not tracked and the chart never updates
 - Reading chart.instance() immediately after useChart — the instance is null until the async module load completes; check chart.loading() first
@@ -5069,7 +5069,7 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
     mistakes: `- Missing style height on the Chart component — same as useChart, ECharts requires explicit container dimensions
 - Passing a static options object — wrap in \`() => ({...})\` so signal reads inside are tracked reactively
 - Using onClick/onMouseover/onMouseout for a non-mouse event — those are only shorthands; reach for the general \`onEvents\` map (e.g. \`onEvents={{ legendselectchanged: fn }}\`) for any other ECharts event
-- Expecting \`theme\` to swap at runtime — it is applied once at init (ECharts cannot hot-swap a theme); remount the chart (key it on the theme signal) to change themes
+- Passing \`theme\` as a plain VALUE and expecting runtime swaps — a value is applied once at init; pass an ACCESSOR (\`theme: () => (dark() ? 'dark' : null)\`) and a flip disposes + re-inits with the option, group, and events preserved
 - Relying on the default merge when data shrinks — a signal change that removes a series/point leaves the old one; pass \`notMerge\` or \`replaceMerge="series"\``,
   },
   // <gen-docs:api-reference:end @pyreon/charts>

@@ -20,4 +20,13 @@ export default defineNodeConfig({
     functions: 98,
     lines: 98,
   },
+  // --expose-gc makes `globalThis.gc` available in the fork workers so the
+  // GC-observable dispose-leak lock (dispose-gc.test.tsx) RUNS in CI instead
+  // of skipping. Same shape as @pyreon/runtime-dom's vitest config.
+  overrides: {
+    test: {
+      // Vitest 4: pool options are top-level (`poolOptions` was removed).
+      execArgv: ['--expose-gc'],
+    },
+  },
 })

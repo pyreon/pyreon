@@ -200,20 +200,22 @@ async function loadAndRegister(
 }
 
 /**
- * Analyze an ECharts option object and dynamically import only the
- * required chart types, components, and renderer. All imports are
- * cached — subsequent calls with the same types are instant.
+ * Collect the module registry keys (and their loaders) an option requires:
+ * renderer, chart types from `series[].type`, components from top-level
+ * config keys, and series-level features (markPoint/markLine/markArea).
+ * Single source of truth shared by the async `ensureModules` path and the
+ * synchronous `ensureModulesSync` fast path — the two can never disagree
+ * on what "fully registered" means.
  */
-export async function ensureModules(
+function collectModuleKeys(
   option: LooseOption,
-  renderer: 'canvas' | 'svg' = 'canvas',
-): Promise<typeof import('echarts/core')> {
-  const core = await getCore()
-  const loads: Promise<void>[] = []
+  renderer: 'canvas' | 'svg',
+): [key: string, loader: ModuleLoader][] {
+  const keys: [string, ModuleLoader][] = []
 
   // Renderer (always needed)
   const rendererLoader = RENDERERS[renderer]
-  if (rendererLoader) loads.push(loadAndRegister(core, `renderer:${renderer}`, rendererLoader))
+  if (rendererLoader) keys.push([`renderer:${renderer}`, rendererLoader])
 
   // Normalize series to array for analysis
   const rawSeries = option.series
@@ -225,31 +227,87 @@ export async function ensureModules(
   for (const s of seriesList) {
     const type = s.type as string | undefined
     const chartLoader = type ? CHARTS[type] : undefined
-    if (chartLoader) {
-      loads.push(loadAndRegister(core, `chart:${type}`, chartLoader))
-    }
+    if (chartLoader) keys.push([`chart:${type}`, chartLoader])
   }
 
   // Components from top-level config keys
   for (const key of Object.keys(option)) {
     const compLoader = COMPONENTS[key]
-    if (compLoader) {
-      loads.push(loadAndRegister(core, `component:${key}`, compLoader))
-    }
+    if (compLoader) keys.push([`component:${key}`, compLoader])
   }
 
   // Series-level features (markPoint, markLine, markArea)
   for (const s of seriesList) {
     for (const key of Object.keys(s)) {
       const featureLoader = SERIES_FEATURES[key]
-      if (featureLoader) {
-        loads.push(loadAndRegister(core, `feature:${key}`, featureLoader))
-      }
+      if (featureLoader) keys.push([`feature:${key}`, featureLoader])
     }
+  }
+
+  return keys
+}
+
+/**
+ * Analyze an ECharts option object and dynamically import only the
+ * required chart types, components, and renderer. All imports are
+ * cached — subsequent calls with the same types are instant.
+ */
+export async function ensureModules(
+  option: LooseOption,
+  renderer: 'canvas' | 'svg' = 'canvas',
+): Promise<typeof import('echarts/core')> {
+  const core = await getCore()
+  const loads: Promise<void>[] = []
+
+  for (const [key, loader] of collectModuleKeys(option, renderer)) {
+    loads.push(loadAndRegister(core, key, loader))
   }
 
   await Promise.all(loads)
   return core
+}
+
+/**
+ * Synchronous twin of `ensureModules` — returns the core module when it is
+ * already loaded AND every module the option needs is already registered,
+ * else `null` (caller falls back to the async path).
+ *
+ * Why it exists: `ensureModules` is async even when everything is cached —
+ * the promise hop defers chart init past the current task, so the 2nd..Nth
+ * chart on a page paid a wrapper-imposed async delay for no reason (part of
+ * the measured ~1.65× mount loss vs echarts-for-react). With this fast path
+ * a chart whose modules are warm initializes synchronously inside the mount
+ * frame.
+ */
+export function ensureModulesSync(
+  option: LooseOption,
+  renderer: 'canvas' | 'svg' = 'canvas',
+): typeof import('echarts/core') | null {
+  if (!coreModule) return null
+  for (const [key] of collectModuleKeys(option, renderer)) {
+    if (!registered.has(key)) return null
+  }
+  return coreModule
+}
+
+/**
+ * Connect charts into an ECharts group so tooltips/dataZoom/actions sync
+ * across them. Assign the same `group` id to each chart (the `group` config
+ * on `useChart` / prop on `<Chart>`), then call `connect(groupId)`.
+ *
+ * Thin async wrapper over `echarts.connect` — awaits the lazy core load so
+ * it is safe to call before any chart has mounted.
+ *
+ * @example
+ * ```tsx
+ * const a = useChart(optsA, { group: 'sales' })
+ * const b = useChart(optsB, { group: 'sales' })
+ * await connect('sales')
+ * ```
+ */
+export async function connect(groupId: string): Promise<void> {
+  const core = await getCore()
+  core.connect(groupId)
 }
 
 /**

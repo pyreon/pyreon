@@ -32,6 +32,17 @@ import { registerSingleton } from '@pyreon/reactivity'
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export { Chart } from './chart-component'
+// Escape hatch: the lazy-loaded `echarts/core` module — everything the
+// wrapper doesn't model (`registerMap` for map charts, `registerTheme`,
+// `echarts.connect`/`disconnect`, `getInstanceByDom`, …).
+//
+// @example map charts (README "Map charts" recipe):
+// ```ts
+// import { getCore } from '@pyreon/charts'
+// const core = await getCore()
+// core.registerMap('world', worldGeoJson)
+// ```
+export { connect, getCore } from './loader'
 // Chart configuration types
 // Re-exported ECharts types for consumer convenience —
 // consumers get full autocomplete without importing echarts directly
@@ -43,6 +54,7 @@ export type {
   ChartEventHandler,
   ChartEventParams,
   ChartProps,
+  ChartTheme,
   ComposeOption,
   DataZoomComponentOption,
   ECharts,
