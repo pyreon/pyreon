@@ -44,6 +44,7 @@ import {
 import type { InferenceCtx } from './infer-type'
 import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
+import { elementToStack } from './elements-native'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -3542,6 +3543,10 @@ function emitKotlinExpr(e: ExprIR, indent: number): string {
 
 function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+
+  // @pyreon/elements `<Element>` → the canonical `<Stack>` (mirror of the Swift
+  // dispatcher). Unlocks the whole ui-system (rocketstyle over Element).
+  if (tag === 'Element') return emitKotlinJsx(elementToStack(e), indent)
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
   // synthetic `style` attr, then re-enter the dispatch; the inline-style

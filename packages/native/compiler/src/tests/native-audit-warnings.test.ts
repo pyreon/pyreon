@@ -885,7 +885,11 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`; warn at the import naming the escape-hatch fix instead.
   describe('web-only @pyreon/* package imports', () => {
-    for (const pkg of ['@pyreon/charts', '@pyreon/flow', '@pyreon/code', '@pyreon/document', '@pyreon/elements', '@pyreon/ui-components']) {
+    // NOTE: @pyreon/elements / styler / rocketstyle are NO LONGER here — they
+    // have native frontends (Element→Stack, styled(Prim), rocketstyle) so a user
+    // imports them to AUTHOR multiplatform components. @pyreon/ui-components stays
+    // web-only-on-import (PMTC compiles source, not the npm package).
+    for (const pkg of ['@pyreon/charts', '@pyreon/flow', '@pyreon/code', '@pyreon/document', '@pyreon/ui-components']) {
       it(`warns importing ${pkg} (web-only) into a native file + names the escape hatch`, () => {
         const result = transform(
           `import { Thing } from '${pkg}'\nimport { Stack } from '@pyreon/primitives'\nexport function App() { return <Stack><Thing /></Stack> }`,

@@ -48,6 +48,7 @@ import {
 } from './infer-type'
 import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
+import { elementToStack } from './elements-native'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -4202,6 +4203,11 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
 
 function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
   const tag = e.tag
+
+  // @pyreon/elements `<Element>` → the canonical `<Stack>` (direction/alignX/
+  // alignY translated), then re-enter dispatch. This is what makes the whole
+  // ui-system (the 67 ui-components = rocketstyle over Element) lower.
+  if (tag === 'Element') return emitSwiftJsx(elementToStack(e), indent)
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
   // as a synthetic `style` attr, then re-enter the dispatch. The whole
