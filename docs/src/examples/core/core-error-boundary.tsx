@@ -24,20 +24,18 @@ export default function CoreErrorBoundary() {
         fallback: (_err: unknown, reset: () => void) =>
           h('div', {
             class: 'err',
-            'aria-label': 'reset',
             onClick: () => {
               broken.set(false)
               reset()
             },
-            style: { width: '92px', height: '92px', borderRadius: '16px', background: '#f87171', cursor: 'pointer' },
-          }),
+            style: { width: '92px', height: '92px', borderRadius: '16px', background: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '13px', fontWeight: 600 },
+          }, 'Reset'),
       },
       () => (broken() ? h(BoomPanel, {}) : h(OkPanel, {})),
     ),
     h('button', {
       onClick: () => broken.set(true),
-      'aria-label': 'break',
-      style: { width: '46px', height: '28px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#cbd5e1' },
-    }),
+      style: { padding: '6px 16px', border: 'none', borderRadius: '8px', cursor: 'pointer', background: '#cbd5e1', color: '#1e293b', fontSize: '13px', fontWeight: 600 },
+    }, 'Break'),
   )
 }
