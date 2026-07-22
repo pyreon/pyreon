@@ -144,11 +144,24 @@ import { standardSchemaToValidator } from '@pyreon/validation'
 const schema = z.object({ email: z.string().email(), age: z.number().min(18) })
 const validate = standardSchemaToValidator(schema)
 
-const errors = await validate({ email: 'x', age: 5 })
+const errors = validate({ email: 'x', age: 5 }) // sync schema → plain record, no await
 // => { email: 'Invalid email', age: 'Too small: ...' }
 ```
 
-Issue paths flatten to dot-strings (`address.city`); the first message per path wins; the produced validator is always async — `await` it.
+Issue paths flatten to dot-strings (`address.city`); the first message per path wins. **Sync fast-path**: a synchronously-validating schema returns the error record directly — no Promise, no microtask (the keystroke path in `@pyreon/form`); a genuinely async schema returns a Promise you await.
+
+## Performance — wrapper tax ≈ 0
+
+`@pyreon/validation` is a contract package — it IS zod/valibot/arktype underneath. The honest perf question is what the adapter/bridge COSTS on top of the raw library call, and the answer is *noise* (`bun run bench:validation` — process-isolated, correctness-gated, median ns/op, Apple M3 Max):
+
+| op | raw | adapter | bridge | tax (bridge − raw) |
+|---|---|---|---|---|
+| zod valid | 265 | 207 | 216 | **−48 ns** |
+| valibot valid | 145 | 129 | 130 | **−14 ns** |
+| arktype valid | 61 | 51 | 63 | **+2 ns** |
+| validator sync (zod) | 214 | — | 226 | **+13 ns** |
+
+The one real cost is arktype's *failure* path (+0.75µs): normalizing ArkType's errors object into the issues contract — paid only on rejection, and it IS the contract's work.
 
 Companion helpers:
 

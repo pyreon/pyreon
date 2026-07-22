@@ -49,16 +49,35 @@ export type SchemaParseResult<T> = ParseResult<T>
 export function standardSchemaToValidator<TValues extends Record<string, unknown>>(
   schema: StandardSchemaLike,
 ): SchemaValidateFn<TValues> {
-  return async (values: TValues) => {
-    const result = await schema['~standard'].validate(values)
+  type Errors = Partial<Record<keyof TValues, ValidationError>>
+  const toErrors = (result: unknown): Errors => {
     const errors: Record<string, ValidationError> = {}
-    if (result != null && 'issues' in result && result.issues) {
-      for (const issue of result.issues) {
+    if (
+      result != null &&
+      typeof result === 'object' &&
+      'issues' in result &&
+      (result as { issues?: readonly unknown[] }).issues
+    ) {
+      for (const issue of (result as {
+        issues: ReadonlyArray<{ message: string; path?: ReadonlyArray<PropertyKey | { key: PropertyKey }> }>
+      }).issues) {
         const key = flattenIssuePath(issue.path)
         if (errors[key] === undefined) errors[key] = issue.message
       }
     }
-    return errors as Partial<Record<keyof TValues, ValidationError>>
+    return errors as Errors
+  }
+  return (values: TValues) => {
+    // SYNC FAST-PATH: `SchemaValidateFn` permits a plain record return, and
+    // most schemas validate synchronously (zod/valibot/arktype sync trees,
+    // @pyreon/validate's `s`). Returning the record directly — instead of the
+    // prior always-`async` wrapper — skips a Promise allocation + microtask
+    // hop per validation call (every keystroke under `validateOn` flows
+    // through here) and lets sync consumers STAY sync. A genuinely async
+    // schema still returns a Promise the caller awaits.
+    const result = schema['~standard'].validate(values)
+    if (result instanceof Promise) return result.then(toErrors)
+    return toErrors(result)
   }
 }
 

@@ -78,3 +78,41 @@ describe('standardSchemaToValidator', () => {
     expect(await v({})).toEqual({ x: 'first' })
   })
 })
+
+describe('standardSchemaToValidator — sync fast-path', () => {
+  it('a SYNC schema returns a plain record (no Promise, no microtask hop)', () => {
+    const schema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: (v: unknown) =>
+          typeof (v as { name?: unknown }).name === 'string'
+            ? { value: v }
+            : { issues: [{ message: 'name required', path: ['name'] }] },
+      },
+    }
+    const validator = standardSchemaToValidator<{ name: string }>(schema)
+    const ok = validator({ name: 'x' })
+    const bad = validator({} as never)
+    // Load-bearing: keystroke-path consumers (form validateOn) must not pay a
+    // Promise allocation + microtask per call for sync schemas.
+    expect(ok).not.toBeInstanceOf(Promise)
+    expect(bad).not.toBeInstanceOf(Promise)
+    expect(ok).toEqual({})
+    expect(bad).toEqual({ name: 'name required' })
+  })
+
+  it('a genuinely ASYNC schema still resolves through a Promise', async () => {
+    const schema = {
+      '~standard': {
+        version: 1 as const,
+        vendor: 'test',
+        validate: async () => ({ issues: [{ message: 'nope', path: ['x'] }] }),
+      },
+    }
+    const validator = standardSchemaToValidator<{ x: string }>(schema)
+    const res = validator({ x: '' })
+    expect(res).toBeInstanceOf(Promise)
+    expect(await res).toEqual({ x: 'nope' })
+  })
+})

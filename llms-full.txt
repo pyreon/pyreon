@@ -883,7 +883,7 @@ const form3 = useForm({
 // Bridge a raw schema by hand when you need the validator standalone:
 import { standardSchemaToValidator } from '@pyreon/validation'
 const validate = standardSchemaToValidator(schema)
-const errors = await validate({ email: 'x', age: 5 })
+const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record (no await needed)
 // => { email: 'Invalid email', age: 'Too small: ...' }
 ```
 

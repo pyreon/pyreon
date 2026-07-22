@@ -219,11 +219,11 @@ import { standardSchemaToValidator } from '@pyreon/validation'
 const schema = z.object({ email: z.string().email(), age: z.number().min(18) })
 const validate = standardSchemaToValidator(schema)
 
-const errors = await validate({ email: 'x', age: 5 })
+const errors = validate({ email: 'x', age: 5 }) // sync schema → plain record, no await
 // => { email: "Invalid email", age: "Too small: ..." }
 ```
 
-Issue paths flatten to dot-strings (`address.city`), the first message per path wins, and the produced validator is **always async** -- `await` it (a schema may validate asynchronously).
+Issue paths flatten to dot-strings (`address.city`) and the first message per path wins. **Sync fast-path**: a synchronously-validating schema (zod/valibot/arktype sync trees, `s`) returns the error record **directly** -- no Promise allocation, no microtask hop per call, which is what `@pyreon/form`'s keystroke-path `validateOn` flows through. A genuinely async schema still returns a Promise you await. The wrapper tax over the raw library call is bench-proven ≈0 ns (`bun run bench:validation` -- process-isolated, correctness-gated; only arktype's failure-path issue normalization costs anything, ~0.75µs on rejection only).
 
 ### Companion helpers
 
@@ -1218,7 +1218,7 @@ export function myLibraryField<T>(schema: MyLibraryFieldSchema<T>): ValidateFn<T
 
 | Function                             | Signature                                                                   | Description                                                                                                                    |
 | ------------------------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `standardSchemaToValidator(schema)`  | `<TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>`         | Convert a raw Standard Schema into a whole-object `SchemaValidateFn` (always async). The bridge behind passing a raw schema. |
+| `standardSchemaToValidator(schema)`  | `<TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>`         | Convert a raw Standard Schema into a whole-object `SchemaValidateFn` (sync fast-path: sync schema → plain record; async schema → Promise). The bridge behind passing a raw schema. |
 | `isStandardSchema(value)`            | `(value: unknown) => value is StandardSchemaShape<unknown>`                  | Type guard — detect a Standard Schema by its `~standard` property.                                                            |
 | `isPyreonAdapter(value)`             | `(value: unknown) => value is PyreonAdapterShape<Record<string, unknown>>`   | Type guard — detect a Pyreon `TypedSchemaAdapter` (`_infer` + callable `parse`).                                              |
 | `wrapStandardSchema(schema)`         | `<T>(schema: StandardSchemaShape) => (value) => SchemaParseResult<T>`        | Convert a Standard Schema into a sync coerced-value parser (async → `Promise` return). `@internal`.                          |

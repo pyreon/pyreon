@@ -13,6 +13,7 @@ The stack-wide validation gate — the library-agnostic contract every Pyreon da
 
 - Universal, library-agnostic validation gate — owns the contract types (ValidationError / ValidateFn / SchemaValidateFn) with ZERO pyreon deps
 - Standard Schema bridge — pass a raw Zod / Valibot / ArkType / Effect / `s` schema directly, no adapter (standardSchemaToValidator / isStandardSchema)
+- Sync fast-path bridge — a sync schema validates without a Promise/microtask per call; wrapper tax bench-proven ≈0ns over the raw library (bench&#58;validation, correctness-gated, per-op process isolation)
 - zodSchema / zodField — duck-typed Zod adapter (works with v3 and v4)
 - valibotSchema / valibotField — Valibot standalone-function-style adapter
 - arktypeSchema / arktypeField — ArkType sync adapter
@@ -70,7 +71,7 @@ const form3 = useForm({
 // Bridge a raw schema by hand when you need the validator standalone:
 import { standardSchemaToValidator } from '@pyreon/validation'
 const validate = standardSchemaToValidator(schema)
-const errors = await validate({ email: 'x', age: 5 })
+const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record (no await needed)
 // => { email: 'Invalid email', age: 'Too small: ...' }
 ```
 
@@ -251,7 +252,7 @@ validators: { age: arktypeField(type('number > 18')) }
 <TValues>(schema: StandardSchemaLike) => SchemaValidateFn<TValues>
 ```
 
-Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) into a whole-object `SchemaValidateFn` — `(values) => per-key error record`. This is the bridge that lets a consumer accept a raw schema with no `zodSchema()` wrapper and no cast: `useForm({ schema: z.object(...) })`. Issue paths flatten to dot-strings (`address.city`); first message per path wins; async schemas resolve naturally (the returned validator is always async — await it).
+Convert a RAW Standard Schema (any library exposing `~standard` — Zod 3.24+, Valibot 1+, ArkType 2+, Effect Schema, `@pyreon/validate` `s`) into a whole-object `SchemaValidateFn` — `(values) => per-key error record`. This is the bridge that lets a consumer accept a raw schema with no `zodSchema()` wrapper and no cast: `useForm({ schema: z.object(...) })`. Issue paths flatten to dot-strings (`address.city`); first message per path wins. SYNC FAST-PATH: a synchronously-validating schema (zod/valibot/arktype sync trees, `s`) returns the error record DIRECTLY — no Promise allocation, no microtask hop per call (the keystroke path in `@pyreon/form` `validateOn`); a genuinely async schema still returns a Promise the caller awaits. Wrapper tax bench-proven ≈0ns over the raw library call (`bun run bench:validation`).
 
 **Example**
 
@@ -261,7 +262,7 @@ import { standardSchemaToValidator } from '@pyreon/validation'
 
 const schema = z.object({ email: z.string().email(), age: z.number().min(18) })
 const validate = standardSchemaToValidator(schema)
-const errors = await validate({ email: 'x', age: 5 })
+const errors = validate({ email: 'x', age: 5 })  // sync schema → plain record (no await needed)
 // => { email: 'Invalid email', age: 'Too small: ...' }
 ```
 
