@@ -1353,6 +1353,11 @@ export interface ParseResult {
    * collected here (warned — no native primitive).
    */
   styledComponents: StyledComponentIR[]
+  /**
+   * `rocketstyle()({component: Prim})…` components resolved per use-site (the
+   * `rocketstyle-native` frontend). Sibling of `styledComponents`.
+   */
+  rocketstyleComponents: RocketstyleComponentIR[]
   /** Diagnostic messages produced during IR construction. */
   warnings: string[]
 }
@@ -1365,6 +1370,21 @@ export interface StyledComponentIR {
   tag: string
   /** The static CSS body as a style object (camelCase keys, literal values). */
   styleObject: Extract<ExprIR, { kind: 'object' }>
+}
+
+/**
+ * A `rocketstyle()({component: Prim}).theme().states()…` component — resolved at
+ * each `<Btn state="primary">` use-site by merging base ∪ matched dimensions.
+ * Produced by the `rocketstyle-native` frontend module.
+ */
+export interface RocketstyleComponentIR {
+  name: string
+  /** The canonical primitive base tag. */
+  tag: string
+  /** `.theme()` base styles. */
+  base: Extract<ExprIR, { kind: 'object' }>
+  /** dimension name (`state`/`size`/`variant`) → value name → its style object. */
+  dims: Record<string, Record<string, Extract<ExprIR, { kind: 'object' }>>>
 }
 
 export interface TransformResult {

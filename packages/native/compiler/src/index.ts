@@ -36,6 +36,7 @@ export function transform(source: string, options: EmitOptions): TransformResult
           options.fonts ?? {},
           parsed.helperFns,
           parsed.styledComponents,
+          parsed.rocketstyleComponents,
         )
       : emitKotlin(
           parsed.components,
@@ -50,6 +51,7 @@ export function transform(source: string, options: EmitOptions): TransformResult
           options.fonts ?? {},
           parsed.helperFns,
           parsed.styledComponents,
+          parsed.rocketstyleComponents,
         )
   // Phase 3 native-readiness gap fix (2026-06-05): emit-time warnings
   // (walled-tag silent-drop diagnostics, etc.) merge with parse-time

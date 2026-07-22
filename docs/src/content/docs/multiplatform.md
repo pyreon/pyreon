@@ -290,6 +290,24 @@ const Card = styled(Stack)`
 
 `styled(Prim)` is a **real styler pattern** (`styled`'s tag is `string | ComponentFn`) — it's this component-lowering foundation that rocketstyle's dimension resolution builds on. **Scope (v1):** only `styled(<canonical primitive>)` lowers — `styled('div')` / `styled(NonPrimitive)` warn (no native primitive); **static CSS only** — template interpolations (`${p => p.theme.…}` theme tokens) warn + drop (compile-time theme resolution is the tracked follow-up); a use-site inline `style` on a styled component is a v1 gap. Both emits are toolchain-validated.
 
+### `rocketstyle` multi-dimensional resolution
+
+The architecture is **per-package native frontends over a shared backend**: each ui-system package owns a module that lowers *its* constructs to a style-object IR, which the connector (the shared backend) lowers to native — mirroring how the runtimes compose. The `rocketstyle-native` frontend is the first non-styler one.
+
+A rocketstyle component over a canonical-primitive base —
+
+```tsx
+const Btn = rocketstyle()({ name: 'Btn', component: Stack })
+  .theme(() => ({ padding: '8px 16px', borderRadius: '8px' }))
+  .states({ primary: { backgroundColor: '#2563eb' }, danger: { backgroundColor: '#dc2626' } })
+  .sizes({ medium: { padding: '12px' }, large: { padding: '16px' } })
+// <Btn state="primary" size="large">
+```
+
+— **resolves at compile time**: at each use-site the frontend reads the `state`/`size`/`variant` attrs, merges `base ∪ matched-dims` into ONE style object (the rocketstyle cascade — dims override base), and reuses the `styled` rewrite (→ `<Stack style={merged}>` → connector). So `<Btn state="primary" size="large">` → `VStack{}.padding(16).background(…blue).cornerRadius(8)` (size=large's `padding` overrode the base). This is what makes **user-authored** multiplatform components real: build your own on ui-system over the primitive bases and it lowers — primitives are the compiler's internal native target, not your authoring constraint.
+
+**Scope (v1):** a canonical-primitive base (`component: Stack`), static string dimensions (`state="primary"` — the `useBooleans: false` default), literal-valued declarations. **Theme-token values** (`t.color.primary`) warn + drop — the `theme-native` frontend (compile-time theme resolution) is the tracked follow-up, as is dynamic `state={sig}` → a native switch over the pre-resolved sets. Both emits are toolchain-validated.
+
 ## Per-platform import resolution
 
 The DX-critical question: how does `import { Stack } from '@pyreon/primitives'` resolve on each target?
