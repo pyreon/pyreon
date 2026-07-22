@@ -28,12 +28,13 @@ export default function StModelViewsBars() {
         transition: 'height 0.25s',
       }),
     })
+  const glyph: Record<string, string> = { increment: '+', decrement: '−' }
   const btn = (aria: string, onClick: () => void, bg: string) =>
     h('button', {
       onClick,
       'aria-label': aria,
-      style: { width: '30px', height: '26px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: bg },
-    })
+      style: { width: '30px', height: '26px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: bg, color: '#1e293b', fontSize: '16px', fontWeight: 700, lineHeight: 1 },
+    }, glyph[aria] ?? aria)
 
   return h(
     'div',

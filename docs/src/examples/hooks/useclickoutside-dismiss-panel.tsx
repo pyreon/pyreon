@@ -22,9 +22,8 @@ export default function HooksUseClickOutsideDismissPanel() {
     { class: 'col', style: { alignItems: 'center', gap: '16px', padding: '22px', minHeight: '176px' } },
     h('button', {
       onClick: () => open.set(true),
-      'aria-label': 'open panel',
-      style: { width: '58px', height: '32px', border: 'none', borderRadius: '9px', cursor: 'pointer', background: '#60a5fa' },
-    }),
+      style: { padding: '7px 16px', border: 'none', borderRadius: '9px', cursor: 'pointer', background: '#60a5fa', color: '#fff', fontSize: '13px', fontWeight: 600 },
+    }, 'Open'),
     h(
       Show,
       { when: () => open() },

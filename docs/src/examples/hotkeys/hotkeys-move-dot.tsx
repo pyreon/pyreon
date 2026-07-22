@@ -27,12 +27,13 @@ export default function HotkeysMoveDot() {
   useHotkey('left', () => move(-STEP, 0), { preventDefault: true })
   useHotkey('right', () => move(STEP, 0), { preventDefault: true })
 
+  const glyph: Record<string, string> = { up: '↑', down: '↓', left: '←', right: '→' }
   const pad = (aria: string, dx: number, dy: number) =>
     h('button', {
       onClick: () => move(dx, dy),
       'aria-label': aria,
-      style: { width: '34px', height: '30px', border: 'none', borderRadius: '7px', cursor: 'pointer', background: '#60a5fa' },
-    })
+      style: { width: '34px', height: '30px', border: 'none', borderRadius: '7px', cursor: 'pointer', background: '#60a5fa', color: '#fff', fontSize: '15px', fontWeight: 700 },
+    }, glyph[aria] ?? aria)
 
   return h(
     'div',

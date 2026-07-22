@@ -27,12 +27,13 @@ export default function StModelProgressTiles() {
         transition: 'background 0.2s',
       }),
     })
+  const glyph: Record<string, string> = { back: '←', next: '→' }
   const btn = (aria: string, onClick: () => void, bg: string) =>
     h('button', {
       onClick,
       'aria-label': aria,
-      style: { width: '30px', height: '26px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: bg },
-    })
+      style: { width: '30px', height: '26px', border: 'none', borderRadius: '6px', cursor: 'pointer', background: bg, color: '#1e293b', fontSize: '15px', fontWeight: 700, lineHeight: 1 },
+    }, glyph[aria] ?? aria)
 
   return h(
     'div',
