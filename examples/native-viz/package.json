@@ -1,0 +1,23 @@
+{
+  "name": "@pyreon/example-native-viz",
+  "version": "0.0.1",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — exhaustive multiplatform viz proof: ONE .tsx compiles to web + iOS + Android, hosting bar/line/pie ECharts (@pyreon/charts/webview) + a flow diagram (@pyreon/flow/webview) in native WebViews with the bidirectional data bridge (live forward push + reverse tap-to-select).",
+  "license": "MIT",
+  "scripts": {
+    "gen-hosts": "bun scripts/gen-hosts.ts",
+    "build:swift": "./scripts/build-swift.sh",
+    "build:kotlin": "./scripts/build-kotlin.sh",
+    "build": "bun run build:swift && bun run build:kotlin",
+    "lint": "echo '[native-viz] no TS lint surface; skipping'",
+    "test": "echo '[native-viz] no test surface; PMTC emit covered by @pyreon/native-compiler tests + the /webview browser suites'",
+    "typecheck": "echo '[native-viz] @ts-nocheck on source; PMTC handles typing'"
+  },
+  "devDependencies": {
+    "@pyreon/charts": "workspace:*",
+    "@pyreon/flow": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*"
+  }
+}

@@ -246,6 +246,36 @@ Both `@pyreon/charts` and [`echarts-for-react`](https://github.com/hustcc/echart
 
 Protocol: per-impl **process isolation** (fresh `bun` child per impl ×3, pooled samples — impls never share a heap/JIT/order bias, the store-bench lesson) + bootstrap CI95 with 🤝 tie detection. The update win is the fine-grained-reactivity story: a signal change re-runs one effect that calls `setOption` — no component re-render, no VDOM diff, no prop deep-compare. Mount is now a statistical **tie** — the earlier "~1.65× slower" was single-process order bias plus the pre-fast-path async loader (warm mounts have been synchronous since the cached-modules fast path landed). Reproduce: `bun run --filter=@pyreon/charts bench`. *Author-run micro-bench (Bun/JSC + happy-dom, stubbed engine) — magnitudes/ratios are the signal, not the last digit; it measures wrapper JS, not chart render speed (identical ECharts for both). A vue-echarts driver (the feature-leading competitor) is a tracked follow-up — beating the React wrapper is a scoped claim.*
 
+## Multiplatform — `@pyreon/charts/webview`
+
+`@pyreon/charts` is web-only (it wraps ECharts, a canvas engine that can't compile to SwiftUI/Compose). To ship charts on iOS/Android too, host the real engine inside a native `<WebView>` — the sanctioned Pyreon multiplatform mechanism, with a bidirectional data bridge.
+
+```ts
+import { buildChartHostHtml } from '@pyreon/charts/webview'
+
+// A self-contained host page. Inline your BUNDLED echarts for an offline,
+// App-Store-safe page; omit `echartsScript` for a dev/web CDN fallback.
+const CHART_HOST = buildChartHostHtml({ echartsScript: BUNDLED_ECHARTS_UMD })
+```
+
+Use it with the `<WebView>` primitive (compiles to WKWebView / Android WebView / an `<iframe srcdoc>` on web — same bridge everywhere). The `data` you pass IS the ECharts `option`; on change it's pushed into the live page with no reload, and a tap posts back:
+
+```tsx
+import { WebView } from '@pyreon/primitives'
+
+<WebView
+  html={CHART_HOST}
+  data={{ xAxis: { type: 'category', data: days() }, yAxis: {}, series: [{ type: 'bar', data: revenue() }] }}
+  onMessage={(m) => selected.set(m)}   // native gets the tapped element as a JSON string
+/>
+```
+
+- **Forward** — `data={option}` → `window.__pyreonData` + a `pyreondata` event → `chart.setOption(option, true)`, in place. Use a data-driven option (no embedded `formatter`/`renderItem` closures — they don't survive JSON encoding across the native bridge).
+- **Reverse** — a chart tap → `window.pyreonPostMessage(json)` → your `onMessage`. The host resizes via `ResizeObserver` (rotation / late layout).
+- **`<ChartWebView option onSelect>`** is the web-side ergonomic wrapper (it builds the host + emits `<WebView>` for you); on native, use `<WebView html={CHART_HOST} …>` directly (the component's body can't be PMTC-lowered — the host string + `<WebView>` can).
+
+See `examples/native-viz` for a full one-source bar + line + pie + flow app across web/iOS/Android.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/charts](https://pyreon.dev/docs/charts) (or `docs/src/content/docs/charts.md` in this repo).

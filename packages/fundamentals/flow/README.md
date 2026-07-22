@@ -192,6 +192,29 @@ Position.Left // 'left'
 - **elkjs is lazy-loaded on first `flow.layout()` call** — the first layout takes longer than subsequent ones.
 - **`flow.dispose()` is final** — listeners detach, signals stop updating. Don't reuse a disposed instance. `useFlow` wires this up for you on unmount.
 
+## Multiplatform — `@pyreon/flow/webview`
+
+`@pyreon/flow` renders SVG/DOM + custom-JSX nodes (web-only). To show a flow diagram on iOS/Android too, host it in a native `<WebView>`. `buildFlowHostHtml()` returns a FULLY self-contained SVG renderer (no external bundle) that draws the same `{ nodes, edges }` model as `<Flow>` — labeled nodes, bezier edges (flow's real `getBezierPath`), pan + pinch/zoom, fit-on-load, tap-to-select:
+
+```tsx
+import { buildFlowHostHtml } from '@pyreon/flow/webview'
+import { WebView } from '@pyreon/primitives'
+
+const FLOW_HOST = buildFlowHostHtml()
+
+<WebView
+  html={FLOW_HOST}
+  data={{ nodes: nodes(), edges: edges() }}   // the same flow model
+  onMessage={(m) => selected.set(m)}           // tapped node → JSON { id, data }
+/>
+```
+
+- Compiles to WKWebView / Android WebView / an `<iframe srcdoc>` — same bridge (forward `data` push, reverse `pyreonPostMessage`) on every target.
+- **`<FlowWebView graph onSelect>`** is the web-side wrapper; native uses `<WebView html={FLOW_HOST} …>` directly.
+- **Full editor** (custom-JSX nodes / connection dragging / resizing): bundle your compiled `@pyreon/flow` web app and pass it as the host via `<FlowWebView html={…}>` / `<WebView html={…}>`.
+
+See `examples/native-viz` for a one-source multiplatform app.
+
 ## Documentation
 
 Full docs: [pyreon.dev/docs/flow](https://pyreon.dev/docs/flow) (or `docs/src/content/docs/flow.md` in this repo).

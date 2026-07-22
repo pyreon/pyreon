@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/flow",
   "version": "0.50.0",
-  "description": "Reactive flow diagrams for Pyreon — signal-native nodes, edges, pan/zoom, auto-layout",
+  "description": "Reactive flow diagrams for Pyreon \u2014 signal-native nodes, edges, pan/zoom, auto-layout",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/flow#readme",
   "bugs": {
@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./webview": {
+      "bun": "./src/webview.ts",
+      "import": "./lib/webview.js",
+      "types": "./lib/types/webview.d.ts"
     }
   },
   "files": [
@@ -44,7 +49,8 @@
     "@pyreon/runtime-dom": "workspace:^"
   },
   "dependencies": {
-    "elkjs": "^0.11.1"
+    "elkjs": "^0.11.1",
+    "@pyreon/primitives": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
