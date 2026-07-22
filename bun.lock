@@ -2040,6 +2040,14 @@
       "name": "@pyreon/native-runtime-swift",
       "version": "0.0.0",
     },
+    "packages/tools/atlas": {
+      "name": "@pyreon/atlas",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+      },
+    },
     "packages/tools/cli": {
       "name": "@pyreon/cli",
       "version": "0.49.0",
@@ -3390,6 +3398,8 @@
     "@pyreon/a11y": ["@pyreon/a11y@workspace:packages/fundamentals/a11y"],
 
     "@pyreon/ansi": ["@pyreon/ansi@workspace:packages/internals/ansi"],
+
+    "@pyreon/atlas": ["@pyreon/atlas@workspace:packages/tools/atlas"],
 
     "@pyreon/attrs": ["@pyreon/attrs@workspace:packages/ui-system/attrs"],
 
