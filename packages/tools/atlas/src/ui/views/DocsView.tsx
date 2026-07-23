@@ -2,7 +2,8 @@
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 
-export function DocsView({ model: m }: { model: WorkbenchModel }) {
+export function DocsView(props: { model: WorkbenchModel }) {
+  const m = props.model
   const usage = () => {
     const c = m.sel()
     if (!c) return ''
@@ -47,7 +48,7 @@ export function DocsView({ model: m }: { model: WorkbenchModel }) {
             ))}
           </C.PropsTable>
           <C.DocsH2>Usage</C.DocsH2>
-          <C.UsagePre>{usage()}</C.UsagePre>
+          <C.UsagePre>{() => usage()}</C.UsagePre>
         </C.DocsArticle>
       </C.DocsWrap>
     )

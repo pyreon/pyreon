@@ -3,7 +3,8 @@ import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 import { THEMES } from '../theme'
 
-export function TopBar({ model: m }: { model: WorkbenchModel }) {
+export function TopBar(props: { model: WorkbenchModel }) {
+  const m = props.model
   return (
     <C.TopBar>
       <C.BrandRow>
@@ -31,7 +32,7 @@ export function TopBar({ model: m }: { model: WorkbenchModel }) {
       <C.SearchWrap>
         <C.SearchInner>
           <C.SearchIcon>⌕</C.SearchIcon>
-          <C.SearchInput data-search onInput={(e: Event) => m.query.set((e.target as HTMLInputElement).value)} placeholder="Search components…" />
+          <C.SearchInput ref={m.searchRef} data-search onInput={(e: Event) => m.query.set((e.target as HTMLInputElement).value)} placeholder="Search components…" />
           <C.Kbd>⌘K</C.Kbd>
         </C.SearchInner>
       </C.SearchWrap>

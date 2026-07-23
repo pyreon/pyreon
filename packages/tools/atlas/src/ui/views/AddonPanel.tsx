@@ -4,7 +4,8 @@ import type { WorkbenchControl } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 
-export function AddonPanel({ model: m }: { model: WorkbenchModel }) {
+export function AddonPanel(props: { model: WorkbenchModel }) {
+  const m = props.model
   // a single control row (text / enum / bool)
   const control = (ctrl: WorkbenchControl) => (
     <C.CtrlRow>

@@ -4,7 +4,8 @@ import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 import { THEMES, tokens } from '../theme'
 
-export function LabView({ model: m }: { model: WorkbenchModel }) {
+export function LabView(props: { model: WorkbenchModel }) {
+  const m = props.model
   return (
     <C.LabWrap>
       <C.LabGrid data-testid="lab-grid">

@@ -3,7 +3,8 @@ import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 import { ZOOM_PCT } from '../model'
 
-export function Canvas({ model: m }: { model: WorkbenchModel }) {
+export function Canvas(props: { model: WorkbenchModel }) {
+  const m = props.model
   return (
     <C.Main>
       <C.CanvasBar>

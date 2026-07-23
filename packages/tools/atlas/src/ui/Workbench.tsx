@@ -5,7 +5,8 @@
  * shortcuts, and composes the region views (`./views/*`) inside the themed
  * `<PyreonUI>` + `<Shell>`. All chrome + state live in their own modules.
  */
-import { onMount, Show } from '@pyreon/core'
+import { Show } from '@pyreon/core'
+import { useEventListener } from '@pyreon/hooks'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { WorkbenchCatalog } from './catalog'
 import * as C from './chrome'
@@ -37,28 +38,26 @@ export function Workbench(props: WorkbenchProps) {
   // oxlint-disable-next-line prefer-const
   let m = createModel(props.catalog, { title: props.title, subtitle: props.subtitle })
 
-  onMount(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
-      const typing = tag === 'input' || tag === 'textarea'
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        document.querySelector<HTMLInputElement>('input[data-search]')?.focus()
-        return
-      }
-      if (e.key === 'Escape' && m.query()) m.query.set('')
-      if (typing) return
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        const ids = m.search(m.query())
-        if (!ids.length) return
-        e.preventDefault()
-        let i = ids.indexOf(m.selId())
-        i = e.key === 'ArrowDown' ? Math.min(ids.length - 1, i + 1) : Math.max(0, i - 1)
-        m.selId.set(ids[i]!)
-      }
+  // Global shortcuts: ⌘K focuses search, Escape clears it, ↑↓ browse components.
+  // useEventListener is SSR-safe (isClient-guarded) + auto-cleans up on unmount.
+  useEventListener('keydown', (e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
+    const typing = tag === 'input' || tag === 'textarea'
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault()
+      m.focusSearch()
+      return
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    if (e.key === 'Escape' && m.query()) m.query.set('')
+    if (typing) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const ids = m.search(m.query())
+      if (!ids.length) return
+      e.preventDefault()
+      let i = ids.indexOf(m.selId())
+      i = e.key === 'ArrowDown' ? Math.min(ids.length - 1, i + 1) : Math.max(0, i - 1)
+      m.selId.set(ids[i]!)
+    }
   })
 
   // rocketstyle reads its tokens from @pyreon/ui-core's reactive context AND

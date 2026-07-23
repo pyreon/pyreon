@@ -4,7 +4,8 @@ import type { CatalogGroup } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
 
-export function Sidebar({ model: m }: { model: WorkbenchModel }) {
+export function Sidebar(props: { model: WorkbenchModel }) {
+  const m = props.model
   const group = (g: CatalogGroup) => (
     <>
       <C.GroupLabel>

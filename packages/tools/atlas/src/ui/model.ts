@@ -64,6 +64,10 @@ export interface WorkbenchModel {
   clearActions: () => void
   search: (q: string) => string[]
   preview: () => VNodeChildAtom | VNodeChildAtom[]
+  /** `ref` for the search `<input>` — attach in the top bar so ⌘K can focus it. */
+  searchRef: (el: HTMLInputElement | null) => void
+  /** Focus the search input (⌘K) via the captured ref — no DOM query. */
+  focusSearch: () => void
 }
 
 export function createModel(
@@ -112,6 +116,12 @@ export function createModel(
   }
   const clearActions = () => actions.set([])
 
+  let searchEl: HTMLInputElement | null = null
+  const searchRef = (el: HTMLInputElement | null) => {
+    searchEl = el
+  }
+  const focusSearch = () => searchEl?.focus()
+
   // context threaded to each component's render(): log interactions + write control values back
   const renderCtx = { logAction, setValue: (key: string, v: unknown) => setValue(selId(), key, v) }
   const preview = (): VNodeChildAtom | VNodeChildAtom[] => sel()?.render(vals(), renderCtx) ?? null
@@ -141,6 +151,6 @@ export function createModel(
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
-    setValue, reset, logAction, clearActions, search, preview,
+    setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch,
   }
 }
