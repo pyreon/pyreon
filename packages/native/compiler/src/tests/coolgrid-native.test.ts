@@ -1,9 +1,11 @@
 // `@pyreon/coolgrid` native frontend — Container / Row / Col → native layout.
 //
-// Container (column) → VStack/Column; Row (row) → HStack/Row; Col → an EQUAL-fill
-// child (SwiftUI .frame(maxWidth:.infinity), Compose Box(Modifier.weight(1f))).
-// coolgrid's raw-px gap is converted to the Stack scale index. Fractional `size`
-// spans warn + lower as equal columns (true fractional = a GeometryReader follow-up).
+// Container (column) → VStack/Column; Row (row) → HStack/Row; Col → a FRACTIONAL
+// span for a literal size (SwiftUI containerRelativeFrame span/12, Compose
+// fillMaxWidth(size/12f)), or an EQUAL-fill child with no size (SwiftUI
+// .frame(maxWidth:.infinity), Compose Box(Modifier.weight(1f))). coolgrid's
+// raw-px gap is converted to the Stack scale index. A responsive/non-literal
+// size warns + falls back to an equal column.
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -21,6 +23,19 @@ export function App() {
       <Row gap={8}>
         <Col><Text>A</Text></Col>
         <Col><Text>B</Text></Col>
+      </Row>
+    </Container>
+  )
+}`
+
+const GRID_FRACTIONAL = `import { Container, Row, Col } from '@pyreon/coolgrid'
+import { Text } from '@pyreon/elements'
+export function App() {
+  return (
+    <Container>
+      <Row gap={8}>
+        <Col size={8}><Text>Main</Text></Col>
+        <Col size={4}><Text>Side</Text></Col>
       </Row>
     </Container>
   )
@@ -44,13 +59,37 @@ describe('coolgrid-native — Container / Row / Col', () => {
     expect(kotlin(GRID).code).toContain('Box(modifier = Modifier.weight(1f)) {')
   })
 
-  it('a fractional `size` span warns (lowers as an equal column)', () => {
+  it('a literal `size` span lowers to a FRACTIONAL width (no warn) on both targets', () => {
     const src = `import { Container, Row, Col } from '@pyreon/coolgrid'
 import { Text } from '@pyreon/elements'
 export function App() { return (<Container><Row><Col size={8}><Text>Main</Text></Col><Col size={4}><Text>Side</Text></Col></Row></Container>) }`
-    expect(swift(src).warnings.join('\n')).toMatch(/fractional column span lowers as an EQUAL column/)
-    // still lowers (equal columns) — no drop
+    // Swift: iOS 17 grid-column primitive, span/12 of the container.
+    expect(swift(src).code).toContain('.containerRelativeFrame(.horizontal, count: 12, span: 8, spacing: 0)')
+    expect(swift(src).code).toContain('.containerRelativeFrame(.horizontal, count: 12, span: 4, spacing: 0)')
+    // Compose: absolute size/12 fraction of the Row width.
+    expect(kotlin(src).code).toContain('Modifier.fillMaxWidth(8f / 12f)')
+    expect(kotlin(src).code).toContain('Modifier.fillMaxWidth(4f / 12f)')
+    // A literal span is fully supported → no fallback warning.
+    expect(swift(src).warnings.join('\n')).not.toMatch(/EQUAL column/)
+    expect(kotlin(src).warnings.join('\n')).not.toMatch(/EQUAL column/)
+  })
+
+  it('size > columns clamps to a full-width (12/12) span', () => {
+    const src = `import { Container, Row, Col } from '@pyreon/coolgrid'
+import { Text } from '@pyreon/elements'
+export function App() { return (<Container><Row><Col size={16}><Text>Wide</Text></Col></Row></Container>) }`
+    expect(swift(src).code).toContain('span: 12')
+    expect(kotlin(src).code).toContain('Modifier.fillMaxWidth(12f / 12f)')
+  })
+
+  it('a responsive / non-literal `size` warns + falls back to an equal column', () => {
+    const src = `import { Container, Row, Col } from '@pyreon/coolgrid'
+import { Text } from '@pyreon/elements'
+export function App() { return (<Container><Row><Col size={{ xs: 12, md: 6 }}><Text>Resp</Text></Col></Row></Container>) }`
+    expect(swift(src).warnings.join('\n')).toMatch(/only a LITERAL integer span/)
     expect(swift(src).code).toContain('.frame(maxWidth: .infinity)')
+    expect(kotlin(src).code).toContain('Modifier.weight(1f)')
+    expect(swift(src).code).not.toContain('containerRelativeFrame')
   })
 
   it('isCoolgridTag + coolgridToStack retag Container/Row to Stack', () => {
@@ -74,6 +113,14 @@ describe('coolgrid-native — toolchain gates (real SDKs)', () => {
   })
   it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the grid compiles (real kotlinc)', () => {
     const res = validateKotlin(kotlin(GRID).code)
+    expect(res.ok, res.error).toBe(true)
+  })
+  it.skipIf(!isSwiftUIAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the FRACTIONAL grid typechecks — containerRelativeFrame resolves (real SwiftUI SDK)', () => {
+    const res = validateSwiftTypecheck(swift(GRID_FRACTIONAL).code)
+    expect(res.ok, res.error).toBe(true)
+  })
+  it.skipIf(!isKotlincAvailable() || process.env.PYREON_SKIP_SLOW_TESTS === '1')('the FRACTIONAL grid compiles — fillMaxWidth resolves (real kotlinc)', () => {
+    const res = validateKotlin(kotlin(GRID_FRACTIONAL).code)
     expect(res.ok, res.error).toBe(true)
   })
 })

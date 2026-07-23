@@ -3,19 +3,30 @@
 // layout. `<Container>` / `<Row>` / `<Col>` are a Bootstrap-style flex grid:
 //   Container (flex-direction: column) → a vertical Stack
 //   Row       (flex-direction: row)    → a horizontal Stack
-//   Col       (width = size/columns)   → an EQUAL-fill child of the Row
+//   Col       (width = size/columns)   → a fractional (or equal-fill) child
 //
 // Container/Row are exactly the canonical Stack in a different vocabulary, so
 // they retag to `<Stack>` and the existing emit lowers them. Col is emitted
-// specially: on native it fills its Row track equally — SwiftUI
-// `.frame(maxWidth: .infinity)`, Compose `Modifier.weight(1f)` (valid because a
-// Col always sits inside a Row = a horizontal Stack). Both give consistent EQUAL
-// columns — the common grid.
+// specially:
+//   - `<Col size={8}>` (a LITERAL integer span) → a FRACTIONAL width of a
+//     12-column grid: SwiftUI `.containerRelativeFrame(.horizontal, count: 12,
+//     span: 8, spacing: 0)` (iOS 17 native grid-column primitive), Compose
+//     `Modifier.fillMaxWidth(8f / 12f)`. Both give the same size/12 absolute
+//     fraction, so a partial row (cols summing < 12) leaves the rest empty —
+//     faithful to coolgrid.
+//   - `<Col>` with no size → an EQUAL-fill child (SwiftUI `.frame(maxWidth:
+//     .infinity)`, Compose `Modifier.weight(1f)`), valid because a Col always
+//     sits inside a Row = a horizontal Stack.
 //
-// SCOPE (v1): equal columns. A FRACTIONAL `size={8}` span lowers as an equal
-// column + a warning — true fractional needs SwiftUI GeometryReader (no flex
-// weight) for cross-target parity, a tracked follow-up. Responsive `size`
-// ({ xs, md } / [a,b,c]) likewise collapses to equal + warns.
+// SCOPE (v1) + honest caveats: only a LITERAL integer `size` is fractional; a
+// responsive `size` ({ xs, md } / [a,b,c]) or non-literal collapses to equal +
+// warns. The grid is assumed 12-column — a custom `columns` on the Row is not
+// threaded to its Cols. SwiftUI's `containerRelativeFrame` is relative to the
+// nearest CONTAINER (≈ the Row when the Container is full-width, the coolgrid
+// norm; a deeply-nested narrow row is approximate); the gutter is not subtracted
+// from the fractional width (cols summing to exactly 12 + a large gap can
+// slightly overflow on a very narrow screen). Compose `fillMaxWidth` is exact +
+// parent-relative.
 // ============================================================================
 
 import type { ExprIR } from './types'
@@ -77,10 +88,29 @@ export function coolgridToStack(e: AnyNode): AnyNode {
   return { ...e, tag: 'Stack', attrs }
 }
 
-/** True if `<Col size=…>` carries an explicit span — v1 lowers it as an equal
- *  column, so the caller warns (fractional spans are a follow-up). */
+/** The default coolgrid column count. A `<Col size>` is a span out of this.
+ *  v1 assumes the default — a custom `columns` on the Row is not threaded to
+ *  its Cols (documented). */
+export const DEFAULT_COLUMNS = 12
+
+/** True if `<Col size=…>` carries an explicit span (of any shape — literal,
+ *  responsive object/array, or non-literal). */
 export function colHasExplicitSize(e: AnyNode): boolean {
   return (e.attrs as AnyNode[]).some((a) => a.kind === 'attr' && a.name === 'size')
+}
+
+/** The `<Col size={n}>` LITERAL integer span (clamped to 1..DEFAULT_COLUMNS), or
+ *  null when absent / non-literal / responsive (`{ xs, md }` / `[a,b]`). Only a
+ *  plain literal integer gets a fractional width; every other shape falls back
+ *  to an equal column (the caller warns on a present-but-non-literal size). */
+export function colSizeLiteral(e: AnyNode): number | null {
+  const a = (e.attrs as AnyNode[]).find((x) => x.kind === 'attr' && x.name === 'size')
+  if (!a) return null
+  const v = a.value
+  if (v?.kind !== 'literal' || typeof v.value !== 'number' || !Number.isInteger(v.value) || v.value <= 0) {
+    return null
+  }
+  return Math.min(v.value, DEFAULT_COLUMNS)
 }
 
 /** The `<Col>` body as a plain `<Stack>` (its children, column direction) — the

@@ -465,6 +465,10 @@ object Modifier {
   fun animateContentSize(): Modifier = this
   @Suppress("UNUSED_PARAMETER")
   fun weight(weight: Float): Modifier = this
+  // coolgrid Col fractional span maps to fillMaxWidth(size/12f). Real Compose
+  // ships it from androidx.compose.foundation.layout.
+  @Suppress("UNUSED_PARAMETER")
+  fun fillMaxWidth(fraction: Float = 1f): Modifier = this
   // --- Phase P2.2 content: <Icon>/<Image> sizing. Real Compose ships
   // size/width/height from androidx.compose.foundation.layout.
   @Suppress("UNUSED_PARAMETER")

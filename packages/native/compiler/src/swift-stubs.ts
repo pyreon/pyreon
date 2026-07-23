@@ -96,6 +96,9 @@ public struct EnvironmentValues {
 public enum HorizontalAlignment { case leading, center, trailing }
 public enum VerticalAlignment { case top, center, bottom }
 public enum Alignment { case center, leading, trailing, top, bottom }
+// Axis.Set is an OptionSet in real SwiftUI; the stub only needs the horizontal
+// / vertical cases the coolgrid Col fractional-span emit references.
+public struct Axis { public struct Set { public init() {}; public static let horizontal = Set(); public static let vertical = Set() } }
 public struct VStack<Content: View>: View {
   public init(alignment: HorizontalAlignment = .center, spacing: Double? = nil, @ViewBuilder content: () -> Content) {}
   public typealias Body = Never
@@ -168,6 +171,8 @@ extension View {
   // ARGUMENT types so a wrong-typed arg is still caught, but always return some View).
   public func bold() -> some View { self }
   public func frame(width: Double? = nil, height: Double? = nil) -> some View { self }
+  // iOS 17 grid-column primitive: the coolgrid Col fractional span.
+  public func containerRelativeFrame(_ axes: Axis.Set, count: Int, span: Int, spacing: Double, alignment: Alignment = .center) -> some View { self }
   public func resizable() -> some View { self }
   public func imageScale(_ scale: ImageScale) -> some View { self }
   public func allowsHitTesting(_ enabled: Bool) -> some View { self }

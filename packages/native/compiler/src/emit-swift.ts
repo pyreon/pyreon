@@ -50,7 +50,7 @@ import { safeIdent, swiftIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
-import { coolgridToStack, colToStack, colHasExplicitSize } from './coolgrid-native'
+import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral, DEFAULT_COLUMNS } from './coolgrid-native'
 import { extractTextTypography, styleToNativeModifiers, swiftTextTypographyModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -4254,16 +4254,25 @@ function emitSwiftJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numbe
   }
 
   // @pyreon/coolgrid — Container → vertical Stack, Row → horizontal Stack, Col →
-  // an EQUAL-fill child (`.frame(maxWidth: .infinity)`; a fractional `size` warns).
+  // a fractional span (literal `size`) via containerRelativeFrame, else equal-fill.
   if ((tag === 'Container' || tag === 'Row') && canAliasIntercept(tag, '@pyreon/coolgrid')) return emitSwiftJsx(coolgridToStack(e), indent)
   if (tag === 'Col' && canAliasIntercept(tag, '@pyreon/coolgrid')) {
+    const body = emitSwiftJsx(colToStack(e), indent)
+    const size = colSizeLiteral(e)
+    if (size !== null) {
+      // Fractional span of a 12-column grid — iOS 17's native grid-column
+      // primitive (relative to the nearest container; greediness-free, unlike a
+      // GeometryReader). A partial row (cols summing < 12) leaves the rest empty.
+      return `${body}.containerRelativeFrame(.horizontal, count: ${DEFAULT_COLUMNS}, span: ${size}, spacing: 0)`
+    }
     if (colHasExplicitSize(e)) {
+      // A responsive / non-literal `size` can't resolve to a static span → equal.
       _emitWarnings.push(
-        `<Col size=…>: a fractional column span lowers as an EQUAL column on native ` +
-          `(SwiftUI has no flex weight — true fractional needs GeometryReader, a follow-up).`,
+        `<Col size=…>: only a LITERAL integer span lowers to a fractional width; ` +
+          `a responsive ({ xs, md } / [a,b]) or non-literal size lowers as an EQUAL column.`,
       )
     }
-    return `${emitSwiftJsx(colToStack(e), indent)}.frame(maxWidth: .infinity)`
+    return `${body}.frame(maxWidth: .infinity)`
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` with the captured CSS injected
