@@ -1,0 +1,57 @@
+{
+  "name": "@pyreon/atlas",
+  "version": "0.0.0",
+  "description": "AI-native component workbench for the Pyreon ecosystem — derives, verifies, and serves a machine-readable component catalog. Working name; rebrand pending.",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/tools/atlas#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/tools/atlas"
+  },
+  "type": "module",
+  "private": true,
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./core": {
+      "bun": "./src/core.ts",
+      "import": "./lib/core.js",
+      "types": "./lib/types/core.d.ts"
+    },
+    "./plugins": {
+      "bun": "./src/plugins.ts",
+      "import": "./lib/plugins.js",
+      "types": "./lib/types/plugins.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "demo": "bun scripts/demo.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "devDependencies": {
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*"
+  }
+}
