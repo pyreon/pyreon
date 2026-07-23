@@ -28,53 +28,47 @@ The three obsessions are **DX**, **AI**, and **Automation**:
 | `@pyreon/atlas` | the top-level `createAtlas` pipeline (discover → decorate → verify → graph) |
 | `@pyreon/atlas/core` | the framework-agnostic domain model + pure engine (types, control inference, variant matrix, scenarios, the Catalog Graph) |
 | `@pyreon/atlas/plugins` | the plugin API + built-in plugins (every capability is a plugin) |
+| `@pyreon/atlas/auto` | terse authoring + discovery (`defineComponent` / `components({...})`) |
 
-The `core/` and `plugins/` folders each have their own import path; the top-level
-entry composes them.
+The `core/`, `plugins/`, and `auto/` folders each have their own import path; the
+top-level entry composes them.
 
 ## Usage
 
+Declare your components with the terse `components({...})` helper — controls and
+variant axes are derived from the shape (a union array becomes a `select` + a
+variant axis; a `?` suffix marks a prop optional). That's the whole thing you
+write:
+
 ```ts
 import { createAtlas } from '@pyreon/atlas'
-import { defineAtlasPlugin } from '@pyreon/atlas/plugins'
-import { inferControls } from '@pyreon/atlas/core'
+import { components } from '@pyreon/atlas/auto'
 
-const atlas = createAtlas({
+const graph = await createAtlas({
   plugins: [
-    // a discovery plugin contributes components (real discovery lives in the `auto` module)
-    defineAtlasPlugin({
-      name: 'demo-discovery',
-      discover() {
-        return [
-          {
-            name: 'Button',
-            controls: inferControls([
-              { name: 'label', type: 'string' },
-              { name: 'state', type: { union: ['primary', 'secondary'] } },
-            ]),
-            axes: [{ name: 'state', values: ['primary', 'secondary'] }],
-            reactivity: [],
-            scenarios: [],
-            tags: ['form'],
-          },
-        ]
+    components({
+      Button: {
+        props: {
+          label: 'string',
+          state: ['primary', 'secondary'],
+          'disabled?': 'boolean',
+        },
+        tags: ['form'],
       },
     }),
   ],
-})
-
-// That's the whole config. The recommended plugin bundle (variant matrix,
-// states, edge cases, fill-defaults, a11y, tags, docs) is applied automatically —
-// nothing else to write. Opt out with `preset: 'none'`.
-const graph = await atlas.build()
+}).build()
 
 console.log(graph.toAgentGuide())    // the compact, prescriptive AI-usage asset
 console.log(graph.search('button'))  // ranked catalog search
 ```
 
-Configuration is deliberately tiny — a discovery plugin is the only required
-field; everything else has a sensible default. `defineAtlas(config)` gives the
-same shape typed for a config file.
+That's the entire config: the recommended plugin bundle (variant matrix, states,
+edge cases, fill-defaults, a11y, tags, docs) is applied automatically — nothing
+else to write. Opt out with `preset: 'none'`; `defineAtlas(config)` gives the
+same shape typed for a config file. Need full control over a component's shape?
+Drop to a raw `discover()` plugin returning `ComponentIntelligence` (see
+`@pyreon/atlas/core`).
 
 ## Built-in plugins
 

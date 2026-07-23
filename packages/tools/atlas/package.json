@@ -34,6 +34,11 @@
       "import": "./lib/plugins.js",
       "types": "./lib/types/plugins.d.ts"
     },
+    "./auto": {
+      "bun": "./src/auto.ts",
+      "import": "./lib/auto.js",
+      "types": "./lib/types/auto.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
