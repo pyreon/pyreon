@@ -10,7 +10,7 @@
  */
 import { Show, onMount } from '@pyreon/core'
 import { computed, signal } from '@pyreon/reactivity'
-import { ThemeProvider } from '@pyreon/styler'
+import { PyreonUI } from '@pyreon/ui-core'
 import * as C from './components'
 import { ALL, compById, defaultValues, GROUPS, searchIds, totalCount, type Comp, type Control } from './registry'
 import { THEMES, tokens } from './theme'
@@ -20,7 +20,12 @@ export function Workshop() {
   const dark = signal(true)
   const selId = signal('button')
   const query = signal('')
-  const zoom = signal(1)
+  // Discrete zoom levels (a rocketstyle `size` dimension on the preview surface —
+  // continuous scale would need an inline style; the workshop bans those). The
+  // signal read `zoomIdx()` is inlined into the `size=`/label expressions so the
+  // compiler wraps them reactively.
+  const ZOOM_PCT = [50, 75, 100, 125, 150, 175, 200] as const
+  const zoomIdx = signal(2) // 100%
   const values = signal<Record<string, Record<string, unknown>>>({})
   const view = signal<'canvas' | 'docs' | 'lab'>('canvas')
 
@@ -208,7 +213,7 @@ export function Workshop() {
           <C.DocsDesc>{c.desc}</C.DocsDesc>
           <C.DocsPreview>{() => preview()}</C.DocsPreview>
           <C.DocsH2>Props</C.DocsH2>
-          <C.PropsTable>
+          <C.PropsTable data-testid="props-table">
             <C.PropsHead>
               <C.HeadCell>NAME</C.HeadCell>
               <C.HeadCell>TYPE</C.HeadCell>
@@ -232,10 +237,10 @@ export function Workshop() {
   // ── theme lab: the selected component across every theme × light/dark ────
   const labView = () => (
     <C.LabWrap>
-      <C.LabGrid>
+      <C.LabGrid data-testid="lab-grid">
         {THEMES.flatMap((b) =>
           [true, false].map((d) => (
-            <ThemeProvider theme={tokens(b, d) as never}>
+            <PyreonUI theme={tokens(b, d) as never} mode={d ? 'dark' : 'light'}>
               <C.LabTile>
                 <C.LabTileHead>
                   <C.LabTileName>{b.name}</C.LabTileName>
@@ -243,16 +248,20 @@ export function Workshop() {
                 </C.LabTileHead>
                 <C.LabTileBody>{() => preview()}</C.LabTileBody>
               </C.LabTile>
-            </ThemeProvider>
+            </PyreonUI>
           )),
         )}
       </C.LabGrid>
     </C.LabWrap>
   )
 
+  // rocketstyle reads its tokens from @pyreon/ui-core's reactive context AND
+  // needs the theme enriched (the `__PYREON__` block that its dimension caches
+  // key on) — so wrap in <PyreonUI> (autoInit + enrichTheme + all context
+  // layers), NOT a raw provide(). A brand/dark swap re-resolves reactively.
   return (
-    <ThemeProvider theme={theme() as never}>
-      <C.Shell>
+    <PyreonUI theme={theme() as never} mode={dark() ? 'dark' : 'light'}>
+      <C.Shell data-testid="atlas-shell">
         {/* TOP BAR */}
         <C.TopBar>
           <C.BrandRow>
@@ -326,21 +335,21 @@ export function Workshop() {
           <C.Main>
             <C.CanvasBar>
               <C.Col>
-                <C.CanvasName>{() => sel().name}</C.CanvasName>
+                <C.CanvasName data-testid="canvas-name">{() => sel().name}</C.CanvasName>
                 <C.CanvasPath>{() => `components/${selId()}`}</C.CanvasPath>
               </C.Col>
               <C.Spacer />
               <C.Segment>
-                <C.ZoomBtn onClick={() => zoom.set(Math.max(0.5, +(zoom() - 0.1).toFixed(2)))}>−</C.ZoomBtn>
-                <C.ZoomLabel>{() => `${Math.round(zoom() * 100)}%`}</C.ZoomLabel>
-                <C.ZoomBtn onClick={() => zoom.set(Math.min(2, +(zoom() + 0.1).toFixed(2)))}>+</C.ZoomBtn>
+                <C.ZoomBtn onClick={() => zoomIdx.set(Math.max(0, zoomIdx() - 1))}>−</C.ZoomBtn>
+                <C.ZoomLabel data-testid="zoom-label">{() => `${ZOOM_PCT[zoomIdx()]}%`}</C.ZoomLabel>
+                <C.ZoomBtn onClick={() => zoomIdx.set(Math.min(ZOOM_PCT.length - 1, zoomIdx() + 1))}>+</C.ZoomBtn>
               </C.Segment>
             </C.CanvasBar>
 
             <C.Stage>
               <C.Frame>
                 <C.FrameChrome>{() => `${brand().name} · ${dark() ? 'dark' : 'light'}`}</C.FrameChrome>
-                <C.PreviewSurface>{() => preview()}</C.PreviewSurface>
+                <C.PreviewSurface data-testid="canvas-preview" size={('z' + ZOOM_PCT[zoomIdx()]) as never}>{() => preview()}</C.PreviewSurface>
               </C.Frame>
             </C.Stage>
           </C.Main>
@@ -421,6 +430,6 @@ export function Workshop() {
           <C.StatusText>{`${ALL.length} components`}</C.StatusText>
         </C.StatusBar>
       </C.Shell>
-    </ThemeProvider>
+    </PyreonUI>
   )
 }

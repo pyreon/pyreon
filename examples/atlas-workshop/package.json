@@ -18,6 +18,7 @@
     "@pyreon/reactivity": "workspace:*",
     "@pyreon/rocketstyle": "workspace:*",
     "@pyreon/router": "workspace:*",
+    "@pyreon/ui-core": "workspace:*",
     "@pyreon/runtime-dom": "workspace:*",
     "@pyreon/styler": "workspace:*",
     "@pyreon/unistyle": "workspace:*",

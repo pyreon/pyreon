@@ -176,6 +176,7 @@
         "@pyreon/router": "workspace:*",
         "@pyreon/runtime-dom": "workspace:*",
         "@pyreon/styler": "workspace:*",
+        "@pyreon/ui-core": "workspace:*",
         "@pyreon/unistyle": "workspace:*",
         "@pyreon/zero": "workspace:*",
       },
@@ -2088,6 +2089,9 @@
     "packages/tools/atlas": {
       "name": "@pyreon/atlas",
       "version": "0.0.0",
+      "bin": {
+        "atlas": "./bin/atlas.js",
+      },
       "dependencies": {
         "typescript": ">=5.0.0 <7.0.0",
       },
