@@ -148,4 +148,45 @@ describe('RichTextWebView bridge (real TipTap in a real iframe)', () => {
     expect(pm.getAttribute('contenteditable')).toBe('false')
     unmount()
   })
+
+  // The ergonomic <RichTextWebView> component (not the raw <WebView> the bridge
+  // tests above drive) — proves the shipped wrapper builds its own host, forwards
+  // `state` reactively, and routes reverse edits through `onChange` in a real
+  // browser (the unit test only checks its emit shape).
+  it('<RichTextWebView> forwards state reactively + drives onChange through a real editor', async () => {
+    const content = signal(para('wrapped draft'))
+    const edits: unknown[] = []
+    const { container, unmount } = mountInBrowser(
+      h(RichTextWebView as never, { state: () => ({ content: content() }), onChange: (c: unknown) => edits.push(c) }),
+    )
+    container.style.width = '400px'
+    container.style.height = '240px'
+    await flush()
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const start = performance.now()
+    while (!iframe.contentWindow) {
+      if (performance.now() - start > 3000) throw new Error('iframe never got a window')
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+    }
+    injectTT(iframe.contentWindow)
+    const pm = await waitForEditor(iframe)
+    expect(pm.textContent, 'component forwarded initial state').toContain('wrapped draft')
+
+    // Reactive forward: bumping the signal replaces the document in place.
+    content.set(para('wrapped v2'))
+    await flush()
+    await new Promise((r) => setTimeout(r, 80))
+    expect(iframe.contentDocument!.querySelector('.ProseMirror')!.textContent).toContain('wrapped v2')
+
+    // Reverse: a user edit routes through the component's onChange.
+    pm.focus()
+    const sel = iframe.contentWindow!.getSelection()!
+    sel.selectAllChildren(iframe.contentDocument!.querySelector('.ProseMirror')!)
+    sel.collapseToEnd()
+    iframe.contentDocument!.execCommand('insertText', false, '!')
+    await flush()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(edits.length, 'edit routed through <RichTextWebView> onChange').toBeGreaterThan(0)
+    unmount()
+  })
 })

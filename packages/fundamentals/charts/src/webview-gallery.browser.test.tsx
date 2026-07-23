@@ -13,7 +13,6 @@
  * render on device via one host.
  */
 import { h } from '@pyreon/core'
-import { signal } from '@pyreon/reactivity'
 import { flush, mountInBrowser } from '@pyreon/test-utils/browser'
 import { WebView } from '@pyreon/primitives'
 import { describe, expect, it } from 'vitest'

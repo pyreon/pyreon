@@ -123,4 +123,40 @@ describe('CodeWebView bridge (real CodeMirror in a real iframe)', () => {
     expect(view.state.readOnly, 'readOnly applied from the bridge').toBe(true)
     unmount()
   })
+
+  // The ergonomic <CodeWebView> component (not the raw <WebView> the bridge
+  // tests above drive) — proves the shipped wrapper builds its own host, forwards
+  // `state` reactively, and routes reverse edits through `onChange` in a real
+  // browser (the unit test only checks its emit shape).
+  it('<CodeWebView> forwards state reactively + drives onChange through a real editor', async () => {
+    const value = signal('const wrapped = 1')
+    const edits: string[] = []
+    const { container, unmount } = mountInBrowser(
+      h(CodeWebView as never, { state: () => ({ value: value(), language: 'javascript' }), onChange: (v: string) => edits.push(v) }),
+    )
+    container.style.width = '400px'
+    container.style.height = '240px'
+    await flush()
+    const iframe = container.querySelector('iframe') as HTMLIFrameElement
+    const start = performance.now()
+    while (!iframe.contentWindow) {
+      if (performance.now() - start > 3000) throw new Error('iframe never got a window')
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+    }
+    injectCM(iframe.contentWindow)
+    const view = await waitForEditor(iframe)
+    expect(view.state.doc.toString(), 'component forwarded initial state').toBe('const wrapped = 1')
+
+    // Reactive forward: bumping the signal updates the editor in place.
+    value.set('const wrapped = 2')
+    await flush()
+    await new Promise((r) => setTimeout(r, 60))
+    expect(view.state.doc.toString(), 'component forwarded the signal update').toBe('const wrapped = 2')
+
+    // Reverse: a user edit routes through the component's onChange.
+    view.dispatch({ changes: { from: view.state.doc.length, insert: '_x' } })
+    await flush()
+    expect(edits.at(-1), 'edit routed through <CodeWebView> onChange').toBe('const wrapped = 2_x')
+    unmount()
+  })
 })
