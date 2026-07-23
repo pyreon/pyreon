@@ -22,7 +22,7 @@ export function Workshop() {
   const query = signal('')
   const zoom = signal(1)
   const values = signal<Record<string, Record<string, unknown>>>({})
-  const view = signal<'canvas' | 'docs'>('canvas')
+  const view = signal<'canvas' | 'docs' | 'lab'>('canvas')
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
   const theme = computed(() => tokens(brand(), dark()))
@@ -208,6 +208,27 @@ export function Workshop() {
     )
   }
 
+  // ── theme lab: the selected component across every theme × light/dark ────
+  const labView = () => (
+    <C.LabWrap>
+      <C.LabGrid>
+        {THEMES.flatMap((b) =>
+          [true, false].map((d) => (
+            <ThemeProvider theme={tokens(b, d) as never}>
+              <C.LabTile>
+                <C.LabTileHead>
+                  <C.LabTileName>{b.name}</C.LabTileName>
+                  <C.LabTileMode>{d ? 'dark' : 'light'}</C.LabTileMode>
+                </C.LabTileHead>
+                <C.LabTileBody>{() => preview()}</C.LabTileBody>
+              </C.LabTile>
+            </ThemeProvider>
+          )),
+        )}
+      </C.LabGrid>
+    </C.LabWrap>
+  )
+
   return (
     <ThemeProvider theme={theme() as never}>
       <C.Shell>
@@ -229,6 +250,9 @@ export function Workshop() {
             </C.SegBtn>
             <C.SegBtn state={view() === 'docs' ? 'active' : 'idle'} onClick={() => view.set('docs')}>
               Docs
+            </C.SegBtn>
+            <C.SegBtn state={view() === 'lab' ? 'active' : 'idle'} onClick={() => view.set('lab')}>
+              Theme Lab
             </C.SegBtn>
           </C.Segment>
 
@@ -341,6 +365,9 @@ export function Workshop() {
 
           {/* DOCS view */}
           <Show when={() => view() === 'docs'}>{() => docsView()}</Show>
+
+          {/* THEME LAB view */}
+          <Show when={() => view() === 'lab'}>{() => labView()}</Show>
         </C.Body>
 
         {/* STATUS BAR */}
