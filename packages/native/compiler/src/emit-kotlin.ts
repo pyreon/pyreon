@@ -46,7 +46,7 @@ import { kotlinIdent, safeIdent } from './identifier-safety'
 import { resolveRocketstyleUseSite } from './rocketstyle-native'
 import type { AttrsComponentIR } from './attrs-native'
 import { elementToStack } from './elements-native'
-import { coolgridToStack, colToStack, colHasExplicitSize } from './coolgrid-native'
+import { coolgridToStack, colToStack, colHasExplicitSize, colSizeLiteral, DEFAULT_COLUMNS } from './coolgrid-native'
 import { extractTextTypography, kotlinTextTypographyArgs, styleToNativeModifiers } from './style-to-native'
 import {
   type FlatRouteEntry,
@@ -3593,14 +3593,22 @@ function emitKotlinJsx(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: numb
   // fractional `size` warns). Swift-dispatcher parity.
   if ((tag === 'Container' || tag === 'Row') && canAliasIntercept(tag, '@pyreon/coolgrid')) return emitKotlinJsx(coolgridToStack(e), indent)
   if (tag === 'Col' && canAliasIntercept(tag, '@pyreon/coolgrid')) {
+    const p = ' '.repeat(indent)
+    const inner = `${' '.repeat(indent + 2)}${emitKotlinJsx(colToStack(e), indent + 2)}`
+    const size = colSizeLiteral(e)
+    if (size !== null) {
+      // Fractional span of a 12-column grid — an absolute size/12 fraction of the
+      // Row width (exact + parent-relative). A partial row leaves the rest empty.
+      return `Box(modifier = Modifier.fillMaxWidth(${size}f / ${DEFAULT_COLUMNS}f)) {\n${inner}\n${p}}`
+    }
     if (colHasExplicitSize(e)) {
+      // A responsive / non-literal `size` can't resolve to a static span → equal.
       _emitWarnings.push(
-        `<Col size=…>: a fractional column span lowers as an EQUAL column on native ` +
-          `(SwiftUI has no flex weight — true fractional needs GeometryReader, a follow-up).`,
+        `<Col size=…>: only a LITERAL integer span lowers to a fractional width; ` +
+          `a responsive ({ xs, md } / [a,b]) or non-literal size lowers as an EQUAL column.`,
       )
     }
-    const p = ' '.repeat(indent)
-    return `Box(modifier = Modifier.weight(1f)) {\n${' '.repeat(indent + 2)}${emitKotlinJsx(colToStack(e), indent + 2)}\n${p}}`
+    return `Box(modifier = Modifier.weight(1f)) {\n${inner}\n${p}}`
   }
 
   // styled(Prim)`css` — rewrite `<X>` to `<Prim>` + the captured CSS as a
