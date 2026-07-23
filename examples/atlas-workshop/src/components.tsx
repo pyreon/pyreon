@@ -217,3 +217,19 @@ export const LabTileHead = el.attrs({ tag: 'div' }).theme((t: T) => cx(`display:
 export const LabTileName = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-size:12px;font-weight:600;color:${t.text};`))
 export const LabTileMode = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:${t.muted};`))
 export const LabTileBody = el.attrs({ tag: 'div' }).theme((t: T) => cx(`padding:34px 20px;display:flex;align-items:center;justify-content:center;min-height:130px;background:${t.bg};`))
+
+// ── a11y addon (accessibility report) ───────────────────────────────────────
+export const A11ySummary = el.attrs({ tag: 'div' }).theme((t: T) => cx(`display:flex;gap:16px;margin-bottom:16px;padding:14px;border-radius:12px;border:1px solid ${t.border};`))
+export const A11yStat = el.attrs({ tag: 'div' }).theme((t: T) => cx(`display:flex;align-items:center;gap:7px;font-size:12.5px;color:${t.text};`))
+export const A11yDot = el
+  .attrs({ tag: 'span' })
+  .theme((t: T) => cx(`width:9px;height:9px;border-radius:50%;background:${t.ok};`))
+  .states({ ok: (t: T) => cx(`background:${t.ok};`), warn: (t: T) => cx(`background:${t.warn};`), danger: (t: T) => cx(`background:${t.danger};`) })
+export const A11yRow = el.attrs({ tag: 'div' }).theme((t: T) => cx(`display:flex;gap:11px;padding:11px 12px;border-radius:10px;margin-bottom:7px;background:${t.surface2};`))
+export const A11yIcon = el
+  .attrs({ tag: 'span' })
+  .theme((t: T) => cx(`width:20px;height:20px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;background:${t.ok};`))
+  .states({ ok: (t: T) => cx(`background:${t.ok};`), warn: (t: T) => cx(`background:${t.warn};`), danger: (t: T) => cx(`background:${t.danger};`) })
+export const A11yBody = el.attrs({ tag: 'div' }).theme(() => cx('flex:1;'))
+export const A11yTitle = txt.attrs({ tag: 'div' }).theme(() => cx('font-size:12.5px;font-weight:600;margin-bottom:2px;'))
+export const A11yNote = txt.attrs({ tag: 'div' }).theme((t: T) => cx(`font-size:11.5px;line-height:1.45;color:${t.muted};`))

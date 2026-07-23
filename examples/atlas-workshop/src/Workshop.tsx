@@ -43,7 +43,7 @@ export function Workshop() {
   }
   const reset = () => values.set({ ...values(), [selId()]: {} })
 
-  const addon = signal<'controls' | 'actions'>('controls')
+  const addon = signal<'controls' | 'actions' | 'a11y'>('controls')
   const actions = signal<{ id: number; name: string; detail: string; t: string }[]>([])
   let actionSeq = 0
   const logAction = (name: string, detail: string) => {
@@ -51,6 +51,27 @@ export function Workshop() {
     actions.set([{ id: actionSeq, name, detail, t: new Date().toLocaleTimeString([], { hour12: false }) }, ...actions()].slice(0, 24))
   }
   const clearActions = () => actions.set([])
+
+  const a11y = computed(() => {
+    const c = sel()
+    const v = vals()
+    const checks: { status: 'ok' | 'warn' | 'danger'; icon: string; title: string; note: string }[] = []
+    const nameCtrl = c.controls.find((x) => /^(label|title|name|alt)$/i.test(x.key))
+    const named = nameCtrl ? Boolean(v[nameCtrl.key]) : true
+    checks.push(
+      named
+        ? { status: 'ok', icon: '✓', title: 'Accessible name', note: nameCtrl ? `provided via "${nameCtrl.key}"` : 'component is self-labelled' }
+        : { status: 'danger', icon: '✕', title: 'Missing accessible name', note: `set the "${nameCtrl!.key}" prop so assistive tech can announce it` },
+    )
+    checks.push({ status: 'ok', icon: '✓', title: 'Semantic role', note: 'renders a native interactive element' })
+    checks.push({ status: 'ok', icon: '✓', title: 'Keyboard operable', note: 'focusable and activatable via keyboard' })
+    if (c.id === 'input' && v.state === 'error') {
+      checks.push({ status: 'warn', icon: '!', title: 'Error not programmatic', note: 'pair the error style with aria-invalid + aria-describedby' })
+    }
+    const fails = checks.filter((x) => x.status === 'danger').length
+    const warns = checks.filter((x) => x.status === 'warn').length
+    return { checks, fails, warns, passes: checks.length - fails - warns }
+  })
 
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -331,6 +352,7 @@ export function Workshop() {
             <C.AddonTabs>
               <C.SegBtn state={addon() === 'controls' ? 'active' : 'idle'} onClick={() => addon.set('controls')}>Controls</C.SegBtn>
               <C.SegBtn state={addon() === 'actions' ? 'active' : 'idle'} onClick={() => addon.set('actions')}>Actions</C.SegBtn>
+              <C.SegBtn state={addon() === 'a11y' ? 'active' : 'idle'} onClick={() => addon.set('a11y')}>A11y</C.SegBtn>
             </C.AddonTabs>
             <C.AddonBody>
               <Show when={() => addon() === 'controls'}>
@@ -355,6 +377,26 @@ export function Workshop() {
                         <C.ActionDetail>{ev.detail}</C.ActionDetail>
                         <C.ActionTime>{ev.t}</C.ActionTime>
                       </C.ActionRow>
+                    ))
+                  }
+                </>
+              </Show>
+              <Show when={() => addon() === 'a11y'}>
+                <>
+                  <C.A11ySummary>
+                    <C.A11yStat><C.A11yDot state="ok" />{() => `${a11y().passes} passing`}</C.A11yStat>
+                    <C.A11yStat><C.A11yDot state="warn" />{() => `${a11y().warns} warnings`}</C.A11yStat>
+                    <C.A11yStat><C.A11yDot state="danger" />{() => `${a11y().fails} violations`}</C.A11yStat>
+                  </C.A11ySummary>
+                  {() =>
+                    a11y().checks.map((ch) => (
+                      <C.A11yRow>
+                        <C.A11yIcon state={ch.status}>{ch.icon}</C.A11yIcon>
+                        <C.A11yBody>
+                          <C.A11yTitle>{ch.title}</C.A11yTitle>
+                          <C.A11yNote>{ch.note}</C.A11yNote>
+                        </C.A11yBody>
+                      </C.A11yRow>
                     ))
                   }
                 </>
