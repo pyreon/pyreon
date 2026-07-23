@@ -153,6 +153,10 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
   // that fails the native build with a cryptic `Cannot find 'Chart' in
   // scope`, far from the cause. Name the package + the escape-hatch fix.
   warnWebOnlyImports(ast.program.body as AnyNode[], ctx)
+  // Pre-pass: map alias-tag local names to their import source, so the emit's
+  // Element/PyreonUI/Container/Row/Col hooks intercept ONLY a tag imported from
+  // its expected @pyreon package (not a same-named user component).
+  const aliasImports = collectAliasImports(ast.program.body as AnyNode[])
   // Pre-pass: parse the app's `defineTheme({ … })` so the styler + rocketstyle
   // native frontends resolve `t.color.primary` to the APP's real token value
   // (not a hardcoded default), regardless of whether the theme is declared
@@ -353,6 +357,7 @@ export function parsePyreon(source: string, filename = 'input.tsx'): ParseResult
     styledComponents,
     rocketstyleComponents,
     attrsComponents,
+    aliasImports,
     helperFns: ctx.helperFns,
     warnings: ctx.warnings,
   }
@@ -776,6 +781,35 @@ function warnWebOnlyImports(body: AnyNode[], ctx: ParseCtx): void {
       )
     }
   }
+}
+
+/** The alias-tag names the emit's Element/PyreonUI/Container/Row/Col hooks
+ *  can intercept. Kept in sync with the guards in emit-swift/emit-kotlin. */
+const ALIAS_TAG_NAMES = new Set(['Element', 'PyreonUI', 'PyreonUIProvider', 'Container', 'Row', 'Col'])
+
+/**
+ * Collect a local-name → `@pyreon` package map for the alias-tag names. The
+ * emit uses it to intercept `<Element>` / `<Row>` / … ONLY when the tag is
+ * imported from its expected package, so a user component that happens to
+ * share one of these names (e.g. `import { Row } from './my-components'`) is
+ * NOT mis-lowered as a coolgrid Row. Records by LOCAL name (the JSX tag), and
+ * normalises a sub-path import (`@pyreon/coolgrid/x`) to its package root.
+ */
+function collectAliasImports(body: AnyNode[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const node of body) {
+    if (node.type !== 'ImportDeclaration') continue
+    const src = node.source?.value
+    if (typeof src !== 'string') continue
+    const pkg = src.startsWith('@pyreon/')
+      ? `@pyreon/${(src.slice('@pyreon/'.length).split('/')[0] ?? '')}`
+      : src
+    for (const spec of (node.specifiers as AnyNode[]) ?? []) {
+      const local = spec?.local?.name
+      if (typeof local === 'string' && ALIAS_TAG_NAMES.has(local)) map.set(local, pkg)
+    }
+  }
+  return map
 }
 
 function collectStoreHookNames(body: AnyNode[], out: Set<string>): void {
