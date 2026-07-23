@@ -83,7 +83,18 @@ export const calculateStylingAttrs: CalculateStylingAttrs =
 
     // (1) find dimension keys values & initialize
     for (const item in dimensions) {
-      const pickedProp = props[item]
+      // The Pyreon compiler emits an INLINE reactive dimension prop as a bare
+      // accessor — `state={sig() ? 'a' : 'b'}` becomes `state: () => sig() ? …`
+      // (unlike a `.map()`/helper-scoped prop, which stays a plain value). The
+      // accessor is NOT `_rp`-branded, so `makeReactiveProps` leaves it a raw
+      // function. Resolve it HERE — inside rocketstyle's reactive resolution
+      // computed — so we read the string value AND track the signal (a dimension
+      // flip re-resolves + re-classes with no remount). Without this, a function
+      // fell through to `typeof !== 'string'` → `undefined` and the dimension
+      // silently never applied for inline reactive props (active tab highlight,
+      // signal-driven variant/size, etc.).
+      const rawProp = props[item]
+      const pickedProp = typeof rawProp === 'function' ? (rawProp as () => unknown)() : rawProp
       const t = typeof pickedProp
 
       if (multiKeys?.[item] && Array.isArray(pickedProp)) {
