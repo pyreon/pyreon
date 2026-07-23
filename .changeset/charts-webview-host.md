@@ -1,0 +1,7 @@
+---
+'@pyreon/charts': minor
+---
+
+New `@pyreon/charts/webview` subpath — host real ECharts inside a native `<WebView>` (WKWebView on iOS, Android WebView) so full charting works on every target from one source. `buildChartHostHtml({ echartsScript? })` builds a self-contained host page (inlines your bundled ECharts for an offline, App-Store-safe page; CDN fallback for dev) that reads the pushed ECharts `option` from the `<WebView>` data bridge (`window.__pyreonData` + `pyreondata`), re-renders in place with no reload, forwards chart taps via `window.pyreonPostMessage`, and resizes via ResizeObserver (device rotation / late layout). `<ChartWebView option onSelect>` is the web-side ergonomic wrapper (emits `<WebView>`); native apps use `<WebView html={buildChartHostHtml(...)} data={option} onMessage={…}>` directly. Real-ECharts-in-a-real-iframe bridge proof in the browser suite (forward push → canvas render → in-place update; reverse tap → onSelect).
+
+The host is performance-tuned: rapid data pushes COALESCE to one render per frame (rAF), and a data-only change MERGES (ECharts' fast animated diff) while a structural change (series added/removed/retyped) full-replaces — verified by a real-Chromium perf test (coalescing, merge-vs-replace, single instance, a 1,000-point series, graceful malformed-data handling). A 22-chart-type gallery test proves the host renders the full ECharts vocabulary (sankey/graph/tree/treemap/sunburst/radar/gauge/funnel/heatmap/candlestick/boxplot/…), not just bar/line/pie.

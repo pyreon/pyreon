@@ -1,0 +1,31 @@
+{
+  "name": "@pyreon/example-native-viz",
+  "version": "0.0.1",
+  "private": true,
+  "description": "PRIVATE / EXPERIMENTAL — exhaustive multiplatform viz proof: ONE .tsx compiles to web + iOS + Android, hosting 21 distinct ECharts chart types (@pyreon/charts/webview), a flow diagram (@pyreon/flow/webview), a CodeMirror editor (@pyreon/code/webview), and a TipTap WYSIWYG (@pyreon/rich-text/webview) in native WebViews with the bidirectional data bridge (live forward push + reverse tap/edit-to-select).",
+  "license": "MIT",
+  "scripts": {
+    "gen-editors": "bun scripts/gen-editors.ts",
+    "gen-hosts": "bun scripts/gen-hosts.ts",
+    "build:swift": "./scripts/build-swift.sh",
+    "build:kotlin": "./scripts/build-kotlin.sh",
+    "build": "bun run build:swift && bun run build:kotlin",
+    "lint": "echo '[native-viz] no TS lint surface; skipping'",
+    "test": "echo '[native-viz] no test surface; PMTC emit covered by @pyreon/native-compiler tests + the /webview browser suites'",
+    "typecheck": "echo '[native-viz] @ts-nocheck on source; PMTC handles typing'"
+  },
+  "devDependencies": {
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6",
+    "@pyreon/charts": "workspace:*",
+    "@pyreon/code": "workspace:*",
+    "@pyreon/flow": "workspace:*",
+    "@pyreon/native-cli": "workspace:*",
+    "@pyreon/primitives": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
+    "@pyreon/rich-text": "workspace:*",
+    "@tiptap/core": "^3.28.0",
+    "@tiptap/starter-kit": "^3.28.0",
+    "codemirror": "^6.0.2"
+  }
+}

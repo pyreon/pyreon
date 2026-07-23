@@ -1,7 +1,7 @@
 {
   "name": "@pyreon/rich-text",
   "version": "0.50.0",
-  "description": "Reactive WYSIWYG rich-text editor for Pyreon — signal-backed layer over TipTap (ProseMirror); collaboration composes with @pyreon/sync",
+  "description": "Reactive WYSIWYG rich-text editor for Pyreon \u2014 signal-backed layer over TipTap (ProseMirror); collaboration composes with @pyreon/sync",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/rich-text#readme",
   "bugs": {
@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./webview": {
+      "bun": "./src/webview.ts",
+      "import": "./lib/webview.js",
+      "types": "./lib/types/webview.d.ts"
     }
   },
   "files": [
@@ -46,7 +51,8 @@
   "dependencies": {
     "@tiptap/core": "^3.28.0",
     "@tiptap/pm": "^3.28.0",
-    "@tiptap/starter-kit": "^3.28.0"
+    "@tiptap/starter-kit": "^3.28.0",
+    "@pyreon/primitives": "workspace:^"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.9.0",
