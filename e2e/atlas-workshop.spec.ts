@@ -6,19 +6,19 @@ import { type Browser, expect, type Page, test } from '@playwright/test'
  * rocketstyle-on-elements + PyreonUI theming, no inline styles). Every spec
  * targets a shape a green `vite build` / happy-dom cannot see.
  *
- * This suite CAUGHT (and its fixes address) two showstoppers a build could not:
+ * This suite CAUGHT (and its fixes address) THREE showstoppers a build could not:
  *   1. the styler theme context was unwired (`background:undefined` → HTTP 500);
  *      fixed by wrapping in <PyreonUI> (autoInit + enrichTheme).
  *   2. every horizontal container stacked vertically + overlapped (Element owns
  *      layout via its `css`/direction props, overriding `extendCss` flex); fixed
  *      by routing layout through Element's `css` prop.
- *
- * KNOWN LIMITATION (see the `test.fixme` block below): rocketstyle DIMENSION
- * resolution (`.states()`/`.variants()`/`.sizes()`) does not merge the selected
- * value into the resolved theme in this workshop — dimension props are reserved
- * (stripped from the DOM) but the active/variant/size styles never render. So
- * active-tab highlighting, the Variant/Size preview switch, and zoom-scale don't
- * visually apply yet. Tracked as a follow-up; the rest of the workshop works.
+ *   3. rocketstyle dimension states never applied — the compiler emits an INLINE
+ *      reactive dimension prop (`state={sig()?'a':'b'}`) as a bare accessor
+ *      `state: () => …`, and rocketstyle's `calculateStylingAttrs` treated a
+ *      function as `undefined` → the dimension was dropped. Fixed in
+ *      `rocketstyle/utils/attrs.ts` (resolve a function-valued dimension prop);
+ *      workshop dimensions moved to callback form + structured keys. So the
+ *      active-tab highlight, the Variant preview switch, and zoom-scale now work.
  */
 
 const isNoise = (t: string): boolean =>
@@ -158,30 +158,46 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     expect(errors).toEqual([])
   })
 
-  // KNOWN LIMITATION — rocketstyle dimension resolution does not merge the
-  // selected `.states()`/`.variants()`/`.sizes()` value into the rendered theme
-  // in this workshop (dimension props are reserved/stripped, but the styles
-  // never apply — verified: even a hardcoded `backgroundColor:'lime'` active
-  // state stays transparent). So the Variant control does not flip the demo
-  // button and zoom does not scale the preview. Un-fixme once the dimension
-  // pipeline is resolved; the assertion below is the intended contract.
-  test.fixme('controls flip rocketstyle variant + zoom scales the preview', async ({
+  test('rocketstyle dimensions apply: active-tab highlight, variant flip, zoom scale', async ({
     browser,
   }) => {
     const errors: string[] = []
     const page = await open(browser, errors)
 
-    // variant → outline collapses the button background to transparent.
+    // (a) active-tab highlight — the `.states()` dimension resolves for an INLINE
+    // reactive `state={view()==='canvas'?'active':'idle'}` prop. The active Canvas
+    // tab must carry a different (highlighted) class than the idle Docs tab.
+    const tabs = await page.evaluate(() => {
+      const b = (t: string) => [...document.querySelectorAll('button')].find((x) => x.textContent?.trim() === t) as HTMLElement
+      const canvas = b('Canvas')
+      return {
+        differ: canvas.className !== b('Docs').className,
+        canvasBg: getComputedStyle(canvas).backgroundColor,
+        canvasWeight: getComputedStyle(canvas).fontWeight, // base styling must survive the dimension merge
+      }
+    })
+    expect(tabs.differ).toBe(true)
+    expect(tabs.canvasBg).not.toBe('rgba(0, 0, 0, 0)')
+    expect(tabs.canvasWeight).toBe('600')
+
+    // (b) variant control flips the demo button (`.variants()` dimension).
+    const solid = await bg(page, PREVIEW_BTN)
     await page.getByRole('button', { name: 'outline', exact: true }).click()
     await expect.poll(() => bg(page, PREVIEW_BTN)).toBe('rgba(0, 0, 0, 0)')
+    expect(solid).not.toBe('rgba(0, 0, 0, 0)')
 
-    // zoom + scales the preview surface.
+    // (c) zoom + scales the preview surface (`.sizes()` dimension). Poll the
+    // transform — there's a `transition: transform .12s` so it settles a frame
+    // after the label flips to 125%.
     await page.getByRole('button', { name: '+', exact: true }).click()
     await expect(page.getByTestId('zoom-label')).toHaveText('125%')
-    const t = await page.evaluate(
-      () => getComputedStyle(document.querySelector('[data-testid="canvas-preview"]')!).transform,
-    )
-    expect(t).toMatch(/matrix\(1\.25/)
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => getComputedStyle(document.querySelector('[data-testid="canvas-preview"]')!).transform,
+        ),
+      )
+      .toMatch(/matrix\(1\.25/)
 
     expect(errors).toEqual([])
   })
