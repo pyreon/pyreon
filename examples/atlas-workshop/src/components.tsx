@@ -202,8 +202,8 @@ export const DocsDesc = txt.attrs({ tag: 'p' }).theme((t: T) => cx(`font-size:16
 export const DocsPreview = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;' }).theme((t: T) => cx(`border-radius:16px;border:1px solid ${t.border};background:${t.surface};padding:48px;display:flex;align-items:center;justify-content:center;margin-bottom:26px;`))
 export const DocsH2 = txt.attrs({ tag: 'h2' }).theme(() => cx("font-family:'Space Grotesk',sans-serif;font-size:18px;margin:0 0 12px;"))
 export const PropsTable = el.attrs({ tag: 'div' }).theme((t: T) => cx(`border:1px solid ${t.border};border-radius:12px;overflow:hidden;margin-bottom:26px;`))
-export const PropsHead = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.2fr 1fr 1fr;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.2fr 1fr 1fr;padding:10px 16px;background:${t.surface2};font-size:11px;font-weight:700;letter-spacing:.04em;color:${t.muted};`))
-export const PropsRow = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.2fr 1fr 1fr;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.2fr 1fr 1fr;padding:11px 16px;border-top:1px solid ${t.border};font-size:12.5px;align-items:center;`))
+export const PropsHead = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;padding:10px 16px;background:${t.surface2};font-size:11px;font-weight:700;letter-spacing:.04em;color:${t.muted};`))
+export const PropsRow = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;padding:11px 16px;border-top:1px solid ${t.border};font-size:12.5px;align-items:center;`))
 export const HeadCell = txt.attrs({ tag: 'span' }).theme(() => cx(''))
 export const PropName = txt.attrs({ tag: 'span' }).theme(() => cx("font-family:'JetBrains Mono',monospace;font-weight:600;"))
 export const PropKind = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-family:'JetBrains Mono',monospace;color:${t.accent};`))
@@ -222,12 +222,12 @@ export const ActionTime = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-fa
 
 // ── theme lab (component across every theme × mode) ─────────────────────────
 export const LabWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme((t: T) => cx(`flex:1;overflow-y:auto;padding:28px 32px;background:${t.bg};`))
-export const LabGrid = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));' }).theme(() => cx('display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;max-width:1100px;margin:0 auto;'))
-export const LabTile = el.attrs({ tag: 'div' }).theme((t: T) => cx(`border-radius:14px;overflow:hidden;border:1px solid ${t.border};box-shadow:0 8px 24px -18px rgba(15,18,30,.4);`))
-export const LabTileHead = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;justify-content:space-between;' }).theme((t: T) => cx(`display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${t.chrome};border-bottom:1px solid ${t.border};`))
+export const LabGrid = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));width:100%;' }).theme(() => cx('display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;width:100%;max-width:1100px;margin:0 auto;'))
+export const LabTile = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme((t: T) => cx(`border-radius:14px;overflow:hidden;border:1px solid ${t.border};box-shadow:0 8px 24px -18px rgba(15,18,30,.4);`))
+export const LabTileHead = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;justify-content:space-between;width:100%;' }).theme((t: T) => cx(`display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${t.chrome};border-bottom:1px solid ${t.border};`))
 export const LabTileName = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-size:12px;font-weight:600;color:${t.text};`))
 export const LabTileMode = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:${t.muted};`))
-export const LabTileBody = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;' }).theme((t: T) => cx(`padding:34px 20px;display:flex;align-items:center;justify-content:center;min-height:130px;background:${t.bg};`))
+export const LabTileBody = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;width:100%;' }).theme((t: T) => cx(`padding:34px 20px;display:flex;align-items:center;justify-content:center;min-height:130px;background:${t.bg};`))
 
 // ── a11y addon (accessibility report) ───────────────────────────────────────
 export const A11ySummary = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme((t: T) => cx(`display:flex;gap:16px;margin-bottom:16px;padding:14px;border-radius:12px;border:1px solid ${t.border};`))
