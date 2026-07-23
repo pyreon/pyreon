@@ -1,5 +1,19 @@
 # @pyreon/code
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2479](https://github.com/pyreon/pyreon/pull/2479) [`a0c0555`](https://github.com/pyreon/pyreon/commit/a0c05555d075d30605188a9d4c4afe2661ab796e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `@pyreon/code/webview` subpath — host a real CodeMirror 6 editor inside a native `<WebView>` (WKWebView on iOS, Android WebView) so the full editor works on every target from one source, driven by the same value/language/read-only signals as `createEditor`. `buildCodeHostHtml({ codemirrorScript? | codemirrorSrc? })` builds a self-contained host page that WAITS for a `window.CM` namespace (`{ EditorView, EditorState, Compartment, basicSetup, languageFor? }` — the app bundles its own `@codemirror/*`, exactly like `buildChartHostHtml({ echartsScript })`, since CodeMirror 6 is modular ESM with no single UMD), applies `{ value, language?, readOnly? }` from the `<WebView>` data bridge (cursor-preserving doc replacement + Compartment reconfigure — no reload), and posts new text via `window.pyreonPostMessage` on user edits (loop-guarded against the echo of a value we pushed). `<CodeWebView state onChange>` is the web-side ergonomic wrapper (emits `<WebView>`); native apps use `<WebView html={buildCodeHostHtml(...)} data={{ value, language }} onMessage={…}>` directly. Real-CodeMirror-in-a-real-iframe bridge proof in the browser suite (forward value push → editor renders → in-place doc replace; reverse edit → onChange; loop guard suppresses the pushed-value echo; readOnly applies).
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/primitives@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes

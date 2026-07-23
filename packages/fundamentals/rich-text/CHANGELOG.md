@@ -1,5 +1,19 @@
 # @pyreon/rich-text
 
+## 0.51.0
+
+### Minor Changes
+
+- [#2479](https://github.com/pyreon/pyreon/pull/2479) [`a0c0555`](https://github.com/pyreon/pyreon/commit/a0c05555d075d30605188a9d4c4afe2661ab796e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - New `@pyreon/rich-text/webview` subpath — host a real TipTap WYSIWYG editor inside a native `<WebView>` (WKWebView on iOS, Android WebView) so the full editor works on every target from one source, driven by the same content/editable signals as `createRichTextEditor`. `buildRichTextHostHtml({ tiptapScript? | tiptapSrc? })` builds a self-contained host page that WAITS for a `window.TT` factory (`{ createEditor(el, { content, editable, onUpdate }) => { setContent, setEditable, destroy } }` — a ~10-line factory the app bundles with its own `@tiptap/*` + chosen extensions, since TipTap is modular ESM with no single UMD), applies `{ content, editable? }` from the `<WebView>` data bridge (replacing the document only when it changed — no reload), and posts the new TipTap JSON via `window.pyreonPostMessage` on user edits (loop-guarded against the echo of content we pushed, via the factory's `emitUpdate:false`). `<RichTextWebView state onChange>` is the web-side ergonomic wrapper (emits `<WebView>`); native apps use `<WebView html={buildRichTextHostHtml(...)} data={{ content }} onMessage={…}>` directly. Real-TipTap-in-a-real-iframe bridge proof in the browser suite (forward content push → editor renders → in-place replace; reverse edit → onChange; loop guard suppresses the pushed-content echo; editable:false → read-only).
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/primitives@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

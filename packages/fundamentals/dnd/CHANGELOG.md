@@ -1,5 +1,14 @@
 # @pyreon/dnd
 
+## 0.51.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/a11y@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes

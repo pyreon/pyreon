@@ -1,5 +1,13 @@
 # @pyreon/styler
 
+## 0.51.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.51.0
+  - @pyreon/reactivity@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

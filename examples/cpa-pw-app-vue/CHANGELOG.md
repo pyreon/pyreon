@@ -1,5 +1,25 @@
 # cpa-pw-app-vue
 
+## 0.50.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/meta@1.0.0
+  - @pyreon/core@1.0.0
+  - @pyreon/head@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/runtime-server@1.0.0
+  - @pyreon/server@1.0.0
+  - @pyreon/form@1.0.0
+  - @pyreon/query@1.0.0
+  - @pyreon/store@1.0.0
+  - @pyreon/validation@1.0.0
+  - @pyreon/vue-compat@1.0.0
+  - @pyreon/zero@1.0.0
+
 ## 0.0.36
 
 ### Patch Changes

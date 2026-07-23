@@ -1,5 +1,17 @@
 # @pyreon/zero-content
 
+## 0.51.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@0.51.0
+  - @pyreon/head@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/router@0.51.0
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/zero@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @pyreon/tsconfig
 
+## 0.50.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/typescript@0.51.0
+
 ## 0.0.2
 
 ### Patch Changes
