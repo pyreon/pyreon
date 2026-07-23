@@ -37,10 +37,10 @@ export const Segment = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:
 export const SegBtn = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`font:inherit;font-size:13px;font-weight:600;cursor:pointer;border:none;padding:7px 15px;border-radius:8px;transition:all .12s;color:${t.muted};background:transparent;`))
-  .states({
-    active: (t: T) => cx(`color:${t.text};background:${t.bg};box-shadow:0 1px 3px rgba(15,18,30,.12);`),
-    idle: () => cx(''),
-  })
+  .states((t: T) => ({
+    active: { color: t.text, backgroundColor: t.bg, boxShadow: '0 1px 3px rgba(15,18,30,.12)' },
+    idle: {},
+  }))
 
 // ── search ─────────────────────────────────────────────────────────────────
 export const SearchWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;justify-content:center;' }).theme(() => cx('flex:1;display:flex;justify-content:center;'))
@@ -64,14 +64,14 @@ export const GroupNum = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-fami
 export const CompBtn = el
   .attrs({ tag: 'button', css: 'display:flex;flex-direction:row;align-items:center;' })
   .theme((t: T) => cx(`font:inherit;cursor:pointer;width:100%;text-align:left;border:none;display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:8px;margin-bottom:1px;font-size:13.5px;transition:background .1s;font-weight:500;color:${t.muted};background:transparent;&:hover{background:${t.surface2};}`))
-  .states({
-    active: (t: T) => cx(`font-weight:600;color:${t.text};background:${t.accentSoft};&:hover{background:${t.accentSoft};}`),
-    idle: () => cx(''),
-  })
+  .states((t: T) => ({
+    active: { fontWeight: 600, color: t.text, backgroundColor: t.accentSoft },
+    idle: {},
+  }))
 export const CompBar = el
   .attrs({ tag: 'span' })
   .theme((t: T) => cx(`width:3px;height:15px;border-radius:3px;flex:none;background:${t.border};`))
-  .states({ active: (t: T) => cx(`background:${t.accent};`), idle: () => cx('') })
+  .states((t: T) => ({ active: { backgroundColor: t.accent }, idle: {} }))
 export const CompName = txt.attrs({ tag: 'span' }).theme(() => cx('flex:1;'))
 export const NewTag = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 6px;border-radius:5px;color:${t.accent};background:${t.accentSoft};`))
 export const SideFoot = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme((t: T) => cx(`border-top:1px solid ${t.border};padding:12px 16px;display:flex;align-items:center;gap:9px;font-size:11.5px;color:${t.muted};`))
@@ -90,15 +90,15 @@ export const FrameChrome = el.attrs({ tag: 'div', css: 'display:flex;flex-direct
 export const PreviewSurface = el
   .attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;' })
   .theme(() => cx('padding:56px 40px;display:flex;align-items:center;justify-content:center;min-height:220px;transition:transform .12s ease;transform-origin:center;'))
-  .sizes({
-    z50: () => cx('transform:scale(.5);'),
-    z75: () => cx('transform:scale(.75);'),
-    z100: () => cx('transform:scale(1);'),
-    z125: () => cx('transform:scale(1.25);'),
-    z150: () => cx('transform:scale(1.5);'),
-    z175: () => cx('transform:scale(1.75);'),
-    z200: () => cx('transform:scale(2);'),
-  })
+  .sizes(() => ({
+    z50: { transform: 'scale(.5)' },
+    z75: { transform: 'scale(.75)' },
+    z100: { transform: 'scale(1)' },
+    z125: { transform: 'scale(1.25)' },
+    z150: { transform: 'scale(1.5)' },
+    z175: { transform: 'scale(1.75)' },
+    z200: { transform: 'scale(2)' },
+  }))
 
 // ── addon panel + controls ─────────────────────────────────────────────────
 export const AddonPanel = el.attrs({ tag: 'section', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme((t: T) => cx(`width:352px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid ${t.border};background:${t.surface};`))
@@ -113,15 +113,15 @@ export const EnumWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-direction
 export const EnumBtn = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`font:inherit;font-size:12px;cursor:pointer;padding:6px 12px;border-radius:7px;text-transform:capitalize;transition:border-color .1s,color .1s;border:1px solid ${t.border};color:${t.muted};background:transparent;&:hover{border-color:${t.accent};color:${t.text};}`))
-  .states({ active: (t: T) => cx(`border-color:${t.accent};color:${t.text};background:${t.accentSoft};`), idle: () => cx('') })
+  .states((t: T) => ({ active: { borderColor: t.accent, color: t.text, backgroundColor: t.accentSoft }, idle: {} }))
 export const Switch = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`cursor:pointer;border:none;padding:0;width:42px;height:24px;border-radius:20px;position:relative;transition:background .15s;background:${t.border};`))
-  .states({ on: (t: T) => cx(`background:${t.accent};`), off: () => cx('') })
+  .states((t: T) => ({ on: { backgroundColor: t.accent }, off: {} }))
 export const Knob = el
   .attrs({ tag: 'span' })
   .theme(() => cx('position:absolute;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s;left:2px;'))
-  .states({ on: () => cx('left:20px;'), off: () => cx('') })
+  .states(() => ({ on: { left: '20px' }, off: {} }))
 export const RangeRow = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme(() => cx('display:flex;align-items:center;gap:12px;'))
 export const Range = el.attrs({ tag: 'input' }).theme(() => cx('flex:1;')) as unknown as InputEl
 export const RangeVal = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-family:'JetBrains Mono',monospace;font-size:12px;width:34px;text-align:right;color:${t.muted};`))
@@ -135,7 +135,7 @@ export const StatusDim = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`color:${
 export const Swatch = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`cursor:pointer;width:26px;height:26px;border-radius:7px;padding:0;border:2px solid ${t.border};`))
-  .states({ active: (t: T) => cx(`border-color:${t.accent};`), idle: () => cx('') })
+  .states((t: T) => ({ active: { borderColor: t.accent }, idle: {} }))
 
 // ── demo components (variants / sizes / states dimensions) ──────────────────
 const btnBase = (t: T) =>
@@ -143,26 +143,26 @@ const btnBase = (t: T) =>
 export const DemoButton = el
   .attrs({ tag: 'button', css: 'display:inline-flex;align-items:center;justify-content:center;' })
   .theme(btnBase)
-  .variants({
-    solid: (t: T) => cx(`background:${t.accent};color:#fff;box-shadow:0 6px 16px -6px ${hexToRgba(t.accent, 0.6)};`),
-    soft: (t: T) => cx(`background:${hexToRgba(t.accent, 0.14)};color:${t.accent};box-shadow:none;`),
-    outline: (t: T) => cx(`background:transparent;color:${t.accent};border-color:${hexToRgba(t.accent, 0.5)};box-shadow:none;`),
-    ghost: (t: T) => cx(`background:transparent;color:${t.accent};box-shadow:none;`),
-  })
-  .sizes({
-    sm: () => cx('font-size:13px;padding:8px 15px;'),
-    md: () => cx('font-size:14.5px;padding:11px 20px;'),
-    lg: () => cx('font-size:16px;padding:14px 26px;'),
-  })
+  .variants((t: T) => ({
+    solid: { backgroundColor: t.accent, color: '#fff', boxShadow: `0 6px 16px -6px ${hexToRgba(t.accent, 0.6)}` },
+    soft: { backgroundColor: hexToRgba(t.accent, 0.14), color: t.accent, boxShadow: 'none' },
+    outline: { backgroundColor: 'transparent', color: t.accent, borderColor: hexToRgba(t.accent, 0.5), boxShadow: 'none' },
+    ghost: { backgroundColor: 'transparent', color: t.accent, boxShadow: 'none' },
+  }))
+  .sizes(() => ({
+    sm: { fontSize: '13px', padding: '8px 15px' },
+    md: { fontSize: '14.5px', padding: '11px 20px' },
+    lg: { fontSize: '16px', padding: '14px 26px' },
+  }))
 
 export const DemoBadge = el
   .attrs({ tag: 'span', css: 'display:inline-flex;align-items:center;justify-content:center;' })
   .theme((t: T) => cx(`font-family:'Public Sans',sans-serif;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:7px;border:1px solid transparent;background:${hexToRgba(t.accent, 0.14)};color:${t.accent};`))
-  .variants({
-    soft: (t: T) => cx(`background:${hexToRgba(t.accent, 0.14)};color:${t.accent};`),
-    solid: (t: T) => cx(`background:${t.accent};color:#fff;`),
-    outline: (t: T) => cx(`background:transparent;color:${t.accent};border-color:${hexToRgba(t.accent, 0.5)};`),
-  })
+  .variants((t: T) => ({
+    soft: { backgroundColor: hexToRgba(t.accent, 0.14), color: t.accent },
+    solid: { backgroundColor: t.accent, color: '#fff' },
+    outline: { backgroundColor: 'transparent', color: t.accent, borderColor: hexToRgba(t.accent, 0.5) },
+  }))
 
 export const IconDot = el.attrs({ tag: 'span' }).theme(() => cx('width:7px;height:7px;border-radius:9px;background:currentColor;display:inline-block;'))
 
@@ -170,11 +170,11 @@ export const ToggleRoot = el.attrs({ tag: 'label', css: 'display:inline-flex;ali
 export const ToggleTrack = el
   .attrs({ tag: 'span' })
   .theme((t: T) => cx(`cursor:pointer;width:46px;height:26px;border-radius:20px;position:relative;display:inline-block;transition:background .15s;background:${t.border};`))
-  .states({ on: (t: T) => cx(`background:${t.accent};`), off: () => cx('') })
+  .states((t: T) => ({ on: { backgroundColor: t.accent }, off: {} }))
 export const ToggleKnob = el
   .attrs({ tag: 'span' })
   .theme(() => cx('position:absolute;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s;width:22px;height:22px;left:2px;'))
-  .states({ on: () => cx('left:22px;'), off: () => cx('') })
+  .states(() => ({ on: { left: '22px' }, off: {} }))
 export const ToggleText = txt.attrs({ tag: 'span' }).theme(() => cx('font-size:14px;font-weight:500;'))
 
 export const FieldRoot = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme(() => cx("width:260px;text-align:left;font-family:'Public Sans',sans-serif;"))
@@ -182,15 +182,15 @@ export const FieldLabel = txt.attrs({ tag: 'label' }).theme((t: T) => cx(`displa
 export const FieldInput = (el
   .attrs({ tag: 'input' })
   .theme((t: T) => cx(`width:100%;font-family:'Public Sans',sans-serif;font-size:14px;padding:10px 13px;border-radius:9px;outline:none;color:${t.text};background:${t.bg};border:1.5px solid ${t.border};`))
-  .states({
-    focus: (t: T) => cx(`border-color:${t.accent};box-shadow:0 0 0 3px ${hexToRgba(t.accent, 0.18)};`),
-    error: (t: T) => cx(`border-color:${t.danger};box-shadow:0 0 0 3px rgba(224,91,91,.15);`),
-    default: () => cx(''),
-  })) as unknown as InputEl
+  .states((t: T) => ({
+    focus: { borderColor: t.accent, boxShadow: `0 0 0 3px ${hexToRgba(t.accent, 0.18)}` },
+    error: { borderColor: t.danger, boxShadow: '0 0 0 3px rgba(224,91,91,.15)' },
+    default: {},
+  }))) as unknown as InputEl
 export const FieldHelper = txt
   .attrs({ tag: 'div' })
   .theme((t: T) => cx(`font-size:11.5px;margin-top:6px;color:${t.muted};`))
-  .states({ error: (t: T) => cx(`color:${t.danger};`), default: () => cx('') })
+  .states((t: T) => ({ error: { color: t.danger }, default: {} }))
 
 // ── docs view (autodocs) ───────────────────────────────────────────────────
 export const DocsWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme((t: T) => cx(`flex:1;overflow-y:auto;padding:36px 32px;background:${t.bg};`))
@@ -202,8 +202,8 @@ export const DocsDesc = txt.attrs({ tag: 'p' }).theme((t: T) => cx(`font-size:16
 export const DocsPreview = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;' }).theme((t: T) => cx(`border-radius:16px;border:1px solid ${t.border};background:${t.surface};padding:48px;display:flex;align-items:center;justify-content:center;margin-bottom:26px;`))
 export const DocsH2 = txt.attrs({ tag: 'h2' }).theme(() => cx("font-family:'Space Grotesk',sans-serif;font-size:18px;margin:0 0 12px;"))
 export const PropsTable = el.attrs({ tag: 'div' }).theme((t: T) => cx(`border:1px solid ${t.border};border-radius:12px;overflow:hidden;margin-bottom:26px;`))
-export const PropsHead = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.2fr 1fr 1fr;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.2fr 1fr 1fr;padding:10px 16px;background:${t.surface2};font-size:11px;font-weight:700;letter-spacing:.04em;color:${t.muted};`))
-export const PropsRow = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.2fr 1fr 1fr;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.2fr 1fr 1fr;padding:11px 16px;border-top:1px solid ${t.border};font-size:12.5px;align-items:center;`))
+export const PropsHead = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;padding:10px 16px;background:${t.surface2};font-size:11px;font-weight:700;letter-spacing:.04em;color:${t.muted};`))
+export const PropsRow = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;align-items:center;' }).theme((t: T) => cx(`display:grid;grid-template-columns:1.4fr 1fr 1fr;column-gap:16px;padding:11px 16px;border-top:1px solid ${t.border};font-size:12.5px;align-items:center;`))
 export const HeadCell = txt.attrs({ tag: 'span' }).theme(() => cx(''))
 export const PropName = txt.attrs({ tag: 'span' }).theme(() => cx("font-family:'JetBrains Mono',monospace;font-weight:600;"))
 export const PropKind = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-family:'JetBrains Mono',monospace;color:${t.accent};`))
@@ -222,12 +222,12 @@ export const ActionTime = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-fa
 
 // ── theme lab (component across every theme × mode) ─────────────────────────
 export const LabWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme((t: T) => cx(`flex:1;overflow-y:auto;padding:28px 32px;background:${t.bg};`))
-export const LabGrid = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));' }).theme(() => cx('display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;max-width:1100px;margin:0 auto;'))
-export const LabTile = el.attrs({ tag: 'div' }).theme((t: T) => cx(`border-radius:14px;overflow:hidden;border:1px solid ${t.border};box-shadow:0 8px 24px -18px rgba(15,18,30,.4);`))
-export const LabTileHead = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;justify-content:space-between;' }).theme((t: T) => cx(`display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${t.chrome};border-bottom:1px solid ${t.border};`))
+export const LabGrid = el.attrs({ tag: 'div', css: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));width:100%;' }).theme(() => cx('display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;width:100%;max-width:1100px;margin:0 auto;'))
+export const LabTile = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme((t: T) => cx(`border-radius:14px;overflow:hidden;border:1px solid ${t.border};box-shadow:0 8px 24px -18px rgba(15,18,30,.4);`))
+export const LabTileHead = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;justify-content:space-between;width:100%;' }).theme((t: T) => cx(`display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:${t.chrome};border-bottom:1px solid ${t.border};`))
 export const LabTileName = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-size:12px;font-weight:600;color:${t.text};`))
 export const LabTileMode = txt.attrs({ tag: 'span' }).theme((t: T) => cx(`font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:${t.muted};`))
-export const LabTileBody = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;' }).theme((t: T) => cx(`padding:34px 20px;display:flex;align-items:center;justify-content:center;min-height:130px;background:${t.bg};`))
+export const LabTileBody = el.attrs({ tag: 'div', css: 'display:flex;align-items:center;justify-content:center;width:100%;' }).theme((t: T) => cx(`padding:34px 20px;display:flex;align-items:center;justify-content:center;min-height:130px;background:${t.bg};`))
 
 // ── a11y addon (accessibility report) ───────────────────────────────────────
 export const A11ySummary = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme((t: T) => cx(`display:flex;gap:16px;margin-bottom:16px;padding:14px;border-radius:12px;border:1px solid ${t.border};`))
@@ -235,12 +235,12 @@ export const A11yStat = el.attrs({ tag: 'div', css: 'display:flex;flex-direction
 export const A11yDot = el
   .attrs({ tag: 'span' })
   .theme((t: T) => cx(`width:9px;height:9px;border-radius:50%;background:${t.ok};`))
-  .states({ ok: (t: T) => cx(`background:${t.ok};`), warn: (t: T) => cx(`background:${t.warn};`), danger: (t: T) => cx(`background:${t.danger};`) })
+  .states((t: T) => ({ ok: { backgroundColor: t.ok }, warn: { backgroundColor: t.warn }, danger: { backgroundColor: t.danger } }))
 export const A11yRow = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:flex-start;' }).theme((t: T) => cx(`display:flex;gap:11px;padding:11px 12px;border-radius:10px;margin-bottom:7px;background:${t.surface2};`))
 export const A11yIcon = el
   .attrs({ tag: 'span', css: 'display:flex;align-items:center;justify-content:center;' })
   .theme((t: T) => cx(`width:20px;height:20px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;background:${t.ok};`))
-  .states({ ok: (t: T) => cx(`background:${t.ok};`), warn: (t: T) => cx(`background:${t.warn};`), danger: (t: T) => cx(`background:${t.danger};`) })
+  .states((t: T) => ({ ok: { backgroundColor: t.ok }, warn: { backgroundColor: t.warn }, danger: { backgroundColor: t.danger } }))
 export const A11yBody = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme(() => cx('flex:1;'))
 export const A11yTitle = txt.attrs({ tag: 'div' }).theme(() => cx('font-size:12.5px;font-weight:600;margin-bottom:2px;'))
 export const A11yNote = txt.attrs({ tag: 'div' }).theme((t: T) => cx(`font-size:11.5px;line-height:1.45;color:${t.muted};`))

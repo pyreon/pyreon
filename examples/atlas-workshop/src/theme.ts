@@ -22,6 +22,16 @@ export interface ThemeTokens {
   codeFg: string
 }
 
+// The workshop ships its OWN flat token theme (it does NOT use @pyreon/ui-theme),
+// so it augments rocketstyle's `ThemeDefault` with those tokens. This types every
+// `.theme()` / `.states()` / `.variants()` / `.sizes()` callback's `t` param as
+// `ThemeTokens` — no `as never` casts. Safe here precisely because no other
+// package augments `ThemeDefault` in this app (unlike a ui-theme consumer).
+declare module '@pyreon/rocketstyle' {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+  interface ThemeDefault extends ThemeTokens {}
+}
+
 export interface BrandTheme {
   id: string
   name: string

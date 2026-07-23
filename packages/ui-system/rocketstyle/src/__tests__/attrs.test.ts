@@ -116,6 +116,22 @@ describe('calculateStylingAttrs', () => {
     expect(result).toEqual({ state: undefined })
   })
 
+  it('resolves a FUNCTION-valued (accessor) dimension prop', () => {
+    // The Pyreon compiler emits an INLINE reactive dimension prop —
+    // `state={sig() ? 'a' : 'b'}` — as a bare accessor `state: () => …` (not
+    // `_rp`-branded, so it stays a raw function). Resolving it here reads the
+    // string value AND tracks the signal (this runs inside rocketstyle's
+    // reactive resolution). Without this, a function fell to the non-string/
+    // non-number arm → `undefined`, silently dropping the dimension (active
+    // tab highlight / signal-driven variant / size never applied).
+    const calc = calculateStylingAttrs({ useBooleans: false, multiKeys: {} })
+    const result = calc({
+      props: { state: () => 'active', size: () => 'large' },
+      dimensions: { state: {}, size: {} },
+    })
+    expect(result).toEqual({ state: 'active', size: 'large' })
+  })
+
   it('allows arrays for multi-key dimensions', () => {
     const calc = calculateStylingAttrs({
       useBooleans: false,
