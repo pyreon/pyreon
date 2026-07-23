@@ -10,57 +10,31 @@
  * end-to-end with ZERO authored stories.
  */
 import { createAtlas } from '@pyreon/atlas'
-import { inferControls } from '@pyreon/atlas/core'
-import { defineAtlasPlugin } from '@pyreon/atlas/plugins'
+import { components } from '@pyreon/atlas/auto'
 
-const discovery = defineAtlasPlugin({
-  name: 'demo-discovery',
-  discover: () => [
-    {
-      name: 'Button',
-      controls: inferControls([
-        { name: 'label', type: 'string' },
-        { name: 'state', type: { union: ['primary', 'secondary', 'danger'] } },
-        { name: 'size', type: { union: ['small', 'medium', 'large'] } },
-        { name: 'disabled', type: 'boolean' },
-      ]),
-      axes: [
-        { name: 'state', values: ['primary', 'secondary', 'danger'] },
-        { name: 'size', values: ['small', 'medium', 'large'] },
-      ],
-      reactivity: [],
-      scenarios: [],
-      tags: [],
+// Terse authoring via @pyreon/atlas/auto — controls + variant axes are derived
+// from the shape (a union array becomes a `select` + a variant axis; a `?`
+// suffix marks a prop optional). This is the WHOLE description.
+const catalog = components({
+  Button: {
+    props: {
+      label: 'string',
+      state: ['primary', 'secondary', 'danger'],
+      size: ['small', 'medium', 'large'],
+      'disabled?': 'boolean',
     },
-    {
-      name: 'TextInput',
-      controls: inferControls([
-        { name: 'label', type: 'string' },
-        { name: 'placeholder', type: 'string' },
-        { name: 'disabled', type: 'boolean' },
-        { name: 'error', type: 'boolean' },
-      ]),
-      axes: [],
-      reactivity: [],
-      scenarios: [],
-      tags: [],
-    },
-    {
-      name: 'Badge',
-      controls: inferControls([
-        { name: 'label', type: 'string' },
-        { name: 'tone', type: { union: ['info', 'success', 'warning', 'danger'] } },
-      ]),
-      axes: [{ name: 'tone', values: ['info', 'success', 'warning', 'danger'] }],
-      reactivity: [],
-      scenarios: [],
-      tags: [],
-    },
-  ],
+    tags: ['form'],
+  },
+  TextInput: {
+    props: { label: 'string', 'placeholder?': 'string', 'disabled?': 'boolean', 'error?': 'boolean' },
+  },
+  Badge: {
+    props: { label: 'string', tone: ['info', 'success', 'warning', 'danger'] },
+  },
 })
 
-// Simple config: just pass discovery — the recommended preset is the default.
-const graph = await createAtlas({ plugins: [discovery] }).build()
+// Simple config: pass the catalog — the recommended preset is the default.
+const graph = await createAtlas({ plugins: [catalog] }).build()
 
 const scenarios = graph.scenarios()
 const flagged = scenarios.filter((s) => s.verify && !s.verify.ok)
