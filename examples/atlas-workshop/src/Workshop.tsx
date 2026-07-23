@@ -43,6 +43,15 @@ export function Workshop() {
   }
   const reset = () => values.set({ ...values(), [selId()]: {} })
 
+  const addon = signal<'controls' | 'actions'>('controls')
+  const actions = signal<{ id: number; name: string; detail: string; t: string }[]>([])
+  let actionSeq = 0
+  const logAction = (name: string, detail: string) => {
+    actionSeq += 1
+    actions.set([{ id: actionSeq, name, detail, t: new Date().toLocaleTimeString([], { hour12: false }) }, ...actions()].slice(0, 24))
+  }
+  const clearActions = () => actions.set([])
+
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase()
@@ -73,7 +82,7 @@ export function Workshop() {
     const v = vals()
     if (id === 'button') {
       return (
-        <C.DemoButton variant={v.variant as never} size={v.size as never}>
+        <C.DemoButton variant={v.variant as never} size={v.size as never} onClick={() => logAction('onClick', `Button "${String(v.label)}"`)}>
           {v.icon ? <C.IconDot /> : null}
           {String(v.label)}
         </C.DemoButton>
@@ -91,7 +100,7 @@ export function Workshop() {
       const on = v.on ? 'on' : 'off'
       return (
         <C.ToggleRoot>
-          <C.ToggleTrack state={on} onClick={() => setValue('toggle', 'on', !v.on)}>
+          <C.ToggleTrack state={on} onClick={() => { setValue('toggle', 'on', !v.on); logAction('onChange', `Toggle → ${!v.on}`) }}>
             <C.ToggleKnob state={on} />
           </C.ToggleTrack>
           <C.ToggleText>{String(v.label)}</C.ToggleText>
@@ -292,15 +301,40 @@ export function Workshop() {
           </C.Main>
           </Show>
 
-          {/* ADDON PANEL — Controls (canvas view) */}
+          {/* ADDON PANEL (canvas view) */}
           <Show when={() => view() === 'canvas'}>
           <C.AddonPanel>
             <C.AddonTabs>
-              <C.SegBtn state="active">Controls</C.SegBtn>
+              <C.SegBtn state={addon() === 'controls' ? 'active' : 'idle'} onClick={() => addon.set('controls')}>Controls</C.SegBtn>
+              <C.SegBtn state={addon() === 'actions' ? 'active' : 'idle'} onClick={() => addon.set('actions')}>Actions</C.SegBtn>
             </C.AddonTabs>
             <C.AddonBody>
-              {() => sel().controls.map((ctrl) => control(ctrl))}
-              <C.ResetBtn onClick={reset}>Reset to defaults</C.ResetBtn>
+              <Show when={() => addon() === 'controls'}>
+                <>
+                  {() => sel().controls.map((ctrl) => control(ctrl))}
+                  <C.ResetBtn onClick={reset}>Reset to defaults</C.ResetBtn>
+                </>
+              </Show>
+              <Show when={() => addon() === 'actions'}>
+                <>
+                  <C.ActionsHead>
+                    <C.ActionsHint>Interact with the preview to log events.</C.ActionsHint>
+                    <C.ClearBtn onClick={clearActions}>Clear</C.ClearBtn>
+                  </C.ActionsHead>
+                  <Show when={() => actions().length === 0}>
+                    <C.ActionsEmpty>No events yet — click the component.</C.ActionsEmpty>
+                  </Show>
+                  {() =>
+                    actions().map((ev) => (
+                      <C.ActionRow>
+                        <C.ActionName>{ev.name}</C.ActionName>
+                        <C.ActionDetail>{ev.detail}</C.ActionDetail>
+                        <C.ActionTime>{ev.t}</C.ActionTime>
+                      </C.ActionRow>
+                    ))
+                  }
+                </>
+              </Show>
             </C.AddonBody>
           </C.AddonPanel>
           </Show>
