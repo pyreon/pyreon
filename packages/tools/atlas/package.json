@@ -18,6 +18,9 @@
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
+  "bin": {
+    "atlas": "./bin/atlas.js"
+  },
   "exports": {
     ".": {
       "bun": "./src/index.ts",
@@ -44,9 +47,15 @@
       "import": "./lib/discover.js",
       "types": "./lib/types/discover.d.ts"
     },
+    "./cli": {
+      "bun": "./src/cli.ts",
+      "import": "./lib/cli.js",
+      "types": "./lib/types/cli.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
+    "bin",
     "lib",
     "src",
     "README.md",
