@@ -22,6 +22,7 @@ export function Workshop() {
   const query = signal('')
   const zoom = signal(1)
   const values = signal<Record<string, Record<string, unknown>>>({})
+  const view = signal<'canvas' | 'docs'>('canvas')
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
   const theme = computed(() => tokens(brand(), dark()))
@@ -150,6 +151,54 @@ export function Workshop() {
     </>
   )
 
+  // ── autodocs: a generated usage snippet + the props table ────────────────
+  const usage = () => {
+    const c = sel()
+    const v = vals()
+    const attrs = c.controls
+      .map((ct) => {
+        const val = v[ct.key]
+        if (ct.type === 'bool') return val ? ct.key : ''
+        if (typeof val === 'string' && val) return `${ct.key}="${val}"`
+        return ''
+      })
+      .filter(Boolean)
+    return `<${c.name}${attrs.length ? ' ' + attrs.join(' ') : ''} />`
+  }
+
+  const docsView = () => {
+    const c = sel()
+    return (
+      <C.DocsWrap>
+        <C.DocsArticle>
+          <C.DocsTitleRow>
+            <C.DocsTitle>{c.name}</C.DocsTitle>
+            <C.DocsStatus>{c.status}</C.DocsStatus>
+          </C.DocsTitleRow>
+          <C.DocsDesc>{c.desc}</C.DocsDesc>
+          <C.DocsPreview>{() => preview()}</C.DocsPreview>
+          <C.DocsH2>Props</C.DocsH2>
+          <C.PropsTable>
+            <C.PropsHead>
+              <C.HeadCell>NAME</C.HeadCell>
+              <C.HeadCell>TYPE</C.HeadCell>
+              <C.HeadCell>DEFAULT</C.HeadCell>
+            </C.PropsHead>
+            {c.controls.map((ct) => (
+              <C.PropsRow>
+                <C.PropName>{ct.key}</C.PropName>
+                <C.PropKind>{ct.type}</C.PropKind>
+                <C.PropDef>{String(ct.default)}</C.PropDef>
+              </C.PropsRow>
+            ))}
+          </C.PropsTable>
+          <C.DocsH2>Usage</C.DocsH2>
+          <C.UsagePre>{usage()}</C.UsagePre>
+        </C.DocsArticle>
+      </C.DocsWrap>
+    )
+  }
+
   return (
     <ThemeProvider theme={theme() as never}>
       <C.Shell>
@@ -164,6 +213,15 @@ export function Workshop() {
               <C.BrandSub>workshop · v0.1</C.BrandSub>
             </C.Col>
           </C.BrandRow>
+
+          <C.Segment>
+            <C.SegBtn state={view() === 'canvas' ? 'active' : 'idle'} onClick={() => view.set('canvas')}>
+              Canvas
+            </C.SegBtn>
+            <C.SegBtn state={view() === 'docs' ? 'active' : 'idle'} onClick={() => view.set('docs')}>
+              Docs
+            </C.SegBtn>
+          </C.Segment>
 
           <C.Segment>
             {THEMES.map((t) => (
@@ -209,7 +267,8 @@ export function Workshop() {
             </C.SideFoot>
           </C.Sidebar>
 
-          {/* MAIN */}
+          {/* MAIN — canvas view */}
+          <Show when={() => view() === 'canvas'}>
           <C.Main>
             <C.CanvasBar>
               <C.Col>
@@ -231,8 +290,10 @@ export function Workshop() {
               </C.Frame>
             </C.Stage>
           </C.Main>
+          </Show>
 
-          {/* ADDON PANEL — Controls */}
+          {/* ADDON PANEL — Controls (canvas view) */}
+          <Show when={() => view() === 'canvas'}>
           <C.AddonPanel>
             <C.AddonTabs>
               <C.SegBtn state="active">Controls</C.SegBtn>
@@ -242,6 +303,10 @@ export function Workshop() {
               <C.ResetBtn onClick={reset}>Reset to defaults</C.ResetBtn>
             </C.AddonBody>
           </C.AddonPanel>
+          </Show>
+
+          {/* DOCS view */}
+          <Show when={() => view() === 'docs'}>{() => docsView()}</Show>
         </C.Body>
 
         {/* STATUS BAR */}
