@@ -1,5 +1,21 @@
 # @pyreon/zero
 
+## 0.51.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/compiler@0.51.0
+  - @pyreon/core@0.51.0
+  - @pyreon/head@0.51.0
+  - @pyreon/reactivity@0.51.0
+  - @pyreon/router@0.51.0
+  - @pyreon/runtime-dom@0.51.0
+  - @pyreon/runtime-server@0.51.0
+  - @pyreon/server@0.51.0
+  - @pyreon/vite-plugin@0.51.0
+  - @pyreon/sized-map@0.51.0
+
 ## 0.50.0
 
 ### Minor Changes

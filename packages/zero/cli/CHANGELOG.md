@@ -1,5 +1,19 @@
 # zero-cli
 
+## 0.51.0
+
+### Patch Changes
+
+- [#2478](https://github.com/pyreon/pyreon/pull/2478) [`c20686b`](https://github.com/pyreon/pyreon/commit/c20686b3095e292ed297e19cc56b64846a032d44) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `zero doctor`: register + forward the `--full` flag so the `audit-types` and
+  `bundle-budgets` gates (which the tool lists under "enable with --full") are
+  actually reachable. Previously `zero doctor --full` crashed with an uncaught
+  `CACError: Unknown option --full`. Also catch cac argv errors so any unknown
+  option prints a friendly usage hint instead of a raw stack trace.
+- Updated dependencies []:
+  - @pyreon/cli@0.51.0
+  - @pyreon/create-zero@0.51.0
+  - @pyreon/zero@0.51.0
+
 ## 0.50.0
 
 ### Patch Changes

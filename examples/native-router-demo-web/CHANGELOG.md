@@ -1,5 +1,16 @@
 # @pyreon/example-native-router-demo-web
 
+## 0.50.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pyreon/core@1.0.0
+  - @pyreon/reactivity@1.0.0
+  - @pyreon/router@1.0.0
+  - @pyreon/runtime-dom@1.0.0
+  - @pyreon/primitives@1.0.0
+
 ## 0.0.34
 
 ### Patch Changes
