@@ -163,6 +163,27 @@
         "vite": "^8.0.16",
       },
     },
+    "examples/atlas-workshop": {
+      "name": "@pyreon/example-atlas-workshop",
+      "version": "0.50.0",
+      "dependencies": {
+        "@pyreon/atlas": "workspace:*",
+        "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
+        "@pyreon/head": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/router": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+        "@pyreon/unistyle": "workspace:*",
+        "@pyreon/zero": "workspace:*",
+      },
+      "devDependencies": {
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/vite-plugin": "workspace:*",
+      },
+    },
     "examples/benchmark": {
       "name": "@pyreon/example-benchmark",
       "version": "0.50.0",
@@ -3450,6 +3471,8 @@
     "@pyreon/example-ai-reference": ["@pyreon/example-ai-reference@workspace:examples/ai-reference"],
 
     "@pyreon/example-app-showcase": ["@pyreon/example-app-showcase@workspace:examples/app-showcase"],
+
+    "@pyreon/example-atlas-workshop": ["@pyreon/example-atlas-workshop@workspace:examples/atlas-workshop"],
 
     "@pyreon/example-benchmark": ["@pyreon/example-benchmark@workspace:examples/benchmark"],
 

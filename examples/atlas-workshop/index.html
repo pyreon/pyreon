@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Atlas Component Workshop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; height: 100%; }
+      body { font-family: 'Public Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+      #app { height: 100%; }
+      a { color: #ff7a3d; text-decoration: none; }
+      a:hover { color: #ff9e6b; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-thumb { background: rgba(120,128,150,.35); border-radius: 20px; border: 3px solid transparent; background-clip: content-box; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(120,128,150,.55); background-clip: content-box; }
+      input[type=range] { accent-color: #ff7a3d; }
+      button:focus-visible, input:focus-visible { outline: 2px solid #ff7a3d; outline-offset: 2px; }
+      @keyframes atlas-spin { to { transform: rotate(360deg); } }
+      @keyframes atlas-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+      @keyframes atlas-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    </style>
+    <!--pyreon-head-->
+  </head>
+  <body>
+    <div id="app"><!--pyreon-app--></div>
+    <!--pyreon-scripts-->
+    <script type="module" src="/src/entry-client.ts"></script>
+  </body>
+</html>
