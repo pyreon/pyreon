@@ -17,8 +17,17 @@ import { makeItResponsive, styles } from '@pyreon/unistyle'
 /** Shared rocketstyle factory (string dimension props, e.g. state="active"). */
 export const rs = rocketstyle({ useBooleans: false })
 
-/** Base element — layout box with :hover / :focus-visible / :active / :disabled. */
-export const el = rs({ name: 'AtlasEl', component: Element }).styles(
+/**
+ * Base element — layout box with :hover / :focus-visible / :active / :disabled.
+ *
+ * `contentAlignY: 'top'` overrides Element's default `alignY: 'center'`, which
+ * otherwise resolves to `justify-content: center` and vertically-centres a
+ * container's content — so a panel with only a few children (e.g. the Controls
+ * addon on a component with 2 controls) floated its content to the middle. The
+ * center-content boxes (Stage/PreviewSurface/BrandMark/Avatar) set an explicit
+ * `justify-content:center` in their `css` prop, which still wins over this.
+ */
+export const el = rs({ name: 'AtlasEl', component: Element }).attrs({ contentAlignY: 'top' }).styles(
   (css) => css`
     ${({ href, onClick, $rocketstyle, $rocketstate }) => {
       const isDynamic = onClick || href

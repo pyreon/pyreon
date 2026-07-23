@@ -2093,6 +2093,15 @@
         "atlas": "./bin/atlas.js",
       },
       "dependencies": {
+        "@pyreon/core": "workspace:*",
+        "@pyreon/elements": "workspace:*",
+        "@pyreon/hooks": "workspace:*",
+        "@pyreon/reactivity": "workspace:*",
+        "@pyreon/rocketstyle": "workspace:*",
+        "@pyreon/runtime-dom": "workspace:*",
+        "@pyreon/styler": "workspace:*",
+        "@pyreon/ui-core": "workspace:*",
+        "@pyreon/unistyle": "workspace:*",
         "typescript": ">=5.0.0 <7.0.0",
       },
       "devDependencies": {
