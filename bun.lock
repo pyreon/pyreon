@@ -2064,6 +2064,9 @@
     "packages/tools/atlas": {
       "name": "@pyreon/atlas",
       "version": "0.0.0",
+      "dependencies": {
+        "typescript": ">=5.0.0 <7.0.0",
+      },
       "devDependencies": {
         "@pyreon/tsconfig": "workspace:*",
         "@pyreon/vitest-config": "workspace:*",

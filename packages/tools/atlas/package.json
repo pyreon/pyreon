@@ -39,6 +39,11 @@
       "import": "./lib/auto.js",
       "types": "./lib/types/auto.d.ts"
     },
+    "./discover": {
+      "bun": "./src/discover.ts",
+      "import": "./lib/discover.js",
+      "types": "./lib/types/discover.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -54,6 +59,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint ."
+  },
+  "dependencies": {
+    "typescript": ">=5.0.0 <7.0.0"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
