@@ -1,5 +1,6 @@
 /** Addon panel view — the Controls / Actions / A11y tabs alongside the canvas. */
 import { Show } from '@pyreon/core'
+import { ADDON_TABS, BACKGROUNDS, PSEUDO_STATES, VIEWPORTS, viewportById } from '../addons'
 import type { WorkbenchControl } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
@@ -31,10 +32,20 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
 
   return (
     <C.AddonPanel>
+      {/*
+        Tabs render FROM `ADDON_TABS`, so a new addon is a data entry in
+        ../addons rather than another hand-written button + `<Show>` pair.
+      */}
       <C.AddonTabs>
-        <C.SegBtn state={() => (m.addon() === 'controls' ? 'active' : 'idle')} onClick={() => m.addon.set('controls')}>Controls</C.SegBtn>
-        <C.SegBtn state={() => (m.addon() === 'actions' ? 'active' : 'idle')} onClick={() => m.addon.set('actions')}>Actions</C.SegBtn>
-        <C.SegBtn state={() => (m.addon() === 'a11y' ? 'active' : 'idle')} onClick={() => m.addon.set('a11y')}>A11y</C.SegBtn>
+        {ADDON_TABS.map((tab) => (
+          <C.SegBtn
+            data-testid={`addon-tab-${tab.id}`}
+            state={() => (m.addon() === tab.id ? 'active' : 'idle')}
+            onClick={() => m.addon.set(tab.id)}
+          >
+            {tab.title}
+          </C.SegBtn>
+        ))}
       </C.AddonTabs>
       <C.AddonBody>
         <Show when={() => m.addon() === 'controls'}>
@@ -83,6 +94,92 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
                 </C.A11yRow>
               ))
             }
+          </>
+        </Show>
+
+        {/*
+          Canvas addons — Storybook ships these as four separate packages
+          (viewport / backgrounds / pseudo-states / outline); here they are one
+          tab driven by the presets in ../addons. Each row is the same
+          "label + segmented options" shape, so adding a preset never touches
+          this file.
+        */}
+        <Show when={() => m.addon() === 'canvas'}>
+          <>
+            <C.CtrlRow>
+              <C.CtrlHead>
+                <C.CtrlLabel>Viewport</C.CtrlLabel>
+                <C.CtrlType>{() => viewportById(m.viewport()).hint}</C.CtrlType>
+              </C.CtrlHead>
+              <C.EnumWrap>
+                {VIEWPORTS.map((v) => (
+                  <C.EnumBtn
+                    data-testid={`viewport-${v.id}`}
+                    state={() => (m.viewport() === v.id ? 'active' : 'idle')}
+                    onClick={() => m.viewport.set(v.id)}
+                  >
+                    {v.label}
+                  </C.EnumBtn>
+                ))}
+              </C.EnumWrap>
+            </C.CtrlRow>
+
+            <C.CtrlRow>
+              <C.CtrlHead>
+                <C.CtrlLabel>Background</C.CtrlLabel>
+                <C.CtrlType>surface</C.CtrlType>
+              </C.CtrlHead>
+              <C.EnumWrap>
+                {BACKGROUNDS.map((b) => (
+                  <C.EnumBtn
+                    data-testid={`background-${b.id}`}
+                    state={() => (m.background() === b.id ? 'active' : 'idle')}
+                    onClick={() => m.background.set(b.id)}
+                  >
+                    {b.label}
+                  </C.EnumBtn>
+                ))}
+              </C.EnumWrap>
+            </C.CtrlRow>
+
+            <C.CtrlRow>
+              <C.CtrlHead>
+                <C.CtrlLabel>Pseudo state</C.CtrlLabel>
+                <C.CtrlType>rocketstyle</C.CtrlType>
+              </C.CtrlHead>
+              <C.EnumWrap>
+                <C.EnumBtn
+                  data-testid="pseudo-none"
+                  state={() => (m.pseudo() === null ? 'active' : 'idle')}
+                  onClick={() => m.pseudo.set(null)}
+                >
+                  None
+                </C.EnumBtn>
+                {PSEUDO_STATES.map((p) => (
+                  <C.EnumBtn
+                    data-testid={`pseudo-${p.id}`}
+                    state={() => (m.pseudo() === p.id ? 'active' : 'idle')}
+                    onClick={() => m.pseudo.set(m.pseudo() === p.id ? null : p.id)}
+                  >
+                    {p.label}
+                  </C.EnumBtn>
+                ))}
+              </C.EnumWrap>
+            </C.CtrlRow>
+
+            <C.CtrlRow>
+              <C.CtrlHead>
+                <C.CtrlLabel>Outline</C.CtrlLabel>
+                <C.CtrlType>layout debug</C.CtrlType>
+              </C.CtrlHead>
+              <C.Switch
+                data-testid="outline-toggle"
+                state={() => (m.outline() ? 'on' : 'off')}
+                onClick={() => m.outline.set(!m.outline())}
+              >
+                <C.Knob state={() => (m.outline() ? 'on' : 'off')} />
+              </C.Switch>
+            </C.CtrlRow>
           </>
         </Show>
       </C.AddonBody>

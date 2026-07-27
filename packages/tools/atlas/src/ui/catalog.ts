@@ -24,6 +24,20 @@ export interface WorkbenchRenderCtx {
   logAction: (name: string, detail: string) => void
   /** Write a control value back (e.g. a controlled toggle updating its own `on`). */
   setValue: (key: string, value: unknown) => void
+  /**
+   * Props that force the pseudo state selected in the Pseudo-state addon —
+   * `{ hover: true }`, `{ disabled: true }`, … or `{}` when none is forced.
+   *
+   * Spread it onto the component you render (`<Button {...ctx.pseudo}>`) to opt
+   * in. rocketstyle treats `hover`/`focus`/`active` as reserved props that feed
+   * `$rocketstate.pseudo`, so what renders is the component's REAL pseudo CSS,
+   * not a lookalike class — the reason this addon needs no stylesheet rewriting
+   * (which is how Storybook's equivalent has to work).
+   *
+   * A getter, so reading it inside `render` tracks the signal and the preview
+   * re-renders when the forced state changes.
+   */
+  readonly pseudo: Record<string, boolean>
 }
 
 /** One catalog entry — a component the workbench can showcase. */

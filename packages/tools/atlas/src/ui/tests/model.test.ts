@@ -209,3 +209,58 @@ describe('createModel — search focus ref', () => {
     expect(focused).toBe(1)
   })
 })
+
+describe('createModel — canvas addons', () => {
+  it('defaults to the non-intrusive state (fluid, theme bg, no pseudo, no outline)', () => {
+    const m = model()
+    expect(m.viewport()).toBe('full')
+    expect(m.background()).toBe('theme')
+    expect(m.pseudo()).toBeNull()
+    expect(m.outline()).toBe(false)
+  })
+
+  it('threads the forced pseudo state into the render ctx', () => {
+    const m = model()
+    let seen: Record<string, boolean> | undefined
+    const cat: WorkbenchCatalog = {
+      components: [
+        {
+          ...comp('probe', 'g'),
+          render: (_p, ctx) => {
+            seen = ctx.pseudo
+            return 'x'
+          },
+        },
+      ],
+    }
+    const mm = createModel(cat, {})
+    mm.preview()
+    expect(seen).toEqual({})
+
+    mm.pseudo.set('hover')
+    mm.preview()
+    expect(seen).toEqual({ hover: true })
+
+    mm.pseudo.set(null)
+    mm.preview()
+    expect(seen).toEqual({})
+    expect(m.pseudo()).toBeNull() // independent instances
+  })
+
+  it('exposes ctx.pseudo as a live getter (not a value captured at setup)', () => {
+    // If it were captured, flipping the addon would leave the preview showing
+    // the state it had when the model was built.
+    let ctxRef: { pseudo: Record<string, boolean> } | undefined
+    const cat: WorkbenchCatalog = {
+      components: [
+        { ...comp('probe', 'g'), render: (_p, ctx) => { ctxRef = ctx; return 'x' } },
+      ],
+    }
+    const mm = createModel(cat, {})
+    mm.preview()
+    expect(ctxRef!.pseudo).toEqual({})
+    mm.pseudo.set('focus')
+    // same ctx object, re-read → reflects the new state
+    expect(ctxRef!.pseudo).toEqual({ focus: true })
+  })
+})

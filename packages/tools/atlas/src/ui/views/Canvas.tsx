@@ -1,6 +1,7 @@
 /** Canvas view — the live preview on a zoomable, dotted stage. */
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
+import { BACKGROUND_VARIANT, VIEWPORT_SIZE, viewportById } from '../addons'
 import { ZOOM_PCT } from '../model'
 
 export function Canvas(props: { model: WorkbenchModel }) {
@@ -20,10 +21,28 @@ export function Canvas(props: { model: WorkbenchModel }) {
         </C.Segment>
       </C.CanvasBar>
 
+      {/*
+        Addon dimensions are passed as ACCESSORS (`() => …`) like every other
+        signal-driven dimension here, so they re-resolve without the compiler —
+        see ../Workbench for why that matters for the prebuilt lib.
+      */}
       <C.Stage>
-        <C.Frame>
-          <C.FrameChrome>{() => `${m.brand().name} · ${m.dark() ? 'dark' : 'light'}`}</C.FrameChrome>
-          <C.PreviewSurface data-testid="canvas-preview" size={('z' + ZOOM_PCT[m.zoomIdx()]) as never}>{() => m.preview()}</C.PreviewSurface>
+        <C.Frame data-testid="canvas-frame" size={() => VIEWPORT_SIZE[m.viewport()] as never}>
+          <C.FrameChrome>
+            {() =>
+              `${m.brand().name} · ${m.dark() ? 'dark' : 'light'}${
+                m.viewport() === 'full' ? '' : ` · ${viewportById(m.viewport()).hint}`
+              }${m.pseudo() ? ` · :${m.pseudo()}` : ''}`
+            }
+          </C.FrameChrome>
+          <C.PreviewSurface
+            data-testid="canvas-preview"
+            size={() => ('z' + ZOOM_PCT[m.zoomIdx()]) as never}
+            variant={() => BACKGROUND_VARIANT[m.background()] as never}
+            state={() => (m.outline() ? 'outlined' : 'plain') as never}
+          >
+            {() => m.preview()}
+          </C.PreviewSurface>
         </C.Frame>
       </C.Stage>
     </C.Main>
