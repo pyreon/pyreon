@@ -382,13 +382,16 @@ const cases: DiffCase[] = [
     name: 'nested void element — realistic card with <img/> (was a propagating bail)',
     src: `const Node = <article class="card"><div class="media"><img src={src} alt={title} /></div><div class="body"><h3 class="t">{title}</h3></div></article>`,
     deps: { src: '/img/a.png', title: 'Tom & Jerry' },
-    oracle: (deps) =>
-      h(
+    oracle: (deps) => {
+      const src = deps.src as string
+      const title = deps.title as string
+      return h(
         'article',
         { class: 'card' },
-        h('div', { class: 'media' }, h('img', { src: deps.src, alt: deps.title })),
-        h('div', { class: 'body' }, h('h3', { class: 't' }, deps.title)),
-      ),
+        h('div', { class: 'media' }, h('img', { src, alt: title })),
+        h('div', { class: 'body' }, h('h3', { class: 't' }, title)),
+      )
+    },
   },
   {
     // Void close is ` />` in the runtime — the SPACE must survive into the
@@ -396,20 +399,17 @@ const cases: DiffCase[] = [
     name: 'several void siblings — <img/> <br/> <input/> close as " />"',
     src: `const Node = <div class="w"><img src={src} /><br /><input name="q" value={title} /></div>`,
     deps: { src: '/a&b.png', title: 'a<b' },
-    oracle: (deps) =>
-      h(
-        'div',
-        { class: 'w' },
-        h('img', { src: deps.src }),
-        h('br', null),
-        h('input', { name: 'q', value: deps.title }),
-      ),
+    oracle: (deps) => {
+      const src = deps.src as string
+      const title = deps.title as string
+      return h('div', { class: 'w' }, h('img', { src }), h('br', null), h('input', { name: 'q', value: title }))
+    },
   },
   {
     name: 'self-closing non-void <div/> renders as <div></div>',
     src: `const Node = <div class="w"><div /><span>{title}</span></div>`,
     deps: { title: 'x' },
-    oracle: (deps) => h('div', { class: 'w' }, h('div', null), h('span', null, deps.title)),
+    oracle: (deps) => h('div', { class: 'w' }, h('div', null), h('span', null, deps.title as string)),
   },
 ]
 
