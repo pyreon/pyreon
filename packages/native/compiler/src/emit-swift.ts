@@ -4705,7 +4705,48 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       parts.push(swiftInterpSegment(childExpr, indent))
     }
   }
-  return `Text("${parts.join('')}")`
+  // A sole child that is ALREADY a String passes through directly, with no
+  // interpolation wrapper: `<Text>{String(a + b)}</Text>` becomes
+  // `Text(verbatim: String(a + b))`, not `Text(verbatim: "\(String(a + b))")`.
+  //
+  // Redundant either way, but not merely cosmetic — wrapping a String in a
+  // string interpolation re-opens `DefaultStringInterpolation`'s overload set
+  // around the inner expression, and on a non-trivial one (a 4-term sum of
+  // `.count`s) swiftc gives up: "unable to type-check this expression in
+  // reasonable time". Passing it through keeps the argument a single, already
+  // well-typed expression. Same spirit as the template-child splice above,
+  // which exists to avoid the identical double-wrap.
+  if (parts.length === 1 && parts[0]!.startsWith('\\(String(') && parts[0]!.endsWith(')')) {
+    return `Text(verbatim: ${parts[0]!.slice(2, -1)})`
+  }
+  const content = parts.join('')
+  // No actual interpolation (e.g. a template literal with no `${}`, or several
+  // adjacent literal children) → nothing to format, so keep the plain form and
+  // its .strings-table lookup. `verbatim:` is reserved for content that really
+  // does interpolate.
+  if (!content.includes('\\(')) return `Text("${content}")`
+  // `Text(verbatim:)`, NOT `Text("…")`, whenever the content INTERPOLATES.
+  //
+  // A Swift string literal containing interpolation resolves to SwiftUI's
+  // `Text(_ key: LocalizedStringKey)` overload, and `LocalizedStringKey`'s
+  // interpolation FORMATS its arguments through the current locale. So
+  // `Text("\(balance)")` with `balance == 2700` renders "2 700" (or "2,700",
+  // per region) instead of "2700" — the emitted app silently disagrees with
+  // the web and Android targets that render the same source, and the output
+  // changes with the device's region.
+  //
+  // Invisible below 1000, which is why every existing device app missed it:
+  // the counter renders "Count: 0". A REAL app's first four-figure number
+  // surfaces it (found by the finance ledger's 2700 balance on a Simulator).
+  //
+  // `verbatim:` takes a plain `String` and performs no localization or
+  // formatting, which is the correct semantic here: PMTC text comes from the
+  // app's source, and localization goes through `PyreonI18n.t(...)` — whose
+  // result is an already-resolved String. A pure literal (no interpolation)
+  // keeps the plain form: it has no arguments to format, and staying on the
+  // LocalizedStringKey overload preserves .strings-table lookup for anyone
+  // who wants it.
+  return `Text(verbatim: "${content}")`
 }
 
 function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -6760,7 +6801,7 @@ function emitSwiftNavigationDestination(
   const denyFallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 4)}()`
-      : `Text("Pyreon Router: access denied to \\(path)")`
+      : `Text(verbatim: "Pyreon Router: access denied to \\(path)")`
   const wrapGuard = (r: import('./types').RouteIR, renderLine: string): string[] => {
     if (r.guard === undefined) return [`${innerPad}${renderLine}`]
     return [
@@ -6870,7 +6911,7 @@ function emitSwiftNavigationDestination(
   const fallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 2)}()`
-      : `Text("Pyreon Router: no route for \\(path)")`
+      : `Text(verbatim: "Pyreon Router: no route for \\(path)")`
   if (firstBranch) {
     branches.push(`${pad}${fallback}`)
   } else {
@@ -6925,7 +6966,7 @@ function emitSwiftNestedNavigationDestination(
   const denyFallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 4)}()`
-      : `Text("Pyreon Router: access denied to \\(path)")`
+      : `Text(verbatim: "Pyreon Router: access denied to \\(path)")`
   const branches: string[] = []
   let firstBranch = true
   for (const entry of entries) {
@@ -6968,7 +7009,7 @@ function emitSwiftNestedNavigationDestination(
   const fallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 2)}()`
-      : `Text("Pyreon Router: no route for \\(path)")`
+      : `Text(verbatim: "Pyreon Router: no route for \\(path)")`
   if (firstBranch) {
     branches.push(`${pad}${fallback}`)
   } else {
@@ -7246,7 +7287,12 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     if (c.expr.kind === 'template') {
       return `Text(${emitSwiftExpr(c.expr, indent)})`
     }
-    return `Text("${swiftInterpSegment(c.expr, indent)}")`
+    // `verbatim:` for the same reason as the <Text> child path above: an
+    // interpolated literal selects SwiftUI's LocalizedStringKey overload,
+    // which locale-FORMATS its arguments (a 2700 renders as "2 700"). This
+    // site is the container-child shape (`<Stack>{count}</Stack>`), and it
+    // always interpolates, so it always needs the verbatim form.
+    return `Text(verbatim: "${swiftInterpSegment(c.expr, indent)}")`
   }
   // `{cond && <View/>}` — the dominant React/Solid conditional-render
   // idiom. A raw `cond && View` is `Bool && View`, a type error inside a

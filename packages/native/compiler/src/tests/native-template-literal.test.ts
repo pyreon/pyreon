@@ -32,7 +32,7 @@ describe('template-literal lowering', () => {
     const out = transform(app('  return (<Stack><Text>{`Hello ${name()}!`}</Text></Stack>)'), {
       target: 'swift',
     }).code
-    expect(out).toContain('Text("Hello \\(name)!")')
+    expect(out).toContain('Text(verbatim: "Hello \\(name)!")')
     // NOT the redundant double-wrap
     expect(out).not.toContain('Text("\\("Hello')
   })
@@ -52,7 +52,7 @@ describe('template-literal lowering', () => {
     const kt = transform(app('  return (<Stack><Text>{`${label}: ${count()} items`}</Text></Stack>)'), {
       target: 'kotlin',
     }).code
-    expect(sw).toContain('Text("\\(label): \\(count) items")')
+    expect(sw).toContain('Text(verbatim: "\\(label): \\(count) items")')
     expect(kt).toContain('Text(text = "${label}: ${count} items")')
   })
 
@@ -92,7 +92,7 @@ describe('template-literal lowering', () => {
       app('  return (<Stack><Text>prefix {`mid ${count()}`} suffix</Text></Stack>)'),
       { target: 'swift' },
     ).code
-    expect(sw).toContain('Text("prefix mid \\(count) suffix")')
+    expect(sw).toContain('Text(verbatim: "prefix mid \\(count) suffix")')
   })
 
   it('a tagged template still warn-drops (no native equivalent)', () => {

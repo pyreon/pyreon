@@ -29,7 +29,7 @@ describe('Phase 3 — useParams() destructuring emit', () => {
     // @Environment(\.pyreonRouter) injected since the destructure reads it.
     expect(out).toContain('@Environment(\\.pyreonRouter)')
     // `id` is now declared — the JSX read resolves.
-    expect(out).toContain('Text("\\(id)")')
+    expect(out).toContain('Text(verbatim: "\\(id)")')
   })
 
   it('Kotlin: each field is a val reading the params map', () => {

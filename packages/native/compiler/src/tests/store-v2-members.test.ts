@@ -66,7 +66,7 @@ describe('store v2 — Swift', () => {
     const out = transform(STORE_V2, { target: 'swift' }).code
     expect(out).toContain('PyreonStore_app.shared.addTask("hi")')
     expect(out).toContain('PyreonStore_app.shared.clear()')
-    expect(out).toContain('Text("\\(PyreonStore_app.shared.remaining) open")')
+    expect(out).toContain('Text(verbatim: "\\(PyreonStore_app.shared.remaining) open")')
   })
 
   it('component computeds over store COMPUTEDS infer concrete types', () => {

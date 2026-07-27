@@ -132,7 +132,16 @@ public struct Group<Content: View>: View {
 }
 
 // ---- Controls ----
-public struct Text: View { public init(_ s: String) {}; public typealias Body = Never }
+// Both initialisers, because the emit picks between them deliberately:
+// \`init(_:)\` for a pure literal (SwiftUI's LocalizedStringKey overload, which
+// keeps .strings-table lookup) and \`init(verbatim:)\` for interpolated content
+// (a plain String — no locale number formatting). A stub with only one of them
+// would fail the emit that uses the other.
+public struct Text: View {
+  public init(_ s: String) {}
+  public init(verbatim: String) {}
+  public typealias Body = Never
+}
 public struct Button<Label: View>: View {
   public init(action: @escaping () -> Void, @ViewBuilder label: () -> Label) {}
   public typealias Body = Never

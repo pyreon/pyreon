@@ -42,7 +42,7 @@ describe('Pyreon → Swift emit', () => {
       "struct Counter: View {
         @State private var count: Int = 0
         var body: some View {
-          Text("\\(count)")
+          Text(verbatim: "\\(count)")
         }
       }"
     `)
@@ -54,7 +54,7 @@ describe('Pyreon → Swift emit', () => {
         @State private var count: Int = 0
         private var doubled: Int { count * 2 }
         var body: some View {
-          Text("\\(doubled)")
+          Text(verbatim: "\\(doubled)")
         }
       }"
     `)
@@ -78,7 +78,7 @@ describe('Pyreon → Swift emit', () => {
         @State private var b: Int = 2
         private var total: Int { a + b }
         var body: some View {
-          Text("\\(total)")
+          Text(verbatim: "\\(total)")
         }
       }"
     `)
@@ -95,7 +95,7 @@ describe('Pyreon → Swift emit', () => {
         @State private var items: [TodoListItem] = []
         var body: some View {
           ForEach(items, id: \\.id) { item in
-            Text("\\(item.label)")
+            Text(verbatim: "\\(item.label)")
           }
         }
       }"
@@ -125,7 +125,7 @@ describe('Pyreon → Swift emit', () => {
         @State private var name: String = "world"
         private var message: String { "Hello, " + name }
         var body: some View {
-          Text("\\(message)")
+          Text(verbatim: "\\(message)")
         }
       }"
     `)
@@ -140,7 +140,7 @@ describe('Pyreon → Swift emit', () => {
         let title: String
         let description: String
         var body: some View {
-          Text("\\(title): \\(description)")
+          Text(verbatim: "\\(title): \\(description)")
         }
       }"
     `)
@@ -157,7 +157,7 @@ describe('Pyreon → Swift emit', () => {
       "struct Card: View {
         let title: String
         var body: some View {
-          Text("\\(title)")
+          Text(verbatim: "\\(title)")
         }
       }
 

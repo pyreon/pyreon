@@ -1146,7 +1146,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
     // Else branch after the literal-path if.
     expect(out).toContain('if path == "/" {')
     expect(out).toContain('else {')
-    expect(out).toContain('Text("Pyreon Router: no route for \\(path)")')
+    expect(out).toContain('Text(verbatim: "Pyreon Router: no route for \\(path)")')
   })
 
   it('C5.4 — :param route emits else fallback at end of if/else if chain', () => {
@@ -1165,7 +1165,7 @@ describe('Phase C5.2 — Swift emit: .navigationDestination(for:)', () => {
     expect(out).toContain('if path == "/" {')
     expect(out).toContain('else if let params = PyreonRouter.matchPath(path, "/users/:id")')
     expect(out).toContain('else {')
-    expect(out).toContain('Text("Pyreon Router: no route for \\(path)")')
+    expect(out).toContain('Text(verbatim: "Pyreon Router: no route for \\(path)")')
   })
 
   it('C5.4 — fallback does NOT fire when routes are absent (C4 scaffold)', () => {
@@ -1503,7 +1503,7 @@ describe('Phase 3 — per-route redirects (compile-time alias)', () => {
     expect(out).not.toContain('path == "/a"')
     expect(out).not.toContain('path == "/b"')
     // The closure still returns a View (bare fallback, no lone `else`).
-    expect(out).toContain('Text("Pyreon Router: no route for')
+    expect(out).toContain('Text(verbatim: "Pyreon Router: no route for')
     expect(out).not.toContain('else {')
   })
 

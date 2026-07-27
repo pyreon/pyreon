@@ -36,7 +36,7 @@ describe('component-props param destructuring', () => {
     const out = transform(SRC, { target: 'swift' }).code
     expect(out).toContain('let label: String')
     expect(out).toContain('let count: Int')
-    expect(out).toContain('Text("\\(label)")') // bare `label` reference resolves (interpolated)
+    expect(out).toContain('Text(verbatim: "\\(label)")') // bare `label` reference resolves (interpolated)
   })
 
   it('Kotlin: destructured props become composable params', () => {

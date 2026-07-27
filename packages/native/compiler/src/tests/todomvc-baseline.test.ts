@@ -115,7 +115,7 @@ describe('TodoMVC compile baseline', () => {
             }
             .animation(.default, value: visible.count)
             HStack(alignment: .center, spacing: 8) {
-              Text("\\(remaining) remaining")
+              Text(verbatim: "\\(remaining) remaining")
               Button("All") { filter = .all }
               Button("Active") { filter = .active }
               Button("Completed") { filter = .completed }
@@ -137,7 +137,7 @@ describe('TodoMVC compile baseline', () => {
                 get: { todo.done },
                 set: { _ in onToggle() }
               ))
-            Text("\\(todo.text)")
+            Text(verbatim: "\\(todo.text)")
             Button("Remove") { onRemove() }
           }
         }
