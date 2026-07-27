@@ -51,6 +51,7 @@ const COMPETITORS = [
 
 interface Row {
   file: string
+  deterministic: boolean
   competitor: string | null
   competitorStatic: boolean
   prod: 'reexec' | 'toplevel' | 'external' | 'none'
@@ -60,6 +61,12 @@ interface Row {
   rotate: boolean
   forcedGc: boolean
 }
+
+// Deterministic COUNT benches (render counts, setOption counts, cell re-runs)
+// produce the same integer every run — a median or CI over them is meaningless.
+// They need a GATE, not STATS.
+const isDeterministicCount = (src: string) =>
+  /deterministic (render )?count|render COUNT|DETERMINISTIC/i.test(src)
 
 const rows: Row[] = []
 for (const f of files) {
@@ -94,10 +101,19 @@ for (const f of files) {
 
   rows.push({
     file: f,
+    deterministic: isDeterministicCount(raw),
     competitor,
     competitorStatic,
     prod,
-    gate: /correctness gate|CORRECTNESS|verifyCorrect|assertSame|sanity check|gate\b.*fail|mismatch/i.test(src),
+    // A gate is any pre-timing assertion that ABORTS. In-tree that is spelled
+    // three ways: an explicit "CORRECTNESS GATE" throw, a bare
+    // `throw new Error(...)` after comparing the two sides, or `process.exit(1)`.
+    // The first version only matched the literal phrase and so reported three
+    // properly-gated benches (charts, table-rerender, toast-commit) as gapless.
+    gate:
+      /correctness gate|CORRECTNESS|verifyCorrect|assertSame|sanity check/i.test(src) ||
+      /throw new Error\(/.test(src) ||
+      /process\.exit\(1\)/.test(src),
     stats: /bootstrapCI|percentile|median|ci95|CI95|p50/i.test(src),
     iso: /spawnSync|Bun\.spawn|child_process|interleav|round-robin|process isolation|per-op process/i.test(src),
     rotate: /rotat|inputPool|pool\[|inputs\[i %|% inputs\.length|cycle/i.test(src),
@@ -118,7 +134,7 @@ const bad = (r: Row) => {
     if (r.prod === 'none') issues.push('PROD:none')
     else if (r.competitorStatic && r.prod === 'toplevel') issues.push('PROD:hoisted (static competitor import)')
     if (!r.gate) issues.push('no GATE')
-    if (!r.stats) issues.push('no STATS')
+    if (!r.stats && !r.deterministic) issues.push('no STATS')
   }
   if (r.forcedGc) issues.push('forced GC')
   return issues
