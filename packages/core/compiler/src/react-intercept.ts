@@ -15,8 +15,7 @@
 import ts from 'typescript'
 import { assertClassicTs } from './ts'
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Types
+// ═══════════════════════════════════════════════════════════════════════════════ Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export type ReactDiagnosticCode =
@@ -553,8 +552,6 @@ function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpress
   // `cell.value = x`, `o.value = y`, `ref.current.value = z` (the receiver
   // there is the `.current` PropertyAccess, already excluded by
   // `isDotValueAccess` requiring an Identifier receiver). Require positive
-  // evidence the receiver is a `const X = signal(...)` / `computed(...)` /
-  // `useSignal(...)` / `createSignal(...)` binding before emitting.
   if (!ctx.signalBindings.has(varName)) return
   const parent = node.parent
   if (ts.isBinaryExpression(parent) && parent.left === node) {

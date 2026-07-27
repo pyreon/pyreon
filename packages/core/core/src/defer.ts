@@ -62,9 +62,8 @@ export function _setupVisibleTrigger(
   rootMargin: string,
 ): () => void {
   if (!el || typeof IntersectionObserver === 'undefined') {
-    // Observer unavailable or no DOM target — load eagerly so the
-    // user still sees the component in environments where the
-    // viewport-detection mechanism can't run.
+    // Observer unavailable or no DOM target — load eagerly so the user still sees the
+    // component in environments where the viewport-detection mechanism can't run.
     startLoad()
     return () => {}
   }
@@ -226,11 +225,10 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
   // Note: `on === 'visible'` is wired below alongside the wrapper element
   // because it needs a DOM target to observe.
 
-  // Inline accessor — type annotation deliberately omitted so the
-  // inferred return type narrows to `VNodeChildAtom | VNodeChildAtom[]`
-  // (what `h()`'s rest-args expect). Annotating as `VNodeChild` widens
-  // to include `VNodeChildAccessor`, which can't be returned from another
-  // accessor.
+  // Inline accessor — type annotation deliberately omitted so the inferred return type
+  // narrows to `VNodeChildAtom | VNodeChildAtom[]` (what `h()`'s rest-args expect).
+  // Annotating as `VNodeChild` widens to include `VNodeChildAccessor`, which can't be
+  // returned from another accessor.
   const renderContent = () => {
     const err = Failed()
     if (err) throw err
@@ -248,17 +246,14 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
   }
 
   if ('on' in props && props.on === 'visible') {
-    // Visible-mode needs a DOM target for IntersectionObserver. A
-    // wrapper `<div data-pyreon-defer="visible">` carries the ref and
-    // styles `display: contents` so it's transparent to layout (the
-    // fallback / loaded component render as direct children of Defer's
-    // parent).
+    // Visible-mode needs a DOM target for IntersectionObserver. A wrapper `<div
+    // data-pyreon-defer="visible">` carries the ref and styles `display: contents` so
+    // it's transparent to layout (the fallback / loaded component render as direct
+    // children of Defer's parent).
     const containerRef = createRef<HTMLElement>()
     // Visible-mode trigger is wired via `_setupVisibleTrigger` so the
-    // observer-construction + intersection-detection logic is
-    // independently testable. onMount keeps the browser-API access
-    // out of the SSR path. The arrow fires only inside a renderer mount
-    // — `_setupVisibleTrigger` itself is unit-tested directly.
+    // observer-construction + intersection-detection logic is independently testable.
+    // onMount keeps the browser-API access out of the SSR path.
     /* v8 ignore start */
     onMount(() =>
       _setupVisibleTrigger(

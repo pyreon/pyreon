@@ -234,11 +234,10 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
       const key = keyFn(item, i)
       if (entries.has(key)) continue
       const itemRef = createRef<HTMLElement>()
-      // Both render AND mountChild must run untracked — child component setup
-      // must NOT subscribe this effect. Otherwise an unrelated signal flip re-runs
-      // TransitionGroup, runCleanup() disposes the children's inner effects, and
-      // the next mount skips re-rendering kept entries, losing inner reactivity.
-      // Same shape as the mountFor / mountKeyedList fix in nodes.ts.
+      // Both render AND mountChild must run untracked — child component setup must NOT
+      // subscribe this effect. Otherwise an unrelated signal flip re-runs
+      // TransitionGroup, runCleanup() disposes the children's inner effects, and the
+      // next mount skips re-rendering kept entries, losing inner reactivity.
       const cleanup = runUntracked(() => {
         const rawVNode = render(item, i)
         const vnode: VNode =
@@ -376,11 +375,10 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
   return h(tag, { ref: containerRef })
 }
 
-// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this
-// component needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than
-// a bare `nativeCompat(X)` statement: inside the built lib's shared chunk a bare
-// call is an unremovable side effect that RETAINS the whole component body in
-// every consumer bundle that never imports it (~1.5KB gz measured). The PURE
-// annotation lets the bundler drop it when the export is unused.
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component
+// needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than a bare
+// `nativeCompat(X)` statement: inside the built lib's shared chunk a bare call is an
+// unremovable side effect that RETAINS the whole component body in every consumer
+// bundle that never imports it (~1.5KB gz measured).
 const _TransitionGroup = /* @__PURE__ */ nativeCompat(TransitionGroup)
 export { _TransitionGroup as TransitionGroup }

@@ -63,18 +63,15 @@ export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
 
 // ===== Runtime config — one-time app-boot hook (rocketstyle-style) =====
-//
-// Router-agnostic navigation wiring for `<Link>`. Call `init({ navigate })`
-// once at app boot to upgrade internal links to SPA navigation.
+// Router-agnostic navigation wiring for `<Link>`. Call `init({ navigate })` once at app
+// boot to upgrade internal links to SPA navigation.
 
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
 // ===== Web runtime exports — all 15 canonical primitives =====
-//
-// On native targets these imports are intercepted by the PMTC
-// compiler before the JSX call site reaches runtime — these
-// implementations only run on web.
+// On native targets these imports are intercepted by the PMTC compiler before the JSX
+// call site reaches runtime — these implementations only run on web.
 
 export { Stack } from './web/Stack'
 export { Inline } from './web/Inline'

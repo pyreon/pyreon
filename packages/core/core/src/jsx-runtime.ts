@@ -31,14 +31,6 @@ export function jsx(
   // `makeReactiveProps` in mount.ts) MUST survive the destructure with
   // their getters intact. A plain `{ children, ...rest } = props`
   // destructure fires every getter on `props` and stores the resolved
-  // value, breaking signal-driven reactivity for any downstream
-  // consumer that reads `props.x` in a tracking scope.
-  //
-  // Fast path: if `props` has no own property descriptors with `get`
-  // accessors, we can use the original value-copy shape (cheap object
-  // literal allocation). This is the 99% case — only framework wrappers
-  // (rocketstyle attrs HOC, Wrapper, styled) and direct signal props
-  // produce getter-shaped descriptors.
   const descriptors = Object.getOwnPropertyDescriptors(props)
   let hasGetter = false
   for (const k in descriptors) {

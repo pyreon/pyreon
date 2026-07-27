@@ -96,14 +96,12 @@ export interface Selector<T> {
  */
 export function createSelector<T>(source: () => T): Selector<T> {
   const subs = new Map<T, Set<() => void>>()
-  // Bound updaters (from `selector.subscribe`) — kept SEPARATE from the effect
-  // bucket so the source effect can call them with the resolved boolean directly
-  // instead of an empty re-run closing over `current` and `value`.
-  //
-  // Inline-first-subscriber storage (the signal `_d1` trick): the DOMINANT shape
-  // is <For> rows where every key has EXACTLY ONE subscriber, so storing a bare
-  // function avoids one Set allocation per row. Promote to a Set only when a
-  // SECOND subscriber arrives for the same key.
+  // Bound updaters (from `selector.subscribe`) — kept SEPARATE from the effect bucket
+  // so the source effect can call them with the resolved boolean directly instead of an
+  // empty re-run closing over `current` and `value`. Inline-first-subscriber storage
+  // (the signal `_d1` trick): the DOMINANT shape is <For> rows where every key has
+  // EXACTLY ONE subscriber, so storing a bare function avoids one Set allocation per
+  // row.
   const boundSubs = new Map<T, ((matches: boolean) => void) | Set<(matches: boolean) => void>>()
   let current: T
   let initialized = false

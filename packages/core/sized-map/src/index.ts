@@ -53,15 +53,11 @@ export class SizedMap<K, V> {
     if (this._map.has(key)) {
       this._map.delete(key)
     } else if (this._map.size >= this._maxEntries) {
-      // Evict oldest — Map iterates in insertion order, so the FIRST key
-      // is the least-recently-inserted (or, under LRU, the least-recently
-      // USED — `.get` already moved touched entries to the tail).
-      //
-      // This branch runs only when `size >= maxEntries`, and the constructor
-      // floors `maxEntries` at 1 (`Math.max(1, …)`), so the map is guaranteed
-      // non-empty here — the oldest key is always defined. The assertion
-      // documents that invariant and avoids an uncoverable `=== undefined`
-      // branch (deleting `undefined` would be a harmless Map no-op regardless).
+      // Evict oldest — Map iterates in insertion order, so the FIRST key is the
+      // least-recently-inserted (or, under LRU, the least-recently USED — `.get`
+      // already moved touched entries to the tail). This branch runs only when `size >=
+      // maxEntries`, and the constructor floors `maxEntries` at 1 (`Math.max(1, …)`),
+      // so the map is guaranteed non-empty here — the oldest key is always defined.
       const oldest = this._map.keys().next().value as K
       this._map.delete(oldest)
     }

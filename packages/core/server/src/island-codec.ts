@@ -92,10 +92,9 @@ function walk(
   const t = typeof value
   if (t === 'string' || t === 'number' || t === 'boolean') return value
   if (t === 'bigint') return { [TAG]: 'B', [VALUE]: String(value as bigint) }
-  // function / symbol / undefined → null (matches JSON.stringify on
-  // arrays). Containing objects skip these as own keys BEFORE recursing,
-  // so this branch is only reached for Map/Set values + as a defensive
-  // fallback if a caller hands in a non-portable root.
+  // function / symbol / undefined → null (matches JSON.stringify on arrays). Containing
+  // objects skip these as own keys BEFORE recursing, so this branch is only reached for
+  // Map/Set values + as a defensive fallback if a caller hands in a non-portable root.
   if (t === 'function' || t === 'symbol' || t === 'undefined') return null
 
   // Objects from here on.
@@ -181,10 +180,9 @@ function walk(
     result[key] = walk(val, seen, `${path}.${key}`, islandName, depth + 1)
   }
 
-  // If the user's plain object literally has `__pyreon_t` as an own key,
-  // wrap it in the `'e'` (escape) marker so the decoder doesn't mistake
-  // it for a tagged value. The escape wrapping is the only way to
-  // round-trip such an object.
+  // If the user's plain object literally has `__pyreon_t` as an own key, wrap it in the
+  // `'e'` (escape) marker so the decoder doesn't mistake it for a tagged value. The
+  // escape wrapping is the only way to round-trip such an object.
   if (hasOwnTag) {
     return { [TAG]: 'e', [VALUE]: result }
   }

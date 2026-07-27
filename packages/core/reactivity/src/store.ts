@@ -52,13 +52,9 @@ function isMarkedRaw(value: object): boolean {
   return (value as Record<symbol, unknown>)[IS_RAW] === true
 }
 
-// Built-in object types that have internal slots and fail the Proxy
-// internal-slot check on every method call (`Map.prototype.set` called on a
-// Proxy → `TypeError: Method ... called on incompatible receiver`). Returning
-// the raw instance keeps these usable but at the cost of fine-grained
-// reactivity for their contents — write replace-the-whole-Map style if you
-// need reactivity (`store.users = new Map(store.users)`). A future PR can
-// add Vue-style collection-aware wrapping for Map/Set if demand emerges.
+// Built-in object types that have internal slots and fail the Proxy internal-slot check
+// on every method call (`Map.prototype.set` called on a Proxy → `TypeError: Method ...
+// called on incompatible receiver`).
 function isBuiltinNonProxiable(obj: object): boolean {
   return (
     obj instanceof Map ||
@@ -117,8 +113,6 @@ function wrap(raw: object, shallow: boolean): object {
   // (the cache is only populated at the bottom of this function, AFTER the
   // builtin/markRaw checks), and neither check can flip afterwards — object
   // type is fixed, and markRaw-after-wrap is a documented no-op — so the hit
-  // returns without re-running the 8 `instanceof` checks + the markRaw symbol
-  // lookup that the builtin/markRaw guards below perform.
   const cache = shallow ? shallowProxyCache : proxyCache
   const cached = cache.get(raw)
   if (cached) return cached
@@ -126,9 +120,8 @@ function wrap(raw: object, shallow: boolean): object {
   // Built-ins with internal slots (Map, Set, Date, …) can't be proxied: their
   // methods fail the receiver check when called on the proxy. Return raw.
   if (isBuiltinNonProxiable(raw)) return raw
-  // Vue parity — `markRaw()` opts an object out of proxying entirely. Useful
-  // for class instances, third-party objects, or any shape the consumer
-  // wants to keep unwrapped.
+  // Vue parity — `markRaw()` opts an object out of proxying entirely. Useful for class
+  // instances, third-party objects, or any shape the consumer wants to keep unwrapped.
   if (isMarkedRaw(raw)) return raw
 
   // Per-property signals. Lazily created on first access.
@@ -157,12 +150,11 @@ function wrap(raw: object, shallow: boolean): object {
       // Array length — tracked via dedicated signal for push/pop/splice reactivity
       if (isArray && key === 'length') return lengthSig?.()
 
-      // Non-own properties without a tracked signal: prototype methods (forEach,
-      // map, push, …) are returned untracked so array methods work. BUT if a
-      // signal already exists for this key the property WAS tracked before and is
-      // most likely absent due to a `delete` — keep tracking via the existing
-      // signal so a later reassign re-runs effects that read the key during its
-      // absent window.
+      // Non-own properties without a tracked signal: prototype methods (forEach, map,
+      // push, …) are returned untracked so array methods work. BUT if a signal already
+      // exists for this key the property WAS tracked before and is most likely absent
+      // due to a `delete` — keep tracking via the existing signal so a later reassign
+      // re-runs effects that read the key during its absent window.
       if (!Object.hasOwn(target, key)) {
         if (propSignals.has(key)) return propSignals.get(key)?.()
         return (target as Record<PropertyKey, unknown>)[key]
@@ -204,7 +196,6 @@ function wrap(raw: object, shallow: boolean): object {
       // filters these, but the proxy is the public write surface
       // (`store.__proto__ = …`, spread of untrusted data) so guard here
       // too. Silently ignore — assigning these through a store is never
-      // a legitimate operation.
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
         return true
       }
@@ -241,7 +232,6 @@ function wrap(raw: object, shallow: boolean): object {
       // still tracks the old (dropped) one and never re-runs. Keeping it
       // preserves signal identity across delete-then-reassign cycles. Trade-off:
       // long-lived stores with high churn on transient keys retain those entries
-      // — reassign to undefined instead of deleting if that's a real leak.
       if (typeof key !== 'symbol' && propSignals.has(key)) {
         propSignals.get(key)?.set(undefined)
       }

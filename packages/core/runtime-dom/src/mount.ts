@@ -48,9 +48,8 @@ const noop: Cleanup = () => {
 // removeChild closure for every nested element that has no reactive work.
 let _elementDepth = 0
 
-// Stack tracking which component is currently being mounted (depth-first order).
-// Used to infer parent/child relationships for DevTools.
-// Only allocated in dev — production mounts skip devtools entirely.
+// Stack tracking which component is currently being mounted (depth-first order). Used
+// to infer parent/child relationships for DevTools.
 let _mountingStack: string[] | undefined
 if (process.env.NODE_ENV !== 'production') _mountingStack = []
 
@@ -189,18 +188,13 @@ export function mountChild(
       )
     }
     // Portal content lives OUTSIDE the app's mount container, so delegated events
-    // bubbling from it never reach the app root's listener — every delegated
-    // handler inside a portal was silently dead. Make the Portal own its
-    // delegation root. Safe when the target is an ANCESTOR of the app root
-    // (document.body): the per-dispatch DELEGATED_ELEMENTS invoked-set makes an
-    // outer root skip elements an inner one already handled. Idempotent.
+    // bubbling from it never reach the app root's listener — every delegated handler
+    // inside a portal was silently dead. Make the Portal own its delegation root.
     if (target instanceof Element) setupDelegation(target)
-    // Portal content mounts into `target` (e.g. document.body) — a LIVE parent
-    // NOT removed as a unit, so mountChild's cleanup does not remove the DOM.
-    // Without an explicit remover a portaled modal / toast / tooltip LEAKS into
-    // the target forever once its owner unmounts. Bracket the content with
-    // comment markers and remove everything between them on dispose; mounting
-    // before `portalEnd` keeps reactive content inside the bracket.
+    // Portal content mounts into `target` (e.g. document.body) — a LIVE parent NOT
+    // removed as a unit, so mountChild's cleanup does not remove the DOM. Without an
+    // explicit remover a portaled modal / toast / tooltip LEAKS into the target forever
+    // once its owner unmounts.
     const portalStart = document.createComment('portal')
     const portalEnd = document.createComment('/portal')
     target.appendChild(portalStart)
@@ -514,14 +508,6 @@ function mountComponent(
   }
 
   // Merge vnode.children into props.children if not already set.
-  //
-  // Descriptor-copy preserves getter-shaped reactive props (the compiler-emitted
-  // `_rp(() => signal())` wrappers that `makeReactiveProps` converts to getters).
-  // A plain `{ ...vnode.props, children }` spread would fire every getter HERE
-  // and store the resolved value as a static data property, breaking
-  // signal-driven reactivity for every prop the component reads in a tracking
-  // scope — the bug-class root for any component called via the canonical
-  // `h(Comp, props, ...children)` shape with reactive props.
   const children = vnode.children ?? []
   let rawProps: Record<string, unknown>
   if (
@@ -593,9 +579,8 @@ function mountComponent(
 
   if (process.env.NODE_ENV !== 'production' && output != null && typeof output === 'object') {
     if (!(output instanceof Promise) && !('type' in output) && !Array.isArray(output) && !(output as any).__isNative) {
-      // Objects without `type` that are NOT arrays (valid VNodeChild[] from
-      // Fragment returns), NOT NativeItems (from _tpl) and NOT Promises are
-      // invalid.
+      // Objects without `type` that are NOT arrays (valid VNodeChild[] from Fragment
+      // returns), NOT NativeItems (from _tpl) and NOT Promises are invalid.
       console.warn(
         `[Pyreon] Component <${componentName}> returned an invalid value. Components must return a VNode, string, null, function, Promise, or array.`,
       )
@@ -607,11 +592,8 @@ function mountComponent(
   }
 
   // Async component support — parity with `renderToString`, which awaits Promise
-  // outputs. Insert a placeholder comment at the mount point, then mount the
-  // resolved value once the Promise settles. An outer <Suspense> only recognizes
-  // lazy()-style markers, so this is the canonical client-side "async function
-  // component" path. Nothing visible renders during the await — use lazy() +
-  // Suspense if you need a fallback.
+  // outputs. Insert a placeholder comment at the mount point, then mount the resolved
+  // value once the Promise settles.
   if (output instanceof Promise) {
     const placeholder = document.createComment('async')
     parent.insertBefore(placeholder, anchor)

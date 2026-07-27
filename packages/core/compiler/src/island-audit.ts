@@ -499,13 +499,12 @@ function detectDeadIslands(
 ): void {
   for (const d of decls) {
     if (importedFiles.has(d.loc.path)) continue
-    // fs-router routes (`src/routes/**` — the @pyreon/zero / fs-router
-    // convention) are AUTO-LOADED entry points: the framework's generated
-    // virtual route module `lazy(() => import('<abs route path>'))`s them, so
-    // no hand-written source statically OR dynamically imports the file. The
-    // dead-island heuristic can't see that generated import, so an island
-    // declared in a route would false-positive as "dead" even though the route
-    // renders it. Skip route files. (Non-route islands stay covered.)
+    // fs-router routes (`src/routes/**` — the @pyreon/zero / fs-router convention) are
+    // AUTO-LOADED entry points: the framework's generated virtual route module `lazy(()
+    // => import('<abs route path>'))`s them, so no hand-written source statically OR
+    // dynamically imports the file. The dead-island heuristic can't see that generated
+    // import, so an island declared in a route would false-positive as "dead" even
+    // though the route renders it.
     if (/(?:^|\/)src\/routes\//.test(d.loc.relPath)) continue
     findings.push({
       code: 'dead-island',
@@ -545,12 +544,9 @@ export function auditIslands(rootDir: string): IslandAuditResult {
   const declsByFile = new Map<string, IslandDecl[]>()
   const allDecls: IslandDecl[] = []
   const allRegistry: RegistryEntry[] = []
-  // Set of canonical absolute file paths that some other file imports
-  // (statically OR dynamically). Used by the dead-island detector to
-  // distinguish declared-but-orphaned islands from declared-and-wired-up
-  // ones. extractImports records resolve()'d relative specs WITHOUT
-  // extension-completion, so we re-canonicalize each entry through the
-  // file-resolution helper to land on the actual file path.
+  // Set of canonical absolute file paths that some other file imports (statically OR
+  // dynamically). Used by the dead-island detector to distinguish declared-but-orphaned
+  // islands from declared-and-wired-up ones.
   const resolvedImports = new Set<string>()
 
   for (const file of files) {
@@ -561,11 +557,9 @@ export function auditIslands(rootDir: string): IslandAuditResult {
     }
     allRegistry.push(...ex.registryEntries)
     for (const spec of ex.imports) {
-      // extractImports stores absolute paths for relative specs (already
-      // resolve()'d) and bare package names as-is. Bare specs never
-      // match an island file path, so skip them. For absolute paths,
-      // try ext / index completion to land on the canonical file the
-      // dead-island detector compares against.
+      // extractImports stores absolute paths for relative specs (already resolve()'d)
+      // and bare package names as-is. Bare specs never match an island file path, so
+      // skip them.
       if (!spec.startsWith('/')) continue
       const resolved = resolveAbsToFile(spec)
       if (resolved) resolvedImports.add(resolved)

@@ -75,11 +75,10 @@ function KeepAlive(props: KeepAliveProps): VNodeChild {
   return h('div', { ref: containerRef, style: 'display: contents' })
 }
 
-// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this
-// component needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than
-// a bare `nativeCompat(X)` statement: inside the built lib's shared chunk a bare
-// call is an unremovable side effect that RETAINS the whole component body in
-// every consumer bundle that never imports it (~1.5KB gz measured). The PURE
-// annotation lets the bundler drop it when the export is unused.
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component
+// needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than a bare
+// `nativeCompat(X)` statement: inside the built lib's shared chunk a bare call is an
+// unremovable side effect that RETAINS the whole component body in every consumer
+// bundle that never imports it (~1.5KB gz measured).
 const _KeepAlive = /* @__PURE__ */ nativeCompat(KeepAlive)
 export { _KeepAlive as KeepAlive }

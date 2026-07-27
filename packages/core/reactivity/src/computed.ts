@@ -53,7 +53,6 @@ export interface ComputedOptions<T> {
 // `Object.defineProperty` accessors, which force the function into V8 dictionary
 // mode; an A/B measured that at ~55% MORE retained heap per computed. `read` and
 // `recompute` MUST stay per-instance closures — their identity is stored in
-// dependency subscriber Sets and passed to `_markRecompute`.
 interface ComputedFn<T> {
   (): T
   /** @internal cached value */
@@ -235,14 +234,10 @@ function computedLazy<T>(
 
   recompute = () => {
     // Delegates to the CANONICAL lazy notify body in batch.ts, which marks dirty
-    // (idempotent), DEFERS direct subscribers to the batch DRAIN, and cascades
-    // into subscribers. The deferral is glitch-freedom: a lazy recompute runs
-    // INLINE during the write's notify phase, so `read._v` is TORN mid-multi-
-    // write-batch; the deferred updater fires once, at the drain, on the settled
-    // value.
-    //
-    // This closure exists ONLY for its per-instance subscriber-set IDENTITY —
-    // dispatch sites holding the `_c` back-ref call the helper directly.
+    // (idempotent), DEFERS direct subscribers to the batch DRAIN, and cascades into
+    // subscribers. The deferral is glitch-freedom: a lazy recompute runs INLINE during
+    // the write's notify phase, so `read._v` is TORN mid-multi- write-batch; the
+    // deferred updater fires once, at the drain, on the settled value.
     _markLazyAndPropagate(read)
   }
   // Recompute marker → the batch router and `propagateLazyDirty` run this inline
@@ -332,9 +327,8 @@ function computedWithEquals<T>(
       // and notify nobody when structurally equal.
       if (!(wasInitialized && equals(read._value, next))) {
         read._value = next
-        // Propagate the change (never on the FIRST eval — the actively-
-        // tracking reader that triggered it is already subscribed and would
-        // spuriously re-run).
+        // Propagate the change (never on the FIRST eval — the actively- tracking reader
+        // that triggered it is already subscribed and would spuriously re-run).
         if (wasInitialized) propagateEagerChange(read)
       }
     }
@@ -350,9 +344,8 @@ function computedWithEquals<T>(
   read._d = null
 
   recompute = () => {
-    // Inline dirty-marking NOTIFY, idempotent via the `_dirty` guard exactly
-    // like the lazy variant. `enqueueEagerRefresh` books the guaranteed tier-1
-    // evaluation.
+    // Inline dirty-marking NOTIFY, idempotent via the `_dirty` guard exactly like the
+    // lazy variant. `enqueueEagerRefresh` books the guaranteed tier-1 evaluation.
     if (read._disposed || read._dirty) return
     read._dirty = true
     if (isBatching()) {

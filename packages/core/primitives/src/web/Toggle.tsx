@@ -23,10 +23,9 @@ import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
  * `class` / `style` props OR wrap with a custom rendering layer.
  */
 export const Toggle = (props: ToggleProps): VNode => {
-  // Same reactive-prop-read pattern as Field — defer the `props.value`
-  // read into the thunk so the reactive binding tracks correctly when
-  // the compiler emits the prop as a `_rp(() => signal())` getter.
-  // See Field.tsx for the full reasoning.
+  // Same reactive-prop-read pattern as Field — defer the `props.value` read into the
+  // thunk so the reactive binding tracks correctly when the compiler emits the prop as
+  // a `_rp(() => signal())` getter. See Field.tsx for the full reasoning.
   const getValue = (): boolean => {
     const v = props.value
     if (typeof v === 'function') return (v as () => boolean)()

@@ -81,10 +81,9 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
   async function renderPage(path: string): Promise<void> {
     const url = new URL(path, origin)
     const req = new Request(url.href)
-    // Class I — capture timer id outside Promise.race; clearTimeout
-    // on the success path in finally. Without this, every successful
-    // prerender leaks a 30s pending timer + reject callback until it
-    // fires. Same shape as #734's isr.ts revalidate() fix.
+    // Class I — capture timer id outside Promise.race; clearTimeout on the success path
+    // in finally. Without this, every successful prerender leaks a 30s pending timer +
+    // reject callback until it fires.
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     let res: Response
     try {
@@ -122,8 +121,6 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
     // `filePath` resolving to `/app/dist-secret/x` passes
     // `'/app/dist-secret/x'.startsWith('/app/dist')` → true, and the
     // build writes (possibly secret-bearing) HTML to a SIBLING dir
-    // outside the intended output root. `path` derives from caller-
-    // supplied route params (e.g. CMS slugs via getStaticPaths).
     const resolvedOut = resolve(outDir)
     const resolvedFile = resolve(filePath)
     if (resolvedFile !== resolvedOut && !resolvedFile.startsWith(resolvedOut + sep)) {

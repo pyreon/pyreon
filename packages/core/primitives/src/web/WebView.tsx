@@ -83,9 +83,8 @@ export function WebView(props: WebViewProps): VNode {
       if (hasData) push()
       if (hasOnMessage) injectReverseBridge()
     }
-    // Re-push whenever `data` changes (the read tracks it). On the first
-    // run the iframe usually isn't loaded yet → push no-ops, and `onLoad`
-    // pushes once it is.
+    // Re-push whenever `data` changes (the read tracks it). On the first run the iframe
+    // usually isn't loaded yet → push no-ops, and `onLoad` pushes once it is.
     if (hasData) {
       effect(() => {
         void (props as { data?: unknown }).data

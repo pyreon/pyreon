@@ -16,10 +16,9 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
   const rest = {} as Omit<T, K[number]>
   const keySet = new Set<string | symbol>(keys as (string | symbol)[])
 
-  // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them
-  // silently. Without this, symbol-keyed props (e.g. branded reactive props
-  // under Symbol.for('pyreon.reactiveProp')) would vanish from both picked
-  // and rest.
+  // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them silently.
+  // Without this, symbol-keyed props (e.g. branded reactive props under
+  // Symbol.for('pyreon.reactiveProp')) would vanish from both picked and rest.
   for (const key of Reflect.ownKeys(props)) {
     const desc = Object.getOwnPropertyDescriptor(props, key)
     // `desc` is only undefined if the key was deleted between ownKeys and
@@ -264,10 +263,8 @@ export function _wrapSpread(
 export function makeReactiveProps(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
-  // Fast path: scan for any REACTIVE_PROP-branded function first.
-  // If none found, return raw immediately — no object allocation, no property copying.
-  // This saves ~90 object allocations + ~450 property copies per page load
-  // for components with all-static props (buttons, icons, layout, etc.).
+  // Fast path: scan for any REACTIVE_PROP-branded function first. If none found, return
+  // raw immediately — no object allocation, no property copying.
   const keys = Object.keys(raw)
   let hasAny = false
   for (let i = 0; i < keys.length; i++) {

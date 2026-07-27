@@ -502,14 +502,9 @@ export function auditContent(
   // detect orphans (Pass 3, global across configs).
   const claimedMdPaths = new Set<string>()
 
-  // Resolve links PER-CONFIG. Two separate zero-content apps in one
-  // monorepo (e.g. the main `docs/` site and an `examples/*` mini-app)
-  // can BOTH declare a `docs` collection mounting `/docs`. Keying slug
-  // sets GLOBALLY by collection name/prefix let the second config
-  // OVERWRITE the first's slug set, so every valid link in the larger
-  // app was flagged broken. Each config's pages validate against ITS
-  // OWN collections; a link to another app's prefix is `no-match`
-  // (left alone — cross-app links can't be resolved here).
+  // Resolve links PER-CONFIG. Two separate zero-content apps in one monorepo (e.g. the
+  // main `docs/` site and an `examples/*` mini-app) can BOTH declare a `docs`
+  // collection mounting `/docs`.
   for (const cfg of configs) {
     const decls = parseContentConfig(cfg)
 

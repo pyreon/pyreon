@@ -77,11 +77,9 @@ function Transition(props: TransitionProps): VNodeChild {
   const ref = createRef<HTMLElement>()
   const isMounted = signal(runUntracked<boolean>(props.show))
 
-  // Cancel in-progress enter / leave when the component unmounts or when a
-  // new transition supersedes the current one. Both are set inside their
-  // respective applyX(). Calling the cancel removes event listeners, clears
-  // the safety timer, and strips active-state classes — WITHOUT firing the
-  // onAfterX callback (which would run on a detached element after unmount).
+  // Cancel in-progress enter / leave when the component unmounts or when a new
+  // transition supersedes the current one. Both are set inside their respective
+  // applyX().
   let pendingEnterCancel: (() => void) | null = null
   let pendingLeaveCancel: (() => void) | null = null
   let initialized = false
@@ -171,11 +169,9 @@ function Transition(props: TransitionProps): VNodeChild {
     })
   }
 
-  // Defer applyEnter until the ref is actually populated. The mount pipeline
-  // assigns it when the child element commits; with plain DOM children that is
-  // one microtask, but nested inside `<Portal>` / `<Show>` the commit can be
-  // several behind. Retrying for a few microtasks covers both without timing
-  // assumptions — passing null to applyEnter would crash on `.classList`.
+  // Defer applyEnter until the ref is actually populated. The mount pipeline assigns it
+  // when the child element commits; with plain DOM children that is one microtask, but
+  // nested inside `<Portal>` / `<Show>` the commit can be several behind.
   const MAX_REF_RETRIES = 16
   const safeApplyEnter = (retries = MAX_REF_RETRIES) => {
     const el = ref.current
@@ -252,11 +248,10 @@ function Transition(props: TransitionProps): VNodeChild {
   }) as unknown as VNode
 }
 
-// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this
-// component needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than
-// a bare `nativeCompat(X)` statement: inside the built lib's shared chunk a bare
-// call is an unremovable side effect that RETAINS the whole component body in
-// every consumer bundle that never imports it (~1.5KB gz measured). The PURE
-// annotation lets the bundler drop it when the export is unused.
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component
+// needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than a bare
+// `nativeCompat(X)` statement: inside the built lib's shared chunk a bare call is an
+// unremovable side effect that RETAINS the whole component body in every consumer
+// bundle that never imports it (~1.5KB gz measured).
 const _Transition = /* @__PURE__ */ nativeCompat(Transition)
 export { _Transition as Transition }

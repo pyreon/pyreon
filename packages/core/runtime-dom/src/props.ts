@@ -110,16 +110,10 @@ const SAFE_TAGS = new Set([
   'wbr',
 ])
 
-// Safe SVG tags allowed by the fallback sanitizer. Icons and inline
-// illustrations ship as `<svg>` fragments through `innerHTML`; without these the
-// allowlist replaces every SVG element with a text node and an entire icon set
-// renders blank, with no error and no warning. Curated safe profile mirroring
-// DOMPurify's, DELIBERATELY EXCLUDING as XSS-capable: `script`; `foreignObject`
-// (embeds arbitrary HTML, reopening every HTML XSS vector); `style` (CSS
-// injection); and SMIL `animate*`/`set` (the `attributeName="href"
-// values="javascript:…"` vector).
-// All entries LOWERCASE: `sanitizeNode` compares `tagName.toLowerCase()`, and
-// the parser re-cases SVG foreign content so the DOM tagName round-trips.
+// Safe SVG tags allowed by the fallback sanitizer. Icons and inline illustrations ship
+// as `<svg>` fragments through `innerHTML`; without these the allowlist replaces every
+// SVG element with a text node and an entire icon set renders blank, with no error and
+// no warning.
 const SAFE_SVG_TAGS = new Set([
   'svg',
   'g',
@@ -275,7 +269,6 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
     // signal-driven reactivity. Detecting the descriptor and wrapping the read in
     // `renderEffect` is equivalent to applyProp's function-value branch, routed
     // through the descriptor instead of the value — the final consumer that keeps
-    // the getter intact end-to-end.
     const descriptor = Object.getOwnPropertyDescriptor(props, key)
     let c: Cleanup | null
     if (descriptor?.get) {
@@ -499,9 +492,8 @@ function applyStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
-  // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization
-  // (same as React). The name itself is the warning — React doesn't log,
-  // neither should we.
+  // dangerouslySetInnerHTML — intentionally raw, developer owns sanitization (same as
+  // React). The name itself is the warning — React doesn't log, neither should we.
   if (key === 'dangerouslySetInnerHTML') {
     const v = value as { __html: string } | null | undefined
     ;(el as HTMLElement).innerHTML = v?.__html ?? ''
@@ -519,13 +511,11 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   // Event listener: onClick → "click"
   if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
 
-  // Reactive prop — a function value is an accessor closure (the JSX compiler
-  // emits `prop={someExpr(signal())}` as a thunk so the prop tracks the signal).
-  // Wrapped in `renderEffect` ONCE here, before any prop-kind dispatch, so EVERY
-  // sink gets the same reactive treatment; previously special-cased sinks
-  // (innerHTML etc.) early-returned past this wrap and stringified the closure.
-  // renderEffect rather than effect since mountElement's cleanup array owns the
-  // lifecycle.
+  // Reactive prop — a function value is an accessor closure (the JSX compiler emits
+  // `prop={someExpr(signal())}` as a thunk so the prop tracks the signal). Wrapped in
+  // `renderEffect` ONCE here, before any prop-kind dispatch, so EVERY sink gets the
+  // same reactive treatment; previously special-cased sinks (innerHTML etc.)
+  // early-returned past this wrap and stringified the closure.
   if (typeof value === 'function') {
     return renderEffect(() => applyStaticProp(el, key, (value as () => unknown)()))
   }
@@ -644,8 +634,6 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
     // template path as a raw function the compiler can't prove callable, and a
     // raw `String(fn)` wrote the closure SOURCE into the attribute (also an
     // SSR<->client mismatch, since SSR resolves). Resolving here keeps the paths
-    // agreeing; inside the compiler's usual `_bind(() => _setAttr(...))` wrapper
-    // the call runs in a tracked frame, so signal reads stay live.
     value = (value as () => unknown)()
   }
   if (value == null) {
@@ -695,13 +683,10 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   }
 
   // ARIA state/property attributes are STRING enums ("true"/"false"/"mixed"), NOT
-  // presence-based like HTML boolean attrs, so a boolean must render as its
-  // literal string: `aria-checked={true}` -> aria-checked="true", never the
-  // presence-only `aria-checked=""` that assistive tech reads as unchecked. Runs
-  // BEFORE the generic boolean branch, which keeps presence semantics for HTML
-  // boolean attrs. Mirrors runtime-server's SSR serialization so hydration sees
-  // identical markup, and is mirrored branch-for-branch by `applyAttrProp`
-  // (`_setAttr`) for the compiler template path — keep the two in lockstep.
+  // presence-based like HTML boolean attrs, so a boolean must render as its literal
+  // string: `aria-checked={true}` -> aria-checked="true", never the presence-only
+  // `aria-checked=""` that assistive tech reads as unchecked. Runs BEFORE the generic
+  // boolean branch, which keeps presence semantics for HTML boolean attrs.
   if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
     el.setAttribute(key, value ? 'true' : 'false')
     return
@@ -714,9 +699,8 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   }
 
   // SVG and MathML elements: ALWAYS setAttribute. Many of their properties are
-  // read-only `SVGAnimated*` getters (`SVGRectElement.x`, `SVGMarkerElement.refX`),
-  // so `el[key] = value` throws "has only a getter". React/Vue/Solid skip the
-  // property-assignment optimization for non-HTML elements for the same reason.
+  // read-only `SVGAnimated*` getters (`SVGRectElement.x`, `SVGMarkerElement.refX`), so
+  // `el[key] = value` throws "has only a getter".
   if (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
     el.setAttribute(key, String(value))
     return
@@ -728,7 +712,6 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // `data-name` through it sets a JS PROPERTY that `getAttribute` / `dataset` /
   // CSS selectors / SSR HTML all disagree with. Real hit: the server-island
   // marker carried its name in SSR HTML but lost it on every client mount.
-  // Matches React/Vue/Solid.
   if (key.startsWith('data-') || key.startsWith('aria-')) {
     el.setAttribute(key, String(value))
     return

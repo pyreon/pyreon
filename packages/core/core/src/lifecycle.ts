@@ -37,17 +37,9 @@ function captureCallSite(): string {
   /* v8 ignore next */
   if (!stack) return ''
   const lines = stack.split('\n')
-  // Framework paths to skip — conservative, matches the packages that
-  // contain lifecycle / provide / context internals and call these hooks.
-  // Framework / infra paths + function names to skip. Match BOTH source
-  // form (`packages/X/src/...` — workspace consumers via the `bun`
-  // condition) AND published-bundle form (`node_modules/@pyreon/X/lib/...`
-  // — npm consumers). Pre-fix only the source paths were covered, so
-  // every published-package consumer (i.e. almost everyone in production
-  // dev) saw the warning's "Called from:" line point at the framework's
-  // own bundle code, defeating the user-actionable hint. Function-name
-  // patterns (`captureCallSite`, `warnOutsideSetup`) cover the case where
-  // bundling rewrites the source path but the symbol name survives.
+  // Framework paths to skip — conservative, matches the packages that contain lifecycle
+  // / provide / context internals and call these hooks. Framework / infra paths +
+  // function names to skip.
   const skipPatterns = [
     // ── Source form (workspace / `bun` condition) ──────────────────────
     /\/lifecycle\.[tj]s/,

@@ -66,9 +66,8 @@ export const Modal = (props: ModalProps): VNode => {
     applyOpen(getOpen())
   })
 
-  // Escape: the native dialog fires `cancel` then self-closes. Prevent
-  // the self-close and route through onClose so the `open` signal stays
-  // the single source of truth.
+  // Escape: the native dialog fires `cancel` then self-closes. Prevent the self-close
+  // and route through onClose so the `open` signal stays the single source of truth.
   const onCancel = (e: Event): void => {
     e.preventDefault()
     props.onClose()

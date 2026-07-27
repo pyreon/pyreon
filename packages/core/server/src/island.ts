@@ -171,10 +171,6 @@ export function island<P extends Props = Props>(
     // only ever runs on the server, so this branch never fires there) or
     // RE-MOUNTED the route client-side. `@pyreon/zero` does the latter: its
     // route is a reactive child of RouterView, so the SSR DOM is discarded and
-    // re-mounted, which (a) makes an async inline render here throw with no
-    // Suspense boundary, and (b) races/defeats a one-shot external
-    // `hydrateIslandsAuto` scan. Owning hydration here sidesteps both: no inline
-    // async render, no dependency on external scan timing.
     if (isClient) {
       if (hydrate === 'never') return h('pyreon-island', attrs)
       let islandEl: HTMLElement | null = null
@@ -184,10 +180,6 @@ export function island<P extends Props = Props>(
       // interaction) and runs after an async `import()`, so the active owner
       // is long gone by then. Threading this captured owner into
       // `scheduleHydration` lets the island's hydration root re-parent to it,
-      // so a rocketstyle (or any context-reading) component inside the island
-      // resolves the theme instead of crashing on `undefined`. #1338's
-      // owner-based context removed the global stack that previously let a
-      // late mount find ancestor providers.
       const capturedOwner = getContextOwner()
       onMount(() => {
         if (!islandEl) return

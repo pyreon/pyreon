@@ -25,13 +25,11 @@ export interface EffectOptions {
 }
 
 // ─── Effect-scoped context-owner capture (DI from `@pyreon/core`) ────────────
-// A re-run happens after the synchronous mount, when the active context OWNER
-// may differ from setup time (mountReactive swaps owners for deferred children).
-// Without restoring the setup-time owner, `useContext()` resolves through
-// whatever owner is current when the scheduler fires — silently breaking
-// useMode/useTheme/useRouter on every update. reactivity sits below core, so
-// core registers the capture/restore pair via `setSnapshotCapture`; when unset,
-// effects skip context handling entirely.
+// A re-run happens after the synchronous mount, when the active context OWNER may
+// differ from setup time (mountReactive swaps owners for deferred children). Without
+// restoring the setup-time owner, `useContext()` resolves through whatever owner is
+// current when the scheduler fires — silently breaking useMode/useTheme/useRouter on
+// every update.
 export interface ReactiveSnapshotCapture {
   capture: () => unknown
   /** Run `fn` with the previously-captured snapshot active. */
@@ -52,10 +50,8 @@ export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
 }
 
 // ─── onCleanup ───────────────────────────────────────────────────────────────
-// Thread-local collector for cleanups registered during effect execution. LAZY:
-// the run opens only a boolean WINDOW; the array is allocated on first use.
-// Window and array are saved/restored per run, or a NESTED effect() would null
-// the module var on exit and silently DROP outer cleanups registered after it.
+// Thread-local collector for cleanups registered during effect execution. LAZY: the run
+// opens only a boolean WINDOW; the array is allocated on first use.
 let _cleanupCollector: (() => void)[] | null = null
 let _cleanupWindowOpen = false
 
@@ -290,9 +286,8 @@ export function effect(
   const collector = getInnerEffectCollector()
   if (collector !== null) {
     if (collector === LAZY_INNER) {
-      // First nested effect of the enclosing run — materialize the real
-      // array now (the lazy-window swap; the sentinel itself is never
-      // mutated).
+      // First nested effect of the enclosing run — materialize the real array now (the
+      // lazy-window swap; the sentinel itself is never mutated).
       setInnerEffectCollector([e])
     } else {
       ;(collector as Effect[]).push(e)
@@ -409,9 +404,8 @@ export function renderEffect(fn: () => void): () => void {
     if (disposed) return
     if (isFirstRun) {
       isFirstRun = false
-      // First run: stack is still intact (we're inside the synchronous
-      // mount), so call fn directly to avoid pushing the snapshot frames
-      // a second time.
+      // First run: stack is still intact (we're inside the synchronous mount), so call
+      // fn directly to avoid pushing the snapshot frames a second time.
       runCollect(run, deps, fn)
     } else {
       // Re-run: VERIFY the previous dep list positionally (zero Set ops in

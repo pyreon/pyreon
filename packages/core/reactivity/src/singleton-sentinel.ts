@@ -100,12 +100,9 @@ function getDetectionMode(): DetectionMode {
  * genuine dual-instance load.
  */
 function normalizeLocation(url: string): string {
-  // Some runtimes don't provide a usable `import.meta.url` — Cloudflare workerd
-  // (and certain bundlers) pass `undefined`. The sentinel must NEVER crash module
-  // init over it: a bare `url.indexOf` here once took down every @pyreon-based
-  // Worker at startup. Without a real location the sentinel just can't
-  // distinguish a dual-instance from an HMR re-eval (same placeholder → treated
-  // as a re-eval → allowed), which is the safe failure mode.
+  // Some runtimes don't provide a usable `import.meta.url` — Cloudflare workerd (and
+  // certain bundlers) pass `undefined`. The sentinel must NEVER crash module init over
+  // it: a bare `url.indexOf` here once took down every @pyreon-based Worker at startup.
   if (typeof url !== 'string' || url.length === 0) return '<unknown>'
   const queryIdx = url.indexOf('?')
   return queryIdx === -1 ? url : url.slice(0, queryIdx)

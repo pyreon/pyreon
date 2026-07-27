@@ -188,12 +188,11 @@ function hydrateReactiveChild(
     }
     if (end) {
       const after = end.nextSibling
-      // Single-text-node range + text-ish initial → ADOPT the node and bind
-      // directly (the dominant reactive-text case, no remount). Deliberately NOT
-      // gated on `data === String(initial)`: a genuine server/client divergence
-      // still adopts the SAME text node and the renderEffect writes the client
-      // value on its first run, so recovery is in-place rather than a
-      // double-mount. Only the value is corrected; the mismatch is reported.
+      // Single-text-node range + text-ish initial → ADOPT the node and bind directly
+      // (the dominant reactive-text case, no remount). Deliberately NOT gated on `data
+      // === String(initial)`: a genuine server/client divergence still adopts the SAME
+      // text node and the renderEffect writes the client value on its first run, so
+      // recovery is in-place rather than a double-mount.
       const only = domNode.nextSibling
       if (
         (typeof initial === 'string' || typeof initial === 'number' || typeof initial === 'boolean') &&
@@ -213,14 +212,10 @@ function hydrateReactiveChild(
         end.remove()
         return [dispose, after ? firstReal(after) : null]
       }
-      // An EMPTY range (initial rendered nothing) or a multi-node range falls
-      // through to the general swap below. An empty/null initial does NOT imply a
-      // text binding — the accessor can produce a VNode subtree on a later flip —
-      // so only `mountReactive` handles the general case correctly. (A first cut
-      // bound a text node here; the parity fuzzer's post-flip oracle caught
-      // 217/3000 divergences, VNodes stringified into the text node.)
-      // General case — mount the live binding at the range position, then remove
-      // the SSR range, markers included.
+      // An EMPTY range (initial rendered nothing) or a multi-node range falls through
+      // to the general swap below. An empty/null initial does NOT imply a text binding
+      // — the accessor can produce a VNode subtree on a later flip — so only
+      // `mountReactive` handles the general case correctly.
       const marker = insertMarker(parent, domNode, 'pyreon')
       const cleanup = mountReactive(child, parent, marker, mountChild)
       let cur: ChildNode | null = domNode
@@ -271,10 +266,8 @@ function hydrateReactiveText(
   const initial = runUntracked(child)
   const expected = initial == null ? '' : String(initial)
 
-  // Empty initial value: SSR emitted NOTHING, so there is no text node to adopt.
-  // Bind a fresh text node inserted at the CURSOR (client parity), consuming
-  // nothing. Pre-fix this fell through to the mismatch branch, which appended at
-  // the PARENT's anchor and corrupted sibling order for every following element.
+  // Empty initial value: SSR emitted NOTHING, so there is no text node to adopt. Bind a
+  // fresh text node inserted at the CURSOR (client parity), consuming nothing.
   if (expected === '') {
     const tn = document.createTextNode('')
     parent.insertBefore(tn, domNode ?? anchor)
@@ -329,8 +322,6 @@ function hydrateVNode(
     // fresh keyed list before the block, remove the SSR block, and hand back the
     // node AFTER it as the sibling cursor. Pre-fix this mounted fresh rows but
     // LEFT the SSR rows in place (every hydrated <For> duplicated its list) and
-    // returned a null cursor. True keyed ADOPTION via the <!--k:KEY--> markers is
-    // a perf follow-up.
     if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === 'pyreon-for') {
       // Find the matching end marker, depth-aware (nested <For> blocks).
       let end: ChildNode | null = null
@@ -417,10 +408,9 @@ function hydrateChild(
 
   if (typeof child === 'string' || typeof child === 'number') {
     const expected = String(child)
-    // Empty static text: SSR emitted NOTHING for it, so there is no node to
-    // adopt. Insert the empty text node the client renderer would have
-    // created (DOM parity) at the CURSOR — consuming nothing keeps every
-    // following sibling aligned.
+    // Empty static text: SSR emitted NOTHING for it, so there is no node to adopt.
+    // Insert the empty text node the client renderer would have created (DOM parity) at
+    // the CURSOR — consuming nothing keeps every following sibling aligned.
     if (expected === '') {
       const tn = document.createTextNode('')
       parent.insertBefore(tn, domNode ?? anchor)
@@ -431,11 +421,10 @@ function hydrateChild(
       if (data === expected) {
         return [() => (domNode as Text).remove(), nextReal(domNode)]
       }
-      // MERGED adjacent text: the HTML parser joins text-producing siblings SSR
-      // emitted back-to-back ('23' + 'hello' parses as ONE '23hello' node). Adopt
-      // exactly this child's prefix via splitText — the remainder stays at the
-      // cursor for the NEXT sibling. Prefix matching is exact by construction
-      // (the SSR output came from the same tree), not a heuristic.
+      // MERGED adjacent text: the HTML parser joins text-producing siblings SSR emitted
+      // back-to-back ('23' + 'hello' parses as ONE '23hello' node). Adopt exactly this
+      // child's prefix via splitText — the remainder stays at the cursor for the NEXT
+      // sibling.
       if (data.startsWith(expected)) {
         const rest = (domNode as Text).splitText(expected.length)
         return [() => (domNode as Text).remove(), rest]
@@ -454,12 +443,9 @@ function hydrateChild(
     return [() => tn.remove(), domNode]
   }
 
-  // NativeItem — output of the compiler's `_tpl()` fast path. The client builds a
-  // fresh subtree in memory (cloned + reactively bound); there is no true `_tpl`
-  // hydration mode yet that would adopt existing nodes and rebind in place. Swap
-  // the SSR subtree for the freshly-mounted one — same final DOM, no duplication,
-  // reactivity intact. Correctness-first; adopting hydration is a compiler-side
-  // follow-up.
+  // NativeItem — output of the compiler's `_tpl()` fast path. The client builds a fresh
+  // subtree in memory (cloned + reactively bound); there is no true `_tpl` hydration
+  // mode yet that would adopt existing nodes and rebind in place.
   if ((child as unknown as { __isNative?: boolean })?.__isNative === true) {
     const native = child as unknown as { __isNative: true; el: Node; cleanup?: () => void }
     const next = domNode ? nextReal(domNode) : null
@@ -652,9 +638,6 @@ function hydrateComponent(
     // cursor past it synchronously, then await and hydrate the resolved VNode
     // against that range — wiring events, lifecycle and subscriptions on every
     // node in the subtree.
-    //
-    // Without markers (older runtime-server) we leave the SSR DOM standing
-    // unhydrated, as before, and warn in dev.
     let resolvedCleanup: Cleanup = noop
     let cancelled = false
 

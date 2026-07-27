@@ -77,8 +77,6 @@ export function setupDelegation(container: Element): void {
       // walking `target -> its container`, firing every handler twice. Since
       // `dispatchEvent` reuses one Event object for the whole propagation path, we
       // tag it with the elements already invoked for THIS dispatch so an outer
-      // root skips what an inner root handled. Allocated lazily, so the common
-      // no-handler walk stays zero-alloc.
       const ev = e as Event & { [DELEGATED_ELEMENTS]?: Set<Element> }
       let el = e.target as (HTMLElement & Record<string, unknown>) | null
       while (el && el !== container) {
@@ -100,7 +98,6 @@ export function setupDelegation(container: Element): void {
             // inputs. Pyreon's `TargetedEvent<E>` type PROMISES the matched
             // element, and React/Vue/Solid all do the same override.
             // `currentTarget` is a read-only accessor, so `defineProperty` with
-            // `configurable: true` is the only portable way to set it.
             Object.defineProperty(e, 'currentTarget', {
               value: el,
               configurable: true,

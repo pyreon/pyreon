@@ -301,10 +301,9 @@ function countMatches(source: string, pattern: RegExp): number {
  * `countMatches` helper has no context-aware skip.
  */
 function countMockVNodeLiterals(source: string): number {
-  // First mask template-literal contents — fixtures inside backticks
-  // (e.g. `\`const v = { type, props, children }\`` written via
-  // writeFile in audit's own test) shouldn't count. The mask
-  // preserves positions, so the type-guard skip logic still works.
+  // First mask template-literal contents — fixtures inside backticks (e.g. `\`const v =
+  // { type, props, children }\`` written via writeFile in audit's own test) shouldn't
+  // count. The mask preserves positions, so the type-guard skip logic still works.
   const masked = maskTemplateStrings(source)
   const pattern = MOCK_VNODE_LITERAL_PATTERN
   let count = 0
@@ -400,7 +399,6 @@ export function auditTestEnvironment(
     // examples, etc.) — they shouldn't count toward any metric.
     // `countMockVNodeLiterals` already does its own masking and runs
     // on `source` so it can do its own work; we pass `source` to
-    // keep that contract intact.
     const masked = maskTemplateStrings(source)
     const mockVNodeLiteralCount = countMockVNodeLiterals(source)
     const mockHelperCount = countMatches(masked, MOCK_HELPER_PATTERN)

@@ -279,12 +279,6 @@ function disableOverlay(): void {
 //   • Activity — recent fires plus a "why did X update?" causal chain
 //                (`getUpdateCause`), the inverse of React DevTools'
 //                "why did this render?".
-//   • Inspect  — DOM->signal correlation: pick an element, see the signals whose
-//                values its text displays, via `nodesForElement` (the exact
-//                `_bindText` text-node->source tag, not a heuristic).
-// Distinct from the component-inspect overlay above and from the Chrome
-// extension: this is zero-install, mounted by the always-on dev devtools and
-// toggled with Ctrl+Shift+R. Reading the graph auto-activates tracking.
 
 type ReactiveView = 'health' | 'activity' | 'inspect'
 let _reactivePanelActive = false

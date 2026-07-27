@@ -185,10 +185,9 @@ function analyzeChildElement(node: Node): ChildAnalysis | null {
 
   const memberName = getJsxMemberName(node)
   if (memberName) {
-    // The PROPERTY must be capitalised (the actual component name). The
-    // object case is irrelevant — namespace bindings are conventionally
-    // any casing (`React.Fragment` has uppercase object; `lodash.map`
-    // has lowercase). Skip if property isn't a component.
+    // The PROPERTY must be capitalised (the actual component name). The object case is
+    // irrelevant — namespace bindings are conventionally any casing (`React.Fragment`
+    // has uppercase object; `lodash.map` has lowercase).
     if (!/^[A-Z]/.test(memberName.property)) return null
     // The opening name node IS the JSXMemberExpression — its
     // start..end span the whole `M.Modal` expression.
@@ -273,9 +272,8 @@ function findDeferMatches(program: Node, warnings: DeferInlineWarning[], code: s
               },
             })
           } else {
-            // Single child but not a component element — bail with a
-            // warning. The user might've put an HTML tag, a fragment, or
-            // an expression container.
+            // Single child but not a component element — bail with a warning. The user
+            // might've put an HTML tag, a fragment, or an expression container.
             const loc = getLoc(code, ((live[0]!.start as number) ?? 0))
             warnings.push({
               message: `<Defer> inline form requires a single component-element child (capitalised JSX identifier). Use the explicit \`chunk\` prop for any other shape.`,
@@ -471,9 +469,8 @@ function buildRenderPropBody(code: string, analysis: ChildAnalysis, childRange: 
   const start = childRange.start
   const end = childRange.end
   let body = code.slice(start, end)
-  // Apply name replacements from END to START so positions stay valid
-  // as we splice. The opening tag's name always precedes the closing
-  // tag's name in source order.
+  // Apply name replacements from END to START so positions stay valid as we splice. The
+  // opening tag's name always precedes the closing tag's name in source order.
   if (analysis.closeNameRange) {
     const r = analysis.closeNameRange
     body = body.slice(0, r.start - start) + '__C' + body.slice(r.end - start)
@@ -568,10 +565,9 @@ export function transformDeferInline(
   let changed = false
 
   for (const m of matches) {
-    // For identifier children (`<Modal />`), the JSX-display name and
-    // import-lookup name are the same (`Modal`). For member-expression
-    // children (`<M.Modal />`), JSX-display is `M.Modal` but we look up
-    // the namespace binding `M` in imports.
+    // For identifier children (`<Modal />`), the JSX-display name and import-lookup
+    // name are the same (`Modal`). For member-expression children (`<M.Modal />`),
+    // JSX-display is `M.Modal` but we look up the namespace binding `M` in imports.
     const displayName =
       m.childAnalysis.kind === 'member'
         ? `${m.childAnalysis.lookupName}.${m.childAnalysis.propertyName}`
@@ -589,11 +585,10 @@ export function transformDeferInline(
       continue
     }
 
-    // Sanity check: if the JSX is a member expression but the import
-    // isn't a namespace import (e.g. `import M from './x'; <M.Modal />`),
-    // bail. The semantics are ambiguous — `M` is a default-export
-    // component, not a module bag, so `M.Modal` is a member access on
-    // the component itself. Out of scope for inline-Defer.
+    // Sanity check: if the JSX is a member expression but the import isn't a namespace
+    // import (e.g. `import M from './x'; <M.Modal />`), bail. The semantics are
+    // ambiguous — `M` is a default-export component, not a module bag, so `M.Modal` is
+    // a member access on the component itself.
     if (m.childAnalysis.kind === 'member' && importInfo.kind !== 'namespace') {
       const loc = getLoc(code, (m.child.start as number) ?? 0)
       warnings.push({
@@ -608,11 +603,10 @@ export function transformDeferInline(
     // <Modal />`). The Modal identifier doesn't reference the
     // namespace at all — leave to import-not-found which fires above.
     if (m.childAnalysis.kind === 'identifier' && importInfo.kind === 'namespace') {
-      // Shouldn't be reachable — findImportFor only returns namespace
-      // when localName matches the namespace identifier. If we got
-      // here, the namespace was imported with the same name as a
-      // separate component (impossible — would be a JS scope error
-      // upstream). Defensive bail.
+      // Shouldn't be reachable — findImportFor only returns namespace when localName
+      // matches the namespace identifier. If we got here, the namespace was imported
+      // with the same name as a separate component (impossible — would be a JS scope
+      // error upstream).
       continue
     }
 
@@ -633,10 +627,9 @@ export function transformDeferInline(
       continue
     }
 
-    // For namespace imports, the export name to extract comes from the
-    // JSX member-expression property (`Modal` in `<M.Modal />`). For
-    // named imports it comes from `importInfo.importedName` (handles
-    // the renamed-import case). For default imports it's unused.
+    // For namespace imports, the export name to extract comes from the JSX
+    // member-expression property (`Modal` in `<M.Modal />`). For named imports it comes
+    // from `importInfo.importedName` (handles the renamed-import case).
     const exportName =
       importInfo.kind === 'namespace'
         ? m.childAnalysis.propertyName

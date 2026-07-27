@@ -140,12 +140,9 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
   }
 
   const ServerIslandMarker: ComponentFn<P> = (props: P) => {
-    // The marker carries codec-encoded props (same roundtrip-preserving
-    // codec client islands use — Date/Map/Set/RegExp/BigInt survive).
-    // children are not serializable across the fragment boundary — same
-    // contract as client islands. Mirrors `serializeIslandProps`' shape:
-    // children dropped explicitly, encode failures fall back to '{}' with
-    // a dev error naming the island (never a 500).
+    // The marker carries codec-encoded props (same roundtrip-preserving codec client
+    // islands use — Date/Map/Set/RegExp/BigInt survive). children are not serializable
+    // across the fragment boundary — same contract as client islands.
     const clean: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(props as Record<string, unknown>)) {
       if (key === 'children') continue
@@ -167,14 +164,11 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
       {
         'data-name': options.name,
         ...(serialized !== '{}' ? { 'data-props': serialized } : {}),
-        // SELF-ACTIVATION (client islands' self-hydration precedent): the
-        // marker fetches its own fragment when IT mounts — robust whether
-        // the page hydrated, the route lazily mounted after activation
-        // scans ran, or an SPA navigation rendered fresh markers. A
-        // document-level scan (`activateServerIslands`) can't win that
-        // timing race; the component owning its lifecycle always can.
-        // Server-side the ref never fires; static no-full-hydrate pages
-        // use `activateServerIslands` instead.
+        // SELF-ACTIVATION (client islands' self-hydration precedent): the marker
+        // fetches its own fragment when IT mounts — robust whether the page hydrated,
+        // the route lazily mounted after activation scans ran, or an SPA navigation
+        // rendered fresh markers. A document-level scan (`activateServerIslands`) can't
+        // win that timing race; the component owning its lifecycle always can.
         ...(isClient
           ? {
               ref: (el: HTMLElement | null) => {

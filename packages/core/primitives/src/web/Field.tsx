@@ -35,13 +35,6 @@ export const Field = (props: FieldProps): VNode => {
   // `props.value` ONCE at setup fires the getter and captures the
   // CURRENT signal value — breaking the reactive chain (renderEffect
   // never tracks because the read happened OUTSIDE the effect scope).
-  //
-  // Instead, defer the read into a thunk that the renderEffect runs
-  // every cycle. Reading `props.value` from INSIDE the effect scope
-  // tracks the signal via Pyreon's `_activeEffect` mechanism, so
-  // subsequent signal writes refire the effect → write back to
-  // `input.value`. Without this fix, `signal.set('')` after the user
-  // types via Playwright's `field.fill()` doesn't clear the input.
   const getValue = (): string => {
     const v = props.value
     if (typeof v === 'function') return (v as () => string)()

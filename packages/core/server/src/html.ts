@@ -59,8 +59,6 @@ export function processTemplate(template: string, data: TemplateData): string {
   // literal string. `data.app` is rendered SSR HTML and routinely
   // contains literal `$&` / `$$` (prices, code samples, math) — string
   // replacement would corrupt them. A replacer function returns its
-  // value verbatim with zero `$`-pattern interpretation. Same
-  // first-occurrence semantics as before.
   return template
     .replace('<!--pyreon-head-->', () => data.head)
     .replace('<!--pyreon-app-->', () => data.app)

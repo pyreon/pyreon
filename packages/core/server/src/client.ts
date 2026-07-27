@@ -39,7 +39,6 @@ import type { HydrationStrategy, PrefetchStrategy } from './island'
 // declarations can be imported WITHOUT dragging the `@pyreon/server` main
 // barrel (`createHandler` / `prerender` + their `node:` deps + the package's
 // `registerSingleton`) into a client/route bundle — the leak that breaks
-// islands inside `@pyreon/zero` routes (every route ships to the client).
 export type { IslandMeta, IslandOptions } from './island'
 export { island } from './island'
 
@@ -49,15 +48,6 @@ export { island } from './island'
 // every modern bundler (Vite, Webpack/Next.js, Rolldown, esbuild, Rollup,
 // Parcel, Bun) when consumers ship a production bundle. The optional-chain
 // short-circuits in dev when no consumer has called perfHarness.install().
-// Perf-counter sink — read `globalThis` lazily via a HOISTED helper, NOT a
-// module-level `const`. A `const` snapshot participates in the temporal dead
-// zone: `hydrateIsland` (a hoisted async fn) can be invoked by a deferred /
-// concurrently-raced module evaluation BEFORE the const line runs, throwing
-// `ReferenceError: Cannot access '_countSink' before initialization` (an
-// intermittent `test (core)` failure). A function declaration hoists with its
-// body and reads the always-present `globalThis` at call time, so it is
-// TDZ-immune. Still tree-shaken in production — every call site stays behind
-// the `process.env.NODE_ENV !== 'production'` gate, which folds to `if (false)`.
 function _count(name: string): void {
   const sink = globalThis as { __pyreon_count__?: (n: string, c?: number) => void }
   sink.__pyreon_count__?.(name)
@@ -165,9 +155,6 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
   // listeners. This bites HMR users who don't wire up
   // `import.meta.hot.dispose(cleanup)` (or its sub-route equivalent).
   // We warn loudly in dev — production stays silent (tree-shaken). The
-  // current call still proceeds (HMR / route-change DOES require
-  // re-registration; we just want the user to know they should clean up
-  // the previous one first).
   if (process.env.NODE_ENV !== 'production') {
     const w = window as Window & { __pyreon_island_hydrate_active__?: boolean }
     if (w.__pyreon_island_hydrate_active__) {
@@ -190,10 +177,9 @@ export function hydrateIslands(registry: Record<string, IslandLoader>): () => vo
     const componentId = el.getAttribute('data-component')
     if (!componentId) continue
 
-    // Detect nested islands. An island whose ancestor (up the DOM tree) is
-    // also a `<pyreon-island>` would, on hydration, be torn out and replaced
-    // when the outer island hydrates — losing its hydrate strategy entirely.
-    // Mark it as errored, log, and skip rather than silently break.
+    // Detect nested islands. An island whose ancestor (up the DOM tree) is also a
+    // `<pyreon-island>` would, on hydration, be torn out and replaced when the outer
+    // island hydrates — losing its hydrate strategy entirely.
     if (el.parentElement?.closest('pyreon-island')) {
       console.error(
         `[Pyreon] island "${componentId}" is nested inside another <pyreon-island>. ` +
@@ -359,9 +345,6 @@ export function hydrateIslandsAuto(registry?: AutoIslandRegistry): () => void {
   // value is `undefined`), OR a registry from `pyreon({ islands: false })` —
   // warn in DEV and no-op. We deliberately do NOT throw: an uncaught exception
   // at page boot pollutes the console + error-tracking (Sentry, etc.) on every
-  // view, even though hydration is not actually blocked. Reading
-  // `.__pyreonIslandsEnabled` off `undefined`/`null` is also what produced the
-  // cryptic "Cannot read properties of undefined" crash this guards against.
   const missing = registry == null || typeof registry !== 'object'
   if (missing || !registry.__pyreonIslandsEnabled) {
     if (process.env.NODE_ENV !== 'production') {
@@ -388,15 +371,11 @@ export function scheduleHydration(
   loader: IslandLoader,
   propsJson: string,
   strategy: HydrationStrategy,
-  // Context owner captured at the island marker's render time (while its
-  // owner — and thus the ancestor PyreonUI/theme provider chain — was active).
-  // Hydration is deferred (idle / visible / interaction), so by the time the
-  // island mounts the active owner is gone; re-establishing this captured
-  // owner lets the hydrated component's `useContext()` walk up to ancestor
-  // providers. Without it (#1338 owner-based context, no global stack), a
-  // rocketstyle component inside the island reads an undefined theme and
-  // crashes. `null`/omitted (static islands apps via `hydrateIslands`) keeps
-  // the prior detached-root behavior.
+  // Context owner captured at the island marker's render time (while its owner — and
+  // thus the ancestor PyreonUI/theme provider chain — was active). Hydration is
+  // deferred (idle / visible / interaction), so by the time the island mounts the
+  // active owner is gone; re-establishing this captured owner lets the hydrated
+  // component's `useContext()` walk up to ancestor providers.
   owner?: EffectScope | null,
 ): (() => void) | null {
   /* v8 ignore next */
@@ -508,17 +487,10 @@ function scheduleInteractionHydration(
 ): () => void {
   let hydrationStarted = false
   let hydrated = false
-  // Holds replay info if a user interaction came in during in-flight
-  // hydration — we replay it on the equivalent post-hydration element so
-  // the user's first click / form submit both wakes the island AND fires
-  // the live handler.
-  //
-  // Hydration may REPLACE DOM nodes (mismatch fallback, or even successful
-  // hydrate-as-mount on some shapes). The original `event.target` reference
-  // can therefore be detached after hydration completes. To survive this,
-  // we capture an identifying "replay path" — preferring `data-testid` (a
-  // stable, semantic identifier) and falling back to a tag-based child
-  // index walk relative to `el`. After hydration we re-query the live tree.
+  // Holds replay info if a user interaction came in during in-flight hydration — we
+  // replay it on the equivalent post-hydration element so the user's first click / form
+  // submit both wakes the island AND fires the live handler. Hydration may REPLACE DOM
+  // nodes (mismatch fallback, or even successful hydrate-as-mount on some shapes).
   let captured: CapturedInteraction | null = null
   // Stamp a "scheduled" marker for tests / devtools introspection.
   el.setAttribute('data-island-state', 'awaiting-interaction')
@@ -561,11 +533,9 @@ function scheduleInteractionHydration(
     if (hydrated) return
 
     if (event.type === 'click') {
-      // Stop the click — the SSR DOM has no live click handler bound yet,
-      // so propagating it does nothing useful. Capture the click target
-      // for replay after hydration. Works whether or not hydration was
-      // already started by a previous non-click event — the click always
-      // replays as the user-intended action.
+      // Stop the click — the SSR DOM has no live click handler bound yet, so
+      // propagating it does nothing useful. Capture the click target for replay after
+      // hydration.
       event.stopImmediatePropagation()
       event.preventDefault()
       const target = event.target as HTMLElement | null
@@ -574,11 +544,10 @@ function scheduleInteractionHydration(
         if (path) captured = { type: 'click', path }
       }
     } else if (event.type === 'submit') {
-      // Same logic as click but for forms: without preventDefault the
-      // browser would do a full-page navigation BEFORE the live handler
-      // mounts. Capture the form element so we can re-dispatch `submit`
-      // post-hydrate against the live form (which now has the user's
-      // listeners bound).
+      // Same logic as click but for forms: without preventDefault the browser would do
+      // a full-page navigation BEFORE the live handler mounts. Capture the form element
+      // so we can re-dispatch `submit` post-hydrate against the live form (which now
+      // has the user's listeners bound).
       event.stopImmediatePropagation()
       event.preventDefault()
       const target = event.target as HTMLElement | null

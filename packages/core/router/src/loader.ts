@@ -72,9 +72,6 @@ export async function prefetchLoaderData(
         // click's navigation ran the loader TWICE (the nav's cache lookup
         // missed because prefetch never wrote `_loaderCache`, and its
         // in-flight dedup missed because prefetch never registered in
-        // `_loaderInflight`) — the exact double-fetch prefetching exists
-        // to avoid. Loader errors (incl. thrown `redirect()`) propagate
-        // to the caller exactly as before.
         const data = await router._executeLoader(r, {
           params: route.params,
           query: route.query,
@@ -104,9 +101,6 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
   // here it bit the SSR hydration blob on full page loads). The FIRST
   // record at a path keeps the bare-path key (back-compat: the blob format
   // is e2e-asserted and read by older clients); each subsequent record at
-  // the SAME path within the matched chain gets `path#<occurrence>`.
-  // `hydrateLoaderData` counts occurrences while walking the SAME matched
-  // chain in the SAME order, so the suffixes line up deterministically.
   const result: Record<string, unknown> = {}
   const matched = router.currentRoute().matched
   const seen = new Map<string, number>()
@@ -156,17 +150,10 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  * const tag = `<script>window.__PYREON_LOADER_DATA__=${json}</script>`
  */
 export function stringifyLoaderData(loaderData: Record<string, unknown>): string {
-  // True cycle detection: track the ANCESTOR PATH only (add on descend,
-  // remove on ascend), NOT every object ever visited. The prior
-  // implementation kept an all-seen WeakSet that was never pruned, so any
-  // object referenced more than once — a DAG, not a cycle — falsely threw
-  // "circular reference" and 500'd the SSR response. Shared references are
-  // extremely common in loader payloads (`{ author: user, lastEditor: user }`
-  // where both are the same ORM instance; a list whose rows share a lookup
-  // object). `JSON.stringify` serializes those fine; only a real cycle must
-  // throw. A `JSON.stringify` replacer has no "leave" hook, so cycle
-  // detection runs as a single recursive pre-pass that maintains the
-  // ancestor set, then `JSON.stringify` does the (now cycle-free) encode.
+  // True cycle detection: track the ANCESTOR PATH only (add on descend, remove on
+  // ascend), NOT every object ever visited. The prior implementation kept an all-seen
+  // WeakSet that was never pruned, so any object referenced more than once — a DAG, not
+  // a cycle — falsely threw "circular reference" and 500'd the SSR response.
   const ancestors = new Set<object>()
   const detectCycle = (value: unknown, path: string): void => {
     if (value === null || typeof value !== 'object') return

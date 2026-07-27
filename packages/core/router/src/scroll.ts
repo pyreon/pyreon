@@ -31,10 +31,9 @@ export class ScrollManager {
 
   /** Call before navigating away — saves current scroll position for `fromPath` */
   save(fromPath: string): void {
-    // ScrollManager methods are only invoked from browser navigation paths,
-    // but an explicit early-return documents the SSR-safety contract at the
-    // callsite (the `no-window-in-ssr` lint rule can't AST-trace indirect
-    // calls from router setup).
+    // ScrollManager methods are only invoked from browser navigation paths, but an
+    // explicit early-return documents the SSR-safety contract at the callsite (the
+    // `no-window-in-ssr` lint rule can't AST-trace indirect calls from router setup).
     if (isServer) return
     // SizedMap.set handles both the recency bump (delete + re-set on
     // collision) and the cap-enforced eviction internally.

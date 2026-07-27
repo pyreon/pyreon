@@ -59,11 +59,10 @@ export class EffectScope {
 
   /** Register a callback to run after any reactive update in this scope. */
   addUpdateHook(fn: () => void): void {
-    // Mirror `add()`'s behavior: silently no-op when scope is stopped.
-    // Without this, hooks pushed after `stop()` would leak into a freshly-
-    // allocated `_updateHooks` array and never fire (because `notifyEffectRan`
-    // checks `_active` first), giving the caller no feedback that the
-    // registration was futile.
+    // Mirror `add()`'s behavior: silently no-op when scope is stopped. Without this,
+    // hooks pushed after `stop()` would leak into a freshly- allocated `_updateHooks`
+    // array and never fire (because `notifyEffectRan` checks `_active` first), giving
+    // the caller no feedback that the registration was futile.
     if (!this._active) return
     if (this._updateHooks === null) this._updateHooks = []
     this._updateHooks.push(fn)
@@ -123,12 +122,10 @@ export function effectScope(): EffectScope {
 }
 
 // ─── Current context owner ───────────────────────────────────────────────────
-// DELIBERATELY SEPARATE from `_currentScope` (the effect-TRACKING scope). The
-// renderer sets this to the component's scope while mounting that component's
-// subtree, so a child's owner chains to its parent; deferred boundaries capture
-// it at setup and restore it when they later mount children inside an effect.
-// Keeping the two distinct means restoring the owner for a deferred mount does
-// NOT perturb which scope new effects are tracked by.
+// DELIBERATELY SEPARATE from `_currentScope` (the effect-TRACKING scope). The renderer
+// sets this to the component's scope while mounting that component's subtree, so a
+// child's owner chains to its parent; deferred boundaries capture it at setup and
+// restore it when they later mount children inside an effect.
 let _currentContextOwner: EffectScope | null = null
 
 export function getContextOwner(): EffectScope | null {

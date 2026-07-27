@@ -39,13 +39,6 @@ const recomputeQueue: QueuedRefresh[] = []
 // shape. Every effect that HAS fired then shares one hidden class, so the
 // per-enqueue flag reads stay monomorphic in steady state.
 //   `_eq` — queue membership. Cur/Next are mutually exclusive in time (an effect
-//           leaves `curEffects` before it can enter `nextEffects`), so one
-//           tri-state field dedups BOTH queues.
-//   `_vg` — pass GENERATION it last ran in. `_vg === _passGen` ⇔ "already ran
-//           this pass" → a re-enqueue routes to the NEXT pass. The monotonic
-//           counter replaces a Set's wholesale `.clear()` with an O(1) bump.
-// Never-enqueued effects, raw `subscribe` listeners and `direct` updaters read
-// these as undefined/falsy — correctly "not queued, not visited".
 const enum EQ {
   Idle = 0,
   Cur = 1,
@@ -62,11 +55,8 @@ const nextEffects: QueuedEffect[] = []
 // generations from prior passes/drains automatically read as "not visited".
 let _passGen = 1
 
-// Every computed NOTIFY recompute. Checked FIRST in the enqueue router because
-// a MISS means an effect — the wide-fan-out hot path — so it must be one cheap
-// lookup there. `WeakSet.has` on an absent key beats `WeakMap.get` returning
-// undefined (an A/B with a single `WeakMap<fn, kind>` un-flipped both the
-// fan-out and batch-50 wins).
+// Every computed NOTIFY recompute. Checked FIRST in the enqueue router because a MISS
+// means an effect — the wide-fan-out hot path — so it must be one cheap lookup there.
 const _recomputes = new WeakSet<() => void>()
 const MAX_PASSES = 32
 
@@ -76,7 +66,6 @@ const MAX_PASSES = 32
 // + re-entry per hop. An `{ equals }` notify does MORE than dirty-marking (it
 // books a tier-1 refresh) so it is deliberately NOT stamped; the walk routes
 // `_c`-less subscribers through `enqueuePendingNotification`.
-// Structural interface — batch.ts must not import computed.ts (layer order).
 interface LazyTarget {
   _dirty: boolean
   _disposed: boolean
@@ -210,10 +199,9 @@ function drainQueuesLocked(): void {
     // only — recomputes converge via the `equals` short-circuit.
     let effectPass = 0
 
-    // FAST PATH — the dominant case: effects only, no cascade, one pass. Falls
-    // through to the general loop (as pass 2+) if that pass enqueued follow-up
-    // work, with identical run-counts and MAX_PASSES semantics. Skipping tier-1
-    // is sound because we gate on `recomputeQueue.length === 0`.
+    // FAST PATH — the dominant case: effects only, no cascade, one pass. Falls through
+    // to the general loop (as pass 2+) if that pass enqueued follow-up work, with
+    // identical run-counts and MAX_PASSES semantics.
     if (recomputeQueue.length === 0 && curEffects.length > 0) {
       effectPass = 1
       runEffectPass()
@@ -231,8 +219,6 @@ function drainQueuesLocked(): void {
       // when an upstream `{ equals }` computed refreshes LATER in the drain
       // (subscription order != topo order) and re-dirties an already-visited
       // entry through a lazy intermediate, the re-notify re-enqueues it instead
-      // of being dropped by dedup. Converges because each refresh no-ops unless
-      // `_dirty` is set and `equals` short-circuits repeated propagation.
       for (let i = 0; i < recomputeQueue.length; i++) {
         const r = recomputeQueue[i]!
         r._rq = 0 // consumed — a genuine post-visit re-dirty re-pushes
@@ -286,9 +272,7 @@ function drainQueuesLocked(): void {
   } finally {
     // Reset intrusive membership flags on anything still queued (a notify threw
     // mid-pass, or MAX_PASSES broke out) so the next batch starts clean. `_vg` is
-    // generation-based and self-stales. No-ops on the normal completion path.
-    // Effects catch internally, but raw `subscribe` listeners can throw straight
-    // past this.
+    // generation-based and self-stales.
     for (let i = 0; i < curEffects.length; i++) curEffects[i]!._eq = EQ.Idle
     curEffects.length = 0
     for (let i = 0; i < nextEffects.length; i++) nextEffects[i]!._eq = EQ.Idle
@@ -309,23 +293,11 @@ export function isBatching(): boolean {
 }
 
 // ─── Lazy-computed dirty cascade (depth-bounded) ────────────────────────────
-//
-// A pure lazy cascade (diamond, deep chain) is nothing but dirty-flag marking,
-// so it runs at write time rather than through the batch queues.
-//
-// The SINGLE-SUBSCRIBER segment (the deep-chain shape) is a FUSED ITERATIVE
-// WALK over the lazy computed's fields via the `notify._c` back-ref — zero
-// closure calls, zero WeakSet lookups, zero JS-stack growth at any depth.
-// Only FAN-OUT levels (>=2 subscribers) recurse, and only while shallow:
-// past `MAX_CASCADE_RECURSION` they defer to an explicit stack, so a deep
-// fan-out tree is chunked with a BOUNDED live stack. Unbounded recursion here
-// previously overflowed at ~8000 deep, and the caught RangeError cleared a
-// computed's `_dirty` with a STALE value — a silent lost update.
-//
-// A pure-iterative form was measured and regressed the diamond ~12% (push/pop
-// per hop on 4 nodes); the hybrid is deliberate.
-//
-// NOT on the signal fan-out path, so wide-fan-out / batch-50 are untouched.
+// A pure lazy cascade (diamond, deep chain) is nothing but dirty-flag marking, so it
+// runs at write time rather than through the batch queues. The SINGLE-SUBSCRIBER
+// segment (the deep-chain shape) is a FUSED ITERATIVE WALK over the lazy computed's
+// fields via the `notify._c` back-ref — zero closure calls, zero WeakSet lookups, zero
+// JS-stack growth at any depth.
 const _lazyDirtyStack: Array<() => void> = []
 let _lazyDirtyDraining = false
 let _cascadeDepth = 0
@@ -345,14 +317,10 @@ const MAX_CASCADE_RECURSION = 500
  * processing one cannot mutate any `_s` mid-walk.
  */
 export function propagateLazyDirty(subs: Set<() => void>): void {
-  // Fused single-subscriber walk — the deep-chain shape resolves here as a plain
-  // LOOP over the lazy computed's fields via `notify._c`, replacing per hop a
-  // [WeakSet.has + closure call + re-entry] with plain field ops. Iterative, so
-  // it consumes zero JS stack at any chain length.
-  //
-  // The inlined body MUST stay in lock-step with `computedLazy`'s recompute:
-  // disposed/already-dirty -> stop; mark dirty; DEFER direct subscribers to the
-  // drain (glitch-freedom); continue into the computed's own subscribers.
+  // Fused single-subscriber walk — the deep-chain shape resolves here as a plain LOOP
+  // over the lazy computed's fields via `notify._c`, replacing per hop a [WeakSet.has +
+  // closure call + re-entry] with plain field ops. Iterative, so it consumes zero JS
+  // stack at any chain length.
   while (subs.size === 1) {
     const sub = subs.values().next().value as LazyNotify
     const c = sub._c
@@ -368,10 +336,8 @@ export function propagateLazyDirty(subs: Set<() => void>): void {
     if (c._s === null) return
     subs = c._s
   }
-  // Fan-out (>=2 subscribers). Read the module counter into a local ONCE and bump
-  // it once per LEVEL, not per subscriber. Computed notifies propagate the dirty
-  // flag (inline while shallow, else deferred to the stack); everything else
-  // enqueues into the two-tier flush.
+  // Fan-out (>=2 subscribers). Read the module counter into a local ONCE and bump it
+  // once per LEVEL, not per subscriber.
   const depth = _cascadeDepth
   if (depth >= MAX_CASCADE_RECURSION) {
     // Too deep — defer every lazy branch to the explicit stack; each re-enters

@@ -52,27 +52,8 @@ export function createTemplate<T>(
 }
 
 // ─── Text-coercion handling ───────────────────────────────────────────────────
-//
 // Both `_bindText` paths String()-coerce the bound value into `Text.data`. Two
 // failure shapes shipped real bugs through that coercion:
-//
-//  • A VNode / NativeItem (or an array containing one) rendered the literal
-//    "[object Object]". FIXED here: on the first VNode-shaped value the binding
-//    permanently UPGRADES to a subtree mount, which also removes a guaranteed
-//    SSR<->client mismatch (SSR always rendered the subtree correctly). The dev
-//    warning below remains only for a bound text node with NO parent.
-//  • A raw FUNCTION renders its SOURCE text (an accessor neutralized by an
-//    `as never` cast). Still warn-only — a function RESULT stays on String().
-//
-// The check targets the RESULT value only; `_bindText`'s SOURCE is legitimately
-// a callable. Warns ONCE per text node via an expando on the node itself (no
-// module-level registry, no prod allocation).
-//
-// Coverage note: only the `_bindText` sinks are hookable at runtime — the
-// compiler's `_bind(() => { __t0.data = expr })` emit and `_bindDirect` updaters
-// are raw DOM writes in user bundles. For TEXT that is fine by construction:
-// `_bindDirect` reaches `.data` only through the signal-method-call promotion
-// (a pure-method safelist over primitives), so a raw VNode never lands there.
 
 /** Structural VNode check — VNode has no symbol brand (see core/types.ts),
  *  so `{ type, props, children }` is the discriminator; `__isNative` covers
@@ -194,10 +175,9 @@ export function _bindText(
   caller?: () => unknown,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
-  // Captured for the upgrade path: components mounted by a LATER upgrade run
-  // inside a signal dispatch with no ambient owner, so they must resolve context
-  // through the owner active at SETUP — same discipline as renderEffect's
-  // snapshot capture.
+  // Captured for the upgrade path: components mounted by a LATER upgrade run inside a
+  // signal dispatch with no ambient owner, so they must resolve context through the
+  // owner active at SETUP — same discipline as renderEffect's snapshot capture.
   const ownerAtSetup = getContextOwner()
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
@@ -215,9 +195,8 @@ export function _bindText(
           const parent = node.parentNode
           if (parent !== null) {
             // Permanently upgrade this binding to a subtree mount. Swapping the
-            // subscription mid-dispatch is safe: `_d1` is a single slot the
-            // dispatch already dereferenced, and the `_d` Set path is enqueued
-            // by reference.
+            // subscription mid-dispatch is safe: `_d1` is a single slot the dispatch
+            // already dereferenced, and the `_d` Set path is enqueued by reference.
             if (disposer !== null) disposer()
             const core = createPolyTextCore(node, parent, ownerAtSetup)
             core.apply(v as VNodeChild)
@@ -249,9 +228,7 @@ export function _bindText(
     return () => disposer!()
   }
   // Fallback: bare callable. Use the compiler-provided caller when present (it
-  // preserves `this` for member-expression sources). The renderEffect keeps
-  // tracking `fn`'s reads across the upgrade — after the first VNode-shaped value
-  // every re-run routes through the swap core, whose child mounts are untracked.
+  // preserves `this` for member-expression sources).
   const fn = caller ?? (source as unknown as () => unknown)
   let core: PolyTextCore | null = null
   const disposeEffect = renderEffect(() => {
@@ -320,14 +297,9 @@ export function _bindDirect(
 
 // ─── Compiler-facing template API ─────────────────────────────────────────────
 
-// Cache parsed <template> elements by HTML string — parse once, clone many.
-//
-// SizedMap in FIFO mode: get() does NOT touch ordering, so a cache HIT is a
-// single Map lookup with no recency bookkeeping (see `_tpl` below for why
-// touch-on-read was rejected). Bounded at 1024 because an app that builds JSX
-// from user input could otherwise grow this unboundedly, with every unique
-// string holding a parsed <template> alive. 1024 x ~1KB parsed is ~1MB worst
-// case and no real codebase approaches the cap.
+// Cache parsed <template> elements by HTML string — parse once, clone many. SizedMap in
+// FIFO mode: get() does NOT touch ordering, so a cache HIT is a single Map lookup with
+// no recency bookkeeping (see `_tpl` below for why touch-on-read was rejected).
 const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 })
 
 /**
@@ -356,11 +328,9 @@ const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 }
  *   return () => { __d0() };
  * })
  */
-// SVG tags that are ALSO valid HTML — a template rooted at one of these is
-// almost always the HTML element, so do NOT SVG-wrap it. Every other entry in
-// SVG_TAGS is namespace-unambiguous. (MathML is the same shape of bug but has no
-// real template-rooted instances, and happy-dom can't parse MathML foreign
-// content to verify a fix, so it is deliberately out of scope.)
+// SVG tags that are ALSO valid HTML — a template rooted at one of these is almost
+// always the HTML element, so do NOT SVG-wrap it. Every other entry in SVG_TAGS is
+// namespace-unambiguous.
 const SVG_ROOT_EXCLUDE = new Set(['svg', 'title'])
 
 /**
@@ -406,12 +376,9 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     // oldest entry once we hit the cap.
     _tplCache.set(html, tpl)
   }
-  // Cache-HIT is a no-op — no LRU touch. The previous `delete + set` re-insert
-  // cost 2 Map ops per call and dominated the hot path (a 10,000-row create paid
-  // 20,000 Map ops on LRU bookkeeping alone). FIFO can evict a frequently-used
-  // early template before a rarely-used later one, but only once the cache is
-  // full; no realistic app approaches 1024 distinct templates, and the worst
-  // case is a one-time re-parse.
+  // Cache-HIT is a no-op — no LRU touch. The previous `delete + set` re-insert cost 2
+  // Map ops per call and dominated the hot path (a 10,000-row create paid 20,000 Map
+  // ops on LRU bookkeeping alone).
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }

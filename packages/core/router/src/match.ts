@@ -308,9 +308,8 @@ function makeFlatEntry(
   if (hasOptional) {
     while (minSegs > 0 && segments[minSegs - 1]?.isOptional) minSegs--
   }
-  // Resolve the chain's validateSearch ONCE (leaf→root, most-specific
-  // wins). Per-resolve, the hot paths then do a null check instead of
-  // walking the chain.
+  // Resolve the chain's validateSearch ONCE (leaf→root, most-specific wins).
+  // Per-resolve, the hot paths then do a null check instead of walking the chain.
   let validateFn: FlattenedRoute['validateFn'] = null
   for (let i = chain.length - 1; i >= 0; i--) {
     const v = chain[i]?.validateSearch
@@ -438,17 +437,10 @@ interface RouteIndex {
 }
 
 // ─── notFoundComponent trie ─────────────────────────────────────────────────
-//
 // Indexes notFoundComponent-bearing records by URL-path segments at build time,
 // so `/de/posts/unknown` walks root -> "de" -> "posts" in O(URL segments)
 // instead of scanning the whole route tree per 404 (previously O(N) with heavy
 // per-record string work; real i18n x dynamic trees have dozens of such records).
-//
-// Two parallel tracks per node: `layout` (deepest layout-record whose
-// notFoundComponent applies at this prefix) and `page` (deepest page-record,
-// used only for the layout-less synthetic-chrome fallback). Both `chain.length`
-// and `segmentCount` are tracked so the depth/specificity tiebreaker in
-// `findNotFoundFallback` is preserved.
 interface NotFoundEntry {
   record: RouteRecord
   chain: RouteRecord[]
@@ -650,11 +642,10 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
   const compiled = compileRoutes(routes)
   const flattened = flattenRoutes(compiled)
 
-  // Null-prototype dictionary objects, NOT `Map` — measured ~3× faster on
-  // the hit path (4.1ns vs 11.2ns per lookup in Bun/JSC; V8 comparable),
-  // which is ~30% of the entire static-resolve cost. Null prototype makes
-  // hostile keys (`__proto__`, `constructor`) plain own properties — the
-  // same hardening radix3 relies on for its staticRoutesMap.
+  // Null-prototype dictionary objects, NOT `Map` — measured ~3× faster on the hit path
+  // (4.1ns vs 11.2ns per lookup in Bun/JSC; V8 comparable), which is ~30% of the entire
+  // static-resolve cost. Null prototype makes hostile keys (`__proto__`, `constructor`)
+  // plain own properties — the same hardening radix3 relies on for its staticRoutesMap.
   const staticMap: Record<string, FlattenedRoute> = Object.create(null)
   const segmentMap: Record<string, FlattenedRoute[]> = Object.create(null)
   const dynamicFirst: FlattenedRoute[] = []
@@ -676,14 +667,10 @@ function buildRouteIndex(routes: RouteRecord[]): RouteIndex {
     if (bucket) segmentDispatch[key] = buildBucketDispatch(bucket)
   }
 
-  // First-char fail-fast mask: `mask[c] === 1` iff SOME non-wildcard route's first
-  // URL segment starts with ASCII char code `c`. After a staticMap miss, a path
-  // whose first char isn't in the mask can only match a wildcard, so resolveRoute
-  // jumps straight there — the radix-tree-style first-char fail find-my-way gets
-  // for free. Statics ARE in the mask: `/about/` misses the staticMap but must
-  // still reach the general matcher. Disabled entirely when any first char is
-  // non-ASCII or any route's first segment is dynamic; '%'-first paths are
-  // handled at the check site.
+  // First-char fail-fast mask: `mask[c] === 1` iff SOME non-wildcard route's first URL
+  // segment starts with ASCII char code `c`. After a staticMap miss, a path whose first
+  // char isn't in the mask can only match a wildcard, so resolveRoute jumps straight
+  // there — the radix-tree-style first-char fail find-my-way gets for free.
   let firstCharMask: Uint8Array | null = dynamicFirst.length === 0 ? new Uint8Array(128) : null
   if (firstCharMask) {
     for (const key in segmentMap) {
@@ -753,19 +740,12 @@ function decodeSafe(s: string): string {
 }
 
 // ─── Offset-walking fast matcher ─────────────────────────────────────────────
-//
 // The general matcher materializes EVERY path segment as a substring plus a
 // parts array per resolve (3 allocations for a 2-segment dynamic URL before
 // matching starts) and compares static pattern segments via slice-then-===. The
 // offset walker compares static segments IN PLACE (`startsWith` at an offset)
 // and only materializes segments that become param values, dropping dynamic
 // resolves from ~5 allocations to ~2.
-//
-// It only runs for "plain" paths — no `%` escapes, no `//` empty segments, no
-// trailing slash, all of which change segment-boundary semantics.
-// `scanCleanPath` detects those in the same pass that counts segments and
-// returns -1, so every edge shape falls back to the general matcher and stays
-// byte-identical by construction.
 
 /**
  * First internal `/` offset (>= 1) from the most recent SUCCESSFUL
@@ -1076,11 +1056,10 @@ function applyValidateFn(
   }
 }
 
-// Shared frozen empties for the no-params / no-query / no-search cases —
-// the dominant shapes. Freezing follows the `meta` precedent (frozen at
-// flatten time): user mutation throws in strict mode instead of silently
-// polluting a shared object, and the resolver skips three allocations per
-// navigation. Non-empty params/query/search are still fresh per resolve.
+// Shared frozen empties for the no-params / no-query / no-search cases — the dominant
+// shapes. Freezing follows the `meta` precedent (frozen at flatten time): user mutation
+// throws in strict mode instead of silently polluting a shared object, and the resolver
+// skips three allocations per navigation.
 const EMPTY_PARAMS: Record<string, string> = Object.freeze(Object.create(null))
 const EMPTY_QUERY: Record<string, string> = Object.freeze(Object.create(null))
 const EMPTY_SEARCH: Record<string, unknown> = Object.freeze(Object.create(null))
@@ -1139,17 +1118,13 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
     }
   }
 
-  // First-char fail-fast (see RouteIndex.firstCharMask): after the static
-  // miss, a path whose first-segment char no non-wildcard route starts with
-  // can only match a wildcard — return it directly, skipping the plain-shape
-  // scan, dispatch, and general matcher (the first-char fail a radix tree
-  // gets for free; a 12-char miss paid ~4ns/char here). Excluded chars fall
-  // through to the full pipeline: `%` (an encoded first char decodes to
-  // anything) and `/` (a leading `//` collapses in the general lane's
-  // splitPath, so `//foo` can still match `/foo`). `charCodeAt(1)` is NaN
-  // for the bare root `'/'` and for `''` — both fail `cc < 128` and jump:
-  // correct, since a root route would have hit the staticMap above, and the
-  // general lane resolves both to the same wildcard/not-found tail.
+  // First-char fail-fast (see RouteIndex.firstCharMask): after the static miss, a path
+  // whose first-segment char no non-wildcard route starts with can only match a
+  // wildcard — return it directly, skipping the plain-shape scan, dispatch, and general
+  // matcher (the first-char fail a radix tree gets for free; a 12-char miss paid
+  // ~4ns/char here). Excluded chars fall through to the full pipeline: `%` (an encoded
+  // first char decodes to anything) and `/` (a leading `//` collapses in the general
+  // lane's splitPath, so `//foo` can still match `/foo`).
   const mask = index.firstCharMask
   if (mask) {
     const cc = cleanPath.charCodeAt(1)
@@ -1186,13 +1161,12 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
     }
   }
 
-  // Split path for segment-based matching
-  // Fast lane: plain paths (no `%`, no `//`, no trailing slash — the
-  // overwhelmingly common shape) match via the offset walker: static
-  // pattern segments compare in place, only param values are sliced, no
-  // parts array is allocated. `scanCleanPath` certifies the shape in a
-  // single pass and returns -1 for anything that needs the general
-  // split-based matcher, which is preserved below byte-for-byte.
+  // Split path for segment-based matching Fast lane: plain paths (no `%`, no `//`, no
+  // trailing slash — the overwhelmingly common shape) match via the offset walker:
+  // static pattern segments compare in place, only param values are sliced, no parts
+  // array is allocated. `scanCleanPath` certifies the shape in a single pass and
+  // returns -1 for anything that needs the general split-based matcher, which is
+  // preserved below byte-for-byte.
   const fastLen = scanCleanPath(cleanPath)
   if (fastLen >= 0) {
     if (fastLen > 0) {
@@ -1310,14 +1284,8 @@ export function resolveRoute(rawPath: string, routes: RouteRecord[]): ResolvedRo
     }
   }
 
-  // Fallback: notFoundComponent walk. When the URL doesn't match any
-  // descendant route, look for the deepest parent `notFoundComponent`
-  // whose path is a prefix of this URL. Build a synthetic chain that
-  // renders the not-found component INSIDE its ancestor layouts so the
-  // 404 page carries the same chrome (headers, footers, navigation) as
-  // regular pages. Without this, SSG/SSR returns `matched: []` and the
-  // caller has to render the not-found component standalone, losing
-  // layout wrapping.
+  // Fallback: notFoundComponent walk. When the URL doesn't match any descendant route,
+  // look for the deepest parent `notFoundComponent` whose path is a prefix of this URL.
   const nfb = findNotFoundFallback(routes, cleanPath, index.notFoundTrie)
   if (nfb) {
     return {
@@ -1360,16 +1328,8 @@ function findNotFoundFallback(
   urlPath: string,
   trie: NotFoundTrieNode,
 ): RouteRecord[] | null {
-  // PR-S9: O(URL segments) trie lookup. Replaces the previous full
-  // route-tree walk (O(routes-in-tree) per 404, with constant-factor
-  // string ops per record). The trie is built once at `buildRouteIndex`
-  // time and cached via `_indexCache` (WeakMap keyed on `routes`
-  // identity). On large i18n × dynamic-route trees this drops 404
-  // resolution from "scan every route" to "walk N segments of the URL".
-  //
-  // The trie's `layout` / `page` tracks at each node preserve the same
-  // tiebreaker semantics as the old walk: deeper chain wins, ties go to
-  // more specific (more-segments) paths.
+  // PR-S9: O(URL segments) trie lookup. Replaces the previous full route-tree walk
+  // (O(routes-in-tree) per 404, with constant-factor string ops per record).
   const { layout, page } = findInTrie(trie, urlPath)
 
   // Layout pass — preferred over page-level fallback. fs-router attaches
@@ -1378,7 +1338,6 @@ function findNotFoundFallback(
   // at insert time (records with non-empty `children`). Layout matches
   // produce a chain `[...ancestors, syntheticLeaf]` where the synthetic
   // leaf renders the notFoundComponent inside the layout's
-  // `<RouterView />`.
   if (layout) {
     const syntheticLeaf: RouteRecord = {
       path: SYNTHETIC_NOT_FOUND_PATH,
@@ -1393,16 +1352,6 @@ function findNotFoundFallback(
   // "default chrome" layout that renders `<main data-pyreon-default-chrome>
   // <RouterView /></main>`. This provides a semantic-HTML landmark for
   // accessibility + a hook for users to target the wrapper via CSS, while
-  // routing the render through the normal `<RouterView />` pipeline (so
-  // `isNotFound` propagation and runtime SSR status-404 still work).
-  //
-  // The DefaultChromeLayout component is registered by `components.tsx`
-  // at module load time via `_setDefaultChromeLayout()` (setter pattern
-  // to avoid the components.tsx → match.ts circular import). If the
-  // setter hasn't been called yet (consumer never imported anything
-  // from `@pyreon/router` that triggers components.tsx's side effects),
-  // we fall back to returning null — the standalone-render path in the
-  // SSG plugin / runtime handler picks up from there.
   if (page && _defaultChromeLayout) {
     const syntheticChromeLayout: RouteRecord = {
       path: page.fullPath,

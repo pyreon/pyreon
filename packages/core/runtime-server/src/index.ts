@@ -17,9 +17,8 @@ import { name as __pkgName, version as __pkgVersion } from '../package.json' wit
 import { registerSingleton } from '@pyreon/reactivity'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/runtime-server
-// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
-// full rationale. Hardcoded version is acceptable here — it's a diagnostic
-// aid, not a load-bearing identity check.
+// instances in the same heap. See @pyreon/reactivity/singleton-sentinel for full
+// rationale.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -49,19 +48,12 @@ import {
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 // ─── Compile-to-string SSR fast path (`_ssr` / `_ssrChildren` / `_esc`) ───────
-//
 // The SSR analog of the DOM `_tpl()` cloneNode fast path. The compiler lowers an
 // eligible static-skeleton JSX subtree to `_ssr(["<li>…","</li>"], hole0,…)`:
 // static HTML lives in the `statics` array and every dynamic child is a hole
 // resolved through the EXACT same `renderNode` the h() path uses — which is what
 // makes the output BYTE-IDENTICAL to the h()-tree walk it replaces. Only
 // provably-static bytes are baked.
-//
-// `RawHtml` is the trust boundary: `_ssr`/`_ssrChildren` return already-rendered
-// HTML wrapped in it, so a NESTED result is concatenated VERBATIM instead of
-// being re-escaped by `renderNode`'s string arm (the classic SafeString pattern —
-// Solid's `ssr()`, React's dangerouslySetInnerHTML boundary). A plain string hole
-// is still user text and IS escaped.
 class RawHtml {
   constructor(readonly value: string) {}
 }
@@ -137,14 +129,10 @@ function withStoreContext<T>(fn: () => T): T {
 }
 
 // ─── <select value> SSR support (PZ-09) ─────────────────────────────────────
-// <select> has NO `value` CONTENT attribute — serializing it emits a DEAD
-// attribute the parser ignores, so SSR'd pages shipped with the FIRST option
-// selected regardless of the value prop. Instead the selection intent is carried
-// the way HTML expresses it: the matching <option> gets a `selected` attribute.
-// The nearest-enclosing-select frame flows to option rendering via
-// AsyncLocalStorage, so concurrent renders / streams can never observe each
-// other's frame. Hydration parity: the client applies `select.value` AFTER
-// children mount, selecting the same option the markup marked.
+// <select> has NO `value` CONTENT attribute — serializing it emits a DEAD attribute the
+// parser ignores, so SSR'd pages shipped with the FIRST option selected regardless of
+// the value prop. Instead the selection intent is carried the way HTML expresses it:
+// the matching <option> gets a `selected` attribute.
 
 interface SelectValueFrame {
   /** String-coerced select value — HTMLSelectElement.value setter semantics. */
@@ -237,8 +225,6 @@ export async function renderToString(root: VNode | null): Promise<string> {
   // stack, so the nested scope silently DISCARDED every request-level provide and
   // `useRequestLocals()` could never resolve anything but the default.
   // Per-component trims restore the stack to each component's entry length, so
-  // inherited request frames survive the render untouched. Bare calls (no
-  // surrounding request context) keep the fresh isolated stack.
   if (_contextAls.getStore() !== undefined) return renderNode(root)
   return withStoreContext(() => _contextAls.run([], () => renderNode(root)))
 }
@@ -318,9 +304,8 @@ export function renderToStream(
         once: true,
       })
   }
-  // Resolve the Suspense timeout. Invalid input (≤0, NaN) falls back to
-  // 30_000 — same as pre-config behavior. `Infinity` is preserved so the
-  // boundary code can detect it and skip the race entirely.
+  // Resolve the Suspense timeout. Invalid input (≤0, NaN) falls back to 30_000 — same
+  // as pre-config behavior.
   const userTimeout = options.suspenseTimeoutMs
   const suspenseTimeoutMs =
     userTimeout === Infinity
@@ -344,10 +329,9 @@ export function renderToStream(
         signal,
         suspenseTimeoutMs,
       }
-      // One shared abort-promise — registered ONCE, resolved on signal
-      // abort. Racing each pending batch against this lets the drain
-      // loop exit promptly when the consumer hangs up, without accruing
-      // one abort listener per loop iteration.
+      // One shared abort-promise — registered ONCE, resolved on signal abort. Racing
+      // each pending batch against this lets the drain loop exit promptly when the
+      // consumer hangs up, without accruing one abort listener per loop iteration.
       const abortPromise: Promise<void> = signal.aborted
         ? Promise.resolve()
         : new Promise<void>((resolve) => {
@@ -361,11 +345,10 @@ export function renderToStream(
         _streamCtxAls
           .run(ctx, async () => {
             await streamNode(root, enqueue)
-            // Flush styler CSS collected during the shell render. The handler
-            // pushed the shell `<head>` BEFORE the appStream started, so
-            // per-render styles can't land there — emit a `<style>` inline at the
-            // top of the app body instead. Per-boundary flushes cover styles from
-            // async boundary resolution. No-op when styler isn't loaded.
+            // Flush styler CSS collected during the shell render. The handler pushed
+            // the shell `<head>` BEFORE the appStream started, so per-render styles
+            // can't land there — emit a `<style>` inline at the top of the app body
+            // instead.
             const stylerFlush = (globalThis as { __PYREON_STYLER_FLUSH__?: () => string })
               .__PYREON_STYLER_FLUSH__
             if (stylerFlush) {
@@ -410,9 +393,8 @@ export function renderToStream(
         : withStoreContext(() => _contextAls.run([], streamBody))
     },
     cancel(reason) {
-      // Consumer (browser fetch reader) closed the stream — propagate to
-      // the internal controller so in-flight Suspense work stops being
-      // awaited.
+      // Consumer (browser fetch reader) closed the stream — propagate to the internal
+      // controller so in-flight Suspense work stops being awaited.
       ac.abort(reason)
     },
   })
@@ -594,11 +576,10 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const ctx = _streamCtxAls.getStore()
   const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
 
-  // Defensive: the streaming pipeline only enters here via `_streamCtxAls.run`,
-  // so `ctx` is always defined. Kept as a safety net in case a future entry point
-  // bypasses the streaming context — it performs the same context-stack hygiene
-  // as `renderComponent` so a Suspense `provide()` couldn't leak into siblings.
-  // Excluded from coverage because no public-API path reaches it.
+  // Defensive: the streaming pipeline only enters here via `_streamCtxAls.run`, so
+  // `ctx` is always defined. Kept as a safety net in case a future entry point bypasses
+  // the streaming context — it performs the same context-stack hygiene as
+  // `renderComponent` so a Suspense `provide()` couldn't leak into siblings.
   /* c8 ignore start */
   if (!ctx) {
     const stackLenBefore = getContextStackLength()
@@ -630,10 +611,8 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const ctxStore = _contextAls.getStore() ?? []
 
   // Queue async resolution — runs in parallel, emits to the main stream when done.
-  // Errors are caught per-boundary so one failing Suspense doesn't abort the
-  // stream, and a timeout prevents hung children from holding it open. Configurable
-  // via `RenderToStreamOptions.suspenseTimeoutMs` (default 30_000; `Infinity`
-  // disables the race).
+  // Errors are caught per-boundary so one failing Suspense doesn't abort the stream,
+  // and a timeout prevents hung children from holding it open.
   const suspenseTimeoutMs = ctx.suspenseTimeoutMs
 
   ctx.pending.push(
@@ -677,10 +656,9 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
           return
         }
 
-        // Client disconnected (or upstream aborted) while we were
-        // resolving — don't bother enqueueing the post-resolve content.
-        // The drain loop also checks `signal.aborted` so the stream
-        // closes promptly without us racing it.
+        // Client disconnected (or upstream aborted) while we were resolving — don't
+        // bother enqueueing the post-resolve content. The drain loop also checks
+        // `signal.aborted` so the stream closes promptly without us racing it.
         if (ctx.signal?.aborted) return
 
         // Escape </template> in buffered content to prevent early close + XSS
@@ -721,17 +699,12 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
 // ─── Core renderer ───────────────────────────────────────────────────────────
 
 // ─── Maybe-sync string renderer ──────────────────────────────────────────────
-//
 // Every function in the string-render family returns `string | Promise<string>`
 // rather than always-Promise. Fully-synchronous subtrees (the overwhelming
 // majority) concatenate plain strings with ZERO promise hops; only a genuine
 // `async function Component()` promotes its own subtree, and `.then`
 // continuations resume the sequential child walk from the suspension point, so
 // sibling order and context-stack happens-before are preserved.
-//
-// The previous always-async shape paid promise machinery at EVERY node: on the
-// links-100 scenario (~500 nodes) ~90us of ~100us per render was promise
-// overhead against ~10us of actual HTML work.
 
 type MaybeAsync = string | Promise<string>
 
@@ -756,13 +729,11 @@ function renderChildList(children: readonly VNodeChild[], start: number, acc: st
 
 function renderNode(node: VNodeChild | (() => VNodeChild)): MaybeAsync {
   // Reactive accessor — snapshot it and WRAP the output in `<!--$-->…<!--/$-->`
-  // hydration range markers, which give hydration the accessor's exact DOM
-  // extent (otherwise unknowable client-side): the initial can render zero nodes,
-  // one text node, or many. Without them hydration removed exactly ONE node
-  // before re-mounting, so a multi-root initial left the rest DUPLICATED and
-  // adjacent text siblings merged, misaligning the cursor. Emitted UNIFORMLY —
-  // a marked range adjacent to an unmarked one reintroduces the same gaps.
-  // The analogue is Solid's `<!--$-->`.
+  // hydration range markers, which give hydration the accessor's exact DOM extent
+  // (otherwise unknowable client-side): the initial can render zero nodes, one text
+  // node, or many. Without them hydration removed exactly ONE node before re-mounting,
+  // so a multi-root initial left the rest DUPLICATED and adjacent text siblings merged,
+  // misaligning the cursor.
   if (typeof node === 'function') {
     const inner = renderNode((node as () => VNodeChild)())
     if (typeof inner === 'string') return `<!--$-->${inner}<!--/$-->`
@@ -845,12 +816,6 @@ function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
   // back after children — that pops every frame pushed via `provide()`. Without
   // it every SSR provider leaks its frame and later siblings see the wrong value
   // (a `<PyreonUI inversed>` inside one section flipped every later section dark).
-  //
-  // We trim DIRECTLY rather than running the component's unmount hooks: users
-  // register `onUnmount` for things still load-bearing post-render during SSR —
-  // `useHead({ title })` removes its head entries there, which would wipe the
-  // store before `renderWithHead` reads it. SSR has no real unmount phase;
-  // `provide()`'s frame cleanup is the only SSR-visible side effect.
   const stackLenBefore = getContextStackLength()
   const { vnode: output } = runWithHooks(vnode.type, mergeChildrenIntoProps(vnode))
 
@@ -858,11 +823,6 @@ function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
   // `<!--$pas-->`/`<!--$pae-->` sentinels so the client hydrate can locate the
   // SSR DOM range for the still-pending Promise and attach reactivity. Without
   // them, events / lifecycle / subscriptions never wire up on those nodes.
-  //
-  // Maybe-sync: the dominant sync path trims the context stack synchronously and
-  // returns a plain string; promise paths trim in BOTH settle branches — the trim
-  // must run after the subtree completes, never before, so providers stay visible
-  // to children.
   if (output instanceof Promise) {
     return output.then(
       (resolved) => {
@@ -990,7 +950,6 @@ function renderElement(vnode: VNode): MaybeAsync {
 }
 
 // ─── Compile-to-string SSR fast path — runtime primitives ─────────────────────
-//
 // Emitted by the compiler for eligible static-skeleton subtrees. The compiler
 // PRE-STRINGIFIES every hole and bakes the `<!--$-->` accessor markers into the
 // surrounding statics, so `_ssr` is a LEAN `+=` concat with ONE type check per
@@ -1500,10 +1459,9 @@ const VOID_ELEMENTS = new Set([
 
 const UPPERCASE_RE = /[A-Z]/
 function isVoidElement(tag: string): boolean {
-  // JSX tags are lowercase in practice — the direct Set probe covers them
-  // with ZERO allocation. The previous unconditional `tag.toLowerCase()`
-  // allocated a string per rendered element (measured 4.3% of non-GC SSR
-  // time). Mixed-case tags (h() callers) still resolve via the fallback.
+  // JSX tags are lowercase in practice — the direct Set probe covers them with ZERO
+  // allocation. The previous unconditional `tag.toLowerCase()` allocated a string per
+  // rendered element (measured 4.3% of non-GC SSR time).
   return VOID_ELEMENTS.has(tag) || (UPPERCASE_RE.test(tag) && VOID_ELEMENTS.has(tag.toLowerCase()))
 }
 
@@ -1766,10 +1724,8 @@ function toKebab(str: string): string {
  * future consumer to decode if needed.
  */
 // Keys made only of [\w.:] can never form `--` (no dash at all), so they are
-// comment-safe verbatim, and `%` is excluded so decodeURIComponent round-trips
-// them. Number.prototype.toString likewise never emits consecutive dashes. Both
-// fast paths skip the encodeURIComponent + replace pair, ~7% of non-GC SSR time
-// on list-heavy pages (numeric ids dominate <For> keys).
+// comment-safe verbatim, and `%` is excluded so decodeURIComponent round-trips them.
+// Number.prototype.toString likewise never emits consecutive dashes.
 const SIMPLE_KEY_RE = /^[\w.:]+$/
 function safeKeyForMarker(key: unknown): string {
   if (typeof key === 'number') return String(key)
@@ -1789,11 +1745,10 @@ export function decodeKeyFromMarker(encoded: string): string {
   return decodeURIComponent(encoded.replace(/%2D/gi, '-'))
 }
 
-// Detect tag names that would break out of `<TAG>` / `</TAG>` and inject HTML:
-// if user data ever feeds `h(userTag, ...)`, `userTag = 'div><script>…<div'`
-// yields executable markup. The framework doesn't escape tag names (React/Vue/
-// Solid match — it's the caller's responsibility), but a dev warning catches the
-// mistake before prod. The safe pattern covers HTML + custom element names.
+// Detect tag names that would break out of `<TAG>` / `</TAG>` and inject HTML: if user
+// data ever feeds `h(userTag, ...)`, `userTag = 'div><script>…<div'` yields executable
+// markup. The framework doesn't escape tag names (React/Vue/ Solid match — it's the
+// caller's responsibility), but a dev warning catches the mistake before prod.
 const SAFE_TAG_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/
 function warnIfUnsafeTag(tag: string): void {
   if (process.env.NODE_ENV === 'production') return

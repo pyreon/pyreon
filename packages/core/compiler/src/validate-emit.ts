@@ -450,10 +450,6 @@ function emitNumberChecks(checks: NumberCheck[], v: string, path: string): strin
 // emitted `__i`/`__e`, and the inner `const __e = __e[__i]` self-referenced the
 // outer `__e` in the inner block scope → `Cannot access '__e' before
 // initialization` (TDZ) thrown for EVERY input. Under `compileValidators`
-// (vite-plugin) that throw is swallowed by the verdict try/catch → `.is()`
-// silently returned `false` for valid data. Sibling arrays at the same depth
-// (`s.object({ a: s.array(…), b: s.array(…) })`) live in separate `for` block
-// scopes, so reusing the same name there is correct — only nesting collides.
 function emitNode(node: ValidateNode, v: string, path: string, depth = 0): string {
   switch (node.kind) {
     case 'string': {
@@ -509,15 +505,12 @@ export function emitValidator(node: ValidateNode): string {
 }
 
 // ─── Schema-source emit (tree-shakeable rewrite target) ──────────────────────
-//
 // The COUNTERPART to `emitValidator`: instead of lowering the IR to a verdict
 // function, lower it to a tree-shakeable `@pyreon/validate/mini` schema
 // CONSTRUCTION expression. The user keeps writing the beautiful chainable
 // `s.string().email().min(2)`; `@pyreon/vite-plugin` swaps the source for the
 // emitted lean form (`string().check(email(), minLength(2))`) so the bundle
 // pulls only the constructors + actions used — no second API to learn. Verdict
-// + issues stay byte-identical (the mini actions are parity-locked to the
-// chainable methods: `validate/tests/mini-parity.test.ts`).
 
 /** Result of {@link emitSchemaSource}. */
 export interface SchemaSourceResult {

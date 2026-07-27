@@ -82,12 +82,10 @@ export function registerErrorHandler(handler: ErrorHandler): () => void {
  * Existing console.error calls are preserved; this is additive.
  */
 export function reportError(ctx: ErrorContext): void {
-  // Enrich with the recent-signal-write trace so every handler (Sentry,
-  // Datadog, console) gets the causal reactive sequence for free. Only
-  // when the caller didn't already supply one, and only in dev — the
-  // gate lets the `getReactiveTrace` call (and the buffer behind it)
-  // tree-shake out of production. A throwing/empty trace must never
-  // block error reporting, so it's best-effort.
+  // Enrich with the recent-signal-write trace so every handler (Sentry, Datadog,
+  // console) gets the causal reactive sequence for free. Only when the caller didn't
+  // already supply one, and only in dev — the gate lets the `getReactiveTrace` call
+  // (and the buffer behind it) tree-shake out of production.
   if (process.env.NODE_ENV !== 'production' && ctx.reactiveTrace === undefined) {
     try {
       const trace = getReactiveTrace()

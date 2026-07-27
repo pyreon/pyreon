@@ -487,9 +487,8 @@ function detectNonLiteralRevalidateExport(
   return findings
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Entry point
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════ Entry
+// point ═══════════════════════════════════════════════════════════════════════════════
 
 export function auditSsg(rootDir: string): SsgAuditResult {
   const root = findMonorepoRoot(rootDir) ?? rootDir

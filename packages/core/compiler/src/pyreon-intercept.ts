@@ -92,8 +92,7 @@
 import ts from 'typescript'
 import { assertClassicTs } from './ts'
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Types
+// ═══════════════════════════════════════════════════════════════════════════════ Types
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export type PyreonDiagnosticCode =
@@ -290,9 +289,8 @@ function detectPropsDestructured(
   if (!first || !ts.isObjectBindingPattern(first.name)) return
   if (first.name.elements.length === 0) return
 
-  // Heuristic: only flag functions that actually render JSX (component
-  // functions), not arbitrary callbacks that happen to destructure an
-  // options bag.
+  // Heuristic: only flag functions that actually render JSX (component functions), not
+  // arbitrary callbacks that happen to destructure an options bag.
   if (!containsJsx(node)) return
 
   pushDiag(
@@ -1183,8 +1181,6 @@ export function hasPyreonPatterns(code: string): boolean {
     // `js/polynomial-redos` (alert #65) as polynomial-time on inputs
     // like `onAAAA…` (long runs of `[A-Z]`): per starting position
     // the greedy `\w*` consumes O(N) chars before the trailing `=`
-    // fails to match, giving O(N²) overall on N starting positions.
-    // The cap keeps the regex linear regardless of input shape.
     /on[A-Z]\w{0,60}\s*=\s*\{\s*undefined\s*\}/.test(code) ||
     // Bounded `{0,500}` / `{1,500}` quantifiers — this is a pre-filter
     // scan before the precise AST walker, so losing detector recall on

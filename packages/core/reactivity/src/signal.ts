@@ -143,14 +143,10 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       }
     }
   }
-  // Auto-batch the notification chain: without it a diamond (a -> b,c -> d ->
-  // effect) fires the apex effect TWICE per write, because the first path
-  // clears `d`'s dirty flag and the second re-dirties + re-notifies it.
-  // The batch is synchronous — only the dedup semantics change.
-  //
-  // No-subscriber fast path: with nothing to notify there is no cascade to
-  // drain, and while batchDepth is 0 the pending queues are provably empty, so
-  // the whole batch window is skipped. Dominant shape for write-only signals.
+  // Auto-batch the notification chain: without it a diamond (a -> b,c -> d -> effect)
+  // fires the apex effect TWICE per write, because the first path clears `d`'s dirty
+  // flag and the second re-dirties + re-notifies it. The batch is synchronous — only
+  // the dedup semantics change.
   const _d1 = this._d1
   const _d = this._d
   const _s = this._s
@@ -161,17 +157,10 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
     else if (_d) notifyDirect(_d)
     if (_s) notifySubscribers(_s)
   } else {
-    // INLINE batch window — no `batch(closure)` allocation, and the
-    // notifications THIS write owns dispatch DIRECTLY instead of round-tripping
-    // the pending queues. Measured: that round-trip dominated the unbatched
-    // write path at ~119ns per single-subscriber notify vs ~12ns for the write.
-    //
-    // Correctness holds BY CONSTRUCTION: dedup only matters for diamonds, which
-    // need >=2 subscribers at the fan-out point, and the direct dispatches below
-    // each deliver a SINGLE callback once. Multi-subscriber channels still route
-    // through notifySubscribers/notifyDirect and enqueue under the open window.
-    // Cascade writes from a dispatched callback see `isBatching() === true` and
-    // are drained by `closeInlineBatch` with the same two-tier flush.
+    // INLINE batch window — no `batch(closure)` allocation, and the notifications THIS
+    // write owns dispatch DIRECTLY instead of round-tripping the pending queues.
+    // Measured: that round-trip dominated the unbatched write path at ~119ns per
+    // single-subscriber notify vs ~12ns for the write.
     openInlineBatch()
     try {
       if (_d1) {

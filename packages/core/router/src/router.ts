@@ -40,12 +40,9 @@ export const RouterContext = createContext<RouterInstance | null>(null)
 // RouterProvider also sets this so legacy useRouter() calls outside the tree work.
 let _activeRouter: RouterInstance | null = null
 
-// The router that OWNS browser-history writes for cancelled traversals. Set when
-// a client router attaches its popstate/hashchange listener (newest wins),
-// cleared by `destroy()`. Only the owner restores URL/position on a cancelled
-// browser navigation — a stale instance that missed its `destroy()` (HMR remount,
-// a second router) must never write the shared URL back, or the two fight over
-// the history stack.
+// The router that OWNS browser-history writes for cancelled traversals. Set when a
+// client router attaches its popstate/hashchange listener (newest wins), cleared by
+// `destroy()`.
 let _navOwner: object | null = null
 
 export function getActiveRouter(): RouterInstance | null {
@@ -195,9 +192,8 @@ export function onBeforeRouteUpdate(guard: NavigationGuard): () => void {
  * })
  * // later: blocker.remove()
  */
-// Shared beforeunload handler — single listener for all active blockers.
-// Attached when the first blocker registers, detached when the last one is
-// removed. Avoids listener accumulation from multiple useBlocker() calls.
+// Shared beforeunload handler — single listener for all active blockers. Attached when
+// the first blocker registers, detached when the last one is removed.
 let _beforeUnloadRefCount = 0
 const _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
   e.preventDefault()
@@ -530,16 +526,12 @@ export function createRouter<TNames extends string = string>(
   let _navGen = 0
 
   // ── History position tracking ─────────────────────────────────────────────
-  //
   // Every router-written history entry is stamped with a monotonically increasing
   // index (`history.state.__pyreonIdx`) so the popstate handler can compute the
   // traversal DELTA. When a guard / blocker / middleware cancels a
   // browser-initiated navigation, the router restores the user's position with
   // `history.go(-delta)`, keeping the stack intact. Entries created OUTSIDE the
   // router carry no index, so cancellation degrades to a `replaceState` URL
-  // restore (URL + app state stay consistent; only stack position is
-  // approximated). The restoring `go()` fires its own popstate, which
-  // `_suppressBrowserNav` swallows so the pipeline doesn't run twice.
   let _histIdx = 0
   let _suppressBrowserNav = 0
 
@@ -577,19 +569,12 @@ export function createRouter<TNames extends string = string>(
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
   // ── Browser-initiated navigation (Back/Forward, hash anchors) ────────────
-  //
   // Routes history traversals through the SAME `navigate()` pipeline as
   // `router.push()`. As a bare `currentPath.set(...)` this silently bypassed
   // loaders (leaving `useLoaderData()` undefined, since `commitNavigation` prunes
   // data for routes navigated away from), guards, blockers, middleware,
   // `afterEach` (so the a11y route announcer never fired on Back), scroll
   // save/restore, and `meta.title`.
-  //
-  // Semantics: the browser has ALREADY moved the URL, so the commit uses replace
-  // semantics; a CANCELLED traversal restores position via `history.go(-delta)`
-  // when the popped entry carries a `__pyreonIdx` stamp, else `replaceState`s the
-  // URL back; a SUPERSEDED traversal is left alone (the newer navigation owns the
-  // URL); a same-path event early-returns without running the pipeline.
   const handleBrowserNav = (): void => {
     // Client-only: wired solely to the popstate/hashchange listeners, which
     // are null on the server. The explicit `isClient` early-return documents
@@ -628,11 +613,10 @@ export function createRouter<TNames extends string = string>(
     })
   }
 
-  // Browser event listeners — stored so destroy() can remove them.
-  // Ternary-bound on `isClient` (the canonical `@pyreon/reactivity` SSR-guard
-  // primitive — a recognized guard name) so the lint rule can trace these to an
-  // SSR-safe shape without needing `if (isClient && handler)` contortions at
-  // every use site.
+  // Browser event listeners — stored so destroy() can remove them. Ternary-bound on
+  // `isClient` (the canonical `@pyreon/reactivity` SSR-guard primitive — a recognized
+  // guard name) so the lint rule can trace these to an SSR-safe shape without needing
+  // `if (isClient && handler)` contortions at every use site.
   const _popstateHandler: (() => void) | null =
     isClient && mode === 'history' ? handleBrowserNav : null
   const _hashchangeHandler: (() => void) | null =
@@ -658,12 +642,11 @@ export function createRouter<TNames extends string = string>(
     }
   }
 
-  // When the user configures scroll behavior, the ROUTER owns scroll on
-  // history traversals — switch off the browser's native restoration so the
-  // two don't fight (native restores, then ScrollManager scrolls again).
-  // Without an explicit `scrollBehavior`, browser-initiated navigations skip
-  // ScrollManager entirely (see `commitNavigation`) and native restoration
-  // keeps working exactly as before. `destroy()` restores the prior value.
+  // When the user configures scroll behavior, the ROUTER owns scroll on history
+  // traversals — switch off the browser's native restoration so the two don't fight
+  // (native restores, then ScrollManager scrolls again). Without an explicit
+  // `scrollBehavior`, browser-initiated navigations skip ScrollManager entirely (see
+  // `commitNavigation`) and native restoration keeps working exactly as before.
   const _prevScrollRestoration: History['scrollRestoration'] | null =
     isClient && scrollBehavior !== undefined && 'scrollRestoration' in window.history
       ? window.history.scrollRestoration
@@ -676,8 +659,6 @@ export function createRouter<TNames extends string = string>(
   // internal clicks it handles, so `e.defaultPrevented` uniquely discriminates
   // framework-handled anchors from plain ones. Opt out via `target` / `download` /
   // `data-allow-reload`. Applies in BOTH modes (a path-style href full-reloads a
-  // hash-mode app too; valid `#/x` hrefs classify as 'hash' and are skipped).
-  // Registered ONCE per router and removed by identity in `destroy()` (leak D).
   const _devAnchorWarn: ((e: MouseEvent) => void) | null =
     process.env.NODE_ENV !== 'production' && isClient
       ? (e: MouseEvent) => {
@@ -716,7 +697,6 @@ export function createRouter<TNames extends string = string>(
   // after the first HMR swap. The bug class is a category confusion: a
   // navigation-loading signal is for navigation lifecycle (paired start/end
   // counters), not for forcing a computed to re-emit. `depthEntry` subscribes to
-  // `_hmrTick` alongside `_loadingSignal`, and HMR bumps only the former.
   const hmrTick = signal(0)
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -968,7 +948,6 @@ export function createRouter<TNames extends string = string>(
           // persistently-failing revalidation loader (auth expiry, API outage)
           // would produce ZERO signal while the developer stares at permanently
           // stale data. Surface it like any other loader error (dev warn +
-          // `onError`) WITHOUT acting on the return value.
           if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console
             console.warn(
@@ -987,11 +966,7 @@ export function createRouter<TNames extends string = string>(
     ac: AbortController,
   ): Promise<GuardOutcome> {
     // Phase 5 — server loaders. On the SERVER the function import exists
-    // (`serverLoader` is a fn) and runs like a normal loader. On the
-    // CLIENT only the `hasServerLoader` marker exists — those records'
-    // data comes from the data endpoint in ONE request for the whole
-    // chain (single-fetch). `staleWhileRevalidate` does not apply to
-    // server-loader records (documented).
+    // (`serverLoader` is a fn) and runs like a normal loader.
     const remote: RouteRecord[] = []
     const loadableRecords: RouteRecord[] = []
     for (const r of to.matched) {
@@ -1054,11 +1029,10 @@ export function createRouter<TNames extends string = string>(
         throw new Error(`[Pyreon Router] data endpoint returned HTTP ${res.status}`)
       }
       const payload = (await res.json()) as {
-        // Phase 5 — data keyed by MATCHED-CHAIN INDEX (not record.path; a
-        // layout + index share a path and path-keying collided — review
-        // finding C). The endpoint resolves the same path -> same chain ->
-        // same indices, so the client maps `data[matchedIndex]` back to its
-        // own matched record at that position.
+        // Phase 5 — data keyed by MATCHED-CHAIN INDEX (not record.path; a layout +
+        // index share a path and path-keying collided — review finding C). The endpoint
+        // resolves the same path -> same chain -> same indices, so the client maps
+        // `data[matchedIndex]` back to its own matched record at that position.
         data?: Record<string, unknown>
         redirect?: { to: string; status?: number }
       }
@@ -1111,8 +1085,6 @@ export function createRouter<TNames extends string = string>(
       // to SURVIVE navigating away. Pruning it meant `runLoaders`'
       // `_loaderData.has(r)` gate was always false on return, so
       // `revalidateSwrLoaders` never ran and SWR was a no-op for the realistic
-      // nav-away/back case. Retained SWR data is bounded by the number of
-      // developer-declared SWR route RECORDS; per-param growth
       for (const record of router._loaderData.keys()) {
         if (!to.matched.includes(record) && !record.staleWhileRevalidate) {
           router._loaderData.delete(record)
@@ -1126,11 +1098,6 @@ export function createRouter<TNames extends string = string>(
     // "Animation from Interactions") — the DOM still swaps synchronously via
     // the non-VT `else` path below; only the fade/slide is suppressed. This is
     // read per-navigation (not cached) so a user toggling the OS preference
-    // mid-session is respected on the next route change.
-    // The early-return `typeof` guard makes the whole helper SSR-safe and is
-    // the form `@pyreon/lint`'s `no-window-in-ssr` recognises (an inline
-    // `typeof matchMedia === 'function' && matchMedia(...)` is NOT — the rule
-    // wants an early-return guard at the function entry).
     const prefersReducedMotion = (): boolean => {
       if (typeof matchMedia === 'undefined') return false
       return matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -1149,15 +1116,6 @@ export function createRouter<TNames extends string = string>(
       // animation is still running. That's what `await router.push()`
       // should wait for: callers need the new route live before they act
       // (e.g. focus an element, inspect `location`, query a new DOM node);
-      // they don't want to block on the full animation (`.finished`),
-      // which would add 200-300ms to every programmatic navigation.
-      //
-      // Before this await, `commitNavigation` was sync: the transition
-      // callback ran in a later microtask, so `await router.push()`
-      // resolved BEFORE the DOM swap. Browser smoke tests had to opt out
-      // of View Transitions per-route via `meta: { viewTransition: false }`
-      // to stay deterministic — a flag whose only purpose was to paper
-      // over this bug.
       type ViewTransitionLike = {
         updateCallbackDone?: Promise<void>
         ready?: Promise<void>
@@ -1177,8 +1135,6 @@ export function createRouter<TNames extends string = string>(
         // `ready` and `finished` reject with `AbortError: Transition
         // was skipped`. We only need to wait on `updateCallbackDone`
         // (the DOM-commit signal), but the other two MUST still be
-        // handled or the rejection surfaces as an unhandled promise
-        // rejection that breaks test runners and CI dashboards.
         vt.ready?.catch(() => {})
         vt.finished?.catch(() => {})
         if (vt.updateCallbackDone) {
@@ -1212,9 +1168,6 @@ export function createRouter<TNames extends string = string>(
     //   - BROWSER-initiated traversals (Back/Forward) run ScrollManager only
     //     when the user configured an explicit `scrollBehavior` — otherwise
     //     the browser's NATIVE scroll restoration owns Back/Forward scroll
-    //     (`history.scrollRestoration` stays 'auto'), exactly the pre-pipeline
-    //     behavior. With an explicit behavior, native restoration is switched
-    //     to 'manual' at router creation so the two never fight.
     if (isClient && (!fromBrowser || scrollBehavior !== undefined)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
@@ -1356,10 +1309,9 @@ export function createRouter<TNames extends string = string>(
     _currentRoute: currentRoute,
     _componentCache: componentCache,
     _loadingSignal: loadingSignal,
-    // PR-S8: dev-only — undefined in prod (no HMR there). `depthEntry`
-    // in components.tsx subscribes to this alongside `_loadingSignal` so
-    // a swap forces a re-emit. See `loadingSignal` decl above for the bug
-    // class.
+    // PR-S8: dev-only — undefined in prod (no HMR there). `depthEntry` in
+    // components.tsx subscribes to this alongside `_loadingSignal` so a swap forces a
+    // re-emit.
     _hmrTick: hmrTick,
     _scrollPositions: new Map(),
     _scrollBehavior: scrollBehavior,
@@ -1480,7 +1432,6 @@ export function createRouter<TNames extends string = string>(
       // a prefetch operation and must NOT clobber `router._abortController`,
       // which belongs to the active navigation. Without this, calling
       // `router.preload(...)` during a navigation destroyed the nav's
-      // abort capability.
       const ac = new AbortController()
       await Promise.all(
         resolved.matched
@@ -1510,15 +1461,10 @@ export function createRouter<TNames extends string = string>(
     },
 
     async runServerLoaders(path: string, request?: Request) {
-      // Phase 5 — the single-fetch data endpoint's worker. Runs ONLY the
-      // matched chain's `serverLoader` records (NOT isomorphic `loader`s —
-      // those run client-side, so running them here would DOUBLE-FIRE their
-      // side effects; that was the Phase-5 review finding F). Keys the
-      // result by MATCHED-CHAIN INDEX, not `record.path`: a layout and its
-      // index page share a path, and path-keying silently overwrote the
-      // page's server-loader data with the layout's (review finding C,
-      // reproduced). Index is unique per chain position; the client resolves
-      // the same path -> same chain -> same indices, so it maps back exactly.
+      // Phase 5 — the single-fetch data endpoint's worker. Runs ONLY the matched
+      // chain's `serverLoader` records (NOT isomorphic `loader`s — those run
+      // client-side, so running them here would DOUBLE-FIRE their side effects; that
+      // was the Phase-5 review finding F).
       const resolved = resolveRoute(path, routes)
       const ac = new AbortController()
       const loaderCtx = {
@@ -1658,9 +1604,6 @@ export function createRouter<TNames extends string = string>(
             // .update((n) => n + 1)` here was never paired with a `n - 1`,
             // so `loading() > 0` was stuck `true` forever after the first
             // HMR swap (`useTransition()` stuck on for the page lifetime).
-            // `depthEntry`'s `equals` compares `comp` identity, so only the
-            // depth whose component actually changed re-renders — every
-            // other depth (layout, siblings) stays mounted, signals intact.
             if (changed) hmrTick.update((n) => n + 1)
             return changed
           },

@@ -165,11 +165,10 @@ let _nextId = 1
 const _byId = new Map<number, NodeRec>()
 
 // ── Coverage retention ───────────────────────────────────────────────────
-// The registry holds nodes via WeakRef, so a node whose component unmounts is
-// GC-pruned and DISAPPEARS from `getReactiveGraph()`. Correct for a live panel,
-// WRONG for reactive COVERAGE, whose denominator must be every node created
-// during the measured window. When retention is on, `_rdRegister` pins each node
-// with a STRONG ref. `@pyreon/reactivity/coverage` toggles it.
+// The registry holds nodes via WeakRef, so a node whose component unmounts is GC-pruned
+// and DISAPPEARS from `getReactiveGraph()`. Correct for a live panel, WRONG for
+// reactive COVERAGE, whose denominator must be every node created during the measured
+// window.
 let _retain = false
 const _retained = new Set<object>()
 
@@ -178,10 +177,9 @@ export function _setCoverageRetention(on: boolean): void {
   _retain = on
   if (!on) _retained.clear()
 }
-// Subscriber-callback identity → node id. Lets `getReactiveGraph()`
-// resolve `_s` Set membership (anonymous `recompute`/`run` closures)
-// back to graph nodes for edge extraction. A WeakMap so a disposed
-// effect's closure doesn't keep its id mapping alive.
+// Subscriber-callback identity → node id. Lets `getReactiveGraph()` resolve `_s` Set
+// membership (anonymous `recompute`/`run` closures) back to graph nodes for edge
+// extraction.
 const _subId = new WeakMap<object, number>()
 
 /** @internal — finalizer callback; prunes the record when a node is GC'd. */
@@ -189,12 +187,9 @@ export function _rdPrune(id: number): void {
   _byId.delete(id)
 }
 
-// FinalizationRegistry is baseline since Node 14.6 / all modern browsers
-// / Bun — the same universal-availability assumption the codebase already
-// makes for WeakRef. No env guard (avoids an uncoverable dead branch).
-// PURE annotation: constructing the registry has no external side effects,
-// so a production bundle where every `_finalizer.register` call site folded
-// away (they're all `NODE_ENV`-gated) can DCE the registry + `_rdPrune`.
+// FinalizationRegistry is baseline since Node 14.6 / all modern browsers / Bun — the
+// same universal-availability assumption the codebase already makes for WeakRef. No env
+// guard (avoids an uncoverable dead branch).
 const _finalizer = /* @__PURE__ */ new FinalizationRegistry<number>(_rdPrune)
 
 // Bounded fire ring buffer (Effects timeline). Same shape/rationale as
@@ -312,11 +307,10 @@ function resolveDeferred(d: DeferredLocation): SourceLocation | undefined {
   const lines = raw.split('\n')
   // V8 prepends "Error\n"; JSC doesn't. Detect and offset.
   const startIdx = lines[0] && lines[0].trim().startsWith('Error') ? 1 : 0
-  // Skip past _captureCallerLocation's own frame (always +1) + caller's
-  // depth. Plus an additional +1 because the Error was allocated INSIDE
-  // _captureCallerLocation in the deferred path, so the frame depth from
-  // the user's call site is one deeper than the original synchronous
-  // form's contract.
+  // Skip past _captureCallerLocation's own frame (always +1) + caller's depth. Plus an
+  // additional +1 because the Error was allocated INSIDE _captureCallerLocation in the
+  // deferred path, so the frame depth from the user's call site is one deeper than the
+  // original synchronous form's contract.
   const target = lines[startIdx + 1 + d.skipFrames]
   if (!target) return undefined
   return parseStackLine(target)
@@ -507,13 +501,11 @@ function resolveSubId(sub: () => void): number | undefined {
  * even though the registry is always-on in __DEV__).
  */
 export function getReactiveGraph(): ReactiveGraph {
-  // Dev-block guard (NOT an early prod-return): the registry only fills under
-  // dev gates (`_rdRegister` call sites are `NODE_ENV`-gated), so this is
-  // provably `{[], []}` in a production build. Wrapping the body in the dev
-  // branch lets the bundler drop it AT PARSE TIME — including the symbol
-  // references that would otherwise pin the registry/stack-parse machinery.
-  // (An early `if (prod) return` leaves the tail dead only at MINIFY time,
-  // after symbol-usage analysis — the machinery survives tree-shaking.)
+  // Dev-block guard (NOT an early prod-return): the registry only fills under dev gates
+  // (`_rdRegister` call sites are `NODE_ENV`-gated), so this is provably `{[], []}` in
+  // a production build. Wrapping the body in the dev branch lets the bundler drop it AT
+  // PARSE TIME — including the symbol references that would otherwise pin the
+  // registry/stack-parse machinery.
   if (process.env.NODE_ENV !== 'production') {
     if (!_active) return { nodes: [], edges: [] }
     const nodes: ReactiveNode[] = []
@@ -587,12 +579,6 @@ export function getFireSummaries(): FireSummary[] {
     // that's `sum over i of exp(-(t_n - t_i) / TAU)`. Decaying-at-read to
     // `now` then yields `sum over i of exp(-(now - t_i) / TAU)` — which is
     // exactly what this loop computes by summing `exp(-(now - ts) / TAU)`
-    // over every fire timestamp for the id. Mathematically identical to the
-    // pre-fix value (within FP rounding), modulo fires older than the
-    // 512-entry ring buffer's window — fires older than ~5×TAU contribute
-    // <0.7% of their original weight, and 512 fires in <5s implies >100Hz
-    // (the only regime where buffer eviction can matter); structurally
-    // bounded undercount in the extreme case, identical at typical rates.
     const ratesById = new Map<number, number>()
     if (_fireBuf !== null && _fireCount > 0) {
       const visible = _fireCount <= FIRE_CAP ? _fireCount : FIRE_CAP
@@ -659,22 +645,9 @@ export function getReactiveFires(): ReactiveFire[] {
 }
 
 // ── "Why did this update?" — causal chain reconstruction ─────────────────────
-//
-// No other framework can answer "why did this node just update?" at the source
-// line. Pyreon can, because it holds BOTH a precise dependency graph
-// (`getReactiveGraph().edges`) AND a timestamped fire timeline
-// (`getReactiveFires()`). `getUpdateCause` reconstructs the causal chain purely
-// at READ time — no hot-path instrumentation: for the target's most recent
-// fire, it walks the dependency graph backward, at each step picking the
-// dependency that fired MOST RECENTLY before the current node, until it reaches
-// a node with no earlier-firing dependency (the root — usually a signal write).
-//
-// Accuracy: EXACT for a synchronous update cascade (the common "I just
-// interacted — why did this change?" case), since a whole cascade completes in
-// one JS tick with the direct-dependency fire immediately preceding each
-// downstream fire. Best-effort if unrelated updates interleave in time, and
-// truncated (`rootReached: false`) when older fires have aged out of the bounded
-// ring buffer.
+// No other framework can answer "why did this node just update?" at the source line.
+// Pyreon can, because it holds BOTH a precise dependency graph
+// (`getReactiveGraph().edges`) AND a timestamped fire timeline (`getReactiveFires()`).
 
 /** One link in a causal chain — a node that fired, with when + where. */
 export interface CauseLink {
@@ -723,11 +696,6 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
   // effect's fire precedes the fire of the dependency that caused it. Instead we
   // walk the graph from the target through its dependencies, following only the
   // deps that fired in the SAME synchronous cascade (clustered by timestamp — a
-  // whole cascade runs within one JS tick, ~sub-ms; separate interactions are
-  // frames apart).
-  //
-  // Dependencies of `id`: the nodes it READS — edges point dep → subscriber, so
-  // `id`'s deps are the `from` of edges whose `to` is `id`.
   const depsOf = (id: number): number[] => {
     const out: number[] = []
     for (const e of graph.edges) if (e.to === id) out.push(e.from)
