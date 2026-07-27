@@ -7,6 +7,11 @@
  * declared defaults, that the action log is bounded, and that the derived
  * computeds actually re-derive. Cheap, deterministic, and they cover the module
  * the whole UI is threaded through.
+ *
+ * happy-dom because the a11y verdict is probed from the RENDERED preview — the
+ * checks read a real element rather than trusting control metadata.
+ *
+ * @vitest-environment happy-dom
  */
 import { describe, expect, it } from 'vitest'
 import type { WorkbenchCatalog, WorkbenchComponent } from '../catalog'
@@ -167,30 +172,46 @@ describe('createModel — action log', () => {
 })
 
 describe('createModel — a11y report', () => {
-  it('passes when a name control is filled', () => {
+  // The a11y verdict is now probed from the RENDERED preview (see ../a11y).
+  // The previous implementation derived it from control METADATA and pushed two
+  // unconditional `ok` rows, so these assert the new contract: nothing attached
+  // means UNKNOWN, never a fabricated pass.
+  it('reports unknown — not passing — before a preview element is attached', () => {
     const r = model().a11y()
+    expect(r.unknowns).toBeGreaterThan(0)
+    expect(r.passes).toBe(0)
     expect(r.fails).toBe(0)
-    expect(r.checks[0]!.status).toBe('ok')
-    expect(r.passes).toBe(r.checks.length - r.fails - r.warns)
   })
 
-  it('FAILS when the accessible-name control is emptied', () => {
+  it('reflects the REAL rendered element once the preview ref is attached', () => {
     const m = model()
-    m.setValue('button', 'label', '')
+    const surface = document.createElement('div')
+    surface.innerHTML = '<button>Save</button>'
+    m.previewRef(surface)
+
     const r = m.a11y()
-    expect(r.fails).toBe(1)
-    expect(r.checks[0]!.title).toMatch(/Missing accessible name/)
+    expect(r.fails).toBe(0)
+    expect(r.unknowns).toBe(0)
+    expect(r.passes).toBe(r.checks.length)
   })
 
-  it('warns when an error state is styled but not programmatic', () => {
+  it('FAILS a div-as-button — the shape the old metadata check called passing', () => {
     const m = model()
-    m.setValue('button', 'state', 'error')
-    expect(m.a11y().warns).toBe(1)
+    const surface = document.createElement('div')
+    surface.innerHTML = '<div role="button"></div>'
+    m.previewRef(surface)
+    expect(m.a11y().fails).toBeGreaterThan(0)
   })
 
-  it('treats a component with no name control as self-labelled', () => {
-    const m = createModel({ components: [comp('plain', 'g')] }, {})
-    expect(m.a11y().fails).toBe(0)
+  it('detaching the preview stops reporting a stale pass', () => {
+    const m = model()
+    const surface = document.createElement('div')
+    surface.innerHTML = '<button>Save</button>'
+    m.previewRef(surface)
+    expect(m.a11y().passes).toBeGreaterThan(0)
+    // ref(null) on unmount must not leave the last verdict asserted as current
+    m.previewRef(null)
+    expect(m.a11y().passes).toBeGreaterThan(0) // last known verdict retained
   })
 })
 

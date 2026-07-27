@@ -1,7 +1,7 @@
 /** Canvas view — the live preview on a zoomable, dotted stage. */
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
-import { BACKGROUND_VARIANT, localeDir, VIEWPORT_SIZE, viewportById } from '../addons'
+import { BACKGROUND_VARIANT, VIEWPORT_SIZE, viewportById } from '../addons'
 import { ZOOM_PCT } from '../model'
 
 export function Canvas(props: { model: WorkbenchModel }) {
@@ -37,6 +37,7 @@ export function Canvas(props: { model: WorkbenchModel }) {
           </C.FrameChrome>
           <C.PreviewSurface
             data-testid="canvas-preview"
+            ref={m.previewRef}
             size={() => ('z' + ZOOM_PCT[m.zoomIdx()]) as never}
             variant={() => BACKGROUND_VARIANT[m.background()] as never}
             state={() => (m.outline() ? 'outlined' : 'plain') as never}

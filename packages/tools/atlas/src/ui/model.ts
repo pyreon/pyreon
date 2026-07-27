@@ -4,9 +4,11 @@
  * threaded props. Everything here is signals + computeds + callbacks — no DOM.
  */
 import type { VNodeChildAtom } from '@pyreon/core'
-import { computed, type Computed, type Signal, signal } from '@pyreon/reactivity'
+import { computed, type Computed, effect, type Effect, type Signal, signal } from '@pyreon/reactivity'
+import type { A11yReport } from './a11y'
+import { analyzeA11y } from './a11y'
 import type { AddonTabId, BackgroundId, LocaleId, PseudoId, ViewportId } from './addons'
-import { pseudoProps } from './addons'
+import { localeDir, pseudoProps } from './addons'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
 import type { BrandTheme, ThemeTokens } from './theme'
@@ -24,18 +26,7 @@ export interface ActionEntry {
   detail: string
   t: string
 }
-export interface A11yCheck {
-  status: 'ok' | 'warn' | 'danger'
-  icon: string
-  title: string
-  note: string
-}
-export interface A11yReport {
-  checks: A11yCheck[]
-  fails: number
-  warns: number
-  passes: number
-}
+export type { A11yCheck, A11yReport } from './a11y'
 
 /** Discrete zoom levels — a rocketstyle `size` dimension (continuous scale would need an inline style). */
 export const ZOOM_PCT = [50, 75, 100, 125, 150, 175, 200] as const
@@ -69,7 +60,10 @@ export interface WorkbenchModel {
   vals: Computed<Record<string, unknown>>
   visibleGroups: Computed<CatalogGroup[]>
   noResults: Computed<boolean>
-  a11y: Computed<A11yReport>
+  /** Live a11y verdict for the RENDERED preview (re-probed after each render). */
+  a11y: Signal<A11yReport>
+  /** `ref` for the preview surface — attach it so the a11y checks can inspect the real DOM. */
+  previewRef: (el: HTMLElement | null) => void
   // actions
   setValue: (id: string, key: string, v: unknown) => void
   reset: () => void
@@ -156,32 +150,65 @@ export function createModel(
   }
   const preview = (): VNodeChildAtom | VNodeChildAtom[] => sel()?.render(vals(), renderCtx) ?? null
 
-  const a11y = computed<A11yReport>(() => {
-    const c = sel()
-    const v = vals()
-    const checks: A11yCheck[] = []
-    const nameCtrl = c?.controls.find((x) => /^(label|title|name|alt|aria-label)$/i.test(x.key))
-    const named = nameCtrl ? Boolean(v[nameCtrl.key]) : true
-    checks.push(
-      named
-        ? { status: 'ok', icon: '✓', title: 'Accessible name', note: nameCtrl ? `provided via "${nameCtrl.key}"` : 'component is self-labelled' }
-        : { status: 'danger', icon: '✕', title: 'Missing accessible name', note: `set the "${nameCtrl!.key}" prop so assistive tech can announce it` },
-    )
-    checks.push({ status: 'ok', icon: '✓', title: 'Semantic role', note: 'renders a native interactive element' })
-    checks.push({ status: 'ok', icon: '✓', title: 'Keyboard operable', note: 'focusable and activatable via keyboard' })
-    if (c?.controls.some((x) => x.type === 'enum' && x.options?.includes('error')) && v.state === 'error') {
-      checks.push({ status: 'warn', icon: '!', title: 'Error not programmatic', note: 'pair the error style with aria-invalid + aria-describedby' })
+  // The a11y verdict is probed from the RENDERED preview, not asserted.
+  //
+  // The previous implementation pushed "Semantic role" and "Keyboard operable"
+  // as unconditional `ok` rows without inspecting anything — a component with
+  // neither still reported them as passing. An a11y panel that fabricates a
+  // pass is worse than one that shows nothing, so the checks now read the real
+  // element (see ./a11y) and report `unknown` when it cannot be determined.
+  const a11y = signal<A11yReport>(analyzeA11y(null))
+  let previewEl: HTMLElement | null = null
+  let observer: MutationObserver | null = null
+  let stopDir: Effect | null = null
+
+  /**
+   * `ref` for the preview surface — attach it so the a11y checks can inspect the
+   * real DOM. (`ref`, NOT `innerRef`: the latter silently no-ops through
+   * rocketstyle and leaves the checks reading nothing.)
+   *
+   * Re-probing is driven by a MutationObserver rather than a reactive effect on
+   * (selection, control values, pseudo state). That list was a guess at what
+   * changes the output — it would miss anything else that re-renders, and it
+   * needed a microtask hop to read AFTER the bindings patched the DOM. Observing
+   * the subtree asks the DOM directly: every render is caught, in the right
+   * order, with no dependency bookkeeping. It is created on ATTACH (a ref fires
+   * at mount) so nothing is scheduled during SSR, and torn down on detach.
+   */
+  const previewRef = (el: HTMLElement | null) => {
+    previewEl = el
+    if (!el) {
+      observer?.disconnect()
+      observer = null
+      stopDir?.dispose()
+      stopDir = null
+      return
     }
-    const fails = checks.filter((x) => x.status === 'danger').length
-    const warns = checks.filter((x) => x.status === 'warn').length
-    return { checks, fails, warns, passes: checks.length - fails - warns }
-  })
+    a11y.set(analyzeA11y(el))
+    // Writing direction is applied IMPERATIVELY to the captured element rather
+    // than as a `dir={…}` prop: an accessor-valued generic attribute is not
+    // forwarded through rocketstyle → Element (it silently lands as no attribute
+    // at all, verified in a browser), and the compiler-wrapped value form would
+    // go static in the prebuilt lib. Writing the attribute keeps BOTH the
+    // semantics (assistive tech, `:dir()` selectors) and the CSS direction,
+    // which a `direction:` dimension alone would not give.
+    stopDir ??= effect(() => {
+      const el2 = previewEl
+      if (el2) el2.setAttribute('dir', localeDir(locale()))
+    })
+    if (typeof MutationObserver === 'undefined') return
+    observer?.disconnect()
+    observer = new MutationObserver(() => {
+      if (previewEl) a11y.set(analyzeA11y(previewEl))
+    })
+    observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true })
+  }
 
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
     viewport, background, pseudo, outline, locale,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
-    setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch,
+    setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch, previewRef,
   }
 }

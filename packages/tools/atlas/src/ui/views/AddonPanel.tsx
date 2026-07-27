@@ -82,6 +82,7 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
               <C.A11yStat><C.A11yDot state="ok" />{() => `${m.a11y().passes} passing`}</C.A11yStat>
               <C.A11yStat><C.A11yDot state="warn" />{() => `${m.a11y().warns} warnings`}</C.A11yStat>
               <C.A11yStat><C.A11yDot state="danger" />{() => `${m.a11y().fails} violations`}</C.A11yStat>
+              <C.A11yStat><C.A11yDot state="warn" />{() => m.a11y().unknowns ? `${m.a11y().unknowns} not determined` : ''}</C.A11yStat>
             </C.A11ySummary>
             {() =>
               m.a11y().checks.map((ch) => (
