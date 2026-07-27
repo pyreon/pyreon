@@ -45,17 +45,6 @@
 
 export const SWIFT_UI_STUBS = `// AUTO-CONCATENATED Swift validation stubs (see swift-stubs.ts). Not shipped.
 import Foundation // real on the Linux toolchain — provides URL / Codable / etc. for the stub's own references
-// URLSession lives in Foundation on Apple platforms but in a SEPARATE
-// FoundationNetworking module on Linux, where plain Foundation only carries a
-// placeholder typealias to AnyObject. A useFetch emit calls
-// \`URLSession.shared.data(from:)\`, so without this the fixture type-checks on
-// macOS and fails on the Linux PR runner with "type 'URLSession' (aka
-// 'AnyObject') has no member 'shared'". \`canImport\` makes it a no-op on Apple
-// platforms — the canonical cross-platform Swift form, and it cannot redeclare
-// the type (which would collide with the real one on macOS).
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
 
 // ---- UIKit (the sliver app-provided sources touch) ----
 // NOT available on Linux OR on macOS swiftc — UIKit is an iOS-SDK framework, so
