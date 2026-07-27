@@ -21,7 +21,7 @@ function sev(entry: unknown): Severity {
 }
 
 describe('opt-in best-practice rule wiring', () => {
-  it('the expected 24 best-practice rules are tagged optIn', () => {
+  it('the expected 27 best-practice rules are tagged optIn', () => {
     expect(new Set(OPT_IN_IDS)).toEqual(
       new Set([
         'pyreon/require-img-alt',
@@ -42,6 +42,9 @@ describe('opt-in best-practice rule wiring', () => {
         'pyreon/i18n-prefer-trans-for-rich-jsx',
         'pyreon/prefer-typed-search-params',
         'pyreon/no-storage-write-as-call',
+        'pyreon/query-fn-must-forward-signal',
+        'pyreon/no-unencoded-path-interpolation',
+        'pyreon/no-untimed-raw-fetch',
         'pyreon/no-private-env-in-client',
         // Demoted to opt-in from the upstream 0.44.0 findings — style/precision
         // preferences that were firing (or gating, under strict/lib) on correct

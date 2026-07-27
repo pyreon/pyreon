@@ -33,6 +33,7 @@
       "@pyreon/flow",
       "@pyreon/form",
       "@pyreon/hooks",
+      "@pyreon/http",
       "@pyreon/hotkeys",
       "@pyreon/i18n",
       "@pyreon/machine",

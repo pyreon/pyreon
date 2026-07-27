@@ -1,0 +1,98 @@
+{
+  "name": "@pyreon/http",
+  "version": "0.50.0",
+  "description": "Pyreon HTTP client \u2014 onion middleware, typed errors, optional schema-validated responses. The transport layer under @pyreon/query.",
+  "license": "MIT",
+  "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/http#readme",
+  "bugs": {
+    "url": "https://github.com/pyreon/pyreon/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pyreon/pyreon.git",
+    "directory": "packages/fundamentals/http"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "main": "./lib/index.js",
+  "module": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./lib/index.js",
+      "types": "./lib/types/index.d.ts"
+    },
+    "./middleware": {
+      "bun": "./src/middleware.ts",
+      "import": "./lib/middleware.js",
+      "types": "./lib/types/middleware.d.ts"
+    },
+    "./schema": {
+      "bun": "./src/schema.ts",
+      "import": "./lib/schema.js",
+      "types": "./lib/types/schema.d.ts"
+    },
+    "./query": {
+      "bun": "./src/query.ts",
+      "import": "./lib/query.js",
+      "types": "./lib/types/query.d.ts"
+    },
+    "./mock": {
+      "bun": "./src/mock.ts",
+      "import": "./lib/mock.js",
+      "types": "./lib/types/mock.d.ts"
+    },
+    "./server": {
+      "bun": "./src/server.ts",
+      "import": "./lib/server.js",
+      "types": "./lib/types/server.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vl_rolldown_build",
+    "dev": "vl_rolldown_build-watch",
+    "test": "vitest run",
+    "test:browser": "vitest run --config ./vitest.browser.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint ."
+  },
+  "peerDependencies": {
+    "@pyreon/validation": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@pyreon/validation": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@pyreon/core": "workspace:^",
+    "@pyreon/form": "workspace:^",
+    "@pyreon/manifest": "workspace:*",
+    "@pyreon/query": "workspace:^",
+    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/router": "workspace:^",
+    "@pyreon/runtime-dom": "workspace:^",
+    "@pyreon/tsconfig": "workspace:*",
+    "@pyreon/typescript": "workspace:^",
+    "@pyreon/validate": "workspace:^",
+    "@pyreon/validation": "workspace:*",
+    "@pyreon/vitest-config": "workspace:*",
+    "@pyreon/zero": "workspace:^",
+    "@tanstack/query-core": "^5.101.2",
+    "@vitest/browser-playwright": "^4.1.10",
+    "arktype": "^2.2.3",
+    "valibot": "^1.4.1",
+    "zod": "^4.4.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

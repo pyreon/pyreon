@@ -22,6 +22,7 @@
   "@pyreon/head": 256,
   "@pyreon/hooks": 6912,
   "@pyreon/hotkeys": 3584,
+  "@pyreon/http": 4608,
   "@pyreon/i18n": 3584,
   "@pyreon/kinetic": 4864,
   "@pyreon/kinetic-presets": 4864,

@@ -50,6 +50,7 @@ export type RuleCategory =
   | 'rx'
   | 'i18n'
   | 'storage'
+  | 'http'
 
 /**
  * Declared type of an option slot. Minimal on purpose — sufficient for
