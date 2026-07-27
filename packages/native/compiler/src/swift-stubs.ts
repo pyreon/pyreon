@@ -426,7 +426,7 @@ public struct Color {
     red: Double,
     green: Double,
     blue: Double,
-    opacity: Double = 1,
+    opacity: Double = 1
   ) {}
   public init(red: Double, green: Double, blue: Double, opacity: Double = 1) {}
   public static let black = Color(red: 0, green: 0, blue: 0)
