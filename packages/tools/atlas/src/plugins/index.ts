@@ -9,6 +9,10 @@
  *   - verification:        a11y (static)
  *   - docs:                usageDocs
  *   - bundle:              recommendedPlugins (the great defaults, ordered)
+ *
+ * The canvas addons (viewport / backgrounds / pseudo-states / outline) are NOT
+ * plugins — they are a UI concern and live in `../ui/addons`. This module runs
+ * under `atlas scan` in Node and stays DOM-free.
  */
 export type {
   AtlasPlugin,
@@ -16,7 +20,6 @@ export type {
   DecorateContext,
   VerifyContext,
   GraphContext,
-  PanelDescriptor,
 } from './types'
 
 export { defineAtlasPlugin } from './define'

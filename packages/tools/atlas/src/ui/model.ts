@@ -5,13 +5,19 @@
  */
 import type { VNodeChildAtom } from '@pyreon/core'
 import { computed, type Computed, type Signal, signal } from '@pyreon/reactivity'
+import type { AddonTabId, BackgroundId, PseudoId, ViewportId } from './addons'
+import { pseudoProps } from './addons'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
 import type { BrandTheme, ThemeTokens } from './theme'
 import { THEMES, tokens } from './theme'
 
 export type View = 'canvas' | 'docs' | 'lab'
-export type Addon = 'controls' | 'actions' | 'a11y'
+/**
+ * The addon-panel tab. Sourced from `ADDON_TABS` so the state and the rendered
+ * tab strip cannot drift — adding a tab there is enough.
+ */
+export type Addon = AddonTabId
 export interface ActionEntry {
   id: number
   name: string
@@ -49,6 +55,11 @@ export interface WorkbenchModel {
   view: Signal<View>
   addon: Signal<Addon>
   actions: Signal<ActionEntry[]>
+  // canvas addons (viewport / backgrounds / pseudo-state / outline)
+  viewport: Signal<ViewportId>
+  background: Signal<BackgroundId>
+  pseudo: Signal<PseudoId | null>
+  outline: Signal<boolean>
   // computeds
   brand: Computed<BrandTheme>
   theme: Computed<ThemeTokens>
@@ -87,6 +98,10 @@ export function createModel(
   const addon = signal<Addon>('controls')
   const values = signal<Record<string, Record<string, unknown>>>({})
   const actions = signal<ActionEntry[]>([])
+  const viewport = signal<ViewportId>('full')
+  const background = signal<BackgroundId>('theme')
+  const pseudo = signal<PseudoId | null>(null)
+  const outline = signal(false)
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
   const theme = computed(() => tokens(brand(), dark()))
@@ -123,7 +138,16 @@ export function createModel(
   const focusSearch = () => searchEl?.focus()
 
   // context threaded to each component's render(): log interactions + write control values back
-  const renderCtx = { logAction, setValue: (key: string, v: unknown) => setValue(selId(), key, v) }
+  // `pseudo` is read INSIDE the accessor so the preview re-renders when the
+  // forced state flips; a catalog spreads it onto its root (`{...ctx.pseudo}`)
+  // to opt into pseudo-state forcing.
+  const renderCtx = {
+    logAction,
+    setValue: (key: string, v: unknown) => setValue(selId(), key, v),
+    get pseudo() {
+      return pseudoProps(pseudo())
+    },
+  }
   const preview = (): VNodeChildAtom | VNodeChildAtom[] => sel()?.render(vals(), renderCtx) ?? null
 
   const a11y = computed<A11yReport>(() => {
@@ -150,6 +174,7 @@ export function createModel(
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
+    viewport, background, pseudo, outline,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
     setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch,
   }

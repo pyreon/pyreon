@@ -8,6 +8,31 @@
  * you can build the showcased components on the same rocketstyle design system.
  */
 export { Workbench, type WorkbenchProps } from './ui/Workbench'
+
+// canvas addons — the Storybook-inspired tools (viewport / backgrounds /
+// pseudo-states / outline), exported as DATA so a host can render its own
+// toolbar against the same presets the built-in panel uses.
+export {
+  ADDON_TABS,
+  type AddonTab,
+  type AddonTabId,
+  BACKGROUND_VARIANT,
+  type BackgroundId,
+  type BackgroundPreset,
+  BACKGROUNDS,
+  backgroundCss,
+  OUTLINE_CSS,
+  type PseudoId,
+  type PseudoPreset,
+  PSEUDO_STATES,
+  pseudoProps,
+  VIEWPORT_SIZE,
+  type ViewportId,
+  type ViewportPreset,
+  VIEWPORTS,
+  viewportById,
+  viewportWidth,
+} from './ui/addons'
 export {
   buildSearch,
   type CatalogGroup,

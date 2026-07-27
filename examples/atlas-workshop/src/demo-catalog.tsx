@@ -12,8 +12,18 @@
 import { cx, dim, el, hexToRgba, type InputEl, type T, txt, type WorkbenchCatalog } from '@pyreon/atlas/ui'
 
 // ── showcased components (variants / sizes / states dimensions) ─────────────
-const btnBase = (t: T) =>
-  cx(`font-family:'Public Sans',sans-serif;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:9px;border:1px solid transparent;transition:transform .08s;border-radius:10px;font-size:14.5px;padding:11px 20px;background:${t.accent};color:#fff;box-shadow:0 6px 16px -6px ${hexToRgba(t.accent, 0.6)};`)
+// Hover/active live in rocketstyle's `hover` / `active` THEME KEYS, not as raw
+// `&:hover{…}` inside the css blob. That is the idiomatic form — the `el` base
+// renders these blocks both under the real `:hover` selector AND whenever the
+// pseudo FLAG is set, which is what lets the Pseudo-state addon force them
+// (Storybook has to rewrite the stylesheet to achieve the same thing).
+const btnBase = (t: T) => ({
+  ...cx(`font-family:'Public Sans',sans-serif;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:9px;border:1px solid transparent;transition:transform .08s,box-shadow .12s,filter .12s;border-radius:10px;font-size:14.5px;padding:11px 20px;background:${t.accent};color:#fff;box-shadow:0 6px 16px -6px ${hexToRgba(t.accent, 0.6)};`),
+  hover: { filter: 'brightness(1.08)', boxShadow: `0 10px 22px -8px ${hexToRgba(t.accent, 0.75)}` },
+  active: { transform: 'translateY(1px)' },
+  focus: { outline: `2px solid ${hexToRgba(t.accent, 0.55)}`, outlineOffset: '2px' },
+  disabled: { opacity: 0.5, cursor: 'not-allowed' },
+})
 const DemoButton = el
   .attrs({ tag: 'button', css: 'display:inline-flex;align-items:center;justify-content:center;' })
   .theme(btnBase)
@@ -79,7 +89,7 @@ export const demoCatalog: WorkbenchCatalog = {
         { key: 'icon', label: 'Leading icon', type: 'bool', default: false },
       ],
       render: (v, ctx) => (
-        <DemoButton variant={v.variant as never} size={v.size as never} onClick={() => ctx.logAction('onClick', `Button "${String(v.label)}"`)}>
+        <DemoButton {...ctx.pseudo} variant={v.variant as never} size={v.size as never} onClick={() => ctx.logAction('onClick', `Button "${String(v.label)}"`)}>
           {v.icon ? <IconDot /> : null}
           {String(v.label)}
         </DemoButton>
@@ -93,8 +103,8 @@ export const demoCatalog: WorkbenchCatalog = {
         { key: 'variant', label: 'Variant', type: 'enum', options: ['soft', 'solid', 'outline'], default: 'soft' },
         { key: 'dot', label: 'Leading dot', type: 'bool', default: true },
       ],
-      render: (v) => (
-        <DemoBadge variant={v.variant as never}>
+      render: (v, ctx) => (
+        <DemoBadge {...ctx.pseudo} variant={v.variant as never}>
           {v.dot ? <IconDot /> : null}
           {String(v.label)}
         </DemoBadge>

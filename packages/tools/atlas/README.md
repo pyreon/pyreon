@@ -89,6 +89,50 @@ metadata-driven (no rendering required):
 DOM-backed plugins (axe a11y, visual-regression, reactivity-coverage) join the
 suite with the runtime/verify layer.
 
+## Canvas addons — the Storybook set, built in
+
+`<Workbench>` ships the addons a component workbench is actually judged on. In
+Storybook these are four separate packages you install and configure; here they
+are presets in [`src/ui/addons.ts`](./src/ui/addons.ts), rendered by the
+**Canvas** tab, and exported so a host can drive its own toolbar from the same
+data.
+
+| Addon | Storybook equivalent | What it does |
+| --- | --- | --- |
+| **Viewport** | `addon-viewport` | Pins the canvas to a real unistyle breakpoint (375 / 768 / 1280), capped at the stage so a wide preset never overflows |
+| **Backgrounds** | `addon-backgrounds` | Theme surface (default), forced light/dark to check contrast against the other mode, plus a transparency checker |
+| **Pseudo state** | `addon-pseudo-states` | Forces `hover` / `focus` / `active` / `disabled` |
+| **Outline** | `addon-outline` | Outlines every box in the preview subtree (chrome untouched) |
+
+**The pseudo-state one is genuinely cheaper on this stack.**
+`@storybook/addon-pseudo-states` has to rewrite the emitted stylesheet — rename
+`:hover` rules to `.pseudo-hover` classes — because a browser will not let you
+force a real pseudo class. rocketstyle already models pseudo state as *data*:
+`hover` / `active` / `focus` are reserved props that land in
+`$rocketstate.pseudo`, and the bases render the matching theme block whenever
+the flag is set. So forcing a state is passing a prop, and what paints is the
+component's **real** pseudo CSS — the e2e asserts that the forced style and a
+genuine pointer hover produce the same declaration.
+
+To opt a catalog in, spread the forced props onto the component you render:
+
+```tsx
+render: (v, ctx) => <Button {...ctx.pseudo} variant={v.variant}>{v.label}</Button>
+```
+
+`ctx.pseudo` is `{}` when nothing is forced, so the spread is unconditional. It
+is a getter, so reading it inside `render` tracks the signal and the preview
+re-renders when the addon changes.
+
+This only works for components that declare hover/focus/active in rocketstyle's
+**theme keys** (`hover: { … }`) rather than as raw `&:hover { … }` CSS — which
+is the idiomatic form anyway, since the bases render those blocks under the real
+selector too.
+
+Everything else is a rocketstyle dimension (`size` for viewport, `variant` for
+background, `state` for outline), so the addons add **zero inline styles** and
+resolve through the same class cache as the rest of the workbench.
+
 ## AI assets — so agents make no mistakes
 
 Atlas generates the assets an AI agent needs to use the whole library correctly

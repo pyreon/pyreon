@@ -202,3 +202,129 @@ test.describe('Atlas workshop — real-Chromium e2e', () => {
     expect(errors).toEqual([])
   })
 })
+
+/**
+ * Canvas addons — the Storybook-inspired tools. These assert the RENDERED
+ * effect (a real width, a real background colour, real outline CSS, the real
+ * pseudo styling), not just that a button toggled: an addon that flips state
+ * but paints nothing is exactly the failure mode worth catching.
+ */
+test.describe('Atlas workshop — canvas addons', () => {
+  test('viewport presets resize the canvas frame', async ({ browser }) => {
+    const page = await open(browser)
+    // Widen the window so the tablet preset fits BESIDE the sidebar + addon
+    // panel. The presets are capped at the stage width on purpose (`maxWidth:
+    // 100%`), so in a narrow window a wide preset legitimately renders
+    // narrower than its nominal size — asserting the nominal number without
+    // the room for it would be testing the cap, not the preset.
+    await page.setViewportSize({ width: 1700, height: 900 })
+    await page.getByTestId('addon-tab-canvas').click()
+
+    const frame = page.getByTestId('canvas-frame')
+    const width = async () => Math.round((await frame.boundingBox())!.width)
+    const full = await width()
+
+    await page.getByTestId('viewport-mobile').click()
+    await expect.poll(width).toBe(375)
+
+    await page.getByTestId('viewport-tablet').click()
+    await expect.poll(width).toBe(768)
+
+    await page.getByTestId('viewport-full').click()
+    await expect.poll(width).toBe(full)
+  })
+
+  test('a viewport wider than the stage is CAPPED, never overflowing it', async ({ browser }) => {
+    const page = await open(browser)
+    await page.setViewportSize({ width: 1100, height: 800 })
+    await page.getByTestId('addon-tab-canvas').click()
+
+    await page.getByTestId('viewport-desktop').click() // 1280px nominal
+    const frame = await page.getByTestId('canvas-frame').boundingBox()
+    const stage = await page.getByTestId('canvas-preview').evaluate((el) => {
+      const stageEl = el.closest('div')!.parentElement!.parentElement!
+      return stageEl.clientWidth
+    })
+    expect(frame!.width).toBeLessThanOrEqual(stage)
+    expect(frame!.width).toBeLessThan(1280)
+  })
+
+  test('background presets repaint the preview surface', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-canvas').click()
+
+    const surface = page.getByTestId('canvas-preview')
+    const bg = () => surface.evaluate((el) => getComputedStyle(el).backgroundColor)
+    const themeBg = await bg()
+
+    await page.getByTestId('background-light').click()
+    await expect.poll(bg).toBe('rgb(255, 255, 255)')
+
+    await page.getByTestId('background-dark').click()
+    await expect.poll(bg).toBe('rgb(15, 15, 20)')
+
+    await page.getByTestId('background-theme').click()
+    await expect.poll(bg).toBe(themeBg)
+  })
+
+  test('outline toggle outlines every element inside the preview only', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-canvas').click()
+
+    const inner = page.getByTestId('canvas-preview').locator('button').first()
+    const outlineOf = () => inner.evaluate((el) => getComputedStyle(el).outlineStyle)
+    expect(await outlineOf()).toBe('none')
+
+    await page.getByTestId('outline-toggle').click()
+    await expect.poll(outlineOf).toBe('solid')
+
+    // chrome outside the preview must stay untouched
+    const chromeOutline = await page
+      .getByTestId('addon-tab-canvas')
+      .evaluate((el) => getComputedStyle(el).outlineStyle)
+    expect(chromeOutline).toBe('none')
+
+    await page.getByTestId('outline-toggle').click()
+    await expect.poll(outlineOf).toBe('none')
+  })
+
+  test('pseudo-state forcing applies the component REAL hover styling', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-canvas').click()
+
+    const btn = page.getByTestId('canvas-preview').locator('button').first()
+    // Read the property the demo Button's `hover` theme block actually sets.
+    const filter = () => btn.evaluate((el) => getComputedStyle(el).filter)
+    const resting = await filter()
+    expect(resting).toBe('none')
+
+    // Forcing hover must change the PAINTED style — the whole point: rocketstyle
+    // renders the same CSS a real pointer hover would, driven by a prop, so no
+    // stylesheet rewriting is involved.
+    await page.getByTestId('pseudo-hover').click()
+    await expect.poll(filter).toContain('brightness')
+
+    await page.getByTestId('pseudo-none').click()
+    await expect.poll(filter).toBe('none')
+
+    // …and a real pointer hover produces the SAME declaration, which is the
+    // claim that separates this from a lookalike class.
+    await btn.hover()
+    await expect.poll(filter).toContain('brightness')
+  })
+
+  test('forcing `disabled` applies the disabled block', async ({ browser }) => {
+    const page = await open(browser)
+    await page.getByTestId('addon-tab-canvas').click()
+
+    const btn = page.getByTestId('canvas-preview').locator('button').first()
+    const opacity = () => btn.evaluate((el) => Number(getComputedStyle(el).opacity))
+    expect(await opacity()).toBe(1)
+
+    await page.getByTestId('pseudo-disabled').click()
+    await expect.poll(opacity).toBeLessThan(1)
+
+    await page.getByTestId('pseudo-none').click()
+    await expect.poll(opacity).toBe(1)
+  })
+})
