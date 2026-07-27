@@ -1,5 +1,5 @@
 /** Addon panel shell + the Controls widgets (text / enum / bool / range / swatch). */
-import { cx, el, type InputEl, txt, type T } from '../kit'
+import { cx, dim, el, type InputEl, txt, type T } from '../kit'
 
 export const AddonPanel = el.attrs({ tag: 'section', css: 'display:flex;flex-direction:column;align-items:stretch;' }).theme((t: T) => cx(`width:352px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid ${t.border};background:${t.surface};`))
 export const AddonTabs = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;align-items:center;' }).theme((t: T) => cx(`display:flex;padding:6px 8px;gap:2px;overflow-x:auto;border-bottom:1px solid ${t.border};`))
@@ -14,11 +14,11 @@ export const EnumWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-direction
 export const EnumBtn = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`font:inherit;font-size:12px;cursor:pointer;padding:6px 12px;border-radius:7px;text-transform:capitalize;transition:border-color .1s,color .1s;border:1px solid ${t.border};color:${t.muted};background:transparent;&:hover{border-color:${t.accent};color:${t.text};}`))
-  .states((t: T) => ({ active: { borderColor: t.accent, color: t.text, backgroundColor: t.accentSoft }, idle: {} }))
+  .states(dim((t) => ({ active: { borderColor: t.accent, color: t.text, backgroundColor: t.accentSoft }, idle: {} })))
 export const Switch = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`cursor:pointer;border:none;padding:0;width:42px;height:24px;border-radius:20px;position:relative;transition:background .15s;background:${t.border};`))
-  .states((t: T) => ({ on: { backgroundColor: t.accent }, off: {} }))
+  .states(dim((t) => ({ on: { backgroundColor: t.accent }, off: {} })))
 export const Knob = el
   .attrs({ tag: 'span' })
   .theme(() => cx('position:absolute;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s;left:2px;'))
@@ -30,5 +30,5 @@ export const SwatchWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-directi
 export const Swatch = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`cursor:pointer;width:26px;height:26px;border-radius:7px;padding:0;border:2px solid ${t.border};`))
-  .states((t: T) => ({ active: { borderColor: t.accent }, idle: {} }))
+  .states(dim((t) => ({ active: { borderColor: t.accent }, idle: {} })))
 export const ResetBtn = el.attrs({ tag: 'button' }).theme((t: T) => cx(`font:inherit;font-size:12px;cursor:pointer;width:100%;margin-top:4px;padding:9px;border-radius:8px;border:1px dashed ${t.border};background:transparent;color:${t.muted};&:hover{border-color:${t.accent};color:${t.text};}`))

@@ -54,7 +54,7 @@ export interface PyreonUIProps {
    * undefined; no crash). Pass a real theme at the outermost PyreonUI to
    * avoid that.
    */
-  theme?: PyreonTheme | undefined
+  theme?: PyreonTheme | (() => PyreonTheme) | undefined
   /**
    * Color mode: "light", "dark", or "system" (follows OS preference).
    * Can be a signal or getter for reactive mode switching.
@@ -235,7 +235,26 @@ function PyreonUI(props: PyreonUIProps): VNodeChild {
   if (resolveStyleExtraction()) setStyleExtraction(true, getThemeEngine().cpseRewrite)
 
   const enrichedTheme = computed(() => {
-    const t = props.theme
+    // `theme` accepts an ACCESSOR as well as a value — same shape `mode` already
+    // supports (see `resolveMode`). Resolving it HERE, inside the computed, means
+    // the accessor's signal reads are tracked, so a theme swap re-derives exactly
+    // like a value-prop swap does.
+    //
+    // Why it matters beyond ergonomics: when the JSX compiler transforms a call
+    // site, `theme={themeSignal()}` is auto-wrapped in `_rp()` and stays live —
+    // but a package that ships a PREBUILT lib built with the plain automatic JSX
+    // runtime (every @pyreon UI package does) gets no such wrapping, and the
+    // theme would be read exactly once. Hand-wrapping in `_rp()` is NOT a fix: in
+    // a compiled file the compiler wraps it AGAIN, so `props.theme` ends up being
+    // the inner thunk and `enrichTheme` receives a function (verified — it broke
+    // every atlas-workshop e2e with `t.accent === undefined`). An accessor works
+    // in BOTH paths: compiled, it is wrapped and then called here; prebuilt, it
+    // is called here directly.
+    //
+    // A theme is always a plain object, so `typeof === 'function'` is an
+    // unambiguous discriminator.
+    const raw = props.theme
+    const t = typeof raw === 'function' ? (raw as () => PyreonTheme)() : raw
     if (t === undefined || t === null) return parentThemeAccessor()
     // Runtime read — deferred past setup so the engine is registered by now.
     const engine = getThemeEngine()

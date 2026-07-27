@@ -1,5 +1,5 @@
 /** Top bar — brand, segmented tabs, search, and the top-right controls. */
-import { cx, el, type InputEl, txt, type T } from '../kit'
+import { cx, dim, el, type InputEl, txt, type T } from '../kit'
 
 export const TopBar = el.attrs({ tag: 'header', css: 'display:flex;flex-direction:row;align-items:center;' }).theme((t: T) => cx(`height:56px;flex:none;display:flex;align-items:center;gap:18px;padding:0 18px;z-index:10;border-bottom:1px solid ${t.border};background:${t.surface};`))
 
@@ -15,10 +15,10 @@ export const Segment = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:
 export const SegBtn = el
   .attrs({ tag: 'button' })
   .theme((t: T) => cx(`font:inherit;font-size:13px;font-weight:600;cursor:pointer;border:none;padding:7px 15px;border-radius:8px;transition:all .12s;color:${t.muted};background:transparent;`))
-  .states((t: T) => ({
+  .states(dim((t) => ({
     active: { color: t.text, backgroundColor: t.bg, boxShadow: '0 1px 3px rgba(15,18,30,.12)' },
     idle: {},
-  }))
+  })))
 
 // ── search ──
 export const SearchWrap = el.attrs({ tag: 'div', css: 'display:flex;flex-direction:row;justify-content:center;' }).theme(() => cx('flex:1;display:flex;justify-content:center;'))
