@@ -1,5 +1,6 @@
 ---
 '@pyreon/runtime-dom': patch
+'@pyreon/compiler': patch
 ---
 
 Drop the fresh-render duplicate-key `Set` in `<For>`'s keyed reconciler.
@@ -14,3 +15,9 @@ second allocation.
 Semantics are unchanged — duplicate keys are still skipped, so the
 DOM-corruption safety the check exists for is intact, and the dev warnings are
 byte-identical. Measured in isolation at 0.144ms per 10,000 rows.
+
+Also teaches `pyreon doctor diagnose` / MCP `diagnose` the `<For>` duplicate-key
+error. The reconciler skips a duplicate key, so the visible symptom is a list
+rendering fewer rows than the data has — the new entry explains that causal
+chain and steers the fix away from the array index, which is unique but not
+stable across reorders.
