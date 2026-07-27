@@ -1,46 +1,22 @@
-// Canonical multi-platform UI primitives — one semantic vocabulary that
-// compiles to DOM (web), SwiftUI (iOS), and Compose (Android).
+// Canonical multi-platform UI primitives — one semantic vocabulary that compiles
+// to DOM (web), SwiftUI (iOS) and Compose (Android).
 //
-// ## How this package works per target
+// Per target: on WEB these resolve to the real `ComponentFn` implementations in
+// `src/web/`, which render DOM via `h()` with token resolution built in. On
+// iOS/Android the PMTC compiler INTERCEPTS the JSX and emits platform-native
+// code before the runtime is reached, so the imports are TYPE-ANCHOR ONLY there
+// — they exist so the TSX typechecks; `src/web/` is never invoked.
 //
-// **Web**: imports from this package resolve to the implementations
-// in `src/web/`. Each primitive is a `ComponentFn` that renders DOM
-// via Pyreon's `h()`. Token resolution is built-in (no styler/theme
-// integration in v1 — see plan).
+// The per-target emit table (platform names + prop translations such as
+// `onPress` -> Swift `action:`) lives in
+// `packages/native/compiler/src/canonical-primitives.ts`.
 //
-// **iOS / Android (via PMTC)**: the Pyreon Multi-Target Compiler
-// INTERCEPTS JSX with `<Stack>` / `<Inline>` / etc. at compile time
-// and emits platform-native code BEFORE the runtime is reached. The
-// imports here are TYPE-ANCHOR only on native targets — they exist
-// so the TSX source typechecks; the runtime impls in `src/web/` are
-// never invoked.
+// `<Link>` is router-AGNOSTIC — this package has NO router dependency. Internal
+// links render a plain `<a href>` and upgrade to SPA navigation only when the
+// app wires a handler via `init({ navigate })` (see `./config`); external links
+// stay a plain `<a target="_blank">`.
 //
-// ## Web runtime scope
-//
-// ALL 15 canonical primitives have real web implementations:
-//   - `<Stack>` / `<Inline>` / `<Layer>` / `<Scroll>` / `<Spacer>` (layout)
-//   - `<Text>` / `<Heading>` / `<Image>` / `<Icon>` (content)
-//   - `<Button>` / `<Press>` / `<Link>` (interaction)
-//   - `<Field>` / `<Toggle>` / `<Modal>` (input)
-//
-// The web-runtime vocabulary is complete. `<Link>` is router-AGNOSTIC:
-// this package has NO router dependency. Internal links render a plain
-// `<a href>` and upgrade to SPA navigation only when the app wires a
-// handler via `init({ navigate })` (see `./config`); external links are
-// a plain `<a target="_blank">`.
-//
-// ## Phase B scope (PMTC emit)
-//
-// The compiler-side handling for these primitives lives in
-// `packages/native/compiler/src/canonical-primitives.ts` (NEW in
-// Phase B). The emit table maps each primitive to its per-target
-// platform name + prop translations (`onPress` → `action:` on
-// Swift, etc.). Until B1/B2 land, the PMTC compiler falls through
-// to its generic-emit pass for these tags, which produces wrong
-// output. Don't use `@pyreon/primitives` in PMTC source until
-// Phase B ships.
-//
-// Full architectural spec: `.claude/plans/multiplatform-architecture.md`
+// Architecture: `.claude/plans/multiplatform-architecture.md`
 // End-user docs: `docs/src/content/docs/multiplatform.md`
 
 // ===== Type exports — all 16 canonical primitives =====
