@@ -36,6 +36,9 @@ import { requireImgAlt } from './frontend/require-img-alt'
 // I18n (opt-in best-practice)
 import { i18nPreferTransForRichJsx } from './i18n/i18n-prefer-trans-for-rich-jsx'
 // Query (opt-in best-practice)
+import { noUnencodedPathInterpolation } from './http/no-unencoded-path-interpolation'
+import { noUntimedRawFetch } from './http/no-untimed-raw-fetch'
+import { queryFnMustForwardSignal } from './query/query-fn-must-forward-signal'
 import { queryOptionsAsFunction } from './query/query-options-as-function'
 // Router (opt-in best-practice)
 import { preferTypedSearchParams } from './router/prefer-typed-search-params'
@@ -220,6 +223,9 @@ export const allRules: Rule[] = [
   primitiveMediaNeedsLabel,
   // Query (1) — opt-in, auto-gated on @pyreon/query dependency
   queryOptionsAsFunction,
+  queryFnMustForwardSignal,
+  noUnencodedPathInterpolation,
+  noUntimedRawFetch,
   // Rx (1) — opt-in, auto-gated on @pyreon/rx dependency
   rxPreferPipe,
   // I18n (1) — opt-in, auto-gated on @pyreon/i18n dependency

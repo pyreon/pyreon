@@ -1865,6 +1865,41 @@ const idle = useIdle(30_000)               // Signal<boolean> — true after 30s
 >
 > **`useBreakpoint` reads the theme, `useMediaQuery` is raw**: `useBreakpoint()` reads `theme.breakpoints` so swapping themes (or unit systems) Just Works — use it for layout decisions tied to the design system. `useMediaQuery("(max-width: 640px)")` is a raw media-query escape hatch — use it for one-off queries that don't correspond to a theme breakpoint (`(prefers-contrast: more)`, `(orientation: landscape)`, etc.).
 
+## @pyreon/http — HTTP Client
+
+The request/response layer beneath @pyreon/query. It owns how a request is made — URL building, headers, body encoding, cancellation, typed errors and optional response validation — and deliberately owns no cache, no dedup-by-key and no reactive container, because those already have owners. Mirrors the split the native runtime already made, where PyreonFetch is the reactive result container and PyreonHttp is the request/response layer beneath it. The core has zero dependencies; retry, schema validation, TanStack adapters, mocking and SSR each live behind their own entry so an unused one costs nothing.
+
+```typescript
+import { createHttp } from '@pyreon/http'
+import { bearer, retry } from '@pyreon/http/middleware'
+import { standardSchema } from '@pyreon/http/schema'
+import { z } from 'zod'
+
+const UserSchema = z.object({ id: z.string(), name: z.string() })
+
+export const api = createHttp({
+  baseUrl: '/api',
+  schema: standardSchema,
+  use: [bearer(() => 'token'), retry({ limit: 2 })],
+})
+
+export const listUsers = api.endpoint('GET /users', { response: z.array(UserSchema) })
+export const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
+
+const user = await getUser({ params: { id: '1' } })
+console.log(user.name)
+```
+
+> **Peer dep**: @pyreon/validation
+>
+> **Retry is OFF by default**: Deliberate. @pyreon/query already retries 3×, so a client-side default of 3 turns one logical query into NINE requests with nothing in devtools to explain it. Opt in with `use: [retry()]` and keep the total visible in one place.
+>
+> **Schema objects need a resolver**: The core never imports a validation library. Pass `schema: standardSchema` from `@pyreon/http/schema` to enable `.json(mySchema)`. Without it, only plain `(raw) => T` parse functions work — which is what keeps the core at zero dependencies.
+>
+> **`validate: "off"` is unsafe for transforming schemas**: A coercing schema (`z.coerce.number()`, a `.transform()`) does real work, so skipping it changes the VALUE and the declared type then lies. Prefer `validate: "warn"`, which logs and passes the raw body through.
+>
+> **baseUrl is a PREFIX, not a WHATWG base**: `'https://api.com/v1' + '/users'` is `…/v1/users`, never `…/users`. The WHATWG rule (a leading slash discards the base path) makes the same path behave differently under a relative vs absolute base — an environment-dependent surprise that only shows up in production.
+
 ## @pyreon/i18n — Internationalization
 
 Signal-based internationalization for Pyreon. `createI18n` returns a reactive `t(key, values?)` plus locale-reactive `Intl` formatters `n()` (number/currency/percent), `d()` (date/time) and `rt()` (relative time) — formatters are memoized per (locale, options). Translations support `{{name}}` interpolation, inline format specifiers (`{{amount, currency}}`, `{{when, date}}`, `{{n, relativetime, day}}`), `_one`/`_other`/`_zero` plural suffixes, `context` (gender/variant), `defaultValue`, and `$t(key)` nesting. Namespace lazy loading deduplicates concurrent requests. Two entry points: `@pyreon/i18n` (full — includes JSX `Trans` component, `I18nProvider`, `useI18n`) and `@pyreon/i18n/core` (framework-agnostic — only `createI18n`, `interpolate`, `resolvePluralCategory`, types). The `/core` entry transitively depends only on `@pyreon/reactivity` with zero JSX, making it suitable for backend translation pipelines, edge workers, and non-Pyreon frontends.
@@ -2833,7 +2868,7 @@ import { Provider } from "@pyreon/elements"
 
 ## @pyreon/lint — Pyreon-specific Linter
 
-Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (14), JSX (11), lifecycle (6), performance (6), SSR (5), architecture (10), store (3), form (4), styling (4), hooks (3), accessibility (3), router (5), SSG (3), frontend (12), query (1), rx (1), i18n (1), storage (1) — 94 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. The `frontend`/`query`/`rx`/`i18n`/`storage` categories + the `form`/`router` opt-in rules are **opt-in best-practice rules** (`meta.optIn`): off in the `recommended`/`strict`/`app`/`lib` presets, enabled wholesale by the `best-practices` preset or per-rule config. Library-scoped opt-in rules auto-gate on the project’s `package.json` dependencies (a project that doesn’t use `@pyreon/query` never sees query rules). Notable rules: `pyreon/no-process-dev-gate` (auto-fixable), `pyreon/query-options-as-function` (auto-fixable — wraps the options object literal in `() => (...)`; also a proactive MCP `validate` detector), `pyreon/require-img-alt` / `pyreon/img-requires-dimensions` / `pyreon/no-discarded-optimize-fields` (a11y + CLS — the last flags a raw `<img src={x.src}>` that discards a `?optimize` descriptor), `pyreon/heading-order` (a11y — flags a skipped heading level), `pyreon/color-contrast` (a11y — literal-hex contrast pairs), `pyreon/i18n-prefer-trans-for-rich-jsx`, `pyreon/prefer-typed-search-params`.
+Pyreon-specific lint rules powered by `oxc-parser`. Covers reactivity (14), JSX (11), lifecycle (6), performance (6), SSR (5), architecture (10), store (3), form (4), styling (4), hooks (3), accessibility (3), router (5), SSG (3), frontend (12), query (1), rx (1), i18n (1), storage (1) — 97 rules total. Programmatic API (`lint`, `lintFile`), CLI (`pyreon-lint`), watch mode (fs.watch + 100ms debounce + AstCache), LSP server, and `.pyreonlintrc.json` config with per-rule options via ESLint-style tuple form. The `frontend`/`query`/`rx`/`i18n`/`storage` categories + the `form`/`router` opt-in rules are **opt-in best-practice rules** (`meta.optIn`): off in the `recommended`/`strict`/`app`/`lib` presets, enabled wholesale by the `best-practices` preset or per-rule config. Library-scoped opt-in rules auto-gate on the project’s `package.json` dependencies (a project that doesn’t use `@pyreon/query` never sees query rules). Notable rules: `pyreon/no-process-dev-gate` (auto-fixable), `pyreon/query-options-as-function` (auto-fixable — wraps the options object literal in `() => (...)`; also a proactive MCP `validate` detector), `pyreon/require-img-alt` / `pyreon/img-requires-dimensions` / `pyreon/no-discarded-optimize-fields` (a11y + CLS — the last flags a raw `<img src={x.src}>` that discards a `?optimize` descriptor), `pyreon/heading-order` (a11y — flags a skipped heading level), `pyreon/color-contrast` (a11y — literal-hex contrast pairs), `pyreon/i18n-prefer-trans-for-rich-jsx`, `pyreon/prefer-typed-search-params`.
 
 ```typescript
 import { lint, lintFile, allRules, getPreset, AstCache } from '@pyreon/lint'
@@ -2861,7 +2896,7 @@ const fileResult = lintFile('app.tsx', source, allRules, config, cache)
 //   pyreon-lint --preset strict --quiet                    # CI mode
 //   pyreon-lint --fix                                      # auto-fix
 //   pyreon-lint --watch src/                               # watch mode
-//   pyreon-lint --list                                     # list all 94 rules
+//   pyreon-lint --list                                     # list all 97 rules
 //   pyreon-lint --rule-options 'pyreon/no-window-in-ssr={"exemptPaths":["src/foundation/"]}' src/
 ```
 

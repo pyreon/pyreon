@@ -1632,6 +1632,36 @@
         "@pyreon/reactivity": "workspace:^",
       },
     },
+    "packages/fundamentals/http": {
+      "name": "@pyreon/http",
+      "version": "0.50.0",
+      "devDependencies": {
+        "@pyreon/core": "workspace:^",
+        "@pyreon/form": "workspace:^",
+        "@pyreon/manifest": "workspace:*",
+        "@pyreon/query": "workspace:^",
+        "@pyreon/reactivity": "workspace:^",
+        "@pyreon/router": "workspace:^",
+        "@pyreon/runtime-dom": "workspace:^",
+        "@pyreon/tsconfig": "workspace:*",
+        "@pyreon/typescript": "workspace:^",
+        "@pyreon/validate": "workspace:^",
+        "@pyreon/validation": "workspace:*",
+        "@pyreon/vitest-config": "workspace:*",
+        "@pyreon/zero": "workspace:^",
+        "@tanstack/query-core": "^5.101.2",
+        "@vitest/browser-playwright": "^4.1.10",
+        "arktype": "^2.2.3",
+        "valibot": "^1.4.1",
+        "zod": "^4.4.3",
+      },
+      "peerDependencies": {
+        "@pyreon/validation": "workspace:^",
+      },
+      "optionalPeers": [
+        "@pyreon/validation",
+      ],
+    },
     "packages/fundamentals/i18n": {
       "name": "@pyreon/i18n",
       "version": "0.50.0",
@@ -3604,6 +3634,8 @@
     "@pyreon/hooks": ["@pyreon/hooks@workspace:packages/fundamentals/hooks"],
 
     "@pyreon/hotkeys": ["@pyreon/hotkeys@workspace:packages/fundamentals/hotkeys"],
+
+    "@pyreon/http": ["@pyreon/http@workspace:packages/fundamentals/http"],
 
     "@pyreon/i18n": ["@pyreon/i18n@workspace:packages/fundamentals/i18n"],
 
