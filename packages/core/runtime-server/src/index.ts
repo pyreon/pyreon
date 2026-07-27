@@ -48,6 +48,7 @@ import {
 // counter + dev warning.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
+
 // ─── Compile-to-string SSR fast path (`_ssr` / `_ssrChildren` / `_esc`) ───────
 //
 // The SSR analog of the DOM `_tpl()` cloneNode fast path. The compiler lowers an
@@ -1795,16 +1796,33 @@ export function decodeKeyFromMarker(encoded: string): string {
 // Solid match — it's the caller's responsibility), but a dev warning catches the
 // mistake before prod. The safe pattern covers HTML + custom element names.
 const SAFE_TAG_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/
-function warnIfUnsafeTag(tag: string): void {
-  if (process.env.NODE_ENV === 'production') return
-  if (SAFE_TAG_RE.test(tag)) return
-  // oxlint-disable-next-line no-console
-  console.warn(
-    `[Pyreon SSR] Tag name "${tag}" contains characters that could break HTML structure. ` +
-      `Tag names must match /^[a-zA-Z][a-zA-Z0-9-]*$/. ` +
-      `If user-supplied data drives a tag name, validate it against an allowlist before passing to h().`,
-  )
-}
+// Selected ONCE at module init rather than gated per call.
+//
+// `process.env.NODE_ENV` is NOT a constant in Node — it is a getter over the
+// real environ, measured at 767ns/read vs 25.6ns for a resolved value. This
+// runs once per ELEMENT, so on an unbundled consumer (a Node SSR server
+// importing `lib/` directly, where no bundler define folds anything) that read
+// alone measured 36.7% of SSR self-time — ~2.97ms of a list-1000 render spent
+// asking the OS for an environment variable.
+//
+// The ternary condition is still the BARE INLINE expression, so a bundler
+// define folds it to `true`, the ternary collapses to the no-op, and the
+// string-bearing branch becomes unreachable and tree-shakes — which a
+// `const _IS_PROD` alias does NOT achieve (Bun.build keeps the string; locked
+// by `dev-gate-treeshake.test.ts`). Both consumers win: bundled builds ship no
+// warning text, unbundled Node pays the env read once instead of per element.
+const warnIfUnsafeTag: (tag: string) => void =
+  process.env.NODE_ENV === 'production'
+    ? () => {}
+    : (tag: string): void => {
+        if (SAFE_TAG_RE.test(tag)) return
+        // oxlint-disable-next-line no-console
+        console.warn(
+          `[Pyreon SSR] Tag name "${tag}" contains characters that could break HTML structure. ` +
+            `Tag names must match /^[a-zA-Z][a-zA-Z0-9-]*$/. ` +
+            `If user-supplied data drives a tag name, validate it against an allowlist before passing to h().`,
+        )
+      }
 
 // Fast test — most strings in SSR have no special chars (tag names, class names, etc.)
 const NEEDS_ESCAPE_RE = /[&<>"']/
