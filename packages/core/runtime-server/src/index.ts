@@ -48,6 +48,25 @@ import {
 // counter + dev warning.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
+// Counter emission, resolved ONCE at module init — same reasoning as
+// `warnIfUnsafeTag` below. Several of these sites are PER-ITEM (per `<For>` key
+// marker, per component, per escaped string), and an inline
+// `process.env.NODE_ENV` gate costs 767ns per evaluation on an unbundled Node
+// consumer because `process.env` is a getter over the real environ.
+//
+// The ternary CONDITION stays the bare inline expression, so a bundler define
+// folds it to `true`, the ternary collapses to the no-op, and the
+// `__pyreon_count__` reference becomes unreachable and tree-shakes (locked by
+// `dev-gate-treeshake.test.ts`). A `const __DEV__` alias does NOT fold — see
+// the note above.
+const _count: (name: string) => void =
+  process.env.NODE_ENV === 'production'
+    ? () => {}
+    : (name: string): void => {
+        _countSink.__pyreon_count__?.(name)
+      }
+
+
 // ─── Compile-to-string SSR fast path (`_ssr` / `_ssrChildren` / `_esc`) ───────
 //
 // The SSR analog of the DOM `_tpl()` cloneNode fast path. The compiler lowers an
@@ -230,7 +249,7 @@ function collectOptionText(children: VNodeChild[], acc: { text: string }): boole
 /** Render a VNode tree to an HTML string. Supports async component functions. */
 export async function renderToString(root: VNode | null): Promise<string> {
   if (root === null) return ''
-  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.render')
+  _count('runtime-server.render')
   // Inside an active request context, INHERIT it — request-level `provide()`
   // frames (middleware locals, request-scoped DI) must be visible to the rendered
   // components. Pre-fix this always opened a FRESH `_contextAls` run with an empty
@@ -305,7 +324,7 @@ export function renderToStream(
   root: VNode | null,
   options: RenderToStreamOptions = {},
 ): ReadableStream<string> {
-  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.stream')
+  _count('runtime-server.stream')
   // Internal AbortController — fires when EITHER the caller's signal
   // aborts (upstream cancellation, e.g. `Request.signal`) OR the consumer
   // of the stream calls `.cancel()` (client closed the fetch reader).
@@ -436,7 +455,7 @@ async function streamVNode(vnode: VNode, enqueue: (s: string) => void): Promise<
     const items = typeof each === 'function' ? each() : (each as Iterable<unknown>)
     for (const item of items) {
       const key = by(item)
-      if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
+      _count('runtime-server.for.keyMarker')
       enqueue(`<!--k:${safeKeyForMarker(key)}-->`)
       await streamNode(children(item) as VNodeChild, enqueue)
     }
@@ -457,7 +476,7 @@ async function streamComponentNode(vnode: VNode, enqueue: (s: string) => void): 
     await streamSuspenseBoundary(vnode, enqueue)
     return
   }
-  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.component')
+  _count('runtime-server.component')
   // Snapshot the context stack BEFORE the component renders so we can pop frames
   // pushed via `provide()` after children stream. We do NOT run user unmount hooks
   // during SSR — that would clear state still needed by post-render extraction
@@ -590,7 +609,7 @@ const SUSPENSE_SWAP_FN =
  * main stream enqueue so it always arrives after the fallback placeholder.
  */
 async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void): Promise<void> {
-  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.suspense.boundary')
+  _count('runtime-server.suspense.boundary')
   const ctx = _streamCtxAls.getStore()
   const { fallback, children } = vnode.props as { fallback: VNodeChild; children?: VNodeChild }
 
@@ -825,7 +844,7 @@ function renderForItems(
   for (let i = start; i < items.length; i++) {
     const item = items[i]
     const key = by(item)
-    if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.for.keyMarker')
+    _count('runtime-server.for.keyMarker')
     acc += `<!--k:${safeKeyForMarker(key)}-->`
     const r = renderNode(children(item) as VNodeChild)
     if (typeof r === 'string') {
@@ -840,7 +859,7 @@ function renderForItems(
 }
 
 function renderComponent(vnode: VNode & { type: ComponentFn }): MaybeAsync {
-  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.component')
+  _count('runtime-server.component')
   // Snapshot the context-stack length BEFORE the component renders, then trim
   // back after children — that pops every frame pushed via `provide()`. Without
   // it every SSR provider leaks its frame and later siblings see the wrong value
@@ -1499,12 +1518,26 @@ const VOID_ELEMENTS = new Set([
 ])
 
 const UPPERCASE_RE = /[A-Z]/
+// Memoised per distinct tag. This runs once per rendered ELEMENT, and for the
+// dominant case (a lowercase NON-void tag like `div`) the Set probe misses and
+// the `/[A-Z]/` regex then runs and always fails — pure waste repeated for every
+// element. A profile put `isVoidElement` + its regex at 7.1% of SSR self-time.
+//
+// Tag names are code-shaped: a real page uses a few dozen distinct ones across
+// thousands of elements, so one Map probe replaces [Set.has + regex + possible
+// toLowerCase + second Set.has]. Measured on a realistic tag mix: 49.56ns ->
+// 32.40ns per call (1.53x). Bounded at 1,000 entries (leak-class C discipline)
+// — beyond that, pathological dynamic tag names fall through to the uncached
+// path rather than growing without limit.
+const _voidCache = new Map<string, boolean>()
 function isVoidElement(tag: string): boolean {
-  // JSX tags are lowercase in practice — the direct Set probe covers them
-  // with ZERO allocation. The previous unconditional `tag.toLowerCase()`
-  // allocated a string per rendered element (measured 4.3% of non-GC SSR
-  // time). Mixed-case tags (h() callers) still resolve via the fallback.
-  return VOID_ELEMENTS.has(tag) || (UPPERCASE_RE.test(tag) && VOID_ELEMENTS.has(tag.toLowerCase()))
+  const hit = _voidCache.get(tag)
+  if (hit !== undefined) return hit
+  // Mixed-case tags (h() callers) still resolve via the toLowerCase fallback;
+  // the direct probe covers lowercase JSX with zero allocation.
+  const r = VOID_ELEMENTS.has(tag) || (UPPERCASE_RE.test(tag) && VOID_ELEMENTS.has(tag.toLowerCase()))
+  if (_voidCache.size < 1000) _voidCache.set(tag, r)
+  return r
 }
 
 /**
@@ -1795,23 +1828,40 @@ export function decodeKeyFromMarker(encoded: string): string {
 // Solid match — it's the caller's responsibility), but a dev warning catches the
 // mistake before prod. The safe pattern covers HTML + custom element names.
 const SAFE_TAG_RE = /^[a-zA-Z][a-zA-Z0-9-]*$/
-function warnIfUnsafeTag(tag: string): void {
-  if (process.env.NODE_ENV === 'production') return
-  if (SAFE_TAG_RE.test(tag)) return
-  // oxlint-disable-next-line no-console
-  console.warn(
-    `[Pyreon SSR] Tag name "${tag}" contains characters that could break HTML structure. ` +
-      `Tag names must match /^[a-zA-Z][a-zA-Z0-9-]*$/. ` +
-      `If user-supplied data drives a tag name, validate it against an allowlist before passing to h().`,
-  )
-}
+// Selected ONCE at module init rather than gated per call.
+//
+// `process.env.NODE_ENV` is NOT a constant in Node — it is a getter over the
+// real environ, measured at 767ns/read vs 25.6ns for a resolved value. This
+// runs once per ELEMENT, so on an unbundled consumer (a Node SSR server
+// importing `lib/` directly, where no bundler define folds anything) that read
+// alone measured 36.7% of SSR self-time — ~2.97ms of a list-1000 render spent
+// asking the OS for an environment variable.
+//
+// The ternary condition is still the BARE INLINE expression, so a bundler
+// define folds it to `true`, the ternary collapses to the no-op, and the
+// string-bearing branch becomes unreachable and tree-shakes — which a
+// `const _IS_PROD` alias does NOT achieve (Bun.build keeps the string; locked
+// by `dev-gate-treeshake.test.ts`). Both consumers win: bundled builds ship no
+// warning text, unbundled Node pays the env read once instead of per element.
+const warnIfUnsafeTag: (tag: string) => void =
+  process.env.NODE_ENV === 'production'
+    ? () => {}
+    : (tag: string): void => {
+        if (SAFE_TAG_RE.test(tag)) return
+        // oxlint-disable-next-line no-console
+        console.warn(
+          `[Pyreon SSR] Tag name "${tag}" contains characters that could break HTML structure. ` +
+            `Tag names must match /^[a-zA-Z][a-zA-Z0-9-]*$/. ` +
+            `If user-supplied data drives a tag name, validate it against an allowlist before passing to h().`,
+        )
+      }
 
 // Fast test — most strings in SSR have no special chars (tag names, class names, etc.)
 const NEEDS_ESCAPE_RE = /[&<>"']/
 
 function escapeHtml(str: string): string {
   if (!NEEDS_ESCAPE_RE.test(str)) return str
-  if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime-server.escape')
+  _count('runtime-server.escape')
   // Dirty path: manual charCode scan with lazy slicing. `.replace(/g, cb)` paid a
   // call + map lookup PER MATCH; the scan emits contiguous clean runs via slice
   // and appends the entity directly (escaping measured ~19% of non-GC SSR time).

@@ -935,6 +935,29 @@ const B = (props) => <Heading label={props.title}>{props.title}</Heading>`,
         'The per-gate scan counts are printed in the report header (`Scanned: react-patterns 1050 · …`) and in `--json` under `gates[].meta.scanned` + `workspace` — verify the scope there. `--ci` exits non-zero when NOTHING was measured, by design.',
     }),
   },
+  {
+    // `renderToString` is a MAYBE-SYNC renderer: it concatenates with zero
+    // promise hops for a fully-sync tree, but a single `async function`
+    // component promotes its whole subtree to a Promise. Calling a string
+    // method on the result then throws — and the shape is treacherous because
+    // the SAME call site works until someone deep in the tree adds an `async`.
+    // The silent variant is worse: string-interpolating the Promise bakes a
+    // literal `[object Promise]` into the shipped HTML with no error at all.
+    pattern:
+      /renderToString\(\.\.\.\)\.\w+ is not a function|renderToStream\(\.\.\.\)\.\w+ is not a function|\[object Promise\]/i,
+    diagnose: () => ({
+      cause:
+        '`renderToString` is a MAYBE-SYNC renderer — it returns a plain string for a fully-synchronous tree (zero promise hops, which is what makes SSR fast), but promotes to a `Promise<string>` the moment any `async function Component()` appears anywhere in the subtree. So `renderToString(app).replace(...)` works today and throws `renderToString(...).replace is not a function` the day someone adds an async component several levels down. The silent form is worse: interpolating the un-awaited result (`` `<div>${renderToString(app)}</div>` ``) bakes the literal string `[object Promise]` into the shipped HTML — no error, no stack, just a broken page.',
+      fix: 'Always `await` the result. `await` on a plain string is a no-op microtask tick, so awaiting costs nothing on the sync path and is correct on both — there is no reason to branch on the return type.',
+      fixCode: `// WRONG — works only while the tree stays fully synchronous
+const html = renderToString(<App />).replace('<!--x-->', head)
+
+// RIGHT — correct for both the sync and the async-promoted path
+const html = (await renderToString(<App />)).replace('<!--x-->', head)`,
+      related:
+        'Same for `renderToStream`. If you need a hard guarantee that a tree stays on the fast synchronous path, keep `async function` components out of it and use `lazy(() => import(...))` + `<Suspense>` instead — that streams through the Suspense boundary rather than promoting the whole subtree. The framework-owned page pipeline (`renderPage` in `@pyreon/server`) already awaits correctly; this bites hand-rolled SSR handlers and test/bench harnesses.',
+    }),
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */
