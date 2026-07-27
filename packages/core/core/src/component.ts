@@ -44,31 +44,21 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 
 // ─── Error boundary stack ────────────────────────────────────────────────────
 // Module-level stack of active ErrorBoundary handlers (innermost last).
-// ErrorBoundary pushes during its own setup (before children mount) so that
-// any child mountComponent error can dispatch up to the nearest boundary.
+// ErrorBoundary pushes during its own setup, before children mount, so any child
+// mountComponent error dispatches up to the nearest boundary.
 //
-// Mutation contract: removal is IDENTITY-based (`lastIndexOf + splice`), not
-// position-based (`pop`). Sibling boundaries unmount in an order that's
-// driven by the renderer (keyed `<For>` reconciliation, `<Show>` flips,
-// route nav), NOT in strict LIFO push order. A position-based `pop()` would
-// remove the wrong frame whenever the unmount order diverges from the push
-// order — the first boundary's `onUnmount` would pop the last boundary's
-// handler, orphaning the first boundary's handler on the stack and removing
-// the surviving boundary's handler from it. Subsequent errors would then
-// route to the orphan (whose owning boundary's signal is already disposed,
-// so the error vanishes silently) and the surviving boundary's children's
-// errors would fall through to whichever boundary happens to sit at
-// `stack[length-1]`. Same root-cause shape as the `popContext()` bug
-// fixed in #725 for `provide()` — see
-// `.claude/rules/anti-patterns.md` "Position-based pop for stack frames
-// that may be pushed by reactive boundaries".
+// Mutation contract: removal is IDENTITY-based (`lastIndexOf + splice`), never
+// position-based (`pop`). Sibling boundaries unmount in renderer-driven order
+// (keyed `<For>` reconciliation, `<Show>` flips, route nav), NOT strict LIFO, so
+// a `pop()` would remove the WRONG frame — orphaning one boundary's handler on
+// the stack while dropping the surviving boundary's. Errors would then route to
+// the orphan, whose signal is already disposed, and vanish silently. Same shape
+// as the `popContext()` bug — see anti-patterns "Position-based pop for stack
+// frames that may be pushed by reactive boundaries".
 
-// Plain module-scope stack. The duplicate-instance bug class is now
-// prevented at the bundler layer (`@pyreon/vite-plugin` injects
-// `resolve.dedupe`) and detected at the runtime layer (every package
-// calls `registerSingleton` at module load). See
-// `.claude/plans/jaunty-herding-kazoo.md` for the full defense-in-depth
-// architecture.
+// Plain module-scope stack. The duplicate-instance bug class is prevented at the
+// bundler layer (`@pyreon/vite-plugin` injects `resolve.dedupe`) and detected at
+// the runtime layer (every package calls `registerSingleton` at module load).
 const _ebStack: ((err: unknown) => boolean)[] = []
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {

@@ -469,20 +469,14 @@ export function scanCollapsibleSites(
             key: rocketstyleCollapseKey(tag, site.props, site.childrenText),
           })
         } else {
-          // Dynamic-prop fallthrough: if the full detector bailed but
-          // the site matches the ternary-of-two-literals shape, expand
-          // into TWO CollapsibleSite entries — one per literal value.
-          // Each expanded site is byte-identical to a static-collapse
-          // site for that value, so the resolver pre-renders both via
-          // the existing SSR pipeline and the compiler emit looks up
-          // both by their respective keys to build the dispatcher.
-          //
-          // No-handler sites route to `__rsCollapseDyn`; handler-bearing
-          // sites route to `__rsCollapseDynH` (handlers are orthogonal
-          // to the SSR-resolved styler class — see `tryDynamicCollapse`
-          // in this file). The scan does NOT distinguish here because
-          // the resolver only cares about (componentName, props, text);
-          // handlers don't affect the resolution.
+          // Dynamic-prop fallthrough: if the full detector bailed but the site
+          // matches the ternary-of-two-literals shape, expand into TWO
+          // CollapsibleSite entries, one per literal value. Each is
+          // byte-identical to a static-collapse site for that value, so the
+          // resolver pre-renders both and the emit looks both up to build the
+          // dispatcher. Handler-bearing sites route to `__rsCollapseDynH` rather
+          // than `__rsCollapseDyn`; the scan doesn't distinguish, because the
+          // resolver only cares about (componentName, props, text).
           const dyn = detectDynamicCollapsibleShape(node, tag)
           if (dyn) {
             for (const value of [dyn.dynamicProp.valueTruthy, dyn.dynamicProp.valueFalsy]) {
@@ -561,18 +555,12 @@ function detectCollapsibleShape(
 
 // ─── Element-child collapse — recursively-static child detection ─────────────
 //
-// P0 element-child collapse (open-work #1 frontier). `detectCollapsibleShape`
-// bails on ANY element child. This detector recognises the SAFE subset:
-// element children whose ENTIRE subtree is provably static, so the SSR
-// resolver can bake the full subtree into the `_rsCollapse` template with
-// nothing reactive lost. Conservative by construction — a child carrying
-// ANY reactivity (component tag, `{expr}` prop, `on*` handler, `{expr}`
-// child) is a hard bail.
-//
-// PR 1 (this) is measurement-only: the detector + a deterministic
-// serializer feed the bail census so we can size the addressable surface
-// before wiring the resolver (PR 2). Nothing here is yet called by the
-// emit path.
+// `detectCollapsibleShape` bails on ANY element child. This detector recognises
+// the SAFE subset: element children whose ENTIRE subtree is provably static, so
+// the SSR resolver can bake the full subtree into the `_rsCollapse` template
+// with nothing reactive lost. Conservative by construction — a child carrying
+// ANY reactivity (component tag, `{expr}` prop, `on*` handler, `{expr}` child)
+// is a hard bail.
 
 /** A statically-bakeable child element subtree. */
 export interface StaticChildNode {
@@ -1443,21 +1431,19 @@ export function transformJSX_JS(
   // ── Compile-to-string SSR fast path (`options.ssrTemplate`) ────────────────
   //
   // Lowers an eligible static-skeleton element tree to a single
-  // `_ssr(["<li>…","</li>"], hole0, …)` string template — the SSR analog of
-  // the DOM `_tpl()` cloneNode path. Correctness rests entirely on the runtime
-  // resolving each hole through the SAME `renderNode` the h() path uses, so the
-  // produced bytes are byte-identical to walking the equivalent `h()` tree.
+  // `_ssr(["<li>…","</li>"], hole0, …)` string template — the SSR analog of the
+  // DOM `_tpl()` cloneNode path. Correctness rests entirely on the runtime
+  // resolving each hole through the SAME `renderNode` the h() path uses.
   //
-  // Eligibility is CONSERVATIVE: `buildSsrCall` returns null (→ bail to h()) on
-  // ANY shape it can't prove renders byte-identically. A false negative (h()
-  // when `_ssr` would have worked) is fine; a false positive is a hydration bug.
+  // Eligibility is CONSERVATIVE: `buildSsrCall` returns null (bail to h()) on ANY
+  // shape it can't prove renders byte-identically. A false negative is fine; a
+  // false positive is a hydration bug.
   //
-  // TWO serialization modes: elements the compiler WOULD recurse into (the root
-  // + directly-nested child elements) wrap dynamic children in `() =>` accessors
-  // → `<!--$-->…<!--/$-->` markers, matching `handleJsxExpression`'s wrap. A
-  // `.map` CALLBACK BODY is never compiler-recursed (the outer `.map` is wrapped
-  // whole), so inside it every expression child is a PLAIN VALUE child (no
-  // markers) — 'mapitem' mode emits bare holes throughout.
+  // TWO serialization modes: elements the compiler WOULD recurse into wrap
+  // dynamic children in `() =>` accessors, producing `<!--$-->…<!--/$-->`
+  // markers. A `.map` CALLBACK BODY is never compiler-recursed, so inside it
+  // every expression child is a PLAIN VALUE child — 'mapitem' mode emits bare
+  // holes throughout.
 
   // 'foritem': recursed CHILD semantics (wrap markers on shouldWrap exprs)
   // but a PLAIN-STRING return (`_ssrItem`) — used for the `_ssrForKeyed`
@@ -2137,50 +2123,36 @@ export function transformJSX_JS(
       return
     }
     if (shouldWrap(expr)) {
-      // Skip the accessor wrap for stable references passed as JSX children
-      // of a COMPONENT parent (uppercase tag). The compiler's prop-inlining
-      // pass replaces `{children}` with `() => h.children` for component
-      // parents too (the kinetic Stagger + bokisch.com Intro reproducer);
-      // most consumer libraries (rocketstyle/styler/ui-core/elements) route
-      // children through `mountChild` which handles function children via
-      // `mountReactive`, but libraries that iterate children at the VNode
-      // level (kinetic's StaggerRenderer/TransitionItem) or `cloneVNode`
-      // them directly are silently broken — the function spread produces
-      // `{type: undefined}` and the DOM renders `<undefined>` tags.
+      // Skip the accessor wrap for stable references passed as JSX children of a
+      // COMPONENT parent (uppercase tag). The prop-inlining pass replaces
+      // `{children}` with `() => h.children` for component parents too; most
+      // consumer libraries route children through `mountChild` (which handles
+      // function children), but libraries that iterate children at the VNode level
+      // or `cloneVNode` them directly are silently broken — the function spread
+      // produces `{type: undefined}` and the DOM renders `<undefined>` tags.
       //
-      // Narrow contract — only stable references are emitted bare:
-      //   - Bare Identifier (`{children}` referencing a prop-derived const)
-      //   - Simple MemberExpression chain (`{obj.x}`, `{obj.x.y}`)
-      // These shapes evaluate the same way whether called once at JSX-
-      // emit time or repeatedly in a `mountReactive` effect — no
-      // reactivity is lost because the underlying value is just a
-      // property read. Other dynamic shapes (CallExpression, BinaryExpression,
-      // LogicalExpression, etc.) keep the wrap so `<Comp>{count()}</Comp>`
-      // and similar patterns stay reactive end-to-end.
-      //
-      // Without this carve-out, library authors are forced to write
-      // defensive `typeof children === 'function' ? children() : children`
-      // unwraps everywhere they consume `props.children` structurally.
+      // Narrow contract — only stable references are emitted bare: a bare
+      // Identifier, or a simple MemberExpression chain. These evaluate the same
+      // way whether called once at JSX-emit time or repeatedly in a
+      // `mountReactive` effect, because the underlying value is just a property
+      // read. Other dynamic shapes keep the wrap so `<Comp>{count()}</Comp>` stays
+      // reactive end-to-end.
       if (
         parentJsx &&
         isComponentTag(jsxTagName(parentJsx)) &&
         isStableReference(expr) &&
         !referencesSignalVar(expr)
       ) {
-        // #2348: a stable reference whose root is the component's PROPS param
-        // (`{props.title}`) — or a prop-derived const the inlining pass
-        // rewrites into one — is GETTER-BACKED: reading it once at jsx() time
-        // fires the compiler-emitted `_rp` getter eagerly and FREEZES the
-        // value, while the IDENTICAL expression as a component attr gets
-        // `_rp(() => …)` (live) and under a DOM element gets
-        // `bindPolymorphicText` (live). The "reading once captures the same
-        // value" justification below only holds for non-reactive sources, so
-        // props-backed stable refs get the `() => expr` accessor (the same
-        // shape signal-call children already arrive in). Plain stable refs
-        // (module consts, loop items, locals) keep the bare carve-out that
-        // protects structural children consumers (kinetic). Both branches
-        // operate on the type-UNWRAPPED expression (casts are runtime-erased;
-        // keeps both backends' slicers byte-identical under `as`/`!`).
+        // A stable reference whose root is the component's PROPS param
+        // (`{props.title}`) — or a prop-derived const the inlining pass rewrites
+        // into one — is GETTER-BACKED: reading it once at jsx() time fires the
+        // `_rp` getter eagerly and FREEZES the value, while the IDENTICAL
+        // expression as a component attr gets `_rp(() => …)` and under a DOM
+        // element gets `bindPolymorphicText` — both live. The "reading once
+        // captures the same value" justification below only holds for
+        // non-reactive sources, so props-backed refs get the `() => expr`
+        // accessor. Plain stable refs keep the bare carve-out. Both branches
+        // operate on the type-UNWRAPPED expression.
         const propBacked =
           readsFromProps(unwrapTypeLayers(expr)) || referencesPropDerived(unwrapTypeLayers(expr))
         if (propBacked) {
@@ -2192,19 +2164,15 @@ export function transformJSX_JS(
           lens(start, end, 'reactive', 'live — re-evaluates whenever its signals change')
           return
         }
-        // Skip the carve-out for signal references — `<Comp>{count}</Comp>`
-        // (bare signal identifier) is the user's deliberate "make this
-        // reactive at the call site" pattern. Auto-call + wrap converts to
-        // `() => count()` so the receiving component re-evaluates inside
-        // its mountReactive/mountChild scope. Prop-derived stable refs
-        // (the kinetic / bokisch fix shape) take the bare path.
+        // Skip the carve-out for signal references — `<Comp>{count}</Comp>` (bare
+        // signal identifier) is the user's deliberate "make this reactive at the
+        // call site" pattern, so auto-call + wrap converts it to `() => count()`
+        // and the receiving component re-evaluates inside its mountChild scope.
         //
-        // Slice the UNWRAPPED expression — TS type-only layers (`as T`,
-        // `satisfies T`, `!`) are stripped because the receiving component
-        // doesn't care about the static type and esbuild strips casts at
-        // the next stage anyway. Also keeps cross-backend equivalence
-        // with the Rust path (whose `accesses_props` doesn't recurse into
-        // TSAsExpression).
+        // Slice the UNWRAPPED expression: TS type-only layers are stripped
+        // because the receiving component doesn't care about the static type and
+        // esbuild strips casts at the next stage. Also keeps cross-backend
+        // equivalence with the Rust path.
         const start = expr.start as number
         const end = expr.end as number
         const unwrapped = unwrapTypeLayers(expr)
@@ -2284,20 +2252,16 @@ export function transformJSX_JS(
   // is skipping the createTextNode fast path, never a correctness regression.
   const elementVars = new Set<string>()
 
-  // PZ-02 fix: names of in-file function bindings that RETURN JSX — `const
-  // cell = (v) => <b>{v}</b>`, `function cell(v) { return <b>{v}</b> }`. A
-  // call child of such a binding under a DOM-element parent
-  // (`<td>{cell(x)}</td>`, incl. the accessor form `{() => cell(x)}`) must be
-  // MOUNTED via `_mountSlot`, not bound as reactive TEXT — pre-fix it emitted
-  // `_bind(() => { __t0.data = cell(x) })`, which stringifies the returned
-  // VNode to "[object Object]" (SSR mounted it correctly, so the shape was
-  // ALSO a guaranteed SSR↔client mismatch). Scope-aware via `shadowedJsxFns`
-  // (same discipline as the signal auto-call pass). CROSS-FILE callees are
-  // out of scope — no type info at this seam — they keep the reactive-text
-  // path (+ runtime dev diagnostics). Same imprecision trade-off as
-  // `elementVars`: `_mountSlot` renders string/number returns correctly too,
-  // so a helper that conditionally returns non-VNodes stays correct — the
-  // only cost is skipping the reactive-text fast path.
+  // Names of in-file function bindings that RETURN JSX (`const cell = (v) =>
+  // <b>{v}</b>`). A call child of such a binding under a DOM-element parent
+  // (`<td>{cell(x)}</td>`, incl. the accessor form) must be MOUNTED via
+  // `_mountSlot`, not bound as reactive TEXT — that emitted
+  // `_bind(() => { __t0.data = cell(x) })`, stringifying the returned VNode to
+  // "[object Object]" (and since SSR mounted it correctly, a guaranteed
+  // SSR<->client mismatch). Scope-aware via `shadowedJsxFns`. CROSS-FILE callees
+  // are out of scope (no type info here) and keep the reactive-text path.
+  // `_mountSlot` renders string/number returns correctly too, so a helper that
+  // conditionally returns non-VNodes stays correct.
   const jsxFnVars = new Set<string>()
   const shadowedJsxFns = new Set<string>()
 
@@ -2472,18 +2436,12 @@ export function transformJSX_JS(
 
   // ── createSelector tracking (parallel to signalVars) ──────────────────────
   // Identifiers initialized from `createSelector(...)` are tracked so the
-  // compiler can auto-promote the `<For>` + selector className pattern from
-  // a per-row `renderEffect` (via `_bind`) into the effect-free
-  // `selector.subscribe(key, m => ...)` fast path.
-  //
-  // Example shape we promote:
+  // compiler can auto-promote the `<For>` + selector className pattern from a
+  // per-row `renderEffect` into the effect-free `selector.subscribe` fast path:
   //   _bind(() => __el.className = isSelected(row.id) ? 'a' : 'b')
   //   → isSelected.subscribe(row.id, (m) => { __el.className = m ? 'a' : 'b' })
-  //
-  // Per-row alloc drops from ~5 (full renderEffect) to ~2 (Set.add + dispose
-  // closure). Measured benchmark: -0.8ms on create-1k, -5ms on create-10k.
-  //
-  // See `tryDirectSelectorTernary` for the precise detection shape.
+  // Per-row allocations drop from ~5 to ~2 (-0.8ms on create-1k, -5ms on
+  // create-10k). See `tryDirectSelectorTernary` for the detection shape.
   const selectorVars = new Set<string>()
   const shadowedSelectors = new Set<string>()
 
@@ -2723,15 +2681,11 @@ export function transformJSX_JS(
     }[] = []
 
     // ── Scope-aware shadow tracking ──────────────────────────────────────────
-    // Prop-derived consts are only ever COLLECTED at component top level
-    // (callbackDepth === 0), so ANY same-named binding in a deeper lexical
-    // scope necessarily shadows it. Substituting a shadowed reference (or a
-    // binding occurrence) miscompiles idiomatic code — e.g.
-    // `const a = props.x; items.map(a => <li>{a}</li>)` would rewrite the
-    // arrow PARAMETER `a` into `(props.x)` (invalid `(props.x) =>`) and the
-    // body `{a}` (the map item) into `props.x`. The signal-auto-call pass is
-    // already scope-aware via `shadowedSignals`; this mirrors that discipline
-    // for the prop-derived inlining pass.
+    // Prop-derived consts are only COLLECTED at component top level, so ANY
+    // same-named binding in a deeper lexical scope necessarily shadows one.
+    // Substituting a shadowed reference (or a binding occurrence) miscompiles
+    // idiomatic code: `const a = props.x; items.map(a => <li>{a}</li>)` would
+    // rewrite the arrow PARAMETER `a` into `(props.x)`, an invalid arrow head.
     const shadowed = new Set<string>()
 
     /** Collect identifier names bound by a pattern (params / declarators). */
