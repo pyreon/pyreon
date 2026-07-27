@@ -1,6 +1,6 @@
 // App module Gradle build — single-activity Compose app for the
-// Counter sample. Mirror of `native-todomvc-android/app/build.gradle.kts`
-// MINUS kotlinx-serialization (Counter has no persisted state).
+// Finance sample. Mirror of `native-todomvc-android/app/build.gradle.kts`
+// MINUS kotlinx-serialization (Finance has no persisted state).
 //
 // The `preBuild` task shells out to `../scripts/build.sh` so a
 // `gradle build` re-runs the Pyreon compile loop the same way Xcode's
@@ -18,7 +18,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.pyreon.PyreonCounter"
+        applicationId = "com.pyreon.PyreonFinance"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

@@ -19,6 +19,7 @@
 
 package com.pyreon.runtime
 
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
@@ -46,15 +47,42 @@ public fun pyreonDrawable(name: String): Int {
 /**
  * Resolve a bundled font (res/font/<name>.ttf, materialized by the
  * assets/fonts step) into a Compose FontFamily by its sanitized name.
- * `<Text font="Brand">` emits `pyreonFont("brand")`. Throws when the
- * resource is missing — same loud-failure contract as pyreonDrawable.
+ * `<Text font="Brand">` emits `pyreonFont("brand")`.
+ *
+ * A MISSING font falls back to the system default and logs, rather than
+ * throwing. That is deliberate, and it fixes a cross-platform severity
+ * mismatch: the iOS emit uses `Font.custom`, which falls back to the system
+ * font on-device (the compiler even says so in its warning), so the SAME
+ * shared source degraded gracefully on iOS and CRASHED the app on Android.
+ * A real app hit exactly that — `<Text font="Brand">` on a screen whose font
+ * had not been bundled took the whole activity down at composition time.
+ *
+ * Typography is cosmetic; a missing typeface must never be fatal. The
+ * compiler already warns at BUILD time when no bundled font matches the name,
+ * which is where a missing asset should be caught — and unlike this call site,
+ * that warning cannot be missed in a log.
+ *
+ * `pyreonDrawable` keeps its `require`: a missing IMAGE has no meaningful
+ * fallback (there is nothing to draw), so failing loudly is right there.
+ *
+ * REGRESSION LOCK: the gated `native-finance-android` app renders
+ * `<Text font="Brand">` with no bundled font, so its instrumented test
+ * exercises this exact path on a real emulator — a regression back to throwing
+ * crashes that test rather than slipping through. (This file has no
+ * verify-kotlin stub set, so the device gate is its coverage; adding one is a
+ * tracked follow-up.)
  */
 @Composable
 public fun pyreonFont(name: String): FontFamily {
     val context = LocalContext.current
     val id = context.resources.getIdentifier(name, "font", context.packageName)
-    require(id != 0) {
-        "[Pyreon] Bundled font '$name' not found in res/font — did the assets/fonts step run?"
+    if (id == 0) {
+        Log.w(
+            "Pyreon",
+            "Bundled font '$name' not found in res/font — falling back to the system font. " +
+                "Run the assets/fonts step to bundle it (iOS falls back the same way).",
+        )
+        return FontFamily.Default
     }
     return FontFamily(Font(id))
 }

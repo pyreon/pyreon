@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  AndroidManifest for the Pyreon Counter Android reference.
+  AndroidManifest for the Pyreon Finance Android reference.
 
   Minimal single-activity Compose app. `MainActivity` calls
-  `setContent { Counter() }` where `Counter` is the compiler-emitted
-  Composable from `../kotlin/com/pyreon/generated/Counter.kt`.
+  `setContent { FinanceApp() }` where `FinanceApp` is the compiler-emitted
+  Composable from `../kotlin/com/pyreon/generated/FinanceApp.kt`.
 
   Mirror of `native-todomvc-android/app/src/main/AndroidManifest.xml`
   (different label / activity launches a different generated composable).
