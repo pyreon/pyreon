@@ -29,16 +29,14 @@ export interface RouterProviderProps extends Props {
 
 const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
   const router = props.router as RouterInstance
-  // Push router into the context stack — isolated per request in SSR via ALS,
-  // isolated per component tree in CSR.
+  // Push router into the context stack.
   provide(RouterContext, router)
   onUnmount(() => {
     // Clean up event listeners, caches, abort in-flight navigations.
     router.destroy()
     setActiveRouter(null)
   })
-  // Also set the module fallback so programmatic useRouter() outside a component
-  // tree (e.g. navigation guards in event handlers) still works in CSR.
+  // Also set the module fallback so programmatic useRouter() outside a component tree.
   setActiveRouter(router)
   return props.children ?? null
 }
@@ -94,8 +92,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     router._viewDepth--
   })
 
-  // Root-only, client-only route announcer (a11y — WAI-ARIA / Next.js-style): tell
-  // screen-reader users the page changed on each navigation.
+  // Root-only, client-only route announcer (a11y.
   if (depth === 0 && isClient && props.announceRouteChanges !== false) {
     onMount(() => {
       let prevPath = router.currentRoute().path
@@ -107,10 +104,8 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
     })
   }
 
-  // ── Structure / data decoupling ───────────────────────────────────────────
-  // Pre-fix the reactive child accessor read `_loadingSignal` and the full
-  // `currentRoute` snapshot. The framework's `mountReactive` tears down and
-  // rebuilds the entire subtree on every accessor re-emission, so any
+  // ── Structure / data decoupling ─────────────────────────────────────────── Pre-fix the
+  // reactive.
   interface DepthEntry {
     rec: RouteRecord | null
     comp: ComponentFn | null
@@ -155,16 +150,11 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
       const route = router.currentRoute()
       const rec = route.matched[depth] ?? null
       if (!rec) return { rec: null, comp: null, errored: false, route, loaderData: undefined }
-      // Subscribe to `_loadingSignal` so lazy resolution wakes this
-      // computed up — when the cache fills, we re-emit with comp set.
+      // Subscribe to `_loadingSignal` so lazy resolution wakes this computed up.
       router._loadingSignal()
-      // PR-S8: subscribe to `_hmrTick` (dev-only — undefined in prod) so a successful
-      // HMR swap forces a re-emit. Pre-PR-S8 the HMR swap bumped `_loadingSignal`
-      // directly with `+ 1` and never paired a `- 1`, leaving `useTransition()` stuck
+      // PR-S8: subscribe to `_hmrTick` (dev-only.
       router._hmrTick?.()
       // This depth's OWN loader data (undefined for a loader-less layout).
-      // `_loaderData` is written by `runBlockingLoaders` BEFORE `commitNavigation`
-      // flips `currentRoute`, and bumps `_loadingSignal` on async settle — both
       const loaderData =
         rec.loader || rec.serverLoader || rec.hasServerLoader
           ? router._loaderData.get(rec)
@@ -178,14 +168,11 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
         cacheSet(router, rec, raw)
         return { rec, comp: raw, errored: false, route, loaderData }
       }
-      // Lazy and not yet cached — `child()` below renders the lazy
-      // fallback and triggers the load; once the load completes,
-      // `_loadingSignal` ticks and this computed re-emits with `comp` set.
+      // Lazy and not yet cached.
       return { rec, comp: null, errored: false, route, loaderData }
     },
     {
-      // Re-emit (→ re-mount the subtree at this depth) when this depth's record /
-      // resolved component / error-state changes.
+      // Re-emit (→ re-mount the subtree at this depth) when this depth's record / resolved.
       equals: (a, b) => {
         if (a.rec !== b.rec || a.comp !== b.comp || a.errored !== b.errored) {
           return false
@@ -263,15 +250,12 @@ const _warnedNoRouterLinks = new Set<string>()
  * carries the generic `<const T>` signature for compile-time `to` validation.
  */
 const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
-  // Resolve the router the SAME way every router hook does (router.ts:
-  // `useContext(RouterContext) ?? _activeRouter`) — context first (per-request
-  // in SSR, per-tree in CSR), falling back to the module-level active router.
+  // Resolve the router the SAME way every router hook does.
   const router = getActiveRouter()
   const prefetchMode = props.prefetch ?? 'intent'
   const inst = router as RouterInstance | null
 
-  // Dev-only (client-only) warning: with NO router resolvable the link degrades to a plain anchor
-  // (full page load on click) — almost always a missing provider, so make it visible.
+  // Dev-only (client-only) warning: with NO router resolvable the link degrades to a plain anchor.
   if (process.env.NODE_ENV !== 'production' && isClient && !router) {
     const to = String(props.to)
     if (!_warnedNoRouterLinks.has(to)) {
@@ -282,8 +266,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     }
   }
 
-  // Resolve the effective navigation kind, honouring the per-link `external` override
-  // (true → external, false → internal) over the auto-classification.
+  // Resolve the effective navigation kind.
   const isInternal = (): boolean => {
     if (props.external === true) return false
     if (props.external === false) return true
@@ -296,12 +279,10 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   }
 
   const handleClick = (e: MouseEvent) => {
-    // Modifier / non-primary clicks (ctrl/meta/shift/middle) always fall through
-    // to the browser's native open-in-new-tab behaviour.
+    // Modifier / non-primary clicks (ctrl/meta/shift/middle) always fall through to the browser's.
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
     if (!isInternal()) return // external / hash / mailto → let the browser navigate
-    // No router resolvable — bail BEFORE preventDefault so the link degrades to a
-    // NATIVE anchor (full-load navigation to the plain-path href below).
+    // No router resolvable — bail BEFORE preventDefault so the link degrades to a NATIVE anchor.
     if (!router) return
     e.preventDefault()
     const path = toRouterPath(props.to)
@@ -325,15 +306,11 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     if (prefetchMode === 'intent') triggerPrefetch()
   }
 
-  // `href` MUST be an accessor, not a string captured at setup. `props.to`
-  // is a getter when the parent passes a reactive expression (the JSX
-  // compiler wraps `<RouterLink to={someExpr}>` as `_rp(() => someExpr)`).
+  // `href` MUST be an accessor, not a string captured at setup.
   const href = (): string => {
     if (!isInternal()) return props.to
     const path = toRouterPath(props.to)
-    // No router — emit the PLAIN path (native-anchor semantics, pairing with
-    // the no-preventDefault click bail above). Pre-fix this fell back to
-    // `#${path}`, which is wrong for history-mode apps (the dominant mode)
+    // No router — emit the PLAIN path.
     if (!inst) return path
     return inst.mode === 'history' ? `${inst._base}${path}` : `#${path}`
   }
@@ -388,8 +365,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            // Disconnect synchronously so a re-intersection (scroll
-            // jitter) before the idle callback runs can't double-schedule.
+            // Disconnect synchronously so a re-intersection (scroll jitter) before the idle.
             observer.disconnect()
             if (isInternal()) scheduleIdle(() => prefetchRoute(router as RouterInstance, toRouterPath(props.to)))
             break
@@ -406,8 +382,6 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   }
 
   // Forward all non-RouterLink props (style, id, data-*, etc.) to the <a>.
-  // `class` is pulled out separately so it can be MERGED with the internal
-  // active-class accessor — overriding the user's class silently dropped any
   const {
     to: _to,
     replace: _replace,
@@ -423,8 +397,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     ...rest
   } = props as RouterLinkProps & { class?: ClassValue | (() => ClassValue) }
 
-  // Compose the user-provided `class` (string / array / object / function) with the
-  // internal `activeClass` accessor.
+  // Compose the user-provided `class` (string / array / object / function) with the internal.
   const mergedClass = (): string => {
     const userResolved =
       typeof userClass === 'function' ? (userClass as () => ClassValue)() : userClass
@@ -532,8 +505,7 @@ function renderWithLoader(
 ): VNodeChild {
   const routeProps = { params: route.params, query: route.query, meta: route.meta }
 
-  // Phase 5 — server-loader records carry data too (`serverLoader` is the fn on the
-  // server graph; `hasServerLoader` is the client marker).
+  // Phase 5 — server-loader records carry data too.
   const carriesLoaderData =
     Boolean(record.loader) || Boolean(record.serverLoader) || record.hasServerLoader === true
 
@@ -650,8 +622,7 @@ function PendingLoader(props: {
     }
   }
 
-  // Poll via loadingSignal reactivity — re-checks when navigation completes
-  // This runs inside the reactive accessor below
+  // Poll via loadingSignal reactivity.
 
   onUnmount(() => {
     if (pendingTimer) clearTimeout(pendingTimer)
@@ -712,29 +683,19 @@ function isStaleChunk(err: unknown): boolean {
   return false
 }
 
-// Mark router framework components as native — compat-mode jsx() runtimes
-// (react/preact/vue/solid-compat) skip wrapCompatComponent for these so their provide()
-// / useContext() / onUnmount() / effect() / IntersectionObserver setup runs inside
-// Pyreon's lifecycle frame instead of the compat wrapper's runUntracked accessor.
+// Mark router framework components as native.
 const _RouterProvider = /* @__PURE__ */ nativeCompat(RouterProvider)
 export { _RouterProvider as RouterProvider }
-// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared chunk a
-// bare `nativeCompat(X)` call is an unremovable side effect that RETAINS the component body in
-// every consumer bundle that never imports it (see runtime-dom's native-compat-treeshake lock).
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared chunk.
 const _RouterView = /* @__PURE__ */ nativeCompat(RouterView)
 export { _RouterView as RouterView }
 
-// ─── DefaultChromeLayout ─────────────────────────────────────────────────────
-// Synthetic layout used by the layout-less-app 404 fallback.
+// ─── DefaultChromeLayout ───────────────────────────────────────────────────── Synthetic layout.
 const DefaultChromeLayout: ComponentFn = () =>
   h('main', { 'data-pyreon-default-chrome': '' }, h(RouterView, null))
 
-// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared chunk a
-// bare `nativeCompat(X)` call is an unremovable side effect that RETAINS the component body in
-// every consumer bundle that never imports it (see runtime-dom's native-compat-treeshake lock).
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared chunk.
 const _DefaultChromeLayout = /* @__PURE__ */ nativeCompat(DefaultChromeLayout)
 export { _DefaultChromeLayout as DefaultChromeLayout }
-// Register the PURE-call RESULT, not the bare `DefaultChromeLayout`. Under the
-// `/* @__PURE__ */` sweep, a bundle that never imports the `DefaultChromeLayout`
-// export can drop the `nativeCompat(...)` call — so registering the bare fn
+// Register the PURE-call RESULT, not the bare `DefaultChromeLayout`.
 _setDefaultChromeLayout(_DefaultChromeLayout)

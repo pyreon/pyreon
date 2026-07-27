@@ -5,9 +5,8 @@ import { _tagTextBinding } from './binding-registry'
 import { createPolyTextCore, mountChild, SVG_TAGS, type PolyTextCore } from './mount'
 import { _bindEvent } from './props'
 
-// Dev-mode gates in this file use the bare bundler-agnostic
-// `process.env.NODE_ENV !== 'production'` form — see the
-// `pyreon/no-process-dev-gate` lint rule for the rationale.
+// Dev-mode gates in this file use the bare bundler-agnostic `process.env.NODE_ENV !== 'production'`
+// form — see the `pyreon/no-process-dev-gate` lint rule for the rationale.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**
@@ -110,9 +109,8 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
 }
 
 function _warnTextCoercion(v: unknown, node: Text): void {
-  // Belt-and-braces: every call site is already inside the bare dev gate
-  // (which is what makes this helper tree-shakeable); this early return is
-  // the in-function guard `pyreon/dev-guard-warnings` recognises.
+  // Belt-and-braces: every call site is already inside the bare dev gate (which is what makes this
+  // helper tree-shakeable).
   if (process.env.NODE_ENV === 'production') return
   if (v == null || (typeof v !== 'object' && typeof v !== 'function')) return
   const flagged = node as Text & { __pyreonWarnedCoercion?: boolean }
@@ -173,9 +171,8 @@ export function _bindText(
   caller?: () => unknown,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
-  // Captured for the upgrade path: components mounted by a LATER upgrade run inside a
-  // signal dispatch with no ambient owner, so they must resolve context through the
-  // owner active at SETUP — same discipline as renderEffect's snapshot capture.
+  // Captured for the upgrade path: components mounted by a LATER upgrade run inside a signal
+  // dispatch with no ambient owner, so they must resolve context through the owner active at SETUP.
   const ownerAtSetup = getContextOwner()
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
@@ -347,9 +344,8 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   if (!tpl) {
     tpl = document.createElement('template')
     if (isSvgRooted(html)) {
-      // Parse inside an `<svg>` wrapper so root + descendants land in the SVG
-      // namespace, then MOVE the parsed children into the cache template's
-      // content — moving preserves `namespaceURI`, and the cloned root inherits it.
+      // Parse inside an `<svg>` wrapper so root + descendants land in the SVG namespace, then MOVE
+      // the parsed children into the cache template's content.
       const wrapper = document.createElement('template')
       wrapper.innerHTML = `<svg>${html}</svg>`
       const svg = wrapper.content.firstElementChild
@@ -408,9 +404,8 @@ export function _rsCollapse(
   isDark: () => boolean,
   bind?: ((el: HTMLElement) => (() => void) | null) | null,
 ): NativeItem {
-  // Single-class fast path: under cssVariables theming the resolver's light/dark
-  // renders produce IDENTICAL classes (mode lives in the CSS cascade, not the
-  // className), so skip the mode binding entirely.
+  // Single-class fast path: under cssVariables theming the resolver's light/dark renders produce
+  // IDENTICAL classes (mode lives in the CSS cascade, not the className).
   if (lightClass === darkClass) {
     return _tpl(html, (el) => {
       el.className = lightClass
@@ -463,9 +458,8 @@ export function _rsCollapseH(
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
-    // Inline-first-disposer slot (mirrors the signal `_d1`->`_d` idiom): the dominant
-    // collapsed shape is a single handler, so hold the first disposer inline and
-    // promote to an array only on a 2nd.
+    // Inline-first-disposer slot (mirrors the signal `_d1`->`_d` idiom): the dominant collapsed
+    // shape is a single handler.
     let d0: (() => void) | null = null
     let dRest: (() => void)[] | null = null
     for (const key of Object.keys(handlers)) {
@@ -626,9 +620,8 @@ export function _rsCollapseDynH(
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
-    // Handler attachment — identical to `_rsCollapseH`: routes through the canonical
-    // `_bindEvent` so delegation / batching / name normalization behave
-    // byte-identically to the 5-layer mount.
+    // Handler attachment — identical to `_rsCollapseH`: routes through the canonical `_bindEvent`
+    // so delegation / batching / name normalization behave byte-identically to the 5-layer mount.
     const handlerDisposers: (() => void)[] = []
     for (const key of Object.keys(handlers)) {
       const d = _bindEvent(el, key, handlers[key])

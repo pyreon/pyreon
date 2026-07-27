@@ -23,9 +23,8 @@
 
 let batchDepth = 0
 
-// Tier-1 entries clear their flag BEFORE running (the array analogue of
-// delete-before-run) so a genuine post-visit re-dirty RE-PUSHES the entry and
-// the length-re-reading drain visits it again — see `drainQueuesLocked`.
+// Tier-1 entries clear their flag BEFORE running (the array analogue of delete-before-run) so a
+// genuine post-visit re-dirty RE-PUSHES the entry and the length-re-reading drain visits it again.
 interface QueuedRefresh {
   (): void
   /** @internal tier-1 membership flag — 1 = queued, 0/undefined = idle. Created lazily on first enqueue. */
@@ -33,9 +32,8 @@ interface QueuedRefresh {
 }
 const recomputeQueue: QueuedRefresh[] = []
 
-// Effect-queue intrusive fields, created LAZILY on first enqueue (NOT at effect
-// creation) so an effect that never re-fires stays a bare closure with zero
-// added retained bytes — the dominant "create, run once, never notified again"
+// Effect-queue intrusive fields, created LAZILY on first enqueue (NOT at effect creation) so an
+// effect that never re-fires stays a bare closure with zero added retained bytes.
 const enum EQ {
   Idle = 0,
   Cur = 1,
@@ -56,9 +54,8 @@ let _passGen = 1
 const _recomputes = new WeakSet<() => void>()
 const MAX_PASSES = 32
 
-// Fused-cascade back-ref: `_markRecompute` stamps a LAZY computed's read fn onto
-// its notify as `_c`, letting `propagateLazyDirty` walk a single-subscriber chain
-// ITERATIVELY over plain fields instead of paying a WeakSet lookup + closure call
+// Fused-cascade back-ref: `_markRecompute` stamps a LAZY computed's read fn onto its notify as
+// `_c`.
 interface LazyTarget {
   _dirty: boolean
   _disposed: boolean
@@ -186,8 +183,7 @@ function runEffectPass(): void {
 function drainQueuesLocked(): void {
   try {
     // Outer loop alternates tier-1 and tier-2 until both queues are empty: an effect can write a
-    // signal whose subscribers include `{ equals }` notifies, and those refreshes must drain BEFORE
-    // the next effect pass so downstream effects see the propagated dirty flag.
+    // signal whose subscribers include `{ equals }` notifies.
     let effectPass = 0
 
     // FAST PATH — the dominant case: effects only, no cascade, one pass.
@@ -201,9 +197,7 @@ function drainQueuesLocked(): void {
     }
 
     while (recomputeQueue.length > 0 || curEffects.length > 0) {
-      // Tier 1 — CLEAR-FLAG-BEFORE-RUN cascading iteration. The loop re-reads
-      // `recomputeQueue.length`, so an entry that was visited, flag-cleared and
-      // then re-PUSHED is visited again. That re-push is the topo-staleness fix:
+      // Tier 1 — CLEAR-FLAG-BEFORE-RUN cascading iteration.
       for (let i = 0; i < recomputeQueue.length; i++) {
         const r = recomputeQueue[i]!
         r._rq = 0 // consumed — a genuine post-visit re-dirty re-pushes
@@ -263,8 +257,7 @@ function drainQueuesLocked(): void {
     for (let i = 0; i < recomputeQueue.length; i++) recomputeQueue[i]!._rq = 0
     recomputeQueue.length = 0
     // Advance past every `_vg` this drain assigned so the NEXT drain's collection window routes
-    // every effect to `curEffects`, not `nextEffects` — without this an effect that ran in the
-    // previous drain would be misread as "already visited" and silently skip its run.
+    // every effect to `curEffects`, not `nextEffects`.
     _passGen++
     batchDepth = 0
   }
@@ -274,9 +267,8 @@ export function isBatching(): boolean {
   return batchDepth > 0
 }
 
-// ─── Lazy-computed dirty cascade (depth-bounded) ────────────────────────────
-// A pure lazy cascade (diamond, deep chain) is nothing but dirty-flag marking, so it
-// runs at write time rather than through the batch queues.
+// ─── Lazy-computed dirty cascade (depth-bounded) ──────────────────────────── A pure lazy cascade
+// (diamond, deep chain) is nothing but dirty-flag marking.
 const _lazyDirtyStack: Array<() => void> = []
 let _lazyDirtyDraining = false
 let _cascadeDepth = 0
@@ -293,9 +285,7 @@ const MAX_CASCADE_RECURSION = 500
  * processing one cannot mutate any `_s` mid-walk.
  */
 export function propagateLazyDirty(subs: Set<() => void>): void {
-  // Fused single-subscriber walk — the deep-chain shape resolves here as a plain LOOP
-  // over the lazy computed's fields via `notify._c`, replacing per hop a [WeakSet.has +
-  // closure call + re-entry] with plain field ops.
+  // Fused single-subscriber walk.
   while (subs.size === 1) {
     const sub = subs.values().next().value as LazyNotify
     const c = sub._c

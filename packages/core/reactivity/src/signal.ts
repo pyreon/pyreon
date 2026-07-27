@@ -118,9 +118,8 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
     _countSink.__pyreon_count__?.('reactivity.signalWrite')
   const prev = this._v
   this._v = newValue
-  // Dev-only bounded ring buffer of recent writes, attached to error reports so
-  // a crash carries the causal sequence of signal changes. Separate from the
-  // `isTracing()` path below: that one is opt-in and captures a stack
+  // Dev-only bounded ring buffer of recent writes, attached to error reports so a crash carries the
+  // causal sequence of signal changes.
   if (process.env.NODE_ENV !== 'production') {
     _recordSignalWrite(this.label, prev, newValue)
     _rdRecordFire(this)
@@ -140,9 +139,8 @@ function _set(this: SignalFn<unknown>, newValue: unknown) {
       }
     }
   }
-  // Auto-batch the notification chain: without it a diamond (a -> b,c -> d -> effect)
-  // fires the apex effect TWICE per write, because the first path clears `d`'s dirty
-  // flag and the second re-dirties + re-notifies it.
+  // Auto-batch the notification chain: without it a diamond (a -> b,c -> d -> effect) fires the
+  // apex effect TWICE per write.
   const _d1 = this._d1
   const _d = this._d
   const _s = this._s
@@ -180,9 +178,7 @@ function _update(this: SignalFn<unknown>, fn: (current: unknown) => unknown) {
 
 function _trigger(this: SignalFn<unknown>) {
   if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
-  // The SAME batch-aware notify as `_set`, minus the value write and the
-  // `Object.is` gate. Deliberately DUPLICATED rather than extracted: `_set`'s
-  // inline dispatch is perf-tuned and must stay byte-identical — wrapping it in
+  // The SAME batch-aware notify as `_set`, minus the value write and the `Object.is` gate.
   const _d1 = this._d1
   const _d = this._d
   const _s = this._s
@@ -306,9 +302,8 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
     this._d1 = updater
     const self = this
     return () => {
-      // Disposer must defend against PROMOTION: if a 2nd subscriber
-      // arrived BEFORE this dispose runs, `_d1` was migrated into
-      // `_d` Set and `_d1` is null. Check both tiers so the original
+      // Disposer must defend against PROMOTION: if a 2nd subscriber arrived BEFORE this dispose
+      // runs, `_d1` was migrated into `_d` Set and `_d1` is null.
       if (self._d1 === updater) self._d1 = null
       else if (self._d) self._d.delete(updater)
     }
@@ -332,9 +327,8 @@ function _directFn(this: SignalFn<unknown>, updater: () => void): () => void {
  * are already absent from the set (O(1) delete on disposal).
  */
 function notifyDirect(updaters: Set<() => void>): void {
-  // The `else` (non-batch) arm is structurally unreachable: every write opens an inline
-  // batch window before dispatch (see `openInlineBatch`), so by the time a
-  // multi-subscriber `_d` Set is notified, `isBatching()` is always true.
+  // The `else` (non-batch) arm is structurally unreachable: every write opens an inline batch
+  // window before dispatch (see `openInlineBatch`).
   /* v8 ignore next 3 */
   if (isBatching()) {
     for (const fn of updaters) enqueuePendingNotification(fn)
@@ -420,9 +414,8 @@ export function signal<T>(initialValue: T, options?: SignalOptions): Signal<T> {
   read.label = options?.name
 
   if (process.env.NODE_ENV !== 'production') {
-    // Prefer build-time-injected location (zero runtime cost) over the
-    // ~2.2µs stack-capture fallback. @pyreon/vite-plugin's
-    // `injectSignalLocations` rewrites `signal(0)` to
+    // Prefer build-time-injected location (zero runtime cost) over the ~2.2µs stack-capture
+    // fallback.
     const loc = options?.__sourceLocation
       ? options.__sourceLocation
       : _captureCallerLocation(1)

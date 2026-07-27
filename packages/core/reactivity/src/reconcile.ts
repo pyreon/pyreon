@@ -23,9 +23,8 @@ import { isStore } from './store'
 
 type AnyObject = Record<PropertyKey, unknown>
 
-// Keys that, written through the bracket-assignment paths below, would
-// mutate Object.prototype (or a constructor's prototype) instead of the
-// store. `reconcile` is explicitly documented for applying API responses
+// Keys that, written through the bracket-assignment paths below, would mutate Object.prototype (or
+// a constructor's prototype) instead of the store.
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
 export function reconcile<T extends object>(source: T, target: T): void {
@@ -33,9 +32,8 @@ export function reconcile<T extends object>(source: T, target: T): void {
 }
 
 function _reconcileInner(source: object, target: object, seen: WeakSet<object>): void {
-  // The `seen` set is keyed on `source`, not `target` — protects against CIRCULAR
-  // references in the source tree (avoids infinite recursion). A consequence:
-  // DIAMOND-shaped sources (the SAME nested object referenced from two different parent
+  // The `seen` set is keyed on `source`, not `target` — protects against CIRCULAR references in the
+  // source tree (avoids infinite recursion).
   if (seen.has(source)) return
   seen.add(source)
   if (Array.isArray(source) && Array.isArray(target)) {

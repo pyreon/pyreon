@@ -25,9 +25,7 @@ export function jsx(
   props: Props & { children?: VNodeChild | VNodeChild[] },
   key?: string | number | null,
 ): VNode {
-  // Build the destructured props object by copying own property
-  // DESCRIPTORS, not values. Compiler-emitted reactive props (`_rp(() =>
-  // signal())` wrappers converted to getter properties by
+  // Build the destructured props object by copying own property DESCRIPTORS, not values.
   const descriptors = Object.getOwnPropertyDescriptors(props)
   let hasGetter = false
   for (const k in descriptors) {
@@ -49,8 +47,7 @@ export function jsx(
     return h(type, propsWithKey, ...(childArray as VNodeChild[]))
   }
 
-  // Slow path: at least one getter descriptor present — preserve
-  // descriptors during the destructure.
+  // Slow path: at least one getter descriptor present.
   const propsWithKey: Record<string, unknown> = {}
   for (const k in descriptors) {
     if (k === 'children') continue
@@ -162,10 +159,7 @@ export type TargetedEvent<T extends Element, E extends Event = Event> = E & {
   readonly currentTarget: T
 }
 
-// ─── React-style event type aliases ──────────────────────────────────────────
-// These exist purely to ease migration from React/Preact. Each is a
-// `TargetedEvent<T>` constrained to a specific DOM Event subtype.
-// Prefer the DOM-native names (`Event`, `SubmitEvent`, `KeyboardEvent`, etc.)
+// ─── React-style event type aliases ────────────────────────────────────────── These exist purely.
 
 /** Generic input change — fires on every value change on inputs/textareas/selects. */
 export type ChangeEvent<T extends Element = HTMLElement> = TargetedEvent<T, Event>
@@ -311,9 +305,7 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   onKeyPress?: ((e: TargetedEvent<E, KeyboardEvent>) => void) | undefined
   onFocus?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onBlur?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
-  // `focusin`/`focusout` are the BUBBLING focus events (unlike `focus`/`blur`),
-  // so a handler on a container fires when focus moves to/from any descendant —
-  // e.g. pausing a toast region's auto-dismiss when a keyboard user tabs into it.
+  // `focusin`/`focusout` are the BUBBLING focus events (unlike `focus`/`blur`).
   onFocusIn?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onFocusOut?: ((e: TargetedEvent<E, FocusEvent>) => void) | undefined
   onChange?: ((e: TargetedEvent<E>) => void) | undefined
@@ -368,9 +360,7 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   defaultChecked?: boolean | undefined
   placeholder?: string | (() => string) | undefined
   disabled?: boolean | (() => boolean) | undefined
-  // `readOnly` is paired with `disabled` semantically — both accept a
-  // reactive callable so consumers can spread `useForm.register()`'s
-  // return value (which produces `readOnly: Accessor<boolean>`) directly
+  // `readOnly` is paired with `disabled` semantically.
   readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   min?: string | number | undefined
@@ -423,9 +413,7 @@ export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaEle
   defaultValue?: string | undefined
   placeholder?: string | (() => string) | undefined
   disabled?: boolean | (() => boolean) | undefined
-  // `readOnly` is paired with `disabled` semantically — both accept a
-  // reactive callable so consumers can spread `useForm.register()`'s
-  // return value (which produces `readOnly: Accessor<boolean>`) directly
+  // `readOnly` is paired with `disabled` semantically.
   readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   rows?: number | undefined

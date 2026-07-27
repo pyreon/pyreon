@@ -98,9 +98,7 @@ export interface ValidateSchemaInfo {
   topLevel: boolean
 }
 
-// Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted verdict
-// is byte-identical to the runtime (`email` is the strict standard default — 2+ char
-// TLD, no leading/consecutive dots).
+// Regexes copied VERBATIM from `@pyreon/validate`'s `string.ts` so the emitted verdict.
 const EMAIL_RE =
   /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$/
 const URL_RE = /^https?:\/\/[^\s/$.?#].[^\s]*$/i
@@ -350,8 +348,7 @@ export function analyzeValidate(code: string, filename = 'input.ts'): ValidateSc
     if (ts.isVariableDeclaration(n) && n.initializer && unwindChain(n.initializer)) {
       const node = parseExpr(n.initializer)
       const pos = sf.getLineAndCharacterOfPosition(n.initializer.getStart(sf))
-      // MODULE-LEVEL iff: VariableDeclaration → VariableDeclarationList →
-      // VariableStatement → SourceFile.
+      // MODULE-LEVEL iff: VariableDeclaration → VariableDeclarationList → VariableStatement →.
       const list = n.parent
       const stmt = list?.parent
       const topLevel =
@@ -442,9 +439,7 @@ function emitNumberChecks(checks: NumberCheck[], v: string, path: string): strin
 }
 
 /** Emit the issue-collecting statements for `node` over `v` (an expr) at `path` (an array expr). */
-// `depth` = the number of ENCLOSING array loops. Each `array` node names its
-// loop vars `__i<depth>` / `__e<depth>` so a NESTED array never shadows its
-// ancestor's loop var. Without this, two arrays on one root-to-leaf path both
+// `depth` = the number of ENCLOSING array loops.
 function emitNode(node: ValidateNode, v: string, path: string, depth = 0): string {
   switch (node.kind) {
     case 'string': {
@@ -499,10 +494,7 @@ export function emitValidator(node: ValidateNode): string {
   return `(input) => {\nconst issues = []\n${body}\nreturn issues\n}`
 }
 
-// ─── Schema-source emit (tree-shakeable rewrite target) ──────────────────────
-// The COUNTERPART to `emitValidator`: instead of lowering the IR to a verdict
-// function, lower it to a tree-shakeable `@pyreon/validate/mini` schema
-// CONSTRUCTION expression. The user keeps writing the beautiful chainable
+// ─── Schema-source emit (tree-shakeable rewrite target) ────────────────────── The COUNTERPART.
 
 /** Result of {@link emitSchemaSource}. */
 export interface SchemaSourceResult {
@@ -569,8 +561,7 @@ function emitSchemaExpr(node: ValidateNode, imports: Set<string>, prefix: string
       const actions = node.checks.map((c) => {
         const a = stringActionExpr(c)
         imports.add(a.name)
-        // `prefix + call` prefixes only the leading action identifier; any
-        // `new RegExp(...)` inside the call is a global, left untouched.
+        // `prefix + call` prefixes only the leading action identifier.
         return prefix + a.call
       })
       return `${ctor}.check(${actions.join(', ')})`

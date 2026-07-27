@@ -51,9 +51,7 @@ export class SizedMap<K, V> {
     if (this._map.has(key)) {
       this._map.delete(key)
     } else if (this._map.size >= this._maxEntries) {
-      // Evict oldest — Map iterates in insertion order, so the FIRST key is the
-      // least-recently-inserted (or, under LRU, the least-recently USED — `.get`
-      // already moved touched entries to the tail).
+      // Evict oldest — Map iterates in insertion order.
       const oldest = this._map.keys().next().value as K
       this._map.delete(oldest)
     }

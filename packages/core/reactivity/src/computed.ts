@@ -47,9 +47,8 @@ export interface ComputedOptions<T> {
   __sourceLocation?: { file: string; line: number; col: number }
 }
 
-// Internal shape of a computed read function — state stored as PLAIN FIELDS on
-// the function object (fast in-object properties, exactly like `signal`), with
-// shareable methods on `ComputedProto`. The previous shape carried THREE
+// Internal shape of a computed read function — state stored as PLAIN FIELDS on the function object
+// (fast in-object properties, exactly like `signal`), with shareable methods on `ComputedProto`.
 interface ComputedFn<T> {
   (): T
   /** @internal cached value */
@@ -153,9 +152,7 @@ function propagateEagerChange(read: ComputedFn<unknown>): void {
 }
 
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
-  // `computed(async () => …)` returns `Computed<Promise<T>>`, silently breaking
-  // every consumer expecting `Computed<T>`: the recompute fires synchronously and
-  // only tracks signals in the synchronous prefix.
+  // `computed(async () => …)` returns `Computed<Promise<T>>`.
   if (process.env.NODE_ENV !== 'production') {
     if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
       // oxlint-disable-next-line no-console
@@ -189,9 +186,8 @@ function computedLazy<T>(
 ): Computed<T> {
   let tracked = false
   const deps: Set<() => void>[] = []
-  // `tracked`/`deps` are touched only by the per-instance `read`/`dispose`
-  // closures, so they stay closure-captured. `recompute` is forward-declared for
-  // the `read` body; `read` is never invoked before it is wired.
+  // `tracked`/`deps` are touched only by the per-instance `read`/`dispose` closures, so they stay
+  // closure-captured.
   let recompute: () => void
 
   const read = (() => {
@@ -232,9 +228,8 @@ function computedLazy<T>(
     // DEFERS direct subscribers to the batch DRAIN, and cascades into subscribers.
     _markLazyAndPropagate(read)
   }
-  // Recompute marker → the batch router and `propagateLazyDirty` run this inline
-  // (dirty-mark-only, idempotent) instead of routing it through the queues, so
-  // pure-computed cascades resolve during the notify phase. The second arg stamps
+  // Recompute marker → the batch router and `propagateLazyDirty` run this inline (dirty-mark-only,
+  // idempotent) instead of routing it through the queues.
   _markRecompute(recompute, read)
 
   read.dispose = () => {

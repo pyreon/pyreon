@@ -62,14 +62,11 @@ export function _setupVisibleTrigger(
   rootMargin: string,
 ): () => void {
   if (!el || typeof IntersectionObserver === 'undefined') {
-    // Observer unavailable or no DOM target — load eagerly so the user still sees the
-    // component in environments where the viewport-detection mechanism can't run.
+    // Observer unavailable or no DOM target.
     startLoad()
     return () => {}
   }
-  // The observer path requires a DOM `IntersectionObserver`, absent in
-  // the Node test env — it's exercised by `@pyreon/runtime-dom`'s Defer
-  // mount tests (real browser) where the observer + a live element exist.
+  // The observer path requires a DOM `IntersectionObserver`, absent in the Node test env.
   /* v8 ignore start */
   const obs = new IntersectionObserver(
     (entries) => {
@@ -153,20 +150,16 @@ export type DeferProps<P extends Props> = DeferTrigger & {
 export function Defer<P extends Props>(props: DeferProps<P>): VNode {
   const Loaded = signal<ComponentFn<P> | null>(null)
   const Failed = signal<Error | null>(null)
-  // Module-scope flag prevents repeat fetches when the trigger condition oscillates
-  // (e.g. modal opens / closes / opens again).
+  // Module-scope flag prevents repeat fetches when the trigger condition oscillates.
   let loadStarted = false
 
   const startLoad = (): void => {
-    // Defensive double-guard: the `when` effect already gates on `!loadStarted`
-    // and the idle/visible triggers fire once, so this early-return is only a
-    // belt-and-suspenders guard against a future trigger calling twice.
+    // Defensive double-guard: the `when` effect already gates on `!loadStarted` and.
     /* v8 ignore next */
     if (loadStarted) return
     loadStarted = true
     if (!props.chunk) {
-      // Missing chunk = either the user is hand-writing the inline form without the compiler pass
-      // running, or they wrote the explicit form and forgot to pass chunk.
+      // Missing chunk = either the user is hand-writing the inline form without the compiler pass.
       const err = new Error(
         '[Pyreon] <Defer> has no `chunk` prop. Either pass `chunk={() => import("...")}` ' +
           '(explicit form), or use the inline form `<Defer when={...}><Component /></Defer>` ' +
@@ -210,25 +203,19 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
       if (props.when() && !loadStarted) startLoad()
     })
   } else if (props.on === 'idle') {
-    // Idle-driven. Delegated to `_setupIdleTrigger` so the browser-API
-    // branching is testable as a pure function. Wrapped in onMount so
-    // SSR / non-browser environments don't fire the callback at all.
+    // Idle-driven.
     /* v8 ignore next */
     onMount(() => _setupIdleTrigger(startLoad))
   }
-  // Note: `on === 'visible'` is wired below alongside the wrapper element
-  // because it needs a DOM target to observe.
+  // Note: `on === 'visible'` is wired below alongside the wrapper element because it needs a DOM.
 
-  // Inline accessor — type annotation deliberately omitted so the inferred return type
-  // narrows to `VNodeChildAtom | VNodeChildAtom[]` (what `h()`'s rest-args expect).
+  // Inline accessor — type annotation deliberately omitted so the inferred return type narrows.
   const renderContent = () => {
     const err = Failed()
     if (err) throw err
     const Comp = Loaded()
     if (!Comp) return props.fallback ?? null
-    // `children` is widened to `VNodeChild | render-prop` so the compiler-driven
-    // inline form typechecks at source level. At RUNTIME it is always undefined
-    // OR the render-prop — the compiler rewrites the inline form's JSX children
+    // `children` is widened to `VNodeChild | render-prop` so the compiler-driven inline form.
     const ch = props.children
     if (typeof ch === 'function') return ch(Comp)
     return h(Comp as ComponentFn, {})
@@ -237,8 +224,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
   if ('on' in props && props.on === 'visible') {
     // Visible-mode needs a DOM target for IntersectionObserver.
     const containerRef = createRef<HTMLElement>()
-    // Visible-mode trigger is wired via `_setupVisibleTrigger` so the
-    // observer-construction + intersection-detection logic is independently testable.
+    // Visible-mode trigger is wired via `_setupVisibleTrigger` so the observer-construction +.
     /* v8 ignore start */
     onMount(() =>
       _setupVisibleTrigger(
@@ -248,9 +234,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
       ),
     )
     /* v8 ignore stop */
-    // Cast to VNodeChildAccessor — the inferred return type is the broader
-    // `VNodeChild` because `props.children` may return any VNodeChild. The
-    // runtime unwraps nested accessors via the same mountChild path that handles
+    // Cast to VNodeChildAccessor.
     return h(
       'div',
       {

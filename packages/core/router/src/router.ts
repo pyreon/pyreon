@@ -27,18 +27,14 @@ import {
 // `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
-// ─── Router context ───────────────────────────────────────────────────────────
-// Context-based access: isolated per request in SSR (ALS-backed via
-// @pyreon/runtime-server), isolated per component tree in CSR.
+// ─── Router context ─────────────────────────────────────────────────────────── Context-based.
 
 export const RouterContext = createContext<RouterInstance | null>(null)
 
 // Module-level fallback — safe for CSR (single-threaded), not for concurrent SSR.
 let _activeRouter: RouterInstance | null = null
 
-// The router that OWNS browser-history writes for cancelled traversals. Set when a
-// client router attaches its popstate/hashchange listener (newest wins), cleared by
-// `destroy()`.
+// The router that OWNS browser-history writes for cancelled traversals.
 let _navOwner: object | null = null
 
 export function getActiveRouter(): RouterInstance | null {
@@ -476,9 +472,7 @@ export function useTransition(): () => boolean {
 export function useMiddlewareData(): () => Record<string, unknown> {
   const router = _getRouter()
   return () => {
-    // Subscribe to route changes; the data itself lives on the router —
-    // `currentRoute()` re-resolves a FRESH object per path, so middleware
-    // data attached to the in-flight `to` never reaches it (the pre-fix
+    // Subscribe to route changes; the data itself lives on the router.
     router.currentRoute()
     return router._committedMiddlewareData
   }
@@ -511,14 +505,11 @@ export function createRouter<TNames extends string = string>(
   const afterHooks: AfterEachHook[] = []
   const scrollManager = new ScrollManager(scrollBehavior)
 
-  // Navigation generation counter — cancels in-flight navigations when a newer
-  // one starts. Prevents out-of-order completion from stale async guards.
+  // Navigation generation counter — cancels in-flight navigations when a newer one starts.
   let _navGen = 0
 
-  // ── History position tracking ─────────────────────────────────────────────
-  // Every router-written history entry is stamped with a monotonically increasing
-  // index (`history.state.__pyreonIdx`) so the popstate handler can compute the
-  // traversal DELTA. When a guard / blocker / middleware cancels a
+  // ── History position tracking ───────────────────────────────────────────── Every
+  // router-written.
   let _histIdx = 0
   let _suppressBrowserNav = 0
 
@@ -555,10 +546,7 @@ export function createRouter<TNames extends string = string>(
   const currentPath = signal(normalizeTrailingSlash(getInitialLocation(), trailingSlash))
   const currentRoute = computed<ResolvedRoute>(() => resolveRoute(currentPath(), routes))
 
-  // ── Browser-initiated navigation (Back/Forward, hash anchors) ────────────
-  // Routes history traversals through the SAME `navigate()` pipeline as
-  // `router.push()`. As a bare `currentPath.set(...)` this silently bypassed
-  // loaders (leaving `useLoaderData()` undefined, since `commitNavigation` prunes
+  // ── Browser-initiated navigation (Back/Forward.
   const handleBrowserNav = (): void => {
     // Client-only: wired solely to the popstate/hashchange listeners, which are null on the server.
     if (!isClient) return
@@ -579,8 +567,7 @@ export function createRouter<TNames extends string = string>(
     if (poppedIdx !== null) _histIdx = poppedIdx
     void navigate(target, true, 0, true).then((status) => {
       if (status !== 'cancelled') return
-      // Guard / blocker / middleware refused the traversal — the app state never
-      // changed, so put the BROWSER back where the app is.
+      // Guard / blocker / middleware refused the traversal.
       _histIdx = prevIdx
       if (_navOwner !== router) return
       if (poppedIdx !== null && poppedIdx !== prevIdx) {
@@ -592,9 +579,7 @@ export function createRouter<TNames extends string = string>(
     })
   }
 
-  // Browser event listeners — stored so destroy() can remove them. Ternary-bound on
-  // `isClient` (the canonical `@pyreon/reactivity` SSR-guard primitive — a recognized
-  // guard name) so the lint rule can trace these to an SSR-safe shape without needing
+  // Browser event listeners — stored so destroy() can remove them.
   const _popstateHandler: (() => void) | null =
     isClient && mode === 'history' ? handleBrowserNav : null
   const _hashchangeHandler: (() => void) | null =
@@ -603,8 +588,7 @@ export function createRouter<TNames extends string = string>(
   if (_popstateHandler) window.addEventListener('popstate', _popstateHandler)
   if (_hashchangeHandler) window.addEventListener('hashchange', _hashchangeHandler)
 
-  // Stamp the INITIAL history entry with index 0 (merging any pre-existing state) so a
-  // later Back to it carries a readable index.
+  // Stamp the INITIAL history entry with index 0 (merging any pre-existing state) so a later Back.
   if (isClient) {
     const existing = readHistoryIdx()
     if (existing !== null) {
@@ -619,24 +603,19 @@ export function createRouter<TNames extends string = string>(
     }
   }
 
-  // When the user configures scroll behavior, the ROUTER owns scroll on history
-  // traversals — switch off the browser's native restoration so the two don't fight
-  // (native restores, then ScrollManager scrolls again). Without an explicit
+  // When the user configures scroll behavior, the ROUTER owns scroll on history traversals.
   const _prevScrollRestoration: History['scrollRestoration'] | null =
     isClient && scrollBehavior !== undefined && 'scrollRestoration' in window.history
       ? window.history.scrollRestoration
       : null
   if (isClient && _prevScrollRestoration !== null) window.history.scrollRestoration = 'manual'
 
-  // Dev-only full-reload-link warning: a plain internal `<a href>` in a router app
-  // triggers a full page reload the author almost never wants. Warn at the
-  // document bubble phase — `<RouterLink>` calls `preventDefault()` on the
+  // Dev-only full-reload-link warning: a plain internal `<a href>` in a router app triggers a full.
   const _devAnchorWarn: ((e: MouseEvent) => void) | null =
     process.env.NODE_ENV !== 'production' && isClient
       ? (e: MouseEvent) => {
           if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-          // `closest?.` — e.target can be a non-Element (a Text node from a
-          // programmatic dispatch; real browser clicks target Elements).
+          // `closest?.` — e.target can be a non-Element.
           const a = (e.target as Element | null)?.closest?.('a[href]')
           if (
             !a ||
@@ -646,8 +625,7 @@ export function createRouter<TNames extends string = string>(
           ) {
             return
           }
-          // getAttribute, NOT `.href` — an SVG `<a>`'s `.href` is an
-          // SVGAnimatedString, and HTMLAnchorElement.href is absolutized.
+          // getAttribute, NOT `.href`.
           const hrefAttr = a.getAttribute('href')
           // Empty href (`<a href="">`) is a deliberate same-page pattern — skip.
           if (!hrefAttr || classifyHref(hrefAttr, opts.links) !== 'internal') return
@@ -727,9 +705,8 @@ export function createRouter<TNames extends string = string>(
       return { action: 'continue' }
     }
     if (ac.signal.aborted) return { action: 'continue' }
-    // `redirect()` from a loader: propagate as a router-level redirect so the
-    // navigate flow re-runs against the target path BEFORE the matched route's
-    // layout / page mounts. Bypasses the user-supplied `_onError` hook — a
+    // `redirect()` from a loader: propagate as a router-level redirect so the navigate flow
+    // re-runs.
     const info = getRedirectInfo(result.reason)
     if (info) return { action: 'redirect', target: info.url }
     if (router._onError) {
@@ -744,8 +721,7 @@ export function createRouter<TNames extends string = string>(
     if (!isClient) return
     const url = mode === 'history' ? `${base}${path}` : `#${path}`
     if (replace) {
-      // Merge any pre-existing state (third-party code may stash data on the
-      // entry) — we only own the `__pyreonIdx` field.
+      // Merge any pre-existing state (third-party code may stash data on the entry).
       const prev = window.history.state as Record<string, unknown> | null
       const merged =
         prev && typeof prev === 'object'
@@ -831,21 +807,16 @@ export function createRouter<TNames extends string = string>(
     }
 
     // 2. Dedup in-flight — but only if the in-flight signal is still live.
-    // Otherwise: nav-1 starts a loader; the user navigates to the same path;
-    // nav-2's `push` aborts nav-1's controller, but the Map still holds nav-1's
     const inflight = router._loaderInflight.get(key)
     if (inflight && !inflight.signal.aborted) return inflight.promise
 
-    // 3. Execute. Wrap with `Promise.resolve().then(...)` so a SYNCHRONOUS
-    // throw from the loader (`redirect('/login')` / `notFound()` / a plain
-    // `throw new Error(...)`) becomes a rejected promise the `.catch` can
+    // 3. Execute.
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.loaderRun')
     const promise = Promise.resolve()
       .then(() => record.loader!(loaderCtx))
       .then((data) => {
         loaderCacheSet(key, data)
-        // Only delete if WE'RE still the registered in-flight (a later nav
-        // may have replaced the entry with a fresh promise).
+        // Only delete if WE'RE still the registered in-flight.
         if (router._loaderInflight.get(key)?.promise === promise) {
           router._loaderInflight.delete(key)
         }
@@ -876,8 +847,7 @@ export function createRouter<TNames extends string = string>(
       const record = records[i]
       if (!result || !record) continue
       const outcome = processLoaderResult(result, record, ac, to)
-      // Short-circuit on first redirect or cancel — later loaders' results
-      // are irrelevant once we know the navigation isn't committing here.
+      // Short-circuit on first redirect or cancel.
       if (outcome.action !== 'continue') return outcome
     }
     return { action: 'continue' }
@@ -901,8 +871,7 @@ export function createRouter<TNames extends string = string>(
           }
         })
         .catch((err: unknown) => {
-          // Background revalidation failed — the stale data remains valid and on
-          // screen, so this MUST NOT cancel or redirect the already-settled navigation.
+          // Background revalidation failed.
           if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console
             console.warn(
@@ -983,9 +952,7 @@ export function createRouter<TNames extends string = string>(
         throw new Error(`[Pyreon Router] data endpoint returned HTTP ${res.status}`)
       }
       const payload = (await res.json()) as {
-        // Phase 5 — data keyed by MATCHED-CHAIN INDEX (not record.path; a layout +
-        // index share a path and path-keying collided — review finding C). The endpoint
-        // resolves the same path -> same chain -> same indices, so the client maps
+        // Phase 5 — data keyed by MATCHED-CHAIN INDEX.
         data?: Record<string, unknown>
         redirect?: { to: string; status?: number }
       }
@@ -996,8 +963,7 @@ export function createRouter<TNames extends string = string>(
       const data = payload.data ?? {}
       for (let i = 0; i < to.matched.length; i++) {
         const r = to.matched[i]
-        // Only the records this navigation flagged as remote (hasServerLoader)
-        // get applied; isomorphic loaders in the chain ran locally.
+        // Only the records this navigation flagged as remote (hasServerLoader) get applied.
         if (r && records.includes(r) && String(i) in data) {
           router._loaderData.set(r, data[String(i)])
         }
@@ -1020,9 +986,7 @@ export function createRouter<TNames extends string = string>(
     scrollManager.save(from.path)
 
     const doCommit = () => {
-      // Publish the middleware chain's accumulated data BEFORE flipping the path so any
-      // reactive reader waking up on the route change sees the new navigation's data
-      // (empty when the chain had no middleware — middleware data is per-navigation).
+      // Publish the middleware chain's accumulated data BEFORE flipping the path so any reactive.
       router._committedMiddlewareData = to._middlewareData ?? {}
       currentPath.set(path)
       syncBrowserUrl(path, replace)
@@ -1031,9 +995,7 @@ export function createRouter<TNames extends string = string>(
         document.title = to.meta.title
       }
 
-      // Drop loader data for routes no longer matched — EXCEPT
-      // `staleWhileRevalidate` ones, whose whole contract is "on return, serve the
-      // previously-loaded data stale while revalidating", which requires the data
+      // Drop loader data for routes no longer matched.
       for (const record of router._loaderData.keys()) {
         if (!to.matched.includes(record) && !record.staleWhileRevalidate) {
           router._loaderData.delete(record)
@@ -1054,9 +1016,7 @@ export function createRouter<TNames extends string = string>(
       typeof (document as any).startViewTransition === 'function'
 
     if (useVT) {
-      // `startViewTransition(cb)` runs `cb` inside an async transition. Its
-      // `.updateCallbackDone` promise resolves as soon as the callback
-      // finishes — DOM has swapped, state is live, but the fade/slide
+      // `startViewTransition(cb)` runs `cb` inside an async transition.
       type ViewTransitionLike = {
         updateCallbackDone?: Promise<void>
         ready?: Promise<void>
@@ -1067,12 +1027,9 @@ export function createRouter<TNames extends string = string>(
       ).startViewTransition!(() => {
         doCommit()
       })
-      // `startViewTransition` may return `undefined` in test doubles
-      // that shim it with a bare `(cb) => cb()`. Guard accordingly.
+      // `startViewTransition` may return `undefined` in test doubles that shim it with a bare.
       if (vt) {
-        // The ViewTransition object exposes THREE promises —
-        // `updateCallbackDone`, `ready`, `finished`. When a newer
-        // `startViewTransition()` starts while this one is in flight,
+        // The ViewTransition object exposes THREE promises.
         vt.ready?.catch(() => {})
         vt.finished?.catch(() => {})
         if (vt.updateCallbackDone) {
@@ -1080,8 +1037,6 @@ export function createRouter<TNames extends string = string>(
             await vt.updateCallbackDone
           } catch {
             // `updateCallbackDone` rejects if the callback itself throws.
-            // The DOM may be in a partial-commit state; the newer
-            // navigation (if any) will re-commit. Swallow so the
           }
         }
       }
@@ -1100,8 +1055,6 @@ export function createRouter<TNames extends string = string>(
     }
 
     // Scroll ownership split (matches Vue Router semantics):
-    //   - programmatic navigations (push/replace) always run ScrollManager
-    //     (default 'top' — a new page starts at the top);
     if (isClient && (!fromBrowser || scrollBehavior !== undefined)) {
       queueMicrotask(() => scrollManager.restore(to, from))
     }
@@ -1220,8 +1173,7 @@ export function createRouter<TNames extends string = string>(
     return 'committed'
   }
 
-  // ── isReady promise ─────────────────────────────────────────────────────
-  // Resolves after the first navigation (including guards + loaders) completes.
+  // ── isReady promise ───────────────────────────────────────────────────── Resolves after.
 
   let _readyResolve: (() => void) | null = null
   const _readyPromise = new Promise<void>((resolve) => {
@@ -1331,9 +1283,8 @@ export function createRouter<TNames extends string = string>(
 
     async preload(path: string, request?: Request, preloadOptions?: { skipLoaders?: boolean }) {
       const resolved = resolveRoute(path, routes)
-      // Load lazy components in parallel and populate the component cache so
-      // the synchronous render pass finds ready components instead of kicking
-      // off async imports (which would fall back to loadingComponent).
+      // Load lazy components in parallel and populate the component cache so the synchronous
+      // render.
       await Promise.all(
         resolved.matched.map(async (record) => {
           if (componentCache.has(record)) return
@@ -1347,25 +1298,16 @@ export function createRouter<TNames extends string = string>(
           componentCache.set(record, comp)
         }),
       )
-      // Skip the loader-running step when the caller explicitly opts out
-      // (used by the SSG plugin's 404 build path — parent-layout loaders
-      // that hit auth resources or external APIs shouldn't fire when
+      // Skip the loader-running step when the caller explicitly opts out.
       if (preloadOptions?.skipLoaders) return
-      // Run loaders for the matched path — uses the same code path SSR
-      // already relied on, so loader data ends up in `_loaderData` under the
-      // matched route records. Uses a LOCAL AbortController: `preload` is
+      // Run loaders for the matched path.
       const ac = new AbortController()
       await Promise.all(
         resolved.matched
-          // Phase 5 — `serverLoader` runs here exactly like `loader`: this
-          // preload path only executes on the server (SSR handler, SSG
-          // build, the data endpoint), where the function import exists.
+          // Phase 5 — `serverLoader` runs here exactly like `loader`: this preload path only.
           .filter((r) => r.loader || typeof r.serverLoader === 'function')
           .map(async (r) => {
-            // Wrap with `Promise.resolve().then(...)` so a SYNCHRONOUS throw —
-            // `redirect('/login')` from a sync loader, `notFound()`, a plain `throw new
-            // Error(...)` — becomes a rejected promise the surrounding Promise.all
-            // surfaces.
+            // Wrap with `Promise.resolve().then(...)` so a SYNCHRONOUS throw.
             const run = r.serverLoader ?? r.loader
             const data = await Promise.resolve().then(() =>
               run!({
@@ -1395,8 +1337,7 @@ export function createRouter<TNames extends string = string>(
         await Promise.all(
           resolved.matched.map(async (r, i) => {
             if (typeof r.serverLoader !== 'function') return
-            // Same sync-throw-to-rejection wrap as preload so a synchronous
-            // `redirect()` / `notFound()` is caught, not leaked.
+            // Same sync-throw-to-rejection wrap as preload so a synchronous `redirect()` /.
             data[i] = await Promise.resolve().then(() => r.serverLoader!(loaderCtx))
           }),
         )
@@ -1425,17 +1366,14 @@ export function createRouter<TNames extends string = string>(
         }
       }
       const ac = new AbortController()
-      // Current generation: a REAL navigation starting mid-revalidate bumps
-      // `_navGen` and runLoaders returns `cancel` — the navigation's own
-      // loader batch wins, nothing tears.
+      // Current generation: a REAL navigation starting mid-revalidate bumps `_navGen`.
       const outcome = await runLoaders(to, _navGen, ac)
       if (outcome.action === 'redirect') {
         await navigate(sanitizePath(outcome.target), true, 0)
         return
       }
       if (outcome.action !== 'continue') return
-      // Wake loader-bearing depthEntries so route components re-render with
-      // the fresh data (same tick mechanism the SWR background path uses).
+      // Wake loader-bearing depthEntries so route components re-render with the fresh data.
       loadingSignal.update((n) => n + 1)
       loadingSignal.update((n) => n - 1)
     },
@@ -1499,9 +1437,7 @@ export function createRouter<TNames extends string = string>(
             const m = mod as { default?: ComponentFn } | ComponentFn | null
             const next: ComponentFn | undefined =
               typeof m === 'function' ? m : (m?.default ?? undefined)
-            // No default export in the fresh namespace (named-only edit, or
-            // the module no longer exports a component) — let the plugin
-            // fall back to an automatic reload rather than blank the route.
+            // No default export in the fresh namespace.
             if (typeof next !== 'function') return false
 
             const matched = currentRoute().matched
@@ -1514,9 +1450,8 @@ export function createRouter<TNames extends string = string>(
               router._erroredChunks.delete(record)
               changed = true
             }
-            // PR-S8: bump `_hmrTick` (NOT `_loadingSignal`) so
-            // `RouterView`'s `depthEntry` computed re-emits without
-            // leaking into the navigation counter. Pre-fix `_loadingSignal
+            // PR-S8: bump `_hmrTick` (NOT `_loadingSignal`) so `RouterView`'s `depthEntry`
+            // computed.
             if (changed) hmrTick.update((n) => n + 1)
             return changed
           },
@@ -1524,12 +1459,10 @@ export function createRouter<TNames extends string = string>(
       : {}),
   }
 
-  // This (newest) client router owns browser-history restoration for
-  // cancelled traversals — see `_navOwner`.
+  // This (newest) client router owns browser-history restoration for cancelled traversals.
   if (_popstateHandler || _hashchangeHandler) _navOwner = router
 
-  // Initial route is resolved synchronously — mark ready on next microtask
-  // so consumers can await isReady() before the first render.
+  // Initial route is resolved synchronously.
   queueMicrotask(() => {
     if (router._readyResolve) {
       router._readyResolve()
@@ -1537,13 +1470,9 @@ export function createRouter<TNames extends string = string>(
     }
   })
 
-  // Expose the HMR coordinator on globalThis so `@pyreon/vite-plugin`'s
-  // injected `import.meta.hot.accept` handler can reach it WITHOUT importing
-  // `@pyreon/router` (zero import coupling — same pattern as the perf-harness
+  // Expose the HMR coordinator on globalThis so `@pyreon/vite-plugin`'s injected.
   if (process.env.NODE_ENV !== 'production' && isClient && router._hmrSwap) {
-    // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal`
-    // (not `this`), so the raw reference is safe to expose and to compare by
-    // identity on `destroy()`.
+    // `_hmrSwap` closes over `currentRoute`/`componentCache`/`loadingSignal` (not `this`).
     ;(globalThis as Record<string, unknown>).__pyreon_hmr_swap__ = router._hmrSwap
   }
 

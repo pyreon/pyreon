@@ -4,10 +4,8 @@ export class EffectScope {
   private _updateHooks: (() => void)[] | null = null
   private _updatePending = false
 
-  // ─── Context ownership ──────────────────────────────────────────────────
-  // A scope doubles as the component's CONTEXT OWNER: `provide()` writes into
-  // `_contexts`; `useContext()` walks `_parent` up the OWNER chain (which
-  // mirrors the component tree, set by the renderer during mount). Context
+  // ─── Context ownership ────────────────────────────────────────────────── A scope doubles as the
+  // component's CONTEXT OWNER: `provide()` writes into `_contexts`.
   /** Parent owner in the component tree — set by the renderer, NOT effect nesting. */
   _parent: EffectScope | null = null
   /** Contexts provided at this scope, keyed by context id. */

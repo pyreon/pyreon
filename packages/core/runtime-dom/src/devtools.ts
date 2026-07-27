@@ -274,8 +274,6 @@ function disableOverlay(): void {
 
 // ─── Reactive dev overlay (zero-install in-app dev panel) ────────────────────
 // Three views:
-//   • Health   — orphan signals / high-fanout hubs / deep chains from
-//                `describeReactiveGraph`.
 
 type ReactiveView = 'health' | 'activity' | 'inspect'
 let _reactivePanelActive = false
@@ -395,9 +393,8 @@ function selectReactiveView(view: ReactiveView): void {
   renderReactivePanel()
 }
 
-// ── Element picker (DOM → reactive-node) ─────────────────────────────────────
-// A lightweight hover-highlight + capture-phase click that resolves the clicked element
-// to the signals driving its text.
+// ── Element picker (DOM → reactive-node) ───────────────────────────────────── A lightweight
+// hover-highlight + capture-phase click that resolves the clicked element to the signals driving.
 
 function showPickHighlight(el: Element): void {
   if (!_pickHighlightEl) {

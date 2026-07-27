@@ -47,9 +47,7 @@ export interface HeadProviderProps extends Props {
  * const { html, head } = await renderWithHead(h(HeadProvider, null, h(App, null)))
  */
 const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
-  // `useContext(HeadContext)` returns `null` when no outer provider exists
-  // (the context's defaultValue). The `??` chain therefore resolves to:
-  //   explicit prop  →  inherited outer ctx  →  fresh ctx
+  // `useContext(HeadContext)` returns `null` when no outer provider exists.
   const ctx = props.context ?? useContext(HeadContext) ?? createHeadContext()
   provide(HeadContext, ctx)
 
@@ -57,8 +55,6 @@ const HeadProvider: ComponentFn<HeadProviderProps> = (props) => {
   return typeof ch === 'function' ? (ch as () => VNodeChild)() : ch
 }
 
-// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so
-// HeadProvider's provide(HeadContext, ...) call runs inside Pyreon's setup frame, not
-// the compat wrapper's runUntracked accessor.
+// Mark as native — compat-mode jsx() runtimes skip wrapCompatComponent so HeadProvider's.
 const _HeadProvider = /* @__PURE__ */ nativeCompat(HeadProvider)
 export { _HeadProvider as HeadProvider }

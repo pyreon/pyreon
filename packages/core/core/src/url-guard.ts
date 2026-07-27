@@ -41,17 +41,14 @@ export function isUnsafeUrl(url: string): boolean {
   return UNSAFE_URL_RE.test(url)
 }
 
-// A `data:image/...` URI on an image-source attribute renders as a static,
-// non-executing image — the framework's own imagePlugin ships exactly these as
-// blur/color placeholders (`data:image/webp;base64,…`, `data:image/svg+xml,…`).
+// A `data:image/...` URI on an image-source attribute renders as a static, non-executing image.
 const IMAGE_SRC_ATTRS = new Set(['src', 'srcset', 'poster'])
 const IMAGE_CONTEXT_TAGS = new Set(['img', 'source', 'video'])
 // Raster image data URIs can never carry executable content — always safe.
 const SAFE_RASTER_DATA_RE =
   /^\s*data:image\/(?:png|jpe?g|gif|webp|avif|bmp|x-icon|vnd\.microsoft\.icon)\s*[;,]/i
 const SVG_DATA_RE = /^\s*data:image\/svg\+xml\s*[;,]/i
-// SVG loaded via <img> is sandboxed (scripts don't run), but we still reject SVGs carrying <script>
-// or on*= handlers — defense in depth, and safe if the URI ever reaches a script-executing context.
+// SVG loaded via <img> is sandboxed (scripts don't run).
 const SVG_SCRIPT_RE = /<\s*script\b|\son[a-z-]+\s*=/i
 
 /**

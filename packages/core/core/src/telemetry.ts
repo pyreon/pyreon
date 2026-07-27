@@ -52,9 +52,7 @@ export interface ErrorContext {
 
 export type ErrorHandler = (ctx: ErrorContext) => void
 
-// Plain module-scope state. The duplicate-instance bug class is now
-// prevented at the bundler layer (`@pyreon/vite-plugin` injects
-// `resolve.dedupe`) and detected at the runtime layer (every package
+// Plain module-scope state.
 let _errorHandlers: ErrorHandler[] = []
 
 /**
@@ -80,8 +78,7 @@ export function registerErrorHandler(handler: ErrorHandler): () => void {
  * Existing console.error calls are preserved; this is additive.
  */
 export function reportError(ctx: ErrorContext): void {
-  // Enrich with the recent-signal-write trace so every handler (Sentry, Datadog,
-  // console) gets the causal reactive sequence for free.
+  // Enrich with the recent-signal-write trace so every handler (Sentry, Datadog.
   if (process.env.NODE_ENV !== 'production' && ctx.reactiveTrace === undefined) {
     try {
       const trace = getReactiveTrace()
@@ -99,10 +96,7 @@ export function reportError(ctx: ErrorContext): void {
   }
 }
 
-// ─── Reactivity bridge ──────────────────────────────────────────────────────
-// Installs `globalThis.__pyreon_report_error__` so `@pyreon/reactivity`
-// effect-error path can forward into reportError. Idempotent — multiple
-// `registerErrorHandler` calls install once.
+// ─── Reactivity bridge ────────────────────────────────────────────────────── Installs.
 
 interface PyreonErrorBridge {
   __pyreon_report_error__?: (err: unknown, phase: 'effect') => void

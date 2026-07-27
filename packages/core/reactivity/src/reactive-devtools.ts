@@ -163,9 +163,8 @@ let _nextId = 1
 // id → record.
 const _byId = new Map<number, NodeRec>()
 
-// ── Coverage retention ───────────────────────────────────────────────────
-// The registry holds nodes via WeakRef, so a node whose component unmounts is GC-pruned
-// and DISAPPEARS from `getReactiveGraph()`.
+// ── Coverage retention ─────────────────────────────────────────────────── The registry holds
+// nodes via WeakRef.
 let _retain = false
 const _retained = new Set<object>()
 
@@ -404,14 +403,10 @@ export function _rdRegister(
     pendingSkip: isDeferred ? (loc as DeferredLocation).skipFrames : undefined,
   })
   if (sub) _subId.set(sub, id)
-  // During a coverage session, pin the node so it can't be GC-pruned before
-  // the snapshot — a complete denominator needs every node created in the
-  // window, including ones whose component has since unmounted.
+  // During a coverage session, pin the node so it can't be GC-pruned before the snapshot.
   if (_retain) _retained.add(node)
   _finalizer.register(node, id)
-  // Stash the id on the node so fire events correlate in O(1). Every node
-  // we register is a framework-created function/closure (signal/computed
-  // `read`, effect `run`) — always extensible, so defineProperty cannot
+  // Stash the id on the node so fire events correlate in O(1).
   Object.defineProperty(node, '__pxRdId', {
     value: id,
     enumerable: false,
@@ -489,8 +484,7 @@ function resolveSubId(sub: () => void): number | undefined {
  */
 export function getReactiveGraph(): ReactiveGraph {
   // Dev-block guard (NOT an early prod-return): the registry only fills under dev gates
-  // (`_rdRegister` call sites are `NODE_ENV`-gated), so this is provably `{[], []}` in
-  // a production build.
+  // (`_rdRegister` call sites are `NODE_ENV`-gated), so this is provably `{[].
   if (process.env.NODE_ENV !== 'production') {
     if (!_active) return { nodes: [], edges: [] }
     const nodes: ReactiveNode[] = []
@@ -500,13 +494,9 @@ export function getReactiveGraph(): ReactiveGraph {
       if (!node) continue
       const host = rec.hostRef?.deref() ?? null
       const subs = host?._s ?? null
-      // `preview()` is total (its own try/catch returns '[unstringifiable]'),
-      // and `_v` on our registered nodes is a plain property (signal) or a
-      // getter that never throws (computed's getter routes errors through
+      // `preview()` is total (its own try/catch returns '[unstringifiable]').
       const valueStr = rec.kind === 'effect' ? '' : preview((node as { _v?: unknown })._v)
-      // Resolve the deferred loc on first read — most apps never reach
-      // this branch for the bulk of their signals, so the expensive
-      // `.stack` formatting cost is paid only for nodes the consumer
+      // Resolve the deferred loc on first read.
       const resolvedLoc = _resolveLoc(rec)
       nodes.push({
         id: rec.id,
@@ -546,16 +536,12 @@ export function getFireSummaries(): FireSummary[] {
   if (process.env.NODE_ENV !== 'production') {
     if (!_active) return []
     const byKey = new Map<string, FireSummary>()
-    // Snapshot "now" once per call — decay-at-read uses a consistent timestamp
-    // for all nodes, so two locations firing at the same rate show the same
-    // rate1s value even if iteration walks them in different orders.
+    // Snapshot "now" once per call.
     const nowTs =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now()
         : Date.now()
-    // Build a one-pass per-id EWMA accumulator from the ring buffer. The
-    // pre-deferred algorithm maintained `rec.rate1s` incrementally on every
-    // fire via the recurrence `r_n = r_{n-1} * exp(-dt/TAU) + 1`; unfolded,
+    // Build a one-pass per-id EWMA accumulator from the ring buffer.
     const ratesById = new Map<number, number>()
     if (_fireBuf !== null && _fireCount > 0) {
       const visible = _fireCount <= FIRE_CAP ? _fireCount : FIRE_CAP

@@ -129,8 +129,7 @@ export function filePathToUrlPath(filePath: string): string {
   const urlSegments: string[] = []
 
   for (const seg of segments) {
-    // Skip route groups "(name)" — URL-invisible (but they REMAIN tree
-    // boundaries in zero's fs-router: see parseFilePath's dirPath handling)
+    // Skip route groups "(name)" — URL-invisible.
     if (seg.startsWith('(') && seg.endsWith(')')) continue
 
     // Skip special files (_layout / _error / _loading / _404 / _not-found)
@@ -156,8 +155,6 @@ export function filePathToUrlPath(filePath: string): string {
     urlSegments.push(seg)
   }
 
-  // Empty segment list (root `index`, bare specials) already yields "/" —
-  // the template literal is never falsy (zero's original carried a dead
-  // `path || '/'` fallback; dropped here so V8 branch coverage stays real).
+  // Empty segment list (root `index`, bare specials) already yields "/".
   return `/${urlSegments.join('/')}`
 }

@@ -19,13 +19,10 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
   // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them silently.
   for (const key of Reflect.ownKeys(props)) {
     const desc = Object.getOwnPropertyDescriptor(props, key)
-    // `desc` is only undefined if the key was deleted between ownKeys and
-    // the descriptor read — unreachable for a stable props object.
+    // `desc` is only undefined if the key was deleted between ownKeys and the descriptor read.
     /* v8 ignore next */
     if (!desc) continue
-    // Force configurable: true when copying to a fresh object. Source descriptors
-    // may be non-configurable (default when created with `Object.defineProperty`
-    // and the caller omitted `configurable`). If we preserved that, any later
+    // Force configurable: true when copying to a fresh object.
     const safe = { ...desc, configurable: true }
     if (keySet.has(key)) {
       Object.defineProperty(picked, key, safe)
@@ -84,9 +81,7 @@ function mergeProperty(
   if (desc.get && existing) {
     mergeGetterWithExisting(result, key, desc, existing)
   } else if (desc.get) {
-    // Force configurable: true — source getters may have been defined via
-    // `Object.defineProperty` without an explicit configurable flag (which
-    // defaults to false). Without this, a later source in the same mergeProps
+    // Force configurable: true.
     Object.defineProperty(result, key, { ...desc, configurable: true })
   } else if (existing?.get) {
     mergeStaticWithGetter(result, key, desc, existing.get)
@@ -225,12 +220,10 @@ export function _wrapSpread(
   if (!hasGetter) return source
 
   const result: Record<string, unknown> = {}
-  // Reflect.ownKeys covers symbol keys too — REACTIVE_PROP brands and
-  // other framework symbols must round-trip through the wrap.
+  // Reflect.ownKeys covers symbol keys too.
   for (const key of Reflect.ownKeys(source)) {
     const desc = descriptors[key as string]
-    // `getOwnPropertyDescriptors` already enumerated every own key, so a
-    // missing descriptor here is unreachable — defensive guard only.
+    // `getOwnPropertyDescriptors` already enumerated every own key.
     /* v8 ignore next */
     if (!desc) continue
     if (desc.get) {
@@ -289,9 +282,7 @@ export function makeReactiveProps(
 
 // ─── Unique ID ───────────────────────────────────────────────────────────────
 
-// Plain module-scope counter. The duplicate-instance bug class is now
-// prevented at the bundler layer + detected at the runtime layer — see
-// `.claude/plans/jaunty-herding-kazoo.md`.
+// Plain module-scope counter.
 let _idCounter = 0
 
 /**

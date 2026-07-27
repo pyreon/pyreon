@@ -62,15 +62,12 @@ export type { HeadingProps, IconProps, ImageProps, TextProps } from './types/con
 export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
 
-// ===== Runtime config — one-time app-boot hook (rocketstyle-style) =====
-// Router-agnostic navigation wiring for `<Link>`.
+// ===== Runtime config — one-time app-boot hook (rocketstyle-style) ===== Router-agnostic.
 
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
 
-// ===== Web runtime exports — all 15 canonical primitives =====
-// On native targets these imports are intercepted by the PMTC compiler before the JSX
-// call site reaches runtime — these implementations only run on web.
+// ===== Web runtime exports.
 
 export { Stack } from './web/Stack'
 export { Inline } from './web/Inline'
@@ -87,13 +84,9 @@ export { Link } from './web/Link'
 export { Field } from './web/Field'
 export { Toggle } from './web/Toggle'
 export { Modal } from './web/Modal'
-// Escape-hatch primitives (Layer 4) — per-platform branch selection. On
-// web, `<Web>` renders its children and `<NativeIOS>`/`<NativeAndroid>`
-// render nothing; PMTC mirrors this per native target (iOS renders the
+// Escape-hatch primitives (Layer 4) — per-platform branch selection.
 export { Web, NativeIOS, NativeAndroid } from './web/escape-hatch'
 export type { EscapeHatchProps } from './types/escape-hatch'
-// `<WebView>` — native host (WKWebView / Android WebView) for embedding
-// web content; an `<iframe>` on web. The path to using web-only-rich viz
-// (charts / flow / tables) inside a native shell.
+// `<WebView>` — native host (WKWebView / Android WebView) for embedding web content.
 export { WebView } from './web/WebView'
 export type { WebViewProps } from './types/webview'

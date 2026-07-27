@@ -68,9 +68,7 @@ export function mountReactive(
 
   const e = effect(() => {
     const myGen = ++generation
-    // Run cleanup outside tracking context — cleanup may write to signals
-    // (e.g. onUnmount hooks), and those writes must not accidentally register
-    // as dependencies of this effect, which would cause infinite recursion.
+    // Run cleanup outside tracking context.
     if (hasCleanup) _emitCleanup()
     runUntracked(() => currentCleanup())
     currentCleanup = () => {
@@ -78,20 +76,16 @@ export function mountReactive(
     }
     hasCleanup = false
     const value = accessor()
-    // NOTE: `typeof value === 'function'` is a VALID accessor return — a nested
-    // `() => VNodeChild` (the `{() => show() ? <A /> : null}` pattern), which
-    // mountChild handles reactively. Do NOT warn on function returns.
+    // NOTE: `typeof value === 'function'` is a VALID accessor return — a nested `() => VNodeChild`
+    // (the `{() => show() ? <A /> : null}` pattern), which mountChild handles reactively.
     if (value != null && value !== false) {
-      // Mount children UNTRACKED — signal reads during child component setup (useContext, useTheme,
-      // …) must NOT subscribe this mountReactive effect, or any such read becomes a dependency and
-      // the whole child tree tears down + remounts on that signal's change.
+      // Mount children UNTRACKED.
       const liveParent = marker.parentNode ?? parent
       const cleanup = runUntracked(() =>
         runWithContextOwner(ownerAtSetup, () => mount(value, liveParent, marker)),
       )
-      // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
-      // throw) may have already re-run this effect and set currentCleanup —
-      // discard our stale cleanup rather than overwriting the newer one.
+      // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child throw) may have
+      // already re-run this effect and set currentCleanup.
       if (myGen === generation) {
         currentCleanup = cleanup
         hasCleanup = true
@@ -305,9 +299,8 @@ export function mountKeyedList(
     const n = newList.length
     // Same untracking rationale as mountFor — see comment there.
     runUntracked(() => {
-      // Use the marker's LIVE parent, not the closure-captured `parent`: when
-      // this was created inside a DocumentFragment that mountFor later moved via
-      // `insertBefore(frag, tailMarker)`, the captured `parent` is a stale
+      // Use the marker's LIVE parent, not the closure-captured `parent`: when this was created
+      // inside a DocumentFragment that mountFor later moved via `insertBefore(frag, tailMarker)`.
       const liveParent = tailMarker.parentNode ?? parent
 
       if (n === 0 && cache.size > 0) {
@@ -402,9 +395,7 @@ function computeForLis(lis: LisState, n: number): number {
   let lastV = -1
   for (let i = 0; i < n; i++) {
     const v = entries[i]?.pos ?? 0
-    // Sentinel skip: a NEW entry mounted at the tail with a survivor after it carries
-    // pos = -1 — it MUST move to its logical slot, never STAY, so it is excluded from
-    // the LIS entirely and `applyForMoves` threads it in.
+    // Sentinel skip: a NEW entry mounted at the tail with a survivor after it carries pos = -1.
     if (v < 0) continue
     // Tier 1: extend LIS.
     if (v > lastV) {
@@ -469,9 +460,8 @@ function forLisReorder(
   grown.pred.fill(-1, 0, n)
   grown.stay.fill(0, 0, n)
 
-  // Resolve cache entries ONCE per index — computeForLis, applyForMoves, and
-  // the pos-refresh below all read them, so this replaces 3× Map.get(key) per
-  // entry with 1× (a 1k swap drops ~2k key hashes per update).
+  // Resolve cache entries ONCE per index — computeForLis, applyForMoves, and the pos-refresh below
+  // all read them, so this replaces 3× Map.get(key) per entry with 1×.
   const entries = grown.entries
   for (let i = 0; i < n; i++) entries[i] = cache.get(newKeys[i] as string | number)
 
@@ -733,9 +723,8 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ): number => {
-    // New entries are physically mounted at the TAIL, but the LIS reorder reads each
-    // entry's `pos` as its CURRENT DOM position to decide STAY vs MOVE — so a new
-    // entry's `pos` must not lie about where it physically is.
+    // New entries are physically mounted at the TAIL, but the LIS reorder reads each entry's `pos`
+    // as its CURRENT DOM position to decide STAY vs MOVE.
     let lastSurvivorIdx = -1
     for (let i = 0; i < n; i++) {
       if (cache.has(newKeys[i] as string | number)) lastSurvivorIdx = i

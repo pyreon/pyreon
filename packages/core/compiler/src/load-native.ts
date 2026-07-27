@@ -45,9 +45,7 @@ export interface NativeBinding {
   ) => unknown
 }
 
-// Local Node-process surface. `@pyreon/runtime-dom` ships an ambient
-// `declare var process: { env: { NODE_ENV?: string } }` to enforce the
-// bundler-agnostic dev-gate pattern, which narrows `process` for ANY
+// Local Node-process surface.
 interface NodeProcess {
   platform: string
   arch: string
@@ -78,9 +76,7 @@ export function getPlatformPackageName(
 ): string | null {
   // Build the suffix for libc-bearing platforms (Linux glibc/musl, Windows MSVC).
   const suffix = libc ? `-${libc}` : ''
-  // Allowlist of (platform, arch) combos that the cross-platform CI
-  // workflow actually builds. Keep in sync with
-  // `.github/workflows/release-native.yml` matrix.
+  // Allowlist of (platform, arch) combos that the cross-platform CI workflow actually builds.
   const supported: Record<string, string[]> = {
     darwin: ['arm64', 'x64'],
     linux: ['x64', 'arm64'],
@@ -145,8 +141,7 @@ export function loadNativeBinding(metaUrl: string): NativeBinding | null {
     try {
       return nativeRequire(pkgName) as NativeBinding
     } catch {
-      // Per-platform package not installed (typical pre-Phase-5b
-      // state, or a platform we don't yet ship binaries for).
+      // Per-platform package not installed.
     }
   }
 

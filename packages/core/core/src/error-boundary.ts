@@ -59,17 +59,12 @@ function ErrorBoundary(props: {
 
   // Push synchronously — before children are mounted — so child errors see this boundary
   pushErrorBoundary(handler)
-  // Identity-based pop: pass our own handler reference. Sibling boundaries
-  // can unmount in any order driven by the renderer (keyed `<For>` removal
-  // of a non-last item, `<Show>` flipping on the FIRST of N siblings, route
+  // Identity-based pop: pass our own handler reference.
   onUnmount(() => popErrorBoundary(handler))
 
   return (): VNodeChildAtom => {
     const err = error()
-    // The error signal is set only by `handler`, fired from mountComponent's
-    // catch during a child mount — so the fallback branch is reachable only
-    // under a renderer (exercised by @pyreon/runtime-dom's ErrorBoundary mount
-    // tests), never from a bare node-side `ErrorBoundary()` call.
+    // The error signal is set only by `handler`.
     /* v8 ignore next */
     if (err != null) return props.fallback(err, reset) as VNodeChildAtom
     const ch = props.children
@@ -77,8 +72,6 @@ function ErrorBoundary(props: {
   }
 }
 
-// Mark as native so compat-mode jsx() runtimes (react/preact/vue/solid-compat) skip
-// wrapCompatComponent — ErrorBoundary uses pushErrorBoundary/onUnmount, which need
-// Pyreon's setup frame (compat wrapping breaks dispatchToErrorBoundary). ASSIGNMENT +
+// Mark as native so compat-mode jsx() runtimes (react/preact/vue/solid-compat) skip.
 const _ErrorBoundary = /* @__PURE__ */ nativeCompat(ErrorBoundary)
 export { _ErrorBoundary as ErrorBoundary }

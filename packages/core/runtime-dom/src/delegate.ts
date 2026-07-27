@@ -68,9 +68,7 @@ export function setupDelegation(container: Element): void {
   for (const eventName of DELEGATED_EVENTS) {
     const prop = delegatedPropName(eventName)
     container.addEventListener(eventName, (e: Event) => {
-      // Dedup across NESTED delegation roots. A single mount has ONE root, but an
-      // island hydrates via `hydrateRoot(islandMarker)`, installing a SECOND root
-      // INSIDE the app's. A click then bubbles through BOTH listeners, each
+      // Dedup across NESTED delegation roots.
       const ev = e as Event & { [DELEGATED_ELEMENTS]?: Set<Element> }
       let el = e.target as (HTMLElement & Record<string, unknown>) | null
       while (el && el !== container) {
@@ -86,9 +84,8 @@ export function setupDelegation(container: Element): void {
           }
           if (!invoked.has(el)) {
             invoked.add(el)
-            // Per-handler `currentTarget` patch: native delegation leaves
-            // `e.currentTarget` as the container, so `ev.currentTarget.value` in
-            // user code would read from the container — silently undefined for
+            // Per-handler `currentTarget` patch: native delegation leaves `e.currentTarget` as the
+            // container, so `ev.currentTarget.value` in user code would read from the container.
             Object.defineProperty(e, 'currentTarget', {
               value: el,
               configurable: true,

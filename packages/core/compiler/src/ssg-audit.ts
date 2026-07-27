@@ -87,8 +87,7 @@ export interface SsgAuditResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Discovery
-// ═══════════════════════════════════════════════════════════════════════════════
+// Discovery ═══════════════════════════════════════════════════════════════════════════════.
 
 function findMonorepoRoot(startDir: string): string | null {
   let dir = resolve(startDir)
@@ -131,7 +130,6 @@ function findRouteFiles(rootDir: string, out: string[], depth = 0): void {
     }
     if (isDir) {
       // If this directory is named `routes`, descend and collect every route file under it.
-      // Otherwise recurse into the directory looking for nested `routes/` directories (handles
       if (name === 'routes') {
         walkRoutesDir(full, out)
       } else {
@@ -170,8 +168,7 @@ function walkRoutesDir(dir: string, out: string[]): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// AST parse helpers (shared shape with island-audit.ts)
-// ═══════════════════════════════════════════════════════════════════════════════
+// AST parse helpers (shared shape with island-audit.ts).
 
 function parseSourceFile(filePath: string): ts.SourceFile | null {
   let source: string
@@ -205,8 +202,7 @@ function makeLocation(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Detectors
-// ═══════════════════════════════════════════════════════════════════════════════
+// Detectors ═══════════════════════════════════════════════════════════════════════════════.
 
 /**
  * 1) `_404.tsx` / `_not-found.tsx` outside a `_layout.tsx` directory.
@@ -240,8 +236,7 @@ function detect404OutsideLayoutDir(
     if (!/^_(404|not-found)\.(tsx?|jsx?)$/.test(base)) continue
     const dir = dirname(file)
     if (layoutDirs.has(dir)) continue
-    // Synthesize a location at line 1 col 1 — the FILE itself is the
-    // finding, not a specific line inside it.
+    // Synthesize a location at line 1 col 1.
     findings.push({
       code: '404-outside-layout-dir',
       message:
@@ -336,8 +331,6 @@ function detectDynamicRouteMissingGetStaticPaths(
     // Skip layouts / errors / 404s — only PAGE files take getStaticPaths.
     if (/^_(layout|error|loading|404|not-found)\./.test(base)) continue
     // Skip API routes under `routes/api/` (path-based convention).
-    // fs-router treats `api/` as the runtime-handler namespace; pages
-    // are everything else. Caught originally in M3.B against cpa-pw-blog's
     if (/[/\\]routes[/\\]api[/\\]/.test(file)) continue
     // Only meaningful under SSG — SPA/SSR/ISR apps never prerender.
     if (!appUsesSsgMode(file, rootForRel)) continue
@@ -345,9 +338,7 @@ function detectDynamicRouteMissingGetStaticPaths(
     if (!source) continue
     let hasGetStaticPaths = false
     let hasDefaultExport = false
-    // A per-route `export const renderMode = 'spa' | 'ssr' | 'isr'` opts the
-    // route OUT of SSG auto-prerender, so it legitimately needs no
-    // `getStaticPaths` — the audit's own remedy. (Inside `mode: 'ssg'` only
+    // A per-route `export const renderMode = 'spa' | 'ssr' | 'isr'` opts the route OUT of SSG.
     let renderModeOverride: string | null = null
     function visit(node: ts.Node): void {
       if (ts.isVariableStatement(node)) {
@@ -391,12 +382,9 @@ function detectDynamicRouteMissingGetStaticPaths(
       ts.forEachChild(node, visit)
     }
     visit(source)
-    // Files without `export default` are API routes by structure. Skip.
-    // Page routes require a default-exported component (fs-router renders
-    // `route.component`); files exporting only method handlers
+    // Files without `export default` are API routes by structure.
     if (!hasDefaultExport) continue
-    // A route that explicitly declares a non-SSG `renderMode` has opted out of SSG prerendering, so
-    // it needs no `getStaticPaths` — this is exactly the fix the message below recommends.
+    // A route that explicitly declares a non-SSG `renderMode` has opted out of SSG prerendering.
     if (renderModeOverride !== null && renderModeOverride !== 'ssg') continue
     if (!hasGetStaticPaths) {
       findings.push({
@@ -479,16 +467,14 @@ function detectNonLiteralRevalidateExport(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Entry
-// point ═══════════════════════════════════════════════════════════════════════════════
+// Entry point ═══════════════════════════════════════════════════════════════════════════════.
 
 export function auditSsg(rootDir: string): SsgAuditResult {
   const root = findMonorepoRoot(rootDir) ?? rootDir
   const routeFiles: string[] = []
   findRouteFiles(rootDir, routeFiles)
 
-  // Count dynamic routes + revalidate exports for the summary (independent
-  // of whether each emitted a finding) — useful signal in the JSON output.
+  // Count dynamic routes + revalidate exports for the summary.
   let dynamicRoutes = 0
   let revalidateExports = 0
   for (const file of routeFiles) {
@@ -543,8 +529,7 @@ export function auditSsg(rootDir: string): SsgAuditResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Formatter (mirrors formatIslandAudit)
-// ═══════════════════════════════════════════════════════════════════════════════
+// Formatter (mirrors formatIslandAudit).
 
 export interface SsgAuditFormatOptions {
   /** Filter findings to a minimum severity. Currently all SSG findings

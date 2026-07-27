@@ -57,15 +57,13 @@ export async function prefetchLoaderData(
 ): Promise<void> {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.prefetch')
   const route = router._resolve(path)
-  // Use a local AbortController — prefetch is best-effort and must NOT clobber
-  // `router._abortController`, which belongs to the active navigation.
+  // Use a local AbortController.
   const ac = new AbortController()
   await Promise.all(
     route.matched
       .filter((r) => r.loader)
       .map(async (r) => {
-        // Route through the router's loader cache + in-flight dedup (`executeLoader` —
-        // the same path navigations take).
+        // Route through the router's loader cache + in-flight dedup.
         const data = await router._executeLoader(r, {
           params: route.params,
           query: route.query,
@@ -89,9 +87,7 @@ export async function prefetchLoaderData(
  *   ...${html}...`
  */
 export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
-  // Collision-aware keying: a layout and its index page SHARE a path, so plain path-keying silently
-  // last-wins-overwrote one record's data with the other's (the same class as the data endpoint's
-  // fixed collision — here it bit the SSR hydration blob on full page loads).
+  // Collision-aware keying: a layout and its index page SHARE a path.
   const result: Record<string, unknown> = {}
   const matched = router.currentRoute().matched
   const seen = new Map<string, number>()
@@ -101,8 +97,7 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
     seen.set(record.path, n + 1)
     result[n === 0 ? record.path : `${record.path}#${n}`] = router._loaderData.get(record)
   }
-  // Records carrying data but NOT in the current chain (defensive — SSR renders exactly one chain,
-  // so this is normally empty): keep the legacy path-keyed emit so nothing is dropped.
+  // Records carrying data but NOT in the current chain (defensive.
   for (const [record, data] of router._loaderData) {
     if (!matched.includes(record) && !(record.path in result)) {
       result[record.path] = data
@@ -140,13 +135,11 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  * const tag = `<script>window.__PYREON_LOADER_DATA__=${json}</script>`
  */
 export function stringifyLoaderData(loaderData: Record<string, unknown>): string {
-  // True cycle detection: track the ANCESTOR PATH only (add on descend, remove on
-  // ascend), NOT every object ever visited.
+  // True cycle detection: track the ANCESTOR PATH only (add on descend, remove on ascend).
   const ancestors = new Set<object>()
   const detectCycle = (value: unknown, path: string): void => {
     if (value === null || typeof value !== 'object') return
-    // Respect `toJSON` so detection matches what JSON.stringify actually
-    // serializes (Date/etc. become primitives — no cycle through them).
+    // Respect `toJSON` so detection matches what JSON.stringify actually serializes.
     const v =
       typeof (value as { toJSON?: unknown }).toJSON === 'function'
         ? (value as { toJSON: () => unknown }).toJSON()
@@ -166,8 +159,7 @@ export function stringifyLoaderData(loaderData: Record<string, unknown>): string
     } else {
       for (const k of Object.keys(obj)) {
         const child = (obj as Record<string, unknown>)[k]
-        // Mirror the encode-time drop: function/symbol values are not
-        // serialized, so a cycle reachable only THROUGH one can't occur.
+        // Mirror the encode-time drop: function/symbol values are not serialized.
         if (typeof child === 'function' || typeof child === 'symbol') continue
         detectCycle(child, path ? `${path}.${k}` : k)
       }
@@ -203,9 +195,7 @@ export function hydrateLoaderData(
 ): void {
   if (!serialized || typeof serialized !== 'object') return
   const route = router._resolve(router.currentRoute().path)
-  // Mirror serializeLoaderData's collision-aware keys: first record at a
-  // path reads the bare key, subsequent same-path records read
-  // `path#<occurrence>` (falling back to the bare key for blobs written by
+  // Mirror serializeLoaderData's collision-aware keys: first record at a path reads the bare key.
   const seen = new Map<string, number>()
   for (const record of route.matched) {
     const n = seen.get(record.path) ?? 0

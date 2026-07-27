@@ -37,26 +37,18 @@ function captureCallSite(): string {
   /* v8 ignore next */
   if (!stack) return ''
   const lines = stack.split('\n')
-  // Framework paths to skip — conservative, matches the packages that contain lifecycle
-  // / provide / context internals and call these hooks.
+  // Framework paths to skip.
   const skipPatterns = [
     // ── Source form (workspace / `bun` condition) ──────────────────────
     /\/lifecycle\.[tj]s/,
     /\/context\.[tj]s/,
     /\/component\.[tj]s/,
-    // ── Function-name match (works through bundling / minification when
-    //    symbol names survive) ─────────────────────────────────────────
+    // ── Function-name match (works through bundling / minification when symbol names survive).
     /\bcaptureCallSite\b/,
     /\bwarnOutsideSetup\b/,
-    // ── Source-tree paths for every framework package that internally
-    //    calls lifecycle hooks (HeadProvider, RouterProvider, ThemeProvider,
-    //    PyreonUI, etc.). Without each, a published-package consumer with
-    //    `useHead()` or `provide()` would see the "Called from:" line
+    // ── Source-tree paths for every framework package that internally calls lifecycle hooks.
     /\/(core|reactivity|runtime-dom|runtime-server|router|head|ui-core|styler|unistyle|rocketstyle|attrs|elements|kinetic)\/src\//,
-    // ── Published-bundle form (npm consumers): bundles always at
-    //    `node_modules/@pyreon/<name>/lib/...`. The blanket
-    //    `@pyreon/[a-z-]+/lib/` catches every package without per-name
-    //    maintenance. ────────────────────────────────────────────────────
+    // ── Published-bundle form (npm consumers): bundles always at.
     /node_modules\/@pyreon\/[^/]+\/lib\//,
     /@pyreon\/[a-z-]+\/lib\//,
     // ── Runtime / engine internals ─────────────────────────────────────
@@ -76,8 +68,7 @@ function captureCallSite(): string {
 function warnOutsideSetup(hookName: string): void {
   if (process.env.NODE_ENV !== 'production' && !_current) {
     const callSite = captureCallSite()
-    // Local name must NOT shadow the `location` browser global (poor
-    // hygiene + trips SSR static analysis into a false positive).
+    // Local name must NOT shadow the `location` browser global.
     const callSiteSuffix = callSite ? `\n  Called from: ${callSite}` : ''
     // oxlint-disable-next-line no-console
     console.warn(

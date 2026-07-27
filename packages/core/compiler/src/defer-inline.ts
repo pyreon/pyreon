@@ -187,8 +187,7 @@ function analyzeChildElement(node: Node): ChildAnalysis | null {
   if (memberName) {
     // The PROPERTY must be capitalised (the actual component name).
     if (!/^[A-Z]/.test(memberName.property)) return null
-    // The opening name node IS the JSXMemberExpression — its
-    // start..end span the whole `M.Modal` expression.
+    // The opening name node IS the JSXMemberExpression.
     return {
       kind: 'member',
       lookupName: memberName.object,
@@ -356,8 +355,7 @@ function findImportFor(program: Node, localName: string): ImportInfo | null {
         const lname = (spec.local as Node).name as string
         const iname = (spec.imported as Node | undefined)?.name as string | undefined
         if (lname === localName && iname !== undefined) {
-          // Handles BOTH `{ Modal }` (lname === iname) AND `{ Modal as M }`
-          // (lname='M', iname='Modal'). v2 — was bailed in v1.
+          // Handles BOTH `{ Modal }` (lname === iname) AND `{ Modal as M }`.
           return {
             declaration: stmt,
             specifier: spec,
@@ -367,9 +365,7 @@ function findImportFor(program: Node, localName: string): ImportInfo | null {
           }
         }
       } else if (spec.type === 'ImportNamespaceSpecifier') {
-        // `import * as M from './mod'` — `local.name === 'M'`. Caller's
-        // `propertyName` supplies the actual export to extract (e.g.
-        // `Modal` from `<M.Modal />`).
+        // `import * as M from './mod'` — `local.name === 'M'`.
         const lname = (spec.local as Node).name as string
         if (lname === localName) {
           return {
@@ -508,8 +504,7 @@ function buildImportRemovalEdit(code: string, info: ImportInfo): Edit {
   const specStart = info.specifier.start as number
   const specEnd = info.specifier.end as number
   if (idx === 0) {
-    // First specifier: eat from spec start to whitespace + comma + the
-    // start of the next specifier. So `{ Modal, Other }` becomes `{ Other }`.
+    // First specifier: eat from spec start to whitespace + comma + the start of the next specifier.
     const next = specifiers[1]!
     return {
       start: specStart,
@@ -517,8 +512,7 @@ function buildImportRemovalEdit(code: string, info: ImportInfo): Edit {
       replacement: '',
     }
   }
-  // Later specifier: eat from the END of the previous specifier (including the comma
-  // between them) up through this specifier's end.
+  // Later specifier: eat from the END of the previous specifier (including the comma between them).
   const prev = specifiers[idx - 1]!
   return {
     start: prev.end as number,
@@ -556,8 +550,7 @@ export function transformDeferInline(
   let changed = false
 
   for (const m of matches) {
-    // For identifier children (`<Modal />`), the JSX-display name and import-lookup
-    // name are the same (`Modal`).
+    // For identifier children (`<Modal />`).
     const displayName =
       m.childAnalysis.kind === 'member'
         ? `${m.childAnalysis.lookupName}.${m.childAnalysis.propertyName}`
@@ -575,8 +568,7 @@ export function transformDeferInline(
       continue
     }
 
-    // Sanity check: if the JSX is a member expression but the import isn't a namespace
-    // import (e.g. `import M from './x'; <M.Modal />`), bail.
+    // Sanity check: if the JSX is a member expression but the import isn't a namespace import.
     if (m.childAnalysis.kind === 'member' && importInfo.kind !== 'namespace') {
       const loc = getLoc(code, (m.child.start as number) ?? 0)
       warnings.push({
@@ -589,8 +581,7 @@ export function transformDeferInline(
     }
     // Inverse: namespace import but identifier child (`import * as M; <Modal />`).
     if (m.childAnalysis.kind === 'identifier' && importInfo.kind === 'namespace') {
-      // Shouldn't be reachable — findImportFor only returns namespace when localName
-      // matches the namespace identifier.
+      // Shouldn't be reachable.
       continue
     }
 
@@ -611,8 +602,7 @@ export function transformDeferInline(
       continue
     }
 
-    // For namespace imports, the export name to extract comes from the JSX
-    // member-expression property (`Modal` in `<M.Modal />`).
+    // For namespace imports.
     const exportName =
       importInfo.kind === 'namespace'
         ? m.childAnalysis.propertyName
@@ -625,18 +615,14 @@ export function transformDeferInline(
       replacement: buildChunkAttr(importInfo.source, importInfo.kind, exportName),
     })
 
-    // 2. Replace the inline children with a render-prop body. The body
-    //    preserves the original child JSX verbatim except for the
-    //    component name (replaced with `__C`) — props, nested children,
+    // 2. Replace the inline children with a render-prop body.
     edits.push({
       start: m.childrenRange.start,
       end: m.childrenRange.end,
       replacement: buildRenderPropBody(code, m.childAnalysis, m.childrenRange),
     })
 
-    // 3. Remove the static import binding so Rolldown actually emits the
-    //    dynamic chunk. Multi-specifier imports drop just the one
-    //    binding, leaving siblings intact.
+    // 3. Remove the static import binding so Rolldown actually emits the dynamic chunk.
     edits.push(buildImportRemovalEdit(code, importInfo))
 
     changed = true

@@ -42,8 +42,7 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
   return false
 }
 
-// ─── Error boundary stack ────────────────────────────────────────────────────
-// Module-level stack of active ErrorBoundary handlers (innermost last).
+// ─── Error boundary stack ──────────────────────────────────────────────────── Module-level stack.
 
 // Plain module-scope stack.
 const _ebStack: ((err: unknown) => boolean)[] = []

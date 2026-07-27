@@ -151,9 +151,7 @@ function walk(
     return arr
   }
 
-  // Plain object check — anything with a prototype other than
-  // `Object.prototype` (and not one of the tagged classes above) is a
-  // custom class instance. Fail loud naming the constructor.
+  // Plain object check — anything with a prototype other than `Object.prototype`.
   const proto = Object.getPrototypeOf(obj)
   if (proto !== null && proto !== Object.prototype) {
     const ctor = (obj as { constructor?: { name?: string } }).constructor
@@ -177,9 +175,7 @@ function walk(
     result[key] = walk(val, seen, `${path}.${key}`, islandName, depth + 1)
   }
 
-  // If the user's plain object literally has `__pyreon_t` as an own key, wrap it in the
-  // `'e'` (escape) marker so the decoder doesn't mistake it for a tagged value. The
-  // escape wrapping is the only way to round-trip such an object.
+  // If the user's plain object literally has `__pyreon_t` as an own key.
   if (hasOwnTag) {
     return { [TAG]: 'e', [VALUE]: result }
   }
@@ -236,8 +232,7 @@ export function decodeIslandProps(value: unknown): unknown {
         }
         return value
       case 'e':
-        // Escape — the wrapped value is itself a plain object that happens to have
-        // `__pyreon_t` as one of its keys.
+        // Escape — the wrapped value is itself a plain object that happens to have `__pyreon_t`.
         if (v && typeof v === 'object' && !Array.isArray(v)) {
           const out: Record<string, unknown> = {}
           for (const [k, val] of Object.entries(v as Record<string, unknown>)) {

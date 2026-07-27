@@ -87,8 +87,7 @@ export function createReactiveContext<T>(defaultValue: T): ReactiveContext<T> {
   return createContext<() => T>(() => defaultValue) as ReactiveContext<T>
 }
 
-// ─── SSR request-scoped stack ────────────────────────────────────────────────
-// Used ONLY when no client owner is active (i.e. during `renderToString`).
+// ─── SSR request-scoped stack ──────────────────────────────────────────────── Used ONLY when no.
 const _contextStack: Map<symbol, unknown>[] = []
 let _contextProvider: () => Map<symbol, unknown>[] = () => _contextStack
 
@@ -147,9 +146,7 @@ export function useContext<T>(context: Context<T>): T {
   if (owner !== null) {
     const r = owner.lookupContext(context.id)
     if (r.found) return r.value as T
-    // Not in the owner chain — fall through to the stack. Direct stack
-    // consumers (the `*-compat` layers run their own stack-based provide via
-    // `pushContext`) still resolve through `useContext`.
+    // Not in the owner chain — fall through to the stack.
   }
   // SSR (no owner) AND the client stack-fallback: walk the request-scoped / compat stack top-down.
   const stack = getStack()
@@ -213,15 +210,10 @@ export function withContext<T>(context: Context<T>, value: T, fn: () => void): v
   }
 }
 
-// ─── Reactivity-layer DI: install owner capture/restore for effects ──────────
-// `_bind` / `renderEffect` / `effect` capture the active context owner at setup
-// and restore it on every re-run, so a signal-driven re-run resolves
-// `useContext()` through the owner chain it was created in rather than whatever
+// ─── Reactivity-layer DI: install owner capture/restore for effects ────────── `_bind` /.
 setSnapshotCapture({
   capture: () => getContextOwner(),
-  // `restore` runs only when `capture` returned a non-null owner — i.e. the
-  // effect was created inside a mounted component scope. A bare node-side
-  // effect has no active owner, so this arm is exercised under a renderer
+  // `restore` runs only when `capture` returned a non-null owner.
   /* v8 ignore next 2 */
   restore: <T>(owner: unknown, fn: () => T): T =>
     runWithContextOwner(owner as EffectScope | null, fn),

@@ -71,8 +71,7 @@ function KeepAlive(props: KeepAliveProps): VNodeChild {
   return h('div', { ref: containerRef, style: 'display: contents' })
 }
 
-// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component
-// needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than a bare
-// `nativeCompat(X)` statement: inside the built lib's shared chunk a bare call is an
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component needs
+// Pyreon's setup frame.
 const _KeepAlive = /* @__PURE__ */ nativeCompat(KeepAlive)
 export { _KeepAlive as KeepAlive }

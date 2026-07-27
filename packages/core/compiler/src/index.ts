@@ -32,10 +32,7 @@ export type {
 } from './validate-emit'
 export type { LPIHFireDatum, LPIHMergeOptions } from './lpih'
 export { firesToCreationSiteFindings, mergeFireDataIntoFindings } from './lpih'
-// The @pyreon/zero fs-route convention — single source of truth shared by the
-// project scanner (below) and `@pyreon/zero`'s fs-router/api-routes (which
-// re-export it via the `@pyreon/compiler/fs-route-convention` subpath so they
-// don't cold-load the whole compiler barrel).
+// The @pyreon/zero fs-route convention.
 export {
   apiFilePathToPattern,
   filePathToUrlPath,
@@ -44,8 +41,7 @@ export {
   SPECIAL_ROUTE_FILES,
   stripRouteExtension,
 } from './fs-route-convention'
-// Island auto-name derivation — shared by `@pyreon/vite-plugin`'s
-// injectIslandNames / scanIslandDeclarations and the project scanner.
+// Island auto-name derivation.
 export { deriveIslandName, fnv1a6, islandRelPath } from './island-naming'
 export type { ComponentInfo, IslandInfo, ProjectContext, RouteInfo } from './project-scanner'
 export { generateContext } from './project-scanner'

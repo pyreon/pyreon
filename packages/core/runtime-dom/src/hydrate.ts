@@ -161,9 +161,8 @@ function hydrateReactiveChild(
 ): [Cleanup, ChildNode | null] {
   const initial = runUntracked(child)
 
-  // Range-marked accessor output: the SSR renderer wraps every function child's output
-  // in `<!--$-->…<!--/$-->`, giving this accessor's EXACT DOM extent — zero nodes
-  // (empty/null initial), one, or many (fragment / <For> / component subtree).
+  // Range-marked accessor output: the SSR renderer wraps every function child's output in
+  // `<!--$-->…<!--/$-->`, giving this accessor's EXACT DOM extent.
   if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === '$') {
     // Find the matching end marker, depth-aware (accessors nest).
     let end: ChildNode | null = null
@@ -204,9 +203,8 @@ function hydrateReactiveChild(
         end.remove()
         return [dispose, after ? firstReal(after) : null]
       }
-      // An EMPTY range (initial rendered nothing) or a multi-node range falls through
-      // to the general swap below. An empty/null initial does NOT imply a text binding
-      // — the accessor can produce a VNode subtree on a later flip — so only
+      // An EMPTY range (initial rendered nothing) or a multi-node range falls through to the
+      // general swap below.
       const marker = insertMarker(parent, domNode, 'pyreon')
       const cleanup = mountReactive(child, parent, marker, mountChild)
       let cur: ChildNode | null = domNode
@@ -306,9 +304,8 @@ function hydrateVNode(
   }
 
   if (vnode.type === ForSymbol) {
-    // SSR emits a fully-bounded block for a <For>:
-    //   <!--pyreon-for-->  <!--k:KEY-->row…  xN  <!--/pyreon-for-->
-    // Correctness-first swap (matching the _tpl/__isNative precedent): mount the
+    // SSR emits a fully-bounded block for a <For>: <!--pyreon-for--> <!--k:KEY-->row… xN
+    // <!--/pyreon-for--> Correctness-first swap (matching the _tpl/__isNative precedent): mount.
     if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === 'pyreon-for') {
       // Find the matching end marker, depth-aware (nested <For> blocks).
       let end: ChildNode | null = null
@@ -547,9 +544,7 @@ function hydrateComponent(
   anchor: Node | null,
   path = 'root',
 ): [Cleanup, ChildNode | null] {
-  // Owner chain — mirrors mount.ts so `useContext()` resolves up the tree
-  // during hydration too. Owner stays `scope` through `runWithHooks` +
-  // `hydrateChild` + onMount, restored to `prevOwner` on every exit.
+  // Owner chain — mirrors mount.ts so `useContext()` resolves up the tree during hydration too.
   const prevOwner = getContextOwner()
   const scope = effectScope()
   scope._parent = prevOwner
@@ -605,9 +600,7 @@ function hydrateComponent(
   }
 
   if (output instanceof Promise) {
-    // Async component hydration. SSR wraps the awaited output in `<!--$pas-->` /
-    // `<!--$pae-->` sentinels, so we find the matching end marker (depth-tracked
-    // for nesting), snapshot the bounded DOM range, advance the parent's sibling
+    // Async component hydration.
     let resolvedCleanup: Cleanup = noop
     let cancelled = false
 
@@ -639,8 +632,6 @@ function hydrateComponent(
         if (!startMarker || !endMarker) return
         try {
           // Hydrate the resolved subtree against the SSR DOM range.
-          // `anchor = endMarker` bounds the sibling walk; hydrateChild
-          // returns when it has consumed the range or hit the end marker.
           const [childCleanup] = hydrateChild(
             resolved as VNodeChild,
             rangeStart,
@@ -728,9 +719,7 @@ function hydrateComponent(
  * const unmount = hydrateRoot(document.getElementById("app")!, h(App, null))
  */
 export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
-  // Install the devtools hook on hydration too, not just `mount()` — otherwise the
-  // reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently don't exist in
-  // SSR/hydrated apps, which is most real Pyreon apps.
+  // Install the devtools hook on hydration too, not just `mount()`.
   if (process.env.NODE_ENV !== 'production') installDevTools()
   setupDelegation(container)
   const firstChild = firstReal(container.firstChild as ChildNode | null)

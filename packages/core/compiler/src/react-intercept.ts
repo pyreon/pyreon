@@ -16,8 +16,7 @@ import ts from 'typescript'
 import { assertClassicTs } from './ts'
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Types
-// ═══════════════════════════════════════════════════════════════════════════════
+// Types ═══════════════════════════════════════════════════════════════════════════════.
 
 export type ReactDiagnosticCode =
   | 'react-import'
@@ -78,8 +77,7 @@ export interface MigrationResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// React Hook →
-// Pyreon mapping ═══════════════════════════════════════════════════════════════════════════════
+// React Hook → Pyreon mapping.
 
 interface HookMapping {
   pyreonFn: string
@@ -174,8 +172,7 @@ const JSX_ATTR_REWRITES: Record<string, string> = {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Detection (diagnostic-only, no modifications)
-// ═══════════════════════════════════════════════════════════════════════════════
+// Detection (diagnostic-only.
 
 interface DetectContext {
   sf: ts.SourceFile
@@ -547,9 +544,7 @@ function detectJsxAttributes(ctx: DetectContext, node: ts.JsxAttribute): void {
 
 function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpression): void {
   const varName = (node.expression as ts.Identifier).text
-  // Precision gate: only flag `X.value = …` when X is actually a tracked
-  // signal binding. Without this, the detector false-positived on every
-  // DOM-element / data-object `.value` write — `input.value = ''`,
+  // Precision gate: only flag `X.value = …` when X is actually a tracked signal binding.
   if (!ctx.signalBindings.has(varName)) return
   const parent = node.parent
   if (ts.isBinaryExpression(parent) && parent.left === node) {
@@ -661,8 +656,7 @@ export function detectReactPatterns(code: string, filename = 'input.tsx'): React
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Migration (detection + auto-fix)
-// ═══════════════════════════════════════════════════════════════════════════════
+// Migration (detection + auto-fix).
 
 type Replacement = { start: number; end: number; text: string }
 
@@ -1030,8 +1024,7 @@ export function migrateReactCode(code: string, filename = 'input.tsx'): Migratio
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════════════
+// Helpers ═══════════════════════════════════════════════════════════════════════════════.
 
 function findParentJsxElement(
   node: ts.Node,
@@ -1074,8 +1067,7 @@ function findLastImportEnd(code: string): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Quick scan (regex-based, for fast pre-filtering)
-// ═══════════════════════════════════════════════════════════════════════════════
+// Quick scan (regex-based.
 
 /** Fast regex check — returns true if code likely contains React patterns worth analyzing */
 export function hasReactPatterns(code: string): boolean {

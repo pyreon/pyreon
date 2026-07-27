@@ -2,15 +2,12 @@ import { enqueuePendingNotification, isBatching } from './batch'
 
 let activeEffect: (() => void) | null = null
 
-// The deps collector — every primitive that establishes a tracking scope
-// (`effect` / `renderEffect` / `_bind` / `computed`) enters a FRAME via
-// `runCollect` / `runVerify` below, which points this at the frame's own
+// The deps collector — every primitive that establishes a tracking scope (`effect` / `renderEffect`
+// / `_bind` / `computed`) enters a FRAME via `runCollect` / `runVerify` below.
 let _depsCollector: Set<() => void>[] | null = null
 
-// ─── Verify-mode dep reuse ───────────────────────────────────────────────────
-// A steady-state re-run reads the SAME sources in the SAME order, so instead of
-// tearing down and rebuilding the dep list every time we keep the persistent
-// per-effect `deps: Set[]` and VERIFY it positionally:
+// ─── Verify-mode dep reuse ─────────────────────────────────────────────────── A steady-state
+// re-run reads the SAME sources in the SAME order.
 let _verifyIndex = -1
 
 /**
@@ -58,14 +55,12 @@ export function trackSubscriber(host: SubscriberHost) {
 function divergeVerify(host: SubscriberHost, owner: () => void): void {
   const deps = _depsCollector as Set<() => void>[]
   const confirmed = _verifyIndex
-  // 1. Unsubscribe the unconfirmed tail — those positions are stale-dep
-  //    candidates; any that get re-read later in this run re-subscribe via
-  //    the collect path below.
+  // 1. Unsubscribe the unconfirmed tail — those positions are stale-dep candidates; any that get
+  // re-read later in this run re-subscribe via the collect path below.
   for (let j = confirmed; j < deps.length; j++) (deps[j] as Set<() => void>).delete(owner)
   deps.length = confirmed
-  // 2. Repair the confirmed prefix — step 1 may have deleted the owner from a
-  //    Set that ALSO sits at a confirmed position (duplicate reads of the
-  //    same source alias the same Set).
+  // 2. Repair the confirmed prefix — step 1 may have deleted the owner from a Set that ALSO sits at
+  // a confirmed position (duplicate reads of the same source alias the same Set).
   for (let j = 0; j < confirmed; j++) (deps[j] as Set<() => void>).add(owner)
   // 3. Exit verify mode (-1 = collect) — the rest of this run collects
   //    normally onto the preserved confirmed prefix.
@@ -113,9 +108,8 @@ export function runVerify<T>(owner: () => void, deps: Set<() => void>[], fn: () 
   _verifyIndex = 0 // verify mode, position 0
   try {
     const result = fn()
-    // Shrink: fn stayed in verify mode but read FEWER deps than last run — unsubscribe
-    // + truncate the stale tail, then repair the confirmed prefix (duplicate-alias
-    // hazard, same as divergeVerify).
+    // Shrink: fn stayed in verify mode but read FEWER deps than last run — unsubscribe + truncate
+    // the stale tail, then repair the confirmed prefix.
     const idx = _verifyIndex
     if (idx >= 0 && idx < deps.length) {
       for (let j = idx; j < deps.length; j++) (deps[j] as Set<() => void>).delete(owner)
@@ -154,9 +148,8 @@ export function notifySubscribers(subscribers: Set<() => void>) {
   }
 }
 
-// Thread-local collector for nested effects — captures `effect()` calls made
-// inside another effect's body so the parent can dispose them on re-run.
-// Lives here (not effect.ts) so `runUntracked` can suspend it in lock-step with
+// Thread-local collector for nested effects — captures `effect()` calls made inside another
+// effect's body so the parent can dispose them on re-run.
 let _innerEffectCollector: unknown[] | null = null
 
 export function getInnerEffectCollector(): unknown[] | null {

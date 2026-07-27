@@ -32,8 +32,7 @@ const SIZE_PX: Record<'sm' | 'md' | 'lg', string> = {
  * attr to mark it meaningful and the hidden default is dropped.
  */
 export const Icon = (props: IconProps): VNode => {
-  // `props.size ?? 'md'` is exactly 'sm' | 'md' | 'lg' and `SIZE_PX` is
-  // keyed by that union, so the lookup is `string` (no undefined / no branch).
+  // `props.size ?? 'md'` is exactly 'sm' | 'md' | 'lg' and `SIZE_PX` is keyed by that union.
   const px = SIZE_PX[props.size ?? 'md']
   const style: Record<string, string> = {
     width: px,
@@ -43,8 +42,7 @@ export const Icon = (props: IconProps): VNode => {
     'flex-shrink': '0',
   }
   const passthrough = collectPassthroughAttrs(props as unknown as Record<string, unknown>)
-  // Decorative by default; a consumer-supplied aria-* (e.g. aria-label)
-  // means the icon conveys meaning, so drop the hidden default.
+  // Decorative by default.
   const hasAria = Object.keys(passthrough).some((k) => k.startsWith('aria-'))
   return h(
     'svg',

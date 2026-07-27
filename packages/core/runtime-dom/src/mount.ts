@@ -76,8 +76,6 @@ export function mountChild(
       return cleanup
     }
     // Text fast path: reactive string/number/boolean — update text.data in place.
-    // POLYMORPHIC: the accessor may later return a VNode
-    // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades to a
     if (typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean') {
       const text = document.createTextNode(sample === false ? '' : String(sample))
       parent.insertBefore(text, anchor)
@@ -106,9 +104,8 @@ export function mountChild(
   if (typeof child !== 'object') {
     const tn = document.createTextNode(String(child))
     parent.insertBefore(tn, anchor)
-    // `_elementDepth > 0` → this text is a child of a freshly-built element
-    // removed as a unit, so a per-node remover is redundant (noop). BUT at depth 0
-    // the text was mounted directly into a LIVE parent through a reactive
+    // `_elementDepth > 0` → this text is a child of a freshly-built element removed as a unit, so a
+    // per-node remover is redundant (noop).
     if (_elementDepth > 0) return noop
     return () => {
       const p = tn.parentNode
@@ -141,9 +138,8 @@ export function mountChild(
   if (vnode.type === Fragment) return mountChildren(vnode.children ?? [], parent, anchor)
 
   if (vnode.type === (ForSymbol as unknown as string)) {
-    // The compiler wraps `<For each={signal}>` in `_rp(() => signal())`, so
-    // `props.each` is a getter returning the resolved array, not the function.
-    // Destructuring would eagerly capture the array, breaking reactivity and
+    // The compiler wraps `<For each={signal}>` in `_rp(() => signal())`, so `props.each` is a
+    // getter returning the resolved array, not the function.
     const props = vnode.props as unknown as ForProps<unknown>
     const initialEach = props.each as unknown
     const source: () => unknown[] =
@@ -176,9 +172,8 @@ export function mountChild(
           'Use document.getElementById() or a ref to get the target element.',
       )
     }
-    // Portal content lives OUTSIDE the app's mount container, so delegated events
-    // bubbling from it never reach the app root's listener — every delegated handler
-    // inside a portal was silently dead. Make the Portal own its delegation root.
+    // Portal content lives OUTSIDE the app's mount container, so delegated events bubbling from it
+    // never reach the app root's listener.
     if (target instanceof Element) setupDelegation(target)
     // Portal content mounts into `target` (e.g. document.body) — a LIVE parent NOT
     // removed as a unit, so mountChild's cleanup does not remove the DOM.
@@ -358,9 +353,8 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   if (isSvg) _svgDepth--
   if (isMathml) _mathmlDepth--
 
-  // `<select value>` — deferred until after children (PZ-09): the property
-  // assignment selects a matching <option>, so the options must exist first. Runs
-  // while the element is still detached, which property assignment supports. The
+  // `<select value>` — deferred until after children (PZ-09): the property assignment selects a
+  // matching <option>, so the options must exist first.
   if (isSelect && props !== EMPTY_PROPS && 'value' in props) {
     const valueCleanup = applySelectValueProp(el, props)
     if (valueCleanup) {
@@ -464,9 +458,8 @@ function mountComponent(
   parent: Node,
   anchor: Node | null,
 ): Cleanup {
-  // Owner chain: link this component's scope to its parent owner so
-  // `useContext()` resolves up the component tree. The owner stays `scope`
-  // through both `runWithHooks` (so `provide()` writes onto it) and `mountChild`
+  // Owner chain: link this component's scope to its parent owner so `useContext()` resolves up the
+  // component tree.
   const prevOwner = getContextOwner()
   const scope = effectScope()
   scope._parent = prevOwner
@@ -494,9 +487,8 @@ function mountComponent(
     children.length > 0 &&
     (vnode.props as Record<string, unknown>).children === undefined
   ) {
-    // `mergeProps` copies own DESCRIPTORS (not values) so reactive getter props
-    // on vnode.props survive the merge. `vnode.props` is always a non-null object
-    // here (h() never produces null props; EMPTY_PROPS is the sentinel).
+    // `mergeProps` copies own DESCRIPTORS (not values) so reactive getter props on vnode.props
+    // survive the merge.
     rawProps = mergeProps(vnode.props as Record<string, unknown>, {
       children: children.length === 1 ? children[0] : children,
     })
@@ -791,9 +783,8 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
   if (children.length === 1) {
     const c = children[0] as VNodeChild
     if (c !== undefined) {
-      // `textContent =` REPLACES the parent's entire child list — valid only when
-      // the parent is EMPTY (the dominant fresh-element case). mountChildren is
-      // ALSO the Fragment mount path, where the parent is a live element that may
+      // `textContent =` REPLACES the parent's entire child list — valid only when the parent is
+      // EMPTY (the dominant fresh-element case).
       if (
         anchor === null &&
         (typeof c === 'string' || typeof c === 'number') &&
@@ -823,9 +814,8 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
     }
   }
 
-  // 3+ children: collect ONLY real (non-noop) cleanups — inline-first, promote to
-  // an array on the 2nd. A fully-static multi-child element returns the shared
-  // `noop` with NO array and NO wrapper closure (the common `<ul><li/>…</ul>`
+  // 3+ children: collect ONLY real (non-noop) cleanups — inline-first, promote to an array on the
+  // 2nd.
   let only: Cleanup | null = null
   let rest: Cleanup[] | null = null
   for (let i = 0; i < children.length; i++) {

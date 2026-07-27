@@ -66,8 +66,7 @@ export interface TestAuditResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Discovery
-// ═══════════════════════════════════════════════════════════════════════════════
+// Discovery ═══════════════════════════════════════════════════════════════════════════════.
 
 function findMonorepoRoot(startDir: string): string | null {
   let dir = resolve(startDir)
@@ -113,8 +112,7 @@ function walkTestFiles(dir: string, out: string[], depth = 0): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Pattern detection
-// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern detection.
 
 /**
  * Matches an object literal carrying `type`, `props`, AND `children`
@@ -194,8 +192,7 @@ const IMPORT_H_PATTERN =
  * False-positive coverage for `utils-coverage.test.ts` and similar.
  */
 function isLiteralInsideTypeGuardCall(source: string, literalStart: number): boolean {
-  // Scan back ~60 chars from the literal for
-  // `(\b(?:is|has|assert|validate|check)[A-Z]\w*\s*\()`.
+  // Scan back ~60 chars from the literal for `(\b(?:is|has|assert|validate|check)[A-Z]\w*\s*\()`.
   const window = source.slice(Math.max(0, literalStart - 60), literalStart)
   // The nearest `(` before the literal — count unmatched parens.
   let unmatched = 0
@@ -300,9 +297,7 @@ function countMatches(source: string, pattern: RegExp): number {
  * `countMatches` helper has no context-aware skip.
  */
 function countMockVNodeLiterals(source: string): number {
-  // First mask template-literal contents — fixtures inside backticks (e.g. `\`const v =
-  // { type, props, children }\`` written via writeFile in audit's own test) shouldn't
-  // count. The mask preserves positions, so the type-guard skip logic still works.
+  // First mask template-literal contents.
   const masked = maskTemplateStrings(source)
   const pattern = MOCK_VNODE_LITERAL_PATTERN
   let count = 0
@@ -327,8 +322,7 @@ function classifyRisk(entry: Omit<TestAuditEntry, 'risk'>): AuditRisk {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Public API
-// ═══════════════════════════════════════════════════════════════════════════════
+// Public API ═══════════════════════════════════════════════════════════════════════════════.
 
 export interface TestAuditOptions {
   /**
@@ -352,9 +346,7 @@ export function auditTestEnvironment(
   startDir: string,
   options: TestAuditOptions = {},
 ): TestAuditResult {
-  // Caller-supplied `startDir` (no default) — `runtime-dom` transitively
-  // pulls this file via the `@pyreon/compiler` JSX runtime entry, and its
-  // tsconfig narrows `process` to `{ env: ... }` only. Calling
+  // Caller-supplied `startDir` (no default).
   let root: string
   const files: string[] = []
   if (options.roots && options.roots.length > 0) {
@@ -390,7 +382,6 @@ export function auditTestEnvironment(
     }
 
     // Mask template-literal contents once, then run every counter against the masked source.
-    // Patterns inside backticks are FIXTURE strings (the audit tool's own test fixtures, doctest
     const masked = maskTemplateStrings(source)
     const mockVNodeLiteralCount = countMockVNodeLiterals(source)
     const mockHelperCount = countMatches(masked, MOCK_HELPER_PATTERN)
@@ -421,8 +412,7 @@ export function auditTestEnvironment(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Formatter
-// ═══════════════════════════════════════════════════════════════════════════════
+// Formatter ═══════════════════════════════════════════════════════════════════════════════.
 
 export interface AuditFormatOptions {
   /** Only include entries at or above this risk level. Default 'medium'. */

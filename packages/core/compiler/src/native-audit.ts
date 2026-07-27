@@ -238,8 +238,7 @@ export function auditNative(cwd: string): NativeAuditResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Snippet-level detector (MCP `validate` feedback loop)
-// ═══════════════════════════════════════════════════════════════════════════════
+// Snippet-level detector (MCP `validate` feedback loop).
 
 export interface NativePatternDiagnostic {
   code: 'native-web-only-import' | 'native-unsupported-decl'
@@ -281,8 +280,7 @@ export function detectNativePatterns(
     const pkgRoot = spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]!
     if (WEB_ONLY_PACKAGES.has(pkgRoot)) webOnly.push({ spec, node: stmt })
   }
-  // Only audit multiplatform snippets — a pure-web snippet legitimately
-  // imports charts/elements/etc. and must not be flagged.
+  // Only audit multiplatform snippets.
   if (!importsPrimitives) return diags
 
   const lineCol = (node: ts.Node) => {

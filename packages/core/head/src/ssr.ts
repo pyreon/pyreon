@@ -48,8 +48,7 @@ export async function renderWithHead(
 ): Promise<RenderWithHeadResult> {
   const ctx = createHeadContext()
 
-  // HeadInjector runs inside renderToString's ALS scope, so pushContext reaches
-  // the per-request context stack rather than the module-level fallback stack.
+  // HeadInjector runs inside renderToString's ALS scope.
   function HeadInjector(): VNode {
     pushContext(new Map([[HeadContext.id, ctx]]))
     return app
@@ -109,9 +108,7 @@ function serializeTag(
       : raw
     return `<title>${esc(title)}</title>`
   }
-  // Direct concat loop over own props — avoids the `Object.entries(props)`
-  // pairs-array + per-tag `.map()` closure + intermediate strings-array + join
-  // that dominated per-tag serialization cost (the hot path is N <meta> tags).
+  // Direct concat loop over own props.
   const props = tag.props as Record<string, string> | undefined
   let open = `<${tag.tag}`
   if (props) {
@@ -119,17 +116,13 @@ function serializeTag(
       open += ` ${k}="${esc(props[k] as string)}"`
     }
   }
-  // CSP: stamp the request nonce on inline/executable tags so a strict
-  // `script-src`/`style-src 'nonce-…'` policy admits them. Only `<script>` and
-  // `<style>` are nonce-eligible; a user-supplied `nonce` prop wins (skip).
+  // CSP: stamp the request nonce on inline/executable tags so a strict.
   if (nonce && (tag.tag === 'script' || tag.tag === 'style') && !(props && 'nonce' in props)) {
     open += ` nonce="${esc(nonce)}"`
   }
   if (VOID_TAGS.has(tag.tag)) return `${open} />`
   const content = tag.children || ''
   // Escape sequences that could break out of script/style/noscript blocks:
-  // 1. Closing tags like </script> — use Unicode escape in the slash
-  // 2. HTML comment openers <!-- that could confuse parsers
   const body = content.replace(/<\/(script|style|noscript)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')
   return `${open}>${body}</${tag.tag}>`
 }

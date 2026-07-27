@@ -55,8 +55,7 @@ export const Modal = (props: ModalProps): VNode => {
 
   const ref = (el: HTMLDialogElement | null): void => {
     dialogEl = el
-    // Initial sync at mount — the effect's first run happened during component setup
-    // when `dialogEl` was still null, so it could only track `open`, not apply it.
+    // Initial sync at mount.
     if (el !== null) applyOpen(getOpen())
   }
 
@@ -71,11 +70,9 @@ export const Modal = (props: ModalProps): VNode => {
     props.onClose()
   }
 
-  // Backdrop click: a click whose coordinates fall OUTSIDE the dialog's own box is a backdrop click
-  // (the ::backdrop pseudo-element reports its clicks as targeting the dialog).
+  // Backdrop click: a click whose coordinates fall OUTSIDE the dialog's own box is a backdrop.
   const onClick = (e: MouseEvent): void => {
-    // `currentTarget` is the <dialog> the handler is bound to — never
-    // null mid-dispatch, so no guard needed (and nothing dead to cover).
+    // `currentTarget` is the <dialog> the handler is bound to.
     const el = e.currentTarget as HTMLDialogElement
     const r = el.getBoundingClientRect()
     const inside =

@@ -8,13 +8,11 @@ import { isServer } from '@pyreon/reactivity'
  * Saves scroll position before each navigation and restores it when
  * navigating back to a previously visited path.
  */
-// LRU cap — in SPAs with unbounded URL space (`/user/:id`, query-string variations,
-// etc.) the `_positions` Map would grow per unique path forever.
+// LRU cap — in SPAs with unbounded URL space (`/user/:id`, query-string variations.
 const MAX_SCROLL_POSITIONS = 100
 
 export class ScrollManager {
-  // SizedMap in FIFO mode — the LRU "touch on write" semantic this manager needs is
-  // built into `set`: a key collision unconditionally moves the entry to the tail.
+  // SizedMap in FIFO mode.
   private readonly _positions = new SizedMap<string, number>({
     maxEntries: MAX_SCROLL_POSITIONS,
   })
@@ -26,12 +24,9 @@ export class ScrollManager {
 
   /** Call before navigating away — saves current scroll position for `fromPath` */
   save(fromPath: string): void {
-    // ScrollManager methods are only invoked from browser navigation paths, but an
-    // explicit early-return documents the SSR-safety contract at the callsite (the
-    // `no-window-in-ssr` lint rule can't AST-trace indirect calls from router setup).
+    // ScrollManager methods are only invoked from browser navigation paths.
     if (isServer) return
-    // SizedMap.set handles both the recency bump (delete + re-set on
-    // collision) and the cap-enforced eviction internally.
+    // SizedMap.set handles both the recency bump (delete + re-set on collision) and.
     this._positions.set(fromPath, window.scrollY)
   }
 

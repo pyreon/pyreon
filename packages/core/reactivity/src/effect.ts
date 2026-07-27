@@ -24,9 +24,8 @@ export interface EffectOptions {
   __sourceLocation?: { file: string; line: number; col: number }
 }
 
-// ─── Effect-scoped context-owner capture (DI from `@pyreon/core`) ────────────
-// A re-run happens after the synchronous mount, when the active context OWNER may
-// differ from setup time (mountReactive swaps owners for deferred children).
+// ─── Effect-scoped context-owner capture (DI from `@pyreon/core`) ──────────── A re-run happens
+// after the synchronous mount, when the active context OWNER may differ from setup time.
 export interface ReactiveSnapshotCapture {
   capture: () => unknown
   /** Run `fn` with the previously-captured snapshot active. */
@@ -82,9 +81,8 @@ const LAZY_INNER: unknown[] = []
 // Inner-effect collector state lives in tracking.ts so `runUntracked` can
 // suspend it in lock-step with `activeEffect`.
 
-// Global handler for unhandled errors thrown inside effects; defaults to
-// console.error so failures are never silently swallowed. Two surfaces fire on
-// every error: the legacy `setErrorHandler` handler, and a globalThis bridge
+// Global handler for unhandled errors thrown inside effects; defaults to console.error so failures
+// are never silently swallowed.
 
 interface PyreonErrorBridge {
   __pyreon_report_error__?: (err: unknown, phase: 'effect') => void
@@ -103,9 +101,7 @@ let _userErrorHandler: ((err: unknown) => void) | undefined
 export const _errorHandler: (err: unknown) => void = (err) => {
   // 1. User-set or default direct handler.
   ;(_userErrorHandler ?? _defaultErrorHandler)(err)
-  // 2. Global telemetry bridge (installed by @pyreon/core's
-  //    registerErrorHandler). Forwards effect errors into reportError so
-  //    Sentry/Datadog wiring captures them alongside component errors.
+  // 2. Global telemetry bridge (installed by @pyreon/core's registerErrorHandler).
   _errorBridge.__pyreon_report_error__?.(err, 'effect')
 }
 
@@ -233,8 +229,6 @@ export function effect(
   let _effectId: number | undefined
   if (process.env.NODE_ENV !== 'production')
     // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
-    // Prefer build-time-injected location over the ~2.2µs stack-capture
-    // fallback. @pyreon/vite-plugin's `injectSignalNames` rewrites
     _effectId = _rdRegister(
       run,
       'effect',
@@ -254,9 +248,8 @@ export function effect(
     },
   }
 
-  // Dev-only: mirror the reactive-graph node id onto the returned Effect handle
-  // so `@pyreon/testing`'s `expectEffect(e)` can target this effect's fire count
-  // (the internal `run` closure carries `__pxRdId` but isn't returned).
+  // Dev-only: mirror the reactive-graph node id onto the returned Effect handle so
+  // `@pyreon/testing`'s `expectEffect(e)` can target this effect's fire count.
   if (process.env.NODE_ENV !== 'production') {
     Object.defineProperty(e, '__pxRdId', {
       value: _effectId,
@@ -265,9 +258,8 @@ export function effect(
     })
   }
 
-  // If we're inside another effect's run, register with it so the outer disposes
-  // this inner automatically. The collector is `null` inside `runUntracked`, so
-  // work that explicitly opted out of the outer reactive context falls through
+  // If we're inside another effect's run, register with it so the outer disposes this inner
+  // automatically.
   const collector = getInnerEffectCollector()
   if (collector !== null) {
     if (collector === LAZY_INNER) {
@@ -303,9 +295,8 @@ export function _bind(fn: () => void): () => void {
   const deps: Set<() => void>[] = []
   let disposed = false
 
-  // Capture the snapshot AND the hook reference at SETUP, so re-runs dispatch
-  // directly instead of re-checking the module-level hook. `cap` is a stable
-  // closure capture for this binding's lifetime — a later
+  // Capture the snapshot AND the hook reference at SETUP, so re-runs dispatch directly instead of
+  // re-checking the module-level hook.
   const cap = _snapshotCapture
   const snapshot = cap ? cap.capture() : null
 
@@ -367,9 +358,8 @@ export function renderEffect(fn: () => void): () => void {
   let disposed = false
   let isFirstRun = true
 
-  // Same rationale as `_bind`: capture the external context snapshot at
-  // SETUP and restore it on signal-driven re-runs so provider lookups stay
-  // correct even after `mountReactive`'s cleanup truncates the global stack.
+  // Same rationale as `_bind`: capture the external context snapshot at SETUP and restore it on
+  // signal-driven re-runs so provider lookups stay correct even after `mountReactive`'s cleanup.
   const snapshot = _snapshotCapture ? _snapshotCapture.capture() : null
 
   const trackedFn =

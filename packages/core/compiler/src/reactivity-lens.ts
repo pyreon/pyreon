@@ -125,8 +125,7 @@ export function analyzeReactivity(
     footguns = []
   }
   for (const d of footguns) {
-    // detectPyreonPatterns gives 1-based line / 0-based column + `current` (the
-    // offending source text).
+    // detectPyreonPatterns gives 1-based line / 0-based column + `current`.
     const firstLineLen = d.current.split('\n')[0]?.length ?? d.current.length
     findings.push({
       kind: 'footgun',

@@ -96,9 +96,7 @@ export interface Selector<T> {
  */
 export function createSelector<T>(source: () => T): Selector<T> {
   const subs = new Map<T, Set<() => void>>()
-  // Bound updaters (from `selector.subscribe`) — kept SEPARATE from the effect bucket
-  // so the source effect can call them with the resolved boolean directly instead of an
-  // empty re-run closing over `current` and `value`.
+  // Bound updaters (from `selector.subscribe`).
   const boundSubs = new Map<T, ((matches: boolean) => void) | Set<(matches: boolean) => void>>()
   let current: T
   let initialized = false
@@ -162,9 +160,8 @@ export function createSelector<T>(source: () => T): Selector<T> {
     boundSubs.clear()
   }
 
-  // Effect-free per-key binding (perf hot path) — hooks `updater` DIRECTLY into
-  // a per-key bound bucket; the source effect calls it with the resolved boolean.
-  // Per `.subscribe` call, in the dominant one-subscriber-per-key shape: one
+  // Effect-free per-key binding (perf hot path) — hooks `updater` DIRECTLY into a per-key bound
+  // bucket; the source effect calls it with the resolved boolean.
   selector.subscribe = (value: T, updater: (matches: boolean) => void): (() => void) => {
     if (disposed) {
       // Selector is disposed — call updater once with the stale-last value, then return
@@ -199,8 +196,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
       } else if (bucket instanceof Set) {
         bucket.delete(updater)
         // Last subscriber of a promoted key left — drop the now-empty Set so the key doesn't linger
-        // in `boundSubs` (same unbounded-growth guard the inline branch applies; without this, a
-        // key that ever had ≥2 bound subscribers leaked an empty Set for the selector's lifetime).
+        // in `boundSubs`.
         if (bucket.size === 0) boundSubs.delete(value)
       }
     }

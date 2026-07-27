@@ -112,9 +112,7 @@ export async function prerender(options: PrerenderOptions): Promise<PrerenderRes
 
     const filePath = resolveOutputPath(outDir, path)
 
-    // Containment check must be separator-terminated. A bare
-    // `startsWith(resolve(outDir))` is a string-prefix test, not a
-    // path-containment test: with outDir `/app/dist`, a traversed
+    // Containment check must be separator-terminated.
     const resolvedOut = resolve(outDir)
     const resolvedFile = resolve(filePath)
     if (resolvedFile !== resolvedOut && !resolvedFile.startsWith(resolvedOut + sep)) {

@@ -23,9 +23,7 @@ import { collectPassthroughAttrs, mergePassthroughStyle } from './passthrough'
  * `class` / `style` props OR wrap with a custom rendering layer.
  */
 export const Toggle = (props: ToggleProps): VNode => {
-  // Same reactive-prop-read pattern as Field — defer the `props.value` read into the
-  // thunk so the reactive binding tracks correctly when the compiler emits the prop as
-  // a `_rp(() => signal())` getter. See Field.tsx for the full reasoning.
+  // Same reactive-prop-read pattern as Field.
   const getValue = (): boolean => {
     const v = props.value
     if (typeof v === 'function') return (v as () => boolean)()
@@ -40,14 +38,11 @@ export const Toggle = (props: ToggleProps): VNode => {
   }
   if (props.disabled) style.opacity = '0.5'
 
-  // Pyreon's renderer handles `checked` as a reactive prop when it's a
-  // function — same shape Field uses for `value`.
+  // Pyreon's renderer handles `checked` as a reactive prop when it's a function.
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     type: 'checkbox',
-    // W3C Switch pattern: a checkbox with role="switch" is announced as an
-    // on/off switch (the native `checked` maps to aria-checked) — matching
-    // the iOS Toggle / Android Switch this lowers to on native targets.
+    // W3C Switch pattern: a checkbox with role="switch" is announced as an on/off switch.
     role: 'switch',
     checked: getValue,
     onChange,

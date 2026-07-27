@@ -2,9 +2,8 @@ import type { Props, VNode, VNodeChild } from '@pyreon/core'
 import { createRef, Fragment, h, nativeCompat, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
-// Dev-mode gates in this file use the bare bundler-agnostic
-// `process.env.NODE_ENV !== 'production'` form — every modern bundler replaces it
-// at consumer build time. Do NOT switch to `import.meta.env.DEV` (Vite/Rolldown
+// Dev-mode gates in this file use the bare bundler-agnostic `process.env.NODE_ENV !== 'production'`
+// form — every modern bundler replaces it at consumer build time.
 export interface TransitionProps {
   /**
    * CSS class name prefix.
@@ -96,9 +95,7 @@ function Transition(props: TransitionProps): VNodeChild {
       const done = () => {
         el.removeEventListener('transitionend', done)
         el.removeEventListener('animationend', done)
-        // Clear the safety timeout — without this, when transitionend fires
-        // normally the 5s timer would still fire later and re-invoke done(),
-        // leaking timer refs and re-firing onAfterEnter.
+        // Clear the safety timeout.
         if (safetyTimer !== null) {
           clearTimeout(safetyTimer)
           safetyTimer = null
@@ -217,9 +214,8 @@ function Transition(props: TransitionProps): VNodeChild {
 
   // Return a reactive getter.
   const rawChild = props.children
-  // Return an empty Fragment (not null) when unmounted so mountChild uses
-  // mountReactive instead of the null/primitive text-node fast-path, which
-  // cannot later be swapped for a VNode when the element enters.
+  // Return an empty Fragment (not null) when unmounted so mountChild uses mountReactive instead of
+  // the null/primitive text-node fast-path.
   const emptyFragment = h(Fragment, null)
   return (() => {
     if (!isMounted()) return emptyFragment
@@ -240,8 +236,7 @@ function Transition(props: TransitionProps): VNodeChild {
   }) as unknown as VNode
 }
 
-// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component
-// needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than a bare
-// `nativeCompat(X)` statement: inside the built lib's shared chunk a bare call is an
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component needs
+// Pyreon's setup frame.
 const _Transition = /* @__PURE__ */ nativeCompat(Transition)
 export { _Transition as Transition }

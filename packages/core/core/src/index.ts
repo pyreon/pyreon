@@ -1,17 +1,14 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from '@pyreon/reactivity'
 
-// Singleton sentinel — fail-loud detection of duplicate @pyreon/core instances in the
-// same heap. See @pyreon/reactivity/singleton-sentinel for full rationale.
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/core instances in the same heap.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export { defineComponent, dispatchToErrorBoundary, propagateError, runWithHooks } from './component'
 export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-marker'
-// Re-exported from @pyreon/reactivity so existing imports from @pyreon/core keep working AND every
-// package below core in the dep chain can still reach it directly via @pyreon/reactivity.
+// Re-exported from @pyreon/reactivity so existing imports from @pyreon/core keep working AND every.
 export { defineCrossModuleState } from '@pyreon/reactivity'
-// Runtime environment detection (re-exported for discoverability — app code
-// typically imports from @pyreon/core). Defined in @pyreon/reactivity.
+// Runtime environment detection.
 export { isClient, isServer } from '@pyreon/reactivity'
 export { useControllableState, type UseControllableState } from './controllable-state'
 export { mapCompatDomProps, shallowEqualProps } from './compat-shared'

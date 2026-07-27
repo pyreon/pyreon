@@ -175,9 +175,7 @@ export async function renderPage(
       { router } as never,
       h(App, null),
     )
-    // Per-request CSP nonce (set by e.g. zero's `cspMiddleware` onto
-    // `useRequestLocals().cspNonce`). Read ONCE here — the single string-mode
-    // choke point, already inside the request context — and thread it to every
+    // Per-request CSP nonce.
     const rawNonce = useRequestLocals().cspNonce
     const cspNonce
       = typeof rawNonce === 'string' && rawNonce ? rawNonce.replace(/["'<>\s]/g, '') : undefined
@@ -197,8 +195,7 @@ export async function renderPage(
         ? `<script${nonceAttr}>window.__PYREON_LOADER_DATA__=${stringifyLoaderData(loaderData)}</script>`
         : ''
 
-    // SSR store-state hydration — decoupled bridge (set by @pyreon/store on import; one
-    // null check when the app uses no stores).
+    // SSR store-state hydration — decoupled bridge.
     const dehydrateStores = (
       globalThis as { __PYREON_DEHYDRATE_STORES__?: () => Record<string, Record<string, unknown>> }
     ).__PYREON_DEHYDRATE_STORES__

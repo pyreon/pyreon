@@ -29,9 +29,7 @@ const KIND_TO_TYPE: Record<string, string> = {
  * - Android (via PMTC): `TextField` with `KeyboardOptions`
  */
 export const Field = (props: FieldProps): VNode => {
-  // CRITICAL: do NOT read `props.value` at setup time. Pyreon's compiler
-  // emits signal-shaped props as `_rp(() => signal())` thunks, which
-  // `makeReactiveProps` converts to property GETTERS. Reading
+  // CRITICAL: do NOT read `props.value` at setup time.
   const getValue = (): string => {
     const v = props.value
     if (typeof v === 'function') return (v as () => string)()
@@ -68,8 +66,7 @@ export const Field = (props: FieldProps): VNode => {
     style.cursor = 'not-allowed'
   }
 
-  // Pyreon's renderer handles `value` as a reactive prop when it's a function — that's
-  // the auto-call compiler behavior.
+  // Pyreon's renderer handles `value` as a reactive prop when it's a function.
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as unknown as Record<string, unknown>),
     type,

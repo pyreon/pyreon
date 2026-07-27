@@ -140,9 +140,7 @@ export function island<P extends Props = Props>(
 ): ComponentFn<P> & IslandMeta {
   const { name, hydrate = 'load', prefetch = 'none' } = options
   if (!name) {
-    // `name` is auto-derived from the const binding by @pyreon/vite-plugin
-    // (`islands: true`, the default) — reaching here means the build ran
-    // WITHOUT the plugin (or the call has no const binding to derive from).
+    // `name` is auto-derived from the const binding by @pyreon/vite-plugin.
     throw new Error(
       '[Pyreon] island() has no name. Either build with @pyreon/vite-plugin '
         + '(islands auto-naming derives it from the `const X = island(…)` binding), '
@@ -163,20 +161,15 @@ export function island<P extends Props = Props>(
       attrs['data-prefetch'] = prefetch
     }
 
-    // ── CLIENT: the island OWNS its hydration lifecycle ──────────────────────
-    // Render the `<pyreon-island>` marker, then on mount load the chunk + mount the
-    // component INTO the marker per the `hydrate` strategy.
+    // ── CLIENT: the island OWNS its hydration lifecycle ────────────────────── Render.
     if (isClient) {
       if (hydrate === 'never') return h('pyreon-island', attrs)
       let islandEl: HTMLElement | null = null
-      // Capture the context owner NOW, synchronously during this component's
-      // render — while its owner (and the ancestor provider chain: PyreonUI
-      // theme, etc.) is active. Hydration is deferred (idle / visible /
+      // Capture the context owner NOW, synchronously during this component's render.
       const capturedOwner = getContextOwner()
       onMount(() => {
         if (!islandEl) return
-        // Scheduler is client-only — the dynamic import keeps it out of the SSR
-        // module graph and avoids a static `client` ↔ `island` import cycle.
+        // Scheduler is client-only.
         void import('./client').then(({ scheduleHydration, schedulePrefetch }) => {
           if (!islandEl) return
           const isleLoader = loader as () => Promise<{ default: ComponentFn } | ComponentFn>
@@ -192,16 +185,14 @@ export function island<P extends Props = Props>(
       })
     }
 
-    // ── SERVER (SSR/SSG): render the component INSIDE the marker ─────────────
-    // so the static HTML carries the island content (SEO / no-JS / first paint).
+    // ── SERVER (SSR/SSG): render the component INSIDE the marker ───────────── so the static HTML.
     return loader().then((mod) => {
       const Comp = typeof mod === 'function' ? mod : mod.default
       return h('pyreon-island', attrs, h(Comp, props))
     })
   }
 
-  // Attach metadata so tooling (CLI project scanner, MCP, future codegen) can
-  // detect islands without runtime introspection.
+  // Attach metadata so tooling (CLI project scanner, MCP.
   const wrapper = IslandWrapper as unknown as ComponentFn<P> & IslandMeta
   Object.defineProperties(wrapper, {
     __island: { value: true, enumerable: true },
@@ -250,9 +241,7 @@ function serializeIslandProps(
   props: Record<string, unknown>,
   islandName: string,
 ): string {
-  // The `children` key is dropped explicitly (with a dev warning) BEFORE
-  // the codec sees them — children carry VNode trees / closures and are
-  // never portable, so the dev message about them stays focused.
+  // The `children` key is dropped explicitly (with a dev warning) BEFORE the codec sees them.
   const clean: Record<string, unknown> = {}
   let droppedChildren = false
   for (const [key, value] of Object.entries(props)) {
@@ -271,14 +260,12 @@ function serializeIslandProps(
     )
   }
 
-  // The SSR renderer's renderProp() already applies escapeHtml() to attribute
-  // values, so the JSON is safe to embed in HTML attributes without double-escaping.
+  // The SSR renderer's renderProp() already applies escapeHtml() to attribute values.
   try {
     const encoded = encodeIslandProps(clean, islandName)
     return JSON.stringify(encoded)
   } catch (err) {
-    // Encoder threw on a class instance, depth overflow, or circular reference (the
-    // codec catches each with a named-path message).
+    // Encoder threw on a class instance, depth overflow, or circular reference.
     if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
       console.error(

@@ -106,9 +106,7 @@ export function shallowReactive<T extends object>(initial: T): T {
 }
 
 function wrap(raw: object, shallow: boolean): object {
-  // Cache lookup FIRST — the dominant path. A deep store's `get` trap calls
-  // `wrap()` on every nested-object property read, so the cache hit is the hot
-  // case. A cached `raw` was already validated as proxiable when first wrapped
+  // Cache lookup FIRST — the dominant path.
   const cache = shallow ? shallowProxyCache : proxyCache
   const cached = cache.get(raw)
   if (cached) return cached
@@ -179,9 +177,8 @@ function wrap(raw: object, shallow: boolean): object {
         return true
       }
 
-      // Defense-in-depth against prototype pollution: a bare
-      // `target.__proto__ = obj` here would mutate the store object's
-      // prototype rather than set a property. `reconcile()` already
+      // Defense-in-depth against prototype pollution: a bare `target.__proto__ = obj` here would
+      // mutate the store object's prototype rather than set a property.
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
         return true
       }
@@ -211,9 +208,7 @@ function wrap(raw: object, shallow: boolean): object {
 
     deleteProperty(target, key) {
       delete (target as Record<PropertyKey, unknown>)[key]
-      // Notify that the property is now undefined, but KEEP the signal in
-      // `propSignals`. Deleting the entry means a later `set` on the same key
-      // creates a FRESH signal, while every effect that previously read the key
+      // Notify that the property is now undefined, but KEEP the signal in `propSignals`.
       if (typeof key !== 'symbol' && propSignals.has(key)) {
         propSignals.get(key)?.set(undefined)
       }

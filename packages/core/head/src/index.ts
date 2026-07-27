@@ -1,8 +1,7 @@
 import { name as __pkgName, version as __pkgVersion } from '../package.json' with { type: 'json' }
 import { registerSingleton } from '@pyreon/reactivity'
 
-// Singleton sentinel — fail-loud detection of duplicate @pyreon/head instances in the
-// same heap. See @pyreon/reactivity/singleton-sentinel for full rationale.
+// Singleton sentinel — fail-loud detection of duplicate @pyreon/head instances in the same heap.
 registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export type {

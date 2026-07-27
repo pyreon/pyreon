@@ -140,8 +140,7 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
   }
 
   const ServerIslandMarker: ComponentFn<P> = (props: P) => {
-    // The marker carries codec-encoded props (same roundtrip-preserving codec client
-    // islands use — Date/Map/Set/RegExp/BigInt survive).
+    // The marker carries codec-encoded props.
     const clean: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(props as Record<string, unknown>)) {
       if (key === 'children') continue
@@ -163,9 +162,7 @@ export function serverIsland<P extends Record<string, unknown> = Record<string, 
       {
         'data-name': options.name,
         ...(serialized !== '{}' ? { 'data-props': serialized } : {}),
-        // SELF-ACTIVATION (client islands' self-hydration precedent): the marker fetches its own
-        // fragment when IT mounts — robust whether the page hydrated, the route lazily mounted
-        // after activation scans ran, or an SPA navigation rendered fresh markers.
+        // SELF-ACTIVATION (client islands' self-hydration precedent): the marker fetches its own.
         ...(isClient
           ? {
               ref: (el: HTMLElement | null) => {
@@ -203,8 +200,7 @@ export function activateServerIslandElement(el: HTMLElement, base = ''): void {
       if (!res.ok) throw new Error(`fragment ${name}: HTTP ${res.status}`)
       const html = await res.text()
       if (!el.isConnected) return // route torn down mid-flight
-      // Same-origin, name-allowlisted, server-rendered markup — the same
-      // trust domain as the page itself.
+      // Same-origin, name-allowlisted, server-rendered markup.
       el.innerHTML = html
       el.dispatchEvent(
         new CustomEvent('pyreon:server-island', { bubbles: true, detail: { name } }),
