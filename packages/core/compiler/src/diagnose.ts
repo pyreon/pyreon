@@ -718,6 +718,28 @@ mount(() => <RouterProvider router={router}><App /></RouterProvider>, root)`,
     }),
   },
   {
+    // The batch flush drops queued effects after 32 passes. Emitted in BOTH dev
+    // and prod (a silently-inconsistent reactive graph is worse than a log), so
+    // users hit this string in production builds too.
+    pattern: /MAX_PASSES|batch effect flush exceeded/i,
+    diagnose: () => ({
+      cause:
+        'An effect re-enqueued itself for more than 32 batch passes, so the flush gave up and DROPPED the remaining queued effects — some ran, some did not, leaving the reactive graph inconsistent. The usual cause is an effect that WRITES a signal it also READS, with no guard: the write re-dirties the effect, which re-runs, which writes again. A computed whose body writes a signal, or two effects that write each other’s dependencies, produce the same cycle.',
+      fix: 'Break the read-write cycle. If the effect only DERIVES a value, use `computed()` (pure, never re-enqueues) instead. If it must write, either read the dependency with `.peek()` (reads without subscribing) or guard the write so it cannot re-trigger. For two effects that feed each other, collapse them into one or make one direction `.peek()`.',
+      fixCode: `// BAD — writes a signal it also reads, so it re-enqueues until MAX_PASSES:
+effect(() => { count.set(count() + 1) })
+
+// GOOD (derive) — a computed is pure and never re-enqueues:
+const doubled = computed(() => count() * 2)
+
+// GOOD (must write) — read untracked, and gate the write:
+effect(() => {
+  const next = source() * 2
+  if (next !== total.peek()) total.set(next)
+})`,
+    }),
+  },
+  {
     // R2 — `ResolvedRoute.meta` is reference-stable + frozen (cached
     // per FlattenedRoute; dynamic-route nav `/posts/42` and `/posts/99`
     // share the SAME meta object identity). User code that does
