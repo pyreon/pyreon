@@ -41,6 +41,10 @@ export const REFERENCE_GROUPS: SidebarGroup[] = [
         "slug": "reference/hotkeys"
       },
       {
+        "text": "http",
+        "slug": "reference/http"
+      },
+      {
         "text": "i18n",
         "slug": "reference/i18n"
       },

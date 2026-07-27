@@ -95,6 +95,14 @@ export function applyValidator(
     return parse(raw)
   } catch (cause) {
     if (ctx.validate === 'warn') {
+      // NOT dev-guarded, deliberately. `validate: 'warn'` is an explicit
+      // opt-in whose entire purpose is to keep a drifting backend visible
+      // in PRODUCTION while degrading instead of white-screening. Wrapping
+      // it in a dev gate would tree-shake the mode into a silent no-op in
+      // exactly the environment it exists for — the same reasoning behind
+      // the adapters' missing-env warnings, which also fire regardless of
+      // NODE_ENV because they report a real misconfiguration.
+      // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
       console.warn(
         `[Pyreon] http: response from ${response.request.method} ${response.request.url} ` +
           `did not match its schema — passing the raw body through because ` +

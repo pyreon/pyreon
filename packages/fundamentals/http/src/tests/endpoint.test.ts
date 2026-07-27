@@ -193,12 +193,21 @@ describe('endpoint — types', () => {
   })
 
   it('rejects a mistyped param name at compile time', () => {
-    const { api } = makeApi()
-    const getUser = api.endpoint('GET /users/:id')
-    // @ts-expect-error — `userId` is not a parameter of `/users/:id`
-    void getUser({ params: { userId: '1' } })
-    // A path with no params needs no argument at all.
-    void api.endpoint('GET /users')()
+    // NEVER INVOKED. The assertion here is `tsc`, not the runtime — and
+    // actually calling these would fire real requests nobody awaits: the
+    // mistyped one rejects (no `id` to substitute), producing an unhandled
+    // rejection that vitest fails the whole run on. A type test must not
+    // execute the thing it is typing.
+    const typeOnly = (): void => {
+      const { api } = makeApi()
+      const getUser = api.endpoint('GET /users/:id')
+      // @ts-expect-error — `userId` is not a parameter of `/users/:id`
+      void getUser({ params: { userId: '1' } })
+      // A path with no params needs no argument at all.
+      void api.endpoint('GET /users')()
+    }
+
+    expect(typeof typeOnly).toBe('function')
   })
 })
 
