@@ -338,7 +338,14 @@ public struct RouterProvider<Content: View>: View {
 public enum PyreonAuthStatus: Sendable {
   case signedOut, signingIn, signedIn, error
 }
-@Observable
+// NOT annotated \`@Observable\`, deliberately. The real runtime class is, but the
+// attribute is a REACTIVITY concern, not part of the type surface an emit is
+// checked against — nothing about it can mask a bad emit. Putting it here would
+// force the harness to add \`import Observation\` UNCONDITIONALLY: the guarantee
+// is currently driven by whether the EMIT uses @Observable, so a stub-only
+// occurrence goes unimported and fails on Linux ("unknown attribute
+// 'Observable'") for every emit that does not itself use it. macOS hides that —
+// Observation is implicit there — so this only ever reds the Linux PR gate.
 public final class PyreonAuth<User> {
   public private(set) var status: PyreonAuthStatus = .signedOut
   public private(set) var user: User?
@@ -358,11 +365,11 @@ public struct PyreonRecord {
   public let fields: [String: String]
   public init(id: String, fields: [String: String] = [:]) { self.id = id; self.fields = fields }
 }
-// PyreonFetch — the @Observable data container a \`useFetch\` decl emits.
+// PyreonFetch — the data container a \`useFetch\` decl emits.
 // \`data\` / \`error\` / \`isPending\` are private(set) in runtime-swift; keeping
 // that here means an emit that tries to ASSIGN one fails, as it should (the
 // container is driven through begin/resolve/reject/load/refetch).
-@Observable
+// No \`@Observable\` here either — same reason as PyreonAuth above.
 public final class PyreonFetch<T> {
   public private(set) var data: T?
   public private(set) var error: Error?
