@@ -95,12 +95,10 @@ type ItemEntry = {
 function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChild {
   const tag = props.tag ?? 'div'
 
-  // Children mode: no `items` render-prop → TransitionGroup is a plain animated
-  // container around whatever keyed list it wraps (e.g. a `<For>`). The wrapped
-  // list owns keyed reconciliation, so we just mount its children into the
-  // container. This is the shape PMTC lowers on native, so the SAME .tsx
-  // renders on web + iOS + Android. (Per-item enter/leave CSS is a no-op here;
-  // use the items/keyFn/render API below for that.)
+  // Children mode: no `items` render-prop, so TransitionGroup is a plain animated
+  // container around whatever keyed list it wraps (e.g. a `<For>`), which owns
+  // reconciliation. This is the shape PMTC lowers on native, so the SAME .tsx
+  // renders on web + iOS + Android. Per-item enter/leave CSS is a no-op here.
   if (typeof props.items !== 'function') {
     return h(tag, {}, props.children)
   }
@@ -202,11 +200,10 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
       }
       el.addEventListener('transitionend', done, { once: true })
       el.addEventListener('animationend', done, { once: true })
-      // Safety timeout: CRITICAL for transition-group. Without it, a list
-      // item whose leave transition never fires (off-screen, zero
-      // duration, `display: none`) stays in the `entries` Map forever
-      // because `onDone` never runs to `entries.delete(key)` — a real
-      // memory leak that grows with every list mutation.
+      // Safety timeout — CRITICAL here: a list item whose leave transition never
+      // fires (off-screen, zero duration, `display: none`) would stay in the
+      // `entries` Map forever because `onDone` never runs, a real leak that grows
+      // with every list mutation.
       safetyTimer = setTimeout(done, 5000)
     })
   }
@@ -237,14 +234,11 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
       const key = keyFn(item, i)
       if (entries.has(key)) continue
       const itemRef = createRef<HTMLElement>()
-      // Both render AND mountChild must run untracked — child component
-      // setup (signal reads inside the render callback's resulting tree,
-      // useTheme / useQuery's options() construction etc.) must NOT
-      // subscribe this effect. Otherwise an unrelated signal flip re-runs
-      // the TransitionGroup effect, runCleanup() disposes the children's
-      // inner effects, and the next mount path skips re-rendering kept
-      // entries → the inner reactivity is lost. Same shape as the
-      // mountFor / mountKeyedList fix in nodes.ts.
+      // Both render AND mountChild must run untracked — child component setup
+      // must NOT subscribe this effect. Otherwise an unrelated signal flip re-runs
+      // TransitionGroup, runCleanup() disposes the children's inner effects, and
+      // the next mount skips re-rendering kept entries, losing inner reactivity.
+      // Same shape as the mountFor / mountKeyedList fix in nodes.ts.
       const cleanup = runUntracked(() => {
         const rawVNode = render(item, i)
         const vnode: VNode =
@@ -382,15 +376,11 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
   return h(tag, { ref: containerRef })
 }
 
-// Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
-// TransitionGroup uses signal/effect/onMount/onUnmount + mountChild that
-// need Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ form (not a bare
-// `nativeCompat(X)` statement): inside the built lib's shared chunk a bare
-// call is an unremovable side effect that RETAINS the whole component body
-// in every `mount`-only consumer bundle (measured: ~1.5KB gz of dead
-// TransitionGroup machinery in the krausest bench bundle). The PURE
-// annotation lets the bundler drop the call — and the body — exactly when
-// the export is unused; when it IS used, `nativeCompat` returns the fn with
-// the marker applied, identical semantics.
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this
+// component needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than
+// a bare `nativeCompat(X)` statement: inside the built lib's shared chunk a bare
+// call is an unremovable side effect that RETAINS the whole component body in
+// every consumer bundle that never imports it (~1.5KB gz measured). The PURE
+// annotation lets the bundler drop it when the export is unused.
 const _TransitionGroup = /* @__PURE__ */ nativeCompat(TransitionGroup)
 export { _TransitionGroup as TransitionGroup }

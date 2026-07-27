@@ -161,14 +161,12 @@ function hydrateReactiveChild(
 ): [Cleanup, ChildNode | null] {
   const initial = runUntracked(child)
 
-  // Range-marked accessor output: the SSR renderer wraps every function
-  // child's output in `<!--$-->…<!--/$-->` (see renderNode's fn arm). The
-  // markers give this accessor's EXACT DOM extent — zero nodes (empty
-  // string / null initial), one, or many (fragment / <For> / component
-  // subtree). Pre-markers, this path removed exactly ONE node before
-  // re-mounting: a multi-root initial left the rest of its SSR output
-  // DUPLICATED in the DOM, and an empty initial mis-anchored the binding
-  // at the parent's anchor, corrupting sibling order (fuzz-found, 2026-07).
+  // Range-marked accessor output: the SSR renderer wraps every function child's
+  // output in `<!--$-->…<!--/$-->`, giving this accessor's EXACT DOM extent —
+  // zero nodes (empty/null initial), one, or many (fragment / <For> / component
+  // subtree). Pre-markers this path removed exactly ONE node before re-mounting,
+  // so a multi-root initial left the rest of its SSR output DUPLICATED and an
+  // empty initial mis-anchored the binding, corrupting sibling order.
   if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === '$') {
     // Find the matching end marker, depth-aware (accessors nest).
     let end: ChildNode | null = null
@@ -191,12 +189,11 @@ function hydrateReactiveChild(
     if (end) {
       const after = end.nextSibling
       // Single-text-node range + text-ish initial → ADOPT the node and bind
-      // directly (the dominant reactive-text case — no remount). We do NOT
-      // gate on `data === String(initial)`: a genuine server/client value
-      // divergence (SSR "Alice", client "Bob") still adopts the SAME text
-      // node — the renderEffect writes the client value on its first run —
-      // so recovery is in-place, not a double-mount. Only the value is
-      // corrected; a mismatch is reported for telemetry.
+      // directly (the dominant reactive-text case, no remount). Deliberately NOT
+      // gated on `data === String(initial)`: a genuine server/client divergence
+      // still adopts the SAME text node and the renderEffect writes the client
+      // value on its first run, so recovery is in-place rather than a
+      // double-mount. Only the value is corrected; the mismatch is reported.
       const only = domNode.nextSibling
       if (
         (typeof initial === 'string' || typeof initial === 'number' || typeof initial === 'boolean') &&
@@ -216,15 +213,14 @@ function hydrateReactiveChild(
         end.remove()
         return [dispose, after ? firstReal(after) : null]
       }
-      // NOTE: an EMPTY range (initial rendered nothing) or a multi-node
-      // range falls through to the general swap below. An empty/null
-      // initial does NOT imply a text binding — the accessor can produce a
-      // VNode subtree on a later flip (ternary with a null arm), so only
-      // `mountReactive` handles the general case correctly. (A first cut
+      // An EMPTY range (initial rendered nothing) or a multi-node range falls
+      // through to the general swap below. An empty/null initial does NOT imply a
+      // text binding — the accessor can produce a VNode subtree on a later flip —
+      // so only `mountReactive` handles the general case correctly. (A first cut
       // bound a text node here; the parity fuzzer's post-flip oracle caught
-      // 217/3000 divergences — VNodes stringified into the text node.)
-      // General case — correctness-first swap: mount the live binding at the
-      // range position, then remove the SSR range (markers included).
+      // 217/3000 divergences, VNodes stringified into the text node.)
+      // General case — mount the live binding at the range position, then remove
+      // the SSR range, markers included.
       const marker = insertMarker(parent, domNode, 'pyreon')
       const cleanup = mountReactive(child, parent, marker, mountChild)
       let cur: ChildNode | null = domNode
@@ -275,12 +271,10 @@ function hydrateReactiveText(
   const initial = runUntracked(child)
   const expected = initial == null ? '' : String(initial)
 
-  // Empty initial value: SSR emitted NOTHING, so there is no text node to
-  // adopt. Bind a fresh text node inserted at the CURSOR (client parity —
-  // the client renderer creates one), consuming nothing. Pre-fix this fell
-  // through to the mismatch branch, whose `mountChild(child, parent,
-  // anchor)` appended at the PARENT's anchor — corrupting sibling order for
-  // every element after it.
+  // Empty initial value: SSR emitted NOTHING, so there is no text node to adopt.
+  // Bind a fresh text node inserted at the CURSOR (client parity), consuming
+  // nothing. Pre-fix this fell through to the mismatch branch, which appended at
+  // the PARENT's anchor and corrupted sibling order for every following element.
   if (expected === '') {
     const tn = document.createTextNode('')
     parent.insertBefore(tn, domNode ?? anchor)
@@ -329,16 +323,14 @@ function hydrateVNode(
   }
 
   if (vnode.type === ForSymbol) {
-    // The SSR renderer emits a fully-bounded block for a <For>:
-    //   <!--pyreon-for-->  <!--k:KEY-->row…  ×N  <!--/pyreon-for-->
-    // (both string and streaming modes). Correctness-first swap, matching
-    // the _tpl/__isNative precedent: mount the fresh keyed list before the
-    // block, then REMOVE the SSR block and hand the node AFTER it back as
-    // the sibling cursor. Pre-fix this path mounted fresh rows but LEFT the
-    // SSR rows in the DOM (every hydrated <For> duplicated its list) and
-    // returned a null cursor (cascading mismatches for every following
-    // sibling). True keyed ADOPTION via the <!--k:KEY--> markers is the
-    // perf follow-up — this is the correctness fix.
+    // SSR emits a fully-bounded block for a <For>:
+    //   <!--pyreon-for-->  <!--k:KEY-->row…  xN  <!--/pyreon-for-->
+    // Correctness-first swap (matching the _tpl/__isNative precedent): mount the
+    // fresh keyed list before the block, remove the SSR block, and hand back the
+    // node AFTER it as the sibling cursor. Pre-fix this mounted fresh rows but
+    // LEFT the SSR rows in place (every hydrated <For> duplicated its list) and
+    // returned a null cursor. True keyed ADOPTION via the <!--k:KEY--> markers is
+    // a perf follow-up.
     if (domNode?.nodeType === Node.COMMENT_NODE && (domNode as Comment).data === 'pyreon-for') {
       // Find the matching end marker, depth-aware (nested <For> blocks).
       let end: ChildNode | null = null
@@ -439,12 +431,11 @@ function hydrateChild(
       if (data === expected) {
         return [() => (domNode as Text).remove(), nextReal(domNode)]
       }
-      // MERGED adjacent text: the HTML parser joins text-producing siblings
-      // that SSR emitted back-to-back ('23' + 'hello' parses as ONE
-      // '23hello' node). Adopt exactly this child's prefix via splitText —
-      // the remainder node stays at the cursor for the NEXT sibling.
-      // Prefix matching is exact by construction (the SSR output came from
-      // the same tree), so this is not a heuristic.
+      // MERGED adjacent text: the HTML parser joins text-producing siblings SSR
+      // emitted back-to-back ('23' + 'hello' parses as ONE '23hello' node). Adopt
+      // exactly this child's prefix via splitText — the remainder stays at the
+      // cursor for the NEXT sibling. Prefix matching is exact by construction
+      // (the SSR output came from the same tree), not a heuristic.
       if (data.startsWith(expected)) {
         const rest = (domNode as Text).splitText(expected.length)
         return [() => (domNode as Text).remove(), rest]
@@ -463,13 +454,12 @@ function hydrateChild(
     return [() => tn.remove(), domNode]
   }
 
-  // NativeItem — output of the compiler's `_tpl()` template fast path. The
-  // client builds a fresh DOM subtree in memory (cloned + reactively bound).
-  // We don't yet have a true hydration mode for `_tpl` (which would adopt
-  // existing DOM nodes and rebind without remount). For now, swap the SSR
-  // subtree at this position for the freshly-mounted one — same final DOM,
-  // no duplication, reactivity intact. This is correctness-first; a true
-  // adopting hydration is a separate compiler-side change.
+  // NativeItem — output of the compiler's `_tpl()` fast path. The client builds a
+  // fresh subtree in memory (cloned + reactively bound); there is no true `_tpl`
+  // hydration mode yet that would adopt existing nodes and rebind in place. Swap
+  // the SSR subtree for the freshly-mounted one — same final DOM, no duplication,
+  // reactivity intact. Correctness-first; adopting hydration is a compiler-side
+  // follow-up.
   if ((child as unknown as { __isNative?: boolean })?.__isNative === true) {
     const native = child as unknown as { __isNative: true; el: Node; cleanup?: () => void }
     const next = domNode ? nextReal(domNode) : null
@@ -508,12 +498,10 @@ function hydrateElement(
     const el = domNode as Element
     const cleanups: Cleanup[] = []
 
-    // Attach props (events + reactive effects) — don't set static attrs (SSR already did).
-    // `<select value>` is deferred until after children hydrate (PZ-09):
-    // the SSR DOM carries the options already, but a child hydration
-    // mismatch can re-mount them — applying value AFTER hydrateChildren
-    // guarantees the assignment (and a reactive accessor's eager initial
-    // renderEffect run) sees the FINAL option list.
+    // Attach props (events + reactive effects); static attrs are already in the
+    // SSR DOM. `<select value>` is deferred until after children hydrate (PZ-09):
+    // a child hydration mismatch can re-mount the options, so applying value
+    // after `hydrateChildren` guarantees the assignment sees the FINAL list.
     const isSelect = vnode.type === 'select'
     const propCleanup = applyProps(el, vnode.props, isSelect ? 'value' : undefined)
     if (propCleanup) cleanups.push(propCleanup)
@@ -624,10 +612,9 @@ function hydrateComponent(
         }
       : (vnode.props as Record<string, unknown>)
   // Convert compiler-emitted `_rp(() => expr)` wrappers into getter properties —
-  // mirrors mount.ts so component code can read `props.x` and get the resolved
-  // value (not the raw `_rp` function). Without this, hydration set up reactive
-  // bindings against the wrong values and any signal-driven re-render would
-  // diverge from the SSR HTML.
+  // mirrors mount.ts so component code reading `props.x` gets the resolved value,
+  // not the raw `_rp` function. Without it hydration binds against the wrong
+  // values and any signal-driven re-render diverges from the SSR HTML.
   const mergedProps = makeReactiveProps(rawProps as Record<string, unknown>)
 
   let result: ReturnType<typeof runWithHooks>
@@ -659,23 +646,15 @@ function hydrateComponent(
   }
 
   if (output instanceof Promise) {
-    // Async component support — proper hydration. SSR (runtime-server)
-    // wraps the awaited output in sentinel comments: `<!--$pas-->` and
-    // `<!--$pae-->` (start / end). We:
-    //   1. Find the matching end marker (depth-tracked so nested async
-    //      components don't confuse the walker).
-    //   2. Snapshot the DOM range bounded by the markers.
-    //   3. Advance the parent's sibling cursor past the end marker (sync)
-    //      so the parent's hydration continues normally.
-    //   4. Await the Promise. Once resolved, hydrate the resolved VNode
-    //      against the snapshotted DOM range — this wires up events,
-    //      lifecycle, signal subscriptions on every node in the subtree
-    //      (the part missing from earlier versions of this branch).
+    // Async component hydration. SSR wraps the awaited output in `<!--$pas-->` /
+    // `<!--$pae-->` sentinels, so we find the matching end marker (depth-tracked
+    // for nesting), snapshot the bounded DOM range, advance the parent's sibling
+    // cursor past it synchronously, then await and hydrate the resolved VNode
+    // against that range — wiring events, lifecycle and subscriptions on every
+    // node in the subtree.
     //
-    // Fallback: if markers are absent (older runtime-server, or some
-    // edge case where the SSR pipeline didn't emit them), we skip
-    // hydration of the async subtree and just leave the SSR DOM
-    // standing — same as the pre-marker behaviour. Dev mode warns.
+    // Without markers (older runtime-server) we leave the SSR DOM standing
+    // unhydrated, as before, and warn in dev.
     let resolvedCleanup: Cleanup = noop
     let cancelled = false
 

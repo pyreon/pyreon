@@ -55,11 +55,10 @@ export function mountReactive(
   const marker = document.createComment('pyreon')
   parent.insertBefore(marker, anchor)
 
-  // Capture the context OWNER at creation time — this reactive boundary lives
-  // under the component that set it up, so its owner is the right parent for
-  // any children mounted later (e.g. Show toggling on). Restoring this single
-  // reference when we mount deferred children lets them resolve ancestor
-  // providers via the owner chain, with no stack snapshot to dedup or leak.
+  // Capture the context OWNER at creation — this reactive boundary lives under
+  // the component that set it up, so its owner is the right parent for children
+  // mounted later (e.g. Show toggling on). Restoring this one reference lets them
+  // resolve ancestor providers, with no stack snapshot to dedup or leak.
   const ownerAtSetup = getContextOwner()
 
   let currentCleanup: Cleanup = () => {
@@ -82,39 +81,27 @@ export function mountReactive(
     }
     hasCleanup = false
     const value = accessor()
-    // Note: typeof value === 'function' is a VALID return from a reactive
-    // accessor — it represents a nested `() => VNodeChild` accessor (the
-    // conditional rendering pattern: `{() => show() ? <A /> : null}`).
-    // mountChild handles function children by calling them reactively.
-    // Do NOT warn on function returns — they are handled correctly at
-    // runtime by mountChild's function branch (line 58 above).
+    // NOTE: `typeof value === 'function'` is a VALID accessor return — a nested
+    // `() => VNodeChild` (the `{() => show() ? <A /> : null}` pattern), which
+    // mountChild handles reactively. Do NOT warn on function returns.
     if (value != null && value !== false) {
-      // Mount children UNTRACKED — signal reads during child component
-      // setup (useContext, useTheme, etc.) must NOT subscribe this
-      // mountReactive effect. Otherwise, any signal read during the
-      // entire child tree's setup becomes a dependency, causing full
-      // DOM teardown + remount on that signal's change.
+      // Mount children UNTRACKED — signal reads during child component setup
+      // (useContext, useTheme, …) must NOT subscribe this mountReactive effect,
+      // or any such read becomes a dependency and the whole child tree tears
+      // down + remounts on that signal's change. Children set up their own
+      // effects and track independently.
       //
-      // Child components set up their OWN effects for reactivity
-      // (e.g. DynamicStyled's class swap effect). Those effects track
-      // their own dependencies independently.
-      //
-      // Use the marker's LIVE parent (not the closure-captured `parent`):
-      // when this mountReactive was created inside a DocumentFragment that
-      // mountFor later moved into the live tree via `insertBefore(frag, ...)`,
-      // the captured `parent` becomes a stale reference to the now-empty
-      // fragment. The marker, in contrast, was moved with the fragment's
-      // contents and `marker.parentNode` reflects the current live parent.
-      // Falling back to the captured `parent` only when the marker is
-      // detached (cleanup edge case) preserves prior behavior.
+      // Use the marker's LIVE parent, not the closure-captured `parent`: if this
+      // was created inside a DocumentFragment that mountFor later moved into the
+      // live tree, the captured `parent` is a stale reference to the now-empty
+      // fragment, while the marker moved with the content.
       const liveParent = marker.parentNode ?? parent
       const cleanup = runUntracked(() =>
         runWithContextOwner(ownerAtSetup, () => mount(value, liveParent, marker)),
       )
       // Guard: a re-entrant signal update (e.g. ErrorBoundary catching a child
-      // throw) may have already re-run this effect and updated currentCleanup.
-      // In that case, discard our stale cleanup rather than overwriting the one
-      // set by the re-entrant run.
+      // throw) may have already re-run this effect and set currentCleanup —
+      // discard our stale cleanup rather than overwriting the newer one.
       if (myGen === generation) {
         currentCleanup = cleanup
         hasCleanup = true
@@ -165,9 +152,8 @@ interface LisState {
   tailIdx: Int32Array
   pred: Int32Array
   stay: Uint8Array
-  // Reused per-update buffer of resolved cache entries (mountFor only). Lets
-  // the reorder resolve `cache.get(key)` ONCE per index instead of 3× (in
-  // computeForLis, applyForMoves, and the pos-refresh loop) — for a 1k swap
+  // Reused per-update buffer of resolved cache entries (mountFor only). Lets the
+  // reorder resolve `cache.get(key)` ONCE per index instead of 3x — for a 1k swap
   // that's ~2k fewer Map hashes per update. mountKeyedList leaves it empty.
   entries: (ForEntry | undefined)[]
 }
@@ -332,15 +318,12 @@ export function mountKeyedList(
     // Same untracking rationale as mountFor — see comment there. Child
     // mounts via mountVNode must not re-track on this effect's run.
     runUntracked(() => {
-      // Use the marker's LIVE parent (not the closure-captured `parent`).
-      // Same bug class fixed in #776 for mountReactive: when this
-      // mountKeyedList was created inside a DocumentFragment that mountFor
-      // later moved via `liveParent.insertBefore(frag, tailMarker)`, the
-      // captured `parent` becomes a stale reference to the now-empty
-      // fragment. The markers were moved with the fragment's contents
-      // and their `parentNode` reflects the current live parent.
-      // Fallback to the captured `parent` only when the marker is
-      // detached (cleanup edge case) preserves prior behavior.
+      // Use the marker's LIVE parent, not the closure-captured `parent`: when
+      // this was created inside a DocumentFragment that mountFor later moved via
+      // `insertBefore(frag, tailMarker)`, the captured `parent` is a stale
+      // reference to the now-empty fragment. The markers moved with the
+      // fragment's contents, so `marker.parentNode` is the live parent. Fall back
+      // to `parent` only when the marker is detached (cleanup edge case).
       const liveParent = tailMarker.parentNode ?? parent
 
       if (n === 0 && cache.size > 0) {
@@ -357,9 +340,8 @@ export function mountKeyedList(
 
       const newKeyOrder = collectKeyOrder(newList)
       // Pure-reorder skip (mirrors mountFor): mount new entries FIRST + count.
-      // When nothing was added AND the cache already holds exactly the keyed
-      // count, it's a same-key-set reorder (swap/reverse/sort) — nothing stale —
-      // so skip building the newKey Set + the O(m) stale scan entirely.
+      // Nothing added AND the cache already holds exactly the keyed count means a
+      // same-key-set reorder, so skip the newKey Set + O(m) stale scan.
       const added = mountNewEntries(newList, liveParent)
       if (added !== 0 || cache.size !== newKeyOrder.length) {
         removeStaleEntries(new Set(newKeyOrder))
@@ -396,14 +378,12 @@ export function mountKeyedList(
 /** Maximum number of displaced positions before falling back to full LIS. */
 const SMALL_K = 8
 
-// anchor is the first DOM node of the entry (element for normal vnodes, comment fallback for empty).
-// Using the element itself saves 1 createComment + 1 DOM node per entry.
-// pos is merged here (instead of a separate Map) to halve Map operations.
-// cleanup is null when the entry has no teardown work (saves function call overhead on clear).
-// end is the entry's LAST DOM node, or null for the dominant single-node case
-// (compiled-template rows) — see KeyedEntry.end for the range contract + the
-// retained-heap rationale for why this replaced the module-level WeakSet
-// anchor registry.
+// anchor is the entry's first DOM node (the element itself for normal vnodes,
+// a comment fallback for empty) — using the element saves 1 createComment + 1
+// DOM node per entry. pos is merged here rather than a separate Map to halve Map
+// operations. cleanup is null when there is no teardown work. end is the entry's
+// LAST DOM node, or null for the dominant single-node case — see KeyedEntry.end
+// for the range contract.
 interface ForEntry {
   anchor: Node
   cleanup: Cleanup | null
@@ -440,37 +420,29 @@ function computeForLis(lis: LisState, n: number): number {
   const { tails, tailIdx, pred, entries } = lis
   let lisLen = 0
   let ops = 0
-  // Two-tier fast path.
+  // Three-tier search.
   //
-  // Tier 1 — "extend LIS": if v > the current tail-of-tails, v becomes the
-  // new tail. O(1). Covers APPEND: positions [0..N-1] are strictly
-  // increasing → the whole sequence is the LIS, 0 probes.
+  // Tier 1 "extend LIS" — v > current tail-of-tails, so v becomes the new tail.
+  // O(1). Covers APPEND: strictly increasing positions are their own LIS.
   //
-  // Tier 2 — "known slot": if v ≤ lastV but tails[v] === v already, the
-  // binary-search answer is provably lo = v (strict-increase invariant
-  // guarantees tails[v-1] < v, so v slots exactly at index v). O(1) too.
-  // Covers PREPEND: [new N rows, old M rows] produces positions [0..N-1,
-  // 0..M-1] — the second monotonic run replaces tails[0..M-1] at indices
-  // N..N+M-1 with zero probes each. Before this tier, 1k prepend was ~10k
-  // probes; with it, 0.
+  // Tier 2 "known slot" — v <= lastV but tails[v] === v already, so the
+  // binary-search answer is provably lo = v (the strict-increase invariant
+  // guarantees tails[v-1] < v). O(1). Covers PREPEND, which was ~10k probes for
+  // 1k rows before this tier and is now 0.
   //
-  // Tier 3 — binary search fallback. Random shuffles and other mixed
-  // reorders pay the standard log₂(lisLen) per index.
+  // Tier 3 — binary search. Random shuffles pay the standard log2(lisLen).
   //
-  // Safety: the `v < lisLen && tails[v] === v` check is a strict subset of
-  // "binary-search would return v", so it never produces a wrong answer on
-  // shufles — it just opportunistically avoids probing when the answer
-  // happens to be the index itself. No behaviour change, only fewer probes.
+  // The tier-2 check is a strict subset of "binary search would return v", so it
+  // never produces a wrong answer — it only skips probing when the answer
+  // happens to be the index itself.
   let lastV = -1
   for (let i = 0; i < n; i++) {
     const v = entries[i]?.pos ?? 0
-    // Sentinel skip: a NEW entry mounted this update at the tail with a survivor
-    // after it in newKeys (prepend / middle insert) carries pos = -1 — it MUST
-    // move to its logical slot, never STAY, so it is excluded from the LIS
-    // entirely (never a tail/tailIdx/pred node). applyForMoves then threads it
-    // in before its successor (its stay bit is left 0). Pure reorders (no new
-    // keys) never set a negative pos → this branch never fires → byte-identical
-    // LIS + probe count. See mountNewForEntries for the pos assignment.
+    // Sentinel skip: a NEW entry mounted at the tail with a survivor after it
+    // carries pos = -1 — it MUST move to its logical slot, never STAY, so it is
+    // excluded from the LIS entirely and `applyForMoves` threads it in. Pure
+    // reorders never set a negative pos, so this branch never fires there and
+    // the LIS + probe count stay byte-identical.
     if (v < 0) continue
     // Tier 1: extend LIS.
     if (v > lastV) {
@@ -550,16 +522,13 @@ function forLisReorder(
     if (cached) cached.pos = i
   }
 
-  // Release the scratch references — `entries` is per-<For> state that
-  // lives as long as the component. Left populated, a large reorder
-  // followed by a SHRINK (10k rows filtered to 50) leaves the stale tail
-  // [newN..oldN) pinning every removed row's ForEntry → its `anchor` DOM
-  // subtree + `cleanup` closure (disposers → signal subscriber links) —
-  // unreclaimable for the <For>'s remaining lifetime. Later reorders only
-  // overwrite [0..n), so the tail never self-heals. The typed arrays
-  // (tails/pred/stay) hold plain numbers and stay as scratch capacity.
-  // Class-H retention (closure-held scratch snapshot); leak-class audit
-  // 2026-07.
+  // Release the scratch references — `entries` is per-<For> state living as long
+  // as the component. Left populated, a large reorder followed by a SHRINK (10k
+  // rows filtered to 50) leaves the stale tail pinning every removed row's
+  // ForEntry, its DOM subtree and its cleanup closure, unreclaimable for the
+  // <For>'s lifetime — later reorders only overwrite [0..n), so it never
+  // self-heals. Class-H retention. The typed arrays hold plain numbers and stay
+  // as scratch capacity.
   entries.fill(undefined, 0, n)
 
   return grown
@@ -677,14 +646,10 @@ export function mountFor<T>(
     for (let i = 0; i < n; i++) {
       newKeys[i] = getKey(items[i] as T)
     }
-    // Duplicate-key detection here is purely a DEV diagnostic — the update path
-    // does NOT skip duplicates (keys array must match items length; duplicate
-    // keys cause cache collisions, first wins). So the per-update Set +
-    // warnForKey scan is dead weight in production: gate it out so the hot
-    // reorder path (swap/partial-update/replace) allocates zero Set. The
-    // fresh-render path keeps its load-bearing dedup (it DOES skip duplicates
-    // to prevent DOM corruption). The key loop above always runs (no uncovered
-    // production-only statements); only this dev-diagnostic block is gated.
+    // Duplicate-key detection is purely a DEV diagnostic — the update path does
+    // NOT skip duplicates (first wins on cache collision). Gate it out so the hot
+    // reorder path allocates zero Set. The fresh-render path keeps its
+    // load-bearing dedup, which DOES skip duplicates to prevent DOM corruption.
     if (process.env.NODE_ENV !== 'production') {
       const _seenUpdate = new Set<string | number>()
       for (let i = 0; i < n; i++) warnForKey(_seenUpdate, newKeys[i] as string | number)
@@ -817,36 +782,26 @@ export function mountFor<T>(
     newKeys: (string | number)[],
     liveParent: Node,
   ): number => {
-    // New entries are physically mounted at the tail (before tailMarker), in
-    // newKeys iteration order. The subsequent LIS reorder (forLisReorder) reads
-    // each entry's `pos` as its CURRENT (pre-reorder) DOM position to decide
-    // which entries STAY vs. MOVE, so a new entry's recorded `pos` must not lie
-    // about where it physically is. Recording the target logical index `i` made
-    // a new row whose slot sat between two survivors look "already in order"
-    // (its pos straddled the survivors' stale pos), so the LIS never moved it
-    // off the tail — stranding it (e.g. [1,2,3,4] → [1,5,3] rendered [1,3,5]).
+    // New entries are physically mounted at the TAIL, but the LIS reorder reads
+    // each entry's `pos` as its CURRENT DOM position to decide STAY vs MOVE — so
+    // a new entry's `pos` must not lie about where it physically is. Recording
+    // the target logical index made a new row whose slot sat between two
+    // survivors look "already in order", so the LIS never moved it off the tail
+    // (e.g. [1,2,3,4] -> [1,5,3] rendered [1,3,5]).
     //
-    // Two shapes, split by whether a SURVIVOR follows the new entry in newKeys:
+    // Two shapes, split by whether a SURVIVOR follows the new entry:
     //
-    //  • NEW entry with a survivor after it (prepend / middle insert) MUST move
-    //    off the tail to its logical slot. It gets a SENTINEL pos (-1) that
+    //  • Survivor after it (prepend / middle insert) → SENTINEL pos (-1), which
     //    `computeForLis` SKIPS, so it is never an LIS member and always falls to
-    //    `applyForMoves`, which threads it in before its logical successor. This
-    //    also keeps the PREPEND fast path at zero probes: the survivors form a
-    //    monotone run the LIS extends, and every new row is a skipped sentinel.
+    //    `applyForMoves` to be threaded in before its logical successor. Keeps
+    //    PREPEND at zero probes: survivors form a monotone run the LIS extends.
     //
-    //  • NEW entry in the TRAILING all-new run (append) is already at its
-    //    logical position; it keeps a strictly-increasing pos ABOVE every
-    //    survivor (`currentKeys.length + added`; survivors ∈ [0,
-    //    currentKeys.length) by the post-update invariant that fresh/replace/
-    //    reorder all set pos = logical index) so the LIS extends it as a STAY —
-    //    append does ZERO moves and ZERO probes.
+    //  • Trailing all-new run (append) → already at its logical position, so it
+    //    keeps a strictly-increasing pos ABOVE every survivor and the LIS extends
+    //    it as a STAY. Append does ZERO moves and ZERO probes.
     //
-    // `lastSurvivorIdx` is computed BEFORE any new key is added to the cache, so
-    // `cache.has` cleanly separates survivors from the rows about to be mounted.
-    // (Both sentinel and trailing pos are overwritten with the final logical
-    // index by the reorder's pos-refresh; the small-k path ignores pos for
-    // placement — it relocates via survivor anchors — so this is inert there.)
+    // `lastSurvivorIdx` is computed BEFORE any new key enters the cache, so
+    // `cache.has` cleanly separates survivors from rows about to be mounted.
     let lastSurvivorIdx = -1
     for (let i = 0; i < n; i++) {
       if (cache.has(newKeys[i] as string | number)) lastSurvivorIdx = i
@@ -902,23 +857,19 @@ export function mountFor<T>(
   ) => {
     // Fast path: pure contiguous removal (the krausest `remove` op). A cheap
     // prefix/suffix `===` scan replaces the general path's per-key cache probe,
-    // full-cache Set scan, and all-stay LIS — see tryContiguousRemoval. Falls
-    // through unchanged when it isn't a clean single-run removal.
+    // full-cache Set scan and all-stay LIS. Falls through unchanged otherwise.
     if (tryContiguousRemoval(n, newKeys)) {
       currentKeys = newKeys
       return
     }
 
-    // Mount new entries FIRST and count them. If nothing was added AND the
-    // cache now holds exactly `n` entries, every newKey was already cached and
-    // the counts match — i.e. a PURE REORDER (same key set, new order: swap /
-    // reverse / sort). There's then nothing stale to remove, so skip the O(n)
-    // newKey-Set rebuild + the O(m) stale scan entirely (measured ~17% off a
-    // 1k full-reverse). Only when a key was added/removed do we pay for them.
+    // Mount new entries FIRST and count them. If nothing was added AND the cache
+    // now holds exactly `n`, every newKey was already cached — a PURE REORDER
+    // (swap / reverse / sort) with nothing stale — so skip the O(n) newKey-Set
+    // rebuild and the O(m) stale scan (~17% off a 1k full-reverse).
     //
-    // Mounting before removing is order-independent for correctness: new and
-    // stale keys are disjoint, and `removeStaleForEntries` skips any cache key
-    // present in the newKey Set (which includes the just-added ones).
+    // Mounting before removing is order-independent: new and stale keys are
+    // disjoint, and `removeStaleForEntries` skips any key in the newKey Set.
     const added = mountNewForEntries(items, n, newKeys, liveParent)
     if (added !== 0 || cache.size !== n) {
       _reusableKeySet.clear()
@@ -940,16 +891,12 @@ export function mountFor<T>(
     if (!liveParent) return
     const items = source()
     const n = items.length
-    // Child mounts (renderInto → mountChild) must NOT re-track on this
-    // effect's run, mirroring mountReactive's pattern at line ~92. Without
-    // this, any signal read during a child component's setup (e.g. useQuery
-    // calling `new QueryObserver(client, options())` at construction time,
-    // which reads any signals inside the options builder) leaks its
-    // subscription up to the For effect. A flip of the unrelated signal
-    // re-runs For, runCleanup() disposes ALL inner effects, and
-    // handleIncrementalUpdate skips re-mount on key match — leaving the
-    // subtree's inner effects gone forever. Reproduced by the
-    // `<For>`-shaped test in fanout-repro.test.tsx.
+    // Child mounts must NOT re-track on this effect's run (mirrors
+    // mountReactive). Otherwise any signal read during a child component's setup
+    // leaks its subscription up to the For effect: a flip of that unrelated
+    // signal re-runs For, runCleanup() disposes ALL inner effects, and the
+    // incremental update skips re-mount on key match — leaving the subtree's
+    // inner effects gone forever. Locked by fanout-repro.test.tsx.
     runUntracked(() => {
       if (n === 0) {
         handleFastClear(liveParent)
@@ -1037,10 +984,10 @@ function smallKPlace(
  * this entry is a single node — skip the toMove array entirely.
  */
 function moveEntryBefore(parent: Node, startNode: Node, endNode: Node | null, before: Node): void {
-  // Single-node fast path (covers all createTemplate rows — the common case).
-  // `end === null` is the entry's own mount-time statement that its content is
-  // exactly one node — no neighbor inspection, no module-level anchor registry
-  // (the prior WeakSet registry retained its grown backing table forever).
+  // Single-node fast path (covers all createTemplate rows). `end === null` is the
+  // entry's own mount-time statement that its content is exactly one node — no
+  // neighbor inspection, no module-level anchor registry (the prior WeakSet
+  // registry retained its grown backing table forever).
   if (endNode === null) {
     parent.insertBefore(startNode, before)
     return

@@ -25,17 +25,13 @@ export interface EffectOptions {
 }
 
 // ─── Effect-scoped context-owner capture (DI from `@pyreon/core`) ────────────
-//
-// When an effect re-runs AFTER the synchronous mount that set it up, the active
-// context OWNER may differ from setup time (e.g. `mountReactive` swaps owners
-// via `runWithContextOwner` when mounting deferred children). Without restoring
-// the owner captured at setup, reactive re-runs would resolve `useContext()`
-// through whatever owner happens to be current when the scheduler fires —
-// silently breaking `useMode()` / `useTheme()` / `useRouter()` on every update.
-//
-// `@pyreon/reactivity` sits below `@pyreon/core`, so core registers a
-// capture+restore pair via `setSnapshotCapture` at module load. When unset (raw
-// reactivity-only consumers), effects skip context handling entirely.
+// A re-run happens after the synchronous mount, when the active context OWNER
+// may differ from setup time (mountReactive swaps owners for deferred children).
+// Without restoring the setup-time owner, `useContext()` resolves through
+// whatever owner is current when the scheduler fires — silently breaking
+// useMode/useTheme/useRouter on every update. reactivity sits below core, so
+// core registers the capture/restore pair via `setSnapshotCapture`; when unset,
+// effects skip context handling entirely.
 export interface ReactiveSnapshotCapture {
   capture: () => unknown
   /** Run `fn` with the previously-captured snapshot active. */
@@ -56,13 +52,10 @@ export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
 }
 
 // ─── onCleanup ───────────────────────────────────────────────────────────────
-// Thread-local collector for cleanup functions registered during effect
-// execution. LAZY: the run body only opens the WINDOW (a boolean); the array is
-// allocated on the first onCleanup() call, since the overwhelming majority of
-// effects never call it. Both window and array are saved/restored around each
-// run so a NESTED effect() can't clobber the outer's collector — without that,
-// the inner run nulled the module var on exit and silently DROPPED any outer
-// onCleanup() registered after the nested effect was created.
+// Thread-local collector for cleanups registered during effect execution. LAZY:
+// the run opens only a boolean WINDOW; the array is allocated on first use.
+// Window and array are saved/restored per run, or a NESTED effect() would null
+// the module var on exit and silently DROP outer cleanups registered after it.
 let _cleanupCollector: (() => void)[] | null = null
 let _cleanupWindowOpen = false
 
@@ -90,30 +83,21 @@ export function onCleanup(fn: () => void): void {
   }
 }
 
-// Lazy inner-effect collection window sentinel. A run opens the window by
-// setting the module collector to THIS array; the first nested `effect()` swaps
-// in a real array. Nothing ever pushes into the sentinel — the swap happens
-// before the first push by construction. Saves one array allocation per effect
-// run for the dominant no-nested-effects case.
+// Lazy inner-effect window sentinel: a run opens the window by setting the
+// module collector to THIS array, and the first nested `effect()` swaps in a real
+// one. Nothing ever pushes into the sentinel, so the dominant
+// no-nested-effects case allocates nothing.
 const LAZY_INNER: unknown[] = []
 
-// Inner-effect collector state is owned by tracking.ts so `runUntracked` can
-// suspend it in lock-step with `activeEffect`. effect.ts only touches it through
-// the imported getter/setter, which keeps the auto-cleanup chain disconnected
-// from work that explicitly opted out of the outer reactive context.
+// Inner-effect collector state lives in tracking.ts so `runUntracked` can
+// suspend it in lock-step with `activeEffect`.
 
-// Global error handler for unhandled errors thrown inside effects. Defaults to
-// console.error so silent failures are never swallowed.
-//
-// Two surfaces, both fired on every effect error:
-//   1. The user-overridable handler set via `setErrorHandler` (legacy).
-//   2. A globalThis bridge `__pyreon_report_error__` that `@pyreon/core`
-//      installs in `registerErrorHandler`, so effect errors reach the same
-//      telemetry pipeline as component/mount/render errors. globalThis-based to
-//      avoid an upward import (core depends on reactivity, not the reverse);
-//      same shape as the perf-harness counter sink, zero cost when unused.
-//
-// New consumers should prefer `@pyreon/core`'s `registerErrorHandler`.
+// Global handler for unhandled errors thrown inside effects; defaults to
+// console.error so failures are never silently swallowed. Two surfaces fire on
+// every error: the legacy `setErrorHandler` handler, and a globalThis bridge
+// `__pyreon_report_error__` that `@pyreon/core` installs so effect errors reach
+// the same telemetry pipeline as component errors. globalThis-based to avoid an
+// upward import. New consumers should prefer core's `registerErrorHandler`.
 
 interface PyreonErrorBridge {
   __pyreon_report_error__?: (err: unknown, phase: 'effect') => void
@@ -121,10 +105,8 @@ interface PyreonErrorBridge {
 const _errorBridge = globalThis as PyreonErrorBridge
 
 function _defaultErrorHandler(err: unknown): void {
-  // Last-resort unhandled-effect-error reporter — MUST fire in
-  // production (silently swallowing uncaught effect errors is a
-  // serious bug; React/Vue/Solid all log uncaught errors in prod).
-  // Deliberately not __DEV__-gated.
+  // Last-resort reporter — MUST fire in production too. Silently swallowing an
+  // uncaught effect error is a serious bug; React/Vue/Solid all log in prod.
   // pyreon-lint-disable-next-line pyreon/dev-guard-warnings
   console.error('[pyreon] Unhandled effect error:', err)
 }
@@ -159,11 +141,9 @@ export function effect(
   fn: () => (() => void) | void,
   options?: EffectOptions,
 ): Effect {
-  // Dev warning for async effect callbacks: the tracking context is the
-  // synchronous frame around fn's top half, so anything after the first `await`
-  // runs detached and its signal reads are never tracked. Checking
-  // `constructor.name === 'AsyncFunction'` catches it at registration time
-  // without invoking anything.
+  // Async effect callbacks: the tracking context is the synchronous frame around
+  // fn's top half, so reads after the first `await` are never tracked. The
+  // constructor-name check catches it at registration without invoking anything.
   if (process.env.NODE_ENV !== 'production') {
     if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
       // oxlint-disable-next-line no-console
@@ -177,16 +157,12 @@ export function effect(
   // Capture the scope at creation time — remains correct during future re-runs
   // even after setCurrentScope(null) has been called post-setup.
   const scope = getCurrentScope()
-  // Capture the external (core-context) owner AND the hook reference at SETUP.
-  // Reactive re-runs restore it before invoking fn, so provider lookups stay
-  // correct even when the active context owner differs at re-run time
-  // (mountReactive swaps owners via runWithContextOwner).
+  // Capture the context owner + hook at SETUP; re-runs restore it before
+  // invoking fn (see the module header).
   const cap = _snapshotCapture
   const snapshot = cap ? cap.capture() : null
-  // Pre-build the restore-wrapping closure ONCE at setup (mirrors
-  // `renderEffect`'s `trackedFn`). The previous per-re-run `() => restore(...)`
-  // allocation fired on every non-first effect run; this reuses one closure.
-  // When no snapshot (or no hook), re-runs use `fn` directly — no wrapper.
+  // Pre-build the restore wrapper ONCE at setup instead of allocating a
+  // `() => restore(...)` closure on every non-first run.
   const fnToRunReplay: () => void =
     snapshot !== null && cap ? () => cap.restore(snapshot, fn) : fn
   let disposed = false
@@ -196,9 +172,8 @@ export function effect(
   const deps: Set<() => void>[] = []
 
   let cleanups: (() => void)[] | undefined
-  // Inner effects created during this effect's fn() body. Disposed on
-  // outer re-run (before the next fn()) and on outer dispose(). Without
-  // this, nested effects leak across outer lifecycle boundaries.
+  // Inner effects created during this effect's body — disposed on outer re-run
+  // and on outer dispose, else they leak across outer lifecycle boundaries.
   let innerEffects: Effect[] | null = null
 
   const runCleanup = () => {
@@ -238,11 +213,9 @@ export function effect(
       _countSink.__pyreon_count__?.('reactivity.effectRun')
       _rdRecordFire(run)
     }
-    // Run previous cleanup before re-running
     runCleanup()
-    // Open a LAZY inner-effect window (sentinel — no array allocated unless a
-    // nested effect() is actually created) and a LAZY onCleanup window (boolean).
-    // Both saved/restored so nested runs can't clobber this run's state.
+    // Open LAZY inner-effect + onCleanup windows (nothing allocated until
+    // actually used), saved/restored so nested runs can't clobber this one.
     const outerCollector = getInnerEffectCollector()
     setInnerEffectCollector(LAZY_INNER)
     const prevCleanupWindow = _cleanupWindowOpen
@@ -250,15 +223,10 @@ export function effect(
     _cleanupWindowOpen = true
     _cleanupCollector = null
     try {
-      // First run COLLECTS deps into the persistent array; re-runs VERIFY them
-      // positionally (zero Set ops in the steady state). No per-re-run teardown
-      // — that pair is exactly what verify mode replaces.
-      //
-      // The first run also executes inside the synchronous mount where the
-      // context stack is still intact, so call fn directly rather than pushing
-      // the captured snapshot a redundant second time. Re-runs happen after
-      // mountReactive truncated the stack and need it restored, via the cached
-      // `fnToRunReplay` closure built once at setup.
+      // First run COLLECTS deps; re-runs VERIFY them positionally (zero Set ops
+      // in the steady state). The first run is inside the synchronous mount where
+      // the context stack is still intact, so it calls fn directly; re-runs happen
+      // after mountReactive truncated the stack and need it restored.
       cleanup =
         (isFirstRun ? runCollect(run, deps, fn) : runVerify(run, deps, fnToRunReplay)) ||
         undefined

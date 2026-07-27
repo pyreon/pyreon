@@ -53,41 +53,26 @@ export function createTemplate<T>(
 
 // ─── Text-coercion handling ───────────────────────────────────────────────────
 //
-// Both `_bindText` paths String()-coerce the bound value into `Text.data`.
-// Two failure shapes used to ship real bugs through that coercion:
+// Both `_bindText` paths String()-coerce the bound value into `Text.data`. Two
+// failure shapes shipped real bugs through that coercion:
 //
-//  • PZ-02 — a VNode / NativeItem (or an array containing one) rendered the
-//    literal "[object Object]". FIXED at this layer: on the first VNode-shaped
-//    value the binding permanently UPGRADES to a subtree mount (the swap core
-//    shared with `bindPolymorphicText`) — see `_bindText`. SSR always rendered
-//    the subtree correctly, so the upgrade also removes a guaranteed
-//    SSR↔client hydration mismatch for `{sig()}` where the signal holds a
-//    VNode. The dev warning below remains only for the degenerate case where
-//    the bound text node has NO parent (nowhere to mount — compiled templates
-//    always bind attached nodes).
-//  • PZ-05 — a raw FUNCTION renders its SOURCE text (e.g. an accessor
-//    neutralized by an `as never` cast, which the compiler treats as static).
-//    Still warn-only: a function RESULT stays on the String() path.
+//  • A VNode / NativeItem (or an array containing one) rendered the literal
+//    "[object Object]". FIXED here: on the first VNode-shaped value the binding
+//    permanently UPGRADES to a subtree mount, which also removes a guaranteed
+//    SSR<->client mismatch (SSR always rendered the subtree correctly). The dev
+//    warning below remains only for a bound text node with NO parent.
+//  • A raw FUNCTION renders its SOURCE text (an accessor neutralized by an
+//    `as never` cast). Still warn-only — a function RESULT stays on String().
 //
-// The check targets the RESULT value only — `_bindText`'s SOURCE is
-// legitimately a callable that gets CALLED (fallback path) or read via `._v`
-// (fast path); neither position is checked.
+// The check targets the RESULT value only; `_bindText`'s SOURCE is legitimately
+// a callable. Warns ONCE per text node via an expando on the node itself (no
+// module-level registry, no prod allocation).
 //
-// Warn ONCE per text node: the flag lives on the node itself (an expando set
-// only in dev, only when a warning fires) — no module-level registry (see
-// anti-patterns "module-level WeakSet registries"), no allocation on the prod
-// path. Every call site sits inside the bare `process.env.NODE_ENV` gate, so
-// the whole helper (strings included) tree-shakes out of production bundles —
-// locked by `dev-gate-treeshake.test.ts`.
-//
-// Coverage note: only the `_bindText` sinks are hookable at runtime. The
-// compiler's `_bind(() => { __t0.data = expr })` emit performs the coercion
-// via a RAW assignment inside user bundles, and `_bindDirect` updaters are
-// likewise raw compiler-emitted DOM writes — neither can be intercepted here
-// without changing compiler emit. For TEXT that is fine by construction:
+// Coverage note: only the `_bindText` sinks are hookable at runtime — the
+// compiler's `_bind(() => { __t0.data = expr })` emit and `_bindDirect` updaters
+// are raw DOM writes in user bundles. For TEXT that is fine by construction:
 // `_bindDirect` reaches `.data` only through the signal-method-call promotion
-// (`{count().toFixed(2)}` — a pure-method safelist over primitive values), so
-// a raw VNode value never lands on `.data` via `_bindDirect`.
+// (a pure-method safelist over primitives), so a raw VNode never lands there.
 
 /** Structural VNode check — VNode has no symbol brand (see core/types.ts),
  *  so `{ type, props, children }` is the discriminator; `__isNative` covers
@@ -209,34 +194,30 @@ export function _bindText(
   caller?: () => unknown,
 ): () => void {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.bindText')
-  // Captured for the upgrade path: components mounted by a LATER upgrade
-  // (inside a signal dispatch, where no ambient owner is active) must resolve
-  // context through the owner active at SETUP — the same discipline as
-  // `renderEffect`'s snapshot capture (anti-patterns: "captured context owner
-  // for re-runs"). A module-variable read — negligible per-binding cost.
+  // Captured for the upgrade path: components mounted by a LATER upgrade run
+  // inside a signal dispatch with no ambient owner, so they must resolve context
+  // through the owner active at SETUP — same discipline as renderEffect's
+  // snapshot capture.
   const ownerAtSetup = getContextOwner()
   // Fast path: source has .direct() (signal or computed)
   if (source.direct) {
-    // Lifecycle slot: null until subscribed; the textUpdate unsubscriber
-    // before an upgrade; the combined "unsub core updater + tear down
-    // subtree" cleanup after one. The returned disposer reads it late so
-    // ONE stable function survives the subscriber swap.
+    // Lifecycle slot: null until subscribed, the textUpdate unsubscriber before
+    // an upgrade, the combined cleanup after one. The returned disposer reads it
+    // late so ONE stable function survives the subscriber swap.
     let disposer: (() => void) | null = null
     const textUpdate = () => {
       const v = source._v
       const next = v == null || v === false ? '' : String(v as string | number)
       if (next !== node.data) {
-        // Value actually changed — the ONLY place the upgrade check runs
-        // (never on the no-change partial-update hot path). For strings and
-        // numbers the typeof short-circuits: one comparison per real change.
+        // Value actually changed — the ONLY place the upgrade check runs, never
+        // on the no-change hot path. Strings and numbers short-circuit on typeof.
         if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
           const parent = node.parentNode
           if (parent !== null) {
-            // Permanently upgrade this binding to a subtree mount. The
-            // textUpdate subscription is swapped for a core-applying one —
-            // unsubscribing mid-dispatch is safe (`_d1` is a single slot the
-            // dispatch already dereferenced; the `_d` Set path is enqueued
-            // by reference).
+            // Permanently upgrade this binding to a subtree mount. Swapping the
+            // subscription mid-dispatch is safe: `_d1` is a single slot the
+            // dispatch already dereferenced, and the `_d` Set path is enqueued
+            // by reference.
             if (disposer !== null) disposer()
             const core = createPolyTextCore(node, parent, ownerAtSetup)
             core.apply(v as VNodeChild)
@@ -255,10 +236,9 @@ export function _bindText(
       }
     }
     textUpdate()
-    // Dev-only: correlate this text node with the signal/computed it displays,
-    // so devtools can answer "which signal drives this on-screen value?". Both
-    // the node and the registered source are in scope here — an exact tag, not
-    // a heuristic. Tree-shaken in production (nothing tags → nothing correlates).
+    // Dev-only: correlate this text node with the signal/computed it displays so
+    // devtools can answer "which signal drives this value?". Both node and source
+    // are in scope here — an exact tag, not a heuristic. Tree-shaken in prod.
     if (process.env.NODE_ENV !== 'production') {
       const sourceId = _rdNodeId(source)
       if (sourceId !== undefined) _tagTextBinding(node, sourceId)
@@ -268,12 +248,10 @@ export function _bindText(
     if (disposer === null) disposer = source.direct(textUpdate)
     return () => disposer!()
   }
-  // Fallback: bare callable. Use caller if compiler provided one (preserves
-  // `this` for member-expression sources); otherwise call source directly.
-  // The renderEffect keeps tracking `fn`'s reads across the upgrade — after
-  // the first VNode-shaped value every re-run routes through the swap core
-  // (whose child mounts are runUntracked, so subtree reads can't leak into
-  // this effect's deps).
+  // Fallback: bare callable. Use the compiler-provided caller when present (it
+  // preserves `this` for member-expression sources). The renderEffect keeps
+  // tracking `fn`'s reads across the upgrade — after the first VNode-shaped value
+  // every re-run routes through the swap core, whose child mounts are untracked.
   const fn = caller ?? (source as unknown as () => unknown)
   let core: PolyTextCore | null = null
   const disposeEffect = renderEffect(() => {
@@ -344,22 +322,12 @@ export function _bindDirect(
 
 // Cache parsed <template> elements by HTML string — parse once, clone many.
 //
-// FIFO bound: typical apps emit a small bounded set of unique
-// HTML strings (one per JSX element tree the compiler hoists), so the cache
-// stays in the dozens-to-hundreds in practice. But an app that constructs
-// JSX from user input (or compiles many large dynamic templates) could grow
-// this unbounded — every unique string holds a parsed <template> alive.
-//
-// SizedMap in FIFO mode (default, `lru: false`) — get() does NOT touch
-// ordering, so the cache-HIT hot path is a single Map lookup with no
-// recency bookkeeping. See the _tpl docstring below for why touch-on-read
-// was deliberately rejected here (would dominate the hot path on
-// templates instantiated thousands of times).
-//
-// 1024 chosen as a balance: ~1024 unique templates × ~1KB parsed = ~1MB
-// worst case — well within memory budget for any realistic app, and
-// generous enough that no real codebase will hit the cap. Apps that
-// genuinely need a different cap can swap their own _tpl wrapper.
+// SizedMap in FIFO mode: get() does NOT touch ordering, so a cache HIT is a
+// single Map lookup with no recency bookkeeping (see `_tpl` below for why
+// touch-on-read was rejected). Bounded at 1024 because an app that builds JSX
+// from user input could otherwise grow this unboundedly, with every unique
+// string holding a parsed <template> alive. 1024 x ~1KB parsed is ~1MB worst
+// case and no real codebase approaches the cap.
 const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 })
 
 /**
@@ -389,12 +357,10 @@ const _tplCache = new SizedMap<string, HTMLTemplateElement>({ maxEntries: 1024 }
  * })
  */
 // SVG tags that are ALSO valid HTML — a template rooted at one of these is
-// almost always the HTML element, so we do NOT SVG-wrap it. `svg` parses
-// correctly as a literal root on its own; a bare `<title>` root is an HTML
-// document title, not an SVG `<title>`. Every other entry in SVG_TAGS is
-// namespace-unambiguous. (MathML is the same SHAPE of bug but has zero real
-// template-rooted instances in the codebase AND happy-dom can't parse MathML
-// foreign content to verify a fix — so it is deliberately out of scope here.)
+// almost always the HTML element, so do NOT SVG-wrap it. Every other entry in
+// SVG_TAGS is namespace-unambiguous. (MathML is the same shape of bug but has no
+// real template-rooted instances, and happy-dom can't parse MathML foreign
+// content to verify a fix, so it is deliberately out of scope.)
 const SVG_ROOT_EXCLUDE = new Set(['svg', 'title'])
 
 /**
@@ -422,10 +388,9 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
   if (!tpl) {
     tpl = document.createElement('template')
     if (isSvgRooted(html)) {
-      // Parse inside an `<svg>` wrapper so the root + descendants land in the
-      // SVG namespace, then MOVE the parsed children into the cache template's
-      // content — moving preserves `namespaceURI`, and the cloned root in the
-      // hot path below inherits it too. Verified in happy-dom + real Chromium.
+      // Parse inside an `<svg>` wrapper so root + descendants land in the SVG
+      // namespace, then MOVE the parsed children into the cache template's
+      // content — moving preserves `namespaceURI`, and the cloned root inherits it.
       const wrapper = document.createElement('template')
       wrapper.innerHTML = `<svg>${html}</svg>`
       const svg = wrapper.content.firstElementChild
@@ -441,16 +406,12 @@ export function _tpl(html: string, bind: (el: HTMLElement) => (() => void) | nul
     // oldest entry once we hit the cap.
     _tplCache.set(html, tpl)
   }
-  // Cache-HIT is now a no-op (no LRU touch). The cache-HIT path was previously
-  // `delete + set` to re-insert at the most-recent position — 2 Map ops per
-  // call, dominating the hot path for templates instantiated thousands of times
-  // (a js-framework-benchmark `create 10,000 rows` paid 20,000 Map ops just for
-  // LRU bookkeeping). Switching to FIFO means a frequently-used template
-  // inserted early gets evicted before a rarely-used template inserted later —
-  // but ONLY when the cache is full (cap 1024). No realistic app approaches
-  // 1024 distinct compiled templates; if one does, the worst case is occasional
-  // re-parse on eviction (a few ms one-time), which is far cheaper than 2 Map
-  // ops on every single template instantiation.
+  // Cache-HIT is a no-op — no LRU touch. The previous `delete + set` re-insert
+  // cost 2 Map ops per call and dominated the hot path (a 10,000-row create paid
+  // 20,000 Map ops on LRU bookkeeping alone). FIFO can evict a frequently-used
+  // early template before a rarely-used later one, but only once the cache is
+  // full; no realistic app approaches 1024 distinct templates, and the worst
+  // case is a one-time re-parse.
   const el = tpl.content.firstElementChild?.cloneNode(true) as HTMLElement
   const cleanup = bind(el)
   return { __isNative: true, el, cleanup }
@@ -494,10 +455,9 @@ export function _rsCollapse(
   isDark: () => boolean,
   bind?: ((el: HTMLElement) => (() => void) | null) | null,
 ): NativeItem {
-  // Single-class fast path: under the cssVariables theming mode the
-  // resolver's light/dark renders produce IDENTICAL classes (mode lives in
-  // the CSS cascade via custom properties, not in the className). Skip the
-  // mode binding entirely — no subscription, no renderEffect, no disposer.
+  // Single-class fast path: under cssVariables theming the resolver's light/dark
+  // renders produce IDENTICAL classes (mode lives in the CSS cascade, not the
+  // className), so skip the mode binding entirely.
   if (lightClass === darkClass) {
     return _tpl(html, (el) => {
       el.className = lightClass
@@ -505,9 +465,8 @@ export function _rsCollapse(
     })
   }
   return _tpl(html, (el) => {
-    // Reactive class: _bindDirect's plain-callable fallback wraps this in
-    // a renderEffect, so reading the mode accessor subscribes to the live
-    // mode signal — a mode swap re-runs ONLY this className assignment.
+    // Reactive class: `_bindDirect`'s plain-callable fallback wraps this in a
+    // renderEffect, so a mode swap re-runs ONLY this className assignment.
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
@@ -551,15 +510,10 @@ export function _rsCollapseH(
     const disposeClass = _bindDirect(isDark as unknown as { _v?: unknown }, (v) => {
       el.className = v ? darkClass : lightClass
     })
-    // Inline-first-disposer slot (mirrors the signal `_d1`→`_d` idiom): the
-    // dominant collapsed shape is a single handler (`<Button onClick={h}>`), so
-    // hold the first disposer inline and promote to an array ONLY on a 2nd
-    // handler — no per-instance array allocation in the common 0/1-handler case.
-    // `Object.keys` (not `for...in`) so an attacker who pollutes
-    // `Object.prototype` can't inject a fake handler via inherited
-    // enumerable properties. Defense-in-depth — the compiler emits a
-    // clean object literal so this matters defensively, not in
-    // practice, but the cost is zero.
+    // Inline-first-disposer slot (mirrors the signal `_d1`->`_d` idiom): the
+    // dominant collapsed shape is a single handler, so hold the first disposer
+    // inline and promote to an array only on a 2nd. `Object.keys` (not `for...in`)
+    // so prototype pollution can't inject a fake handler.
     let d0: (() => void) | null = null
     let dRest: (() => void)[] | null = null
     for (const key of Object.keys(handlers)) {
@@ -638,20 +592,12 @@ export function _rsCollapseDyn(
   bind?: ((el: HTMLElement) => (() => void) | null) | null,
 ): NativeItem {
   return _tpl(html, (el) => {
-    // One `renderEffect` drives the className from both accessors;
-    // reading `valueIndex()` AND `isDark()` inside the callback
-    // subscribes to BOTH live signals via Pyreon's tracking — a change
-    // to EITHER re-runs only this className assignment, no remount.
-    //
-    // Direct `renderEffect` (vs the `_bindDirect` indirection used by
-    // `_rsCollapse`): the `_bindDirect` fallback path calls the source
-    // function ONCE per re-run and passes the result to the callback.
-    // We were ignoring that result and calling `valueIndex()` again
-    // inside — i.e., a double call per re-run. Side-effecting cond
-    // expressions (`{(modifyState(), cond) ? 'a' : 'b'}`) would fire
-    // their side-effects twice. Direct `renderEffect` calls
-    // `valueIndex()` exactly once per re-run, matching the original
-    // source's call-count contract.
+    // One `renderEffect` drives the className from both accessors, subscribing to
+    // both signals — a change to EITHER re-runs only this assignment, no remount.
+    // Direct `renderEffect` rather than `_bindDirect` so `valueIndex()` runs
+    // exactly ONCE per re-run: the `_bindDirect` fallback calls the source and
+    // passes the result, and calling `valueIndex()` again inside would fire a
+    // side-effecting cond expression twice.
     const disposeClass = renderEffect(() => {
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
@@ -726,24 +672,17 @@ export function _rsCollapseDynH(
   bind?: ((el: HTMLElement) => (() => void) | null) | null,
 ): NativeItem {
   return _tpl(html, (el) => {
-    // Reactive class — identical shape to `_rsCollapseDyn`: one
-    // `renderEffect` reads both accessors, subscribing to both signals;
-    // a change to EITHER re-runs only this className assignment, no
-    // remount. Direct `renderEffect` (not via `_bindDirect`) so
-    // `valueIndex()` runs exactly once per re-run — see the
-    // corresponding comment in `_rsCollapseDyn`.
+    // Reactive class — identical shape to `_rsCollapseDyn`: one `renderEffect`
+    // reads both accessors, so a change to EITHER re-runs only this className
+    // assignment, no remount.
     const disposeClass = renderEffect(() => {
       const idx = (valueIndex() << 1) | (isDark() ? 1 : 0)
       el.className = classes[idx] ?? ''
     })
-    // Handler attachment — identical to `_rsCollapseH`: routes through
-    // the canonical `_bindEvent` path so delegation / batching / name
-    // normalization behave byte-identically to the 5-layer mount.
-    // `Object.keys` (not `for...in`) so an attacker who pollutes
-    // `Object.prototype` can't inject a fake handler via inherited
-    // enumerable properties — only OWN keys count. The compiler emits
-    // a clean object literal so this matters defensively, not in
-    // practice, but the cost is zero.
+    // Handler attachment — identical to `_rsCollapseH`: routes through the
+    // canonical `_bindEvent` so delegation / batching / name normalization behave
+    // byte-identically to the 5-layer mount. `Object.keys` (not `for...in`) so
+    // prototype pollution can't inject a fake handler.
     const handlerDisposers: (() => void)[] = []
     for (const key of Object.keys(handlers)) {
       const d = _bindEvent(el, key, handlers[key])
