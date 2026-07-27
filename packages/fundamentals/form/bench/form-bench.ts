@@ -84,6 +84,12 @@ const bench = (scenario: string, impls: { pyreon: () => void; tanstack: () => vo
   rows.push({ scenario, pyreon: measure(impls.pyreon), tanstack: measure(impls.tanstack) })
 }
 
+// Sink for benched results. Without consuming the result, `void pf.values()`
+// is dead code the JIT can eliminate entirely — which measures elimination,
+// not work (the symptom is a sub-timer-resolution median with CV > 100%).
+// Printed at exit so it can never be optimised away.
+let __sink = 0
+
 // A realistic 12-field form shape (mix of string / number / boolean).
 type Vals = {
   first: string; last: string; email: string; phone: string; street: string; city: string
@@ -91,16 +97,55 @@ type Vals = {
 }
 const initial = (): Vals => ({ first: '', last: '', email: '', phone: '', street: '', city: '', zip: '', country: '', age: 0, score: 0, newsletter: false, terms: false })
 
+// ─── CORRECTNESS GATE (runs BEFORE any timing) ──────────────────────────
+// Without this, a "win" can be one side doing LESS work. Two shapes are
+// specifically at risk here: Pyreon's `values()` is epoch-CACHED while
+// TanStack reads `state.values` directly (a stale cache would read as a free
+// win), and `setFieldValue` must be observable IMMEDIATELY on both sides —
+// if one deferred the write, the hot-path comparison would be meaningless.
+{
+  const pf = useForm({ initialValues: initial(), onSubmit: () => {} })
+  const tf = new FormApi({ defaultValues: initial() })
+  tf.mount()
+  const fail = (m: string): never => {
+    throw new Error(`[form-bench] CORRECTNESS GATE FAILED — ${m}`)
+  }
+
+  // 1. Both expose all 12 fields with equal initial values.
+  const pv0 = pf.values() as Record<string, unknown>
+  const tv0 = tf.state.values as Record<string, unknown>
+  const keys = Object.keys(initial())
+  if (Object.keys(pv0).length !== keys.length) fail(`pyreon values() has ${Object.keys(pv0).length} keys, expected ${keys.length}`)
+  for (const k of keys) {
+    if (pv0[k] !== tv0[k]) fail(`initial mismatch on "${k}": pyreon=${String(pv0[k])} tanstack=${String(tv0[k])}`)
+  }
+
+  // 2. setFieldValue is observable IMMEDIATELY on both sides (no deferral).
+  pf.setFieldValue('email', 'gate@x.dev')
+  tf.setFieldValue('email', 'gate@x.dev')
+  if ((pf.values() as Record<string, unknown>).email !== 'gate@x.dev') fail('pyreon setFieldValue not observable in values()')
+  if ((tf.state.values as Record<string, unknown>).email !== 'gate@x.dev') fail('tanstack setFieldValue not observable in state.values')
+
+  // 3. The epoch cache must INVALIDATE — a second write has to be visible too.
+  pf.setFieldValue('email', 'second@x.dev')
+  if ((pf.values() as Record<string, unknown>).email !== 'second@x.dev') fail('pyreon values() returned a STALE cached object after a second write')
+
+  // 4. reset restores the initial value on both.
+  pf.reset()
+  tf.reset()
+  if ((pf.values() as Record<string, unknown>).email !== '') fail('pyreon reset did not restore initial')
+  if ((tf.state.values as Record<string, unknown>).email !== '') fail('tanstack reset did not restore initial')
+}
 // ── Scenario 1 — form setup (create a 12-field form) ────────────────────
 bench('setup-12-fields', {
   pyreon: () => {
     const f = useForm({ initialValues: initial(), onSubmit: () => {} })
-    void f.fields.first
+    __sink += f.fields.first ? 1 : 0
   },
   tanstack: () => {
     const f = new FormApi({ defaultValues: initial() })
     f.mount()
-    void f.getFieldValue('first')
+    __sink += f.getFieldValue('first') === undefined ? 0 : 1
   },
 })
 
@@ -127,10 +172,10 @@ bench('setup-12-fields', {
   tf.mount()
   bench('read-all-values', {
     pyreon: () => {
-      void pf.values()
+      __sink += Object.keys(pf.values()).length
     },
     tanstack: () => {
-      void tf.state.values
+      __sink += Object.keys(tf.state.values).length
     },
   })
 }
@@ -193,3 +238,5 @@ console.log(
       0,
     ),
 )
+
+if (__sink === -1) console.log('sink', __sink) // keep __sink observable
