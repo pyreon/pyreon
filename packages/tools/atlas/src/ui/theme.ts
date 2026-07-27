@@ -22,15 +22,22 @@ export interface ThemeTokens {
   codeFg: string
 }
 
-// The workshop ships its OWN flat token theme (it does NOT use @pyreon/ui-theme),
-// so it augments rocketstyle's `ThemeDefault` with those tokens. This types every
-// `.theme()` / `.states()` / `.variants()` / `.sizes()` callback's `t` param as
-// `ThemeTokens` — no `as never` casts. Safe here precisely because no other
-// package augments `ThemeDefault` in this app (unlike a ui-theme consumer).
-declare module '@pyreon/rocketstyle' {
-  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-  interface ThemeDefault extends ThemeTokens {}
-}
+// NOTE — deliberately NO `declare module '@pyreon/rocketstyle'` augmentation here.
+//
+// Atlas ships its OWN flat token theme (it does NOT use @pyreon/ui-theme), and an
+// earlier cut augmented rocketstyle's global `ThemeDefault` with `ThemeTokens` to
+// type every `.theme()` callback's `t`. That is safe ONLY in an app where nothing
+// else augments `ThemeDefault` — which is false the moment Atlas is used from a
+// project that also loads `@pyreon/ui-theme` (it augments the SAME interface with
+// its own `Theme`). The two augmentations declaration-MERGE: no property names
+// collide, so there is no loud TS2320 — instead every `t` silently gains BOTH
+// shapes, and `t.spacing` (ui-theme) typechecks inside Atlas while `t.bg` (Atlas)
+// typechecks inside a ui-theme component. Both are `undefined` at runtime: the
+// types lie in both directions.
+//
+// A library must not mutate a consumer's global type surface. Atlas therefore
+// types `t` LOCALLY at each call site via the `T` alias in `./kit` — same DX, zero
+// blast radius. See .claude/rules/anti-patterns.md "Duplicate module augmentation".
 
 export interface BrandTheme {
   id: string
