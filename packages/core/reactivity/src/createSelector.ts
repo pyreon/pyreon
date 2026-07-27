@@ -34,36 +34,21 @@ export interface Selector<T> {
    */
   dispose(): void
   /**
-   * **Effect-free per-key subscription** — the fast path for the
-   * `<For>` + selector pattern (row-level reactive className, active-link
-   * styling, tab indicators, etc.).
+   * **Effect-free per-key subscription** — the fast path for the `<For>` +
+   * selector pattern (row-level reactive className, active-link styling, tab
+   * indicators).
    *
-   * Equivalent to:
-   * ```ts
-   * const dispose = renderEffect(() => updater(selector(key)))
-   * ```
-   * but skips the `renderEffect` machinery entirely: no `deps` array, no
-   * tracking frame (`runCollect`/`runVerify`), no `run` closure allocation, no
-   * scope `add({ dispose })` wrapper. The updater is called ONCE inline
-   * with the initial value, then again each time the selector's
-   * per-key bucket fires (only when the selection actually crosses this
-   * key). The bucket calls the updater with the resolved boolean directly
-   * — no per-row wrapper closure.
+   * Equivalent to `renderEffect(() => updater(selector(key)))` but skips that
+   * machinery entirely: no deps array, no tracking frame, no `run` closure, no
+   * scope wrapper. The updater is called ONCE inline with the initial value,
+   * then again only when the selection actually crosses this key.
    *
-   * Per-row alloc (the dominant one-subscriber-per-key `<For>` shape):
-   * 1 `Map.set` of the BARE updater + 1 dispose closure — NO Set at all;
-   * a Set is allocated only when a SECOND subscriber binds the same key
-   * (the inline-first-subscriber slot, PR #1537 — a 10k-row create
-   * previously allocated 10k single-entry Sets). Measured savings on a
-   * 1000-row create-and-mount
-   * benchmark with `<For>` + per-row `isSelected(row.id)` className:
-   * **-0.8ms on create-1k, -0.7ms on replace-all, -5ms on create-10k** —
-   * promoting Pyreon (compiled) from "tied" to "outright leader" on every
-   * list-mounting test vs Vue 3 / SolidJS / Svelte 5 / React 19.
+   * Per-row cost in the dominant one-subscriber-per-key shape is one `Map.set`
+   * of the bare updater plus one dispose closure — a Set is allocated only when
+   * a SECOND subscriber binds the same key.
    *
-   * Named `subscribe` rather than `bind` to avoid `Function.prototype.bind`
-   * collision (the interface inherits the Function prototype on callable
-   * shapes).
+   * Named `subscribe` rather than `bind` to avoid colliding with
+   * `Function.prototype.bind` on callable shapes.
    *
    * @param value - The per-key value to subscribe to.
    * @param updater - Called with `true` when `value` becomes the current
@@ -74,16 +59,9 @@ export interface Selector<T> {
    * @example
    * // In a compiled row template:
    * _tpl('<tr><td></td></tr>', (root) => {
-   *   const cleanup = isSelected.subscribe(row.id, (matches) => {
+   *   return isSelected.subscribe(row.id, (matches) => {
    *     root.className = matches ? 'selected' : ''
    *   })
-   *   return cleanup
-   * })
-   *
-   * @example
-   * // Active-link pattern (auto-cleans on unmount via the surrounding scope):
-   * isActiveRoute.subscribe(route.id, (active) => {
-   *   linkEl.setAttribute('aria-current', active ? 'page' : 'false')
    * })
    */
   subscribe(value: T, updater: (matches: boolean) => void): () => void
@@ -110,29 +88,22 @@ export interface Selector<T> {
  * @remarks
  * Per-key state (the `subs`/`hosts` buckets created when an effect reads
  * `selector(key)`) is the price of O(1)-per-key selection: a bucket is created
- * on first access of a key and is NOT reclaimed when that key's subscribers
- * later leave (the effect removes itself from the bucket Set, but the selector
- * gets no callback to prune the now-empty key). For a bounded key set (a list
- * of N rows) this is bounded by N; for UNBOUNDED-cardinality churn (e.g. an
- * infinite-scroll list whose row ids never repeat, kept alive indefinitely) the
- * buckets accumulate until `dispose()`. Dispose the selector when its keyed set
- * is bounded-lived. (The `.subscribe()` channel's per-key Set IS reclaimed when
- * its last subscriber leaves.)
+ * on first access and is NOT reclaimed when that key's subscribers later leave.
+ * For a bounded key set this is bounded by N; for UNBOUNDED-cardinality churn
+ * (an infinite-scroll list whose row ids never repeat) buckets accumulate until
+ * `dispose()`. (The `.subscribe()` channel's per-key Set IS reclaimed when its
+ * last subscriber leaves.)
  */
 export function createSelector<T>(source: () => T): Selector<T> {
   const subs = new Map<T, Set<() => void>>()
   // Bound updaters (from `selector.subscribe`) — kept SEPARATE from the effect
-  // bucket so the source effect can fire them with the resolved boolean
-  // directly instead of an empty re-run that closes over `current` and
-  // `value`. Saves one closure allocation per `.bind` call (significant
-  // in <For>-style usage — 1k rows × per-row className = 1k fewer
-  // closures retained for the selector's lifetime).
-  // Inline-first-subscriber storage (the signal `_d1` trick, PR #1177):
-  // the DOMINANT shape is <For> rows where every key has EXACTLY ONE
-  // subscriber — storing a bare function avoids one Set allocation per
-  // row (10k rows = 10k Sets saved on a bulk create; measured directly
-  // in the bench allocation profile as 14% of JS allocations). Promote
-  // to a Set only when a SECOND subscriber arrives for the same key.
+  // bucket so the source effect can call them with the resolved boolean directly
+  // instead of an empty re-run closing over `current` and `value`.
+  //
+  // Inline-first-subscriber storage (the signal `_d1` trick): the DOMINANT shape
+  // is <For> rows where every key has EXACTLY ONE subscriber, so storing a bare
+  // function avoids one Set allocation per row. Promote to a Set only when a
+  // SECOND subscriber arrives for the same key.
   const boundSubs = new Map<T, ((matches: boolean) => void) | Set<(matches: boolean) => void>>()
   let current: T
   let initialized = false
@@ -197,21 +168,11 @@ export function createSelector<T>(source: () => T): Selector<T> {
     boundSubs.clear()
   }
 
-  // ── Effect-free per-key binding (perf hot path) ──────────────────────────
-  // Hooks `updater` DIRECTLY into a per-key bound bucket — the source effect
-  // calls it with the resolved boolean (`true` on selection added, `false`
-  // on selection removed). No effect machinery, no per-row closure
-  // allocation beyond the dispose. See `Selector.subscribe` JSDoc for the full
-  // performance rationale + benchmark.
-  //
-  // Memory shape per `.subscribe` call (one-subscriber-per-key shape):
-  //   - 1 Map.set of the BARE updater (no Set — inline-first-subscriber
-  //     slot; a Set is allocated only on the 2nd subscriber for a key)
-  //   - 1 closure (dispose)
-  //   - 0 effect, 0 deps array, 0 tracking-stack push
-  //
-  // vs `renderEffect(() => updater(selector(key)))`: ~5× fewer allocations,
-  // no tracking-frame overhead, no scope.add wrapper.
+  // Effect-free per-key binding (perf hot path) — hooks `updater` DIRECTLY into
+  // a per-key bound bucket; the source effect calls it with the resolved boolean.
+  // Per `.subscribe` call, in the dominant one-subscriber-per-key shape: one
+  // `Map.set` of the BARE updater (no Set) plus one dispose closure — zero
+  // effects, zero deps arrays, zero tracking-frame pushes.
   selector.subscribe = (value: T, updater: (matches: boolean) => void): (() => void) => {
     if (disposed) {
       // Selector is disposed — call updater once with the stale-last value,

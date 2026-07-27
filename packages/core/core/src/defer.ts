@@ -236,15 +236,12 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     if (err) throw err
     const Comp = Loaded()
     if (!Comp) return props.fallback ?? null
-    // children is widened to `VNodeChild | render-prop` so the compiler-
-    // driven inline form (where author writes `<Defer ...><Modal /></Defer>`)
-    // typechecks at source level. At RUNTIME children is always either
-    // undefined OR the render-prop — the compiler rewrites the inline
-    // form's JSX children to a render-prop before this code runs.
-    // A non-function children at runtime means the user is invoking the
-    // inline form without the compiler pass (e.g. running tests through
-    // a bundler that doesn't include `@pyreon/vite-plugin`) — in that
-    // case we render `<Comp />` with no props as a best-effort fallback.
+    // `children` is widened to `VNodeChild | render-prop` so the compiler-driven
+    // inline form typechecks at source level. At RUNTIME it is always undefined
+    // OR the render-prop — the compiler rewrites the inline form's JSX children
+    // before this runs. A non-function children means the compiler pass didn't
+    // run (e.g. tests through a bundler without `@pyreon/vite-plugin`), so render
+    // `<Comp />` with no props as a best-effort fallback.
     const ch = props.children
     if (typeof ch === 'function') return ch(Comp)
     return h(Comp as ComponentFn, {})
@@ -271,12 +268,10 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
       ),
     )
     /* v8 ignore stop */
-    // Cast renderContent to VNodeChildAccessor — its inferred return type
-    // is `VNodeChild` (broader than the accessor's `atom | atom[]`) because
-    // `props.children` itself may return any VNodeChild. The runtime
-    // unwraps nested accessors via the same mountChild path that handles
-    // <Show>'s thunk shape; the type system doesn't model the unwrap so
-    // the cast bridges. See <Show>'s `as unknown as VNode` for prior art.
+    // Cast to VNodeChildAccessor — the inferred return type is the broader
+    // `VNodeChild` because `props.children` may return any VNodeChild. The
+    // runtime unwraps nested accessors via the same mountChild path that handles
+    // <Show>'s thunk shape; the type system doesn't model the unwrap.
     return h(
       'div',
       {

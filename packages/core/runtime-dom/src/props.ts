@@ -110,20 +110,16 @@ const SAFE_TAGS = new Set([
   'wbr',
 ])
 
-// Safe SVG tags allowed by the fallback sanitizer. Icons + inline illustrations
-// ship as `<svg>` fragments through `innerHTML`; without these, the allowlist
-// replaces every SVG element with a text node and an entire icon set renders
-// blank (no error, no warning). This is the curated safe SVG profile — shape,
-// gradient, pattern, clip/mask, text, and filter-primitive elements — mirroring
-// DOMPurify's default SVG profile. DELIBERATELY EXCLUDED as XSS-capable:
-//   - `script`  — obvious.
-//   - `foreignObject` — embeds arbitrary HTML, reopening every HTML XSS vector.
-//   - `style` — CSS injection surface (icons don't need it).
-//   - SMIL `animate`/`animateTransform`/`animateMotion`/`animateColor`/`set` —
-//     the `attributeName="href" values="javascript:…"` animation-XSS vector.
-// All entries are LOWERCASE: `sanitizeNode` compares `tagName.toLowerCase()`,
-// and the HTML parser re-cases SVG foreign content (`lineargradient` →
-// `linearGradient`) so the DOM tagName round-trips correctly on re-serialize.
+// Safe SVG tags allowed by the fallback sanitizer. Icons and inline
+// illustrations ship as `<svg>` fragments through `innerHTML`; without these the
+// allowlist replaces every SVG element with a text node and an entire icon set
+// renders blank, with no error and no warning. Curated safe profile mirroring
+// DOMPurify's, DELIBERATELY EXCLUDING as XSS-capable: `script`; `foreignObject`
+// (embeds arbitrary HTML, reopening every HTML XSS vector); `style` (CSS
+// injection); and SMIL `animate*`/`set` (the `attributeName="href"
+// values="javascript:…"` vector).
+// All entries LOWERCASE: `sanitizeNode` compares `tagName.toLowerCase()`, and
+// the parser re-cases SVG foreign content so the DOM tagName round-trips.
 const SAFE_SVG_TAGS = new Set([
   'svg',
   'g',
@@ -203,10 +199,9 @@ function stripUnsafeAttrs(el: Element): void {
     if (UNSAFE_ATTR_RE.test(attr.name)) {
       el.removeAttribute(attr.name)
     } else if (
-      // `href`/`src`/… (HTML) plus SVG's `xlink:href` — whose qualified name
-      // is NOT in URL_ATTRS but whose localName IS `href`, so an SVG
-      // `<a xlink:href="javascript:…">` / `<use xlink:href>` would otherwise
-      // slip the guard.
+      // `href`/`src`/… (HTML) plus SVG's `xlink:href` — whose qualified name is
+      // NOT in URL_ATTRS but whose localName IS `href`, so `<a xlink:href=
+      // "javascript:…">` / `<use xlink:href>` would otherwise slip the guard.
       (URL_ATTRS.has(attr.name) || attr.localName === 'href') &&
       isUnsafeUrl(attr.value) &&
       !isSafeImageDataUri(el.tagName, attr.name, attr.value)
@@ -274,16 +269,13 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
   let cleanups: Cleanup[] | null = null
   for (const key in props) {
     if (key === 'key' || key === 'ref' || key === 'children' || key === skipKey) continue
-    // Getter-shaped descriptors are produced by `makeReactiveProps` from
-    // compiler-emitted `_rp(() => signal())` wrappers. A plain
-    // `props[key]` read fires the getter once at mount time and stores
-    // the resolved value — breaking signal-driven reactivity. Detecting
-    // the descriptor and wrapping the read in `renderEffect` here is
-    // equivalent to applyProp's existing function-value branch (line 322),
-    // routed through the descriptor instead of the value. Other prop
-    // pipelines (`splitProps`, `mergeProps`, rocketstyle's
-    // descriptor-preserving merges) keep the getter intact end-to-end;
-    // this is the final consumer that closes the loop.
+    // Getter-shaped descriptors come from `makeReactiveProps` unwrapping
+    // compiler-emitted `_rp(() => signal())`. A plain `props[key]` read would fire
+    // the getter once at mount and store the resolved value, breaking
+    // signal-driven reactivity. Detecting the descriptor and wrapping the read in
+    // `renderEffect` is equivalent to applyProp's function-value branch, routed
+    // through the descriptor instead of the value — the final consumer that keeps
+    // the getter intact end-to-end.
     const descriptor = Object.getOwnPropertyDescriptor(props, key)
     let c: Cleanup | null
     if (descriptor?.get) {
@@ -340,11 +332,10 @@ export function applyPropsWithRef(el: Element, props: Props): Cleanup {
   const cleanup = applyProps(el, props)
   const ref = (props as { ref?: RefCallback | RefObject }).ref
   // ALWAYS return a function (never null): the compiler CAPTURES this as a
-  // template disposer (`const __dN = _applyProps(...)`) and the multi-binding
-  // teardown calls `__dN()` unconditionally — same contract as
-  // `_bind`/`_bindText`/`_bindDirect`, which never return null. A static-only
-  // spread with no `ref` has a null `applyProps` result → hand back the shared
-  // no-op rather than null (which would throw `__dN is not a function`).
+  // template disposer (`const __dN = _applyProps(...)`) and calls `__dN()`
+  // unconditionally — the same contract as `_bind`/`_bindText`/`_bindDirect`. A
+  // static-only spread with no `ref` yields a null result, so hand back the
+  // shared no-op rather than null (which would throw).
   if (!ref) return cleanup ?? NOOP_CLEANUP
   if (typeof ref === 'function') ref(el)
   else ref.current = el
@@ -422,12 +413,10 @@ export function applySelectValueProp(el: Element, props: Props): Cleanup | null 
 function applyEventProp(el: Element, key: string, value: unknown): Cleanup | null {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyEvent')
   if (typeof value !== 'function') {
-    // `undefined` and `null` are legitimate — conditional handler pattern:
-    //   <button onClick={condition ? handler : undefined}>
-    // The runtime silently bails on nullish values. Only warn for
-    // actually-wrong types (strings, numbers, objects) that indicate
-    // a real bug in the caller (e.g. `onClick={someSignal()}` where
-    // the signal returns a value instead of a handler function).
+    // `undefined`/`null` are legitimate — the conditional handler pattern
+    // `<button onClick={cond ? handler : undefined}>`. Warn only for
+    // actually-wrong types (strings, numbers, objects), which indicate a real
+    // caller bug such as `onClick={someSignal()}` returning a value.
     if (process.env.NODE_ENV !== 'production' && value != null) {
       console.warn(
         `[Pyreon] Event handler "${key}" received a non-function value (${typeof value}). ` +
@@ -437,13 +426,9 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
     return null
   }
   // `onPointerDown` -> `pointerdown`. Multi-word DOM event names are
-  // all-lowercase (`pointerdown`, `dblclick`, `mouseover`), so we
-  // lowercase the WHOLE name — not just the first letter, as a previous
-  // version did. That bug silently dropped delegation for every
-  // multi-word event (pointerdown/up/move, mousedown/up/move, dblclick,
-  // touchstart/end/move, etc.) — the handler was attached via
-  // `addEventListener('pointerDown', ...)` which never fires because
-  // real events use the lowercase name.
+  // all-lowercase, so lowercase the WHOLE name, not just the first letter — that
+  // bug silently dropped delegation for every multi-word event, attaching
+  // `addEventListener('pointerDown', …)` which never fires.
   const eventName = (key[2]?.toLowerCase() + key.slice(3)).toLowerCase()
   const handler = value as EventListener
 
@@ -492,10 +477,9 @@ export function _bindEvent(el: Element, key: string, handler: unknown): Cleanup 
  */
 function applyStaticProp(el: Element, key: string, value: unknown): void {
   if (process.env.NODE_ENV !== 'production' && typeof value === 'function') {
-    // Defensive: function values must be unwrapped via `renderEffect`
-    // before reaching here. If we see one, a NEW special-case branch
-    // somewhere upstream skipped the reactive-wrapping dance — exactly
-    // the bug class the structural refactor was meant to eliminate.
+    // Defensive: function values must be unwrapped via `renderEffect` before
+    // reaching here. Seeing one means a new special-case branch upstream skipped
+    // the reactive wrap — the bug class the structural refactor eliminated.
     console.warn(
       `[Pyreon] applyStaticProp received a function for "${key}". ` +
         `This likely means a new special-cased prop sink in applyProp() ` +
@@ -527,26 +511,21 @@ function applyStaticProp(el: Element, key: string, value: unknown): void {
   setStaticProp(el, key, value)
 }
 
-// `runtime.applyProp` fires for EVERY prop key, including events. `runtime.applyEvent`
-// fires only for `on*` props — strict subset. Useful diagnostic ratios:
-//   applyEvent / applyProp = event-handler density per element
-//   applyProp - applyEvent = static / reactive attr density
-// Don't subtract them and treat as disjoint.
+// `runtime.applyProp` fires for EVERY prop key including events; `runtime.applyEvent`
+// only for `on*` — a strict subset, so don't treat them as disjoint. Useful
+// ratios: applyEvent/applyProp = handler density; the difference = attr density.
 export function applyProp(el: Element, key: string, value: unknown): Cleanup | null {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyProp')
   // Event listener: onClick → "click"
   if (EVENT_RE.test(key)) return applyEventProp(el, key, value)
 
-  // Reactive prop — function value is an accessor closure. The JSX compiler
-  // emits `prop={someExpr(signal())}` as a `() => someExpr(signal())` thunk
-  // so the prop tracks the signal automatically. We wrap in `renderEffect`
-  // ONCE here, before any prop-kind dispatch, so EVERY sink gets the same
-  // reactive treatment. Previously special-cased sinks (innerHTML etc.) had
-  // early-return branches that bypassed this wrap and stringified the
-  // closure — the bug fixed by this restructure.
-  //
-  // Uses renderEffect (lighter than effect — no scope registration, no
-  // WeakMap) since lifecycle is managed by mountElement's cleanup array.
+  // Reactive prop — a function value is an accessor closure (the JSX compiler
+  // emits `prop={someExpr(signal())}` as a thunk so the prop tracks the signal).
+  // Wrapped in `renderEffect` ONCE here, before any prop-kind dispatch, so EVERY
+  // sink gets the same reactive treatment; previously special-cased sinks
+  // (innerHTML etc.) early-returned past this wrap and stringified the closure.
+  // renderEffect rather than effect since mountElement's cleanup array owns the
+  // lifecycle.
   if (typeof value === 'function') {
     return renderEffect(() => applyStaticProp(el, key, (value as () => unknown)()))
   }
@@ -555,10 +534,9 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   return null
 }
 
-// Track the CSS property names an element's last-applied style object set,
-// so a reactive style going from `{ color, fontSize }` to `{ color }` removes
-// the stale `fontSize`. React/Vue/Solid all do this diff; previously Pyreon
-// only applied new keys, leaking the removed ones onto the DOM.
+// Track the CSS property names an element's last-applied style object set, so a
+// reactive style going from `{ color, fontSize }` to `{ color }` removes the
+// stale `fontSize`. React/Vue/Solid all do this diff.
 const _prevStyleKeys: WeakMap<HTMLElement, Set<string>> = new WeakMap()
 
 /**
@@ -594,11 +572,10 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
       const propName = k.startsWith('--') ? k : toKebabCase(k)
       const v = obj[k]
       // A `null`/`undefined` value means "unset this property" — the common
-      // `{ background: active ? 'x' : null }` toggle idiom. `String(null)` is
-      // `"null"`, an INVALID CSS value the browser silently ignores (leaving
-      // the previous value), so we must `removeProperty` and NOT track the key
-      // in `next` (else the stale-key sweep below would skip it and the old
-      // value would persist — the "multiple toggles stay active" bug).
+      // `{ background: active ? 'x' : null }` toggle. `String(null)` is `"null"`,
+      // an INVALID CSS value the browser silently ignores (leaving the previous
+      // value), so removeProperty AND leave the key out of `next` — otherwise the
+      // stale-key sweep skips it and the old value persists.
       if (v == null) {
         el.style.removeProperty(propName)
         continue
@@ -618,12 +595,11 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
 }
 
 // Exported as `_setClass` for the compiler's template class binding — the SAME
-// SVG-safe normalizer the `h()` path (`applyProp`) uses, so the two paths can't
-// diverge. `setAttribute('class', …)` works on BOTH HTML and SVG elements,
-// whereas the compiler's old inline `el.className = …` THROWS on a real
-// SVGElement (`className` there is a read-only `SVGAnimatedString`) — which is
-// why flow edges rendered nothing once `_tpl` gave them the correct SVG
-// namespace. Mirrors the `applyStyleProp`→`_setStyle` extraction.
+// SVG-safe normalizer the `h()` path uses, so the two can't diverge.
+// `setAttribute('class', …)` works on BOTH HTML and SVG, whereas the compiler's
+// old inline `el.className = …` THROWS on a real SVGElement (`className` there
+// is a read-only `SVGAnimatedString`) — which is why flow edges rendered nothing
+// once `_tpl` gave them the correct SVG namespace.
 export function applyClassProp(el: Element, value: unknown): void {
   const resolved = typeof value === 'string' ? value : cx(value as ClassValue)
   el.setAttribute('class', resolved || '')
@@ -662,18 +638,14 @@ export function applyClassProp(el: Element, value: unknown): void {
  */
 export function applyAttrProp(el: Element, key: string, value: unknown): void {
   if (typeof value === 'function') {
-    // Callable-as-accessor, mirroring `applyProp`'s function branch (which
-    // renderEffect-wraps on the h() path) and SSR's `renderProp` (which
-    // resolves before serializing). A BARE IDENTIFIER holding an accessor —
+    // Callable-as-accessor, mirroring `applyProp`'s function branch and SSR's
+    // `renderProp`. A BARE IDENTIFIER holding an accessor —
     // `aria-selected={active}` where `active = props.active` — reaches the
-    // template path as the raw function (the compiler can't prove it's
-    // callable), and a raw `String(fn)` wrote the closure SOURCE into the
-    // attribute (also an SSR<->client hydration mismatch, since SSR resolves).
-    // Resolving here keeps the paths agreeing; when the compiler emitted the
-    // usual `_bind(() => _setAttr(...))` wrapper (any prop-derived value),
-    // the call runs inside that tracked frame, so signal reads inside the
-    // accessor stay fully live. (No event-handler concern: the compiler
-    // routes on* props to delegation before this helper.)
+    // template path as a raw function the compiler can't prove callable, and a
+    // raw `String(fn)` wrote the closure SOURCE into the attribute (also an
+    // SSR<->client mismatch, since SSR resolves). Resolving here keeps the paths
+    // agreeing; inside the compiler's usual `_bind(() => _setAttr(...))` wrapper
+    // the call runs in a tracked frame, so signal reads stay live.
     value = (value as () => unknown)()
   }
   if (value == null) {
@@ -722,17 +694,14 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
-  // ARIA state/property attributes are STRING enums ("true"/"false"/"mixed"),
-  // NOT presence-based like HTML boolean attrs. A boolean must render as its
-  // literal string — `aria-checked={true}` → aria-checked="true", never the
-  // presence-only `aria-checked=""` that assistive tech can't read as checked
-  // (it falls back to the default → effectively unchecked). Runs BEFORE the
-  // generic boolean branch (which keeps presence semantics for HTML boolean
-  // attrs like `disabled`/`hidden`; `data-*` is author-defined, also presence).
-  // Mirrors runtime-server's SSR serialization so hydration sees identical markup.
-  // NOTE: the value==null / boolean-aria / boolean tail here is mirrored, branch
-  // for branch, by `applyAttrProp` (exported `_setAttr`) — the compiler template
-  // fast path routes generic dynamic attrs through it. Keep the two in lockstep.
+  // ARIA state/property attributes are STRING enums ("true"/"false"/"mixed"), NOT
+  // presence-based like HTML boolean attrs, so a boolean must render as its
+  // literal string: `aria-checked={true}` -> aria-checked="true", never the
+  // presence-only `aria-checked=""` that assistive tech reads as unchecked. Runs
+  // BEFORE the generic boolean branch, which keeps presence semantics for HTML
+  // boolean attrs. Mirrors runtime-server's SSR serialization so hydration sees
+  // identical markup, and is mirrored branch-for-branch by `applyAttrProp`
+  // (`_setAttr`) for the compiler template path — keep the two in lockstep.
   if (typeof value === 'boolean' && key.charCodeAt(0) === 97 /* 'a' */ && key.startsWith('aria-')) {
     el.setAttribute(key, value ? 'true' : 'false')
     return
@@ -744,29 +713,22 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     return
   }
 
-  // SVG and MathML elements: ALWAYS use setAttribute. Many of their
-  // properties are read-only `SVGAnimated*` getters (e.g.
-  // `SVGMarkerElement.refX`, `SVGMarkerElement.markerWidth`,
-  // `SVGRectElement.x`, etc.). Trying `el[key] = value` on those
-  // crashes with "Cannot set property X of [object Object] which has
-  // only a getter". The standard React/Vue/Solid behavior is to
-  // skip the property assignment optimization for non-HTML elements
-  // and always go through setAttribute.
+  // SVG and MathML elements: ALWAYS setAttribute. Many of their properties are
+  // read-only `SVGAnimated*` getters (`SVGRectElement.x`, `SVGMarkerElement.refX`),
+  // so `el[key] = value` throws "has only a getter". React/Vue/Solid skip the
+  // property-assignment optimization for non-HTML elements for the same reason.
   if (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
     el.setAttribute(key, String(value))
     return
   }
 
-  // `data-*` / `aria-*` are ATTRIBUTE semantics, always — including on
-  // custom elements. The hyphenated-tag property branch below exists so a
-  // custom element's CONSTRUCTOR picks up rich values set pre-upgrade, but
-  // routing `data-name` through it sets a JS PROPERTY (`el['data-name']`)
-  // that `getAttribute('data-name')` / `dataset` / CSS attribute selectors
-  // / SSR-emitted HTML all disagree with. Real-world hit: the server-island
-  // marker (`<pyreon-server-island data-name=…>`) carried its name in SSR
-  // HTML but lost it on every client mount — the activator read
-  // getAttribute(null) and silently never fetched. Matches React/Vue/Solid:
-  // data-/aria- always go through setAttribute.
+  // `data-*` / `aria-*` are ATTRIBUTE semantics, always — including on custom
+  // elements. The hyphenated-tag property branch below exists so a custom
+  // element's CONSTRUCTOR picks up rich values set pre-upgrade, but routing
+  // `data-name` through it sets a JS PROPERTY that `getAttribute` / `dataset` /
+  // CSS selectors / SSR HTML all disagree with. Real hit: the server-island
+  // marker carried its name in SSR HTML but lost it on every client mount.
+  // Matches React/Vue/Solid.
   if (key.startsWith('data-') || key.startsWith('aria-')) {
     el.setAttribute(key, String(value))
     return

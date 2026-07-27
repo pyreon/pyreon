@@ -1,33 +1,18 @@
 /**
  * Live Program Inlay Hints — runtime bridge.
  *
- * Writes the current `getFireSummaries()` snapshot to a JSON file that
- * the LSP server reads via the `PYREON_LPIH_CACHE` env var. This is the
- * file-cache bridge mechanism — chosen over IPC/WebSocket because:
+ * Writes the current `getFireSummaries()` snapshot to a JSON file that the LSP
+ * server reads via the `PYREON_LPIH_CACHE` env var. A file cache rather than
+ * IPC/WebSocket because LSP servers are stdio-only and can't easily talk to a
+ * browser, and because the LSP re-reads on every inlay-hint request so live
+ * edits land with no coordination.
  *
- *   1. LSP servers are stdio-only — they can't easily talk to a browser.
- *   2. Filesystem is a universal lowest-common-denominator transport.
- *   3. The runtime side writes (atomic rename); the LSP side reads.
- *   4. The LSP re-reads the file on every inlay-hint request, so live
- *      edits land immediately without coordination.
+ * Consumers either poll (a dev-server hook calling `writeLpihCache(path)` on a
+ * throttle) or write on demand (a test harness / devtools UI).
  *
- * Two consumer modes:
- *
- *   **Dev-server polled mode**: a dev-server hook calls
- *   `writeLpihCache(path)` on every signal write or at a regular interval
- *   (e.g. 250ms throttle). The LSP picks it up on next inlay-hint request.
- *
- *   **On-demand mode**: a test harness or devtools UI calls
- *   `writeLpihCache(path)` explicitly when it wants the LSP to see the
- *   current state.
- *
- * Atomic write semantics: writes to `<path>.tmp.<pid>.<seq>` then renames
- * to `<path>`. Readers (the LSP server) never see a half-written file.
- *
- * Zero-cost when devtools is inactive: `getFireSummaries()` returns []
- * unless `activateReactiveDevtools()` has been called. So calling
- * `writeLpihCache()` against an inactive registry writes an empty
- * `{ fires: [] }` — cheap, correct.
+ * Writes to `<path>.tmp.<pid>.<seq>` then renames, so readers never see a
+ * half-written file. Zero-cost when devtools is inactive: `getFireSummaries()`
+ * returns [] until `activateReactiveDevtools()` is called.
  */
 
 import { getFireSummaries } from './reactive-devtools'
@@ -77,21 +62,16 @@ export function getDefaultLpihCachePath(): string | null {
 }
 
 /**
- * Snapshot `getFireSummaries()` and write it to `path` atomically.
- * Returns the number of fires written.
+ * Snapshot `getFireSummaries()` and write it to `path` atomically. Returns the
+ * number of fires written.
  *
- * **Path resolution**: when `path` is omitted, defaults to
- * `<cwd>/.pyreon-lpih.json` (`getDefaultLpihCachePath()`). The LSP
- * auto-discovers this convention by walking up from any source file to
- * the nearest `package.json` — so projects that use the default need
- * zero env-var configuration.
+ * When `path` is omitted, defaults to `<cwd>/.pyreon-lpih.json`, which the LSP
+ * auto-discovers by walking up to the nearest `package.json` — so projects using
+ * the default need zero env-var configuration.
  *
- * Errors (filesystem permission, EACCES, etc.) are caught and re-thrown
- * — the caller decides whether to swallow them. The runtime side wraps
- * this in a try/catch when called from hot paths.
+ * Filesystem errors are re-thrown; the caller decides whether to swallow them.
+ * Throws if `path` is omitted AND no default can be resolved.
  *
- * Throws if `path` is omitted AND no default can be resolved (e.g.
- * a web worker without `process.cwd()`).
  *
  * @example
  * import { activateReactiveDevtools } from '@pyreon/reactivity'

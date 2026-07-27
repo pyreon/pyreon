@@ -40,13 +40,12 @@ export const RouterContext = createContext<RouterInstance | null>(null)
 // RouterProvider also sets this so legacy useRouter() calls outside the tree work.
 let _activeRouter: RouterInstance | null = null
 
-// The router that OWNS browser-history writes for cancelled traversals.
-// Set when a client router attaches its popstate/hashchange listener
-// (newest wins), cleared by `destroy()`. When a guard/blocker cancels a
-// browser-initiated navigation, only the owner restores the URL/position —
-// a stale instance that missed its `destroy()` (HMR remount, a second
-// router on the page) must never write the shared URL back to ITS state,
-// or two instances fight over the history stack.
+// The router that OWNS browser-history writes for cancelled traversals. Set when
+// a client router attaches its popstate/hashchange listener (newest wins),
+// cleared by `destroy()`. Only the owner restores URL/position on a cancelled
+// browser navigation — a stale instance that missed its `destroy()` (HMR remount,
+// a second router) must never write the shared URL back, or the two fight over
+// the history stack.
 let _navOwner: object | null = null
 
 export function getActiveRouter(): RouterInstance | null {
@@ -532,19 +531,15 @@ export function createRouter<TNames extends string = string>(
 
   // ── History position tracking ─────────────────────────────────────────────
   //
-  // Every router-written history entry is stamped with a monotonically
-  // increasing index (`history.state.__pyreonIdx`) so the popstate handler
-  // can compute the traversal DELTA. When a guard / blocker / middleware
-  // cancels a browser-initiated navigation (Back/Forward), the router
-  // restores the user's position with `history.go(-delta)` — keeping the
-  // history stack intact (the entry they were blocked from leaving stays
-  // reachable, and the entry they tried to reach isn't rewritten). Entries
-  // created OUTSIDE the router (a plain pushState, an in-page `#/x` anchor
-  // in hash mode) carry no index; cancellation then degrades to a
-  // `replaceState` URL restore (URL + app state stay consistent; only the
-  // stack position is approximated). The `go()` fired by a restore triggers
-  // its own popstate — `_suppressBrowserNav` swallows exactly that one so
-  // the pipeline doesn't run a second time.
+  // Every router-written history entry is stamped with a monotonically increasing
+  // index (`history.state.__pyreonIdx`) so the popstate handler can compute the
+  // traversal DELTA. When a guard / blocker / middleware cancels a
+  // browser-initiated navigation, the router restores the user's position with
+  // `history.go(-delta)`, keeping the stack intact. Entries created OUTSIDE the
+  // router carry no index, so cancellation degrades to a `replaceState` URL
+  // restore (URL + app state stay consistent; only stack position is
+  // approximated). The restoring `go()` fires its own popstate, which
+  // `_suppressBrowserNav` swallows so the pipeline doesn't run twice.
   let _histIdx = 0
   let _suppressBrowserNav = 0
 
@@ -584,22 +579,17 @@ export function createRouter<TNames extends string = string>(
   // ── Browser-initiated navigation (Back/Forward, hash anchors) ────────────
   //
   // Routes history traversals through the SAME `navigate()` pipeline as
-  // `router.push()` — pre-fix this was a bare `currentPath.set(...)`, so
-  // Back/Forward silently bypassed loaders (leaving `useLoaderData()`
-  // undefined — `commitNavigation` prunes data for routes navigated away
-  // from), guards, blockers, middleware, `afterEach` (the a11y route
-  // announcer never fired on Back), scroll save/restore, and `meta.title`.
+  // `router.push()`. As a bare `currentPath.set(...)` this silently bypassed
+  // loaders (leaving `useLoaderData()` undefined, since `commitNavigation` prunes
+  // data for routes navigated away from), guards, blockers, middleware,
+  // `afterEach` (so the a11y route announcer never fired on Back), scroll
+  // save/restore, and `meta.title`.
   //
-  // Semantics:
-  //   - the browser has ALREADY moved the URL, so the commit uses replace
-  //     semantics (re-stamps the current entry, never pushes a new one);
-  //   - a cancelled traversal (guard/blocker/middleware refusal) restores
-  //     the user's position via `history.go(-delta)` when the popped entry
-  //     carries a `__pyreonIdx` stamp, else `replaceState`s the URL back;
-  //   - a SUPERSEDED traversal (a newer navigation started meanwhile) is
-  //     left alone — the newer navigation owns the URL;
-  //   - a same-path event (in-page fragment click in history mode, our own
-  //     restore `go()`) early-returns without running the pipeline.
+  // Semantics: the browser has ALREADY moved the URL, so the commit uses replace
+  // semantics; a CANCELLED traversal restores position via `history.go(-delta)`
+  // when the popped entry carries a `__pyreonIdx` stamp, else `replaceState`s the
+  // URL back; a SUPERSEDED traversal is left alone (the newer navigation owns the
+  // URL); a same-path event early-returns without running the pipeline.
   const handleBrowserNav = (): void => {
     // Client-only: wired solely to the popstate/hashchange listeners, which
     // are null on the server. The explicit `isClient` early-return documents
@@ -680,17 +670,14 @@ export function createRouter<TNames extends string = string>(
       : null
   if (isClient && _prevScrollRestoration !== null) window.history.scrollRestoration = 'manual'
 
-  // Dev-only full-reload-link warning: a plain internal `<a href>` in a
-  // router app triggers a full page reload the author almost never wants.
-  // Warn at the document bubble phase — `<RouterLink>` (and zero's `<Link>`)
-  // call `preventDefault()` on the internal clicks they handle, so
-  // `e.defaultPrevented` here uniquely discriminates framework-handled
-  // anchors from plain ones. Deliberate full-load links opt out via
-  // `target` / `download` / `data-allow-reload`. Applies in BOTH modes —
-  // a path-style href full-reloads a hash-mode app too, while valid `#/x`
-  // hrefs classify as 'hash' and are skipped. Registered ONCE per router
-  // (the router owns global listeners — never per RouterView/RouterLink);
-  // removed by identity in `destroy()` (leak class D).
+  // Dev-only full-reload-link warning: a plain internal `<a href>` in a router app
+  // triggers a full page reload the author almost never wants. Warn at the
+  // document bubble phase — `<RouterLink>` calls `preventDefault()` on the
+  // internal clicks it handles, so `e.defaultPrevented` uniquely discriminates
+  // framework-handled anchors from plain ones. Opt out via `target` / `download` /
+  // `data-allow-reload`. Applies in BOTH modes (a path-style href full-reloads a
+  // hash-mode app too; valid `#/x` hrefs classify as 'hash' and are skipped).
+  // Registered ONCE per router and removed by identity in `destroy()` (leak D).
   const _devAnchorWarn: ((e: MouseEvent) => void) | null =
     process.env.NODE_ENV !== 'production' && isClient
       ? (e: MouseEvent) => {
@@ -723,19 +710,13 @@ export function createRouter<TNames extends string = string>(
   // of pathological input (unbounded distinct route records / loader keys).
   const componentCache = new SizedMap<RouteRecord, ComponentFn>({ maxEntries: maxCacheSize })
   const loadingSignal = signal(0)
-  // PR-S8: separate tick signal for HMR-driven cache invalidation. Pre-fix
-  // `_hmrSwap` bumped `loadingSignal` with `+ 1` and never paired a `- 1`
-  // — the counter stayed > 0 forever, so `loading: () => loadingSignal() > 0`
-  // (i.e. `useTransition()`) was STUCK at `true` for the lifetime of the
-  // page after the first HMR swap. The bug class: a navigation-loading
-  // signal is for navigation lifecycle (paired start/end counters);
-  // hijacking it for "force re-emit the depthEntry computed" is a category
-  // confusion. The fix: a dedicated `_hmrTick` signal that `depthEntry`
-  // subscribes to alongside `_loadingSignal`. HMR bumps `_hmrTick` and
-  // leaves `_loadingSignal` alone — no leak into the navigation counter.
-  // Initial value `0`; integer increment per swap (counter, not counter
-  // value, so wrap-around never matters in practice — even at one HMR/sec
-  // continuous it'd take 68 years to overflow Number.MAX_SAFE_INTEGER).
+  // Separate tick signal for HMR-driven cache invalidation. `_hmrSwap` used to
+  // bump `loadingSignal` with `+ 1` and never pair a `- 1`, so the counter stayed
+  // > 0 forever and `useTransition()` was STUCK true for the life of the page
+  // after the first HMR swap. The bug class is a category confusion: a
+  // navigation-loading signal is for navigation lifecycle (paired start/end
+  // counters), not for forcing a computed to re-emit. `depthEntry` subscribes to
+  // `_hmrTick` alongside `_loadingSignal`, and HMR bumps only the former.
   const hmrTick = signal(0)
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -906,12 +887,10 @@ export function createRouter<TNames extends string = string>(
     }
 
     // 2. Dedup in-flight — but only if the in-flight signal is still live.
-    // Pre-fix: nav-1 starts loader (signal=ac1.signal). User navigates again
-    // to the same path → nav-2's `router.push` first calls `_abortController?.abort()`
-    // (aborting ac1), then calls executeLoader. The Map still holds nav-1's
-    // promise (the .catch hasn't run yet); deduping returns it, but its
-    // signal is already aborted → nav-2 ends up with a rejected promise
-    // even though it has its own fresh ac2.signal. Now we check liveness.
+    // Otherwise: nav-1 starts a loader; the user navigates to the same path;
+    // nav-2's `push` aborts nav-1's controller, but the Map still holds nav-1's
+    // promise (its `.catch` hasn't run), so deduping hands nav-2 an
+    // already-aborted promise despite its own fresh signal.
     const inflight = router._loaderInflight.get(key)
     if (inflight && !inflight.signal.aborted) return inflight.promise
 
@@ -983,18 +962,13 @@ export function createRouter<TNames extends string = string>(
           }
         })
         .catch((err: unknown) => {
-          // Background revalidation failed — the stale data remains valid
-          // and on screen, so this MUST NOT cancel/redirect the (already
-          // settled) navigation. But an empty catch is the silent-failure
-          // anti-pattern the project forbids: a persistently-failing
-          // revalidation loader (auth expiry, API outage, a bug thrown in
-          // the loader) produces ZERO signal — the developer sees
-          // permanently-stale data with nothing pointing at the cause.
-          // Surface it like every other loader error (dev warn + the
-          // user-supplied onError hook) WITHOUT acting on the return
-          // value. This path was dead code until the SWR prune fix
-          // made `revalidateSwrLoaders` actually run for the
-          // nav-away/back case.
+          // Background revalidation failed — the stale data remains valid and on
+          // screen, so this MUST NOT cancel or redirect the already-settled
+          // navigation. But an empty catch is the silent-failure anti-pattern: a
+          // persistently-failing revalidation loader (auth expiry, API outage)
+          // would produce ZERO signal while the developer stares at permanently
+          // stale data. Surface it like any other loader error (dev warn +
+          // `onError`) WITHOUT acting on the return value.
           if (process.env.NODE_ENV !== 'production') {
             // oxlint-disable-next-line no-console
             console.warn(
@@ -1132,17 +1106,13 @@ export function createRouter<TNames extends string = string>(
       }
 
       // Drop loader data for routes no longer matched — EXCEPT
-      // `staleWhileRevalidate` routes. SWR's entire contract is "on
-      // return to this route, serve the previously-loaded data stale
-      // while revalidating in the background"; that requires the data to
-      // SURVIVE navigating away. Pruning it here (the pre-fix behaviour)
-      // meant `runLoaders`' `_loaderData.has(r)` gate was always false on
-      // return, so `revalidateSwrLoaders` never ran and every visit went
-      // through the blocking path — `staleWhileRevalidate` was a no-op
-      // for the realistic nav-away/back case. Retained SWR data is
-      // bounded by the number of SWR route RECORDS (a developer-declared
-      // set; param routes share one record), and per-key freshness/LRU
-      // is still handled by `_loaderCache`.
+      // `staleWhileRevalidate` ones, whose whole contract is "on return, serve the
+      // previously-loaded data stale while revalidating", which requires the data
+      // to SURVIVE navigating away. Pruning it meant `runLoaders`'
+      // `_loaderData.has(r)` gate was always false on return, so
+      // `revalidateSwrLoaders` never ran and SWR was a no-op for the realistic
+      // nav-away/back case. Retained SWR data is bounded by the number of
+      // developer-declared SWR route RECORDS; per-param growth
       for (const record of router._loaderData.keys()) {
         if (!to.matched.includes(record) && !record.staleWhileRevalidate) {
           router._loaderData.delete(record)

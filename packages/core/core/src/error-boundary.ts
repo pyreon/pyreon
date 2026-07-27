@@ -52,13 +52,10 @@ function ErrorBoundary(props: {
   const handler = (err: unknown): boolean => {
     if (error.peek() !== null) return false // already in error state — let outer boundary catch it
     // Synchronous signal write. The handler fires from inside mountComponent's
-    // catch, which is itself inside the boundary's own mountReactive effect
-    // run (the run that mounted the throwing child). The batch system's
-    // two-tier flush handles this correctly: this `error.set(err)` enqueues
-    // the boundary's run into the effects queue's nextPass (since the run is
-    // currently being visited), and the next pass fires it to swap to the
-    // fallback subtree. See packages/core/reactivity/src/batch.ts for the
-    // multi-pass effect drain contract.
+    // catch, itself inside the boundary's own mountReactive effect run (the run
+    // that mounted the throwing child). The two-tier flush handles this: the write
+    // enqueues the boundary's run into the effect queue's NEXT pass (the run is
+    // currently being visited), and that pass swaps to the fallback subtree.
     error.set(err)
     reportError({ component: 'ErrorBoundary', phase: 'render', error: err, timestamp: Date.now() })
     return true

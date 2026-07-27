@@ -2,11 +2,11 @@ import type { Props, VNode, VNodeChild } from '@pyreon/core'
 import { createRef, Fragment, h, nativeCompat, onUnmount } from '@pyreon/core'
 import { effect, runUntracked, signal } from '@pyreon/reactivity'
 
-// Dev-mode gate: `import.meta.env.DEV` is the Vite/Rolldown standard,
-// literal-replaced at build time. The previous `typeof process !== 'undefined'`
-// pattern was dead code in real Vite browser bundles because Vite does not
-// polyfill `process` for the client — every wrapped warning silently never
-// fired in dev. Enforced by the `pyreon/no-process-dev-gate` lint rule.
+// Dev-mode gates in this file use the bare bundler-agnostic
+// `process.env.NODE_ENV !== 'production'` form — every modern bundler replaces it
+// at consumer build time. Do NOT switch to `import.meta.env.DEV` (Vite/Rolldown
+// only) or `typeof process` (dead in Vite browser bundles). Enforced by the
+// `pyreon/no-process-dev-gate` lint rule.
 export interface TransitionProps {
   /**
    * CSS class name prefix.
@@ -171,15 +171,11 @@ function Transition(props: TransitionProps): VNodeChild {
     })
   }
 
-  // Defer applyEnter until the ref is actually populated. The ref is
-  // assigned by the mount pipeline when the child element commits to
-  // the DOM. With straightforward DOM children that happens within a
-  // single microtask — but when Transition is nested inside `<Portal>`,
-  // `<Show>`, or other reactive wrappers, the child commit can be one
-  // or more microtasks behind. Retrying for a few microtasks covers
-  // both shapes without timing assumptions. A `null`-passing
-  // applyEnter would crash with `Cannot read properties of null
-  // (reading 'classList')` — same bug class as the W14 follow-up audit.
+  // Defer applyEnter until the ref is actually populated. The mount pipeline
+  // assigns it when the child element commits; with plain DOM children that is
+  // one microtask, but nested inside `<Portal>` / `<Show>` the commit can be
+  // several behind. Retrying for a few microtasks covers both without timing
+  // assumptions — passing null to applyEnter would crash on `.classList`.
   const MAX_REF_RETRIES = 16
   const safeApplyEnter = (retries = MAX_REF_RETRIES) => {
     const el = ref.current
@@ -206,10 +202,8 @@ function Transition(props: TransitionProps): VNodeChild {
     applyLeave(el)
   }
 
-  // queueMicrotask defers the appear-animation to after the DOM has
-  // committed the initial mount — that scheduling IS the reactive
-  // subscription's job here (it tracks `props.show()` and `props.appear`
-  // and schedules the visual transition). Not setup work.
+  // queueMicrotask defers the appear-animation until after the DOM has committed
+  // the initial mount — that scheduling IS this subscription's job, not setup work.
   // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
   effect(() => {
     const visible = props.show()
@@ -258,13 +252,11 @@ function Transition(props: TransitionProps): VNodeChild {
   }) as unknown as VNode
 }
 
-// Mark as native so compat-mode jsx() runtimes skip wrapCompatComponent —
-// Transition uses signal/effect/onUnmount that need Pyreon's setup frame.
-// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside the built
-// lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side
-// effect that RETAINS the whole component body in every consumer bundle
-// that never imports it. The PURE annotation lets the bundler drop the
-// call — and the body — exactly when the export is unused; when used,
-// `nativeCompat` returns the SAME fn with the marker applied.
+// Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this
+// component needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than
+// a bare `nativeCompat(X)` statement: inside the built lib's shared chunk a bare
+// call is an unremovable side effect that RETAINS the whole component body in
+// every consumer bundle that never imports it (~1.5KB gz measured). The PURE
+// annotation lets the bundler drop it when the export is unused.
 const _Transition = /* @__PURE__ */ nativeCompat(Transition)
 export { _Transition as Transition }

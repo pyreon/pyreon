@@ -273,24 +273,18 @@ function disableOverlay(): void {
 }
 
 // ─── Reactive dev overlay (zero-install in-app dev panel) ────────────────────
-// A floating panel with three views:
-//   • Health   — orphan signals / high-fanout hubs / deep chains that
-//                `describeReactiveGraph` computes ("is my reactivity wired the
-//                way I think?").
-//   • Activity — the recent reactive fires + a "why did X update?" causal chain
-//                (`getReactiveFires` + `getUpdateCause` / `formatUpdateCause`),
-//                the inverse of React DevTools' "why did this render?" — it
-//                explains a specific value's most recent update from the graph.
-//   • Inspect  — DOM→signal correlation: press 🎯 Pick, click any element, and
-//                see the signals whose values its text displays + each one's
-//                causal chain. Powered by `nodesForElement` (the exact
-//                `_bindText` text-node→source tag). Point at the wrong pixel,
-//                get the signal responsible.
-// Distinct from the component-inspect overlay above (`enableOverlay`, hover to
-// inspect DOM/components) and from the Chrome extension (separate install):
-// this is zero-install, mounted by the always-on dev devtools, toggled with
-// Ctrl+Shift+R. Reading the graph/fires auto-activates reactive tracking if it
-// wasn't already on.
+// Three views:
+//   • Health   — orphan signals / high-fanout hubs / deep chains from
+//                `describeReactiveGraph`.
+//   • Activity — recent fires plus a "why did X update?" causal chain
+//                (`getUpdateCause`), the inverse of React DevTools'
+//                "why did this render?".
+//   • Inspect  — DOM->signal correlation: pick an element, see the signals whose
+//                values its text displays, via `nodesForElement` (the exact
+//                `_bindText` text-node->source tag, not a heuristic).
+// Distinct from the component-inspect overlay above and from the Chrome
+// extension: this is zero-install, mounted by the always-on dev devtools and
+// toggled with Ctrl+Shift+R. Reading the graph auto-activates tracking.
 
 type ReactiveView = 'health' | 'activity' | 'inspect'
 let _reactivePanelActive = false

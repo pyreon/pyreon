@@ -1,65 +1,40 @@
 /**
- * Reactive devtools bridge — a leak-free introspection layer over the
- * live signal / computed / effect graph.
+ * Reactive devtools bridge — a leak-free introspection layer over the live
+ * signal / computed / effect graph, powering `@pyreon/devtools`.
  *
- * Powers the `@pyreon/devtools` Signals / Graph / Effects / Console
- * surfaces. Design constraints (mirroring `reactive-trace.ts`):
+ * Design constraints:
  *
- *   - **Zero cost in production.** Every instrumentation entry point is
- *     called from inside the existing `process.env.NODE_ENV !== 'production'`
- *     gate at the framework callers (signal/computed/effect) — bundlers
- *     fold the whole call chain to dead code in prod.
- *   - **Always-on in __DEV__.** Registration + fire-recording run for
- *     every signal/computed/effect created in dev — independent of
- *     whether a devtools client is attached. This is what lets a user
- *     open the panel AFTER the app has mounted and still see the full
- *     live graph (the activate-after-creation user workflow). The cost
- *     is a `Map.set` + `WeakRef` + `WeakMap.set` + `finalizer.register`
- *     per node (~hundreds of ns) and a counter bump + bounded ring-buffer
- *     append per fire (~ns).
- *   - **`_active` is a READ gate, not a recording gate.** Output methods
- *     (`getReactiveGraph` / `getReactiveFires` / `getFireSummaries`)
- *     return empty when no client has called `activateReactiveDevtools()`.
- *     A devtools panel reads through these; nothing leaks to non-attached
- *     consumers.
- *   - **`_captureCallerLocation` is also always-on in `__DEV__`** so
- *     signals/computeds/effects created BEFORE a devtools client
- *     attaches still get loc captured (LPIH editor inlay-hint surfaces
- *     work uniformly). Cost is a single `new Error()` + small regex per
- *     call (~2.2µs in V8), invisible against mount times. Most user
- *     signals pay 0µs anyway because `@pyreon/vite-plugin`'s
- *     `injectSignalLocations` rewrites `signal(0)` → `signal(0, { __sourceLocation })`
- *     at build time and the caller short-circuits to the injected value.
- *   - **No retention / no leak.** Nodes are held via `WeakRef` and
- *     pruned by a `FinalizationRegistry`. The registry never pins a
- *     signal/computed/effect alive. Edges + the fire ring buffer hold
- *     only numeric ids and primitives, never node references or values.
- *   - **Snapshot on demand.** `getReactiveGraph()` recomputes the edge
- *     set fresh from the live subscriber Sets — no incremental
- *     bookkeeping to drift out of sync with `cleanupEffect`.
- *   - **`deactivate` does NOT clear the registry.** A panel close +
- *     reopen cycle re-exposes the same live graph; clearing on
- *     deactivate would re-create the activate-after-creation bug at the
- *     close/reopen boundary. The registry tracks the live app state;
- *     `_active` only toggles whether we expose it.
+ *   - **Zero cost in production.** Every entry point is called from inside the
+ *     framework callers' existing `process.env.NODE_ENV` gate, so bundlers fold
+ *     the whole call chain to dead code.
+ *   - **Always-on in __DEV__.** Registration + fire-recording run for every node
+ *     created in dev, independent of whether a client is attached — that is what
+ *     lets a user open the panel AFTER mount and still see the full live graph.
+ *   - **`_active` is a READ gate, not a recording gate.** Output methods return
+ *     empty until a client calls `activateReactiveDevtools()`, so nothing leaks
+ *     to non-attached consumers.
+ *   - **No retention / no leak.** Nodes are held via `WeakRef` and pruned by a
+ *     `FinalizationRegistry`; edges and the fire ring buffer hold only numeric
+ *     ids and primitives, never node references or values.
+ *   - **Snapshot on demand.** `getReactiveGraph()` recomputes the edge set fresh
+ *     from the live subscriber Sets, so it cannot drift out of sync.
+ *   - **`deactivate` does NOT clear the registry.** Clearing on deactivate would
+ *     re-create the activate-after-creation bug at the close/reopen boundary.
  *
- * Names: signals carry `.label` (set explicitly or by the vite plugin's
- * dev auto-naming). Computeds/effects have no name in the framework, so
- * they get a stable synthetic label (`derived#12` / `effect#7`).
+ * Names: signals carry `.label`; computeds/effects get a stable synthetic label
+ * (`derived#12` / `effect#7`).
  */
 
 export type ReactiveNodeKind = 'signal' | 'derived' | 'effect'
 
 /**
- * Source location of a reactive node's creation — captured at registration
- * time from the user's call stack. Powers "Live Program Inlay Hints" — the
- * editor surfaces fire counts at the source line where the node was created.
+ * Source location of a reactive node's creation, captured at registration time
+ * from the user's call stack. Powers "Live Program Inlay Hints" — the editor
+ * surfaces fire counts at the source line where the node was created.
  *
- * Captured ONLY when devtools is active (`_active === true`). Stack parsing
- * is best-effort across V8 / JSC / SpiderMonkey; returns undefined when the
- * stack format isn't recognized (older runtimes, minified prod, web workers
- * without source maps). Dev gate is the existing `process.env.NODE_ENV` at
- * each caller — production paths never run the capture.
+ * Stack parsing is best-effort across V8 / JSC / SpiderMonkey and returns
+ * undefined when the format isn't recognized (older runtimes, minified prod,
+ * workers without source maps).
  */
 export interface SourceLocation {
   /** Absolute path or file URL parsed from the stack frame. */
@@ -141,10 +116,9 @@ export interface FireSummary {
 }
 
 /**
- * Time constant for the rate1s EWMA (milliseconds). Tuned for the "hot
- * path debugging" use case: a 1-second time constant means a burst of
- * fires shows up immediately, then decays to 1/e (~0.37×) after one
- * second of silence, ~5% after 3 seconds, ~0.7% after 5 seconds.
+ * Time constant for the rate1s EWMA (milliseconds). Tuned for hot-path
+ * debugging: a burst shows up immediately, then decays to ~37% after one second
+ * of silence and ~0.7% after five.
  *
  * @internal — exported for tests + tunability.
  */
@@ -170,17 +144,14 @@ interface NodeRec {
    */
   loc?: SourceLocation | null | undefined
   /**
-   * **Deferred-parse state**. When loc capture is needed at the runtime
-   * fallback path, the caller passes a captured `Error` here instead of
-   * a resolved `SourceLocation`. The expensive `.stack` formatting +
-   * parseStackLine call is deferred until `getReactiveGraph()` or
-   * `getFireSummaries()` actually reads the location — most nodes
-   * never get their loc read (the LPIH inlay-hint surface only reads
-   * loc for hot lines the user has on screen), so the typical app
-   * pays only the cheap `new Error()` allocation per node.
+   * **Deferred-parse state**. The runtime fallback path stores a captured
+   * `Error` here instead of a resolved `SourceLocation`; the expensive `.stack`
+   * formatting is deferred until `getReactiveGraph()`/`getFireSummaries()`
+   * actually reads the location. Most nodes never do, so the typical app pays
+   * only the cheap `new Error()` allocation.
    *
-   * Cleared the first time `_resolveLoc(rec)` succeeds; the Error is
-   * GC-eligible from that moment.
+   * Cleared the first time `_resolveLoc(rec)` succeeds, making the Error
+   * GC-eligible.
    */
   pendingErr?: Error | undefined
   /** skipFrames from the deferred capture — needed by the lazy parser. */
@@ -194,13 +165,11 @@ let _nextId = 1
 const _byId = new Map<number, NodeRec>()
 
 // ── Coverage retention ───────────────────────────────────────────────────
-// The registry holds nodes via WeakRef, so a signal/effect whose component
-// unmounts is GC-pruned and DISAPPEARS from `getReactiveGraph()`. That is
-// correct for a live devtools panel (show only what's alive) but WRONG for
-// reactive COVERAGE, whose denominator must be every node created during the
-// measured window — even ones already dropped. When retention is on,
-// `_rdRegister` pins each node with a STRONG ref so nothing is pruned before
-// the coverage snapshot is taken. `@pyreon/reactivity/coverage` toggles it.
+// The registry holds nodes via WeakRef, so a node whose component unmounts is
+// GC-pruned and DISAPPEARS from `getReactiveGraph()`. Correct for a live panel,
+// WRONG for reactive COVERAGE, whose denominator must be every node created
+// during the measured window. When retention is on, `_rdRegister` pins each node
+// with a STRONG ref. `@pyreon/reactivity/coverage` toggles it.
 let _retain = false
 const _retained = new Set<object>()
 
@@ -269,14 +238,12 @@ export function activateReactiveDevtools(): void {
 }
 
 /**
- * Deactivate the bridge. Flips `_active = false` so the output methods
- * return empty. Does NOT clear the registry — the registry tracks the
- * LIVE app state, which a subsequent `activateReactiveDevtools()` should
- * still see (matches the user "close + reopen panel" workflow). Dead
- * nodes are pruned automatically by the `FinalizationRegistry`.
+ * Deactivate the bridge. Flips `_active = false` so the output methods return
+ * empty. Does NOT clear the registry — that tracks the LIVE app state, which a
+ * subsequent `activateReactiveDevtools()` should still see (the close + reopen
+ * panel workflow). Dead nodes are pruned by the `FinalizationRegistry`.
  *
- * For test isolation across `it()` blocks, use
- * `__resetReactiveDevtoolsForTesting()` instead.
+ * For test isolation, use `__resetReactiveDevtoolsForTesting()` instead.
  */
 export function deactivateReactiveDevtools(): void {
   _active = false
@@ -306,41 +273,20 @@ export function isReactiveDevtoolsActive(): boolean {
 //    after the existing prod gate; each is a no-op until activated) ──────
 
 /**
- * Capture a deferred source-location handle from the user's call site.
- * Returns an opaque `{ err, skipFrames }` token — the expensive
- * `.stack` formatting + line parsing is deferred to `_resolveLoc(rec)`
- * at the moment a devtools consumer actually reads the location.
+ * Capture a deferred source-location handle from the user's call site. Returns
+ * an opaque `{ err, skipFrames }` token — the expensive `.stack` formatting +
+ * line parsing is deferred to `_resolveLoc(rec)` at the moment a devtools
+ * consumer actually reads the location.
  *
  * Always-on in `__DEV__` (the caller-side `process.env.NODE_ENV` gate
  * tree-shakes it in production).
  *
- * **Cost at capture time**: a single `new Error()` allocation (~0.14µs
- * in V8/Bun — stack is captured but NOT formatted). Negligible per call;
- * for a 10k-signal startup that's ~1.4ms total even on a contended CI
- * runner. Most user signals pay 0µs anyway because `@pyreon/vite-plugin`'s
- * `injectSignalLocations` rewrites `signal(0)` → `signal(0, { __sourceLocation })`
- * at build time and the caller short-circuits to that resolved value
- * before invoking this helper.
- *
- * **Cost at read time** (rare): `.stack` access (~3-10µs in V8 under
- * normal load, much higher under happy-dom + parallel-load CI with
- * source-map resolution) + small regex per line. Only paid when
- * `getReactiveGraph()` or `getFireSummaries()` ACTUALLY reads the
- * loc — most app signals never have their loc read since the LPIH
- * inlay-hint surface only consumes loc for hot lines the user has
- * on screen.
- *
- * `skipFrames` is the number of caller-frames to skip past _captureCallerLocation
- * itself. The framework's hot-path callers (signal / computedLazy / effect)
- * pass their own depth so the captured frame is the USER's call to
- * `signal()` / `computed()` / `effect()`, not the framework's internals.
- *
- * Recognized stack formats:
- *   - V8 (Chrome / Node / Bun):     `    at fn (file:line:col)`
- *   - V8 (anonymous):               `    at file:line:col`
- *   - JSC (Safari) + SpiderMonkey:  `fn@file:line:col`
- *
- * @internal
+ * Capture costs one `new Error()` allocation (~0.14us — the stack is captured
+ * but NOT formatted). Read costs `.stack` access (~3-10us, much higher under
+ * happy-dom + parallel-load CI with source-map resolution) and is paid only for
+ * nodes whose loc is actually read. Most user signals pay nothing at all,
+ * because `@pyreon/vite-plugin` injects `__sourceLocation` at build time and the
+ * caller short-circuits before reaching this helper.
  */
 export interface DeferredLocation {
   /** Marker brand to disambiguate from resolved `SourceLocation`. */

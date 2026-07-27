@@ -88,12 +88,10 @@ export function createReactiveContext<T>(defaultValue: T): ReactiveContext<T> {
 }
 
 // ─── SSR request-scoped stack ────────────────────────────────────────────────
-//
 // Used ONLY when no client owner is active (i.e. during `renderToString`). On
 // Node with concurrent requests, @pyreon/runtime-server swaps in an
 // AsyncLocalStorage-backed stack via `setContextStackProvider()` so each request
-// is isolated. In the browser this array is never written (the owner path is
-// always active during mount).
+// is isolated. In the browser this array is never written.
 const _contextStack: Map<symbol, unknown>[] = []
 let _contextProvider: () => Map<symbol, unknown>[] = () => _contextStack
 
@@ -223,12 +221,10 @@ export function withContext<T>(context: Context<T>, value: T, fn: () => void): v
 
 // ─── Reactivity-layer DI: install owner capture/restore for effects ──────────
 //
-// `_bind` / `renderEffect` / `effect` (in `@pyreon/reactivity`) capture the
-// active context owner at setup and restore it on every re-run, so a
-// signal-driven re-run resolves `useContext()` through the same owner chain it
-// was created in (rather than whatever owner happens to be active when the
-// scheduler fires the effect). Capturing/restoring a single owner REFERENCE
-// replaced the old deduped-stack-snapshot + identity-removal machinery.
+// `_bind` / `renderEffect` / `effect` capture the active context owner at setup
+// and restore it on every re-run, so a signal-driven re-run resolves
+// `useContext()` through the owner chain it was created in rather than whatever
+// owner happens to be active when the scheduler fires.
 setSnapshotCapture({
   capture: () => getContextOwner(),
   // `restore` runs only when `capture` returned a non-null owner — i.e. the

@@ -5,14 +5,11 @@ export class EffectScope {
   private _updatePending = false
 
   // ─── Context ownership ──────────────────────────────────────────────────
-  // A scope doubles as the component's CONTEXT OWNER. `provide()` writes into
+  // A scope doubles as the component's CONTEXT OWNER: `provide()` writes into
   // `_contexts`; `useContext()` walks `_parent` up the OWNER chain (which
-  // mirrors the component tree, set by the renderer during mount). This
-  // replaces the old global mutable context stack + its snapshot / restore /
-  // dedup / identity-removal machinery: context now lives with the scope and
-  // dies when the scope is disposed, so there is nothing to leak and no frame
-  // to orphan. Both fields are null until first used (zero cost for scopes
-  // that neither provide nor live under a provider).
+  // mirrors the component tree, set by the renderer during mount). Context
+  // lives with the scope and dies with it, so there is nothing to leak and no
+  // frame to orphan. Both fields are null until first used.
   /** Parent owner in the component tree — set by the renderer, NOT effect nesting. */
   _parent: EffectScope | null = null
   /** Contexts provided at this scope, keyed by context id. */
@@ -103,10 +100,8 @@ export class EffectScope {
     this._updatePending = false
     // Release the owner-chain + context references so a disposed scope doesn't
     // retain its parent chain (and the parent's `_contexts` Map) when a
-    // descendant scope outlives it — e.g. a deferred/portal'd child whose
-    // ancestor unmounted first. A stopped scope is never walked as a context
-    // owner (`_active` is false + its effects are disposed), so dropping these
-    // is pure cleanup — and breaks the upward references for GC.
+    // descendant outlives it. A stopped scope is never walked as a context
+    // owner, so dropping these is pure cleanup that breaks upward refs for GC.
     this._contexts = null
     this._parent = null
     this._active = false
@@ -130,10 +125,9 @@ export function effectScope(): EffectScope {
 // ─── Current context owner ───────────────────────────────────────────────────
 // DELIBERATELY SEPARATE from `_currentScope` (the effect-TRACKING scope). The
 // renderer sets this to the component's scope while mounting that component's
-// subtree, so a child's owner chains to its parent. Deferred boundaries
-// (`mountReactive` / `mountFor`) capture it at setup and restore it when they
-// later mount children inside an effect. Keeping it distinct from
-// `_currentScope` means restoring the context owner for a deferred mount does
+// subtree, so a child's owner chains to its parent; deferred boundaries capture
+// it at setup and restore it when they later mount children inside an effect.
+// Keeping the two distinct means restoring the owner for a deferred mount does
 // NOT perturb which scope new effects are tracked by.
 let _currentContextOwner: EffectScope | null = null
 

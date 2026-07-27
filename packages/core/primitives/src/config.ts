@@ -1,34 +1,21 @@
-// Runtime configuration for `@pyreon/primitives` — the one-time app-boot
-// hook (mirrors the `init()` pattern in `@pyreon/rocketstyle` /
-// `@pyreon/ui-core`).
+// Runtime configuration for `@pyreon/primitives` — the one-time app-boot hook
+// (mirrors `init()` in `@pyreon/rocketstyle` / `@pyreon/ui-core`).
 //
-// ## Why this exists
+// The package is deliberately router-AGNOSTIC so a consumer using only `<Stack>`
+// / `<Text>` never pulls a router into their graph — but `<Link>` still needs
+// client-side navigation. The app supplies that capability once, here, rather
+// than this package importing a router:
 //
-// The package is deliberately router-AGNOSTIC: it must not depend on
-// `@pyreon/router` (or any router), so a consumer using only `<Stack>` /
-// `<Text>` never pulls a router into their graph. But `<Link>` needs to
-// perform client-side navigation. The app supplies that capability once,
-// here, instead of the primitives package importing a router.
-//
-// ## Usage
-//
-//   import { init } from '@pyreon/primitives'
-//   import { createRouter } from '@pyreon/router'
-//   const router = createRouter({ routes })
 //   init({ navigate: (to) => router.push(to) })
 //
-// With `navigate` configured, an internal `<Link>` intercepts plain
-// left-clicks and routes via `navigate` (SPA — no full reload). Without
-// it, `<Link>` is a plain `<a href>` that does a normal full-page
-// navigation — so links always WORK, the config only upgrades them to
-// SPA behavior. Works with any router (or none).
+// With `navigate` set, an internal `<Link>` intercepts plain left-clicks and
+// routes through it. Without it, `<Link>` is a plain `<a href>` doing a normal
+// full-page navigation — links always WORK, the config only upgrades them to
+// SPA behaviour, with any router or none.
 //
-// ## SSR note
-//
-// The config is a module-level singleton. That's safe for SSR because
-// `<Link>` renders a static `<a href>` on the server and the `navigate`
-// handler is only ever read inside a client click handler — the server
-// never reads it, so there is no cross-request contamination.
+// The config is a module-level singleton, which is SSR-safe: `<Link>` renders a
+// static `<a href>` on the server and `navigate` is read only inside a client
+// click handler, so there is no cross-request contamination.
 
 export interface PrimitivesInitOptions {
   /**

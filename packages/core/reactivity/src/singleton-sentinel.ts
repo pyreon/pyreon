@@ -3,46 +3,31 @@
  *
  * ## The bug class this catches
  *
- * Bundlers can produce TWO module instances of the same `@pyreon/*` package
- * when consumers reach it via different resolution paths:
- *   - Vite's `[bare]` vs `[package entry]` resolver divergence
- *   - Sub-dep version mismatches (lockfile has two `@pyreon/core` versions)
- *   - Workspace + npm-published mix in monorepos
- *
- * Each instance has its own module-level state (`let _foo = …`). Producers and
- * consumers can land on DIFFERENT copies, silently breaking framework contracts:
- * `runWithHooks` sets `_current` on instance A; `onMount` reads `_current` from
- * instance B (null) → warning storm + invariant violations.
+ * Bundlers can produce TWO module instances of the same `@pyreon/*` package when
+ * consumers reach it via different resolution paths (Vite's bare-vs-entry
+ * resolver divergence, sub-dep version mismatches, workspace + npm-published
+ * mixes). Each instance has its own module-level state, so producers and
+ * consumers can land on DIFFERENT copies and silently break framework
+ * contracts: `runWithHooks` sets `_current` on instance A, `onMount` reads it
+ * from instance B (null) → warning storm + invariant violations.
  *
  * ## How it works
  *
- * Every `@pyreon/*` package that has module-level state calls
- * `registerSingleton('@pyreon/<name>', <version>, import.meta.url)` at the top
- * of its `src/index.ts`. The first registration records a marker on globalThis.
- * A second registration with a DIFFERENT location triggers detection:
- *
- *   - default / `'throw'`: throws Error with actionable diagnostic
- *   - `'warn'`: `console.error` then continues (graceful path for users mid-fix)
- *   - `'silent'`: no detection (escape hatch for browser extensions, micro-
- *     frontends, nested SSR test harnesses that legitimately dual-load)
- *
- * Mode is controlled by `PYREON_SINGLE_INSTANCE` env var.
+ * Every `@pyreon/*` package with module-level state calls `registerSingleton`
+ * at the top of its `src/index.ts`. The first call records a marker on
+ * globalThis; a second call with a DIFFERENT location triggers detection —
+ * `'throw'` (default), `'warn'` (log and continue), or `'silent'` (escape hatch
+ * for browser extensions, micro-frontends and nested SSR harnesses that
+ * legitimately dual-load). Controlled by the `PYREON_SINGLE_INSTANCE` env var.
  *
  * ## HMR-aware
  *
- * Vite's HMR re-evaluates modules. `import.meta.url` of the new evaluation has
- * the SAME path with possibly different query params (`?v=12345`, `?t=12345`,
- * `?import`). The sentinel normalizes the location (strips query string) before
- * comparing. Same normalized location → HMR re-eval → silently allowed. Different
- * location → genuine dual-instance → triggers detection.
+ * Vite's HMR re-evaluates modules, producing the same path with different query
+ * params (`?v=`, `?t=`, `?import`). The location is normalized before comparing,
+ * so a re-eval is allowed and only a genuinely different location trips.
  *
- * ## No defensive try/catch
- *
- * Earlier drafts wrapped the registration in try/catch as a safety measure for
- * "exotic runtimes." On reflection: `globalThis` + `Symbol.for` + `Map` are
- * universal across every supported runtime. The "exotic runtime" concern is
- * hypothetical. Adding a try/catch would only HIDE real bugs in the sentinel
- * itself. If the sentinel ever crashes, that IS a framework bug worth surfacing.
+ * Deliberately has NO defensive try/catch: `globalThis` + `Symbol.for` + `Map`
+ * are universal, and swallowing here would only hide real sentinel bugs.
  */
 
 interface SingletonMarker {
@@ -60,16 +45,10 @@ interface SentinelState {
    * Refcount of active "silent opt-out" scopes (see `withSilent`). When > 0,
    * `getDetectionMode()` returns `'silent'` regardless of the env var.
    *
-   * The refcount replaces the prior env-var dance pattern that wrapped
-   * `process.env.PYREON_SINGLE_INSTANCE` set/restore around the legitimate
-   * dual-load scope (rocketstyle-collapse, zero SSG, zero dev SSR's
-   * `ssrLoadModuleQuiet`). That pattern was race-prone: under concurrent
-   * `Promise.all` of N opt-out scopes, the second scope captured `prev=silent`
-   * (set by the first), and its `finally` restored to `silent` — leaking the
-   * silence past both scopes. A refcount is order-independent: every
-   * `push` matches exactly one `pop`, intermediate state during overlapping
-   * scopes is always "silent", and final state after all scopes settle is
-   * always 0 (= not silent).
+   * A refcount rather than env-var set/restore because the latter is race-prone:
+   * under concurrent `Promise.all` of N opt-out scopes the second captured
+   * `prev=silent` from the first and its `finally` restored to `silent`, leaking
+   * the silence past both scopes.
    */
   silentDepth: number
 }
@@ -121,14 +100,12 @@ function getDetectionMode(): DetectionMode {
  * genuine dual-instance load.
  */
 function normalizeLocation(url: string): string {
-  // Some runtimes don't provide a usable `import.meta.url`: Cloudflare workerd
-  // (and certain bundlers) pass `undefined`. The sentinel must NEVER crash
-  // module init over it — a bare `url.indexOf` here threw
-  // `Cannot read properties of undefined (reading 'indexOf')` and took down
-  // every @pyreon-based Cloudflare Worker at startup. Degrade gracefully:
-  // without a real location the sentinel just can't distinguish a genuine
-  // dual-instance from an HMR re-eval (same placeholder → treated as a re-eval
-  // → allowed), which is the safe failure mode.
+  // Some runtimes don't provide a usable `import.meta.url` — Cloudflare workerd
+  // (and certain bundlers) pass `undefined`. The sentinel must NEVER crash module
+  // init over it: a bare `url.indexOf` here once took down every @pyreon-based
+  // Worker at startup. Without a real location the sentinel just can't
+  // distinguish a dual-instance from an HMR re-eval (same placeholder → treated
+  // as a re-eval → allowed), which is the safe failure mode.
   if (typeof url !== 'string' || url.length === 0) return '<unknown>'
   const queryIdx = url.indexOf('?')
   return queryIdx === -1 ? url : url.slice(0, queryIdx)
@@ -221,38 +198,16 @@ export function _resetSentinel(): void {
 /**
  * Scope-style opt-out from sentinel detection — for legitimate dual-load
  * scenarios where two genuinely-different module locations of the same
- * `@pyreon/*` package must coexist briefly without throwing.
+ * `@pyreon/*` package must coexist briefly without throwing. Use ONLY for the
+ * documented patterns: `@pyreon/zero` SSG and dev SSR, and
+ * `@pyreon/vite-plugin`'s rocketstyle-collapse nested SSR resolver.
  *
- * Replaces the prior env-var dance (`process.env.PYREON_SINGLE_INSTANCE =
- * 'silent'` / capture+restore) which was race-prone under concurrent
- * execution. Use ONLY for documented dual-load patterns:
- *
- *   - `@pyreon/zero` SSG (`await import(.../entry-server.mjs)` — built bundle
- *     reships framework copies alongside the outer process's workspace copy)
- *   - `@pyreon/zero` dev SSR (`ssrLoadModule` — outer plugin chain + Vite SSR
- *     module graph see different module identities for the same source)
- *   - `@pyreon/vite-plugin` `rocketstyle-collapse` (nested Vite SSR resolver
- *     spinning a child server bound to the consumer's vite.config)
- *
- * Refcount-based: every `withSilent` push matches exactly one pop. Concurrent
- * scopes overlap correctly — depth > 0 throughout the union of all active
- * scopes, returns to 0 when all settle. Order-independent (unlike env-var
- * mutation which is race-prone under `Promise.all`).
+ * Refcount-based, so concurrent scopes overlap correctly and it is
+ * order-independent — unlike the env-var capture/restore dance it replaced,
+ * which leaked `silent` permanently under `Promise.all`.
  *
  * @example
- * import { withSilent } from '@pyreon/reactivity'
- * await withSilent(async () => {
- *   return await server.ssrLoadModule(specifier)
- * })
- *
- * @example
- * // Multi-call concurrent shape — works correctly under refcount,
- * // would leak `silent` permanently under the env-var dance.
- * await Promise.all([
- *   withSilent(() => loadA()),
- *   withSilent(() => loadB()),
- *   withSilent(() => loadC()),
- * ])
+ * await withSilent(async () => server.ssrLoadModule(specifier))
  */
 export async function withSilent<T>(fn: () => Promise<T> | T): Promise<T> {
   const state = getSentinelState()

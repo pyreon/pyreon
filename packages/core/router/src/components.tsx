@@ -115,36 +115,24 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
 
   // ── Structure / data decoupling ───────────────────────────────────────────
   //
-  // Pre-fix the reactive child accessor read `_loadingSignal` and the full
-  // `currentRoute` snapshot. The framework's `mountReactive` tears down and
-  // rebuilds the entire subtree on every accessor re-emission, so any
-  // unrelated route signal (loader writes, lazy resolution, navigation
-  // start/end counters, param changes that don't change the matched record)
-  // would tear down the layout, then the page, then everything below it.
-  // For a single page load with one cold-start `router.replace()`, that
-  // produced ~9 cascading remounts of the layout — confirmed empirically
-  // by instance counters.
+  // `mountReactive` rebuilds the whole subtree on every accessor re-emission, so
+  // reading `_loadingSignal` + the full `currentRoute` snapshot here made ANY
+  // unrelated route signal (loader writes, lazy resolution, nav counters, params
+  // that don't change the matched record) tear down the layout, then the page,
+  // then everything below — ~9 cascading layout remounts for one cold-start
+  // `router.replace()`, confirmed by instance counters.
   //
-  // The fix decouples STRUCTURE (which RouteRecord is mounted at this depth
-  // + which component to render for it) from DATA (params / query / loader
-  // data flowing into the rendered component). One computed returns BOTH
-  // the record and its resolved component as an atomic pair — re-emits ONLY
-  // when either side changes (reference equality on both fields). Loader
-  // writes / param changes / navigation counters don't re-emit; the rendered
-  // component receives route data through reactive props + the
-  // `LoaderDataProvider` context, which subscribe per-component to the
-  // signals they actually care about, so a param change re-renders just the
-  // page leaf — not the layout chain above it.
+  // So STRUCTURE (which RouteRecord + component mounts at this depth) is
+  // decoupled from DATA (params / query / loader data). Structure re-emits only
+  // on reference change; data reaches the component through reactive props + the
+  // `LoaderDataProvider` context, which subscribe per-component — a param change
+  // re-renders just the page leaf, not the layout chain.
   //
-  // The structure is intentionally a SINGLE computed (not two layered ones):
-  // when `currentRoute` changes, the reactive child accessor must see a
-  // CONSISTENT (rec, comp) pair on its next re-run. With two layered
-  // computeds the child accessor subscribes to both, and the order in which
-  // those two notify the child is unspecified — if the child runs after rec
-  // is notified but before comp re-evaluates, it reads the new rec paired
-  // with the OLD comp. Empirically that produced rec=/button paired with
-  // comp=HomePage, leaving the previous page rendered after navigation.
-  // Combining them into one computed forces atomic emission.
+  // Structure MUST be a SINGLE computed, not two layered ones: the child
+  // accessor would subscribe to both, and their notify order is unspecified, so
+  // it could read the new record paired with the OLD component (observed:
+  // rec=/button with comp=HomePage, leaving the previous page rendered).
+  // One computed forces atomic emission of the pair.
   interface DepthEntry {
     rec: RouteRecord | null
     comp: ComponentFn | null

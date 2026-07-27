@@ -61,8 +61,20 @@
  * claim ("one remote op → one signal.set") and locks the O(N) characterization
  * against regression. Run it before any future sync-perf change.
  */
+// Force production before the framework dev gates are EVALUATED.
+//
+// CAVEAT: ESM HOISTS static imports above every top-level statement, so this
+// assignment runs AFTER the imports below evaluate — it does NOT beat them.
+// It works here only because every library benched in this file reads
+// NODE_ENV at CALL time (Pyreon's `process.env.NODE_ENV !== 'production'`
+// gates live inside functions), not at module-init. Verified empirically:
+// numbers are identical with NODE_ENV pre-set in the environment.
+//
+// A library that selects its build at MODULE-INIT (react-dom is the known
+// case) would silently load its DEV build here. If you add one, switch this
+// file to the self-re-exec guard + dynamic imports used by
+// `ssr-crossframework.ts` and `runtime-server.ts`.
 process.env.NODE_ENV = 'production'
-
 import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate } from 'y-protocols/awareness'
 import * as Y from 'yjs'
 import { effect } from '../../../packages/core/reactivity/src/index'
