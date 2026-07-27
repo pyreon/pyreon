@@ -21,7 +21,24 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
-import { useNativeModule } from '@pyreon/primitives'
+import { Text, useNativeModule } from '@pyreon/primitives'
+import rocketstyle from '@pyreon/rocketstyle'
+
+// ui-system → native proof. `rocketstyle()({ component: Text })` is THE
+// authoring pattern the 67 `@pyreon/ui-components` use, and PMTC lowers it: the
+// dimension cascade resolves at COMPILE time and a reactive `state` flip becomes
+// a native conditional value.
+//
+// The two targets reach it by DIFFERENT mechanisms, which is why this is worth
+// proving on a device rather than in a snapshot: SwiftUI takes
+// `.foregroundColor(cond ? A : B)` (a modifier works on any View), while Compose
+// has no text-colour modifier and needs `color = if (cond) A else B` as a
+// `Text()` CONSTRUCTOR ARG. The Compose side silently dropped the colour until
+// this was fixed — so the Android build is the load-bearing half here.
+const StatusBadge = rocketstyle()({ component: Text }).states(() => ({
+  ok: { color: '#166534' },
+  warn: { color: '#b45309' },
+}))
 
 export function Counter() {
   const count = signal<number>(0)
@@ -179,6 +196,14 @@ export function Counter() {
   return (
     <VStack>
       <Text>Count: {count}</Text>
+      {/* ui-system device proof — a rocketstyle component with a REACTIVE
+          dimension. The text flips with the same signal that drives the colour,
+          so the device test can assert the flip actually re-rendered (XCUITest
+          and Compose cannot read a colour, so the colour itself is proven by
+          COMPILING: a wrong Compose constructor arg fails `assembleDebug`). */}
+      <StatusBadge state={count() > 2 ? 'warn' : 'ok'}>
+        Badge: {count() > 2 ? 'warn' : 'ok'}
+      </StatusBadge>
       <Text>Size: {sizeClass}</Text>
       <Text>Theme: {colorScheme}</Text>
       {/* FFI device proof — the value comes from the app's OWN platform class

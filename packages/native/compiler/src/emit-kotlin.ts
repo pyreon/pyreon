@@ -3851,8 +3851,14 @@ function emitKotlinText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: num
   let typoArgs = ''
   let eForMod = e
   if (styleAttr !== undefined) {
-    const { typo, rest } = extractTextTypography(styleAttr.value)
-    typoArgs = kotlinTextTypographyArgs(typo)
+    // `target: 'kotlin'` also unpacks a REACTIVE colour (a two-literal-branch
+    // ternary, which is what a rocketstyle dimension flip on a <Text> resolves
+    // to). Compose has no text-colour modifier, so without this it fell through
+    // to the container path and was DROPPED with a warning — while Swift's
+    // `.foregroundColor` handled it, making the same source render a coloured
+    // badge on iOS and an uncoloured one on Android.
+    const { typo, rest } = extractTextTypography(styleAttr.value, 'kotlin')
+    typoArgs = kotlinTextTypographyArgs(typo, (c) => emitKotlinExpr(c, 0))
     eForMod = { ...e, attrs: e.attrs.map((a) => (a === styleAttr ? { ...a, value: rest } : a)) }
   }
   const mod = emitKotlinLayoutModifier(eForMod)

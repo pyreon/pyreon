@@ -199,14 +199,77 @@ export interface TextTypography {
   color?: string
   textAlign?: string
   fontStyle?: string
+  /**
+   * A REACTIVE color: a ternary of two literal colors
+   * (`style={on() ? { color: '#0a0' } : { color: '#a00' }}`), which is what a
+   * rocketstyle dimension flip on a `<Text>` resolves to.
+   *
+   * Swift lowers this through the style path as
+   * `.foregroundColor(cond ? A : B)` because `foregroundColor` applies to any
+   * View. Compose has no text-color MODIFIER — color is a `Text()` constructor
+   * arg — so on Kotlin the value used to fall past the literal-only typography
+   * extractor into the container path, where it was dropped with a warning.
+   * Result: the SAME source rendered a coloured badge on iOS and an uncoloured
+   * one on Android, which is precisely the parity break the shared-source model
+   * exists to prevent.
+   *
+   * Held as pre-resolved per-branch native color expressions so the emitter can
+   * build `color = if (cond) A else B` without re-parsing.
+   */
+  conditionalColor?: { cond: ExprIR; whenTrue: string; whenFalse: string }
 }
 
 const TYPOGRAPHY_KEYS = new Set(['fontSize', 'fontWeight', 'color', 'textAlign', 'fontStyle'])
 
+/** The literal `color` of an object-literal style branch, if it has one. */
+function literalColorOf(e: ExprIR): string | undefined {
+  if (e.kind !== 'object') return undefined
+  for (const f of e.fields) {
+    if (f.name === 'color' && f.value.kind === 'literal' && typeof f.value.value === 'string') {
+      return f.value.value
+    }
+  }
+  return undefined
+}
+
+/** The same ternary with `color` removed from both branches, so the container
+ *  path still lowers whatever else each branch carries. */
+function stripColorFromTernary(t: Extract<ExprIR, { kind: 'ternary' }>): ExprIR {
+  const strip = (e: ExprIR): ExprIR =>
+    e.kind === 'object'
+      ? { kind: 'object', fields: e.fields.filter((f) => f.name !== 'color'), spreads: e.spreads ?? [] }
+      : e
+  return { ...t, then: strip(t.then), otherwise: strip(t.otherwise) }
+}
+
 /** Split a Text's style object into typography leaves + the remaining style
  *  (background/padding/border/etc.) the connector still lowers. Non-object /
  *  non-literal typography values are left in `rest` (unchanged connector path). */
-export function extractTextTypography(styleValue: ExprIR): { typo: TextTypography; rest: ExprIR } {
+export function extractTextTypography(
+  styleValue: ExprIR,
+  target: 'swift' | 'kotlin' = 'swift',
+): { typo: TextTypography; rest: ExprIR } {
+  // `style={cond ? { … } : { … }}` — the shape a rocketstyle dimension flip on
+  // a <Text> resolves to. Only the KOTLIN path needs this: Compose has no
+  // text-color modifier, so a colour left in the container style is dropped.
+  // Swift keeps its existing behaviour byte-for-byte (its `.foregroundColor`
+  // works on any View, so the style path already handles the ternary).
+  if (target === 'kotlin' && styleValue.kind === 'ternary') {
+    const a = literalColorOf(styleValue.then)
+    const b = literalColorOf(styleValue.otherwise)
+    if (a !== undefined && b !== undefined) {
+      const ka = parseCssColor(a, 'kotlin')
+      const kb = parseCssColor(b, 'kotlin')
+      if (ka && kb) {
+        return {
+          typo: { conditionalColor: { cond: styleValue.cond, whenTrue: ka, whenFalse: kb } },
+          // The colour is consumed here; hand the container path the REST of
+          // each branch so padding/background on the same ternary still lower.
+          rest: stripColorFromTernary(styleValue),
+        }
+      }
+    }
+  }
   if (styleValue.kind !== 'object') return { typo: {}, rest: styleValue }
   const typo: TextTypography = {}
   const restFields: { name: string; value: ExprIR }[] = []
@@ -266,7 +329,10 @@ const KOTLIN_ALIGN: Record<string, string> = {
 }
 
 /** Compose typography → leading `, fontSize = …, fontWeight = …` Text() args. */
-export function kotlinTextTypographyArgs(typo: TextTypography): string {
+export function kotlinTextTypographyArgs(
+  typo: TextTypography,
+  emitCond?: (e: ExprIR) => string,
+): string {
   const args: string[] = []
   if (typo.fontSize !== undefined) args.push(`fontSize = ${typo.fontSize}.sp`)
   if (typo.fontWeight !== undefined && KOTLIN_WEIGHT[String(typo.fontWeight)]) {
@@ -275,6 +341,15 @@ export function kotlinTextTypographyArgs(typo: TextTypography): string {
   if (typo.color !== undefined) {
     const c = parseCssColor(typo.color, 'kotlin')
     if (c) args.push(`color = ${c}`)
+  }
+  if (typo.conditionalColor !== undefined && emitCond !== undefined) {
+    // `color = if (cond) A else B` — Compose takes colour as a Text()
+    // constructor arg, so a reactive colour threads here rather than through a
+    // modifier (Swift's `.foregroundColor` applies to any View, so it needs no
+    // equivalent). Rendering the condition is the EMITTER's job, so it arrives
+    // as a callback rather than this module reaching into ExprIR emission.
+    const { cond, whenTrue, whenFalse } = typo.conditionalColor
+    args.push(`color = if (${emitCond(cond)}) ${whenTrue} else ${whenFalse}`)
   }
   if (typo.textAlign !== undefined && KOTLIN_ALIGN[typo.textAlign]) {
     args.push(`textAlign = ${KOTLIN_ALIGN[typo.textAlign]}`)
