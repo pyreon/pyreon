@@ -589,6 +589,29 @@ export function mountFor<T>(
     return false
   }
 
+  /**
+   * Duplicate check against an EXISTING keyed map (the fresh-render path, where
+   * `cache` is both the membership set and the destination). Same warnings and
+   * same skip-the-duplicate semantics as `warnForKey`, minus the `add` — the
+   * caller's `renderInto` inserts the key.
+   */
+  const warnForKeyIn = (seen: Map<string | number, ForEntry>, key: string | number) => {
+    if (process.env.NODE_ENV !== 'production' && key == null) {
+      console.warn(
+        '[Pyreon] <For> `by` function returned null/undefined. ' +
+          'Keys must be strings or numbers. Check your `by` prop.',
+      )
+    }
+    if (seen.has(key)) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn(`[Pyreon] Duplicate key "${String(key)}" in <For> list. Keys must be unique.`)
+      }
+      // In production: skip duplicate — use first occurrence only.
+      return true
+    }
+    return false
+  }
+
   /** Render item into container, update cache+cleanupCount. */
   const renderInto = (
     item: T,
@@ -629,11 +652,17 @@ export function mountFor<T>(
   const handleFreshRender = (items: T[], n: number, liveParent: Node) => {
     const frag = document.createDocumentFragment()
     const keys = new Array<string | number>(n)
-    const _seenKeys = new Set<string | number>()
+    // Duplicate detection reuses `cache` instead of a second `Set`. `cache` is
+    // provably EMPTY here (this path only runs when `currentKeys.length === 0`,
+    // and the one site that empties `currentKeys` resets `cache` on the line
+    // before), and `renderInto` writes every key into it — so `cache.has(key)`
+    // is exactly the membership `seen.has(key)` tested. Saves an n-entry Set
+    // allocation plus one hash op per row on the bulk-create path; duplicates
+    // are still skipped, so DOM-corruption safety is unchanged.
     for (let i = 0; i < n; i++) {
       const item = items[i] as T
       const key = getKey(item)
-      if (warnForKey(_seenKeys, key)) continue // skip duplicate
+      if (warnForKeyIn(cache, key)) continue // skip duplicate
       keys[i] = key
       renderInto(item, key, i, frag, null)
     }

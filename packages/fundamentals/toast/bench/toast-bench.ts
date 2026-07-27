@@ -34,7 +34,7 @@ process.env.NODE_ENV = 'production'
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 GlobalRegistrator.register()
 
-const { toast: pyreon, _reset: pyreonReset } = await import('../src/toast')
+const { toast: pyreon, _reset: pyreonReset, _toasts: pyreonToasts } = await import('../src/toast')
 const rht = (await import('react-hot-toast')).default
 
 const now = () => Number(process.hrtime.bigint())
@@ -67,6 +67,44 @@ const bench = (scenario: string, impls: { pyreon: () => void; rht: () => void })
 // SOFT animated `dismiss` (which schedules a leave) is fairly measured against
 // react-hot-toast in `toast-commit-bench.ts`'s dismiss→commit row.
 let n = 0
+// ─── CORRECTNESS GATE (runs BEFORE any timing) ──────────────────────────
+// Without this a "win" can be one side doing LESS work. Two asymmetries are
+// specifically at risk in this file: `update-by-id` must UPDATE the existing
+// toast on both sides rather than push a new one (react-hot-toast expresses
+// that as `rht(msg, { id })`, which reads like a create), and the clear-all
+// scenario must use each library's OWN clear-all — looping N removes against a
+// single call measures the API shape, not the store.
+{
+  const size = (): number => {
+    // Pyreon's store signal is the source of truth for its own count.
+    return pyreonToasts().length
+  }
+  const fail = (m: string): never => {
+    throw new Error(`[toast-bench] CORRECTNESS GATE FAILED — ${m}`)
+  }
+  pyreonReset()
+  if (size() !== 0) fail(`pyreon store not empty at gate start (${size()})`)
+
+  // 1. create+remove returns the store to empty.
+  const id1 = pyreon('gate', { duration: 0 })
+  if (size() !== 1) fail(`create did not add a toast (size=${size()})`)
+  pyreon.remove(id1)
+  if (size() !== 0) fail(`remove(id) left ${size()} toast(s)`)
+
+  // 2. update-by-id UPDATES in place — the store must stay at 1, not grow.
+  const id2 = pyreon.loading('start')
+  pyreon.update(id2, { message: 'changed' })
+  if (size() !== 1) fail(`update(id) grew the store to ${size()} — it created instead of updating`)
+  pyreon.remove(id2)
+
+  // 3. clear-all empties the store in ONE call.
+  for (let i = 0; i < 10; i++) pyreon('m' + i, { duration: 0 })
+  if (size() !== 10) fail(`expected 10 toasts before clear, got ${size()}`)
+  pyreon.remove()
+  if (size() !== 0) fail(`clear-all left ${size()} toast(s)`)
+  pyreonReset()
+}
+
 bench('create+remove', {
   pyreon: () => {
     const id = pyreon('m' + (n++ & 1023), { duration: 0 })
@@ -102,9 +140,8 @@ bench('create10+clear', {
     pyreon.remove() // HARD clear-all
   },
   rht: () => {
-    const ids: string[] = []
-    for (let i = 0; i < 10; i++) ids.push(rht('m' + i, { duration: Infinity }))
-    for (const id of ids) rht.remove(id)
+    for (let i = 0; i < 10; i++) rht('m' + i, { duration: Infinity })
+    rht.remove() // HARD clear-all — the SAME single call Pyreon makes
   },
 })
 

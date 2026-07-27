@@ -29,6 +29,28 @@ interface ErrorPattern {
 
 const ERROR_PATTERNS: ErrorPattern[] = [
   {
+    // `<For>`'s keyed reconciler SKIPS a duplicate key (first occurrence wins)
+    // to avoid cache-collision DOM corruption — so the visible symptom is a
+    // list rendering FEWER rows than the data has, which users rarely connect
+    // to the warning.
+    pattern: /Duplicate key .* in <For> list/i,
+    diagnose: (m) => ({
+      cause: `Two items in a <For> list produced the same key${m[0]?.match(/"([^"]*)"/)?.[1] ? ` ("${m[0].match(/"([^"]*)"/)?.[1]}")` : ''}. Keys must be unique: the reconciler stores one cache entry per key, so a collision would overwrite the first row's DOM handle and orphan its nodes. To avoid that corruption it SKIPS the duplicate and keeps the first occurrence — which is why the rendered list is SHORTER than your array, usually the symptom you actually noticed.`,
+      fix: "Return a genuinely unique key from `by`. A database id is ideal. If the data has no natural id, do NOT reach for the array index — it breaks keyed reconciliation on reorder (every row after an insert is treated as changed). Derive a stable composite instead, or assign an id once when the item is created.",
+      fixCode: `// BAD — non-unique: two items can share a name
+<For each={items} by={(i) => i.name}>{…}</For>
+
+// BAD — index is unique but not STABLE across reorders:
+<For each={items} by={(_, idx) => idx}>{…}</For>
+
+// GOOD — a stable unique id:
+<For each={items} by={(i) => i.id}>{…}</For>
+
+// GOOD — stable composite when there is no single id field:
+<For each={rows} by={(r) => \`\${r.groupId}:\${r.slug}\`}>{…}</For>`,
+    }),
+  },
+  {
     // useControllableState given a VALUE where its contract requires a GETTER.
     // The primitive throws this itself (dev-only) because the alternative is a
     // bare `value is not a function` from inside core — or, worse, silence: any
