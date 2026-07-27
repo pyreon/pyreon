@@ -10,59 +10,34 @@ let activeEffect: (() => void) | null = null
 // a fast path: there is no fallback collector.
 let _depsCollector: Set<() => void>[] | null = null
 
-// ─── Verify-mode dep reuse (versioned-reuse, adapted to arrays) ──────────────
+// ─── Verify-mode dep reuse ───────────────────────────────────────────────────
 //
-// The steady-state re-run of an effect/computed reads the SAME reactive
-// sources in the SAME order as its previous run. The old design paid for that
-// stability anyway: every re-run tore down the dep list (one `Set.delete` per
-// dep) and rebuilt it (one `Set.add` + one array push per read). That is the
-// per-rerun dep-Set teardown @preact/signals-core avoids with its versioned
-// doubly-linked source nodes (mark all nodes `_version = -1`, reuse on
-// re-read, unsubscribe only what stayed -1).
+// A steady-state re-run reads the SAME sources in the SAME order, so instead of
+// tearing down and rebuilding the dep list every time we keep the persistent
+// per-effect `deps: Set[]` and VERIFY it positionally:
 //
-// Pyreon's equivalent keeps the persistent per-effect `deps: Set[]` array as
-// the "source list" and VERIFIES it positionally instead of rebuilding it:
+//   - `runVerify(owner, deps, fn)` walks `deps` as reads arrive. Steady state is
+//     ONE array-identity compare + increment per read: no Set.add, no
+//     Set.delete, no push, no allocation, and the owner never leaves its
+//     subscriber Sets.
+//   - Divergence (new dep / reorder / branch flip) → `divergeVerify` unsubscribes
+//     the unconfirmed tail, repairs the confirmed prefix, and drops to collect
+//     mode for the rest of the run.
+//   - Shrink (read FEWER deps, never diverged) → handled at frame exit.
 //
-//   - `runVerify(owner, deps, fn)` enters verify mode: `_verifyOwner` is the
-//     subscriber identity (the effect's `run` / computed's `recompute`) and
-//     `_verifyIndex` walks the deps array as reads arrive.
-//   - Steady state: each `trackSubscriber` is ONE array-identity compare +
-//     increment — no `Set.add`, no `Set.delete`, no push, no allocation. The
-//     owner never leaves the subscriber Sets, so `_s` membership is stable
-//     across re-runs (better for iteration-cap safety in notify paths too).
-//   - Divergence (a read that doesn't match the recorded position — new dep,
-//     reorder, branch flip): `divergeVerify` unsubscribes the unconfirmed
-//     tail, repairs the confirmed prefix (duplicate-read aliasing hazard —
-//     see below), and drops to plain collect mode for the rest of the run.
-//     Cost on that run ≈ the old full-teardown path; subsequent runs verify
-//     the new shape.
-//   - Shrink (fn read FEWER deps and never diverged): handled at frame exit
-//     in `runVerify` — unsubscribe + truncate the stale tail, then repair the
-//     prefix for the same aliasing hazard.
+// Duplicate-read aliasing hazard: `deps` may hold the SAME Set twice (one signal
+// read twice). Deleting the owner from a stale TAIL entry would also remove it
+// from a CONFIRMED prefix position aliasing that Set — so both removal sites
+// re-`add` across the confirmed prefix afterwards (idempotent, cold path).
 //
-// Duplicate-read aliasing hazard: the deps array may contain the SAME Set
-// twice (fn read one signal twice → two pushes in collect mode). Deleting the
-// owner from a stale TAIL entry would then also remove it from a CONFIRMED
-// prefix position that aliases the same Set. Both removal sites therefore
-// re-`add` the owner across the confirmed prefix afterwards (idempotent, cold
-// path only).
+// Why not preact-style linked-list Nodes: subscriber identity here is a bare
+// `() => void` in `_s: Set`, which the batch router, `signal.subscribe`,
+// devtools and `_set`'s inline dispatch all consume. Nodes would force a rewrite
+// of that tuned notify path plus one allocation per dependency edge.
 //
-// Why not literal linked-list Nodes (the preact shape): subscriber identity
-// in Pyreon is a bare `() => void` stored in `_s: Set` — the batch flush
-// routes on that identity (`_recomputes` WeakSet), `signal.subscribe`,
-// devtools, and `wrapSignal` all consume the Set shape, and `_set`'s inline
-// single-subscriber dispatch reads `_s` directly. Node objects would force a
-// rewrite of that tuned notify path and add one allocation per dependency
-// edge; positional verify gets the same steady-state O(1)-reuse with zero
-// signal-side changes.
-//
-// Verify-mode is encoded in the SIGN of `_verifyIndex` (-1 = collect mode,
-// ≥ 0 = verify mode at that position). The former separate `_verifyOwner`
-// variable was a pure mode FLAG — its value was never read (the owner is
-// always the live `activeEffect`; only `!== null` checks consumed it) — so
-// folding it into the index drops one module-var read from every tracked
-// read's verify hit (the hottest line in a chain/diamond pull) and one
-// save/restore pair from every `runCollect`/`runVerify` frame.
+// Mode is encoded in the SIGN of `_verifyIndex` (-1 = collect, >=0 = verify at
+// that position) — folding the former separate owner flag into the index drops
+// one module-var read from the hottest tracked-read line.
 let _verifyIndex = -1
 
 /**
@@ -86,9 +61,8 @@ export function trackSubscriber(host: SubscriberHost) {
   const idx = _verifyIndex
   if (idx >= 0) {
     // Verify mode — steady-state re-run: one identity compare, no Set ops.
-    // (Safe to trust the index after the `ae === null` gate above:
-    // `runUntracked` suspends `activeEffect` only, so a stale-looking
-    // verify index can never be reached from untracked code.)
+    // Safe to trust the index after the `ae === null` gate: `runUntracked`
+    // suspends `activeEffect` only, so untracked code can't reach a stale index.
     const deps = _depsCollector as Set<() => void>[]
     if (idx < deps.length && deps[idx] === host._s) {
       _verifyIndex = idx + 1
@@ -99,10 +73,8 @@ export function trackSubscriber(host: SubscriberHost) {
   }
   if (!host._s) host._s = new Set()
   host._s.add(ae)
-  // INVARIANT (see _depsCollector docs): a collector is ALWAYS set while
-  // activeEffect is live — `runCollect`/`runVerify` are the only ways to set
-  // activeEffect and both install a collector, so no null guard is needed
-  // (a guard here would be an uncoverable branch).
+  // INVARIANT (see `_depsCollector`): a collector is ALWAYS set while
+  // activeEffect is live, so no null guard is needed here.
   ;(_depsCollector as Set<() => void>[]).push(host._s)
 }
 
@@ -135,12 +107,9 @@ function divergeVerify(host: SubscriberHost, owner: () => void): void {
 
 /**
  * Enter a COLLECT tracking frame: `fn`'s reactive reads subscribe `owner` and
- * append their subscriber Sets to `deps`. Used for FIRST runs (no previous
- * dep list to verify). Fully re-entrant — saves and restores the complete
- * tracking frame (activeEffect + collector + verify state), so nested
- * evaluations (an effect reading a dirty computed that reads another
- * computed…) each get an isolated frame and the outer frame resumes exactly
- * where it left off.
+ * append their subscriber Sets to `deps`. Used for FIRST runs. Fully re-entrant
+ * — saves and restores the complete tracking frame, so nested evaluations each
+ * get an isolated frame and the outer frame resumes where it left off.
  */
 export function runCollect<T>(owner: () => void, deps: Set<() => void>[], fn: () => T): T {
   const prevEffect = activeEffect
@@ -159,11 +128,10 @@ export function runCollect<T>(owner: () => void, deps: Set<() => void>[], fn: ()
 }
 
 /**
- * Enter a VERIFY tracking frame: `fn`'s reactive reads are checked
- * positionally against the previous run's `deps`. Steady state (same sources,
- * same order) costs one identity compare per read — no Set operations, no
- * allocations, and the owner never leaves its subscriber Sets. See the
- * verify-mode design comment above for divergence/shrink semantics.
+ * Enter a VERIFY tracking frame: `fn`'s reactive reads are checked positionally
+ * against the previous run's `deps`. Steady state (same sources, same order)
+ * costs one identity compare per read — no Set ops, no allocations, and the
+ * owner never leaves its subscriber Sets.
  */
 export function runVerify<T>(owner: () => void, deps: Set<() => void>[], fn: () => T): T {
   const prevEffect = activeEffect
@@ -174,13 +142,12 @@ export function runVerify<T>(owner: () => void, deps: Set<() => void>[], fn: () 
   _verifyIndex = 0 // verify mode, position 0
   try {
     const result = fn()
-    // Shrink: fn completed still in verify mode (index ≥ 0 — a divergence
-    // resets it to -1) but read FEWER deps than the previous run —
-    // unsubscribe + truncate the stale tail, then repair the confirmed
-    // prefix (duplicate-alias hazard, same as divergeVerify).
+    // Shrink: fn stayed in verify mode but read FEWER deps than last run —
+    // unsubscribe + truncate the stale tail, then repair the confirmed prefix
+    // (duplicate-alias hazard, same as divergeVerify).
     // Deliberately NOT in the finally: if fn threw, the unverified tail stays
-    // subscribed + recorded (memory-safe — dispose still removes everything),
-    // and the next run re-verifies from index 0.
+    // subscribed + recorded (dispose still removes everything) and the next run
+    // re-verifies from index 0.
     const idx = _verifyIndex
     if (idx >= 0 && idx < deps.length) {
       for (let j = idx; j < deps.length; j++) (deps[j] as Set<() => void>).delete(owner)
@@ -208,11 +175,10 @@ export function notifySubscribers(subscribers: Set<() => void>) {
     // Effects are queued not run inline — no re-entrancy risk, iterate the live Set directly.
     for (const sub of subscribers) enqueuePendingNotification(sub)
   } else {
-    // Effects run inline. Under verify-mode dep reuse an effect's re-run no
-    // longer removes + re-adds itself (steady state), so the live Set is
-    // stable during iteration in the common case; the original-size cap stays
-    // as the guard for DIVERGING re-runs (which still delete + re-add) and
-    // for raw subscribe() listeners that mutate the set.
+    // Effects run inline. Under verify-mode dep reuse a steady-state re-run no
+    // longer removes + re-adds itself, so the live Set is stable; the
+    // original-size cap guards DIVERGING re-runs and raw subscribe() listeners
+    // that mutate the set.
     const originalSize = subscribers.size
     let i = 0
     for (const sub of subscribers) {
@@ -223,23 +189,15 @@ export function notifySubscribers(subscribers: Set<() => void>) {
   }
 }
 
-// Thread-local collector for nested effects — captures effect() calls made
-// inside another effect's fn() body so the parent can dispose them on
-// re-run / disposal. Lives here (not in effect.ts) so `runUntracked` can
-// suspend it in lock-step with `activeEffect` — the semantic is "fully
-// isolate this work from the outer reactive context, including the
-// nested-effect auto-cleanup chain."
+// Thread-local collector for nested effects — captures `effect()` calls made
+// inside another effect's body so the parent can dispose them on re-run.
+// Lives here (not effect.ts) so `runUntracked` can suspend it in lock-step with
+// `activeEffect`: without that, child component effects created inside
+// `mountFor`'s `runUntracked` wrap would register as inner effects of the For's
+// effect and be disposed on its NEXT re-run, silently dropping every
+// subscription they had.
 //
-// Without suspending the collector in `runUntracked`, child component
-// effects created inside `mountFor`'s `runUntracked` wrap (around
-// child mounts) would be auto-registered as inner effects of the For's
-// effect — and disposed on the For's NEXT re-run (W23 from the kanban
-// audit): after the For source signal first re-fires, child component
-// effects silently lose every subscription they had.
-//
-// Untyped here (`unknown[]`) to avoid a circular dep with effect.ts. The
-// consumer is effect.ts which knows the real `Effect[]` shape (including the
-// lazy-window sentinel — see effect.ts `LAZY_INNER`).
+// Untyped (`unknown[]`) to avoid a circular dep with effect.ts.
 let _innerEffectCollector: unknown[] | null = null
 
 export function getInnerEffectCollector(): unknown[] | null {

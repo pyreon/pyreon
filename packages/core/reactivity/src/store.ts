@@ -157,16 +157,12 @@ function wrap(raw: object, shallow: boolean): object {
       // Array length — tracked via dedicated signal for push/pop/splice reactivity
       if (isArray && key === 'length') return lengthSig?.()
 
-      // Non-own properties without a tracked signal: prototype methods
-      // (forEach, map, push, …) returned untracked so array methods work.
-      // BUT if a signal already exists for this key, the property was tracked
-      // before — most likely the property is currently absent because of a
-      // `delete` operation. Continue tracking via the existing signal so that
-      // a subsequent reassign (`state.b = 99`) re-runs effects that read the
-      // key during its absent window. Without this branch, the `delete` →
-      // notify-undefined → effect-re-runs-and-reads-`undefined`-via-this-fast-
-      // path → effect-loses-subscription chain breaks reactivity for any
-      // delete-then-reassign cycle.
+      // Non-own properties without a tracked signal: prototype methods (forEach,
+      // map, push, …) are returned untracked so array methods work. BUT if a
+      // signal already exists for this key the property WAS tracked before and is
+      // most likely absent due to a `delete` — keep tracking via the existing
+      // signal so a later reassign re-runs effects that read the key during its
+      // absent window.
       if (!Object.hasOwn(target, key)) {
         if (propSignals.has(key)) return propSignals.get(key)?.()
         return (target as Record<PropertyKey, unknown>)[key]
@@ -185,29 +181,16 @@ function wrap(raw: object, shallow: boolean): object {
       return value
     },
 
-    // Lint flags 4 `.set()` calls function-scope (proxy handler object),
-    // but PER-TRAP-CALL the proxy notifies AT MOST ONE signal due to:
-    //   1. Fresh `propSignals.set(key, signal(value))` — newly-created
-    //      signal has zero subscribers, so its initial value is just
-    //      stored. No notify, nothing to batch.
-    //   2. `lengthSig.set(prev)` short-circuits via `Object.is(_v, new)`
-    //      when the new length equals the previous (e.g. trap 2 of
-    //      `Array.prototype.push` re-sets length to the value trap 1
-    //      already updated). Empirically verified across push / splice
-    //      / direct-index / length-truncation paths — 1 notify max.
-    //   3. The "writes prop signal AND length signal in same trap"
-    //      shape only fires when the prop signal pre-existed (effect
-    //      subscribed earlier) AND length actually changed (sparse
-    //      assign) — in that case lengthSig.set fires; the prop signal
-    //      write only fires IF the value differs, which by definition
-    //      means the slot WAS in-bounds → length DIDN'T change. The
-    //      two conditions are mutually exclusive in practice.
-    // A `batch()` wrap around the multi-line block here was prototyped,
-    // measured, and proven a no-op via bisect (revert-restore in real
-    // Chromium against arr.push / splice / direct-index — every variant
-    // fires 1 effect re-run with OR without the wrap). Inline-suppress
-    // so the lint count is honest and future contributors don't redo
-    // the failed-prototype loop.
+    // Lint flags 4 `.set()` calls at function scope, but PER-TRAP-CALL the proxy
+    // notifies AT MOST ONE signal: a freshly-created signal has no subscribers;
+    // `lengthSig.set(prev)` short-circuits via `Object.is`; and the "writes prop
+    // AND length in one trap" shape requires the prop signal to pre-exist AND
+    // length to change, which are mutually exclusive (a differing value implies
+    // the slot was in-bounds, so length did NOT change).
+    // A `batch()` wrap was prototyped, measured, and proven a no-op by bisect in
+    // real Chromium across push / splice / direct-index / length-truncation —
+    // every variant fires exactly 1 effect re-run with or without it. Suppressed
+    // inline so the lint count stays honest and nobody redoes the experiment.
     // pyreon-lint-disable-next-line pyreon/no-unbatched-updates
     set(target, key, value) {
       if (typeof key === 'symbol') {
@@ -252,15 +235,13 @@ function wrap(raw: object, shallow: boolean): object {
 
     deleteProperty(target, key) {
       delete (target as Record<PropertyKey, unknown>)[key]
-      // Notify subscribers that the property is now undefined, but KEEP the
-      // signal in `propSignals`. If we delete the entry, a later `set` on the
-      // same key creates a fresh signal — but every effect that previously
-      // read this key tracked the old (dropped) signal and never re-runs on
-      // the reassign. Keeping the entry preserves signal identity across
-      // delete-then-reassign cycles. The trade-off is that long-lived stores
-      // with high churn on transient keys retain those signal entries; for
-      // workloads where that's a real leak, reassign to undefined instead of
-      // delete.
+      // Notify that the property is now undefined, but KEEP the signal in
+      // `propSignals`. Deleting the entry means a later `set` on the same key
+      // creates a FRESH signal, while every effect that previously read the key
+      // still tracks the old (dropped) one and never re-runs. Keeping it
+      // preserves signal identity across delete-then-reassign cycles. Trade-off:
+      // long-lived stores with high churn on transient keys retain those entries
+      // — reassign to undefined instead of deleting if that's a real leak.
       if (typeof key !== 'symbol' && propSignals.has(key)) {
         propSignals.get(key)?.set(undefined)
       }
