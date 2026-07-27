@@ -534,13 +534,14 @@ jobs:
         id: matrices
         run: |
           # Category lists MUST mirror the cells' own case statements below.
-          # The two `native-*` test entries are PSEUDO-categories splitting
-          # packages/native/ across two runners (see test-cell's timeout
+          # The three `native-*` test entries are PSEUDO-categories splitting
+          # packages/native/ across three runners (see test-cell's timeout
           # comment); their affected-args mirror the cell exactly so the
           # decide verdict and the cell's own filter can never disagree
-          # (same script, same base, deterministic).
+          # (same script, same base, deterministic). `native-compiler-{1,2}`
+          # resolve the SAME package and differ only by vitest `--shard`.
           TC_ALL='["core","fundamentals","internals","native","tools","ui","ui-system","zero","examples"]'
-          TEST_ALL='["core","fundamentals","internals","native-compiler","native-rest","tools","ui","ui-system","zero"]'
+          TEST_ALL='["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-rest","tools","ui","ui-system","zero"]'
           emit() { # emit <prefix> <json>
             echo "$1=$2" >> "$GITHUB_OUTPUT"
             if [ "$2" = "[]" ]; then echo "$1-has=false" >> "$GITHUB_OUTPUT"; else echo "$1-has=true" >> "$GITHUB_OUTPUT"; fi
@@ -582,7 +583,8 @@ jobs:
           pick test "$TEST_ALL" \
             "core:--category=core" "fundamentals:--category=fundamentals" \
             "internals:--category=internals" \
-            "native-compiler:--category=native/compiler" \
+            "native-compiler-1:--category=native/compiler" \
+            "native-compiler-2:--category=native/compiler" \
             "native-rest:--category=native --exclude=native/compiler" \
             "tools:--category=tools" "ui:--category=ui" \
             "ui-system:--category=ui-system" "zero:--category=zero"
@@ -763,13 +765,35 @@ jobs:
     # CONSTRUCTION — a newly-added `packages/native/<pkg>` joins the `-rest`
     # cell automatically rather than silently escaping CI.
     #
-    # Observed after the split: `native-compiler` 1276s (85% of cap),
-    # `native-rest` 191s (13%). Headroom on the critical path went from 2-10%
-    # to 15%, and the Kotlin chain can no longer push the compiler over. 85% is
-    # still thinner than a required gate deserves — the remaining lever is spawn
-    # reduction (batch or cache `swiftc -parse` / `kotlinc`), NOT a cap tweak.
-    # The cap therefore STAYS at 25 minutes: tightening it toward the observed
-    # 1276s would just rebuild the cliff somewhere less visible.
+    # Observed after that split: `native-compiler` 1276s (85% of cap),
+    # `native-rest` 191s (13%). 85% was flagged there as thinner than a
+    # required gate deserves — and it was: the PMTC ui-system arc (#2456,
+    # #2463-#2466, #2475-#2477, #2483, #2485) grew the suite from 175
+    # `validateSwift`/`validateKotlin` call sites over 98 files to ~580 refs
+    # over 123, and `native-compiler` began timeout-CANCELLING at the 1500s
+    # cap ON MAIN — 3 of 4 consecutive main runs (30027780842, 30023863568,
+    # 30008739790 all killed at ~25m15s; 30006624167 passed at 18m03s). A
+    # cancelled cell fails the required `Test` aggregator, so main and every
+    # PR branched off it were red through no fault of their own.
+    #
+    # It is NOT a hang: the 18m03s success on identical code proves the suite
+    # converges, and the cancelled cells' logs show live `java`/kotlinc
+    # compiles at kill time. It is genuine, earned growth in toolchain spawns.
+    #
+    # The fix is more runners, not a bigger cap — the previous note's own
+    # conclusion ("the remaining lever is spawn reduction, NOT a cap tweak")
+    # still holds, and raising 25 -> 35 would just rebuild the same cliff one
+    # feature arc later. `native-compiler` is therefore SHARDED across two
+    # runners via vitest `--shard=1/2` / `2/2`, which splits the package's
+    # test FILES into disjoint halves whose union is every file. That halves
+    # the critical path (~1500s+ -> ~750s/cell, back to ~50% headroom) while
+    # changing NOTHING about what is validated — every test still runs, on
+    # some runner, exactly once. Spawn reduction (batch/cache `swiftc -parse`
+    # / `kotlinc`) remains the real long-term lever; sharding buys the room to
+    # do it deliberately instead of under a red gate.
+    #
+    # If a shard starts creeping toward the cap again, add `native-compiler-3`
+    # and bump the `--shard=i/N` denominators — do NOT raise the cap.
     #
     # Non-native cells are vitest-only and keep the tight 10-minute cap so a
     # genuine hang there still fails fast.
@@ -779,7 +803,7 @@ jobs:
       matrix:
         # Dynamic (see typecheck-cell): only affected categories spawn;
         # `|| full-list` fallback keeps a `changes` failure fail-closed.
-        category: ${{ fromJSON(needs.changes.outputs.test-matrix || '["core","fundamentals","internals","native-compiler","native-rest","tools","ui","ui-system","zero"]') }}
+        category: ${{ fromJSON(needs.changes.outputs.test-matrix || '["core","fundamentals","internals","native-compiler-1","native-compiler-2","native-rest","tools","ui","ui-system","zero"]') }}
     steps:
       # Pin Node — vitest's `#!/usr/bin/env node` shebang means tests
       # run under whatever Node is on PATH. Without this, ubuntu-latest's
@@ -813,9 +837,20 @@ jobs:
           # complement is derived, never enumerated, so a new native package is
           # always covered by exactly one of them.
           case "${{ matrix.category }}" in
-            native-compiler)
+            # Both compiler shards resolve the SAME package; they differ only
+            # by vitest `--shard`, which splits the package's test FILES into
+            # two disjoint halves whose union is every file (verified: 8 files
+            # /162 tests -> 4/86 + 4/76). Sharding is applied at `vitest run`;
+            # `vitest list` ignores it, so never probe the split with `list`.
+            native-compiler-1)
               AFFECTED_ARGS="--category=native/compiler"
               FULL_FILTER="--filter=./packages/native/compiler"
+              SHARD_ARGS="--shard=1/2"
+              ;;
+            native-compiler-2)
+              AFFECTED_ARGS="--category=native/compiler"
+              FULL_FILTER="--filter=./packages/native/compiler"
+              SHARD_ARGS="--shard=2/2"
               ;;
             native-rest)
               AFFECTED_ARGS="--category=native --exclude=native/compiler"
@@ -845,7 +880,7 @@ jobs:
             echo "No affected packages in this category — skipping."
             exit 0
           fi
-          echo "Cell filter: $FILTER"
+          echo "Cell filter: $FILTER${SHARD_ARGS:+ (shard $SHARD_ARGS)}"
           set -f
           # Some affected packages genuinely have no `test` script (rare
           # under packages/* — most are zero-cli kind of shape — but
@@ -854,7 +889,10 @@ jobs:
           # and exits 1. Tolerate that case — fail on real test
           # failures only.
           set +e
-          OUTPUT=$(bun run $FILTER test 2>&1)
+          # `$SHARD_ARGS` is empty for every non-sharded cell, so this is
+          # byte-identical to the unsharded command there (unquoted on
+          # purpose, under `set -f`, so empty expands to nothing).
+          OUTPUT=$(bun run $FILTER test $SHARD_ARGS 2>&1)
           EXIT=$?
           set -e
           echo "$OUTPUT"
