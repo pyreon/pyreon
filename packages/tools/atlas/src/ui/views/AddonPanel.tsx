@@ -1,6 +1,6 @@
 /** Addon panel view — the Controls / Actions / A11y tabs alongside the canvas. */
 import { Show } from '@pyreon/core'
-import { ADDON_TABS, BACKGROUNDS, PSEUDO_STATES, VIEWPORTS, viewportById } from '../addons'
+import { ADDON_TABS, BACKGROUNDS, localeDir, LOCALES, PSEUDO_STATES, VIEWPORTS, viewportById } from '../addons'
 import type { WorkbenchControl } from '../catalog'
 import * as C from '../chrome'
 import type { WorkbenchModel } from '../model'
@@ -162,6 +162,24 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
                     onClick={() => m.pseudo.set(m.pseudo() === p.id ? null : p.id)}
                   >
                     {p.label}
+                  </C.EnumBtn>
+                ))}
+              </C.EnumWrap>
+            </C.CtrlRow>
+
+            <C.CtrlRow>
+              <C.CtrlHead>
+                <C.CtrlLabel>Locale</C.CtrlLabel>
+                <C.CtrlType>{() => localeDir(m.locale())}</C.CtrlType>
+              </C.CtrlHead>
+              <C.EnumWrap>
+                {LOCALES.map((l) => (
+                  <C.EnumBtn
+                    data-testid={`locale-${l.id}`}
+                    state={() => (m.locale() === l.id ? 'active' : 'idle')}
+                    onClick={() => m.locale.set(l.id)}
+                  >
+                    {l.label}
                   </C.EnumBtn>
                 ))}
               </C.EnumWrap>

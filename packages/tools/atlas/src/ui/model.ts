@@ -5,7 +5,7 @@
  */
 import type { VNodeChildAtom } from '@pyreon/core'
 import { computed, type Computed, type Signal, signal } from '@pyreon/reactivity'
-import type { AddonTabId, BackgroundId, PseudoId, ViewportId } from './addons'
+import type { AddonTabId, BackgroundId, LocaleId, PseudoId, ViewportId } from './addons'
 import { pseudoProps } from './addons'
 import type { CatalogGroup, WorkbenchCatalog, WorkbenchComponent } from './catalog'
 import { buildSearch, defaultValues, groupComponents } from './catalog'
@@ -60,6 +60,8 @@ export interface WorkbenchModel {
   background: Signal<BackgroundId>
   pseudo: Signal<PseudoId | null>
   outline: Signal<boolean>
+  /** Active locale — threaded to `render` as `ctx.locale`, and drives `dir=`. */
+  locale: Signal<LocaleId>
   // computeds
   brand: Computed<BrandTheme>
   theme: Computed<ThemeTokens>
@@ -102,6 +104,7 @@ export function createModel(
   const background = signal<BackgroundId>('theme')
   const pseudo = signal<PseudoId | null>(null)
   const outline = signal(false)
+  const locale = signal<LocaleId>('en')
 
   const brand = computed(() => THEMES.find((b) => b.id === brandId()) ?? THEMES[0]!)
   const theme = computed(() => tokens(brand(), dark()))
@@ -147,6 +150,9 @@ export function createModel(
     get pseudo() {
       return pseudoProps(pseudo())
     },
+    get locale() {
+      return locale()
+    },
   }
   const preview = (): VNodeChildAtom | VNodeChildAtom[] => sel()?.render(vals(), renderCtx) ?? null
 
@@ -174,7 +180,7 @@ export function createModel(
   return {
     catalog, groups, total, title: opts.title ?? 'atlas', subtitle: opts.subtitle ?? '',
     brandId, dark, selId, query, zoomIdx, view, addon, actions,
-    viewport, background, pseudo, outline,
+    viewport, background, pseudo, outline, locale,
     brand, theme, sel, vals, visibleGroups, noResults, a11y,
     setValue, reset, logAction, clearActions, search, preview, searchRef, focusSearch,
   }

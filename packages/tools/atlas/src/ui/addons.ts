@@ -173,6 +173,49 @@ export const OUTLINE_CSS =
 
 // ── registry ────────────────────────────────────────────────────────────────
 
+// ── locale / direction ──────────────────────────────────────────────────────
+
+export type LocaleId = string
+
+export interface LocalePreset {
+  /** BCP-47 tag, handed to the catalog verbatim (`ctx.locale`). */
+  id: LocaleId
+  label: string
+  /** Writing direction — drives `dir=` on the preview. */
+  dir: 'ltr' | 'rtl'
+}
+
+/**
+ * Locales offered by the Locale addon.
+ *
+ * Storybook covers this with `addon-toolbars`/globals plus a community RTL
+ * addon; the pairing matters more than the list. A locale is only half the
+ * test — the half that catches real layout bugs is **direction**, because an
+ * RTL flip exposes hardcoded `margin-left`, one-sided borders, and icons that
+ * should mirror. Arabic is included for exactly that reason, not for coverage.
+ *
+ * The list is a sensible default, not a fixed set: a host reads `LOCALES` and
+ * can render its own switcher over its real catalogue of locales.
+ */
+export const LOCALES: readonly LocalePreset[] = [
+  { id: 'en', label: 'English', dir: 'ltr' },
+  { id: 'cs', label: 'Čeština', dir: 'ltr' },
+  { id: 'de', label: 'Deutsch', dir: 'ltr' },
+  { id: 'ar', label: 'العربية', dir: 'rtl' },
+]
+
+export function localeById(id: LocaleId): LocalePreset {
+  return LOCALES.find((l) => l.id === id) ?? LOCALES[0]!
+}
+
+/**
+ * Writing direction for a locale — `'ltr'` for anything unknown, so a host that
+ * supplies its own locale ids never renders an undefined `dir`.
+ */
+export function localeDir(id: LocaleId): 'ltr' | 'rtl' {
+  return localeById(id).dir
+}
+
 // ── panel registry ──────────────────────────────────────────────────────────
 
 /** The tabs in the addon panel. */
