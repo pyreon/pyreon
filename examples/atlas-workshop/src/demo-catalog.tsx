@@ -9,7 +9,7 @@
  * values; `ctx.logAction` feeds the Actions panel and `ctx.setValue` writes a
  * control back (a controlled toggle updating its own `on`).
  */
-import { cx, el, hexToRgba, type InputEl, type T, txt, type WorkbenchCatalog } from '@pyreon/atlas/ui'
+import { cx, dim, el, hexToRgba, type InputEl, type T, txt, type WorkbenchCatalog } from '@pyreon/atlas/ui'
 
 // ── showcased components (variants / sizes / states dimensions) ─────────────
 const btnBase = (t: T) =>
@@ -17,12 +17,12 @@ const btnBase = (t: T) =>
 const DemoButton = el
   .attrs({ tag: 'button', css: 'display:inline-flex;align-items:center;justify-content:center;' })
   .theme(btnBase)
-  .variants((t: T) => ({
+  .variants(dim((t) => ({
     solid: { backgroundColor: t.accent, color: '#fff', boxShadow: `0 6px 16px -6px ${hexToRgba(t.accent, 0.6)}` },
     soft: { backgroundColor: hexToRgba(t.accent, 0.14), color: t.accent, boxShadow: 'none' },
     outline: { backgroundColor: 'transparent', color: t.accent, borderColor: hexToRgba(t.accent, 0.5), boxShadow: 'none' },
     ghost: { backgroundColor: 'transparent', color: t.accent, boxShadow: 'none' },
-  }))
+  })))
   .sizes(() => ({
     sm: { fontSize: '13px', padding: '8px 15px' },
     md: { fontSize: '14.5px', padding: '11px 20px' },
@@ -32,11 +32,11 @@ const DemoButton = el
 const DemoBadge = el
   .attrs({ tag: 'span', css: 'display:inline-flex;align-items:center;justify-content:center;' })
   .theme((t: T) => cx(`font-family:'Public Sans',sans-serif;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:20px;display:inline-flex;align-items:center;gap:7px;border:1px solid transparent;background:${hexToRgba(t.accent, 0.14)};color:${t.accent};`))
-  .variants((t: T) => ({
+  .variants(dim((t) => ({
     soft: { backgroundColor: hexToRgba(t.accent, 0.14), color: t.accent },
     solid: { backgroundColor: t.accent, color: '#fff' },
     outline: { backgroundColor: 'transparent', color: t.accent, borderColor: hexToRgba(t.accent, 0.5) },
-  }))
+  })))
 
 const IconDot = el.attrs({ tag: 'span' }).theme(() => cx('width:7px;height:7px;border-radius:9px;background:currentColor;display:inline-block;'))
 
@@ -44,7 +44,7 @@ const ToggleRoot = el.attrs({ tag: 'label', css: 'display:inline-flex;align-item
 const ToggleTrack = el
   .attrs({ tag: 'span' })
   .theme((t: T) => cx(`cursor:pointer;width:46px;height:26px;border-radius:20px;position:relative;display:inline-block;transition:background .15s;background:${t.border};`))
-  .states((t: T) => ({ on: { backgroundColor: t.accent }, off: {} }))
+  .states(dim((t) => ({ on: { backgroundColor: t.accent }, off: {} })))
 const ToggleKnob = el
   .attrs({ tag: 'span' })
   .theme(() => cx('position:absolute;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s;width:22px;height:22px;left:2px;'))
@@ -56,15 +56,15 @@ const FieldLabel = txt.attrs({ tag: 'label' }).theme((t: T) => cx(`display:block
 const FieldInput = (el
   .attrs({ tag: 'input' })
   .theme((t: T) => cx(`width:100%;font-family:'Public Sans',sans-serif;font-size:14px;padding:10px 13px;border-radius:9px;outline:none;color:${t.text};background:${t.bg};border:1.5px solid ${t.border};`))
-  .states((t: T) => ({
+  .states(dim((t) => ({
     focus: { borderColor: t.accent, boxShadow: `0 0 0 3px ${hexToRgba(t.accent, 0.18)}` },
     error: { borderColor: t.danger, boxShadow: '0 0 0 3px rgba(224,91,91,.15)' },
     default: {},
-  }))) as unknown as InputEl
+  })))) as unknown as InputEl
 const FieldHelper = txt
   .attrs({ tag: 'div' })
   .theme((t: T) => cx(`font-size:11.5px;margin-top:6px;color:${t.muted};`))
-  .states((t: T) => ({ error: { color: t.danger }, default: {} }))
+  .states(dim((t) => ({ error: { color: t.danger }, default: {} })))
 
 // ── the catalog ─────────────────────────────────────────────────────────────
 export const demoCatalog: WorkbenchCatalog = {

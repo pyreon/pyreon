@@ -18,14 +18,14 @@ export function TopBar(props: { model: WorkbenchModel }) {
       </C.BrandRow>
 
       <C.Segment>
-        <C.SegBtn state={m.view() === 'canvas' ? 'active' : 'idle'} onClick={() => m.view.set('canvas')}>Canvas</C.SegBtn>
-        <C.SegBtn state={m.view() === 'docs' ? 'active' : 'idle'} onClick={() => m.view.set('docs')}>Docs</C.SegBtn>
-        <C.SegBtn state={m.view() === 'lab' ? 'active' : 'idle'} onClick={() => m.view.set('lab')}>Theme Lab</C.SegBtn>
+        <C.SegBtn state={() => (m.view() === 'canvas' ? 'active' : 'idle')} onClick={() => m.view.set('canvas')}>Canvas</C.SegBtn>
+        <C.SegBtn state={() => (m.view() === 'docs' ? 'active' : 'idle')} onClick={() => m.view.set('docs')}>Docs</C.SegBtn>
+        <C.SegBtn state={() => (m.view() === 'lab' ? 'active' : 'idle')} onClick={() => m.view.set('lab')}>Theme Lab</C.SegBtn>
       </C.Segment>
 
       <C.Segment>
         {THEMES.map((t) => (
-          <C.SegBtn state={m.brandId() === t.id ? 'active' : 'idle'} onClick={() => m.brandId.set(t.id)}>{t.name}</C.SegBtn>
+          <C.SegBtn state={() => (m.brandId() === t.id ? 'active' : 'idle')} onClick={() => m.brandId.set(t.id)}>{t.name}</C.SegBtn>
         ))}
       </C.Segment>
 

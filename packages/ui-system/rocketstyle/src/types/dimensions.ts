@@ -95,13 +95,35 @@ export type DimensionBooleanAttrs<D extends Dimensions, DKP extends TDKP> = Part
   Record<ValueOf<DimensionTypesHelper<D, DKP>>, boolean>
 >
 
+/**
+ * A dimension PROP also accepts an ACCESSOR (`state={() => cond ? 'a' : 'b'}`).
+ *
+ * `calculateStylingAttrs` resolves a function-valued dimension prop at read time
+ * (`typeof rawProp === 'function' ? rawProp() : rawProp`, see utils/attrs.ts) —
+ * that landed with the INLINE-signal fix so a reactive dimension re-resolves
+ * inside rocketstyle's own computed, with no remount. The runtime shipped, but
+ * this type never widened to match, so the very form the fix exists to support
+ * failed to typecheck and call sites needed a cast.
+ *
+ * Applied ONLY to the props-facing type — never to `ExtractDimensions`, which is
+ * the RESOLVED shape behind `$$rocketstyle` and the `.config()` callback, where a
+ * function is genuinely not a valid value.
+ *
+ * Widening only ever ACCEPTS more, so no existing call site can break.
+ */
+type WithDimensionAccessor<T> = { [K in keyof T]: T[K] | (() => T[K]) }
+
 export type ExtractDimensionProps<
   D extends Dimensions,
   DKP extends TDKP,
   UB extends boolean,
 > = UB extends true
-  ? Partial<ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP> & DimensionBooleanAttrs<D, DKP>>>
-  : Partial<ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP>>>
+  ? Partial<
+      WithDimensionAccessor<
+        ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP> & DimensionBooleanAttrs<D, DKP>>
+      >
+    >
+  : Partial<WithDimensionAccessor<ExtractNullableDimensionKeys<DimensionObjAttrs<D, DKP>>>>
 
 export type ExtractDimensions<
   D extends Dimensions,

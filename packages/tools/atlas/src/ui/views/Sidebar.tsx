@@ -13,8 +13,8 @@ export function Sidebar(props: { model: WorkbenchModel }) {
         {g.group}
       </C.GroupLabel>
       {g.items.map((c) => (
-        <C.CompBtn state={m.selId() === c.id ? 'active' : 'idle'} onClick={() => m.selId.set(c.id)}>
-          <C.CompBar state={m.selId() === c.id ? 'active' : 'idle'} />
+        <C.CompBtn state={() => (m.selId() === c.id ? 'active' : 'idle')} onClick={() => m.selId.set(c.id)}>
+          <C.CompBar state={() => (m.selId() === c.id ? 'active' : 'idle')} />
           <C.CompName>{c.name}</C.CompName>
           {c.isNew ? <C.NewTag>NEW</C.NewTag> : null}
         </C.CompBtn>

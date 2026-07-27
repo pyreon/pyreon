@@ -63,8 +63,27 @@ export function Workbench(props: WorkbenchProps) {
   // rocketstyle reads its tokens from @pyreon/ui-core's reactive context AND
   // needs the theme enriched — so wrap in <PyreonUI> (autoInit + enrichTheme +
   // context layers). A brand/dark swap re-resolves reactively.
+  //
+  // `theme` and `mode` are both passed as ACCESSORS on purpose.
+  //
+  // The prebuilt `lib/ui.js` is built with the plain automatic JSX runtime (as is
+  // every other @pyreon UI package's lib), so it gets none of the compiler's
+  // `_rp()` prop wrapping. A raw `theme={m.theme()}` is therefore read exactly
+  // once there, and the brand / dark swap silently does nothing for anyone
+  // resolving the `import` condition instead of `bun`. An accessor is live on
+  // BOTH paths: the compiler wraps it and `PyreonUI` calls it, or — with no
+  // compiler — `PyreonUI` just calls it.
+  //
+  // Hand-wrapping in `_rp()` is NOT the answer: in a compiled file the compiler
+  // wraps it a SECOND time, `props.theme` becomes the inner thunk, `enrichTheme`
+  // receives a function, and every token reads `undefined` (this broke all 7
+  // atlas-workshop e2e specs with `t.accent === undefined` before being caught).
+  // Same reasoning drives the `state={() => …}` accessors in ./views.
   return (
-    <PyreonUI theme={m.theme() as never} mode={m.dark() ? 'dark' : 'light'}>
+    <PyreonUI
+      theme={(() => m.theme()) as never}
+      mode={() => (m.dark() ? 'dark' : 'light')}
+    >
       <C.Shell data-testid="atlas-shell">
         <TopBar model={m} />
         <C.Body>

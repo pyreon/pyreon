@@ -18,12 +18,12 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
       ) : ctrl.type === 'enum' ? (
         <C.EnumWrap>
           {(ctrl.options ?? []).map((opt) => (
-            <C.EnumBtn state={m.vals()[ctrl.key] === opt ? 'active' : 'idle'} onClick={() => m.setValue(m.selId(), ctrl.key, opt)}>{opt}</C.EnumBtn>
+            <C.EnumBtn state={() => (m.vals()[ctrl.key] === opt ? 'active' : 'idle')} onClick={() => m.setValue(m.selId(), ctrl.key, opt)}>{opt}</C.EnumBtn>
           ))}
         </C.EnumWrap>
       ) : (
-        <C.Switch state={m.vals()[ctrl.key] ? 'on' : 'off'} onClick={() => m.setValue(m.selId(), ctrl.key, !m.vals()[ctrl.key])}>
-          <C.Knob state={m.vals()[ctrl.key] ? 'on' : 'off'} />
+        <C.Switch state={() => (m.vals()[ctrl.key] ? 'on' : 'off')} onClick={() => m.setValue(m.selId(), ctrl.key, !m.vals()[ctrl.key])}>
+          <C.Knob state={() => (m.vals()[ctrl.key] ? 'on' : 'off')} />
         </C.Switch>
       )}
     </C.CtrlRow>
@@ -32,9 +32,9 @@ export function AddonPanel(props: { model: WorkbenchModel }) {
   return (
     <C.AddonPanel>
       <C.AddonTabs>
-        <C.SegBtn state={m.addon() === 'controls' ? 'active' : 'idle'} onClick={() => m.addon.set('controls')}>Controls</C.SegBtn>
-        <C.SegBtn state={m.addon() === 'actions' ? 'active' : 'idle'} onClick={() => m.addon.set('actions')}>Actions</C.SegBtn>
-        <C.SegBtn state={m.addon() === 'a11y' ? 'active' : 'idle'} onClick={() => m.addon.set('a11y')}>A11y</C.SegBtn>
+        <C.SegBtn state={() => (m.addon() === 'controls' ? 'active' : 'idle')} onClick={() => m.addon.set('controls')}>Controls</C.SegBtn>
+        <C.SegBtn state={() => (m.addon() === 'actions' ? 'active' : 'idle')} onClick={() => m.addon.set('actions')}>Actions</C.SegBtn>
+        <C.SegBtn state={() => (m.addon() === 'a11y' ? 'active' : 'idle')} onClick={() => m.addon.set('a11y')}>A11y</C.SegBtn>
       </C.AddonTabs>
       <C.AddonBody>
         <Show when={() => m.addon() === 'controls'}>
