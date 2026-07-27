@@ -23,18 +23,20 @@
 // convenient superset — a superset stub is itself a masking source"). Any new
 // modifier added here must carry the same constraint the real SwiftUI declares.
 //
-// SCOPE. This stub covers the 2 shipped example apps + 35 of 37 compiler fixtures
+// SCOPE. This stub covers the 2 shipped example apps + ALL 37 compiler fixtures
 // (canonical primitives, common SwiftUI modifiers, i18n/machine/permissions/link/
 // webview, plus the router-hook surface — PyreonRouter / EnvironmentValues.pyreonRouter
 // / useNavigate / useParams — and PyreonForm, added in M-gate.1d; the two SMALL
 // @Observable fixtures tier2-store / tier2-state-tree, added in M-gate.1e via the
 // PyreonStoreProtocol / PyreonModelProtocol marker protocols below + the
 // `import Observation` guarantee `validateSwiftWithStubs` adds when the emit uses
-// `@Observable`). NOT yet covered (tracked follow-up M-gate.1f): the 2 LARGE
-// @Observable showcase apps (showcase-finance / showcase-tasks) — they emit
-// @Observable too but ALSO need PyreonAuth / PyreonDatabase / PyreonFetch /
-// LazyVStack / Color / .task stubs + a real closure-inference check on their
-// `{ v in }` / `{ _values in }` shapes (which MAY surface real emit bugs).
+// `@Observable`). M-gate.1f closed the last two — the LARGE @Observable showcase
+// apps (showcase-finance / showcase-tasks) — by adding the service tier
+// (PyreonAuth / PyreonDatabase / PyreonFetch / RouterProvider / matchPath /
+// LazyVStack / Color / Font.custom / .foregroundColor / .task /
+// navigationDestination). Finishing them DID surface a real emit bug, as
+// suspected: useDatabase's get / delete / find emitted Swift without the
+// argument labels the runtime declares.
 //
 // When adding a symbol: keep ARGUMENT types faithful (a wrong-typed arg must still
 // be caught), and mirror any LOAD-BEARING generic constraint exactly (like
@@ -180,6 +182,14 @@ extension View {
   public func padding(_ length: Double) -> some View { self }
   public func sheet<C: View>(isPresented: Binding<Bool>, @ViewBuilder content: () -> C) -> some View { self }
   public func disabled(_ disabled: Bool) -> some View { self }
+  // navigationDestination(for:destination:) — the multi-screen router emit's
+  // push target. \`D: Hashable\` mirrors SwiftUI's real constraint (route values
+  // must be Hashable to key the navigation path); a loose \`D\` would let an
+  // emit push a non-Hashable route value and still typecheck.
+  public func navigationDestination<D: Hashable, C: View>(
+    for data: D.Type,
+    @ViewBuilder destination: @escaping (D) -> C
+  ) -> some View { self }
   // Pure pass-through modifiers (no load-bearing constraint — they carry faithful
   // ARGUMENT types so a wrong-typed arg is still caught, but always return some View).
   public func bold() -> some View { self }
@@ -188,6 +198,12 @@ extension View {
   public func containerRelativeFrame(_ axes: Axis.Set, count: Int, span: Int, spacing: Double, alignment: Alignment = .center) -> some View { self }
   public func resizable() -> some View { self }
   public func imageScale(_ scale: ImageScale) -> some View { self }
+  // foregroundColor + .task — the showcase-app tier. \`.task\` is the mount-time
+  // async hook a useFetch-bearing component's emit attaches (to a stable ZStack
+  // host, per the device-found SwiftUI identity rule); its closure is async, so
+  // an emit that forgets \`await\` inside it fails here rather than on-device.
+  public func foregroundColor(_ color: Color?) -> some View { self }
+  public func task(priority: TaskPriority = .userInitiated, _ action: @escaping () async -> Void) -> some View { self }
   public func allowsHitTesting(_ enabled: Bool) -> some View { self }
   public func scaledToFit() -> some View { self }
   public func onAppear(_ action: (() -> Void)? = nil) -> some View { self }
@@ -295,18 +311,116 @@ public final class PyreonForm {
 // router-hooks emit: @Environment(\\.pyreonRouter) var pyreonRouter: PyreonRouter?
 // + useNavigate(router:) -> (String) -> Void + useParams(router:) ->
 // [String: String]. Signatures mirror packages/native/router-swift exactly.
-public final class PyreonRouter { public init() {} }
+public final class PyreonRouter {
+  public init() {}
+  // Static pattern matcher the multi-screen emit calls to resolve a pushed
+  // path. Returns the captured params, or nil when the pattern does not match —
+  // keeping the OPTIONAL return is load-bearing: an emit that forgets to unwrap
+  // it must fail here, not silently on-device.
+  public static func matchPath(_ path: String, _ pattern: String) -> [String: String]? { nil }
+}
 extension EnvironmentValues {
   public var pyreonRouter: PyreonRouter? { get { nil } set {} }
 }
 public func useNavigate(router: PyreonRouter?) -> (String) -> Void { { _ in } }
 public func useParams(router: PyreonRouter?) -> [String: String] { [:] }
+// RouterProvider — the multi-screen root the showcase apps emit. Mirrors
+// router-swift: generic over its content, @ViewBuilder, escaping closure.
+public struct RouterProvider<Content: View>: View {
+  public init(router: PyreonRouter, @ViewBuilder content: @escaping () -> Content) {}
+  public typealias Body = Never
+}
+
+// ---- Auth + database service surface (the showcase-app tier) ----
+// Mirrors runtime-swift EXACTLY. \`status\` / \`user\` / \`error\` are
+// private(set) there, so the stub keeps them read-only from the emit's side —
+// a settable stub would let a bad emit assign them and typecheck anyway.
+public enum PyreonAuthStatus: Sendable {
+  case signedOut, signingIn, signedIn, error
+}
+@Observable
+public final class PyreonAuth<User> {
+  public private(set) var status: PyreonAuthStatus = .signedOut
+  public private(set) var user: User?
+  public private(set) var error: Error?
+  public init(status: PyreonAuthStatus = .signedOut, user: User? = nil) {}
+  public var isAuthenticated: Bool { status == .signedIn }
+  public var isSigningIn: Bool { status == .signingIn }
+  public func beginSignIn() {}
+  public func signInSucceeded(_ user: User) {}
+  public func signInFailed(_ failure: Error) {}
+  public func signOut() {}
+}
+// PyreonRecord's field bag is [String: String] in runtime-swift — keeping that
+// exact type is what makes a record-construction emit bug visible here.
+public struct PyreonRecord {
+  public let id: String
+  public let fields: [String: String]
+  public init(id: String, fields: [String: String] = [:]) { self.id = id; self.fields = fields }
+}
+// PyreonFetch — the @Observable data container a \`useFetch\` decl emits.
+// \`data\` / \`error\` / \`isPending\` are private(set) in runtime-swift; keeping
+// that here means an emit that tries to ASSIGN one fails, as it should (the
+// container is driven through begin/resolve/reject/load/refetch).
+@Observable
+public final class PyreonFetch<T> {
+  public private(set) var data: T?
+  public private(set) var error: Error?
+  public private(set) var isPending: Bool = false
+  public init() {}
+  public func begin() {}
+  public func resolve(_ value: T) {}
+  public func reject(_ failure: Error) {}
+  public func load(_ fetcher: @escaping () throws -> T) {}
+  public func refetch() {}
+}
+public final class PyreonDatabase {
+  public init() {}
+  public func insert(_ collection: String, _ record: PyreonRecord) {}
+  public func get(_ collection: String, id: String) -> PyreonRecord? { nil }
+  public func all(_ collection: String) -> [PyreonRecord] { [] }
+  @discardableResult public func delete(_ collection: String, id: String) -> Bool { false }
+  public func find(_ collection: String, field: String, equals value: String) -> [PyreonRecord] { [] }
+  public func count(_ collection: String) -> Int { 0 }
+}
 
 // ---- Additional SwiftUI surface (fonts / images / scroll / spacing) ----
 public struct Font {
   public static let largeTitle = Font(), title = Font(), title2 = Font(), title3 = Font()
   public static let headline = Font(), subheadline = Font(), body = Font(), callout = Font()
   public static let footnote = Font(), caption = Font(), caption2 = Font()
+  // Custom (bundled) font — what a \`<Text font="Brand">\` lowers to. Keeping the
+  // size: label (rather than an argument-less overload) is what catches an emit
+  // that drops or misnames it. Double mirrors the sibling VStack stub; the real
+  // signature says CGFloat, which is the same type on 64-bit and is not
+  // reliably resolvable on the Linux toolchain this gate runs on.
+  public static func custom(_ name: String, size: Double) -> Font { Font() }
+}
+// Color — theme-token colors lower to the component initialiser, so the
+// Double-channel init is the load-bearing one (a token emitted with the wrong
+// argument labels must fail here). \`opacity\` defaults, as in SwiftUI.
+public struct Color {
+  public init(red: Double, green: Double, blue: Double, opacity: Double = 1) {}
+  public static let black = Color(red: 0, green: 0, blue: 0)
+  public static let white = Color(red: 1, green: 1, blue: 1)
+  public static let clear = Color(red: 0, green: 0, blue: 0, opacity: 0)
+  public static let primary = Color(red: 0, green: 0, blue: 0)
+  public static let secondary = Color(red: 0.5, green: 0.5, blue: 0.5)
+}
+// TaskPriority — only the cases \`.task(priority:)\` call sites can name.
+public struct TaskPriority {
+  public static let userInitiated = TaskPriority(), high = TaskPriority()
+  public static let medium = TaskPriority(), low = TaskPriority(), background = TaskPriority()
+}
+// LazyVStack — the lazily-materialising column a <Scroll>-wrapped <For>
+// lowers to. Mirrors SwiftUI: optional alignment + spacing, @ViewBuilder body.
+public struct LazyVStack<Content: View>: View {
+  public init(
+    alignment: HorizontalAlignment = .center,
+    spacing: Double? = nil,
+    @ViewBuilder content: () -> Content
+  ) {}
+  public typealias Body = Never
 }
 public struct Spacer: View { public init(minLength: Double? = nil) {}; public typealias Body = Never }
 public struct ScrollView<Content: View>: View {
