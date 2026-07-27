@@ -61,9 +61,8 @@ import { setupDelegation } from './delegate'
 import { installDevTools } from './devtools'
 import { mountChild } from './mount'
 
-// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
-// uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-// Dev-time counter sink — see packages/internals/perf-harness for contract.
+// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this uses
+// `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 /**

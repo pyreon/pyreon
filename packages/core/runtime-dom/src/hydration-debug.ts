@@ -104,9 +104,7 @@ export function warnHydrationMismatch(
     )
   }
 
-  // Telemetry callbacks — fire in BOTH dev and prod, independent of the
-  // warn toggle. This is the production observability hook (Sentry,
-  // Datadog, etc.) that pre-fix was missing entirely.
+  // Telemetry callbacks — fire in BOTH dev and prod, independent of the warn toggle.
   if (_handlers.length > 0) {
     const ctx: HydrationMismatchContext = {
       type,

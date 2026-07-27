@@ -88,9 +88,7 @@ export function createReactiveContext<T>(defaultValue: T): ReactiveContext<T> {
 }
 
 // ─── SSR request-scoped stack ────────────────────────────────────────────────
-// Used ONLY when no client owner is active (i.e. during `renderToString`). On Node with
-// concurrent requests, @pyreon/runtime-server swaps in an AsyncLocalStorage-backed
-// stack via `setContextStackProvider()` so each request is isolated.
+// Used ONLY when no client owner is active (i.e. during `renderToString`).
 const _contextStack: Map<symbol, unknown>[] = []
 let _contextProvider: () => Map<symbol, unknown>[] = () => _contextStack
 
@@ -153,8 +151,7 @@ export function useContext<T>(context: Context<T>): T {
     // consumers (the `*-compat` layers run their own stack-based provide via
     // `pushContext`) still resolve through `useContext`.
   }
-  // SSR (no owner) AND the client stack-fallback: walk the request-scoped /
-  // compat stack top-down.
+  // SSR (no owner) AND the client stack-fallback: walk the request-scoped / compat stack top-down.
   const stack = getStack()
   for (let i = stack.length - 1; i >= 0; i--) {
     const frame = stack[i]
@@ -189,13 +186,11 @@ export function useContext<T>(context: Context<T>): T {
 export function provide<T>(context: Context<T>, value: T): void {
   const owner = getContextOwner()
   if (owner !== null) {
-    // Client: store on the component's owner scope. No cleanup needed — the
-    // context dies when the scope is disposed at unmount.
+    // Client: store on the component's owner scope.
     owner.provideContext(context.id, value)
     return
   }
-  // SSR (no owner): push onto the request-scoped stack. The server renderer
-  // pops it by length when the subtree finishes; SSR never fires onUnmount.
+  // SSR (no owner): push onto the request-scoped stack.
   pushContext(new Map([[context.id, value]]))
 }
 
@@ -222,13 +217,11 @@ export function withContext<T>(context: Context<T>, value: T, fn: () => void): v
 // `_bind` / `renderEffect` / `effect` capture the active context owner at setup
 // and restore it on every re-run, so a signal-driven re-run resolves
 // `useContext()` through the owner chain it was created in rather than whatever
-// owner happens to be active when the scheduler fires.
 setSnapshotCapture({
   capture: () => getContextOwner(),
   // `restore` runs only when `capture` returned a non-null owner — i.e. the
   // effect was created inside a mounted component scope. A bare node-side
   // effect has no active owner, so this arm is exercised under a renderer
-  // (covered by @pyreon/runtime-dom's context re-run tests).
   /* v8 ignore next 2 */
   restore: <T>(owner: unknown, fn: () => T): T =>
     runWithContextOwner(owner as EffectScope | null, fn),

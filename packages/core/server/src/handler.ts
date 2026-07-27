@@ -150,10 +150,8 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     }
 
     // ── PR-S6: HTTP method gating ───────────────────────────────────────────
-    // Middleware (API routes, server actions, user middleware) gets first crack at any
-    // method — middleware that handles its own POST / PUT / DELETE / OPTIONS preflight
-    // short-circuits above. Anything that FALLS THROUGH to this point is bound for the
-    // SSR render pipeline, which only renders HTML for GET / HEAD.
+    // Middleware (API routes, server actions, user middleware) gets first crack at any method —
+    // middleware that handles its own POST / PUT / DELETE / OPTIONS preflight short-circuits above.
     const method = req.method
     if (method !== 'GET' && method !== 'HEAD') {
       if (method === 'OPTIONS') {
@@ -181,7 +179,6 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // Resolve lazy COMPONENTS into the cache AND run loaders before the
           // render (see renderPage's docstring for the empty-page failure mode
           // `prefetchLoaderData` alone caused). Forward the request so loaders
-          // can read cookies and `throw redirect()` BEFORE the layout renders.
           await router.preload(path, req)
 
           const app = h(RouterProvider, { router }, h(App, null))
@@ -189,8 +186,6 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
           // timeout, parent AbortController) propagates into the streaming render:
           // pending Suspense boundaries are cancelled and their post-resolve enqueues
           // are skipped instead of buffering work for a consumer that already hung up.
-          // Closes the AbortSignal wire end-to-end (renderToStream gained `{ signal }`
-          // in #745).
           const streamResolved = router.currentRoute() as { isNotFound?: boolean }
           const streamStatus = streamResolved?.isNotFound === true ? 404 : 200
           return renderStreamResponse(
@@ -224,10 +219,9 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
     }
 
     // ── String mode (default) — the shared renderPage pipeline ──────────────
-    // preload → redirect catch → render → styler collect → loader script →
-    // status all live in `renderPage` (render-page.ts), shared byte-for-byte
-    // with zero's SSG prerender entry and dev SSR middleware. This handler
-    // only composes the parts into its pre-compiled template.
+    // preload → redirect catch → render → styler collect → loader script → status all
+    // live in `renderPage` (render-page.ts), shared byte-for-byte with zero's SSG
+    // prerender entry and dev SSR middleware.
     try {
       const result = await renderPage(App, router as never, path, {
         request: req,
@@ -261,9 +255,8 @@ export function createHandler(options: HandlerOptions): (req: Request) => Promis
         scripts,
       })
 
-      // PR-S6: HEAD requests must return the same headers + status as the
-      // corresponding GET but with NO body. The renderer ran (loaders fire,
-      // head/scripts compute, status decided); the body is stripped here.
+      // PR-S6: HEAD requests must return the same headers + status as the corresponding
+      // GET but with NO body.
       if (method === 'HEAD') {
         return new Response(null, { status: result.status, headers: ctx.headers })
       }
@@ -295,11 +288,9 @@ async function renderStreamResponse(
   signal?: AbortSignal,
   suspenseTimeoutMs?: number,
   // PR-S6: status decided by the caller (`router.currentRoute().isNotFound` resolved
-  // synchronously at handler time, before streaming starts). Defaults to 200 for
-  // source-compatible callers.
+  // synchronously at handler time, before streaming starts).
   status: number = 200,
-  // PR-S6: HEAD requests must NOT have a body. The render still runs (loaders fire,
-  // head/scripts compute) but the stream isn't connected to the response.
+  // PR-S6: HEAD requests must NOT have a body.
   isHead: boolean = false,
 ): Promise<Response> {
   const loaderData = serializeLoaderData(router as never)
@@ -312,9 +303,7 @@ async function renderStreamResponse(
 
   // Forward the upstream request's abort signal AND the Suspense timeout config so
   // renderToStream can (a) skip post-resolve Suspense enqueues when the consumer
-  // disconnects, (b) honor the ops-controlled per-boundary timeout. Both options are
-  // only included when defined, so unconfigured deploys land on renderToStream's
-  // defaults byte-identically.
+  // disconnects, (b) honor the ops-controlled per-boundary timeout.
   const streamOptions: { signal?: AbortSignal; suspenseTimeoutMs?: number } = {}
   if (signal !== undefined) streamOptions.signal = signal
   if (suspenseTimeoutMs !== undefined) streamOptions.suspenseTimeoutMs = suspenseTimeoutMs
@@ -343,9 +332,7 @@ async function renderStreamResponse(
         push(shellTail)
       } catch (err) {
         // Defensive: catastrophic stream-level failure (rare; the SSR pipeline emits
-        // its own error markup for component-level errors). Status code is already 200
-        // by the time we get here so we can only emit an inline error script and close
-        // the body.
+        // its own error markup for component-level errors).
         /* v8 ignore start */
         if (process.env.NODE_ENV !== 'production') {
           console.error('[Pyreon Server] Stream render failed:', err)

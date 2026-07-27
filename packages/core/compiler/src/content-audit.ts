@@ -101,7 +101,6 @@ function findMonorepoRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
-      // fall through
     }
     const parent = dirname(dir)
     if (parent === dir) return null

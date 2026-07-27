@@ -92,9 +92,7 @@ function walk(
   const t = typeof value
   if (t === 'string' || t === 'number' || t === 'boolean') return value
   if (t === 'bigint') return { [TAG]: 'B', [VALUE]: String(value as bigint) }
-  // function / symbol / undefined → null (matches JSON.stringify on arrays). Containing
-  // objects skip these as own keys BEFORE recursing, so this branch is only reached for
-  // Map/Set values + as a defensive fallback if a caller hands in a non-portable root.
+  // function / symbol / undefined → null (matches JSON.stringify on arrays).
   if (t === 'function' || t === 'symbol' || t === 'undefined') return null
 
   // Objects from here on.
@@ -167,8 +165,7 @@ function walk(
     )
   }
 
-  // Plain object. Walk own enumerable string-keyed props, skipping the
-  // same not-portable types `JSON.stringify` skips.
+  // Plain object.
   const result: Record<string, Encoded> = {}
   let hasOwnTag = false
   for (const [key, val] of Object.entries(obj)) {
@@ -239,9 +236,8 @@ export function decodeIslandProps(value: unknown): unknown {
         }
         return value
       case 'e':
-        // Escape — the wrapped value is itself a plain object that
-        // happens to have `__pyreon_t` as one of its keys. Decode
-        // recursively (in case nested values are themselves tagged).
+        // Escape — the wrapped value is itself a plain object that happens to have
+        // `__pyreon_t` as one of its keys.
         if (v && typeof v === 'object' && !Array.isArray(v)) {
           const out: Record<string, unknown> = {}
           for (const [k, val] of Object.entries(v as Record<string, unknown>)) {

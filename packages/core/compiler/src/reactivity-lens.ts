@@ -112,8 +112,7 @@ export function analyzeReactivity(
     })
     spans = r.reactivityLens ?? []
   } catch {
-    // Parse failure → no structural facts. Footguns may still be derivable
-    // (detectPyreonPatterns uses the TS compiler API independently).
+    // Parse failure → no structural facts.
     spans = []
   }
 
@@ -126,10 +125,8 @@ export function analyzeReactivity(
     footguns = []
   }
   for (const d of footguns) {
-    // detectPyreonPatterns gives 1-based line / 0-based column + `current`
-    // (the offending source text). Approximate the end as same-line +
-    // current length; multi-line `current` is rare and the editor only
-    // needs a reasonable highlight range.
+    // detectPyreonPatterns gives 1-based line / 0-based column + `current` (the
+    // offending source text).
     const firstLineLen = d.current.split('\n')[0]?.length ?? d.current.length
     findings.push({
       kind: 'footgun',

@@ -51,8 +51,6 @@ export { describeReactiveGraph, formatGraphDescription } from './reactive-descri
 // `writeLpihCache` + `startLpihPolling` ship at the `@pyreon/reactivity/lpih`
 // subpath. They depend on `node:fs/promises` (Node-only) and are dev-mode
 // integration utilities — separating them keeps the core main-entry bundle
-// smaller AND clarifies that LPIH writes are an opt-in side-channel, not a
-// core reactivity primitive. See `./lpih.ts` and `docs/src/content/docs/lpih.md`.
 export type { ReactiveTraceEntry } from './reactive-trace'
 export type {
   AccessorReturn,

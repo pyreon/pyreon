@@ -55,8 +55,6 @@ export type ErrorHandler = (ctx: ErrorContext) => void
 // Plain module-scope state. The duplicate-instance bug class is now
 // prevented at the bundler layer (`@pyreon/vite-plugin` injects
 // `resolve.dedupe`) and detected at the runtime layer (every package
-// calls `registerSingleton` at module load) — see
-// `.claude/plans/jaunty-herding-kazoo.md`.
 let _errorHandlers: ErrorHandler[] = []
 
 /**
@@ -83,9 +81,7 @@ export function registerErrorHandler(handler: ErrorHandler): () => void {
  */
 export function reportError(ctx: ErrorContext): void {
   // Enrich with the recent-signal-write trace so every handler (Sentry, Datadog,
-  // console) gets the causal reactive sequence for free. Only when the caller didn't
-  // already supply one, and only in dev — the gate lets the `getReactiveTrace` call
-  // (and the buffer behind it) tree-shake out of production.
+  // console) gets the causal reactive sequence for free.
   if (process.env.NODE_ENV !== 'production' && ctx.reactiveTrace === undefined) {
     try {
       const trace = getReactiveTrace()

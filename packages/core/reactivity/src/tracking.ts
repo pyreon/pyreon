@@ -5,9 +5,6 @@ let activeEffect: (() => void) | null = null
 // The deps collector — every primitive that establishes a tracking scope
 // (`effect` / `renderEffect` / `_bind` / `computed`) enters a FRAME via
 // `runCollect` / `runVerify` below, which points this at the frame's own
-// local `Set[]` BEFORE `activeEffect` goes live, so `trackSubscriber` always
-// records deps inline here (no per-effect WeakMap). This is an INVARIANT, not
-// a fast path: there is no fallback collector.
 let _depsCollector: Set<() => void>[] | null = null
 
 // ─── Verify-mode dep reuse ───────────────────────────────────────────────────
@@ -37,8 +34,6 @@ export function trackSubscriber(host: SubscriberHost) {
   const idx = _verifyIndex
   if (idx >= 0) {
     // Verify mode — steady-state re-run: one identity compare, no Set ops.
-    // Safe to trust the index after the `ae === null` gate: `runUntracked`
-    // suspends `activeEffect` only, so untracked code can't reach a stale index.
     const deps = _depsCollector as Set<() => void>[]
     if (idx < deps.length && deps[idx] === host._s) {
       _verifyIndex = idx + 1
@@ -120,9 +115,7 @@ export function runVerify<T>(owner: () => void, deps: Set<() => void>[], fn: () 
     const result = fn()
     // Shrink: fn stayed in verify mode but read FEWER deps than last run — unsubscribe
     // + truncate the stale tail, then repair the confirmed prefix (duplicate-alias
-    // hazard, same as divergeVerify). Deliberately NOT in the finally: if fn threw, the
-    // unverified tail stays subscribed + recorded (dispose still removes everything)
-    // and the next run re-verifies from index 0.
+    // hazard, same as divergeVerify).
     const idx = _verifyIndex
     if (idx >= 0 && idx < deps.length) {
       for (let j = idx; j < deps.length; j++) (deps[j] as Set<() => void>).delete(owner)
@@ -150,9 +143,7 @@ export function notifySubscribers(subscribers: Set<() => void>) {
     // Effects are queued not run inline — no re-entrancy risk, iterate the live Set directly.
     for (const sub of subscribers) enqueuePendingNotification(sub)
   } else {
-    // Effects run inline. Under verify-mode dep reuse a steady-state re-run no longer
-    // removes + re-adds itself, so the live Set is stable; the original-size cap guards
-    // DIVERGING re-runs and raw subscribe() listeners that mutate the set.
+    // Effects run inline.
     const originalSize = subscribers.size
     let i = 0
     for (const sub of subscribers) {
@@ -166,9 +157,6 @@ export function notifySubscribers(subscribers: Set<() => void>) {
 // Thread-local collector for nested effects — captures `effect()` calls made
 // inside another effect's body so the parent can dispose them on re-run.
 // Lives here (not effect.ts) so `runUntracked` can suspend it in lock-step with
-// `activeEffect`: without that, child component effects created inside
-// `mountFor`'s `runUntracked` wrap would register as inner effects of the For's
-// effect and be disposed on its NEXT re-run, silently dropping every
 let _innerEffectCollector: unknown[] | null = null
 
 export function getInnerEffectCollector(): unknown[] | null {

@@ -17,7 +17,6 @@ export interface ShowProps extends Props {
 }
 
 // Normalize a value-or-accessor `when` into a single accessor.
-// Same shape used by Match — kept inline (one branch) to stay zero-cost.
 function callWhen(when: unknown): unknown {
   return typeof when === 'function' ? (when as () => unknown)() : when
 }

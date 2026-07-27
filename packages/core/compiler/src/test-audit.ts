@@ -65,8 +65,7 @@ export interface TestAuditResult {
   totalScanned: number
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Discovery
+// ═══════════════════════════════════════════════════════════════════════════════ Discovery
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function findMonorepoRoot(startDir: string): string | null {
@@ -75,7 +74,6 @@ function findMonorepoRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
-      // fall through to parent walk
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -112,8 +110,7 @@ function walkTestFiles(dir: string, out: string[], depth = 0): void {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Pattern detection
+// ═══════════════════════════════════════════════════════════════════════════════ Pattern detection
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -194,9 +191,8 @@ const IMPORT_H_PATTERN =
  * False-positive coverage for `utils-coverage.test.ts` and similar.
  */
 function isLiteralInsideTypeGuardCall(source: string, literalStart: number): boolean {
-  // Scan back ~60 chars from the literal for `(\b(?:is|has|assert|validate|check)[A-Z]\w*\s*\()`.
-  // We're looking for a function-call opening paren that directly
-  // contains this literal (no closer `)` in between).
+  // Scan back ~60 chars from the literal for
+  // `(\b(?:is|has|assert|validate|check)[A-Z]\w*\s*\()`.
   const window = source.slice(Math.max(0, literalStart - 60), literalStart)
   // The nearest `(` before the literal — count unmatched parens.
   let unmatched = 0
@@ -327,8 +323,7 @@ function classifyRisk(entry: Omit<TestAuditEntry, 'risk'>): AuditRisk {
   return 'medium'
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Public API
+// ═══════════════════════════════════════════════════════════════════════════════ Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface TestAuditOptions {
@@ -356,8 +351,6 @@ export function auditTestEnvironment(
   // Caller-supplied `startDir` (no default) — `runtime-dom` transitively
   // pulls this file via the `@pyreon/compiler` JSX runtime entry, and its
   // tsconfig narrows `process` to `{ env: ... }` only. Calling
-  // `process.cwd()` here breaks that typecheck. MCP / CLI both have full
-  // node types; let them resolve cwd at the call site.
   let root: string
   const files: string[] = []
   if (options.roots && options.roots.length > 0) {
@@ -387,18 +380,13 @@ export function auditTestEnvironment(
     } catch {
       continue
     }
-    // Skip the scanner's own test fixtures so `audit_test_environment`
-    // doesn't report itself.
+    // Skip the scanner's own test fixtures so `audit_test_environment` doesn't report itself.
     if (path.includes('test-audit.test.ts') || path.includes('test-audit-fixture')) {
       continue
     }
 
-    // Mask template-literal contents once, then run every counter
-    // against the masked source. Patterns inside backticks are
-    // FIXTURE strings (the audit tool's own test fixtures, doctest
-    // examples, etc.) — they shouldn't count toward any metric.
-    // `countMockVNodeLiterals` already does its own masking and runs
-    // on `source` so it can do its own work; we pass `source` to
+    // Mask template-literal contents once, then run every counter against the masked source.
+    // Patterns inside backticks are FIXTURE strings (the audit tool's own test fixtures, doctest
     const masked = maskTemplateStrings(source)
     const mockVNodeLiteralCount = countMockVNodeLiterals(source)
     const mockHelperCount = countMatches(masked, MOCK_HELPER_PATTERN)
@@ -428,8 +416,7 @@ export function auditTestEnvironment(
   return { root, entries, totalScanned: files.length }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Formatter
+// ═══════════════════════════════════════════════════════════════════════════════ Formatter
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface AuditFormatOptions {

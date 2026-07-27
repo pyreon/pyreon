@@ -18,7 +18,6 @@ import { getActiveRouter, isLazy, RouterContext, setActiveRouter } from './route
 import type { LazyComponent, ResolvedRoute, RouteRecord, Router, RouterInstance } from './types'
 import { type CheckHref, classifyHref, toRouterPath } from './typed-routes'
 
-// Track prefetched paths per router to avoid duplicate fetches
 const _prefetched = new WeakMap<RouterInstance, Set<string>>()
 
 // ─── RouterProvider ───────────────────────────────────────────────────────────
@@ -35,7 +34,6 @@ const RouterProvider: ComponentFn<RouterProviderProps> = (props) => {
   provide(RouterContext, router)
   onUnmount(() => {
     // Clean up event listeners, caches, abort in-flight navigations.
-    // Safe to call multiple times (destroy is idempotent).
     router.destroy()
     setActiveRouter(null)
   })
@@ -97,9 +95,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
   })
 
   // Root-only, client-only route announcer (a11y — WAI-ARIA / Next.js-style): tell
-  // screen-reader users the page changed on each navigation. Registered in `onMount`,
-  // so the INITIAL page load is NOT announced (the SR already reads the freshly-loaded
-  // page) — only genuine path changes from here on fire.
+  // screen-reader users the page changed on each navigation.
   if (depth === 0 && isClient && props.announceRouteChanges !== false) {
     onMount(() => {
       let prevPath = router.currentRoute().path
@@ -115,9 +111,6 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
   // Pre-fix the reactive child accessor read `_loadingSignal` and the full
   // `currentRoute` snapshot. The framework's `mountReactive` tears down and
   // rebuilds the entire subtree on every accessor re-emission, so any
-  // unrelated route signal (loader writes, lazy resolution, navigation
-  // start/end counters, param changes that don't change the matched record)
-  // would tear down the layout, then the page, then everything below it.
   interface DepthEntry {
     rec: RouteRecord | null
     comp: ComponentFn | null
@@ -168,13 +161,10 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
       // PR-S8: subscribe to `_hmrTick` (dev-only — undefined in prod) so a successful
       // HMR swap forces a re-emit. Pre-PR-S8 the HMR swap bumped `_loadingSignal`
       // directly with `+ 1` and never paired a `- 1`, leaving `useTransition()` stuck
-      // `true` for the page lifetime.
       router._hmrTick?.()
       // This depth's OWN loader data (undefined for a loader-less layout).
       // `_loaderData` is written by `runBlockingLoaders` BEFORE `commitNavigation`
       // flips `currentRoute`, and bumps `_loadingSignal` on async settle — both
-      // subscribed above — so this read reflects the latest data and `equals`
-      // re-emits a loader-bearing parent layout when its data changes.
       const loaderData =
         rec.loader || rec.serverLoader || rec.hasServerLoader
           ? router._loaderData.get(rec)
@@ -194,12 +184,8 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
       return { rec, comp: null, errored: false, route, loaderData }
     },
     {
-      // Re-emit (→ re-mount the subtree at this depth) when this depth's
-      // record / resolved component / error-state changes. The `route`
-      // object is fresh on EVERY navigation, so comparing it at every depth
-      // would re-mount the WHOLE matched chain — including PARENT LAYOUTS —
-      // on every page change, defeating the "layouts mount once" contract
-      // (a parent layout re-mount tears down its sidebar/header state, e.g.
+      // Re-emit (→ re-mount the subtree at this depth) when this depth's record /
+      // resolved component / error-state changes.
       equals: (a, b) => {
         if (a.rec !== b.rec || a.comp !== b.comp || a.errored !== b.errored) {
           return false
@@ -219,9 +205,7 @@ const RouterView: ComponentFn<RouterViewProps> = (props) => {
       return renderWithLoader(router, rec, comp, route)
     }
 
-    // Component not yet cached — kick off the lazy load. `renderLazyRoute`
-    // mutates `_loadingSignal` and `_componentCache` on completion, which
-    // re-emits `depthEntry` and re-runs this accessor with `comp` set.
+    // Component not yet cached — kick off the lazy load.
     return renderLazyRoute(router, rec, rec.component as LazyComponent)
   }
 
@@ -270,9 +254,7 @@ export interface RouterLinkProps<T extends string = string> extends Props {
   children?: VNodeChild | null
 }
 
-// Dev-only once-per-`to` dedupe for the no-provider warning below. A missing
-// provider typically breaks EVERY link on the page — one warning per distinct
-// destination is signal, N-per-row-list is noise.
+// Dev-only once-per-`to` dedupe for the no-provider warning below.
 const _warnedNoRouterLinks = new Set<string>()
 
 /**
@@ -284,18 +266,12 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   // Resolve the router the SAME way every router hook does (router.ts:
   // `useContext(RouterContext) ?? _activeRouter`) — context first (per-request
   // in SSR, per-tree in CSR), falling back to the module-level active router.
-  // Pre-fix this read the context BARE, so a link outside a <RouterProvider>
-  // subtree ignored a router that `setActiveRouter()` had made visible to
-  // every hook, and rendered a hash-fallback href.
   const router = getActiveRouter()
   const prefetchMode = props.prefetch ?? 'intent'
   const inst = router as RouterInstance | null
 
-  // Dev-only (client-only) warning: with NO router resolvable the link
-  // degrades to a plain anchor (full page load on click) — almost always a
-  // missing provider, so make it visible. Client-only on purpose: SSR/SSG
-  // resolves context via the request stack and prerender pipelines
-  // legitimately render link-bearing trees the CSR provider re-establishes.
+  // Dev-only (client-only) warning: with NO router resolvable the link degrades to a plain anchor
+  // (full page load on click) — almost always a missing provider, so make it visible.
   if (process.env.NODE_ENV !== 'production' && isClient && !router) {
     const to = String(props.to)
     if (!_warnedNoRouterLinks.has(to)) {
@@ -307,8 +283,7 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   }
 
   // Resolve the effective navigation kind, honouring the per-link `external` override
-  // (true → external, false → internal) over the auto-classification. Recomputed on
-  // read so it tracks a reactive `to`.
+  // (true → external, false → internal) over the auto-classification.
   const isInternal = (): boolean => {
     if (props.external === true) return false
     if (props.external === false) return true
@@ -325,9 +300,8 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     // to the browser's native open-in-new-tab behaviour.
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
     if (!isInternal()) return // external / hash / mailto → let the browser navigate
-    // No router resolvable — bail BEFORE preventDefault so the link degrades
-    // to a NATIVE anchor (full-load navigation to the plain-path href below).
-    // Pre-fix preventDefault ran first, swallowing the click → dead link.
+    // No router resolvable — bail BEFORE preventDefault so the link degrades to a
+    // NATIVE anchor (full-load navigation to the plain-path href below).
     if (!router) return
     e.preventDefault()
     const path = toRouterPath(props.to)
@@ -354,22 +328,17 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   // `href` MUST be an accessor, not a string captured at setup. `props.to`
   // is a getter when the parent passes a reactive expression (the JSX
   // compiler wraps `<RouterLink to={someExpr}>` as `_rp(() => someExpr)`).
-  // Capturing into a string at setup time freezes the URL — passing the
-  // accessor lets `applyProp` wrap it in `renderEffect` so href tracks the
-  // underlying signal. External/hash/protocol hrefs are emitted verbatim; only
   const href = (): string => {
     if (!isInternal()) return props.to
     const path = toRouterPath(props.to)
     // No router — emit the PLAIN path (native-anchor semantics, pairing with
     // the no-preventDefault click bail above). Pre-fix this fell back to
     // `#${path}`, which is wrong for history-mode apps (the dominant mode)
-    // and a dead destination without a router to interpret the hash.
     if (!inst) return path
     return inst.mode === 'history' ? `${inst._base}${path}` : `#${path}`
   }
 
-  // Auto target/rel for external links (overridable per-link). `_blank` gets a
-  // secure `rel` by default (noopener stops window.opener hijacking).
+  // Auto target/rel for external links (overridable per-link).
   const linkTarget = (): string | undefined => {
     if (props.target !== undefined) return props.target
     if (isExternalNewTabEligible() && (inst?._linkConfig?.externalNewTab ?? true)) return '_blank'
@@ -439,7 +408,6 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
   // Forward all non-RouterLink props (style, id, data-*, etc.) to the <a>.
   // `class` is pulled out separately so it can be MERGED with the internal
   // active-class accessor — overriding the user's class silently dropped any
-  // conditional class the consumer wanted (e.g. `class={() => cond ? 'on' : ''}`).
   const {
     to: _to,
     replace: _replace,
@@ -455,10 +423,8 @@ const RouterLinkImpl: ComponentFn<RouterLinkProps> = (props) => {
     ...rest
   } = props as RouterLinkProps & { class?: ClassValue | (() => ClassValue) }
 
-  // Compose the user-provided `class` (string / array / object / function) with
-  // the internal `activeClass` accessor. Returning a function lets `applyProp`
-  // wrap it in `renderEffect` once — so navigation re-evaluates BOTH sides on
-  // every route change without rebuilding the link.
+  // Compose the user-provided `class` (string / array / object / function) with the
+  // internal `activeClass` accessor.
   const mergedClass = (): string => {
     const userResolved =
       typeof userClass === 'function' ? (userClass as () => ClassValue)() : userClass
@@ -567,11 +533,7 @@ function renderWithLoader(
   const routeProps = { params: route.params, query: route.query, meta: route.meta }
 
   // Phase 5 — server-loader records carry data too (`serverLoader` is the fn on the
-  // server graph; `hasServerLoader` is the client marker). Pre- fix BOTH gates below
-  // checked only `record.loader`, so a server-loader route rendered WITHOUT the
-  // LoaderDataProvider — useLoaderData() read the context default (undefined) even
-  // though preload had populated router._loaderData and the hydration blob carried the
-  // value.
+  // server graph; `hasServerLoader` is the client marker).
   const carriesLoaderData =
     Boolean(record.loader) || Boolean(record.serverLoader) || record.hasServerLoader === true
 
@@ -697,7 +659,6 @@ function PendingLoader(props: {
   })
 
   return (() => {
-    // Track router's loading signal to re-run when loader completes
     router._loadingSignal()
     checkData()
 
@@ -755,41 +716,25 @@ function isStaleChunk(err: unknown): boolean {
 // (react/preact/vue/solid-compat) skip wrapCompatComponent for these so their provide()
 // / useContext() / onUnmount() / effect() / IntersectionObserver setup runs inside
 // Pyreon's lifecycle frame instead of the compat wrapper's runUntracked accessor.
-// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared
-// chunk a bare `nativeCompat(X)` call is an unremovable side effect that RETAINS the
-// component body in every consumer bundle that never imports it (see runtime-dom's
-// native-compat-treeshake lock).
 const _RouterProvider = /* @__PURE__ */ nativeCompat(RouterProvider)
 export { _RouterProvider as RouterProvider }
-// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared
-// chunk a bare `nativeCompat(X)` call is an unremovable side effect that RETAINS the
-// component body in every consumer bundle that never imports it (see runtime-dom's
-// native-compat-treeshake lock). The PURE call is droppable exactly when the export is
-// unused; when used it returns the SAME fn with the marker applied.
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared chunk a
+// bare `nativeCompat(X)` call is an unremovable side effect that RETAINS the component body in
+// every consumer bundle that never imports it (see runtime-dom's native-compat-treeshake lock).
 const _RouterView = /* @__PURE__ */ nativeCompat(RouterView)
 export { _RouterView as RouterView }
 
 // ─── DefaultChromeLayout ─────────────────────────────────────────────────────
-// Synthetic layout used by the layout-less-app 404 fallback. When the user
-// has a page-level `notFoundComponent` (`_404.tsx` at the route root without
-// a wrapping `_layout.tsx`), `findNotFoundFallback` in match.ts synthesizes
-// a chain `[DefaultChromeLayout, syntheticLeaf]` and the render pipeline
-// produces 404 HTML wrapped in `<main data-pyreon-default-chrome>` instead
-// of the bare component output.
+// Synthetic layout used by the layout-less-app 404 fallback.
 const DefaultChromeLayout: ComponentFn = () =>
   h('main', { 'data-pyreon-default-chrome': '' }, h(RouterView, null))
 
-// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared
-// chunk a bare `nativeCompat(X)` call is an unremovable side effect that RETAINS the
-// component body in every consumer bundle that never imports it (see runtime-dom's
-// native-compat-treeshake lock). The PURE call is droppable exactly when the export is
-// unused; when used it returns the SAME fn with the marker applied.
+// ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built lib's shared chunk a
+// bare `nativeCompat(X)` call is an unremovable side effect that RETAINS the component body in
+// every consumer bundle that never imports it (see runtime-dom's native-compat-treeshake lock).
 const _DefaultChromeLayout = /* @__PURE__ */ nativeCompat(DefaultChromeLayout)
 export { _DefaultChromeLayout as DefaultChromeLayout }
 // Register the PURE-call RESULT, not the bare `DefaultChromeLayout`. Under the
 // `/* @__PURE__ */` sweep, a bundle that never imports the `DefaultChromeLayout`
 // export can drop the `nativeCompat(...)` call — so registering the bare fn
-// would retain the body (the setter is a live side effect) but WITHOUT the
-// marker ever applied, silently registering an UNMARKED layout. Registering
-// `_DefaultChromeLayout` keeps the PURE call live (the body is retained either
 _setDefaultChromeLayout(_DefaultChromeLayout)

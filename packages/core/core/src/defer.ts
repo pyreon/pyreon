@@ -153,9 +153,8 @@ export type DeferProps<P extends Props> = DeferTrigger & {
 export function Defer<P extends Props>(props: DeferProps<P>): VNode {
   const Loaded = signal<ComponentFn<P> | null>(null)
   const Failed = signal<Error | null>(null)
-  // Module-scope flag prevents repeat fetches when the trigger condition
-  // oscillates (e.g. modal opens / closes / opens again). The chunk only
-  // loads once per Defer mount.
+  // Module-scope flag prevents repeat fetches when the trigger condition oscillates
+  // (e.g. modal opens / closes / opens again).
   let loadStarted = false
 
   const startLoad = (): void => {
@@ -166,10 +165,8 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     if (loadStarted) return
     loadStarted = true
     if (!props.chunk) {
-      // Missing chunk = either the user is hand-writing the inline form
-      // without the compiler pass running, or they wrote the explicit
-      // form and forgot to pass chunk. Either way, error early with an
-      // actionable message instead of crashing later inside the `.then`.
+      // Missing chunk = either the user is hand-writing the inline form without the compiler pass
+      // running, or they wrote the explicit form and forgot to pass chunk.
       const err = new Error(
         '[Pyreon] <Defer> has no `chunk` prop. Either pass `chunk={() => import("...")}` ' +
           '(explicit form), or use the inline form `<Defer when={...}><Component /></Defer>` ' +
@@ -208,8 +205,7 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
 
   // Trigger wiring — exactly one branch fires per instance.
   if ('when' in props) {
-    // Signal-driven. Subscribe to the accessor; load when it transitions
-    // to truthy. Repeat truthy emissions are no-ops via `loadStarted`.
+    // Signal-driven.
     effect(() => {
       if (props.when() && !loadStarted) startLoad()
     })
@@ -217,8 +213,6 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     // Idle-driven. Delegated to `_setupIdleTrigger` so the browser-API
     // branching is testable as a pure function. Wrapped in onMount so
     // SSR / non-browser environments don't fire the callback at all.
-    // The onMount arrow fires only inside a renderer mount (not a bare
-    // `Defer()` call) — `_setupIdleTrigger` itself is unit-tested directly.
     /* v8 ignore next */
     onMount(() => _setupIdleTrigger(startLoad))
   }
@@ -227,8 +221,6 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
 
   // Inline accessor — type annotation deliberately omitted so the inferred return type
   // narrows to `VNodeChildAtom | VNodeChildAtom[]` (what `h()`'s rest-args expect).
-  // Annotating as `VNodeChild` widens to include `VNodeChildAccessor`, which can't be
-  // returned from another accessor.
   const renderContent = () => {
     const err = Failed()
     if (err) throw err
@@ -237,23 +229,16 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     // `children` is widened to `VNodeChild | render-prop` so the compiler-driven
     // inline form typechecks at source level. At RUNTIME it is always undefined
     // OR the render-prop — the compiler rewrites the inline form's JSX children
-    // before this runs. A non-function children means the compiler pass didn't
-    // run (e.g. tests through a bundler without `@pyreon/vite-plugin`), so render
-    // `<Comp />` with no props as a best-effort fallback.
     const ch = props.children
     if (typeof ch === 'function') return ch(Comp)
     return h(Comp as ComponentFn, {})
   }
 
   if ('on' in props && props.on === 'visible') {
-    // Visible-mode needs a DOM target for IntersectionObserver. A wrapper `<div
-    // data-pyreon-defer="visible">` carries the ref and styles `display: contents` so
-    // it's transparent to layout (the fallback / loaded component render as direct
-    // children of Defer's parent).
+    // Visible-mode needs a DOM target for IntersectionObserver.
     const containerRef = createRef<HTMLElement>()
     // Visible-mode trigger is wired via `_setupVisibleTrigger` so the
     // observer-construction + intersection-detection logic is independently testable.
-    // onMount keeps the browser-API access out of the SSR path.
     /* v8 ignore start */
     onMount(() =>
       _setupVisibleTrigger(
@@ -266,7 +251,6 @@ export function Defer<P extends Props>(props: DeferProps<P>): VNode {
     // Cast to VNodeChildAccessor — the inferred return type is the broader
     // `VNodeChild` because `props.children` may return any VNodeChild. The
     // runtime unwraps nested accessors via the same mountChild path that handles
-    // <Show>'s thunk shape; the type system doesn't model the unwrap.
     return h(
       'div',
       {

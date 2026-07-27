@@ -57,21 +57,15 @@ export async function prefetchLoaderData(
 ): Promise<void> {
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('router.prefetch')
   const route = router._resolve(path)
-  // Use a local AbortController — prefetch is best-effort and must NOT
-  // clobber `router._abortController`, which belongs to the active
-  // navigation. Previously, hovering a link during a navigation replaced
-  // the nav's controller, destroying its abort capability.
+  // Use a local AbortController — prefetch is best-effort and must NOT clobber
+  // `router._abortController`, which belongs to the active navigation.
   const ac = new AbortController()
   await Promise.all(
     route.matched
       .filter((r) => r.loader)
       .map(async (r) => {
-        // Route through the router's loader cache + in-flight dedup
-        // (`executeLoader` — the same path navigations take). Pre-fix this
-        // called `r.loader()` RAW, so a hover-prefetch followed by the
-        // click's navigation ran the loader TWICE (the nav's cache lookup
-        // missed because prefetch never wrote `_loaderCache`, and its
-        // in-flight dedup missed because prefetch never registered in
+        // Route through the router's loader cache + in-flight dedup (`executeLoader` —
+        // the same path navigations take).
         const data = await router._executeLoader(r, {
           params: route.params,
           query: route.query,
@@ -95,12 +89,9 @@ export async function prefetchLoaderData(
  *   ...${html}...`
  */
 export function serializeLoaderData(router: RouterInstance): Record<string, unknown> {
-  // Collision-aware keying: a layout and its index page SHARE a path, so
-  // plain path-keying silently last-wins-overwrote one record's data with
-  // the other's (the same class as the data endpoint's fixed collision —
-  // here it bit the SSR hydration blob on full page loads). The FIRST
-  // record at a path keeps the bare-path key (back-compat: the blob format
-  // is e2e-asserted and read by older clients); each subsequent record at
+  // Collision-aware keying: a layout and its index page SHARE a path, so plain path-keying silently
+  // last-wins-overwrote one record's data with the other's (the same class as the data endpoint's
+  // fixed collision — here it bit the SSR hydration blob on full page loads).
   const result: Record<string, unknown> = {}
   const matched = router.currentRoute().matched
   const seen = new Map<string, number>()
@@ -110,9 +101,8 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
     seen.set(record.path, n + 1)
     result[n === 0 ? record.path : `${record.path}#${n}`] = router._loaderData.get(record)
   }
-  // Records carrying data but NOT in the current chain (defensive — SSR
-  // renders exactly one chain, so this is normally empty): keep the legacy
-  // path-keyed emit so nothing is dropped.
+  // Records carrying data but NOT in the current chain (defensive — SSR renders exactly one chain,
+  // so this is normally empty): keep the legacy path-keyed emit so nothing is dropped.
   for (const [record, data] of router._loaderData) {
     if (!matched.includes(record) && !(record.path in result)) {
       result[record.path] = data
@@ -151,9 +141,7 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
  */
 export function stringifyLoaderData(loaderData: Record<string, unknown>): string {
   // True cycle detection: track the ANCESTOR PATH only (add on descend, remove on
-  // ascend), NOT every object ever visited. The prior implementation kept an all-seen
-  // WeakSet that was never pruned, so any object referenced more than once — a DAG, not
-  // a cycle — falsely threw "circular reference" and 500'd the SSR response.
+  // ascend), NOT every object ever visited.
   const ancestors = new Set<object>()
   const detectCycle = (value: unknown, path: string): void => {
     if (value === null || typeof value !== 'object') return
@@ -189,9 +177,7 @@ export function stringifyLoaderData(loaderData: Record<string, unknown>): string
   detectCycle(loaderData, '')
 
   const replacer = (_key: string, value: unknown): unknown => {
-    // Drop silently. JSON.stringify already drops these as VALUES, but an
-    // explicit drop also handles array entries (where it'd convert to null
-    // otherwise — undesirable for downstream typed hydration).
+    // Drop silently.
     if (typeof value === 'function' || typeof value === 'symbol') return undefined
     return value
   }
@@ -220,8 +206,6 @@ export function hydrateLoaderData(
   // Mirror serializeLoaderData's collision-aware keys: first record at a
   // path reads the bare key, subsequent same-path records read
   // `path#<occurrence>` (falling back to the bare key for blobs written by
-  // older servers — the pre-fix behavior, where collided records shared
-  // one value).
   const seen = new Map<string, number>()
   for (const record of route.matched) {
     const n = seen.get(record.path) ?? 0

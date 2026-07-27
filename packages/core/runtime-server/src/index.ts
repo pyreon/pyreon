@@ -596,7 +596,6 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
   const id = ctx.nextId()
   const { mainEnqueue } = ctx
 
-  // Emit the swap helper function once (before first use)
   if (id === 0) mainEnqueue(SUSPENSE_SWAP_FN)
 
   // Stream the fallback synchronously (no await on children)
@@ -652,7 +651,6 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
               `[Pyreon SSR] Suspense boundary timed out after ${suspenseTimeoutMs}ms — fallback will remain.`,
             )
           }
-          // Fallback stays visible — no swap
           return
         }
 
@@ -688,7 +686,6 @@ async function streamSuspenseBoundary(vnode: VNode, enqueue: (s: string) => void
             err,
           )
         }
-        // Fallback stays visible — no swap script emitted
       } finally {
         ctx.suspenseDepth--
       }

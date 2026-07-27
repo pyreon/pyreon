@@ -59,9 +59,7 @@ function getSentinelState(): SentinelState {
   const host = globalThis as Record<symbol, unknown>
   const existing = host[SENTINEL_KEY] as SentinelState | undefined
   if (existing) {
-    // Earlier versions of the sentinel had no `silentDepth` field. Defensive
-    // backfill so a mixed-version graph (e.g. one of the packages bundled an
-    // older sentinel via a stale lockfile entry) doesn't NaN-arithmetic.
+    // Earlier versions of the sentinel had no `silentDepth` field.
     if (typeof existing.silentDepth !== 'number') existing.silentDepth = 0
     return existing
   }
@@ -73,9 +71,8 @@ function getSentinelState(): SentinelState {
 type DetectionMode = 'throw' | 'warn' | 'silent'
 
 function getDetectionMode(): DetectionMode {
-  // Refcount opt-out wins (used by zero's ssrLoadModuleQuiet,
-  // ssg-plugin.ts, and vite-plugin's rocketstyle-collapse to scope
-  // legitimate dual-load windows without env-var mutation).
+  // Refcount opt-out wins (used by zero's ssrLoadModuleQuiet, ssg-plugin.ts, and vite-plugin's
+  // rocketstyle-collapse to scope legitimate dual-load windows without env-var mutation).
   if (getSentinelState().silentDepth > 0) return 'silent'
   // Cast through unknown — @pyreon/reactivity's env type only declares NODE_ENV;
   // PYREON_SINGLE_INSTANCE is a runtime-only override.
@@ -101,8 +98,7 @@ function getDetectionMode(): DetectionMode {
  */
 function normalizeLocation(url: string): string {
   // Some runtimes don't provide a usable `import.meta.url` — Cloudflare workerd (and
-  // certain bundlers) pass `undefined`. The sentinel must NEVER crash module init over
-  // it: a bare `url.indexOf` here once took down every @pyreon-based Worker at startup.
+  // certain bundlers) pass `undefined`.
   if (typeof url !== 'string' || url.length === 0) return '<unknown>'
   const queryIdx = url.indexOf('?')
   return queryIdx === -1 ? url : url.slice(0, queryIdx)
@@ -161,7 +157,6 @@ export function registerSingleton(pkg: string, version: string, location: string
     return
   }
   // Same normalized location → HMR re-eval / vi.resetModules() → allow silently.
-  // Different location → genuine dual-instance → trigger detection.
   if (existing.location === marker.location) return
   const mode = getDetectionMode()
   if (mode === 'silent') return

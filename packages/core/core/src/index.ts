@@ -7,10 +7,8 @@ registerSingleton(__pkgName, __pkgVersion, import.meta.url)
 
 export { defineComponent, dispatchToErrorBoundary, propagateError, runWithHooks } from './component'
 export { isNativeCompat, NATIVE_COMPAT_MARKER, nativeCompat } from './compat-marker'
-// Re-exported from @pyreon/reactivity so existing imports from @pyreon/core
-// keep working AND every package below core in the dep chain can still reach
-// it directly via @pyreon/reactivity. See `cross-module-state.ts` in
-// @pyreon/reactivity for the full module-duplication rationale.
+// Re-exported from @pyreon/reactivity so existing imports from @pyreon/core keep working AND every
+// package below core in the dep chain can still reach it directly via @pyreon/reactivity.
 export { defineCrossModuleState } from '@pyreon/reactivity'
 // Runtime environment detection (re-exported for discoverability — app code
 // typically imports from @pyreon/core). Defined in @pyreon/reactivity.

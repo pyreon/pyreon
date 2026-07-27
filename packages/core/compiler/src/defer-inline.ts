@@ -185,9 +185,7 @@ function analyzeChildElement(node: Node): ChildAnalysis | null {
 
   const memberName = getJsxMemberName(node)
   if (memberName) {
-    // The PROPERTY must be capitalised (the actual component name). The object case is
-    // irrelevant — namespace bindings are conventionally any casing (`React.Fragment`
-    // has uppercase object; `lodash.map` has lowercase).
+    // The PROPERTY must be capitalised (the actual component name).
     if (!/^[A-Z]/.test(memberName.property)) return null
     // The opening name node IS the JSXMemberExpression — its
     // start..end span the whole `M.Modal` expression.
@@ -247,9 +245,7 @@ function findDeferMatches(program: Node, warnings: DeferInlineWarning[], code: s
       if (!hasChunk) {
         const live = nonWhitespaceChildren(node)
         if (live.length > 1) {
-          // Multiple children — bail with a warning. v2 doesn't synthesize
-          // a wrapping module; user must use the explicit chunk + render-
-          // prop form to express multi-element inline content.
+          // Multiple children — bail with a warning.
           const loc = getLoc(code, (node.start as number) ?? 0)
           warnings.push({
             message: `<Defer> inline form requires exactly one component child (got ${live.length}). Wrap the children in a single component, or use the explicit \`chunk\` prop with a render-prop body.`,
@@ -272,8 +268,7 @@ function findDeferMatches(program: Node, warnings: DeferInlineWarning[], code: s
               },
             })
           } else {
-            // Single child but not a component element — bail with a warning. The user
-            // might've put an HTML tag, a fragment, or an expression container.
+            // Single child but not a component element — bail with a warning.
             const loc = getLoc(code, ((live[0]!.start as number) ?? 0))
             warnings.push({
               message: `<Defer> inline form requires a single component-element child (capitalised JSX identifier). Use the explicit \`chunk\` prop for any other shape.`,
@@ -283,9 +278,7 @@ function findDeferMatches(program: Node, warnings: DeferInlineWarning[], code: s
             })
           }
         }
-        // live.length === 0 — empty body, leave the Defer alone. Runtime
-        // will surface "missing chunk prop" if the user actually triggers
-        // it; that's the right user-facing diagnostic for this case.
+        // live.length === 0 — empty body, leave the Defer alone.
       }
     }
 
@@ -469,8 +462,7 @@ function buildRenderPropBody(code: string, analysis: ChildAnalysis, childRange: 
   const start = childRange.start
   const end = childRange.end
   let body = code.slice(start, end)
-  // Apply name replacements from END to START so positions stay valid as we splice. The
-  // opening tag's name always precedes the closing tag's name in source order.
+  // Apply name replacements from END to START so positions stay valid as we splice.
   if (analysis.closeNameRange) {
     const r = analysis.closeNameRange
     body = body.slice(0, r.start - start) + '__C' + body.slice(r.end - start)
@@ -525,9 +517,8 @@ function buildImportRemovalEdit(code: string, info: ImportInfo): Edit {
       replacement: '',
     }
   }
-  // Later specifier: eat from the END of the previous specifier (including
-  // the comma between them) up through this specifier's end. So `{ Other,
-  // Modal }` becomes `{ Other }`.
+  // Later specifier: eat from the END of the previous specifier (including the comma
+  // between them) up through this specifier's end.
   const prev = specifiers[idx - 1]!
   return {
     start: prev.end as number,
@@ -566,8 +557,7 @@ export function transformDeferInline(
 
   for (const m of matches) {
     // For identifier children (`<Modal />`), the JSX-display name and import-lookup
-    // name are the same (`Modal`). For member-expression children (`<M.Modal />`),
-    // JSX-display is `M.Modal` but we look up the namespace binding `M` in imports.
+    // name are the same (`Modal`).
     const displayName =
       m.childAnalysis.kind === 'member'
         ? `${m.childAnalysis.lookupName}.${m.childAnalysis.propertyName}`
@@ -586,9 +576,7 @@ export function transformDeferInline(
     }
 
     // Sanity check: if the JSX is a member expression but the import isn't a namespace
-    // import (e.g. `import M from './x'; <M.Modal />`), bail. The semantics are
-    // ambiguous — `M` is a default-export component, not a module bag, so `M.Modal` is
-    // a member access on the component itself.
+    // import (e.g. `import M from './x'; <M.Modal />`), bail.
     if (m.childAnalysis.kind === 'member' && importInfo.kind !== 'namespace') {
       const loc = getLoc(code, (m.child.start as number) ?? 0)
       warnings.push({
@@ -599,14 +587,10 @@ export function transformDeferInline(
       })
       continue
     }
-    // Inverse: namespace import but identifier child (`import * as M;
-    // <Modal />`). The Modal identifier doesn't reference the
-    // namespace at all — leave to import-not-found which fires above.
+    // Inverse: namespace import but identifier child (`import * as M; <Modal />`).
     if (m.childAnalysis.kind === 'identifier' && importInfo.kind === 'namespace') {
       // Shouldn't be reachable — findImportFor only returns namespace when localName
-      // matches the namespace identifier. If we got here, the namespace was imported
-      // with the same name as a separate component (impossible — would be a JS scope
-      // error upstream).
+      // matches the namespace identifier.
       continue
     }
 
@@ -628,8 +612,7 @@ export function transformDeferInline(
     }
 
     // For namespace imports, the export name to extract comes from the JSX
-    // member-expression property (`Modal` in `<M.Modal />`). For named imports it comes
-    // from `importInfo.importedName` (handles the renamed-import case).
+    // member-expression property (`Modal` in `<M.Modal />`).
     const exportName =
       importInfo.kind === 'namespace'
         ? m.childAnalysis.propertyName
@@ -645,8 +628,6 @@ export function transformDeferInline(
     // 2. Replace the inline children with a render-prop body. The body
     //    preserves the original child JSX verbatim except for the
     //    component name (replaced with `__C`) — props, nested children,
-    //    closure captures all pass through to the render-prop arrow,
-    //    which captures the surrounding lexical scope.
     edits.push({
       start: m.childrenRange.start,
       end: m.childrenRange.end,

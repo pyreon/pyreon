@@ -28,9 +28,6 @@ export function jsx(
   // Build the destructured props object by copying own property
   // DESCRIPTORS, not values. Compiler-emitted reactive props (`_rp(() =>
   // signal())` wrappers converted to getter properties by
-  // `makeReactiveProps` in mount.ts) MUST survive the destructure with
-  // their getters intact. A plain `{ children, ...rest } = props`
-  // destructure fires every getter on `props` and stores the resolved
   const descriptors = Object.getOwnPropertyDescriptors(props)
   let hasGetter = false
   for (const k in descriptors) {
@@ -169,8 +166,6 @@ export type TargetedEvent<T extends Element, E extends Event = Event> = E & {
 // These exist purely to ease migration from React/Preact. Each is a
 // `TargetedEvent<T>` constrained to a specific DOM Event subtype.
 // Prefer the DOM-native names (`Event`, `SubmitEvent`, `KeyboardEvent`, etc.)
-// in new code — these aliases are a compat affordance, not the canonical
-// Pyreon convention.
 
 /** Generic input change — fires on every value change on inputs/textareas/selects. */
 export type ChangeEvent<T extends Element = HTMLElement> = TargetedEvent<T, Event>
@@ -376,7 +371,6 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   // `readOnly` is paired with `disabled` semantically — both accept a
   // reactive callable so consumers can spread `useForm.register()`'s
   // return value (which produces `readOnly: Accessor<boolean>`) directly
-  // onto `<input>` / `<textarea>` without losing reactivity.
   readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   min?: string | number | undefined
@@ -432,7 +426,6 @@ export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaEle
   // `readOnly` is paired with `disabled` semantically — both accept a
   // reactive callable so consumers can spread `useForm.register()`'s
   // return value (which produces `readOnly: Accessor<boolean>`) directly
-  // onto `<input>` / `<textarea>` without losing reactivity.
   readOnly?: boolean | (() => boolean) | undefined
   required?: boolean | (() => boolean) | undefined
   rows?: number | undefined

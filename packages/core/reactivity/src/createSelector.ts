@@ -98,10 +98,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
   const subs = new Map<T, Set<() => void>>()
   // Bound updaters (from `selector.subscribe`) — kept SEPARATE from the effect bucket
   // so the source effect can call them with the resolved boolean directly instead of an
-  // empty re-run closing over `current` and `value`. Inline-first-subscriber storage
-  // (the signal `_d1` trick): the DOMINANT shape is <For> rows where every key has
-  // EXACTLY ONE subscriber, so storing a bare function avoids one Set allocation per
-  // row.
+  // empty re-run closing over `current` and `value`.
   const boundSubs = new Map<T, ((matches: boolean) => void) | Set<(matches: boolean) => void>>()
   let current: T
   let initialized = false
@@ -118,7 +115,6 @@ export function createSelector<T>(source: () => T): Selector<T> {
     const old = current
     current = next
     // Only notify the two affected buckets — O(1) regardless of list size.
-    // Iteration-capped loop avoids [...bucket] snapshot allocation.
     const oldBucket = subs.get(old)
     const newBucket = subs.get(next)
     if (oldBucket) notifyBucket(oldBucket)
@@ -169,13 +165,10 @@ export function createSelector<T>(source: () => T): Selector<T> {
   // Effect-free per-key binding (perf hot path) — hooks `updater` DIRECTLY into
   // a per-key bound bucket; the source effect calls it with the resolved boolean.
   // Per `.subscribe` call, in the dominant one-subscriber-per-key shape: one
-  // `Map.set` of the BARE updater (no Set) plus one dispose closure — zero
-  // effects, zero deps arrays, zero tracking-frame pushes.
   selector.subscribe = (value: T, updater: (matches: boolean) => void): (() => void) => {
     if (disposed) {
-      // Selector is disposed — call updater once with the stale-last value,
-      // then return a no-op dispose. Matches the documented contract that
-      // post-dispose calls return the last known result.
+      // Selector is disposed — call updater once with the stale-last value, then return
+      // a no-op dispose.
       updater(Object.is(current, value))
       return () => {
         /* no-op */
@@ -205,10 +198,9 @@ export function createSelector<T>(source: () => T): Selector<T> {
         boundSubs.delete(value)
       } else if (bucket instanceof Set) {
         bucket.delete(updater)
-        // Last subscriber of a promoted key left — drop the now-empty Set so
-        // the key doesn't linger in `boundSubs` (same unbounded-growth guard the
-        // inline branch applies; without this, a key that ever had ≥2 bound
-        // subscribers leaked an empty Set for the selector's lifetime).
+        // Last subscriber of a promoted key left — drop the now-empty Set so the key doesn't linger
+        // in `boundSubs` (same unbounded-growth guard the inline branch applies; without this, a
+        // key that ever had ≥2 bound subscribers leaked an empty Set for the selector's lifetime).
         if (bucket.size === 0) boundSubs.delete(value)
       }
     }

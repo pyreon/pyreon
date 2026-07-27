@@ -52,10 +52,6 @@ function KeepAlive(props: KeepAliveProps): VNodeChild {
 
       if (!childMounted) {
         // Mount children UNTRACKED — child setup must not subscribe this effect.
-        // Otherwise an unrelated signal flip re-runs KeepAlive, runCleanup()
-        // disposes the children's inner effects (collected as inner effects of
-        // this run), and the `if (!childMounted)` guard skips re-mount, leaving
-        // the children permanently un-reactive while still rendered.
         childCleanup = runUntracked(() => mountChild(props.children ?? null, container, null))
         childMounted = true
       }
@@ -78,7 +74,5 @@ function KeepAlive(props: KeepAliveProps): VNodeChild {
 // Marked native so compat-mode jsx() runtimes skip wrapCompatComponent — this component
 // needs Pyreon's setup frame. ASSIGNMENT + /* @__PURE__ */ rather than a bare
 // `nativeCompat(X)` statement: inside the built lib's shared chunk a bare call is an
-// unremovable side effect that RETAINS the whole component body in every consumer
-// bundle that never imports it (~1.5KB gz measured).
 const _KeepAlive = /* @__PURE__ */ nativeCompat(KeepAlive)
 export { _KeepAlive as KeepAlive }

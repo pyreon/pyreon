@@ -26,10 +26,7 @@ export interface EffectOptions {
 
 // ─── Effect-scoped context-owner capture (DI from `@pyreon/core`) ────────────
 // A re-run happens after the synchronous mount, when the active context OWNER may
-// differ from setup time (mountReactive swaps owners for deferred children). Without
-// restoring the setup-time owner, `useContext()` resolves through whatever owner is
-// current when the scheduler fires — silently breaking useMode/useTheme/useRouter on
-// every update.
+// differ from setup time (mountReactive swaps owners for deferred children).
 export interface ReactiveSnapshotCapture {
   capture: () => unknown
   /** Run `fn` with the previously-captured snapshot active. */
@@ -50,8 +47,7 @@ export function setSnapshotCapture(hook: ReactiveSnapshotCapture | null): void {
 }
 
 // ─── onCleanup ───────────────────────────────────────────────────────────────
-// Thread-local collector for cleanups registered during effect execution. LAZY: the run
-// opens only a boolean WINDOW; the array is allocated on first use.
+// Thread-local collector for cleanups registered during effect execution.
 let _cleanupCollector: (() => void)[] | null = null
 let _cleanupWindowOpen = false
 
@@ -79,10 +75,8 @@ export function onCleanup(fn: () => void): void {
   }
 }
 
-// Lazy inner-effect window sentinel: a run opens the window by setting the
-// module collector to THIS array, and the first nested `effect()` swaps in a real
-// one. Nothing ever pushes into the sentinel, so the dominant
-// no-nested-effects case allocates nothing.
+// Lazy inner-effect window sentinel: a run opens the window by setting the module
+// collector to THIS array, and the first nested `effect()` swaps in a real one.
 const LAZY_INNER: unknown[] = []
 
 // Inner-effect collector state lives in tracking.ts so `runUntracked` can
@@ -91,9 +85,6 @@ const LAZY_INNER: unknown[] = []
 // Global handler for unhandled errors thrown inside effects; defaults to
 // console.error so failures are never silently swallowed. Two surfaces fire on
 // every error: the legacy `setErrorHandler` handler, and a globalThis bridge
-// `__pyreon_report_error__` that `@pyreon/core` installs so effect errors reach
-// the same telemetry pipeline as component errors. globalThis-based to avoid an
-// upward import. New consumers should prefer core's `registerErrorHandler`.
 
 interface PyreonErrorBridge {
   __pyreon_report_error__?: (err: unknown, phase: 'effect') => void
@@ -137,9 +128,8 @@ export function effect(
   fn: () => (() => void) | void,
   options?: EffectOptions,
 ): Effect {
-  // Async effect callbacks: the tracking context is the synchronous frame around
-  // fn's top half, so reads after the first `await` are never tracked. The
-  // constructor-name check catches it at registration without invoking anything.
+  // Async effect callbacks: the tracking context is the synchronous frame around fn's
+  // top half, so reads after the first `await` are never tracked.
   if (process.env.NODE_ENV !== 'production') {
     if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
       // oxlint-disable-next-line no-console
@@ -219,10 +209,8 @@ export function effect(
     _cleanupWindowOpen = true
     _cleanupCollector = null
     try {
-      // First run COLLECTS deps; re-runs VERIFY them positionally (zero Set ops
-      // in the steady state). The first run is inside the synchronous mount where
-      // the context stack is still intact, so it calls fn directly; re-runs happen
-      // after mountReactive truncated the stack and need it restored.
+      // First run COLLECTS deps; re-runs VERIFY them positionally (zero Set ops in the
+      // steady state).
       cleanup =
         (isFirstRun ? runCollect(run, deps, fn) : runVerify(run, deps, fnToRunReplay)) ||
         undefined
@@ -247,7 +235,6 @@ export function effect(
     // skipFrames=1: skip the `effect()` / `renderEffect()` frame, capture the user's call site.
     // Prefer build-time-injected location over the ~2.2µs stack-capture
     // fallback. @pyreon/vite-plugin's `injectSignalNames` rewrites
-    // `effect(() => …)` to `effect(() => …, { __sourceLocation: {…} })`.
     _effectId = _rdRegister(
       run,
       'effect',
@@ -281,8 +268,6 @@ export function effect(
   // If we're inside another effect's run, register with it so the outer disposes
   // this inner automatically. The collector is `null` inside `runUntracked`, so
   // work that explicitly opted out of the outer reactive context falls through
-  // to scope.add — that's what keeps child component effects mounted inside
-  // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
   const collector = getInnerEffectCollector()
   if (collector !== null) {
     if (collector === LAZY_INNER) {
@@ -321,15 +306,11 @@ export function _bind(fn: () => void): () => void {
   // Capture the snapshot AND the hook reference at SETUP, so re-runs dispatch
   // directly instead of re-checking the module-level hook. `cap` is a stable
   // closure capture for this binding's lifetime — a later
-  // `setSnapshotCapture(null)` doesn't disturb it, matching setup-time
-  // semantics (the provider chain is fixed at setup).
   const cap = _snapshotCapture
   const snapshot = cap ? cap.capture() : null
 
-  // Pre-pick the run body at setup so re-runs do a disposed-check + direct
-  // dispatch only, with no per-fire branch. The `if (disposed) return` guard
-  // covers the narrow window where a sibling disposes this effect during the
-  // same flush (dispose normally removes the notify before its run).
+  // Pre-pick the run body at setup so re-runs do a disposed-check + direct dispatch
+  // only, with no per-fire branch.
   const run: () => void =
     snapshot !== null && cap
       ? () => {
@@ -343,10 +324,7 @@ export function _bind(fn: () => void): () => void {
           fn()
         }
 
-  // First run: track deps so we know what to unsubscribe on dispose. We
-  // intentionally call `fn` directly (not `run`) here — the synchronous
-  // mount stack is already intact at this point, so restoring the captured
-  // snapshot would just push the same frames again redundantly.
+  // First run: track deps so we know what to unsubscribe on dispose.
   runCollect(run, deps, fn)
 
   const dispose = () => {
@@ -374,8 +352,7 @@ export function _bind(fn: () => void): () => void {
  * function rather than an Effect object — saves one allocation.
  */
 export function renderEffect(fn: () => void): () => void {
-  // Same dev warning as `effect()` — signal reads after the first
-  // await aren't tracked. See effect()'s docstring for full reasoning.
+  // Same dev warning as `effect()` — signal reads after the first await aren't tracked.
   if (process.env.NODE_ENV !== 'production') {
     if (fn.constructor && fn.constructor.name === 'AsyncFunction') {
       // oxlint-disable-next-line no-console

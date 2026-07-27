@@ -178,9 +178,6 @@ export async function renderPage(
     // Per-request CSP nonce (set by e.g. zero's `cspMiddleware` onto
     // `useRequestLocals().cspNonce`). Read ONCE here — the single string-mode
     // choke point, already inside the request context — and thread it to every
-    // inline tag this pipeline emits so a strict `script-src`/`style-src
-    // 'nonce-…'` policy admits them. Empty at SSG build / no-CSP → no attribute
-    // (byte-identical to before). Sanitized to a bare token so it can never
     const rawNonce = useRequestLocals().cspNonce
     const cspNonce
       = typeof rawNonce === 'string' && rawNonce ? rawNonce.replace(/["'<>\s]/g, '') : undefined
@@ -189,8 +186,7 @@ export async function renderPage(
     const { html: appHtml, head } = await renderWithHead(app, { nonce: cspNonce })
 
     // Styler (or any CSS-in-JS) tag goes BEFORE @pyreon/head's tags so the cascade
-    // orders correctly against user-added <style>/<link> tags. An empty tag
-    // (`...></style>`) is skipped — no styler in use.
+    // orders correctly against user-added <style>/<link> tags.
     const styleTag = options.collectStyles ? options.collectStyles(cspNonce) : ''
     const styleIsEmpty = !styleTag || styleTag.indexOf('></style>') !== -1
     const finalHead = styleIsEmpty ? head : `${styleTag}\n${head}`
@@ -202,8 +198,7 @@ export async function renderPage(
         : ''
 
     // SSR store-state hydration — decoupled bridge (set by @pyreon/store on import; one
-    // null check when the app uses no stores). Runs INSIDE runWithRequestContext so it
-    // snapshots the per-request store registry.
+    // null check when the app uses no stores).
     const dehydrateStores = (
       globalThis as { __PYREON_DEHYDRATE_STORES__?: () => Record<string, Record<string, unknown>> }
     ).__PYREON_DEHYDRATE_STORES__

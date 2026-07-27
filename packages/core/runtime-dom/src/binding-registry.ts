@@ -26,7 +26,6 @@
 import { activateReactiveDevtools, getReactiveGraph, type ReactiveNodeKind } from '@pyreon/reactivity'
 
 // Text node → the reactive node id (signal/computed) whose value it displays.
-// WeakMap keys are never retained, so an unmounted node's tag is GC-collectable.
 const _textBindings = new WeakMap<Node, number>()
 
 /**

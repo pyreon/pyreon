@@ -50,9 +50,6 @@ export interface ComputedOptions<T> {
 // Internal shape of a computed read function — state stored as PLAIN FIELDS on
 // the function object (fast in-object properties, exactly like `signal`), with
 // shareable methods on `ComputedProto`. The previous shape carried THREE
-// `Object.defineProperty` accessors, which force the function into V8 dictionary
-// mode; an A/B measured that at ~55% MORE retained heap per computed. `read` and
-// `recompute` MUST stay per-instance closures — their identity is stored in
 interface ComputedFn<T> {
   (): T
   /** @internal cached value */
@@ -206,9 +203,7 @@ function computedLazy<T>(
       }
       try {
         if (tracked) {
-          // Deps already established — VERIFY them positionally (zero Set ops in
-          // the steady state). A divergence unsubscribes the stale tail and
-          // records the new shape, keeping the dep list exact on every re-eval.
+          // Deps already established — VERIFY them positionally (zero Set ops in the steady state).
           read._value = runVerify(recompute, deps, fn)
         } else {
           read._value = runCollect(recompute, deps, fn)
@@ -233,19 +228,13 @@ function computedLazy<T>(
   read._d = null
 
   recompute = () => {
-    // Delegates to the CANONICAL lazy notify body in batch.ts, which marks dirty
-    // (idempotent), DEFERS direct subscribers to the batch DRAIN, and cascades into
-    // subscribers. The deferral is glitch-freedom: a lazy recompute runs INLINE during
-    // the write's notify phase, so `read._v` is TORN mid-multi- write-batch; the
-    // deferred updater fires once, at the drain, on the settled value.
+    // Delegates to the CANONICAL lazy notify body in batch.ts, which marks dirty (idempotent),
+    // DEFERS direct subscribers to the batch DRAIN, and cascades into subscribers.
     _markLazyAndPropagate(read)
   }
   // Recompute marker → the batch router and `propagateLazyDirty` run this inline
   // (dirty-mark-only, idempotent) instead of routing it through the queues, so
   // pure-computed cascades resolve during the notify phase. The second arg stamps
-  // `recompute._c = read` so the cascade's fused single-subscriber walk can
-  // dirty-mark these fields DIRECTLY — that walk inlines `_markLazyAndPropagate`,
-  // so keep the two in lock-step.
   _markRecompute(recompute, read)
 
   read.dispose = () => {

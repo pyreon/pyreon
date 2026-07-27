@@ -8,18 +8,13 @@ import { isServer } from '@pyreon/reactivity'
  * Saves scroll position before each navigation and restores it when
  * navigating back to a previously visited path.
  */
-// LRU cap — in SPAs with unbounded URL space (`/user/:id`, query-string
-// variations, etc.) the `_positions` Map would grow per unique path
-// forever. 100 entries covers typical back-navigation depth; beyond that,
-// scroll restoration is a nice-to-have not a correctness requirement.
+// LRU cap — in SPAs with unbounded URL space (`/user/:id`, query-string variations,
+// etc.) the `_positions` Map would grow per unique path forever.
 const MAX_SCROLL_POSITIONS = 100
 
 export class ScrollManager {
-  // SizedMap in FIFO mode — the LRU "touch on write" semantic this manager
-  // needs is built into `set`: a key collision unconditionally moves the
-  // entry to the tail. `restore` paths read positions without bumping
-  // recency (a read on back-nav shouldn't make the entry "newer" than the
-  // most recent save), so `lru: false` is correct.
+  // SizedMap in FIFO mode — the LRU "touch on write" semantic this manager needs is
+  // built into `set`: a key collision unconditionally moves the entry to the tail.
   private readonly _positions = new SizedMap<string, number>({
     maxEntries: MAX_SCROLL_POSITIONS,
   })
@@ -68,7 +63,6 @@ export class ScrollManager {
             el.scrollIntoView({ behavior: 'smooth' })
             return
           }
-          // Fallback: try name attribute (for anchors)
           const namedEl = document.querySelector(`[name="${CSS.escape(id)}"]`)
           if (namedEl) namedEl.scrollIntoView({ behavior: 'smooth' })
         })

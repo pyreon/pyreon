@@ -135,8 +135,7 @@ export function mergeFireDataIntoFindings(
   const format = options.formatDetail ?? DEFAULT_FORMAT
   const targetFile = norm(sourceFile)
 
-  // Build line-keyed index. Sum counts at the same line; latest wins for
-  // lastFire + kind.
+  // Build line-keyed index.
   const byLine = new Map<number, LPIHFireDatum>()
   for (const f of fires) {
     if (norm(f.file) !== targetFile) continue
@@ -160,9 +159,8 @@ export function mergeFireDataIntoFindings(
   if (byLine.size === 0) return findings
 
   return findings.map((finding) => {
-    // Footguns + static spans are NOT enriched — fire data at those lines
-    // belongs to a SEPARATE reactive expression on the same line, and
-    // attributing it to the footgun would be misleading.
+    // Footguns + static spans are NOT enriched — fire data at those lines belongs to a SEPARATE
+    // reactive expression on the same line, and attributing it to the footgun would be misleading.
     if (
       finding.kind === 'footgun' ||
       finding.kind === 'hoisted-static' ||

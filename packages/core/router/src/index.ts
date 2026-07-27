@@ -73,7 +73,6 @@ export {
   stringifyLoaderData,
   useLoaderData,
 } from './loader'
-// Match utilities (useful for SSR route pre-fetching)
 export {
   buildPath,
   findRouteByName,
@@ -102,8 +101,7 @@ export {
   useTypedSearchParams,
   useValidatedSearch,
 } from './router'
-// Types
-// Data loaders
+// Types Data loaders
 export type {
   AfterEachHook,
   Blocker,

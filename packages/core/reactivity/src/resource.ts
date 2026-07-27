@@ -74,9 +74,8 @@ export function createResource<T, P>(
     dispose() {
       if (disposed) return
       disposed = true
-      // Bump requestId so any pending in-flight response is treated as stale
-      // and discarded by the .then/.catch handlers — prevents post-dispose
-      // writes to data/loading/error.
+      // Bump requestId so any pending in-flight response is treated as stale and discarded by the
+      // .then/.catch handlers — prevents post-dispose writes to data/loading/error.
       requestId++
       sourceEffect.dispose()
     },

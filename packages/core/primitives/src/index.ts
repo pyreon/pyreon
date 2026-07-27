@@ -63,8 +63,7 @@ export type { ButtonProps, LinkProps, PressProps } from './types/interaction'
 export type { FieldProps, ModalProps, ToggleProps } from './types/input'
 
 // ===== Runtime config — one-time app-boot hook (rocketstyle-style) =====
-// Router-agnostic navigation wiring for `<Link>`. Call `init({ navigate })` once at app
-// boot to upgrade internal links to SPA navigation.
+// Router-agnostic navigation wiring for `<Link>`.
 
 export { init, resetPrimitivesConfig } from './config'
 export type { PrimitivesInitOptions } from './config'
@@ -91,7 +90,6 @@ export { Modal } from './web/Modal'
 // Escape-hatch primitives (Layer 4) — per-platform branch selection. On
 // web, `<Web>` renders its children and `<NativeIOS>`/`<NativeAndroid>`
 // render nothing; PMTC mirrors this per native target (iOS renders the
-// `<NativeIOS>` branch, Android the `<NativeAndroid>` branch).
 export { Web, NativeIOS, NativeAndroid } from './web/escape-hatch'
 export type { EscapeHatchProps } from './types/escape-hatch'
 // `<WebView>` — native host (WKWebView / Android WebView) for embedding

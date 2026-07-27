@@ -17,8 +17,6 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
   const keySet = new Set<string | symbol>(keys as (string | symbol)[])
 
   // Reflect.ownKeys includes symbol-keyed properties; Object.keys drops them silently.
-  // Without this, symbol-keyed props (e.g. branded reactive props under
-  // Symbol.for('pyreon.reactiveProp')) would vanish from both picked and rest.
   for (const key of Reflect.ownKeys(props)) {
     const desc = Object.getOwnPropertyDescriptor(props, key)
     // `desc` is only undefined if the key was deleted between ownKeys and
@@ -28,8 +26,6 @@ export function splitProps<T extends object, K extends (keyof T)[]>(
     // Force configurable: true when copying to a fresh object. Source descriptors
     // may be non-configurable (default when created with `Object.defineProperty`
     // and the caller omitted `configurable`). If we preserved that, any later
-    // `Object.defineProperty` on the same key — including subsequent splitProps
-    // post-processing or test mocks — would throw "Cannot redefine property".
     const safe = { ...desc, configurable: true }
     if (keySet.has(key)) {
       Object.defineProperty(picked, key, safe)
@@ -91,8 +87,6 @@ function mergeProperty(
     // Force configurable: true — source getters may have been defined via
     // `Object.defineProperty` without an explicit configurable flag (which
     // defaults to false). Without this, a later source in the same mergeProps
-    // call that overrides the same key would crash with TypeError:
-    // "Cannot redefine property".
     Object.defineProperty(result, key, { ...desc, configurable: true })
   } else if (existing?.get) {
     mergeStaticWithGetter(result, key, desc, existing.get)
@@ -162,8 +156,7 @@ export const removeUndefinedProps = (<T extends Record<string, any>>(props: T) =
   const descriptors = Object.getOwnPropertyDescriptors(props)
   for (const key of Object.keys(descriptors)) {
     const d = descriptors[key] as PropertyDescriptor
-    // Keep getter-shaped descriptors verbatim (reactive props). For data
-    // descriptors, drop `value === undefined` so they don't shadow defaults.
+    // Keep getter-shaped descriptors verbatim (reactive props).
     if (d.get || d.value !== undefined) {
       Object.defineProperty(result, key, d)
     }
@@ -263,8 +256,7 @@ export function _wrapSpread(
 export function makeReactiveProps(
   raw: Record<string, unknown>,
 ): Record<string, unknown> {
-  // Fast path: scan for any REACTIVE_PROP-branded function first. If none found, return
-  // raw immediately — no object allocation, no property copying.
+  // Fast path: scan for any REACTIVE_PROP-branded function first.
   const keys = Object.keys(raw)
   let hasAny = false
   for (let i = 0; i < keys.length; i++) {

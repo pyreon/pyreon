@@ -14,9 +14,7 @@
 const OWN_KEYS_PREFIX_DATA = 'data-'
 const OWN_KEYS_PREFIX_ARIA = 'aria-'
 
-// accessibilityRole → the ARIA `role` token. Keyed by the constrained
-// AccessibilityRole enum (button / image / header) so it maps 1:1 with the
-// iOS trait + Android Compose Role the PMTC emit produces.
+// accessibilityRole → the ARIA `role` token.
 const ARIA_ROLE: Record<string, string> = {
   button: 'button',
   image: 'img',
@@ -52,13 +50,11 @@ export function collectPassthroughAttrs(
   // Lower the cross-platform a11y vocabulary (AccessibilityProps) to web aria-*. A raw
   // `aria-label` / `aria-hidden` (collected in the loop above) WINS — it's the explicit
   // web override — so only fill from the neutral prop when the aria- attr isn't already
-  // set.
   if (typeof props.accessibilityLabel === 'string' && out['aria-label'] === undefined) {
     out['aria-label'] = props.accessibilityLabel
   }
-  // Emit the STRING "true" (not a boolean) so it renders as aria-hidden="true",
-  // never presence-only `aria-hidden=""` (which assistive tech ignores). Omit
-  // when false/unset — an absent aria-hidden means "not hidden".
+  // Emit the STRING "true" (not a boolean) so it renders as aria-hidden="true", never
+  // presence-only `aria-hidden=""` (which assistive tech ignores).
   if (props.accessibilityHidden === true && out['aria-hidden'] === undefined) {
     out['aria-hidden'] = 'true'
   }
@@ -85,8 +81,7 @@ export function mergePassthroughStyle(
 ): string | Record<string, string> {
   if (consumer === undefined) return computed
   if (typeof consumer === 'string') {
-    // Serialize the primitive's style object + suffix the consumer's
-    // string. Browser parses concatenated `;`-separated CSS just fine.
+    // Serialize the primitive's style object + suffix the consumer's string.
     const computedStr = Object.entries(computed)
       .map(([k, v]) => `${k}: ${v}`)
       .join('; ')

@@ -8,8 +8,6 @@ export class EffectScope {
   // A scope doubles as the component's CONTEXT OWNER: `provide()` writes into
   // `_contexts`; `useContext()` walks `_parent` up the OWNER chain (which
   // mirrors the component tree, set by the renderer during mount). Context
-  // lives with the scope and dies with it, so there is nothing to leak and no
-  // frame to orphan. Both fields are null until first used.
   /** Parent owner in the component tree — set by the renderer, NOT effect nesting. */
   _parent: EffectScope | null = null
   /** Contexts provided at this scope, keyed by context id. */
@@ -59,10 +57,7 @@ export class EffectScope {
 
   /** Register a callback to run after any reactive update in this scope. */
   addUpdateHook(fn: () => void): void {
-    // Mirror `add()`'s behavior: silently no-op when scope is stopped. Without this,
-    // hooks pushed after `stop()` would leak into a freshly- allocated `_updateHooks`
-    // array and never fire (because `notifyEffectRan` checks `_active` first), giving
-    // the caller no feedback that the registration was futile.
+    // Mirror `add()`'s behavior: silently no-op when scope is stopped.
     if (!this._active) return
     if (this._updateHooks === null) this._updateHooks = []
     this._updateHooks.push(fn)
@@ -97,10 +92,8 @@ export class EffectScope {
     this._effects = null
     this._updateHooks = null
     this._updatePending = false
-    // Release the owner-chain + context references so a disposed scope doesn't
-    // retain its parent chain (and the parent's `_contexts` Map) when a
-    // descendant outlives it. A stopped scope is never walked as a context
-    // owner, so dropping these is pure cleanup that breaks upward refs for GC.
+    // Release the owner-chain + context references so a disposed scope doesn't retain its parent
+    // chain (and the parent's `_contexts` Map) when a descendant outlives it.
     this._contexts = null
     this._parent = null
     this._active = false
@@ -122,10 +115,7 @@ export function effectScope(): EffectScope {
 }
 
 // ─── Current context owner ───────────────────────────────────────────────────
-// DELIBERATELY SEPARATE from `_currentScope` (the effect-TRACKING scope). The renderer
-// sets this to the component's scope while mounting that component's subtree, so a
-// child's owner chains to its parent; deferred boundaries capture it at setup and
-// restore it when they later mount children inside an effect.
+// DELIBERATELY SEPARATE from `_currentScope` (the effect-TRACKING scope).
 let _currentContextOwner: EffectScope | null = null
 
 export function getContextOwner(): EffectScope | null {

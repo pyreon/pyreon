@@ -43,13 +43,9 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
 }
 
 // ─── Error boundary stack ────────────────────────────────────────────────────
-// Module-level stack of active ErrorBoundary handlers (innermost last). ErrorBoundary
-// pushes during its own setup, before children mount, so any child mountComponent error
-// dispatches up to the nearest boundary.
+// Module-level stack of active ErrorBoundary handlers (innermost last).
 
-// Plain module-scope stack. The duplicate-instance bug class is prevented at the
-// bundler layer (`@pyreon/vite-plugin` injects `resolve.dedupe`) and detected at
-// the runtime layer (every package calls `registerSingleton` at module load).
+// Plain module-scope stack.
 const _ebStack: ((err: unknown) => boolean)[] = []
 
 export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
@@ -64,10 +60,7 @@ export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
  */
 export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
   if (handler === undefined) {
-    // Back-compat: legacy callers that don't pass a handler get the old
-    // pop-last behaviour. Internal `ErrorBoundary` setup always passes
-    // its handler now; any external direct callers (tests, advanced
-    // consumers) keep working with no-arg form.
+    // Back-compat: legacy callers that don't pass a handler get the old pop-last behaviour.
     _ebStack.pop()
     return
   }

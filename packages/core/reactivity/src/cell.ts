@@ -46,7 +46,6 @@ export class Cell<T> {
       // Promote to Set. We're in the `else` (so `_l` or `_s` is set); when
       // `_s` is still null, a single listener must exist in `_l` — move it
       // into the Set. The assertion documents that invariant (the `_l` here
-      // can never be null) and avoids an uncoverable branch.
       if (!this._s) {
         this._s = new Set()
         this._s.add(this._l as () => void)
@@ -58,8 +57,7 @@ export class Cell<T> {
 
   subscribe(listener: () => void): () => void {
     this.listen(listener)
-    // The listener could be in _l (single) or _s (multi). A later subscribe() call may
-    // promote it from _l to _s, so the disposer must check both locations.
+    // The listener could be in _l (single) or _s (multi).
     return () => {
       if (this._l === listener) this._l = null
       else this._s?.delete(listener)

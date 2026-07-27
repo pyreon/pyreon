@@ -29,11 +29,8 @@ function createNewTag(tag: {
   children: string
   key: unknown
 }): void {
-  // SSR guard: only ever reached via the (also-guarded) `syncDom`, but
-  // keep the guard local so the contract is self-evident and SSR-safe
-  // even if a future caller invokes this directly. `syncDom` already
-  // returns on `document === undefined`, so this is unreachable via any
-  // real call path — an intentional defensive guard, hence v8-ignored.
+  // SSR guard: only ever reached via the (also-guarded) `syncDom`, but keep the guard local so the
+  // contract is self-evident and SSR-safe even if a future caller invokes this directly.
   /* v8 ignore next */
   if (typeof document === 'undefined') return
   const el = document.createElement(tag.tag)
@@ -56,7 +53,6 @@ export function syncDom(ctx: HeadContextValue): void {
   // Seed from DOM on first sync, or re-seed if DOM was reset (e.g. between tests)
   let needsSeed = managedElements.size === 0
   if (!needsSeed) {
-    // Check if a tracked element is still in the DOM
     const sample = managedElements.values().next().value
     if (sample && !sample.isConnected) {
       managedElements.clear()
@@ -95,7 +91,6 @@ export function syncDom(ctx: HeadContextValue): void {
     }
   }
 
-  // Remove stale elements
   for (const [key, el] of managedElements) {
     if (!kept.has(key)) {
       el.remove()
@@ -130,7 +125,6 @@ function applyTitleTemplate(
 
 /** Sync pyreon-managed attributes on <html> or <body>. */
 function syncElementAttrs(el: Element, attrs: Record<string, string>): void {
-  // Remove previously managed attrs that are no longer present
   const managed = el.getAttribute(`${ATTR}-attrs`)
   if (managed) {
     for (const name of managed.split(',')) {

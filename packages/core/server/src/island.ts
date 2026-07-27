@@ -153,8 +153,7 @@ export function island<P extends Props = Props>(
   const IslandWrapper = function IslandWrapper(props: P): VNode | Promise<VNode | null> {
     const serializedProps = serializeIslandProps(props, name)
 
-    // Only emit data-prefetch when it actually changes behavior. `none` is the
-    // default and pointless on `load` / `never` — keep the rendered HTML clean.
+    // Only emit data-prefetch when it actually changes behavior.
     const attrs: Record<string, string> = {
       'data-component': name,
       'data-props': serializedProps,
@@ -165,21 +164,14 @@ export function island<P extends Props = Props>(
     }
 
     // ── CLIENT: the island OWNS its hydration lifecycle ──────────────────────
-    // Render the `<pyreon-island>` marker, then on mount load the chunk + mount
-    // the component INTO the marker per the `hydrate` strategy. This is robust
-    // whether the host hydrated the page (a static islands app — where island()
-    // only ever runs on the server, so this branch never fires there) or
-    // RE-MOUNTED the route client-side. `@pyreon/zero` does the latter: its
-    // route is a reactive child of RouterView, so the SSR DOM is discarded and
+    // Render the `<pyreon-island>` marker, then on mount load the chunk + mount the
+    // component INTO the marker per the `hydrate` strategy.
     if (isClient) {
       if (hydrate === 'never') return h('pyreon-island', attrs)
       let islandEl: HTMLElement | null = null
       // Capture the context owner NOW, synchronously during this component's
       // render — while its owner (and the ancestor provider chain: PyreonUI
       // theme, etc.) is active. Hydration is deferred (idle / visible /
-      // interaction) and runs after an async `import()`, so the active owner
-      // is long gone by then. Threading this captured owner into
-      // `scheduleHydration` lets the island's hydration root re-parent to it,
       const capturedOwner = getContextOwner()
       onMount(() => {
         if (!islandEl) return
@@ -285,10 +277,8 @@ function serializeIslandProps(
     const encoded = encodeIslandProps(clean, islandName)
     return JSON.stringify(encoded)
   } catch (err) {
-    // Encoder threw on a class instance, depth overflow, or circular
-    // reference (the codec catches each with a named-path message). Don't
-    // 500 the SSR — emit empty props and surface the full error in dev so
-    // the offending site is visible before users hit it on the client.
+    // Encoder threw on a class instance, depth overflow, or circular reference (the
+    // codec catches each with a named-path message).
     if (process.env.NODE_ENV !== 'production') {
       // eslint-disable-next-line no-console
       console.error(

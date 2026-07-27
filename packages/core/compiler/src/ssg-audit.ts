@@ -86,8 +86,7 @@ export interface SsgAuditResult {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Discovery
+// ═══════════════════════════════════════════════════════════════════════════════ Discovery
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function findMonorepoRoot(startDir: string): string | null {
@@ -96,7 +95,6 @@ function findMonorepoRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
-      // fall through
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -130,10 +128,8 @@ function findRouteFiles(rootDir: string, out: string[], depth = 0): void {
       continue
     }
     if (isDir) {
-      // If this directory is named `routes`, descend and collect every
-      // route file under it. Otherwise recurse into the directory
-      // looking for nested `routes/` directories (handles
-      // `examples/<app>/src/routes/`).
+      // If this directory is named `routes`, descend and collect every route file under it.
+      // Otherwise recurse into the directory looking for nested `routes/` directories (handles
       if (name === 'routes') {
         walkRoutesDir(full, out)
       } else {
@@ -206,8 +202,7 @@ function makeLocation(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Detectors
+// ═══════════════════════════════════════════════════════════════════════════════ Detectors
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -340,7 +335,6 @@ function detectDynamicRouteMissingGetStaticPaths(
     // Skip API routes under `routes/api/` (path-based convention).
     // fs-router treats `api/` as the runtime-handler namespace; pages
     // are everything else. Caught originally in M3.B against cpa-pw-blog's
-    // `api/echo/[...path].ts`.
     if (/[/\\]routes[/\\]api[/\\]/.test(file)) continue
     // Only meaningful under SSG — SPA/SSR/ISR apps never prerender.
     if (!appUsesSsgMode(file, rootForRel)) continue
@@ -351,8 +345,6 @@ function detectDynamicRouteMissingGetStaticPaths(
     // A per-route `export const renderMode = 'spa' | 'ssr' | 'isr'` opts the
     // route OUT of SSG auto-prerender, so it legitimately needs no
     // `getStaticPaths` — the audit's own remedy. (Inside `mode: 'ssg'` only
-    // `'spa'` is valid; an invalid `'ssr'`/`'isr'` is a separate build error,
-    // not this audit's concern — either way the route isn't SSG-prerendered.)
     let renderModeOverride: string | null = null
     function visit(node: ts.Node): void {
       if (ts.isVariableStatement(node)) {
@@ -399,13 +391,9 @@ function detectDynamicRouteMissingGetStaticPaths(
     // Files without `export default` are API routes by structure. Skip.
     // Page routes require a default-exported component (fs-router renders
     // `route.component`); files exporting only method handlers
-    // (`GET` / `POST` / etc.) without a default are API routes wherever
-    // they sit in the tree.
     if (!hasDefaultExport) continue
-    // A route that explicitly declares a non-SSG `renderMode` has opted out of
-    // SSG prerendering, so it needs no `getStaticPaths` — this is exactly the
-    // fix the message below recommends. Without this the audit false-positives
-    // on the correctly-configured hybrid route it just told the user to write.
+    // A route that explicitly declares a non-SSG `renderMode` has opted out of SSG prerendering, so
+    // it needs no `getStaticPaths` — this is exactly the fix the message below recommends.
     if (renderModeOverride !== null && renderModeOverride !== 'ssg') continue
     if (!hasGetStaticPaths) {
       findings.push({

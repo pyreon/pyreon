@@ -33,9 +33,8 @@ import { registerComponent, unregisterComponent } from './devtools'
 import { mountFor, mountKeyedList, mountReactive } from './nodes'
 import { applyProps, applySelectValueProp } from './props'
 
-// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this
-// uses `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
-// Dev-time counter sink — see packages/internals/perf-harness for contract.
+// Dev-mode gate: see `pyreon/no-process-dev-gate` lint rule for why this uses
+// `import.meta.env.DEV` instead of `typeof process !== 'undefined'`.
 const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number) => void }
 
 type Cleanup = () => void
@@ -43,13 +42,11 @@ const noop: Cleanup = () => {
   /* noop */
 }
 
-// When > 0, we're mounting children inside an element — child cleanups can skip
-// DOM removal (parent element removal handles it). This avoids allocating a
-// removeChild closure for every nested element that has no reactive work.
+// When > 0, we're mounting children inside an element — child cleanups can skip DOM
+// removal (parent element removal handles it).
 let _elementDepth = 0
 
-// Stack tracking which component is currently being mounted (depth-first order). Used
-// to infer parent/child relationships for DevTools.
+// Stack tracking which component is currently being mounted (depth-first order).
 let _mountingStack: string[] | undefined
 if (process.env.NODE_ENV !== 'production') _mountingStack = []
 
@@ -81,8 +78,6 @@ export function mountChild(
     // Text fast path: reactive string/number/boolean — update text.data in place.
     // POLYMORPHIC: the accessor may later return a VNode
     // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades to a
-    // full subtree mount on the first non-text value (and back). An unconditional
-    // `text.data = String(v)` rendered "[object Object]" for the VNode arm.
     if (typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean') {
       const text = document.createTextNode(sample === false ? '' : String(sample))
       parent.insertBefore(text, anchor)
@@ -114,9 +109,6 @@ export function mountChild(
     // `_elementDepth > 0` → this text is a child of a freshly-built element
     // removed as a unit, so a per-node remover is redundant (noop). BUT at depth 0
     // the text was mounted directly into a LIVE parent through a reactive
-    // boundary, whose teardown removes children INDIVIDUALLY via their cleanups —
-    // a noop there ORPHANS the text node (`() => cond ? <>a b</> : 'x'` rendered
-    // "abx"). Mirrors the reactive-text fast path's own `_elementDepth` gate.
     if (_elementDepth > 0) return noop
     return () => {
       const p = tn.parentNode
@@ -152,9 +144,6 @@ export function mountChild(
     // The compiler wraps `<For each={signal}>` in `_rp(() => signal())`, so
     // `props.each` is a getter returning the resolved array, not the function.
     // Destructuring would eagerly capture the array, breaking reactivity and
-    // crashing mountFor (which calls `source()`). Read it lazily so the getter
-    // fires inside mountFor's effect. User-written `each={() => fn()}` still
-    // works — props.each is then the function itself.
     const props = vnode.props as unknown as ForProps<unknown>
     const initialEach = props.each as unknown
     const source: () => unknown[] =
@@ -192,9 +181,7 @@ export function mountChild(
     // inside a portal was silently dead. Make the Portal own its delegation root.
     if (target instanceof Element) setupDelegation(target)
     // Portal content mounts into `target` (e.g. document.body) — a LIVE parent NOT
-    // removed as a unit, so mountChild's cleanup does not remove the DOM. Without an
-    // explicit remover a portaled modal / toast / tooltip LEAKS into the target forever
-    // once its owner unmounts.
+    // removed as a unit, so mountChild's cleanup does not remove the DOM.
     const portalStart = document.createComment('portal')
     const portalEnd = document.createComment('/portal')
     target.appendChild(portalStart)
@@ -252,9 +239,7 @@ const VOID_ELEMENTS = new Set([
 export const SVG_NS = 'http://www.w3.org/2000/svg'
 export const MATHML_NS = 'http://www.w3.org/1998/Math/MathML'
 
-// Tags that require namespace-aware creation. Exported so `_tpl` (template.ts)
-// can decide when a template STRING is rooted at a foreign (SVG/MathML) element
-// and must be parsed in the right namespace — see `_tpl`'s foreign-root wrap.
+// Tags that require namespace-aware creation.
 export const SVG_TAGS = new Set([
   'svg',
   'circle',
@@ -376,7 +361,6 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
   // `<select value>` — deferred until after children (PZ-09): the property
   // assignment selects a matching <option>, so the options must exist first. Runs
   // while the element is still detached, which property assignment supports. The
-  // cleanup chains into propCleanup so downstream branches are unchanged.
   if (isSelect && props !== EMPTY_PROPS && 'value' in props) {
     const valueCleanup = applySelectValueProp(el, props)
     if (valueCleanup) {
@@ -483,8 +467,6 @@ function mountComponent(
   // Owner chain: link this component's scope to its parent owner so
   // `useContext()` resolves up the component tree. The owner stays `scope`
   // through both `runWithHooks` (so `provide()` writes onto it) and `mountChild`
-  // (so children chain to it), restored on every exit path. Kept SEPARATE from
-  // `setCurrentScope` (effect tracking) so the two concerns don't interfere.
   const prevOwner = getContextOwner()
   const scope = effectScope()
   scope._parent = prevOwner
@@ -497,8 +479,6 @@ function mountComponent(
   const componentName = (vnode.type.name || 'Anonymous') as string
 
   // Devtools: generate ID + track parent/child hierarchy (dev only).
-  // In production, compId/devParentId are never assigned — Vite tree-shakes
-  // all __DEV__ blocks + the devtools module import to zero bytes.
   let compId: string | undefined
   let devParentId: string | null | undefined
   if (process.env.NODE_ENV !== 'production') {
@@ -525,8 +505,6 @@ function mountComponent(
   }
 
   // Convert compiler-emitted () => expr wrappers into getter properties.
-  // This makes component props reactive — reading props.state inside an
-  // effect/computed tracks the underlying signals.
   const mergedProps =
     rawProps === EMPTY_PROPS ? rawProps : makeReactiveProps(rawProps as Record<string, unknown>)
 
@@ -551,9 +529,7 @@ function mountComponent(
       console.error(`[Pyreon] <${componentName}> threw during setup:`, err)
     }
     if (process.env.NODE_ENV !== 'production') {
-      // PZ-10: "props.X is not a function", caused by the reactive-prop
-      // auto-unwrap. Printed even when an ErrorBoundary handled the throw — the
-      // fallback can't explain the root cause. Fires at most once per mount.
+      // PZ-10: "props.X is not a function", caused by the reactive-prop auto-unwrap.
       const diagnosis = diagnoseReactivePropCall(
         err,
         mergedProps as Record<string, unknown>,
@@ -591,9 +567,7 @@ function mountComponent(
     for (const fn of hooks.update) scope.addUpdateHook(fn)
   }
 
-  // Async component support — parity with `renderToString`, which awaits Promise
-  // outputs. Insert a placeholder comment at the mount point, then mount the resolved
-  // value once the Promise settles.
+  // Async component support — parity with `renderToString`, which awaits Promise outputs.
   if (output instanceof Promise) {
     const placeholder = document.createComment('async')
     parent.insertBefore(placeholder, anchor)
@@ -660,7 +634,6 @@ function mountComponent(
   }
 
   // Fire onMount hooks inline — effects created inside are tracked by the scope.
-  // Lazy-allocate mountCleanups only when an onMount callback returns a cleanup fn.
   let mountCleanups: Cleanup[] | null = null
   if (hooks.mount) {
     for (const fn of hooks.mount) {
@@ -680,8 +653,7 @@ function mountComponent(
     }
   }
 
-  // Subtree fully mounted (incl. onMount) — restore the parent owner so this
-  // component's siblings resolve their own context, not this component's.
+  // Subtree fully mounted (incl.
   setContextOwner(prevOwner)
 
   return () => {
@@ -768,10 +740,8 @@ export function createPolyTextCore(
         runUntracked(subCleanup)
       }
       const liveParent = marker!.parentNode ?? parentAtSetup
-      // Reset _elementDepth: this mount can run at SETUP time (a signal that
-      // ALREADY holds a VNode at bind time, inside a `_tpl` bind under
-      // mountChildren's depth>0 window). The subtree is torn down INDIVIDUALLY on
-      // the next textish flip, so its cleanups must be REAL removers.
+      // Reset _elementDepth: this mount can run at SETUP time (a signal that ALREADY holds a VNode
+      // at bind time, inside a `_tpl` bind under mountChildren's depth>0 window).
       const prevDepth = _elementDepth
       _elementDepth = 0
       subCleanup = runUntracked(() =>
@@ -824,8 +794,6 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
       // `textContent =` REPLACES the parent's entire child list — valid only when
       // the parent is EMPTY (the dominant fresh-element case). mountChildren is
       // ALSO the Fragment mount path, where the parent is a live element that may
-      // already hold earlier siblings: a Fragment whose sole child is text used
-      // to WIPE them (`<i>{'head'}<>{'X'}</></i>` rendered just "X").
       if (
         anchor === null &&
         (typeof c === 'string' || typeof c === 'number') &&
@@ -858,7 +826,6 @@ function mountChildren(children: VNodeChild[], parent: Node, anchor: Node | null
   // 3+ children: collect ONLY real (non-noop) cleanups — inline-first, promote to
   // an array on the 2nd. A fully-static multi-child element returns the shared
   // `noop` with NO array and NO wrapper closure (the common `<ul><li/>…</ul>`
-  // shape). Mirrors the 2-child path and avoids `.map`'s per-call closure.
   let only: Cleanup | null = null
   let rest: Cleanup[] | null = null
   for (let i = 0; i < children.length; i++) {

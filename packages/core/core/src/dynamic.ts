@@ -14,10 +14,7 @@ export function Dynamic(props: DynamicProps): VNode | null {
     console.warn('[Pyreon] <Dynamic> received a falsy `component` prop. Nothing will be rendered.')
   }
   if (!component) return null
-  // Children must NOT remain in props. When `component` is a string tag (e.g. <Dynamic
-  // component="h3">x</Dynamic>), runtime-dom's prop applier forwards every prop key to
-  // setAttribute, so a leaked `children` prop crashes with `setAttribute('children',
-  // ...)`.
+  // Children must NOT remain in props.
   if (children === undefined) {
     return h(component as string | ComponentFn, rest as Props)
   }

@@ -76,9 +76,8 @@ export interface MigrationResult {
   changes: MigrationChange[]
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// React Hook → Pyreon mapping
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════ React Hook →
+// Pyreon mapping ═══════════════════════════════════════════════════════════════════════════════
 
 interface HookMapping {
   pyreonFn: string
@@ -549,9 +548,6 @@ function detectDotValueSignal(ctx: DetectContext, node: ts.PropertyAccessExpress
   // Precision gate: only flag `X.value = …` when X is actually a tracked
   // signal binding. Without this, the detector false-positived on every
   // DOM-element / data-object `.value` write — `input.value = ''`,
-  // `cell.value = x`, `o.value = y`, `ref.current.value = z` (the receiver
-  // there is the `.current` PropertyAccess, already excluded by
-  // `isDotValueAccess` requiring an Identifier receiver). Require positive
   if (!ctx.signalBindings.has(varName)) return
   const parent = node.parent
   if (ts.isBinaryExpression(parent) && parent.left === node) {
@@ -925,7 +921,6 @@ function migrateDangerouslySetInnerHTML(ctx: MigrateContext, node: ts.JsxAttribu
 }
 
 function applyReplacements(code: string, ctx: MigrateContext): string {
-  // Remove React import declarations
   for (const imp of ctx.importsToRemove) {
     ctx.replacements.push({ start: imp.getStart(ctx.sf), end: imp.getEnd(), text: '' })
     ctx.changes.push({
@@ -1032,8 +1027,7 @@ export function migrateReactCode(code: string, filename = 'input.tsx'): Migratio
   return { code: result, diagnostics, changes: ctx.changes }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// Helpers
+// ═══════════════════════════════════════════════════════════════════════════════ Helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function findParentJsxElement(
@@ -1100,7 +1094,6 @@ export function hasReactPatterns(code: string): boolean {
   )
 }
 
-// Error-diagnosis catalog moved to the browser-safe `./diagnose` module
-// (no `typescript` import) so it can load in the browser. Re-exported here so
-// existing `from './react-intercept'` consumers + the package index keep working.
+// Error-diagnosis catalog moved to the browser-safe `./diagnose` module (no
+// `typescript` import) so it can load in the browser.
 export { diagnoseError, type ErrorDiagnosis } from './diagnose'

@@ -55,7 +55,6 @@ export interface NativeAuditResult {
 }
 
 // Packages that cannot be native-rendered (hard DOM/canvas/vendor deps).
-// Importing one in a multiplatform component file is a native-build hazard.
 const WEB_ONLY_PACKAGES = new Set<string>([
   '@pyreon/charts',
   '@pyreon/flow',
@@ -84,7 +83,6 @@ function findRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'package.json')).isFile()) return dir
     } catch {
-      // fall through
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -169,7 +167,6 @@ export function auditNative(cwd: string): NativeAuditResult {
     if (!source) continue
 
     // First pass: is this a multiplatform file (imports @pyreon/primitives)?
-    // Collect web-only imports in the same sweep.
     let importsPrimitives = false
     const webOnlyImports: { spec: string; node: ts.Node }[] = []
     for (const stmt of source.statements) {

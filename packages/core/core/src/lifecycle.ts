@@ -38,8 +38,7 @@ function captureCallSite(): string {
   if (!stack) return ''
   const lines = stack.split('\n')
   // Framework paths to skip — conservative, matches the packages that contain lifecycle
-  // / provide / context internals and call these hooks. Framework / infra paths +
-  // function names to skip.
+  // / provide / context internals and call these hooks.
   const skipPatterns = [
     // ── Source form (workspace / `bun` condition) ──────────────────────
     /\/lifecycle\.[tj]s/,
@@ -53,7 +52,6 @@ function captureCallSite(): string {
     //    calls lifecycle hooks (HeadProvider, RouterProvider, ThemeProvider,
     //    PyreonUI, etc.). Without each, a published-package consumer with
     //    `useHead()` or `provide()` would see the "Called from:" line
-    //    point at the LIBRARY's source, not their own component. ───────
     /\/(core|reactivity|runtime-dom|runtime-server|router|head|ui-core|styler|unistyle|rocketstyle|attrs|elements|kinetic)\/src\//,
     // ── Published-bundle form (npm consumers): bundles always at
     //    `node_modules/@pyreon/<name>/lib/...`. The blanket

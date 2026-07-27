@@ -22,8 +22,7 @@ import type { WebViewProps } from '../types/webview'
 export function WebView(props: WebViewProps): VNode {
   const attrs: Record<string, unknown> = {
     ...collectPassthroughAttrs(props as Record<string, unknown>),
-    // Fill the container, no chrome — matches the native host's full-bleed
-    // embed.
+    // Fill the container, no chrome — matches the native host's full-bleed embed.
     style: 'border: 0; width: 100%; height: 100%',
   }
   if (props.html !== undefined) attrs.srcdoc = props.html
@@ -32,10 +31,7 @@ export function WebView(props: WebViewProps): VNode {
   const hasData = 'data' in props
   const hasOnMessage = 'onMessage' in props
 
-  // Both bridges share ONE frame ref + onLoad. Same-origin / `srcdoc`
-  // only — a cross-origin remote `src` can't be reached from the parent
-  // (the native targets cover remote content via evaluateJavaScript / the
-  // script-message handler; on web you host same-origin / srcdoc content).
+  // Both bridges share ONE frame ref + onLoad.
   if (hasData || hasOnMessage) {
     let frame: HTMLIFrameElement | null = null
     let loaded = false
@@ -57,7 +53,6 @@ export function WebView(props: WebViewProps): VNode {
     // Reverse bridge — define the unified `window.pyreonPostMessage(m)`
     // API on the hosted page so it can send strings back to the host's
     // `onMessage` callback (mirror of the iOS WKScriptMessageHandler /
-    // Android @JavascriptInterface).
     const injectReverseBridge = (): void => {
       const win = frame?.contentWindow as
         | (Window & { pyreonPostMessage?: (m: unknown) => void })
@@ -83,8 +78,7 @@ export function WebView(props: WebViewProps): VNode {
       if (hasData) push()
       if (hasOnMessage) injectReverseBridge()
     }
-    // Re-push whenever `data` changes (the read tracks it). On the first run the iframe
-    // usually isn't loaded yet → push no-ops, and `onLoad` pushes once it is.
+    // Re-push whenever `data` changes (the read tracks it).
     if (hasData) {
       effect(() => {
         void (props as { data?: unknown }).data

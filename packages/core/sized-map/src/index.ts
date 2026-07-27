@@ -47,17 +47,13 @@ export class SizedMap<K, V> {
   }
 
   set(key: K, value: V): void {
-    // If already present, refresh position (treat as a recency hit). This is
-    // unconditional — both FIFO and LRU callers depend on a just-written
-    // entry sitting at the tail, not getting evicted on the next set.
+    // If already present, refresh position (treat as a recency hit).
     if (this._map.has(key)) {
       this._map.delete(key)
     } else if (this._map.size >= this._maxEntries) {
       // Evict oldest — Map iterates in insertion order, so the FIRST key is the
       // least-recently-inserted (or, under LRU, the least-recently USED — `.get`
-      // already moved touched entries to the tail). This branch runs only when `size >=
-      // maxEntries`, and the constructor floors `maxEntries` at 1 (`Math.max(1, …)`),
-      // so the map is guaranteed non-empty here — the oldest key is always defined.
+      // already moved touched entries to the tail).
       const oldest = this._map.keys().next().value as K
       this._map.delete(oldest)
     }

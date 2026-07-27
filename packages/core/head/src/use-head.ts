@@ -35,8 +35,6 @@ function buildEntry(o: UseHeadInput): HeadEntry {
     // Default `<script src=...>` tags to non-blocking: if the script has a `src` AND
     // the author hasn't picked a load strategy explicitly (no `type`, `async`, OR
     // `defer`), add `defer` so the script doesn't block HTML parsing. This is the
-    // modern best practice — Mozilla's "Web Performance Score" + Google's Core Web
-    // Vitals both penalize render-blocking scripts.
     const noLoadStrategy =
       rest.src !== undefined &&
       rest.type === undefined &&
