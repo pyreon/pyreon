@@ -22,7 +22,7 @@
     "coverage:swiftc": "bun scripts/coverage-gate.ts --swiftc-validate"
   },
   "dependencies": {
-    "oxc-parser": "^0.140.0"
+    "oxc-parser": "^0.141.0"
   },
   "devDependencies": {
     "@pyreon/tsconfig": "workspace:*",
