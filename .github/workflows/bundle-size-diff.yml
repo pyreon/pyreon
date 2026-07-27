@@ -107,8 +107,23 @@ jobs:
           } >>"$GITHUB_OUTPUT"
           echo "Resolved base: $BASE_SHA — $LABEL"
 
+      # Both ref switches are FORCED (`-f`), because `bun install` between them
+      # legitimately dirties the worktree and a plain `git checkout` then aborts
+      # with "Your local changes would be overwritten by checkout".
+      #
+      # The concrete instance: bun chmods every declared `bin` entry to +x on
+      # install, so a bin committed as 100644 comes back 100755 and the restore
+      # step fails — which is exactly what broke this job on every PR once
+      # `@pyreon/atlas` (and its `bin/atlas.js`) landed. That file's mode is
+      # corrected in the same change, but the mode was only the trigger: ANY
+      # install-produced artifact (a new bin, a generated file, a patched dep)
+      # reintroduces it, so the job is made immune rather than patched per-file.
+      #
+      # Forcing is safe HERE specifically: this job's worktree is disposable
+      # scratch space between two measurements — it carries nothing to preserve,
+      # and both refs are explicit SHAs.
       - name: Checkout base
-        run: git checkout "${{ steps.base.outputs.sha }}"
+        run: git checkout -f "${{ steps.base.outputs.sha }}"
 
       - name: Install (base)
         run: bun install --frozen-lockfile
@@ -117,7 +132,7 @@ jobs:
         run: bun scripts/check-bundle-budgets.ts --json >/tmp/base.json || true
 
       - name: Restore PR head for diff script
-        run: git checkout "${{ github.event.pull_request.head.sha }}"
+        run: git checkout -f "${{ github.event.pull_request.head.sha }}"
 
       # continue-on-error is for the script's exit 1 — "regressions found" is
       # REPORT CONTENT here (the comment shows the movers); the strict gate
