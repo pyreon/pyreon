@@ -1681,6 +1681,20 @@ function emitKotlinDecl(d: DeclIR, ctx: KotlinCtx): string {
       `val ${id} = remember { PyreonHaptics(${id}Haptic) }`,
     ].join('\n  ')
   }
+  // FFI: `const bt = useNativeModule<T>('Bluetooth')` → a remembered
+  // instance of the APP's own class. A Context is hoisted and injected
+  // unconditionally (the same shape clipboard/share/linking use): nearly
+  // every Android platform capability needs one, a module that doesn't
+  // can ignore the parameter, and a single fixed constructor signature
+  // keeps the contract predictable. `remember` keeps the instance stable
+  // across recomposition; back it with `mutableStateOf` for reactive state.
+  if (d.kind === 'native-module') {
+    const id = kotlinIdent(d.name)
+    return [
+      `val ${id}Ctx = LocalContext.current`,
+      `val ${id} = remember { ${d.moduleName}(${id}Ctx) }`,
+    ].join('\n  ')
+  }
   // M3.2: `const share = useShare()` → a remembered PyreonShare. Android
   // sharing goes through `context.startActivity(Intent.createChooser(…))`,
   // so it needs a Context — hoisted from `LocalContext.current` into a

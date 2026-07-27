@@ -120,6 +120,28 @@ class CounterInstrumentedTest {
         composeRule.onNodeWithText("Theme: light").assertIsDisplayed()
     }
 
+    // FFI escape hatch (useNativeModule) asserted in the REAL Compose
+    // semantics tree — the Android half of the iOS
+    // `test_userDefinedNativeModuleRunsOnDevice`. The shared Counter.tsx has
+    // `const device = useNativeModule<{ platformName(): string }>('DeviceInfo')`
+    // and renders `<Text>Device: {device.platformName()}</Text>`; PMTC emits
+    // `val deviceCtx = LocalContext.current` +
+    // `val device = remember { DeviceInfo(deviceCtx) }` +
+    // `Text(text = "Device: ${device.platformName()}")`, where `DeviceInfo` is
+    // `app/src/main/kotlin/com/pyreon/DeviceInfo.kt` — ordinary app code the
+    // framework has never heard of.
+    //
+    // DIFFERENTIATING: the value is "Android" while the iOS sibling renders
+    // "iOS" from its own Swift class, so neither string could have been baked
+    // in by the compiler — the SAME shared source resolves to a DIFFERENT
+    // app-provided implementation per platform, which is the whole point of
+    // the escape hatch. It is also load-bearing at BUILD time: a regressed
+    // lowering would fail `assembleDebug` rather than render wrong text.
+    @Test
+    fun userDefinedNativeModuleRunsOnDevice() {
+        composeRule.onNodeWithText("Device: Android").assertIsDisplayed()
+    }
+
     // Tier-2 state machine (createMachine) asserted in the REAL Compose
     // semantics tree — the Android half of the iOS
     // `test_stateMachineTransitionsOnTap`. The shared Counter.tsx has

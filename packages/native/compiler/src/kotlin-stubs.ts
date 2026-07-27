@@ -117,6 +117,24 @@ object LocalConfiguration {
   val current: Configuration
     @Composable get() = Configuration()
 }
+// Context + LocalContext (android.content / androidx.compose.ui.platform).
+// EVERY Context-injecting service emits "val xCtx = LocalContext.current" --
+// clipboard, share, linking, notifications, the two pickers, and any
+// user-defined useNativeModule -- yet neither symbol was stubbed, so the
+// validate-kotlin gate could not compile ANY of those emits (the same
+// coverage hole LocalConfiguration and isSystemInDarkTheme each had). The
+// real device build resolves them via the CLI's conditionalKotlinImports.
+//
+// Context is ABSTRACT in the real android.content, so the stub is too -- a
+// convenient open class would let an emit construct a bare Context() that
+// the real SDK rejects (a superset stub is itself a masking source). The
+// composition local hands out an internal concrete instance instead.
+abstract class Context
+private object StubContext : Context()
+object LocalContext {
+  val current: Context
+    @Composable get() = StubContext
+}
 
 // Text — style/color args added for Heading emit (P2.2). Defaults keep
 // the bare Text(text = "...") call sites (from Text emit) valid.

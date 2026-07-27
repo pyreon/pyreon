@@ -21,6 +21,7 @@ import {
 } from '@pyreon/hooks'
 import { createI18n } from '@pyreon/i18n/core'
 import { createMachine } from '@pyreon/machine'
+import { useNativeModule } from '@pyreon/primitives'
 
 export function Counter() {
   const count = signal<number>(0)
@@ -128,6 +129,21 @@ export function Counter() {
   // (proven locally), so the read reflects the REAL system appearance rather
   // than a baked constant (a constant would show the same value in both).
   const colorScheme = useColorScheme()
+  // FFI escape-hatch proof — a native module the APP provides, not the
+  // framework. `DeviceInfo` is NOT a Pyreon hook and never will be: it lowers
+  // to `DeviceInfo()` (iOS, `ios/DeviceInfo.swift`) / `DeviceInfo(ctx)`
+  // (Android, `app/src/main/kotlin/com/pyreon/DeviceInfo.kt`) — ordinary
+  // platform classes living in the app's own sources. Method calls pass
+  // through verbatim, so the platform compiler type-checks the surface.
+  //
+  // This is the capability that makes PMTC extensible: before it, EVERY
+  // platform API needed a framework PR (recognition was hard-coded by hook
+  // name), so an app needing Bluetooth / ARKit / a vendor SDK was stuck.
+  //
+  // Load-bearing at BUILD time as well as run time: if the FFI lowering
+  // regressed, `DeviceInfo` would never be constructed and the emitted code
+  // would not compile against the app's class at all.
+  const device = useNativeModule<{ platformName(): string }>('DeviceInfo')
   // Tier-2 i18n proof — `createI18n({ locale, messages, fallbackLocale? })`
   // (from `@pyreon/i18n/core`) lowers to the PyreonI18n reactive container:
   // iOS `@State private var i18n = PyreonI18n(locale: "de", messages: […])`,
@@ -165,6 +181,10 @@ export function Counter() {
       <Text>Count: {count}</Text>
       <Text>Size: {sizeClass}</Text>
       <Text>Theme: {colorScheme}</Text>
+      {/* FFI device proof — the value comes from the app's OWN platform class
+          (iOS returns "iOS", Android returns "Android"), so the rendered text
+          proves a user-defined native module was constructed and called. */}
+      <Text>Device: {device.platformName()}</Text>
       <Text>Greeting: {i18n.t('hello')}</Text>
       <Text>Power: {power()}</Text>
       <Text>Lock: {lockStatus()}</Text>

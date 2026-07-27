@@ -299,6 +299,33 @@ export type DeclIR =
    */
   | { kind: 'haptics'; name: string }
   /**
+   * USER-DEFINED native module via
+   * `const bt = useNativeModule<T>('Bluetooth')` from
+   * `@pyreon/primitives` — the FFI escape hatch. Emits an instance of a
+   * class the APP provides, not a framework runtime container:
+   *   Swift  → @State private var bt = Bluetooth()
+   *   Kotlin → val btCtx = LocalContext.current
+   *            val bt = remember { Bluetooth(btCtx) }
+   *
+   * `moduleName` is the string literal at the call site — it is BOTH the
+   * web registry key (`defineNativeModule`) and the Swift/Kotlin class
+   * name, so a single identifier ties the three targets together. It is
+   * validated at parse time to be a plain identifier, since it is emitted
+   * verbatim as a type name.
+   *
+   * Member calls and property reads flow through UNCHANGED (the same
+   * pass-through every built-in imperative service uses), so the app's
+   * platform class defines the method surface and the platform compiler
+   * type-checks it. `await bt.connect(id)` composes with the async
+   * lowering, so async native modules work with no extra machinery.
+   *
+   * This is the ONE declaration kind whose emitted type the framework
+   * does not own — nothing can be stubbed or validated compiler-side; a
+   * missing or mismatched class is a normal `swiftc`/`kotlinc` error in
+   * the app's own build.
+   */
+  | { kind: 'native-module'; name: string; moduleName: string }
+  /**
    * M3.2 — share sheet via `const share = useShare()` from
    * `@pyreon/hooks`. Emits the PyreonShare wrapper:
    *   Swift  → @State private var share = PyreonShare()

@@ -6,8 +6,13 @@ local.properties
 .cxx/
 
 # Pyreon-emitted Kotlin lands inside the source tree but is gitignored —
-# `scripts/build.sh` regenerates it on every Gradle build.
-app/src/main/kotlin/com/pyreon/generated/
+# `scripts/build.sh` regenerates it on every Gradle build. Scoped to the
+# EMITTED file (named after the shared `Counter.tsx`) rather than the whole
+# directory, because hand-written app code shares this package: a
+# `useNativeModule` class must resolve from the generated file's package
+# (the `--kotlin-package` value), so `DeviceInfo.kt` lives here too and IS
+# committed. Add the emitted name here if another `.tsx` joins the app.
+app/src/main/kotlin/com/pyreon/generated/Counter.kt
 
 # node_modules
 node_modules/
