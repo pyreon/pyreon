@@ -83,6 +83,7 @@ function findRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'package.json')).isFile()) return dir
     } catch {
+      // Best effort — unreadable or unparseable input is skipped.
     }
     const parent = dirname(dir)
     if (parent === dir) return null

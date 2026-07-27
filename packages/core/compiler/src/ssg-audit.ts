@@ -86,7 +86,8 @@ export interface SsgAuditResult {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Discovery
+// ═══════════════════════════════════════════════════════════════════════════════
+// Discovery
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function findMonorepoRoot(startDir: string): string | null {
@@ -95,6 +96,7 @@ function findMonorepoRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
+      // Best effort — unreadable or unparseable input is skipped.
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -202,7 +204,8 @@ function makeLocation(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Detectors
+// ═══════════════════════════════════════════════════════════════════════════════
+// Detectors
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -475,7 +478,8 @@ function detectNonLiteralRevalidateExport(
   return findings
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Entry
+// ═══════════════════════════════════════════════════════════════════════════════
+// Entry
 // point ═══════════════════════════════════════════════════════════════════════════════
 
 export function auditSsg(rootDir: string): SsgAuditResult {

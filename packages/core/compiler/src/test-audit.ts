@@ -65,7 +65,8 @@ export interface TestAuditResult {
   totalScanned: number
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Discovery
+// ═══════════════════════════════════════════════════════════════════════════════
+// Discovery
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function findMonorepoRoot(startDir: string): string | null {
@@ -74,6 +75,7 @@ function findMonorepoRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
+      // Best effort — unreadable or unparseable input is skipped.
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -110,7 +112,8 @@ function walkTestFiles(dir: string, out: string[], depth = 0): void {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Pattern detection
+// ═══════════════════════════════════════════════════════════════════════════════
+// Pattern detection
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
@@ -323,7 +326,8 @@ function classifyRisk(entry: Omit<TestAuditEntry, 'risk'>): AuditRisk {
   return 'medium'
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Public API
+// ═══════════════════════════════════════════════════════════════════════════════
+// Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface TestAuditOptions {
@@ -416,7 +420,8 @@ export function auditTestEnvironment(
   return { root, entries, totalScanned: files.length }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Formatter
+// ═══════════════════════════════════════════════════════════════════════════════
+// Formatter
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface AuditFormatOptions {

@@ -91,7 +91,8 @@ export interface IslandAuditResult {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Discovery
+// ═══════════════════════════════════════════════════════════════════════════════
+// Discovery
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function findMonorepoRoot(startDir: string): string | null {
@@ -100,6 +101,7 @@ function findMonorepoRoot(startDir: string): string | null {
     try {
       if (statSync(join(dir, 'packages')).isDirectory()) return dir
     } catch {
+      // Best effort — unreadable or unparseable input is skipped.
     }
     const parent = dirname(dir)
     if (parent === dir) return null
@@ -137,7 +139,8 @@ function walkSourceFiles(dir: string, out: string[], depth = 0): void {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Per-file
+// ═══════════════════════════════════════════════════════════════════════════════
+// Per-file
 // extraction ═══════════════════════════════════════════════════════════════════════════════
 
 interface IslandDecl {
@@ -348,7 +351,8 @@ function extractFromFile(absPath: string, root: string): FileExtraction {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Import-path
+// ═══════════════════════════════════════════════════════════════════════════════
+// Import-path
 // resolution helper ═══════════════════════════════════════════════════════════════════════════════
 
 const TS_EXTS = ['.ts', '.tsx', '.js', '.jsx']
@@ -361,6 +365,7 @@ function resolveAbsToFile(absBase: string): string | null {
   try {
     if (statSync(absBase).isFile()) return absBase
   } catch {
+    // Best effort — unreadable or unparseable input is skipped.
   }
   for (const ext of TS_EXTS) {
     try {
@@ -390,7 +395,8 @@ function resolveImport(fromDir: string, spec: string): string | null {
   return resolveAbsToFile(resolve(fromDir, spec))
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Detectors
+// ═══════════════════════════════════════════════════════════════════════════════
+// Detectors
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function detectDuplicateName(
@@ -503,7 +509,8 @@ function detectDeadIslands(
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Public API
+// ═══════════════════════════════════════════════════════════════════════════════
+// Public API
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export function auditIslands(rootDir: string): IslandAuditResult {
@@ -574,7 +581,8 @@ export function auditIslands(rootDir: string): IslandAuditResult {
   return { root, findings, summary }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════ Formatter
+// ═══════════════════════════════════════════════════════════════════════════════
+// Formatter
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export interface IslandAuditFormatOptions {
