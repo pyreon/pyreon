@@ -36,13 +36,16 @@ const fieldNames = Array.from({ length: FIELD_COUNT }, (_, i) => `field${i}`)
 const emptyValues = (): Record<string, string> => Object.fromEntries(fieldNames.map((n) => [n, '']))
 
 // ── React harness (Formik + react-hook-form) ────────────────────────────
-async function reactRenderCount(which: 'formik' | 'rhf'): Promise<number> {
+async function reactRenderCount(which: 'formik' | 'rhf'): Promise<{ renders: number; value: string }> {
   const React = (await import('react')).default
   const { createElement: h } = React
   const { createRoot } = await import('react-dom/client')
   const { flushSync } = await import('react-dom')
 
   let renders = 0
+  // Captured so the gate can prove the keystrokes actually landed in form STATE
+  // — a render count is only meaningful if the work produced the right result.
+  let readValue: () => string = () => '<not captured>'
 
   let Form: () => unknown
   if (which === 'formik') {
@@ -50,6 +53,7 @@ async function reactRenderCount(which: 'formik' | 'rhf'): Promise<number> {
     Form = function FormikForm() {
       renders++
       const formik = useFormik({ initialValues: emptyValues(), onSubmit: () => {} })
+      readValue = () => String((formik.values as Record<string, string>)[fieldNames[0] as string] ?? '')
       return h(
         'form',
         null,
@@ -68,7 +72,9 @@ async function reactRenderCount(which: 'formik' | 'rhf'): Promise<number> {
     const { useForm } = await import('react-hook-form')
     Form = function RHFForm() {
       renders++
-      const { register } = useForm({ defaultValues: emptyValues() })
+      const rhf = useForm({ defaultValues: emptyValues() })
+      const { register } = rhf
+      readValue = () => String(rhf.getValues()[fieldNames[0] as string] ?? '')
       return h(
         'form',
         null,
@@ -94,21 +100,24 @@ async function reactRenderCount(which: 'formik' | 'rhf'): Promise<number> {
       input.dispatchEvent(new Event('input', { bubbles: true }))
     })
   }
+  const value = readValue()
   root.unmount()
   container.remove()
-  return renders
+  return { renders, value }
 }
 
 // ── Pyreon harness ──────────────────────────────────────────────────────
-async function pyreonRenderCount(): Promise<number> {
+async function pyreonRenderCount(): Promise<{ renders: number; value: string }> {
   const { h } = await import('@pyreon/core')
   const { mount } = await import('@pyreon/runtime-dom')
   const { useForm } = await import('../src/index')
 
   let renders = 0
+  let readValue: () => string = () => '<not captured>'
   function PyreonForm() {
     renders++
     const form = useForm({ initialValues: emptyValues(), onSubmit: () => {} })
+    readValue = () => String((form.values() as Record<string, string>)[fieldNames[0] as string] ?? '')
     return h(
       'form',
       null,
@@ -129,15 +138,36 @@ async function pyreonRenderCount(): Promise<number> {
     input.value = 'x'.repeat(k + 1)
     input.dispatchEvent(new Event('input', { bubbles: true }))
   }
+  const value = readValue()
   if (typeof dispose === 'function') dispose()
   container.remove()
-  return renders
+  return { renders, value }
 }
 
 // ── run + report ────────────────────────────────────────────────────────
-const formik = await reactRenderCount('formik')
-const rhf = await reactRenderCount('rhf')
-const pyreon = await pyreonRenderCount()
+const formikR = await reactRenderCount('formik')
+const rhfR = await reactRenderCount('rhf')
+const pyreonR = await pyreonRenderCount()
+
+// ─── CORRECTNESS GATE ───────────────────────────────────────────────────
+// A render COUNT is only a win if the work produced the right result. Zero
+// re-renders is indistinguishable from "did nothing" unless the typed value
+// actually reached form state — so assert all three libraries ended with the
+// same value before any number is reported.
+const expected = 'x'.repeat(KEYSTROKES)
+for (const [name, r] of [['pyreon', pyreonR], ['react-hook-form', rhfR], ['formik', formikR]] as const) {
+  if (r.value !== expected) {
+    throw new Error(
+      `[form-rerender-bench] CORRECTNESS GATE FAILED — ${name} ended with ` +
+        `${JSON.stringify(r.value)}, expected ${JSON.stringify(expected)}. ` +
+        `A render count from a form that did not record the keystrokes is meaningless.`,
+    )
+  }
+}
+
+const formik = formikR.renders
+const rhf = rhfR.renders
+const pyreon = pyreonR.renders
 
 console.log(`\nForm re-render benchmark — component renders for ${KEYSTROKES} keystrokes into 1 field of a ${FIELD_COUNT}-field form`)
 console.log(`(deterministic render COUNT; lower = fewer re-renders = less work per keystroke)\n`)
