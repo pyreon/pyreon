@@ -575,6 +575,50 @@ cd android && ./gradlew assembleDebug
 \`\`\`
 
 Edit \`src/App.tsx\` — every target re-compiles from that single file.
+
+## Adding a platform capability the framework does not ship
+
+The canonical primitives and the built-in hooks cover the common surface. For
+anything else — Bluetooth, ARKit, a payments or analytics SDK — \`useNativeModule\`
+lowers to a class **you** provide, so you are not blocked on a framework release:
+
+\`\`\`tsx
+import { defineNativeModule, useNativeModule } from '@pyreon/primitives'
+
+type Bluetooth = { connect(id: string): Promise<boolean> }
+
+// The WEB implementation. Native targets never run this — the compiler
+// replaces the call with your platform class.
+defineNativeModule<Bluetooth>('Bluetooth', { connect: async () => false })
+
+function Pairing() {
+  const bt = useNativeModule<Bluetooth>('Bluetooth')
+  return <Button onPress={() => { void bt.connect('cuff') }}>Connect</Button>
+}
+\`\`\`
+
+Then drop in the platform halves as ordinary app code:
+
+\`\`\`swift
+// ios/Bluetooth.swift — a NO-ARGUMENT initialiser
+final class Bluetooth {
+  func connect(_ id: String) async -> Bool { true }
+}
+\`\`\`
+
+\`\`\`kotlin
+// android/…/Bluetooth.kt — a SINGLE Context parameter, and declared in the
+// package your generated sources use (the --kotlin-package value), since the
+// emit references the class unqualified.
+class Bluetooth(private val context: Context) {
+  suspend fun connect(id: String): Boolean = true
+}
+\`\`\`
+
+The class name must match the string, and method names/arities must match what
+your \`.tsx\` calls — the compiler passes them through verbatim, so \`swiftc\` and
+\`kotlinc\` type-check the result in your own build. \`await\` works with no extra
+setup.
 `,
   )
 

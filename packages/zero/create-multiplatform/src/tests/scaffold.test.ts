@@ -57,6 +57,21 @@ describe('buildScaffold — file tree', () => {
     }
   })
 
+  it('documents the useNativeModule escape hatch in the README', () => {
+    // Discoverability is the point. `useNativeModule` is what stops a new app
+    // being blocked on a framework release when it needs a capability the
+    // framework does not ship — but a hatch nobody knows about is no hatch, and
+    // the scaffolded README is the first (often only) doc a new project reads.
+    const readme = get('README.md')
+    expect(readme).toContain('useNativeModule')
+    // The per-platform CONTRACT is the part that is easy to get wrong and
+    // produces confusing compiler errors, so assert it is spelled out rather
+    // than just name-dropped.
+    expect(readme).toContain('defineNativeModule')
+    expect(readme).toMatch(/NO-ARGUMENT initialiser/i)
+    expect(readme).toMatch(/SINGLE Context parameter/i)
+  })
+
   it('parameterizes the name across targets', () => {
     // Swift @main struct (in Main.swift, NOT App.swift — that name
     // collides with the emitted generated/App.swift) + iOS project name.
