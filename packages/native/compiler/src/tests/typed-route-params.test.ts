@@ -285,7 +285,7 @@ describe('view-child Text-wrap', () => {
     const out = tx(TERNARY_BUTTON, 'swift')
     // Bare `done ? "done" : "todo"` in a ViewBuilder is a swiftc type
     // error (String does not conform to View).
-    expect(out).toContain('Text("\\(done ? "done" : "todo")")')
+    expect(out).toContain('Text(verbatim: "\\(done ? "done" : "todo")")')
   })
 
   it('Kotlin: value-ternary Button child wraps in Text interpolation', () => {

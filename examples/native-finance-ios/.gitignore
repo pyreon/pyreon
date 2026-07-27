@@ -1,0 +1,11 @@
+# Generated output from `pyreon-native build` — not committed; produced
+# at build time so the source-of-truth is always `src/*.tsx`.
+generated/*
+!generated/.gitkeep
+
+# Xcode project files — NOT committed in PR 3 (manual setup; see README).
+# Future PR may commit a generated .xcodeproj or use xcodegen.
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+build/

@@ -140,13 +140,20 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
     // Plus the two marker protocols PyreonStoreProtocol / PyreonModelProtocol
     // (`: AnyObject {}`, mirroring runtime-swift). Bisect-locked below.
     //
-    // EXCLUDED (2 of 37) — the two LARGE @Observable showcase apps (showcase-finance
-    // 221 lines · showcase-tasks 410 lines). They emit @Observable too but ALSO need
-    // a larger stub surface (PyreonAuth / PyreonDatabase / PyreonFetch / LazyVStack /
-    // Color / Font.custom / .foregroundColor / .task / RouterProvider /
-    // navigationDestination) + a real closure-inference check on their `{ v in }` /
-    // `{ _values in }` shapes (which MAY surface real emit bugs) — a coherent
-    // follow-up (M-gate.1f) now that the Observation-import mechanism is proven here.
+    // COMPLETE (37 of 37, M-gate.1f) — the two LARGE @Observable showcase apps
+    // (showcase-finance · showcase-tasks) now type-check too, so the gate covers
+    // the WHOLE fixture corpus. Closing them needed the service-tier stub surface
+    // (PyreonAuth / PyreonDatabase / PyreonFetch / RouterProvider / matchPath /
+    // LazyVStack / Color / Font.custom / .foregroundColor / .task /
+    // navigationDestination), all mirrored from runtime-swift + router-swift.
+    //
+    // The suspicion recorded here — that finishing this "MAY surface real emit
+    // bugs" — was correct: it found that `useDatabase`'s `get` / `delete` / `find`
+    // emitted Swift WITHOUT the argument labels the runtime declares
+    // (`delete(_ collection:id:)`), so those calls have NEVER compiled. `-parse`
+    // accepts a missing label, which is exactly why only a -typecheck gate could
+    // see it. Fixed in emit-swift (SWIFT_DATABASE_ARG_LABELS) and locked by
+    // `native-database-arg-labels.test.ts`.
     const TYPECHECK_FIXTURES = [
       '01-stateless.tsx',
       '02-signal.tsx',
@@ -170,6 +177,8 @@ describe('Swift emit — swiftc -typecheck against stubs (Linux-viable type gate
       'rx-full.tsx',
       'rx-lowering.tsx',
       'showcase-analytics.tsx',
+      'showcase-finance.tsx',
+      'showcase-tasks.tsx',
       'synth-prop-types.tsx',
       'tier2-feature.tsx',
       'tier2-form.tsx',

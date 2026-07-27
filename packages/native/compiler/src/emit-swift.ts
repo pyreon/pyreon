@@ -233,6 +233,35 @@ let _netStatusNames: Set<string> = new Set()
  *  native the accessor call lowers to the `state.phase` read on the
  *  PyreonAppState container (same accessor semantics as useOnline). */
 let _appStateNames: Set<string> = new Set()
+/**
+ * Per-component: `useDatabase()` decl names.
+ *
+ * Swift API-design convention gives `PyreonDatabase` LABELLED arguments
+ * (`delete(_ collection: String, id: String)`), while the shared TS surface is
+ * positional (`db.delete('tx', id)`). The generic pass-through emitted the
+ * arguments positionally, producing `db.delete("tx", "a")` — which does not
+ * compile ("missing argument label 'id:' in call").
+ *
+ * `swiftc -parse` accepts it (labels are a TYPE-level concern), so this shipped
+ * unnoticed: `get`, `delete` and `find` have NEVER produced compilable Swift.
+ * Surfaced the moment the showcase-app emit was type-checked (M-gate.1f) — the
+ * gate paying for itself again.
+ *
+ * Kotlin is unaffected: named arguments are optional there, so the positional
+ * call is already valid.
+ */
+let _databaseNames: Set<string> = new Set()
+/**
+ * The labels `PyreonDatabase` declares, per method, for arguments AFTER the
+ * leading unlabelled collection name. `null` = that position is unlabelled.
+ * Mirrors runtime-swift EXACTLY; a method absent here keeps the plain
+ * positional emit (`insert`, `all`, `count` take one unlabelled argument).
+ */
+const SWIFT_DATABASE_ARG_LABELS: Record<string, readonly (string | null)[]> = {
+  get: ['id'],
+  delete: ['id'],
+  find: ['field', 'equals'],
+}
 /** Per-component: form decl names — drives the dict-member subscript
  *  rewrite (`form.values.email` → `form.values["email"] ?? ""`) and the
  *  Field binding emit. */
@@ -1368,6 +1397,7 @@ function emitSwiftComponent(c: ComponentIR): string {
   _machineNames = new Set()
   _netStatusNames = new Set()
   _appStateNames = new Set()
+  _databaseNames = new Set()
   _i18nNames = new Set()
   _formNamesSwift = new Set()
   _fetchNamesSwift = new Set()
@@ -1409,6 +1439,7 @@ function emitSwiftComponent(c: ComponentIR): string {
     if (d.kind === 'machine') _machineNames.add(d.name)
     if (d.kind === 'network-status') _netStatusNames.add(d.name)
     if (d.kind === 'app-state') _appStateNames.add(d.name)
+    if (d.kind === 'database') _databaseNames.add(d.name)
     if (d.kind === 'i18n') _i18nNames.add(d.name)
     if (d.kind === 'form') _formNamesSwift.add(d.name)
     if (d.kind === 'fetch') _fetchNamesSwift.add(d.name)
@@ -3041,6 +3072,36 @@ function emitSwiftExpr(e: ExprIR, indent: number): string {
           .join(', ')
         return `${swiftIdent(e.callee.object.name)}.t(${keyArg}, [${entries}])`
       }
+      // PyreonDatabase argument labels. The shared TS surface is positional
+      // (`db.delete('tx', id)`), but Swift API-design convention gives the
+      // runtime labelled arguments (`delete(_ collection: String, id: String)`).
+      // The generic member-call emit is positional, so `get` / `delete` / `find`
+      // produced Swift that does not compile ("missing argument label 'id:'").
+      // `swiftc -parse` waves that through — labels are a type-level concern —
+      // so it shipped unnoticed until the showcase emit was type-checked.
+      //
+      // Kotlin needs no equivalent: named arguments are optional there, so its
+      // positional emit is already valid.
+      if (
+        e.callee.kind === 'member' &&
+        e.callee.object.kind === 'identifier' &&
+        _databaseNames.has(e.callee.object.name) &&
+        typeof e.callee.property === 'string' &&
+        SWIFT_DATABASE_ARG_LABELS[e.callee.property] !== undefined
+      ) {
+        const labels = SWIFT_DATABASE_ARG_LABELS[e.callee.property]!
+        // Only rewrite when the arity matches the declared surface; anything
+        // else falls through to the generic emit so a genuinely wrong call
+        // still surfaces as a compiler error rather than being papered over.
+        if (e.args.length === labels.length + 1) {
+          const emitted = e.args.map((a) => emitSwiftExpr(a, indent))
+          const labelled = emitted.map((src, i) => {
+            const label = i === 0 ? null : labels[i - 1]
+            return label === null || label === undefined ? src : `${label}: ${src}`
+          })
+          return `${swiftIdent(e.callee.object.name)}.${e.callee.property}(${labelled.join(', ')})`
+        }
+      }
       // Gap 4 v1: signal-style read on a store field — drop the parens.
       // Shape: call(member(<field>, member(store, call(<hook>, []))), [])
       // Detect this BEFORE the .set rewrite below (which would
@@ -4644,7 +4705,48 @@ function emitSwiftTextCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       parts.push(swiftInterpSegment(childExpr, indent))
     }
   }
-  return `Text("${parts.join('')}")`
+  // A sole child that is ALREADY a String passes through directly, with no
+  // interpolation wrapper: `<Text>{String(a + b)}</Text>` becomes
+  // `Text(verbatim: String(a + b))`, not `Text(verbatim: "\(String(a + b))")`.
+  //
+  // Redundant either way, but not merely cosmetic — wrapping a String in a
+  // string interpolation re-opens `DefaultStringInterpolation`'s overload set
+  // around the inner expression, and on a non-trivial one (a 4-term sum of
+  // `.count`s) swiftc gives up: "unable to type-check this expression in
+  // reasonable time". Passing it through keeps the argument a single, already
+  // well-typed expression. Same spirit as the template-child splice above,
+  // which exists to avoid the identical double-wrap.
+  if (parts.length === 1 && parts[0]!.startsWith('\\(String(') && parts[0]!.endsWith(')')) {
+    return `Text(verbatim: ${parts[0]!.slice(2, -1)})`
+  }
+  const content = parts.join('')
+  // No actual interpolation (e.g. a template literal with no `${}`, or several
+  // adjacent literal children) → nothing to format, so keep the plain form and
+  // its .strings-table lookup. `verbatim:` is reserved for content that really
+  // does interpolate.
+  if (!content.includes('\\(')) return `Text("${content}")`
+  // `Text(verbatim:)`, NOT `Text("…")`, whenever the content INTERPOLATES.
+  //
+  // A Swift string literal containing interpolation resolves to SwiftUI's
+  // `Text(_ key: LocalizedStringKey)` overload, and `LocalizedStringKey`'s
+  // interpolation FORMATS its arguments through the current locale. So
+  // `Text("\(balance)")` with `balance == 2700` renders "2 700" (or "2,700",
+  // per region) instead of "2700" — the emitted app silently disagrees with
+  // the web and Android targets that render the same source, and the output
+  // changes with the device's region.
+  //
+  // Invisible below 1000, which is why every existing device app missed it:
+  // the counter renders "Count: 0". A REAL app's first four-figure number
+  // surfaces it (found by the finance ledger's 2700 balance on a Simulator).
+  //
+  // `verbatim:` takes a plain `String` and performs no localization or
+  // formatting, which is the correct semantic here: PMTC text comes from the
+  // app's source, and localization goes through `PyreonI18n.t(...)` — whose
+  // result is an already-resolved String. A pure literal (no interpolation)
+  // keeps the plain form: it has no arguments to format, and staying on the
+  // LocalizedStringKey overload preserves .strings-table lookup for anyone
+  // who wants it.
+  return `Text(verbatim: "${content}")`
 }
 
 function emitSwiftText(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: number): string {
@@ -6699,7 +6801,7 @@ function emitSwiftNavigationDestination(
   const denyFallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 4)}()`
-      : `Text("Pyreon Router: access denied to \\(path)")`
+      : `Text(verbatim: "Pyreon Router: access denied to \\(path)")`
   const wrapGuard = (r: import('./types').RouteIR, renderLine: string): string[] => {
     if (r.guard === undefined) return [`${innerPad}${renderLine}`]
     return [
@@ -6809,7 +6911,7 @@ function emitSwiftNavigationDestination(
   const fallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 2)}()`
-      : `Text("Pyreon Router: no route for \\(path)")`
+      : `Text(verbatim: "Pyreon Router: no route for \\(path)")`
   if (firstBranch) {
     branches.push(`${pad}${fallback}`)
   } else {
@@ -6864,7 +6966,7 @@ function emitSwiftNestedNavigationDestination(
   const denyFallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 4)}()`
-      : `Text("Pyreon Router: access denied to \\(path)")`
+      : `Text(verbatim: "Pyreon Router: access denied to \\(path)")`
   const branches: string[] = []
   let firstBranch = true
   for (const entry of entries) {
@@ -6907,7 +7009,7 @@ function emitSwiftNestedNavigationDestination(
   const fallback =
     wildcardComponent !== undefined
       ? `${emitSwiftExpr(wildcardComponent, indent + 2)}()`
-      : `Text("Pyreon Router: no route for \\(path)")`
+      : `Text(verbatim: "Pyreon Router: no route for \\(path)")`
   if (firstBranch) {
     branches.push(`${pad}${fallback}`)
   } else {
@@ -7185,7 +7287,12 @@ function emitSwiftChild(c: ChildIR, indent: number): string {
     if (c.expr.kind === 'template') {
       return `Text(${emitSwiftExpr(c.expr, indent)})`
     }
-    return `Text("${swiftInterpSegment(c.expr, indent)}")`
+    // `verbatim:` for the same reason as the <Text> child path above: an
+    // interpolated literal selects SwiftUI's LocalizedStringKey overload,
+    // which locale-FORMATS its arguments (a 2700 renders as "2 700"). This
+    // site is the container-child shape (`<Stack>{count}</Stack>`), and it
+    // always interpolates, so it always needs the verbatim form.
+    return `Text(verbatim: "${swiftInterpSegment(c.expr, indent)}")`
   }
   // `{cond && <View/>}` — the dominant React/Solid conditional-render
   // idiom. A raw `cond && View` is `Bool && View`, a type error inside a

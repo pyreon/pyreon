@@ -45,7 +45,7 @@ describe('swiftc -typecheck gate', () => {
       const bad = `struct BadView: View {
   var body: some View {
     let xs: [Int] = ["a", "b"]
-    return Text("\\(xs.count)")
+    return Text(verbatim: "\\(xs.count)")
   }
 }`
       // -parse PASSES it (no semantic analysis) — proving the old gate's blind spot.

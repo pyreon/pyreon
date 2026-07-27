@@ -36,7 +36,7 @@ const kotlinText = (child: string) =>
 describe('arrow-accessor text child unwraps (no closure interpolation)', () => {
   it('Swift: {() => sig()} → \\(sig), NOT a closure \\({ … })', () => {
     const line = swiftText('{() => sig()}')
-    expect(line).toContain('Text("\\(sig)")')
+    expect(line).toContain('Text(verbatim: "\\(sig)")')
     // The bug shape — a closure interpolated into the string — must be gone.
     expect(line).not.toContain('{ sig }')
     expect(line).not.toMatch(/\\\(\{/)
@@ -58,12 +58,12 @@ describe('arrow-accessor text child unwraps (no closure interpolation)', () => {
   })
 
   it('arrow-wrapped template hits the template fast-path (no nested string)', () => {
-    expect(swiftText('{() => `n=${sig()}`}')).toContain('Text("n=\\(sig)")')
+    expect(swiftText('{() => `n=${sig()}`}')).toContain('Text(verbatim: "n=\\(sig)")')
     expect(kotlinText('{() => `n=${sig()}`}')).toContain('Text(text = "n=${sig}")')
   })
 
   it('bare {sig()} is unchanged (no regression)', () => {
-    expect(swiftText('{sig()}')).toContain('Text("\\(sig)")')
+    expect(swiftText('{sig()}')).toContain('Text(verbatim: "\\(sig)")')
     expect(kotlinText('{sig()}')).toContain('Text(text = "${sig}")')
   })
 
@@ -79,7 +79,7 @@ function App() {
 }`
     const sw = transform(containerSrc, { target: 'swift' }).code.split('\n').find((l) => l.includes('Text(')) ?? ''
     const kt = transform(containerSrc, { target: 'kotlin' }).code.split('\n').find((l) => l.includes('Text(')) ?? ''
-    expect(sw).toContain('Text("\\(sig)")')
+    expect(sw).toContain('Text(verbatim: "\\(sig)")')
     expect(sw).not.toMatch(/\\\(\{/)
     expect(kt).toContain('Text(text = "${sig}")')
     expect(kt).not.toMatch(/\$\{\{/)

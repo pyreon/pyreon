@@ -281,6 +281,31 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
 
+      # THE REAL-APP GATE. Every step above builds a DEMO — one screen, one
+      # list, navigation only. This one builds a realistic app and asserts a
+      # composed flow on the Simulator: useForm validation -> the useAuth
+      # state transition -> a store-backed route guard -> a computed balance
+      # over store state -> a keyed <For> mutation with a useDatabase
+      # side-channel. Composition is exactly what a demo cannot prove, and
+      # this app found a locale-formatting bug the demos structurally could
+      # not (SwiftUI's LocalizedStringKey grouping shows below 1000 as-is,
+      # so the counter's "Count: 0" never surfaced it; a 2700 balance did).
+      - name: Emit + xcodegen + UITest — native-finance-ios (real-app gate)
+        working-directory: examples/native-finance-ios
+        run: |
+          set -o pipefail
+          bash scripts/build.sh
+          xcodegen generate
+          xcodebuild test \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
+            -project PyreonFinance.xcodeproj \
+            -scheme PyreonFinance \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=${PYREON_SIM_NAME},OS=latest" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+
       - name: Emit + xcodegen + UITest — native-router-demo-ios
         working-directory: examples/native-router-demo-ios
         run: |

@@ -342,6 +342,28 @@ function shadowStubDeclarations(stub: string, emit: string): string {
  * Honors PYREON_SKIP_NATIVE_VALIDATE (force skip) and PYREON_REQUIRE_NATIVE_VALIDATE
  * (fail-on-absent) identically to `validateSwift` / `validateKotlin`.
  */
+/**
+ * Conditional `FoundationNetworking` import for the EMIT file.
+ *
+ * Swift imports are per-FILE, so this belongs in the file that references
+ * `URLSession` (the emit), NOT in the concatenated stub file — importing it
+ * beside the stubs does nothing for the emit and leaves CI failing identically.
+ * `canImport` makes it a no-op on Apple platforms.
+ */
+export const SWIFT_NETWORKING_SHIM =
+  '#if canImport(FoundationNetworking)\nimport FoundationNetworking\n#endif\n'
+
+/**
+ * The import prelude prepended to the EMIT file. Pure + exported so the
+ * per-file import contract is unit-testable without a Linux toolchain (on
+ * macOS `canImport` is false, so a compile check cannot distinguish a present
+ * shim from a missing one).
+ */
+export function _swiftInputPrelude(stripped: string, observation: string): string {
+  const foundation = /^import Foundation\s*$/m.test(stripped) ? '' : 'import Foundation\n'
+  return foundation + SWIFT_NETWORKING_SHIM + observation
+}
+
 export function validateSwiftWithStubs(source: string): ValidationResult {
   if (process.env.PYREON_SKIP_NATIVE_VALIDATE === '1') {
     return { ok: true, skipped: true, skipReason: 'PYREON_SKIP_NATIVE_VALIDATE=1' }
@@ -359,7 +381,20 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
   // Strip the stubbed-module imports so their symbols bind to the stub, and
   // guarantee `import Foundation` (real on Linux) for String/Codable/etc.
   const stripped = source.replace(SWIFT_STUBBED_IMPORTS, '')
-  const foundation = /^import Foundation\s*$/m.test(stripped) ? '' : 'import Foundation\n'
+
+  // URLSession is in Foundation on Apple platforms but in a SEPARATE
+  // FoundationNetworking module on Linux, where plain Foundation only carries a
+  // placeholder typealias to AnyObject. A `useFetch` emit calls
+  // `URLSession.shared.data(from:)`, so on Linux it fails with "type
+  // 'URLSession' (aka 'AnyObject') has no member 'shared'".
+  //
+  // This MUST be added to the EMIT file, not just the stub file: Swift imports
+  // are per-FILE, so importing FoundationNetworking alongside the stubs does
+  // nothing for the emit that actually references URLSession. (Putting it only
+  // in the stub was the first attempt, and CI failed identically.)
+  //
+  // `canImport` keeps it a no-op on Apple platforms, so it is safe to add
+  // unconditionally rather than sniffing the emit for `URLSession`.
 
   // The store/state-tree emit declares an `@Observable final class` but does NOT
   // `import Observation` (on Apple platforms it is implicit + SwiftUI re-exports
@@ -389,7 +424,7 @@ export function validateSwiftWithStubs(source: string): ValidationResult {
   const stubsPath = join(tempDir, 'PyreonSwiftStubs.swift')
   const inputPath = join(tempDir, 'Input.swift')
   writeFileSync(stubsPath, stub, 'utf8')
-  writeFileSync(inputPath, foundation + observation + stripped, 'utf8')
+  writeFileSync(inputPath, _swiftInputPrelude(stripped, observation) + stripped, 'utf8')
 
   try {
     // Both files compiled as one module; the stubs satisfy SwiftUI/PyreonRuntime

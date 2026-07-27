@@ -40,7 +40,7 @@ describe('unsupported-construct diagnostics — located + actionable', () => {
     // warning. (See native-template-literal.test.ts for the emit contract.)
     const result = transform(wrapJsx('`hi ${name}`'), { target: 'swift' })
     expect(result.warnings.some((m) => m.includes('template literal'))).toBe(false)
-    expect(result.code).toContain('Text("hi \\(name)")')
+    expect(result.code).toContain('Text(verbatim: "hi \\(name)")')
   })
 
   it('a destructured callback param: names the site + the plain-parameter rewrite', () => {
